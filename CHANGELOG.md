@@ -1,8 +1,11 @@
 # Changelog: Elysian Dialogue
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-27
+- **Docs**: Restructured `DEVELOPER.md` for better organization and updated the project structure tree.
+- **Docs**: Summarized AI capabilities in `DEVELOPER.md` including context, logic loop, and tools for another LLM instructions.
+- **Debug Panel**: Added comprehensive filtering for Console logs (Keywords/Regex, Level toggles, Date Range).
 - **Debug Panel**: Implemented SQLite persistence for console logs. Captures browser logs in real-time and hydrates the view on refresh.
 - **Debug Panel**: Added date to timestamps in LLM trace and Console logs for better troubleshooting.
 - **Debug Panel**: Added text wrap toggle for LLM logs and fixed related horizontal layout issues.

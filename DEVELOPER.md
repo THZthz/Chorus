@@ -1,179 +1,164 @@
 # Developer Documentation: Elysian Dialogue
 
-This document provides an overview of the architecture, core systems, and data structures of the **Elysian Dialogue** application to assist with future development and maintenance.
+This document provides a comprehensive overview of the architecture, core systems, and data structures of the **Elysian Dialogue** application.
+
+---
 
 ## 1. Project Overview
 
-**Elysian Dialogue** is a cinematic RPG-style dialogue engine built with React, Vite, and Tailwind CSS. It focuses on a vertical-scrolling "thought stream" aesthetic where messages appear sequentially, and players interact via branching dialogue options and skill checks.
+**Elysian Dialogue** is a cinematic RPG-style dialogue engine designed for immersive narrative experiences. It features a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
-- **Primary Stack:** React 19, TypeScript, Vite.
-- **Animation:** `motion` (formerly `framer-motion`).
-- **Styling:** Tailwind CSS (v4).
-- **Icons:** `lucide-react`.
+- **Stack:** React 19, TypeScript, Vite.
+- **Backend:** Express with SQLite (via `better-sqlite3`).
+- **Intelligence:** Gemini-powered autonomous DM using tool calling.
+- **Visuals:** Tailwind CSS (v4), `motion` for fluid animations, and Lucide icons.
 
 ---
 
 ## 2. Project Structure
 
-The project follows a full-stack structure with React on the frontend and an Express server on the backend.
+The project follows a full-stack monorepo-style structure where the backend serves both the API and the frontend assets in production.
 
 ```text
 .
-├── DEVELOPER.md             # Technical documentation and maintenance logs
-├── game.db                  # SQLite database for world state and history
-├── game.db-shm / game.db-wal # SQLite temporary files
-├── index.html               # Entry HTML for Vite
-├── metadata.json            # AI Studio app metadata
-├── package.json             # Project dependencies and scripts
-├── tsconfig.json            # TypeScript configuration
-├── vite.config.ts           # Vite configuration
-├── src/
-│   ├── client/              # Frontend Code
-│   │   ├── main.tsx         # Frontend entry point
-│   │   ├── App.tsx          # Main application component/orchestrator
-│   │   └── index.css        # Global styles and Tailwind imports
-│   ├── components/          # React UI Components
-│   │   ├── CharacterPanel.tsx   # Sidebar for character stats and world registered entities
-│   │   ├── DebugPanel.tsx       # Overlay for LLM request/response debugging. Displays transmission logs and JSON payloads.
-│   │   ├── DialogueMessage.tsx  # Individual message styling. Handles message types and "Tooltips" for past roll results.
-│   │   ├── DialogueOptions.tsx  # List of player choices
-│   │   ├── DiceRoller.tsx       # Skill check simulation
-│   │   ├── ObjectLink.tsx       # Interactive links in text. Parses object references and manages the hover-persistent state.
-│   │   ├── ObjectTooltip.tsx    # Content for hovered links. Renders the detailed object lore and allows interaction via a "hover-bridge" padding technique.
-│   │   └── TypingIndicator.tsx  # NPC character typing status, "..." animated feedback
-│   ├── context/             # Global State
-│   │   └── CharacterContext.tsx # Player attributes and bonuses
-│   ├── data/                # Static assets/initial states
-│   │   └── sampleDialogue.ts    # Seed dialogue data
-│   ├── server/              # Backend Logic
-│   │   ├── main.ts          # Backend entry point (Express + Vite middleware)
-│   │   ├── api.ts           # Express route handlers
-│   │   ├── database.ts          # Database connection/initialization
-│   │   ├── LlmServiceBackend.ts # Server-side AI orchestration
-│   │   └── models/              # DB interactions
-│   │       ├── debug.ts         # LLM interaction logging
-│   │       ├── history.ts       # Conversation history queries
-│   │       ├── plot.ts          # Story progression queries
-│   │       └── world.ts         # Entities and world state queries
-│   ├── services/            # Frontend Core Logic
-│   │   ├── LlmService.ts        # AI communication client
-│   │   ├── WorldManager.ts      # Global world state tracker
-│   │   └── tools/               # LLM Function Calling implementations
-│   │       ├── addDialogueStep.ts # Adds new dialogue nodes
-│   │       ├── addPlot.ts         # Add new plot triggers
-│   │       ├── updatePlotStatus.ts# Update plot state
-│   │       └── updateWorldState.ts # State synchronization
-│   └── types/               # Shared Type Definitions
-│       ├── dialogue.ts          # Dialogue system interfaces
-│       ├── entities.ts          # Character and object interfaces
-│       └── worldObject.ts       # Specific object properties
+├── .env.example             # Template for environment variables (GEMINI_API_KEY)
+├── .gitignore               # Standard git exclusions
+├── CHANGELOG.md             # Detailed history of codebase modifications
+├── DEVELOPER.md             # Technical documentation (this file)
+├── game.db                  # SQLite database (World state, Narrative history)
+├── game.db-shm / -wal       # SQLite temporary/journal files
+├── index.html               # Frontend entry point
+├── metadata.json            # AI Studio application metadata
+├── package.json             # Manifest with scripts and dependencies
+├── tsconfig.json            # TypeScript build configuration
+├── vite.config.ts           # Vite development and build configuration
+└── src/
+    ├── client/              # Frontend (React)
+    │   ├── main.tsx         # App entry point
+    │   ├── App.tsx          # Main orchestrator and message loop
+    │   └── index.css        # Global styles (Tailwind + Custom filters)
+    ├── components/          # UI Components
+    │   ├── CharacterPanel.tsx   # Sidebar for stats and inventory
+    │   ├── DebugPanel.tsx       # Developer toolbox (Logs, Editors)
+    │   ├── DialogueMessage.tsx  # Message rendering and tooltip integration
+    │   ├── DialogueOptions.tsx  # Player interaction buttons
+    │   ├── DiceRoller.tsx       # Skill check animation and logic
+    │   ├── ObjectLink.tsx       # Hoverable text references
+    │   ├── ObjectTooltip.tsx    # Detailed entity lore popups
+    │   └── TypingIndicator.tsx  # NPC activity feedback
+    ├── context/             # React Contexts
+    │   └── CharacterContext.tsx # Global character attribute state
+    ├── data/                # Static Data
+    │   └── sampleDialogue.ts    # Initial scenario/tutorial steps
+    ├── server/              # Backend (Node.js/Express)
+    │   ├── main.ts          # Server entry and Vite middleware setup
+    │   ├── api.ts           # REST API route definitions
+    │   ├── database.ts      # SQLite connection and schema migrations
+    │   ├── LlmServiceBackend.ts # AI agent logic and configurations
+    │   └── models/          # Database Abstractions
+    │       ├── debug.ts     # Logging queries
+    │       ├── history.ts   # Narrative flow persistence
+    │       ├── plot.ts      # Objective tracking
+    │       └── world.ts     # Entity state management
+    ├── services/            # Shared Logic
+    │   ├── ConsoleLogger.ts # System-wide log interception
+    │   ├── LlmService.ts    # Frontend AI client API
+    │   ├── WorldManager.ts  # World state synchronization client
+    │   └── tools/           # LLM Tool Implementations
+    │       ├── addDialogueStep.ts
+    │       ├── addPlot.ts
+    │       ├── updatePlotStatus.ts
+    │       └── updateWorldState.ts
+    └── types/               # TypeScript Definitions
+        ├── dialogue.ts      # Narrative system interfaces
+        ├── entities.ts      # Character and actor models
+        └── worldObject.ts   # Interactive object schemas
 ```
 
 ---
 
-## 3. Core Architecture
+## 3. Architecture Overview
 
-### State Management
-- **Local State (`src/client/App.tsx`):** Maintains the `history` of the conversation, `currentStepId`, and UI states like `isTyping` or `currentCheck`.
-- **Character Context (`CharacterContext.tsx`):** A React Context that stores the player's attributes (Logic, Rhetoric, etc.). This acts as the "Source of Truth" for skill bonuses during checks.
+### 3.1 Frontend Orchestration
+The root `App.tsx` manages the **Sequential Message Loop**. It handles the timing of incoming narrative blocks, interrupts for player input, and states for "Fast Forwarding" text.
 
-### Dialogue Loop
-1. **Load Step:** `App` reads the `DialogueStep` from the data map.
-2. **Display Messages:** Messages in the step are displayed sequentially with a calculated "typing" delay.
-3. **Show Options:** Once messages are finished, `DialogueOptions` are rendered.
-4. **Select Option:**
-   - If a **Normal Transition** (`nextStepId`), jump to step 1.
-   - If a **Skill Check** (`check`), trigger the `DiceRoller`.
-5. **Skill Check Outcome:** `DiceRoller` calculates the result (Dice + Bonus vs Difficulty) and evaluates conditions to determine the `outcomeStepId`.
+### 3.2 Backend & Data Persistence
+- **Express Server**: Acts as a proxy for LLM requests (to secure API keys) and provides a persistence layer.
+- **SQLite**: Stores the world state, conversation history, and debugging logs. The schema is initialized in `src/server/database.ts`.
 
----
-
-## 4. Data Structures
-
-Defined in `src/types/dialogue.ts`.
-
-### `DialogueStep`
-The building block of the conversation.
-```typescript
-{
-  id: "start_node",
-  messages: [...], // Array of message objects
-  options: [...]  // Array of player choices, appear only after all `messages` appear
-}
-```
-
-### `DialogueOption`
-Supports simple jumps or complex skill-gated transitions.
-- **`nextStepId`**: Used for linear progression.
-- **`check`**: Defines a skill check, difficulty, and branching `conditions`.
-
-### `Message`
-A single line of text in the history.
-- **`type`**: `YOU`, `INNER_VOICE`, `CHARACTER`, `SYSTEM`, `ROLL`, or `NOTIFICATION`. Determines styling and layout.
-- **`skillCheck`**: Visual hint attached to a message indicating it was the result of a check.
-- **`rollResult`**: Deep-trace data of the roll (dice faces, bonuses, success state) used for the interactive hover tooltips in history.
-
-### Object Reference System
-Dialogue messages support interactive object links using a custom markdown-like syntax:
-`[Object Name](#object_id)`
-
-- **WorldManager (`src/services/WorldManager.ts`)**: Central storage for all world entities (Objects, Locations, Characters).
-- **LlmServiceBackend (`src/server/LlmServiceBackend.ts`)**: Handles dynamic AI dialogue using the **Vercel AI SDK**. It prioritizes **Google Gemini 1.5 Flash** (via `gemini-3.1-flash-lite-preview`) when a `GEMINI_API_KEY` is present, falling back to **DeepSeek-V3** (`deepseek-chat`). The system utilizes autonomous tool calling to perform world updates, plot transitions, and generate narrative dialogue steps.
-- **LlmService (`src/services/LlmService.ts`)**: A frontend client wrapper that proxies requests to the backend `/api/chat` route.
-- **ConsoleLogger (`src/services/ConsoleLogger.ts`)**: Intercepts standard `console.*` calls to pipe browser logs into the `DebugPanel` for integrated monitoring.
-- **Debug System**:
-  - **Database Logging**: LLM interactions are logged to the `llm_logs` table in SQLite via `src/server/models/debug.ts`.
-  - **API Endpoints**: `/api/debug/logs` (GET) and `/api/debug/logs/clear` (POST) manage these logs.
-  - **Debug Panel (`src/components/DebugPanel.tsx`)**: A multi-tab utility (Logs, History, World) for real-time application state management. It features a cinematic backdrop that allows closing the panel by clicking outside. The layout is modularized into dedicated sub-components within the file:
-    - **Logs (`LlmTraceViewer`)**: Displays chronological LLM interactions with a custom **One Dark** styled tree viewer (`JsonExplorer`) for JSON payloads. Includes a text wrapping toggle for managing large string content.
-    - **Console (`ConsoleViewer`)**: Real-time browser console log viewer with timestamp and log level filtering visualization. Captures `log`, `info`, `warn`, and `error`. Supports interactive JSON inspection for objects passed as arguments. Logs are persisted to the SQLite `console_logs` table via the backend.
-    - **History (`HistoryEditor`)**: Advanced JSON editor (via CodeMirror) with schema validation (via `codemirror-json-schema`) for synchronizing the dialogue message buffer.
-    - **World (`WorldEditor`)**: Entity manifest editor powered by CodeMirror with schema-based hinting and validation. Allows direct modification of characters, locations, and interactive objects.
-- **ObjectLink (`src/components/ObjectLink.tsx`)**: Handles the parsing and interaction of these links. Features a hover-to-open logic with click-to-persist functionality.
-- **ObjectTooltip (`src/components/ObjectTooltip.tsx`)**: A cinematic pop-up showing object attributes, short descriptions, and expandable lore sections. It uses a "hover-bridge" padding technique to allow users to move their cursor into the tooltip without it closing.
+### 3.3 Communication Flow
+1. **Frontend** captures user input or triggers a transition.
+2. **`LlmService`** sends context (History + World + Plots) to `/api/chat`.
+3. **Backend** invokes Gemini, which may call **Tools** to update the database.
+4. **Backend** returns a new `DialogueStep`.
+5. **Frontend** renders the new step sequentially.
 
 ---
 
-## 5. Key Systems
+## 4. Gameplay Systems
 
-### Sequential Message Flow
-Implemented in `src/client/App.tsx` using `displayMessages`. It uses an `async` loop with `setTimeout` to push messages into the `history` array one by one. The delay is dynamic based on text length.
+### 4.1 Dialogue Execution Loop
+Each narrative unit is a `DialogueStep`.
+- **Messages**: Displayed one-by-one with dynamic delays based on readability.
+- **Options**: Displayed once messages finish. Can lead to other steps or trigger checks.
 
-### Skill Check Evaluator
-Located in `src/client/App.tsx` (within `handleRollComplete`) and `DiceRoller.tsx`. It uses a safe `new Function()` evaluator to check player-defined expressions:
-```javascript
-const evaluator = new Function('dice', 'total', 'success', 'diceLen', `return ${condition.expression}`);
-```
-This allows for flexible logic like "Critical Success" (rolling double 6s) or "Partial Success" (meeting a separate threshold).
+### 4.2 Skill Check Mechanics
+Checks are defined in `DialogueOption`.
+- **Logic**: Handled by `DiceRoller.tsx`.
+- **Evaluator**: Uses `new Function()` in `App.tsx` to safely determine outcomes based on dice rolls and bonuses provided by `CharacterContext`.
 
-### The "Disco" Aesthetic
-- **Fonts:** Serif for narrative text, Sans/Mono for system info.
-- **Colors:** Specific hex codes for inner voices (`#9081e3`) and player actions (`#ff6b35`).
-- **Texture:** A custom SVG noise filter is applied globally in `src/client/index.css` via `.bg-texture`.
-
----
-
-## 6. How to Extend
-
-### Adding New Dialogue
-Navigate to `src/data/sampleDialogue.ts` and add a new entry to the `sampleDialogue` object.
-1. Define a unique ID.
-2. Add messages with appropriate `speaker` and `type`.
-3. Add options that link back to existing steps or new ones.
-
-### Adding New Skills
-1. Update the `CharacterStats` interface in `src/types/entities.ts` (if applicable) and the `defaultCharacter` state in `src/context/CharacterContext.tsx`.
-2. The current active skills are: `Logic`, `Rhetoric`, `Empathy`, `Perception`, `Volition`, `Endurance`, `Inland Empire`, `Suggestion`, `Half Light`, and `Physical Instrument`.
-3. Update the `CharacterPanel.tsx` visual to display the new skill.
-
-### Adding New World Entities
-1. Open `src/services/WorldManager.ts`.
-2. Add a new entry to the appropriate initial state object (Objects, Locations, or Characters).
-3. Characters have an `opinions` field which tracks their relationship with other entities.
-4. Reference entities in dialogue using `[Display Name](#entity_id)`.
+### 4.3 Interactive World (Object Links)
+Messages support `[Display Name](#entity_id)` syntax.
+- **Hover**: Opens `ObjectTooltip` showing lore and status.
+- **Bridge**: A hidden padding "bridge" allows moving the mouse from the trigger link to the tooltip without closing it.
 
 ---
 
-## 7. Change History
+## 5. AI Integration (Autonomous Game Master)
 
-All modifications to the codebase are tracked in [CHANGELOG.md](./CHANGELOG.md).
+The app utilizes a Gemini-powered agent that acts as a storyteller.
+
+### 5.1 System Context
+The agent receives:
+- **Narrative History**: Recent messages to maintain tone.
+- **World State**: Current attributes and locations of all actors/objects.
+- **Plots**: Current active objectives.
+
+### 5.2 Tooling
+The LLM can proactively modify the game world using:
+- `updateWorldState`: Change entity property (e.g., character health or opinion).
+- `addPlot`/`updatePlotStatus`: Dynamically create or advance quests.
+- `addDialogueStep`: The terminal tool that generates the user's next response and choices.
+
+---
+
+## 6. Development & Debugging
+
+### 6.1 Debug Panel
+A multi-layered utility reachable via the "Debug" overlay.
+- **Logs**: Recharts LLM trace payloads with interactive JSON viewing.
+- **Console**: Displays intercepted browser logs (piped via `ConsoleLogger`).
+- **State Editors**: CodeMirror instances that allow direct "Live" editing of World State or History with JSON Schema validation.
+
+### 6.2 Logging Infrastructure
+All LLM requests and console activities are persisted in SQLite to allow "Time-Travel" debugging or session restoration.
+
+---
+
+## 7. How to Extend
+
+### 7.1 Adding New Content
+- **Initial Seeds**: Modify `src/data/sampleDialogue.ts`.
+- **Character/Objects**: Update the initial state in `src/services/WorldManager.ts` or use the **World Editor** in the Debug Panel.
+- **Skills**: Add to `CharacterStats` in `src/types/entities.ts` and initialize in `CharacterContext.tsx`.
+
+---
+
+## 8. AI / LLM Agent Instructions
+
+If you are an AI developer working on this project:
+1. **Maintain this Doc**: Update the project tree and descriptions when adding features.
+2. **Context First**: Always read `DEVELOPER.md` and `CHANGELOG.md` before refactoring core systems.
+3. **Typing**: Ensure new types are shared across the full stack in `src/types`.
+
+> **Instruction for AI / LLM Agents:** If you are an LLM agent developing, extending, or refactoring this project, you must keep this `DEVELOPER.md` document up to date. Revise architectural outlines, descriptions, data structures, and the AI integration behaviors here when you implement underlying changes!

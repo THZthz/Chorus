@@ -1,18 +1,16 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 // Try to use Google Gen AI for the plot writer, fallback to deepseek
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText, type LanguageModel, tool } from "ai";
-import { z } from "zod";
-import { WorldState } from "@/types/entities";
+import { generateText, type LanguageModel } from "ai";
 import { Message } from "@/types/dialogue";
-import { getAllEntities, updateEntity } from "@/server/models/world";
-import { getHistory, addMessage, clearHistory } from "@/server/models/history";
-import { getAllPlots, addPlot, updatePlotStatus } from "@/server/models/plot";
-import { updateWorldStateTool } from "@/services/tools/updateWorldState";
-import { addDialogueStepTool } from "@/services/tools/addDialogueStep";
-import { addPlotTool } from "@/services/tools/addPlot";
-import { updatePlotStatusTool } from "@/services/tools/updatePlotStatus";
+import { getAllEntities } from "@/server/models/world";
+import { getAllPlots } from "@/server/models/plot";
 import { addLlmLog, updateLlmLog } from "@/server/models/debug";
+import { createDraftUpdateWorldStateTool } from "@/services/tools/draftUpdateWorldState";
+import { createDraftAddDialogueStepTool } from "@/services/tools/draftAddDialogueStep";
+import { createDraftUpdatePlotStatusTool } from "@/services/tools/draftUpdatePlotStatus";
+import { createDraftAddPlotTool } from "@/services/tools/draftAddPlot";
+import { createCommunicateAssistantTool } from "@/services/tools/communicateAssistant";
 
 let googleModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
@@ -49,7 +47,7 @@ function getModelInfo(): { model: LanguageModel; name: string } {
   if (google) return { model: google, name: 'gemini-3.1-flash-lite-preview' };
 
   const deepseek = getDeepSeekModel();
-  if (deepseek) return { model: deepseek, name: 'deepseek-chat' };
+  if (deepseek) return { model: deepseek, name: 'deepseek-v4-flash' };
 
   throw new Error(
     "Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in the application settings or .env file."
@@ -150,102 +148,18 @@ Bad tool usage example:
       messages: gmMessages,
       maxSteps: 10,
       tools: {
-        draftUpdateWorldState: tool({
-          ...updateWorldStateTool,
-          description: "Propose updates to world state entities. " + updateWorldStateTool.description,
-          execute: async (args: any) => {
-            if (args && args.updates) drafts.worldUpdates.push(...args.updates);
-            return "Draft recorded.";
-          }
-        }),
-        draftAddDialogueStep: tool({
-          ...addDialogueStepTool,
-          description: "Propose a narrative dialogue step. " + addDialogueStepTool.description,
-          execute: async (args: any) => {
-            drafts.dialogue = args;
-            return "Draft recorded.";
-          }
-        }),
-        draftUpdatePlotStatus: tool({
-          ...updatePlotStatusTool,
-          description: "Propose an advance to a plot status. " + updatePlotStatusTool.description,
-          execute: async (args: any) => {
-            drafts.plotStatusUpdates.push({ id: args.id, status: args.status });
-            return "Draft recorded.";
-          }
-        }),
-        draftAddPlot: tool({
-          ...addPlotTool,
-          description: "Propose a new concrete plot. " + addPlotTool.description,
-          execute: async (args: any) => {
-            drafts.newPlots.push({
-              title: args.title,
-              description: args.description,
-              triggerCondition: args.triggerCondition
-            });
-            return "Draft recorded.";
-          }
-        }),
-        communicateAssistant: tool({
-          description: "Submit all drafted changes to the Assistant for review. You must provide a message. The Assistant will approve or request changes.",
-          parameters: z.object({ message: z.string() }),
-          execute: async ({ message }: { message: string }) => {
-            const assistantSystemInstruction = `
-You are the vigilant Assistant to the Game Master.
-Your job is to thoroughly review the drafts proposed by the Game Master.
-
-Good tool usage:
-- If everything is perfect, call 'commitDrafts'.
-- If the GM made a mistake (like forgetting 'isAiTrigger: true', missing a plot trigger, mutating a non-existent item), use 'replyToGM' to tell them to fix it.
-
-Bad tool usage:
-- Responding with text only instead of calling tools.
-            `;
-
-            let assistantMessages: any[] = [
-              { 
-                role: 'user', 
-                content: `GM's Message: ${message}\n\nCurrent World State:\n${JSON.stringify(worldState, null, 2)}\n\nActive Plots:\n${JSON.stringify(activePlots, null, 2)}\n\nProposed Drafts:\n${JSON.stringify(drafts, null, 2)}\n\nEvaluate the drafts.`
-              }
-            ];
-            
-            let assistantFeedback = "";
-
-            await generateText({
-              model,
-              system: assistantSystemInstruction,
-              messages: assistantMessages,
-              maxSteps: 3,
-              tools: {
-                replyToGM: tool({
-                  description: "Use this to reject the drafts and give feedback to the GM.",
-                  parameters: z.object({ feedback: z.string() }),
-                  execute: async ({ feedback }: { feedback: string }) => {
-                    assistantFeedback = feedback;
-                    return "Feedback sent to GM.";
-                  }
-                }),
-                commitDrafts: tool({
-                  description: "Use this if the drafts are perfect and you want to commit them.",
-                  parameters: z.object({}),
-                  execute: async () => {
-                    turnFinished = true;
-                    for (const u of drafts.worldUpdates) updateEntity(u);
-                    for (const p of drafts.newPlots) addPlot(p);
-                    for (const ps of drafts.plotStatusUpdates) updatePlotStatus(ps.id, ps.status);
-                    finalResponse = drafts.dialogue;
-                    return "Committed.";
-                  }
-                })
-              }
-            });
-            
-            if (turnFinished) {
-              return "SUCCESS: Assistant committed the drafts. Turn is over.";
-            } else {
-              drafts = { worldUpdates: [], newPlots: [], plotStatusUpdates: [], dialogue: null };
-              return `ASSISTANT FEEDBACK: ${assistantFeedback || "No feedback provided by assistant."}. Your drafts have been CLEARED. Please propose new ones and call communicateAssistant again.`;
-            }
+        draftUpdateWorldState: createDraftUpdateWorldStateTool(drafts),
+        draftAddDialogueStep: createDraftAddDialogueStepTool(drafts),
+        draftUpdatePlotStatus: createDraftUpdatePlotStatusTool(drafts),
+        draftAddPlot: createDraftAddPlotTool(drafts),
+        communicateAssistant: createCommunicateAssistantTool({
+          model,
+          worldState,
+          activePlots,
+          drafts,
+          onCommit: (dialogue) => {
+            turnFinished = true;
+            finalResponse = dialogue;
           }
         })
       }

@@ -37,14 +37,36 @@ class ConsoleLogger {
           level,
           message: args.map(arg => {
             if (typeof arg === 'string') return arg;
+            if (arg instanceof Error) {
+              return `${arg.name}: ${arg.message}${arg.stack ? '\n' + arg.stack : ''}`;
+            }
             try {
-              return JSON.stringify(arg, null, 2);
+              return JSON.stringify(arg, (key, value) => {
+                if (value instanceof Error) {
+                  return {
+                    name: value.name,
+                    message: value.message,
+                    stack: value.stack
+                  };
+                }
+                return value;
+              }, 2);
             } catch (e) {
               return String(arg);
             }
           }).join(' '),
           timestamp: Date.now(),
-          args
+          args: args.map(arg => {
+            if (arg instanceof Error) {
+              return {
+                name: arg.name,
+                message: arg.message,
+                stack: arg.stack,
+                __isError: true
+              };
+            }
+            return arg;
+          })
         };
         
         this.logs.push(log);

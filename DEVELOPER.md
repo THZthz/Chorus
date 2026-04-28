@@ -148,7 +148,7 @@ A multi-layered utility reachable via the "Debug" overlay.
 - **State Editors**: CodeMirror instances that allow direct "Live" editing of World State or History with JSON Schema validation.
 
 ### 6.2 Logging Infrastructure
-All LLM requests and console activities are persisted in SQLite to allow "Time-Travel" debugging or session restoration.
+All LLM requests and console activities are persisted in SQLite to allow "Time-Travel" debugging or session restoration. `ConsoleLogger.ts` specifically handles `Error` object serialization to ensure stack traces and messages are not lost during JSON stringification (fixing the `{}` error issue). LLM logs are initiated at the start of the request to capture failures.
 
 ---
 

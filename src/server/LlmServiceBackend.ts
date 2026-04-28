@@ -133,7 +133,15 @@ Bad tool usage example:
   };
 
   const startTime = Date.now();
-  let logId = -1; // To be set
+  // Log the interaction start
+  let logId = addLlmLog({
+    model: modelName,
+    system: gmSystemInstruction,
+    prompt: promptText,
+    userInput,
+    history: history,
+    tools: []
+  });
 
   try {
     const result = await generateText({
@@ -143,33 +151,33 @@ Bad tool usage example:
       maxSteps: 10,
       tools: {
         draftUpdateWorldState: tool({
+          ...updateWorldStateTool,
           description: "Propose updates to world state entities. " + updateWorldStateTool.description,
-          parameters: updateWorldStateTool.parameters,
-          execute: async (args) => {
+          execute: async (args: any) => {
             if (args && args.updates) drafts.worldUpdates.push(...args.updates);
             return "Draft recorded.";
           }
         }),
         draftAddDialogueStep: tool({
+          ...addDialogueStepTool,
           description: "Propose a narrative dialogue step. " + addDialogueStepTool.description,
-          parameters: addDialogueStepTool.parameters,
-          execute: async (args) => {
+          execute: async (args: any) => {
             drafts.dialogue = args;
             return "Draft recorded.";
           }
         }),
         draftUpdatePlotStatus: tool({
+          ...updatePlotStatusTool,
           description: "Propose an advance to a plot status. " + updatePlotStatusTool.description,
-          parameters: updatePlotStatusTool.parameters,
-          execute: async (args) => {
+          execute: async (args: any) => {
             drafts.plotStatusUpdates.push({ id: args.id, status: args.status });
             return "Draft recorded.";
           }
         }),
         draftAddPlot: tool({
+          ...addPlotTool,
           description: "Propose a new concrete plot. " + addPlotTool.description,
-          parameters: addPlotTool.parameters,
-          execute: async (args) => {
+          execute: async (args: any) => {
             drafts.newPlots.push({
               title: args.title,
               description: args.description,
@@ -181,7 +189,7 @@ Bad tool usage example:
         communicateAssistant: tool({
           description: "Submit all drafted changes to the Assistant for review. You must provide a message. The Assistant will approve or request changes.",
           parameters: z.object({ message: z.string() }),
-          execute: async ({ message }) => {
+          execute: async ({ message }: { message: string }) => {
             const assistantSystemInstruction = `
 You are the vigilant Assistant to the Game Master.
 Your job is to thoroughly review the drafts proposed by the Game Master.
@@ -212,7 +220,7 @@ Bad tool usage:
                 replyToGM: tool({
                   description: "Use this to reject the drafts and give feedback to the GM.",
                   parameters: z.object({ feedback: z.string() }),
-                  execute: async ({ feedback }) => {
+                  execute: async ({ feedback }: { feedback: string }) => {
                     assistantFeedback = feedback;
                     return "Feedback sent to GM.";
                   }
@@ -244,15 +252,6 @@ Bad tool usage:
     });
 
     const duration = Date.now() - startTime;
-    // Log the interaction
-    logId = addLlmLog({
-      model: modelName,
-      system: gmSystemInstruction,
-      prompt: promptText,
-      userInput,
-      history: history,
-      tools: [] // omitted for brevity
-    });
     updateLlmLog(logId, result, duration, 'SUCCESS');
 
     if (!finalResponse) {

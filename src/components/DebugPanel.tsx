@@ -767,6 +767,7 @@ const ConsoleViewer: React.FC = () => {
   const [dateStart, setDateStart] = useState<string>('');
   const [dateEnd, setDateEnd] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
+  const [isWrapping, setIsWrapping] = useState(true);
 
   const fetchPersistedLogs = async () => {
     try {
@@ -841,6 +842,18 @@ const ConsoleViewer: React.FC = () => {
           <h3 className="text-[10px] font-bold uppercase tracking-[0.2em]">CONSOLE_LOGS</h3>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsWrapping(!isWrapping)}
+            className={`flex items-center gap-2 px-3 py-1 rounded-sm border transition-all ${
+              isWrapping
+                ? 'bg-white/10 text-white border-white/20'
+                : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10 hover:text-white/60'
+            }`}
+            title={isWrapping ? "Disable text wrap" : "Enable text wrap"}
+          >
+            <WrapText size={14} className={isWrapping ? 'text-blue-400' : ''} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Wrap</span>
+          </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-3 py-1 rounded-sm border transition-all ${
@@ -962,55 +975,57 @@ const ConsoleViewer: React.FC = () => {
             <p className="uppercase tracking-[0.3em] text-[10px] font-bold">{logs.length > 0 ? 'No_Matches_Found' : 'No_Logs_Recorded'}</p>
           </div>
         ) : (
-          [...filteredLogs].reverse().map((log) => (
-            <div key={log.id} className="flex gap-3 py-1 px-2 border-b border-white/[0.03] hover:bg-white/[0.02] group">
-              <span className="text-white/20 select-none w-24 flex-shrink-0 text-[10px] whitespace-nowrap">
-                {new Date(log.timestamp).toLocaleString([], { 
-                  month: '2-digit', 
-                  day: '2-digit', 
-                  hour: '2-digit', 
-                  minute: '2-digit', 
-                  second: '2-digit',
-                  hour12: false 
-                }).replace(',', '')}
-              </span>
-              <span className={`uppercase font-bold text-[9px] w-12 flex-shrink-0 mt-0.5 ${
-                log.level === 'error' ? 'text-red-400' :
-                log.level === 'warn' ? 'text-yellow-400' :
-                log.level === 'info' ? 'text-blue-400' :
-                'text-white/40'
-              }`}>
-                [{log.level}]
-              </span>
-              <div className="flex-1 flex flex-wrap items-start gap-x-2">
-                {log.args.map((arg, i) => {
-                  if (typeof arg === 'string') {
+          <div className={!isWrapping ? "w-fit min-w-full" : ""}>
+            {[...filteredLogs].reverse().map((log) => (
+              <div key={log.id} className="flex gap-3 py-1 px-2 border-b border-white/[0.03] hover:bg-white/[0.02] group">
+                <span className="text-white/20 select-none w-24 flex-shrink-0 text-[10px] whitespace-nowrap">
+                  {new Date(log.timestamp).toLocaleString([], { 
+                    month: '2-digit', 
+                    day: '2-digit', 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit',
+                    hour12: false 
+                  }).replace(',', '')}
+                </span>
+                <span className={`uppercase font-bold text-[9px] w-12 flex-shrink-0 mt-0.5 ${
+                  log.level === 'error' ? 'text-red-400' :
+                  log.level === 'warn' ? 'text-yellow-400' :
+                  log.level === 'info' ? 'text-blue-400' :
+                  'text-white/40'
+                }`}>
+                  [{log.level}]
+                </span>
+                <div className="flex-1 flex flex-wrap items-start gap-x-2">
+                  {log.args.map((arg, i) => {
+                    if (typeof arg === 'string') {
+                      return (
+                        <span key={i} className={`${isWrapping ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'} ${
+                          log.level === 'error' ? 'text-red-300/90' :
+                          log.level === 'warn' ? 'text-yellow-200/80' :
+                          'text-gray-300'
+                        }`}>
+                          {arg}
+                        </span>
+                      );
+                    }
+                    if (arg === null || arg === undefined || typeof arg !== 'object') {
+                      return (
+                        <span key={i} className="text-white/40 tabular-nums">
+                          {String(arg)}
+                        </span>
+                      );
+                    }
                     return (
-                      <span key={i} className={`whitespace-pre-wrap break-all ${
-                        log.level === 'error' ? 'text-red-300/90' :
-                        log.level === 'warn' ? 'text-yellow-200/80' :
-                        'text-gray-300'
-                      }`}>
-                        {arg}
-                      </span>
+                      <div key={i} className="w-full mt-1 mb-2 p-2 bg-white/[0.02] border border-white/10 rounded-sm overflow-x-auto debug-scrollbar">
+                        <JsonNode value={arg} depth={1} isWrapping={isWrapping} />
+                      </div>
                     );
-                  }
-                  if (arg === null || arg === undefined || typeof arg !== 'object') {
-                    return (
-                      <span key={i} className="text-white/40 tabular-nums">
-                        {String(arg)}
-                      </span>
-                    );
-                  }
-                  return (
-                    <div key={i} className="w-full mt-1 mb-2 p-2 bg-white/[0.02] border border-white/10 rounded-sm overflow-x-auto debug-scrollbar">
-                      <JsonNode value={arg} depth={1} />
-                    </div>
-                  );
-                })}
+                  })}
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
         {logs.length > 0 && (
           <div className="pt-8 text-center opacity-10 uppercase tracking-[0.4em] font-bold text-[9px]">

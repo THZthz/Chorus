@@ -143,8 +143,8 @@ This creates an internal multi-step critique loop until a valid state transition
 
 ### 6.1 Debug Panel
 A multi-layered utility reachable via the "Debug" overlay.
-- **Logs**: Recharts LLM trace payloads with interactive JSON viewing.
-- **Console**: Displays intercepted browser logs (piped via `ConsoleLogger`).
+- **Logs**: Recharts LLM trace payloads with interactive JSON viewing and optional text wrapping.
+- **Console**: Displays intercepted browser logs (piped via `ConsoleLogger`) with filtering and text wrapping.
 - **State Editors**: CodeMirror instances that allow direct "Live" editing of World State or History with JSON Schema validation.
 
 ### 6.2 Logging Infrastructure

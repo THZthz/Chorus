@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-28
+- **Debug Panel**: Added "WRAP" button to Console logs, consistent with LLM trace functionality.
 - **AI Engine**: Added a double-LLM verification loop in `LlmServiceBackend.ts`. The primary "GM" can only draft changes to the world state, plots, and dialogue using new draft-based tools. A secondary "Assistant" LLM reviews the GM's drafts and forces revisions or commits them if they are sound, ensuring stricter adherence to rules.
 - **Bug Fix**: Corrected `Error` object serialization in `ConsoleLogger.ts`. Previously, errors were logged as empty objects `{}` due to non-enumerable properties; improved with custom Zod-friendly serialization and stack trace capture.
 - **Logging**: LLM interaction logs are now initiated at the start of the request, ensuring visibility even during catastrophic API failures.

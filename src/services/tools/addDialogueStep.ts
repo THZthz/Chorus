@@ -5,6 +5,7 @@ import { z } from "zod";
 const inputSchema = z.object({
   id: z.string().describe("A unique ID for this generated dialogue step (e.g., 'scene_aftermath_1')."),
   messages: z.array(z.object({
+    id: z.string().describe("A REQUIRED, globally unique ID for this specific message (e.g., 'msg_aftermath_1'). NEVER duplicate this across messages or turns."),
     speaker: z.string().describe("Character name, or one of the internal voices: 'LOGIC', 'RHETORIC', 'VOLITION', 'INLAND EMPIRE', 'HALF LIGHT', 'ELECTROCHEMISTRY', etc. Use 'INNER_VOICE' for generic psyce commentary."),
     type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL"]).describe("The category of the message. Use 'INNER_VOICE' for all internal voices/thoughts."),
     text: z.string().describe("Markdown supported. Use [Object Name](#object_id) for reactive world entities. Emphasize physical sensations and philosophical dread."),

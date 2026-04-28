@@ -48,6 +48,6 @@ export interface DialogueOption {
 
 export interface DialogueStep {
   id: string;
-  messages: Omit<Message, 'id'>[];
+  messages: (Omit<Message, 'id'> & { id?: string })[];
   options: DialogueOption[];
 }

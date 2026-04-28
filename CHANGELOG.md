@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-28
+- **Bug Fix / Refactoring**: Addressed user-reported `UNIQUE constraint failed: history_messages.id`. Reverted previous `INSERT OR IGNORE` suppression. Transferred AI message persistence logic entirely to the `commitDrafts` tool. Added `id` requirement to `messages` schema in `addDialogueStep` to let the GM deliberately generate unique identifiers. Unique constraint errors and other DB exceptions are now caught securely within `commitDrafts` and passed directly as text to the Assistant LLM, satisfying the user request "feed the error back to llm to let it fix it". 
+- **Bug Fix**: Added `try-catch` when inserting the player's message in `/api/chat` to safely ignore duplicate insertions (caused by UI `isContinue` loops sending identical state) without crashing the node server or LLM service.
 - **Bug Fix**: Resolved `Invalid schema` (type: null) error for `communicateAssistant` tool by migrating all tool definitions from `parameters` to `inputSchema`, adhering to AI SDK 5.0+ standards.
 - **AI Engine**: Updated multi-step loop control from `maxSteps` to newer `stopWhen: stepCountIs(N)` API.
 - **AI Engine**: Hardened tool schemas with required descriptions and avoided empty parameter objects for better provider compatibility (especially DeepSeek).

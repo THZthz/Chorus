@@ -85,21 +85,18 @@ apiRouter.post("/chat", async (req, res) => {
     // Save user message to DB
     const lastMsg = history[history.length - 1]; // This is the YOU message
     if (lastMsg && lastMsg.type === 'YOU') {
-      addMessage(lastMsg);
+      try {
+        addMessage(lastMsg);
+      } catch (err: any) {
+        // Ignore UNIQUE constraint failed for player messages (e.g. when continuing dialogue without a new choice)
+        if (!err.message.includes('UNIQUE constraint failed')) {
+          throw err;
+        }
+      }
     }
 
     // Process with AI
     const rawResponse = await generateAIResponse(userInput, history);
-
-    // Save AI messages to DB
-    if (rawResponse && rawResponse.messages) {
-      rawResponse.messages.forEach((msg: any, i: number) => {
-        addMessage({
-          ...msg,
-          id: `ai-\${Date.now()}-\${i}`
-        });
-      });
-    }
 
     res.json(rawResponse);
   } catch (error: any) {

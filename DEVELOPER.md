@@ -114,21 +114,28 @@ Messages support `[Display Name](#entity_id)` syntax.
 
 ---
 
-## 5. AI Integration (Autonomous Game Master)
+## 5. AI Integration (Autonomous Game Master & Assistant)
 
-The app utilizes a Gemini-powered agent that acts as a storyteller.
+The app utilizes a dual-LLM architecture (Powered by Vercel AI SDK and Gemini) to ensure high-quality and rule-abiding state transitions.
 
 ### 5.1 System Context
-The agent receives:
+The agents receive:
 - **Narrative History**: Recent messages to maintain tone.
 - **World State**: Current attributes and locations of all actors/objects.
 - **Plots**: Current active objectives.
 
-### 5.2 Tooling
-The LLM can proactively modify the game world using:
-- `updateWorldState`: Change entity property (e.g., character health or opinion).
-- `addPlot`/`updatePlotStatus`: Dynamically create or advance quests.
-- `addDialogueStep`: The terminal tool that generates the user's next response and choices.
+### 5.2 Tooling & Drafting Loop
+The GM model cannot directly modify the game world. Instead, it proposes drafts:
+- `draftUpdateWorldState`: Propose changes to entity properties.
+- `draftAddPlot`/`draftUpdatePlotStatus`: Propose dynamic quest changes.
+- `draftAddDialogueStep`: Propose the user's next narrative response and choices.
+- `communicateAssistant`: The GM must submit these drafts to the **Assistant LLM**.
+
+The Assistant LLM evaluates the GM's drafts:
+- `commitDrafts`: Commits the proposed changes if they are narratively consistent and syntactically correct (e.g. including `isAiTrigger`).
+- `replyToGM`: Rejects the drafts and provides reasoning for the GM to revise them.
+
+This creates an internal multi-step critique loop until a valid state transition is produced.
 
 ---
 

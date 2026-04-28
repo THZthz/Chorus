@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
+### 2026-04-28
+- **AI Engine**: Added a double-LLM verification loop in `LlmServiceBackend.ts`. The primary "GM" can only draft changes to the world state, plots, and dialogue using new draft-based tools. A secondary "Assistant" LLM reviews the GM's drafts and forces revisions or commits them if they are sound, ensuring stricter adherence to rules.
+
 ### 2026-04-27
 - **Docs**: Restructured `DEVELOPER.md` for better organization and updated the project structure tree.
 - **Docs**: Summarized AI capabilities in `DEVELOPER.md` including context, logic loop, and tools for another LLM instructions.

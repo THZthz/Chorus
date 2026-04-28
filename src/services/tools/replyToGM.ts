@@ -3,7 +3,9 @@ import { z } from "zod";
 
 export const createReplyToGMTool = (callbacks: { setFeedback: (f: string) => void }) => tool({
   description: "Use this to reject the drafts and give feedback to the GM.",
-  parameters: z.object({ feedback: z.string() }),
+  inputSchema: z.object({ 
+    feedback: z.string().describe("The specific reasons for rejection or requested changes for the GM.")
+  }),
   execute: async ({ feedback }: { feedback: string }) => {
     callbacks.setFeedback(feedback);
     return "Feedback sent to GM.";

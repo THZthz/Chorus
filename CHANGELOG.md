@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-28
+- **Bug Fix**: Resolved `Invalid schema` (type: null) error for `communicateAssistant` tool by migrating all tool definitions from `parameters` to `inputSchema`, adhering to AI SDK 5.0+ standards.
+- **AI Engine**: Updated multi-step loop control from `maxSteps` to newer `stopWhen: stepCountIs(N)` API.
+- **AI Engine**: Hardened tool schemas with required descriptions and avoided empty parameter objects for better provider compatibility (especially DeepSeek).
+- **Refactoring**: Removed placeholder `execute` functions from base tools to resolve TypeScript type override conflicts in factory-generated tools.
+- **Refactoring**: Redefined model aliases in `LlmServiceBackend.ts` to use standard, stable identifiers.
 - **Refactoring**: Modularized agent tools. Moved inline GM drafting and Assistant verification tools from `LlmServiceBackend.ts` to dedicated files in `src/services/tools/` using factory patterns for dependency injection (e.g., drafts, callbacks).
 - **Debug Panel**: Added "WRAP" button to Console logs, consistent with LLM trace functionality.
 - **AI Engine**: Added a double-LLM verification loop in `LlmServiceBackend.ts`. The primary "GM" can only draft changes to the world state, plots, and dialogue using new draft-based tools. A secondary "Assistant" LLM reviews the GM's drafts and forces revisions or commits them if they are sound, ensuring stricter adherence to rules.

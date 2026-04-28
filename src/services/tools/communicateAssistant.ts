@@ -1,4 +1,4 @@
-import { tool, generateText, type LanguageModel } from "ai";
+import { tool, generateText, stepCountIs, type LanguageModel } from "ai";
 import { z } from "zod";
 import { createReplyToGMTool } from "./replyToGM.ts";
 import { createCommitDraftsTool } from "./commitDrafts.ts";
@@ -11,7 +11,9 @@ export const createCommunicateAssistantTool = (params: {
   onCommit: (dialogue: any) => void;
 }) => tool({
   description: "Submit all drafted changes to the Assistant for review. You must provide a message. The Assistant will approve or request changes.",
-  parameters: z.object({ message: z.string() }),
+  inputSchema: z.object({ 
+    message: z.string().describe("The message to send to the assistant, summarizing your drafts and intent.")
+  }),
   execute: async ({ message }: { message: string }) => {
     const assistantSystemInstruction = `
 You are the vigilant Assistant to the Game Master.
@@ -39,7 +41,7 @@ Bad tool usage:
       model: params.model,
       system: assistantSystemInstruction,
       messages: assistantMessages,
-      maxSteps: 3,
+      stopWhen: stepCountIs(3),
       tools: {
         replyToGM: createReplyToGMTool({ 
           setFeedback: (f) => { assistantFeedback = f; } 

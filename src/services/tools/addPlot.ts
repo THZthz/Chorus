@@ -3,7 +3,6 @@ import { z } from "zod";
 
 export const addPlotTool = tool({
   description: "Introduce a new concrete plot in a new location, specifying a clear trigger condition.",
-  execute: async () => { }, // Placeholder
   inputSchema: z.object({
     title: z.string().describe("Concise title of the plot/quest."),
     description: z.string().describe("Detailed description of what the plot is about."),

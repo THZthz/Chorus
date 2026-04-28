@@ -9,8 +9,11 @@ export const createCommitDraftsTool = (callbacks: {
   drafts: any 
 }) => tool({
   description: "Use this if the drafts are perfect and you want to commit them.",
-  parameters: z.object({}),
-  execute: async () => {
+  inputSchema: z.object({
+    reasoning: z.string().describe("A brief explanation of why these drafts are ready to be committed.")
+  }),
+  execute: async ({ reasoning }: { reasoning: string }) => {
+    console.log("Committing drafts because: ", reasoning);
     callbacks.setFinished(true);
     for (const u of callbacks.drafts.worldUpdates) updateEntity(u);
     for (const p of callbacks.drafts.newPlots) addPlot(p);

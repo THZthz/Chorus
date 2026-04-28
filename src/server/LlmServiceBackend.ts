@@ -1,7 +1,7 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 // Try to use Google Gen AI for the plot writer, fallback to deepseek
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText, type LanguageModel } from "ai";
+import { generateText, stepCountIs, type LanguageModel } from "ai";
 import { Message } from "@/types/dialogue";
 import { getAllEntities } from "@/server/models/world";
 import { getAllPlots } from "@/server/models/plot";
@@ -20,7 +20,7 @@ function getGoogleModel(): LanguageModel | null {
     try {
       googleModelInstance = createGoogleGenerativeAI({
         apiKey: process.env.GEMINI_API_KEY,
-      })('gemini-3.1-flash-lite-preview');
+      })('gemini-2.0-flash-lite-preview-02-05');
     } catch (e) {
       console.error("Failed to initialize Google model:", e);
     }
@@ -44,10 +44,10 @@ function getDeepSeekModel(): LanguageModel | null {
 // The preferred model is Google if we are running in AI Studio with GEMINI_API_KEY, fallback to deepseek
 function getModelInfo(): { model: LanguageModel; name: string } {
   const google = getGoogleModel();
-  if (google) return { model: google, name: 'gemini-3.1-flash-lite-preview' };
+  if (google) return { model: google, name: 'gemini-2.0-flash' };
 
   const deepseek = getDeepSeekModel();
-  if (deepseek) return { model: deepseek, name: 'deepseek-v4-flash' };
+  if (deepseek) return { model: deepseek, name: 'deepseek-chat' };
 
   throw new Error(
     "Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in the application settings or .env file."
@@ -146,7 +146,7 @@ Bad tool usage example:
       model,
       system: gmSystemInstruction,
       messages: gmMessages,
-      maxSteps: 10,
+      stopWhen: stepCountIs(10),
       tools: {
         draftUpdateWorldState: createDraftUpdateWorldStateTool(drafts),
         draftAddDialogueStep: createDraftAddDialogueStepTool(drafts),

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Terminal, X, ChevronDown, ChevronRight, RefreshCw, Trash2, Bug,
-  GripHorizontal, Copy, Check, MessageSquare, Database, Save, Plus, AlertCircle, Monitor, WrapText,
+  Copy, Check, MessageSquare, Database, Save, Plus, AlertCircle, Monitor, WrapText,
   Search, Filter, Calendar, Clock
 } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
@@ -22,52 +22,6 @@ interface LlmLog {
   duration: number | null;
   status: string;
 }
-
-const ResizableContainer: React.FC<{
-  children: React.ReactNode;
-  defaultHeight?: number;
-  className?: string;
-}> = ({ children, defaultHeight = 150, className }) => {
-  const [height, setHeight] = useState(defaultHeight);
-  const [isResizing, setIsResizing] = useState(false);
-
-  const startResizing = useCallback((mouseDownEvent: React.MouseEvent) => {
-    setIsResizing(true);
-    const startY = mouseDownEvent.clientY;
-    const startHeight = height;
-
-    const onMouseMove = (mouseMoveEvent: MouseEvent) => {
-      const newHeight = startHeight + mouseMoveEvent.clientY - startY;
-      setHeight(Math.max(80, newHeight));
-    };
-
-    const onMouseUp = () => {
-      setIsResizing(false);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  }, [height]);
-
-  return (
-    <div
-      className={`relative rounded-sm border border-white/5 bg-[#0b0c0e] flex flex-col group/resizable overflow-hidden ${className}`}
-      style={{ height: `${height}px` }}
-    >
-      <div className="flex-1 min-h-0 relative">
-        {children}
-      </div>
-      <div
-        onMouseDown={startResizing}
-        className={`h-2 w-full flex items-center justify-center cursor-ns-resize hover:bg-white/5 active:bg-white/10 transition-colors border-t border-white/5 flex-shrink-0 relative z-10 ${isResizing ? 'bg-white/10' : ''}`}
-      >
-        <div className={`w-12 h-[1px] transition-colors ${isResizing ? 'bg-white/40' : 'bg-white/10 group-hover/resizable:bg-white/20'}`} />
-      </div>
-    </div>
-  );
-};
 
 const MESSAGE_SCHEMA = {
   type: 'array',
@@ -274,7 +228,7 @@ const JsonNode: React.FC<{
   );
 };
 
-const JsonExplorer: React.FC<{ data: string | null; isWrapping?: boolean }> = ({ data, isWrapping = true }) => {
+const JsonExplorer: React.FC<{ data: string | null; isWrapping?: boolean; className?: string }> = ({ data, isWrapping = true, className = "h-full overflow-auto" }) => {
   const [parsed, setParsed] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -292,7 +246,7 @@ const JsonExplorer: React.FC<{ data: string | null; isWrapping?: boolean }> = ({
 
   if (error) {
     return (
-      <div className="p-3 h-full overflow-auto debug-scrollbar bg-transparent">
+      <div className={`p-3 debug-scrollbar bg-transparent ${className}`}>
         <pre className={`text-[#e06c75] text-[11px] font-mono leading-relaxed ${isWrapping ? 'whitespace-pre-wrap' : 'whitespace-pre'}`}>
           {error}
         </pre>
@@ -303,7 +257,7 @@ const JsonExplorer: React.FC<{ data: string | null; isWrapping?: boolean }> = ({
   if (!parsed) return null;
 
   return (
-    <div className="p-3 h-full overflow-auto debug-scrollbar bg-transparent">
+    <div className={`p-3 debug-scrollbar bg-transparent ${className}`}>
       <div className={!isWrapping ? "w-fit min-w-full" : ""}>
         <JsonNode value={parsed} depth={0} isWrapping={isWrapping} />
       </div>
@@ -486,9 +440,7 @@ const LlmTraceViewer: React.FC = () => {
                             </h3>
                             <CopyButton content={formatJson(log.request)} />
                           </div>
-                          <ResizableContainer>
-                            <JsonExplorer data={log.request} isWrapping={isWrapping} />
-                          </ResizableContainer>
+                          <JsonExplorer data={log.request} isWrapping={isWrapping} className="max-h-[400px] overflow-auto" />
                         </div>
 
                         {(() => {
@@ -542,28 +494,28 @@ const LlmTraceViewer: React.FC = () => {
                                               <CopyButton content={JSON.stringify(args, null, 2)} />
                                             </div>
 
-                                            <ResizableContainer defaultHeight={isComm ? 80 : 150} className="border-none bg-transparent!">
+                                            <div className="mt-1 border-t border-white/5 bg-black/10">
                                               {isComm ? (
-                                                <div className="p-3 text-[#61afef] font-bold whitespace-pre-wrap break-words italic leading-relaxed">
+                                                <div className="p-3 text-[#61afef] font-bold whitespace-pre-wrap break-words italic leading-relaxed text-[11px]">
                                                   {args?.message}
                                                 </div>
                                               ) : (
-                                                <JsonExplorer data={JSON.stringify(args)} isWrapping={isWrapping} />
+                                                <JsonExplorer data={JSON.stringify(args)} isWrapping={isWrapping} className="max-h-[300px] overflow-auto" />
                                               )}
-                                            </ResizableContainer>
+                                            </div>
 
                                             {out && (
-                                              <div className="mt-2 pt-4 border-t border-white/10">
-                                                <div className="flex justify-between items-center mb-3">
+                                              <div className="mt-4 pt-4 border-t border-white/10">
+                                                <div className="flex justify-between items-center mb-2">
                                                   <h4 className={`text-[10px] font-bold tracking-[0.15em] uppercase flex items-center gap-3 ${isComm ? 'text-[#c678dd]' : 'text-white/20'}`}>
                                                     <div className={`w-[1px] h-3 ${isComm ? 'bg-[#c678dd]' : 'bg-white/10'}`} />
                                                     {isComm ? 'Assistant' : 'System'}
                                                   </h4>
                                                   <CopyButton content={typeof out === 'string' ? out : JSON.stringify(out, null, 2)} />
                                                 </div>
-                                                <ResizableContainer defaultHeight={80} className="border-none bg-transparent!">
+                                                <div className="border-t border-white/5 bg-black/10">
                                                   {typeof out === 'string' ? (
-                                                    <div className={`p-3 whitespace-pre-wrap break-words leading-relaxed ${
+                                                    <div className={`p-3 whitespace-pre-wrap break-words leading-relaxed text-[11px] ${
                                                       isComm && out.includes('SUCCESS')
                                                         ? 'text-[#98c379]'
                                                         : isComm && out.includes('ASSISTANT FEEDBACK')
@@ -573,9 +525,9 @@ const LlmTraceViewer: React.FC = () => {
                                                       {out}
                                                     </div>
                                                   ) : (
-                                                    <JsonExplorer data={JSON.stringify(out)} isWrapping={isWrapping} />
+                                                    <JsonExplorer data={JSON.stringify(out)} isWrapping={isWrapping} className="max-h-[200px] overflow-auto" />
                                                   )}
-                                                </ResizableContainer>
+                                                </div>
                                               </div>
                                             )}
                                           </div>
@@ -597,9 +549,7 @@ const LlmTraceViewer: React.FC = () => {
                             </h3>
                             <CopyButton content={formatJson(log.response)} />
                           </div>
-                          <ResizableContainer>
-                            <JsonExplorer data={log.response} isWrapping={isWrapping} />
-                          </ResizableContainer>
+                          <JsonExplorer data={log.response} isWrapping={isWrapping} className="max-h-[400px] overflow-auto" />
                         </div>
                       </div>
                     </motion.div>

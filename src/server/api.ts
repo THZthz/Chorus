@@ -69,7 +69,7 @@ apiRouter.post("/debug/console/clear", (req, res) => {
 });
 
 apiRouter.post("/reset", (req, res) => {
-  import("./database").then(({ default: db }) => {
+  import("./db").then(({ default: db }) => {
     db.prepare("DELETE FROM history_messages").run();
     db.prepare("DELETE FROM plots").run();
     db.prepare("DELETE FROM entities").run();

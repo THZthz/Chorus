@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-29
+- **Debug Panel**: Simplified the `GM_Assistant_Communication` and request/response blocks in the LLM trace by removing `ResizableContainer` handles and excessive UI clutter, optimizing for information density.
 - **Build Fix**: Resolved server-side build failures by moving all server and tool imports to relative paths (fixing esbuild resolution issues with the `@/` alias).
 - **Build Fix**: Fixed mismatched import/export names for GM drafting tools in `LlmServiceBackend.ts`.
 - **Build Fix**: Updated `LlmServiceBackend.ts` to reflect the renaming of `draftUpdateWorldState.ts` to `draftWorldStateUpdate.ts`.

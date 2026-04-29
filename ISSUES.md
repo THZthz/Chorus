@@ -11,7 +11,16 @@ The LLM response object structure returned by the AI provider differed from prev
 **Resolution:** 
 Refactored the parsing logic in `DebugPanel.tsx` to handle both strings and objects directly. Iterated through `step.content` filtering by `type` to properly render `GM (Thinks)`, `GM (ToolName)`, and the corresponding `System`/`Assistant` responses. Used fallbacks (`call.args || call.input` and `result.output ?? result.result`) to accommodate different schema variants.
 
-## 2. Debug Panel UI Clutter
+## 2. Assistant Knowledge Gap
+**Date:** 2026-04-29
+**Description:**
+The GM's Assistant does not have the formal structure of `DialogueStep` in its system instructions, making it difficult for it to verify if the GM has proposed a valid dialogue structure (e.g., proper metadata, `isAiTrigger` usage).
+**Root Cause:**
+System instructions in `communicateAssistant.ts` were too sparse and didn't include the required type definitions for validation.
+**Target:**
+Update `communicateAssistant.ts` with the full `DialogueStep` and `DialogueOption` interfaces to empower the Assistant to act as a proper validator.
+
+## 3. Debug Panel UI Clutter
 **Date:** 2026-04-29
 **Description:**
 The "GM_Assistant_Communication" section in the Debug Panel is too cluttered with UI elements like resizable handles and scrollbars for every individual tool call.

@@ -20,6 +20,39 @@ export const createCommunicateAssistantTool = (params: {
 You are the vigilant Assistant to the Game Master.
 Your job is to thoroughly review the drafts proposed by the Game Master.
 
+### Structure of DialogueStep
+The GM must propose a 'dialogue' draft that follows this structure:
+\`\`\`typescript
+interface Message {
+  speaker: string;
+  type: 'YOU' | 'INNER_VOICE' | 'CHARACTER' | 'SYSTEM' | 'ROLL' | 'NOTIFICATION';
+  text: string;
+  metadata?: { notificationType?: 'XP' | 'TASK' | 'ITEM' };
+}
+
+interface DialogueOption {
+  text: string;
+  nextStepId?: string; // Standard transition id
+  isAiTrigger?: boolean; // Set to true if the option should trigger another GM response when clicked
+  check?: {
+    skill: string;
+    difficulty: number;
+    conditions: { expression: string; stepId: string; label?: string }[];
+  };
+}
+
+interface DialogueStep {
+  messages: Message[];
+  options: DialogueOption[];
+}
+\`\`\`
+
+Verification Checklist for GM Drafts:
+1. **Dialogue Flow**: Does the 'dialogue' draft make sense in context?
+2. **AI Triggers**: Options leading to generic "Let's talk more" moments should likely have 'isAiTrigger: true'.
+3. **World State**: Did the GM mutate actors or items correctly?
+4. **Consistency**: Ensure 'speaker' names match the World State.
+
 Good tool usage:
 - If everything is perfect, call 'commitDrafts'.
 - If the GM made a mistake (like forgetting 'isAiTrigger: true', missing a plot trigger, mutating a non-existent item), use 'replyToGM' to tell them to fix it.

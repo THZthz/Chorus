@@ -128,9 +128,9 @@ The agents receive:
 
 ### 5.2 Tooling & Drafting Loop
 The GM model cannot directly modify the game world. Instead, it proposes drafts:
-- `draftUpdateWorldState`: Propose changes to entity properties.
-- `draftAddPlot`/`draftUpdatePlotStatus`: Propose dynamic quest changes.
-- `draftAddDialogueStep`: Propose the user's next narrative response and choices.
+- `draftWorldStateUpdate`: Propose changes to entity properties.
+- `draftPlot`/`draftPlotStatusUpdate`: Propose dynamic quest changes.
+- `draftDialogueStep`: Propose the user's next narrative response and choices.
 - `communicateAssistant`: The GM must submit these drafts to the **Assistant LLM**.
 
 The Assistant LLM evaluates the GM's drafts:

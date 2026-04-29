@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-29
+- **AI Engine**: Enhanced the GM Assistant's system instructions in `communicateAssistant.ts` by adding the explicit `DialogueStep` and `DialogueOption` TypeScript structures and a verification checklist. This empowers the Assistant to better validate GM proposals (e.g., `isAiTrigger` usage, speaker consistency).
 - **Debug Panel**: Simplified the `GM_Assistant_Communication` and request/response blocks in the LLM trace by removing `ResizableContainer` handles and excessive UI clutter, optimizing for information density.
 - **Build Fix**: Resolved server-side build failures by moving all server and tool imports to relative paths (fixing esbuild resolution issues with the `@/` alias).
 - **Build Fix**: Fixed mismatched import/export names for GM drafting tools in `LlmServiceBackend.ts`.

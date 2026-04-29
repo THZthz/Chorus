@@ -502,11 +502,11 @@ const LlmTraceViewer: React.FC = () => {
 
                           return (
                             <div className="p-5 bg-[#0f1013]">
-                              <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-4">
+                              <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-6">
                                 <div className="w-[1px] h-3 bg-[#eab308]" />
                                 GM_Assistant_Communication
                               </h3>
-                              <div className="space-y-4 font-mono text-[11px]">
+                              <div className="space-y-6 font-mono text-[11px]">
                                 {steps.map((step: any, stepIndex: number) => {
                                   const contents = step.content || [];
                                   const textBlocks = contents.filter((c: any) => c.type === 'text');
@@ -514,12 +514,12 @@ const LlmTraceViewer: React.FC = () => {
                                   const toolResults = contents.filter((c: any) => c.type === 'tool-result');
 
                                   return (
-                                    <div key={stepIndex} className="space-y-3">
+                                    <div key={stepIndex} className="space-y-6">
                                       {textBlocks.map((block: any, i: number) => (
                                         block.text ? (
                                           <div key={`text-${i}`} className="flex gap-4">
-                                            <div className="w-24 flex-shrink-0 text-white/30 text-right font-bold tracking-wider uppercase">GM (Thinks)</div>
-                                            <div className="flex-1 text-white/50 italic whitespace-pre-wrap break-words">{block.text}</div>
+                                            <div className="w-24 flex-shrink-0 text-white/30 text-right font-bold tracking-wider uppercase pt-1">GM (Thinks)</div>
+                                            <div className="flex-1 text-white/50 italic whitespace-pre-wrap break-words bg-white/[0.02] p-4 rounded-sm border border-white/5">{block.text}</div>
                                           </div>
                                         ) : null
                                       ))}
@@ -527,37 +527,55 @@ const LlmTraceViewer: React.FC = () => {
                                         const result = toolResults.find((r: any) => r.toolCallId === call.toolCallId);
                                         const isComm = call.toolName === 'communicateAssistant';
                                         
-                                        // The args could be in call.input or call.args
                                         const args = call.args || call.input || {};
-                                        // The out could be in result.output or result.result
                                         const out = result ? (result.output ?? result.result) : null;
 
                                         return (
-                                          <div key={`call-${callIndex}`} className={`flex flex-col gap-2 p-3 border rounded-sm ${
+                                          <div key={`call-${callIndex}`} className={`flex flex-col gap-3 p-4 border rounded-sm ${
                                             isComm ? 'bg-[#61afef]/5 border-[#61afef]/20' : 'bg-white/[0.02] border-white/5'
                                           }`}>
-                                            <div className="flex gap-4">
-                                              <div className={`w-24 flex-shrink-0 text-right tracking-wider uppercase ${isComm ? 'text-[#61afef] font-bold' : 'text-white/30'}`}>
+                                            <div className="flex justify-between items-center">
+                                              <h4 className={`text-[10px] font-bold tracking-[0.15em] uppercase flex items-center gap-3 ${isComm ? 'text-[#61afef]' : 'text-white/40'}`}>
+                                                <div className={`w-[1px] h-3 ${isComm ? 'bg-[#61afef]' : 'bg-white/10'}`} />
                                                 GM ({call.toolName})
-                                              </div>
-                                              <div className={`flex-1 overflow-auto debug-scrollbar ${isComm ? 'text-[#61afef]/90 font-bold whitespace-pre-wrap break-words' : 'text-white/40'}`}>
-                                                {isComm ? args?.message : JSON.stringify(args)}
-                                              </div>
+                                              </h4>
+                                              <CopyButton content={JSON.stringify(args, null, 2)} />
                                             </div>
+
+                                            <ResizableContainer defaultHeight={isComm ? 80 : 150} className="border-none bg-transparent!">
+                                              {isComm ? (
+                                                <div className="p-3 text-[#61afef] font-bold whitespace-pre-wrap break-words italic leading-relaxed">
+                                                  {args?.message}
+                                                </div>
+                                              ) : (
+                                                <JsonExplorer data={JSON.stringify(args)} isWrapping={isWrapping} />
+                                              )}
+                                            </ResizableContainer>
+
                                             {out && (
-                                              <div className="flex gap-4 border-t border-white/5 pt-2 mt-1">
-                                                <div className={`w-24 flex-shrink-0 text-right tracking-wider uppercase ${isComm ? 'text-[#c678dd] font-bold' : 'text-white/30'}`}>
-                                                  {isComm ? 'Assistant' : 'System'}
+                                              <div className="mt-2 pt-4 border-t border-white/10">
+                                                <div className="flex justify-between items-center mb-3">
+                                                  <h4 className={`text-[10px] font-bold tracking-[0.15em] uppercase flex items-center gap-3 ${isComm ? 'text-[#c678dd]' : 'text-white/20'}`}>
+                                                    <div className={`w-[1px] h-3 ${isComm ? 'bg-[#c678dd]' : 'bg-white/10'}`} />
+                                                    {isComm ? 'Assistant' : 'System'}
+                                                  </h4>
+                                                  <CopyButton content={typeof out === 'string' ? out : JSON.stringify(out, null, 2)} />
                                                 </div>
-                                                <div className={`flex-1 whitespace-pre-wrap break-words ${
-                                                  isComm && typeof out === 'string' && out.includes('SUCCESS')
-                                                    ? 'text-[#98c379]'
-                                                    : isComm && typeof out === 'string' && out.includes('FEEDBACK')
-                                                      ? 'text-[#e06c75]'
-                                                      : 'text-white/40'
-                                                }`}>
-                                                  {typeof out === 'string' ? out : (out.value ? out.value : JSON.stringify(out))}
-                                                </div>
+                                                <ResizableContainer defaultHeight={80} className="border-none bg-transparent!">
+                                                  {typeof out === 'string' ? (
+                                                    <div className={`p-3 whitespace-pre-wrap break-words leading-relaxed ${
+                                                      isComm && out.includes('SUCCESS')
+                                                        ? 'text-[#98c379]'
+                                                        : isComm && out.includes('ASSISTANT FEEDBACK')
+                                                          ? 'text-[#e06c75]'
+                                                          : 'text-white/40'
+                                                    }`}>
+                                                      {out}
+                                                    </div>
+                                                  ) : (
+                                                    <JsonExplorer data={JSON.stringify(out)} isWrapping={isWrapping} />
+                                                  )}
+                                                </ResizableContainer>
                                               </div>
                                             )}
                                           </div>

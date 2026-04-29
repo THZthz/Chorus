@@ -93,6 +93,7 @@ ${history.slice(-10).map(m => `${m.speaker} (${m.type}): ${m.text}`).join('\n')}
 The user (YOU) has just said/done: "${userInput}"
 
 Your task is to draft the game's response.
+Keep your chain-of-thought (the text before tool calls) brief and conceptual. Do NOT output the actual dialogue text, internal voice descriptions, or player options directly in your thoughts. These MUST be provided exclusively through the 'draftAddDialogueStep' tool.
 1. Draft updates to the world (items, locations) using 'draftUpdateWorldState'.
 2. Draft advances to plots using 'draftUpdatePlotStatus' and 'draftAddPlot'.
 3. Draft the final narrative response and options using 'draftAddDialogueStep'. Note that 'isAiTrigger' MUST be set to true for options to let the AI gain control again if continuing dialogue.
@@ -106,7 +107,7 @@ Good tool usage example:
 [Calls communicateAssistant with message: "I drafted the consequences. Please review."]
 
 Bad tool usage example:
-- Generating text instead of using tools.
+- Generating the scene's text in your thoughts instead of using tools.
 - Not calling communicateAssistant.
 - Forgetting to include 'isAiTrigger: true' in dialogue options when the player should reply.
 `.trim();

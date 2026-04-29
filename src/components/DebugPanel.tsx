@@ -490,6 +490,75 @@ const LlmTraceViewer: React.FC = () => {
                             <JsonExplorer data={log.request} isWrapping={isWrapping} />
                           </ResizableContainer>
                         </div>
+
+                        {(() => {
+                          let steps: any[] = [];
+                          try {
+                            const parsed = JSON.parse(log.response || "{}");
+                            steps = parsed.steps || [];
+                          } catch (e) {}
+
+                          if (steps.length === 0) return null;
+
+                          return (
+                            <div className="p-5 bg-[#0f1013]">
+                              <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-4">
+                                <div className="w-[1px] h-3 bg-[#eab308]" />
+                                GM_Assistant_Communication
+                              </h3>
+                              <div className="space-y-4 font-mono text-[11px]">
+                                {steps.map((step: any, stepIndex: number) => {
+                                  return (
+                                    <div key={stepIndex} className="space-y-3">
+                                      {step.text && (
+                                        <div className="flex gap-4">
+                                          <div className="w-16 flex-shrink-0 text-white/30 text-right font-bold">GM (Thinks)</div>
+                                          <div className="flex-1 text-white/50 italic whitespace-pre-wrap break-words">{step.text}</div>
+                                        </div>
+                                      )}
+                                      {step.toolCalls?.map((call: any, callIndex: number) => {
+                                        const result = step.toolResults?.find((r: any) => r.toolCallId === call.toolCallId);
+                                        const isComm = call.toolName === 'communicateAssistant';
+
+                                        return (
+                                          <div key={`call-${callIndex}`} className={`flex flex-col gap-2 p-3 border rounded-sm ${
+                                            isComm ? 'bg-[#61afef]/5 border-[#61afef]/20' : 'bg-white/[0.02] border-white/5'
+                                          }`}>
+                                            <div className="flex gap-4">
+                                              <div className={`w-16 flex-shrink-0 text-right ${isComm ? 'text-[#61afef] font-bold' : 'text-white/30'}`}>
+                                                GM ({call.toolName})
+                                              </div>
+                                              <div className={`flex-1 overflow-auto debug-scrollbar ${isComm ? 'text-[#61afef]/90 font-bold whitespace-pre-wrap break-words' : 'text-white/40'}`}>
+                                                {isComm ? call.args?.message : JSON.stringify(call.args)}
+                                              </div>
+                                            </div>
+                                            {result && (
+                                              <div className="flex gap-4 border-t border-white/5 pt-2">
+                                                <div className={`w-16 flex-shrink-0 text-right ${isComm ? 'text-[#c678dd] font-bold' : 'text-white/30'}`}>
+                                                  {isComm ? 'Assistant' : 'System'}
+                                                </div>
+                                                <div className={`flex-1 whitespace-pre-wrap break-words ${
+                                                  isComm && typeof result.result === 'string' && result.result.includes('SUCCESS')
+                                                    ? 'text-[#98c379]'
+                                                    : isComm && typeof result.result === 'string' && result.result.includes('FEEDBACK')
+                                                      ? 'text-[#e06c75]'
+                                                      : 'text-white/40'
+                                                }`}>
+                                                  {typeof result.result === 'string' ? result.result : JSON.stringify(result.result)}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <div className="p-5 bg-[#0a0a0c]">
                           <div className="flex justify-between items-center mb-4">
                             <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3">

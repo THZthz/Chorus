@@ -494,8 +494,8 @@ const LlmTraceViewer: React.FC = () => {
                         {(() => {
                           let steps: any[] = [];
                           try {
-                            const parsed = JSON.parse(log.response || "{}");
-                            steps = parsed.steps || [];
+                            const parsed = typeof log.response === 'string' ? JSON.parse(log.response || "{}") : log.response;
+                            steps = parsed?.steps || [];
                           } catch (e) {}
 
                           if (steps.length === 0) return null;
@@ -508,43 +508,55 @@ const LlmTraceViewer: React.FC = () => {
                               </h3>
                               <div className="space-y-4 font-mono text-[11px]">
                                 {steps.map((step: any, stepIndex: number) => {
+                                  const contents = step.content || [];
+                                  const textBlocks = contents.filter((c: any) => c.type === 'text');
+                                  const toolCalls = contents.filter((c: any) => c.type === 'tool-call');
+                                  const toolResults = contents.filter((c: any) => c.type === 'tool-result');
+
                                   return (
                                     <div key={stepIndex} className="space-y-3">
-                                      {step.text && (
-                                        <div className="flex gap-4">
-                                          <div className="w-16 flex-shrink-0 text-white/30 text-right font-bold">GM (Thinks)</div>
-                                          <div className="flex-1 text-white/50 italic whitespace-pre-wrap break-words">{step.text}</div>
-                                        </div>
-                                      )}
-                                      {step.toolCalls?.map((call: any, callIndex: number) => {
-                                        const result = step.toolResults?.find((r: any) => r.toolCallId === call.toolCallId);
+                                      {textBlocks.map((block: any, i: number) => (
+                                        block.text ? (
+                                          <div key={`text-${i}`} className="flex gap-4">
+                                            <div className="w-24 flex-shrink-0 text-white/30 text-right font-bold tracking-wider uppercase">GM (Thinks)</div>
+                                            <div className="flex-1 text-white/50 italic whitespace-pre-wrap break-words">{block.text}</div>
+                                          </div>
+                                        ) : null
+                                      ))}
+                                      {toolCalls.map((call: any, callIndex: number) => {
+                                        const result = toolResults.find((r: any) => r.toolCallId === call.toolCallId);
                                         const isComm = call.toolName === 'communicateAssistant';
+                                        
+                                        // The args could be in call.input or call.args
+                                        const args = call.args || call.input || {};
+                                        // The out could be in result.output or result.result
+                                        const out = result ? (result.output ?? result.result) : null;
 
                                         return (
                                           <div key={`call-${callIndex}`} className={`flex flex-col gap-2 p-3 border rounded-sm ${
                                             isComm ? 'bg-[#61afef]/5 border-[#61afef]/20' : 'bg-white/[0.02] border-white/5'
                                           }`}>
                                             <div className="flex gap-4">
-                                              <div className={`w-16 flex-shrink-0 text-right ${isComm ? 'text-[#61afef] font-bold' : 'text-white/30'}`}>
+                                              <div className={`w-24 flex-shrink-0 text-right tracking-wider uppercase ${isComm ? 'text-[#61afef] font-bold' : 'text-white/30'}`}>
                                                 GM ({call.toolName})
                                               </div>
                                               <div className={`flex-1 overflow-auto debug-scrollbar ${isComm ? 'text-[#61afef]/90 font-bold whitespace-pre-wrap break-words' : 'text-white/40'}`}>
-                                                {isComm ? call.args?.message : JSON.stringify(call.args)}
+                                                {isComm ? args?.message : JSON.stringify(args)}
                                               </div>
                                             </div>
-                                            {result && (
-                                              <div className="flex gap-4 border-t border-white/5 pt-2">
-                                                <div className={`w-16 flex-shrink-0 text-right ${isComm ? 'text-[#c678dd] font-bold' : 'text-white/30'}`}>
+                                            {out && (
+                                              <div className="flex gap-4 border-t border-white/5 pt-2 mt-1">
+                                                <div className={`w-24 flex-shrink-0 text-right tracking-wider uppercase ${isComm ? 'text-[#c678dd] font-bold' : 'text-white/30'}`}>
                                                   {isComm ? 'Assistant' : 'System'}
                                                 </div>
                                                 <div className={`flex-1 whitespace-pre-wrap break-words ${
-                                                  isComm && typeof result.result === 'string' && result.result.includes('SUCCESS')
+                                                  isComm && typeof out === 'string' && out.includes('SUCCESS')
                                                     ? 'text-[#98c379]'
-                                                    : isComm && typeof result.result === 'string' && result.result.includes('FEEDBACK')
+                                                    : isComm && typeof out === 'string' && out.includes('FEEDBACK')
                                                       ? 'text-[#e06c75]'
                                                       : 'text-white/40'
                                                 }`}>
-                                                  {typeof result.result === 'string' ? result.result : JSON.stringify(result.result)}
+                                                  {typeof out === 'string' ? out : (out.value ? out.value : JSON.stringify(out))}
                                                 </div>
                                               </div>
                                             )}

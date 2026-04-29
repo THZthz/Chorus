@@ -65,21 +65,16 @@ The project follows a full-stack monorepo-style structure where the backend serv
     │   ├── LlmService.ts    # Frontend AI client API
     │   ├── WorldManager.ts  # World state synchronization client
     │   └── tools/           # LLM Tool Implementations
-    │       ├── addDialogueStep.ts      # Commit a dialogue step directly (System)
-    │       ├── addPlot.ts              # Create a new plot directly (System)
     │       ├── commitDrafts.ts         # Assistant tool to finalize and execute GM proposals
     │       ├── communicateAssistant.ts # GM tool to submit drafted state changes for review
-    │       ├── draftAddDialogueStep.ts # GM tool to propose next narrative unit
-    │       ├── draftAddPlot.ts         # GM tool to propose a quest/plot line
-    │       ├── draftUpdatePlotStatus.ts # GM tool to propose quest progress
-    │       ├── draftUpdateWorldState.ts # GM tool to propose entity attribute changes
-    │       ├── replyToGM.ts            # Assistant tool to request revisions from GM
-    │       ├── updatePlotStatus.ts     # Update plot progress directly (System)
-    │       └── updateWorldState.ts     # Update world state directly (System)
+    │       ├── draftDialogueStep.ts    # GM tool to propose next narrative unit
+    │       ├── draftPlot.ts            # GM tool to propose a quest/plot line
+    │       ├── draftPlotStatusUpdate.ts # GM tool to propose quest progress
+    │       ├── draftWorldStateUpdate.ts # GM tool to propose entity attribute changes
+    │       └── replyToGM.ts            # Assistant tool to request revisions from GM
     └── types/               # TypeScript Definitions
         ├── dialogue.ts      # Narrative system interfaces
-        ├── entities.ts      # Character and actor models
-        └── worldObject.ts   # Interactive object schemas
+        └── entities.ts      # Character and actor models
 ```
 
 ---

@@ -1,5 +1,5 @@
-import db from "@/server/database";
-import { Message } from "@/types/dialogue";
+import db from "../database";
+import { Message } from "../../types/dialogue";
 
 export function getHistory(): Message[] {
   const rows = db.prepare("SELECT * FROM history_messages ORDER BY timestamp ASC").all() as any[];

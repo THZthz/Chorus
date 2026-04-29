@@ -2,15 +2,15 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 // Try to use Google Gen AI for the plot writer, fallback to deepseek
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, stepCountIs, type LanguageModel } from "ai";
-import { Message } from "@/types/dialogue";
-import { getAllEntities } from "@/server/models/world";
-import { getAllPlots } from "@/server/models/plot";
-import { addLlmLog, updateLlmLog } from "@/server/models/debug";
-import { createDraftUpdateWorldStateTool } from "@/services/tools/draftUpdateWorldState";
-import { createDraftAddDialogueStepTool } from "@/services/tools/draftAddDialogueStep";
-import { createDraftUpdatePlotStatusTool } from "@/services/tools/draftUpdatePlotStatus";
-import { createDraftAddPlotTool } from "@/services/tools/draftAddPlot";
-import { createCommunicateAssistantTool } from "@/services/tools/communicateAssistant";
+import { Message } from "../types/dialogue";
+import { getAllEntities } from "./models/world";
+import { getAllPlots } from "./models/plot";
+import { addLlmLog, updateLlmLog } from "./models/debug";
+import { createDraftWorldStateUpdateTool } from "../services/tools/draftWorldStateUpdate";
+import { createDraftAddDialogueStepTool } from "../services/tools/draftDialogueStep";
+import { createDraftPlotStatusUpdateTool } from "../services/tools/draftPlotStatusUpdate";
+import { createDraftPlotTool } from "../services/tools/draftPlot";
+import { createCommunicateAssistantTool } from "../services/tools/communicateAssistant";
 
 let googleModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
@@ -109,7 +109,7 @@ Bad tool usage example:
 - Generating text instead of using tools.
 - Not calling communicateAssistant.
 - Forgetting to include 'isAiTrigger: true' in dialogue options when the player should reply.
-  `;
+`.trim();
 
   let finalResponse: any = null;
 
@@ -148,10 +148,10 @@ Bad tool usage example:
       messages: gmMessages,
       stopWhen: stepCountIs(10),
       tools: {
-        draftUpdateWorldState: createDraftUpdateWorldStateTool(drafts),
+        draftWorldStateUpdate: createDraftWorldStateUpdateTool(drafts),
         draftAddDialogueStep: createDraftAddDialogueStepTool(drafts),
-        draftUpdatePlotStatus: createDraftUpdatePlotStatusTool(drafts),
-        draftAddPlot: createDraftAddPlotTool(drafts),
+        draftPlotStatusUpdate: createDraftPlotStatusUpdateTool(drafts),
+        draftAddPlot: createDraftPlotTool(drafts),
         communicateAssistant: createCommunicateAssistantTool({
           model,
           worldState,

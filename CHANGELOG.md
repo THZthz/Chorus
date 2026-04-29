@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
+### 2026-04-29
+- **Build Fix**: Resolved server-side build failures by moving all server and tool imports to relative paths (fixing esbuild resolution issues with the `@/` alias).
+- **Build Fix**: Fixed mismatched import/export names for GM drafting tools in `LlmServiceBackend.ts`.
+- **Build Fix**: Updated `LlmServiceBackend.ts` to reflect the renaming of `draftUpdateWorldState.ts` to `draftWorldStateUpdate.ts`.
+- **Docs**: Updated `DEVELOPER.md` section 2 "Project Structure" to reflect actual file names and the recent rename.
+
 ### 2026-04-28
 - **Bug Fix / Refactoring**: Addressed user-reported `UNIQUE constraint failed: history_messages.id`. Reverted previous `INSERT OR IGNORE` suppression. Transferred AI message persistence logic entirely to the `commitDrafts` tool. Added `id` requirement to `messages` schema in `addDialogueStep` to let the GM deliberately generate unique identifiers. Unique constraint errors and other DB exceptions are now caught securely within `commitDrafts` and passed directly as text to the Assistant LLM, satisfying the user request "feed the error back to llm to let it fix it". 
 - **Bug Fix**: Added `try-catch` when inserting the player's message in `/api/chat` to safely ignore duplicate insertions (caused by UI `isContinue` loops sending identical state) without crashing the node server or LLM service.

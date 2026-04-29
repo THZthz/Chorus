@@ -1,9 +1,9 @@
 import express from "express";
-import { generateAIResponse } from "@/server/LlmServiceBackend";
-import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
-import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
-import { getAllPlots } from "@/server/models/plot";
-import { getLlmLogs, clearLlmLogs, getConsoleLogs, addConsoleLog, clearConsoleLogs } from "@/server/models/debug";
+import { generateAIResponse } from "./LlmServiceBackend";
+import { getAllEntities, seedDatabase, upsertEntity } from "./models/world";
+import { getHistory, addMessage, clearHistory, setHistory } from "./models/history";
+import { getAllPlots } from "./models/plot";
+import { getLlmLogs, clearLlmLogs, getConsoleLogs, addConsoleLog, clearConsoleLogs } from "./models/debug";
 
 const apiRouter = express.Router();
 
@@ -69,7 +69,7 @@ apiRouter.post("/debug/console/clear", (req, res) => {
 });
 
 apiRouter.post("/reset", (req, res) => {
-  import("@/server/database").then(({ default: db }) => {
+  import("./database").then(({ default: db }) => {
     db.prepare("DELETE FROM history_messages").run();
     db.prepare("DELETE FROM plots").run();
     db.prepare("DELETE FROM entities").run();

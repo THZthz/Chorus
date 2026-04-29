@@ -33,7 +33,7 @@ function getDeepSeekModel(): LanguageModel | null {
     try {
       deepseekModelInstance = createDeepSeek({
         apiKey: process.env.DEEPSEEK_API_KEY,
-      })('deepseek-chat');
+      })('deepseek-v4-flash');
     } catch (e) {
       console.error("Failed to initialize DeepSeek model:", e);
     }
@@ -47,7 +47,7 @@ function getModelInfo(): { model: LanguageModel; name: string } {
   if (google) return { model: google, name: 'gemini-2.0-flash' };
 
   const deepseek = getDeepSeekModel();
-  if (deepseek) return { model: deepseek, name: 'deepseek-chat' };
+  if (deepseek) return { model: deepseek, name: 'deepseek-v4-flash' };
 
   throw new Error(
     "Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in the application settings or .env file."

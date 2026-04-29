@@ -1,4 +1,4 @@
-import db from "../database";
+import db from "@/server/db";
 
 export interface Plot {
   id: string;

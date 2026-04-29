@@ -37,7 +37,7 @@ const inputSchema = z.object({
   })).describe("Suggestions for the player's next move.")
 });
 
-export const createDraftAddDialogueStepTool = (drafts: any) => tool({
+export const createDraftDialogueStepTool = (drafts: any) => tool({
   title: "Draft Dialogue Step",
   description: "Propose a narrative dialogue step. Adds a new dialogue step with messages and options for the player. This tool call represents the end of your response.",
   inputSchema: inputSchema,

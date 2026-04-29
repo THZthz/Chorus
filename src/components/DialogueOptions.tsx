@@ -1,6 +1,6 @@
 import React from 'react';
-import { DialogueOption } from '@/types/dialogue';
 import { motion } from 'motion/react';
+import { DialogueOption } from '@/types/dialogue';
 
 interface Props {
   options: DialogueOption[];

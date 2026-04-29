@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Message } from '@/types/dialogue';
 import { motion, AnimatePresence } from 'motion/react';
+import { Message } from '@/types/dialogue';
 import { DieFace } from '@/components/DiceRoller';
 import { ObjectLink } from '@/components/ObjectLink';
 

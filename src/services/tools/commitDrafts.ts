@@ -1,8 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { updateEntity } from "../../server/models/world";
-import { addPlot, updatePlotStatus } from "../../server/models/plot";
-import { addMessage } from "../../server/models/history";
+import { updateEntity } from "@/server/models/world";
+import { addPlot, updatePlotStatus } from "@/server/models/plot";
+import { addMessage } from "@/server/models/history";
 
 export const createCommitDraftsTool = (callbacks: {
   setFinished: (f: boolean) => void,

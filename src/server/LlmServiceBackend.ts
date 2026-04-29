@@ -2,15 +2,15 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 // Try to use Google Gen AI for the plot writer, fallback to deepseek
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, stepCountIs, type LanguageModel } from "ai";
-import { Message } from "../types/dialogue";
-import { getAllEntities } from "./models/world";
-import { getAllPlots } from "./models/plot";
-import { addLlmLog, updateLlmLog } from "./models/debug";
-import { createDraftWorldStateUpdateTool } from "../services/tools/draftWorldStateUpdate";
-import { createDraftAddDialogueStepTool } from "../services/tools/draftDialogueStep";
-import { createDraftPlotStatusUpdateTool } from "../services/tools/draftPlotStatusUpdate";
-import { createDraftPlotTool } from "../services/tools/draftPlot";
-import { createCommunicateAssistantTool } from "../services/tools/communicateAssistant";
+import { Message } from "@/types/dialogue";
+import { getAllEntities } from "@/server/models/world";
+import { getAllPlots } from "@/server/models/plot";
+import { addLlmLog, updateLlmLog } from "@/server/models/debug";
+import { createDraftWorldStateUpdateTool } from "@/services/tools/draftWorldStateUpdate";
+import { createDraftDialogueStepTool } from "@/services/tools/draftDialogueStep";
+import { createDraftPlotStatusUpdateTool } from "@/services/tools/draftPlotStatusUpdate";
+import { createDraftPlotTool } from "@/services/tools/draftPlot";
+import { createCommunicateAssistantTool } from "@/services/tools/communicateAssistant";
 
 let googleModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
@@ -63,10 +63,14 @@ export async function generateAIResponse(
 
   const activePlots = plots.filter(p => p.status === 'PENDING' || p.status === 'IN_PROGRESS');
 
+  const historyWindow = 10;
+
   const gmSystemInstruction = `
 You are the Game Master for a narrative-driven RPG. 
 SETTING: A dark, gritty medieval world. High-contrast noir aesthetic.
-TONE: Philosophical, cynical, and surreal. Mimic the writing style of Disco Elysium.
+TONE: Philosophical, cynical, and surreal. Mimic the writing style of Disco Elysium (if you know this game).
+
+---
 
 ## INTERNAL VOICES
 Use internal voices to represent the player's fractured psyche. 
@@ -77,8 +81,12 @@ Use internal voices to represent the player's fractured psyche.
 - HALF LIGHT: Pure lizard-brain fear.
 - ELECTROCHEMISTRY: Hedonism, desire.
 
+---
+
 ## CONTEXT (World State)
 ${JSON.stringify(worldState, null, 2)}
+
+---
 
 ## PLOTS (Your master plan)
 ${JSON.stringify(activePlots, null, 2)}
@@ -86,16 +94,20 @@ ${JSON.stringify(activePlots, null, 2)}
 You MUST progress these plots. If an IN_PROGRESS plot's trigger condition is met, execute it narratively and change it to RESOLVED or progress it.
 If no plot is active or they are concluded, you can draft a new concrete scene-based plot.
 
-## Dialogue History
-${history.slice(-10).map(m => `${m.speaker} (${m.type}): ${m.text}`).join('\n')}
+---
+
+## Dialogue History (Last ${historyWindow})
+${history.slice(-historyWindow).map(m => `${m.speaker} (${m.type}): ${m.text}`).join('\n')}
+
+---
 
 ## MISSION
 The user (YOU) has just said/done: "${userInput}"
 
 Your task is to draft the game's response.
-Keep your chain-of-thought (the text before tool calls) brief and conceptual. Do NOT output the actual dialogue text, internal voice descriptions, or player options directly in your thoughts. These MUST be provided exclusively through the 'draftAddDialogueStep' tool.
-1. Draft updates to the world (items, locations) using 'draftUpdateWorldState'.
-2. Draft advances to plots using 'draftUpdatePlotStatus' and 'draftAddPlot'.
+Keep your chain-of-thought (the text before tool calls) brief and conceptual. Do NOT output the actual dialogue text, internal voice descriptions, or player options directly in your thoughts. These MUST be provided exclusively through the 'draftDialogueStep' tool.
+1. Draft updates to the world (items, locations) using 'draftWorldStateUpdate'.
+2. Draft advances to plots using 'draftPlotStatusUpdate' and 'draftPlot'.
 3. Draft the final narrative response and options using 'draftAddDialogueStep'. Note that 'isAiTrigger' MUST be set to true for options to let the AI gain control again if continuing dialogue.
 4. CRITICALLY, you CANNOT commit these changes. You must submit your drafts to the Assistant by calling 'communicateAssistant'.
 
@@ -105,6 +117,8 @@ Good tool usage example:
 [Calls draftUpdateWorldState]
 [Calls draftAddDialogueStep]
 [Calls communicateAssistant with message: "I drafted the consequences. Please review."]
+
+---
 
 Bad tool usage example:
 - Generating the scene's text in your thoughts instead of using tools.
@@ -150,9 +164,9 @@ Bad tool usage example:
       stopWhen: stepCountIs(10),
       tools: {
         draftWorldStateUpdate: createDraftWorldStateUpdateTool(drafts),
-        draftAddDialogueStep: createDraftAddDialogueStepTool(drafts),
+        draftDialogueStep: createDraftDialogueStepTool(drafts),
         draftPlotStatusUpdate: createDraftPlotStatusUpdateTool(drafts),
-        draftAddPlot: createDraftPlotTool(drafts),
+        draftPlot: createDraftPlotTool(drafts),
         communicateAssistant: createCommunicateAssistantTool({
           model,
           worldState,

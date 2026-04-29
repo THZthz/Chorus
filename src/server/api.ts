@@ -1,9 +1,9 @@
 import express from "express";
-import { generateAIResponse } from "./LlmServiceBackend";
-import { getAllEntities, seedDatabase, upsertEntity } from "./models/world";
-import { getHistory, addMessage, clearHistory, setHistory } from "./models/history";
-import { getAllPlots } from "./models/plot";
-import { getLlmLogs, clearLlmLogs, getConsoleLogs, addConsoleLog, clearConsoleLogs } from "./models/debug";
+import { generateAIResponse } from "@/server/LlmServiceBackend";
+import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
+import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
+import { getAllPlots } from "@/server/models/plot";
+import { getLlmLogs, clearLlmLogs, getConsoleLogs, addConsoleLog, clearConsoleLogs } from "@/server/models/debug";
 
 const apiRouter = express.Router();
 

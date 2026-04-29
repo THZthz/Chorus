@@ -1,7 +1,7 @@
 import { tool, generateText, stepCountIs, type LanguageModel } from "ai";
 import { z } from "zod";
-import { createReplyToGMTool } from "./replyToGM";
-import { createCommitDraftsTool } from "./commitDrafts";
+import { createReplyToGMTool } from "@/services/tools/replyToGM";
+import { createCommitDraftsTool } from "@/services/tools/commitDrafts";
 
 export const createCommunicateAssistantTool = (params: {
   model: LanguageModel;

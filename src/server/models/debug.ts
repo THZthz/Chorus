@@ -1,4 +1,4 @@
-import db from "../database";
+import db from "@/server/db";
 import { v4 as uuidv4 } from "uuid";
 
 export interface LlmLog {

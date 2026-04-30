@@ -60,6 +60,47 @@ db.exec(`
     args TEXT NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS llm_steps (
+    id TEXT PRIMARY KEY,
+    log_id TEXT NOT NULL,
+    step_number INTEGER NOT NULL,
+    finish_reason TEXT,
+    usage TEXT,
+    tool_calls TEXT,
+    tool_results TEXT,
+    text TEXT,
+    duration_ms INTEGER,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (log_id) REFERENCES llm_logs(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS dialogue_steps (
+    id TEXT PRIMARY KEY,
+    parent_step_id TEXT,
+    parent_option_id TEXT,
+    messages TEXT NOT NULL,
+    options TEXT NOT NULL,
+    world_snapshot TEXT,
+    is_generated INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_step_id) REFERENCES dialogue_steps(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS dialogue_alternatives (
+    id TEXT PRIMARY KEY,
+    step_id TEXT NOT NULL,
+    messages TEXT NOT NULL,
+    options TEXT NOT NULL,
+    sequence_num INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (step_id) REFERENCES dialogue_steps(id)
+  );
 `);
+
+// Idempotent migrations for columns added after initial schema
+try { db.exec("ALTER TABLE llm_logs ADD COLUMN parent_id TEXT"); } catch {}
+try { db.exec("ALTER TABLE llm_logs ADD COLUMN label TEXT"); } catch {}
 
 export default db;

@@ -6,9 +6,10 @@ import { ObjectLink } from '@/components/ObjectLink';
 
 interface Props {
   message: Message;
+  isStreaming?: boolean;
 }
 
-export const DialogueMessage: React.FC<Props> = ({ message }) => {
+export const DialogueMessage: React.FC<Props> = ({ message, isStreaming }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const isInnerVoice = message.type === 'INNER_VOICE';
   const isYou = message.type === 'YOU';
@@ -114,8 +115,11 @@ export const DialogueMessage: React.FC<Props> = ({ message }) => {
           </div>
         )}
       </div>
-      <div className={`${isInnerVoice ? 'text-[#9081e3]' : isNotification ? 'text-[#a3c2a3]' : 'text-gray-100'} mt-1`}>
+      <div className={`${isInnerVoice ? 'text-[#9081e3]' : isNotification ? 'text-[#a3c2a3]' : 'text-gray-100'} mt-1 whitespace-pre-wrap`}>
         {renderText(message.text)}
+        {isStreaming && (
+          <span className="inline-block w-[2px] h-[1em] bg-[#ff6b35] ml-0.5 align-text-bottom animate-pulse" />
+        )}
       </div>
     </motion.div>
   );

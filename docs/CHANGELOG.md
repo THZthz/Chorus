@@ -2,8 +2,15 @@
 
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
+### 2026-04-30
+- **Architecture**: Major refactoring to event-driven, streaming-first architecture. Removed the dual-LLM (GM + Assistant) verification loop. Single GM LLM commits directly via tools. SSE streaming for real-time text display. Dialogue tree persisted in SQLite with pre-generation and regenerate support.
+- **New Tables**: `dialogue_steps` (tree structure) and `dialogue_alternatives` (regenerate/swipe support).
+- **New Endpoints**: `/api/chat/stream` (SSE), `/api/dialogue/:id` (step tree), `/api/regenerate` (regenerate via SSE), `/api/branches/activate` (branch switching).
+- **New Files**: `src/server/sseEvents.ts`, `src/server/models/dialogue.ts`, `src/services/SseClient.ts`, `src/services/tools/updateWorldState.ts`, `src/services/tools/updatePlotStatus.ts`, `src/services/tools/createPlot.ts`.
+- **Removed**: All Assistant-related files (`communicateAssistant.ts`, `commitDrafts.ts`, `replyToGM.ts`) and draft tools (`draftWorldStateUpdate.ts`, `draftDialogueStep.ts`, `draftPlot.ts`, `draftPlotStatusUpdate.ts`).
+- **Frontend**: `App.tsx` now consumes SSE streaming. Added regenerate button. `DialogueMessage.tsx` supports `isStreaming` prop with blinking cursor.
+
 ### 2026-04-29
-- **AI Engine**: Enhanced the GM Assistant's system instructions in `communicateAssistant.ts` by adding the explicit `DialogueStep` and `DialogueOption` TypeScript structures and a verification checklist. This empowers the Assistant to better validate GM proposals (e.g., `isAiTrigger` usage, speaker consistency).
 - **Debug Panel**: Simplified the `GM_Assistant_Communication` and request/response blocks in the LLM trace by removing `ResizableContainer` handles and excessive UI clutter, optimizing for information density.
 - **Build Fix**: Resolved server-side build failures by moving all server and tool imports to relative paths (fixing esbuild resolution issues with the `@/` alias).
 - **Build Fix**: Fixed mismatched import/export names for GM drafting tools in `LlmServiceBackend.ts`.

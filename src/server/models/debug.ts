@@ -8,6 +8,22 @@ export interface LlmLog {
   response: string | null;
   duration: number | null;
   status: string;
+  parent_id: string | null;
+  label: string | null;
+  steps?: LlmStep[];
+}
+
+export interface LlmStep {
+  id: string;
+  log_id: string;
+  step_number: number;
+  finish_reason: string | null;
+  usage: string | null;
+  tool_calls: string | null;
+  tool_results: string | null;
+  text: string | null;
+  duration_ms: number | null;
+  timestamp: string;
 }
 
 export interface ConsoleLog {
@@ -18,12 +34,12 @@ export interface ConsoleLog {
   timestamp: string;
 }
 
-export function addLlmLog(request: any): string {
+export function addLlmLog(request: any, parentId?: string, label?: string): string {
   const id = uuidv4();
   db.prepare(`
-    INSERT INTO llm_logs (id, request, status)
-    VALUES (?, ?, ?)
-  `).run(id, JSON.stringify(request), 'PENDING');
+    INSERT INTO llm_logs (id, request, status, parent_id, label)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, JSON.stringify(request), 'PENDING', parentId ?? null, label ?? null);
   return id;
 }
 
@@ -35,15 +51,32 @@ export function updateLlmLog(id: string, response: any, duration: number, status
   `).run(JSON.stringify(response), duration, status, id);
 }
 
+export function addLlmStep(step: Omit<LlmStep, 'id' | 'timestamp'>): string {
+  const id = uuidv4();
+  db.prepare(`
+    INSERT INTO llm_steps (id, log_id, step_number, finish_reason, usage, tool_calls, tool_results, text, duration_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, step.log_id, step.step_number, step.finish_reason, step.usage, step.tool_calls, step.tool_results, step.text, step.duration_ms);
+  return id;
+}
+
 export function getLlmLogs(limit: number = 50): LlmLog[] {
-  return db.prepare(`
+  const logs = db.prepare(`
     SELECT * FROM llm_logs
     ORDER BY timestamp DESC
     LIMIT ?
   `).all(limit) as LlmLog[];
+
+  for (const log of logs) {
+    log.steps = db.prepare(`
+      SELECT * FROM llm_steps WHERE log_id = ? ORDER BY step_number ASC
+    `).all(log.id) as LlmStep[];
+  }
+  return logs;
 }
 
 export function clearLlmLogs() {
+  db.prepare("DELETE FROM llm_steps").run();
   db.prepare("DELETE FROM llm_logs").run();
 }
 

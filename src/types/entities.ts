@@ -11,6 +11,8 @@ export interface CharacterStats {
   suggestion: number;
   half_light: number;
   physical_instrument: number;
+  interfacing: number;
+  electrochemistry: number;
 }
 
 export interface BaseEntity {

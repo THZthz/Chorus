@@ -27,6 +27,8 @@ const defaultCharacter: Character = {
     suggestion: 4,
     half_light: 1,
     physical_instrument: 2,
+    interfacing: 3,
+    electrochemistry: 2,
   },
 };
 

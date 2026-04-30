@@ -99,13 +99,12 @@ The Game Master is "State-Aware". It receives the full World State and Active Pl
 - **Update Plots:** Move quests forward without developer intervention.
 - **Create Content:** Generate new plots if the player goes off-script.
 
-### 3.3 The Narrative Parser (`sseEvents.ts`)
+### 3.3 Structured Dialogue Generation
 
-LLM output is parsed using `parseResponseText` which detects:
-- `[NAME|TYPE]` headers to split messages.
-- `(#entity_id)` annotations for internal tracking (stripped before UI).
-- `<OPTIONS>` tags for structured choices.
-- Internal "Voices" (LOGIC, INLAND EMPIRE, etc.) are automatically mapped to the `INNER_VOICE` type for specialized styling.
+Narrative output is generated via the `dialogue_response` tool, which enforces the `DialogueStep` schema. This ensures perfect consistency and type safety.
+- **Messages:** A sequence of structured message objects (speaker, type, text).
+- **Options:** Player choices, including hints and skill check conditions.
+- **Streaming:** The server partially parses the tool's JSON arguments to maintain a "Thought Stream" effect on the frontend.
 
 ### 3.4 Dialogue Branching & Alternatives
 

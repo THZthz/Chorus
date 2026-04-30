@@ -10,10 +10,35 @@ import { getAllPlots } from "@/server/models/plot";
 import { saveStep, deactivateSiblingBranches } from "@/server/models/dialogue";
 import { addMessage, getHistory } from "@/server/models/history";
 import { LlmDebugIntegration } from "@/server/LlmDebugIntegration";
-import { TurnEventEmitter, parseResponseText } from "@/server/sseEvents";
+import { TurnEventEmitter } from "@/server/sseEvents";
 import { createUpdateWorldStateTool } from "@/services/tools/updateWorldState";
 import { createUpdatePlotStatusTool } from "@/services/tools/updatePlotStatus";
 import { createCreatePlotTool } from "@/services/tools/createPlot";
+
+function mapToDialogueOption(o: any, i: number, baseId: string): DialogueOption {
+  const optId = o.id || `opt_${baseId}_${i}`;
+  return {
+    id: optId,
+    text: o.text || "",
+    hintBefore: o.hintBefore,
+    hintAfter: o.hintAfter,
+    isAiTrigger: o.isAiTrigger ?? true,
+    isContinue: o.isContinue,
+    check: o.check ? {
+      skill: o.check.skill,
+      difficulty: o.check.difficulty,
+      difficultyText: o.check.difficultyText || "",
+      diceCount: o.check.diceCount ?? 2,
+      isRed: o.check.isRed,
+      conditions: o.check.conditions?.map((c: any, ci: number) => ({
+        expression: c.expression,
+        label: c.label,
+        color: c.color,
+        stepId: c.stepId || `step_${optId}_res_${ci}`
+      })) || []
+    } : undefined
+  };
+}
 
 let googleModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
@@ -89,7 +114,9 @@ Progress these plots when narratively appropriate. Create new plots if needed.
 ---
 
 ## OUTPUT FORMAT
-Generate your narrative response by utilizing the dialogue_response tool. You MUST use this tool to output the sequence of dialogue messages and any player choices.
+**CRITICAL: You MUST NEVER output raw text directly.**
+Every narrative turn MUST conclude with exactly one call to the \`dialogue_response\` tool.
+The \`dialogue_response\` tool is the ONLY way to communicate to the player.
 - speaker: Specifically the name of the speaker. Do NOT include the speaker name in the text field. For internal voices, use its name (e.g., "LOGIC"). For narrations, use "NARRATOR".
 - type: MUST be one of "CHARACTER", "INNER_VOICE", "SYSTEM", "YOU", "NOTIFICATION".
   - Use "INNER_VOICE" for stats (LOGIC, VOLITION, etc.).
@@ -98,7 +125,8 @@ Generate your narrative response by utilizing the dialogue_response tool. You MU
 - text: The actual dialogue or narration. Support Markdown formatting. Do NOT put speaker names at the beginning of the text field.
 - Options MUST have "isAiTrigger":true if you want to let the AI continue the conversation.
 - Options should be ACTION-ORIENTED ("Threaten the guard", "Sneak past", "Negotiate") — not wildly divergent.
-- Call updateWorldState / updatePlotStatus / createPlot tools as needed to mutate the world BEFORE emitting dialogue.
+- Call updateWorldState / updatePlotStatus / createPlot tools as needed to mutate the world BEFORE calling dialogue_response.
+- If a skill check is appropriate, include the "check" object in the option.
 
 BAD example (too divergent): [Option to fly to the moon], [Option to become a farmer]
 GOOD example (action-oriented, same scene): [Intimidate the guard], [Bribe the guard], [Find another entrance]
@@ -141,15 +169,33 @@ async function preGenerateBranches(
             description: "Generate the narrative dialogue steps and final player choices.",
             inputSchema: z.object({
               messages: z.array(z.object({
-                speaker: z.string(),
+                speaker: z.string().describe("Name of the speaker (e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR')"),
                 type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
-                text: z.string(),
-              })),
+                text: z.string().describe("The dialogue text, supports markdown."),
+                metadata: z.object({
+                  notificationType: z.enum(["XP", "TASK", "ITEM"]).optional(),
+                }).optional(),
+              })).describe("The sequence of messages in this dialogue step."),
               options: z.array(z.object({
-                text: z.string(),
+                text: z.string().describe("The text shown to the player."),
                 id: z.string().optional(),
-                isAiTrigger: z.boolean().optional(),
-              })).optional(),
+                hintBefore: z.string().optional().describe("Hint shown before the text e.g. [Logic]"),
+                hintAfter: z.string().optional().describe("Hint shown after the text e.g. [Red Check]"),
+                isAiTrigger: z.boolean().optional().describe("Must be true if user selection triggers a new AI response."),
+                isContinue: z.boolean().optional().describe("If true, renders as a large primary 'CONTINUE' button."),
+                check: z.object({
+                  skill: z.string().describe("The skill to check (e.g. 'LOGIC')"),
+                  difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
+                  difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
+                  diceCount: z.number().default(2),
+                  isRed: z.boolean().optional().describe("High-stakes, one-time check."),
+                  conditions: z.array(z.object({
+                    expression: z.string().describe("JS expression e.g. 'success' or 'total < difficulty'"),
+                    label: z.string().optional(),
+                    color: z.string().optional(),
+                  })).describe("Outcome conditions. The system handles branching; just provide labels if needed."),
+                }).optional(),
+              })).optional().describe("The choices presented to the player."),
             }),
             execute: async (args: any) => "Dialogue processed."
           })
@@ -170,14 +216,11 @@ async function preGenerateBranches(
             speaker: m.speaker,
             type: m.type as Message["type"],
             text: m.text,
+            metadata: m.metadata,
           }));
         }
         if (args.options) {
-          childOpts = args.options.map((o: any, i: number) => ({
-            id: o.id || `opt_${i}`,
-            text: o.text,
-            isAiTrigger: true,
-          }));
+          childOpts = args.options.map((o: any, i: number) => mapToDialogueOption(o, i, childStepId));
         }
         }
       }
@@ -275,15 +318,33 @@ Generate the narrative response following the output format exactly.
           description: "Generate the narrative dialogue steps and final player choices.",
           inputSchema: z.object({
             messages: z.array(z.object({
-              speaker: z.string(),
+              speaker: z.string().describe("Name of the speaker (e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR')"),
               type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
-              text: z.string(),
-            })),
+              text: z.string().describe("The dialogue text, supports markdown."),
+              metadata: z.object({
+                notificationType: z.enum(["XP", "TASK", "ITEM"]).optional(),
+              }).optional(),
+            })).describe("The sequence of messages in this dialogue step."),
             options: z.array(z.object({
-              text: z.string(),
+              text: z.string().describe("The text shown to the player."),
               id: z.string().optional(),
-              isAiTrigger: z.boolean().optional(),
-            })).optional(),
+              hintBefore: z.string().optional().describe("Hint shown before the text e.g. [Logic]"),
+              hintAfter: z.string().optional().describe("Hint shown after the text e.g. [Red Check]"),
+              isAiTrigger: z.boolean().optional().describe("Must be true if user selection triggers a new AI response."),
+              isContinue: z.boolean().optional().describe("If true, renders as a large primary 'CONTINUE' button."),
+              check: z.object({
+                skill: z.string().describe("The skill to check (e.g. 'LOGIC')"),
+                difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
+                difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
+                diceCount: z.number().default(2),
+                isRed: z.boolean().optional().describe("High-stakes, one-time check."),
+                conditions: z.array(z.object({
+                  expression: z.string().describe("JS expression e.g. 'success' or 'total < difficulty'"),
+                  label: z.string().optional(),
+                  color: z.string().optional(),
+                })).describe("Outcome conditions. The system handles branching; just provide labels if needed."),
+              }).optional(),
+            })).optional().describe("The choices presented to the player."),
           }),
           execute: async (args: any) => "Dialogue streamed."
         })
@@ -340,18 +401,15 @@ Generate the narrative response following the output format exactly.
             const cleanMessages = finalMessages.map((m: any) => ({
               speaker: m.speaker || 'SYSTEM',
               type: m.type || 'SYSTEM',
-              text: m.text || ''
+              text: m.text || '',
+              metadata: m.metadata,
             }));
             
             events.emitStreamingMessages(cleanMessages);
           }
           
           if (parsed.options && Array.isArray(parsed.options)) {
-            finalOptions = parsed.options.map((o: any, i: number) => ({
-              id: o.id || `opt_${i}`,
-              text: o.text || "",
-              isAiTrigger: true,
-            }));
+            finalOptions = parsed.options.map((o: any, i: number) => mapToDialogueOption(o, i, stepId));
             // Update the UI options if they start appearing
             if (finalOptions.length > 0) {
               events.emitOptions(finalOptions);
@@ -364,16 +422,11 @@ Generate the narrative response following the output format exactly.
     }
 
     // Final clean up and emission
-    if (finalMessages.length === 0 && events.getText().trim()) {
-      const parsed = parseResponseText(events.getText());
-      if (parsed.messages.length > 0) finalMessages = parsed.messages;
-      if (parsed.options) finalOptions = parsed.options;
-    }
-
     const messages = finalMessages.map((m, i) => ({
       speaker: m.speaker || 'SYSTEM',
       type: m.type || 'SYSTEM',
-      text: m.text || ''
+      text: m.text || '',
+      metadata: m.metadata,
     }));
 
     // Emit parsed messages and options
@@ -487,15 +540,33 @@ Generate the narrative response following the output format exactly.
           description: "Generate the narrative dialogue steps and final player choices.",
           inputSchema: z.object({
             messages: z.array(z.object({
-              speaker: z.string(),
+              speaker: z.string().describe("Name of the speaker (e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR')"),
               type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
-              text: z.string(),
-            })),
+              text: z.string().describe("The dialogue text, supports markdown."),
+              metadata: z.object({
+                notificationType: z.enum(["XP", "TASK", "ITEM"]).optional(),
+              }).optional(),
+            })).describe("The sequence of messages in this dialogue step."),
             options: z.array(z.object({
-              text: z.string(),
+              text: z.string().describe("The text shown to the player."),
               id: z.string().optional(),
-              isAiTrigger: z.boolean().optional(),
-            })).optional(),
+              hintBefore: z.string().optional().describe("Hint shown before the text e.g. [Logic]"),
+              hintAfter: z.string().optional().describe("Hint shown after the text e.g. [Red Check]"),
+              isAiTrigger: z.boolean().optional().describe("Must be true if user selection triggers a new AI response."),
+              isContinue: z.boolean().optional().describe("If true, renders as a large primary 'CONTINUE' button."),
+              check: z.object({
+                skill: z.string().describe("The skill to check (e.g. 'LOGIC')"),
+                difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
+                difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
+                diceCount: z.number().default(2),
+                isRed: z.boolean().optional().describe("High-stakes, one-time check."),
+                conditions: z.array(z.object({
+                  expression: z.string().describe("JS expression e.g. 'success' or 'total < difficulty'"),
+                  label: z.string().optional(),
+                  color: z.string().optional(),
+                })).describe("Outcome conditions. The system handles branching; just provide labels if needed."),
+              }).optional(),
+            })).optional().describe("The choices presented to the player."),
           }),
           execute: async (args: any) => "Dialogue processed."
         })
@@ -538,30 +609,21 @@ Generate the narrative response following the output format exactly.
 
     let parsedMsgs: any[] = [];
     let parsedOpts: DialogueOption[] = [];
+    const baseId = `ai-${Date.now()}`;
     try {
       const parsed = parsePartial(toolRawArgs);
       if (parsed.messages) parsedMsgs = parsed.messages;
       if (parsed.options) {
-        parsedOpts = parsed.options.map((o: any, i: number) => ({
-          id: o.id || `opt_${i}`,
-          text: o.text || "",
-          isAiTrigger: true,
-        }));
+        parsedOpts = parsed.options.map((o: any, i: number) => mapToDialogueOption(o, i, baseId));
       }
     } catch (e) {}
 
-    if (parsedMsgs.length === 0 && toolRawArgs === "") {
-      const text = await result.text;
-      const parsed = parseResponseText(text ?? "");
-      if (parsed.messages.length > 0) parsedMsgs = parsed.messages;
-      if (parsed.options && parsed.options.length > 0) parsedOpts = parsed.options;
-    }
-
     const messages: Message[] = parsedMsgs.map((m, i) => ({
-      id: `ai-${Date.now()}-${i}`,
+      id: `${baseId}-${i}`,
       speaker: m.speaker || 'SYSTEM',
       type: (m.type as Message["type"]) || 'SYSTEM',
       text: m.text || '',
+      metadata: m.metadata,
     }));
 
     const options: DialogueOption[] = parsedOpts && parsedOpts.length > 0

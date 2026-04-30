@@ -66,12 +66,18 @@ export class TurnEventEmitter {
 }
 
 const KNOWN_TYPES = new Set(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]);
-const VOICE_NAMES = new Set(["LOGIC", "RHETORIC", "VOLITION", "INLAND EMPIRE", "HALF LIGHT", "ELECTROCHEMISTRY", "SUGGESTION", "CONCEPTUALIZATION", "EMPATHY", "VISUAL CALCULUS"]);
+const VOICE_NAMES = new Set([
+  "LOGIC", "RHETORIC", "VOLITION", "INLAND EMPIRE", "HALF LIGHT", "ELECTROCHEMISTRY", 
+  "SUGGESTION", "CONCEPTUALIZATION", "EMPATHY", "VISUAL CALCULUS", "PERCEPTION", 
+  "ENDURANCE", "PHYSICAL INSTRUMENT", "DRAMA", "AUTHORITY", "ESPRIT DE CORPS", 
+  "SHIVERS", "PAIN THRESHOLD", "HAND/EYE COORDINATION", "REACTION SPEED", 
+  "SAVOIR FAIRE", "INTERPERSONAL", "COMPOSURE", "ENCYCLOPEDIA"
+]);
 
 interface ParsedHeader { speaker: string; type: string; bodyStart: number }
 
 function parseHeader(trimmed: string): ParsedHeader | null {
-  // Match [A|B] header at start of block — allow spaces, letters, underscores
+  // Match [A|B] header at start of block — allow spaces, letters, underscores, slashes, dashes
   const hdr = trimmed.match(/^\[([^\]]+)\]\s*\n?/);
   if (!hdr) return null;
 
@@ -117,13 +123,18 @@ function parseHeader(trimmed: string): ParsedHeader | null {
   }
 
   // Normalize: if speaker looks like a voice name, set type to INNER_VOICE
-  if (VOICE_NAMES.has(speaker.toUpperCase()) || /^(LOGIC|RHETORIC|VOLITION|INLAND EMPIRE|HALF LIGHT|ELECTROCHEMISTRY|SUGGESTION|CONCEPTUALIZATION|EMPATHY|VISUAL CALCULUS)$/i.test(speaker)) {
+  const speakerUpper = speaker.toUpperCase();
+  const isInternalVoice = VOICE_NAMES.has(speakerUpper) || 
+    /^(LOGIC|RHETORIC|VOLITION|INLAND EMPIRE|HALF LIGHT|ELECTROCHEMISTRY|SUGGESTION|CONCEPTUALIZATION|EMPATHY|VISUAL CALCULUS|PERCEPTION|ENDURANCE|PHYSICAL INSTRUMENT|DRAMA|AUTHORITY|ESPRIT DE CORPS|SHIVERS|PAIN THRESHOLD|HAND\/EYE COORDINATION|REACTION SPEED|SAVOIR FAIRE|INTERPERSONAL|COMPOSURE|ENCYCLOPEDIA)$/i.test(speaker);
+
+  if (isInternalVoice) {
     type = "INNER_VOICE";
   }
 
   // NARRATOR is always SYSTEM, never CHARACTER or INNER_VOICE
-  if (speaker.toUpperCase() === "NARRATOR") {
+  if (speakerUpper === "NARRATOR") {
     type = "SYSTEM";
+    speaker = "NARRATOR";
   }
 
   return { speaker, type, bodyStart: hdr[0].length };
@@ -136,16 +147,17 @@ export function parseResponseText(text: string): {
 } {
   const messages: { speaker: string; type: string; text: string }[] = [];
 
-  // Extract <OPTIONS> block
+  // 1. Extract <OPTIONS> block
   let options: DialogueOption[] | null = null;
-  const optionsMatch = text.match(/<OPTIONS>\s*\n([\s\S]*?)\n\s*<\/OPTIONS>/);
+  const optionsMatch = text.match(/<OPTIONS>\s*\n([\s\S]*?)\n\s*<\/OPTIONS>/i);
   let cleanText = text;
 
   if (optionsMatch) {
     try {
       options = JSON.parse(optionsMatch[1]);
     } catch {
-      const lines = optionsMatch[1].split("\n").filter(Boolean);
+      // Fallback for non-JSON options
+      const lines = optionsMatch[1].split("\n").filter(l => l.trim());
       options = lines.map((line, i) => ({
         id: `opt_${i}`,
         text: line.replace(/^-\s*/, "").trim(),
@@ -155,20 +167,42 @@ export function parseResponseText(text: string): {
     cleanText = text.replace(optionsMatch[0], "").trim();
   }
 
-  // Parse message blocks separated by ---
-  const blocks = cleanText.split(/\n?---\n?/);
-  for (const block of blocks) {
-    const trimmed = block.trim();
-    if (!trimmed) continue;
+  // 2. Identify all [SPEAKER|TYPE] blocks. 
+  // We use a regex that looks for these headers and splits the content.
+  // We look for [Header] at start of lines.
+  const headerRegex = /^\[([^\]]+)\]/gm;
+  const parts: string[] = [];
+  let lastIdx = 0;
+  let match;
 
-    const parsed = parseHeader(trimmed);
+  // We want to split the text into blocks starting with [Header]
+  while ((match = headerRegex.exec(cleanText)) !== null) {
+     if (match.index > lastIdx) {
+       parts.push(cleanText.slice(lastIdx, match.index));
+     }
+     lastIdx = match.index;
+  }
+  parts.push(cleanText.slice(lastIdx));
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed || trimmed === '---') continue;
+
+    // Remove any trailing --- from the previous block if present
+    const content = trimmed.replace(/\n?---\n?$/, '').trim();
+    if (!content) continue;
+
+    const parsed = parseHeader(content);
     if (parsed) {
-      let body = trimmed.slice(parsed.bodyStart).trim();
-      // Strip (#entity_id) or (#internal) annotations the GM adds as references
+      let body = content.slice(parsed.bodyStart).trim();
+      // Strip any separator at the end of the body
+      body = body.replace(/\n?---\n?$/, '').trim();
+      // Strip (#entity_id) or (#internal) annotations
       body = body.replace(/^\(#[^)]+\)\s*\n?/, '');
       if (body) messages.push({ speaker: parsed.speaker, type: parsed.type, text: body });
     } else {
-      messages.push({ speaker: "NARRATOR", type: "SYSTEM", text: trimmed });
+      // If it doesn't start with a header, it's either leading narration or nested narration
+      messages.push({ speaker: "NARRATOR", type: "SYSTEM", text: content });
     }
   }
 

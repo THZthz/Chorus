@@ -114,9 +114,11 @@ Progress these plots when narratively appropriate. Create new plots if needed.
 ---
 
 ## OUTPUT FORMAT
-**CRITICAL: You MUST NEVER output raw text directly.**
-Every narrative turn MUST conclude with exactly one call to the \`dialogue_response\` tool.
-The \`dialogue_response\` tool is the ONLY way to communicate to the player.
+**CRITICAL: You MUST NEVER output raw text directly.** 
+Do NOT provide "thought" summaries, preambles, or conversational filler outside of the tool.
+Every narrative turn MUST conclude with exactly one call to the \`generateDialogueStep\` tool.
+The \`generateDialogueStep\` tool is the ONLY way to communicate to the player.
+Any text outside this tool call will be DISCARDED and ignored by the system.
 - speaker: Specifically the name of the speaker. Do NOT include the speaker name in the text field. For internal voices, use its name (e.g., "LOGIC"). For narrations, use "NARRATOR".
 - type: MUST be one of "CHARACTER", "INNER_VOICE", "SYSTEM", "YOU", "NOTIFICATION".
   - Use "INNER_VOICE" for stats (LOGIC, VOLITION, etc.).
@@ -125,7 +127,7 @@ The \`dialogue_response\` tool is the ONLY way to communicate to the player.
 - text: The actual dialogue or narration. Support Markdown formatting. Do NOT put speaker names at the beginning of the text field.
 - Options MUST have "isAiTrigger":true if you want to let the AI continue the conversation.
 - Options should be ACTION-ORIENTED ("Threaten the guard", "Sneak past", "Negotiate") — not wildly divergent.
-- Call updateWorldState / updatePlotStatus / createPlot tools as needed to mutate the world BEFORE calling dialogue_response.
+- Call updateWorldState / updatePlotStatus / createPlot tools as needed to mutate the world BEFORE calling \`generateDialogueStep\`.
 - If a skill check is appropriate, include the "check" object in the option.
 
 BAD example (too divergent): [Option to fly to the moon], [Option to become a farmer]
@@ -165,7 +167,7 @@ async function preGenerateBranches(
           createPlot: createCreatePlotTool(
             new TurnEventEmitter({ write: () => {}, end: () => {} } as unknown as Response, "noop")
           ),
-          dialogue_response: tool({
+          generateDialogueStep: tool({
             description: "Generate the narrative dialogue steps and final player choices.",
             inputSchema: z.object({
               messages: z.array(z.object({
@@ -206,7 +208,7 @@ async function preGenerateBranches(
       let childOpts: DialogueOption[] = [];
       let stepMessages: Message[] = [];
       
-      const dialogueCall = result.toolCalls.find((tc: any) => tc.toolName === 'dialogue_response');
+      const dialogueCall = result.toolCalls.find((tc: any) => tc.toolName === 'generateDialogueStep');
       if (dialogueCall) {
         const args = (dialogueCall as any).args || (dialogueCall as any).input;
         if (args && typeof args === 'object') {
@@ -314,7 +316,7 @@ Generate the narrative response following the output format exactly.
         updateWorldState: createUpdateWorldStateTool(events),
         updatePlotStatus: createUpdatePlotStatusTool(events),
         createPlot: createCreatePlotTool(events),
-        dialogue_response: tool({
+        generateDialogueStep: tool({
           description: "Generate the narrative dialogue steps and final player choices.",
           inputSchema: z.object({
             messages: z.array(z.object({
@@ -387,9 +389,9 @@ Generate the narrative response following the output format exactly.
 
     for await (const chunk of result.fullStream) {
       if (chunk.type === "text-delta") {
-        // Normally shouldn't happen, but if GM outputs raw text, just send it
-        events.feedToken(chunk.text);
-      } else if ((chunk as any).type === "tool-call-delta" && (chunk as any).toolName === "dialogue_response") {
+        // Discarding text-delta to enforce tool-only output
+        console.warn("Discarded raw text delta from AI:", chunk.text);
+      } else if ((chunk as any).type === "tool-call-delta" && (chunk as any).toolName === "generateDialogueStep") {
         toolRawArgs += (chunk as any).argsTextDelta;
         try {
           const parsed = parsePartial(toolRawArgs);
@@ -536,7 +538,7 @@ Generate the narrative response following the output format exactly.
         createPlot: createCreatePlotTool(
           new TurnEventEmitter({ write: () => {}, end: () => {} } as unknown as Response, "noop")
         ),
-        dialogue_response: tool({
+        generateDialogueStep: tool({
           description: "Generate the narrative dialogue steps and final player choices.",
           inputSchema: z.object({
             messages: z.array(z.object({
@@ -602,7 +604,7 @@ Generate the narrative response following the output format exactly.
 
     let toolRawArgs = "";
     for await (const chunk of result.fullStream) {
-      if ((chunk as any).type === "tool-call-delta" && (chunk as any).toolName === "dialogue_response") {
+      if ((chunk as any).type === "tool-call-delta" && (chunk as any).toolName === "generateDialogueStep") {
         toolRawArgs += (chunk as any).argsTextDelta;
       }
     }

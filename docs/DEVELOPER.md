@@ -101,7 +101,7 @@ The Game Master is "State-Aware". It receives the full World State and Active Pl
 
 ### 3.3 Structured Dialogue Generation
 
-Narrative output is generated via the `dialogue_response` tool, which enforces the `DialogueStep` schema. This ensures perfect consistency and type safety.
+Narrative output is generated via the `generateDialogueStep` tool, which enforces the `DialogueStep` schema. This ensures perfect consistency and type safety.
 - **Messages:** A sequence of structured message objects (speaker, type, text).
 - **Options:** Player choices, including hints and skill check conditions.
 - **Streaming:** The server partially parses the tool's JSON arguments to maintain a "Thought Stream" effect on the frontend.

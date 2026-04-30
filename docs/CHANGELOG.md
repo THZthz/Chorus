@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file. Should be extremely concise for each entry. Only main change can be added here.
 
 ### 2026-04-30
-- **AI Engine**: Fully transitioned to structured dialogue generation via the `dialogue_response` tool. Removed all raw text parsing fallbacks (`parseResponseText`). Enhanced tool schema to support skill checks, hints, and custom metadata. Simplified streaming loop in `LlmServiceBackend.ts` to strictly handle tool-delta updates.
+- **AI Engine**: Fully transitioned to structured dialogue generation via the `generateDialogueStep` tool. Removed all raw text parsing fallbacks (`parseResponseText`). Enhanced tool schema to support skill checks, hints, and custom metadata. Simplified streaming loop in `LlmServiceBackend.ts` to strictly handle tool-delta updates.
 - **Architecture**: Major refactoring to event-driven, streaming-first architecture. Removed the dual-LLM (GM + Assistant) verification loop. Single GM LLM commits directly via tools. SSE streaming for real-time text display. Dialogue tree persisted in SQLite with pre-generation and regenerate support.
 - **New Tables**: `dialogue_steps` (tree structure) and `dialogue_alternatives` (regenerate/swipe support).
 - **New Endpoints**: `/api/chat/stream` (SSE), `/api/dialogue/:id` (step tree), `/api/regenerate` (regenerate via SSE), `/api/branches/activate` (branch switching).

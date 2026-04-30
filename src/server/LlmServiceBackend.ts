@@ -90,13 +90,15 @@ Progress these plots when narratively appropriate. Create new plots if needed.
 
 ## OUTPUT FORMAT
 Generate your narrative response by utilizing the dialogue_response tool. You MUST use this tool to output the sequence of dialogue messages and any player choices.
-- Speaker name can be: an internal voice (LOGIC, RHETORIC, VOLITION, INLAND EMPIRE, HALF LIGHT, ELECTROCHEMISTRY, SUGGESTION, CONCEPTUALIZATION, EMPATHY, VISUAL CALCULUS, PERCEPTION, ENDURANCE, PHYSICAL INSTRUMENT), a character name (Madam Vespera), or NARRATOR.
-- Speaker types: YOU, INNER_VOICE, CHARACTER, SYSTEM, ROLL, NOTIFICATION.
-- Text content should support Markdown formatting, and you can reference entities with [Name](#entity_id).
+- speaker: Specifically the name of the speaker. Do NOT include the speaker name in the text field. For internal voices, use its name (e.g., "LOGIC"). For narrations, use "NARRATOR".
+- type: MUST be one of "CHARACTER", "INNER_VOICE", "SYSTEM", "YOU", "NOTIFICATION".
+  - Use "INNER_VOICE" for stats (LOGIC, VOLITION, etc.).
+  - Use "SYSTEM" for the "NARRATOR" or general environment descriptions.
+  - Use "CHARACTER" for NPCs.
+- text: The actual dialogue or narration. Support Markdown formatting. Do NOT put speaker names at the beginning of the text field.
 - Options MUST have "isAiTrigger":true if you want to let the AI continue the conversation.
 - Options should be ACTION-ORIENTED ("Threaten the guard", "Sneak past", "Negotiate") — not wildly divergent.
 - Call updateWorldState / updatePlotStatus / createPlot tools as needed to mutate the world BEFORE emitting dialogue.
-- Use ROLL type for narration describing the process or outcome of skill checks and dice rolls.
 
 BAD example (too divergent): [Option to fly to the moon], [Option to become a farmer]
 GOOD example (action-oriented, same scene): [Intimidate the guard], [Bribe the guard], [Find another entrance]
@@ -140,12 +142,13 @@ async function preGenerateBranches(
             inputSchema: z.object({
               messages: z.array(z.object({
                 speaker: z.string(),
-                type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]),
+                type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
                 text: z.string(),
               })),
               options: z.array(z.object({
                 text: z.string(),
                 id: z.string().optional(),
+                isAiTrigger: z.boolean().optional(),
               })).optional(),
             }),
             execute: async (args: any) => "Dialogue processed."
@@ -273,12 +276,13 @@ Generate the narrative response following the output format exactly.
           inputSchema: z.object({
             messages: z.array(z.object({
               speaker: z.string(),
-              type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]),
+              type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
               text: z.string(),
             })),
             options: z.array(z.object({
               text: z.string(),
               id: z.string().optional(),
+              isAiTrigger: z.boolean().optional(),
             })).optional(),
           }),
           execute: async (args: any) => "Dialogue streamed."
@@ -322,47 +326,24 @@ Generate the narrative response following the output format exactly.
 
     for await (const chunk of result.fullStream) {
       if (chunk.type === "text-delta") {
+        // Normally shouldn't happen, but if GM outputs raw text, just send it
         events.feedToken(chunk.text);
-        // If we're getting raw text, try to parse it as we go
-        const { messages: parsedMsgs, options: parsedOpts } = parseResponseText(events.getText());
-        if (parsedMsgs.length > 0) {
-          events.emitStreamingMessages(parsedMsgs);
-        }
-        if (parsedOpts && parsedOpts.length > 0) {
-          events.emitOptions(parsedOpts);
-        }
       } else if ((chunk as any).type === "tool-call-delta" && (chunk as any).toolName === "dialogue_response") {
         toolRawArgs += (chunk as any).argsTextDelta;
         try {
           const parsed = parsePartial(toolRawArgs);
           
           if (parsed.messages && Array.isArray(parsed.messages)) {
-            const currentMessages: any[] = [];
+            finalMessages = parsed.messages;
             
-            // Sub-parse each message in case the LLM put headers inside text fields
-            for (const m of parsed.messages) {
-              const speaker = m.speaker || 'NARRATOR';
-              const text = m.text || '';
-              
-              // If text contains a header (e.g. [LOGIC|INNER_VOICE]), split it
-              if (text.trim().startsWith('[') && text.includes(']')) {
-                 const subParsed = parseResponseText(text);
-                 if (subParsed.messages.length > 0) {
-                    currentMessages.push(...subParsed.messages);
-                 } else {
-                    currentMessages.push({ speaker, type: m.type || 'SYSTEM', text });
-                 }
-              } else {
-                currentMessages.push({
-                  speaker,
-                  type: m.type || 'SYSTEM',
-                  text
-                });
-              }
-            }
+            // Format cleanly for emitting
+            const cleanMessages = finalMessages.map((m: any) => ({
+              speaker: m.speaker || 'SYSTEM',
+              type: m.type || 'SYSTEM',
+              text: m.text || ''
+            }));
             
-            finalMessages = currentMessages;
-            events.emitStreamingMessages(finalMessages);
+            events.emitStreamingMessages(cleanMessages);
           }
           
           if (parsed.options && Array.isArray(parsed.options)) {
@@ -371,6 +352,7 @@ Generate the narrative response following the output format exactly.
               text: o.text || "",
               isAiTrigger: true,
             }));
+            // Update the UI options if they start appearing
             if (finalOptions.length > 0) {
               events.emitOptions(finalOptions);
             }
@@ -382,35 +364,19 @@ Generate the narrative response following the output format exactly.
     }
 
     // Final clean up and emission
-    // Use the same sub-parsing logic for final emission
-    const finalStructuredMessages: any[] = [];
-    for (const m of finalMessages) {
-       if (m.text.trim().startsWith('[') && m.text.includes(']')) {
-          const sub = parseResponseText(m.text);
-          if (sub.messages.length > 0) {
-             finalStructuredMessages.push(...sub.messages);
-          } else {
-             finalStructuredMessages.push(m);
-          }
-       } else {
-          finalStructuredMessages.push(m);
-       }
-    }
-    
-    // Fallback to raw text parsing if finalMessages is empty but we have accumulated text
-    if (finalStructuredMessages.length === 0 && events.getText().trim()) {
-       const rawParsed = parseResponseText(events.getText());
-       finalStructuredMessages.push(...rawParsed.messages);
-       if (rawParsed.options) finalOptions = rawParsed.options;
+    if (finalMessages.length === 0 && events.getText().trim()) {
+      const parsed = parseResponseText(events.getText());
+      if (parsed.messages.length > 0) finalMessages = parsed.messages;
+      if (parsed.options) finalOptions = parsed.options;
     }
 
-    const messages = finalStructuredMessages.map((m) => ({
-      speaker: m.speaker || 'NARRATOR',
-      type: (m.type as Message["type"]) || 'SYSTEM',
+    const messages = finalMessages.map((m, i) => ({
+      speaker: m.speaker || 'SYSTEM',
+      type: m.type || 'SYSTEM',
       text: m.text || ''
     }));
 
-    // Emit final parsed result
+    // Emit parsed messages and options
     events.emitParsed(messages, finalOptions);
     events.emitOptions(finalOptions);
 
@@ -522,12 +488,13 @@ Generate the narrative response following the output format exactly.
           inputSchema: z.object({
             messages: z.array(z.object({
               speaker: z.string(),
-              type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]),
+              type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
               text: z.string(),
             })),
             options: z.array(z.object({
               text: z.string(),
               id: z.string().optional(),
+              isAiTrigger: z.boolean().optional(),
             })).optional(),
           }),
           execute: async (args: any) => "Dialogue processed."
@@ -582,6 +549,13 @@ Generate the narrative response following the output format exactly.
         }));
       }
     } catch (e) {}
+
+    if (parsedMsgs.length === 0 && toolRawArgs === "") {
+      const text = await result.text;
+      const parsed = parseResponseText(text ?? "");
+      if (parsed.messages.length > 0) parsedMsgs = parsed.messages;
+      if (parsed.options && parsed.options.length > 0) parsedOpts = parsed.options;
+    }
 
     const messages: Message[] = parsedMsgs.map((m, i) => ({
       id: `ai-${Date.now()}-${i}`,

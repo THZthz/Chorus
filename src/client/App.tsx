@@ -136,12 +136,12 @@ export default function App() {
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: isTyping ? 'auto' : 'smooth' });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [history, isTyping, currentCheck, streamingText]);
+  }, [history, isTyping, currentCheck, streamingText, streamingMessages]);
 
   // Handle sequential message display for static content
   const displayMessages = async (messages: Message[]) => {

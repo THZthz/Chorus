@@ -492,7 +492,7 @@ export default function App() {
             {/* Streaming Array */}
             {streamingMessages.map((msg, idx) => (
               <div key={`stream-${msg.id}-${idx}`} className="mb-6 opacity-80">
-                <DialogueMessage message={msg} isStreaming />
+                <DialogueMessage message={msg} isStreaming={idx === streamingMessages.length - 1} />
               </div>
             ))}
 

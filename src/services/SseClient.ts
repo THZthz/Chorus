@@ -8,6 +8,7 @@ export interface SseCallbacks {
   onPlotUpdate?: (data: { plotId: string; status: string }) => void;
   onPlotCreate?: (data: { plotId: string; title: string }) => void;
   onOptions?: (options: DialogueOption[]) => void;
+  onStreamingMessages?: (messages: { speaker: string; type: string; text: string }[]) => void;
   onParsed?: (data: { messages: { speaker: string; type: string; text: string }[]; options: DialogueOption[] | null }) => void;
   onStepStart?: (data: { stepId: string }) => void;
   onStepEnd?: (data: { stepId: string }) => void;
@@ -107,6 +108,9 @@ export class SseClient {
         break;
       case "options":
         cb.onOptions?.((data as { options: DialogueOption[] }).options);
+        break;
+      case "streaming_messages":
+        cb.onStreamingMessages?.((data as { messages: { speaker: string; type: string; text: string }[] }).messages);
         break;
       case "parsed":
         cb.onParsed?.(data as { messages: { speaker: string; type: string; text: string }[]; options: DialogueOption[] | null });

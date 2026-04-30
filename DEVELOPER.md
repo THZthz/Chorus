@@ -147,9 +147,25 @@ All 4 tools defined once in `src/server/llm/tools.ts`:
 ### 3.5 Dialogue Branching & Alternatives
 
 - **Steps**: A single interaction "moment" stored in `dialogue_steps` table
-- **Branches**: When a user selects an option, a new child step is created
+- **Branches**: When a user selects an option, a new child step is created. The parent option's `nextStepId` is updated
+  to link forward to the child, creating a doubly-linked tree (parent → child via `parent_step_id`, child ← parent via
+  `nextStepId` on the option).
 - **Alternatives**: When a user clicks "Regenerate", the current step is archived as an alternative, and a new one is
   generated. The UI allows "swiping" between versions
+
+### 3.6 Dialogue Replay
+
+Replay mode allows navigating the existing dialogue tree without calling the LLM. Key behaviors:
+
+- **Enter replay**: Click the Git Branch button (visible after starting a game). Fetches the full tree from
+  `GET /api/dialogue/tree` and loads the root step.
+- **Navigation**: Clicking an option navigates to its child step (using `nextStepId` for fast lookup, falling back to
+  `POST /api/dialogue/traverse`). Messages are appended to the visible history.
+- **Unexplored branches**: Options without a child step are dimmed and unclickable — they were never explored.
+- **Exit replay**: Click the Return button to restore the live session from `history_messages`.
+- **Bulk regenerate**: The purple refresh button calls `POST /api/regenerate-all` to regenerate all leaf steps at once,
+  saving each current version as an alternative first. Uses `generateTurnBatch()` (non-streaming `generateText()`) under
+  the hood.
 
 ---
 
@@ -159,6 +175,7 @@ All 4 tools defined once in `src/server/llm/tools.ts`:
 
 - `POST /api/chat/stream` — Primary AI turn (SSE streaming)
 - `POST /api/regenerate` — Archive current step as alternative, generate new response
+- `POST /api/regenerate-all` — Bulk regenerate all leaf steps in the dialogue tree
 
 ### 4.2 Dialogue Tree
 
@@ -168,6 +185,8 @@ All 4 tools defined once in `src/server/llm/tools.ts`:
 - `GET /api/dialogue/:id/alternatives` — Alternative versions
 - `POST /api/dialogue/:id/alternatives/:altId/select` — Switch to alternative
 - `POST /api/branches/activate` — Activate a branch (deactivates siblings)
+- `GET /api/dialogue/tree` — Full dialogue tree (root, all active steps, leaf IDs, stats)
+- `POST /api/dialogue/traverse` — Navigate from step to child via option `{ stepId, optionId }`
 
 ### 4.3 State
 

@@ -1,12 +1,12 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamText, type LanguageModel } from "ai";
+import { streamText, generateText, type LanguageModel } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { getAllEntities } from "@/server/models/world";
 import { getAllPlots } from "@/server/models/plot";
-import { saveStep, deactivateSiblingBranches } from "@/server/models/dialogue";
+import { saveStep, deactivateSiblingBranches, updateOptionNextStepId } from "@/server/models/dialogue";
 import { addMessage } from "@/server/models/history";
 import { LlmDebugIntegration } from "@/server/llm/debug";
 import { TurnEventEmitter } from "@/server/llm/events";
@@ -315,6 +315,10 @@ export async function generateTurn(
       isActive: true,
     });
 
+    if (parentStepId && parentOptionId) {
+      updateOptionNextStepId(parentStepId, parentOptionId, stepId);
+    }
+
     for (const msg of messages) {
       try {
         addMessage(msg);
@@ -337,4 +341,107 @@ export async function generateTurn(
     events.emitError(message);
     events.finish();
   }
+}
+
+// ── Batch generation (non-streaming, for bulk regenerate) ──
+
+export async function generateTurnBatch(
+  userInput: string,
+  history: Message[],
+  parentStepId: string | null,
+  parentOptionId: string | null,
+): Promise<{ stepId: string; messages: Message[]; options: DialogueOption[] }> {
+  const systemPrompt = buildSystemPrompt();
+  const stepId = `step_${Date.now()}`;
+
+  const historyWindow = 10;
+  const promptText = [
+    `## Dialogue History (Last ${historyWindow})`,
+    history
+      .slice(-historyWindow)
+      .map((m) => `${m.speaker} (${m.type}): ${m.text}`)
+      .join("\n"),
+    "",
+    "---",
+    "",
+    "## PLAYER ACTION",
+    `The player just said/did: "${userInput}"`,
+    "",
+    "Generate the narrative response following the output format exactly.",
+  ].join("\n");
+
+  const { model } = getModel();
+  const noopEvents = new TurnEventEmitter(null, stepId);
+
+  const result = await generateText({
+    model,
+    system: systemPrompt,
+    messages: [{ role: "user", content: promptText }],
+    tools: {
+      updateWorldState: createUpdateWorldStateTool(noopEvents),
+      updatePlotStatus: createUpdatePlotStatusTool(noopEvents),
+      createPlot: createCreatePlotTool(noopEvents),
+      generateDialogueStep: createGenerateDialogueStepTool(noopEvents),
+    },
+  });
+
+  // Extract the generateDialogueStep tool input
+  const dialogueCall = result.toolCalls?.find(
+    (tc) => tc.toolName === "generateDialogueStep",
+  );
+  const args = dialogueCall?.input as {
+    messages?: Record<string, unknown>[];
+    options?: Record<string, unknown>[];
+  } | undefined;
+
+  const finalMessages: Record<string, unknown>[] = args?.messages ?? [];
+  const finalOptions: DialogueOption[] = (args?.options ?? []).map((o, i) =>
+    mapToDialogueOption(o, i, stepId),
+  );
+
+  // If no options, add a default Continue option
+  if (finalOptions.length === 0) {
+    finalOptions.push({ id: "opt_continue", text: "Continue", isAiTrigger: true });
+  }
+
+  const messages: Message[] = finalMessages.map((m: any, i) => ({
+    id: `msg_${stepId}_${i}`,
+    speaker: m.speaker || "SYSTEM",
+    type: (m.type as Message["type"]) || "SYSTEM",
+    text: m.text || "",
+    metadata: m.metadata,
+  }));
+
+  // Persist
+  saveStep({
+    id: stepId,
+    parentStepId,
+    parentOptionId,
+    messages,
+    options: finalOptions,
+    worldSnapshot: getAllEntities() as unknown as Record<string, unknown>,
+    isGenerated: true,
+    isActive: true,
+  });
+
+  if (parentStepId && parentOptionId) {
+    updateOptionNextStepId(parentStepId, parentOptionId, stepId);
+  }
+
+  for (const msg of messages) {
+    try {
+      addMessage(msg);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("UNIQUE constraint failed")) {
+        console.error("Failed to save message to history:", message);
+      }
+    }
+  }
+
+  if (parentStepId) {
+    deactivateSiblingBranches(parentStepId, stepId);
+  }
+
+  return { stepId, messages, options: finalOptions };
 }

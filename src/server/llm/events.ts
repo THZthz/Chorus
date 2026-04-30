@@ -8,16 +8,17 @@ import type { StreamingMessage } from "@/shared/events";
  * The stream writer calls start/finish to manage the SSE lifecycle.
  */
 export class TurnEventEmitter {
-  private res: Response;
+  private res: Response | null;
 
   constructor(
-    res: Response,
+    res: Response | null,
     public readonly stepId: string,
   ) {
     this.res = res;
   }
 
   private send(event: string, data: unknown) {
+    if (!this.res) return;
     this.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   }
 
@@ -29,7 +30,7 @@ export class TurnEventEmitter {
 
   finish() {
     this.send("done", {});
-    this.res.end();
+    if (this.res) this.res.end();
   }
 
   // ── Tool-triggered events (immediately visible to user) ──

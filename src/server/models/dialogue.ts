@@ -164,3 +164,68 @@ export function setCurrentAlternative(stepId: string, alternativeId: string): vo
     );
   })();
 }
+
+// ── Tree navigation ──
+
+export function getRootStep(): DialogueStepParsed | null {
+  const row = db.prepare(
+    "SELECT * FROM dialogue_steps WHERE parent_step_id IS NULL ORDER BY created_at ASC LIMIT 1"
+  ).get() as DialogueStepRow | undefined;
+  return row ? parseStep(row) : null;
+}
+
+export function getLeafSteps(): DialogueStepParsed[] {
+  const rows = db.prepare(`
+    SELECT * FROM dialogue_steps ds
+    WHERE ds.is_active = 1
+      AND NOT EXISTS (
+        SELECT 1 FROM dialogue_steps child
+        WHERE child.parent_step_id = ds.id AND child.is_active = 1
+      )
+    ORDER BY ds.created_at ASC
+  `).all() as DialogueStepRow[];
+  return rows.map(parseStep);
+}
+
+export function getChildByOption(parentStepId: string, parentOptionId: string): DialogueStepParsed | null {
+  const row = db.prepare(
+    "SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND parent_option_id = ? AND is_active = 1 LIMIT 1"
+  ).get(parentStepId, parentOptionId) as DialogueStepRow | undefined;
+  return row ? parseStep(row) : null;
+}
+
+export function getAllActiveSteps(): DialogueStepParsed[] {
+  const rows = db.prepare(
+    "SELECT * FROM dialogue_steps WHERE is_active = 1 ORDER BY created_at ASC"
+  ).all() as DialogueStepRow[];
+  return rows.map(parseStep);
+}
+
+export function updateOptionNextStepId(stepId: string, optionId: string, nextStepId: string): void {
+  const step = getStep(stepId);
+  if (!step) return;
+  const updatedOptions = step.options.map(opt =>
+    opt.id === optionId ? { ...opt, nextStepId } : opt
+  );
+  db.prepare("UPDATE dialogue_steps SET options = ? WHERE id = ?")
+    .run(JSON.stringify(updatedOptions), stepId);
+}
+
+export function getTreeStats(): { totalSteps: number; rootId: string | null; leafIds: string[]; branchCount: number } {
+  const root = getRootStep();
+  const leaves = getLeafSteps();
+  const countRow = db.prepare(
+    "SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1"
+  ).get() as { count: number };
+
+  const branchesRow = db.prepare(
+    "SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1 AND parent_step_id IS NULL"
+  ).get() as { count: number };
+
+  return {
+    totalSteps: countRow.count,
+    rootId: root?.id ?? null,
+    leafIds: leaves.map(l => l.id),
+    branchCount: branchesRow.count,
+  };
+}

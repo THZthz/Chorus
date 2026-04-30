@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { FastForward, Trash2, RefreshCw } from "lucide-react";
+import { FastForward, Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup, useScroll, useTransform } from "motion/react";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { DialogueMessage } from "@/components/DialogueMessage";
@@ -21,6 +21,18 @@ export default function App() {
   const [lastStepId, setLastStepId] = useState<string | null>(null);
   const [hasBegun, setHasBegun] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+
+  // Replay mode state
+  const [mode, setMode] = useState<"live" | "replay">("live");
+  const [treeSteps, setTreeSteps] = useState<Record<string, {
+    id: string;
+    parentStepId: string | null;
+    parentOptionId: string | null;
+    messages: Message[];
+    options: DialogueOption[];
+  }>>({});
+  const [currentReplayStepId, setCurrentReplayStepId] = useState<string | null>(null);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollBarRef = useRef<HTMLDivElement>(null);
@@ -154,6 +166,12 @@ export default function App() {
   const handleOptionSelect = async (option: DialogueOption) => {
     if (isTyping || currentCheck) return;
 
+    // Replay mode — navigate existing tree, no LLM
+    if (mode === "replay") {
+      handleReplayOptionSelect(option);
+      return;
+    }
+
     let updatedHistory = history;
     const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 
@@ -239,6 +257,93 @@ export default function App() {
     setHasBegun(false);
     await fetch("/api/reset", { method: "POST" });
     window.location.reload();
+  };
+
+  // ── Replay mode ──
+
+  const enterReplayMode = async () => {
+    sseRef.current?.abort();
+    setIsTyping(false);
+    setStreamingMessages([]);
+    setCanRegenerate(false);
+
+    const res = await fetch("/api/dialogue/tree");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.root) return;
+
+    setTreeSteps(data.steps);
+    setCurrentReplayStepId(data.root.id);
+    setHistory(data.root.messages);
+    setDynamicOptions(data.root.options);
+    setHasBegun(true);
+    setMode("replay");
+  };
+
+  const exitReplayMode = async () => {
+    setMode("live");
+    setTreeSteps({});
+    setCurrentReplayStepId(null);
+
+    const res = await fetch("/api/history");
+    if (res.ok) {
+      const hist = await res.json();
+      if (hist.length > 0) {
+        setHistory(hist);
+        setHasBegun(true);
+        setDynamicOptions([]);
+      } else {
+        setHistory([]);
+        setHasBegun(false);
+        setDynamicOptions(null);
+      }
+    }
+  };
+
+  const handleReplayOptionSelect = async (option: DialogueOption) => {
+    // Check nextStepId first (fast path)
+    if (option.nextStepId && treeSteps[option.nextStepId]) {
+      const child = treeSteps[option.nextStepId];
+      setHistory(prev => [...prev, ...child.messages]);
+      setDynamicOptions(child.options);
+      setCurrentReplayStepId(child.id);
+      return;
+    }
+
+    // Fall back to server lookup
+    if (!currentReplayStepId) return;
+    const res = await fetch("/api/dialogue/traverse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stepId: currentReplayStepId, optionId: option.id }),
+    });
+    if (!res.ok) return;
+    const { child } = await res.json();
+    if (child) {
+      // Also add to local tree cache
+      setTreeSteps(prev => ({ ...prev, [child.id]: child }));
+      setHistory(prev => [...prev, ...child.messages]);
+      setDynamicOptions(child.options);
+      setCurrentReplayStepId(child.id);
+    }
+  };
+
+  // ── Bulk regenerate ──
+
+  const handleBulkRegenerate = async () => {
+    setRegeneratingAll(true);
+    try {
+      const res = await fetch("/api/regenerate-all", { method: "POST" });
+      const data = await res.json();
+      const succeeded = data.results?.filter((r: { success: boolean }) => r.success).length ?? 0;
+      const total = data.results?.length ?? 0;
+      console.log(`Regenerated ${succeeded}/${total} leaf steps`);
+    } catch (err) {
+      console.error("Bulk regenerate failed:", err);
+    } finally {
+      setRegeneratingAll(false);
+      window.location.reload();
+    }
   };
 
   // ── Auto-scroll ──
@@ -343,6 +448,63 @@ export default function App() {
               </motion.button>
             )}
           </AnimatePresence>
+
+          {/* Replay mode toggle */}
+          <AnimatePresence>
+            {mode === "live" && !isTyping && hasBegun && (
+              <motion.button
+                key="replay"
+                layout
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                onClick={enterReplayMode}
+                title="Replay Dialogue Tree"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
+              >
+                <GitBranch size={18} />
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {mode === "replay" && (
+              <motion.button
+                key="exit-replay"
+                layout
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                onClick={exitReplayMode}
+                title="Return to Live Mode"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
+              >
+                <RotateCcw size={18} />
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          {/* Bulk regenerate */}
+          <AnimatePresence>
+            {mode === "live" && canRegenerate && !isTyping && (
+              <motion.button
+                key="regenerate-all"
+                layout
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                onClick={handleBulkRegenerate}
+                disabled={regeneratingAll}
+                title="Regenerate All Leaf Steps"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-purple-400/30 rounded-full text-purple-400 hover:bg-purple-400 hover:text-white transition-all duration-300 shadow-xl disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={regeneratingAll ? "animate-spin" : ""} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </LayoutGroup>
       </div>
 
@@ -394,7 +556,7 @@ export default function App() {
 
           {/* Options */}
           <AnimatePresence mode="wait">
-            {!hasBegun && !isTyping && history.length === 0 && (
+            {!hasBegun && !isTyping && history.length === 0 && mode === "live" && (
               <DialogueOptions
                 key="begin"
                 options={[{ id: "begin", text: "BEGIN", isContinue: true }]}
@@ -406,9 +568,27 @@ export default function App() {
                 key="dynamic"
                 options={dynamicOptions}
                 onSelect={handleOptionSelect}
+                disabledOptionIds={
+                  mode === "replay"
+                    ? new Set(
+                        dynamicOptions
+                          .filter(o => !o.nextStepId && !o.isContinue)
+                          .map(o => o.id)
+                      )
+                    : undefined
+                }
               />
             )}
           </AnimatePresence>
+
+          {/* Replay mode indicator */}
+          {mode === "replay" && (
+            <div className="text-center mt-4 mb-8">
+              <span className="text-xs uppercase tracking-[0.3em] text-emerald-400/60 font-mono">
+                Replay Mode — Viewing Dialogue Tree
+              </span>
+            </div>
+          )}
 
           <div className="h-32" />
         </div>

@@ -1,10 +1,11 @@
 import express from "express";
-import { generateTurn } from "@/server/llm/index";
+import type { Message } from "@/types/dialogue";
+import { generateTurn, generateTurnBatch } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots } from "@/server/models/plot";
 import { getLlmLogs, clearLlmLogs, getConsoleLogs, addConsoleLog, clearConsoleLogs } from "@/server/models/debug";
-import { getStep, getChildSteps, getBranchPath, deactivateSiblingBranches, setBranchActive, saveAlternative, getAlternatives, setCurrentAlternative } from "@/server/models/dialogue";
+import { getStep, getChildSteps, getBranchPath, deactivateSiblingBranches, setBranchActive, saveAlternative, getAlternatives, setCurrentAlternative, getRootStep, getLeafSteps, getAllActiveSteps, getChildByOption, getTreeStats } from "@/server/models/dialogue";
 
 const apiRouter = express.Router();
 
@@ -180,6 +181,89 @@ apiRouter.post("/branches/activate", (req, res) => {
       deactivateSiblingBranches(parentStepId, stepId);
     }
     res.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Tree replay ──
+
+apiRouter.get("/dialogue/tree", (_req, res) => {
+  const root = getRootStep();
+  const allSteps = getAllActiveSteps();
+  const steps: Record<string, typeof allSteps[number]> = {};
+  for (const step of allSteps) {
+    steps[step.id] = step;
+  }
+  const stats = getTreeStats();
+  res.json({ root, steps, leafIds: stats.leafIds, stats });
+});
+
+apiRouter.post("/dialogue/traverse", (req, res) => {
+  const { stepId, optionId } = req.body;
+  if (!stepId || !optionId) {
+    res.status(400).json({ error: "stepId and optionId required" });
+    return;
+  }
+
+  // Check nextStepId on the option first for fast forward lookup
+  const step = getStep(stepId);
+  if (step) {
+    const option = step.options.find(o => o.id === optionId);
+    if (option?.nextStepId) {
+      const child = getStep(option.nextStepId);
+      res.json({ child: child || null });
+      return;
+    }
+  }
+
+  // Fall back to parent-option lookup
+  const child = getChildByOption(stepId, optionId);
+  res.json({ child: child || null });
+});
+
+// ── Bulk regenerate ──
+
+apiRouter.post("/regenerate-all", async (_req, res) => {
+  try {
+    const leaves = getLeafSteps();
+    const results: Array<{ leafId: string; success: boolean; newStepId?: string; error?: string }> = [];
+
+    for (const leaf of leaves) {
+      try {
+        // Archive current step as alternative
+        saveAlternative(leaf.id, leaf.messages, leaf.options);
+
+        // Reconstruct conversation history from branch path
+        const branchPath = getBranchPath(leaf.id);
+        const history: Message[] = [];
+        for (const step of branchPath) {
+          // Collect all messages along the branch
+          for (const msg of step.messages) {
+            if (!history.some(h => h.id === msg.id)) {
+              history.push({ ...msg, id: msg.id || `msg_${step.id}_${history.length}` });
+            }
+          }
+        }
+
+        const userInput = "Continue";
+
+        const { stepId, messages } = await generateTurnBatch(
+          userInput,
+          history,
+          leaf.parentStepId,
+          leaf.parentOptionId,
+        );
+
+        results.push({ leafId: leaf.id, success: true, newStepId: stepId });
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err);
+        results.push({ leafId: leaf.id, success: false, error });
+      }
+    }
+
+    res.json({ results });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: message });

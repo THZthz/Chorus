@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Terminal, X, ChevronDown, ChevronRight, RefreshCw, Trash2, Bug,
@@ -342,6 +342,29 @@ const LlmTraceViewer: React.FC = () => {
   };
 
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [requestHeight, setRequestHeight] = useState(300);
+  const [responseHeight, setResponseHeight] = useState(300);
+  const dragRef = useRef<{ target: 'request' | 'response'; startY: number; startHeight: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = e.clientY - dragRef.current.startY;
+      const newHeight = Math.max(80, dragRef.current.startHeight + delta);
+      if (dragRef.current.target === 'request') {
+        setRequestHeight(newHeight);
+      } else {
+        setResponseHeight(newHeight);
+      }
+    };
+    const onUp = () => { dragRef.current = null; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   useEffect(() => {
     fetchLogs();
@@ -488,14 +511,27 @@ const LlmTraceViewer: React.FC = () => {
                             </h3>
                             <CopyButton content={formatJson(log.request)} />
                           </div>
-                          <JsonExplorer data={log.request} isWrapping={isWrapping} className="max-h-[400px] overflow-auto" />
+                          <div style={{ maxHeight: `${requestHeight}px` }} className="overflow-auto debug-scrollbar">
+                            <JsonExplorer data={log.request} isWrapping={isWrapping} className="" />
+                          </div>
+                          <div
+                            className="h-6 -mx-5 mt-1 cursor-ns-resize flex items-center justify-center group/drag"
+                            onMouseDown={(e) => {
+                              dragRef.current = { target: 'request', startY: e.clientY, startHeight: requestHeight };
+                            }}
+                          >
+                            <div className="h-0.5 w-12 rounded-sm bg-white/10 group-hover/drag:bg-white/30 transition-colors" />
+                          </div>
                         </div>
 
                         {(() => {
-                          // Use structured steps from DB if available, otherwise fall back to parsing response JSON
+                          // Parse request for display
+                          let req: any = {};
+                          try { req = JSON.parse(log.request); } catch (e) {}
+
+                          // Build normalized steps with tool calls paired to their results
                           let steps: any[] = [];
                           if (log.steps && log.steps.length > 0) {
-                            // Reconstruct step content from structured data
                             steps = log.steps.map((s) => {
                               const toolCalls = s.tool_calls ? JSON.parse(s.tool_calls) : [];
                               const toolResults = s.tool_results ? JSON.parse(s.tool_results) : [];
@@ -506,152 +542,203 @@ const LlmTraceViewer: React.FC = () => {
                                 usage,
                                 text: s.text,
                                 duration_ms: s.duration_ms,
-                                content: [
-                                  ...(s.text ? [{ type: 'text', text: s.text }] : []),
-                                  ...toolCalls.map((tc: any) => ({ type: 'tool-call', ...tc })),
-                                  ...toolResults.map((tr: any) => ({ type: 'tool-result', ...tr })),
-                                ],
+                                toolCalls: toolCalls.map((tc: any) => {
+                                  const result = toolResults.find((r: any) => r.toolCallId === tc.toolCallId);
+                                  return { ...tc, output: result?.output };
+                                }),
                               };
                             });
                           } else {
                             // Fallback for old logs without structured steps
                             try {
                               const parsed = typeof log.response === 'string' ? JSON.parse(log.response || "{}") : log.response;
-                              steps = parsed?.steps || [];
+                              const rawSteps = parsed?.steps || [];
+                              steps = rawSteps.map((s: any) => {
+                                const contents = s.content || [];
+                                const toolCalls = contents.filter((c: any) => c.type === 'tool-call');
+                                const toolResults = contents.filter((c: any) => c.type === 'tool-result');
+                                return {
+                                  stepNumber: s.stepNumber,
+                                  finishReason: s.finishReason,
+                                  usage: s.usage,
+                                  text: s.text,
+                                  duration_ms: s.duration_ms,
+                                  toolCalls: toolCalls.map((tc: any) => {
+                                    const result = toolResults.find((r: any) => r.toolCallId === tc.toolCallId);
+                                    return { ...tc, output: result?.output ?? result?.result };
+                                  }),
+                                };
+                              });
                             } catch (e) {}
                           }
 
-                          // Step metrics table
-                          const stepMetrics = log.steps && log.steps.length > 0 ? log.steps : null;
-
                           if (steps.length === 0) return null;
 
+                          const totalTokens = steps.reduce((sum: number, s: any) => {
+                            return sum + (s.usage?.totalTokens || 0);
+                          }, 0);
+
                           return (
-                            <>
-                              {stepMetrics && (
-                                <div className="p-5 bg-[#0f1013]">
-                                  <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-4">
-                                    <div className="w-[1px] h-3 bg-[#61afef]" />
-                                    Step_Metrics
-                                  </h3>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-[10px] font-mono text-white/50 border-collapse">
-                                      <thead>
-                                        <tr className="text-white/30 uppercase tracking-wider">
-                                          <th className="text-left p-2 border-b border-white/10 font-normal">#</th>
-                                          <th className="text-left p-2 border-b border-white/10 font-normal">Finish</th>
-                                          <th className="text-right p-2 border-b border-white/10 font-normal">In</th>
-                                          <th className="text-right p-2 border-b border-white/10 font-normal">Out</th>
-                                          <th className="text-right p-2 border-b border-white/10 font-normal">Total</th>
-                                          <th className="text-right p-2 border-b border-white/10 font-normal">Time</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {stepMetrics.map((s: any) => {
-                                          const usage = typeof s.usage === 'string' ? JSON.parse(s.usage) : (s.usage || {});
-                                          return (
-                                            <tr key={s.id || s.step_number} className="hover:bg-white/[0.02]">
-                                              <td className="p-2 border-b border-white/5">{s.step_number}</td>
-                                              <td className="p-2 border-b border-white/5">{s.finish_reason || '-'}</td>
-                                              <td className="p-2 border-b border-white/5 text-right">{usage.inputTokens ?? '-'}</td>
-                                              <td className="p-2 border-b border-white/5 text-right">{usage.outputTokens ?? '-'}</td>
-                                              <td className="p-2 border-b border-white/5 text-right">{usage.totalTokens ?? '-'}</td>
-                                              <td className="p-2 border-b border-white/5 text-right">{s.duration_ms != null ? `${s.duration_ms}ms` : '-'}</td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
+                            <div className="p-5 bg-[#0f1013]">
+                              <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-6">
+                                <div className="w-[1px] h-3 bg-[#eab308]" />
+                                PARSED_EXCHANGE
+                              </h3>
+
+                              {/* Request summary */}
+                              <div className="mb-6 p-4 bg-white/[0.02] border border-white/5 rounded-sm">
+                                <div className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-3">Player Input</div>
+                                <div className="text-[12px] text-white/80 font-medium leading-relaxed mb-4 pl-3 border-l-2 border-[#61afef]/40 whitespace-pre-wrap break-words">
+                                  {req.userInput || '(no input)'}
                                 </div>
-                              )}
-
-                              <div className="p-5 bg-[#0f1013]">
-                                <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-6">
-                                  <div className="w-[1px] h-3 bg-[#eab308]" />
-                                  GM_Assistant_Communication
-                                </h3>
-                                <div className="space-y-6 font-mono text-[11px]">
-                                  {steps.map((step: any, stepIndex: number) => {
-                                    const contents = step.content || [];
-                                    const textBlocks = contents.filter((c: any) => c.type === 'text');
-                                    const toolCalls = contents.filter((c: any) => c.type === 'tool-call');
-                                    const toolResults = contents.filter((c: any) => c.type === 'tool-result');
-
-                                    return (
-                                      <div key={stepIndex} className="space-y-6">
-                                        {textBlocks.map((block: any, i: number) => (
-                                          block.text ? (
-                                            <div key={`text-${i}`} className="flex gap-4">
-                                              <div className="w-24 flex-shrink-0 text-white/30 text-right font-bold tracking-wider uppercase pt-1">GM (Thinks)</div>
-                                              <div className="flex-1 text-white/50 italic whitespace-pre-wrap break-words bg-white/[0.02] p-4 rounded-sm border border-white/5">{block.text}</div>
-                                            </div>
-                                          ) : null
-                                        ))}
-                                        {toolCalls.map((call: any, callIndex: number) => {
-                                          const result = toolResults.find((r: any) => r.toolCallId === call.toolCallId);
-                                          const isComm = call.toolName === 'communicateAssistant';
-
-                                          const args = call.args || call.input || {};
-                                          const out = result ? (result.output ?? result.result) : null;
-
-                                          return (
-                                            <div key={`call-${callIndex}`} className={`flex flex-col gap-3 p-4 border rounded-sm ${
-                                              isComm ? 'bg-[#61afef]/5 border-[#61afef]/20' : 'bg-white/[0.02] border-white/5'
-                                            }`}>
-                                              <div className="flex justify-between items-center">
-                                                <h4 className={`text-[10px] font-bold tracking-[0.15em] uppercase flex items-center gap-3 ${isComm ? 'text-[#61afef]' : 'text-white/40'}`}>
-                                                  <div className={`w-[1px] h-3 ${isComm ? 'bg-[#61afef]' : 'bg-white/10'}`} />
-                                                  GM ({call.toolName})
-                                                </h4>
-                                                <CopyButton content={JSON.stringify(args, null, 2)} />
-                                              </div>
-
-                                              <div className="mt-1 border-t border-white/5 bg-black/10">
-                                                {isComm ? (
-                                                  <div className="p-3 text-[#61afef] font-bold whitespace-pre-wrap break-words italic leading-relaxed text-[11px]">
-                                                    {args?.message}
-                                                  </div>
-                                                ) : (
-                                                  <JsonExplorer data={JSON.stringify(args)} isWrapping={isWrapping} className="max-h-[300px] overflow-auto" />
-                                                )}
-                                              </div>
-
-                                              {out && (
-                                                <div className="mt-4 pt-4 border-t border-white/10">
-                                                  <div className="flex justify-between items-center mb-2">
-                                                    <h4 className={`text-[10px] font-bold tracking-[0.15em] uppercase flex items-center gap-3 ${isComm ? 'text-[#c678dd]' : 'text-white/20'}`}>
-                                                      <div className={`w-[1px] h-3 ${isComm ? 'bg-[#c678dd]' : 'bg-white/10'}`} />
-                                                      {isComm ? 'Assistant' : 'System'}
-                                                    </h4>
-                                                    <CopyButton content={typeof out === 'string' ? out : JSON.stringify(out, null, 2)} />
-                                                  </div>
-                                                  <div className="border-t border-white/5 bg-black/10">
-                                                    {typeof out === 'string' ? (
-                                                      <div className={`p-3 whitespace-pre-wrap break-words leading-relaxed text-[11px] ${
-                                                        isComm && out.includes('SUCCESS')
-                                                          ? 'text-[#98c379]'
-                                                          : isComm && out.includes('ASSISTANT FEEDBACK')
-                                                            ? 'text-[#e06c75]'
-                                                            : 'text-white/40'
-                                                      }`}>
-                                                        {out}
-                                                      </div>
-                                                    ) : (
-                                                      <JsonExplorer data={JSON.stringify(out)} isWrapping={isWrapping} className="max-h-[200px] overflow-auto" />
-                                                    )}
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    );
-                                  })}
+                                <div className="flex flex-wrap gap-3 text-[10px] font-mono text-white/40">
+                                  <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
+                                    model: <span className="text-[#d19a66]">{req.model || 'unknown'}</span>
+                                  </span>
+                                  <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
+                                    history: <span className="text-[#d19a66]">{(req.history || []).length} msgs</span>
+                                  </span>
+                                  {req.tools && (
+                                    <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
+                                      tools: <span className="text-[#98c379]">{req.tools.join(', ')}</span>
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                            </>
+
+                              {/* Step timeline */}
+                              <div className="space-y-4">
+                                {steps.map((step: any, i: number) => (
+                                  <div key={i} className="relative pl-4 border-l-2 border-white/[0.06]">
+                                    {/* Step header */}
+                                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                                      <span className="text-[10px] font-bold text-white/40 font-mono tracking-wider">
+                                        Step {step.stepNumber ?? i + 1}
+                                      </span>
+                                      <span className={`px-1.5 py-0.5 rounded-sm text-[8px] font-bold uppercase tracking-widest border ${
+                                        step.finishReason === 'tool-calls'
+                                          ? 'bg-[#61afef]/5 text-[#61afef] border-[#61afef]/20'
+                                          : step.finishReason === 'stop'
+                                            ? 'bg-[#98c379]/5 text-[#98c379] border-[#98c379]/20'
+                                            : 'bg-white/5 text-white/40 border-white/10'
+                                      }`}>
+                                        {step.finishReason || 'unknown'}
+                                      </span>
+                                      {step.usage && (
+                                        <span className="text-[10px] font-mono text-white/25 tabular-nums">
+                                          {step.usage.inputTokens ?? 0} in · {step.usage.outputTokens ?? 0} out
+                                          {step.usage.totalTokens != null && ` · ${step.usage.totalTokens} tot`}
+                                        </span>
+                                      )}
+                                      {step.duration_ms != null && (
+                                        <span className="text-[10px] font-mono text-white/20 tabular-nums ml-auto">
+                                          {step.duration_ms}ms
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Text content */}
+                                    {step.text && (
+                                      <div className="mb-2 p-3 bg-white/[0.01] border border-white/5 rounded-sm text-[11px] text-white/50 italic whitespace-pre-wrap break-words leading-relaxed">
+                                        {step.text}
+                                      </div>
+                                    )}
+
+                                    {/* Tool calls */}
+                                    {step.toolCalls && step.toolCalls.length > 0 && step.toolCalls.map((call: any, ci: number) => {
+                                      const input = call.input || call.args || {};
+                                      const isGenDialogue = call.toolName === 'generateDialogueStep';
+                                      const isWorldUpdate = call.toolName === 'updateWorldState';
+                                      const isPlotStatus = call.toolName === 'updatePlotStatus';
+                                      const isCreatePlot = call.toolName === 'createPlot';
+
+                                      return (
+                                        <div key={ci} className="mb-2 p-3 bg-white/[0.02] border border-white/5 rounded-sm">
+                                          <div className="flex items-center justify-between mb-2">
+                                            <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.15em] flex items-center gap-2">
+                                              <div className={`w-[1px] h-3 ${
+                                                isGenDialogue ? 'bg-[#c678dd]' :
+                                                isWorldUpdate ? 'bg-[#61afef]' :
+                                                isPlotStatus ? 'bg-[#eab308]' :
+                                                isCreatePlot ? 'bg-[#98c379]' :
+                                                'bg-white/20'
+                                              }`} />
+                                              {call.toolName}
+                                            </h4>
+                                            <CopyButton content={JSON.stringify(input, null, 2)} />
+                                          </div>
+
+                                          <div className="text-[11px] text-white/50 font-mono">
+                                            {isGenDialogue && (
+                                              <div>
+                                                <div className="mb-2">
+                                                  <span className="text-white/40">{(input.messages || []).length} messages, </span>
+                                                  <span className="text-white/40">{(input.options || []).length} options</span>
+                                                </div>
+                                                <JsonExplorer data={JSON.stringify(input)} isWrapping={isWrapping} className="max-h-[300px] overflow-auto" />
+                                              </div>
+                                            )}
+                                            {isWorldUpdate && (
+                                              <div>
+                                                <div className="mb-2 text-white/40">
+                                                  {(input.updates || []).length} entities: <span className="text-[#d19a66]">{(input.updates || []).map((u: any) => u.id).join(', ')}</span>
+                                                </div>
+                                                <JsonExplorer data={JSON.stringify(input)} isWrapping={isWrapping} className="max-h-[200px] overflow-auto" />
+                                              </div>
+                                            )}
+                                            {isPlotStatus && (
+                                              <div>
+                                                <span className="text-[#d19a66]">{input.id}</span>
+                                                <span className="text-white/20"> → </span>
+                                                <span className="text-[#98c379]">{input.status}</span>
+                                              </div>
+                                            )}
+                                            {isCreatePlot && (
+                                              <div>
+                                                <div className="text-white/60">"{input.title}"</div>
+                                                {input.description && <div className="text-white/30 mt-1">{input.description}</div>}
+                                              </div>
+                                            )}
+                                            {!isGenDialogue && !isWorldUpdate && !isPlotStatus && !isCreatePlot && (
+                                              <JsonExplorer data={JSON.stringify(input)} isWrapping={isWrapping} className="max-h-[200px] overflow-auto" />
+                                            )}
+                                          </div>
+
+                                          {call.output != null && (
+                                            <div className="mt-2 pt-2 border-t border-white/5">
+                                              <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">Result</span>
+                                              <div className="mt-1">
+                                                {typeof call.output === 'string' ? (
+                                                  <div className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
+                                                    call.output.includes('SUCCESS') ? 'text-[#98c379]' :
+                                                    call.output.includes('ERROR') || call.output.includes('FEEDBACK') ? 'text-[#e06c75]' :
+                                                    'text-white/40'
+                                                  }`}>
+                                                    {call.output}
+                                                  </div>
+                                                ) : (
+                                                  <JsonExplorer data={JSON.stringify(call.output)} isWrapping={isWrapping} className="max-h-[150px] overflow-auto" />
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Exchange footer */}
+                              <div className="mt-6 pt-4 border-t border-white/5 flex items-center gap-4 text-[10px] font-mono text-white/30">
+                                <span className="tracking-wider uppercase">Total</span>
+                                <span className="tabular-nums">{totalTokens} tokens</span>
+                                <span className="text-white/10">·</span>
+                                <span className="tabular-nums">{log.duration}ms</span>
+                                <span className="text-white/10">·</span>
+                                <span className="tabular-nums">{steps.length} step{steps.length !== 1 ? 's' : ''}</span>
+                              </div>
+                            </div>
                           );
                         })()}
 
@@ -668,97 +755,96 @@ const LlmTraceViewer: React.FC = () => {
                               </span>
                               <span className="text-white/30 font-mono text-[9px]">{child.duration}ms</span>
                             </h3>
-                            {/* Child step metrics */}
-                            {child.steps && child.steps.length > 0 && (
-                              <div className="mb-4">
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-[10px] font-mono text-white/40 border-collapse">
-                                    <thead>
-                                      <tr className="text-white/20 uppercase tracking-wider">
-                                        <th className="text-left p-1.5 border-b border-white/5 font-normal">#</th>
-                                        <th className="text-left p-1.5 border-b border-white/5 font-normal">Finish</th>
-                                        <th className="text-right p-1.5 border-b border-white/5 font-normal">Total Tok</th>
-                                        <th className="text-right p-1.5 border-b border-white/5 font-normal">Time</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {child.steps.map((s: any) => {
-                                        const usage = typeof s.usage === 'string' ? JSON.parse(s.usage) : (s.usage || {});
-                                        return (
-                                          <tr key={s.id || s.step_number} className="hover:bg-white/[0.01]">
-                                            <td className="p-1.5 border-b border-white/5">{s.step_number}</td>
-                                            <td className="p-1.5 border-b border-white/5">{s.finish_reason || '-'}</td>
-                                            <td className="p-1.5 border-b border-white/5 text-right">{usage.totalTokens ?? '-'}</td>
-                                            <td className="p-1.5 border-b border-white/5 text-right">{s.duration_ms != null ? `${s.duration_ms}ms` : '-'}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            )}
-                            {/* Child tool communication */}
+
+                            {/* Compact step timeline */}
                             {(() => {
                               let childSteps: any[] = [];
                               if (child.steps && child.steps.length > 0) {
                                 childSteps = child.steps.map((s: any) => {
                                   const toolCalls = s.tool_calls ? JSON.parse(s.tool_calls) : [];
                                   const toolResults = s.tool_results ? JSON.parse(s.tool_results) : [];
+                                  const usage = s.usage ? JSON.parse(s.usage) : null;
                                   return {
                                     stepNumber: s.step_number,
-                                    content: [
-                                      ...(s.text ? [{ type: 'text', text: s.text }] : []),
-                                      ...toolCalls.map((tc: any) => ({ type: 'tool-call', ...tc })),
-                                      ...toolResults.map((tr: any) => ({ type: 'tool-result', ...tr })),
-                                    ],
+                                    finishReason: s.finish_reason,
+                                    usage,
+                                    duration_ms: s.duration_ms,
+                                    toolCalls: toolCalls.map((tc: any) => {
+                                      const result = toolResults.find((r: any) => r.toolCallId === tc.toolCallId);
+                                      return { ...tc, output: result?.output };
+                                    }),
                                   };
                                 });
                               } else {
                                 try {
                                   const parsed = typeof child.response === 'string' ? JSON.parse(child.response || "{}") : child.response;
-                                  childSteps = parsed?.steps || [];
+                                  const rawSteps = parsed?.steps || [];
+                                  childSteps = rawSteps.map((s: any) => {
+                                    const contents = s.content || [];
+                                    const toolCalls = contents.filter((c: any) => c.type === 'tool-call');
+                                    const toolResults = contents.filter((c: any) => c.type === 'tool-result');
+                                    return {
+                                      stepNumber: s.stepNumber,
+                                      finishReason: s.finishReason,
+                                      usage: s.usage,
+                                      duration_ms: s.duration_ms,
+                                      toolCalls: toolCalls.map((tc: any) => {
+                                        const result = toolResults.find((r: any) => r.toolCallId === tc.toolCallId);
+                                        return { ...tc, output: result?.output ?? result?.result };
+                                      }),
+                                    };
+                                  });
                                 } catch (e) {}
                               }
                               if (childSteps.length === 0) return null;
                               return (
-                                <div className="space-y-4 font-mono text-[11px]">
-                                  {childSteps.map((cStep: any, cIdx: number) => {
-                                    const cContents = cStep.content || [];
-                                    const cToolCalls = cContents.filter((c: any) => c.type === 'tool-call');
-                                    const cToolResults = cContents.filter((c: any) => c.type === 'tool-result');
-                                    return (
-                                      <div key={cIdx}>
-                                        {cToolCalls.map((call: any, ci: number) => {
-                                          const cResult = cToolResults.find((r: any) => r.toolCallId === call.toolCallId);
-                                          const cArgs = call.args || call.input || {};
-                                          return (
-                                            <div key={ci} className="flex flex-col gap-2 p-3 bg-white/[0.02] border border-white/5 rounded-sm">
-                                              <h4 className="text-[10px] font-bold tracking-[0.15em] uppercase text-purple-400/60">
-                                                {call.toolName}
-                                              </h4>
-                                              <JsonExplorer data={JSON.stringify(cArgs)} isWrapping={isWrapping} className="max-h-[200px] overflow-auto" />
-                                              {cResult && (
-                                                <div className="mt-2 pt-2 border-t border-white/5">
-                                                  <div className={`text-[11px] whitespace-pre-wrap break-words ${
-                                                    typeof cResult.output === 'string' && cResult.output.includes('SUCCESS')
-                                                      ? 'text-[#98c379]'
-                                                      : 'text-white/40'
-                                                  }`}>
-                                                    {typeof cResult.output === 'string' ? cResult.output : JSON.stringify(cResult.output ?? cResult.result, null, 2)}
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
+                                <div className="space-y-2">
+                                  {childSteps.map((cStep: any, cIdx: number) => (
+                                    <div key={cIdx} className="pl-3 border-l-2 border-white/[0.04]">
+                                      <div className="flex items-center gap-2 mb-1 text-[10px] font-mono flex-wrap">
+                                        <span className="text-white/30">Step {cStep.stepNumber ?? cIdx + 1}</span>
+                                        <span className="text-white/15">{cStep.finishReason}</span>
+                                        {cStep.usage?.totalTokens != null && (
+                                          <span className="text-white/15 tabular-nums">{cStep.usage.totalTokens} tok</span>
+                                        )}
+                                        {cStep.duration_ms != null && (
+                                          <span className="text-white/15 tabular-nums ml-auto">{cStep.duration_ms}ms</span>
+                                        )}
                                       </div>
-                                    );
-                                  })}
+                                      {cStep.toolCalls && cStep.toolCalls.map((call: any, ci: number) => {
+                                        const input = call.input || call.args || {};
+                                        return (
+                                          <div key={ci} className="mb-1 p-2 bg-white/[0.02] border border-white/5 rounded-sm">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider">{call.toolName}</span>
+                                              <CopyButton content={JSON.stringify(input, null, 2)} />
+                                            </div>
+                                            <div className="mt-1">
+                                              <JsonExplorer data={JSON.stringify(input)} isWrapping={isWrapping} className="max-h-[150px] overflow-auto" />
+                                            </div>
+                                            {call.output != null && (
+                                              <div className="mt-1 pt-1 border-t border-white/5">
+                                                {typeof call.output === 'string' ? (
+                                                  <div className={`text-[10px] whitespace-pre-wrap break-words ${
+                                                    call.output.includes('SUCCESS') ? 'text-[#98c379]' : 'text-white/40'
+                                                  }`}>
+                                                    {call.output}
+                                                  </div>
+                                                ) : (
+                                                  <JsonExplorer data={JSON.stringify(call.output)} isWrapping={isWrapping} className="max-h-[100px] overflow-auto" />
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ))}
                                 </div>
                               );
                             })()}
-                            {/* Child raw response */}
+
+                            {/* Raw response */}
                             <div className="mt-4 pt-4 border-t border-white/5">
                               <div className="flex justify-between items-center mb-2">
                                 <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">Response</span>
@@ -777,7 +863,17 @@ const LlmTraceViewer: React.FC = () => {
                             </h3>
                             <CopyButton content={formatJson(log.response)} />
                           </div>
-                          <JsonExplorer data={log.response} isWrapping={isWrapping} className="max-h-[400px] overflow-auto" />
+                          <div style={{ maxHeight: `${responseHeight}px` }} className="overflow-auto debug-scrollbar">
+                            <JsonExplorer data={log.response} isWrapping={isWrapping} className="" />
+                          </div>
+                          <div
+                            className="h-6 -mx-5 mt-1 cursor-ns-resize flex items-center justify-center group/drag"
+                            onMouseDown={(e) => {
+                              dragRef.current = { target: 'response', startY: e.clientY, startHeight: responseHeight };
+                            }}
+                          >
+                            <div className="h-0.5 w-12 rounded-sm bg-white/10 group-hover/drag:bg-white/30 transition-colors" />
+                          </div>
                         </div>
                       </div>
                     </motion.div>
@@ -1317,6 +1413,24 @@ const ConsoleViewer: React.FC = () => {
 export const DebugPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'logs' | 'console' | 'history' | 'world'>('logs');
+  const [panelWidth, setPanelWidth] = useState(640);
+  const panelDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!panelDragRef.current) return;
+      const delta = panelDragRef.current.startX - e.clientX;
+      const newWidth = Math.max(360, Math.min(1400, panelDragRef.current.startWidth + delta));
+      setPanelWidth(newWidth);
+    };
+    const onUp = () => { panelDragRef.current = null; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   const TabButton: React.FC<{
     id: 'logs' | 'console' | 'history' | 'world',
@@ -1366,8 +1480,18 @@ export const DebugPanel: React.FC = () => {
               initial={{ opacity: 0, x: 300 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 300 }}
-              className="fixed inset-y-0 right-0 w-full md:w-160 bg-[#0a0a0a] text-gray-100 shadow-2xl z-50 flex flex-col border-l border-white/10 font-mono text-sm"
+              className="fixed inset-y-0 right-0 bg-[#0a0a0a] text-gray-100 shadow-2xl z-50 flex flex-col border-l border-white/10 font-mono text-sm"
+              style={{ width: `${panelWidth}px`, maxWidth: '100%' }}
             >
+            {/* Left-edge resize handle */}
+            <div
+              className="hidden md:flex absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-ew-resize items-center justify-center group/panel z-20"
+              onMouseDown={(e) => {
+                panelDragRef.current = { startX: e.clientX, startWidth: panelWidth };
+              }}
+            >
+              <div className="w-0.5 h-12 rounded-sm bg-white/5 group-hover/panel:bg-white/20 transition-colors" />
+            </div>
             <div className="flex items-center justify-between px-4 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-md sticky top-0 z-10">
               <div className="flex items-center">
                 <TabButton id="logs" label="Logs" icon={<Terminal size={14} />} />

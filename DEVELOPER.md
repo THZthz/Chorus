@@ -224,7 +224,7 @@ These map to character stats in `src/types/entities.ts` and `src/context/Charact
 
 The Debug Panel (`DebugPanel.tsx`) provides 4 tabs:
 
-- **LLM Trace Viewer**: Raw JSON payloads, tool arguments, token usage per step
+- **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, and child trace nesting
 - **Console Logs**: Intercepted browser console output with filtering
 - **History Editor**: CodeMirror JSON editor for dialogue history
 - **World Editor**: Entity browser and JSON editor for world state

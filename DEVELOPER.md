@@ -1,177 +1,259 @@
 # Developer Documentation: Elysian Dialogue
 
-This document provides a comprehensive overview of the architecture, core systems, and data structures of the **Elysian Dialogue** application.
+Architecture, core systems, and data structures of the **Elysian Dialogue** application.
 
 ---
 
 ## 1. Project Overview
 
-**Elysian Dialogue** is a cinematic RPG-style dialogue engine designed for immersive narrative experiences. It features a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
+**Elysian Dialogue** is a cinematic RPG-style dialogue engine. Vertical-scrolling "thought stream" aesthetic, branching
+dialogue paths, and probabilistic skill checks influenced by character attributes.
 
-- **Stack:** React 19, TypeScript, Vite.
-- **Backend:** Express with SQLite (via `better-sqlite3`).
-- **Intelligence:** Single-LLM Game Master (Gemini/DeepSeek) with streaming SSE.
-- **Visuals:** Tailwind CSS (v4), `motion` for fluid animations, Lucide icons, and CodeMirror for debugging.
+- **Stack:** React 19, TypeScript, Vite
+- **Backend:** Express + SQLite (`better-sqlite3`)
+- **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
+- **Styling:** Tailwind CSS v4, `motion` (formly `framer-motion`), Lucide icons, CodeMirror (debug)
 
 ---
 
 ## 2. Project Structure
 
-```text
-.
-├── .env.example             # Template for environment variables (GEMINI_API_KEY)
-├── .gitignore
-├── CHANGELOG.md             # Detailed history of codebase modifications
-├── DEVELOPER.md             # Technical documentation (this file)
-├── ISSUES.md                # Known issues and bug tracking
-├── game.db                  # SQLite database (World state, Narrative history, Dialogue tree)
-├── index.html               # Frontend entry point
-├── package.json             # Manifest with scripts and dependencies
-├── tsconfig.json            # TypeScript build configuration
-├── vite.config.ts           # Vite development and build configuration
-└── src/
-    ├── client/              # Frontend (React)
-    │   ├── main.tsx         # App entry point
-    │   ├── App.tsx          # Main orchestrator with SSE streaming consumer
-    │   └── index.css        # Global styles (Tailwind + Custom noise filters)
-    ├── components/          # UI Components
-    │   ├── CharacterPanel.tsx   # Sidebar for stats and entity tracker
-    │   ├── DebugPanel.tsx       # Developer toolbox (SSE logs, DB editors, Console)
-    │   ├── DialogueMessage.tsx  # Message rendering (supports speaker types & links)
-    │   ├── DialogueOptions.tsx  # Player choices (Actions, Checks, Continue)
-    │   ├── DiceRoller.tsx       # Skill check simulation logic
-    │   ├── ObjectLink.tsx       # Hoverable text references in world
-    │   ├── ObjectTooltip.tsx    # Detailed entity lore popups
-    │   └── TypingIndicator.tsx  # NPC activity feedback
-    ├── context/             # React Contexts
-    │   └── CharacterContext.tsx # Global character attribute and stat state
-    ├── data/                # Static Data
-    │   └── sampleDialogue.ts    # Initial scenario/tutorial steps
-    ├── server/              # Backend (Node.js/Express)
-    │   ├── main.ts          # Server entry and Vite middleware setup
-    │   ├── api.ts           # REST API + SSE streaming endpoints
-    │   ├── db.ts            # SQLite connection and schema definitions
-    │   ├── LlmServiceBackend.ts # Single-LLM streaming GM logic (Prompting, Tools)
-    │   ├── LlmDebugIntegration.ts # LLM request/response/step logging
-    │   ├── sseEvents.ts     # SSE event emitter and narrative text parser
-    │   └── models/          # Database Abstractions
-    │       ├── debug.ts     # Logging queries (TRACES, CONSOLE)
-    │       ├── dialogue.ts  # Dialogue tree CRUD (steps, alternatives, branches)
-    │       ├── history.ts   # Narrative flow persistence (Message storage)
-    │       ├── plot.ts      # Objective tracking
-    │       └── world.ts     # Entity state management (Characters, Objects, Locations)
-    ├── services/            # Shared Logic
-    │   ├── ConsoleLogger.ts # System-wide console log interception
-    │   ├── LlmService.ts    # Frontend AI client (deprecated, used as mock)
-    │   ├── SseClient.ts     # Browser SSE streaming consumer & event dispatcher
-    │   ├── WorldManager.ts  # World state synchronization client
-    │   └── tools/           # LLM Tool Implementations (Vercel AI SDK compatible)
-    │       ├── updateWorldState.ts      # Commit entity changes directly
-    │       ├── updatePlotStatus.ts      # Commit plot status changes
-    │       └── createPlot.ts           # Create new plot/quest
-    └── types/               # TypeScript Definitions
-        ├── dialogue.ts      # Narrative system interfaces (Message, Option, Step)
-        └── entities.ts      # Character and actor models (Stats, Opinions)
+```
+src/
+├── client/
+│   ├── main.tsx              # React entry point
+│   ├── App.tsx               # Main orchestrator: state machine, SSE consumer
+│   └── index.css             # Global styles (Tailwind + noise filters)
+├── components/
+│   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser
+│   ├── DebugPanel.tsx        # Developer toolbox: LLM traces, console, editors
+│   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links)
+│   ├── DialogueOptions.tsx   # Player choices (actions, checks, continue)
+│   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat)
+│   ├── ObjectLink.tsx        # Hoverable entity references in text
+│   ├── ObjectTooltip.tsx     # Entity lore popup
+│   └── TypingIndicator.tsx   # Animated dots during AI generation
+├── context/
+│   └── CharacterContext.tsx  # Global character stats (React Context)
+├── server/
+│   ├── main.ts               # Express + Vite middleware entry
+│   ├── api.ts                # REST API + SSE streaming endpoints
+│   ├── db.ts                 # SQLite connection + schema (9 tables)
+│   ├── llm/
+│   │   ├── index.ts          # GameMaster: model init, system prompt, generateTurn()
+│   │   ├── tools.ts          # All 4 LLM tool definitions (once)
+│   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch
+│   │   └── debug.ts          # LLM request/response/step logging
+│   └── models/
+│       ├── debug.ts          # llm_logs + console_logs CRUD
+│       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives)
+│       ├── history.ts        # Narrative message persistence
+│       ├── plot.ts           # Quest/objective tracking
+│       └── world.ts          # Entity CRUD + seed data
+├── shared/
+│   └── events.ts             # SSE event type definitions (shared backend/frontend)
+├── services/
+│   ├── ConsoleLogger.ts      # Browser console.log interception
+│   ├── SseClient.ts          # Browser SSE streaming consumer
+│   └── WorldManager.ts       # Client-side world state cache
+└── types/
+    ├── dialogue.ts           # Message, DialogueOption, DialogueStep interfaces
+    └── entities.ts           # WorldEntity, Character, Location, WorldObject
 ```
 
 ---
 
-## 3. Architecture Overview
+## 3. Architecture: Event-Driven Tool Execution
 
-### 3.1 Event-Driven Streaming
+The LLM is a pure tool-calling Game Master. Every meaningful output comes through tool calls. The backend streams tool
+execution results to the frontend as typed SSE events.
 
-The application uses Server-Sent Events (SSE) to bridge the LLM's streaming output to the React UI.
+### 3.1 Turn Lifecycle
 
-**Lifecycle of a Turn:**
-1.  **Request:** Frontend sends `POST /api/chat/stream`.
-2.  **Streaming:** `LlmServiceBackend` uses `streamText` from `@ai-sdk`.
-3.  **Event Dispatch:** `TurnEventEmitter` pipes tokens and tool results to the client.
-    - `token`: Raw text chunks.
-    - `world_update` / `plot_update`: Emitted when tools execute.
-    - `options`: Emitted when the GM completes the `<OPTIONS>` block.
-    - `parsed`: Emitted after full turn completion with structured data.
-4.  **Consuming:** `SseClient` on the frontend updates local state (typing, messages).
+```
+POST /api/chat/stream
+        │
+        ▼
+┌────────────────────────────────────────────────┐
+│  GameMaster.generateTurn()                     │
+│                                                │
+│  streamText({                                  │
+│    tools: {                                    │
+│      updateWorldState,    ──► DB + SSE event   │
+│      updatePlotStatus,    ──► DB + SSE event   │
+│      createPlot,          ──► DB + SSE event   │
+│      generateDialogueStep ──► SSE streaming    │
+│    }                                           │
+│  })                                            │
+│                                                │
+│  fullStream iteration:                         │
+│    text-delta          → discard               │
+│    tool-input-delta    → progressive           │
+│    tool-call           → definitive            │
+└──────────┬─────────────────────────────────────┘
+           │ SSE events
+           ▼
+┌──────────────────────────────────────┐
+│  Frontend (App.tsx)                  │
+│                                      │
+│  State: idle → streaming → idle      │
+│                                      │
+│  Event handlers:                     │
+│    step_start          → begin turn  │
+│    streaming_messages  → progressive │
+│    world_update        → refresh     │
+│    plot_update/create  → refresh     │
+│    parsed              → final       │
+│    done                → end turn    │
+└──────────────────────────────────────┘
+```
 
-### 3.2 Automated State Management
+### 3.2 SSE Events
 
-The Game Master is "State-Aware". It receives the full World State and Active Plots in its system prompt. Tools allow it to:
-- **Update Entities:** Change opinions of NPCs on the fly based on player choices.
-- **Update Plots:** Move quests forward without developer intervention.
-- **Create Content:** Generate new plots if the player goes off-script.
+Defined in `src/shared/events.ts` (single source of truth for both backend and frontend):
 
-### 3.3 Structured Dialogue Generation
+| Event                | Direction       | Payload                 | Trigger                                   |
+|----------------------|-----------------|-------------------------|-------------------------------------------|
+| `step_start`         | Server → Client | `{ stepId }`            | Turn begins                               |
+| `streaming_messages` | Server → Client | `{ messages }`          | Progressive during `generateDialogueStep` |
+| `world_update`       | Server → Client | `{ entityId, changes }` | `updateWorldState` tool executes          |
+| `plot_update`        | Server → Client | `{ plotId, status }`    | `updatePlotStatus` tool executes          |
+| `plot_create`        | Server → Client | `{ plotId, title }`     | `createPlot` tool executes                |
+| `options`            | Server → Client | `{ options }`           | Options available mid-stream              |
+| `parsed`             | Server → Client | `{ messages, options }` | Final structured output                   |
+| `error`              | Server → Client | `{ message }`           | Error during generation                   |
+| `done`               | Server → Client | `{}`                    | Turn complete                             |
 
-Narrative output is generated via the `generateDialogueStep` tool, which enforces the `DialogueStep` schema. This ensures perfect consistency and type safety.
-- **Messages:** A sequence of structured message objects (speaker, type, text).
-- **Options:** Player choices, including hints and skill check conditions.
-- **Streaming:** The server partially parses the tool's JSON arguments to maintain a "Thought Stream" effect on the frontend.
+### 3.3 LLM Tools
 
-### 3.4 Dialogue Branching & Alternatives
+All 4 tools defined once in `src/server/llm/tools.ts`:
 
-- **Steps:** A single interaction "moment".
-- **Branches:** When a user selects an option, a new child step is created.
-- **Alternatives:** When a user clicks "Regenerate", the current step is archived as an alternative, and a new one is generated. The UI allows "swiping" between these versions.
+| Tool                   | Purpose                                           | DB Operation              | SSE Event                       |
+|------------------------|---------------------------------------------------|---------------------------|---------------------------------|
+| `updateWorldState`     | Mutate entity attributes, descriptions, opinions  | `updateEntity()`          | `world_update`                  |
+| `updatePlotStatus`     | Change plot status (PENDING→IN_PROGRESS→RESOLVED) | `updatePlotStatus()`      | `plot_update`                   |
+| `createPlot`           | Create a new quest/plot                           | `addPlot()`               | `plot_create`                   |
+| `generateDialogueStep` | Produce narrative messages + player options       | None (data via streaming) | `streaming_messages` + `parsed` |
 
-### 3.5 Pre-Generation (Asynchronous)
+### 3.4 Key Design Decisions
 
-After generating a step, the backend asynchronously pre-generates the next step for each `isAiTrigger` option. These are stored as child nodes. When a user clicks an option, the frontend first checks for a pre-generated child — if found, it loads instantly without an API call, significantly reducing perceived latency.
+1. **Tools defined once** — `src/server/llm/tools.ts` is the single source for all tool schemas/executors
+2. **LLM text output silently discarded** — the system prompt instructs tool-only output; any text deltas are ignored
+3. **No pre-generation** — turns are generated on-demand. Latency is acceptable for RPG pacing
+4. **No static dialogue** — all narrative is AI-generated. No `sampleDialogue.ts`
+5. **Shared event types** — `src/shared/events.ts` ensures backend/frontend event contracts match
+6. **App.tsx state machine** — clean `idle → streaming → idle` cycle instead of 11 scattered booleans
+
+### 3.5 Dialogue Branching & Alternatives
+
+- **Steps**: A single interaction "moment" stored in `dialogue_steps` table
+- **Branches**: When a user selects an option, a new child step is created
+- **Alternatives**: When a user clicks "Regenerate", the current step is archived as an alternative, and a new one is
+  generated. The UI allows "swiping" between versions
 
 ---
 
 ## 4. API Endpoints
 
-### 4.1 Chat & AI
-- `POST /api/chat/stream`: The primary entry point for AI turns.
-- `POST /api/regenerate`: Triggers a new generation for an existing step ID.
+### 4.1 Chat
+
+- `POST /api/chat/stream` — Primary AI turn (SSE streaming)
+- `POST /api/regenerate` — Archive current step as alternative, generate new response
 
 ### 4.2 Dialogue Tree
-- `GET /api/dialogue/:id`: Returns step data, including child options and alternative versions.
-- `GET /api/dialogue/:id/path`: Returns the full sequence of steps from root to the specified node.
 
-### 4.3 State & Debug
-- `GET /api/world`: Fetch all known entities.
-- `GET /api/plots`: Fetch all active and resolved plots.
-- `GET /api/debug/traces`: Fetch LLM interaction logs.
-- `GET /api/debug/logs`: Fetch intercepted console logs.
+- `GET /api/dialogue/:id` — Step + children + alternatives
+- `GET /api/dialogue/:id/children` — Child steps
+- `GET /api/dialogue/:id/path` — Branch path from root
+- `GET /api/dialogue/:id/alternatives` — Alternative versions
+- `POST /api/dialogue/:id/alternatives/:altId/select` — Switch to alternative
+- `POST /api/branches/activate` — Activate a branch (deactivates siblings)
 
----
+### 4.3 State
 
-## 5. Core Systems
+- `GET /api/world` — All entities
+- `POST /api/world/entity` — Upsert entity
+- `GET /api/plots` — All plots
+- `GET /api/history` / `POST /api/history` — Dialogue history
 
-### 5.1 Internal Voices (Ego Skills)
+### 4.4 Debug
 
-The game implements a Disco Elysium-style internal monologue. Recognized voices include:
-`LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`, `INLAND EMPIRE`, `SUGGESTION`, `HALF LIGHT`, `PHYSICAL INSTRUMENT`, `INTERFACING`, `ELECTROCHEMISTRY`.
-
-These map to **Character Stats** in `src/types/entities.ts` and are used for skill checks in `DiceRoller.tsx`.
-
-### 5.2 Skill Checks
-
-- **White Checks:** Repeatable after stat increases.
-- **Red Checks:** High-stakes, one-time opportunities (indicated by `isRed` in `DialogueOption`).
-- **Logic:** `2d6 + Stat >= Difficulty`.
-
-### 5.3 Debug Panel Features
-
-The Debug Panel (`/components/DebugPanel.tsx`) is a dual-purpose tool for designers and developers:
-- **World Editor:** Live-edit any entity's attributes or descriptions.
-- **History Editor:** Rewrite recent conversation history to steer the AI.
-- **Trace Viewer:** Inspect raw JSON payloads, tool arguments, and total token usage per step.
+- `GET /api/debug/logs` — LLM interaction logs
+- `GET /api/debug/console` — Browser console logs
+- `POST /api/reset` — Wipe DB and re-seed
 
 ---
 
-## 6. Development Workflow
+## 5. Database Schema
 
-### 6.1 Adding a New Voice/Skill
-1.  Update `CharacterStats` in `src/types/entities.ts`.
-2.  Update `VOICE_NAMES` in `src/server/sseEvents.ts`.
-3.  Add entry to the system prompt in `src/server/LlmServiceBackend.ts`.
-4.  Add default value in `src/context/CharacterContext.tsx`.
+9 tables in SQLite (`game.db`, WAL mode):
 
-### 6.2 Managing the World
-Initial world state is seeded in `src/server/models/world.ts`. To change starting locations or characters, modify the `entities` collection there.
+| Table                   | Purpose                                                              |
+|-------------------------|----------------------------------------------------------------------|
+| `entities`              | World entities (characters, locations, objects) with JSON attributes |
+| `history_messages`      | Persisted narrative message history                                  |
+| `plots`                 | Quest/objective tracking with status                                 |
+| `dialogue_steps`        | Generated dialogue tree nodes                                        |
+| `dialogue_alternatives` | Archived alternative versions (regeneration)                         |
+| `llm_logs`              | LLM request/response logging                                         |
+| `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings)              |
+| `console_logs`          | Intercepted browser console logs                                     |
+| `system_state`          | Key-value system state storage                                       |
 
-### 6.3 Building & Running
-- `npm run dev`: Starts the Express server with Vite middleware.
-- `npm run build`: Bundles the React client and prepares the server for production.
-- `npm run start`: Runs the production-ready server.
+---
+
+## 6. Core Systems
+
+### 6.1 Internal Voices (Ego Skills)
+
+Disco Elysium-style internal monologue. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`,
+`INLAND EMPIRE`, `SUGGESTION`, `HALF LIGHT`, `PHYSICAL INSTRUMENT`, `INTERFACING`, `ELECTROCHEMISTRY`.
+
+These map to character stats in `src/types/entities.ts` and `src/context/CharacterContext.tsx`. The system prompt in
+`src/server/llm/index.ts` instructs the LLM about voice personalities.
+
+### 6.2 Skill Checks
+
+- **White Checks**: Repeatable after stat increases
+- **Red Checks**: High-stakes, one-time opportunities (`isRed` in `DialogueOption`)
+- **Formula**: `2d6 + Stat >= Difficulty`
+- **Client-side**: Dice rolling and probability calculation happen in `DiceRoller.tsx`
+- **Narrative**: After a roll completes, the result is sent to the AI as user input for narrative integration
+
+### 6.3 Debug Panel
+
+The Debug Panel (`DebugPanel.tsx`) provides 4 tabs:
+
+- **LLM Trace Viewer**: Raw JSON payloads, tool arguments, token usage per step
+- **Console Logs**: Intercepted browser console output with filtering
+- **History Editor**: CodeMirror JSON editor for dialogue history
+- **World Editor**: Entity browser and JSON editor for world state
+
+---
+
+## 7. Development Workflow
+
+### 7.1 Adding a New Tool for the LLM
+
+1. Define the tool in `src/server/llm/tools.ts` using the `tool()` function from `ai`
+2. Register it in the `tools` object inside `generateTurn()` in `src/server/llm/index.ts`
+3. Update the system prompt if the LLM needs guidance on when to use it
+4. Add SSE event emission in the tool's `execute` function for immediate UI feedback
+
+### 7.2 Adding a New Voice/Skill
+
+1. Add the stat to `CharacterStats` in `src/types/entities.ts`
+2. Add default value in `src/context/CharacterContext.tsx`
+3. Add voice personality description to the system prompt in `src/server/llm/index.ts`
+
+### 7.3 Managing the World
+
+Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and
+`initialCharacters` records there.
+
+### 7.4 Running
+
+- `npm run dev` — Express + Vite dev server (port 3000)
+- `npm run build` — Production build
+- `npm run start` — Run production server
+- `npm run lint` — TypeScript type check

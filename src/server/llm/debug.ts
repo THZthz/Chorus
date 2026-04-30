@@ -1,27 +1,32 @@
 import { addLlmLog, addLlmStep, updateLlmLog } from "@/server/models/debug";
 
+interface StepData {
+  stepNumber: number;
+  finishReason: string;
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  toolCalls?: { toolCallId: string; toolName: string; input: unknown }[];
+  toolResults?: { toolCallId: string; toolName: string; output: unknown }[];
+  text?: string;
+}
+
+interface FinishData {
+  finishReason: string;
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  totalUsage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  steps?: unknown[];
+  text?: string;
+}
+
 export class LlmDebugIntegration {
   private logId: string;
   private startTime: number;
 
-  constructor(request: any, parentId?: string, label?: string) {
+  constructor(request: unknown, parentId?: string, label?: string) {
     this.logId = addLlmLog(request, parentId, label);
     this.startTime = Date.now();
   }
 
-  getLogId(): string {
-    return this.logId;
-  }
-
-  onStepFinish(event: {
-    stepNumber: number;
-    finishReason: string;
-    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-    toolCalls?: Array<{ toolCallId: string; toolName: string; input: unknown }>;
-    toolResults?: Array<{ toolCallId: string; toolName: string; output: unknown }>;
-    text?: string;
-    reasoningText?: string;
-  }): void {
+  onStepFinish(event: StepData) {
     addLlmStep({
       log_id: this.logId,
       step_number: event.stepNumber,
@@ -36,36 +41,30 @@ export class LlmDebugIntegration {
           toolCallId: tc.toolCallId,
           toolName: tc.toolName,
           input: tc.input,
-        }))
+        })),
       ),
       tool_results: JSON.stringify(
         (event.toolResults ?? []).map((tr) => ({
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           output: tr.output,
-        }))
+        })),
       ),
       text: event.text ?? null,
       duration_ms: Date.now() - this.startTime,
     });
   }
 
-  onFinish(event: {
-    finishReason: string;
-    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-    totalUsage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-    steps?: unknown[];
-    text?: string;
-  }): void {
-    updateLlmLog(this.logId, event, Date.now() - this.startTime, 'SUCCESS');
+  onFinish(event: FinishData) {
+    updateLlmLog(this.logId, event, Date.now() - this.startTime, "SUCCESS");
   }
 
-  onError(error: Error): void {
+  onError(error: Error) {
     updateLlmLog(
       this.logId,
       { error: error.message, stack: error.stack },
       Date.now() - this.startTime,
-      'ERROR'
+      "ERROR",
     );
   }
 }

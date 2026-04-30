@@ -1,17 +1,14 @@
 import type { DialogueOption } from "@/types/dialogue";
+import type { StreamingMessage } from "@/shared/events";
 
 export interface SseCallbacks {
-  onToken?: (token: string) => void;
-  onMessageStart?: (data: { speaker: string; type: string }) => void;
-  onMessageEnd?: () => void;
+  onStepStart?: (data: { stepId: string }) => void;
   onWorldUpdate?: (data: { entityId: string; changes: Record<string, unknown> }) => void;
   onPlotUpdate?: (data: { plotId: string; status: string }) => void;
   onPlotCreate?: (data: { plotId: string; title: string }) => void;
+  onStreamingMessages?: (messages: StreamingMessage[]) => void;
   onOptions?: (options: DialogueOption[]) => void;
-  onStreamingMessages?: (messages: { speaker: string; type: string; text: string }[]) => void;
-  onParsed?: (data: { messages: { speaker: string; type: string; text: string }[]; options: DialogueOption[] | null }) => void;
-  onStepStart?: (data: { stepId: string }) => void;
-  onStepEnd?: (data: { stepId: string }) => void;
+  onParsed?: (data: { messages: StreamingMessage[]; options: DialogueOption[] }) => void;
   onError?: (message: string) => void;
   onDone?: () => void;
 }
@@ -19,10 +16,14 @@ export interface SseCallbacks {
 export class SseClient {
   private abortController: AbortController | null = null;
 
+  get signal(): AbortSignal | null {
+    return this.abortController?.signal ?? null;
+  }
+
   async stream(
     url: string,
     body: Record<string, unknown>,
-    callbacks: SseCallbacks
+    callbacks: SseCallbacks,
   ): Promise<void> {
     this.abortController = new AbortController();
 
@@ -86,43 +87,31 @@ export class SseClient {
     }
   }
 
-  private dispatch(event: string, data: unknown, cb: SseCallbacks) {
+  private dispatch(event: string, data: any, cb: SseCallbacks) {
     switch (event) {
-      case "token":
-        cb.onToken?.((data as { token: string }).token);
-        break;
-      case "message_start":
-        cb.onMessageStart?.(data as { speaker: string; type: string });
-        break;
-      case "message_end":
-        cb.onMessageEnd?.();
+      case "step_start":
+        cb.onStepStart?.(data);
         break;
       case "world_update":
-        cb.onWorldUpdate?.(data as { entityId: string; changes: Record<string, unknown> });
+        cb.onWorldUpdate?.(data);
         break;
       case "plot_update":
-        cb.onPlotUpdate?.(data as { plotId: string; status: string });
+        cb.onPlotUpdate?.(data);
         break;
       case "plot_create":
-        cb.onPlotCreate?.(data as { plotId: string; title: string });
-        break;
-      case "options":
-        cb.onOptions?.((data as { options: DialogueOption[] }).options);
+        cb.onPlotCreate?.(data);
         break;
       case "streaming_messages":
-        cb.onStreamingMessages?.((data as { messages: { speaker: string; type: string; text: string }[] }).messages);
+        cb.onStreamingMessages?.(data.messages);
+        break;
+      case "options":
+        cb.onOptions?.(data.options);
         break;
       case "parsed":
-        cb.onParsed?.(data as { messages: { speaker: string; type: string; text: string }[]; options: DialogueOption[] | null });
-        break;
-      case "step_start":
-        cb.onStepStart?.(data as { stepId: string });
-        break;
-      case "step_end":
-        cb.onStepEnd?.(data as { stepId: string });
+        cb.onParsed?.(data);
         break;
       case "error":
-        cb.onError?.((data as { message: string }).message);
+        cb.onError?.(data.message);
         break;
       case "done":
         cb.onDone?.();

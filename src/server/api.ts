@@ -1,5 +1,5 @@
 import express from "express";
-import { generateAIResponse, generateStreamingResponse } from "@/server/LlmServiceBackend";
+import { generateTurn } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots } from "@/server/models/plot";
@@ -48,83 +48,32 @@ apiRouter.post("/history", (req, res) => {
   }
 });
 
-// ── Dialogue Tree ──
-
-apiRouter.get("/dialogue/:id", (req, res) => {
-  const step = getStep(req.params.id);
-  if (!step) {
-    res.status(404).json({ error: "Step not found" });
-    return;
-  }
-  const children = getChildSteps(req.params.id);
-  const alternatives = getAlternatives(req.params.id);
-  res.json({ step, children, alternatives });
-});
-
-apiRouter.get("/dialogue/:id/path", (req, res) => {
-  const path = getBranchPath(req.params.id);
-  res.json(path);
-});
-
-apiRouter.get("/dialogue/:id/children", (req, res) => {
-  const children = getChildSteps(req.params.id);
-  res.json(children);
-});
-
-// ── Chat (legacy, non-streaming) ──
-
-apiRouter.post("/chat", async (req, res) => {
-  try {
-    const { userInput, history } = req.body;
-
-    const lastMsg = history[history.length - 1];
-    if (lastMsg && lastMsg.type === "YOU") {
-      try {
-        addMessage(lastMsg);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes("UNIQUE constraint failed")) {
-          throw err;
-        }
-      }
-    }
-
-    const rawResponse = await generateAIResponse(userInput, history);
-    res.json(rawResponse);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("Chat error:", message);
-    res.status(500).json({ error: message });
-  }
-});
-
 // ── Chat (streaming SSE) ──
 
 apiRouter.post("/chat/stream", async (req, res) => {
   try {
     const { userInput, history, parentStepId, parentOptionId } = req.body;
 
-    // Save player message
-    const lastMsg = history[history.length - 1];
+    // Save the player's last YOU message to history
+    const lastMsg = history?.[history.length - 1];
     if (lastMsg && lastMsg.type === "YOU") {
       try {
         addMessage(lastMsg);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         if (!message.includes("UNIQUE constraint failed")) {
-          // Non-fatal for player messages
+          // Non-fatal
         }
       }
     }
 
-    await generateStreamingResponse(
+    await generateTurn(
       userInput,
-      history,
+      history ?? [],
       res,
       parentStepId ?? null,
-      parentOptionId ?? null
+      parentOptionId ?? null,
     );
-    // Response is handled inside generateStreamingResponse (SSE)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat stream error:", message);
@@ -154,21 +103,20 @@ apiRouter.post("/regenerate", async (req, res) => {
       return;
     }
 
-    // Save current as alternative
+    // Save current as alternative before regenerating
     saveAlternative(stepId, step.messages, step.options);
 
-    // Generate new response via SSE
-    const lastUserMsg = history
+    const lastYouMsg = history
       ? history.filter((m: { type: string }) => m.type === "YOU").pop()
       : null;
-    const userInput = lastUserMsg?.text ?? "Continue";
+    const userInput = lastYouMsg?.text ?? "Continue";
 
-    await generateStreamingResponse(
+    await generateTurn(
       `[REGENERATE] ${userInput}`,
       history ?? [],
       res,
       parentStepId ?? null,
-      parentOptionId ?? null
+      parentOptionId ?? null,
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -180,6 +128,29 @@ apiRouter.post("/regenerate", async (req, res) => {
       res.end();
     }
   }
+});
+
+// ── Dialogue Tree ──
+
+apiRouter.get("/dialogue/:id", (req, res) => {
+  const step = getStep(req.params.id);
+  if (!step) {
+    res.status(404).json({ error: "Step not found" });
+    return;
+  }
+  const children = getChildSteps(req.params.id);
+  const alternatives = getAlternatives(req.params.id);
+  res.json({ step, children, alternatives });
+});
+
+apiRouter.get("/dialogue/:id/path", (req, res) => {
+  const path = getBranchPath(req.params.id);
+  res.json(path);
+});
+
+apiRouter.get("/dialogue/:id/children", (req, res) => {
+  const children = getChildSteps(req.params.id);
+  res.json(children);
 });
 
 // ── Alternatives ──
@@ -245,6 +216,8 @@ apiRouter.post("/debug/console/clear", (_req, res) => {
   clearConsoleLogs();
   res.json({ success: true });
 });
+
+// ── Reset ──
 
 apiRouter.post("/reset", (_req, res) => {
   import("./db").then(({ default: db }) => {

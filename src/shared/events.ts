@@ -1,0 +1,85 @@
+import type { DialogueOption } from "@/types/dialogue";
+
+// ── SSE Event Payloads ──
+
+export interface StepStartEvent {
+  type: "step_start";
+  stepId: string;
+}
+
+export interface WorldUpdateEvent {
+  type: "world_update";
+  entityId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface PlotUpdateEvent {
+  type: "plot_update";
+  plotId: string;
+  status: string;
+}
+
+export interface PlotCreateEvent {
+  type: "plot_create";
+  plotId: string;
+  title: string;
+}
+
+export interface StreamingMessagesEvent {
+  type: "streaming_messages";
+  messages: StreamingMessage[];
+}
+
+export interface OptionsEvent {
+  type: "options";
+  options: DialogueOption[];
+}
+
+export interface ParsedEvent {
+  type: "parsed";
+  messages: StreamingMessage[];
+  options: DialogueOption[];
+}
+
+export interface ErrorEvent {
+  type: "error";
+  message: string;
+}
+
+export interface DoneEvent {
+  type: "done";
+}
+
+/** A message payload from the LLM before it gets a persistent ID. */
+export interface StreamingMessage {
+  speaker: string;
+  type: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type SseEventPayload =
+  | StepStartEvent
+  | WorldUpdateEvent
+  | PlotUpdateEvent
+  | PlotCreateEvent
+  | StreamingMessagesEvent
+  | OptionsEvent
+  | ParsedEvent
+  | ErrorEvent
+  | DoneEvent;
+
+export type SseEventType = SseEventPayload["type"];
+
+/** Map from event type string to its payload type. */
+export interface SseEventMap {
+  step_start: StepStartEvent;
+  world_update: WorldUpdateEvent;
+  plot_update: PlotUpdateEvent;
+  plot_create: PlotCreateEvent;
+  streaming_messages: StreamingMessagesEvent;
+  options: OptionsEvent;
+  parsed: ParsedEvent;
+  error: ErrorEvent;
+  done: DoneEvent;
+}

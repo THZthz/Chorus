@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Message } from '@/types/dialogue';
+import { Message, SpeakerType } from '@/types/dialogue';
 import { DieFace } from '@/components/DiceRoller';
 import { ObjectLink } from '@/components/ObjectLink';
 
@@ -9,131 +9,194 @@ interface Props {
   isStreaming?: boolean;
 }
 
+// Disco Elysium-style skill voice colors
+const VOICE_COLORS: Record<string, string> = {
+  'LOGIC':                '#4fb0c6',
+  'RHETORIC':             '#c6b050',
+  'EMPATHY':              '#c67080',
+  'PERCEPTION':           '#50c6a0',
+  'VOLITION':             '#e07840',
+  'ENDURANCE':            '#c05050',
+  'INLAND EMPIRE':        '#9081e3',
+  'SUGGESTION':           '#a0c650',
+  'HALF LIGHT':           '#e05858',
+  'PHYSICAL INSTRUMENT':  '#50c060',
+  'INTERFACING':          '#50b0c6',
+  'ELECTROCHEMISTRY':     '#9eff9e',
+};
+
+function hashNpcColor(name: string): string {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) {
+    h = ((h << 5) + h) ^ name.charCodeAt(i);
+  }
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue}, 48%, 66%)`;
+}
+
+function getSpeakerColor(speaker: string, type: SpeakerType): string {
+  if (type === 'INNER_VOICE') return VOICE_COLORS[speaker.toUpperCase()] ?? '#9081e3';
+  if (type === 'YOU') return '#d8d8d8';
+  if (type === 'SYSTEM') return '#6b7280';
+  return hashNpcColor(speaker);
+}
+
+const RollTooltip: React.FC<{ rollResult: NonNullable<Message['rollResult']> }> = ({ rollResult }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 5, scale: 0.95 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, scale: 0.95 }}
+    className="absolute bottom-full left-0 mb-4 p-4 bg-[#111] border border-white/10 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-50 min-w-[180px]"
+  >
+    <div className="absolute -bottom-2 left-4 w-4 h-4 bg-[#111] rotate-45 border-r border-b border-white/10" />
+    <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-3 border-b border-white/10 pb-2">Roll Result</div>
+    <div className="flex gap-2 mb-4 items-center">
+      {rollResult.dice.map((val, i) => (
+        <div key={i} className="w-10 h-10 rounded-sm border border-white/20 bg-[#222] flex items-center justify-center shadow-inner">
+          <DieFace value={val} size="md" />
+        </div>
+      ))}
+      <div className="text-[14px] font-bold text-[#4fb0c6]">+{rollResult.skillBonus ?? 0}</div>
+    </div>
+    <div className="space-y-1">
+      <div className="flex justify-between items-baseline">
+        <span className="text-[10px] text-gray-500 uppercase tracking-wider">Total</span>
+        <span className="text-[14px] font-bold text-white">{rollResult.total}</span>
+      </div>
+      <div className="flex justify-between items-baseline">
+        <span className="text-[10px] text-gray-500 uppercase tracking-wider">Difficulty</span>
+        <span className="text-[14px] font-bold text-white">{rollResult.difficulty}</span>
+      </div>
+      <div className={`pt-2 text-[12px] font-black uppercase tracking-[0.15em] ${rollResult.success ? 'text-[#9eff9e]' : 'text-[#ff6b6b]'}`}>
+        {rollResult.success ? 'Succeeded' : 'Failed'}
+      </div>
+    </div>
+  </motion.div>
+);
+
 export const DialogueMessage: React.FC<Props> = ({ message, isStreaming }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const isInnerVoice = message.type === 'INNER_VOICE';
-  const isYou = message.type === 'YOU';
   const isSystem = message.type === 'SYSTEM';
   const isNotification = message.type === 'NOTIFICATION';
 
-  const getSpeakerColor = () => {
-    if (isInnerVoice) return 'text-[#9081e3]'; // Light Purple
-    if (isSystem) return 'text-gray-400';
-    if (isNotification) return 'text-[#a3c2a3]'; // Muted Green
-    return 'text-white font-medium';
-  };
+  const speakerColor = getSpeakerColor(message.speaker, message.type);
 
   const renderText = (text: string) => {
-    // 1. Split for italics: *text*
-    // 2. Split for object links: [display](#id)
-    // We combine these into a robust parsing strategy
-
-    // First, identify all special patterns and split the text
-    // Regex matches either *italic* or [object](#id)
     const pattern = /(\*.*?\*|\[.*?\]\(#.*?\))/g;
     const parts = text.split(pattern);
-
     return parts.map((part, i) => {
-      // Handle Italics
       if (part.startsWith('*') && part.endsWith('*')) {
         return <em key={i} className="italic opacity-90">{part.slice(1, -1)}</em>;
       }
-
-      // Handle Object Links: [name](#id)
       const objMatch = part.match(/\[(.*?)\]\(#(.*?)\)/);
       if (objMatch) {
         const [, displayName, objectId] = objMatch;
         return <ObjectLink key={i} displayName={displayName} objectId={objectId} />;
       }
-
       return part;
     });
   };
 
-    const paragraphs = message.text.split(/(?:\r?\n){2,}/);
-
+  // Compact status-line for notifications
+  if (isNotification) {
     return (
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 5 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="font-serif leading-relaxed text-[18px]"
+        transition={{ duration: 0.3 }}
+        className="mb-5 flex items-center gap-4"
       >
-        {paragraphs.map((paragraphText, idx) => {
-          // If the text is empty or just whitespace after splitting, don't render an empty block.
-          // (Can happen if trailing newlines occur while streaming)
-          if (!paragraphText.trim()) return null;
+        <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+        <div className="flex items-center gap-2">
+          {message.skillCheck && (
+            <div
+              className="relative inline-block"
+              onMouseEnter={() => setIsTooltipVisible(true)}
+              onMouseLeave={() => setIsTooltipVisible(false)}
+            >
+              <span className={`text-[11px] font-mono cursor-help uppercase tracking-wider transition-opacity hover:opacity-100 ${message.skillCheck.success ? 'text-[#9eff9e]/70' : 'text-[#ff6b6b]/70'}`}>
+                [{message.skillCheck.skill} · {message.skillCheck.success ? 'Pass' : 'Fail'}]
+              </span>
+              <AnimatePresence>
+                {isTooltipVisible && message.rollResult && <RollTooltip rollResult={message.rollResult} />}
+              </AnimatePresence>
+            </div>
+          )}
+          <span className="text-[#a3c2a3]/60 text-[11px] uppercase tracking-[0.18em] font-mono">
+            {message.text}
+          </span>
+        </div>
+        <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+      </motion.div>
+    );
+  }
 
-          return (
-            <div key={idx} className="mb-6">
-              <div className="flex flex-wrap items-baseline gap-2">
-                {!isNotification && (
-                  <span className={`${getSpeakerColor()} uppercase tracking-wider text-[16px] mr-2`}>
-                    {message.speaker}
-                  </span>
-                )}
-                {/* Only show the skill check badge on the first paragraph */}
-                {idx === 0 && message.skillCheck && (
+  const paragraphs = message.text.split(/(?:\r?\n){2,}/);
+
+  // Inner voice: colored left border matches the voice's identity color
+  const borderStyle = isInnerVoice
+    ? { borderLeftColor: speakerColor + '55' }
+    : undefined;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className={`mb-8 font-serif ${isInnerVoice ? 'border-l-2 pl-4' : ''}`}
+      style={borderStyle}
+    >
+      {paragraphs.map((paragraphText, idx) => {
+        if (!paragraphText.trim()) return null;
+
+        return (
+          <div key={idx} className={idx > 0 ? 'mt-5' : ''}>
+
+            {/* Speaker label — shown only on the first paragraph */}
+            {idx === 0 && (
+              <div className="flex items-center gap-3 mb-2">
+                <span
+                  className="font-mono text-[23px] uppercase tracking-[0.03em] font-semibold leading-none"
+                  style={{ color: speakerColor }}
+                >
+                  {message.speaker}
+                </span>
+
+                {message.skillCheck && (
                   <div
                     className="relative inline-block"
                     onMouseEnter={() => setIsTooltipVisible(true)}
                     onMouseLeave={() => setIsTooltipVisible(false)}
                   >
-                    <span className="text-white/40 text-[14px] mr-2 uppercase cursor-help hover:text-white/80 transition-colors">
-                      [{message.skillCheck.difficulty}: <span className={message.skillCheck.success ? 'text-[#9eff9e]' : 'text-[#ff6b6b]'}>{message.skillCheck.success ? 'Success' : 'Failure'}</span>]
+                    <span className="text-white/35 text-[10px] font-mono uppercase cursor-help hover:text-white/65 transition-colors tracking-wider">
+                      [{message.skillCheck.difficulty}:{' '}
+                      <span className={message.skillCheck.success ? 'text-[#9eff9e]/70' : 'text-[#ff6b6b]/70'}>
+                        {message.skillCheck.success ? 'Pass' : 'Fail'}
+                      </span>]
                     </span>
-
                     <AnimatePresence>
-                      {isTooltipVisible && message.rollResult && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 5, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          className="absolute bottom-full left-0 mb-4 p-4 bg-[#111] border border-white/10 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-50 min-w-[180px]"
-                        >
-                          <div className="absolute -bottom-2 left-4 w-4 h-4 bg-[#111] rotate-45 border-r border-b border-white/10" />
-
-                          <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-3 border-b border-white/10 pb-2">Roll Result</div>
-
-                          <div className="flex gap-2 mb-4 items-center">
-                            {message.rollResult.dice.map((val, dIdx) => (
-                              <div key={dIdx} className="w-10 h-10 rounded-sm border border-white/20 bg-[#222] flex items-center justify-center shadow-inner">
-                                <DieFace value={val} size="md" />
-                              </div>
-                            ))}
-                            <div className="text-[14px] font-bold text-[#4fb0c6]">
-                              +{message.rollResult.skillBonus ?? 0}
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-baseline">
-                              <span className="text-[10px] text-gray-500 uppercase tracking-wider">Total</span>
-                              <span className="text-[14px] font-bold text-white">{message.rollResult.total}</span>
-                            </div>
-                            <div className="flex justify-between items-baseline">
-                              <span className="text-[10px] text-gray-500 uppercase tracking-wider">Difficulty</span>
-                              <span className="text-[14px] font-bold text-white">{message.rollResult.difficulty}</span>
-                            </div>
-                            <div className={`pt-2 text-[12px] font-black uppercase tracking-[0.15em] ${message.rollResult.success ? 'text-[#9eff9e]' : 'text-[#ff6b6b]'}`}>
-                              {message.rollResult.success ? 'Succeeded' : 'Failed'}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
+                      {isTooltipVisible && message.rollResult && <RollTooltip rollResult={message.rollResult} />}
                     </AnimatePresence>
                   </div>
                 )}
               </div>
-              <div className={`${isInnerVoice ? 'text-[#9081e3]' : isNotification ? 'text-[#a3c2a3]' : 'text-gray-100'} mt-1 whitespace-pre-wrap`}>
-                {renderText(paragraphText)}
-                {isStreaming && idx === paragraphs.length - 1 && (
-                  <span className="inline-block w-[2px] h-[1em] bg-[#ff6b35] ml-0.5 align-text-bottom animate-pulse" />
-                )}
-              </div>
+            )}
+
+            {/* Dialogue body */}
+            <div
+              className={`leading-[1.75] whitespace-pre-wrap ${isSystem ? 'text-[16px] text-gray-500' : 'text-[18px]'}`}
+              style={isInnerVoice ? { color: speakerColor } : { color: '#e8e8e8' }}
+            >
+              {renderText(paragraphText)}
+              {isStreaming && idx === paragraphs.length - 1 && (
+                <span className="inline-block w-[2px] h-[1em] bg-[#ff6b35] ml-0.5 align-text-bottom animate-pulse" />
+              )}
             </div>
-          );
-        })}
-      </motion.div>
-    );
+
+          </div>
+        );
+      })}
+    </motion.div>
+  );
 };

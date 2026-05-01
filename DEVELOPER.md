@@ -28,7 +28,7 @@ src/
 │   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser
 │   ├── DebugPanel.tsx        # Developer toolbox: LLM traces, console, editors
 │   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links)
-│   ├── DialogueOptions.tsx   # Player choices (actions, checks, continue)
+│   ├── DialogueOptions.tsx   # Player choices (actions, skill checks)
 │   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat)
 │   ├── ObjectLink.tsx        # Hoverable entity references in text
 │   ├── ObjectTooltip.tsx     # Entity lore popup

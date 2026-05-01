@@ -30,7 +30,6 @@ export interface DialogueOption {
   hintAfter?: string; // e.g. "[Charm her.]"
   nextStepId?: string; // Standard transition
   isAiTrigger?: boolean; // If true, request response from LLM
-  isContinue?: boolean; // If true, render as a large CONTINUE button
   check?: {
     skill: string;
     difficulty: number;

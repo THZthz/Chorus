@@ -216,9 +216,7 @@ export async function generateTurn(
     let toolRawArgs = "";
     let dialogueToolId: string | null = null;
     let finalMessages: Record<string, unknown>[] = [];
-    let finalOptions: DialogueOption[] = [
-      { id: "opt_continue", text: "Continue", isAiTrigger: true },
-    ];
+    let finalOptions: DialogueOption[] = [];
 
     for await (const chunk of result.fullStream) {
       switch (chunk.type) {
@@ -398,11 +396,6 @@ export async function generateTurnBatch(
   const finalOptions: DialogueOption[] = (args?.options ?? []).map((o, i) =>
     mapToDialogueOption(o, i, stepId),
   );
-
-  // If no options, add a default Continue option
-  if (finalOptions.length === 0) {
-    finalOptions.push({ id: "opt_continue", text: "Continue", isAiTrigger: true });
-  }
 
   const messages: Message[] = finalMessages.map((m: any, i) => ({
     id: `msg_${stepId}_${i}`,

@@ -37,7 +37,6 @@ const optionSchema = z.object({
   hintBefore: z.string().optional().describe("Hint shown before the text e.g. [Logic]"),
   hintAfter: z.string().optional().describe("Hint shown after the text e.g. [Red Check]"),
   isAiTrigger: z.boolean().optional().describe("Must be true if user selection triggers a new AI response."),
-  isContinue: z.boolean().optional().describe("If true, renders as a large primary 'CONTINUE' button."),
   check: skillCheckSchema.optional(),
 });
 
@@ -56,7 +55,6 @@ export function mapToDialogueOption(
     hintBefore: o.hintBefore as string | undefined,
     hintAfter: o.hintAfter as string | undefined,
     isAiTrigger: (o.isAiTrigger as boolean) ?? true,
-    isContinue: o.isContinue as boolean | undefined,
     check: check
       ? {
           skill: check.skill as string,

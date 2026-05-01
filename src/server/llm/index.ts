@@ -1,6 +1,6 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamText, generateText, type LanguageModel } from "ai";
+import { streamText, generateText, hasToolCall, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
@@ -156,7 +156,6 @@ export async function generateTurn(
 
   events.startStep();
 
-  const MAX_RETRIES = 3;
   const historyWindow = 10;
   const promptText = [
     `## Dialogue History (Last ${historyWindow})`,
@@ -177,181 +176,163 @@ export async function generateTurn(
 
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
-  let lastError: Error | null = null;
-  let prevAttemptToolCalls: string[] = [];
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    finalMessages = [];
-    finalOptions = [];
-    lastError = null;
+  const debugging = new LlmDebugIntegration(
+    {
+      model: modelName,
+      system: systemPrompt,
+      prompt: promptText,
+      userInput,
+      history,
+      tools: ["updateWorldState", "updatePlotStatus", "createPlot", "generateDialogueStep"],
+    },
+    undefined,
+    "GM",
+  );
 
-    const attemptToolCalls: string[] = [];
-
-    const retryNotice =
-      attempt > 0
-        ? prevAttemptToolCalls.length > 0
-          ? `SYSTEM ERROR: Your previous response called [${prevAttemptToolCalls.join(", ")}] but never called generateDialogueStep. The player is stuck — generateDialogueStep is REQUIRED as the final call. Call it now.\n\n`
-          : `SYSTEM ERROR: Your previous response did not call generateDialogueStep at all. The player is stuck — you MUST call generateDialogueStep. Call it now.\n\n`
-        : "";
-
-    const debugging = new LlmDebugIntegration(
-      {
-        model: modelName,
-        system: systemPrompt,
-        prompt: promptText,
-        userInput,
-        history,
-        tools: ["updateWorldState", "updatePlotStatus", "createPlot", "generateDialogueStep"],
+  try {
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      messages: [{ role: "user", content: promptText }],
+      tools: {
+        updateWorldState: createUpdateWorldStateTool(events),
+        updatePlotStatus: createUpdatePlotStatusTool(events),
+        createPlot: createCreatePlotTool(events),
+        generateDialogueStep: createGenerateDialogueStepTool(events),
       },
-      undefined,
-      attempt > 0 ? `GM-retry${attempt}` : "GM",
-    );
+      stopWhen: [hasToolCall("generateDialogueStep"), stepCountIs(4)],
+      prepareStep: ({ stepNumber, steps, messages }) => {
+        if (stepNumber === 0) return undefined;
+        const dialogueCalled = steps.some((s) =>
+          s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+        );
+        if (dialogueCalled) return undefined;
+        const allToolsUsed = steps.flatMap((s) => s.toolCalls?.map((tc) => tc.toolName) ?? []);
+        const errorMsg =
+          allToolsUsed.length > 0
+            ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`
+            : `ERROR: You did not call generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+        return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
+      },
+      onStepFinish: (event) => {
+        debugging.onStepFinish({
+          stepNumber: event.stepNumber ?? 0,
+          finishReason: event.finishReason ?? "unknown",
+          usage: event.usage,
+          toolCalls: event.toolCalls?.map((tc) => ({
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            input: tc.input,
+          })),
+          toolResults: event.toolResults?.map((tr) => ({
+            toolCallId: tr.toolCallId,
+            toolName: tr.toolName,
+            output: tr.output,
+          })),
+          text: event.text ?? undefined,
+        });
+      },
+      onFinish: (event) => {
+        debugging.onFinish({
+          finishReason: event.finishReason ?? "unknown",
+          usage: event.usage,
+          totalUsage: event.totalUsage,
+          steps: event.steps,
+          text: event.text ?? undefined,
+        });
+      },
+    });
 
-    try {
-      const result = streamText({
-        model,
-        system: systemPrompt,
-        messages: [{ role: "user", content: retryNotice + promptText }],
-        tools: {
-          updateWorldState: createUpdateWorldStateTool(events),
-          updatePlotStatus: createUpdatePlotStatusTool(events),
-          createPlot: createCreatePlotTool(events),
-          generateDialogueStep: createGenerateDialogueStepTool(events),
-        },
-        onStepFinish: (event) => {
-          for (const tc of event.toolCalls ?? []) {
-            attemptToolCalls.push(tc.toolName);
+    let toolRawArgs = "";
+    let dialogueToolId: string | null = null;
+
+    for await (const chunk of result.fullStream) {
+      switch (chunk.type) {
+        case "text-delta":
+          break;
+        case "tool-input-start":
+          if (chunk.toolName === "generateDialogueStep") {
+            dialogueToolId = chunk.id;
+            toolRawArgs = "";
           }
-          debugging.onStepFinish({
-            stepNumber: event.stepNumber ?? 0,
-            finishReason: event.finishReason ?? "unknown",
-            usage: event.usage,
-            toolCalls: event.toolCalls?.map((tc) => ({
-              toolCallId: tc.toolCallId,
-              toolName: tc.toolName,
-              input: tc.input,
-            })),
-            toolResults: event.toolResults?.map((tr) => ({
-              toolCallId: tr.toolCallId,
-              toolName: tr.toolName,
-              output: tr.output,
-            })),
-            text: event.text ?? undefined,
-          });
-        },
-        onFinish: (event) => {
-          debugging.onFinish({
-            finishReason: event.finishReason ?? "unknown",
-            usage: event.usage,
-            totalUsage: event.totalUsage,
-            steps: event.steps,
-            text: event.text ?? undefined,
-          });
-        },
-      });
+          break;
 
-      let toolRawArgs = "";
-      let dialogueToolId: string | null = null;
-
-      for await (const chunk of result.fullStream) {
-        switch (chunk.type) {
-          case "text-delta":
-            break;
-
-          case "tool-input-start":
-            if (chunk.toolName === "generateDialogueStep") {
-              dialogueToolId = chunk.id;
-              toolRawArgs = "";
+        case "tool-input-delta":
+          if (chunk.id === dialogueToolId) {
+            toolRawArgs += chunk.delta;
+            try {
+              const parsed = parsePartial(toolRawArgs);
+              if (parsed.messages && Array.isArray(parsed.messages)) {
+                finalMessages = parsed.messages;
+                events.emitStreamingMessages(
+                  finalMessages.map((m: any) => ({
+                    speaker: m.speaker || "SYSTEM",
+                    type: m.type || "SYSTEM",
+                    text: m.text || "",
+                    metadata: m.metadata,
+                  })),
+                );
+              }
+              if (parsed.options && Array.isArray(parsed.options)) {
+                finalOptions = parsed.options.map((o: any, i: number) => mapToDialogueOption(o, i, stepId));
+                if (finalOptions.length > 0) {
+                  events.emitOptions(finalOptions);
+                }
+              }
+            } catch {
+              // Partial JSON may not be parseable yet — that's fine
             }
-            break;
+          }
+          break;
 
-          case "tool-input-delta":
-            if (chunk.id === dialogueToolId) {
-              toolRawArgs += chunk.delta;
+        case "tool-call":
+          if (chunk.toolName === "generateDialogueStep") {
+            let args: Record<string, unknown> | null = null;
+
+            // SDK may leave input as a raw string when JSON parsing fails —
+            // try the more tolerant partial-json parser to recover.
+            // Also repair a known LLM bug: premature `}` after messages array
+            // e.g. {"messages": [...]}, "metadata": ... → {"messages": [...], "metadata": ...
+            if (typeof chunk.input === "string" && chunk.input.trim()) {
+              const repaired = chunk.input.replace(/\]\s*\}\s*,\s*"/g, '], "');
               try {
-                const parsed = parsePartial(toolRawArgs);
-                if (parsed.messages && Array.isArray(parsed.messages)) {
-                  finalMessages = parsed.messages;
-                  events.emitStreamingMessages(
-                    finalMessages.map((m: any) => ({
-                      speaker: m.speaker || "SYSTEM",
-                      type: m.type || "SYSTEM",
-                      text: m.text || "",
-                      metadata: m.metadata,
-                    })),
-                  );
-                }
-                if (parsed.options && Array.isArray(parsed.options)) {
-                  finalOptions = parsed.options.map((o: any, i: number) =>
-                    mapToDialogueOption(o, i, stepId),
-                  );
-                  if (finalOptions.length > 0) {
-                    events.emitOptions(finalOptions);
-                  }
-                }
+                args = parsePartial(repaired) as Record<string, unknown>;
               } catch {
-                // Partial JSON may not be parseable yet — that's fine
-              }
-            }
-            break;
-
-          case "tool-call":
-            if (chunk.toolName === "generateDialogueStep") {
-              let args: Record<string, unknown> | null = null;
-
-              // SDK may leave input as a raw string when JSON parsing fails —
-              // try the more tolerant partial-json parser to recover.
-              // Also repair a known LLM bug: premature `}` after messages array
-              // e.g. {"messages": [...]}, "metadata": ... → {"messages": [...], "metadata": ...
-              if (typeof chunk.input === "string" && chunk.input.trim()) {
-                const repaired = chunk.input.replace(/\]\s*\}\s*,\s*"/g, '], "');
                 try {
-                  args = parsePartial(repaired) as Record<string, unknown>;
+                  args = parsePartial(chunk.input) as Record<string, unknown>;
                 } catch {
-                  try {
-                    args = parsePartial(chunk.input) as Record<string, unknown>;
-                  } catch {
-                    console.warn(`[generateTurn] parsePartial recovery failed for tool-call input`);
-                  }
+                  console.warn(`[generateTurn] parsePartial recovery failed for tool-call input`);
                 }
-              } else if (chunk.input && typeof chunk.input === "object") {
-                args = chunk.input as Record<string, unknown>;
               }
+            } else if (chunk.input && typeof chunk.input === "object") {
+              args = chunk.input as Record<string, unknown>;
+            }
 
-              if (args) {
-                if (args.messages && Array.isArray(args.messages)) {
-                  finalMessages = args.messages as Record<string, unknown>[];
-                }
-                if (args.options && Array.isArray(args.options)) {
-                  finalOptions = (args.options as Record<string, unknown>[]).map(
-                    (o, i) => mapToDialogueOption(o, i, stepId),
-                  );
-                }
+            if (args) {
+              if (args.messages && Array.isArray(args.messages)) {
+                finalMessages = args.messages as Record<string, unknown>[];
+              }
+              if (args.options && Array.isArray(args.options)) {
+                finalOptions = (args.options as Record<string, unknown>[]).map(
+                  (o, i) => mapToDialogueOption(o, i, stepId),
+                );
               }
             }
-            break;
+          }
+          break;
         }
       }
-
-      if (finalMessages.length > 0) {
-        break; // success — exit retry loop
-      }
-
-      prevAttemptToolCalls = attemptToolCalls;
-      console.warn(`[generateTurn] attempt ${attempt + 1}/${MAX_RETRIES}: no messages generated (tools called: [${attemptToolCalls.join(", ")}]), retrying...`);
-    } catch (error: unknown) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      debugging.onError(lastError);
-      prevAttemptToolCalls = attemptToolCalls;
-      console.warn(`[generateTurn] attempt ${attempt + 1}/${MAX_RETRIES} errored: ${lastError.message}`);
-    }
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    debugging.onError(err);
+    events.emitError(err.message);
+    events.finish();
+    return;
   }
 
   if (finalMessages.length === 0) {
-    const errMsg = lastError
-      ? `All ${MAX_RETRIES} generation attempts failed: ${lastError.message}`
-      : `Failed to generate valid dialogue after ${MAX_RETRIES} attempts`;
-    events.emitError(errMsg);
+    events.emitError("Failed to generate valid dialogue");
     events.finish();
     return;
   }

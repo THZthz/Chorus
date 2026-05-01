@@ -114,12 +114,18 @@ GOOD example (action-oriented, same scene): [Call generateDialogueStep], [Call u
 ---
 
 ## WORLD STATE
+
+\`\`\`json
 ${JSON.stringify(worldState, null, 2)}
+\`\`\`
 
 ---
 
 ## PLOTS
+
+\`\`\`json
 ${JSON.stringify(activePlots, null, 2)}
+\`\`\`
 
 Progress these plots when narratively appropriate. Create new plots if needed.
 

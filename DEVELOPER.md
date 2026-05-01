@@ -6,8 +6,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 
 ## 1. Project Overview
 
-**Elysian Dialogue** is a cinematic RPG-style dialogue engine. Vertical-scrolling "thought stream" aesthetic, branching
-dialogue paths, and probabilistic skill checks influenced by character attributes.
+**Elysian Dialogue** is a cinematic RPG-style dialogue engine. Vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
 - **Stack:** React 19, TypeScript, Vite
 - **Backend:** Express + SQLite (`better-sqlite3`)
@@ -65,8 +64,7 @@ src/
 
 ## 3. Architecture: Event-Driven Tool Execution
 
-The LLM is a pure tool-calling Game Master. Every meaningful output comes through tool calls. The backend streams tool
-execution results to the frontend as typed SSE events.
+The LLM is a pure tool-calling Game Master. Every meaningful output comes through tool calls. The backend streams tool execution results to the frontend as typed SSE events.
 
 ### 3.1 Turn Lifecycle
 
@@ -147,25 +145,18 @@ All 4 tools defined once in `src/server/llm/tools.ts`:
 ### 3.5 Dialogue Branching & Alternatives
 
 - **Steps**: A single interaction "moment" stored in `dialogue_steps` table
-- **Branches**: When a user selects an option, a new child step is created. The parent option's `nextStepId` is updated
-  to link forward to the child, creating a doubly-linked tree (parent → child via `parent_step_id`, child ← parent via
-  `nextStepId` on the option).
-- **Alternatives**: When a user clicks "Regenerate", the current step is archived as an alternative, and a new one is
-  generated. The UI allows "swiping" between versions
+- **Branches**: When a user selects an option, a new child step is created. The parent option's `nextStepId` is updated to link forward to the child, creating a doubly-linked tree (parent → child via `parent_step_id`, child ← parent via `nextStepId` on the option).
+- **Alternatives**: When a user clicks "Regenerate", the current step is archived as an alternative, and a new one is generated. The UI allows "swiping" between versions
 
 ### 3.6 Dialogue Replay
 
 Replay mode allows navigating the existing dialogue tree without calling the LLM. Key behaviors:
 
-- **Enter replay**: Click the Git Branch button (visible after starting a game). Fetches the full tree from
-  `GET /api/dialogue/tree` and loads the root step.
-- **Navigation**: Clicking an option navigates to its child step (using `nextStepId` for fast lookup, falling back to
-  `POST /api/dialogue/traverse`). Messages are appended to the visible history.
+- **Enter replay**: Click the Git Branch button (visible after starting a game). Fetches the full tree from `GET /api/dialogue/tree` and loads the root step.
+- **Navigation**: Clicking an option navigates to its child step (using `nextStepId` for fast lookup, falling back to `POST /api/dialogue/traverse`). Messages are appended to the visible history.
 - **Unexplored branches**: Options without a child step are dimmed and unclickable — they were never explored.
 - **Exit replay**: Click the Return button to restore the live session from `history_messages`.
-- **Bulk regenerate**: The purple refresh button calls `POST /api/regenerate-all` to regenerate all leaf steps at once,
-  saving each current version as an alternative first. Uses `generateTurnBatch()` (non-streaming `generateText()`) under
-  the hood.
+- **Bulk regenerate**: The purple refresh button calls `POST /api/regenerate-all` to regenerate all leaf steps at once, saving each current version as an alternative first. Uses `generateTurnBatch()` (non-streaming `generateText()`) under the hood.
 
 ---
 
@@ -225,11 +216,9 @@ Replay mode allows navigating the existing dialogue tree without calling the LLM
 
 ### 6.1 Internal Voices (Ego Skills)
 
-Disco Elysium-style internal monologue. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`,
-`INLAND EMPIRE`, `SUGGESTION`, `HALF LIGHT`, `PHYSICAL INSTRUMENT`, `INTERFACING`, `ELECTROCHEMISTRY`.
+Disco Elysium-style internal monologue. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`, `INLAND EMPIRE`, `SUGGESTION`, `HALF LIGHT`, `PHYSICAL INSTRUMENT`, `INTERFACING`, `ELECTROCHEMISTRY`.
 
-These map to character stats in `src/types/entities.ts` and `src/context/CharacterContext.tsx`. The system prompt in
-`src/server/llm/index.ts` instructs the LLM about voice personalities.
+These map to character stats in `src/types/entities.ts` and `src/context/CharacterContext.tsx`. The system prompt in `src/server/llm/index.ts` instructs the LLM about voice personalities.
 
 ### 6.2 Skill Checks
 
@@ -254,7 +243,7 @@ The Debug Panel (`DebugPanel.tsx`) provides 4 tabs:
 
 ### 7.1 Adding a New Tool for the LLM
 
-1. Define the tool in `src/server/llm/tools.ts` using the `tool()` function from `ai`
+1. Define the tool in `src/server/llm/tools.ts` using the `tool()` function from `@ai-sdk`
 2. Register it in the `tools` object inside `generateTurn()` in `src/server/llm/index.ts`
 3. Update the system prompt if the LLM needs guidance on when to use it
 4. Add SSE event emission in the tool's `execute` function for immediate UI feedback
@@ -267,12 +256,4 @@ The Debug Panel (`DebugPanel.tsx`) provides 4 tabs:
 
 ### 7.3 Managing the World
 
-Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and
-`initialCharacters` records there.
-
-### 7.4 Running
-
-- `npm run dev` — Express + Vite dev server (port 3000)
-- `npm run build` — Production build
-- `npm run start` — Run production server
-- `npm run lint` — TypeScript type check
+Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and `initialCharacters` records there.

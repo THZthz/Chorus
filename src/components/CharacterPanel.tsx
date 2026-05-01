@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { User, ChevronRight, ChevronLeft, MapPin, Box, Heart } from 'lucide-react';
-import { useCharacter } from '@/context/CharacterContext';
-import { CharacterStats } from '@/types/entities';
-import { worldManager } from '@/services/WorldManager';
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { User, ChevronRight, ChevronLeft, MapPin, Box, Heart } from "lucide-react";
+import { useCharacter } from "@/context/CharacterContext";
+import { CharacterStats } from "@/types/entities";
+import { worldManager } from "@/services/WorldManager";
 
 export const CharacterPanel: React.FC = () => {
   const { character } = useCharacter();
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'STATS' | 'WORLD'>('STATS');
+  const [activeTab, setActiveTab] = useState<"STATS" | "WORLD">("STATS");
 
   const stats = Object.entries(character.stats) as [keyof CharacterStats, number][];
   const worldEntities = worldManager.getAllEntities();
@@ -46,10 +46,10 @@ export const CharacterPanel: React.FC = () => {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ x: '100%' }}
+            initial={{ x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className="fixed top-0 right-0 h-full w-80 bg-[#0f0f0f] border-l border-[#ff6b35]/20 z-[52] shadow-2xl p-8 flex flex-col"
           >
             <div className="flex items-center justify-between mb-8">
@@ -67,21 +67,21 @@ export const CharacterPanel: React.FC = () => {
             {/* Tabs */}
             <div className="flex border-b border-white/10 mb-8">
               <button
-                onClick={() => setActiveTab('STATS')}
-                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none ${activeTab === 'STATS' ? 'text-[#ff6b35] border-b-2 border-[#ff6b35]' : 'text-gray-500 hover:text-gray-300'}`}
+                onClick={() => setActiveTab("STATS")}
+                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none ${activeTab === "STATS" ? "text-[#ff6b35] border-b-2 border-[#ff6b35]" : "text-gray-500 hover:text-gray-300"}`}
               >
                 Attributes
               </button>
               <button
-                onClick={() => setActiveTab('WORLD')}
-                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none ${activeTab === 'WORLD' ? 'text-[#ff6b35] border-b-2 border-[#ff6b35]' : 'text-gray-500 hover:text-gray-300'}`}
+                onClick={() => setActiveTab("WORLD")}
+                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none ${activeTab === "WORLD" ? "text-[#ff6b35] border-b-2 border-[#ff6b35]" : "text-gray-500 hover:text-gray-300"}`}
               >
                 World
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto no-scrollbar space-y-8">
-              {activeTab === 'STATS' ? (
+              {activeTab === "STATS" ? (
                 <>
                   {/* Identity */}
                   <div>
@@ -89,8 +89,12 @@ export const CharacterPanel: React.FC = () => {
                       Identity
                     </div>
                     <div className="p-4 bg-[#1a1a1a] border border-white/5 rounded-sm">
-                      <div className="text-[18px] font-sans text-white mb-1">{character.displayName}</div>
-                      <div className="text-[12px] text-gray-500 uppercase tracking-wider">Wandering Outsider</div>
+                      <div className="text-[18px] font-sans text-white mb-1">
+                        {character.displayName}
+                      </div>
+                      <div className="text-[12px] text-gray-500 uppercase tracking-wider">
+                        Wandering Outsider
+                      </div>
                     </div>
                   </div>
 
@@ -104,7 +108,7 @@ export const CharacterPanel: React.FC = () => {
                         <div key={name} className="group cursor-default">
                           <div className="flex justify-between items-end mb-1">
                             <span className="text-[12px] uppercase tracking-widest text-gray-400 group-hover:text-white transition-colors">
-                              {name.replace(/_/g, ' ')}
+                              {name.replace(/_/g, " ")}
                             </span>
                             <span className="text-[14px] font-mono text-white font-bold">
                               {value}
@@ -131,23 +135,36 @@ export const CharacterPanel: React.FC = () => {
                     </div>
                     <div className="space-y-4">
                       {worldEntities.map((entity) => {
-                        const Icon = entity.type === 'CHARACTER' ? User : entity.type === 'LOCATION' ? MapPin : Box;
+                        const Icon =
+                          entity.type === "CHARACTER"
+                            ? User
+                            : entity.type === "LOCATION"
+                              ? MapPin
+                              : Box;
                         return (
-                          <div key={entity.id} className="p-3 bg-[#1a1a1a] border border-white/5 rounded-sm">
+                          <div
+                            key={entity.id}
+                            className="p-3 bg-[#1a1a1a] border border-white/5 rounded-sm"
+                          >
                             <div className="flex items-center gap-2 mb-2">
                               <Icon size={14} className="text-gray-500" />
-                              <span className="text-[14px] font-sans text-white font-bold">{entity.displayName}</span>
+                              <span className="text-[14px] font-sans text-white font-bold">
+                                {entity.displayName}
+                              </span>
                             </div>
-                            <p className="text-[11px] text-gray-400 line-clamp-2">{entity.shortDescription}</p>
+                            <p className="text-[11px] text-gray-400 line-clamp-2">
+                              {entity.shortDescription}
+                            </p>
 
-                            {entity.type === 'CHARACTER' && entity.opinions && (
+                            {entity.type === "CHARACTER" && entity.opinions && (
                               <div className="mt-2 pt-2 border-t border-white/5">
                                 <div className="flex items-center gap-1 text-[9px] text-[#ff6b35] uppercase tracking-widest mb-1">
                                   <Heart size={10} /> Opinions
                                 </div>
                                 {Object.entries(entity.opinions).map(([target, text]) => (
                                   <div key={target} className="text-[10px] text-gray-500 italic">
-                                    <span className="text-gray-400 font-bold">{target}:</span> "{text}"
+                                    <span className="text-gray-400 font-bold">{target}:</span> "
+                                    {text}"
                                   </div>
                                 ))}
                               </div>
@@ -163,7 +180,8 @@ export const CharacterPanel: React.FC = () => {
 
             {/* Extra Info */}
             <div className="mt-8 pt-8 border-t border-white/5 opacity-50 text-[10px] uppercase tracking-widest leading-relaxed text-gray-500">
-              You feel a strange sense of centralization. Your skills are now governed by a singular source of truth. The world responds to your inherent capabilities.
+              You feel a strange sense of centralization. Your skills are now governed by a singular
+              source of truth. The world responds to your inherent capabilities.
             </div>
           </motion.div>
         )}

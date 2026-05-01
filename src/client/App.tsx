@@ -24,13 +24,18 @@ export default function App() {
 
   // Replay mode state
   const [mode, setMode] = useState<"live" | "replay">("live");
-  const [treeSteps, setTreeSteps] = useState<Record<string, {
-    id: string;
-    parentStepId: string | null;
-    parentOptionId: string | null;
-    messages: Message[];
-    options: DialogueOption[];
-  }>>({});
+  const [treeSteps, setTreeSteps] = useState<
+    Record<
+      string,
+      {
+        id: string;
+        parentStepId: string | null;
+        parentOptionId: string | null;
+        messages: Message[];
+        options: DialogueOption[];
+      }
+    >
+  >({});
   const [currentReplayStepId, setCurrentReplayStepId] = useState<string | null>(null);
   const [regeneratingAll, setRegeneratingAll] = useState(false);
 
@@ -55,7 +60,9 @@ export default function App() {
     const barRect = scrollBarRef.current.getBoundingClientRect();
     const progress = Math.max(0, Math.min(1, (e.clientY - barRect.top) / barRect.height));
     scrollContainerRef.current.scrollTo({
-      top: progress * (scrollContainerRef.current.scrollHeight - scrollContainerRef.current.clientHeight),
+      top:
+        progress *
+        (scrollContainerRef.current.scrollHeight - scrollContainerRef.current.clientHeight),
       behavior: "smooth",
     });
   };
@@ -68,7 +75,9 @@ export default function App() {
     parentStepId: string | null,
     parentOptionId: string | null,
   ) => {
-    console.log(`[stream] starting, parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${updatedHistory.length} input="${String(userInput).slice(0, 60)}"`);
+    console.log(
+      `[stream] starting, parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${updatedHistory.length} input="${String(userInput).slice(0, 60)}"`,
+    );
     setIsTyping(true);
     setStreamingMessages([]);
     setDynamicOptions(null);
@@ -116,7 +125,9 @@ export default function App() {
           if (data.options && data.options.length > 0) {
             setDynamicOptions(data.options);
           }
-          console.log(`[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options`);
+          console.log(
+            `[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options`,
+          );
         },
         onWorldUpdate: () => {
           worldManager.loadState();
@@ -221,7 +232,14 @@ export default function App() {
       speaker: "SYSTEM",
       type: "NOTIFICATION",
       text: `[${currentCheck.skill.toUpperCase()} - ${currentCheck.difficultyText} ${currentCheck.difficulty}] ${resultLabel} (${total} vs ${currentCheck.difficulty})`,
-      rollResult: { dice, total, difficulty: currentCheck.difficulty, success, skill: currentCheck.skill, skillBonus },
+      rollResult: {
+        dice,
+        total,
+        difficulty: currentCheck.difficulty,
+        success,
+        skill: currentCheck.skill,
+        skillBonus,
+      },
     };
     const updatedHistory = [...history, rollMessage];
     setHistory(updatedHistory);
@@ -240,7 +258,9 @@ export default function App() {
     const lastYouIdx = history.map((m) => m.type).lastIndexOf("YOU");
     const trimmedHistory = lastYouIdx >= 0 ? history.slice(0, lastYouIdx + 1) : history;
 
-    console.log(`[regenerate] triggering, stepId=${lastStepId} historyLen=${trimmedHistory.length}`);
+    console.log(
+      `[regenerate] triggering, stepId=${lastStepId} historyLen=${trimmedHistory.length}`,
+    );
 
     setHistory(trimmedHistory);
     setDynamicOptions(null);
@@ -288,7 +308,9 @@ export default function App() {
           if (data.options && data.options.length > 0) {
             setDynamicOptions(data.options);
           }
-          console.log(`[regenerate] parsed ${messages.length} msgs, ${data.options?.length ?? 0} options`);
+          console.log(
+            `[regenerate] parsed ${messages.length} msgs, ${data.options?.length ?? 0} options`,
+          );
         },
         onWorldUpdate: () => {
           worldManager.loadState();
@@ -356,7 +378,9 @@ export default function App() {
     }
 
     const stepCount = Object.keys(data.steps).length;
-    console.log(`[replay] tree loaded: root=${data.root.id}, steps=${stepCount}, leaves=${data.leafIds?.length ?? 0}, totalMsgs=${data.root.messages?.length ?? 0}, options=${data.root.options?.length ?? 0}`);
+    console.log(
+      `[replay] tree loaded: root=${data.root.id}, steps=${stepCount}, leaves=${data.leafIds?.length ?? 0}, totalMsgs=${data.root.messages?.length ?? 0}, options=${data.root.options?.length ?? 0}`,
+    );
 
     setTreeSteps(data.steps);
     setCurrentReplayStepId(data.root.id);
@@ -388,13 +412,17 @@ export default function App() {
   };
 
   const handleReplayOptionSelect = async (option: DialogueOption) => {
-    console.log(`[replay] option selected: id=${option.id} nextStepId=${option.nextStepId || "none"} text="${String(option.text).slice(0, 40)}"`);
+    console.log(
+      `[replay] option selected: id=${option.id} nextStepId=${option.nextStepId || "none"} text="${String(option.text).slice(0, 40)}"`,
+    );
 
     // Check nextStepId first (fast path)
     if (option.nextStepId && treeSteps[option.nextStepId]) {
       const child = treeSteps[option.nextStepId];
-      console.log(`[replay] fast-path navigate to step=${child.id} msgs=${child.messages.length} options=${child.options.length}`);
-      setHistory(prev => [...prev, ...child.messages]);
+      console.log(
+        `[replay] fast-path navigate to step=${child.id} msgs=${child.messages.length} options=${child.options.length}`,
+      );
+      setHistory((prev) => [...prev, ...child.messages]);
       setDynamicOptions(child.options);
       setCurrentReplayStepId(child.id);
       return;
@@ -418,8 +446,8 @@ export default function App() {
     const { child } = await res.json();
     if (child) {
       console.log(`[replay] slow-path found child step=${child.id}`);
-      setTreeSteps(prev => ({ ...prev, [child.id]: child }));
-      setHistory(prev => [...prev, ...child.messages]);
+      setTreeSteps((prev) => ({ ...prev, [child.id]: child }));
+      setHistory((prev) => [...prev, ...child.messages]);
       setDynamicOptions(child.options);
       setCurrentReplayStepId(child.id);
     } else {
@@ -644,9 +672,7 @@ export default function App() {
 
             {/* Dice roller modal */}
             <AnimatePresence>
-              {currentCheck && (
-                <DiceRoller {...currentCheck} onComplete={handleRollComplete} />
-              )}
+              {currentCheck && <DiceRoller {...currentCheck} onComplete={handleRollComplete} />}
             </AnimatePresence>
 
             {/* Typing indicator */}
@@ -666,11 +692,13 @@ export default function App() {
                   onClick={handleBegin}
                   className="relative h-12 w-full max-w-md group"
                 >
-                  <div className="absolute inset-0 bg-[#e63946] opacity-90 transition-colors group-hover:bg-[#ff4d5a]"
+                  <div
+                    className="absolute inset-0 bg-[#e63946] opacity-90 transition-colors group-hover:bg-[#ff4d5a]"
                     style={{
-                      clipPath: 'polygon(0% 0%, 98% 0%, 100% 50%, 98% 100%, 0% 100%)',
-                      boxShadow: 'inset 0 0 20px rgba(0,0,0,0.2)'
-                    }} />
+                      clipPath: "polygon(0% 0%, 98% 0%, 100% 50%, 98% 100%, 0% 100%)",
+                      boxShadow: "inset 0 0 20px rgba(0,0,0,0.2)",
+                    }}
+                  />
                   <div className="absolute inset-0 flex items-center justify-between px-6">
                     <span className="text-white font-sans font-bold uppercase tracking-[0.3em] text-[16px]">
                       BEGIN
@@ -696,11 +724,7 @@ export default function App() {
                 onSelect={handleOptionSelect}
                 disabledOptionIds={
                   mode === "replay"
-                    ? new Set(
-                        dynamicOptions
-                          .filter(o => !o.nextStepId)
-                          .map(o => o.id)
-                      )
+                    ? new Set(dynamicOptions.filter((o) => !o.nextStepId).map((o) => o.id))
                     : undefined
                 }
               />

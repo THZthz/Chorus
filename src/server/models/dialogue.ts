@@ -7,7 +7,7 @@ export interface DialogueStepRow {
   parent_step_id: string | null;
   parent_option_id: string | null;
   messages: string; // JSON
-  options: string;  // JSON
+  options: string; // JSON
   world_snapshot: string | null;
   is_generated: number;
   is_active: number;
@@ -41,7 +41,9 @@ function parseStep(row: DialogueStepRow): DialogueStepParsed {
 }
 
 export function getStep(id: string): DialogueStepParsed | null {
-  const row = db.prepare("SELECT * FROM dialogue_steps WHERE id = ?").get(id) as DialogueStepRow | undefined;
+  const row = db.prepare("SELECT * FROM dialogue_steps WHERE id = ?").get(id) as
+    | DialogueStepRow
+    | undefined;
   return row ? parseStep(row) : null;
 }
 
@@ -55,10 +57,12 @@ export function saveStep(step: {
   isGenerated?: boolean;
   isActive?: boolean;
 }): void {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO dialogue_steps (id, parent_step_id, parent_option_id, messages, options, world_snapshot, is_generated, is_active)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     step.id,
     step.parentStepId ?? null,
     step.parentOptionId ?? null,
@@ -81,9 +85,9 @@ export function getBranchPath(stepId: string): DialogueStepParsed[] {
 }
 
 export function getChildSteps(parentStepId: string): DialogueStepParsed[] {
-  const rows = db.prepare(
-    "SELECT * FROM dialogue_steps WHERE parent_step_id = ? ORDER BY created_at ASC"
-  ).all(parentStepId) as DialogueStepRow[];
+  const rows = db
+    .prepare("SELECT * FROM dialogue_steps WHERE parent_step_id = ? ORDER BY created_at ASC")
+    .all(parentStepId) as DialogueStepRow[];
   return rows.map(parseStep);
 }
 
@@ -92,15 +96,16 @@ export function setBranchActive(stepId: string, active: boolean): void {
 }
 
 export function deactivateSiblingBranches(parentStepId: string, exceptStepId: string): void {
-  db.prepare(
-    "UPDATE dialogue_steps SET is_active = 0 WHERE parent_step_id = ? AND id != ?"
-  ).run(parentStepId, exceptStepId);
+  db.prepare("UPDATE dialogue_steps SET is_active = 0 WHERE parent_step_id = ? AND id != ?").run(
+    parentStepId,
+    exceptStepId,
+  );
 }
 
 export function getDeadBranches(parentStepId: string, exceptStepId: string): DialogueStepParsed[] {
-  const rows = db.prepare(
-    "SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND is_active = 0 AND id != ?"
-  ).all(parentStepId, exceptStepId) as DialogueStepRow[];
+  const rows = db
+    .prepare("SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND is_active = 0 AND id != ?")
+    .all(parentStepId, exceptStepId) as DialogueStepRow[];
   return rows.map(parseStep);
 }
 
@@ -115,33 +120,43 @@ export interface AlternativeRow {
   created_at: string;
 }
 
-export function saveAlternative(stepId: string, messages: Message[], options: DialogueOption[]): string {
+export function saveAlternative(
+  stepId: string,
+  messages: Message[],
+  options: DialogueOption[],
+): string {
   const id = uuidv4();
-  const maxSeq = db.prepare(
-    "SELECT MAX(sequence_num) as max_seq FROM dialogue_alternatives WHERE step_id = ?"
-  ).get(stepId) as { max_seq: number | null };
+  const maxSeq = db
+    .prepare("SELECT MAX(sequence_num) as max_seq FROM dialogue_alternatives WHERE step_id = ?")
+    .get(stepId) as { max_seq: number | null };
   const nextSeq = (maxSeq?.max_seq ?? -1) + 1;
 
   // Shift all existing alternatives up
   db.prepare(
-    "UPDATE dialogue_alternatives SET sequence_num = sequence_num + 1 WHERE step_id = ?"
+    "UPDATE dialogue_alternatives SET sequence_num = sequence_num + 1 WHERE step_id = ?",
   ).run(stepId);
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO dialogue_alternatives (id, step_id, messages, options, sequence_num)
     VALUES (?, ?, ?, ?, 0)
-  `).run(id, stepId, JSON.stringify(messages), JSON.stringify(options));
+  `,
+  ).run(id, stepId, JSON.stringify(messages), JSON.stringify(options));
 
-  console.log(`[dialogue] saved alternative id=${id} stepId=${stepId} seq=0 prevMax=${nextSeq - 1}`);
+  console.log(
+    `[dialogue] saved alternative id=${id} stepId=${stepId} seq=0 prevMax=${nextSeq - 1}`,
+  );
 
   return id;
 }
 
-export function getAlternatives(stepId: string): { id: string; messages: Message[]; options: DialogueOption[]; sequenceNum: number }[] {
-  const rows = db.prepare(
-    "SELECT * FROM dialogue_alternatives WHERE step_id = ? ORDER BY sequence_num ASC"
-  ).all(stepId) as AlternativeRow[];
-  return rows.map(r => ({
+export function getAlternatives(
+  stepId: string,
+): { id: string; messages: Message[]; options: DialogueOption[]; sequenceNum: number }[] {
+  const rows = db
+    .prepare("SELECT * FROM dialogue_alternatives WHERE step_id = ? ORDER BY sequence_num ASC")
+    .all(stepId) as AlternativeRow[];
+  return rows.map((r) => ({
     id: r.id,
     messages: JSON.parse(r.messages),
     options: JSON.parse(r.options),
@@ -150,19 +165,23 @@ export function getAlternatives(stepId: string): { id: string; messages: Message
 }
 
 export function setCurrentAlternative(stepId: string, alternativeId: string): void {
-  const alt = db.prepare("SELECT * FROM dialogue_alternatives WHERE id = ?").get(alternativeId) as AlternativeRow | undefined;
+  const alt = db.prepare("SELECT * FROM dialogue_alternatives WHERE id = ?").get(alternativeId) as
+    | AlternativeRow
+    | undefined;
   if (!alt) return;
 
   db.transaction(() => {
     // Shift all alternatives so the chosen one becomes sequence_num=0
-    db.prepare("UPDATE dialogue_alternatives SET sequence_num = sequence_num + 1 WHERE step_id = ?").run(stepId);
+    db.prepare(
+      "UPDATE dialogue_alternatives SET sequence_num = sequence_num + 1 WHERE step_id = ?",
+    ).run(stepId);
     db.prepare("UPDATE dialogue_alternatives SET sequence_num = 0 WHERE id = ?").run(alternativeId);
 
     // Update the step's messages and options to the alternative
     db.prepare("UPDATE dialogue_steps SET messages = ?, options = ? WHERE id = ?").run(
       alt.messages,
       alt.options,
-      stepId
+      stepId,
     );
   })();
 }
@@ -170,14 +189,18 @@ export function setCurrentAlternative(stepId: string, alternativeId: string): vo
 // ── Tree navigation ──
 
 export function getRootStep(): DialogueStepParsed | null {
-  const row = db.prepare(
-    "SELECT * FROM dialogue_steps WHERE parent_step_id IS NULL ORDER BY created_at ASC LIMIT 1"
-  ).get() as DialogueStepRow | undefined;
+  const row = db
+    .prepare(
+      "SELECT * FROM dialogue_steps WHERE parent_step_id IS NULL ORDER BY created_at ASC LIMIT 1",
+    )
+    .get() as DialogueStepRow | undefined;
   return row ? parseStep(row) : null;
 }
 
 export function getLeafSteps(): DialogueStepParsed[] {
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(
+      `
     SELECT * FROM dialogue_steps ds
     WHERE ds.is_active = 1
       AND NOT EXISTS (
@@ -185,56 +208,72 @@ export function getLeafSteps(): DialogueStepParsed[] {
         WHERE child.parent_step_id = ds.id AND child.is_active = 1
       )
     ORDER BY ds.created_at ASC
-  `).all() as DialogueStepRow[];
+  `,
+    )
+    .all() as DialogueStepRow[];
   return rows.map(parseStep);
 }
 
-export function getChildByOption(parentStepId: string, parentOptionId: string): DialogueStepParsed | null {
-  const row = db.prepare(
-    "SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND parent_option_id = ? ORDER BY created_at DESC LIMIT 1"
-  ).get(parentStepId, parentOptionId) as DialogueStepRow | undefined;
+export function getChildByOption(
+  parentStepId: string,
+  parentOptionId: string,
+): DialogueStepParsed | null {
+  const row = db
+    .prepare(
+      "SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND parent_option_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(parentStepId, parentOptionId) as DialogueStepRow | undefined;
   return row ? parseStep(row) : null;
 }
 
 export function getAllActiveSteps(): DialogueStepParsed[] {
-  const rows = db.prepare(
-    "SELECT * FROM dialogue_steps WHERE is_active = 1 ORDER BY created_at ASC"
-  ).all() as DialogueStepRow[];
+  const rows = db
+    .prepare("SELECT * FROM dialogue_steps WHERE is_active = 1 ORDER BY created_at ASC")
+    .all() as DialogueStepRow[];
   return rows.map(parseStep);
 }
 
 export function getAllSteps(): DialogueStepParsed[] {
-  const rows = db.prepare(
-    "SELECT * FROM dialogue_steps ORDER BY created_at ASC"
-  ).all() as DialogueStepRow[];
+  const rows = db
+    .prepare("SELECT * FROM dialogue_steps ORDER BY created_at ASC")
+    .all() as DialogueStepRow[];
   return rows.map(parseStep);
 }
 
 export function updateOptionNextStepId(stepId: string, optionId: string, nextStepId: string): void {
   const step = getStep(stepId);
   if (!step) return;
-  const updatedOptions = step.options.map(opt =>
-    opt.id === optionId ? { ...opt, nextStepId } : opt
+  const updatedOptions = step.options.map((opt) =>
+    opt.id === optionId ? { ...opt, nextStepId } : opt,
   );
-  db.prepare("UPDATE dialogue_steps SET options = ? WHERE id = ?")
-    .run(JSON.stringify(updatedOptions), stepId);
+  db.prepare("UPDATE dialogue_steps SET options = ? WHERE id = ?").run(
+    JSON.stringify(updatedOptions),
+    stepId,
+  );
 }
 
-export function getTreeStats(): { totalSteps: number; rootId: string | null; leafIds: string[]; branchCount: number } {
+export function getTreeStats(): {
+  totalSteps: number;
+  rootId: string | null;
+  leafIds: string[];
+  branchCount: number;
+} {
   const root = getRootStep();
   const leaves = getLeafSteps();
-  const countRow = db.prepare(
-    "SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1"
-  ).get() as { count: number };
+  const countRow = db
+    .prepare("SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1")
+    .get() as { count: number };
 
-  const branchesRow = db.prepare(
-    "SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1 AND parent_step_id IS NULL"
-  ).get() as { count: number };
+  const branchesRow = db
+    .prepare(
+      "SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1 AND parent_step_id IS NULL",
+    )
+    .get() as { count: number };
 
   return {
     totalSteps: countRow.count,
     rootId: root?.id ?? null,
-    leafIds: leaves.map(l => l.id),
+    leafIds: leaves.map((l) => l.id),
     branchCount: branchesRow.count,
   };
 }

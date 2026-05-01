@@ -133,6 +133,12 @@ All 4 tools defined once in `src/server/llm/tools.ts`:
 | `createPlot`           | Create a new quest/plot                           | `addPlot()`               | `plot_create`                   |
 | `generateDialogueStep` | Produce narrative messages + player options       | None (data via streaming) | `streaming_messages` + `parsed` |
 
+`createGenerateDialogueStepTool` returns `{ tool, wasValid }`. The `execute` function validates the GM's output before accepting it:
+- **`speaker === "INNER_VOICE"`**: Rejected — the speaker must be the specific skill name (`"LOGIC"`, `"HALF LIGHT"`, etc.), not the type string.
+- **`option.check && option.hintBefore`**: Rejected — the skill check already renders the skill name via `skillCheckHint` in `DialogueOptions.tsx`; `hintBefore` is redundant.
+
+On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM and keeps `wasValid()` false, so the `stopWhen` condition in `streamText` does not trigger and the agentic loop continues for a retry.
+
 ### 3.4 Key Design Decisions
 
 1. **Tools defined once** — `src/server/llm/tools.ts` is the single source for all tool schemas/executors

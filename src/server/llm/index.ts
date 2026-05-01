@@ -1,12 +1,16 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamText, generateText, hasToolCall, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
+import { streamText, generateText, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { getAllEntities } from "@/server/models/world";
 import { getAllPlots } from "@/server/models/plot";
-import { saveStep, deactivateSiblingBranches, updateOptionNextStepId } from "@/server/models/dialogue";
+import {
+  saveStep,
+  deactivateSiblingBranches,
+  updateOptionNextStepId,
+} from "@/server/models/dialogue";
 import { addMessage } from "@/server/models/history";
 import { LlmDebugIntegration } from "@/server/llm/debug";
 import { TurnEventEmitter } from "@/server/llm/events";
@@ -54,9 +58,7 @@ export function getModel(): { model: LanguageModel; name: string } {
   if (google) return { model: google, name: "gemini-2.0-flash" };
   const deepseek = getDeepSeekModel();
   if (deepseek) return { model: deepseek, name: "deepseek-v4-flash" };
-  throw new Error(
-    "Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in .env",
-  );
+  throw new Error("Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in .env");
 }
 
 // ── System prompt ──
@@ -64,9 +66,7 @@ export function getModel(): { model: LanguageModel; name: string } {
 export function buildSystemPrompt(): string {
   const worldState = getAllEntities();
   const plots = getAllPlots();
-  const activePlots = plots.filter(
-    (p) => p.status === "PENDING" || p.status === "IN_PROGRESS",
-  );
+  const activePlots = plots.filter((p) => p.status === "PENDING" || p.status === "IN_PROGRESS");
 
   return `
 You are the Game Master for a narrative-driven RPG. You use different tool to interact with player. The people talking to you (i.e., user) is your assistant.
@@ -145,7 +145,9 @@ export async function generateTurn(
   const stepId = `step_${Date.now()}`;
   const events = new TurnEventEmitter(res, stepId);
 
-  console.log(`[generateTurn] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length} userInput="${String(userInput).slice(0, 80)}"`);
+  console.log(
+    `[generateTurn] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length} userInput="${String(userInput).slice(0, 80)}"`,
+  );
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -177,6 +179,8 @@ export async function generateTurn(
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
 
+  const dialogueStepTool = createGenerateDialogueStepTool(events);
+
   const debugging = new LlmDebugIntegration(
     {
       model: modelName,
@@ -199,9 +203,17 @@ export async function generateTurn(
         updateWorldState: createUpdateWorldStateTool(events),
         updatePlotStatus: createUpdatePlotStatusTool(events),
         createPlot: createCreatePlotTool(events),
-        generateDialogueStep: createGenerateDialogueStepTool(events),
+        generateDialogueStep: dialogueStepTool.tool,
       },
-      stopWhen: [hasToolCall("generateDialogueStep"), stepCountIs(4)],
+      stopWhen: [
+        (state) => {
+          const called = state.steps.some((s) =>
+            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+          );
+          return called && dialogueStepTool.wasValid();
+        },
+        stepCountIs(4),
+      ],
       prepareStep: ({ stepNumber, steps, messages }) => {
         if (stepNumber === 0) return undefined;
         const dialogueCalled = steps.some((s) =>
@@ -275,7 +287,9 @@ export async function generateTurn(
                 );
               }
               if (parsed.options && Array.isArray(parsed.options)) {
-                finalOptions = parsed.options.map((o: any, i: number) => mapToDialogueOption(o, i, stepId));
+                finalOptions = parsed.options.map((o: any, i: number) =>
+                  mapToDialogueOption(o, i, stepId),
+                );
                 if (finalOptions.length > 0) {
                   events.emitOptions(finalOptions);
                 }
@@ -314,15 +328,15 @@ export async function generateTurn(
                 finalMessages = args.messages as Record<string, unknown>[];
               }
               if (args.options && Array.isArray(args.options)) {
-                finalOptions = (args.options as Record<string, unknown>[]).map(
-                  (o, i) => mapToDialogueOption(o, i, stepId),
+                finalOptions = (args.options as Record<string, unknown>[]).map((o, i) =>
+                  mapToDialogueOption(o, i, stepId),
                 );
               }
             }
           }
           break;
-        }
       }
+    }
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
     debugging.onError(err);
@@ -369,11 +383,15 @@ export async function generateTurn(
     isActive: true,
   });
 
-  console.log(`[generateTurn] persisted step=${stepId} messages=${messages.length} options=${finalOptions.length}`);
+  console.log(
+    `[generateTurn] persisted step=${stepId} messages=${messages.length} options=${finalOptions.length}`,
+  );
 
   if (parentStepId && parentOptionId) {
     updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(`[generateTurn] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`);
+    console.log(
+      `[generateTurn] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
+    );
   }
 
   for (const msg of messages) {
@@ -405,7 +423,9 @@ export async function generateTurnBatch(
   const systemPrompt = buildSystemPrompt();
   const stepId = `step_${Date.now()}`;
 
-  console.log(`[generateTurnBatch] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length}`);
+  console.log(
+    `[generateTurnBatch] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length}`,
+  );
 
   const historyWindow = 10;
   const promptText = [
@@ -425,6 +445,7 @@ export async function generateTurnBatch(
 
   const { model } = getModel();
   const noopEvents = new TurnEventEmitter(null, stepId);
+  const dialogueStepTool = createGenerateDialogueStepTool(noopEvents);
 
   const result = await generateText({
     model,
@@ -434,14 +455,12 @@ export async function generateTurnBatch(
       updateWorldState: createUpdateWorldStateTool(noopEvents),
       updatePlotStatus: createUpdatePlotStatusTool(noopEvents),
       createPlot: createCreatePlotTool(noopEvents),
-      generateDialogueStep: createGenerateDialogueStepTool(noopEvents),
+      generateDialogueStep: dialogueStepTool.tool,
     },
   });
 
   // Extract the generateDialogueStep tool input
-  const dialogueCall = result.toolCalls?.find(
-    (tc) => tc.toolName === "generateDialogueStep",
-  );
+  const dialogueCall = result.toolCalls?.find((tc) => tc.toolName === "generateDialogueStep");
   const rawInput = dialogueCall?.input;
 
   // Recover from malformed JSON with tolerant partial-json parser.
@@ -464,9 +483,9 @@ export async function generateTurnBatch(
 
   const finalMessages: Record<string, unknown>[] =
     (args?.messages as Record<string, unknown>[]) ?? [];
-  const finalOptions: DialogueOption[] = (
-    (args?.options as Record<string, unknown>[]) ?? []
-  ).map((o, i) => mapToDialogueOption(o, i, stepId));
+  const finalOptions: DialogueOption[] = ((args?.options as Record<string, unknown>[]) ?? []).map(
+    (o, i) => mapToDialogueOption(o, i, stepId),
+  );
 
   const messages: Message[] = finalMessages.map((m: any, i) => ({
     id: `msg_${stepId}_${i}`,
@@ -488,11 +507,15 @@ export async function generateTurnBatch(
     isActive: true,
   });
 
-  console.log(`[generateTurnBatch] persisted step=${stepId} messages=${messages.length} options=${finalOptions.length}`);
+  console.log(
+    `[generateTurnBatch] persisted step=${stepId} messages=${messages.length} options=${finalOptions.length}`,
+  );
 
   if (parentStepId && parentOptionId) {
     updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(`[generateTurnBatch] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`);
+    console.log(
+      `[generateTurnBatch] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
+    );
   }
 
   for (const msg of messages) {

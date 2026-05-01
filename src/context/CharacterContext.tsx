@@ -1,5 +1,5 @@
-import { ReactNode, createContext, useContext, useState } from 'react';
-import { Character, CharacterStats } from '@/types/entities';
+import { ReactNode, createContext, useContext, useState } from "react";
+import { Character, CharacterStats } from "@/types/entities";
 
 interface CharacterContextType {
   character: Character;
@@ -9,11 +9,11 @@ interface CharacterContextType {
 }
 
 const defaultCharacter: Character = {
-  id: 'player',
-  type: 'CHARACTER',
-  displayName: 'YOU',
-  shortDescription: 'The protagonist.',
-  longDescription: 'A detective in a state of existential crisis.',
+  id: "player",
+  type: "CHARACTER",
+  displayName: "YOU",
+  shortDescription: "The protagonist.",
+  longDescription: "A detective in a state of existential crisis.",
   attributes: {},
   opinions: {},
   stats: {
@@ -58,7 +58,7 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
   };
 
   const getStatBySkillName = (skillName: string): number => {
-    const formatKey = skillName.toLowerCase().replace(/\s+/g, '_') as keyof CharacterStats;
+    const formatKey = skillName.toLowerCase().replace(/\s+/g, "_") as keyof CharacterStats;
     return character.stats[formatKey] || 0;
   };
 
@@ -72,7 +72,7 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
 export function useCharacter() {
   const context = useContext(CharacterContext);
   if (context === undefined) {
-    throw new Error('useCharacter must be used within a CharacterProvider');
+    throw new Error("useCharacter must be used within a CharacterProvider");
   }
   return context;
 }

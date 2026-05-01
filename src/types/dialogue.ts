@@ -1,4 +1,4 @@
-export type SpeakerType = 'YOU' | 'INNER_VOICE' | 'CHARACTER' | 'SYSTEM' | 'ROLL' | 'NOTIFICATION';
+export type SpeakerType = "YOU" | "INNER_VOICE" | "CHARACTER" | "SYSTEM" | "ROLL" | "NOTIFICATION";
 
 export interface Message {
   id: string;
@@ -6,7 +6,7 @@ export interface Message {
   type: SpeakerType;
   text: string;
   metadata?: {
-    notificationType?: 'XP' | 'TASK' | 'ITEM';
+    notificationType?: "XP" | "TASK" | "ITEM";
   };
   skillCheck?: {
     skill: string;
@@ -47,6 +47,6 @@ export interface DialogueOption {
 
 export interface DialogueStep {
   id: string;
-  messages: (Omit<Message, 'id'> & { id?: string })[];
+  messages: (Omit<Message, "id"> & { id?: string })[];
   options: DialogueOption[];
 }

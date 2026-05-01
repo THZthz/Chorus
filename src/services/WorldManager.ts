@@ -1,14 +1,14 @@
-import { WorldEntity, WorldState, Character, Location, WorldObject } from '@/types/entities';
+import { WorldEntity, WorldState, Character, Location, WorldObject } from "@/types/entities";
 
 class WorldManager {
   private state: WorldState = {
     objects: {},
     locations: {},
-    characters: {}
+    characters: {},
   };
 
   async loadState() {
-    const res = await fetch('/api/world');
+    const res = await fetch("/api/world");
     if (res.ok) {
       this.state = await res.json();
     }
@@ -26,10 +26,9 @@ class WorldManager {
     return [
       ...Object.values(this.state.objects),
       ...Object.values(this.state.locations),
-      ...Object.values(this.state.characters)
+      ...Object.values(this.state.characters),
     ];
   }
 }
 
 export const worldManager = new WorldManager();
-

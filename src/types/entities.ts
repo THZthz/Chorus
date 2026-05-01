@@ -1,4 +1,4 @@
-export type EntityType = 'OBJECT' | 'LOCATION' | 'CHARACTER';
+export type EntityType = "OBJECT" | "LOCATION" | "CHARACTER";
 
 export interface CharacterStats {
   logic: number;
@@ -25,15 +25,15 @@ export interface BaseEntity {
 }
 
 export interface WorldObject extends BaseEntity {
-  type: 'OBJECT';
+  type: "OBJECT";
 }
 
 export interface Location extends BaseEntity {
-  type: 'LOCATION';
+  type: "LOCATION";
 }
 
 export interface Character extends BaseEntity {
-  type: 'CHARACTER';
+  type: "CHARACTER";
   stats: Record<string, number>;
   opinions: Record<string, string>; // characterId -> opinion text
 }

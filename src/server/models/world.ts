@@ -2,70 +2,76 @@ import db from "@/server/db";
 import { WorldEntity, WorldState, Character, Location, WorldObject } from "@/types/entities";
 
 const initialObjects: Record<string, WorldObject> = {
-  'rusted_coin': {
-    id: 'rusted_coin',
-    type: 'OBJECT',
-    displayName: 'Rusted Iron Coin',
-    shortDescription: 'A heavy, notched currency from the Old Duchy.',
-    longDescription: 'The iron is pitted with rust, but the seal of the dead Duke is still visible. It smells of copper and damp earth. In a place like the Crimson Veil, it might buy you a half-measure of watered wine or a very short conversation.',
+  rusted_coin: {
+    id: "rusted_coin",
+    type: "OBJECT",
+    displayName: "Rusted Iron Coin",
+    shortDescription: "A heavy, notched currency from the Old Duchy.",
+    longDescription:
+      "The iron is pitted with rust, but the seal of the dead Duke is still visible. It smells of copper and damp earth. In a place like the Crimson Veil, it might buy you a half-measure of watered wine or a very short conversation.",
     attributes: {
-      'Value': 'Near-worthless',
-      'Origin': 'Duchy of Oros'
-    }
+      Value: "Near-worthless",
+      Origin: "Duchy of Oros",
+    },
   },
-  'velvet_choker': {
-    id: 'velvet_choker',
-    type: 'OBJECT',
-    displayName: 'Stained Velvet Choker',
-    shortDescription: 'Once elegant, now frayed and smelling of heavy musk.',
-    longDescription: 'The deep red fabric is stiff with age and sweat. It has a small, tarnished silver clasp that looks like a weeping eye. It belongs to Vespera, though she hasn\'t worn it since the plague years.',
+  velvet_choker: {
+    id: "velvet_choker",
+    type: "OBJECT",
+    displayName: "Stained Velvet Choker",
+    shortDescription: "Once elegant, now frayed and smelling of heavy musk.",
+    longDescription:
+      "The deep red fabric is stiff with age and sweat. It has a small, tarnished silver clasp that looks like a weeping eye. It belongs to Vespera, though she hasn't worn it since the plague years.",
     attributes: {
-      'Scent': 'Musk and Decay',
-      'Material': 'Velvet'
-    }
-  }
+      Scent: "Musk and Decay",
+      Material: "Velvet",
+    },
+  },
 };
 
 const initialLocations: Record<string, Location> = {
-  'crimson_veil': {
-    id: 'crimson_veil',
-    type: 'LOCATION',
-    displayName: 'The Crimson Veil',
-    shortDescription: 'A sagging timber-frame structure in the lower district.',
-    longDescription: 'The air inside is thick with the smoke of tallow candles and cheap hashish. The walls are draped in moth-eaten tapestries that attempt to hide the rot. It is a place where secrets are bought for coppers and dignity is the first thing checked at the door.',
+  crimson_veil: {
+    id: "crimson_veil",
+    type: "LOCATION",
+    displayName: "The Crimson Veil",
+    shortDescription: "A sagging timber-frame structure in the lower district.",
+    longDescription:
+      "The air inside is thick with the smoke of tallow candles and cheap hashish. The walls are draped in moth-eaten tapestries that attempt to hide the rot. It is a place where secrets are bought for coppers and dignity is the first thing checked at the door.",
     attributes: {
-      'Atmosphere': 'Oppressive',
-      'Patronage': 'Desperate'
-    }
-  }
+      Atmosphere: "Oppressive",
+      Patronage: "Desperate",
+    },
+  },
 };
 
 const initialCharacters: Record<string, Character> = {
-  'madam_vespera': {
-    id: 'madam_vespera',
-    type: 'CHARACTER',
-    displayName: 'Madam Vespera',
-    shortDescription: 'The iron-willed matron of the Crimson Veil.',
-    longDescription: 'Vespera is a woman of indeterminate age, her face a map of hard decisions and cold winters. She wears a dress of faded brocade and carries a heavy ring of keys that jingles with every rhythmic step. Her eyes see not your face, but the weight of your coin purse.',
+  madam_vespera: {
+    id: "madam_vespera",
+    type: "CHARACTER",
+    displayName: "Madam Vespera",
+    shortDescription: "The iron-willed matron of the Crimson Veil.",
+    longDescription:
+      "Vespera is a woman of indeterminate age, her face a map of hard decisions and cold winters. She wears a dress of faded brocade and carries a heavy ring of keys that jingles with every rhythmic step. Her eyes see not your face, but the weight of your coin purse.",
     stats: {
-      'authority': 7,
-      'logic': 4,
-      'volition': 6
+      authority: 7,
+      logic: 4,
+      volition: 6,
     },
     opinions: {
-      'YOU': 'A stray dog with better boots than most. Potentially useful, likely trouble.'
+      YOU: "A stray dog with better boots than most. Potentially useful, likely trouble.",
     },
     attributes: {
-      'Status': 'Matron',
-      'Affiliation': 'The Veiled'
-    }
-  }
+      Status: "Matron",
+      Affiliation: "The Veiled",
+    },
+  },
 };
 
 export function seedDatabase() {
   const count = db.prepare("SELECT COUNT(*) as count FROM entities").get() as { count: number };
   if (count.count === 0) {
-    const insert = db.prepare("INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    const insert = db.prepare(
+      "INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    );
     const insertEntity = (entity: any) => {
       insert.run(
         entity.id,
@@ -74,8 +80,8 @@ export function seedDatabase() {
         entity.shortDescription,
         entity.longDescription,
         JSON.stringify(entity.attributes || {}),
-        entity.type === 'CHARACTER' ? JSON.stringify(entity.stats || {}) : null,
-        entity.type === 'CHARACTER' ? JSON.stringify(entity.opinions || {}) : null
+        entity.type === "CHARACTER" ? JSON.stringify(entity.stats || {}) : null,
+        entity.type === "CHARACTER" ? JSON.stringify(entity.opinions || {}) : null,
       );
       console.log(`Inserted ${entity.displayName}.`);
     };
@@ -85,13 +91,15 @@ export function seedDatabase() {
     Object.values(initialCharacters).forEach(insertEntity);
 
     // Seed an initial plot
-    const insertPlot = db.prepare("INSERT INTO plots (id, title, description, triggerCondition, status) VALUES (?, ?, ?, ?, ?)");
+    const insertPlot = db.prepare(
+      "INSERT INTO plots (id, title, description, triggerCondition, status) VALUES (?, ?, ?, ?, ?)",
+    );
     insertPlot.run(
-      'plot_1',
-      'The Missing Duke',
-      'The old Duke was supposedly dead, but rumors spread that a man matching his description was seen near the Crimson Veil.',
-      'Player asks Madam Vespera about the rusted coin.',
-      'PENDING'
+      "plot_1",
+      "The Missing Duke",
+      "The old Duke was supposedly dead, but rumors spread that a man matching his description was seen near the Crimson Veil.",
+      "Player asks Madam Vespera about the rusted coin.",
+      "PENDING",
     );
   }
 }
@@ -101,10 +109,10 @@ export function getAllEntities(): WorldState {
   const state: WorldState = {
     objects: {},
     locations: {},
-    characters: {}
+    characters: {},
   };
 
-  rows.forEach(row => {
+  rows.forEach((row) => {
     const entity = {
       id: row.id,
       type: row.type,
@@ -113,12 +121,12 @@ export function getAllEntities(): WorldState {
       longDescription: row.longDescription,
       attributes: JSON.parse(row.attributes),
       stats: row.stats ? JSON.parse(row.stats) : undefined,
-      opinions: row.opinions ? JSON.parse(row.opinions) : undefined
+      opinions: row.opinions ? JSON.parse(row.opinions) : undefined,
     };
 
-    if (entity.type === 'OBJECT') state.objects[entity.id] = entity as WorldObject;
-    else if (entity.type === 'LOCATION') state.locations[entity.id] = entity as Location;
-    else if (entity.type === 'CHARACTER') state.characters[entity.id] = entity as Character;
+    if (entity.type === "OBJECT") state.objects[entity.id] = entity as WorldObject;
+    else if (entity.type === "LOCATION") state.locations[entity.id] = entity as Location;
+    else if (entity.type === "CHARACTER") state.characters[entity.id] = entity as Character;
   });
 
   return state;
@@ -137,14 +145,15 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
   let newStats = currentStats;
   let newOpinions = currentOpinions;
 
-  if (existing.type === 'CHARACTER' && (entity as any).stats) {
+  if (existing.type === "CHARACTER" && (entity as any).stats) {
     newStats = { ...currentStats, ...(entity as any).stats };
   }
-  if (existing.type === 'CHARACTER' && (entity as any).opinions) {
+  if (existing.type === "CHARACTER" && (entity as any).opinions) {
     newOpinions = { ...currentOpinions, ...(entity as any).opinions };
   }
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE entities SET 
       displayName = COALESCE(?, displayName),
       shortDescription = COALESCE(?, shortDescription),
@@ -153,20 +162,22 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
       stats = ?,
       opinions = ?
     WHERE id = ?
-  `).run(
+  `,
+  ).run(
     entity.displayName || null,
     entity.shortDescription || null,
     entity.longDescription || null,
     JSON.stringify(newAttrs),
-    existing.type === 'CHARACTER' ? JSON.stringify(newStats) : null,
-    existing.type === 'CHARACTER' ? JSON.stringify(newOpinions) : null,
-    entity.id
+    existing.type === "CHARACTER" ? JSON.stringify(newStats) : null,
+    existing.type === "CHARACTER" ? JSON.stringify(newOpinions) : null,
+    entity.id,
   );
   console.log(`Updated ${entity.displayName}.`);
 }
 
 export function upsertEntity(entity: WorldEntity) {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
@@ -177,23 +188,15 @@ export function upsertEntity(entity: WorldEntity) {
       attributes = excluded.attributes,
       stats = excluded.stats,
       opinions = excluded.opinions
-  `).run(
+  `,
+  ).run(
     entity.id,
     entity.type,
     entity.displayName,
     entity.shortDescription,
     entity.longDescription,
     JSON.stringify(entity.attributes || {}),
-    entity.type === 'CHARACTER' ? JSON.stringify((entity as any).stats || {}) : null,
-    entity.type === 'CHARACTER' ? JSON.stringify((entity as any).opinions || {}) : null
+    entity.type === "CHARACTER" ? JSON.stringify((entity as any).stats || {}) : null,
+    entity.type === "CHARACTER" ? JSON.stringify((entity as any).opinions || {}) : null,
   );
 }
-
-
-
-
-
-
-
-
-

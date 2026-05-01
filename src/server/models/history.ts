@@ -3,7 +3,7 @@ import { Message } from "@/types/dialogue";
 
 export function getHistory(): Message[] {
   const rows = db.prepare("SELECT * FROM history_messages ORDER BY timestamp ASC").all() as any[];
-  return rows.map(r => ({
+  return rows.map((r) => ({
     id: r.id,
     speaker: r.speaker,
     type: r.type,
@@ -15,17 +15,19 @@ export function getHistory(): Message[] {
 }
 
 export function addMessage(msg: Message) {
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO history_messages (id, speaker, type, text, metadata, skillCheck, rollResult)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     msg.id,
     msg.speaker,
     msg.type,
     msg.text,
     msg.metadata ? JSON.stringify(msg.metadata) : null,
     msg.skillCheck ? JSON.stringify(msg.skillCheck) : null,
-    msg.rollResult ? JSON.stringify(msg.rollResult) : null
+    msg.rollResult ? JSON.stringify(msg.rollResult) : null,
   );
 }
 

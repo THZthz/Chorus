@@ -55,10 +55,7 @@ export class TurnEventEmitter {
     this.send("options", { options });
   }
 
-  emitParsed(
-    messages: StreamingMessage[],
-    options: DialogueOption[],
-  ) {
+  emitParsed(messages: StreamingMessage[], options: DialogueOption[]) {
     this.send("parsed", { messages, options });
   }
 

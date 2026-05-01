@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { AnimatePresence } from 'motion/react';
-import { worldManager } from '@/services/WorldManager';
-import { ObjectTooltip } from '@/components/ObjectTooltip';
+import React, { useState, useRef, useEffect } from "react";
+import { AnimatePresence } from "motion/react";
+import { worldManager } from "@/services/WorldManager";
+import { ObjectTooltip } from "@/components/ObjectTooltip";
 
 interface Props {
   displayName: string;
@@ -22,10 +22,10 @@ export const ObjectLink: React.FC<Props> = ({ displayName, objectId }) => {
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen]);
 
@@ -47,11 +47,7 @@ export const ObjectLink: React.FC<Props> = ({ displayName, objectId }) => {
         {displayName}
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <ObjectTooltip object={object} />
-        )}
-      </AnimatePresence>
+      <AnimatePresence>{isOpen && <ObjectTooltip object={object} />}</AnimatePresence>
     </span>
   );
 };

@@ -5,7 +5,7 @@ import path from "path";
 const dbPath = path.join(process.cwd(), "game.db");
 const db = new Database(dbPath);
 
-db.pragma('journal_mode = WAL');
+db.pragma("journal_mode = WAL");
 
 // Define schema
 db.exec(`
@@ -100,7 +100,11 @@ db.exec(`
 `);
 
 // Idempotent migrations for columns added after initial schema
-try { db.exec("ALTER TABLE llm_logs ADD COLUMN parent_id TEXT"); } catch {}
-try { db.exec("ALTER TABLE llm_logs ADD COLUMN label TEXT"); } catch {}
+try {
+  db.exec("ALTER TABLE llm_logs ADD COLUMN parent_id TEXT");
+} catch {}
+try {
+  db.exec("ALTER TABLE llm_logs ADD COLUMN label TEXT");
+} catch {}
 
 export default db;

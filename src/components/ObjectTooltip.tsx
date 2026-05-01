@@ -1,7 +1,7 @@
-import React, { useState, useRef, useLayoutEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, ChevronUp, Info, User, MapPin, Box } from 'lucide-react';
-import { WorldEntity } from '@/types/entities';
+import React, { useState, useRef, useLayoutEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { ChevronDown, ChevronUp, Info, User, MapPin, Box } from "lucide-react";
+import { WorldEntity } from "@/types/entities";
 
 interface Props {
   object: WorldEntity;
@@ -10,9 +10,12 @@ interface Props {
 
 export const ObjectTooltip: React.FC<Props> = ({ object }) => {
   const [showLongDesc, setShowLongDesc] = useState(false);
-  const [position, setPosition] = useState<{ vertical: 'above' | 'below', horizontal: 'left' | 'right' }>({
-    vertical: 'above',
-    horizontal: 'left'
+  const [position, setPosition] = useState<{
+    vertical: "above" | "below";
+    horizontal: "left" | "right";
+  }>({
+    vertical: "above",
+    horizontal: "left",
   });
   const tooltipRef = useRef<HTMLDivElement>(null);
 
@@ -21,35 +24,40 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
       const rect = tooltipRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
 
-      let vertical: 'above' | 'below' = position.vertical;
-      let horizontal: 'left' | 'right' = position.horizontal;
+      let vertical: "above" | "below" = position.vertical;
+      let horizontal: "left" | "right" = position.horizontal;
 
       // Check vertical space on mount for the initial appearance
       // If the collapsed tooltip is already hitting the top of the viewport, flip it below.
       if (rect.top < 0) {
-        vertical = 'below';
+        vertical = "below";
       }
 
       // Check horizontal space
       if (rect.right > viewportWidth) {
-        horizontal = 'right';
+        horizontal = "right";
       } else if (rect.left < 0) {
-        horizontal = 'left';
+        horizontal = "left";
       }
 
       setPosition({ vertical, horizontal });
     }
   }, []); // Run ONLY once on mount to keep position stable during interaction
 
-  const Icon = object.type === 'CHARACTER' ? User : object.type === 'LOCATION' ? MapPin : Box;
-  const typeColor = object.type === 'CHARACTER' ? 'text-pink-500' : object.type === 'LOCATION' ? 'text-green-500' : 'text-cyan-500';
+  const Icon = object.type === "CHARACTER" ? User : object.type === "LOCATION" ? MapPin : Box;
+  const typeColor =
+    object.type === "CHARACTER"
+      ? "text-pink-500"
+      : object.type === "LOCATION"
+        ? "text-green-500"
+        : "text-cyan-500";
 
   const positionClasses = [
-    position.vertical === 'above' ? 'bottom-full mb-2' : 'top-full mt-2',
-    position.horizontal === 'left' ? 'left-0' : 'right-0'
-  ].join(' ');
+    position.vertical === "above" ? "bottom-full mb-2" : "top-full mt-2",
+    position.horizontal === "left" ? "left-0" : "right-0",
+  ].join(" ");
 
-  const yOffset = position.vertical === 'above' ? 10 : -10;
+  const yOffset = position.vertical === "above" ? 10 : -10;
 
   return (
     <motion.div
@@ -80,22 +88,27 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
         </div>
 
         {/* Short Description */}
-        <p className="text-gray-300 text-sm leading-relaxed mb-4">
-          {object.shortDescription}
-        </p>
+        <p className="text-gray-300 text-sm leading-relaxed mb-4">{object.shortDescription}</p>
 
         {/* Character Opinions */}
-        {object.type === 'CHARACTER' && object.opinions && Object.keys(object.opinions).length > 0 && (
-          <div className="mb-4 space-y-2">
-            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-mono">Opinions</div>
-            {Object.entries(object.opinions).map(([id, opinion]) => (
-              <div key={id} className="text-[11px] text-pink-200/70 italic bg-pink-900/10 p-2 rounded border border-pink-900/20">
-                <span className="font-bold uppercase tracking-tighter mr-1">{id}:</span>
-                "{opinion}"
+        {object.type === "CHARACTER" &&
+          object.opinions &&
+          Object.keys(object.opinions).length > 0 && (
+            <div className="mb-4 space-y-2">
+              <div className="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
+                Opinions
               </div>
-            ))}
-          </div>
-        )}
+              {Object.entries(object.opinions).map(([id, opinion]) => (
+                <div
+                  key={id}
+                  className="text-[11px] text-pink-200/70 italic bg-pink-900/10 p-2 rounded border border-pink-900/20"
+                >
+                  <span className="font-bold uppercase tracking-tighter mr-1">{id}:</span>"{opinion}
+                  "
+                </div>
+              ))}
+            </div>
+          )}
 
         {/* Attributes Grid */}
         <div className="grid grid-cols-1 gap-2 mb-4 bg-black/40 p-2 rounded border border-gray-900">
@@ -115,7 +128,7 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
           }}
           className="w-full flex items-center justify-between text-[11px] text-gray-400 hover:text-white transition-colors py-1 px-2 bg-gray-900/50 rounded border border-gray-800"
         >
-          <span>{showLongDesc ? 'HIDE DETAILS' : 'VIEW FULL DESCRIPTION'}</span>
+          <span>{showLongDesc ? "HIDE DETAILS" : "VIEW FULL DESCRIPTION"}</span>
           {showLongDesc ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
 
@@ -123,7 +136,7 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
           {showLongDesc && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
+              animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >

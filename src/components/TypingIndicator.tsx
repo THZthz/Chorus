@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React from "react";
+import { motion } from "motion/react";
 
 export const TypingIndicator: React.FC = () => {
   return (
@@ -15,12 +15,12 @@ export const TypingIndicator: React.FC = () => {
           className="w-2 h-2 bg-gray-500 rounded-full"
           animate={{
             opacity: [0.3, 1, 0.3],
-            y: [0, -4, 0]
+            y: [0, -4, 0],
           }}
           transition={{
             duration: 0.8,
             repeat: Infinity,
-            delay: i * 0.2
+            delay: i * 0.2,
           }}
         />
       ))}

@@ -1,6 +1,6 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { DialogueOption } from '@/types/dialogue';
+import React from "react";
+import { motion } from "motion/react";
+import { DialogueOption } from "@/types/dialogue";
 
 interface Props {
   options: DialogueOption[];
@@ -16,7 +16,7 @@ export const DialogueOptions: React.FC<Props> = ({ options, onSelect, disabledOp
         {options.map((option, index) => {
           const isRedCheck = option.check?.isRed;
           const skillCheckHint = option.check
-            ? `[${option.check.skill} - ${option.check.difficultyText || 'Unknown'} ${option.check.difficulty}]`
+            ? `[${option.check.skill} - ${option.check.difficultyText || "Unknown"} ${option.check.difficulty}]`
             : null;
 
           const isDisabled = disabledOptionIds?.has(option.id) ?? false;
@@ -30,27 +30,29 @@ export const DialogueOptions: React.FC<Props> = ({ options, onSelect, disabledOp
               onClick={() => !isDisabled && onSelect(option)}
               className={`group block w-full text-left text-[18px] transition-colors p-2 -ml-2 rounded-sm ${
                 isDisabled
-                  ? 'opacity-30 cursor-not-allowed'
+                  ? "opacity-30 cursor-not-allowed"
                   : isRedCheck
-                    ? 'bg-[#d34b34] text-white hover:bg-[#e05a44]'
-                    : 'text-[#ff6b35] hover:text-[#ff8d61]'
-                }`}
+                    ? "bg-[#d34b34] text-white hover:bg-[#e05a44]"
+                    : "text-[#ff6b35] hover:text-[#ff8d61]"
+              }`}
             >
               <div className="flex gap-2 items-start">
-                <span className={`${isRedCheck ? 'text-white' : 'opacity-70'} whitespace-nowrap`}>{index + 1}.</span>
-                <span className={`flex-1 ${!isRedCheck && 'group-hover:underline underline-offset-4 decoration-1 decoration-[#ff6b35]/40 text-pretty'}`}>
+                <span className={`${isRedCheck ? "text-white" : "opacity-70"} whitespace-nowrap`}>
+                  {index + 1}.
+                </span>
+                <span
+                  className={`flex-1 ${!isRedCheck && "group-hover:underline underline-offset-4 decoration-1 decoration-[#ff6b35]/40 text-pretty"}`}
+                >
                   {skillCheckHint && (
-                    <span className={`font-bold mr-2 ${isRedCheck ? 'text-white' : 'text-[#4fb0c6]'}`}>
+                    <span
+                      className={`font-bold mr-2 ${isRedCheck ? "text-white" : "text-[#4fb0c6]"}`}
+                    >
                       {skillCheckHint}
                     </span>
                   )}
-                  {option.hintBefore && (
-                    <span className="font-bold mr-1">{option.hintBefore}</span>
-                  )}
+                  {option.hintBefore && <span className="font-bold mr-1">{option.hintBefore}</span>}
                   {option.text}
-                  {option.hintAfter && (
-                    <span className="font-bold ml-1">{option.hintAfter}</span>
-                  )}
+                  {option.hintAfter && <span className="font-bold ml-1">{option.hintAfter}</span>}
                 </span>
               </div>
             </motion.button>

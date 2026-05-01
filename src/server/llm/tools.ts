@@ -26,9 +26,11 @@ const messageSchema = z.object({
   speaker: z.string().describe("Name of the speaker (e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR')"),
   type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
   text: z.string().describe("The dialogue text, supports markdown."),
-  metadata: z.object({
-    notificationType: z.enum(["XP", "TASK", "ITEM"]).optional(),
-  }).optional(),
+  metadata: z
+    .object({
+      notificationType: z.enum(["XP", "TASK", "ITEM"]).optional(),
+    })
+    .optional(),
 });
 
 const optionSchema = z.object({
@@ -36,7 +38,10 @@ const optionSchema = z.object({
   id: z.string().optional(),
   hintBefore: z.string().optional().describe("Hint shown before the text e.g. [Logic]"),
   hintAfter: z.string().optional().describe("Hint shown after the text e.g. [Red Check]"),
-  isAiTrigger: z.boolean().optional().describe("Must be true if user selection triggers a new AI response."),
+  isAiTrigger: z
+    .boolean()
+    .optional()
+    .describe("Must be true if user selection triggers a new AI response."),
   check: skillCheckSchema.optional(),
 });
 
@@ -62,17 +67,15 @@ export function mapToDialogueOption(
           difficultyText: (check.difficultyText as string) || "",
           diceCount: (check.diceCount as number) ?? 2,
           isRed: check.isRed as boolean | undefined,
-          conditions: ((check.conditions as unknown[]) || []).map(
-            (c: unknown, ci: number) => {
-              const cond = c as Record<string, unknown>;
-              return {
-                expression: cond.expression as string,
-                label: cond.label as string | undefined,
-                color: cond.color as string | undefined,
-                stepId: (cond.stepId as string) || `step_${optId}_res_${ci}`,
-              };
-            },
-          ),
+          conditions: ((check.conditions as unknown[]) || []).map((c: unknown, ci: number) => {
+            const cond = c as Record<string, unknown>;
+            return {
+              expression: cond.expression as string,
+              label: cond.label as string | undefined,
+              color: cond.color as string | undefined,
+              stepId: (cond.stepId as string) || `step_${optId}_res_${ci}`,
+            };
+          }),
         }
       : undefined,
   };
@@ -89,11 +92,19 @@ export function createUpdateWorldStateTool(events: TurnEventEmitter) {
       updates: z
         .array(
           z.object({
-            id: z.string().describe("The unique ID of the entity to update (e.g., 'madam_vespera')."),
+            id: z
+              .string()
+              .describe("The unique ID of the entity to update (e.g., 'madam_vespera')."),
             longDescription: z.string().nullish().describe("New detailed observation."),
             shortDescription: z.string().nullish().describe("New concise label."),
-            attributes: z.record(z.string(), z.string()).nullish().describe("Physical or mental traits."),
-            opinions: z.record(z.string(), z.string()).nullish().describe("How they feel about the player or others."),
+            attributes: z
+              .record(z.string(), z.string())
+              .nullish()
+              .describe("Physical or mental traits."),
+            opinions: z
+              .record(z.string(), z.string())
+              .nullish()
+              .describe("How they feel about the player or others."),
           }),
         )
         .describe("State changes to persist in the world memory."),
@@ -151,11 +162,7 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
         .string()
         .describe("The specific condition or scene that triggers this plot."),
     }),
-    execute: async (args: {
-      title: string;
-      description: string;
-      triggerCondition: string;
-    }) => {
+    execute: async (args: { title: string; description: string; triggerCondition: string }) => {
       const plotId = `plot_${Date.now()}`;
       addPlot({
         id: plotId,
@@ -170,18 +177,47 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
 }
 
 export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
-  return tool({
+  let lastCallValid = false;
+
+  const dialogueTool = tool({
     description:
       "Generate the narrative dialogue steps and final player choices. This is the ONLY way to communicate to the player.",
     inputSchema: z.object({
-      messages: z
-        .array(messageSchema)
-        .describe("The sequence of messages in this dialogue step."),
-      options: z
-        .array(optionSchema)
-        .optional()
-        .describe("The choices presented to the player."),
+      messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
+      options: z.array(optionSchema).optional().describe("The choices presented to the player."),
     }),
-    execute: async () => "Dialogue streamed.",
+    execute: async (args) => {
+      const errors: string[] = [];
+
+      for (const msg of args.messages) {
+        if (msg.speaker === "INNER_VOICE") {
+          errors.push(
+            `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "HALF LIGHT", "INLAND EMPIRE").`,
+          );
+          break;
+        }
+      }
+
+      if (args.options) {
+        for (let i = 0; i < args.options.length; i++) {
+          const opt = args.options[i];
+          if (opt.check && opt.hintBefore) {
+            errors.push(
+              `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
+            );
+          }
+        }
+      }
+
+      if (errors.length > 0) {
+        lastCallValid = false;
+        return `VALIDATION FAILED — call generateDialogueStep again with corrections:\n${errors.map((e) => `• ${e}`).join("\n")}`;
+      }
+
+      lastCallValid = true;
+      return "Dialogue streamed.";
+    },
   });
+
+  return { tool: dialogueTool, wasValid: () => lastCallValid };
 }

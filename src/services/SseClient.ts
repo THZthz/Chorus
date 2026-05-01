@@ -20,11 +20,7 @@ export class SseClient {
     return this.abortController?.signal ?? null;
   }
 
-  async stream(
-    url: string,
-    body: Record<string, unknown>,
-    callbacks: SseCallbacks,
-  ): Promise<void> {
+  async stream(url: string, body: Record<string, unknown>, callbacks: SseCallbacks): Promise<void> {
     this.abortController = new AbortController();
 
     try {
@@ -113,7 +109,9 @@ export class SseClient {
         cb.onOptions?.(data.options);
         break;
       case "parsed":
-        console.log(`[sse] event=parsed msgs=${data.messages?.length ?? 0} opts=${data.options?.length ?? 0}`);
+        console.log(
+          `[sse] event=parsed msgs=${data.messages?.length ?? 0} opts=${data.options?.length ?? 0}`,
+        );
         cb.onParsed?.(data);
         break;
       case "error":

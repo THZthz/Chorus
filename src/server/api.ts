@@ -4,8 +4,28 @@ import { generateTurn, generateTurnBatch } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots } from "@/server/models/plot";
-import { getLlmLogs, clearLlmLogs, getConsoleLogs, addConsoleLog, clearConsoleLogs } from "@/server/models/debug";
-import { getStep, getChildSteps, getBranchPath, deactivateSiblingBranches, setBranchActive, saveAlternative, getAlternatives, setCurrentAlternative, getRootStep, getLeafSteps, getAllSteps, getChildByOption, getTreeStats } from "@/server/models/dialogue";
+import {
+  getLlmLogs,
+  clearLlmLogs,
+  getConsoleLogs,
+  addConsoleLog,
+  clearConsoleLogs,
+} from "@/server/models/debug";
+import {
+  getStep,
+  getChildSteps,
+  getBranchPath,
+  deactivateSiblingBranches,
+  setBranchActive,
+  saveAlternative,
+  getAlternatives,
+  setCurrentAlternative,
+  getRootStep,
+  getLeafSteps,
+  getAllSteps,
+  getChildByOption,
+  getTreeStats,
+} from "@/server/models/dialogue";
 
 const apiRouter = express.Router();
 
@@ -54,7 +74,9 @@ apiRouter.post("/history", (req, res) => {
 apiRouter.post("/chat/stream", async (req, res) => {
   try {
     const { userInput, history, parentStepId, parentOptionId } = req.body;
-    console.log(`[chat/stream] userInput="${String(userInput).slice(0, 80)}" parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history?.length ?? 0}`);
+    console.log(
+      `[chat/stream] userInput="${String(userInput).slice(0, 80)}" parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history?.length ?? 0}`,
+    );
 
     // Save the player's last YOU message to history
     const lastMsg = history?.[history.length - 1];
@@ -69,13 +91,7 @@ apiRouter.post("/chat/stream", async (req, res) => {
       }
     }
 
-    await generateTurn(
-      userInput,
-      history ?? [],
-      res,
-      parentStepId ?? null,
-      parentOptionId ?? null,
-    );
+    await generateTurn(userInput, history ?? [], res, parentStepId ?? null, parentOptionId ?? null);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat stream error:", message);
@@ -105,7 +121,9 @@ apiRouter.post("/regenerate", async (req, res) => {
       return;
     }
 
-    console.log(`[regenerate] archiving step=${stepId} parentStepId=${step.parentStepId} parentOptionId=${step.parentOptionId} historyLen=${history?.length ?? 0}`);
+    console.log(
+      `[regenerate] archiving step=${stepId} parentStepId=${step.parentStepId} parentOptionId=${step.parentOptionId} historyLen=${history?.length ?? 0}`,
+    );
 
     // Save current as alternative before regenerating
     const altId = saveAlternative(stepId, step.messages, step.options);
@@ -196,12 +214,14 @@ apiRouter.post("/branches/activate", (req, res) => {
 apiRouter.get("/dialogue/tree", (_req, res) => {
   const root = getRootStep();
   const allSteps = getAllSteps();
-  const steps: Record<string, typeof allSteps[number]> = {};
+  const steps: Record<string, (typeof allSteps)[number]> = {};
   for (const step of allSteps) {
     steps[step.id] = step;
   }
   const stats = getTreeStats();
-  console.log(`[dialogue/tree] root=${root?.id}, totalSteps=${allSteps.length}, leaves=${stats.leafIds.length}, branches=${stats.branchCount}`);
+  console.log(
+    `[dialogue/tree] root=${root?.id}, totalSteps=${allSteps.length}, leaves=${stats.leafIds.length}, branches=${stats.branchCount}`,
+  );
   res.json({ root, steps, leafIds: stats.leafIds, stats });
 });
 
@@ -214,17 +234,21 @@ apiRouter.post("/dialogue/traverse", (req, res) => {
 
   const step = getStep(stepId);
   if (step) {
-    const option = step.options.find(o => o.id === optionId);
+    const option = step.options.find((o) => o.id === optionId);
     if (option?.nextStepId) {
       const child = getStep(option.nextStepId);
-      console.log(`[dialogue/traverse] fast-path: stepId=${stepId} optionId=${optionId} nextStepId=${option.nextStepId} found=${!!child}`);
+      console.log(
+        `[dialogue/traverse] fast-path: stepId=${stepId} optionId=${optionId} nextStepId=${option.nextStepId} found=${!!child}`,
+      );
       res.json({ child: child || null });
       return;
     }
   }
 
   const child = getChildByOption(stepId, optionId);
-  console.log(`[dialogue/traverse] fallback: stepId=${stepId} optionId=${optionId} found=${!!child}`);
+  console.log(
+    `[dialogue/traverse] fallback: stepId=${stepId} optionId=${optionId} found=${!!child}`,
+  );
   res.json({ child: child || null });
 });
 
@@ -234,7 +258,8 @@ apiRouter.post("/regenerate-all", async (_req, res) => {
   try {
     const leaves = getLeafSteps();
     console.log(`[regenerate-all] regenerating ${leaves.length} leaf steps`);
-    const results: Array<{ leafId: string; success: boolean; newStepId?: string; error?: string }> = [];
+    const results: Array<{ leafId: string; success: boolean; newStepId?: string; error?: string }> =
+      [];
 
     for (const leaf of leaves) {
       try {
@@ -247,7 +272,7 @@ apiRouter.post("/regenerate-all", async (_req, res) => {
         for (const step of branchPath) {
           // Collect all messages along the branch
           for (const msg of step.messages) {
-            if (!history.some(h => h.id === msg.id)) {
+            if (!history.some((h) => h.id === msg.id)) {
               history.push({ ...msg, id: msg.id || `msg_${step.id}_${history.length}` });
             }
           }

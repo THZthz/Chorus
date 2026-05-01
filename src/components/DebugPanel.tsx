@@ -472,7 +472,7 @@ const LlmTraceViewer: React.FC = () => {
                       {log.status}
                     </span>
                     <span className="text-white/30 font-mono text-[10px] tabular-nums tracking-widest whitespace-nowrap">
-                      {new Date(log.timestamp).toLocaleString([], {
+                      {new Date(log.timestamp.replace(' ', 'T') + 'Z').toLocaleString([], {
                         year: '2-digit',
                         month: '2-digit',
                         day: '2-digit',
@@ -1150,9 +1150,9 @@ const ConsoleViewer: React.FC = () => {
         // Backend returns args as string, we need to parse it for the UI
         const formattedLogs = persistedLogs.map((log: any) => ({
           ...log,
-          timestamp: new Date(log.timestamp).getTime(),
+          timestamp: new Date(log.timestamp.replace(' ', 'T') + 'Z').getTime(),
           args: JSON.parse(log.args)
-        }));
+        })).reverse(); // DB returns DESC, in-memory expects ASC
         consoleLogger.setLogs(formattedLogs);
       }
     } catch (error) {
@@ -1341,14 +1341,14 @@ const ConsoleViewer: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto debug-scrollbar font-mono text-[11px] space-y-1 pr-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden debug-scrollbar font-mono text-[11px] space-y-1 pr-1">
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-white/10 py-20 grayscale opacity-50">
             <Monitor size={48} className="mb-4" />
             <p className="uppercase tracking-[0.3em] text-[10px] font-bold">{logs.length > 0 ? 'No_Matches_Found' : 'No_Logs_Recorded'}</p>
           </div>
         ) : (
-          <div className={!isWrapping ? "w-fit min-w-full" : ""}>
+          <div>
             {[...filteredLogs].reverse().map((log) => (
               <div key={log.id} className="flex gap-3 py-1 px-2 border-b border-white/[0.03] hover:bg-white/[0.02] group">
                 <span className="text-white/20 select-none w-24 flex-shrink-0 text-[10px] whitespace-nowrap">
@@ -1369,11 +1369,11 @@ const ConsoleViewer: React.FC = () => {
                 }`}>
                   [{log.level}]
                 </span>
-                <div className="flex-1 flex flex-wrap items-start gap-x-2">
+                <div className="flex-1 flex flex-wrap items-start gap-x-2 min-w-0">
                   {log.args.map((arg, i) => {
                     if (typeof arg === 'string') {
                       return (
-                        <span key={i} className={`${isWrapping ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'} ${
+                        <span key={i} className={`whitespace-pre-wrap break-all ${
                           log.level === 'error' ? 'text-red-300/90' :
                           log.level === 'warn' ? 'text-yellow-200/80' :
                           'text-gray-300'

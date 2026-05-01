@@ -281,12 +281,19 @@ export async function generateTurn(
               let args: Record<string, unknown> | null = null;
 
               // SDK may leave input as a raw string when JSON parsing fails —
-              // try the more tolerant partial-json parser to recover
+              // try the more tolerant partial-json parser to recover.
+              // Also repair a known LLM bug: premature `}` after messages array
+              // e.g. {"messages": [...]}, "metadata": ... → {"messages": [...], "metadata": ...
               if (typeof chunk.input === "string" && chunk.input.trim()) {
+                const repaired = chunk.input.replace(/\]\s*\}\s*,\s*"/g, '], "');
                 try {
-                  args = parsePartial(chunk.input) as Record<string, unknown>;
+                  args = parsePartial(repaired) as Record<string, unknown>;
                 } catch {
-                  console.warn(`[generateTurn] parsePartial recovery failed for tool-call input`);
+                  try {
+                    args = parsePartial(chunk.input) as Record<string, unknown>;
+                  } catch {
+                    console.warn(`[generateTurn] parsePartial recovery failed for tool-call input`);
+                  }
                 }
               } else if (chunk.input && typeof chunk.input === "object") {
                 args = chunk.input as Record<string, unknown>;
@@ -435,13 +442,19 @@ export async function generateTurnBatch(
   );
   const rawInput = dialogueCall?.input;
 
-  // Recover from malformed JSON with tolerant partial-json parser
+  // Recover from malformed JSON with tolerant partial-json parser.
+  // Also repair a known LLM bug: premature `}` after messages array
   let args: Record<string, unknown> | null = null;
   if (typeof rawInput === "string" && rawInput.trim()) {
+    const repaired = rawInput.replace(/\]\s*\}\s*,\s*"/g, '], "');
     try {
-      args = parsePartial(rawInput) as Record<string, unknown>;
+      args = parsePartial(repaired) as Record<string, unknown>;
     } catch {
-      console.warn("[generateTurnBatch] parsePartial recovery failed for tool input");
+      try {
+        args = parsePartial(rawInput) as Record<string, unknown>;
+      } catch {
+        console.warn("[generateTurnBatch] parsePartial recovery failed for tool input");
+      }
     }
   } else if (rawInput && typeof rawInput === "object") {
     args = rawInput as Record<string, unknown>;

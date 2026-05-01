@@ -258,6 +258,7 @@ export async function generateTurn(
 
     let toolRawArgs = "";
     let dialogueToolId: string | null = null;
+    let hasEmittedStreaming = false;
 
     for await (const chunk of result.fullStream) {
       switch (chunk.type) {
@@ -265,8 +266,13 @@ export async function generateTurn(
           break;
         case "tool-input-start":
           if (chunk.toolName === "generateDialogueStep") {
+            if (hasEmittedStreaming) {
+              // A retry is starting — notify the client so it can show a visual reset
+              events.emitStreamingReset();
+            }
             dialogueToolId = chunk.id;
             toolRawArgs = "";
+            hasEmittedStreaming = false;
           }
           break;
 
@@ -275,8 +281,9 @@ export async function generateTurn(
             toolRawArgs += chunk.delta;
             try {
               const parsed = parsePartial(toolRawArgs);
-              if (parsed.messages && Array.isArray(parsed.messages)) {
+              if (parsed.messages && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
                 finalMessages = parsed.messages;
+                hasEmittedStreaming = true;
                 events.emitStreamingMessages(
                   finalMessages.map((m: any) => ({
                     speaker: m.speaker || "SYSTEM",

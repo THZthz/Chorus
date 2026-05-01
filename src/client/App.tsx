@@ -17,6 +17,7 @@ export default function App() {
   const [currentCheck, setCurrentCheck] = useState<DialogueOption["check"] | null>(null);
   const [dynamicOptions, setDynamicOptions] = useState<DialogueOption[] | null>(null);
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([]);
+  const [streamingFlash, setStreamingFlash] = useState(false);
   const [canRegenerate, setCanRegenerate] = useState(false);
   const [lastStepId, setLastStepId] = useState<string | null>(null);
   const [hasBegun, setHasBegun] = useState(false);
@@ -107,6 +108,12 @@ export default function App() {
               metadata: m.metadata as Message["metadata"],
             })),
           );
+        },
+        onStreamingReset: () => {
+          setStreamingMessages((prev) => {
+            if (prev.length > 0) setStreamingFlash(true);
+            return [];
+          });
         },
         onOptions: (options) => {
           setDynamicOptions(options);
@@ -292,6 +299,12 @@ export default function App() {
             })),
           );
         },
+        onStreamingReset: () => {
+          setStreamingMessages((prev) => {
+            if (prev.length > 0) setStreamingFlash(true);
+            return [];
+          });
+        },
         onOptions: (options) => {
           setDynamicOptions(options);
         },
@@ -473,6 +486,12 @@ export default function App() {
       window.location.reload();
     }
   };
+
+  useEffect(() => {
+    if (!streamingFlash) return;
+    const t = setTimeout(() => setStreamingFlash(false), 600);
+    return () => clearTimeout(t);
+  }, [streamingFlash]);
 
   // ── Auto-scroll ──
 
@@ -664,11 +683,35 @@ export default function App() {
             ))}
 
             {/* Streaming messages */}
-            {streamingMessages.map((msg, idx) => (
-              <div key={`stream-${msg.id}-${idx}`} className="mb-6 opacity-80">
-                <DialogueMessage message={msg} isStreaming={idx === streamingMessages.length - 1} />
-              </div>
-            ))}
+            <div className="relative">
+              {streamingMessages.map((msg, idx) => (
+                <div key={`stream-${msg.id}-${idx}`} className="mb-6 opacity-80">
+                  <DialogueMessage message={msg} isStreaming={idx === streamingMessages.length - 1} />
+                </div>
+              ))}
+              <AnimatePresence>
+                {streamingFlash && (
+                  <motion.div
+                    key="streaming-flash"
+                    className="pointer-events-none absolute inset-0"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    {/* Dim overlay */}
+                    <div className="absolute inset-0 bg-[#0a0a0a]/70" />
+                    {/* Scan-line sweep */}
+                    <motion.div
+                      className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-[#ff6b35]/70 to-transparent"
+                      initial={{ top: 0, opacity: 0.9 }}
+                      animate={{ top: "100%", opacity: 0 }}
+                      transition={{ duration: 0.5, ease: "linear" }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* Dice roller modal */}
             <AnimatePresence>

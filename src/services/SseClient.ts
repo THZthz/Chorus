@@ -7,6 +7,7 @@ export interface SseCallbacks {
   onPlotUpdate?: (data: { plotId: string; status: string }) => void;
   onPlotCreate?: (data: { plotId: string; title: string }) => void;
   onStreamingMessages?: (messages: StreamingMessage[]) => void;
+  onStreamingReset?: () => void;
   onOptions?: (options: DialogueOption[]) => void;
   onParsed?: (data: { messages: StreamingMessage[]; options: DialogueOption[] }) => void;
   onError?: (message: string) => void;
@@ -103,6 +104,10 @@ export class SseClient {
         break;
       case "streaming_messages":
         cb.onStreamingMessages?.(data.messages);
+        break;
+      case "streaming_reset":
+        console.log(`[sse] event=streaming_reset`);
+        cb.onStreamingReset?.();
         break;
       case "options":
         console.log(`[sse] event=options count=${data.options?.length ?? 0}`);

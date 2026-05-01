@@ -47,6 +47,10 @@ export class TurnEventEmitter {
     this.send("plot_create", { plotId, title });
   }
 
+  emitStreamingReset() {
+    this.send("streaming_reset", {});
+  }
+
   emitStreamingMessages(messages: StreamingMessage[]) {
     this.send("streaming_messages", { messages });
   }

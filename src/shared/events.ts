@@ -46,6 +46,10 @@ export interface ErrorEvent {
   message: string;
 }
 
+export interface StreamingResetEvent {
+  type: "streaming_reset";
+}
+
 export interface DoneEvent {
   type: "done";
 }
@@ -64,6 +68,7 @@ export type SseEventPayload =
   | PlotUpdateEvent
   | PlotCreateEvent
   | StreamingMessagesEvent
+  | StreamingResetEvent
   | OptionsEvent
   | ParsedEvent
   | ErrorEvent
@@ -78,6 +83,7 @@ export interface SseEventMap {
   plot_update: PlotUpdateEvent;
   plot_create: PlotCreateEvent;
   streaming_messages: StreamingMessagesEvent;
+  streaming_reset: StreamingResetEvent;
   options: OptionsEvent;
   parsed: ParsedEvent;
   error: ErrorEvent;

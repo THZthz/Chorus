@@ -90,30 +90,38 @@ export class SseClient {
   private dispatch(event: string, data: any, cb: SseCallbacks) {
     switch (event) {
       case "step_start":
+        console.log(`[sse] event=step_start stepId=${data.stepId}`);
         cb.onStepStart?.(data);
         break;
       case "world_update":
+        console.log(`[sse] event=world_update entityId=${data.entityId}`);
         cb.onWorldUpdate?.(data);
         break;
       case "plot_update":
+        console.log(`[sse] event=plot_update plotId=${data.plotId}`);
         cb.onPlotUpdate?.(data);
         break;
       case "plot_create":
+        console.log(`[sse] event=plot_create plotId=${data.plotId}`);
         cb.onPlotCreate?.(data);
         break;
       case "streaming_messages":
         cb.onStreamingMessages?.(data.messages);
         break;
       case "options":
+        console.log(`[sse] event=options count=${data.options?.length ?? 0}`);
         cb.onOptions?.(data.options);
         break;
       case "parsed":
+        console.log(`[sse] event=parsed msgs=${data.messages?.length ?? 0} opts=${data.options?.length ?? 0}`);
         cb.onParsed?.(data);
         break;
       case "error":
+        console.error(`[sse] event=error message=${data.message}`);
         cb.onError?.(data.message);
         break;
       case "done":
+        console.log(`[sse] event=done`);
         cb.onDone?.();
         break;
     }

@@ -68,6 +68,7 @@ export default function App() {
     parentStepId: string | null,
     parentOptionId: string | null,
   ) => {
+    console.log(`[stream] starting, parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${updatedHistory.length} input="${String(userInput).slice(0, 60)}"`);
     setIsTyping(true);
     setStreamingMessages([]);
     setDynamicOptions(null);
@@ -85,6 +86,7 @@ export default function App() {
       {
         onStepStart: (data) => {
           setLastStepId(data.stepId);
+          console.log(`[stream] step_start stepId=${data.stepId}`);
         },
         onStreamingMessages: (messages) => {
           setStreamingMessages(
@@ -99,6 +101,7 @@ export default function App() {
         },
         onOptions: (options) => {
           setDynamicOptions(options);
+          console.log(`[stream] options received: ${options.length}`);
         },
         onParsed: (data) => {
           setStreamingMessages([]);
@@ -113,6 +116,7 @@ export default function App() {
           if (data.options && data.options.length > 0) {
             setDynamicOptions(data.options);
           }
+          console.log(`[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options`);
         },
         onWorldUpdate: () => {
           worldManager.loadState();
@@ -121,6 +125,7 @@ export default function App() {
           // Implicit refresh via world state
         },
         onError: (message) => {
+          console.error(`[stream] error: ${message}`);
           setIsTyping(false);
           setStreamingMessages([]);
           setHistory((prev) => [
@@ -134,6 +139,7 @@ export default function App() {
           ]);
         },
         onDone: () => {
+          console.log(`[stream] done`);
           setIsTyping(false);
           setCanRegenerate(true);
           sseRef.current = null;
@@ -230,17 +236,89 @@ export default function App() {
     if (!lastStepId || isTyping) return;
     sseRef.current?.abort();
 
-    setHistory((prev) => {
-      const lastYouIdx = prev.map((m) => m.type).lastIndexOf("YOU");
-      if (lastYouIdx >= 0) return prev.slice(0, lastYouIdx + 1);
-      return prev;
-    });
+    // Trim history to last YOU message (compute before setState to avoid stale closure)
+    const lastYouIdx = history.map((m) => m.type).lastIndexOf("YOU");
+    const trimmedHistory = lastYouIdx >= 0 ? history.slice(0, lastYouIdx + 1) : history;
+
+    console.log(`[regenerate] triggering, stepId=${lastStepId} historyLen=${trimmedHistory.length}`);
+
+    setHistory(trimmedHistory);
     setDynamicOptions(null);
     setStreamingMessages([]);
+    setIsTyping(true);
 
-    const lastYouMsg = history.filter((m) => m.type === "YOU").pop();
-    const userInput = lastYouMsg?.text ?? "Continue";
-    handleStreamingResponse(userInput, history, null, null);
+    const streamId = `stream-${Date.now()}`;
+    setStreamingId(streamId);
+
+    const client = new SseClient();
+    sseRef.current = client;
+
+    client.stream(
+      "/api/regenerate",
+      { stepId: lastStepId, history: trimmedHistory },
+      {
+        onStepStart: (data) => {
+          setLastStepId(data.stepId);
+          console.log(`[regenerate] new stepId=${data.stepId}`);
+        },
+        onStreamingMessages: (messages) => {
+          setStreamingMessages(
+            messages.map((m, i) => ({
+              id: `${streamId}-${i}`,
+              speaker: m.speaker,
+              type: m.type as Message["type"],
+              text: m.text,
+              metadata: m.metadata as Message["metadata"],
+            })),
+          );
+        },
+        onOptions: (options) => {
+          setDynamicOptions(options);
+        },
+        onParsed: (data) => {
+          setStreamingMessages([]);
+          const messages: Message[] = data.messages.map((m, i) => ({
+            id: `${streamId}-final-${i}`,
+            speaker: m.speaker,
+            type: m.type as Message["type"],
+            text: m.text,
+            metadata: m.metadata as Message["metadata"],
+          }));
+          setHistory((prev) => [...prev, ...messages]);
+          if (data.options && data.options.length > 0) {
+            setDynamicOptions(data.options);
+          }
+          console.log(`[regenerate] parsed ${messages.length} msgs, ${data.options?.length ?? 0} options`);
+        },
+        onWorldUpdate: () => {
+          worldManager.loadState();
+        },
+        onPlotUpdate: () => {
+          // Implicit refresh via world state
+        },
+        onError: (message) => {
+          console.error(`[regenerate] error: ${message}`);
+          setIsTyping(false);
+          setStreamingMessages([]);
+          setHistory((prev) => [
+            ...prev,
+            {
+              id: `error-${Date.now()}`,
+              speaker: "SYSTEM",
+              type: "SYSTEM",
+              text: `[Error: ${message}]`,
+            },
+          ]);
+        },
+        onDone: () => {
+          setIsTyping(false);
+          setCanRegenerate(true);
+          sseRef.current = null;
+          worldManager.loadState();
+          console.log(`[regenerate] done`);
+        },
+      },
+    );
   };
 
   // ── Reset ──
@@ -265,10 +343,20 @@ export default function App() {
     setStreamingMessages([]);
     setCanRegenerate(false);
 
+    console.log(`[replay] entering replay mode, fetching tree...`);
     const res = await fetch("/api/dialogue/tree");
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.error(`[replay] tree fetch failed: ${res.status}`);
+      return;
+    }
     const data = await res.json();
-    if (!data.root) return;
+    if (!data.root) {
+      console.warn(`[replay] no root step found in tree`);
+      return;
+    }
+
+    const stepCount = Object.keys(data.steps).length;
+    console.log(`[replay] tree loaded: root=${data.root.id}, steps=${stepCount}, leaves=${data.leafIds?.length ?? 0}, totalMsgs=${data.root.messages?.length ?? 0}, options=${data.root.options?.length ?? 0}`);
 
     setTreeSteps(data.steps);
     setCurrentReplayStepId(data.root.id);
@@ -279,6 +367,7 @@ export default function App() {
   };
 
   const exitReplayMode = async () => {
+    console.log(`[replay] exiting replay mode, restoring live history`);
     setMode("live");
     setTreeSteps({});
     setCurrentReplayStepId(null);
@@ -299,9 +388,12 @@ export default function App() {
   };
 
   const handleReplayOptionSelect = async (option: DialogueOption) => {
+    console.log(`[replay] option selected: id=${option.id} nextStepId=${option.nextStepId || "none"} text="${String(option.text).slice(0, 40)}"`);
+
     // Check nextStepId first (fast path)
     if (option.nextStepId && treeSteps[option.nextStepId]) {
       const child = treeSteps[option.nextStepId];
+      console.log(`[replay] fast-path navigate to step=${child.id} msgs=${child.messages.length} options=${child.options.length}`);
       setHistory(prev => [...prev, ...child.messages]);
       setDynamicOptions(child.options);
       setCurrentReplayStepId(child.id);
@@ -309,35 +401,45 @@ export default function App() {
     }
 
     // Fall back to server lookup
-    if (!currentReplayStepId) return;
+    if (!currentReplayStepId) {
+      console.warn(`[replay] no current step, cannot traverse`);
+      return;
+    }
+    console.log(`[replay] slow-path lookup: stepId=${currentReplayStepId} optionId=${option.id}`);
     const res = await fetch("/api/dialogue/traverse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stepId: currentReplayStepId, optionId: option.id }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.warn(`[replay] traverse failed: ${res.status}`);
+      return;
+    }
     const { child } = await res.json();
     if (child) {
-      // Also add to local tree cache
+      console.log(`[replay] slow-path found child step=${child.id}`);
       setTreeSteps(prev => ({ ...prev, [child.id]: child }));
       setHistory(prev => [...prev, ...child.messages]);
       setDynamicOptions(child.options);
       setCurrentReplayStepId(child.id);
+    } else {
+      console.log(`[replay] no child found for option`);
     }
   };
 
   // ── Bulk regenerate ──
 
   const handleBulkRegenerate = async () => {
+    console.log(`[regenerate-all] starting bulk regenerate`);
     setRegeneratingAll(true);
     try {
       const res = await fetch("/api/regenerate-all", { method: "POST" });
       const data = await res.json();
       const succeeded = data.results?.filter((r: { success: boolean }) => r.success).length ?? 0;
       const total = data.results?.length ?? 0;
-      console.log(`Regenerated ${succeeded}/${total} leaf steps`);
+      console.log(`[regenerate-all] completed: ${succeeded}/${total} leaf steps regenerated`);
     } catch (err) {
-      console.error("Bulk regenerate failed:", err);
+      console.error("[regenerate-all] failed:", err);
     } finally {
       setRegeneratingAll(false);
       window.location.reload();

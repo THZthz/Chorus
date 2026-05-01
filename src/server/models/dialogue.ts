@@ -132,6 +132,8 @@ export function saveAlternative(stepId: string, messages: Message[], options: Di
     VALUES (?, ?, ?, ?, 0)
   `).run(id, stepId, JSON.stringify(messages), JSON.stringify(options));
 
+  console.log(`[dialogue] saved alternative id=${id} stepId=${stepId} seq=0 prevMax=${nextSeq - 1}`);
+
   return id;
 }
 
@@ -189,7 +191,7 @@ export function getLeafSteps(): DialogueStepParsed[] {
 
 export function getChildByOption(parentStepId: string, parentOptionId: string): DialogueStepParsed | null {
   const row = db.prepare(
-    "SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND parent_option_id = ? AND is_active = 1 LIMIT 1"
+    "SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND parent_option_id = ? ORDER BY created_at DESC LIMIT 1"
   ).get(parentStepId, parentOptionId) as DialogueStepRow | undefined;
   return row ? parseStep(row) : null;
 }
@@ -197,6 +199,13 @@ export function getChildByOption(parentStepId: string, parentOptionId: string): 
 export function getAllActiveSteps(): DialogueStepParsed[] {
   const rows = db.prepare(
     "SELECT * FROM dialogue_steps WHERE is_active = 1 ORDER BY created_at ASC"
+  ).all() as DialogueStepRow[];
+  return rows.map(parseStep);
+}
+
+export function getAllSteps(): DialogueStepParsed[] {
+  const rows = db.prepare(
+    "SELECT * FROM dialogue_steps ORDER BY created_at ASC"
   ).all() as DialogueStepRow[];
   return rows.map(parseStep);
 }

@@ -157,7 +157,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming }) => {
             {idx === 0 && (
               <div className="flex items-center gap-3 mb-2">
                 <span
-                  className="font-mono text-[23px] uppercase tracking-[0.03em] font-semibold leading-none"
+                  className="font-mono text-[22px] uppercase tracking-[0.001em] font-semibold leading-none"
                   style={{ color: speakerColor }}
                 >
                   {message.speaker}

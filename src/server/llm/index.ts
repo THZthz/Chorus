@@ -172,11 +172,21 @@ export async function generateTurn(
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
   let lastError: Error | null = null;
+  let prevAttemptToolCalls: string[] = [];
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     finalMessages = [];
     finalOptions = [];
     lastError = null;
+
+    const attemptToolCalls: string[] = [];
+
+    const retryNotice =
+      attempt > 0
+        ? prevAttemptToolCalls.length > 0
+          ? `SYSTEM ERROR: Your previous response called [${prevAttemptToolCalls.join(", ")}] but never called generateDialogueStep. The player is stuck — generateDialogueStep is REQUIRED as the final call. Call it now.\n\n`
+          : `SYSTEM ERROR: Your previous response did not call generateDialogueStep at all. The player is stuck — you MUST call generateDialogueStep. Call it now.\n\n`
+        : "";
 
     const debugging = new LlmDebugIntegration(
       {
@@ -195,7 +205,7 @@ export async function generateTurn(
       const result = streamText({
         model,
         system: systemPrompt,
-        messages: [{ role: "user", content: promptText }],
+        messages: [{ role: "user", content: retryNotice + promptText }],
         tools: {
           updateWorldState: createUpdateWorldStateTool(events),
           updatePlotStatus: createUpdatePlotStatusTool(events),
@@ -203,6 +213,9 @@ export async function generateTurn(
           generateDialogueStep: createGenerateDialogueStepTool(events),
         },
         onStepFinish: (event) => {
+          for (const tc of event.toolCalls ?? []) {
+            attemptToolCalls.push(tc.toolName);
+          }
           debugging.onStepFinish({
             stepNumber: event.stepNumber ?? 0,
             finishReason: event.finishReason ?? "unknown",
@@ -318,10 +331,12 @@ export async function generateTurn(
         break; // success — exit retry loop
       }
 
-      console.warn(`[generateTurn] attempt ${attempt + 1}/${MAX_RETRIES}: no messages generated, retrying...`);
+      prevAttemptToolCalls = attemptToolCalls;
+      console.warn(`[generateTurn] attempt ${attempt + 1}/${MAX_RETRIES}: no messages generated (tools called: [${attemptToolCalls.join(", ")}]), retrying...`);
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
       debugging.onError(lastError);
+      prevAttemptToolCalls = attemptToolCalls;
       console.warn(`[generateTurn] attempt ${attempt + 1}/${MAX_RETRIES} errored: ${lastError.message}`);
     }
   }

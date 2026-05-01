@@ -17,7 +17,7 @@ export default function App() {
   const [currentCheck, setCurrentCheck] = useState<DialogueOption["check"] | null>(null);
   const [dynamicOptions, setDynamicOptions] = useState<DialogueOption[] | null>(null);
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([]);
-  const [streamingFlash, setStreamingFlash] = useState(false);
+  const [changedMessageIds, setChangedMessageIds] = useState<Set<string>>(new Set());
   const [canRegenerate, setCanRegenerate] = useState(false);
   const [lastStepId, setLastStepId] = useState<string | null>(null);
   const [hasBegun, setHasBegun] = useState(false);
@@ -44,6 +44,7 @@ export default function App() {
   const scrollBarRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<SseClient | null>(null);
+  const retrySnapshotRef = useRef<Message[]>([]);
 
   const { scrollYProgress } = useScroll({ container: scrollContainerRef });
   const dotTop = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
@@ -110,9 +111,11 @@ export default function App() {
           );
         },
         onStreamingReset: () => {
+          // Snapshot current streaming messages so the retry can diff against them.
+          // Keep them visible — don't wipe.
           setStreamingMessages((prev) => {
-            if (prev.length > 0) setStreamingFlash(true);
-            return [];
+            retrySnapshotRef.current = prev;
+            return prev;
           });
         },
         onOptions: (options) => {
@@ -120,7 +123,8 @@ export default function App() {
           console.log(`[stream] options received: ${options.length}`);
         },
         onParsed: (data) => {
-          setStreamingMessages([]);
+          const snapshot = retrySnapshotRef.current;
+          retrySnapshotRef.current = [];
           const messages: Message[] = data.messages.map((m, i) => ({
             id: `${streamId}-final-${i}`,
             speaker: m.speaker,
@@ -128,12 +132,19 @@ export default function App() {
             text: m.text,
             metadata: m.metadata as Message["metadata"],
           }));
+          const changed = new Set(
+            messages
+              .filter((m, i) => (snapshot[i]?.text ?? null) !== m.text)
+              .map((m) => m.id),
+          );
+          setStreamingMessages([]);
           setHistory((prev) => [...prev, ...messages]);
+          if (changed.size > 0) setChangedMessageIds(changed);
           if (data.options && data.options.length > 0) {
             setDynamicOptions(data.options);
           }
           console.log(
-            `[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options`,
+            `[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
           );
         },
         onWorldUpdate: () => {
@@ -300,16 +311,19 @@ export default function App() {
           );
         },
         onStreamingReset: () => {
+          // Snapshot current streaming messages so the retry can diff against them.
+          // Keep them visible — don't wipe.
           setStreamingMessages((prev) => {
-            if (prev.length > 0) setStreamingFlash(true);
-            return [];
+            retrySnapshotRef.current = prev;
+            return prev;
           });
         },
         onOptions: (options) => {
           setDynamicOptions(options);
         },
         onParsed: (data) => {
-          setStreamingMessages([]);
+          const snapshot = retrySnapshotRef.current;
+          retrySnapshotRef.current = [];
           const messages: Message[] = data.messages.map((m, i) => ({
             id: `${streamId}-final-${i}`,
             speaker: m.speaker,
@@ -317,12 +331,19 @@ export default function App() {
             text: m.text,
             metadata: m.metadata as Message["metadata"],
           }));
+          const changed = new Set(
+            messages
+              .filter((m, i) => (snapshot[i]?.text ?? null) !== m.text)
+              .map((m) => m.id),
+          );
+          setStreamingMessages([]);
           setHistory((prev) => [...prev, ...messages]);
+          if (changed.size > 0) setChangedMessageIds(changed);
           if (data.options && data.options.length > 0) {
             setDynamicOptions(data.options);
           }
           console.log(
-            `[regenerate] parsed ${messages.length} msgs, ${data.options?.length ?? 0} options`,
+            `[regenerate] parsed ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
           );
         },
         onWorldUpdate: () => {
@@ -488,10 +509,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!streamingFlash) return;
-    const t = setTimeout(() => setStreamingFlash(false), 600);
+    if (changedMessageIds.size === 0) return;
+    const t = setTimeout(() => setChangedMessageIds(new Set()), 900);
     return () => clearTimeout(t);
-  }, [streamingFlash]);
+  }, [changedMessageIds]);
 
   // ── Auto-scroll ──
 
@@ -679,39 +700,19 @@ export default function App() {
           <div className="flex-1">
             {/* History messages */}
             {history.map((msg) => (
-              <DialogueMessage key={msg.id} message={msg} />
+              <DialogueMessage
+                key={msg.id}
+                message={msg}
+                isFlashing={changedMessageIds.has(msg.id)}
+              />
             ))}
 
             {/* Streaming messages */}
-            <div className="relative">
-              {streamingMessages.map((msg, idx) => (
-                <div key={`stream-${msg.id}-${idx}`} className="mb-6 opacity-80">
-                  <DialogueMessage message={msg} isStreaming={idx === streamingMessages.length - 1} />
-                </div>
-              ))}
-              <AnimatePresence>
-                {streamingFlash && (
-                  <motion.div
-                    key="streaming-flash"
-                    className="pointer-events-none absolute inset-0"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    {/* Dim overlay */}
-                    <div className="absolute inset-0 bg-[#0a0a0a]/70" />
-                    {/* Scan-line sweep */}
-                    <motion.div
-                      className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-[#ff6b35]/70 to-transparent"
-                      initial={{ top: 0, opacity: 0.9 }}
-                      animate={{ top: "100%", opacity: 0 }}
-                      transition={{ duration: 0.5, ease: "linear" }}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {streamingMessages.map((msg, idx) => (
+              <div key={`stream-${msg.id}-${idx}`} className="mb-6 opacity-80">
+                <DialogueMessage message={msg} isStreaming={idx === streamingMessages.length - 1} />
+              </div>
+            ))}
 
             {/* Dice roller modal */}
             <AnimatePresence>

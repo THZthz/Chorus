@@ -7,6 +7,7 @@ import { ObjectLink } from "@/components/ObjectLink";
 interface Props {
   message: Message;
   isStreaming?: boolean;
+  isFlashing?: boolean;
 }
 
 // Disco Elysium-style skill voice colors
@@ -83,7 +84,7 @@ const RollTooltip: React.FC<{ rollResult: NonNullable<Message["rollResult"]> }> 
   </motion.div>
 );
 
-export const DialogueMessage: React.FC<Props> = ({ message, isStreaming }) => {
+export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlashing }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const isInnerVoice = message.type === "INNER_VOICE";
   const isSystem = message.type === "SYSTEM";
@@ -118,8 +119,20 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming }) => {
         initial={{ opacity: 0, y: 5 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="mb-5 flex items-center gap-4"
+        className="mb-5 flex items-center gap-4 relative"
       >
+        <AnimatePresence>
+          {isFlashing && (
+            <motion.div
+              key="flash"
+              className="pointer-events-none absolute inset-0"
+              initial={{ opacity: 0.55 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+              style={{ background: "linear-gradient(90deg, #ff6b3522 0%, transparent 80%)" }}
+            />
+          )}
+        </AnimatePresence>
         <div className="flex-1 h-px bg-[#a3c2a3]/12" />
         <div className="flex items-center gap-2">
           {message.skillCheck && (
@@ -159,9 +172,21 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming }) => {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`mb-8 font-serif ${isInnerVoice ? "border-l-2 pl-4" : ""}`}
+      className={`mb-8 font-serif relative ${isInnerVoice ? "border-l-2 pl-4" : ""}`}
       style={borderStyle}
     >
+      <AnimatePresence>
+        {isFlashing && (
+          <motion.div
+            key="flash"
+            className="pointer-events-none absolute inset-0"
+            initial={{ opacity: 0.6 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            style={{ background: "linear-gradient(90deg, #ff6b3530 0%, transparent 70%)" }}
+          />
+        )}
+      </AnimatePresence>
       {paragraphs.map((paragraphText, idx) => {
         if (!paragraphText.trim()) return null;
 

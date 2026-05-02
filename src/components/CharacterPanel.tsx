@@ -1,17 +1,28 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, ChevronRight, MapPin, Box, Heart } from "lucide-react";
+import { User, ChevronRight, MapPin, Box, Heart, Scroll } from "lucide-react";
 import { useCharacter } from "@/context/CharacterContext";
 import { CharacterStats } from "@/types/entities";
 import { worldManager } from "@/services/WorldManager";
+
+const STATUS_STYLE: Record<string, { color: string; border: string }> = {
+  PENDING: { color: "#61afef", border: "rgba(97,175,239,0.25)" },
+  IN_PROGRESS: { color: "#eab308", border: "rgba(234,179,8,0.25)" },
+  RESOLVED: { color: "#98c379", border: "rgba(152,195,121,0.25)" },
+};
 
 export const CharacterPanel: React.FC = () => {
   const { character } = useCharacter();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"STATS" | "WORLD">("STATS");
+  const [, forceUpdate] = useState(0);
+
+  // Subscribe to worldManager so the panel re-renders on world/plot changes (live or replay)
+  useEffect(() => worldManager.subscribe(() => forceUpdate((n) => n + 1)), []);
 
   const stats = Object.entries(character.stats) as [keyof CharacterStats, number][];
   const worldEntities = worldManager.getAllEntities();
+  const plots = worldManager.getPlots();
 
   return (
     <>
@@ -173,6 +184,44 @@ export const CharacterPanel: React.FC = () => {
                         );
                       })}
                     </div>
+                  </div>
+
+                  {/* Quests / Plots */}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#ff6b35] mb-4 flex items-center gap-2">
+                      <Scroll size={11} />
+                      Quests
+                    </div>
+                    {plots.length === 0 ? (
+                      <p className="text-[11px] text-gray-600 italic">No active quests.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {plots.map((plot) => {
+                          const style = STATUS_STYLE[plot.status] ?? STATUS_STYLE.PENDING;
+                          return (
+                            <div
+                              key={plot.id}
+                              className="p-3 bg-[#1a1a1a] border border-white/5 rounded-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-1.5">
+                                <span className="text-[13px] font-sans text-white font-bold leading-snug">
+                                  {plot.title}
+                                </span>
+                                <span
+                                  className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border flex-shrink-0 mt-0.5"
+                                  style={{ color: style.color, borderColor: style.border }}
+                                >
+                                  {plot.status.replace("_", " ")}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-400 line-clamp-2">
+                                {plot.description}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

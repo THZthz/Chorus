@@ -7,9 +7,10 @@ import { DialogueTreeGraph } from "@/components/debug/DialogueTreeGraph";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 
-export const DebugPanel: React.FC<{ onJumpToReplay?: (stepId: string) => void }> = ({
-  onJumpToReplay,
-}) => {
+export const DebugPanel: React.FC<{
+  onJumpToReplay?: (stepId: string) => void;
+  currentReplayStepId?: string | null;
+}> = ({ onJumpToReplay, currentReplayStepId }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"logs" | "console" | "history" | "world" | "tree">(
     "logs",
@@ -124,7 +125,7 @@ export const DebugPanel: React.FC<{ onJumpToReplay?: (stepId: string) => void }>
                 {activeTab === "console" && <ConsoleViewer />}
                 {activeTab === "history" && <HistoryEditor />}
                 {activeTab === "world" && <WorldEditor />}
-                {activeTab === "tree" && <DialogueTreeGraph onJumpToReplay={handleJumpToReplay} />}
+                {activeTab === "tree" && <DialogueTreeGraph onJumpToReplay={handleJumpToReplay} currentStepId={currentReplayStepId} />}
               </div>
             </motion.div>
           </>

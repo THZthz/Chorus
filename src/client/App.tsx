@@ -69,6 +69,7 @@ export default function App() {
         parentOptionId: string | null;
         messages: Message[];
         options: DialogueOption[];
+        worldSnapshot?: Record<string, unknown> | null;
       }
     >
   >({});
@@ -412,33 +413,25 @@ export default function App() {
     setStreamingMessages([]);
     setCanRegenerate(false);
 
-    const [treeRes, pathRes] = await Promise.all([
-      fetch("/api/dialogue/tree"),
-      fetch(`/api/dialogue/${stepId}/path`),
-    ]);
-    if (!treeRes.ok || !pathRes.ok) return;
+    const treeRes = await fetch("/api/dialogue/tree");
+    if (!treeRes.ok) return;
 
     const treeData = await treeRes.json();
-    const path: Array<{
-      id: string;
-      messages: Message[];
-      options: import("@/types/dialogue").DialogueOption[];
-    }> = await pathRes.json();
-
-    const messages: Message[] = [];
-    for (const step of path) {
-      messages.push(...step.messages);
-    }
-
     const targetStep = treeData.steps[stepId];
     if (!targetStep) return;
+
+    // Use buildHistoryFromTree so YOU messages are injected between steps
+    const messages = buildHistoryFromTree(stepId, treeData.steps);
 
     setTreeSteps(treeData.steps);
     setHistory(messages);
     setDynamicOptions(targetStep.options);
     setCurrentReplayStepId(stepId);
+    setLastStepId(stepId);
+    setCanRegenerate(true);
     setHasBegun(true);
     setMode("replay");
+    worldManager.applyStepSnapshot(targetStep.worldSnapshot);
   };
 
   // ── Reset ──
@@ -486,6 +479,7 @@ export default function App() {
     setDynamicOptions(data.root.options);
     setHasBegun(true);
     setMode("replay");
+    worldManager.applyStepSnapshot(data.steps[data.root.id]?.worldSnapshot);
   };
 
   const exitReplayMode = async () => {
@@ -493,6 +487,7 @@ export default function App() {
     setMode("live");
     setTreeSteps({});
     setCurrentReplayStepId(null);
+    worldManager.clearReplayState();
 
     const res = await fetch("/api/history");
     if (res.ok) {
@@ -507,6 +502,7 @@ export default function App() {
         setDynamicOptions(null);
       }
     }
+    worldManager.loadState();
   };
 
   const handleReplayOptionSelect = async (option: DialogueOption) => {
@@ -538,6 +534,7 @@ export default function App() {
         setCurrentReplayStepId(child.id);
         setLastStepId(child.id);
         setCanRegenerate(true);
+        worldManager.applyStepSnapshot(child.worldSnapshot);
       });
       return;
     }
@@ -562,6 +559,7 @@ export default function App() {
             setCurrentReplayStepId(child.id);
             setLastStepId(child.id);
             setCanRegenerate(true);
+            worldManager.applyStepSnapshot(child.worldSnapshot);
           });
           return;
         }
@@ -600,6 +598,8 @@ export default function App() {
           return updated;
         });
         setCurrentReplayStepId(newStepId);
+        // New branch used live world state — clear override so CharacterPanel shows live state
+        worldManager.loadState();
         console.log(`[replay] new branch saved: step=${newStepId}`);
       },
     );
@@ -895,7 +895,7 @@ export default function App() {
         </div>
       </main>
 
-      <DebugPanel onJumpToReplay={handleJumpToStep} />
+      <DebugPanel onJumpToReplay={handleJumpToStep} currentReplayStepId={currentReplayStepId} />
       <div className="fixed left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/50 to-transparent" />
       <div className="fixed right-0 top-0 bottom-0 w-2 bg-gradient-to-l from-black/50 to-transparent" />
     </div>

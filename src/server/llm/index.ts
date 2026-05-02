@@ -385,7 +385,7 @@ export async function generateTurn(
     parentOptionId,
     messages,
     options: finalOptions,
-    worldSnapshot: getAllEntities() as unknown as Record<string, unknown>,
+    worldSnapshot: { entities: getAllEntities(), plots: getAllPlots() } as unknown as Record<string, unknown>,
     isGenerated: true,
     isActive: true,
   });
@@ -509,7 +509,7 @@ export async function generateTurnBatch(
     parentOptionId,
     messages,
     options: finalOptions,
-    worldSnapshot: getAllEntities() as unknown as Record<string, unknown>,
+    worldSnapshot: { entities: getAllEntities(), plots: getAllPlots() } as unknown as Record<string, unknown>,
     isGenerated: true,
     isActive: true,
   });

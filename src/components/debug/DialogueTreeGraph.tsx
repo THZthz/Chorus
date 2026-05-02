@@ -108,8 +108,9 @@ const GraphNode: React.FC<{
   isLeaf: boolean;
   isRoot: boolean;
   isEffectivelyActive: boolean;
+  isCurrentReplay: boolean;
   onClick: () => void;
-}> = ({ step, pos, isSelected, isLeaf, isRoot, isEffectivelyActive }) => {
+}> = ({ step, pos, isSelected, isLeaf, isRoot, isEffectivelyActive, isCurrentReplay }) => {
   const firstMsg = step.messages[0];
   const preview = firstMsg
     ? firstMsg.text.slice(0, 42) + (firstMsg.text.length > 42 ? "…" : "")
@@ -121,6 +122,9 @@ const GraphNode: React.FC<{
   if (!isEffectivelyActive) {
     borderColor = "rgba(255,255,255,0.05)";
     bgColor = "rgba(255,255,255,0.01)";
+  } else if (isCurrentReplay) {
+    borderColor = "rgba(52,211,153,0.7)";
+    bgColor = "rgba(52,211,153,0.07)";
   } else if (isSelected) {
     borderColor = "rgba(255,255,255,0.55)";
     bgColor = "rgba(255,255,255,0.07)";
@@ -161,6 +165,11 @@ const GraphNode: React.FC<{
           {isRoot && (
             <span className="text-[8px] font-bold uppercase tracking-wider text-[#ff6b35]/60 border border-[#ff6b35]/20 px-1 rounded-sm">
               ROOT
+            </span>
+          )}
+          {isCurrentReplay && (
+            <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-400/80 border border-emerald-400/30 px-1 rounded-sm">
+              NOW
             </span>
           )}
           {!isEffectivelyActive && (
@@ -448,7 +457,8 @@ const Inspector: React.FC<{
 
 export const DialogueTreeGraph: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
-}> = ({ onJumpToReplay }) => {
+  currentStepId?: string | null;
+}> = ({ onJumpToReplay, currentStepId }) => {
   const [treeData, setTreeData] = useState<TreeData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [layout, setLayout] = useState<NodePos[]>([]);
@@ -788,6 +798,7 @@ export const DialogueTreeGraph: React.FC<{
                     isLeaf={leafIds.has(id)}
                     isRoot={id === rootId}
                     isEffectivelyActive={effectivelyActiveIds.has(id)}
+                    isCurrentReplay={id === currentStepId}
                     onClick={() => handleNodeClick(id)}
                   />
                 </div>

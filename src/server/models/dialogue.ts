@@ -283,7 +283,8 @@ export function getTreeStats(): {
 
   const branchesRow = db
     .prepare(
-      "SELECT COUNT(*) as count FROM dialogue_steps WHERE is_active = 1 AND parent_step_id IS NULL",
+      `SELECT COUNT(DISTINCT parent_step_id) as count FROM dialogue_steps
+       WHERE is_active = 1 AND parent_step_id IS NOT NULL`,
     )
     .get() as { count: number };
 

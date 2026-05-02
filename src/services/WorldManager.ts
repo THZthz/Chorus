@@ -1,33 +1,69 @@
-import { WorldEntity, WorldState, Character, Location, WorldObject } from "@/types/entities";
+import { WorldEntity, WorldState, Character, Location, WorldObject, Plot } from "@/types/entities";
 
 class WorldManager {
-  private state: WorldState = {
-    objects: {},
-    locations: {},
-    characters: {},
-  };
+  private state: WorldState = { objects: {}, locations: {}, characters: {} };
+  private plots: Plot[] = [];
+  private replayOverride: { entities: WorldState; plots: Plot[] } | null = null;
+  private listeners = new Set<() => void>();
 
-  async loadState() {
-    const res = await fetch("/api/world");
-    if (res.ok) {
-      this.state = await res.json();
-    }
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
   }
 
-  getEntity(id: string): WorldEntity | undefined {
-    return this.state.objects[id] || this.state.locations[id] || this.state.characters[id];
+  private notify() {
+    this.listeners.forEach((fn) => fn());
+  }
+
+  async loadState() {
+    const [worldRes, plotsRes] = await Promise.all([fetch("/api/world"), fetch("/api/plots")]);
+    if (worldRes.ok) this.state = await worldRes.json();
+    if (plotsRes.ok) this.plots = await plotsRes.json();
+    this.notify();
+  }
+
+  applyStepSnapshot(snapshot: Record<string, unknown> | null | undefined) {
+    if (!snapshot) {
+      this.replayOverride = null;
+      this.notify();
+      return;
+    }
+    this.replayOverride = {
+      entities: snapshot.entities as WorldState,
+      plots: (snapshot.plots as Plot[]) ?? [],
+    };
+    this.notify();
+  }
+
+  clearReplayState() {
+    this.replayOverride = null;
+    this.notify();
+  }
+
+  isReplayActive(): boolean {
+    return this.replayOverride !== null;
   }
 
   getState(): WorldState {
-    return this.state;
+    return this.replayOverride?.entities ?? this.state;
+  }
+
+  getEntity(id: string): WorldEntity | undefined {
+    const s = this.getState();
+    return s.objects[id] || s.locations[id] || s.characters[id];
   }
 
   getAllEntities(): WorldEntity[] {
+    const s = this.getState();
     return [
-      ...Object.values(this.state.objects),
-      ...Object.values(this.state.locations),
-      ...Object.values(this.state.characters),
+      ...Object.values(s.objects),
+      ...Object.values(s.locations),
+      ...Object.values(s.characters),
     ];
+  }
+
+  getPlots(): Plot[] {
+    return this.replayOverride?.plots ?? this.plots;
   }
 }
 

@@ -54,7 +54,7 @@ src/
 ├── services/
 │   ├── ConsoleLogger.ts      # Browser console.log interception
 │   ├── SseClient.ts          # Browser SSE streaming consumer
-│   └── WorldManager.ts       # Client-side world state cache
+│   └── WorldManager.ts       # Client-side world/plot cache; replay snapshot override; subscriber pattern
 └── types/
     ├── dialogue.ts           # Message, DialogueOption, DialogueStep interfaces
     └── entities.ts           # WorldEntity, Character, Location, WorldObject
@@ -158,12 +158,12 @@ On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM 
 
 Replay mode allows navigating the existing dialogue tree and expanding it with new branches.
 
-- **Enter replay**: Click the Git Branch button (visible after starting a game). Fetches the full tree from `GET /api/dialogue/tree` and loads the root step.
-- **Navigation**: Clicking a previously-explored option (one with `nextStepId`) navigates to its child step, injecting a YOU message then revealing child messages one-by-one (120ms stagger via `revealMessagesStaggered`). Fast path uses local `treeSteps`; slow path falls back to `POST /api/dialogue/traverse`. Both paths set `lastStepId` + `canRegenerate = true` so REGENERATE is available. Options are hidden during reveal; `isRevealingRef` blocks rapid re-selection.
+- **Enter replay**: Click the Git Branch button (visible after starting a game). Fetches the full tree from `GET /api/dialogue/tree`, loads the root step, and applies its `worldSnapshot` to `worldManager` so CharacterPanel shows historical state.
+- **Navigation**: Clicking a previously-explored option (one with `nextStepId`) navigates to its child step, injecting a YOU message then revealing child messages one-by-one (120ms stagger via `revealMessagesStaggered`). In the `onDone` callback the child's `worldSnapshot` is applied to worldManager. Fast path uses local `treeSteps`; slow path falls back to `POST /api/dialogue/traverse`. Both paths set `lastStepId` + `canRegenerate = true` so REGENERATE is available. Options are hidden during reveal; `isRevealingRef` blocks rapid re-selection.
 - **New branches**: Options without a child step are styled with a dashed border and a `GitBranch` icon (see `DialogueOptions.tsx`). Clicking one triggers LLM generation (`POST /api/chat/stream`) using history reconstructed from `buildHistoryFromTree()`. On completion, the new step is fetched via `GET /api/dialogue/:id` and added to `treeSteps`; the parent option's `nextStepId` is updated in local state.
 - **Regenerate in replay**: Works for any navigated or newly-generated step since `lastStepId` is set on every navigation. YOU messages are injected in replay navigation, so `trimmedHistory` in `handleRegenerate` correctly captures the last player choice.
-- **Start from any step**: The "Jump to Replay" button in `DialogueTreeGraph` calls `handleJumpToStep(stepId)` which fetches tree + branch path and reconstructs history.
-- **Exit replay**: Click the Return button to restore the live session from `history_messages`.
+- **Start from any step**: The "Jump to Replay" button in `DialogueTreeGraph` calls `handleJumpToStep(stepId)` which fetches the tree, calls `buildHistoryFromTree` to reconstruct history with YOU messages, and sets `lastStepId` + `canRegenerate = true` so REGENERATE is immediately available.
+- **Exit replay**: Click the Return button. Calls `worldManager.clearReplayState()` (immediate visual restore to cached live entities/plots), then `worldManager.loadState()` (refreshes from DB), then fetches history from `history_messages`.
 - **`buildHistoryFromTree(stepId, treeSteps)`**: Pure function (top of `App.tsx`) that walks the parent chain from root to the given step and injects YOU messages between steps using each child's `parentOptionId` to find the option text.
 
 ---
@@ -245,7 +245,7 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
 - **Console Logs**: Intercepted browser console output with filtering
 - **History Editor**: Visual message timeline — type-styled cards (YOU/CHARACTER/INNER_VOICE/SYSTEM/ROLL/NOTIFICATION), expand-in-place overlay edit, drag reorder, add/delete messages (`src/components/debug/HistoryEditor.tsx`)
 - **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form with stat bars, opinion pills, attribute k/v table (`src/components/debug/WorldEditor.tsx`)
-- **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root), bottom inspector panel with message/option editing and "Jump to Replay" (`src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits.
+- **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay" (`src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits. Receives `currentStepId` prop and highlights the actively-replaying node with a green "NOW" badge.
 
 ---
 

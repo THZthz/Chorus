@@ -11,7 +11,8 @@ import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
   currentReplayStepId?: string | null;
-}> = ({ onJumpToReplay, currentReplayStepId }) => {
+  isStreaming?: boolean;
+}> = ({ onJumpToReplay, currentReplayStepId, isStreaming }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"logs" | "console" | "history" | "world" | "tree" | "plots">(
     "logs",
@@ -44,7 +45,7 @@ export const DebugPanel: React.FC<{
   }> = ({ id, label, icon }) => (
     <button
       onClick={() => setActiveTab(id)}
-      className={`px-4 py-3 flex items-center gap-2 border-b transition-all ${
+      className={`px-4 py-3 flex items-center gap-2 border-b transition-colors ${
         activeTab === id
           ? "border-white text-white bg-white/5"
           : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
@@ -125,7 +126,7 @@ export const DebugPanel: React.FC<{
               <div className="flex-1 p-6 min-h-0 flex flex-col">
                 {activeTab === "logs" && <LlmTraceViewer />}
                 {activeTab === "console" && <ConsoleViewer />}
-                {activeTab === "history" && <HistoryEditor />}
+                {activeTab === "history" && <HistoryEditor isStreaming={isStreaming} />}
                 {activeTab === "world" && <WorldEditor />}
                 {activeTab === "tree" && (
                   <DialogueTreeGraph

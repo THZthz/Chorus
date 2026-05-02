@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
+const MAX_DEPTH = 10;
+
 export const JsonNode: React.FC<{
   label?: string;
   value: any;
@@ -12,6 +14,7 @@ export const JsonNode: React.FC<{
   const hasChildren = value !== null && typeof value === "object";
   const isEmpty =
     hasChildren && (Array.isArray(value) ? value.length === 0 : Object.keys(value).length === 0);
+  const isMaxDepth = depth >= MAX_DEPTH;
 
   const renderValue = () => {
     if (value === null) return <span className="text-[#5c6370]">null</span>;
@@ -30,6 +33,8 @@ export const JsonNode: React.FC<{
 
     if (Array.isArray(value)) {
       if (isEmpty) return <span className="text-[#abb2bf]/20">[]</span>;
+      if (isMaxDepth)
+        return <span className="text-[#5c6370]">[{value.length} items]</span>;
 
       return isExpanded ? (
         <span>
@@ -59,6 +64,8 @@ export const JsonNode: React.FC<{
 
     // Object
     if (isEmpty) return <span className="text-[#abb2bf]/20">{"{}"}</span>;
+    if (isMaxDepth)
+      return <span className="text-[#5c6370]">{"{…}"}</span>;
 
     return isExpanded ? (
       <span>
@@ -94,7 +101,7 @@ export const JsonNode: React.FC<{
     <div className="font-mono text-[11px] leading-relaxed group/node">
       <div className="flex items-start">
         <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
-          {hasChildren && !isEmpty && (
+          {hasChildren && !isEmpty && !isMaxDepth && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className={`text-gray-500 hover:text-blue-400 transition-transform duration-200 ${isExpanded ? "rotate-0" : "-rotate-90"}`}

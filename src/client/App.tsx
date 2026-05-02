@@ -915,7 +915,7 @@ export default function App() {
         </div>
       </main>
 
-      <DebugPanel onJumpToReplay={handleJumpToStep} currentReplayStepId={currentReplayStepId} />
+      <DebugPanel onJumpToReplay={handleJumpToStep} currentReplayStepId={currentReplayStepId} isStreaming={isTyping} />
       <div className="fixed left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/50 to-transparent" />
       <div className="fixed right-0 top-0 bottom-0 w-2 bg-gradient-to-l from-black/50 to-transparent" />
     </div>

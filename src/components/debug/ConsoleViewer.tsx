@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import {
   RefreshCw,
   Trash2,
@@ -8,47 +8,163 @@ import {
   Filter,
   Calendar,
   Clock,
+  Layers,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { consoleLogger, ConsoleLog, LogLevel } from "@/services/ConsoleLogger";
 import { JsonNode } from "@/components/debug/JsonNode";
 
+const SHOW_COUNT = 200;
+const THROTTLE_MS = 100;
+const LEVELS: LogLevel[] = ["trace", "log", "info", "warn", "error"];
+
+const levelColor = (level: LogLevel) => {
+  switch (level) {
+    case "error":
+      return "text-red-400";
+    case "warn":
+      return "text-yellow-400";
+    case "info":
+      return "text-blue-400";
+    case "trace":
+      return "text-white/25";
+    default:
+      return "text-white/40";
+  }
+};
+
+const levelMsgColor = (level: LogLevel) => {
+  switch (level) {
+    case "error":
+      return "text-red-300/90";
+    case "warn":
+      return "text-yellow-200/80";
+    case "trace":
+      return "text-white/20";
+    default:
+      return "text-gray-300";
+  }
+};
+
+function fmtTime(ts: number): string {
+  return new Date(ts)
+    .toLocaleString([], {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "");
+}
+
+const LogRow = React.memo<{
+  log: ConsoleLog;
+  isWrapping: boolean;
+}>(({ log, isWrapping }) => {
+  const timeStr = fmtTime(log.timestamp);
+  const badgeColor = levelColor(log.level);
+  const msgColor = levelMsgColor(log.level);
+
+  return (
+    <div className="flex gap-3 py-1 px-2 border-b border-white/[0.03] hover:bg-white/[0.02] group">
+      <span className="text-white/20 select-none w-24 flex-shrink-0 text-[10px] whitespace-nowrap">
+        {timeStr}
+      </span>
+      <span
+        className={`uppercase font-bold text-[9px] w-12 flex-shrink-0 mt-0.5 ${badgeColor}`}
+      >
+        [{log.level}]
+      </span>
+      <div className="flex-1 flex flex-wrap items-start gap-x-2 min-w-0">
+        {log.args.map((arg, i) => {
+          if (typeof arg === "string") {
+            return (
+              <span key={i} className={`whitespace-pre-wrap break-all ${msgColor}`}>
+                {arg}
+              </span>
+            );
+          }
+          if (arg === null || arg === undefined || typeof arg !== "object") {
+            return (
+              <span key={i} className="text-white/40 tabular-nums">
+                {String(arg)}
+              </span>
+            );
+          }
+          return (
+            <div
+              key={i}
+              className="w-full mt-1 mb-2 p-2 bg-white/[0.02] border border-white/10 rounded-sm overflow-x-auto debug-scrollbar"
+            >
+              <JsonNode value={arg} depth={1} isWrapping={isWrapping} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
 export const ConsoleViewer: React.FC = () => {
   const [logs, setLogs] = useState<ConsoleLog[]>(consoleLogger.getLogs());
   const [filterKeyword, setFilterKeyword] = useState("");
-  const [filterLevels, setFilterLevels] = useState<LogLevel[]>(["log", "info", "warn", "error"]);
+  const [filterLevels, setFilterLevels] = useState<LogLevel[]>([...LEVELS]);
   const [dateStart, setDateStart] = useState<string>("");
   const [dateEnd, setDateEnd] = useState<string>("");
   const [showFilters, setShowFilters] = useState(false);
   const [isWrapping, setIsWrapping] = useState(true);
+  const [showAll, setShowAll] = useState(false);
 
-  const fetchPersistedLogs = async () => {
+  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchPersistedLogs = useCallback(async () => {
     try {
       const response = await fetch("/api/debug/console");
       if (response.ok) {
         const persistedLogs = await response.json();
-        // Backend returns args as string, we need to parse it for the UI
         const formattedLogs = persistedLogs
-          .map((log: any) => ({
-            ...log,
-            timestamp: new Date(log.timestamp.replace(" ", "T") + "Z").getTime(),
-            args: JSON.parse(log.args),
-          }))
-          .reverse(); // DB returns DESC, in-memory expects ASC
+          .map((log: any) => {
+            let timestamp: number;
+            try {
+              timestamp = log.timestamp
+                ? new Date(log.timestamp.replace(" ", "T") + "Z").getTime()
+                : Date.now();
+            } catch {
+              timestamp = Date.now();
+            }
+            let args: any[];
+            try {
+              args = typeof log.args === "string" ? JSON.parse(log.args) : (log.args ?? []);
+            } catch {
+              args = [];
+            }
+            return { ...log, timestamp, args };
+          })
+          .reverse();
         consoleLogger.setLogs(formattedLogs);
       }
-    } catch (error) {
-      console.error("Failed to fetch persisted console logs:", error);
+    } catch {
+      // Silently fail — don't spam console.error which re-enters the interceptor
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPersistedLogs();
     const unsubscribe = consoleLogger.subscribe(() => {
-      setLogs(consoleLogger.getLogs());
+      if (throttleRef.current === null) {
+        throttleRef.current = setTimeout(() => {
+          setLogs(consoleLogger.getLogs());
+          throttleRef.current = null;
+        }, THROTTLE_MS);
+      }
     });
-    return unsubscribe;
-  }, []);
+    return () => {
+      unsubscribe();
+      if (throttleRef.current !== null) clearTimeout(throttleRef.current);
+    };
+  }, [fetchPersistedLogs]);
 
   const clearLogs = () => {
     consoleLogger.clearLogs();
@@ -61,31 +177,34 @@ export const ConsoleViewer: React.FC = () => {
     );
   };
 
-  const filteredLogs = logs.filter((log) => {
-    if (!filterLevels.includes(log.level)) return false;
+  const filteredLogs = useMemo(
+    () =>
+      logs.filter((log) => {
+        if (!filterLevels.includes(log.level)) return false;
 
-    if (filterKeyword) {
-      try {
-        const regex = new RegExp(filterKeyword, "i");
-        // Test message or any of the stringified args
-        const contentToTest = log.message;
-        if (!regex.test(contentToTest)) return false;
-      } catch (e) {
-        if (!log.message.toLowerCase().includes(filterKeyword.toLowerCase())) return false;
-      }
-    }
+        if (filterKeyword) {
+          try {
+            if (!new RegExp(filterKeyword, "i").test(log.message)) return false;
+          } catch {
+            if (!log.message.toLowerCase().includes(filterKeyword.toLowerCase())) return false;
+          }
+        }
 
-    if (dateStart) {
-      const start = new Date(dateStart).getTime();
-      if (log.timestamp < start) return false;
-    }
-    if (dateEnd) {
-      const end = new Date(dateEnd).getTime();
-      if (log.timestamp > end) return false;
-    }
+        if (dateStart && log.timestamp < new Date(dateStart).getTime()) return false;
+        if (dateEnd && log.timestamp > new Date(dateEnd).getTime()) return false;
 
-    return true;
-  });
+        return true;
+      }),
+    [logs, filterLevels, filterKeyword, dateStart, dateEnd],
+  );
+
+  const displayedLogs = useMemo(() => {
+    const reversed = [...filteredLogs].reverse();
+    if (showAll || reversed.length <= SHOW_COUNT) return reversed;
+    return reversed.slice(0, SHOW_COUNT);
+  }, [filteredLogs, showAll]);
+
+  const hiddenCount = filteredLogs.length - SHOW_COUNT;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -93,6 +212,9 @@ export const ConsoleViewer: React.FC = () => {
         <div className="flex items-center gap-2 text-white/60">
           <Monitor size={16} />
           <h3 className="text-[10px] font-bold uppercase tracking-[0.2em]">CONSOLE_LOGS</h3>
+          <span className="text-[9px] text-white/20 ml-1 tabular-nums">
+            ({filteredLogs.length}{hiddenCount > 0 && !showAll ? ` / ${logs.length}` : ""})
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -159,7 +281,7 @@ export const ConsoleViewer: React.FC = () => {
               </div>
 
               <div className="flex gap-2">
-                {(["log", "info", "warn", "error"] as LogLevel[]).map((level) => (
+                {LEVELS.map((level) => (
                   <button
                     key={level}
                     onClick={() => toggleLevel(level)}
@@ -171,7 +293,9 @@ export const ConsoleViewer: React.FC = () => {
                             ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
                             : level === "info"
                               ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                              : "bg-white/10 border-white/30 text-white"
+                              : level === "trace"
+                                ? "bg-white/5 border-white/15 text-white/25"
+                                : "bg-white/10 border-white/30 text-white"
                         : "bg-white/2 border-white/5 text-white/20 hover:text-white/40"
                     }`}
                   >
@@ -210,7 +334,7 @@ export const ConsoleViewer: React.FC = () => {
                 <button
                   onClick={() => {
                     setFilterKeyword("");
-                    setFilterLevels(["log", "info", "warn", "error"]);
+                    setFilterLevels([...LEVELS]);
                     setDateStart("");
                     setDateEnd("");
                   }}
@@ -225,7 +349,7 @@ export const ConsoleViewer: React.FC = () => {
       </AnimatePresence>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden debug-scrollbar font-mono text-[11px] space-y-1 pr-1">
-        {filteredLogs.length === 0 ? (
+        {displayedLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-white/10 py-20 grayscale opacity-50">
             <Monitor size={48} className="mb-4" />
             <p className="uppercase tracking-[0.3em] text-[10px] font-bold">
@@ -234,72 +358,25 @@ export const ConsoleViewer: React.FC = () => {
           </div>
         ) : (
           <div>
-            {[...filteredLogs].reverse().map((log) => (
-              <div
-                key={log.id}
-                className="flex gap-3 py-1 px-2 border-b border-white/[0.03] hover:bg-white/[0.02] group"
+            {hiddenCount > 0 && !showAll && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="w-full py-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-white/30 hover:text-[#ff6b35] hover:bg-white/[0.02] border border-dashed border-white/5 hover:border-[#ff6b35]/20 rounded-sm transition-all flex items-center justify-center gap-2"
               >
-                <span className="text-white/20 select-none w-24 flex-shrink-0 text-[10px] whitespace-nowrap">
-                  {new Date(log.timestamp)
-                    .toLocaleString([], {
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                      hour12: false,
-                    })
-                    .replace(",", "")}
-                </span>
-                <span
-                  className={`uppercase font-bold text-[9px] w-12 flex-shrink-0 mt-0.5 ${
-                    log.level === "error"
-                      ? "text-red-400"
-                      : log.level === "warn"
-                        ? "text-yellow-400"
-                        : log.level === "info"
-                          ? "text-blue-400"
-                          : "text-white/40"
-                  }`}
-                >
-                  [{log.level}]
-                </span>
-                <div className="flex-1 flex flex-wrap items-start gap-x-2 min-w-0">
-                  {log.args.map((arg, i) => {
-                    if (typeof arg === "string") {
-                      return (
-                        <span
-                          key={i}
-                          className={`whitespace-pre-wrap break-all ${
-                            log.level === "error"
-                              ? "text-red-300/90"
-                              : log.level === "warn"
-                                ? "text-yellow-200/80"
-                                : "text-gray-300"
-                          }`}
-                        >
-                          {arg}
-                        </span>
-                      );
-                    }
-                    if (arg === null || arg === undefined || typeof arg !== "object") {
-                      return (
-                        <span key={i} className="text-white/40 tabular-nums">
-                          {String(arg)}
-                        </span>
-                      );
-                    }
-                    return (
-                      <div
-                        key={i}
-                        className="w-full mt-1 mb-2 p-2 bg-white/[0.02] border border-white/10 rounded-sm overflow-x-auto debug-scrollbar"
-                      >
-                        <JsonNode value={arg} depth={1} isWrapping={isWrapping} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                <Layers size={12} />
+                Show {hiddenCount} More ({logs.length} total)
+              </button>
+            )}
+            {showAll && hiddenCount > 0 && (
+              <button
+                onClick={() => setShowAll(false)}
+                className="w-full py-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-white/20 hover:text-white/40 border border-dashed border-white/5 hover:border-white/10 rounded-sm transition-all"
+              >
+                Show Recent Only
+              </button>
+            )}
+            {displayedLogs.map((log) => (
+              <LogRow key={log.id} log={log} isWrapping={isWrapping} />
             ))}
           </div>
         )}

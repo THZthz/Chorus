@@ -244,7 +244,7 @@ const EditOverlay: React.FC<{
   );
 };
 
-export const HistoryEditor: React.FC = () => {
+export const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -262,9 +262,19 @@ export const HistoryEditor: React.FC = () => {
     }
   };
 
+  const [prevStreaming, setPrevStreaming] = useState(isStreaming);
+
   useEffect(() => {
     fetchHistory();
   }, []);
+
+  useEffect(() => {
+    // Re-fetch when streaming finishes
+    if (prevStreaming && !isStreaming) {
+      fetchHistory();
+    }
+    setPrevStreaming(isStreaming);
+  }, [isStreaming, prevStreaming]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -338,8 +348,8 @@ export const HistoryEditor: React.FC = () => {
         </div>
         <button
           onClick={handleSave}
-          disabled={isSaving}
-          className={`flex items-center gap-2 px-3 py-1 rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 ${
+          disabled={isSaving || isStreaming}
+          className={`flex items-center gap-2 px-3 py-1 rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-colors disabled:opacity-50 ${
             savedFlash
               ? "bg-[#98c379]/15 text-[#98c379] border-[#98c379]/30"
               : "bg-[#98c379]/8 text-[#98c379]/70 hover:bg-[#98c379]/15 border-[#98c379]/20"
@@ -349,6 +359,13 @@ export const HistoryEditor: React.FC = () => {
           {isSaving ? "Syncing..." : savedFlash ? "Saved ✓" : "Sync_Buffer"}
         </button>
       </div>
+
+      {isStreaming && (
+        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-sm flex items-center gap-2 text-yellow-400 text-[11px] flex-shrink-0">
+          <AlertCircle size={12} />
+          <span>Dialogue streaming in progress — buffer is read-only until streaming completes.</span>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-sm flex items-center gap-2 text-red-400 text-[11px] flex-shrink-0">
@@ -440,7 +457,7 @@ export const HistoryEditor: React.FC = () => {
         {/* Add message */}
         <button
           onClick={addMessage}
-          className="w-full flex items-center justify-center gap-2 py-3 text-[9px] uppercase tracking-widest font-bold text-white/20 hover:text-white/40 border border-dashed border-white/8 hover:border-white/20 transition-all rounded-sm mt-3"
+          className="w-full flex items-center justify-center gap-2 py-3 text-[9px] uppercase tracking-widest font-bold text-white/20 hover:text-white/40 border border-dashed border-white/8 hover:border-white/20 transition-colors rounded-sm mt-3"
         >
           <Plus size={10} />
           Add Message

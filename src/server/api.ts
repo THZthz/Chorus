@@ -367,12 +367,20 @@ apiRouter.get("/debug/console", (_req, res) => {
 
 apiRouter.post("/debug/console", (req, res) => {
   try {
-    const { level, message, args } = req.body;
-    addConsoleLog(level, message, args);
+    const body = req.body;
+    if (Array.isArray(body)) {
+      for (const entry of body) {
+        const { level, message, args } = entry;
+        addConsoleLog(level, message, args);
+      }
+    } else {
+      const { level, message, args } = body;
+      addConsoleLog(level, message, args);
+    }
     res.json({ success: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: errorMessage });
   }
 });
 

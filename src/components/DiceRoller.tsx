@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { useCharacter } from "@/context/CharacterContext";
 
 interface Props {
@@ -17,13 +17,10 @@ interface Props {
   onComplete: (total: number, success: boolean, dice: number[]) => void;
 }
 
-// Helper to calculate 2D6 probabilities
 const calculate2D6Probability = (target: number, bonus: number) => {
   const neededOnDice = target - bonus;
   if (neededOnDice <= 2) return 100;
   if (neededOnDice > 12) return 0;
-
-  // Total outcomes: 36
   let successes = 0;
   for (let d1 = 1; d1 <= 6; d1++) {
     for (let d2 = 1; d2 <= 6; d2++) {
@@ -33,11 +30,13 @@ const calculate2D6Probability = (target: number, bonus: number) => {
   return Math.round((successes / 36) * 100);
 };
 
+const probabilityColor = (p: number) =>
+  p >= 75 ? "#4ade80" : p >= 50 ? "#facc15" : p >= 30 ? "#fb923c" : "#f87171";
+
 export const DieFace: React.FC<{ value: number; size?: "sm" | "md" | "lg" | "xs" }> = ({
   value,
   size = "md",
 }) => {
-  // Map values to 3x3 grid positions (0-8)
   const dotPositions: Record<number, number[]> = {
     1: [4],
     2: [2, 6],
@@ -74,7 +73,6 @@ export const DieFace: React.FC<{ value: number; size?: "sm" | "md" | "lg" | "xs"
   );
 };
 
-// Unified Box Container
 const RollerBox = ({
   children,
   onClick,
@@ -82,6 +80,7 @@ const RollerBox = ({
   hasRolled,
   outcome,
   skill,
+  difficultyText,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -89,6 +88,7 @@ const RollerBox = ({
   hasRolled: boolean;
   outcome: { label: string; color: string; isSuccess: boolean };
   skill: string;
+  difficultyText: string;
 }) => (
   <motion.div
     initial={{ opacity: 0 }}
@@ -102,30 +102,51 @@ const RollerBox = ({
       className="relative"
     >
       <div
-        className={`w-80 bg-[#050505] border border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] overflow-hidden rounded-sm relative transition-all duration-500 ${onClick ? "cursor-pointer group hover:border-white/20" : ""}`}
+        className={`w-80 bg-[#050505] border border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] overflow-hidden rounded-sm relative transition-all duration-500 ${onClick ? "cursor-pointer" : ""}`}
         onClick={onClick}
       >
-        {/* Subtle grid pattern */}
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
 
-        {/* Header bar */}
+        {/* Header */}
         <div
-          className={`px-4 py-2 text-white font-sans font-bold uppercase tracking-[0.2em] text-center text-[11px] transition-colors duration-500 ${isRolling ? "bg-[#4fb0c6]" : hasRolled ? (outcome.isSuccess ? "bg-[#2d5a27]" : "bg-[#5a2727]") : "bg-[#1a1a1a]"}`}
+          className={`px-4 py-2.5 font-sans font-bold uppercase tracking-[0.2em] text-center text-[11px] transition-colors duration-500 ${
+            isRolling
+              ? "bg-[#4fb0c6] text-white"
+              : hasRolled
+                ? outcome.isSuccess
+                  ? "bg-[#2d5a27] text-white"
+                  : "bg-[#5a2727] text-white"
+                : "bg-[#1a1a1a] text-white/70"
+          }`}
         >
-          {skill} Check {hasRolled ? (outcome.isSuccess ? "Passed" : "Failed") : ""}
+          {skill} Check
+          {!isRolling && !hasRolled && difficultyText && (
+            <span className="ml-1.5 opacity-40 normal-case font-normal tracking-wide">
+              — {difficultyText}
+            </span>
+          )}
+          {hasRolled && (
+            <span className="ml-1.5 opacity-60 font-normal tracking-wide">
+              — {outcome.isSuccess ? "Passed" : "Failed"}
+            </span>
+          )}
         </div>
 
         <div className="p-8 flex flex-col items-center text-center relative z-10 min-h-[340px] justify-center">
           {children}
         </div>
 
-        {/* Prompt overlay */}
+        {/* Always-visible pulsing click prompt */}
         {!isRolling && !hasRolled && onClick && (
-          <div className="absolute inset-x-0 bottom-4 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center pointer-events-none">
-            <div className="text-white text-[9px] font-bold tracking-[0.3em] uppercase opacity-40">
+          <motion.div
+            animate={{ opacity: [0.2, 0.5, 0.2] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none"
+          >
+            <span className="text-white text-[8px] font-bold tracking-[0.35em] uppercase">
               Click to Proceed
-            </div>
-          </div>
+            </span>
+          </motion.div>
         )}
       </div>
     </motion.div>
@@ -149,6 +170,7 @@ export const DiceRoller: React.FC<Props> = ({
   const [rollCount, setRollCount] = useState(0);
 
   const probability = calculate2D6Probability(difficulty, skillBonus);
+  const probColor = probabilityColor(probability);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -157,8 +179,6 @@ export const DiceRoller: React.FC<Props> = ({
         setDice((prev) => prev.map(() => Math.floor(Math.random() * 6) + 1));
         setRollCount((c) => c + 1);
 
-        // Stop rolling after ~2.8 seconds (7 * 400ms)
-        // This makes the rolls feel discrete and rhythmic
         if (rollCount > 6) {
           setIsRolling(false);
           setHasRolled(true);
@@ -169,10 +189,9 @@ export const DiceRoller: React.FC<Props> = ({
           const diceTotal = finalDice.reduce((a, b) => a + b, 0);
           const totalWithBonus = diceTotal + skillBonus;
 
-          // Delay before completing to show final result
           setTimeout(() => {
             onComplete(totalWithBonus, totalWithBonus >= difficulty, finalDice);
-          }, 1500);
+          }, 1800);
         }
       }, 400);
     }
@@ -216,48 +235,75 @@ export const DiceRoller: React.FC<Props> = ({
   const diceTotal = dice.reduce((a, b) => a + b, 0);
   const currentTotal = diceTotal + skillBonus;
 
-  const rollerProps = { isRolling, hasRolled, outcome, skill };
+  const isNatural2 = hasRolled && dice.length === 2 && dice.every((d) => d === 1);
+  const isNatural12 = hasRolled && dice.length === 2 && dice.every((d) => d === 6);
+
+  const rollerProps = { isRolling, hasRolled, outcome, skill, difficultyText };
 
   // 1. Red Check Idle
   if (isRed && !isRolling && !hasRolled) {
     return (
       <RollerBox {...rollerProps} onClick={() => setIsRolling(true)}>
-        <div className="text-[#ff4d4d] text-[18px] uppercase tracking-[0.4em] font-black mb-2 drop-shadow-[0_0_8px_rgba(255,77,77,0.3)]">
-          RED CHECK
-        </div>
-        <div className="text-[64px] font-bold text-white leading-none mb-4 tracking-tighter">
+        <motion.div
+          animate={{ scale: [1, 1.015, 1], opacity: [0.85, 1, 0.85] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          className="text-[#ff4d4d] text-[18px] uppercase tracking-[0.4em] font-black mb-2 drop-shadow-[0_0_12px_rgba(255,77,77,0.4)]"
+        >
+          Red Check
+        </motion.div>
+
+        <div
+          className="text-[64px] font-bold text-white leading-none mb-3 tracking-tighter"
+          style={{ textShadow: `0 0 40px ${probColor}55` }}
+        >
           {probability}%
         </div>
 
-        <div className="w-16 h-[1px] bg-white/10 mb-6" />
+        <div className="w-36 h-[3px] bg-white/5 rounded-full overflow-hidden mb-6">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${probability}%` }}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            className="h-full rounded-full"
+            style={{ backgroundColor: probColor }}
+          />
+        </div>
 
         <div className="text-gray-400 text-[12px] font-serif italic mb-8 max-w-[220px] leading-relaxed">
           This action is irreversible. Failure will be absolute.
         </div>
 
-        <div className="flex justify-between w-full mt-4 opacity-30 px-6">
-          <div className="flex flex-col items-center gap-2">
+        <div className="flex justify-between w-full px-4">
+          <div className="flex flex-col items-center gap-1.5 opacity-25">
             <div className="flex gap-1">
-              <div className="w-4 h-4 bg-white/10 rounded-sm flex items-center justify-center">
-                <DieFace value={1} size="xs" />
-              </div>
-              <div className="w-4 h-4 bg-white/10 rounded-sm flex items-center justify-center">
-                <DieFace value={1} size="xs" />
-              </div>
+              {[1, 1].map((v, i) => (
+                <div
+                  key={i}
+                  className="w-6 h-6 bg-white/10 rounded-sm flex items-center justify-center border border-white/5"
+                >
+                  <DieFace value={v} size="xs" />
+                </div>
+              ))}
             </div>
-            <span className="text-[6px] uppercase tracking-widest">Natural 2</span>
+            <span className="text-[7px] uppercase tracking-widest text-gray-500">Natural 2</span>
           </div>
 
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex items-center">
+            <span className="text-[9px] uppercase tracking-widest text-white/15">vs</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-1.5 opacity-25">
             <div className="flex gap-1">
-              <div className="w-4 h-4 bg-white/10 rounded-sm flex items-center justify-center">
-                <DieFace value={6} size="xs" />
-              </div>
-              <div className="w-4 h-4 bg-white/10 rounded-sm flex items-center justify-center">
-                <DieFace value={6} size="xs" />
-              </div>
+              {[6, 6].map((v, i) => (
+                <div
+                  key={i}
+                  className="w-6 h-6 bg-white/10 rounded-sm flex items-center justify-center border border-white/5"
+                >
+                  <DieFace value={v} size="xs" />
+                </div>
+              ))}
             </div>
-            <span className="text-[6px] uppercase tracking-widest">Natural 12</span>
+            <span className="text-[7px] uppercase tracking-widest text-gray-500">Natural 12</span>
           </div>
         </div>
       </RollerBox>
@@ -268,25 +314,34 @@ export const DiceRoller: React.FC<Props> = ({
   if (!isRolling && !hasRolled) {
     return (
       <RollerBox {...rollerProps} onClick={() => setIsRolling(true)}>
-        <div className="text-[#4fb0c6] text-[13px] uppercase tracking-[0.4em] font-bold mb-4 opacity-70">
+        <div
+          className="text-[13px] uppercase tracking-[0.4em] font-bold mb-3 opacity-60"
+          style={{ color: probColor }}
+        >
           Probability
         </div>
         <div className="text-[72px] font-bold text-white leading-none mb-2 tracking-tighter">
           {probability}%
         </div>
 
-        <div className="w-full max-w-[160px] h-1 bg-white/5 rounded-full overflow-hidden mb-8 mt-2">
+        <div className="w-full max-w-[160px] h-1 bg-white/5 rounded-full overflow-hidden mb-6 mt-2">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${probability}%` }}
-            className="h-full bg-[#4fb0c6]"
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            className="h-full rounded-full"
+            style={{ backgroundColor: probColor }}
           />
         </div>
 
-        <div className="flex gap-4 items-center text-[12px] font-serif italic text-gray-400">
-          <span>Stat: +{skillBonus}</span>
+        <div className="flex gap-4 items-center text-[11px] font-serif italic text-gray-400">
+          <span>
+            +{skillBonus} {skill}
+          </span>
           <span className="w-1 h-1 rounded-full bg-white/20" />
-          <span>Diff: {difficulty}</span>
+          <span>
+            {difficultyText || "Difficulty"} {difficulty}
+          </span>
         </div>
       </RollerBox>
     );
@@ -304,12 +359,12 @@ export const DiceRoller: React.FC<Props> = ({
           {dice.map((value, i) => (
             <motion.div
               key={i}
-              animate={{
-                rotate: [0, 90, 180, 270, 360],
-                scale: [1, 1.1, 1],
-                y: [0, -10, 0],
+              animate={{ rotate: 360, scale: [1, 1.08, 1], y: [0, -10, 0] }}
+              transition={{
+                rotate: { duration: 0.3 + i * 0.08, repeat: Infinity, ease: "linear" },
+                scale: { duration: 0.5, repeat: Infinity, ease: "easeInOut", delay: i * 0.2 },
+                y: { duration: 0.5, repeat: Infinity, ease: "easeInOut", delay: i * 0.2 },
               }}
-              transition={{ duration: 0.4, repeat: Infinity, ease: "linear" }}
               className="w-16 h-16 bg-[#111] border border-white/20 rounded shadow-[0_0_30px_rgba(255,255,255,0.05)] flex items-center justify-center"
             >
               <DieFace value={value} size="md" />
@@ -317,18 +372,15 @@ export const DiceRoller: React.FC<Props> = ({
           ))}
         </div>
 
-        <div className="mt-4 flex flex-col items-center">
-          <div className="text-[10px] font-black text-[#4fb0c6] tracking-[0.4em] uppercase mb-2">
+        <div className="flex flex-col items-center gap-3">
+          <div className="text-[10px] font-black text-[#4fb0c6] tracking-[0.4em] uppercase">
             Calculating Outcome
           </div>
           <div className="flex gap-1.5 h-1">
             {[...Array(5)].map((_, i) => (
               <motion.div
                 key={i}
-                animate={{
-                  opacity: [0.1, 1, 0.1],
-                  scaleY: [1, 2, 1],
-                }}
+                animate={{ opacity: [0.1, 1, 0.1], scaleY: [1, 2, 1] }}
                 transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.1 }}
                 className="w-1 h-full bg-[#4fb0c6]"
               />
@@ -340,20 +392,47 @@ export const DiceRoller: React.FC<Props> = ({
   }
 
   // 4. Result
+  const criticalLabel = isNatural12 ? "Critical Success" : isNatural2 ? "Critical Failure" : null;
+  const diceBoxClass = isNatural12
+    ? "border-amber-400/50 bg-amber-900/20"
+    : isNatural2
+      ? "border-red-600/50 bg-red-900/20"
+      : "border-white/10 bg-black/50";
+  const breakdownBorderClass = isNatural12
+    ? "border-amber-400/30 shadow-[0_0_30px_rgba(251,191,36,0.08)]"
+    : isNatural2
+      ? "border-red-600/30 shadow-[0_0_30px_rgba(220,38,38,0.08)]"
+      : "border-white/5";
+
   return (
     <RollerBox {...rollerProps}>
+      {criticalLabel && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`text-[10px] font-black uppercase tracking-[0.35em] mb-3 ${
+            isNatural12 ? "text-amber-400" : "text-red-400"
+          }`}
+        >
+          {criticalLabel}
+        </motion.div>
+      )}
+
       <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
+        initial={{ opacity: 0, scale: 0.82 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`text-[36px] font-black uppercase tracking-[0.3em] mb-6 drop-shadow-2xl ${outcome.color}`}
+        transition={{ type: "spring", stiffness: 300, damping: 22 }}
+        className={`text-[32px] font-black uppercase tracking-[0.25em] mb-6 drop-shadow-2xl ${
+          isNatural12 ? "text-amber-400" : isNatural2 ? "text-red-500" : outcome.color
+        }`}
       >
         {outcome.label}
       </motion.div>
 
-      <div className="w-full h-[1px] bg-white/10 mb-8" />
+      <div className="w-full h-[1px] bg-white/10 mb-6" />
 
-      <div className="space-y-6 font-serif w-full max-w-[200px]">
-        <div className="flex justify-between items-center text-[15px]">
+      <div className="space-y-4 font-serif w-full max-w-[200px]">
+        <div className="flex justify-between items-center">
           <span className="text-gray-500 italic uppercase text-[10px] tracking-widest">
             Difficulty
           </span>
@@ -367,7 +446,7 @@ export const DiceRoller: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="flex justify-between items-center text-[15px]">
+        <div className="flex justify-between items-center">
           <span className="text-gray-500 italic uppercase text-[10px] tracking-widest">
             Your Total
           </span>
@@ -376,25 +455,32 @@ export const DiceRoller: React.FC<Props> = ({
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="mt-10 flex items-center gap-4 bg-white/[0.02] p-4 rounded-sm border border-white/5"
+        transition={{ delay: 0.25 }}
+        className={`mt-8 flex items-center gap-3 bg-white/[0.02] p-3.5 rounded-sm border transition-all ${breakdownBorderClass}`}
       >
-        <div className="flex gap-2.5">
+        <div className="flex gap-2">
           {dice.map((v, i) => (
             <div
               key={i}
-              className="w-10 h-10 rounded border border-white/10 bg-black/50 flex items-center justify-center shadow-inner"
+              className={`w-11 h-11 rounded border flex items-center justify-center shadow-inner ${diceBoxClass}`}
             >
               <DieFace value={v} size="sm" />
             </div>
           ))}
         </div>
         <div className="h-8 w-[1px] bg-white/10" />
-        <div className="flex flex-col items-center">
-          <span className="text-[20px] font-black text-[#4fb0c6]">+{skillBonus}</span>
-          <span className="text-[8px] text-gray-600 uppercase tracking-widest font-sans">Stat</span>
+        <div className="flex flex-col items-center min-w-[28px]">
+          <span className="text-[18px] font-black text-[#4fb0c6]">+{skillBonus}</span>
+          <span className="text-[7px] text-gray-600 uppercase tracking-widest font-sans">Stat</span>
+        </div>
+        <div className="h-8 w-[1px] bg-white/10" />
+        <div className="flex flex-col items-center min-w-[28px]">
+          <span className="text-[18px] font-black text-white">{currentTotal}</span>
+          <span className="text-[7px] text-gray-600 uppercase tracking-widest font-sans">
+            Total
+          </span>
         </div>
       </motion.div>
     </RollerBox>

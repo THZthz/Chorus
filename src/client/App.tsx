@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { FastForward, Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
-import { motion, AnimatePresence, LayoutGroup, useScroll, useTransform } from "motion/react";
+import { useState, useEffect, useRef } from "react";
+import { Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
+import { motion, AnimatePresence, LayoutGroup } from "motion/react";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { DialogueMessage } from "@/components/DialogueMessage";
 import { DialogueOptions } from "@/components/DialogueOptions";
@@ -41,33 +41,9 @@ export default function App() {
   const [regeneratingAll, setRegeneratingAll] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollBarRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<SseClient | null>(null);
   const retrySnapshotRef = useRef<Message[]>([]);
-
-  const { scrollYProgress } = useScroll({ container: scrollContainerRef });
-  const dotTop = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
-
-  const handleScrollbarDrag = (_: any, info: any) => {
-    if (!scrollBarRef.current || !scrollContainerRef.current) return;
-    const container = scrollContainerRef.current;
-    const barRect = scrollBarRef.current.getBoundingClientRect();
-    const progress = Math.max(0, Math.min(1, (info.point.y - barRect.top) / barRect.height));
-    container.scrollTop = progress * (container.scrollHeight - container.clientHeight);
-  };
-
-  const handleBarClick = (e: React.MouseEvent) => {
-    if (!scrollBarRef.current || !scrollContainerRef.current) return;
-    const barRect = scrollBarRef.current.getBoundingClientRect();
-    const progress = Math.max(0, Math.min(1, (e.clientY - barRect.top) / barRect.height));
-    scrollContainerRef.current.scrollTo({
-      top:
-        progress *
-        (scrollContainerRef.current.scrollHeight - scrollContainerRef.current.clientHeight),
-      behavior: "smooth",
-    });
-  };
 
   // ── SSE streaming ──
 
@@ -537,25 +513,6 @@ export default function App() {
     <div className="h-screen w-screen bg-[#0a0a0a] text-gray-100 flex justify-center selection:bg-[#ff6b35] selection:text-white overflow-hidden relative">
       <CharacterPanel />
 
-      {/* Scrollbar */}
-      <div
-        ref={scrollBarRef}
-        onClick={handleBarClick}
-        className="fixed right-12 top-0 bottom-0 w-[40px] hidden sm:flex justify-center cursor-pointer z-40 group"
-      >
-        <div className="w-[1px] h-full bg-white/10 group-hover:bg-white/20 transition-colors" />
-        <div className="absolute top-1/4 h-24 w-[1px] bg-gradient-to-b from-transparent via-white/40 to-transparent" />
-        <motion.div
-          drag="y"
-          dragConstraints={scrollBarRef}
-          dragElastic={0}
-          dragMomentum={false}
-          onDrag={handleScrollbarDrag}
-          className="absolute w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.6)] cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
-          style={{ top: dotTop, y: "-50%" }}
-        />
-      </div>
-
       {/* Decorative text */}
       <div className="fixed right-6 top-1/2 -translate-y-1/2 vertical-text text-[10px] uppercase tracking-[0.4em] text-white/10 font-mono hidden lg:block select-none pointer-events-none">
         LEFD &middot; B&Gamma;YAB &middot; SNAIO &middot; S&Gamma;A&Gamma;O
@@ -577,27 +534,6 @@ export default function App() {
           >
             <Trash2 size={18} />
           </motion.button>
-
-          <AnimatePresence>
-            {isTyping && (
-              <motion.button
-                key="fast-forward"
-                layout
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
-                onClick={() => {
-                  sseRef.current?.abort();
-                  setIsTyping(false);
-                }}
-                title="Skip"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-[#ff6b35]/30 rounded-full text-[#ff6b35] hover:bg-[#ff6b35] hover:text-white transition-all duration-300 shadow-xl"
-              >
-                <FastForward size={18} />
-              </motion.button>
-            )}
-          </AnimatePresence>
 
           <AnimatePresence>
             {canRegenerate && !isTyping && (

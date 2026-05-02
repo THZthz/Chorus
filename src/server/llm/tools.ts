@@ -23,7 +23,7 @@ const skillCheckSchema = z.object({
 });
 
 const messageSchema = z.object({
-  speaker: z.string().describe("Name of the speaker (e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR')"),
+  speaker: z.string().describe("Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR', 'HALF LIGHT', 'INLAND EMPIRE')"),
   type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
   text: z.string().describe("The dialogue text, supports markdown."),
   metadata: z

@@ -214,6 +214,23 @@ export function getLeafSteps(): DialogueStepParsed[] {
   return rows.map(parseStep);
 }
 
+export function getLatestLeafStep(): DialogueStepParsed | null {
+  const row = db
+    .prepare(
+      `
+    SELECT * FROM dialogue_steps ds
+    WHERE ds.is_active = 1
+      AND NOT EXISTS (
+        SELECT 1 FROM dialogue_steps child
+        WHERE child.parent_step_id = ds.id AND child.is_active = 1
+      )
+    ORDER BY ds.created_at DESC LIMIT 1
+  `,
+    )
+    .get() as DialogueStepRow | undefined;
+  return row ? parseStep(row) : null;
+}
+
 export function getChildByOption(
   parentStepId: string,
   parentOptionId: string,

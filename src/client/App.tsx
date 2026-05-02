@@ -165,7 +165,20 @@ export default function App() {
         if (hist.length > 0) {
           setHistory(hist);
           setHasBegun(true);
-          setDynamicOptions([]);
+
+          const stepRes = await fetch("/api/session/current");
+          if (stepRes.ok) {
+            const step = await stepRes.json();
+            if (step) {
+              setLastStepId(step.id);
+              setDynamicOptions(step.options ?? []);
+              setCanRegenerate(true);
+            } else {
+              setDynamicOptions([]);
+            }
+          } else {
+            setDynamicOptions([]);
+          }
         }
       }
     }
@@ -191,6 +204,7 @@ export default function App() {
       speaker: "YOU",
       type: "YOU",
       text: cleanText,
+      isChosenOption: true,
     };
     updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);

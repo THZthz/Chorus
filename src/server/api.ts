@@ -25,6 +25,7 @@ import {
   getAllSteps,
   getChildByOption,
   getTreeStats,
+  getLatestLeafStep,
 } from "@/server/models/dialogue";
 
 const apiRouter = express.Router();
@@ -207,6 +208,13 @@ apiRouter.post("/branches/activate", (req, res) => {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: message });
   }
+});
+
+// ── Session current ──
+
+apiRouter.get("/session/current", (_req, res) => {
+  const step = getLatestLeafStep();
+  res.json(step ?? null);
 });
 
 // ── Tree replay ──

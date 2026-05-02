@@ -187,6 +187,7 @@ Replay mode allows navigating the existing dialogue tree without calling the LLM
 
 ### 4.3 State
 
+- `GET /api/session/current` — Latest active leaf step (options + stepId) for page-reload resume
 - `GET /api/world` — All entities
 - `POST /api/world/entity` — Upsert entity
 - `GET /api/plots` — All plots

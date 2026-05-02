@@ -31,7 +31,17 @@ src/
 │   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat)
 │   ├── ObjectLink.tsx        # Hoverable entity references in text
 │   ├── ObjectTooltip.tsx     # Entity lore popup
-│   └── TypingIndicator.tsx   # Animated dots during AI generation
+│   ├── TypingIndicator.tsx   # Animated dots during AI generation
+│   └── debug/
+│       ├── ConsoleViewer.tsx       # Intercepted browser console log viewer
+│       ├── CopyButton.tsx          # One-click JSON copy utility
+│       ├── DialogueTreeGraph.tsx   # Canvas node graph: recursive layout, pan/zoom, Jump to Replay
+│       ├── HistoryEditor.tsx       # Visual message timeline with inline editing
+│       ├── JsonExplorer.tsx        # Resizable, collapsible JSON tree viewer
+│       ├── JsonNode.tsx            # Single JSON node renderer (string/number/object/array)
+│       ├── LlmTraceViewer.tsx      # Parsed LLM exchange timeline with step breakdown
+│       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
+│       └── shared.tsx              # Shared debug UI utilities
 ├── context/
 │   └── CharacterContext.tsx  # Global character stats (React Context)
 ├── server/
@@ -185,6 +195,7 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - `POST /api/dialogue/:id/alternatives/:altId/select` — Switch to alternative
 - `POST /api/branches/activate` — Activate a branch (deactivates siblings)
 - `GET /api/dialogue/tree` — Full dialogue tree (root, all active steps, leaf IDs, stats)
+- `PATCH /api/dialogue/:id` — Update dialogue step (messages, options, skill checks)
 - `POST /api/dialogue/traverse` — Navigate from step to child via option `{ stepId, optionId }`
 
 ### 4.3 State
@@ -198,7 +209,10 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 ### 4.4 Debug
 
 - `GET /api/debug/logs` — LLM interaction logs
+- `POST /api/debug/logs/clear` — Clear all LLM logs
 - `GET /api/debug/console` — Browser console logs
+- `POST /api/debug/console` — Upload a console log entry from the browser
+- `POST /api/debug/console/clear` — Clear all console logs
 - `POST /api/reset` — Wipe DB and re-seed
 
 ---
@@ -241,8 +255,8 @@ These map to character stats in `src/types/entities.ts` and `src/context/Charact
 
 The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
 
-- **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, and child trace nesting
-- **Console Logs**: Intercepted browser console output with filtering
+- **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, and child trace nesting (`src/components/debug/LlmTraceViewer.tsx`)
+- **Console Logs**: Intercepted browser console output with filtering (`src/components/debug/ConsoleViewer.tsx`)
 - **History Editor**: Visual message timeline — type-styled cards (YOU/CHARACTER/INNER_VOICE/SYSTEM/ROLL/NOTIFICATION), expand-in-place overlay edit, drag reorder, add/delete messages (`src/components/debug/HistoryEditor.tsx`)
 - **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form with stat bars, opinion pills, attribute k/v table (`src/components/debug/WorldEditor.tsx`)
 - **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay" (`src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits. Receives `currentStepId` prop and highlights the actively-replaying node with a green "NOW" badge.

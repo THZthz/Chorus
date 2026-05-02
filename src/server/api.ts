@@ -4,7 +4,7 @@ import type { Character } from "@/types/entities";
 import { generateTurn, generateTurnBatch } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
-import { getAllPlots } from "@/server/models/plot";
+import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";
 import {
   getLlmLogs,
   clearLlmLogs,
@@ -54,6 +54,20 @@ apiRouter.post("/world/entity", (req, res) => {
 
 apiRouter.get("/plots", (_req, res) => {
   res.json(getAllPlots());
+});
+
+apiRouter.patch("/plots/:id", (req, res) => {
+  const existing = getPlotById(req.params.id);
+  if (!existing) {
+    res.status(404).json({ error: "Plot not found" });
+    return;
+  }
+  const result = updatePlot(req.params.id, req.body);
+  if ("error" in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json({ success: true });
 });
 
 // ── History ──

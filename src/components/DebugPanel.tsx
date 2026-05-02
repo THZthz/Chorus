@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, MessageSquare, Database, Monitor, GitBranch } from "lucide-react";
+import { Terminal, X, Bug, MessageSquare, Database, Monitor, GitBranch, Network } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 import { HistoryEditor } from "@/components/debug/HistoryEditor";
 import { DialogueTreeGraph } from "@/components/debug/DialogueTreeGraph";
+import { PlotTreeGraph } from "@/components/debug/PlotTreeGraph";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 
@@ -12,7 +13,7 @@ export const DebugPanel: React.FC<{
   currentReplayStepId?: string | null;
 }> = ({ onJumpToReplay, currentReplayStepId }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"logs" | "console" | "history" | "world" | "tree">(
+  const [activeTab, setActiveTab] = useState<"logs" | "console" | "history" | "world" | "tree" | "plots">(
     "logs",
   );
   const [panelWidth, setPanelWidth] = useState(640);
@@ -37,7 +38,7 @@ export const DebugPanel: React.FC<{
   }, []);
 
   const TabButton: React.FC<{
-    id: "logs" | "console" | "history" | "world" | "tree";
+    id: "logs" | "console" | "history" | "world" | "tree" | "plots";
     label: string;
     icon: React.ReactNode;
   }> = ({ id, label, icon }) => (
@@ -109,6 +110,7 @@ export const DebugPanel: React.FC<{
                   <TabButton id="history" label="History" icon={<MessageSquare size={14} />} />
                   <TabButton id="world" label="World" icon={<Database size={14} />} />
                   <TabButton id="tree" label="Tree" icon={<GitBranch size={14} />} />
+                  <TabButton id="plots" label="Plots" icon={<Network size={14} />} />
                 </div>
                 <div className="flex items-center gap-3 pr-4">
                   <button
@@ -131,6 +133,7 @@ export const DebugPanel: React.FC<{
                     currentStepId={currentReplayStepId}
                   />
                 )}
+                {activeTab === "plots" && <PlotTreeGraph />}
               </div>
             </motion.div>
           </>

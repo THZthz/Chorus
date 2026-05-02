@@ -156,13 +156,15 @@ On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM 
 
 ### 3.6 Dialogue Replay
 
-Replay mode allows navigating the existing dialogue tree without calling the LLM. Key behaviors:
+Replay mode allows navigating the existing dialogue tree and expanding it with new branches.
 
 - **Enter replay**: Click the Git Branch button (visible after starting a game). Fetches the full tree from `GET /api/dialogue/tree` and loads the root step.
-- **Navigation**: Clicking an option navigates to its child step (using `nextStepId` for fast lookup, falling back to `POST /api/dialogue/traverse`). Messages are appended to the visible history.
-- **Unexplored branches**: Options without a child step are dimmed and unclickable — they were never explored.
+- **Navigation**: Clicking a previously-explored option (one with `nextStepId`) navigates to its child step, injecting a YOU message then appending the child's messages. Fast path uses local `treeSteps`; slow path falls back to `POST /api/dialogue/traverse`. Both paths set `lastStepId` + `canRegenerate = true` so REGENERATE is available.
+- **New branches**: Options without a child step are styled with a dashed border and a `GitBranch` icon (see `DialogueOptions.tsx`). Clicking one triggers LLM generation (`POST /api/chat/stream`) using history reconstructed from `buildHistoryFromTree()`. On completion, the new step is fetched via `GET /api/dialogue/:id` and added to `treeSteps`; the parent option's `nextStepId` is updated in local state.
+- **Regenerate in replay**: Works for any navigated or newly-generated step since `lastStepId` is set on every navigation. YOU messages are injected in replay navigation, so `trimmedHistory` in `handleRegenerate` correctly captures the last player choice.
+- **Start from any step**: The "Jump to Replay" button in `DialogueTreeGraph` calls `handleJumpToStep(stepId)` which fetches tree + branch path and reconstructs history.
 - **Exit replay**: Click the Return button to restore the live session from `history_messages`.
-- **Bulk regenerate**: The purple refresh button calls `POST /api/regenerate-all` to regenerate all leaf steps at once, saving each current version as an alternative first. Uses `generateTurnBatch()` (non-streaming `generateText()`) under the hood.
+- **`buildHistoryFromTree(stepId, treeSteps)`**: Pure function (top of `App.tsx`) that walks the parent chain from root to the given step and injects YOU messages between steps using each child's `parentOptionId` to find the option text.
 
 ---
 

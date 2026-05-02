@@ -11,6 +11,35 @@ import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
 import { SseClient } from "@/services/SseClient";
 
+function buildHistoryFromTree(
+  stepId: string,
+  treeSteps: Record<
+    string,
+    { id: string; parentStepId: string | null; parentOptionId: string | null; messages: Message[]; options: DialogueOption[] }
+  >,
+): Message[] {
+  const chain: (typeof treeSteps)[string][] = [];
+  let cur: (typeof treeSteps)[string] | undefined = treeSteps[stepId];
+  while (cur) {
+    chain.unshift(cur);
+    cur = cur.parentStepId ? treeSteps[cur.parentStepId] : undefined;
+  }
+  const result: Message[] = [];
+  for (let i = 0; i < chain.length; i++) {
+    const step = chain[i];
+    if (i > 0) {
+      const parent = chain[i - 1];
+      const opt = parent.options.find((o) => o.id === step.parentOptionId);
+      if (opt) {
+        const cleanText = opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: cleanText });
+      }
+    }
+    result.push(...step.messages);
+  }
+  return result;
+}
+
 export default function App() {
   const [history, setHistory] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -52,6 +81,7 @@ export default function App() {
     updatedHistory: Message[],
     parentStepId: string | null,
     parentOptionId: string | null,
+    onReplayDone?: (newStepId: string) => void,
   ) => {
     console.log(
       `[stream] starting, parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${updatedHistory.length} input="${String(userInput).slice(0, 60)}"`,
@@ -64,6 +94,8 @@ export default function App() {
     const streamId = `stream-${Date.now()}`;
     setStreamingId(streamId);
 
+    let capturedStepId: string | null = null;
+
     const client = new SseClient();
     sseRef.current = client;
 
@@ -73,6 +105,7 @@ export default function App() {
       {
         onStepStart: (data) => {
           setLastStepId(data.stepId);
+          capturedStepId = data.stepId;
           console.log(`[stream] step_start stepId=${data.stepId}`);
         },
         onStreamingMessages: (messages) => {
@@ -149,6 +182,7 @@ export default function App() {
           setCanRegenerate(true);
           sseRef.current = null;
           worldManager.loadState();
+          if (onReplayDone && capturedStepId) onReplayDone(capturedStepId);
         },
       },
     );
@@ -469,47 +503,78 @@ export default function App() {
   };
 
   const handleReplayOptionSelect = async (option: DialogueOption) => {
+    if (!currentReplayStepId) {
+      console.warn(`[replay] no current step, cannot navigate`);
+      return;
+    }
+
+    const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+    const youMessage: Message = { id: `you-${Date.now()}`, speaker: "YOU", type: "YOU", text: cleanText };
+
     console.log(
       `[replay] option selected: id=${option.id} nextStepId=${option.nextStepId || "none"} text="${String(option.text).slice(0, 40)}"`,
     );
 
-    // Check nextStepId first (fast path)
+    // Fast path — child already in local treeSteps
     if (option.nextStepId && treeSteps[option.nextStepId]) {
       const child = treeSteps[option.nextStepId];
-      console.log(
-        `[replay] fast-path navigate to step=${child.id} msgs=${child.messages.length} options=${child.options.length}`,
-      );
-      setHistory((prev) => [...prev, ...child.messages]);
+      console.log(`[replay] fast-path navigate to step=${child.id}`);
+      setHistory((prev) => [...prev, youMessage, ...child.messages]);
       setDynamicOptions(child.options);
       setCurrentReplayStepId(child.id);
+      setLastStepId(child.id);
+      setCanRegenerate(true);
       return;
     }
 
-    // Fall back to server lookup
-    if (!currentReplayStepId) {
-      console.warn(`[replay] no current step, cannot traverse`);
-      return;
+    // Slow path — nextStepId exists but not in local cache; check server
+    if (option.nextStepId) {
+      console.log(`[replay] slow-path lookup: stepId=${currentReplayStepId} optionId=${option.id}`);
+      const res = await fetch("/api/dialogue/traverse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stepId: currentReplayStepId, optionId: option.id }),
+      });
+      if (res.ok) {
+        const { child } = await res.json();
+        if (child) {
+          console.log(`[replay] slow-path found child step=${child.id}`);
+          setTreeSteps((prev) => ({ ...prev, [child.id]: child }));
+          setHistory((prev) => [...prev, youMessage, ...child.messages]);
+          setDynamicOptions(child.options);
+          setCurrentReplayStepId(child.id);
+          setLastStepId(child.id);
+          setCanRegenerate(true);
+          return;
+        }
+      }
     }
-    console.log(`[replay] slow-path lookup: stepId=${currentReplayStepId} optionId=${option.id}`);
-    const res = await fetch("/api/dialogue/traverse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stepId: currentReplayStepId, optionId: option.id }),
+
+    // New branch — no child exists yet, generate one
+    console.log(`[replay] generating new branch from step=${currentReplayStepId} option=${option.id}`);
+    setHistory((prev) => [...prev, youMessage]);
+    const branchHistory = buildHistoryFromTree(currentReplayStepId, treeSteps);
+    const updatedHistory = [...branchHistory, youMessage];
+    const parentIdAtTime = currentReplayStepId;
+
+    handleStreamingResponse(cleanText, updatedHistory, currentReplayStepId, option.id, async (newStepId) => {
+      const stepRes = await fetch(`/api/dialogue/${newStepId}`);
+      if (!stepRes.ok) return;
+      const { step } = await stepRes.json();
+      setTreeSteps((prev) => {
+        const updated = { ...prev, [newStepId]: step };
+        const parent = updated[parentIdAtTime];
+        if (parent) {
+          updated[parentIdAtTime] = {
+            ...parent,
+            options: parent.options.map((o) => (o.id === option.id ? { ...o, nextStepId: newStepId } : o)),
+          };
+        }
+        return updated;
+      });
+      setCurrentReplayStepId(newStepId);
+      console.log(`[replay] new branch saved: step=${newStepId}`);
     });
-    if (!res.ok) {
-      console.warn(`[replay] traverse failed: ${res.status}`);
-      return;
-    }
-    const { child } = await res.json();
-    if (child) {
-      console.log(`[replay] slow-path found child step=${child.id}`);
-      setTreeSteps((prev) => ({ ...prev, [child.id]: child }));
-      setHistory((prev) => [...prev, ...child.messages]);
-      setDynamicOptions(child.options);
-      setCurrentReplayStepId(child.id);
-    } else {
-      console.log(`[replay] no child found for option`);
-    }
   };
 
   // ── Bulk regenerate ──
@@ -749,7 +814,7 @@ export default function App() {
                 key="dynamic"
                 options={dynamicOptions}
                 onSelect={handleOptionSelect}
-                disabledOptionIds={
+                unexploredOptionIds={
                   mode === "replay"
                     ? new Set(dynamicOptions.filter((o) => !o.nextStepId).map((o) => o.id))
                     : undefined
@@ -762,7 +827,7 @@ export default function App() {
           {mode === "replay" && (
             <div className="text-center mt-4 mb-8">
               <span className="text-xs uppercase tracking-[0.3em] text-emerald-400/60 font-mono">
-                Replay Mode — Viewing Dialogue Tree
+                Replay Mode — Navigate or Expand Tree
               </span>
             </div>
           )}

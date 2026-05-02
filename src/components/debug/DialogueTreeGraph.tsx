@@ -107,8 +107,9 @@ const GraphNode: React.FC<{
   isSelected: boolean;
   isLeaf: boolean;
   isRoot: boolean;
+  isEffectivelyActive: boolean;
   onClick: () => void;
-}> = ({ step, pos, isSelected, isLeaf, isRoot }) => {
+}> = ({ step, pos, isSelected, isLeaf, isRoot, isEffectivelyActive }) => {
   const firstMsg = step.messages[0];
   const preview = firstMsg
     ? firstMsg.text.slice(0, 42) + (firstMsg.text.length > 42 ? "…" : "")
@@ -117,7 +118,7 @@ const GraphNode: React.FC<{
 
   let borderColor = "rgba(255,255,255,0.12)";
   let bgColor = "rgba(255,255,255,0.025)";
-  if (!step.isActive) {
+  if (!isEffectivelyActive) {
     borderColor = "rgba(255,255,255,0.05)";
     bgColor = "rgba(255,255,255,0.01)";
   } else if (isSelected) {
@@ -141,14 +142,14 @@ const GraphNode: React.FC<{
         height: NODE_H,
         border: `1px solid ${borderColor}`,
         background: bgColor,
-        opacity: step.isActive ? 1 : 0.35,
+        opacity: isEffectivelyActive ? 1 : 0.35,
         transition: "border-color 0.2s, background 0.2s",
         cursor: "pointer",
         userSelect: "none",
         borderRadius: "2px",
         boxSizing: "border-box",
       }}
-      className={isLeaf && step.isActive ? "leaf-pulse" : ""}
+      className={isLeaf && isEffectivelyActive ? "leaf-pulse" : ""}
     >
       {/* Header */}
       <div
@@ -162,12 +163,12 @@ const GraphNode: React.FC<{
               ROOT
             </span>
           )}
-          {!step.isActive && (
+          {!isEffectivelyActive && (
             <span className="text-[8px] font-bold uppercase tracking-wider text-white/20 border border-white/8 px-1 rounded-sm">
               DEAD
             </span>
           )}
-          {isLeaf && step.isActive && (
+          {isLeaf && isEffectivelyActive && (
             <span className="text-[8px] font-bold uppercase tracking-wider text-[#98c379]/70 border border-[#98c379]/20 px-1 rounded-sm">
               LEAF
             </span>
@@ -178,7 +179,7 @@ const GraphNode: React.FC<{
       <div className="px-2.5 py-1.5">
         <p
           className="text-[10px] leading-snug italic"
-          style={{ color: step.isActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.2)" }}
+          style={{ color: isEffectivelyActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.2)" }}
         >
           {preview}
         </p>
@@ -207,12 +208,13 @@ const SPEAKER_TYPES = ["YOU", "CHARACTER", "INNER_VOICE", "SYSTEM", "ROLL", "NOT
 const Inspector: React.FC<{
   step: StepData;
   isLeaf: boolean;
+  isEffectivelyActive: boolean;
   onClose: () => void;
   onSave: (id: string, messages: Message[], options: DialogueOption[]) => Promise<void>;
   onJumpToReplay?: (stepId: string) => void;
   height: number;
   onResizeStart: (e: React.MouseEvent) => void;
-}> = ({ step, isLeaf, onClose, onSave, onJumpToReplay, height, onResizeStart }) => {
+}> = ({ step, isLeaf, isEffectivelyActive, onClose, onSave, onJumpToReplay, height, onResizeStart }) => {
   const [messages, setMessages] = useState<Message[]>(step.messages);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -280,7 +282,7 @@ const Inspector: React.FC<{
                 LEAF
               </span>
             )}
-            {!step.isActive && (
+            {!isEffectivelyActive && (
               <span className="text-[8px] font-bold uppercase tracking-wider text-white/20 border border-white/10 px-1 rounded-sm">
                 INACTIVE
               </span>
@@ -290,7 +292,7 @@ const Inspector: React.FC<{
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {onJumpToReplay && step.isActive && (
+            {onJumpToReplay && isEffectivelyActive && (
               <button
                 onClick={() => onJumpToReplay(step.id)}
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/8 border border-emerald-500/20 text-emerald-400/80 text-[9px] font-bold uppercase tracking-wider rounded-sm hover:bg-emerald-500/15 transition-colors"
@@ -577,6 +579,18 @@ export const DialogueTreeGraph: React.FC<{
   const rootId = treeData?.stats.rootId ?? null;
   const selectedStep = selectedId ? steps[selectedId] : null;
 
+  // A node is effectively active only if it AND all its ancestors are active.
+  const effectivelyActiveIds = new Set<string>();
+  for (const [id, step] of Object.entries(steps)) {
+    let cur: StepData | undefined = step;
+    let active = true;
+    while (cur) {
+      if (!cur.isActive) { active = false; break; }
+      cur = cur.parentStepId ? steps[cur.parentStepId] : undefined;
+    }
+    if (active) effectivelyActiveIds.add(id);
+  }
+
   // Compute bounding box for SVG
   let svgW = 2000;
   let svgH = 2000;
@@ -613,7 +627,7 @@ export const DialogueTreeGraph: React.FC<{
       ex: childPos.x + NODE_W / 2,
       ey: childPos.y,
       label,
-      isActive: step.isActive,
+      isActive: effectivelyActiveIds.has(id),
     });
   }
 
@@ -750,6 +764,7 @@ export const DialogueTreeGraph: React.FC<{
                     isSelected={selectedId === id}
                     isLeaf={leafIds.has(id)}
                     isRoot={id === rootId}
+                    isEffectivelyActive={effectivelyActiveIds.has(id)}
                     onClick={() => handleNodeClick(id)}
                   />
                 </div>
@@ -765,6 +780,7 @@ export const DialogueTreeGraph: React.FC<{
               key={selectedStep.id}
               step={selectedStep}
               isLeaf={leafIds.has(selectedStep.id)}
+              isEffectivelyActive={effectivelyActiveIds.has(selectedStep.id)}
               onClose={() => setSelectedId(null)}
               onSave={saveStep}
               onJumpToReplay={onJumpToReplay}

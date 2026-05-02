@@ -76,6 +76,8 @@ export const LlmTraceViewer: React.FC = () => {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
+  const readableToolName = (name: string) => name.replace(/([a-z])([A-Z])/g, "$1 $2");
+
   const formatJson = (jsonStr: string | null) => {
     if (!jsonStr) return "N/A";
     try {
@@ -427,7 +429,7 @@ export const LlmTraceViewer: React.FC = () => {
                                                             : "bg-white/20"
                                                   }`}
                                                 />
-                                                {call.toolName}
+                                                {readableToolName(call.toolName)}
                                               </h4>
                                               <CopyButton
                                                 content={JSON.stringify(input, null, 2)}
@@ -748,7 +750,7 @@ export const LlmTraceViewer: React.FC = () => {
                                               >
                                                 <div className="flex items-center justify-between">
                                                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
-                                                    {call.toolName}
+                                                    {readableToolName(call.toolName)}
                                                   </span>
                                                   <CopyButton
                                                     content={JSON.stringify(input, null, 2)}

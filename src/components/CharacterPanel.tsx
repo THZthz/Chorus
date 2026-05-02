@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, ChevronRight, MapPin, Box, Heart, Scroll } from "lucide-react";
+import { User, ChevronRight, MapPin, Box, Heart, Scroll, GitBranch } from "lucide-react";
 import { useCharacter } from "@/context/CharacterContext";
 import { CharacterStats } from "@/types/entities";
+import type { Plot } from "@/types/plot";
 import { worldManager } from "@/services/WorldManager";
 
 const STATUS_STYLE: Record<string, { color: string; border: string }> = {
@@ -10,6 +11,75 @@ const STATUS_STYLE: Record<string, { color: string; border: string }> = {
   IN_PROGRESS: { color: "#eab308", border: "rgba(234,179,8,0.25)" },
   RESOLVED: { color: "#98c379", border: "rgba(152,195,121,0.25)" },
 };
+
+function PlotNode({ plot, plots, depth = 0 }: { plot: Plot; plots: Plot[]; depth?: number }) {
+  const style = STATUS_STYLE[plot.status] ?? STATUS_STYLE.PENDING;
+  const isResolved = plot.status === "RESOLVED";
+  const children = plots.filter((p) => p.parentPlotId === plot.id);
+
+  return (
+    <div className={depth > 0 ? "mt-2" : ""}>
+      <div
+        className={`p-3 bg-[#1a1a1a] border border-white/5 rounded-sm transition-opacity ${isResolved ? "opacity-40" : ""}`}
+        style={depth > 0 ? { marginLeft: `${depth * 12}px`, borderLeft: `2px solid rgba(255,107,53,0.2)` } : {}}
+      >
+        {depth > 0 && (
+          <div className="flex items-center gap-1 text-[9px] text-gray-500 mb-1.5">
+            <GitBranch size={9} />
+            <span className="italic">
+              {(() => {
+                const parent = plots.find((p) => p.id === plot.parentPlotId);
+                const opt = parent?.childPlots[plot.parentOptionId ?? -1];
+                return opt ? `"${opt.triggerCondition}"` : "branch";
+              })()}
+            </span>
+          </div>
+        )}
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <span className="text-[13px] font-sans text-white font-bold leading-snug">
+            {plot.title}
+          </span>
+          <span
+            className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border flex-shrink-0 mt-0.5"
+            style={{ color: style.color, borderColor: style.border }}
+          >
+            {plot.status.replace("_", " ")}
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-400 line-clamp-2">{plot.description}</p>
+        {plot.childPlots.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
+            {plot.childPlots.map((opt, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[10px] text-gray-500">
+                <span className="text-[#ff6b35]/50 mt-0.5">›</span>
+                <span className={opt.plotId ? "text-gray-400" : "italic"}>
+                  {opt.triggerCondition}
+                  {opt.plotId && (
+                    <span className="text-[#ff6b35]/70 ml-1">→ {opt.plotId}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {children.map((child) => (
+        <PlotNode key={child.id} plot={child} plots={plots} depth={depth + 1} />
+      ))}
+    </div>
+  );
+}
+
+function PlotTree({ plots }: { plots: Plot[] }) {
+  const roots = plots.filter((p) => p.parentPlotId === null);
+  return (
+    <div className="space-y-3">
+      {roots.map((root) => (
+        <PlotNode key={root.id} plot={root} plots={plots} />
+      ))}
+    </div>
+  );
+}
 
 export const CharacterPanel: React.FC = () => {
   const { character: liveCharacter } = useCharacter();
@@ -196,32 +266,7 @@ export const CharacterPanel: React.FC = () => {
                     {plots.length === 0 ? (
                       <p className="text-[11px] text-gray-600 italic">No active quests.</p>
                     ) : (
-                      <div className="space-y-3">
-                        {plots.map((plot) => {
-                          const style = STATUS_STYLE[plot.status] ?? STATUS_STYLE.PENDING;
-                          return (
-                            <div
-                              key={plot.id}
-                              className="p-3 bg-[#1a1a1a] border border-white/5 rounded-sm"
-                            >
-                              <div className="flex items-start justify-between gap-2 mb-1.5">
-                                <span className="text-[13px] font-sans text-white font-bold leading-snug">
-                                  {plot.title}
-                                </span>
-                                <span
-                                  className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border flex-shrink-0 mt-0.5"
-                                  style={{ color: style.color, borderColor: style.border }}
-                                >
-                                  {plot.status.replace("_", " ")}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-gray-400 line-clamp-2">
-                                {plot.description}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <PlotTree plots={plots} />
                     )}
                   </div>
                 </>

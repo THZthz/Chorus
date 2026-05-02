@@ -46,10 +46,3 @@ export interface WorldState {
   characters: Record<string, Character>;
 }
 
-export interface Plot {
-  id: string;
-  title: string;
-  description: string;
-  triggerCondition: string;
-  status: "PENDING" | "IN_PROGRESS" | "RESOLVED";
-}

@@ -35,8 +35,13 @@ db.exec(`
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
-    triggerCondition TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING'
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    involved_locations TEXT NOT NULL DEFAULT '[]',
+    involved_characters TEXT NOT NULL DEFAULT '[]',
+    parent_plot_id TEXT,
+    parent_option_id INTEGER,
+    child_plots TEXT NOT NULL DEFAULT '[]',
+    FOREIGN KEY (parent_plot_id) REFERENCES plots(id)
   );
 
   CREATE TABLE IF NOT EXISTS system_state (

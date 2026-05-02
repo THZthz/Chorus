@@ -1,7 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { updateEntity } from "@/server/models/world";
-import { updatePlotStatus as updatePlotStatusDb, addPlot } from "@/server/models/plot";
+import { updateEntity, getEntityById, getAllEntitySummaries, searchEntities } from "@/server/models/world";
+import { addPlot, updatePlot, getPlotById, getAllPlots } from "@/server/models/plot";
+import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import type { DialogueOption } from "@/types/dialogue";
 
@@ -49,6 +50,11 @@ const optionSchema = z.object({
   check: skillCheckSchema.optional(),
 });
 
+const plotOptionSchema = z.object({
+  plotId: z.string().nullable().describe("ID of the child plot, or null if not created yet."),
+  triggerCondition: z.string().describe("What player action activates this branch."),
+});
+
 // ── Helpers ──
 
 export function mapToDialogueOption(
@@ -87,70 +93,91 @@ export function mapToDialogueOption(
 
 // ── Tool factories ──
 
-export function createUpdateWorldStateTool(events: TurnEventEmitter) {
+export function createGetAllEntitiesNameTool() {
   return tool({
-    title: "Update World State",
+    title: "Get All Entities Name",
     description:
-      "Commit changes to world entities (characters, locations, objects). Updates descriptions, attributes, or opinions directly in the database.",
+      "Returns the id, displayName, type, and shortDescription of all world entities. Use this to discover what exists before calling queryEntity for full details.",
     inputSchema: z.object({
-      updates: z
-        .array(
-          z.object({
-            id: z
-              .string()
-              .describe("The unique ID of the entity to update (e.g., 'madam_vespera')."),
-            longDescription: z.string().nullish().describe("New detailed observation."),
-            shortDescription: z.string().nullish().describe("New concise label."),
-            attributes: z
-              .record(z.string(), z.string())
-              .nullish()
-              .describe("Physical or mental traits."),
-            opinions: z
-              .record(z.string(), z.string())
-              .nullish()
-              .describe("How they feel about the player or others."),
-          }),
-        )
-        .describe("State changes to persist in the world memory."),
+      type: z
+        .enum(["CHARACTER", "LOCATION", "OBJECT"])
+        .optional()
+        .describe("Optional filter by entity type."),
     }),
-    execute: async (args: {
-      updates: Array<{
-        id: string;
-        longDescription?: string | null;
-        shortDescription?: string | null;
-        attributes?: Record<string, string> | null;
-        opinions?: Record<string, string> | null;
-      }>;
-    }) => {
-      for (const u of args.updates) {
-        updateEntity(u);
-        events.emitWorldUpdate(u.id, {
-          ...(u.longDescription !== undefined ? { longDescription: u.longDescription } : {}),
-          ...(u.shortDescription !== undefined ? { shortDescription: u.shortDescription } : {}),
-          ...(u.attributes ? { attributes: u.attributes } : {}),
-          ...(u.opinions ? { opinions: u.opinions } : {}),
-        });
-      }
-      return `Updated ${args.updates.length} entities.`;
+    execute: async (args: { type?: "CHARACTER" | "LOCATION" | "OBJECT" }) => {
+      const summaries = getAllEntitySummaries(args.type);
+      if (summaries.length === 0) return "No entities found.";
+      return JSON.stringify(summaries, null, 2);
     },
   });
 }
 
-export function createUpdatePlotStatusTool(events: TurnEventEmitter) {
+export function createQueryEntityTool() {
   return tool({
-    title: "Update Plot Status",
+    title: "Query Entity",
     description:
-      "Update the status of an existing plot (e.g., to IN_PROGRESS or RESOLVED). Commits directly to the database.",
+      "Get full details of a world entity. Provide either an exact id or a search term (case-insensitive match on name/description).",
     inputSchema: z.object({
-      id: z.string().describe("The ID of the plot to update."),
-      status: z
-        .enum(["PENDING", "IN_PROGRESS", "RESOLVED"])
-        .describe("The new status of the plot."),
+      id: z.string().optional().describe("Exact entity ID (e.g. 'madam_vespera')."),
+      search: z
+        .string()
+        .optional()
+        .describe("Text to search for in entity names/descriptions (up to 5 results)."),
     }),
-    execute: async (args: { id: string; status: string }) => {
-      updatePlotStatusDb(args.id, args.status);
-      events.emitPlotUpdate(args.id, args.status);
-      return `Plot ${args.id} status updated to ${args.status}.`;
+    execute: async (args: { id?: string; search?: string }) => {
+      if (!args.id && !args.search) {
+        return "ERROR: Provide either 'id' for exact lookup or 'search' for text search.";
+      }
+      if (args.id) {
+        const entity = getEntityById(args.id);
+        if (!entity) {
+          return `ERROR: Entity '${args.id}' not found. Call getAllEntitiesName() to discover valid IDs.`;
+        }
+        return JSON.stringify(entity, null, 2);
+      }
+      const results = searchEntities(args.search!);
+      if (results.length === 0) {
+        return `No entities matched '${args.search}'. Call getAllEntitiesName() to see all entities.`;
+      }
+      return JSON.stringify(results, null, 2);
+    },
+  });
+}
+
+export function createEditEntityTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Edit Entity",
+    description:
+      "Mutate a single world entity's description, attributes, or opinions. One entity per call. Reports an error if the entity ID does not exist.",
+    inputSchema: z.object({
+      id: z.string().describe("The unique ID of the entity to update (e.g. 'madam_vespera')."),
+      longDescription: z.string().nullish().describe("New detailed observation."),
+      shortDescription: z.string().nullish().describe("New concise label."),
+      attributes: z.record(z.string(), z.string()).nullish().describe("Physical or mental traits (merged)."),
+      opinions: z
+        .record(z.string(), z.string())
+        .nullish()
+        .describe("How this character feels about others (merged). Only valid for CHARACTER entities."),
+    }),
+    execute: async (args: {
+      id: string;
+      longDescription?: string | null;
+      shortDescription?: string | null;
+      attributes?: Record<string, string> | null;
+      opinions?: Record<string, string> | null;
+    }) => {
+      const existing = getEntityById(args.id);
+      if (!existing) {
+        return `ERROR: Entity '${args.id}' not found. Use getAllEntitiesName() to discover valid IDs.`;
+      }
+      updateEntity(args);
+      const changes: Record<string, unknown> = {};
+      if (args.longDescription != null) changes.longDescription = args.longDescription;
+      if (args.shortDescription != null) changes.shortDescription = args.shortDescription;
+      if (args.attributes) changes.attributes = args.attributes;
+      if (args.opinions) changes.opinions = args.opinions;
+      events.emitWorldUpdate(args.id, changes);
+      return `Entity '${existing.displayName}' (${args.id}) updated.`;
     },
   });
 }
@@ -158,24 +185,163 @@ export function createUpdatePlotStatusTool(events: TurnEventEmitter) {
 export function createCreatePlotTool(events: TurnEventEmitter) {
   return tool({
     title: "Create Plot",
-    description: "Create a new plot/quest. Commits directly to the database.",
+    description:
+      "Create a new plot node in the story tree. If this is the first plot, omit parentPlotId to create the root. Otherwise provide parentPlotId and parentOptionId (index into parent's childPlots array) to link it into the tree. The parent's childPlots[parentOptionId].plotId will be auto-updated.",
     inputSchema: z.object({
       title: z.string().describe("Concise title of the plot/quest."),
-      description: z.string().describe("Detailed description of what the plot is about."),
-      triggerCondition: z
+      description: z.string().describe("Detailed description of what this plot is about."),
+      status: z
+        .enum(["PENDING", "IN_PROGRESS", "RESOLVED"])
+        .optional()
+        .describe("Initial status (default: PENDING)."),
+      involvedLocations: z
+        .array(z.string())
+        .optional()
+        .describe("Entity IDs of involved locations (prefer one)."),
+      involvedCharacters: z
+        .array(z.string())
+        .optional()
+        .describe("Entity IDs of involved characters (player is implicit)."),
+      parentPlotId: z
         .string()
-        .describe("The specific condition or scene that triggers this plot."),
+        .nullable()
+        .optional()
+        .describe("ID of the parent plot. Omit or set null for a root plot."),
+      parentOptionId: z
+        .number()
+        .nullable()
+        .optional()
+        .describe("Index into parent.childPlots that this plot fulfils."),
+      childPlots: z
+        .array(plotOptionSchema)
+        .optional()
+        .describe("Pre-defined branch options for this plot."),
     }),
-    execute: async (args: { title: string; description: string; triggerCondition: string }) => {
-      const plotId = `plot_${Date.now()}`;
-      addPlot({
-        id: plotId,
+    execute: async (args: {
+      title: string;
+      description: string;
+      status?: "PENDING" | "IN_PROGRESS" | "RESOLVED";
+      involvedLocations?: string[];
+      involvedCharacters?: string[];
+      parentPlotId?: string | null;
+      parentOptionId?: number | null;
+      childPlots?: PlotOption[];
+    }) => {
+      const result = addPlot({
         title: args.title,
         description: args.description,
-        triggerCondition: args.triggerCondition,
+        status: args.status ?? "PENDING",
+        involvedLocations: args.involvedLocations ?? [],
+        involvedCharacters: args.involvedCharacters ?? [],
+        parentPlotId: args.parentPlotId ?? null,
+        parentOptionId: args.parentOptionId ?? null,
+        childPlots: args.childPlots ?? [],
       });
-      events.emitPlotCreate(plotId, args.title);
-      return `Plot created: ${args.title} (${plotId}).`;
+
+      if (result.ok === false) {
+        return `ERROR: ${result.error}`;
+      }
+
+      // Determine the ID that was assigned
+      const allPlots = getAllPlots();
+      const created = allPlots.find(
+        (p) =>
+          p.title === args.title &&
+          p.parentPlotId === (args.parentPlotId ?? null),
+      );
+      const plotId = created?.id ?? "unknown";
+      events.emitPlotCreate(plotId, args.title, args.parentPlotId ?? null);
+      return `Plot created: "${args.title}" (${plotId}).`;
+    },
+  });
+}
+
+export function createEditPlotTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Edit Plot",
+    description:
+      "Update an existing plot's status, description, involved entities, or childPlots options. Reports an error if the plot ID does not exist or if the change would break the plot tree.",
+    inputSchema: z.object({
+      id: z.string().describe("The ID of the plot to update."),
+      status: z
+        .enum(["PENDING", "IN_PROGRESS", "RESOLVED"])
+        .optional()
+        .describe("New status for the plot."),
+      description: z.string().optional().describe("Updated plot description."),
+      involvedLocations: z
+        .array(z.string())
+        .optional()
+        .describe("Replacement list of involved location entity IDs."),
+      involvedCharacters: z
+        .array(z.string())
+        .optional()
+        .describe("Replacement list of involved character entity IDs."),
+      childPlots: z
+        .array(plotOptionSchema)
+        .optional()
+        .describe("Replacement list of branch options (replaces all existing childPlots)."),
+    }),
+    execute: async (args: {
+      id: string;
+      status?: "PENDING" | "IN_PROGRESS" | "RESOLVED";
+      description?: string;
+      involvedLocations?: string[];
+      involvedCharacters?: string[];
+      childPlots?: PlotOption[];
+    }) => {
+      const result = updatePlot(args.id, {
+        status: args.status,
+        description: args.description,
+        involvedLocations: args.involvedLocations,
+        involvedCharacters: args.involvedCharacters,
+        childPlots: args.childPlots,
+      });
+
+      if (result.ok === false) {
+        return `ERROR: ${result.error}`;
+      }
+
+      const changes: Record<string, unknown> = {};
+      if (args.status !== undefined) changes.status = args.status;
+      if (args.description !== undefined) changes.description = args.description;
+      if (args.involvedLocations !== undefined) changes.involvedLocations = args.involvedLocations;
+      if (args.involvedCharacters !== undefined) changes.involvedCharacters = args.involvedCharacters;
+      if (args.childPlots !== undefined) changes.childPlots = args.childPlots;
+      events.emitPlotEdit(args.id, changes);
+
+      const plot = getPlotById(args.id)!;
+      return `Plot "${plot.title}" (${args.id}) updated.`;
+    },
+  });
+}
+
+export function createGetPlotTool() {
+  return tool({
+    title: "Get Plot",
+    description:
+      "Retrieve a specific plot by ID, or filter plots by status. Returns full plot data including childPlots.",
+    inputSchema: z.object({
+      id: z.string().optional().describe("Exact plot ID to fetch."),
+      status: z
+        .enum(["PENDING", "IN_PROGRESS", "RESOLVED", "ALL"])
+        .optional()
+        .describe("Filter by status. Omit to return all plots."),
+    }),
+    execute: async (args: { id?: string; status?: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "ALL" }) => {
+      if (args.id) {
+        const plot = getPlotById(args.id);
+        if (!plot) {
+          return `ERROR: Plot '${args.id}' not found. Use getPlot() without an id to list all plots.`;
+        }
+        return JSON.stringify(plot, null, 2);
+      }
+      const all = getAllPlots();
+      const filtered =
+        !args.status || args.status === "ALL"
+          ? all
+          : all.filter((p) => p.status === args.status);
+      if (filtered.length === 0) return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
+      return JSON.stringify(filtered, null, 2);
     },
   });
 }
@@ -185,7 +351,7 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
 
   const dialogueTool = tool({
     description:
-      "Generate the narrative dialogue steps and final player choices. This is the ONLY way to communicate to the player.",
+      "Generate the narrative dialogue steps and final player choices. This is the ONLY way to communicate to the player. Options should align with the active plot's childPlots.",
     inputSchema: z.object({
       messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
       options: z.array(optionSchema).optional().describe("The choices presented to the player."),

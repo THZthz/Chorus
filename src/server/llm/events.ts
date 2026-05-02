@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
+import type { Plot } from "@/types/plot";
 import type { StreamingMessage } from "@/shared/events";
 
 /**
@@ -43,8 +44,15 @@ export class TurnEventEmitter {
     this.send("plot_update", { plotId, status });
   }
 
-  emitPlotCreate(plotId: string, title: string) {
-    this.send("plot_create", { plotId, title });
+  emitPlotCreate(plotId: string, title: string, parentPlotId: string | null) {
+    this.send("plot_create", { plotId, title, parentPlotId });
+  }
+
+  emitPlotEdit(
+    plotId: string,
+    changes: Partial<Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">>,
+  ) {
+    this.send("plot_edit", { plotId, changes });
   }
 
   emitStreamingReset() {

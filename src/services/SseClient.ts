@@ -1,11 +1,16 @@
 import type { DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/shared/events";
+import type { Plot } from "@/types/plot";
 
 export interface SseCallbacks {
   onStepStart?: (data: { stepId: string }) => void;
   onWorldUpdate?: (data: { entityId: string; changes: Record<string, unknown> }) => void;
   onPlotUpdate?: (data: { plotId: string; status: string }) => void;
-  onPlotCreate?: (data: { plotId: string; title: string }) => void;
+  onPlotCreate?: (data: { plotId: string; title: string; parentPlotId: string | null }) => void;
+  onPlotEdit?: (data: {
+    plotId: string;
+    changes: Partial<Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">>;
+  }) => void;
   onStreamingMessages?: (messages: StreamingMessage[]) => void;
   onStreamingReset?: () => void;
   onOptions?: (options: DialogueOption[]) => void;
@@ -101,6 +106,10 @@ export class SseClient {
       case "plot_create":
         console.log(`[sse] event=plot_create plotId=${data.plotId}`);
         cb.onPlotCreate?.(data);
+        break;
+      case "plot_edit":
+        console.log(`[sse] event=plot_edit plotId=${data.plotId}`);
+        cb.onPlotEdit?.(data);
         break;
       case "streaming_messages":
         cb.onStreamingMessages?.(data.messages);

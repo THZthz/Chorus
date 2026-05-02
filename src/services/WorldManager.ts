@@ -1,4 +1,5 @@
-import { WorldEntity, WorldState, Character, Location, WorldObject, Plot } from "@/types/entities";
+import { WorldEntity, WorldState, Character, Location, WorldObject } from "@/types/entities";
+import type { Plot } from "@/types/plot";
 
 class WorldManager {
   private state: WorldState = { objects: {}, locations: {}, characters: {} };

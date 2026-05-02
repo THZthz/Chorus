@@ -1,4 +1,5 @@
 import type { DialogueOption } from "@/types/dialogue";
+import type { Plot } from "@/types/plot";
 
 // ── SSE Event Payloads ──
 
@@ -23,6 +24,13 @@ export interface PlotCreateEvent {
   type: "plot_create";
   plotId: string;
   title: string;
+  parentPlotId: string | null;
+}
+
+export interface PlotEditEvent {
+  type: "plot_edit";
+  plotId: string;
+  changes: Partial<Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">>;
 }
 
 export interface StreamingMessagesEvent {
@@ -67,6 +75,7 @@ export type SseEventPayload =
   | WorldUpdateEvent
   | PlotUpdateEvent
   | PlotCreateEvent
+  | PlotEditEvent
   | StreamingMessagesEvent
   | StreamingResetEvent
   | OptionsEvent
@@ -82,6 +91,7 @@ export interface SseEventMap {
   world_update: WorldUpdateEvent;
   plot_update: PlotUpdateEvent;
   plot_create: PlotCreateEvent;
+  plot_edit: PlotEditEvent;
   streaming_messages: StreamingMessagesEvent;
   streaming_reset: StreamingResetEvent;
   options: OptionsEvent;

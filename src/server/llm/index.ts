@@ -5,8 +5,8 @@ import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
-import { getAllEntities } from "@/server/models/world";
-import { getAllPlots } from "@/server/models/plot";
+import { getAllEntities, getAllEntitySummaries } from "@/server/models/world";
+import { getAllPlots, buildActivePlotTree } from "@/server/models/plot";
 import {
   saveStep,
   deactivateSiblingBranches,
@@ -17,9 +17,12 @@ import { LlmDebugIntegration } from "@/server/llm/debug";
 import { TurnEventEmitter } from "@/server/llm/events";
 import {
   mapToDialogueOption,
-  createUpdateWorldStateTool,
-  createUpdatePlotStatusTool,
+  createGetAllEntitiesNameTool,
+  createQueryEntityTool,
+  createEditEntityTool,
   createCreatePlotTool,
+  createEditPlotTool,
+  createGetPlotTool,
   createGenerateDialogueStepTool,
 } from "@/server/llm/tools";
 
@@ -65,9 +68,22 @@ export function getModel(): { model: LanguageModel; name: string } {
 // ── System prompt ──
 
 export function buildSystemPrompt(): string {
-  const worldState = getAllEntities();
-  const plots = getAllPlots();
-  const activePlots = plots.filter((p) => p.status === "PENDING" || p.status === "IN_PROGRESS");
+  const summaries = getAllEntitySummaries();
+  const byType = (type: string) =>
+    summaries
+      .filter((e) => e.type === type)
+      .map((e) => `  ${e.id.padEnd(24)} → "${e.displayName}" — ${e.shortDescription}`)
+      .join("\n");
+
+  const entityIndex = [
+    summaries.some((e) => e.type === "CHARACTER") ? `Characters:\n${byType("CHARACTER")}` : null,
+    summaries.some((e) => e.type === "LOCATION") ? `Locations:\n${byType("LOCATION")}` : null,
+    summaries.some((e) => e.type === "OBJECT") ? `Objects:\n${byType("OBJECT")}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const plotTree = buildActivePlotTree();
 
   return `
 You are the Game Master for a narrative-driven RPG.
@@ -78,14 +94,23 @@ TONE: Philosophical, cynical, and surreal. Write in the style of Disco Elysium.
 
 ## YOUR TOOLS
 
-You have four tools. Use them in this order when needed:
+You have seven tools. Use them in this order each turn:
 
-1. **updateWorldState** — Mutate entity descriptions, attributes, or opinions.
-2. **updatePlotStatus** — Advance or resolve an existing plot.
-3. **createPlot** — Introduce a new quest/plot line.
-4. **generateDialogueStep** — THE ONLY WAY to communicate with the player. REQUIRED on every turn.
+1. **getAllEntitiesName** — Discover entities by id and name. Use before queryEntity if unsure of an ID.
+2. **queryEntity** — Get full details of an entity by exact ID or text search.
+3. **editEntity** — Mutate a single entity's description, attributes, or opinions. One call per entity.
+4. **createPlot** — Add a new plot node to the story tree (link via parentPlotId + parentOptionId).
+5. **editPlot** — Update an existing plot's status, description, involved entities, or childPlots.
+6. **getPlot** — Retrieve a specific plot or filter by status.
+7. **generateDialogueStep** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
 
-World-mutation tools (1-3) are optional. generateDialogueStep is MANDATORY.
+**Turn order guideline:**
+- First: read world/plot state if needed (getAllEntitiesName, queryEntity, getPlot)
+- Second: update story structure if plot progresses (createPlot, editPlot)
+- Third: mutate entity state if something changed (editEntity)
+- Last: ALWAYS call generateDialogueStep — options must align with the active plot's childPlots
+
+World-mutation and plot tools are optional. generateDialogueStep is MANDATORY.
 
 ---
 
@@ -147,11 +172,12 @@ These are HARD RULES. Violating any of them will cause your output to be REJECTE
 
 1. **NEVER set speaker to "INNER_VOICE".** INNER_VOICE is a type, not a speaker name. Use the specific skill: "LOGIC", "HALF LIGHT", "INLAND EMPIRE", etc.
 2. **NEVER output raw text outside a tool call.** Any text, summary, or narration outside generateDialogueStep is DISCARDED. The player will not see it. The turn will FAIL.
-3. **NEVER end a turn without calling generateDialogueStep.** If you call other tools first, you MUST still call generateDialogueStep afterward in the same turn. A turn with only updateWorldState leaves the player stuck in silence.
+3. **NEVER end a turn without calling generateDialogueStep.** If you call other tools first, you MUST still call generateDialogueStep afterward in the same turn. A turn with only editEntity leaves the player stuck in silence.
 4. **NEVER put the speaker name inside the text field.** The speaker field already displays the name. Repeating it in text creates ugly duplication: "LOGIC: LOGIC: This is wrong."
 5. **NEVER use hintBefore on an option that has a skill check.** The check already renders the skill name as a hint. Using both creates duplicate labels.
 6. **NEVER create wildly divergent options.** Every option should be a plausible action in the current scene. No "fly to the moon" or "become a farmer" unless the scene actually supports it.
 7. **NEVER use type YOU.** The system handles player messages.
+8. **NEVER invent entity names or IDs.** If unsure, call getAllEntitiesName() first.
 
 ---
 
@@ -243,47 +269,42 @@ Call generateDialogueStep with:
 }
 \`\`\`
 
-### Good — with world mutation then dialogue
+### Good — advancing a plot then generating dialogue
 
-Step 1 — call updateWorldState:
+Step 1 — call editPlot to mark the plot IN_PROGRESS and add a new child branch:
 
 \`\`\`json
 {
-  "updates": [
-    {
-      "id": "gaoler",
-      "opinions": {
-        "player": "Suspicious but bribable"
-      }
-    }
+  "id": "plot_1",
+  "status": "IN_PROGRESS",
+  "childPlots": [
+    { "plotId": null, "triggerCondition": "Player asks about the coin" },
+    { "plotId": null, "triggerCondition": "Player leaves without asking" }
   ]
 }
 \`\`\`
 
-Step 2 — call generateDialogueStep:
+Step 2 — call generateDialogueStep with options that match childPlots:
 
 \`\`\`json
 {
   "messages": [
     {
-      "speaker": "NARRATOR",
-      "type": "SYSTEM",
-      "text": "The coin disappears into the gaoler's palm. He steps aside with a grunt."
-    },
-    {
-      "speaker": "The Gaoler",
+      "speaker": "Madam Vespera",
       "type": "CHARACTER",
-      "text": "Five minutes. Don't touch anything."
+      "text": "That coin... where did you find it?"
     }
   ],
   "options": [
     {
-      "text": "Enter the magistrate's chambers.",
-      "isAiTrigger": true
+      "text": "Tell her about the coin.",
+      "isAiTrigger": true,
+      "hintBefore": "[asks about the coin]"
     },
     {
-      "text": "Ask the gaoler what mood the magistrate is in.",
-      "isAiTrigger": true
+      "text": "Pocket the coin and say nothing.",
+      "isAiTrigger": true,
+      "hintBefore": "[leaves without asking]"
     }
   ]
 }
@@ -332,27 +353,7 @@ Step 2 — call generateDialogueStep:
 
 → Remove "LOGIC:" from text. The UI already shows the speaker.
 
-**Wrong: options are wildly divergent**
-
-\`\`\`json
-{
-  "options": [
-    {
-      "text": "Challenge the guard to a duel."
-    },
-    {
-      "text": "Fly to the moon."
-    },
-    {
-      "text": "Become a farmer and forget this."
-    }
-  ]
-}
-\`\`\`
-
-→ All options must be plausible actions within the current scene.
-
-**Wrong: calling updateWorldState but never calling generateDialogueStep**
+**Wrong: calling editEntity but never calling generateDialogueStep**
 → The player receives NO response. The turn is broken. Always end with generateDialogueStep.
 
 **Wrong: raw text outside tools**
@@ -365,8 +366,7 @@ Step 2 — call generateDialogueStep:
   "text": "Pick the lock.",
   "hintBefore": "[Interfacing]",
   "check": {
-    "skill": "INTERFACING",
-    ...
+    "skill": "INTERFACING"
   }
 }
 \`\`\`
@@ -379,29 +379,27 @@ Step 2 — call generateDialogueStep:
 
 - **Action-oriented, not abstract.** "Intimidate the guard" not "Be scary." "Examine the wound" not "Do medicine."
 - **Keep options in the same scene.** All options should respond to what just happened, not jump to a different location or plot unless the scene naturally concludes.
+- **Align options with active plot childPlots.** The options you present should correspond to the triggerConditions in the current plot's childPlots array.
 - **Use skill checks sparingly.** Only when failure has interesting consequences. Don't check for trivial actions.
 - **Set isAiTrigger: true** on every option that should advance the conversation. Set it to false only for terminal/end-game options.
 - **Use hintBefore** to add flavor tags like "[Bribe]", "[Lie]", "[Force]", or to show stat names when there is no skill check.
 
 ---
 
-## WORLD STATE
+## WORLD ENTITIES
 
-\`\`\`json
-${JSON.stringify(worldState, null, 2)}
-\`\`\`
+${entityIndex || "(no entities yet)"}
+
+Use queryEntity(id) for full details, or queryEntity with a search term. Never invent entity names or IDs.
 
 ---
 
-## PLOTS
+## ACTIVE PLOTS
 
-\`\`\`json
-${JSON.stringify(activePlots, null, 2)}
-\`\`\`
+${plotTree}
 
-- Advance existing plots when the narrative reaches a milestone. Use updatePlotStatus.
-- Create new plots when the player's actions open a new thread. Use createPlot.
-- A plot should progress from PENDING → IN_PROGRESS → RESOLVED.
+- When the player's action matches a childPlot's triggerCondition, call editPlot to update the parent's status and createPlot to instantiate the child branch.
+- A plot should progress: PENDING → IN_PROGRESS → RESOLVED.
 
 `.trim();
 }
@@ -463,7 +461,15 @@ export async function generateTurn(
       prompt: promptText,
       userInput,
       history,
-      tools: ["updateWorldState", "updatePlotStatus", "createPlot", "generateDialogueStep"],
+      tools: [
+        "getAllEntitiesName",
+        "queryEntity",
+        "editEntity",
+        "createPlot",
+        "editPlot",
+        "getPlot",
+        "generateDialogueStep",
+      ],
     },
     undefined,
     "GM",
@@ -475,9 +481,12 @@ export async function generateTurn(
       system: systemPrompt,
       messages: [{ role: "user", content: promptText }],
       tools: {
-        updateWorldState: createUpdateWorldStateTool(events),
-        updatePlotStatus: createUpdatePlotStatusTool(events),
+        getAllEntitiesName: createGetAllEntitiesNameTool(),
+        queryEntity: createQueryEntityTool(),
+        editEntity: createEditEntityTool(events),
         createPlot: createCreatePlotTool(events),
+        editPlot: createEditPlotTool(events),
+        getPlot: createGetPlotTool(),
         generateDialogueStep: dialogueStepTool.tool,
       },
       stopWhen: [
@@ -735,9 +744,12 @@ export async function generateTurnBatch(
     system: systemPrompt,
     messages: [{ role: "user", content: promptText }],
     tools: {
-      updateWorldState: createUpdateWorldStateTool(noopEvents),
-      updatePlotStatus: createUpdatePlotStatusTool(noopEvents),
+      getAllEntitiesName: createGetAllEntitiesNameTool(),
+      queryEntity: createQueryEntityTool(),
+      editEntity: createEditEntityTool(noopEvents),
       createPlot: createCreatePlotTool(noopEvents),
+      editPlot: createEditPlotTool(noopEvents),
+      getPlot: createGetPlotTool(),
       generateDialogueStep: dialogueStepTool.tool,
     },
   });

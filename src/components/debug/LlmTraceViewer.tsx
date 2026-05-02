@@ -399,8 +399,8 @@ export const LlmTraceViewer: React.FC = () => {
                                         const input = call.input || call.args || {};
                                         const isGenDialogue =
                                           call.toolName === "generateDialogueStep";
-                                        const isWorldUpdate = call.toolName === "updateWorldState";
-                                        const isPlotStatus = call.toolName === "updatePlotStatus";
+                                        const isWorldUpdate = call.toolName === "editEntity";
+                                        const isPlotStatus = call.toolName === "editPlot";
                                         const isCreatePlot = call.toolName === "createPlot";
 
                                         return (

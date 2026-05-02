@@ -169,7 +169,13 @@ export default function App() {
           worldManager.loadState();
         },
         onPlotUpdate: () => {
-          // Implicit refresh via world state
+          worldManager.loadState();
+        },
+        onPlotCreate: () => {
+          worldManager.loadState();
+        },
+        onPlotEdit: () => {
+          worldManager.loadState();
         },
         onError: (message) => {
           console.error(`[stream] error: ${message}`);
@@ -380,7 +386,13 @@ export default function App() {
           worldManager.loadState();
         },
         onPlotUpdate: () => {
-          // Implicit refresh via world state
+          worldManager.loadState();
+        },
+        onPlotCreate: () => {
+          worldManager.loadState();
+        },
+        onPlotEdit: () => {
+          worldManager.loadState();
         },
         onError: (message) => {
           console.error(`[regenerate] error: ${message}`);

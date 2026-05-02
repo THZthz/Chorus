@@ -1,5 +1,5 @@
 import db from "@/server/db";
-import { WorldEntity, WorldState, Character, Location, WorldObject } from "@/types/entities";
+import { WorldEntity, WorldState, Character, Location, WorldObject, EntityType } from "@/types/entities";
 
 const initialObjects: Record<string, WorldObject> = {
   rusted_coin: {
@@ -90,17 +90,25 @@ export function seedDatabase() {
     Object.values(initialLocations).forEach(insertEntity);
     Object.values(initialCharacters).forEach(insertEntity);
 
-    // Seed an initial plot
-    const insertPlot = db.prepare(
-      "INSERT INTO plots (id, title, description, triggerCondition, status) VALUES (?, ?, ?, ?, ?)",
-    );
-    insertPlot.run(
+    // Seed the root plot with two branch options
+    db.prepare(
+      `INSERT INTO plots (id, title, description, status, involved_locations, involved_characters, parent_plot_id, parent_option_id, child_plots)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
       "plot_1",
       "The Missing Duke",
       "The old Duke was supposedly dead, but rumors spread that a man matching his description was seen near the Crimson Veil.",
-      "Player asks Madam Vespera about the rusted coin.",
       "PENDING",
+      JSON.stringify(["crimson_veil"]),
+      JSON.stringify(["madam_vespera"]),
+      null,
+      null,
+      JSON.stringify([
+        { plotId: null, triggerCondition: "Player asks Madam Vespera about the rusted coin" },
+        { plotId: null, triggerCondition: "Player leaves the Crimson Veil without asking" },
+      ]),
     );
+    console.log("Seeded initial plot: The Missing Duke.");
   }
 }
 
@@ -199,4 +207,59 @@ export function upsertEntity(entity: WorldEntity) {
     entity.type === "CHARACTER" ? JSON.stringify((entity as any).stats || {}) : null,
     entity.type === "CHARACTER" ? JSON.stringify((entity as any).opinions || {}) : null,
   );
+}
+
+export function getAllEntitySummaries(
+  typeFilter?: EntityType,
+): { id: string; displayName: string; type: EntityType; shortDescription: string }[] {
+  const rows = typeFilter
+    ? (db.prepare("SELECT id, type, displayName, shortDescription FROM entities WHERE type = ?").all(typeFilter) as any[])
+    : (db.prepare("SELECT id, type, displayName, shortDescription FROM entities").all() as any[]);
+  return rows.map((r) => ({
+    id: r.id,
+    displayName: r.displayName,
+    type: r.type as EntityType,
+    shortDescription: r.shortDescription,
+  }));
+}
+
+export function getEntityById(id: string): WorldEntity | null {
+  const row = db.prepare("SELECT * FROM entities WHERE id = ?").get(id) as any;
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: row.type,
+    displayName: row.displayName,
+    shortDescription: row.shortDescription,
+    longDescription: row.longDescription,
+    attributes: JSON.parse(row.attributes),
+    ...(row.type === "CHARACTER" && {
+      stats: JSON.parse(row.stats ?? "{}"),
+      opinions: JSON.parse(row.opinions ?? "{}"),
+    }),
+  } as WorldEntity;
+}
+
+export function searchEntities(query: string): WorldEntity[] {
+  const lower = query.toLowerCase();
+  const rows = db.prepare("SELECT * FROM entities").all() as any[];
+  return rows
+    .filter(
+      (r) =>
+        r.displayName.toLowerCase().includes(lower) ||
+        r.shortDescription.toLowerCase().includes(lower),
+    )
+    .slice(0, 5)
+    .map((row) => ({
+      id: row.id,
+      type: row.type,
+      displayName: row.displayName,
+      shortDescription: row.shortDescription,
+      longDescription: row.longDescription,
+      attributes: JSON.parse(row.attributes),
+      ...(row.type === "CHARACTER" && {
+        stats: JSON.parse(row.stats ?? "{}"),
+        opinions: JSON.parse(row.opinions ?? "{}"),
+      }),
+    })) as WorldEntity[];
 }

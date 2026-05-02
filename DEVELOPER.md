@@ -13,6 +13,7 @@ dialogue paths, and probabilistic skill checks influenced by character attribute
 - **Backend:** Express + SQLite (`better-sqlite3`)
 - **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
 - **Styling:** Tailwind CSS v4, `motion` (formly `framer-motion`), Lucide icons, CodeMirror (debug)
+- **SSE:** Server-Sent Events for real-time streaming of LLM output and world mutations
 
 ---
 
@@ -22,53 +23,54 @@ dialogue paths, and probabilistic skill checks influenced by character attribute
 src/
 ├── client/
 │   ├── main.tsx              # React entry point
-│   ├── App.tsx               # Main orchestrator: state machine, SSE consumer
+│   ├── App.tsx               # Main orchestrator: state machine, SSE consumer, replay mode
 │   └── index.css             # Global styles (Tailwind + noise filters)
 ├── components/
-│   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser
-│   ├── DebugPanel.tsx        # Developer toolbox: LLM traces, console, editors
-│   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links)
-│   ├── DialogueOptions.tsx   # Player choices (actions, skill checks)
-│   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat)
+│   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser, quest tree
+│   ├── DebugPanel.tsx        # Developer toolbox: 5 tabs (Logs, Console, World, Tree, Plots)
+│   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links, roll tooltips)
+│   ├── DialogueOptions.tsx   # Player choices (actions, skill checks, unexplored branches)
+│   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat) — modal with animations
 │   ├── ObjectLink.tsx        # Hoverable entity references in text
-│   ├── ObjectTooltip.tsx     # Entity lore popup
+│   ├── ObjectTooltip.tsx     # Entity lore popup (auto-positioning, expandable)
 │   ├── TypingIndicator.tsx   # Animated dots during AI generation
 │   └── debug/
-│       ├── ConsoleViewer.tsx       # Intercepted browser console log viewer
+│       ├── ConsoleViewer.tsx       # Intercepted browser console log viewer (throttled, filterable)
 │       ├── CopyButton.tsx          # One-click JSON copy utility
 │       ├── DialogueTreeGraph.tsx   # Canvas node graph: recursive layout, pan/zoom, Jump to Replay
-│       ├── HistoryEditor.tsx       # Visual message timeline with inline editing
+│       ├── HistoryEditor.tsx       # Visual message timeline with inline editing (unused in tabs)
 │       ├── JsonExplorer.tsx        # Resizable, collapsible JSON tree viewer
 │       ├── JsonNode.tsx            # Single JSON node renderer (string/number/object/array)
 │       ├── LlmTraceViewer.tsx      # Parsed LLM exchange timeline with step breakdown
+│       ├── PlotTreeGraph.tsx       # Plot tree canvas with replay snapshot editing, inspector panel
 │       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
-│       └── shared.tsx              # Shared debug UI utilities
+│       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
 ├── context/
-│   └── CharacterContext.tsx  # Global character stats (React Context)
+│   └── CharacterContext.tsx  # Global character stats (React Context) with default Disco Elysium stats
 ├── server/
 │   ├── main.ts               # Express + Vite middleware entry
-│   ├── api.ts                # REST API + SSE streaming endpoints
-│   ├── db.ts                 # SQLite connection + schema (9 tables)
+│   ├── api.ts                # REST API + SSE streaming endpoints (world, plots, history, chat, debug)
+│   ├── db.ts                 # SQLite connection + schema (9 tables + idempotent migrations)
 │   ├── llm/
-│   │   ├── index.ts          # GameMaster: model init, system prompt, generateTurn()
-│   │   ├── tools.ts          # All 7 LLM tool definitions (once)
-│   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch
-│   │   └── debug.ts          # LLM request/response/step logging
+│   │   ├── index.ts          # GameMaster: model init, system prompt, generateTurn(), generateTurnBatch()
+│   │   ├── tools.ts          # All 7 LLM tool definitions (schemas + executors)
+│   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
+│   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
 │   └── models/
-│       ├── debug.ts          # llm_logs + console_logs CRUD
-│       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives)
-│       ├── history.ts        # Narrative message persistence
+│       ├── debug.ts          # llm_logs + llm_steps + console_logs CRUD
+│       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots)
+│       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
 │       └── world.ts          # Entity CRUD + seed data + entity query helpers
-├── shared/
-│   └── events.ts             # SSE event type definitions (shared backend/frontend)
 ├── services/
-│   ├── ConsoleLogger.ts      # Browser console.log interception
-│   ├── SseClient.ts          # Browser SSE streaming consumer
+│   ├── ConsoleLogger.ts      # Browser console.log interception (batched persistence, safe serialization)
+│   ├── SseClient.ts          # Browser SSE streaming consumer with AbortController support
 │   └── WorldManager.ts       # Client-side world/plot cache; replay snapshot override; subscriber pattern
+├── shared/
+│   └── events.ts             # SSE event type definitions (shared backend/frontend, typed event map)
 └── types/
     ├── dialogue.ts           # Message, DialogueOption, DialogueStep interfaces
-    ├── entities.ts           # WorldEntity, Character, Location, WorldObject
+    ├── entities.ts           # WorldEntity, Character, Location, WorldObject, CharacterStats
     └── plot.ts               # Plot, PlotOption interfaces
 ```
 
@@ -97,7 +99,9 @@ POST /api/chat/stream
 │      editPlot,            ──► DB + SSE event   │
 │      getPlot,             ──► returns JSON     │
 │      generateDialogueStep ──► SSE streaming    │
-│    }                                           │
+│    },                                          │
+│    stopWhen: generates once + passes validation │
+│    prepareStep: nudges if GM forgets dialogue   │
 │  })                                            │
 │                                                │
 │  fullStream iteration:                         │
@@ -115,6 +119,7 @@ POST /api/chat/stream
 │  Event handlers:                     │
 │    step_start          → begin turn  │
 │    streaming_messages  → progressive │
+│    streaming_reset     → retry guard │
 │    world_update        → refresh     │
 │    plot_update/create  → refresh     │
 │    parsed              → final       │
@@ -130,6 +135,7 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 |----------------------|-----------------|-----------------------------------|-------------------------------------------|
 | `step_start`         | Server → Client | `{ stepId }`                      | Turn begins                               |
 | `streaming_messages` | Server → Client | `{ messages }`                    | Progressive during `generateDialogueStep` |
+| `streaming_reset`    | Server → Client | `{}`                              | LLM retried — previous streaming discarded |
 | `world_update`       | Server → Client | `{ entityId, changes }`           | `editEntity` tool executes                |
 | `plot_update`        | Server → Client | `{ plotId, status }`              | `updatePlotStatus` tool executes          |
 | `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }` | `createPlot` tool executes                |
@@ -167,6 +173,10 @@ accepting it:
 On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM and keeps `wasValid()` false, so the
 `stopWhen` condition in `streamText` does not trigger and the agentic loop continues for a retry.
 
+The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep` was called in any prior step. If not,
+it injects an error message into the message array to nudge the model. A hard limit of 10 steps (`stepCountIs(10)`) acts
+as a circuit breaker.
+
 ### 3.4 Key Design Decisions
 
 1. **Tools defined once** — `src/server/llm/tools.ts` is the single source for all tool schemas/executors
@@ -174,11 +184,15 @@ On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM 
 3. **No pre-generation** — turns are generated on-demand. Latency is acceptable for RPG pacing
 4. **No static dialogue** — all narrative is AI-generated. No `sampleDialogue.ts`
 5. **Shared event types** — `src/shared/events.ts` ensures backend/frontend event contracts match
-6. **App.tsx state machine** — clean `idle → streaming → idle` cycle instead of 11 scattered booleans
+6. **App.tsx state machine** — clean `idle → streaming → idle` cycle instead of scattered booleans
 7. **Plot-first story architecture** — plots form a tree (one root, branches via `childPlots`): the GM creates/edits the
    plot tree first, then generates dialogue options that align with the active plot's branch options
 8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName +
    shortDescription); full details fetched via `queryEntity`
+9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter)
+   so replay mode shows historical world state
+10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`)
+    not the live plot table
 
 ### 3.5 Dialogue Branching & Alternatives
 
@@ -229,7 +243,7 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 - `POST /api/chat/stream` — Primary AI turn (SSE streaming)
 - `POST /api/regenerate` — Archive current step as alternative, generate new response
-- `POST /api/regenerate-all` — Bulk regenerate all leaf steps in the dialogue tree
+- `POST /api/regenerate-all` — Bulk regenerate all leaf steps in the dialogue tree (uses `generateTurnBatch`)
 
 ### 4.2 Dialogue Tree
 
@@ -239,26 +253,28 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - `GET /api/dialogue/:id/alternatives` — Alternative versions
 - `POST /api/dialogue/:id/alternatives/:altId/select` — Switch to alternative
 - `POST /api/branches/activate` — Activate a branch (deactivates siblings)
-- `GET /api/dialogue/tree` — Full dialogue tree (root, all active steps, leaf IDs, stats)
+- `GET /api/dialogue/tree` — Full dialogue tree (root, all steps, leaf IDs, stats)
 - `PATCH /api/dialogue/:id` — Update dialogue step (messages, options, skill checks)
+- `PATCH /api/dialogue/:id/snapshot` — Update a step's `worldSnapshot` (replay plot editing)
 - `POST /api/dialogue/traverse` — Navigate from step to child via option `{ stepId, optionId }`
 
 ### 4.3 State
 
 - `GET /api/session/current` — Latest active leaf step (options + stepId) for page-reload resume
-- `GET /api/world` — All entities
+- `GET /api/world` — All entities (grouped by type: characters, locations, objects)
 - `POST /api/world/entity` — Upsert entity
 - `GET /api/plots` — All plots
-- `GET /api/history` / `POST /api/history` — Dialogue history
+- `PATCH /api/plots/:id` — Update a plot's fields (with tree validation)
+- `GET /api/history` / `POST /api/history` — Dialogue history (GET reads; POST replaces all)
 
 ### 4.4 Debug
 
-- `GET /api/debug/logs` — LLM interaction logs
+- `GET /api/debug/logs` — LLM interaction logs (with nested steps)
 - `POST /api/debug/logs/clear` — Clear all LLM logs
-- `GET /api/debug/console` — Browser console logs
-- `POST /api/debug/console` — Upload a console log entry from the browser
+- `GET /api/debug/console` — Persisted browser console logs
+- `POST /api/debug/console` — Upload console log entries (single or batch array)
 - `POST /api/debug/console/clear` — Clear all console logs
-- `POST /api/reset` — Wipe DB and re-seed
+- `POST /api/reset` — Wipe DB (entities, plots, dialogue_steps, alternatives, history) and re-seed
 
 ---
 
@@ -269,11 +285,11 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 | Table                   | Purpose                                                              |
 |-------------------------|----------------------------------------------------------------------|
 | `entities`              | World entities (characters, locations, objects) with JSON attributes |
-| `history_messages`      | Persisted narrative message history                                  |
+| `history_messages`      | Persisted narrative message history (with metadata, skillCheck, rollResult JSON columns) |
 | `plots`                 | Quest/objective tree with JSON childPlots, entity links, status      |
-| `dialogue_steps`        | Generated dialogue tree nodes                                        |
+| `dialogue_steps`        | Generated dialogue tree nodes (with world_snapshot JSON for replays)  |
 | `dialogue_alternatives` | Archived alternative versions (regeneration)                         |
-| `llm_logs`              | LLM request/response logging                                         |
+| `llm_logs`              | LLM request/response logging (with parent_id + label for child traces) |
 | `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings)              |
 | `console_logs`          | Intercepted browser console logs                                     |
 | `system_state`          | Key-value system state storage                                       |
@@ -283,18 +299,21 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot holds an array of `childPlots` — branch
 options that guide the GM when generating dialogue. The tree is validated on every `createPlot`/`editPlot` call.
 
-**`PlotOption`** (branch slot)
+**`PlotOption`** (branch slot in `src/types/plot.ts`)
 
 **`Plot`** (stored in `plots` table, defined in `src/types/plot.ts`)
 
-**Tree validation rules** (in `validatePlotTree()`):
+**Tree validation rules** (in `validatePlotTree()` in `src/server/models/plot.ts`):
 
 - Exactly one root plot (`parentPlotId === null`)
 - Every non-root plot references an existing parent
 - Every non-null `childPlot.plotId` references an existing plot
 - Validation failure returns the error string in the tool result; the GM can retry
 
-**GM workflow** (explicitly guided by system prompt):
+**`buildActivePlotTree()`**: Formats the plot tree as a text representation included in the system prompt. Shows
+status tags, involved entities, and the childPlots options tree.
+
+**GM workflow** (explicitly guided by system prompt in `src/server/llm/index.ts`):
 
 1. Read state: `getPlot()`, `getAllEntitiesName()`, `queryEntity()`
 2. Structure story: `createPlot()` / `editPlot()` — update the plot tree *before* generating dialogue
@@ -310,33 +329,42 @@ options that guide the GM when generating dialogue. The tree is validated on eve
 Disco Elysium-style internal monologue. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`,
 `INLAND EMPIRE`, `SUGGESTION`, `HALF LIGHT`, `PHYSICAL INSTRUMENT`, `INTERFACING`, `ELECTROCHEMISTRY`.
 
-These map to character stats in `src/types/entities.ts` and `src/context/CharacterContext.tsx`. The system prompt in
-`src/server/llm/index.ts` instructs the LLM about voice personalities and includes a compact entity index (id +
-displayName + shortDescription per entity) and the active plot tree (from `buildActivePlotTree()`). Full entity/plot
-details are fetched via `queryEntity`/`getPlot` tools, not dumped into the prompt.
+These map to character stats in `src/types/entities.ts` (`CharacterStats` interface) and the default player in
+`src/context/CharacterContext.tsx`. The system prompt in `src/server/llm/index.ts` instructs the LLM about voice
+personalities and includes a compact entity index (id + displayName + shortDescription per entity) and the active plot
+tree (from `buildActivePlotTree()`). Full entity/plot details are fetched via `queryEntity`/`getPlot` tools, not dumped
+into the prompt.
 
 ### 6.2 Skill Checks
 
 - **White Checks**: Repeatable after stat increases
 - **Red Checks**: High-stakes, one-time opportunities (`isRed` in `DialogueOption`)
 - **Formula**: `2d6 + Stat >= Difficulty`
+- **Probability display**: Arc SVG + percentage before rolling; color-coded thresholds (≥75% green, ≥50% yellow, etc.)
 - **Client-side**: Dice rolling and probability calculation happen in `DiceRoller.tsx`
 - **Narrative**: After a roll completes, the result is sent to the AI as user input for narrative integration
+- **Special outcomes**: Natural 2 (critical failure) and Natural 12 (critical success) have distinct visual treatment
+- **Conditional outcomes**: The `conditions` array on a check can define custom success/failure labels via JS expression
+  evaluation
 
 ### 6.3 Debug Panel
 
 The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
 
-- **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, and child trace
-  nesting (`src/components/debug/LlmTraceViewer.tsx`)
-- **Console Logs**: Intercepted browser console output with filtering (`src/components/debug/ConsoleViewer.tsx`)
+- **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, auto-refresh, and
+  child trace nesting (`src/components/debug/LlmTraceViewer.tsx`)
+- **Console Logs**: Intercepted browser console output with filtering (by level, keyword/regex, date range), text wrap
+  toggle, and sync/clear (`src/components/debug/ConsoleViewer.tsx`)
 - **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form
-  with stat bars, opinion pills, attribute k/v table (`src/components/debug/WorldEditor.tsx`)
+  with stat bars, opinion pills, attribute k/v table, and add-new-entity (`src/components/debug/WorldEditor.tsx`)
 - **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (
   active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay" (
   `src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits. Receives `currentStepId`
   prop and highlights the actively-replaying node with a green "NOW" badge.
-- **Plot Tree**: Canvas node graph for plot inspection and editing during replay (`src/components/debug/PlotTreeGraph.tsx`)
+- **Plot Tree**: Canvas node graph for plot inspection and editing during replay (
+  `src/components/debug/PlotTreeGraph.tsx`). Reads from `worldManager`'s replay snapshot when replay is active, or from
+  the live API. Inspector allows editing title, description, status, involved entities. Saving in replay mode updates
+  the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
 
 ---
 
@@ -354,8 +382,16 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
 1. Add the stat to `CharacterStats` in `src/types/entities.ts`
 2. Add default value in `src/context/CharacterContext.tsx`
 3. Add voice personality description to the system prompt in `src/server/llm/index.ts`
+4. Add a color entry in `DialogueMessage.tsx`'s `VOICE_COLORS` map
 
 ### 7.3 Managing the World
 
 Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and
-`initialCharacters` records there.
+`initialCharacters` records there. The root plot is also seeded with two childPlots branch options.
+
+### 7.4 Debug Panel Tab Layout
+
+Debug tabs are defined in `DebugPanel.tsx` with a `TabButton` component. Currently 5 tabs are active:
+"Logs", "Console", "World", "Tree", "Plots". The `HistoryEditor.tsx` component exists but is NOT currently
+registered in any tab — it was removed from the tab bar in a recent commit. To add a tab, import the component
+and add a `TabButton` + conditional render in the panel body.

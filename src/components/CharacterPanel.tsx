@@ -12,15 +12,25 @@ const STATUS_STYLE: Record<string, { color: string; border: string }> = {
   RESOLVED: { color: "#98c379", border: "rgba(152,195,121,0.25)" },
 };
 
+function isEffectivelyActive(plot: Plot, plots: Plot[]): boolean {
+  const plotMap = new Map(plots.map((p) => [p.id, p]));
+  let cur: Plot | undefined = plot;
+  while (cur) {
+    if (cur.status === "RESOLVED") return false;
+    cur = cur.parentPlotId ? plotMap.get(cur.parentPlotId) : undefined;
+  }
+  return true;
+}
+
 function PlotNode({ plot, plots, depth = 0 }: { plot: Plot; plots: Plot[]; depth?: number }) {
   const style = STATUS_STYLE[plot.status] ?? STATUS_STYLE.PENDING;
-  const isResolved = plot.status === "RESOLVED";
+  const active = isEffectivelyActive(plot, plots);
   const children = plots.filter((p) => p.parentPlotId === plot.id);
 
   return (
     <div className={depth > 0 ? "mt-2" : ""}>
       <div
-        className={`p-3 bg-[#1a1a1a] border border-white/5 rounded-sm transition-opacity ${isResolved ? "opacity-40" : ""}`}
+        className={`p-3 bg-[#1a1a1a] border border-white/5 rounded-sm transition-opacity ${!active ? "opacity-40" : ""}`}
         style={
           depth > 0
             ? { marginLeft: `${depth * 12}px`, borderLeft: `2px solid rgba(255,107,53,0.2)` }

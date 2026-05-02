@@ -1,4 +1,4 @@
-If user's intent is ambiguous, be sure to ask them first.
+If user's intent is ambiguous, be sure to ask first.
 
 Focus on modularity and extensibility. Avoid type redefinition and magic strings.
 

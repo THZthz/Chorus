@@ -402,6 +402,10 @@ export const LlmTraceViewer: React.FC = () => {
                                         const isWorldUpdate = call.toolName === "editEntity";
                                         const isPlotStatus = call.toolName === "editPlot";
                                         const isCreatePlot = call.toolName === "createPlot";
+                                        const isGetAllEntities =
+                                          call.toolName === "getAllEntitiesName";
+                                        const isQueryEntity = call.toolName === "queryEntity";
+                                        const isGetPlot = call.toolName === "getPlot";
 
                                         return (
                                           <div
@@ -451,12 +455,33 @@ export const LlmTraceViewer: React.FC = () => {
                                               {isWorldUpdate && (
                                                 <div>
                                                   <div className="mb-2 text-white/40">
-                                                    {(input.updates || []).length} entities:{" "}
-                                                    <span className="text-[#d19a66]">
-                                                      {(input.updates || [])
-                                                        .map((u: any) => u.id)
-                                                        .join(", ")}
+                                                    <span className="text-[#d19a66] font-mono">
+                                                      {input.id || "?"}
                                                     </span>
+                                                    {input.shortDescription != null && (
+                                                      <span className="text-white/30">
+                                                        {" "}
+                                                        shortDescription
+                                                      </span>
+                                                    )}
+                                                    {input.longDescription != null && (
+                                                      <span className="text-white/30">
+                                                        {" "}
+                                                        longDescription
+                                                      </span>
+                                                    )}
+                                                    {input.attributes != null && (
+                                                      <span className="text-white/30">
+                                                        {" "}
+                                                        attributes
+                                                      </span>
+                                                    )}
+                                                    {input.opinions != null && (
+                                                      <span className="text-white/30">
+                                                        {" "}
+                                                        opinions
+                                                      </span>
+                                                    )}
                                                   </div>
                                                   <JsonExplorer
                                                     data={JSON.stringify(input)}
@@ -486,10 +511,67 @@ export const LlmTraceViewer: React.FC = () => {
                                                   )}
                                                 </div>
                                               )}
+                                              {isGetAllEntities && (
+                                                <div>
+                                                  <span className="text-white/40">Fetch </span>
+                                                  <span className="text-[#d19a66]">
+                                                    {input.type ? input.type : "all types"}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {isQueryEntity && (
+                                                <div>
+                                                  {input.id ? (
+                                                    <>
+                                                      <span className="text-white/40">ID: </span>
+                                                      <span className="text-[#d19a66] font-mono">
+                                                        {input.id}
+                                                      </span>
+                                                    </>
+                                                  ) : input.search ? (
+                                                    <>
+                                                      <span className="text-white/40">Search: </span>
+                                                      <span className="text-[#98c379]">
+                                                        "{input.search}"
+                                                      </span>
+                                                    </>
+                                                  ) : (
+                                                    <span className="text-[#e06c75]">
+                                                      Missing query params
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              )}
+                                              {isGetPlot && (
+                                                <div>
+                                                  {input.id ? (
+                                                    <>
+                                                      <span className="text-white/40">Plot: </span>
+                                                      <span className="text-[#d19a66] font-mono">
+                                                        {input.id}
+                                                      </span>
+                                                    </>
+                                                  ) : input.status ? (
+                                                    <>
+                                                      <span className="text-white/40">
+                                                        Status filter:{" "}
+                                                      </span>
+                                                      <span className="text-[#eab308]">
+                                                        {input.status}
+                                                      </span>
+                                                    </>
+                                                  ) : (
+                                                    <span className="text-white/40">All plots</span>
+                                                  )}
+                                                </div>
+                                              )}
                                               {!isGenDialogue &&
                                                 !isWorldUpdate &&
                                                 !isPlotStatus &&
-                                                !isCreatePlot && (
+                                                !isCreatePlot &&
+                                                !isGetAllEntities &&
+                                                !isQueryEntity &&
+                                                !isGetPlot && (
                                                   <JsonExplorer
                                                     data={JSON.stringify(input)}
                                                     isWrapping={isWrapping}
@@ -673,11 +755,165 @@ export const LlmTraceViewer: React.FC = () => {
                                                   />
                                                 </div>
                                                 <div className="mt-1">
-                                                  <JsonExplorer
-                                                    data={JSON.stringify(input)}
-                                                    isWrapping={isWrapping}
-                                                    className="max-h-[150px] overflow-auto"
-                                                  />
+                                                  {(() => {
+                                                    const isGen =
+                                                      call.toolName === "generateDialogueStep";
+                                                    const isWorld =
+                                                      call.toolName === "editEntity";
+                                                    const isPlot = call.toolName === "editPlot";
+                                                    const isCreate =
+                                                      call.toolName === "createPlot";
+                                                    const isGetAll =
+                                                      call.toolName === "getAllEntitiesName";
+                                                    const isQuery =
+                                                      call.toolName === "queryEntity";
+                                                    const isGetP = call.toolName === "getPlot";
+
+                                                    if (isGen) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          <span className="text-white/30">
+                                                            {(input.messages || []).length} msgs,{" "}
+                                                          </span>
+                                                          <span className="text-white/30">
+                                                            {(input.options || []).length} opts
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    }
+                                                    if (isWorld) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          <span className="text-[#d19a66] font-mono">
+                                                            {input.id || "?"}
+                                                          </span>
+                                                          {input.shortDescription != null && (
+                                                            <span className="text-white/30">
+                                                              {" "}
+                                                              shortDesc
+                                                            </span>
+                                                          )}
+                                                          {input.longDescription != null && (
+                                                            <span className="text-white/30">
+                                                              {" "}
+                                                              longDesc
+                                                            </span>
+                                                          )}
+                                                          {input.attributes != null && (
+                                                            <span className="text-white/30">
+                                                              {" "}
+                                                              attrs
+                                                            </span>
+                                                          )}
+                                                          {input.opinions != null && (
+                                                            <span className="text-white/30">
+                                                              {" "}
+                                                              opinions
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      );
+                                                    }
+                                                    if (isPlot) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          <span className="text-[#d19a66]">
+                                                            {input.id}
+                                                          </span>
+                                                          <span className="text-white/20"> → </span>
+                                                          <span className="text-[#98c379]">
+                                                            {input.status}
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    }
+                                                    if (isCreate) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          <div className="text-white/50">
+                                                            "{input.title}"
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    }
+                                                    if (isGetAll) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          <span className="text-white/30">
+                                                            Fetch{" "}
+                                                          </span>
+                                                          <span className="text-[#d19a66]">
+                                                            {input.type ? input.type : "all types"}
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    }
+                                                    if (isQuery) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          {input.id ? (
+                                                            <>
+                                                              <span className="text-white/30">
+                                                                ID:{" "}
+                                                              </span>
+                                                              <span className="text-[#d19a66] font-mono">
+                                                                {input.id}
+                                                              </span>
+                                                            </>
+                                                          ) : input.search ? (
+                                                            <>
+                                                              <span className="text-white/30">
+                                                                Search:{" "}
+                                                              </span>
+                                                              <span className="text-[#98c379]">
+                                                                "{input.search}"
+                                                              </span>
+                                                            </>
+                                                          ) : (
+                                                            <span className="text-[#e06c75]">
+                                                              Missing params
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      );
+                                                    }
+                                                    if (isGetP) {
+                                                      return (
+                                                        <div className="text-[10px]">
+                                                          {input.id ? (
+                                                            <>
+                                                              <span className="text-white/30">
+                                                                Plot:{" "}
+                                                              </span>
+                                                              <span className="text-[#d19a66] font-mono">
+                                                                {input.id}
+                                                              </span>
+                                                            </>
+                                                          ) : input.status ? (
+                                                            <>
+                                                              <span className="text-white/30">
+                                                                Status:{" "}
+                                                              </span>
+                                                              <span className="text-[#eab308]">
+                                                                {input.status}
+                                                              </span>
+                                                            </>
+                                                          ) : (
+                                                            <span className="text-white/30">
+                                                              All plots
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      );
+                                                    }
+                                                    return (
+                                                      <JsonExplorer
+                                                        data={JSON.stringify(input)}
+                                                        isWrapping={isWrapping}
+                                                        className="max-h-[150px] overflow-auto"
+                                                      />
+                                                    );
+                                                  })()}
                                                 </div>
                                                 {call.output != null && (
                                                   <div className="mt-1 pt-1 border-t border-white/5">
@@ -686,7 +922,10 @@ export const LlmTraceViewer: React.FC = () => {
                                                         className={`text-[10px] whitespace-pre-wrap break-words ${
                                                           call.output.includes("SUCCESS")
                                                             ? "text-[#98c379]"
-                                                            : "text-white/40"
+                                                            : call.output.includes("ERROR") ||
+                                                              call.output.includes("FEEDBACK")
+                                                              ? "text-[#e06c75]"
+                                                              : "text-white/40"
                                                         }`}
                                                       >
                                                         {call.output}

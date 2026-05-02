@@ -79,6 +79,8 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<SseClient | null>(null);
   const retrySnapshotRef = useRef<Message[]>([]);
+  const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRevealingRef = useRef(false);
 
   // ── SSE streaming ──
 
@@ -226,7 +228,7 @@ export default function App() {
   // ── Option selection ──
 
   const handleOptionSelect = async (option: DialogueOption) => {
-    if (isTyping || currentCheck) return;
+    if (isTyping || currentCheck || isRevealingRef.current) return;
 
     // Replay mode — navigate existing tree, no LLM
     if (mode === "replay") {
@@ -529,11 +531,14 @@ export default function App() {
     if (option.nextStepId && treeSteps[option.nextStepId]) {
       const child = treeSteps[option.nextStepId];
       console.log(`[replay] fast-path navigate to step=${child.id}`);
-      setHistory((prev) => [...prev, youMessage, ...child.messages]);
-      setDynamicOptions(child.options);
-      setCurrentReplayStepId(child.id);
-      setLastStepId(child.id);
-      setCanRegenerate(true);
+      const baseWithYou = [...history, youMessage];
+      setHistory(baseWithYou);
+      revealMessagesStaggered(baseWithYou, child.messages, () => {
+        setDynamicOptions(child.options);
+        setCurrentReplayStepId(child.id);
+        setLastStepId(child.id);
+        setCanRegenerate(true);
+      });
       return;
     }
 
@@ -550,11 +555,14 @@ export default function App() {
         if (child) {
           console.log(`[replay] slow-path found child step=${child.id}`);
           setTreeSteps((prev) => ({ ...prev, [child.id]: child }));
-          setHistory((prev) => [...prev, youMessage, ...child.messages]);
-          setDynamicOptions(child.options);
-          setCurrentReplayStepId(child.id);
-          setLastStepId(child.id);
-          setCanRegenerate(true);
+          const baseWithYou = [...history, youMessage];
+          setHistory(baseWithYou);
+          revealMessagesStaggered(baseWithYou, child.messages, () => {
+            setDynamicOptions(child.options);
+            setCurrentReplayStepId(child.id);
+            setLastStepId(child.id);
+            setCanRegenerate(true);
+          });
           return;
         }
       }
@@ -621,6 +629,37 @@ export default function App() {
     const t = setTimeout(() => setChangedMessageIds(new Set()), 900);
     return () => clearTimeout(t);
   }, [changedMessageIds]);
+
+  // ── Staggered message reveal (replay navigation) ──
+
+  useEffect(() => {
+    return () => {
+      if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+    };
+  }, []);
+
+  const revealMessagesStaggered = (
+    baseMessages: Message[],
+    newMessages: Message[],
+    onDone: () => void,
+  ) => {
+    if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+    isRevealingRef.current = true;
+    setDynamicOptions([]);
+
+    let revealed = 0;
+    const revealNext = () => {
+      if (revealed >= newMessages.length) {
+        isRevealingRef.current = false;
+        onDone();
+        return;
+      }
+      setHistory([...baseMessages, ...newMessages.slice(0, revealed + 1)]);
+      revealed++;
+      revealTimeoutRef.current = setTimeout(revealNext, 120);
+    };
+    revealNext();
+  };
 
   // ── Auto-scroll ──
 

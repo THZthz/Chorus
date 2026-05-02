@@ -1,6 +1,6 @@
 If user's intent is ambiguous, be sure to ask first.
 
-Focus on modularity and extensibility. Avoid type redefinition and magic strings.
+Focus on modularity and extensibility. Avoid type redefinition and magic strings. Do not let one file grows too big.
 
 **IMPORTANT: Read DEVELOPER.md before you work, update it while you are working, keep concise.**
 

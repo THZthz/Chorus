@@ -496,7 +496,7 @@ export async function generateTurn(
           );
           return called && dialogueStepTool.wasValid();
         },
-        stepCountIs(4),
+        stepCountIs(10),
       ],
       prepareStep: ({ stepNumber, steps, messages }) => {
         if (stepNumber === 0) return undefined;
@@ -669,7 +669,11 @@ export async function generateTurn(
     parentOptionId,
     messages,
     options: finalOptions,
-    worldSnapshot: { entities: getAllEntities(), plots: getAllPlots(), playerCharacter } as unknown as Record<string, unknown>,
+    worldSnapshot: {
+      entities: getAllEntities(),
+      plots: getAllPlots(),
+      playerCharacter,
+    } as unknown as Record<string, unknown>,
     isGenerated: true,
     isActive: true,
   });
@@ -797,7 +801,11 @@ export async function generateTurnBatch(
     parentOptionId,
     messages,
     options: finalOptions,
-    worldSnapshot: { entities: getAllEntities(), plots: getAllPlots(), playerCharacter } as unknown as Record<string, unknown>,
+    worldSnapshot: {
+      entities: getAllEntities(),
+      plots: getAllPlots(),
+      playerCharacter,
+    } as unknown as Record<string, unknown>,
     isGenerated: true,
     isActive: true,
   });

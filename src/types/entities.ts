@@ -45,4 +45,3 @@ export interface WorldState {
   locations: Record<string, Location>;
   characters: Record<string, Character>;
 }
-

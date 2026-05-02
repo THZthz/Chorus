@@ -30,7 +30,9 @@ export interface PlotCreateEvent {
 export interface PlotEditEvent {
   type: "plot_edit";
   plotId: string;
-  changes: Partial<Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">>;
+  changes: Partial<
+    Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">
+  >;
 }
 
 export interface StreamingMessagesEvent {

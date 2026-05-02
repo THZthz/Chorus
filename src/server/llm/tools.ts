@@ -1,6 +1,11 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { updateEntity, getEntityById, getAllEntitySummaries, searchEntities } from "@/server/models/world";
+import {
+  updateEntity,
+  getEntityById,
+  getAllEntitySummaries,
+  searchEntities,
+} from "@/server/models/world";
 import { addPlot, updatePlot, getPlotById, getAllPlots } from "@/server/models/plot";
 import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
@@ -153,11 +158,16 @@ export function createEditEntityTool(events: TurnEventEmitter) {
       id: z.string().describe("The unique ID of the entity to update (e.g. 'madam_vespera')."),
       longDescription: z.string().nullish().describe("New detailed observation."),
       shortDescription: z.string().nullish().describe("New concise label."),
-      attributes: z.record(z.string(), z.string()).nullish().describe("Physical or mental traits (merged)."),
+      attributes: z
+        .record(z.string(), z.string())
+        .nullish()
+        .describe("Physical or mental traits (merged)."),
       opinions: z
         .record(z.string(), z.string())
         .nullish()
-        .describe("How this character feels about others (merged). Only valid for CHARACTER entities."),
+        .describe(
+          "How this character feels about others (merged). Only valid for CHARACTER entities.",
+        ),
     }),
     execute: async (args: {
       id: string;
@@ -245,9 +255,7 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
       // Determine the ID that was assigned
       const allPlots = getAllPlots();
       const created = allPlots.find(
-        (p) =>
-          p.title === args.title &&
-          p.parentPlotId === (args.parentPlotId ?? null),
+        (p) => p.title === args.title && p.parentPlotId === (args.parentPlotId ?? null),
       );
       const plotId = created?.id ?? "unknown";
       events.emitPlotCreate(plotId, args.title, args.parentPlotId ?? null);
@@ -305,7 +313,8 @@ export function createEditPlotTool(events: TurnEventEmitter) {
       if (args.status !== undefined) changes.status = args.status;
       if (args.description !== undefined) changes.description = args.description;
       if (args.involvedLocations !== undefined) changes.involvedLocations = args.involvedLocations;
-      if (args.involvedCharacters !== undefined) changes.involvedCharacters = args.involvedCharacters;
+      if (args.involvedCharacters !== undefined)
+        changes.involvedCharacters = args.involvedCharacters;
       if (args.childPlots !== undefined) changes.childPlots = args.childPlots;
       events.emitPlotEdit(args.id, changes);
 
@@ -327,7 +336,10 @@ export function createGetPlotTool() {
         .optional()
         .describe("Filter by status. Omit to return all plots."),
     }),
-    execute: async (args: { id?: string; status?: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "ALL" }) => {
+    execute: async (args: {
+      id?: string;
+      status?: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "ALL";
+    }) => {
       if (args.id) {
         const plot = getPlotById(args.id);
         if (!plot) {
@@ -337,10 +349,9 @@ export function createGetPlotTool() {
       }
       const all = getAllPlots();
       const filtered =
-        !args.status || args.status === "ALL"
-          ? all
-          : all.filter((p) => p.status === args.status);
-      if (filtered.length === 0) return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
+        !args.status || args.status === "ALL" ? all : all.filter((p) => p.status === args.status);
+      if (filtered.length === 0)
+        return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
       return JSON.stringify(filtered, null, 2);
     },
   });

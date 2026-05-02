@@ -94,7 +94,7 @@ export default function App() {
     parentOptionId: string | null,
     onReplayDone?: (newStepId: string) => void,
   ) => {
-    console.log(
+    console.trace(
       `[stream] starting, parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${updatedHistory.length} input="${String(userInput).slice(0, 60)}"`,
     );
     setIsTyping(true);
@@ -112,12 +112,18 @@ export default function App() {
 
     client.stream(
       "/api/chat/stream",
-      { userInput, history: updatedHistory, parentStepId, parentOptionId, playerCharacter: character },
+      {
+        userInput,
+        history: updatedHistory,
+        parentStepId,
+        parentOptionId,
+        playerCharacter: character,
+      },
       {
         onStepStart: (data) => {
           setLastStepId(data.stepId);
           capturedStepId = data.stepId;
-          console.log(`[stream] step_start stepId=${data.stepId}`);
+          console.trace(`[stream] step_start stepId=${data.stepId}`);
         },
         onStreamingMessages: (messages) => {
           setStreamingMessages(
@@ -140,7 +146,7 @@ export default function App() {
         },
         onOptions: (options) => {
           setDynamicOptions(options);
-          console.log(`[stream] options received: ${options.length}`);
+          console.trace(`[stream] options received: ${options.length}`);
         },
         onParsed: (data) => {
           const snapshot = retrySnapshotRef.current;
@@ -161,7 +167,7 @@ export default function App() {
           if (data.options && data.options.length > 0) {
             setDynamicOptions(data.options);
           }
-          console.log(
+          console.trace(
             `[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
           );
         },
@@ -192,7 +198,7 @@ export default function App() {
           ]);
         },
         onDone: () => {
-          console.log(`[stream] done`);
+          console.trace(`[stream] done`);
           setIsTyping(false);
           setCanRegenerate(true);
           sseRef.current = null;

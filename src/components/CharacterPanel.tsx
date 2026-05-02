@@ -21,7 +21,11 @@ function PlotNode({ plot, plots, depth = 0 }: { plot: Plot; plots: Plot[]; depth
     <div className={depth > 0 ? "mt-2" : ""}>
       <div
         className={`p-3 bg-[#1a1a1a] border border-white/5 rounded-sm transition-opacity ${isResolved ? "opacity-40" : ""}`}
-        style={depth > 0 ? { marginLeft: `${depth * 12}px`, borderLeft: `2px solid rgba(255,107,53,0.2)` } : {}}
+        style={
+          depth > 0
+            ? { marginLeft: `${depth * 12}px`, borderLeft: `2px solid rgba(255,107,53,0.2)` }
+            : {}
+        }
       >
         {depth > 0 && (
           <div className="flex items-center gap-1 text-[9px] text-gray-500 mb-1.5">
@@ -54,9 +58,7 @@ function PlotNode({ plot, plots, depth = 0 }: { plot: Plot; plots: Plot[]; depth
                 <span className="text-[#ff6b35]/50 mt-0.5">›</span>
                 <span className={opt.plotId ? "text-gray-400" : "italic"}>
                   {opt.triggerCondition}
-                  {opt.plotId && (
-                    <span className="text-[#ff6b35]/70 ml-1">→ {opt.plotId}</span>
-                  )}
+                  {opt.plotId && <span className="text-[#ff6b35]/70 ml-1">→ {opt.plotId}</span>}
                 </span>
               </div>
             ))}

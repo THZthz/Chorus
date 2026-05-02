@@ -279,30 +279,9 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot holds an array of `childPlots` — branch
 options that guide the GM when generating dialogue. The tree is validated on every `createPlot`/`editPlot` call.
 
-**`PlotOption`** (branch slot):
+**`PlotOption`** (branch slot)
 
-```typescript
-export interface PlotOption {
-    plotId: string | null;       // null until child plot is created
-    triggerCondition: string;    // what player action activates this branch
-}
-```
-
-**`Plot`** (stored in `plots` table, defined in `src/types/plot.ts`):
-
-```typescript
-export interface Plot {
-    id: string;
-    title: string;
-    description: string;
-    status: "PENDING" | "IN_PROGRESS" | "RESOLVED";
-    involvedLocations: string[];    // entity IDs (prefer one)
-    involvedCharacters: string[];   // entity IDs (player implicit)
-    parentPlotId: string | null;
-    parentOptionId: number | null;  // index in parent.childPlots
-    childPlots: PlotOption[];
-}
-```
+**`Plot`** (stored in `plots` table, defined in `src/types/plot.ts`)
 
 **Tree validation rules** (in `validatePlotTree()`):
 

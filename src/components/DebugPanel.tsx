@@ -125,7 +125,12 @@ export const DebugPanel: React.FC<{
                 {activeTab === "console" && <ConsoleViewer />}
                 {activeTab === "history" && <HistoryEditor />}
                 {activeTab === "world" && <WorldEditor />}
-                {activeTab === "tree" && <DialogueTreeGraph onJumpToReplay={handleJumpToReplay} currentStepId={currentReplayStepId} />}
+                {activeTab === "tree" && (
+                  <DialogueTreeGraph
+                    onJumpToReplay={handleJumpToReplay}
+                    currentStepId={currentReplayStepId}
+                  />
+                )}
               </div>
             </motion.div>
           </>

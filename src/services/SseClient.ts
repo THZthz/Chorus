@@ -9,7 +9,12 @@ export interface SseCallbacks {
   onPlotCreate?: (data: { plotId: string; title: string; parentPlotId: string | null }) => void;
   onPlotEdit?: (data: {
     plotId: string;
-    changes: Partial<Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">>;
+    changes: Partial<
+      Pick<
+        Plot,
+        "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots"
+      >
+    >;
   }) => void;
   onStreamingMessages?: (messages: StreamingMessage[]) => void;
   onStreamingReset?: () => void;
@@ -92,38 +97,38 @@ export class SseClient {
   private dispatch(event: string, data: any, cb: SseCallbacks) {
     switch (event) {
       case "step_start":
-        console.log(`[sse] event=step_start stepId=${data.stepId}`);
+        console.trace(`[sse] event=step_start stepId=${data.stepId}`);
         cb.onStepStart?.(data);
         break;
       case "world_update":
-        console.log(`[sse] event=world_update entityId=${data.entityId}`);
+        console.trace(`[sse] event=world_update entityId=${data.entityId}`);
         cb.onWorldUpdate?.(data);
         break;
       case "plot_update":
-        console.log(`[sse] event=plot_update plotId=${data.plotId}`);
+        console.trace(`[sse] event=plot_update plotId=${data.plotId}`);
         cb.onPlotUpdate?.(data);
         break;
       case "plot_create":
-        console.log(`[sse] event=plot_create plotId=${data.plotId}`);
+        console.trace(`[sse] event=plot_create plotId=${data.plotId}`);
         cb.onPlotCreate?.(data);
         break;
       case "plot_edit":
-        console.log(`[sse] event=plot_edit plotId=${data.plotId}`);
+        console.trace(`[sse] event=plot_edit plotId=${data.plotId}`);
         cb.onPlotEdit?.(data);
         break;
       case "streaming_messages":
         cb.onStreamingMessages?.(data.messages);
         break;
       case "streaming_reset":
-        console.log(`[sse] event=streaming_reset`);
+        console.trace(`[sse] event=streaming_reset`);
         cb.onStreamingReset?.();
         break;
       case "options":
-        console.log(`[sse] event=options count=${data.options?.length ?? 0}`);
+        console.trace(`[sse] event=options count=${data.options?.length ?? 0}`);
         cb.onOptions?.(data.options);
         break;
       case "parsed":
-        console.log(
+        console.trace(
           `[sse] event=parsed msgs=${data.messages?.length ?? 0} opts=${data.options?.length ?? 0}`,
         );
         cb.onParsed?.(data);
@@ -133,7 +138,7 @@ export class SseClient {
         cb.onError?.(data.message);
         break;
       case "done":
-        console.log(`[sse] event=done`);
+        console.trace(`[sse] event=done`);
         cb.onDone?.();
         break;
     }

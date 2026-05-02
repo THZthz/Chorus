@@ -1,5 +1,12 @@
 import db from "@/server/db";
-import { WorldEntity, WorldState, Character, Location, WorldObject, EntityType } from "@/types/entities";
+import {
+  WorldEntity,
+  WorldState,
+  Character,
+  Location,
+  WorldObject,
+  EntityType,
+} from "@/types/entities";
 
 const initialObjects: Record<string, WorldObject> = {
   rusted_coin: {
@@ -213,7 +220,9 @@ export function getAllEntitySummaries(
   typeFilter?: EntityType,
 ): { id: string; displayName: string; type: EntityType; shortDescription: string }[] {
   const rows = typeFilter
-    ? (db.prepare("SELECT id, type, displayName, shortDescription FROM entities WHERE type = ?").all(typeFilter) as any[])
+    ? (db
+        .prepare("SELECT id, type, displayName, shortDescription FROM entities WHERE type = ?")
+        .all(typeFilter) as any[])
     : (db.prepare("SELECT id, type, displayName, shortDescription FROM entities").all() as any[]);
   return rows.map((r) => ({
     id: r.id,

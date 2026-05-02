@@ -26,16 +26,12 @@ export function getPlotById(id: string): Plot | null {
 
 export function getActivePlots(): Plot[] {
   return (
-    db
-      .prepare("SELECT * FROM plots WHERE status IN ('PENDING', 'IN_PROGRESS')")
-      .all() as any[]
+    db.prepare("SELECT * FROM plots WHERE status IN ('PENDING', 'IN_PROGRESS')").all() as any[]
   ).map(rowToPlot);
 }
 
 export function getRootPlot(): Plot | null {
-  const row = db
-    .prepare("SELECT * FROM plots WHERE parent_plot_id IS NULL LIMIT 1")
-    .get() as any;
+  const row = db.prepare("SELECT * FROM plots WHERE parent_plot_id IS NULL LIMIT 1").get() as any;
   return row ? rowToPlot(row) : null;
 }
 
@@ -90,7 +86,10 @@ export function addPlot(input: AddPlotInput): { ok: true } | { ok: false; error:
   if (input.parentPlotId && input.parentOptionId !== null && input.parentOptionId !== undefined) {
     const parent = getPlotById(input.parentPlotId)!;
     const updatedChildren = [...parent.childPlots];
-    updatedChildren[input.parentOptionId] = { ...updatedChildren[input.parentOptionId], plotId: id };
+    updatedChildren[input.parentOptionId] = {
+      ...updatedChildren[input.parentOptionId],
+      plotId: id,
+    };
     db.prepare("UPDATE plots SET child_plots = ? WHERE id = ?").run(
       JSON.stringify(updatedChildren),
       input.parentPlotId,
@@ -244,5 +243,8 @@ export function buildActivePlotTree(): string {
   const root = allPlots.find((p) => p.parentPlotId === null);
   if (!root) return "(no root plot found — use createPlot without parentPlotId to start the story)";
 
-  return renderPlot(root, 0) + "\n\nUse getPlot(id) for full details. Entity IDs above map to entities in the WORLD ENTITIES section.";
+  return (
+    renderPlot(root, 0) +
+    "\n\nUse getPlot(id) for full details. Entity IDs above map to entities in the WORLD ENTITIES section."
+  );
 }

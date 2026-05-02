@@ -50,7 +50,12 @@ export class TurnEventEmitter {
 
   emitPlotEdit(
     plotId: string,
-    changes: Partial<Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">>,
+    changes: Partial<
+      Pick<
+        Plot,
+        "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots"
+      >
+    >,
   ) {
     this.send("plot_edit", { plotId, changes });
   }

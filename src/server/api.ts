@@ -94,7 +94,14 @@ apiRouter.post("/chat/stream", async (req, res) => {
       }
     }
 
-    await generateTurn(userInput, history ?? [], res, parentStepId ?? null, parentOptionId ?? null, playerCharacter ?? null);
+    await generateTurn(
+      userInput,
+      history ?? [],
+      res,
+      parentStepId ?? null,
+      parentOptionId ?? null,
+      playerCharacter ?? null,
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat stream error:", message);

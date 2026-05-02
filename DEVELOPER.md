@@ -237,12 +237,13 @@ These map to character stats in `src/types/entities.ts` and `src/context/Charact
 
 ### 6.3 Debug Panel
 
-The Debug Panel (`DebugPanel.tsx`) provides 4 tabs:
+The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
 
 - **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, and child trace nesting
 - **Console Logs**: Intercepted browser console output with filtering
-- **History Editor**: CodeMirror JSON editor for dialogue history
-- **World Editor**: Entity browser and JSON editor for world state
+- **History Editor**: Visual message timeline — type-styled cards (YOU/CHARACTER/INNER_VOICE/SYSTEM/ROLL/NOTIFICATION), expand-in-place overlay edit, drag reorder, add/delete messages (`src/components/debug/HistoryEditor.tsx`)
+- **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form with stat bars, opinion pills, attribute k/v table (`src/components/debug/WorldEditor.tsx`)
+- **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root), bottom inspector panel with message/option editing and "Jump to Replay" (`src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits.
 
 ---
 

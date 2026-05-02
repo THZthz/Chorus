@@ -366,6 +366,40 @@ export default function App() {
     );
   };
 
+  // ── Jump to specific step (from DialogueTreeGraph) ──
+
+  const handleJumpToStep = async (stepId: string) => {
+    sseRef.current?.abort();
+    setIsTyping(false);
+    setStreamingMessages([]);
+    setCanRegenerate(false);
+
+    const [treeRes, pathRes] = await Promise.all([
+      fetch("/api/dialogue/tree"),
+      fetch(`/api/dialogue/${stepId}/path`),
+    ]);
+    if (!treeRes.ok || !pathRes.ok) return;
+
+    const treeData = await treeRes.json();
+    const path: Array<{ id: string; messages: Message[]; options: import("@/types/dialogue").DialogueOption[] }> =
+      await pathRes.json();
+
+    const messages: Message[] = [];
+    for (const step of path) {
+      messages.push(...step.messages);
+    }
+
+    const targetStep = treeData.steps[stepId];
+    if (!targetStep) return;
+
+    setTreeSteps(treeData.steps);
+    setHistory(messages);
+    setDynamicOptions(targetStep.options);
+    setCurrentReplayStepId(stepId);
+    setHasBegun(true);
+    setMode("replay");
+  };
+
   // ── Reset ──
 
   const resetHistory = async () => {
@@ -737,7 +771,7 @@ export default function App() {
         </div>
       </main>
 
-      <DebugPanel />
+      <DebugPanel onJumpToReplay={handleJumpToStep} />
       <div className="fixed left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/50 to-transparent" />
       <div className="fixed right-0 top-0 bottom-0 w-2 bg-gradient-to-l from-black/50 to-transparent" />
     </div>

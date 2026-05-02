@@ -13,6 +13,7 @@ import {
 } from "@/server/models/debug";
 import {
   getStep,
+  saveStep,
   getChildSteps,
   getBranchPath,
   deactivateSiblingBranches,
@@ -154,6 +155,22 @@ apiRouter.post("/regenerate", async (req, res) => {
   }
 });
 
+// ── Tree replay (must be before /dialogue/:id to avoid route shadowing) ──
+
+apiRouter.get("/dialogue/tree", (_req, res) => {
+  const root = getRootStep();
+  const allSteps = getAllSteps();
+  const steps: Record<string, (typeof allSteps)[number]> = {};
+  for (const step of allSteps) {
+    steps[step.id] = step;
+  }
+  const stats = getTreeStats();
+  console.log(
+    `[dialogue/tree] root=${root?.id}, totalSteps=${allSteps.length}, leaves=${stats.leafIds.length}, branches=${stats.branchCount}`,
+  );
+  res.json({ root, steps, leafIds: stats.leafIds, stats });
+});
+
 // ── Dialogue Tree ──
 
 apiRouter.get("/dialogue/:id", (req, res) => {
@@ -217,20 +234,19 @@ apiRouter.get("/session/current", (_req, res) => {
   res.json(step ?? null);
 });
 
-// ── Tree replay ──
-
-apiRouter.get("/dialogue/tree", (_req, res) => {
-  const root = getRootStep();
-  const allSteps = getAllSteps();
-  const steps: Record<string, (typeof allSteps)[number]> = {};
-  for (const step of allSteps) {
-    steps[step.id] = step;
+apiRouter.patch("/dialogue/:id", (req, res) => {
+  const step = getStep(req.params.id);
+  if (!step) {
+    res.status(404).json({ error: "Step not found" });
+    return;
   }
-  const stats = getTreeStats();
-  console.log(
-    `[dialogue/tree] root=${root?.id}, totalSteps=${allSteps.length}, leaves=${stats.leafIds.length}, branches=${stats.branchCount}`,
-  );
-  res.json({ root, steps, leafIds: stats.leafIds, stats });
+  try {
+    saveStep({ ...step, messages: req.body.messages, options: req.body.options });
+    res.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: message });
+  }
 });
 
 apiRouter.post("/dialogue/traverse", (req, res) => {

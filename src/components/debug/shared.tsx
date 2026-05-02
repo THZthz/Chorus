@@ -1,0 +1,152 @@
+import React, { useState, useEffect, useRef } from "react";
+import { ChevronDown } from "lucide-react";
+import { createPortal } from "react-dom";
+
+// ── CustomSelect ──────────────────────────────────────────────────────────────
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+export const CustomSelect: React.FC<{
+  value: string;
+  options: (string | SelectOption)[];
+  onChange: (value: string) => void;
+  className?: string;
+}> = ({ value, options, onChange, className = "" }) => {
+  const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const normalized = options.map((o) =>
+    typeof o === "string" ? { value: o, label: o } : o,
+  );
+  const selected = normalized.find((o) => o.value === value);
+
+  const toggleOpen = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setDropPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        dropRef.current &&
+        !dropRef.current.contains(e.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className={`relative ${className}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        onMouseDown={toggleOpen}
+        className="w-full flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-sm px-2 py-1 text-[11px] font-mono text-white/70 hover:border-white/20 focus:outline-none transition-colors"
+      >
+        <span className="truncate">{selected?.label ?? value}</span>
+        <ChevronDown
+          size={9}
+          className={`flex-shrink-0 text-white/30 ml-1 transition-transform duration-100 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open &&
+        dropPos &&
+        createPortal(
+          <div
+            ref={dropRef}
+            style={{
+              position: "fixed",
+              top: dropPos.top,
+              left: dropPos.left,
+              width: dropPos.width,
+              zIndex: 9999,
+            }}
+            className="bg-[#111214] border border-white/15 rounded-sm shadow-2xl py-0.5"
+          >
+            {normalized.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-2 py-1.5 text-[11px] font-mono transition-colors ${
+                  opt.value === value
+                    ? "bg-white/8 text-white/90"
+                    : "text-white/55 hover:bg-white/[0.05] hover:text-white/80"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+};
+
+// ── ResizableTextarea ─────────────────────────────────────────────────────────
+
+export const ResizableTextarea: React.FC<
+  React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    minHeight?: number;
+    initialHeight?: number;
+  }
+> = ({ minHeight = 56, initialHeight, className = "", style, ...props }) => {
+  const [height, setHeight] = useState(initialHeight ?? minHeight);
+  const startYRef = useRef(0);
+  const startHRef = useRef(0);
+
+  const onHandleDown = (e: React.MouseEvent) => {
+    startYRef.current = e.clientY;
+    startHRef.current = height;
+    e.preventDefault();
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientY - startYRef.current;
+      setHeight(Math.max(minHeight, startHRef.current + delta));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div className="flex flex-col group/rta">
+      <textarea
+        className={className}
+        style={{ ...style, height, resize: "none" }}
+        {...props}
+      />
+      <div
+        onMouseDown={onHandleDown}
+        className="h-2 flex items-center justify-center cursor-ns-resize select-none"
+      >
+        <div className="w-8 h-px bg-white/10 group-hover/rta:bg-white/30 transition-colors" />
+      </div>
+    </div>
+  );
+};

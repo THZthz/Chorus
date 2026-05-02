@@ -163,7 +163,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
     );
   }
 
-  const paragraphs = message.text.split(/(?:\r?\n){2,}/);
+  const paragraphs = (message.text ?? "").split(/(?:\r?\n){2,}/);
 
   // Inner voice: colored left border matches the voice's identity color
   const borderStyle = isInnerVoice ? { borderLeftColor: speakerColor + "55" } : undefined;
@@ -173,7 +173,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`mb-8 relative ${isInnerVoice ? "border-l-2 pl-4 font-serif" : isYou ? "font-sans" : "font-serif"}`}
+      className={`mb-8 relative ${isInnerVoice ? "border-l-2 pl-4 font-serif" : isYou ? "font-['Times_New_Roman',Times]" : "font-serif"}`}
       style={borderStyle}
     >
       <AnimatePresence>

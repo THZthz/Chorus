@@ -330,14 +330,13 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
 - **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, and child trace
   nesting (`src/components/debug/LlmTraceViewer.tsx`)
 - **Console Logs**: Intercepted browser console output with filtering (`src/components/debug/ConsoleViewer.tsx`)
-- **History Editor**: Visual message timeline — type-styled cards (YOU/CHARACTER/INNER_VOICE/SYSTEM/ROLL/NOTIFICATION),
-  expand-in-place overlay edit, drag reorder, add/delete messages (`src/components/debug/HistoryEditor.tsx`)
 - **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form
   with stat bars, opinion pills, attribute k/v table (`src/components/debug/WorldEditor.tsx`)
 - **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (
   active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay" (
   `src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits. Receives `currentStepId`
   prop and highlights the actively-replaying node with a green "NOW" badge.
+- **Plot Tree**: Canvas node graph for plot inspection and editing during replay (`src/components/debug/PlotTreeGraph.tsx`)
 
 ---
 

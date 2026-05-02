@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, MessageSquare, Database, Monitor, GitBranch, Network } from "lucide-react";
+import { Terminal, X, Bug, Database, Monitor, GitBranch, Network } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
-import { HistoryEditor } from "@/components/debug/HistoryEditor";
+
 import { DialogueTreeGraph } from "@/components/debug/DialogueTreeGraph";
 import { PlotTreeGraph } from "@/components/debug/PlotTreeGraph";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
@@ -11,10 +11,9 @@ import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
   currentReplayStepId?: string | null;
-  isStreaming?: boolean;
-}> = ({ onJumpToReplay, currentReplayStepId, isStreaming }) => {
+}> = ({ onJumpToReplay, currentReplayStepId }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"logs" | "console" | "history" | "world" | "tree" | "plots">(
+  const [activeTab, setActiveTab] = useState<"logs" | "console" | "world" | "tree" | "plots">(
     "logs",
   );
   const [panelWidth, setPanelWidth] = useState(640);
@@ -39,7 +38,7 @@ export const DebugPanel: React.FC<{
   }, []);
 
   const TabButton: React.FC<{
-    id: "logs" | "console" | "history" | "world" | "tree" | "plots";
+    id: "logs" | "console" | "world" | "tree" | "plots";
     label: string;
     icon: React.ReactNode;
   }> = ({ id, label, icon }) => (
@@ -108,7 +107,7 @@ export const DebugPanel: React.FC<{
                 <div className="flex items-center">
                   <TabButton id="logs" label="Logs" icon={<Terminal size={14} />} />
                   <TabButton id="console" label="Console" icon={<Monitor size={14} />} />
-                  <TabButton id="history" label="History" icon={<MessageSquare size={14} />} />
+
                   <TabButton id="world" label="World" icon={<Database size={14} />} />
                   <TabButton id="tree" label="Tree" icon={<GitBranch size={14} />} />
                   <TabButton id="plots" label="Plots" icon={<Network size={14} />} />
@@ -126,7 +125,7 @@ export const DebugPanel: React.FC<{
               <div className="flex-1 p-6 min-h-0 flex flex-col">
                 {activeTab === "logs" && <LlmTraceViewer />}
                 {activeTab === "console" && <ConsoleViewer />}
-                {activeTab === "history" && <HistoryEditor isStreaming={isStreaming} />}
+
                 {activeTab === "world" && <WorldEditor />}
                 {activeTab === "tree" && (
                   <DialogueTreeGraph

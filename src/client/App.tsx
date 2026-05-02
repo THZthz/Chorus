@@ -15,7 +15,13 @@ function buildHistoryFromTree(
   stepId: string,
   treeSteps: Record<
     string,
-    { id: string; parentStepId: string | null; parentOptionId: string | null; messages: Message[]; options: DialogueOption[] }
+    {
+      id: string;
+      parentStepId: string | null;
+      parentOptionId: string | null;
+      messages: Message[];
+      options: DialogueOption[];
+    }
   >,
 ): Message[] {
   const chain: (typeof treeSteps)[string][] = [];
@@ -142,9 +148,7 @@ export default function App() {
             metadata: m.metadata as Message["metadata"],
           }));
           const changed = new Set(
-            messages
-              .filter((m, i) => (snapshot[i]?.text ?? null) !== m.text)
-              .map((m) => m.id),
+            messages.filter((m, i) => (snapshot[i]?.text ?? null) !== m.text).map((m) => m.id),
           );
           setStreamingMessages([]);
           setHistory((prev) => [...prev, ...messages]);
@@ -355,9 +359,7 @@ export default function App() {
             metadata: m.metadata as Message["metadata"],
           }));
           const changed = new Set(
-            messages
-              .filter((m, i) => (snapshot[i]?.text ?? null) !== m.text)
-              .map((m) => m.id),
+            messages.filter((m, i) => (snapshot[i]?.text ?? null) !== m.text).map((m) => m.id),
           );
           setStreamingMessages([]);
           setHistory((prev) => [...prev, ...messages]);
@@ -415,8 +417,11 @@ export default function App() {
     if (!treeRes.ok || !pathRes.ok) return;
 
     const treeData = await treeRes.json();
-    const path: Array<{ id: string; messages: Message[]; options: import("@/types/dialogue").DialogueOption[] }> =
-      await pathRes.json();
+    const path: Array<{
+      id: string;
+      messages: Message[];
+      options: import("@/types/dialogue").DialogueOption[];
+    }> = await pathRes.json();
 
     const messages: Message[] = [];
     for (const step of path) {
@@ -509,7 +514,12 @@ export default function App() {
     }
 
     const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
-    const youMessage: Message = { id: `you-${Date.now()}`, speaker: "YOU", type: "YOU", text: cleanText };
+    const youMessage: Message = {
+      id: `you-${Date.now()}`,
+      speaker: "YOU",
+      type: "YOU",
+      text: cleanText,
+    };
 
     console.log(
       `[replay] option selected: id=${option.id} nextStepId=${option.nextStepId || "none"} text="${String(option.text).slice(0, 40)}"`,
@@ -551,30 +561,40 @@ export default function App() {
     }
 
     // New branch — no child exists yet, generate one
-    console.log(`[replay] generating new branch from step=${currentReplayStepId} option=${option.id}`);
+    console.log(
+      `[replay] generating new branch from step=${currentReplayStepId} option=${option.id}`,
+    );
     setHistory((prev) => [...prev, youMessage]);
     const branchHistory = buildHistoryFromTree(currentReplayStepId, treeSteps);
     const updatedHistory = [...branchHistory, youMessage];
     const parentIdAtTime = currentReplayStepId;
 
-    handleStreamingResponse(cleanText, updatedHistory, currentReplayStepId, option.id, async (newStepId) => {
-      const stepRes = await fetch(`/api/dialogue/${newStepId}`);
-      if (!stepRes.ok) return;
-      const { step } = await stepRes.json();
-      setTreeSteps((prev) => {
-        const updated = { ...prev, [newStepId]: step };
-        const parent = updated[parentIdAtTime];
-        if (parent) {
-          updated[parentIdAtTime] = {
-            ...parent,
-            options: parent.options.map((o) => (o.id === option.id ? { ...o, nextStepId: newStepId } : o)),
-          };
-        }
-        return updated;
-      });
-      setCurrentReplayStepId(newStepId);
-      console.log(`[replay] new branch saved: step=${newStepId}`);
-    });
+    handleStreamingResponse(
+      cleanText,
+      updatedHistory,
+      currentReplayStepId,
+      option.id,
+      async (newStepId) => {
+        const stepRes = await fetch(`/api/dialogue/${newStepId}`);
+        if (!stepRes.ok) return;
+        const { step } = await stepRes.json();
+        setTreeSteps((prev) => {
+          const updated = { ...prev, [newStepId]: step };
+          const parent = updated[parentIdAtTime];
+          if (parent) {
+            updated[parentIdAtTime] = {
+              ...parent,
+              options: parent.options.map((o) =>
+                o.id === option.id ? { ...o, nextStepId: newStepId } : o,
+              ),
+            };
+          }
+          return updated;
+        });
+        setCurrentReplayStepId(newStepId);
+        console.log(`[replay] new branch saved: step=${newStepId}`);
+      },
+    );
   };
 
   // ── Bulk regenerate ──

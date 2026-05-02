@@ -43,9 +43,7 @@ const StatBar: React.FC<{
             key={i}
             onClick={() => onChange(Math.max(1, Math.round(((i + 1) / segments) * max)))}
             className={`h-2 flex-1 transition-colors ${
-              i < filled
-                ? "bg-[#ff6b35]/55 hover:bg-[#ff6b35]/80"
-                : "bg-white/8 hover:bg-white/20"
+              i < filled ? "bg-[#ff6b35]/55 hover:bg-[#ff6b35]/80" : "bg-white/8 hover:bg-white/20"
             }`}
           />
         ))}
@@ -472,36 +470,39 @@ export const WorldEditor: React.FC = () => {
               </div>
 
               {/* CHARACTER-only */}
-              {editing.type === "CHARACTER" && (() => {
-                const ch = editing as Character;
-                const statsEntries = Object.entries(ch.stats ?? {});
-                return (
-                  <>
-                    {statsEntries.length > 0 && (
-                      <div>
-                        <FieldLabel label={`Stats — ${statsEntries.length} values`} />
-                        <div className="space-y-0.5 p-3 bg-white/[0.02] border border-white/6 rounded-sm">
-                          {statsEntries.map(([key, val]) => (
-                            <StatBar
-                              key={key}
-                              label={key.replace(/_/g, " ").toUpperCase()}
-                              value={val as number}
-                              onChange={(v) => updateStats(key, v)}
-                            />
-                          ))}
+              {editing.type === "CHARACTER" &&
+                (() => {
+                  const ch = editing as Character;
+                  const statsEntries = Object.entries(ch.stats ?? {});
+                  return (
+                    <>
+                      {statsEntries.length > 0 && (
+                        <div>
+                          <FieldLabel label={`Stats — ${statsEntries.length} values`} />
+                          <div className="space-y-0.5 p-3 bg-white/[0.02] border border-white/6 rounded-sm">
+                            {statsEntries.map(([key, val]) => (
+                              <StatBar
+                                key={key}
+                                label={key.replace(/_/g, " ").toUpperCase()}
+                                value={val as number}
+                                onChange={(v) => updateStats(key, v)}
+                              />
+                            ))}
+                          </div>
                         </div>
+                      )}
+                      <div>
+                        <FieldLabel
+                          label={`Opinions — ${Object.keys(ch.opinions ?? {}).length} relations`}
+                        />
+                        <OpinionPills
+                          opinions={ch.opinions ?? {}}
+                          onChange={(o) => updateField("opinions", o)}
+                        />
                       </div>
-                    )}
-                    <div>
-                      <FieldLabel label={`Opinions — ${Object.keys(ch.opinions ?? {}).length} relations`} />
-                      <OpinionPills
-                        opinions={ch.opinions ?? {}}
-                        onChange={(o) => updateField("opinions", o)}
-                      />
-                    </div>
-                  </>
-                );
-              })()}
+                    </>
+                  );
+                })()}
 
               {/* Attributes */}
               <div>

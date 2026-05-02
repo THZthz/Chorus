@@ -20,9 +20,7 @@ export const CustomSelect: React.FC<{
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  const normalized = options.map((o) =>
-    typeof o === "string" ? { value: o, label: o } : o,
-  );
+  const normalized = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   const selected = normalized.find((o) => o.value === value);
 
   const toggleOpen = (e: React.MouseEvent) => {
@@ -136,11 +134,7 @@ export const ResizableTextarea: React.FC<
 
   return (
     <div className="flex flex-col group/rta">
-      <textarea
-        className={className}
-        style={{ ...style, height, resize: "none" }}
-        {...props}
-      />
+      <textarea className={className} style={{ ...style, height, resize: "none" }} {...props} />
       <div
         onMouseDown={onHandleDown}
         className="h-2 flex items-center justify-center cursor-ns-resize select-none"

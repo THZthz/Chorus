@@ -179,7 +179,9 @@ const GraphNode: React.FC<{
       <div className="px-2.5 py-1.5">
         <p
           className="text-[10px] leading-snug italic"
-          style={{ color: isEffectivelyActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.2)" }}
+          style={{
+            color: isEffectivelyActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.2)",
+          }}
         >
           {preview}
         </p>
@@ -203,7 +205,14 @@ const GraphNode: React.FC<{
 
 // ── Inspector panel ──────────────────────────────────────────────────────────
 
-const SPEAKER_TYPES = ["YOU", "CHARACTER", "INNER_VOICE", "SYSTEM", "ROLL", "NOTIFICATION"] as const;
+const SPEAKER_TYPES = [
+  "YOU",
+  "CHARACTER",
+  "INNER_VOICE",
+  "SYSTEM",
+  "ROLL",
+  "NOTIFICATION",
+] as const;
 
 const Inspector: React.FC<{
   step: StepData;
@@ -214,7 +223,16 @@ const Inspector: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
   height: number;
   onResizeStart: (e: React.MouseEvent) => void;
-}> = ({ step, isLeaf, isEffectivelyActive, onClose, onSave, onJumpToReplay, height, onResizeStart }) => {
+}> = ({
+  step,
+  isLeaf,
+  isEffectivelyActive,
+  onClose,
+  onSave,
+  onJumpToReplay,
+  height,
+  onResizeStart,
+}) => {
   const [messages, setMessages] = useState<Message[]>(step.messages);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -492,7 +510,9 @@ export const DialogueTreeGraph: React.FC<{
   );
 
   const resetZoom = () => {
-    const rootPos = treeData?.stats.rootId ? layout.find((l) => l.id === treeData.stats.rootId) : null;
+    const rootPos = treeData?.stats.rootId
+      ? layout.find((l) => l.id === treeData.stats.rootId)
+      : null;
     const px = rootPos ? -rootPos.x + 60 : 60;
     const py = rootPos ? -rootPos.y + 60 : 60;
     setPan({ x: px, y: py });
@@ -585,7 +605,10 @@ export const DialogueTreeGraph: React.FC<{
     let cur: StepData | undefined = step;
     let active = true;
     while (cur) {
-      if (!cur.isActive) { active = false; break; }
+      if (!cur.isActive) {
+        active = false;
+        break;
+      }
       cur = cur.parentStepId ? steps[cur.parentStepId] : undefined;
     }
     if (active) effectivelyActiveIds.add(id);

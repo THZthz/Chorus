@@ -90,11 +90,23 @@ const DieBox: React.FC<{
   }[size];
 
   const variantStyle: React.CSSProperties = {
-    default: { background: "linear-gradient(135deg,#1c1c1c,#0b0b0b)", border: "1px solid rgba(255,255,255,0.12)" },
-    success: { background: "linear-gradient(135deg,rgba(16,64,32,0.7),#0b0b0b)", border: "1px solid rgba(74,222,128,0.3)" },
-    fail:    { background: "linear-gradient(135deg,rgba(64,12,12,0.7),#0b0b0b)", border: "1px solid rgba(248,113,113,0.3)" },
-    critical:{ background: "linear-gradient(135deg,rgba(64,44,4,0.7),#0b0b0b)",  border: "1px solid rgba(245,158,11,0.4)" },
-    ghost:   { background: "transparent", border: "1px solid rgba(255,255,255,0.06)", opacity: 0.2 },
+    default: {
+      background: "linear-gradient(135deg,#1c1c1c,#0b0b0b)",
+      border: "1px solid rgba(255,255,255,0.12)",
+    },
+    success: {
+      background: "linear-gradient(135deg,rgba(16,64,32,0.7),#0b0b0b)",
+      border: "1px solid rgba(74,222,128,0.3)",
+    },
+    fail: {
+      background: "linear-gradient(135deg,rgba(64,12,12,0.7),#0b0b0b)",
+      border: "1px solid rgba(248,113,113,0.3)",
+    },
+    critical: {
+      background: "linear-gradient(135deg,rgba(64,44,4,0.7),#0b0b0b)",
+      border: "1px solid rgba(245,158,11,0.4)",
+    },
+    ghost: { background: "transparent", border: "1px solid rgba(255,255,255,0.06)", opacity: 0.2 },
   }[variant];
 
   return (
@@ -120,7 +132,12 @@ const ProbabilityArc: React.FC<{ probability: number; color: string }> = ({
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: 130, height: 130 }}>
-      <svg width="130" height="130" className="absolute inset-0" style={{ transform: "rotate(-90deg)" }}>
+      <svg
+        width="130"
+        height="130"
+        className="absolute inset-0"
+        style={{ transform: "rotate(-90deg)" }}
+      >
         <defs>
           <filter id="arc-glow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -237,7 +254,10 @@ export const DiceRoller: React.FC<Props> = ({
         if (rollCount > 6) {
           setIsRolling(false);
           setHasRolled(true);
-          const finalDice = Array.from({ length: diceCount }, () => Math.floor(Math.random() * 6) + 1);
+          const finalDice = Array.from(
+            { length: diceCount },
+            () => Math.floor(Math.random() * 6) + 1,
+          );
           setDice(finalDice);
           const diceTotal = finalDice.reduce((a, b) => a + b, 0);
           const total = diceTotal + skillBonus;
@@ -260,9 +280,19 @@ export const DiceRoller: React.FC<Props> = ({
     if (conditions && hasRolled) {
       for (const cond of conditions) {
         try {
-          const fn = new Function("dice", "total", "success", "diceLen", `return ${cond.expression}`);
+          const fn = new Function(
+            "dice",
+            "total",
+            "success",
+            "diceLen",
+            `return ${cond.expression}`,
+          );
           if (fn(dice, total, success, dice.length)) {
-            return { label: cond.label ?? "Special Outcome", color: cond.color ?? "#a855f7", isSuccess: success };
+            return {
+              label: cond.label ?? "Special Outcome",
+              color: cond.color ?? "#a855f7",
+              isSuccess: success,
+            };
           }
         } catch (e) {
           console.error("Condition eval error:", e);
@@ -289,7 +319,9 @@ export const DiceRoller: React.FC<Props> = ({
       <ModalCard>
         {/* Header */}
         <div className="px-5 py-2.5 bg-[#0e0e0e] flex items-center justify-between border-b border-white/[0.04]">
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">{skill}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">
+            {skill}
+          </span>
           <span className="text-[9px] uppercase tracking-[0.2em] text-white/20">Skill Check</span>
         </div>
 
@@ -299,9 +331,13 @@ export const DiceRoller: React.FC<Props> = ({
 
           {/* Stat / difficulty row */}
           <div className="flex items-center gap-3 text-[10px] text-white/30 uppercase tracking-[0.15em] font-bold">
-            <span>+{skillBonus} {skill}</span>
+            <span>
+              +{skillBonus} {skill}
+            </span>
             <span className="w-0.5 h-0.5 rounded-full bg-white/15" />
-            <span>{difficultyText ? `${difficultyText} ` : ""}Diff. {difficulty}</span>
+            <span>
+              {difficultyText ? `${difficultyText} ` : ""}Diff. {difficulty}
+            </span>
           </div>
 
           {/* Ghost dice */}
@@ -330,7 +366,9 @@ export const DiceRoller: React.FC<Props> = ({
       <ModalCard glowColor="#dc2626">
         {/* Header */}
         <div className="px-5 py-2.5 bg-[#1a0606] flex items-center justify-between border-b border-red-900/30">
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-red-400">{skill}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-red-400">
+            {skill}
+          </span>
           <motion.span
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -358,7 +396,9 @@ export const DiceRoller: React.FC<Props> = ({
             >
               {probability}%
             </span>
-            <span className="text-[9px] text-white/15 uppercase tracking-[0.3em] mt-1">Probability</span>
+            <span className="text-[9px] text-white/15 uppercase tracking-[0.3em] mt-1">
+              Probability
+            </span>
           </motion.div>
 
           {/* Bar */}
@@ -374,7 +414,9 @@ export const DiceRoller: React.FC<Props> = ({
 
           {/* Stat / difficulty */}
           <div className="flex items-center gap-3 text-[10px] text-white/25 uppercase tracking-[0.15em] font-bold">
-            <span>+{skillBonus} {skill}</span>
+            <span>
+              +{skillBonus} {skill}
+            </span>
             <span className="w-0.5 h-0.5 rounded-full bg-white/15" />
             <span>Difficulty {difficulty}</span>
           </div>
@@ -388,13 +430,17 @@ export const DiceRoller: React.FC<Props> = ({
           <div className="flex w-full justify-between px-4 opacity-[0.18]">
             <div className="flex flex-col items-center gap-1.5">
               <div className="flex gap-1">
-                {[1, 1].map((v, i) => <DieBox key={i} value={v} size="xs" />)}
+                {[1, 1].map((v, i) => (
+                  <DieBox key={i} value={v} size="xs" />
+                ))}
               </div>
               <span className="text-[7px] uppercase tracking-widest text-white/40">Nat 2</span>
             </div>
             <div className="flex flex-col items-center gap-1.5">
               <div className="flex gap-1">
-                {[6, 6].map((v, i) => <DieBox key={i} value={v} size="xs" />)}
+                {[6, 6].map((v, i) => (
+                  <DieBox key={i} value={v} size="xs" />
+                ))}
               </div>
               <span className="text-[7px] uppercase tracking-widest text-white/40">Nat 12</span>
             </div>
@@ -419,7 +465,9 @@ export const DiceRoller: React.FC<Props> = ({
       <ModalCard glowColor="#4fb0c6">
         {/* Header */}
         <div className="px-5 py-2.5 bg-[#071820] flex items-center justify-between border-b border-[#4fb0c6]/10">
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#4fb0c6]/70">{skill}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#4fb0c6]/70">
+            {skill}
+          </span>
           <span className="text-[9px] uppercase tracking-[0.2em] text-[#4fb0c6]/40">Rolling</span>
         </div>
 
@@ -440,7 +488,9 @@ export const DiceRoller: React.FC<Props> = ({
                   ease: "linear",
                 }}
                 className="w-14 h-14 bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a] border border-white/[0.14] rounded-[4px] flex items-center justify-center"
-                style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)" }}
+                style={{
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)",
+                }}
               >
                 <DieFace value={value} size="md" />
               </motion.div>
@@ -457,7 +507,12 @@ export const DiceRoller: React.FC<Props> = ({
                 <motion.div
                   key={i}
                   animate={{ opacity: [0.08, 1, 0.08], scaleY: [0.4, 2, 0.4] }}
-                  transition={{ duration: 0.55, repeat: Infinity, delay: i * 0.08, ease: "easeInOut" }}
+                  transition={{
+                    duration: 0.55,
+                    repeat: Infinity,
+                    delay: i * 0.08,
+                    ease: "easeInOut",
+                  }}
                   className="w-[2px] h-3 bg-[#4fb0c6] origin-center"
                 />
               ))}
@@ -472,7 +527,13 @@ export const DiceRoller: React.FC<Props> = ({
 
   const criticalLabel = isNatural12 ? "Critical Success" : isNatural2 ? "Critical Failure" : null;
   const resultColor = isNatural12 ? "#f59e0b" : isNatural2 ? "#ef4444" : outcome.color;
-  const dieVariant: DieVariant = isNatural12 ? "critical" : isNatural2 ? "fail" : outcome.isSuccess ? "success" : "fail";
+  const dieVariant: DieVariant = isNatural12
+    ? "critical"
+    : isNatural2
+      ? "fail"
+      : outcome.isSuccess
+        ? "success"
+        : "fail";
 
   const headerBg = isNatural12
     ? "#1e1200"
@@ -496,10 +557,16 @@ export const DiceRoller: React.FC<Props> = ({
         className="px-5 py-2.5 flex items-center justify-between border-b border-white/[0.04] transition-colors duration-500"
         style={{ backgroundColor: headerBg }}
       >
-        <span className="text-[10px] font-black uppercase tracking-[0.3em]" style={{ color: resultColor, opacity: 0.7 }}>
+        <span
+          className="text-[10px] font-black uppercase tracking-[0.3em]"
+          style={{ color: resultColor, opacity: 0.7 }}
+        >
           {skill}
         </span>
-        <span className="text-[9px] uppercase tracking-[0.2em]" style={{ color: resultColor, opacity: 0.45 }}>
+        <span
+          className="text-[9px] uppercase tracking-[0.2em]"
+          style={{ color: resultColor, opacity: 0.45 }}
+        >
           {outcome.isSuccess ? "Passed" : "Failed"}
         </span>
       </div>
@@ -567,7 +634,9 @@ export const DiceRoller: React.FC<Props> = ({
           ))}
           <span className="text-white/15 text-sm mx-0.5">+</span>
           <div className="flex flex-col items-center">
-            <span className="text-[17px] font-black text-[#4fb0c6] leading-none">+{skillBonus}</span>
+            <span className="text-[17px] font-black text-[#4fb0c6] leading-none">
+              +{skillBonus}
+            </span>
             <span className="text-[7px] text-white/20 uppercase tracking-widest mt-0.5">Stat</span>
           </div>
           <span className="text-white/15 text-sm mx-0.5">=</span>

@@ -10,7 +10,12 @@ interface Props {
   unexploredOptionIds?: Set<string>;
 }
 
-export const DialogueOptions: React.FC<Props> = ({ options, onSelect, disabledOptionIds, unexploredOptionIds }) => {
+export const DialogueOptions: React.FC<Props> = ({
+  options,
+  onSelect,
+  disabledOptionIds,
+  unexploredOptionIds,
+}) => {
   return (
     <div className="mt-12 font-serif">
       <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-8" />
@@ -56,7 +61,9 @@ export const DialogueOptions: React.FC<Props> = ({ options, onSelect, disabledOp
                       {skillCheckHint}
                     </span>
                   )}
-                  {option.hintBefore && !option.check && <span className="font-bold mr-1">{option.hintBefore}</span>}
+                  {option.hintBefore && !option.check && (
+                    <span className="font-bold mr-1">{option.hintBefore}</span>
+                  )}
                   {option.text}
                   {option.hintAfter && <span className="font-bold ml-1">{option.hintAfter}</span>}
                 </span>

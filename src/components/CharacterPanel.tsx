@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, ChevronRight, ChevronLeft, MapPin, Box, Heart } from "lucide-react";
+import { User, ChevronRight, MapPin, Box, Heart } from "lucide-react";
 import { useCharacter } from "@/context/CharacterContext";
 import { CharacterStats } from "@/types/entities";
 import { worldManager } from "@/services/WorldManager";

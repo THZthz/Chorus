@@ -12,7 +12,7 @@ import {
   Cpu,
 } from "lucide-react";
 import { Message, SpeakerType } from "@/types/dialogue";
-import { CustomSelect, ResizableTextarea } from "./shared";
+import { CustomSelect, ResizableTextarea } from "@/components/debug/shared";
 
 const SPEAKER_TYPES: SpeakerType[] = [
   "YOU",
@@ -74,10 +74,7 @@ const InnerVoiceCard: React.FC<{ msg: Message }> = ({ msg }) => {
         <Cpu size={9} />
         {msg.speaker}
       </div>
-      <p
-        className="text-[12px] leading-relaxed italic font-sans"
-        style={{ color: `${col}cc` }}
-      >
+      <p className="text-[12px] leading-relaxed italic font-sans" style={{ color: `${col}cc` }}>
         {msg.text}
       </p>
     </div>
@@ -426,11 +423,7 @@ export const HistoryEditor: React.FC = () => {
                   transition={{ duration: 0.12 }}
                   className="relative z-20 mt-1"
                 >
-                  <EditOverlay
-                    msg={msg}
-                    onApply={applyEdit}
-                    onClose={() => setEditingId(null)}
-                  />
+                  <EditOverlay msg={msg} onApply={applyEdit} onClose={() => setEditingId(null)} />
                 </motion.div>
               )}
             </AnimatePresence>

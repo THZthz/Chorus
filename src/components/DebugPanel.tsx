@@ -134,7 +134,12 @@ export const DebugPanel: React.FC<{
                     currentStepId={currentReplayStepId}
                   />
                 )}
-                {activeTab === "plots" && <PlotTreeGraph />}
+                                {activeTab === "plots" && (
+                  <PlotTreeGraph
+                    isReplayActive={!!currentReplayStepId}
+                    currentReplayStepId={currentReplayStepId ?? null}
+                  />
+                )}
               </div>
             </motion.div>
           </>

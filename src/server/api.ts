@@ -28,6 +28,7 @@ import {
   getChildByOption,
   getTreeStats,
   getLatestLeafStep,
+  updateStepSnapshot,
 } from "@/server/models/dialogue";
 
 const apiRouter = express.Router();
@@ -270,6 +271,20 @@ apiRouter.patch("/dialogue/:id", (req, res) => {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: message });
   }
+});
+
+apiRouter.patch("/dialogue/:id/snapshot", (req, res) => {
+  const { worldSnapshot } = req.body;
+  if (!worldSnapshot || typeof worldSnapshot !== "object") {
+    res.status(400).json({ error: "worldSnapshot object required" });
+    return;
+  }
+  const ok = updateStepSnapshot(req.params.id, worldSnapshot as Record<string, unknown>);
+  if (!ok) {
+    res.status(404).json({ error: "Step not found" });
+    return;
+  }
+  res.json({ success: true });
 });
 
 apiRouter.post("/dialogue/traverse", (req, res) => {

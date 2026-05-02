@@ -75,6 +75,24 @@ class WorldManager {
   getPlayerCharacter(): Character | null {
     return this.replayOverride?.playerCharacter ?? null;
   }
+
+  updatePlotInReplaySnapshot(id: string, patch: Partial<Plot>): boolean {
+    if (!this.replayOverride) return false;
+    const idx = this.replayOverride.plots.findIndex((p) => p.id === id);
+    if (idx === -1) return false;
+    this.replayOverride.plots[idx] = { ...this.replayOverride.plots[idx], ...patch };
+    this.notify();
+    return true;
+  }
+
+  getReplaySnapshot(): Record<string, unknown> | null {
+    if (!this.replayOverride) return null;
+    return {
+      entities: this.replayOverride.entities,
+      plots: this.replayOverride.plots,
+      playerCharacter: this.replayOverride.playerCharacter,
+    };
+  }
 }
 
 export const worldManager = new WorldManager();

@@ -269,6 +269,21 @@ export function updateOptionNextStepId(stepId: string, optionId: string, nextSte
   );
 }
 
+export function updateStepSnapshot(
+  id: string,
+  worldSnapshot: Record<string, unknown>,
+): boolean {
+  const existing = db
+    .prepare("SELECT id FROM dialogue_steps WHERE id = ?")
+    .get(id) as { id: string } | undefined;
+  if (!existing) return false;
+  db.prepare("UPDATE dialogue_steps SET world_snapshot = ? WHERE id = ?").run(
+    JSON.stringify(worldSnapshot),
+    id,
+  );
+  return true;
+}
+
 export function getTreeStats(): {
   totalSteps: number;
   rootId: string | null;

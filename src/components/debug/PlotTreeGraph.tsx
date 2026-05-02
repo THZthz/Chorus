@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Maximize2, RotateCcw, RefreshCw, X, Save, AlertCircle, Network } from "lucide-react";
 import type { Plot } from "@/types/plot";
+import { worldManager } from "@/services/WorldManager";
 import { CustomSelect, ResizableTextarea } from "./shared";
 
 // ── Layout constants ───────────────────────────────────────────────────────
@@ -444,8 +445,13 @@ const Inspector: React.FC<{
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export const PlotTreeGraph: React.FC = () => {
+export const PlotTreeGraph: React.FC<{
+  isReplayActive?: boolean;
+  currentReplayStepId?: string | null;
+}> = ({ isReplayActive = false, currentReplayStepId = null }) => {
   const [plots, setPlots] = useState<Plot[]>([]);
+  const isReplayActiveRef = useRef(isReplayActive);
+  isReplayActiveRef.current = isReplayActive;
   const [isLoading, setIsLoading] = useState(false);
   const [layout, setLayout] = useState<NodePos[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -463,22 +469,41 @@ export const PlotTreeGraph: React.FC = () => {
       if (res.ok) {
         const data: Plot[] = await res.json();
         setPlots(data);
-        const plotMap: Record<string, Plot> = {};
-        for (const p of data) plotMap[p.id] = p;
-        const positions = computeLayout(plotMap);
-        setLayout(positions);
-        if (positions.length > 0) {
-          requestAnimationFrame(() => fitToView(positions));
-        }
       }
     } finally {
       setIsLoading(false);
     }
   }, []);
 
+  // Subscribe to worldManager for replay snapshot sync
   useEffect(() => {
-    fetchPlots();
-  }, [fetchPlots]);
+    const unsub = worldManager.subscribe(() => {
+      if (isReplayActiveRef.current) {
+        setPlots([...worldManager.getPlots()]);
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Load plots: from snapshot when replay is active, from API otherwise
+  useEffect(() => {
+    if (isReplayActive) {
+      setPlots(worldManager.getPlots());
+    } else {
+      fetchPlots();
+    }
+  }, [isReplayActive, fetchPlots]);
+
+  // Recompute layout when plots array changes (but not on every fetch callback identity change)
+  useEffect(() => {
+    const plotMap: Record<string, Plot> = {};
+    for (const p of plots) plotMap[p.id] = p;
+    const positions = computeLayout(plotMap);
+    setLayout(positions);
+    if (positions.length > 0) {
+      requestAnimationFrame(() => fitToView(positions));
+    }
+  }, [plots]);
 
   const fitToView = useCallback(
     (positions?: NodePos[]) => {
@@ -568,13 +593,28 @@ export const PlotTreeGraph: React.FC = () => {
   };
 
   const savePlot = async (id: string, patch: Partial<Plot>) => {
+    // Replay mode with active snapshot: update snapshot (local + persisted to dialogue step)
+    if (isReplayActive && currentReplayStepId && worldManager.isReplayActive()) {
+      const updated = worldManager.updatePlotInReplaySnapshot(id, patch);
+      if (!updated) return;
+      const snapshot = worldManager.getReplaySnapshot();
+      if (!snapshot) return;
+      const res = await fetch(`/api/dialogue/${currentReplayStepId}/snapshot`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worldSnapshot: snapshot }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return;
+    }
+
+    // Live mode (or replay with no snapshot): update the live plot in DB
     const res = await fetch(`/api/plots/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
     if (!res.ok) throw new Error(await res.text());
-    // Update local state
     setPlots((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   };
 
@@ -682,7 +722,13 @@ export const PlotTreeGraph: React.FC = () => {
             Reset
           </button>
           <button
-            onClick={fetchPlots}
+            onClick={() => {
+              if (isReplayActive) {
+                setPlots([...worldManager.getPlots()]);
+              } else {
+                fetchPlots();
+              }
+            }}
             disabled={isLoading}
             className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
           >

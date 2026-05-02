@@ -211,6 +211,10 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - **Start from any step**: The "Jump to Replay" button in `DialogueTreeGraph` calls `handleJumpToStep(stepId)` which
   fetches the tree, calls `buildHistoryFromTree` to reconstruct history with YOU messages, and sets `lastStepId` +
   `canRegenerate = true` so REGENERATE is immediately available.
+- **Plot tree sync**: During replay, `PlotTreeGraph` reads plots from `worldManager`'s replay snapshot (not the live DB),
+  so the plot tree reflects the state at the current dialogue step. Editing a plot in the inspector during replay updates
+  the step's `world_snapshot.plots` in the DB via `PATCH /api/dialogue/:id/snapshot` and the local replay override
+  immediately.
 - **Exit replay**: Click the Return button. Calls `worldManager.clearReplayState()` (immediate visual restore to cached
   live entities/plots), then `worldManager.loadState()` (refreshes from DB), then fetches history from
   `history_messages`.

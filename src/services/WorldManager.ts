@@ -3,7 +3,11 @@ import { WorldEntity, WorldState, Character, Location, WorldObject, Plot } from 
 class WorldManager {
   private state: WorldState = { objects: {}, locations: {}, characters: {} };
   private plots: Plot[] = [];
-  private replayOverride: { entities: WorldState; plots: Plot[] } | null = null;
+  private replayOverride: {
+    entities: WorldState;
+    plots: Plot[];
+    playerCharacter: Character | null;
+  } | null = null;
   private listeners = new Set<() => void>();
 
   subscribe(fn: () => void): () => void {
@@ -31,6 +35,7 @@ class WorldManager {
     this.replayOverride = {
       entities: snapshot.entities as WorldState,
       plots: (snapshot.plots as Plot[]) ?? [],
+      playerCharacter: (snapshot.playerCharacter as Character) ?? null,
     };
     this.notify();
   }
@@ -64,6 +69,10 @@ class WorldManager {
 
   getPlots(): Plot[] {
     return this.replayOverride?.plots ?? this.plots;
+  }
+
+  getPlayerCharacter(): Character | null {
+    return this.replayOverride?.playerCharacter ?? null;
   }
 }
 

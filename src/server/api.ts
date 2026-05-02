@@ -1,5 +1,6 @@
 import express from "express";
 import type { Message } from "@/types/dialogue";
+import type { Character } from "@/types/entities";
 import { generateTurn, generateTurnBatch } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
@@ -75,7 +76,7 @@ apiRouter.post("/history", (req, res) => {
 
 apiRouter.post("/chat/stream", async (req, res) => {
   try {
-    const { userInput, history, parentStepId, parentOptionId } = req.body;
+    const { userInput, history, parentStepId, parentOptionId, playerCharacter } = req.body;
     console.log(
       `[chat/stream] userInput="${String(userInput).slice(0, 80)}" parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history?.length ?? 0}`,
     );
@@ -93,7 +94,7 @@ apiRouter.post("/chat/stream", async (req, res) => {
       }
     }
 
-    await generateTurn(userInput, history ?? [], res, parentStepId ?? null, parentOptionId ?? null);
+    await generateTurn(userInput, history ?? [], res, parentStepId ?? null, parentOptionId ?? null, playerCharacter ?? null);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat stream error:", message);
@@ -110,7 +111,7 @@ apiRouter.post("/chat/stream", async (req, res) => {
 
 apiRouter.post("/regenerate", async (req, res) => {
   try {
-    const { stepId, history } = req.body;
+    const { stepId, history, playerCharacter } = req.body;
 
     if (!stepId) {
       res.status(400).json({ error: "stepId required" });
@@ -142,6 +143,7 @@ apiRouter.post("/regenerate", async (req, res) => {
       res,
       step.parentStepId ?? null,
       step.parentOptionId ?? null,
+      playerCharacter ?? null,
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -303,12 +305,14 @@ apiRouter.post("/regenerate-all", async (_req, res) => {
         }
 
         const userInput = "Continue";
+        const leafSnapshot = leaf.worldSnapshot as { playerCharacter?: Character } | null;
 
         const { stepId, messages } = await generateTurnBatch(
           userInput,
           history,
           leaf.parentStepId,
           leaf.parentOptionId,
+          leafSnapshot?.playerCharacter ?? null,
         );
 
         results.push({ leafId: leaf.id, success: true, newStepId: stepId });

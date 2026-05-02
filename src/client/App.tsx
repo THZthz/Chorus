@@ -10,6 +10,7 @@ import { CharacterPanel } from "@/components/CharacterPanel";
 import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
 import { SseClient } from "@/services/SseClient";
+import { useCharacter } from "@/context/CharacterContext";
 
 function buildHistoryFromTree(
   stepId: string,
@@ -47,6 +48,7 @@ function buildHistoryFromTree(
 }
 
 export default function App() {
+  const { character } = useCharacter();
   const [history, setHistory] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [currentCheck, setCurrentCheck] = useState<DialogueOption["check"] | null>(null);
@@ -110,7 +112,7 @@ export default function App() {
 
     client.stream(
       "/api/chat/stream",
-      { userInput, history: updatedHistory, parentStepId, parentOptionId },
+      { userInput, history: updatedHistory, parentStepId, parentOptionId, playerCharacter: character },
       {
         onStepStart: (data) => {
           setLastStepId(data.stepId);
@@ -323,7 +325,7 @@ export default function App() {
 
     client.stream(
       "/api/regenerate",
-      { stepId: lastStepId, history: trimmedHistory },
+      { stepId: lastStepId, history: trimmedHistory, playerCharacter: character },
       {
         onStepStart: (data) => {
           setLastStepId(data.stepId);

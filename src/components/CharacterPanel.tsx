@@ -12,7 +12,7 @@ const STATUS_STYLE: Record<string, { color: string; border: string }> = {
 };
 
 export const CharacterPanel: React.FC = () => {
-  const { character } = useCharacter();
+  const { character: liveCharacter } = useCharacter();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"STATS" | "WORLD">("STATS");
   const [, forceUpdate] = useState(0);
@@ -20,6 +20,7 @@ export const CharacterPanel: React.FC = () => {
   // Subscribe to worldManager so the panel re-renders on world/plot changes (live or replay)
   useEffect(() => worldManager.subscribe(() => forceUpdate((n) => n + 1)), []);
 
+  const character = worldManager.getPlayerCharacter() ?? liveCharacter;
   const stats = Object.entries(character.stats) as [keyof CharacterStats, number][];
   const worldEntities = worldManager.getAllEntities();
   const plots = worldManager.getPlots();

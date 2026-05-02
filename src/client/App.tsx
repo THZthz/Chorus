@@ -204,7 +204,6 @@ export default function App() {
       speaker: "YOU",
       type: "YOU",
       text: cleanText,
-      isChosenOption: true,
     };
     updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);

@@ -89,6 +89,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
   const isInnerVoice = message.type === "INNER_VOICE";
   const isSystem = message.type === "SYSTEM";
   const isNotification = message.type === "NOTIFICATION";
+  const isYou = message.type === "YOU";
 
   const speakerColor = getSpeakerColor(message.speaker, message.type);
 
@@ -172,7 +173,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`mb-8 font-serif relative ${isInnerVoice ? "border-l-2 pl-4" : ""}`}
+      className={`mb-8 relative ${isInnerVoice ? "border-l-2 pl-4 font-serif" : isYou ? "font-sans" : "font-serif"}`}
       style={borderStyle}
     >
       <AnimatePresence>

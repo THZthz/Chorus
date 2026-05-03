@@ -29,7 +29,7 @@ interface TreeData {
 }
 
 const DIALOGUE_NODE_W = 200;
-const DIALOGUE_NODE_H = 90;
+const DIALOGUE_NODE_H = 110;
 
 const SPEAKER_TYPES = [
   "YOU",
@@ -95,12 +95,14 @@ const DialogueNodeCard: React.FC<
         userSelect: "none",
         borderRadius: "2px",
         boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
       }}
       className={isLeaf && isEffectivelyActive ? "leaf-pulse" : ""}
     >
       {/* Header */}
       <div
-        className="px-2.5 py-1.5 flex items-center justify-between border-b"
+        className="px-2.5 py-1.5 flex items-center justify-between border-b flex-shrink-0"
         style={{ borderColor: "rgba(255,255,255,0.06)" }}
       >
         <span className="text-[9px] font-mono text-white/30 truncate">{shortId}</span>
@@ -128,9 +130,9 @@ const DialogueNodeCard: React.FC<
         </div>
       </div>
       {/* Preview */}
-      <div className="px-2.5 py-1.5">
+      <div className="px-2.5 py-1.5 flex-1 min-h-0">
         <p
-          className="text-[10px] leading-snug italic"
+          className="text-[10px] leading-snug italic line-clamp-2"
           style={{
             color: isEffectivelyActive ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.2)",
           }}
@@ -140,7 +142,7 @@ const DialogueNodeCard: React.FC<
       </div>
       {/* Footer badges */}
       <div
-        className="absolute bottom-0 left-0 right-0 px-2.5 py-1 flex items-center gap-2 border-t"
+        className="px-2.5 py-1.5 flex items-center gap-2 border-t flex-shrink-0"
         style={{ borderColor: "rgba(255,255,255,0.04)" }}
       >
         <span className="text-[9px] font-mono text-white/20">
@@ -532,7 +534,7 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
         </span>
       </div>
       {/* Description preview */}
-      <div className="px-2.5 pt-2 pb-4 flex-1 min-h-0">
+      <div className="px-2.5 py-1.5 flex-1 min-h-0">
         <p
           className="text-[10px] leading-snug italic line-clamp-2"
           style={{

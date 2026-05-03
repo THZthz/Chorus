@@ -5,6 +5,7 @@ import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
+import db from "@/server/db";
 import { getAllEntities, getAllEntitySummaries } from "@/server/models/world";
 import { getAllPlots, buildActivePlotTree } from "@/server/models/plot";
 import {
@@ -67,25 +68,9 @@ export function getModel(): { model: LanguageModel; name: string } {
 
 // ── System prompt ──
 
-export function buildSystemPrompt(): string {
-  const summaries = getAllEntitySummaries();
-  const byType = (type: string) =>
-    summaries
-      .filter((e) => e.type === type)
-      .map((e) => `  ${e.id.padEnd(24)} → "${e.displayName}" — ${e.shortDescription}`)
-      .join("\n");
+const PROMPT_TEMPLATE_KEY = "gm_system_prompt";
 
-  const entityIndex = [
-    summaries.some((e) => e.type === "CHARACTER") ? `Characters:\n${byType("CHARACTER")}` : null,
-    summaries.some((e) => e.type === "LOCATION") ? `Locations:\n${byType("LOCATION")}` : null,
-    summaries.some((e) => e.type === "OBJECT") ? `Objects:\n${byType("OBJECT")}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const plotTree = buildActivePlotTree();
-
-  return `
+const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 You are the Game Master for a narrative-driven RPG.
 SETTING: A grim medieval fantasy world where ancient magic is being challenged by the fragile emergence of steampunk technology.
 TONE: Atmospheric, morally ambiguous, and brooding. Rich sensory detail — soot, candlewax, rust, ozone, old blood.
@@ -429,7 +414,7 @@ Step 2 — call generateDialogueStep with options that match childPlots:
 
 ## WORLD ENTITIES
 
-${entityIndex || "(no entities yet)"}
+{{entities_brief}}
 
 Use queryEntity(id) for full details, or queryEntity with a search term. Never invent entity names or IDs.
 
@@ -437,13 +422,44 @@ Use queryEntity(id) for full details, or queryEntity with a search term. Never i
 
 ## ACTIVE PLOTS
 
-${plotTree}
+{{active_plots}}
 
 - Plots are BROAD narrative arcs, no need to align with dialogues step by step. A plot should progress: PENDING → IN_PROGRESS → RESOLVED across multiple dialogue turns.
 - When the player's actions align with a childPlot's triggerCondition, update the plot tree: editPlot to mark progress, createPlot to instantiate the branch.
 - Keep triggerConditions at the story-decision level — they describe *what the player chooses to pursue*, not a specific thing they say.
 
 `.trim();
+
+export function getSystemPromptTemplate(): string {
+  const row = db.prepare("SELECT value FROM system_state WHERE key = ?").get(PROMPT_TEMPLATE_KEY) as { value: string } | undefined;
+  return row?.value || DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+}
+
+export function setSystemPromptTemplate(template: string): void {
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(PROMPT_TEMPLATE_KEY, template);
+}
+
+export function buildSystemPrompt(): string {
+  const summaries = getAllEntitySummaries();
+  const byType = (type: string) =>
+    summaries
+      .filter((e) => e.type === type)
+      .map((e) => `  ${e.id.padEnd(24)} → "${e.displayName}" — ${e.shortDescription}`)
+      .join("\n");
+
+  const entityIndex = [
+    summaries.some((e) => e.type === "CHARACTER") ? `Characters:\n${byType("CHARACTER")}` : null,
+    summaries.some((e) => e.type === "LOCATION") ? `Locations:\n${byType("LOCATION")}` : null,
+    summaries.some((e) => e.type === "OBJECT") ? `Objects:\n${byType("OBJECT")}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const template = getSystemPromptTemplate();
+
+  return template
+    .replace("{{entities_brief}}", entityIndex || "(no entities yet)")
+    .replace("{{active_plots}}", buildActivePlotTree());
 }
 
 // ── Game Master ──

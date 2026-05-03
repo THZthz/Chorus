@@ -1,7 +1,7 @@
 import express from "express";
 import type { Message } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
-import { generateTurn, generateTurnBatch } from "@/server/llm/index";
+import { generateTurn, generateTurnBatch, getSystemPromptTemplate, setSystemPromptTemplate } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";
@@ -403,6 +403,39 @@ apiRouter.post("/debug/console", (req, res) => {
 apiRouter.post("/debug/console/clear", (_req, res) => {
   clearConsoleLogs();
   res.json({ success: true });
+});
+
+// ── System Prompt ──
+
+apiRouter.get("/debug/system-prompt", (_req, res) => {
+  res.json({ template: getSystemPromptTemplate() });
+});
+
+apiRouter.put("/debug/system-prompt", (req, res) => {
+  try {
+    const { template } = req.body;
+    if (typeof template !== "string" || !template.trim()) {
+      res.status(400).json({ error: "template string required" });
+      return;
+    }
+    setSystemPromptTemplate(template);
+    res.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: message });
+  }
+});
+
+apiRouter.post("/debug/system-prompt/reset", (_req, res) => {
+  try {
+    import("./db").then(({ default: db }) => {
+      db.prepare("DELETE FROM system_state WHERE key = ?").run("gm_system_prompt");
+      res.json({ success: true });
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: message });
+  }
 });
 
 // ── Reset ──

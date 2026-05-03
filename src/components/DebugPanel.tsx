@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, Database, Monitor, GitBranch, Network } from "lucide-react";
+import { Terminal, X, Bug, Database, Monitor, GitBranch, Network, FileText } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";
 import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeGraphConfigs";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
+import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
 
-type TabId = "logs" | "console" | "world" | "tree" | "plots";
+type TabId = "logs" | "console" | "world" | "tree" | "plots" | "prompt";
 
 const TabButton: React.FC<{
   id: TabId;
@@ -133,6 +134,7 @@ export const DebugPanel: React.FC<{
                   <TabButton id="world" activeTab={activeTab} onSelect={setActiveTab} label="World" icon={<Database size={14} />} />
                   <TabButton id="tree" activeTab={activeTab} onSelect={setActiveTab} label="Tree" icon={<GitBranch size={14} />} />
                   <TabButton id="plots" activeTab={activeTab} onSelect={setActiveTab} label="Plots" icon={<Network size={14} />} />
+                  <TabButton id="prompt" activeTab={activeTab} onSelect={setActiveTab} label="Prompt" icon={<FileText size={14} />} />
                 </div>
                 <div className="flex items-center gap-3 pr-4">
                   <button
@@ -151,6 +153,7 @@ export const DebugPanel: React.FC<{
                 {activeTab === "world" && <WorldEditor />}
                 {activeTab === "tree" && <NodeGraph config={dialogueConfig} />}
                 {activeTab === "plots" && <NodeGraph config={plotConfig} />}
+                {activeTab === "prompt" && <SystemPromptEditor />}
               </div>
             </motion.div>
           </>

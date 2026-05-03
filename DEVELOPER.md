@@ -46,7 +46,7 @@ src/
 │       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
 │       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
 ├── context/
-│   └── CharacterContext.tsx  # Global character stats (React Context) with default Disco Elysium stats
+│   └── CharacterContext.tsx  # Global character stats (React Context) with default fantasy-steampunk stats
 ├── server/
 │   ├── main.ts               # Express + Vite middleware entry
 │   ├── api.ts                # REST API + SSE streaming endpoints (world, plots, history, chat, debug)
@@ -87,28 +87,28 @@ execution results to the frontend as typed SSE events.
 POST /api/chat/stream
         │
         ▼
-┌────────────────────────────────────────────────┐
-│  GameMaster.generateTurn()                     │
-│                                                │
-│  streamText({                                  │
-│    tools: {                                    │
-│      getAllEntitiesName,   ──► returns JSON    │
-│      queryEntity,         ──► returns JSON     │
-│      editEntity,          ──► DB + SSE event   │
-│      createPlot,          ──► DB + SSE event   │
-│      editPlot,            ──► DB + SSE event   │
-│      getPlot,             ──► returns JSON     │
-│      generateDialogueStep ──► SSE streaming    │
-│    },                                          │
+┌─────────────────────────────────────────────────┐
+│  GameMaster.generateTurn()                      │
+│                                                 │
+│  streamText({                                   │
+│    tools: {                                     │
+│      getAllEntitiesName,   ──► returns JSON     │
+│      queryEntity,         ──► returns JSON      │
+│      editEntity,          ──► DB + SSE event    │
+│      createPlot,          ──► DB + SSE event    │
+│      editPlot,            ──► DB + SSE event    │
+│      getPlot,             ──► returns JSON      │
+│      generateDialogueStep ──► SSE streaming     │
+│    },                                           │
 │    stopWhen: generates once + passes validation │
 │    prepareStep: nudges if GM forgets dialogue   │
-│  })                                            │
-│                                                │
-│  fullStream iteration:                         │
-│    text-delta          → discard               │
-│    tool-input-delta    → progressive           │
-│    tool-call           → definitive            │
-└──────────┬─────────────────────────────────────┘
+│  })                                             │
+│                                                 │
+│  fullStream iteration:                          │
+│    text-delta          → discard                │
+│    tool-input-delta    → progressive            │
+│    tool-call           → definitive             │
+└──────────┬──────────────────────────────────────┘
            │ SSE events
            ▼
 ┌──────────────────────────────────────┐
@@ -131,19 +131,19 @@ POST /api/chat/stream
 
 Defined in `src/shared/events.ts` (single source of truth for both backend and frontend):
 
-| Event                | Direction       | Payload                           | Trigger                                   |
-|----------------------|-----------------|-----------------------------------|-------------------------------------------|
-| `step_start`         | Server → Client | `{ stepId }`                      | Turn begins                               |
-| `streaming_messages` | Server → Client | `{ messages }`                    | Progressive during `generateDialogueStep` |
+| Event                | Direction       | Payload                           | Trigger                                    |
+|----------------------|-----------------|-----------------------------------|--------------------------------------------|
+| `step_start`         | Server → Client | `{ stepId }`                      | Turn begins                                |
+| `streaming_messages` | Server → Client | `{ messages }`                    | Progressive during `generateDialogueStep`  |
 | `streaming_reset`    | Server → Client | `{}`                              | LLM retried — previous streaming discarded |
-| `world_update`       | Server → Client | `{ entityId, changes }`           | `editEntity` tool executes                |
-| `plot_update`        | Server → Client | `{ plotId, status }`              | `updatePlotStatus` tool executes          |
-| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }` | `createPlot` tool executes                |
-| `plot_edit`          | Server → Client | `{ plotId, changes }`             | `editPlot` tool executes                  |
-| `options`            | Server → Client | `{ options }`                     | Options available mid-stream              |
-| `parsed`             | Server → Client | `{ messages, options }`           | Final structured output                   |
-| `error`              | Server → Client | `{ message }`                     | Error during generation                   |
-| `done`               | Server → Client | `{}`                              | Turn complete                             |
+| `world_update`       | Server → Client | `{ entityId, changes }`           | `editEntity` tool executes                 |
+| `plot_update`        | Server → Client | `{ plotId, status }`              | `updatePlotStatus` tool executes           |
+| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }` | `createPlot` tool executes                 |
+| `plot_edit`          | Server → Client | `{ plotId, changes }`             | `editPlot` tool executes                   |
+| `options`            | Server → Client | `{ options }`                     | Options available mid-stream               |
+| `parsed`             | Server → Client | `{ messages, options }`           | Final structured output                    |
+| `error`              | Server → Client | `{ message }`                     | Error during generation                    |
+| `done`               | Server → Client | `{}`                              | Turn complete                              |
 
 ### 3.3 LLM Tools
 
@@ -158,6 +158,11 @@ All 7 tools defined once in `src/server/llm/tools.ts`:
 | `editPlot`             | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
 | `getPlot`              | Retrieve plot(s) by ID or status filter                   | None (read query)         | None (returns JSON)             |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
+
+All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns an
+`ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error
+and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by
+the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
 
 `editEntity`, `createPlot`, `editPlot`, and `getPlot` report failure conditions (entity not found, plot not found, tree
 validation error) in their return messages so the GM can retry.
@@ -225,8 +230,10 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - **Start from any step**: The "Jump to Replay" button in `DialogueTreeGraph` calls `handleJumpToStep(stepId)` which
   fetches the tree, calls `buildHistoryFromTree` to reconstruct history with YOU messages, and sets `lastStepId` +
   `canRegenerate = true` so REGENERATE is immediately available.
-- **Plot tree sync**: During replay, `PlotTreeGraph` reads plots from `worldManager`'s replay snapshot (not the live DB),
-  so the plot tree reflects the state at the current dialogue step. Editing a plot in the inspector during replay updates
+- **Plot tree sync**: During replay, `PlotTreeGraph` reads plots from `worldManager`'s replay snapshot (not the live
+  DB),
+  so the plot tree reflects the state at the current dialogue step. Editing a plot in the inspector during replay
+  updates
   the step's `world_snapshot.plots` in the DB via `PATCH /api/dialogue/:id/snapshot` and the local replay override
   immediately.
 - **Exit replay**: Click the Return button. Calls `worldManager.clearReplayState()` (immediate visual restore to cached
@@ -282,17 +289,17 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 9 tables in SQLite (`game.db`, WAL mode):
 
-| Table                   | Purpose                                                              |
-|-------------------------|----------------------------------------------------------------------|
-| `entities`              | World entities (characters, locations, objects) with JSON attributes |
+| Table                   | Purpose                                                                                  |
+|-------------------------|------------------------------------------------------------------------------------------|
+| `entities`              | World entities (characters, locations, objects) with JSON attributes                     |
 | `history_messages`      | Persisted narrative message history (with metadata, skillCheck, rollResult JSON columns) |
-| `plots`                 | Quest/objective tree with JSON childPlots, entity links, status      |
-| `dialogue_steps`        | Generated dialogue tree nodes (with world_snapshot JSON for replays)  |
-| `dialogue_alternatives` | Archived alternative versions (regeneration)                         |
-| `llm_logs`              | LLM request/response logging (with parent_id + label for child traces) |
-| `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings)              |
-| `console_logs`          | Intercepted browser console logs                                     |
-| `system_state`          | Key-value system state storage                                       |
+| `plots`                 | Quest/objective tree with JSON childPlots, entity links, status                          |
+| `dialogue_steps`        | Generated dialogue tree nodes (with world_snapshot JSON for replays)                     |
+| `dialogue_alternatives` | Archived alternative versions (regeneration)                                             |
+| `llm_logs`              | LLM request/response logging (with parent_id + label for child traces)                   |
+| `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings)                                  |
+| `console_logs`          | Intercepted browser console logs                                                         |
+| `system_state`          | Key-value system state storage                                                           |
 
 ### 5.1 Plot Tree Architecture
 
@@ -324,10 +331,10 @@ status tags, involved entities, and the childPlots options tree.
 
 ## 6. Core Systems
 
-### 6.1 Internal Voices (Ego Skills)
+### 6.1 Internal Voices (Inner Skills)
 
-Disco Elysium-style internal monologue. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`,
-`INLAND EMPIRE`, `SUGGESTION`, `HALF LIGHT`, `PHYSICAL INSTRUMENT`, `INTERFACING`, `ELECTROCHEMISTRY`.
+Fantasy-steampunk inner monologue — each skill is a distinct voice in the player's mind. Voices: `LOGIC`, `RHETORIC`,
+`EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`, `SORCERY`, `SUGGESTION`, `INSTINCT`, `MIGHT`, `CLOCKWORK`, `ALCHEMY`.
 
 These map to character stats in `src/types/entities.ts` (`CharacterStats` interface) and the default player in
 `src/context/CharacterContext.tsx`. The system prompt in `src/server/llm/index.ts` instructs the LLM about voice

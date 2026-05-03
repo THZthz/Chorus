@@ -9,66 +9,70 @@ import {
 } from "@/types/entities";
 
 const initialObjects: Record<string, WorldObject> = {
-  rusted_coin: {
-    id: "rusted_coin",
+  brass_resonator: {
+    id: "brass_resonator",
     type: "OBJECT",
-    displayName: "Rusted Iron Coin",
-    shortDescription: "A heavy, notched currency from the Old Duchy.",
+    displayName: "Brass Ley-Resonator",
+    shortDescription: "A humming device of black-iron gears and etched copper coils.",
     longDescription:
-      "The iron is pitted with rust, but the seal of the dead Duke is still visible. It smells of copper and damp earth. In a place like the Crimson Veil, it might buy you a half-measure of watered wine or a very short conversation.",
+      "A fist-sized contraption of riveted brass and alchemically treated copper. Its innards click and whir, and a faint blue glow pulses from a cracked crystal at its core — a crude attempt to 'tune' ley-line energy through clockwork. The thing feels warm, almost alive, and gives off a faint smell of ozone and burnt herbs. It should not work. It does.",
     attributes: {
-      Value: "Near-worthless",
-      Origin: "Duchy of Oros",
+      Function: "Ley-resonance transduction (unstable)",
+      Origin: "Unknown — possibly the Workshop of the Veiled Hand",
+      "Steam Pressure": "Dangerously high",
     },
   },
-  velvet_choker: {
-    id: "velvet_choker",
+  cogwheel_amulet: {
+    id: "cogwheel_amulet",
     type: "OBJECT",
-    displayName: "Stained Velvet Choker",
-    shortDescription: "Once elegant, now frayed and smelling of heavy musk.",
+    displayName: "Cogwheel Amulet",
+    shortDescription: "A brass cog on a leather string, etched with faded runes.",
     longDescription:
-      "The deep red fabric is stiff with age and sweat. It has a small, tarnished silver clasp that looks like a weeping eye. It belongs to Vespera, though she hasn't worn it since the plague years.",
+      "The cog is warm to the touch, its teeth worn smooth by fingers that have worried it for years. Faint runes — old magical script — have been etched into the brass and filled with a dark, tarnished silver. It is a symbol of the Clockwrights' Guild, worn by those who walk the line between the arcane and the mechanical.",
     attributes: {
-      Scent: "Musk and Decay",
-      Material: "Velvet",
+      Affiliation: "Clockwrights' Guild",
+      Material: "Brass, silver, leather",
+      Age: "Several decades",
     },
   },
 };
 
 const initialLocations: Record<string, Location> = {
-  crimson_veil: {
-    id: "crimson_veil",
+  rusted_cog: {
+    id: "rusted_cog",
     type: "LOCATION",
-    displayName: "The Crimson Veil",
-    shortDescription: "A sagging timber-frame structure in the lower district.",
+    displayName: "The Rusted Cog",
+    shortDescription: "A smoke-stained tavern clinging to the edge of the Steamward quarter.",
     longDescription:
-      "The air inside is thick with the smoke of tallow candles and cheap hashish. The walls are draped in moth-eaten tapestries that attempt to hide the rot. It is a place where secrets are bought for coppers and dignity is the first thing checked at the door.",
+      "The Cog is a low-ceilinged haunt of timber and blackened stone, sagging under the weight of its own years. A massive alchemical steam-boiler — installed by the late owner's son before he disappeared — hisses and clanks behind the bar, its copper pipes snaking across soot-stained walls like metallic ivy. The air is thick with pipe smoke, cheap tallow, and the bitter tang of boiled chicory. The clientele are a grim lot: discharged soldiers, hedge witches, failed alchemists, and the occasional steam-engineer nursing a grudge. A brass plaque above the hearth reads: 'The Old Ways End Here.'",
     attributes: {
-      Atmosphere: "Oppressive",
-      Patronage: "Desperate",
+      Atmosphere: "Smoke-choked and wary",
+      District: "Steamward",
+      "Notable Feature": "Installation of an alchemical steam-boiler behind the bar",
     },
   },
 };
 
 const initialCharacters: Record<string, Character> = {
-  madam_vespera: {
-    id: "madam_vespera",
+  orin_fell: {
+    id: "orin_fell",
     type: "CHARACTER",
-    displayName: "Madam Vespera",
-    shortDescription: "The iron-willed matron of the Crimson Veil.",
+    displayName: "Orin Fell",
+    shortDescription: "The one-eyed keeper of the Rusted Cog, nursing old resentments.",
     longDescription:
-      "Vespera is a woman of indeterminate age, her face a map of hard decisions and cold winters. She wears a dress of faded brocade and carries a heavy ring of keys that jingles with every rhythmic step. Her eyes see not your face, but the weight of your coin purse.",
+      "Orin Fell has the look of a man who has been carved from bog-wood and left out in the rain. His one good eye — the other is a puckered scar hidden beneath a stained leather patch — misses nothing. He moves with a quiet, deliberate weight, wiping the same tankard with a rag that has long since given up on cleanliness. He despises the steam-boiler his son installed ('that infernal racket'), but he keeps it running because the ale-taps need the pressure. He knows everyone's name, everyone's debt, and everyone's secret. He just pretends not to.",
     stats: {
-      authority: 7,
-      logic: 4,
-      volition: 6,
+      authority: 6,
+      perception: 7,
+      volition: 5,
     },
     opinions: {
-      YOU: "A stray dog with better boots than most. Potentially useful, likely trouble.",
+      YOU: "A new face with old eyes. Trouble walks behind him like a faithful hound.",
     },
     attributes: {
-      Status: "Matron",
-      Affiliation: "The Veiled",
+      Status: "Tavern Keeper",
+      Affiliation: "None — despises all guilds equally",
+      "Missing Eye": "Lost to a shrapnel burst during the Gutter-Wars",
     },
   },
 };
@@ -103,19 +107,19 @@ export function seedDatabase() {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       "plot_1",
-      "The Missing Duke",
-      "The old Duke was supposedly dead, but rumors spread that a man matching his description was seen near the Crimson Veil.",
+      "The Engine That Should Not Be",
+      "Strange things are happening in the Steamward quarter. A forgotten workshop in the old ward has begun to glow at night, and those who draw near hear the ticking of a thousand gears. Orin Fell's missing son may be connected — he was a clockwright's apprentice before he vanished. The air itself feels wrong, like magic is being drained from the leylines and fed into something metallic.",
       "PENDING",
-      JSON.stringify(["crimson_veil"]),
-      JSON.stringify(["madam_vespera"]),
+      JSON.stringify(["rusted_cog"]),
+      JSON.stringify(["orin_fell"]),
       null,
       null,
       JSON.stringify([
-        { plotId: null, triggerCondition: "Player asks Madam Vespera about the rusted coin" },
-        { plotId: null, triggerCondition: "Player leaves the Crimson Veil without asking" },
+        { plotId: null, triggerCondition: "Player investigates the strange workshop in the old ward" },
+        { plotId: null, triggerCondition: "Player presses Orin for answers about his missing son" },
       ]),
     );
-    console.log("Seeded initial plot: The Missing Duke.");
+    console.log("Seeded initial plot: The Engine That Should Not Be.");
   }
 }
 

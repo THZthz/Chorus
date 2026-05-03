@@ -37,7 +37,7 @@ export function getRootPlot(): Plot | null {
 
 type AddPlotInput = Omit<Plot, "id"> & { id?: string };
 
-export function addPlot(input: AddPlotInput): { ok: true } | { ok: false; error: string } {
+export function addPlot(input: AddPlotInput): { ok: true; id: string } | { ok: false; error: string } {
   const id = input.id ?? `plot_${Date.now()}`;
   const isRoot = input.parentPlotId === null;
 
@@ -55,6 +55,12 @@ export function addPlot(input: AddPlotInput): { ok: true } | { ok: false; error:
       return {
         ok: false,
         error: `Parent plot "${input.parentPlotId}" not found. Use getPlot() to see available plots.`,
+      };
+    }
+    if (parent.status === "RESOLVED") {
+      return {
+        ok: false,
+        error: `Parent plot "${parent.title}" (${input.parentPlotId}) is RESOLVED and cannot have new child plots.`,
       };
     }
     if (input.parentOptionId !== null && input.parentOptionId !== undefined) {
@@ -112,7 +118,7 @@ export function addPlot(input: AddPlotInput): { ok: true } | { ok: false; error:
     return { ok: false, error: `Plot tree validation failed after insert: ${treeError}` };
   }
 
-  return { ok: true };
+  return { ok: true, id };
 }
 
 type PlotPatch = Partial<
@@ -126,6 +132,13 @@ export function updatePlot(
   const existing = getPlotById(id);
   if (!existing) {
     return { ok: false, error: `Plot "${id}" not found. Use getPlot() to list available plots.` };
+  }
+
+  if (existing.status === "RESOLVED") {
+    return {
+      ok: false,
+      error: `Plot "${existing.title}" (${id}) is RESOLVED and cannot be altered. Only PENDING or IN_PROGRESS plots may be modified.`,
+    };
   }
 
   const updated: Plot = {

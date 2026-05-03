@@ -7,12 +7,12 @@ export interface CharacterStats {
   perception: number;
   volition: number;
   endurance: number;
-  inland_empire: number;
+  sorcery: number;
   suggestion: number;
-  half_light: number;
-  physical_instrument: number;
-  interfacing: number;
-  electrochemistry: number;
+  instinct: number;
+  might: number;
+  clockwork: number;
+  alchemy: number;
 }
 
 export interface BaseEntity {

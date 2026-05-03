@@ -1,6 +1,6 @@
 {
   "name": "Elysian Dialogue",
-  "description": "A cinematic RPG-style dialogue engine inspired by Disco Elysium, featuring dynamic LLM-powered dialogue, a centralized world state, and an evolutionary opinion system.",
+  "description": "A cinematic RPG-style dialogue engine set in a dark medieval fantasy world with emergent steampunk, featuring dynamic LLM-powered dialogue, a centralized world state, and an evolutionary opinion system.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

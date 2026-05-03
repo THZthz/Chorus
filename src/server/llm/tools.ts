@@ -11,6 +11,23 @@ import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import type { DialogueOption } from "@/types/dialogue";
 
+// ── Error-handling wrapper ──
+
+function wrapSafe<T>(
+  fn: (args: T) => Promise<string>,
+  toolName: string,
+): (args: T) => Promise<string> {
+  return async (args: T) => {
+    try {
+      return await fn(args);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[${toolName}] execute error:`, err);
+      return `ERROR: Tool "${toolName}" failed unexpectedly: ${msg}. Please retry or use a different approach.`;
+    }
+  };
+}
+
 // ── Shared schemas ──
 
 const checkConditionSchema = z.object({
@@ -32,7 +49,7 @@ const messageSchema = z.object({
   speaker: z
     .string()
     .describe(
-      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Madam Vespera', 'NARRATOR', 'HALF LIGHT', 'INLAND EMPIRE')",
+      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
     ),
   type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "NOTIFICATION"]),
   text: z.string().describe("The dialogue text, supports markdown."),
@@ -109,11 +126,11 @@ export function createGetAllEntitiesNameTool() {
         .optional()
         .describe("Optional filter by entity type."),
     }),
-    execute: async (args: { type?: "CHARACTER" | "LOCATION" | "OBJECT" }) => {
+    execute: wrapSafe(async (args: { type?: "CHARACTER" | "LOCATION" | "OBJECT" }) => {
       const summaries = getAllEntitySummaries(args.type);
       if (summaries.length === 0) return "No entities found.";
       return JSON.stringify(summaries, null, 2);
-    },
+    }, "getAllEntitiesName"),
   });
 }
 
@@ -129,7 +146,7 @@ export function createQueryEntityTool() {
         .optional()
         .describe("Text to search for in entity names/descriptions (up to 5 results)."),
     }),
-    execute: async (args: { id?: string; search?: string }) => {
+    execute: wrapSafe(async (args: { id?: string; search?: string }) => {
       if (!args.id && !args.search) {
         return "ERROR: Provide either 'id' for exact lookup or 'search' for text search.";
       }
@@ -145,7 +162,7 @@ export function createQueryEntityTool() {
         return `No entities matched '${args.search}'. Call getAllEntitiesName() to see all entities.`;
       }
       return JSON.stringify(results, null, 2);
-    },
+    }, "queryEntity"),
   });
 }
 
@@ -169,7 +186,7 @@ export function createEditEntityTool(events: TurnEventEmitter) {
           "How this character feels about others (merged). Only valid for CHARACTER entities.",
         ),
     }),
-    execute: async (args: {
+    execute: wrapSafe(async (args: {
       id: string;
       longDescription?: string | null;
       shortDescription?: string | null;
@@ -188,7 +205,7 @@ export function createEditEntityTool(events: TurnEventEmitter) {
       if (args.opinions) changes.opinions = args.opinions;
       events.emitWorldUpdate(args.id, changes);
       return `Entity '${existing.displayName}' (${args.id}) updated.`;
-    },
+    }, "editEntity"),
   });
 }
 
@@ -227,7 +244,7 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
         .optional()
         .describe("Pre-defined branch options for this plot."),
     }),
-    execute: async (args: {
+    execute: wrapSafe(async (args: {
       title: string;
       description: string;
       status?: "PENDING" | "IN_PROGRESS" | "RESOLVED";
@@ -237,7 +254,9 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
       parentOptionId?: number | null;
       childPlots?: PlotOption[];
     }) => {
+      const plotId = `plot_${Date.now()}`;
       const result = addPlot({
+        id: plotId,
         title: args.title,
         description: args.description,
         status: args.status ?? "PENDING",
@@ -252,15 +271,9 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
         return `ERROR: ${result.error}`;
       }
 
-      // Determine the ID that was assigned
-      const allPlots = getAllPlots();
-      const created = allPlots.find(
-        (p) => p.title === args.title && p.parentPlotId === (args.parentPlotId ?? null),
-      );
-      const plotId = created?.id ?? "unknown";
       events.emitPlotCreate(plotId, args.title, args.parentPlotId ?? null);
       return `Plot created: "${args.title}" (${plotId}).`;
-    },
+    }, "createPlot"),
   });
 }
 
@@ -268,7 +281,7 @@ export function createEditPlotTool(events: TurnEventEmitter) {
   return tool({
     title: "Edit Plot",
     description:
-      "Update an existing plot's status, description, involved entities, or childPlots options. Reports an error if the plot ID does not exist or if the change would break the plot tree.",
+      "Update an existing plot's status, description, involved entities, or childPlots options. Only PENDING or IN_PROGRESS plots can be edited — RESOLVED plots are locked. Reports an error if the plot ID does not exist, the plot is RESOLVED, or the change would break the plot tree.",
     inputSchema: z.object({
       id: z.string().describe("The ID of the plot to update."),
       status: z
@@ -289,7 +302,7 @@ export function createEditPlotTool(events: TurnEventEmitter) {
         .optional()
         .describe("Replacement list of branch options (replaces all existing childPlots)."),
     }),
-    execute: async (args: {
+    execute: wrapSafe(async (args: {
       id: string;
       status?: "PENDING" | "IN_PROGRESS" | "RESOLVED";
       description?: string;
@@ -318,9 +331,10 @@ export function createEditPlotTool(events: TurnEventEmitter) {
       if (args.childPlots !== undefined) changes.childPlots = args.childPlots;
       events.emitPlotEdit(args.id, changes);
 
-      const plot = getPlotById(args.id)!;
+      const plot = getPlotById(args.id);
+      if (!plot) return `Plot ${args.id} updated but could not be re-read.`;
       return `Plot "${plot.title}" (${args.id}) updated.`;
-    },
+    }, "editPlot"),
   });
 }
 
@@ -336,7 +350,7 @@ export function createGetPlotTool() {
         .optional()
         .describe("Filter by status. Omit to return all plots."),
     }),
-    execute: async (args: {
+    execute: wrapSafe(async (args: {
       id?: string;
       status?: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "ALL";
     }) => {
@@ -353,7 +367,7 @@ export function createGetPlotTool() {
       if (filtered.length === 0)
         return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
       return JSON.stringify(filtered, null, 2);
-    },
+    }, "getPlot"),
   });
 }
 
@@ -373,7 +387,7 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
       for (const msg of args.messages) {
         if (msg.speaker === "INNER_VOICE") {
           errors.push(
-            `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "HALF LIGHT", "INLAND EMPIRE").`,
+            `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
           );
           break;
         }

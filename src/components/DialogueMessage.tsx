@@ -10,7 +10,7 @@ interface Props {
   isFlashing?: boolean;
 }
 
-// Disco Elysium-style skill voice colors
+// Skill voice colors for the inner-mind pantheon
 const VOICE_COLORS: Record<string, string> = {
   LOGIC: "#4fb0c6",
   RHETORIC: "#c6b050",
@@ -18,12 +18,12 @@ const VOICE_COLORS: Record<string, string> = {
   PERCEPTION: "#50c6a0",
   VOLITION: "#e07840",
   ENDURANCE: "#c05050",
-  "INLAND EMPIRE": "#9081e3",
+  SORCERY: "#9081e3",
   SUGGESTION: "#a0c650",
-  "HALF LIGHT": "#e05858",
-  "PHYSICAL INSTRUMENT": "#50c060",
-  INTERFACING: "#50b0c6",
-  ELECTROCHEMISTRY: "#9eff9e",
+  INSTINCT: "#e05858",
+  MIGHT: "#50c060",
+  CLOCKWORK: "#50b0c6",
+  ALCHEMY: "#9eff9e",
 };
 
 function hashNpcColor(name: string): string {

@@ -25,7 +25,7 @@ const SPEAKER_TYPES: SpeakerType[] = [
 
 const NOTIFICATION_TYPES = ["XP", "TASK", "ITEM"] as const;
 
-// Disco-skill colour map for INNER_VOICE
+// Skill voice colour map for INNER_VOICE
 const SKILL_COLORS: Record<string, string> = {
   LOGIC: "#61afef",
   RHETORIC: "#e06c75",
@@ -33,12 +33,12 @@ const SKILL_COLORS: Record<string, string> = {
   PERCEPTION: "#98c379",
   VOLITION: "#eab308",
   ENDURANCE: "#d19a66",
-  "INLAND EMPIRE": "#c678dd",
+  SORCERY: "#c678dd",
   SUGGESTION: "#61afef",
-  "HALF LIGHT": "#e06c75",
-  "PHYSICAL INSTRUMENT": "#d19a66",
-  INTERFACING: "#98c379",
-  ELECTROCHEMISTRY: "#eab308",
+  INSTINCT: "#e06c75",
+  MIGHT: "#d19a66",
+  CLOCKWORK: "#98c379",
+  ALCHEMY: "#eab308",
 };
 
 function skillColor(speaker: string): string {

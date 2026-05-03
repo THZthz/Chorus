@@ -13,7 +13,7 @@ const defaultCharacter: Character = {
   type: "CHARACTER",
   displayName: "YOU",
   shortDescription: "The protagonist.",
-  longDescription: "A detective in a state of existential crisis.",
+  longDescription: "A wanderer marked by old magic and new obsessions.",
   attributes: {},
   opinions: {},
   stats: {
@@ -23,12 +23,12 @@ const defaultCharacter: Character = {
     perception: 4,
     volition: 2,
     endurance: 3,
-    inland_empire: 5,
+    sorcery: 5,
     suggestion: 4,
-    half_light: 1,
-    physical_instrument: 2,
-    interfacing: 3,
-    electrochemistry: 2,
+    instinct: 1,
+    might: 2,
+    clockwork: 3,
+    alchemy: 2,
   },
 };
 

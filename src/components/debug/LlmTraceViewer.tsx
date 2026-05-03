@@ -542,6 +542,13 @@ export const LlmTraceViewer: React.FC = () => {
                                                         {input.id}
                                                       </span>
                                                     </>
+                                                  ) : input.ids ? (
+                                                    <>
+                                                      <span className="text-white/40">Bulk ({input.ids.length}): </span>
+                                                      <span className="text-[#d19a66] font-mono">
+                                                        [{input.ids.slice(0, 3).join(", ")}{input.ids.length > 3 ? `, +${input.ids.length - 3} more` : ""}]
+                                                      </span>
+                                                    </>
                                                   ) : input.search ? (
                                                     <>
                                                       <span className="text-white/40">Search: </span>
@@ -924,6 +931,15 @@ export const LlmTraceViewer: React.FC = () => {
                                                               </span>
                                                               <span className="text-[#d19a66] font-mono">
                                                                 {input.id}
+                                                              </span>
+                                                            </>
+                                                          ) : input.ids ? (
+                                                            <>
+                                                              <span className="text-white/30">
+                                                                Bulk ({input.ids.length}):{" "}
+                                                              </span>
+                                                              <span className="text-[#d19a66] font-mono">
+                                                                [{input.ids.slice(0, 3).join(", ")}{input.ids.length > 3 ? `, +${input.ids.length - 3} more` : ""}]
                                                               </span>
                                                             </>
                                                           ) : input.search ? (

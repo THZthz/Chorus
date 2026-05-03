@@ -8,14 +8,34 @@ import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeG
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 
+type TabId = "logs" | "console" | "world" | "tree" | "plots";
+
+const TabButton: React.FC<{
+  id: TabId;
+  activeTab: TabId;
+  onSelect: (id: TabId) => void;
+  label: string;
+  icon: React.ReactNode;
+}> = ({ id, activeTab, onSelect, label, icon }) => (
+  <button
+    onClick={() => onSelect(id)}
+    className={`px-4 py-3 flex items-center gap-2 border-b transition-colors ${
+      activeTab === id
+        ? "border-white text-white bg-white/5"
+        : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
+    }`}
+  >
+    {icon}
+    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{label}</span>
+  </button>
+);
+
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
   currentReplayStepId?: string | null;
 }> = ({ onJumpToReplay, currentReplayStepId }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"logs" | "console" | "world" | "tree" | "plots">(
-    "logs",
-  );
+  const [activeTab, setActiveTab] = useState<TabId>("logs");
   const [panelWidth, setPanelWidth] = useState(640);
   const panelDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -36,24 +56,6 @@ export const DebugPanel: React.FC<{
       window.removeEventListener("mouseup", onUp);
     };
   }, []);
-
-  const TabButton: React.FC<{
-    id: "logs" | "console" | "world" | "tree" | "plots";
-    label: string;
-    icon: React.ReactNode;
-  }> = ({ id, label, icon }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`px-4 py-3 flex items-center gap-2 border-b transition-colors ${
-        activeTab === id
-          ? "border-white text-white bg-white/5"
-          : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
-      }`}
-    >
-      {icon}
-      <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{label}</span>
-    </button>
-  );
 
   const handleJumpToReplay = useCallback(
     (stepId: string) => {
@@ -126,12 +128,11 @@ export const DebugPanel: React.FC<{
               </div>
               <div className="flex items-center justify-between px-4 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center">
-                  <TabButton id="logs" label="Logs" icon={<Terminal size={14} />} />
-                  <TabButton id="console" label="Console" icon={<Monitor size={14} />} />
-
-                  <TabButton id="world" label="World" icon={<Database size={14} />} />
-                  <TabButton id="tree" label="Tree" icon={<GitBranch size={14} />} />
-                  <TabButton id="plots" label="Plots" icon={<Network size={14} />} />
+                  <TabButton id="logs" activeTab={activeTab} onSelect={setActiveTab} label="Logs" icon={<Terminal size={14} />} />
+                  <TabButton id="console" activeTab={activeTab} onSelect={setActiveTab} label="Console" icon={<Monitor size={14} />} />
+                  <TabButton id="world" activeTab={activeTab} onSelect={setActiveTab} label="World" icon={<Database size={14} />} />
+                  <TabButton id="tree" activeTab={activeTab} onSelect={setActiveTab} label="Tree" icon={<GitBranch size={14} />} />
+                  <TabButton id="plots" activeTab={activeTab} onSelect={setActiveTab} label="Plots" icon={<Network size={14} />} />
                 </div>
                 <div className="flex items-center gap-3 pr-4">
                   <button

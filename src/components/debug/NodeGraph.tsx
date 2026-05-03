@@ -194,6 +194,9 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
     [layout, selectedId, inspectorHeight],
   );
 
+  const fitToViewRef = useRef(fitToView);
+  fitToViewRef.current = fitToView;
+
   // ── Layout recompute ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -204,14 +207,14 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
     setLayout(positions);
     if (positions.length > 0) {
       requestAnimationFrame(() => {
-        fitToView(positions);
+        fitToViewRef.current(positions);
         if (!hasInitiallyFit.current) {
           hasInitiallyFit.current = true;
           setIsReady(true);
         }
       });
     }
-  }, [nodes, fitToView]);
+  }, [nodes]);
 
   // ── Reset zoom ──────────────────────────────────────────────────────────
 

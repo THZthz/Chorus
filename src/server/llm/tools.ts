@@ -187,7 +187,13 @@ export function createQueryEntityTool() {
       if (args.ids && args.ids.length > 0) {
         const results = getEntitiesByIds(args.ids);
         if (results.length === 0) {
-          return "ERROR: None of the requested IDs were found. Call getAllEntitiesName() to discover valid IDs.";
+          return `ERROR: None of the requested IDs were found: [${args.ids.join(", ")}]. Call getAllEntitiesName() to discover valid IDs.`;
+        }
+        if (results.length < args.ids.length) {
+          const foundIds = new Set(results.map((e) => e.id));
+          const missing = args.ids.filter((id) => !foundIds.has(id));
+          const resultJson = JSON.stringify(results, null, 2);
+          return `${resultJson}\n\nNOTE: The following IDs were not found: [${missing.join(", ")}]. They may have been removed or misspelled.`;
         }
         return JSON.stringify(results, null, 2);
       }

@@ -78,6 +78,11 @@ export const LlmTraceViewer: React.FC = () => {
 
   const readableToolName = (name: string) => name.replace(/([a-z])([A-Z])/g, "$1 $2");
 
+  const isToolError = (output: unknown): boolean => {
+    if (typeof output !== "string") return false;
+    return /^(ERROR|VALIDATION FAILED)/.test(output);
+  };
+
   const formatJson = (jsonStr: string | null) => {
     if (!jsonStr) return "N/A";
     try {
@@ -399,6 +404,7 @@ export const LlmTraceViewer: React.FC = () => {
                                       step.toolCalls.length > 0 &&
                                       step.toolCalls.map((call: any, ci: number) => {
                                         const input = call.input || call.args || {};
+                                        const callIsError = isToolError(call.output);
                                         const isGenDialogue =
                                           call.toolName === "generateDialogueStep";
                                         const isWorldUpdate = call.toolName === "editEntity";
@@ -412,7 +418,11 @@ export const LlmTraceViewer: React.FC = () => {
                                         return (
                                           <div
                                             key={ci}
-                                            className="mb-2 p-3 bg-white/[0.02] border border-white/5 rounded-sm"
+                                            className={`mb-2 p-3 rounded-sm ${
+                                              callIsError
+                                                ? "bg-red-500/[0.04] border border-red-500/30"
+                                                : "bg-white/[0.02] border border-white/5"
+                                            }`}
                                           >
                                             <div className="flex items-center justify-between mb-2">
                                               <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.15em] flex items-center gap-2">
@@ -430,6 +440,11 @@ export const LlmTraceViewer: React.FC = () => {
                                                   }`}
                                                 />
                                                 {readableToolName(call.toolName)}
+                                                {callIsError && (
+                                                  <span className="px-1 py-[1px] rounded-sm text-[8px] font-bold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 leading-none">
+                                                    Error
+                                                  </span>
+                                                )}
                                               </h4>
                                               <CopyButton
                                                 content={JSON.stringify(input, null, 2)}
@@ -584,31 +599,48 @@ export const LlmTraceViewer: React.FC = () => {
 
                                             {call.output != null && (
                                               <div className="mt-2 pt-2 border-t border-white/5">
-                                                <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">
-                                                  Result
-                                                </span>
-                                                <div className="mt-1">
-                                                  {typeof call.output === "string" ? (
-                                                    <div
-                                                      className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
-                                                        call.output.includes("SUCCESS")
-                                                          ? "text-[#98c379]"
-                                                          : call.output.includes("ERROR") ||
-                                                              call.output.includes("FEEDBACK")
-                                                            ? "text-[#e06c75]"
-                                                            : "text-white/40"
-                                                      }`}
-                                                    >
-                                                      {call.output}
+                                                {callIsError ? (
+                                                  <div className="flex items-start gap-2">
+                                                    <span className="mt-[1px] shrink-0 w-3.5 h-3.5 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
+                                                      <span className="text-[8px] text-red-400 font-bold leading-none">!</span>
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                      <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">
+                                                        Error
+                                                      </span>
+                                                      <div className="mt-1">
+                                                        <div className="text-[11px] whitespace-pre-wrap break-words leading-relaxed text-red-400/90 font-mono bg-red-500/[0.03] p-2 rounded-sm border border-red-500/10">
+                                                          {call.output}
+                                                        </div>
+                                                      </div>
                                                     </div>
-                                                  ) : (
-                                                    <JsonExplorer
-                                                      data={JSON.stringify(call.output)}
-                                                      isWrapping={isWrapping}
-                                                      className="max-h-[150px] overflow-auto"
-                                                    />
-                                                  )}
-                                                </div>
+                                                  </div>
+                                                ) : (
+                                                  <>
+                                                    <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">
+                                                      Result
+                                                    </span>
+                                                    <div className="mt-1">
+                                                      {typeof call.output === "string" ? (
+                                                        <div
+                                                          className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
+                                                            call.output.includes("SUCCESS")
+                                                              ? "text-[#98c379]"
+                                                              : "text-white/40"
+                                                          }`}
+                                                        >
+                                                          {call.output}
+                                                        </div>
+                                                      ) : (
+                                                        <JsonExplorer
+                                                          data={JSON.stringify(call.output)}
+                                                          isWrapping={isWrapping}
+                                                          className="max-h-[150px] overflow-auto"
+                                                        />
+                                                      )}
+                                                    </div>
+                                                  </>
+                                                )}
                                               </div>
                                             )}
                                           </div>
@@ -743,14 +775,24 @@ export const LlmTraceViewer: React.FC = () => {
                                         {cStep.toolCalls &&
                                           cStep.toolCalls.map((call: any, ci: number) => {
                                             const input = call.input || call.args || {};
+                                            const callIsError = isToolError(call.output);
                                             return (
                                               <div
                                                 key={ci}
-                                                className="mb-1 p-2 bg-white/[0.02] border border-white/5 rounded-sm"
+                                                className={`mb-1 p-2 rounded-sm ${
+                                                  callIsError
+                                                    ? "bg-red-500/[0.04] border border-red-500/30"
+                                                    : "bg-white/[0.02] border border-white/5"
+                                                }`}
                                               >
                                                 <div className="flex items-center justify-between">
-                                                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
+                                                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider flex items-center gap-2">
                                                     {readableToolName(call.toolName)}
+                                                    {callIsError && (
+                                                      <span className="px-1 py-[1px] rounded-sm text-[7px] font-bold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 leading-none">
+                                                        Error
+                                                      </span>
+                                                    )}
                                                   </span>
                                                   <CopyButton
                                                     content={JSON.stringify(input, null, 2)}
@@ -919,25 +961,40 @@ export const LlmTraceViewer: React.FC = () => {
                                                 </div>
                                                 {call.output != null && (
                                                   <div className="mt-1 pt-1 border-t border-white/5">
-                                                    {typeof call.output === "string" ? (
-                                                      <div
-                                                        className={`text-[10px] whitespace-pre-wrap break-words ${
-                                                          call.output.includes("SUCCESS")
-                                                            ? "text-[#98c379]"
-                                                            : call.output.includes("ERROR") ||
-                                                              call.output.includes("FEEDBACK")
-                                                              ? "text-[#e06c75]"
-                                                              : "text-white/40"
-                                                        }`}
-                                                      >
-                                                        {call.output}
+                                                    {callIsError ? (
+                                                      <div className="flex items-start gap-1.5">
+                                                        <span className="mt-[2px] shrink-0 w-3 h-3 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
+                                                          <span className="text-[6px] text-red-400 font-bold leading-none">!</span>
+                                                        </span>
+                                                        <div className="min-w-0 flex-1">
+                                                          <span className="text-[8px] font-bold text-red-400 uppercase tracking-wider">
+                                                            Error
+                                                          </span>
+                                                          <div className="mt-0.5 text-[10px] whitespace-pre-wrap break-words leading-relaxed text-red-400/90 font-mono bg-red-500/[0.03] p-1.5 rounded-sm border border-red-500/10">
+                                                            {call.output}
+                                                          </div>
+                                                        </div>
                                                       </div>
                                                     ) : (
-                                                      <JsonExplorer
-                                                        data={JSON.stringify(call.output)}
-                                                        isWrapping={isWrapping}
-                                                        className="max-h-[100px] overflow-auto"
-                                                      />
+                                                      <>
+                                                        {typeof call.output === "string" ? (
+                                                          <div
+                                                            className={`text-[10px] whitespace-pre-wrap break-words ${
+                                                              call.output.includes("SUCCESS")
+                                                                ? "text-[#98c379]"
+                                                                : "text-white/40"
+                                                            }`}
+                                                          >
+                                                            {call.output}
+                                                          </div>
+                                                        ) : (
+                                                          <JsonExplorer
+                                                            data={JSON.stringify(call.output)}
+                                                            isWrapping={isWrapping}
+                                                            className="max-h-[100px] overflow-auto"
+                                                          />
+                                                        )}
+                                                      </>
                                                     )}
                                                   </div>
                                                 )}

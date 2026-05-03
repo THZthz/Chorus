@@ -24,6 +24,14 @@ export function getPlotById(id: string): Plot | null {
   return row ? rowToPlot(row) : null;
 }
 
+export function getPlotsByIds(ids: string[]): Plot[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  return (db.prepare(`SELECT * FROM plots WHERE id IN (${placeholders})`).all(...ids) as any[]).map(
+    rowToPlot,
+  );
+}
+
 export function getActivePlots(): Plot[] {
   return (
     db.prepare("SELECT * FROM plots WHERE status IN ('PENDING', 'IN_PROGRESS')").all() as any[]

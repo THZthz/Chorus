@@ -7,7 +7,7 @@ import {
   getAllEntitySummaries,
   searchEntities,
 } from "@/server/models/world";
-import { addPlot, updatePlot, getPlotById, getAllPlots } from "@/server/models/plot";
+import { addPlot, updatePlot, getPlotById, getPlotsByIds, getAllPlots } from "@/server/models/plot";
 import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import type { DialogueOption } from "@/types/dialogue";
@@ -382,9 +382,10 @@ export function createGetPlotTool() {
   return tool({
     title: "Get Plot",
     description:
-      "Retrieve a specific plot by ID, or filter plots by status. Returns full plot data including childPlots.",
+      "Retrieve plot(s): by single ID, by multiple IDs (bulk), or filter by status. Returns full plot data including childPlots.",
     inputSchema: z.object({
       id: z.string().optional().describe("Exact plot ID to fetch."),
+      ids: z.array(z.string()).optional().describe("Array of plot IDs to bulk fetch."),
       status: z
         .enum(["PENDING", "IN_PROGRESS", "RESOLVED", "ALL"])
         .optional()
@@ -392,14 +393,31 @@ export function createGetPlotTool() {
     }),
     execute: wrapSafe(async (args: {
       id?: string;
+      ids?: string[];
       status?: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "ALL";
     }) => {
+      if (args.id && args.ids) {
+        return "ERROR: Provide either 'id' for a single plot or 'ids' for bulk fetch, not both.";
+      }
       if (args.id) {
         const plot = getPlotById(args.id);
         if (!plot) {
           return `ERROR: Plot '${args.id}' not found. Use getPlot() without an id to list all plots.`;
         }
         return JSON.stringify(plot, null, 2);
+      }
+      if (args.ids && args.ids.length > 0) {
+        const plots = getPlotsByIds(args.ids);
+        if (plots.length === 0) {
+          return `No plots found with the provided IDs: [${args.ids.join(", ")}].`;
+        }
+        const found = new Set(plots.map((p) => p.id));
+        const missing = args.ids.filter((id) => !found.has(id));
+        const result: Record<string, unknown> = { plots };
+        if (missing.length > 0) {
+          result.missingIds = missing;
+        }
+        return JSON.stringify(result, null, 2);
       }
       const all = getAllPlots();
       const filtered =

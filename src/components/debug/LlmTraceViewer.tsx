@@ -572,6 +572,15 @@ export const LlmTraceViewer: React.FC = () => {
                                                         {input.id}
                                                       </span>
                                                     </>
+                                                  ) : input.ids ? (
+                                                    <>
+                                                      <span className="text-white/40">
+                                                        Bulk ({input.ids.length}):{" "}
+                                                      </span>
+                                                      <span className="text-[#d19a66] font-mono">
+                                                        {input.ids.join(", ")}
+                                                      </span>
+                                                    </>
                                                   ) : input.status ? (
                                                     <>
                                                       <span className="text-white/40">
@@ -969,6 +978,15 @@ export const LlmTraceViewer: React.FC = () => {
                                                               </span>
                                                               <span className="text-[#d19a66] font-mono">
                                                                 {input.id}
+                                                              </span>
+                                                            </>
+                                                          ) : input.ids ? (
+                                                            <>
+                                                              <span className="text-white/30">
+                                                                Bulk ({input.ids.length}):{" "}
+                                                              </span>
+                                                              <span className="text-[#d19a66] font-mono">
+                                                                {input.ids.join(", ")}
                                                               </span>
                                                             </>
                                                           ) : input.status ? (

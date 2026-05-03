@@ -156,7 +156,7 @@ All 7 tools defined once in `src/server/llm/tools.ts`:
 | `editEntity`           | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                  |
 | `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                   |
 | `editPlot`             | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
-| `getPlot`              | Retrieve plot(s) by ID or status filter                   | None (read query)         | None (returns JSON)             |
+| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns an

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Save, RotateCcw, FileText, Check, AlertTriangle, Braces } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
-import { EditorView } from "@codemirror/view";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView, ViewPlugin, Decoration, DecorationSet, ViewUpdate } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { jsonLanguage } from "@codemirror/lang-json";
 import markdoc from "@markdoc/markdoc";
 import type { Config } from "@markdoc/markdoc";
 import richEditor from "codemirror-rich-markdoc";
@@ -53,7 +54,7 @@ const debugHighlightStyle = HighlightStyle.define([
   { tag: t.link, textDecoration: "underline", color: "rgba(100,170,255,0.55)", fontFamily: "inherit" },
   { tag: t.emphasis, fontStyle: "italic", fontFamily: "inherit" },
   { tag: t.strong, fontWeight: "bold", fontFamily: "inherit" },
-  { tag: t.monospace, fontFamily: "'JetBrains Mono','Fira Code',monospace", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: "2px", padding: "0 2px" },
+  { tag: t.monospace, fontFamily: "'JetBrains Mono','Fira Code',monospace" },
   { tag: t.content, color: textColor, fontFamily: "inherit" },
   { tag: t.meta, color: mutedColor, fontFamily: "inherit" },
   { tag: t.strikethrough, textDecoration: "line-through", color: mutedColor, fontFamily: "inherit" },
@@ -95,6 +96,97 @@ const debugEditorTheme = EditorView.theme({
     color: "rgba(255,255,255,0.15)",
   },
 }, { dark: true });
+
+// JSON fenced-code-block highlight colors — matches JsonExplorer/JsonNode theme
+const jsonHighlightTheme = EditorView.theme({
+  ".cm-json-string": { color: "#98c379" },
+  ".cm-json-number": { color: "#d19a66" },
+  ".cm-json-bool": { color: "#c678dd", fontWeight: "bold" },
+  ".cm-json-null": { color: "#5c6370" },
+  ".cm-json-property": { color: "#e06c75" },
+  ".cm-json-separator": { color: "#abb2bf" },
+  ".cm-json-bracket": { color: "#abb2bf" },
+}, { dark: true });
+
+const jsonParser = jsonLanguage.parser;
+
+const jsonNodeMarks: Record<string, Decoration> = {
+  String: Decoration.mark({ class: "cm-json-string" }),
+  Number: Decoration.mark({ class: "cm-json-number" }),
+  True: Decoration.mark({ class: "cm-json-bool" }),
+  False: Decoration.mark({ class: "cm-json-bool" }),
+  Null: Decoration.mark({ class: "cm-json-null" }),
+  PropertyName: Decoration.mark({ class: "cm-json-property" }),
+  ",": Decoration.mark({ class: "cm-json-separator" }),
+  ":": Decoration.mark({ class: "cm-json-separator" }),
+  "[": Decoration.mark({ class: "cm-json-bracket" }),
+  "]": Decoration.mark({ class: "cm-json-bracket" }),
+  "{": Decoration.mark({ class: "cm-json-bracket" }),
+  "}": Decoration.mark({ class: "cm-json-bracket" }),
+};
+
+function jsonCodeBlockHighlight() {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = this.compute(view);
+      }
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged) {
+          this.decorations = this.compute(update.view);
+        }
+      }
+      compute(view: EditorView): DecorationSet {
+        const widgets: { from: number; to: number; value: Decoration }[] = [];
+        for (const { from, to } of view.visibleRanges) {
+          syntaxTree(view.state).iterate({
+            from,
+            to,
+            enter(node) {
+              if (node.name !== "FencedCode") return;
+              let codeTextFrom = -1;
+              let codeTextTo = -1;
+              const cursor = node.node.cursor();
+              if (!cursor.firstChild()) return;
+              do {
+                if (cursor.type.name === "CodeInfo") {
+                  const raw = view.state.doc.sliceString(cursor.from, cursor.to);
+                  if (!/^(jsonc?)$/i.test(raw.trim())) return;
+                }
+                if (cursor.type.name === "CodeText") {
+                  codeTextFrom = cursor.from;
+                  codeTextTo = cursor.to;
+                }
+              } while (cursor.nextSibling());
+              if (codeTextFrom < 0) return;
+              const code = view.state.doc.sliceString(codeTextFrom, codeTextTo);
+              let jsonTree;
+              try {
+                jsonTree = jsonParser.parse(code);
+              } catch {
+                return;
+              }
+              const jc = jsonTree.cursor();
+              do {
+                const mark = jsonNodeMarks[jc.type.name];
+                if (mark && jc.from < jc.to) {
+                  widgets.push({
+                    from: codeTextFrom + jc.from,
+                    to: codeTextFrom + jc.to,
+                    value: mark,
+                  });
+                }
+              } while (jc.next());
+            },
+          });
+        }
+        return Decoration.set(widgets, true);
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
 
 export const SystemPromptEditor: React.FC = () => {
   const [template, setTemplate] = useState("");
@@ -170,6 +262,8 @@ export const SystemPromptEditor: React.FC = () => {
     () => [
       richEditor({ markdoc: markdocConfig }),
       syntaxHighlighting(debugHighlightStyle),
+      jsonCodeBlockHighlight(),
+      jsonHighlightTheme,
       EditorView.lineWrapping,
     ],
     [],

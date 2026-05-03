@@ -381,7 +381,9 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
   Saving in replay mode updates the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
 - **System Prompt**: Obsidian-style live markdown editor for the GM system prompt template. Uses
   `@uiw/react-codemirror` + `codemirror-rich-markdoc` — markdown syntax characters (`#`, `**`) are hidden when the
-  cursor is away and revealed for editing. Supports `{{entities_brief}}` and `{{active_plots}}` template variables.
+  cursor is away and revealed for editing. JSON fenced code blocks are syntax-highlighted using
+  `@lezer/json` (via custom `ViewPlugin`) with colors matching the LLM Trace Viewer's `JsonExplorer` theme.
+  Supports `{{entities_brief}}` and `{{active_plots}}` template variables.
   Template stored in `system_state` table, editable via `GET/PUT /api/debug/system-prompt`. Reset via
   `POST /api/debug/system-prompt/reset`. Load Default (without saving) via `GET /api/debug/system-prompt/default`.
   (`src/components/debug/SystemPromptEditor.tsx`). The `buildSystemPrompt()` function in

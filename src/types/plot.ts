@@ -14,3 +14,7 @@ export interface Plot {
   parentOptionId: number | null;
   childPlots: PlotOption[];
 }
+
+export type PlotPatch = Partial<
+  Pick<Plot, "title" | "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">
+>;

@@ -1,26 +1,19 @@
 import type { DialogueOption } from "@/types/dialogue";
-import type { StreamingMessage } from "@/shared/events";
-import type { Plot } from "@/types/plot";
+import type { StreamingMessage, SseEventMap } from "@/shared/events";
+
+type CallbackData<T extends keyof SseEventMap> = Omit<SseEventMap[T], "type">;
 
 export interface SseCallbacks {
-  onStepStart?: (data: { stepId: string }) => void;
-  onWorldUpdate?: (data: { entityId: string; changes: Record<string, unknown> }) => void;
-  onPlotUpdate?: (data: { plotId: string; status: string }) => void;
-  onPlotCreate?: (data: { plotId: string; title: string; parentPlotId: string | null }) => void;
-  onPlotEdit?: (data: {
-    plotId: string;
-    changes: Partial<
-      Pick<
-        Plot,
-        "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots"
-      >
-    >;
-  }) => void;
-  onStreamingMessages?: (messages: StreamingMessage[]) => void;
+  onStepStart?: (data: CallbackData<"step_start">) => void;
+  onWorldUpdate?: (data: CallbackData<"world_update">) => void;
+  onPlotUpdate?: (data: CallbackData<"plot_update">) => void;
+  onPlotCreate?: (data: CallbackData<"plot_create">) => void;
+  onPlotEdit?: (data: CallbackData<"plot_edit">) => void;
+  onStreamingMessages?: (messages: CallbackData<"streaming_messages">["messages"]) => void;
   onStreamingReset?: () => void;
-  onOptions?: (options: DialogueOption[]) => void;
-  onParsed?: (data: { messages: StreamingMessage[]; options: DialogueOption[] }) => void;
-  onError?: (message: string) => void;
+  onOptions?: (options: CallbackData<"options">["options"]) => void;
+  onParsed?: (data: CallbackData<"parsed">) => void;
+  onError?: (message: CallbackData<"error">["message"]) => void;
   onDone?: () => void;
 }
 

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Terminal, ChevronDown, RefreshCw, Trash2, Bug, WrapText, Clock } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { LlmLog } from "@/server/models/debug";
+import { TOOL_NAMES } from "@/shared/constants";
 import { CopyButton } from "@/components/debug/CopyButton";
 import { JsonExplorer } from "@/components/debug/JsonExplorer";
 
@@ -406,14 +407,14 @@ export const LlmTraceViewer: React.FC = () => {
                                         const input = call.input || call.args || {};
                                         const callIsError = isToolError(call.output);
                                         const isGenDialogue =
-                                          call.toolName === "generateDialogueStep";
-                                        const isWorldUpdate = call.toolName === "editEntity";
-                                        const isPlotStatus = call.toolName === "editPlot";
-                                        const isCreatePlot = call.toolName === "createPlot";
+                                          call.toolName === TOOL_NAMES.GENERATE_DIALOGUE;
+                                        const isWorldUpdate = call.toolName === TOOL_NAMES.EDIT_ENTITY;
+                                        const isPlotStatus = call.toolName === TOOL_NAMES.EDIT_PLOT;
+                                        const isCreatePlot = call.toolName === TOOL_NAMES.CREATE_PLOT;
                                         const isGetAllEntities =
-                                          call.toolName === "getAllEntitiesName";
-                                        const isQueryEntity = call.toolName === "queryEntity";
-                                        const isGetPlot = call.toolName === "getPlot";
+                                          call.toolName === TOOL_NAMES.GET_ALL_ENTITIES;
+                                        const isQueryEntity = call.toolName === TOOL_NAMES.QUERY_ENTITY;
+                                        const isGetPlot = call.toolName === TOOL_NAMES.GET_PLOT;
 
                                         return (
                                           <div
@@ -817,17 +818,17 @@ export const LlmTraceViewer: React.FC = () => {
                                                 <div className="mt-1">
                                                   {(() => {
                                                     const isGen =
-                                                      call.toolName === "generateDialogueStep";
+                                                      call.toolName === TOOL_NAMES.GENERATE_DIALOGUE;
                                                     const isWorld =
-                                                      call.toolName === "editEntity";
-                                                    const isPlot = call.toolName === "editPlot";
+                                                      call.toolName === TOOL_NAMES.EDIT_ENTITY;
+                                                    const isPlot = call.toolName === TOOL_NAMES.EDIT_PLOT;
                                                     const isCreate =
-                                                      call.toolName === "createPlot";
+                                                      call.toolName === TOOL_NAMES.CREATE_PLOT;
                                                     const isGetAll =
-                                                      call.toolName === "getAllEntitiesName";
+                                                      call.toolName === TOOL_NAMES.GET_ALL_ENTITIES;
                                                     const isQuery =
-                                                      call.toolName === "queryEntity";
-                                                    const isGetP = call.toolName === "getPlot";
+                                                      call.toolName === TOOL_NAMES.QUERY_ENTITY;
+                                                    const isGetP = call.toolName === TOOL_NAMES.GET_PLOT;
 
                                                     if (isGen) {
                                                       return (

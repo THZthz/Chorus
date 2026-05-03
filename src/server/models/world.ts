@@ -123,30 +123,30 @@ export function seedDatabase() {
   }
 }
 
+function rowToEntity(row: any): WorldEntity {
+  return {
+    id: row.id,
+    type: row.type,
+    displayName: row.displayName,
+    shortDescription: row.shortDescription,
+    longDescription: row.longDescription,
+    attributes: JSON.parse(row.attributes),
+    ...(row.type === "CHARACTER" && {
+      stats: JSON.parse(row.stats ?? "{}"),
+      opinions: JSON.parse(row.opinions ?? "{}"),
+    }),
+  } as WorldEntity;
+}
+
 export function getAllEntities(): WorldState {
   const rows = db.prepare("SELECT * FROM entities").all() as any[];
-  const state: WorldState = {
-    objects: {},
-    locations: {},
-    characters: {},
-  };
+  const state: WorldState = { objects: {}, locations: {}, characters: {} };
 
-  rows.forEach((row) => {
-    const entity = {
-      id: row.id,
-      type: row.type,
-      displayName: row.displayName,
-      shortDescription: row.shortDescription,
-      longDescription: row.longDescription,
-      attributes: JSON.parse(row.attributes),
-      stats: row.stats ? JSON.parse(row.stats) : undefined,
-      opinions: row.opinions ? JSON.parse(row.opinions) : undefined,
-    };
-
+  for (const entity of rows.map(rowToEntity)) {
     if (entity.type === "OBJECT") state.objects[entity.id] = entity as WorldObject;
     else if (entity.type === "LOCATION") state.locations[entity.id] = entity as Location;
     else if (entity.type === "CHARACTER") state.characters[entity.id] = entity as Character;
-  });
+  }
 
   return state;
 }
@@ -243,40 +243,12 @@ export function getEntitiesByIds(ids: string[]): WorldEntity[] {
     .prepare(`SELECT * FROM entities WHERE id IN (${placeholders})`)
     .all(...ids) as any[];
   const entityMap = new Map(rows.map((row) => [row.id, row]));
-  return ids
-    .filter((id) => entityMap.has(id))
-    .map((id) => {
-      const row = entityMap.get(id)!;
-      return {
-        id: row.id,
-        type: row.type,
-        displayName: row.displayName,
-        shortDescription: row.shortDescription,
-        longDescription: row.longDescription,
-        attributes: JSON.parse(row.attributes),
-        ...(row.type === "CHARACTER" && {
-          stats: JSON.parse(row.stats ?? "{}"),
-          opinions: JSON.parse(row.opinions ?? "{}"),
-        }),
-      } as WorldEntity;
-    });
+  return ids.filter((id) => entityMap.has(id)).map((id) => rowToEntity(entityMap.get(id)!));
 }
 
 export function getEntityById(id: string): WorldEntity | null {
   const row = db.prepare("SELECT * FROM entities WHERE id = ?").get(id) as any;
-  if (!row) return null;
-  return {
-    id: row.id,
-    type: row.type,
-    displayName: row.displayName,
-    shortDescription: row.shortDescription,
-    longDescription: row.longDescription,
-    attributes: JSON.parse(row.attributes),
-    ...(row.type === "CHARACTER" && {
-      stats: JSON.parse(row.stats ?? "{}"),
-      opinions: JSON.parse(row.opinions ?? "{}"),
-    }),
-  } as WorldEntity;
+  return row ? rowToEntity(row) : null;
 }
 
 export function searchEntities(query: string): WorldEntity[] {
@@ -289,16 +261,5 @@ export function searchEntities(query: string): WorldEntity[] {
         r.shortDescription.toLowerCase().includes(lower),
     )
     .slice(0, 5)
-    .map((row) => ({
-      id: row.id,
-      type: row.type,
-      displayName: row.displayName,
-      shortDescription: row.shortDescription,
-      longDescription: row.longDescription,
-      attributes: JSON.parse(row.attributes),
-      ...(row.type === "CHARACTER" && {
-        stats: JSON.parse(row.stats ?? "{}"),
-        opinions: JSON.parse(row.opinions ?? "{}"),
-      }),
-    })) as WorldEntity[];
+    .map(rowToEntity);
 }

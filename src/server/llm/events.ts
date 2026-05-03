@@ -1,6 +1,6 @@
 import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
-import type { Plot } from "@/types/plot";
+import type { PlotPatch } from "@/types/plot";
 import type { StreamingMessage } from "@/shared/events";
 
 /**
@@ -48,15 +48,7 @@ export class TurnEventEmitter {
     this.send("plot_create", { plotId, title, parentPlotId });
   }
 
-  emitPlotEdit(
-    plotId: string,
-    changes: Partial<
-      Pick<
-        Plot,
-        "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots"
-      >
-    >,
-  ) {
+  emitPlotEdit(plotId: string, changes: PlotPatch) {
     this.send("plot_edit", { plotId, changes });
   }
 

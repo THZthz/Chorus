@@ -1,5 +1,5 @@
 import db from "@/server/db";
-import type { Plot, PlotOption } from "@/types/plot";
+import type { Plot, PlotOption, PlotPatch } from "@/types/plot";
 
 function rowToPlot(row: any): Plot {
   return {
@@ -129,10 +129,6 @@ export function addPlot(input: AddPlotInput): { ok: true; id: string } | { ok: f
   return { ok: true, id };
 }
 
-type PlotPatch = Partial<
-  Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">
->;
-
 export function updatePlot(
   id: string,
   patch: PlotPatch,
@@ -151,6 +147,7 @@ export function updatePlot(
 
   const updated: Plot = {
     ...existing,
+    title: patch.title ?? existing.title,
     status: patch.status ?? existing.status,
     description: patch.description ?? existing.description,
     involvedLocations: patch.involvedLocations ?? existing.involvedLocations,
@@ -159,8 +156,9 @@ export function updatePlot(
   };
 
   db.prepare(
-    `UPDATE plots SET status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ? WHERE id = ?`,
+    `UPDATE plots SET title = ?, status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ? WHERE id = ?`,
   ).run(
+    updated.title,
     updated.status,
     updated.description,
     JSON.stringify(updated.involvedLocations),
@@ -173,8 +171,9 @@ export function updatePlot(
   if (treeError) {
     // Restore original
     db.prepare(
-      `UPDATE plots SET status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ? WHERE id = ?`,
+      `UPDATE plots SET title = ?, status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ? WHERE id = ?`,
     ).run(
+      existing.title,
       existing.status,
       existing.description,
       JSON.stringify(existing.involvedLocations),

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "motion/react";
 import type { Message, DialogueOption } from "@/types/dialogue";
+import type { WorldSnapshot } from "@/types/entities";
 import { DialogueMessage } from "@/components/DialogueMessage";
 import { DialogueOptions } from "@/components/DialogueOptions";
 import { TypingIndicator } from "@/components/TypingIndicator";
@@ -9,7 +10,7 @@ import { DiceRoller } from "@/components/DiceRoller";
 import { CharacterPanel } from "@/components/CharacterPanel";
 import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
-import { SseClient } from "@/services/SseClient";
+import { SseClient, type SseCallbacks } from "@/services/SseClient";
 import { useCharacter } from "@/context/CharacterContext";
 
 function buildHistoryFromTree(
@@ -71,7 +72,7 @@ export default function App() {
         parentOptionId: string | null;
         messages: Message[];
         options: DialogueOption[];
-        worldSnapshot?: Record<string, unknown> | null;
+        worldSnapshot?: WorldSnapshot | null;
       }
     >
   >({});
@@ -86,6 +87,88 @@ export default function App() {
   const isRevealingRef = useRef(false);
 
   // ── SSE streaming ──
+
+  const createSseCallbacks = (streamId: string, logPrefix: string, onDone?: (stepId: string | null) => void): SseCallbacks => {
+    let capturedStepId: string | null = null;
+
+    return {
+      onStepStart: (data) => {
+        setLastStepId(data.stepId);
+        capturedStepId = data.stepId;
+        console.trace(`[${logPrefix}] step_start stepId=${data.stepId}`);
+      },
+      onStreamingMessages: (messages) => {
+        setStreamingMessages(
+          messages.map((m, i) => ({
+            id: `${streamId}-${i}`,
+            speaker: m.speaker,
+            type: m.type as Message["type"],
+            text: m.text,
+            metadata: m.metadata as Message["metadata"],
+          })),
+        );
+      },
+      onStreamingReset: () => {
+        setStreamingMessages((prev) => {
+          retrySnapshotRef.current = prev;
+          return prev;
+        });
+      },
+      onOptions: (options) => {
+        setDynamicOptions(options);
+        console.trace(`[${logPrefix}] options received: ${options.length}`);
+      },
+      onParsed: (data) => {
+        const snapshot = retrySnapshotRef.current;
+        retrySnapshotRef.current = [];
+        const messages: Message[] = data.messages.map((m, i) => ({
+          id: `${streamId}-final-${i}`,
+          speaker: m.speaker,
+          type: m.type as Message["type"],
+          text: m.text,
+          metadata: m.metadata as Message["metadata"],
+        }));
+        const changed = new Set(
+          messages.filter((m, i) => (snapshot[i]?.text ?? null) !== m.text).map((m) => m.id),
+        );
+        setStreamingMessages([]);
+        setHistory((prev) => [...prev, ...messages]);
+        if (changed.size > 0) setChangedMessageIds(changed);
+        if (data.options && data.options.length > 0) {
+          setDynamicOptions(data.options);
+        }
+        console.trace(
+          `[${logPrefix}] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
+        );
+      },
+      onWorldUpdate: () => { worldManager.loadState(); },
+      onPlotUpdate: () => { worldManager.loadState(); },
+      onPlotCreate: () => { worldManager.loadState(); },
+      onPlotEdit: () => { worldManager.loadState(); },
+      onError: (message) => {
+        console.error(`[${logPrefix}] error: ${message}`);
+        setIsTyping(false);
+        setStreamingMessages([]);
+        setHistory((prev) => [
+          ...prev,
+          {
+            id: `error-${Date.now()}`,
+            speaker: "SYSTEM",
+            type: "SYSTEM",
+            text: `[Error: ${message}]`,
+          },
+        ]);
+      },
+      onDone: () => {
+        console.trace(`[${logPrefix}] done`);
+        setIsTyping(false);
+        setCanRegenerate(true);
+        sseRef.current = null;
+        worldManager.loadState();
+        onDone?.(capturedStepId);
+      },
+    };
+  };
 
   const handleStreamingResponse = (
     userInput: string,
@@ -105,8 +188,6 @@ export default function App() {
     const streamId = `stream-${Date.now()}`;
     setStreamingId(streamId);
 
-    let capturedStepId: string | null = null;
-
     const client = new SseClient();
     sseRef.current = client;
 
@@ -119,93 +200,9 @@ export default function App() {
         parentOptionId,
         playerCharacter: character,
       },
-      {
-        onStepStart: (data) => {
-          setLastStepId(data.stepId);
-          capturedStepId = data.stepId;
-          console.trace(`[stream] step_start stepId=${data.stepId}`);
-        },
-        onStreamingMessages: (messages) => {
-          setStreamingMessages(
-            messages.map((m, i) => ({
-              id: `${streamId}-${i}`,
-              speaker: m.speaker,
-              type: m.type as Message["type"],
-              text: m.text,
-              metadata: m.metadata as Message["metadata"],
-            })),
-          );
-        },
-        onStreamingReset: () => {
-          // Snapshot current streaming messages so the retry can diff against them.
-          // Keep them visible — don't wipe.
-          setStreamingMessages((prev) => {
-            retrySnapshotRef.current = prev;
-            return prev;
-          });
-        },
-        onOptions: (options) => {
-          setDynamicOptions(options);
-          console.trace(`[stream] options received: ${options.length}`);
-        },
-        onParsed: (data) => {
-          const snapshot = retrySnapshotRef.current;
-          retrySnapshotRef.current = [];
-          const messages: Message[] = data.messages.map((m, i) => ({
-            id: `${streamId}-final-${i}`,
-            speaker: m.speaker,
-            type: m.type as Message["type"],
-            text: m.text,
-            metadata: m.metadata as Message["metadata"],
-          }));
-          const changed = new Set(
-            messages.filter((m, i) => (snapshot[i]?.text ?? null) !== m.text).map((m) => m.id),
-          );
-          setStreamingMessages([]);
-          setHistory((prev) => [...prev, ...messages]);
-          if (changed.size > 0) setChangedMessageIds(changed);
-          if (data.options && data.options.length > 0) {
-            setDynamicOptions(data.options);
-          }
-          console.trace(
-            `[stream] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
-          );
-        },
-        onWorldUpdate: () => {
-          worldManager.loadState();
-        },
-        onPlotUpdate: () => {
-          worldManager.loadState();
-        },
-        onPlotCreate: () => {
-          worldManager.loadState();
-        },
-        onPlotEdit: () => {
-          worldManager.loadState();
-        },
-        onError: (message) => {
-          console.error(`[stream] error: ${message}`);
-          setIsTyping(false);
-          setStreamingMessages([]);
-          setHistory((prev) => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              speaker: "SYSTEM",
-              type: "SYSTEM",
-              text: `[Error: ${message}]`,
-            },
-          ]);
-        },
-        onDone: () => {
-          console.trace(`[stream] done`);
-          setIsTyping(false);
-          setCanRegenerate(true);
-          sseRef.current = null;
-          worldManager.loadState();
-          if (onReplayDone && capturedStepId) onReplayDone(capturedStepId);
-        },
-      },
+      createSseCallbacks(streamId, "stream", (stepId) => {
+        if (onReplayDone && stepId) onReplayDone(stepId);
+      }),
     );
   };
 
@@ -338,90 +335,7 @@ export default function App() {
     client.stream(
       "/api/regenerate",
       { stepId: lastStepId, history: trimmedHistory, playerCharacter: character },
-      {
-        onStepStart: (data) => {
-          setLastStepId(data.stepId);
-          console.log(`[regenerate] new stepId=${data.stepId}`);
-        },
-        onStreamingMessages: (messages) => {
-          setStreamingMessages(
-            messages.map((m, i) => ({
-              id: `${streamId}-${i}`,
-              speaker: m.speaker,
-              type: m.type as Message["type"],
-              text: m.text,
-              metadata: m.metadata as Message["metadata"],
-            })),
-          );
-        },
-        onStreamingReset: () => {
-          // Snapshot current streaming messages so the retry can diff against them.
-          // Keep them visible — don't wipe.
-          setStreamingMessages((prev) => {
-            retrySnapshotRef.current = prev;
-            return prev;
-          });
-        },
-        onOptions: (options) => {
-          setDynamicOptions(options);
-        },
-        onParsed: (data) => {
-          const snapshot = retrySnapshotRef.current;
-          retrySnapshotRef.current = [];
-          const messages: Message[] = data.messages.map((m, i) => ({
-            id: `${streamId}-final-${i}`,
-            speaker: m.speaker,
-            type: m.type as Message["type"],
-            text: m.text,
-            metadata: m.metadata as Message["metadata"],
-          }));
-          const changed = new Set(
-            messages.filter((m, i) => (snapshot[i]?.text ?? null) !== m.text).map((m) => m.id),
-          );
-          setStreamingMessages([]);
-          setHistory((prev) => [...prev, ...messages]);
-          if (changed.size > 0) setChangedMessageIds(changed);
-          if (data.options && data.options.length > 0) {
-            setDynamicOptions(data.options);
-          }
-          console.log(
-            `[regenerate] parsed ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
-          );
-        },
-        onWorldUpdate: () => {
-          worldManager.loadState();
-        },
-        onPlotUpdate: () => {
-          worldManager.loadState();
-        },
-        onPlotCreate: () => {
-          worldManager.loadState();
-        },
-        onPlotEdit: () => {
-          worldManager.loadState();
-        },
-        onError: (message) => {
-          console.error(`[regenerate] error: ${message}`);
-          setIsTyping(false);
-          setStreamingMessages([]);
-          setHistory((prev) => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              speaker: "SYSTEM",
-              type: "SYSTEM",
-              text: `[Error: ${message}]`,
-            },
-          ]);
-        },
-        onDone: () => {
-          setIsTyping(false);
-          setCanRegenerate(true);
-          sseRef.current = null;
-          worldManager.loadState();
-          console.log(`[regenerate] done`);
-        },
-      },
+      createSseCallbacks(streamId, "regenerate"),
     );
   };
 

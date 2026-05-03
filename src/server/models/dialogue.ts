@@ -1,5 +1,6 @@
 import db from "@/server/db";
-import { Message, DialogueOption } from "@/types/dialogue";
+import type { Message, DialogueOption } from "@/types/dialogue";
+import type { WorldSnapshot } from "@/types/entities";
 import { v4 as uuidv4 } from "uuid";
 
 export interface DialogueStepRow {
@@ -20,7 +21,7 @@ export interface DialogueStepParsed {
   parentOptionId: string | null;
   messages: Message[];
   options: DialogueOption[];
-  worldSnapshot: Record<string, unknown> | null;
+  worldSnapshot: WorldSnapshot | null;
   isGenerated: boolean;
   isActive: boolean;
   createdAt: string;
@@ -53,7 +54,7 @@ export function saveStep(step: {
   parentOptionId?: string | null;
   messages: Message[];
   options: DialogueOption[];
-  worldSnapshot?: Record<string, unknown> | null;
+  worldSnapshot?: WorldSnapshot | null;
   isGenerated?: boolean;
   isActive?: boolean;
 }): void {
@@ -100,13 +101,6 @@ export function deactivateSiblingBranches(parentStepId: string, exceptStepId: st
     parentStepId,
     exceptStepId,
   );
-}
-
-export function getDeadBranches(parentStepId: string, exceptStepId: string): DialogueStepParsed[] {
-  const rows = db
-    .prepare("SELECT * FROM dialogue_steps WHERE parent_step_id = ? AND is_active = 0 AND id != ?")
-    .all(parentStepId, exceptStepId) as DialogueStepRow[];
-  return rows.map(parseStep);
 }
 
 // Alternatives (regenerate/swipe support)
@@ -269,10 +263,7 @@ export function updateOptionNextStepId(stepId: string, optionId: string, nextSte
   );
 }
 
-export function updateStepSnapshot(
-  id: string,
-  worldSnapshot: Record<string, unknown>,
-): boolean {
+export function updateStepSnapshot(id: string, worldSnapshot: WorldSnapshot): boolean {
   const existing = db
     .prepare("SELECT id FROM dialogue_steps WHERE id = ?")
     .get(id) as { id: string } | undefined;

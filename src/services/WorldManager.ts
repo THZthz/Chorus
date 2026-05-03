@@ -1,14 +1,10 @@
-import { WorldEntity, WorldState, Character, Location, WorldObject } from "@/types/entities";
+import type { WorldEntity, WorldState, WorldSnapshot, Character } from "@/types/entities";
 import type { Plot } from "@/types/plot";
 
 class WorldManager {
   private state: WorldState = { objects: {}, locations: {}, characters: {} };
   private plots: Plot[] = [];
-  private replayOverride: {
-    entities: WorldState;
-    plots: Plot[];
-    playerCharacter: Character | null;
-  } | null = null;
+  private replayOverride: WorldSnapshot | null = null;
   private listeners = new Set<() => void>();
 
   subscribe(fn: () => void): () => void {
@@ -27,17 +23,13 @@ class WorldManager {
     this.notify();
   }
 
-  applyStepSnapshot(snapshot: Record<string, unknown> | null | undefined) {
+  applyStepSnapshot(snapshot: WorldSnapshot | null | undefined) {
     if (!snapshot) {
       this.replayOverride = null;
       this.notify();
       return;
     }
-    this.replayOverride = {
-      entities: snapshot.entities as WorldState,
-      plots: (snapshot.plots as Plot[]) ?? [],
-      playerCharacter: (snapshot.playerCharacter as Character) ?? null,
-    };
+    this.replayOverride = snapshot;
     this.notify();
   }
 
@@ -85,13 +77,8 @@ class WorldManager {
     return true;
   }
 
-  getReplaySnapshot(): Record<string, unknown> | null {
-    if (!this.replayOverride) return null;
-    return {
-      entities: this.replayOverride.entities,
-      plots: this.replayOverride.plots,
-      playerCharacter: this.replayOverride.playerCharacter,
-    };
+  getReplaySnapshot(): WorldSnapshot | null {
+    return this.replayOverride ?? null;
   }
 }
 

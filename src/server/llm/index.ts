@@ -26,6 +26,7 @@ import {
   createGetPlotTool,
   createGenerateDialogueStepTool,
 } from "@/server/llm/tools";
+import { TOOL_NAMES } from "@/shared/constants";
 
 // ── Model management ──
 
@@ -464,6 +465,57 @@ export function buildSystemPrompt(): string {
 
 // ── Game Master ──
 
+function persistStep(
+  stepId: string,
+  parentStepId: string | null,
+  parentOptionId: string | null,
+  messages: Message[],
+  options: DialogueOption[],
+  playerCharacter: Character | null,
+  label: string,
+) {
+  saveStep({
+    id: stepId,
+    parentStepId,
+    parentOptionId,
+    messages,
+    options,
+    worldSnapshot: {
+      entities: getAllEntities(),
+      plots: getAllPlots(),
+      playerCharacter,
+    },
+    isGenerated: true,
+    isActive: true,
+  });
+
+  console.log(
+    `[${label}] persisted step=${stepId} messages=${messages.length} options=${options.length}`,
+  );
+
+  if (parentStepId && parentOptionId) {
+    updateOptionNextStepId(parentStepId, parentOptionId, stepId);
+    console.log(
+      `[${label}] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
+    );
+  }
+
+  for (const msg of messages) {
+    try {
+      addMessage(msg);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("UNIQUE constraint failed")) {
+        console.error("Failed to save message to history:", message);
+      }
+    }
+  }
+
+  if (parentStepId) {
+    deactivateSiblingBranches(parentStepId, stepId);
+  }
+}
+
 export async function generateTurn(
   userInput: string,
   history: Message[],
@@ -519,15 +571,7 @@ export async function generateTurn(
       prompt: promptText,
       userInput,
       history,
-      tools: [
-        "getAllEntitiesName",
-        "queryEntity",
-        "editEntity",
-        "createPlot",
-        "editPlot",
-        "getPlot",
-        "generateDialogueStep",
-      ],
+      tools: Object.values(TOOL_NAMES),
     },
     undefined,
     "GM",
@@ -552,7 +596,7 @@ export async function generateTurn(
       stopWhen: [
         (state) => {
           const called = state.steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+            s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
           );
           return called && dialogueStepTool.wasValid();
         },
@@ -561,14 +605,14 @@ export async function generateTurn(
       prepareStep: ({ stepNumber, steps, messages }) => {
         if (stepNumber === 0) return undefined;
         const dialogueCalled = steps.some((s) =>
-          s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+          s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
         );
         if (dialogueCalled) return undefined;
         const allToolsUsed = steps.flatMap((s) => s.toolCalls?.map((tc) => tc.toolName) ?? []);
         const errorMsg =
           allToolsUsed.length > 0
-            ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`
-            : `ERROR: You did not call generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+            ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`
+            : `ERROR: You did not call ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`;
         return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
       },
       onStepFinish: (event) => {
@@ -608,7 +652,7 @@ export async function generateTurn(
         case "text-delta":
           break;
         case "tool-input-start":
-          if (chunk.toolName === "generateDialogueStep") {
+          if (chunk.toolName === TOOL_NAMES.GENERATE_DIALOGUE) {
             if (hasEmittedStreaming) {
               // A retry is starting — notify the client so it can show a visual reset
               events.emitStreamingReset();
@@ -658,7 +702,7 @@ export async function generateTurn(
           break;
 
         case "tool-call":
-          if (chunk.toolName === "generateDialogueStep") {
+          if (chunk.toolName === TOOL_NAMES.GENERATE_DIALOGUE) {
             let args: Record<string, unknown> | null = null;
 
             // SDK may leave input as a raw string when JSON parsing fails —
@@ -731,48 +775,7 @@ export async function generateTurn(
   );
   events.emitOptions(finalOptions);
 
-  // Persist
-  saveStep({
-    id: stepId,
-    parentStepId,
-    parentOptionId,
-    messages,
-    options: finalOptions,
-    worldSnapshot: {
-      entities: getAllEntities(),
-      plots: getAllPlots(),
-      playerCharacter,
-    } as unknown as Record<string, unknown>,
-    isGenerated: true,
-    isActive: true,
-  });
-
-  console.log(
-    `[generateTurn] persisted step=${stepId} messages=${messages.length} options=${finalOptions.length}`,
-  );
-
-  if (parentStepId && parentOptionId) {
-    updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(
-      `[generateTurn] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
-    );
-  }
-
-  for (const msg of messages) {
-    try {
-      addMessage(msg);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!message.includes("UNIQUE constraint failed")) {
-        console.error("Failed to save message to history:", message);
-      }
-    }
-  }
-
-  if (parentStepId) {
-    deactivateSiblingBranches(parentStepId, stepId);
-  }
-
+  persistStep(stepId, parentStepId, parentOptionId, messages, finalOptions, playerCharacter, "generateTurn");
   events.finish();
 }
 
@@ -828,7 +831,7 @@ export async function generateTurnBatch(
   });
 
   // Extract the generateDialogueStep tool input
-  const dialogueCall = result.toolCalls?.find((tc) => tc.toolName === "generateDialogueStep");
+  const dialogueCall = result.toolCalls?.find((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE);
   const rawInput = dialogueCall?.input;
 
   // Recover from malformed JSON with tolerant partial-json parser.
@@ -863,47 +866,6 @@ export async function generateTurnBatch(
     metadata: m.metadata,
   }));
 
-  // Persist
-  saveStep({
-    id: stepId,
-    parentStepId,
-    parentOptionId,
-    messages,
-    options: finalOptions,
-    worldSnapshot: {
-      entities: getAllEntities(),
-      plots: getAllPlots(),
-      playerCharacter,
-    } as unknown as Record<string, unknown>,
-    isGenerated: true,
-    isActive: true,
-  });
-
-  console.log(
-    `[generateTurnBatch] persisted step=${stepId} messages=${messages.length} options=${finalOptions.length}`,
-  );
-
-  if (parentStepId && parentOptionId) {
-    updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(
-      `[generateTurnBatch] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
-    );
-  }
-
-  for (const msg of messages) {
-    try {
-      addMessage(msg);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!message.includes("UNIQUE constraint failed")) {
-        console.error("Failed to save message to history:", message);
-      }
-    }
-  }
-
-  if (parentStepId) {
-    deactivateSiblingBranches(parentStepId, stepId);
-  }
-
+  persistStep(stepId, parentStepId, parentOptionId, messages, finalOptions, playerCharacter, "generateTurnBatch");
   return { stepId, messages, options: finalOptions };
 }

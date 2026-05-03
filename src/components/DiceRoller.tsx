@@ -17,6 +17,289 @@ interface Props {
   onComplete: (total: number, success: boolean, dice: number[]) => void;
 }
 
+// Safe condition evaluator — replaces new Function() to prevent arbitrary code execution.
+// Supports: identifiers (dice, total, success, diceLen), numeric/boolean literals,
+// comparisons, logical operators, arithmetic, array access (dice[N]), and parentheses.
+function evaluateCondition(
+  expr: string,
+  dice: number[],
+  total: number,
+  success: boolean,
+): boolean | Error {
+  const tokens = tokenize(expr);
+  if (tokens instanceof Error) return tokens;
+  try {
+    const ctx: EvalCtx = { dice, total, success, diceLen: dice.length };
+    const result = parseExpression(tokens, ctx);
+    if (typeof result !== "boolean") return new Error(`Expression "${expr}" did not evaluate to a boolean`);
+    return result;
+  } catch (e) {
+    return e instanceof Error ? e : new Error(String(e));
+  }
+}
+
+type Token =
+  | { t: "ident"; v: string }
+  | { t: "number"; v: number }
+  | { t: "bool"; v: boolean }
+  | { t: "op"; v: string }
+  | { t: "lparen" }
+  | { t: "rparen" }
+  | { t: "lbracket" }
+  | { t: "rbracket" }
+  | { t: "dot" };
+
+const ALLOWED_IDS = new Set(["dice", "total", "success", "diceLen"]);
+const COMPARE_OPS = new Set(["===", "!==", "==", "!=", "<", ">", "<=", ">="]);
+const LOGIC_OPS = new Set(["&&", "||"]);
+const ADDITIVE_OPS = new Set(["+", "-"]);
+const MULTIPLICATIVE_OPS = new Set(["*", "/", "%"]);
+
+interface EvalCtx {
+  dice: number[];
+  total: number;
+  success: boolean;
+  diceLen: number;
+}
+
+function tokenize(s: string): Token[] | Error {
+  const tokens: Token[] = [];
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      i++;
+      continue;
+    }
+    if (ch === "(") { tokens.push({ t: "lparen" }); i++; continue; }
+    if (ch === ")") { tokens.push({ t: "rparen" }); i++; continue; }
+    if (ch === "[") { tokens.push({ t: "lbracket" }); i++; continue; }
+    if (ch === "]") { tokens.push({ t: "rbracket" }); i++; continue; }
+    if (ch === ".") { tokens.push({ t: "dot" }); i++; continue; }
+
+    // Multi-char operators
+    if (ch === "=" || ch === "!" || ch === "<" || ch === ">") {
+      if (s[i + 1] === "=") {
+        tokens.push({ t: "op", v: s.slice(i, i + 2) });
+        i += 2;
+        continue;
+      }
+      tokens.push({ t: "op", v: ch });
+      i++;
+      continue;
+    }
+    if (ch === "&" && s[i + 1] === "&") {
+      tokens.push({ t: "op", v: "&&" }); i += 2; continue;
+    }
+    if (ch === "|" && s[i + 1] === "|") {
+      tokens.push({ t: "op", v: "||" }); i += 2; continue;
+    }
+
+    // Single-char operators
+    if (ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "%" || ch === "!") {
+      tokens.push({ t: "op", v: ch });
+      i++;
+      continue;
+    }
+
+    // Numbers
+    if (ch >= "0" && ch <= "9") {
+      let num = "";
+      while (i < s.length && s[i] >= "0" && s[i] <= "9") {
+        num += s[i];
+        i++;
+      }
+      tokens.push({ t: "number", v: parseInt(num, 10) });
+      continue;
+    }
+
+    // Identifiers and booleans
+    if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+      let id = "";
+      while (i < s.length && ((s[i] >= "a" && s[i] <= "z") || (s[i] >= "A" && s[i] <= "Z") || s[i] === "_" || (s[i] >= "0" && s[i] <= "9"))) {
+        id += s[i];
+        i++;
+      }
+      if (id === "true") { tokens.push({ t: "bool", v: true }); continue; }
+      if (id === "false") { tokens.push({ t: "bool", v: false }); continue; }
+      if (!ALLOWED_IDS.has(id)) {
+        return new Error(`Disallowed identifier: "${id}". Allowed: dice, total, success, diceLen.`);
+      }
+      tokens.push({ t: "ident", v: id });
+      continue;
+    }
+
+    return new Error(`Unexpected character: "${ch}" at position ${i}`);
+  }
+  return tokens;
+}
+
+class ParseError extends Error {
+  constructor(msg: string) {
+    super(msg);
+  }
+}
+
+function parseExpression(tokens: Token[], ctx: EvalCtx, pos: { i: number } = { i: 0 }): number | boolean {
+  let left = parseOr(tokens, ctx, pos);
+  return left;
+}
+
+function parseOr(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number | boolean {
+  let left = parseAnd(tokens, ctx, pos);
+  while (pos.i < tokens.length) {
+    const tok = tokens[pos.i];
+    if (tok.t !== "op" || !LOGIC_OPS.has(tok.v)) break;
+    const op = tok.v;
+    pos.i++;
+    const right = parseAnd(tokens, ctx, pos);
+    if (op === "&&") left = (left as any) && (right as any);
+    else left = (left as any) || (right as any);
+  }
+  return left;
+}
+
+function parseAnd(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number | boolean {
+  let left = parseComparison(tokens, ctx, pos);
+  while (pos.i < tokens.length) {
+    const tok = tokens[pos.i];
+    if (tok.t !== "op" || !LOGIC_OPS.has(tok.v)) break;
+    const op = tok.v;
+    pos.i++;
+    const right = parseComparison(tokens, ctx, pos);
+    if (op === "&&") left = (left as any) && (right as any);
+    else left = (left as any) || (right as any);
+  }
+  return left;
+}
+
+function parseComparison(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number | boolean {
+  let left = parseAdditive(tokens, ctx, pos);
+  if (pos.i < tokens.length) {
+    const tok = tokens[pos.i];
+    if (tok.t === "op" && COMPARE_OPS.has(tok.v)) {
+      const op = tok.v;
+      pos.i++;
+      const right = parseAdditive(tokens, ctx, pos);
+      switch (op) {
+        case "===": return left === right;
+        case "!==": return left !== right;
+        case "==": return left == right;
+        case "!=": return left != right;
+        case "<": return (left as number) < (right as number);
+        case ">": return (left as number) > (right as number);
+        case "<=": return (left as number) <= (right as number);
+        case ">=": return (left as number) >= (right as number);
+      }
+    }
+  }
+  return left;
+}
+
+function parseAdditive(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number {
+  let left = parseMultiplicative(tokens, ctx, pos);
+  while (pos.i < tokens.length) {
+    const tok = tokens[pos.i];
+    if (tok.t !== "op" || !ADDITIVE_OPS.has(tok.v)) break;
+    const op = tok.v;
+    pos.i++;
+    const right = parseMultiplicative(tokens, ctx, pos);
+    if (op === "+") left = (left as number) + (right as number);
+    else left = (left as number) - (right as number);
+  }
+  return left as number;
+}
+
+function parseMultiplicative(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number {
+  let left = parseUnary(tokens, ctx, pos);
+  while (pos.i < tokens.length) {
+    const tok = tokens[pos.i];
+    if (tok.t !== "op" || !MULTIPLICATIVE_OPS.has(tok.v)) break;
+    const op = tok.v;
+    pos.i++;
+    const right = parseUnary(tokens, ctx, pos);
+    if (op === "*") left = (left as number) * (right as number);
+    else if (op === "/") left = Math.floor((left as number) / (right as number));
+    else left = (left as number) % (right as number);
+  }
+  return left as number;
+}
+
+function parseUnary(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number | boolean {
+  if (pos.i < tokens.length) {
+    const tok = tokens[pos.i];
+    if (tok.t === "op" && tok.v === "!") {
+      pos.i++;
+      const val = parseUnary(tokens, ctx, pos);
+      return !val;
+    }
+    if (tok.t === "op" && tok.v === "-") {
+      pos.i++;
+      const val = parseUnary(tokens, ctx, pos);
+      return -(val as number);
+    }
+  }
+  return parsePrimary(tokens, ctx, pos);
+}
+
+function parsePrimary(tokens: Token[], ctx: EvalCtx, pos: { i: number }): number | boolean {
+  if (pos.i >= tokens.length) throw new ParseError("Unexpected end of expression");
+
+  const tok = tokens[pos.i];
+
+  if (tok.t === "number") { pos.i++; return tok.v; }
+  if (tok.t === "bool") { pos.i++; return tok.v; }
+
+  if (tok.t === "lparen") {
+    pos.i++;
+    const val = parseExpression(tokens, ctx, pos);
+    const close = pos.i < tokens.length ? tokens[pos.i] : null;
+    if (!close || close.t !== "rparen") {
+      throw new ParseError("Missing closing parenthesis");
+    }
+    pos.i++;
+    return val;
+  }
+
+  if (tok.t === "ident") {
+    pos.i++;
+    let val: unknown = ctx[tok.v as keyof EvalCtx];
+    // Array access: dice[0], dice[1], etc.
+    const afterIdent = pos.i < tokens.length ? tokens[pos.i] : null;
+    if (afterIdent && afterIdent.t === "lbracket") {
+      if (!Array.isArray(val)) throw new ParseError(`Cannot index non-array "${tok.v}"`);
+      pos.i++;
+      const idxTok = pos.i < tokens.length ? tokens[pos.i] : null;
+      if (!idxTok || idxTok.t !== "number") {
+        throw new ParseError("Array index must be a number");
+      }
+      const idx = idxTok.v;
+      pos.i++;
+      const close = pos.i < tokens.length ? tokens[pos.i] : null;
+      if (!close || close.t !== "rbracket") {
+        throw new ParseError("Missing closing bracket");
+      }
+      pos.i++;
+      if (idx < 0 || idx >= val.length) return 0;
+      return val[idx];
+    }
+    // .length access
+    if (afterIdent && afterIdent.t === "dot") {
+      pos.i++;
+      const propTok = pos.i < tokens.length ? tokens[pos.i] : null;
+      if (!propTok || propTok.t !== "ident" || propTok.v !== "length") {
+        throw new ParseError('Only ".length" property access is allowed');
+      }
+      pos.i++;
+      if (Array.isArray(val)) return val.length;
+      throw new ParseError("Cannot get .length of non-array");
+    }
+    return val as number | boolean;
+  }
+
+  throw new ParseError(`Unexpected token: ${JSON.stringify(tok)}`);
+}
+
 const calculate2D6Probability = (target: number, bonus: number) => {
   const neededOnDice = target - bonus;
   if (neededOnDice <= 2) return 100;
@@ -279,23 +562,16 @@ export const DiceRoller: React.FC<Props> = ({
 
     if (conditions && hasRolled) {
       for (const cond of conditions) {
-        try {
-          const fn = new Function(
-            "dice",
-            "total",
-            "success",
-            "diceLen",
-            `return ${cond.expression}`,
-          );
-          if (fn(dice, total, success, dice.length)) {
-            return {
-              label: cond.label ?? "Special Outcome",
-              color: cond.color ?? "#a855f7",
-              isSuccess: success,
-            };
-          }
-        } catch (e) {
-          console.error("Condition eval error:", e);
+        const result = evaluateCondition(cond.expression, dice, total, success);
+        if (result === true) {
+          return {
+            label: cond.label ?? "Special Outcome",
+            color: cond.color ?? "#a855f7",
+            isSuccess: success,
+          };
+        }
+        if (result instanceof Error) {
+          console.error("Condition eval error:", result.message);
         }
       }
     }

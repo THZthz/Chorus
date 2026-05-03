@@ -279,7 +279,7 @@ apiRouter.patch("/dialogue/:id/snapshot", (req, res) => {
     res.status(400).json({ error: "worldSnapshot object required" });
     return;
   }
-  const ok = updateStepSnapshot(req.params.id, worldSnapshot as Record<string, unknown>);
+  const ok = updateStepSnapshot(req.params.id, worldSnapshot);
   if (!ok) {
     res.status(404).json({ error: "Step not found" });
     return;

@@ -1,3 +1,5 @@
+import type { Plot } from "@/types/plot";
+
 export type EntityType = "OBJECT" | "LOCATION" | "CHARACTER";
 
 export interface CharacterStats {
@@ -44,4 +46,10 @@ export interface WorldState {
   objects: Record<string, WorldObject>;
   locations: Record<string, Location>;
   characters: Record<string, Character>;
+}
+
+export interface WorldSnapshot {
+  entities: WorldState;
+  plots: Plot[];
+  playerCharacter: Character | null;
 }

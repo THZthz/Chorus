@@ -1,5 +1,5 @@
 import type { DialogueOption } from "@/types/dialogue";
-import type { Plot } from "@/types/plot";
+import type { PlotPatch } from "@/types/plot";
 
 // ── SSE Event Payloads ──
 
@@ -30,9 +30,7 @@ export interface PlotCreateEvent {
 export interface PlotEditEvent {
   type: "plot_edit";
   plotId: string;
-  changes: Partial<
-    Pick<Plot, "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots">
-  >;
+  changes: PlotPatch;
 }
 
 export interface StreamingMessagesEvent {

@@ -342,6 +342,11 @@ personalities and includes a compact entity index (id + displayName + shortDescr
 tree (from `buildActivePlotTree()`). Full entity/plot details are fetched via `queryEntity`/`getPlot` tools, not dumped
 into the prompt.
 
+The system prompt is runtime-configurable via the Debug Panel's **Prompt** tab. The template is stored in the
+`system_state` table (key `gm_system_prompt`) and supports `{{entities_brief}}` and `{{active_plots}}` variables
+that are replaced with live data by `buildSystemPrompt()`. If no custom template is stored, the
+`DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
+
 ### 6.2 Skill Checks
 
 - **White Checks**: Repeatable after stat increases
@@ -356,7 +361,7 @@ into the prompt.
 
 ### 6.3 Debug Panel
 
-The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
+The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
 
 - **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, auto-refresh, and
   child trace nesting (`src/components/debug/LlmTraceViewer.tsx`)
@@ -372,6 +377,12 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
   `src/components/debug/NodeGraph.tsx` with plot config). Reads from `worldManager`'s replay snapshot when replay is
   active, or from the live API. Inspector allows editing title, description, status, involved entities.
   Saving in replay mode updates the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
+- **System Prompt**: Runtime-editable GM system prompt template. Uses `{{entities_brief}}` and `{{active_plots}}`
+  template variables for dynamic content injection. Stored in `system_state` table, editable via
+  `GET/PUT /api/debug/system-prompt` and `POST /api/debug/system-prompt/reset`.
+  (`src/components/debug/SystemPromptEditor.tsx`). The `buildSystemPrompt()` function in
+  `src/server/llm/index.ts` loads the template from DB (falling back to `DEFAULT_SYSTEM_PROMPT_TEMPLATE`)
+  and replaces template variables with live data at generation time.
 
 ---
 

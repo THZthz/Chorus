@@ -376,8 +376,9 @@ apiRouter.post("/debug/logs/clear", (_req, res) => {
   res.json({ success: true });
 });
 
-apiRouter.get("/debug/console", (_req, res) => {
-  res.json(getConsoleLogs());
+apiRouter.get("/debug/console", (req, res) => {
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+  res.json(getConsoleLogs(limit));
 });
 
 apiRouter.post("/debug/console", (req, res) => {

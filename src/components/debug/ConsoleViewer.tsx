@@ -121,7 +121,7 @@ export const ConsoleViewer: React.FC = () => {
 
   const fetchPersistedLogs = useCallback(async () => {
     try {
-      const response = await fetch("/api/debug/console");
+      const response = await fetch("/api/debug/console?limit=0");
       if (response.ok) {
         const persistedLogs = await response.json();
         const formattedLogs = persistedLogs

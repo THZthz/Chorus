@@ -154,7 +154,7 @@ class ConsoleLogger {
         };
 
         this.logs.push(log);
-        if (this.logs.length > 1000) {
+        if (this.logs.length > 10000) {
           this.logs.shift();
         }
 

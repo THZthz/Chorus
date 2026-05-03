@@ -120,16 +120,21 @@ export function addConsoleLog(level: string, message: string, args: any[]): stri
   return id;
 }
 
-export function getConsoleLogs(limit: number = 200): ConsoleLog[] {
-  return db
-    .prepare(
-      `
+export function getConsoleLogs(limit?: number): ConsoleLog[] {
+  if (limit !== undefined && limit > 0) {
+    return db
+      .prepare(
+        `
     SELECT * FROM console_logs
     ORDER BY timestamp DESC
     LIMIT ?
   `,
-    )
-    .all(limit) as ConsoleLog[];
+      )
+      .all(limit) as ConsoleLog[];
+  }
+  return db
+    .prepare("SELECT * FROM console_logs ORDER BY timestamp DESC")
+    .all() as ConsoleLog[];
 }
 
 export function clearConsoleLogs() {

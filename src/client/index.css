@@ -56,6 +56,93 @@
     scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
 }
 
+/* CodeMirror scrollbar — match debug-scrollbar */
+.cm-scroller::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0px;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.cm-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
+}
+
+/* Markdoc rich editor — hide markdown syntax, reveal near cursor */
+.cm-markdoc-hidden {
+  display: none;
+}
+
+.cm-markdoc-bullet * {
+  display: none;
+}
+
+.cm-markdoc-bullet::after {
+  display: inline !important;
+  color: rgba(255, 255, 255, 0.25);
+  content: '•';
+}
+
+.cm-markdoc-renderBlock {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+}
+
+.cm-markdoc-renderBlock table {
+  border-collapse: collapse;
+  margin-left: 5px;
+}
+
+.cm-markdoc-renderBlock th,
+.cm-markdoc-renderBlock td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 5px 10px;
+}
+
+.cm-markdoc-renderBlock blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
+  padding-left: 10px;
+  margin: 0 0 0 15px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cm-markdoc-renderBlock p {
+  margin: 3px;
+}
+
+.cm-markdoc-tag {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.cm-markdoc-fallbackTag {
+  border: 2px solid rgba(139, 122, 200, 0.5);
+  border-radius: 3px;
+  margin: 0 5px;
+}
+
+.cm-markdoc-fallbackTag--name {
+  background-color: rgba(139, 122, 200, 0.4);
+  color: white;
+  padding: 2px 5px;
+  font-size: 10px;
+}
+
+.cm-markdoc-fallbackTag--inner {
+  padding: 5px 10px;
+}
+
 /* Background texture effect */
 .bg-texture {
     position: fixed;

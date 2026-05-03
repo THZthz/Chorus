@@ -1,5 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Save, RotateCcw, Check, AlertTriangle, Braces } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Save, RotateCcw, FileText, Check, AlertTriangle, Braces } from "lucide-react";
+import CodeMirror from "@uiw/react-codemirror";
+import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
+import markdoc from "@markdoc/markdoc";
+import type { Config } from "@markdoc/markdoc";
+import richEditor from "codemirror-rich-markdoc";
 
 const TEMPLATE_VARS = [
   {
@@ -13,6 +20,81 @@ const TEMPLATE_VARS = [
 ];
 
 type Status = { type: "success" | "error"; message: string } | null;
+
+markdoc.transformer.findSchema = (node, config) => {
+  return node.tag
+    ? config?.tags?.[node.tag] ?? config?.tags?.$$fallback
+    : config?.nodes?.[node.type];
+};
+
+const markdocConfig: Config = {
+  tags: {
+    $$fallback: {
+      transform(node, config) {
+        const children = node.transformChildren(config);
+        return new markdoc.Tag("div", { class: "cm-markdoc-fallbackTag" }, [
+          new markdoc.Tag("div", { class: "cm-markdoc-fallbackTag--name" }, [node?.tag ?? ""]),
+          new markdoc.Tag("div", { class: "cm-markdoc-fallbackTag--inner" }, children),
+        ]);
+      },
+    },
+  },
+};
+
+const textColor = "rgba(255,255,255,0.78)";
+const mutedColor = "rgba(255,255,255,0.35)";
+const accentColor = "rgba(255,200,130,0.7)";
+
+const debugHighlightStyle = HighlightStyle.define([
+  { tag: t.heading1, fontWeight: "bold", fontSize: "15px", color: textColor, fontFamily: "inherit" },
+  { tag: t.heading2, fontWeight: "bold", fontSize: "13px", color: textColor, fontFamily: "inherit" },
+  { tag: t.heading3, fontWeight: "bold", fontSize: "12px", color: textColor, fontFamily: "inherit" },
+  { tag: t.heading4, fontWeight: "bold", fontSize: "11px", color: textColor, fontFamily: "inherit" },
+  { tag: t.link, textDecoration: "underline", color: "rgba(100,170,255,0.55)", fontFamily: "inherit" },
+  { tag: t.emphasis, fontStyle: "italic", fontFamily: "inherit" },
+  { tag: t.strong, fontWeight: "bold", fontFamily: "inherit" },
+  { tag: t.monospace, fontFamily: "'JetBrains Mono','Fira Code',monospace", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: "2px", padding: "0 2px" },
+  { tag: t.content, color: textColor, fontFamily: "inherit" },
+  { tag: t.meta, color: mutedColor, fontFamily: "inherit" },
+  { tag: t.strikethrough, textDecoration: "line-through", color: mutedColor, fontFamily: "inherit" },
+  { tag: t.url, color: "rgba(100,170,255,0.45)", fontFamily: "inherit" },
+  { tag: t.processingInstruction, color: accentColor, fontFamily: "inherit" },
+]);
+
+const debugEditorTheme = EditorView.theme({
+  "&": {
+    backgroundColor: "#0d0d0f",
+  },
+  ".cm-content": {
+    caretColor: "rgba(255,255,255,0.5)",
+    fontFamily: "'Inter','Helvetica Neue',sans-serif",
+    fontSize: "12px",
+    lineHeight: "1.7",
+    padding: "14px 16px",
+  },
+  ".cm-scroller": {
+    fontFamily: "'Inter','Helvetica Neue',sans-serif",
+    lineHeight: "1.7",
+  },
+  "&.cm-focused .cm-cursor": {
+    borderLeftColor: "rgba(255,255,255,0.5)",
+  },
+  "&.cm-focused": {
+    outline: "none",
+  },
+  ".cm-activeLine": {
+    backgroundColor: "transparent",
+  },
+  ".cm-selectionMatch": {
+    backgroundColor: "transparent",
+  },
+  ".cm-selectionBackground": {
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  ".cm-placeholder": {
+    color: "rgba(255,255,255,0.15)",
+  },
+}, { dark: true });
 
 export const SystemPromptEditor: React.FC = () => {
   const [template, setTemplate] = useState("");
@@ -51,6 +133,20 @@ export const SystemPromptEditor: React.FC = () => {
     }
   }, [template]);
 
+  const loadDefault = useCallback(async () => {
+    setStatus(null);
+    try {
+      const res = await fetch("/api/debug/system-prompt/default");
+      const data = await res.json();
+      setTemplate(data.template);
+      setSaved(false);
+      setStatus({ type: "success", message: "Default loaded" });
+      setTimeout(() => setStatus(null), 2000);
+    } catch {
+      setStatus({ type: "error", message: "Network error" });
+    }
+  }, []);
+
   const reset = useCallback(async () => {
     setStatus(null);
     try {
@@ -70,8 +166,17 @@ export const SystemPromptEditor: React.FC = () => {
     }
   }, []);
 
-  const onChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setTemplate(e.target.value);
+  const extensions = useMemo(
+    () => [
+      richEditor({ markdoc: markdocConfig }),
+      syntaxHighlighting(debugHighlightStyle),
+      EditorView.lineWrapping,
+    ],
+    [],
+  );
+
+  const handleChange = useCallback((value: string) => {
+    setTemplate(value);
     setSaved(false);
     setStatus(null);
   }, []);
@@ -105,9 +210,17 @@ export const SystemPromptEditor: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={loadDefault}
+            className="px-3 py-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/80 border border-white/10 hover:border-white/20 rounded-sm transition-colors"
+            title="Load default system prompt into editor without saving"
+          >
+            <FileText size={10} />
+            Load Default
+          </button>
+          <button
             onClick={reset}
             className="px-3 py-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/80 border border-white/10 hover:border-white/20 rounded-sm transition-colors"
-            title="Reset to default system prompt"
+            title="Reset to default system prompt and save"
           >
             <RotateCcw size={10} />
             Reset
@@ -124,13 +237,27 @@ export const SystemPromptEditor: React.FC = () => {
       </div>
 
       <div className="flex-1 min-h-0 flex gap-3">
-        <textarea
-          value={template}
-          onChange={onChange}
-          spellCheck={false}
-          className="flex-1 bg-[#0d0d0f] border border-white/10 rounded-sm p-4 text-xs font-mono text-white/80 resize-none focus:outline-none focus:border-white/20 placeholder-white/20"
-          placeholder="Enter system prompt template..."
-        />
+        <div className="flex-1 border border-white/10 rounded-sm overflow-auto debug-scrollbar">
+          <CodeMirror
+            value={template}
+            onChange={handleChange}
+            extensions={extensions}
+            theme={debugEditorTheme}
+            height="auto"
+            basicSetup={{
+              lineNumbers: false,
+              foldGutter: false,
+              highlightActiveLine: false,
+              highlightActiveLineGutter: false,
+              drawSelection: false,
+              bracketMatching: false,
+              closeBrackets: false,
+              autocompletion: false,
+              crosshairCursor: false,
+              highlightSelectionMatches: false,
+            }}
+          />
+        </div>
 
         <div className="w-56 shrink-0 flex flex-col gap-3">
           <div className="bg-[#0d0d0f] border border-white/10 rounded-sm p-3">

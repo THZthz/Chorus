@@ -71,7 +71,7 @@ export function getModel(): { model: LanguageModel; name: string } {
 
 const PROMPT_TEMPLATE_KEY = "gm_system_prompt";
 
-const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
+export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 You are the Game Master for a narrative-driven RPG.
 SETTING: A grim medieval fantasy world where ancient magic is being challenged by the fragile emergence of steampunk technology.
 TONE: Atmospheric, morally ambiguous, and brooding. Rich sensory detail — soot, candlewax, rust, ozone, old blood.

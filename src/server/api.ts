@@ -1,7 +1,7 @@
 import express from "express";
 import type { Message } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
-import { generateTurn, generateTurnBatch, getSystemPromptTemplate, setSystemPromptTemplate } from "@/server/llm/index";
+import { generateTurn, generateTurnBatch, getSystemPromptTemplate, setSystemPromptTemplate, DEFAULT_SYSTEM_PROMPT_TEMPLATE } from "@/server/llm/index";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";
@@ -424,6 +424,10 @@ apiRouter.put("/debug/system-prompt", (req, res) => {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: message });
   }
+});
+
+apiRouter.get("/debug/system-prompt/default", (_req, res) => {
+  res.json({ template: DEFAULT_SYSTEM_PROMPT_TEMPLATE });
 });
 
 apiRouter.post("/debug/system-prompt/reset", (_req, res) => {

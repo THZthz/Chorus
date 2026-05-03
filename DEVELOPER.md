@@ -37,12 +37,12 @@ src/
 │   └── debug/
 │       ├── ConsoleViewer.tsx       # Intercepted browser console log viewer (throttled, filterable)
 │       ├── CopyButton.tsx          # One-click JSON copy utility
-│       ├── DialogueTreeGraph.tsx   # Canvas node graph: recursive layout, pan/zoom, Jump to Replay
 │       ├── HistoryEditor.tsx       # Visual message timeline with inline editing (unused in tabs)
 │       ├── JsonExplorer.tsx        # Resizable, collapsible JSON tree viewer
 │       ├── JsonNode.tsx            # Single JSON node renderer (string/number/object/array)
 │       ├── LlmTraceViewer.tsx      # Parsed LLM exchange timeline with step breakdown
-│       ├── PlotTreeGraph.tsx       # Plot tree canvas with replay snapshot editing, inspector panel
+│       ├── NodeGraph.tsx           # Generic canvas node graph: layout, pan/zoom, edge rendering
+│       ├── NodeGraphConfigs.tsx    # Dialogue and plot tree configs, node cards, inspectors
 │       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
 │       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
 ├── context/
@@ -227,10 +227,10 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - **Regenerate in replay**: Works for any navigated or newly-generated step since `lastStepId` is set on every
   navigation. YOU messages are injected in replay navigation, so `trimmedHistory` in `handleRegenerate` correctly
   captures the last player choice.
-- **Start from any step**: The "Jump to Replay" button in `DialogueTreeGraph` calls `handleJumpToStep(stepId)` which
+- **Start from any step**: The "Jump to Replay" button in `NodeGraph (dialogue)` calls `handleJumpToStep(stepId)` which
   fetches the tree, calls `buildHistoryFromTree` to reconstruct history with YOU messages, and sets `lastStepId` +
   `canRegenerate = true` so REGENERATE is immediately available.
-- **Plot tree sync**: During replay, `PlotTreeGraph` reads plots from `worldManager`'s replay snapshot (not the live
+- **Plot tree sync**: During replay, the plot `NodeGraph` reads plots from `worldManager`'s replay snapshot (not the live
   DB),
   so the plot tree reflects the state at the current dialogue step. Editing a plot in the inspector during replay
   updates
@@ -366,12 +366,12 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 tabs:
   with stat bars, opinion pills, attribute k/v table, and add-new-entity (`src/components/debug/WorldEditor.tsx`)
 - **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (
   active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay" (
-  `src/components/debug/DialogueTreeGraph.tsx`). Uses `PATCH /api/dialogue/:id` to save edits. Receives `currentStepId`
-  prop and highlights the actively-replaying node with a green "NOW" badge.
+  `src/components/debug/NodeGraph.tsx` with dialogue config). Uses `PATCH /api/dialogue/:id` to save edits.
+  Receives `currentStepId` and highlights the actively-replaying node with a green "NOW" badge.
 - **Plot Tree**: Canvas node graph for plot inspection and editing during replay (
-  `src/components/debug/PlotTreeGraph.tsx`). Reads from `worldManager`'s replay snapshot when replay is active, or from
-  the live API. Inspector allows editing title, description, status, involved entities. Saving in replay mode updates
-  the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
+  `src/components/debug/NodeGraph.tsx` with plot config). Reads from `worldManager`'s replay snapshot when replay is
+  active, or from the live API. Inspector allows editing title, description, status, involved entities.
+  Saving in replay mode updates the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
 
 ---
 

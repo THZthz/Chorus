@@ -425,7 +425,7 @@ export default function App() {
     );
   };
 
-  // ── Jump to specific step (from DialogueTreeGraph) ──
+  // ── Jump to specific step (from DebugPanel dialogue tree) ──
 
   const handleJumpToStep = async (stepId: string) => {
     sseRef.current?.abort();

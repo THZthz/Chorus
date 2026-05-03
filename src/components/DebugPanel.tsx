@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Terminal, X, Bug, Database, Monitor, GitBranch, Network } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
-import { DialogueTreeGraph } from "@/components/debug/DialogueTreeGraph";
-import { PlotTreeGraph } from "@/components/debug/PlotTreeGraph";
+import { NodeGraph } from "@/components/debug/NodeGraph";
+import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeGraphConfigs";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 
@@ -55,10 +55,31 @@ export const DebugPanel: React.FC<{
     </button>
   );
 
-  const handleJumpToReplay = (stepId: string) => {
-    setIsOpen(false);
-    onJumpToReplay?.(stepId);
-  };
+  const handleJumpToReplay = useCallback(
+    (stepId: string) => {
+      setIsOpen(false);
+      onJumpToReplay?.(stepId);
+    },
+    [onJumpToReplay],
+  );
+
+  const dialogueConfig = useMemo(
+    () =>
+      createDialogueConfig({
+        onJumpToReplay: handleJumpToReplay,
+        currentStepId: currentReplayStepId,
+      }),
+    [handleJumpToReplay, currentReplayStepId],
+  );
+
+  const plotConfig = useMemo(
+    () =>
+      createPlotConfig({
+        isReplayActive: !!currentReplayStepId,
+        currentReplayStepId: currentReplayStepId ?? null,
+      }),
+    [currentReplayStepId],
+  );
 
   return (
     <>
@@ -127,18 +148,8 @@ export const DebugPanel: React.FC<{
                 {activeTab === "console" && <ConsoleViewer />}
 
                 {activeTab === "world" && <WorldEditor />}
-                {activeTab === "tree" && (
-                  <DialogueTreeGraph
-                    onJumpToReplay={handleJumpToReplay}
-                    currentStepId={currentReplayStepId}
-                  />
-                )}
-                                {activeTab === "plots" && (
-                  <PlotTreeGraph
-                    isReplayActive={!!currentReplayStepId}
-                    currentReplayStepId={currentReplayStepId ?? null}
-                  />
-                )}
+                {activeTab === "tree" && <NodeGraph config={dialogueConfig} />}
+                {activeTab === "plots" && <NodeGraph config={plotConfig} />}
               </div>
             </motion.div>
           </>

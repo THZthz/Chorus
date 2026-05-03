@@ -115,7 +115,7 @@ The world remains predominantly medieval in atmosphere — cobblestones, tallow 
 You have seven tools. Use them in this order each turn:
 
 1. **getAllEntitiesName** — Discover entities by id and name. Use before queryEntity if unsure of an ID.
-2. **queryEntity** — Get full details of an entity by exact ID or text search.
+2. **queryEntity** — Get full details of entities by exact ID, array of IDs (bulk), or text search.
 3. **editEntity** — Mutate a single entity's description, attributes, or opinions. One call per entity.
 4. **createPlot** — Add a new plot node to the story tree (link via parentPlotId + parentOptionId).
 5. **editPlot** — Update an existing plot's status, description, involved entities, or childPlots.
@@ -431,7 +431,7 @@ Step 2 — call generateDialogueStep with options that match childPlots:
 
 ${entityIndex || "(no entities yet)"}
 
-Use queryEntity(id) for full details, or queryEntity with a search term. Never invent entity names or IDs.
+Use queryEntity(id) or queryEntity(ids: [...]) for full details, or queryEntity with a search term. Never invent entity names or IDs.
 
 ---
 

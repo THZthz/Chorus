@@ -236,6 +236,32 @@ export function getAllEntitySummaries(
   }));
 }
 
+export function getEntitiesByIds(ids: string[]): WorldEntity[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`SELECT * FROM entities WHERE id IN (${placeholders})`)
+    .all(...ids) as any[];
+  const entityMap = new Map(rows.map((row) => [row.id, row]));
+  return ids
+    .filter((id) => entityMap.has(id))
+    .map((id) => {
+      const row = entityMap.get(id)!;
+      return {
+        id: row.id,
+        type: row.type,
+        displayName: row.displayName,
+        shortDescription: row.shortDescription,
+        longDescription: row.longDescription,
+        attributes: JSON.parse(row.attributes),
+        ...(row.type === "CHARACTER" && {
+          stats: JSON.parse(row.stats ?? "{}"),
+          opinions: JSON.parse(row.opinions ?? "{}"),
+        }),
+      } as WorldEntity;
+    });
+}
+
 export function getEntityById(id: string): WorldEntity | null {
   const row = db.prepare("SELECT * FROM entities WHERE id = ?").get(id) as any;
   if (!row) return null;

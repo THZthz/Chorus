@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   updateEntity,
   getEntityById,
+  getEntitiesByIds,
   getAllEntitySummaries,
   searchEntities,
 } from "@/server/models/world";
@@ -160,17 +161,21 @@ export function createQueryEntityTool() {
   return tool({
     title: "Query Entity",
     description:
-      "Get full details of a world entity. Provide either an exact id or a search term (case-insensitive match on name/description).",
+      "Get full details of world entities. Provide an id for single lookup, ids array for bulk lookup, or a search term for text search (case-insensitive match on name/description, up to 5 results).",
     inputSchema: z.object({
-      id: z.string().optional().describe("Exact entity ID (e.g. 'madam_vespera')."),
+      id: z.string().optional().describe("Exact entity ID for single lookup (e.g. 'madam_vespera')."),
+      ids: z
+        .array(z.string())
+        .optional()
+        .describe("Array of entity IDs for bulk lookup. Returns results in the same order, skipping missing IDs."),
       search: z
         .string()
         .optional()
         .describe("Text to search for in entity names/descriptions (up to 5 results)."),
     }),
-    execute: wrapSafe(async (args: { id?: string; search?: string }) => {
-      if (!args.id && !args.search) {
-        return "ERROR: Provide either 'id' for exact lookup or 'search' for text search.";
+    execute: wrapSafe(async (args: { id?: string; ids?: string[]; search?: string }) => {
+      if (!args.id && !args.ids && !args.search) {
+        return "ERROR: Provide 'id' for single lookup, 'ids' for bulk lookup, or 'search' for text search.";
       }
       if (args.id) {
         const entity = getEntityById(args.id);
@@ -178,6 +183,13 @@ export function createQueryEntityTool() {
           return `ERROR: Entity '${args.id}' not found. Call getAllEntitiesName() to discover valid IDs.`;
         }
         return JSON.stringify(entity, null, 2);
+      }
+      if (args.ids && args.ids.length > 0) {
+        const results = getEntitiesByIds(args.ids);
+        if (results.length === 0) {
+          return "ERROR: None of the requested IDs were found. Call getAllEntitiesName() to discover valid IDs.";
+        }
+        return JSON.stringify(results, null, 2);
       }
       const results = searchEntities(args.search!);
       if (results.length === 0) {

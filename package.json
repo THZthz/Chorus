@@ -29,6 +29,7 @@
     "@codemirror/theme-one-dark": "^6.1.3",
     "@google/genai": "^1.50.1",
     "@markdoc/markdoc": "^0.5.7",
+    "@markwhen/codemirror-tables": "^0.1.1",
     "@tailwindcss/vite": "^4.1.14",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",

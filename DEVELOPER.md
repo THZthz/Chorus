@@ -383,6 +383,8 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
   `@uiw/react-codemirror` + `codemirror-rich-markdoc` — markdown syntax characters (`#`, `**`) are hidden when the
   cursor is away and revealed for editing. JSON fenced code blocks are syntax-highlighted using
   `@lezer/json` (via custom `ViewPlugin`) with colors matching the LLM Trace Viewer's `JsonExplorer` theme.
+  GFM tables are rendered as interactive widgets via `@markwhen/codemirror-tables` with inline cell editing,
+  keyboard navigation (Tab/Shift+Tab/Enter), and a floating toolbar for row/column operations.
   Supports `{{entities_brief}}` and `{{active_plots}}` template variables.
   Template stored in `system_state` table, editable via `GET/PUT /api/debug/system-prompt`. Reset via
   `POST /api/debug/system-prompt/reset`. Load Default (without saving) via `GET /api/debug/system-prompt/default`.

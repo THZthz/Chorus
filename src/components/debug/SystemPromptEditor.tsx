@@ -5,9 +5,11 @@ import { EditorView, ViewPlugin, Decoration, DecorationSet, ViewUpdate } from "@
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { jsonLanguage } from "@codemirror/lang-json";
+import { markdownLanguage } from "@codemirror/lang-markdown";
 import markdoc from "@markdoc/markdoc";
 import type { Config } from "@markdoc/markdoc";
 import richEditor from "codemirror-rich-markdoc";
+import { createTableExtension, tableDarkTheme } from "@markwhen/codemirror-tables";
 
 const TEMPLATE_VARS = [
   {
@@ -260,11 +262,15 @@ export const SystemPromptEditor: React.FC = () => {
 
   const extensions = useMemo(
     () => [
-      richEditor({ markdoc: markdocConfig }),
+      richEditor({ markdoc: markdocConfig, lezer: { base: markdownLanguage } }),
       syntaxHighlighting(debugHighlightStyle),
       jsonCodeBlockHighlight(),
       jsonHighlightTheme,
       EditorView.lineWrapping,
+      createTableExtension({
+        cellEditorExtensions: [debugEditorTheme],
+      }),
+      tableDarkTheme,
     ],
     [],
   );

@@ -99,6 +99,15 @@ const debugEditorTheme = EditorView.theme({
   },
 }, { dark: true });
 
+const tableOverrides = EditorView.theme({
+  "&": {
+    "--table-toolbar-bg": "#2d2d2d",
+    "--table-toolbar-color": "#e0e0e0",
+    "--table-toolbar-hover-bg": "#3d3d3d",
+    "--table-toolbar-border": "#444",
+  },
+}, { dark: true });
+
 // JSON fenced-code-block highlight colors — matches JsonExplorer/JsonNode theme
 const jsonHighlightTheme = EditorView.theme({
   ".cm-json-string": { color: "#98c379" },
@@ -271,6 +280,7 @@ export const SystemPromptEditor: React.FC = () => {
         cellEditorExtensions: [debugEditorTheme],
       }),
       tableDarkTheme,
+      tableOverrides,
     ],
     [],
   );

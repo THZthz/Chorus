@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Terminal, ChevronDown, RefreshCw, Trash2, Bug, WrapText, Clock } from "lucide-react";
+import { Terminal, ChevronDown, RefreshCw, Trash2, Bug, WrapText, Clock, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { LlmLog } from "@/server/models/debug";
 import { CopyButton } from "@/components/debug/CopyButton";
@@ -582,35 +582,73 @@ export const LlmTraceViewer: React.FC = () => {
                                                 )}
                                             </div>
 
-                                            {call.output != null && (
-                                              <div className="mt-2 pt-2 border-t border-white/5">
-                                                <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">
-                                                  Result
-                                                </span>
-                                                <div className="mt-1">
-                                                  {typeof call.output === "string" ? (
-                                                    <div
-                                                      className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
-                                                        call.output.includes("SUCCESS")
-                                                          ? "text-[#98c379]"
-                                                          : call.output.includes("ERROR") ||
-                                                              call.output.includes("FEEDBACK")
-                                                            ? "text-[#e06c75]"
-                                                            : "text-white/40"
-                                                      }`}
-                                                    >
-                                                      {call.output}
+                                            <div className="mt-2 pt-2 border-t border-white/5">
+                                              {(() => {
+                                                const isError =
+                                                  typeof call.output === "string" &&
+                                                  (call.output.startsWith("ERROR") ||
+                                                    call.output.startsWith("VALIDATION FAILED"));
+                                                const isSuccess =
+                                                  typeof call.output === "string" &&
+                                                  call.output.startsWith("SUCCESS");
+
+                                                if (call.output == null) {
+                                                  return (
+                                                    <div className="flex items-center gap-1.5 text-[#eab308]/60">
+                                                      <XCircle size={12} />
+                                                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                                                        No output captured
+                                                      </span>
                                                     </div>
-                                                  ) : (
-                                                    <JsonExplorer
-                                                      data={JSON.stringify(call.output)}
-                                                      isWrapping={isWrapping}
-                                                      className="max-h-[150px] overflow-auto"
-                                                    />
-                                                  )}
-                                                </div>
-                                              </div>
-                                            )}
+                                                  );
+                                                }
+
+                                                if (isError) {
+                                                  return (
+                                                    <div className="border border-red-500/20 rounded-sm overflow-hidden">
+                                                      <div className="flex items-center gap-2 px-2 py-1.5 bg-red-500/10 border-b border-red-500/20">
+                                                        <XCircle size={12} className="text-[#e06c75]" />
+                                                        <span className="text-[9px] font-bold text-[#e06c75] uppercase tracking-wider">
+                                                          Tool Error
+                                                        </span>
+                                                      </div>
+                                                      <div className="p-2 bg-red-500/[0.03]">
+                                                        <div className="text-[11px] text-[#e06c75] whitespace-pre-wrap break-words leading-relaxed">
+                                                          {call.output}
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                }
+
+                                                return (
+                                                  <div>
+                                                    <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">
+                                                      Result
+                                                    </span>
+                                                    <div className="mt-1">
+                                                      {typeof call.output === "string" ? (
+                                                        <div
+                                                          className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
+                                                            isSuccess
+                                                              ? "text-[#98c379]"
+                                                              : "text-white/40"
+                                                          }`}
+                                                        >
+                                                          {call.output}
+                                                        </div>
+                                                      ) : (
+                                                        <JsonExplorer
+                                                          data={JSON.stringify(call.output)}
+                                                          isWrapping={isWrapping}
+                                                          className="max-h-[150px] overflow-auto"
+                                                        />
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })()}
+                                            </div>
                                           </div>
                                         );
                                       })}
@@ -917,30 +955,68 @@ export const LlmTraceViewer: React.FC = () => {
                                                     );
                                                   })()}
                                                 </div>
-                                                {call.output != null && (
-                                                  <div className="mt-1 pt-1 border-t border-white/5">
-                                                    {typeof call.output === "string" ? (
-                                                      <div
-                                                        className={`text-[10px] whitespace-pre-wrap break-words ${
-                                                          call.output.includes("SUCCESS")
-                                                            ? "text-[#98c379]"
-                                                            : call.output.includes("ERROR") ||
-                                                              call.output.includes("FEEDBACK")
-                                                              ? "text-[#e06c75]"
-                                                              : "text-white/40"
-                                                        }`}
-                                                      >
-                                                        {call.output}
+                                                <div className="mt-1 pt-1 border-t border-white/5">
+                                                  {(() => {
+                                                    const isError =
+                                                      typeof call.output === "string" &&
+                                                      (call.output.startsWith("ERROR") ||
+                                                        call.output.startsWith("VALIDATION FAILED"));
+                                                    const isSuccess =
+                                                      typeof call.output === "string" &&
+                                                      call.output.startsWith("SUCCESS");
+
+                                                    if (call.output == null) {
+                                                      return (
+                                                        <div className="flex items-center gap-1.5 text-[#eab308]/60">
+                                                          <XCircle size={10} />
+                                                          <span className="text-[9px] font-bold uppercase tracking-wider">
+                                                            No output captured
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    if (isError) {
+                                                      return (
+                                                        <div className="border border-red-500/20 rounded-sm overflow-hidden">
+                                                          <div className="flex items-center gap-1.5 px-1.5 py-1 bg-red-500/10 border-b border-red-500/20">
+                                                            <XCircle size={10} className="text-[#e06c75]" />
+                                                            <span className="text-[8px] font-bold text-[#e06c75] uppercase tracking-wider">
+                                                              Tool Error
+                                                            </span>
+                                                          </div>
+                                                          <div className="p-1.5 bg-red-500/[0.03]">
+                                                            <div className="text-[10px] text-[#e06c75] whitespace-pre-wrap break-words">
+                                                              {call.output}
+                                                            </div>
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    }
+
+                                                    return (
+                                                      <div>
+                                                        {typeof call.output === "string" ? (
+                                                          <div
+                                                            className={`text-[10px] whitespace-pre-wrap break-words ${
+                                                              isSuccess
+                                                                ? "text-[#98c379]"
+                                                                : "text-white/40"
+                                                            }`}
+                                                          >
+                                                            {call.output}
+                                                          </div>
+                                                        ) : (
+                                                          <JsonExplorer
+                                                            data={JSON.stringify(call.output)}
+                                                            isWrapping={isWrapping}
+                                                            className="max-h-[100px] overflow-auto"
+                                                          />
+                                                        )}
                                                       </div>
-                                                    ) : (
-                                                      <JsonExplorer
-                                                        data={JSON.stringify(call.output)}
-                                                        isWrapping={isWrapping}
-                                                        className="max-h-[100px] overflow-auto"
-                                                      />
-                                                    )}
-                                                  </div>
-                                                )}
+                                                    );
+                                                  })()}
+                                                </div>
                                               </div>
                                             );
                                           })}

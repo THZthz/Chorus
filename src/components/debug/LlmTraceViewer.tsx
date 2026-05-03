@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { LlmLog } from "@/server/models/debug";
 import { CopyButton } from "@/components/debug/CopyButton";
 import { JsonExplorer } from "@/components/debug/JsonExplorer";
+import { JsonNode } from "@/components/debug/JsonNode";
 
 export const LlmTraceViewer: React.FC = () => {
   const [logs, setLogs] = useState<LlmLog[]>([]);
@@ -84,6 +85,17 @@ export const LlmTraceViewer: React.FC = () => {
       return JSON.stringify(JSON.parse(jsonStr), null, 2);
     } catch (e) {
       return jsonStr;
+    }
+  };
+
+  const tryParseJson = (val: unknown): unknown | null => {
+    if (typeof val !== "string") return null;
+    const trimmed = val.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+    try {
+      return JSON.parse(val);
+    } catch {
+      return null;
     }
   };
 
@@ -628,21 +640,35 @@ export const LlmTraceViewer: React.FC = () => {
                                                     </span>
                                                     <div className="mt-1">
                                                       {typeof call.output === "string" ? (
-                                                        <div
-                                                          className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
-                                                            isSuccess
-                                                              ? "text-[#98c379]"
-                                                              : "text-white/40"
-                                                          }`}
-                                                        >
-                                                          {call.output}
-                                                        </div>
+                                                        (() => {
+                                                          const parsed = tryParseJson(call.output);
+                                                          if (parsed) {
+                                                            return (
+                                                              <div className="p-3 debug-scrollbar bg-transparent max-h-[150px] overflow-auto">
+                                                                <div className={!isWrapping ? "w-fit min-w-full" : ""}>
+                                                                  <JsonNode value={parsed} depth={0} isWrapping={isWrapping} />
+                                                                </div>
+                                                              </div>
+                                                            );
+                                                          }
+                                                          return (
+                                                            <div
+                                                              className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
+                                                                isSuccess
+                                                                  ? "text-[#98c379]"
+                                                                  : "text-white/40"
+                                                              }`}
+                                                            >
+                                                              {call.output}
+                                                            </div>
+                                                          );
+                                                        })()
                                                       ) : (
-                                                        <JsonExplorer
-                                                          data={JSON.stringify(call.output)}
-                                                          isWrapping={isWrapping}
-                                                          className="max-h-[150px] overflow-auto"
-                                                        />
+                                                        <div className="p-3 debug-scrollbar bg-transparent max-h-[150px] overflow-auto">
+                                                          <div className={!isWrapping ? "w-fit min-w-full" : ""}>
+                                                            <JsonNode value={call.output} depth={0} isWrapping={isWrapping} />
+                                                          </div>
+                                                        </div>
                                                       )}
                                                     </div>
                                                   </div>
@@ -997,21 +1023,35 @@ export const LlmTraceViewer: React.FC = () => {
                                                     return (
                                                       <div>
                                                         {typeof call.output === "string" ? (
-                                                          <div
-                                                            className={`text-[10px] whitespace-pre-wrap break-words ${
-                                                              isSuccess
-                                                                ? "text-[#98c379]"
-                                                                : "text-white/40"
-                                                            }`}
-                                                          >
-                                                            {call.output}
-                                                          </div>
+                                                          (() => {
+                                                            const parsed = tryParseJson(call.output);
+                                                            if (parsed) {
+                                                              return (
+                                                                <div className="p-2 debug-scrollbar bg-transparent max-h-[100px] overflow-auto">
+                                                                  <div className={!isWrapping ? "w-fit min-w-full" : ""}>
+                                                                    <JsonNode value={parsed} depth={0} isWrapping={isWrapping} />
+                                                                  </div>
+                                                                </div>
+                                                              );
+                                                            }
+                                                            return (
+                                                              <div
+                                                                className={`text-[10px] whitespace-pre-wrap break-words ${
+                                                                  isSuccess
+                                                                    ? "text-[#98c379]"
+                                                                    : "text-white/40"
+                                                                }`}
+                                                              >
+                                                                {call.output}
+                                                              </div>
+                                                            );
+                                                          })()
                                                         ) : (
-                                                          <JsonExplorer
-                                                            data={JSON.stringify(call.output)}
-                                                            isWrapping={isWrapping}
-                                                            className="max-h-[100px] overflow-auto"
-                                                          />
+                                                          <div className="p-2 debug-scrollbar bg-transparent max-h-[100px] overflow-auto">
+                                                            <div className={!isWrapping ? "w-fit min-w-full" : ""}>
+                                                              <JsonNode value={call.output} depth={0} isWrapping={isWrapping} />
+                                                            </div>
+                                                          </div>
                                                         )}
                                                       </div>
                                                     );

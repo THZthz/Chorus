@@ -44,6 +44,7 @@ src/
 │       ├── NodeGraph.tsx           # Generic canvas node graph: layout, pan/zoom, edge rendering
 │       ├── NodeGraphConfigs.tsx    # Dialogue and plot tree configs, node cards, inspectors
 │       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
+│       ├── SystemPromptEditor.tsx  # Live markdown editor (CodeMirror + codemirror-rich-markdoc)
 │       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
 ├── context/
 │   └── CharacterContext.tsx  # Global character stats (React Context) with default fantasy-steampunk stats
@@ -69,6 +70,7 @@ src/
 ├── shared/
 │   └── events.ts             # SSE event type definitions (shared backend/frontend, typed event map)
 └── types/
+    ├── codemirror-rich-markdoc.d.ts  # Module declaration for untyped package
     ├── dialogue.ts           # Message, DialogueOption, DialogueStep interfaces
     ├── entities.ts           # WorldEntity, Character, Location, WorldObject, CharacterStats
     └── plot.ts               # Plot, PlotOption interfaces
@@ -377,9 +379,11 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
   `src/components/debug/NodeGraph.tsx` with plot config). Reads from `worldManager`'s replay snapshot when replay is
   active, or from the live API. Inspector allows editing title, description, status, involved entities.
   Saving in replay mode updates the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
-- **System Prompt**: Runtime-editable GM system prompt template. Uses `{{entities_brief}}` and `{{active_plots}}`
-  template variables for dynamic content injection. Stored in `system_state` table, editable via
-  `GET/PUT /api/debug/system-prompt` and `POST /api/debug/system-prompt/reset`.
+- **System Prompt**: Obsidian-style live markdown editor for the GM system prompt template. Uses
+  `@uiw/react-codemirror` + `codemirror-rich-markdoc` — markdown syntax characters (`#`, `**`) are hidden when the
+  cursor is away and revealed for editing. Supports `{{entities_brief}}` and `{{active_plots}}` template variables.
+  Template stored in `system_state` table, editable via `GET/PUT /api/debug/system-prompt`. Reset via
+  `POST /api/debug/system-prompt/reset`. Load Default (without saving) via `GET /api/debug/system-prompt/default`.
   (`src/components/debug/SystemPromptEditor.tsx`). The `buildSystemPrompt()` function in
   `src/server/llm/index.ts` loads the template from DB (falling back to `DEFAULT_SYSTEM_PROMPT_TEMPLATE`)
   and replaces template variables with live data at generation time.

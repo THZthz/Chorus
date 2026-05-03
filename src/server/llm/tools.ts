@@ -11,6 +11,22 @@ import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import type { DialogueOption } from "@/types/dialogue";
 
+// ── ASCII verification ──
+
+function isAscii(str: string): boolean {
+  return /^[\x00-\x7F]*$/.test(str);
+}
+
+function checkAscii(value: unknown, context: string): string | null {
+  const str = typeof value === "string" ? value : JSON.stringify(value);
+  if (!isAscii(str)) {
+    const nonAscii = [...str].filter((c) => c.charCodeAt(0) > 127);
+    const unique = [...new Set(nonAscii)].slice(0, 10);
+    return `ASCII VERIFICATION FAILED in ${context}: non-ASCII characters detected [${unique.join(" ")}]. Only plain ASCII (English text, no emoji, no other languages) is allowed. Please retry with ASCII-only content.`;
+  }
+  return null;
+}
+
 // ── Error-handling wrapper ──
 
 function wrapSafe<T>(
@@ -18,8 +34,14 @@ function wrapSafe<T>(
   toolName: string,
 ): (args: T) => Promise<string> {
   return async (args: T) => {
+    const inputError = checkAscii(args, `${toolName} input`);
+    if (inputError) return inputError;
+
     try {
-      return await fn(args);
+      const result = await fn(args);
+      const outputError = checkAscii(result, `${toolName} output`);
+      if (outputError) return outputError;
+      return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${toolName}] execute error:`, err);
@@ -393,6 +415,15 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
         }
       }
 
+      // ASCII verification on messages
+      for (let i = 0; i < args.messages.length; i++) {
+        const msg = args.messages[i];
+        const speakerError = checkAscii(msg.speaker, `generateDialogueStep messages[${i}].speaker`);
+        if (speakerError) { errors.push(speakerError); break; }
+        const textError = checkAscii(msg.text, `generateDialogueStep messages[${i}].text`);
+        if (textError) { errors.push(textError); break; }
+      }
+
       if (args.options) {
         for (let i = 0; i < args.options.length; i++) {
           const opt = args.options[i];
@@ -400,6 +431,21 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
             errors.push(
               `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
             );
+          }
+        }
+
+        // ASCII verification on options
+        for (let i = 0; i < args.options.length; i++) {
+          const opt = args.options[i];
+          const textError = checkAscii(opt.text, `generateDialogueStep options[${i}].text`);
+          if (textError) { errors.push(textError); break; }
+          if (opt.hintBefore) {
+            const hintError = checkAscii(opt.hintBefore, `generateDialogueStep options[${i}].hintBefore`);
+            if (hintError) { errors.push(hintError); break; }
+          }
+          if (opt.hintAfter) {
+            const hintError = checkAscii(opt.hintAfter, `generateDialogueStep options[${i}].hintAfter`);
+            if (hintError) { errors.push(hintError); break; }
           }
         }
       }

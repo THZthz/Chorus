@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Save, RotateCcw, FileText, Check, AlertTriangle, Braces } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
-import { EditorView, ViewPlugin, Decoration, DecorationSet, ViewUpdate, WidgetType } from "@codemirror/view";
-import { RangeSet, StateField } from "@codemirror/state";
+import { EditorView, ViewPlugin, Decoration, DecorationSet, ViewUpdate } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { jsonLanguage } from "@codemirror/lang-json";
@@ -200,49 +199,6 @@ function jsonCodeBlockHighlight() {
   );
 }
 
-class HorizontalRuleWidget extends WidgetType {
-  toDOM(): HTMLElement {
-    const hr = document.createElement("hr");
-    hr.style.cssText =
-      "border:none;border-top:1px solid rgba(255,255,255,0.1);margin:16px 0;";
-    return hr;
-  }
-  eq(): boolean {
-    return true;
-  }
-}
-
-function horizontalRulePlugin() {
-  return StateField.define<DecorationSet>({
-    create(state) {
-      return RangeSet.of(replaceHorizontalRules(state), true);
-    },
-    update(decorations, tr) {
-      return RangeSet.of(replaceHorizontalRules(tr.state), true);
-    },
-    provide(field) {
-      return EditorView.decorations.from(field);
-    },
-  });
-}
-
-function replaceHorizontalRules(state: import("@codemirror/state").EditorState) {
-  const widgets: import("@codemirror/state").Range<Decoration>[] = [];
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name === "HorizontalRule") {
-        widgets.push(
-          Decoration.replace({
-            widget: new HorizontalRuleWidget(),
-            block: true,
-          }).range(node.from, node.to),
-        );
-      }
-    },
-  });
-  return widgets;
-}
-
 export const SystemPromptEditor: React.FC = () => {
   const [template, setTemplate] = useState("");
   const [saved, setSaved] = useState(true);
@@ -318,7 +274,6 @@ export const SystemPromptEditor: React.FC = () => {
       richEditor({ markdoc: markdocConfig, lezer: { base: markdownLanguage } }),
       syntaxHighlighting(debugHighlightStyle),
       jsonCodeBlockHighlight(),
-      horizontalRulePlugin(),
       jsonHighlightTheme,
       EditorView.lineWrapping,
       createTableExtension({

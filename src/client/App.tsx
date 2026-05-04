@@ -97,15 +97,24 @@ export default function App() {
         console.trace(`[${logPrefix}] step_start stepId=${data.stepId}`);
       },
       onStreamingMessages: (messages) => {
-        setStreamingMessages(
-          messages.map((m, i) => ({
+        setStreamingMessages((prev) => {
+          if (
+            prev.length === messages.length &&
+            prev.every(
+              (m, i) =>
+                m.text === messages[i].text && m.speaker === messages[i].speaker,
+            )
+          ) {
+            return prev;
+          }
+          return messages.map((m, i) => ({
             id: `${streamId}-${i}`,
             speaker: m.speaker,
             type: m.type as Message["type"],
             text: m.text,
             metadata: m.metadata as Message["metadata"],
-          })),
-        );
+          }));
+        });
       },
       onStreamingReset: () => {
         setStreamingMessages((prev) => {

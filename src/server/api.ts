@@ -23,7 +23,6 @@ import {
   getAlternatives,
   setCurrentAlternative,
   getRootStep,
-  getLeafSteps,
   getAllSteps,
   getChildByOption,
   getTreeStats,
@@ -312,57 +311,6 @@ apiRouter.post("/dialogue/traverse", (req, res) => {
     `[dialogue/traverse] fallback: stepId=${stepId} optionId=${optionId} found=${!!child}`,
   );
   res.json({ child: child || null });
-});
-
-// ── Bulk regenerate ──
-
-apiRouter.post("/regenerate-all", async (_req, res) => {
-  try {
-    const leaves = getLeafSteps();
-    console.log(`[regenerate-all] regenerating ${leaves.length} leaf steps`);
-    const results: Array<{ leafId: string; success: boolean; newStepId?: string; error?: string }> =
-      [];
-
-    for (const leaf of leaves) {
-      try {
-        // Archive current step as alternative
-        saveAlternative(leaf.id, leaf.messages, leaf.options);
-
-        // Reconstruct conversation history from branch path
-        const branchPath = getBranchPath(leaf.id);
-        const history: Message[] = [];
-        for (const step of branchPath) {
-          // Collect all messages along the branch
-          for (const msg of step.messages) {
-            if (!history.some((h) => h.id === msg.id)) {
-              history.push({ ...msg, id: msg.id || `msg_${step.id}_${history.length}` });
-            }
-          }
-        }
-
-        const userInput = "Continue";
-        const leafSnapshot = leaf.worldSnapshot as { playerCharacter?: Character } | null;
-
-        const { stepId, messages } = await generateTurnBatch(
-          userInput,
-          history,
-          leaf.parentStepId,
-          leaf.parentOptionId,
-          leafSnapshot?.playerCharacter ?? null,
-        );
-
-        results.push({ leafId: leaf.id, success: true, newStepId: stepId });
-      } catch (err: unknown) {
-        const error = err instanceof Error ? err.message : String(err);
-        results.push({ leafId: leaf.id, success: false, error });
-      }
-    }
-
-    res.json({ results });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
 });
 
 // ── ID Generation ──

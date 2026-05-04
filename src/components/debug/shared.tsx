@@ -129,7 +129,16 @@ export const ResizableTextarea: React.FC<
     minHeight?: number;
     initialHeight?: number;
   }
-> = ({ minHeight = 72, initialHeight, className = "", style, onChange, value, defaultValue, ...props }) => {
+> = ({
+  minHeight = 72,
+  initialHeight,
+  className = "",
+  style,
+  onChange,
+  value,
+  defaultValue,
+  ...props
+}) => {
   const [maxH, setMaxH] = useState(initialHeight ?? minHeight);
   const startYRef = useRef(0);
   const startHRef = useRef(0);
@@ -175,10 +184,7 @@ export const ResizableTextarea: React.FC<
 
   return (
     <div className="flex flex-col group/rta">
-      <div
-        className="debug-scrollbar"
-        style={{ maxHeight: maxH, overflowY: "auto" }}
-      >
+      <div className="debug-scrollbar" style={{ maxHeight: maxH, overflowY: "auto" }}>
         <textarea
           ref={textareaRef}
           className={className}

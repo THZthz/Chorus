@@ -110,13 +110,9 @@ export const LlmTraceViewer: React.FC = () => {
     systemPrompt: string,
   ): { entities: string | null; plots: string | null } => {
     // Extract from section header to the next structural delimiter (--- or ## or end)
-    const entitiesMatch = systemPrompt.match(
-      /## WORLD ENTITIES\n\n([\s\S]*?)\n\n---/,
-    );
+    const entitiesMatch = systemPrompt.match(/## WORLD ENTITIES\n\n([\s\S]*?)\n\n---/);
     const entities = entitiesMatch ? entitiesMatch[1].trim() : null;
-    const plotsMatch = systemPrompt.match(
-      /## ACTIVE PLOTS\n\n([\s\S]*?)(?:\n\n---|\n\n## |$)/,
-    );
+    const plotsMatch = systemPrompt.match(/## ACTIVE PLOTS\n\n([\s\S]*?)(?:\n\n---|\n\n## |$)/);
     const plots = plotsMatch ? plotsMatch[1].trim() : null;
     return { entities, plots };
   };
@@ -417,13 +413,22 @@ export const LlmTraceViewer: React.FC = () => {
                                     {resp.totalUsage && (
                                       <>
                                         <span className="text-white/40">
-                                          in <span className="text-[#d19a66] tabular-nums">{resp.totalUsage.inputTokens ?? 0}</span>
+                                          in{" "}
+                                          <span className="text-[#d19a66] tabular-nums">
+                                            {resp.totalUsage.inputTokens ?? 0}
+                                          </span>
                                         </span>
                                         <span className="text-white/40">
-                                          out <span className="text-[#d19a66] tabular-nums">{resp.totalUsage.outputTokens ?? 0}</span>
+                                          out{" "}
+                                          <span className="text-[#d19a66] tabular-nums">
+                                            {resp.totalUsage.outputTokens ?? 0}
+                                          </span>
                                         </span>
                                         <span className="text-white/40">
-                                          tot <span className="text-[#d19a66] tabular-nums">{resp.totalUsage.totalTokens ?? 0}</span>
+                                          tot{" "}
+                                          <span className="text-[#d19a66] tabular-nums">
+                                            {resp.totalUsage.totalTokens ?? 0}
+                                          </span>
                                         </span>
                                       </>
                                     )}

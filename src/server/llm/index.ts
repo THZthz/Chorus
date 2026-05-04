@@ -403,12 +403,17 @@ Use ${TOOL_NAMES.QUERY_ENTITY}(id) or ${TOOL_NAMES.QUERY_ENTITY}(ids: [...]) for
 `.trim();
 
 export function getSystemPromptTemplate(): string {
-  const row = db.prepare("SELECT value FROM system_state WHERE key = ?").get(PROMPT_TEMPLATE_KEY) as { value: string } | undefined;
+  const row = db
+    .prepare("SELECT value FROM system_state WHERE key = ?")
+    .get(PROMPT_TEMPLATE_KEY) as { value: string } | undefined;
   return row?.value || DEFAULT_SYSTEM_PROMPT_TEMPLATE;
 }
 
 export function setSystemPromptTemplate(template: string): void {
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(PROMPT_TEMPLATE_KEY, template);
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    PROMPT_TEMPLATE_KEY,
+    template,
+  );
 }
 
 export function buildSystemPrompt(): string {
@@ -420,7 +425,9 @@ export function buildSystemPrompt(): string {
       .join("\n");
 
   const entityIndex = [
-    summaries.some((e) => e.type === "CHARACTER") ? `Characters IDs:\n${byType("CHARACTER")}` : null,
+    summaries.some((e) => e.type === "CHARACTER")
+      ? `Characters IDs:\n${byType("CHARACTER")}`
+      : null,
     summaries.some((e) => e.type === "LOCATION") ? `Locations IDs:\n${byType("LOCATION")}` : null,
     summaries.some((e) => e.type === "OBJECT") ? `Objects IDs:\n${byType("OBJECT")}` : null,
   ]
@@ -466,9 +473,7 @@ function persistStep(
 
   if (parentStepId && parentOptionId) {
     updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(
-      `[${label}] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
-    );
+    console.log(`[${label}] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`);
   }
 
   for (const msg of messages) {
@@ -668,7 +673,10 @@ export async function generateTurn(
         case "error":
           // A tool execution threw unexpectedly — capture the error so the
           // final-messages check surfaces the real reason instead of a generic message.
-          streamError = chunk.error instanceof Error ? chunk.error.message : String(chunk.error ?? "Unknown stream error");
+          streamError =
+            chunk.error instanceof Error
+              ? chunk.error.message
+              : String(chunk.error ?? "Unknown stream error");
           console.error(`[generateTurn] stream error chunk: ${streamError}`);
           break;
 
@@ -746,7 +754,15 @@ export async function generateTurn(
   );
   events.emitOptions(finalOptions);
 
-  persistStep(stepId, parentStepId, parentOptionId, messages, finalOptions, playerCharacter, "generateTurn");
+  persistStep(
+    stepId,
+    parentStepId,
+    parentOptionId,
+    messages,
+    finalOptions,
+    playerCharacter,
+    "generateTurn",
+  );
   events.finish();
 }
 
@@ -837,6 +853,14 @@ export async function generateTurnBatch(
     metadata: m.metadata,
   }));
 
-  persistStep(stepId, parentStepId, parentOptionId, messages, finalOptions, playerCharacter, "generateTurnBatch");
+  persistStep(
+    stepId,
+    parentStepId,
+    parentOptionId,
+    messages,
+    finalOptions,
+    playerCharacter,
+    "generateTurnBatch",
+  );
   return { stepId, messages, options: finalOptions };
 }

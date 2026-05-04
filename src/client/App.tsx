@@ -89,7 +89,11 @@ export default function App() {
 
   // ── SSE streaming ──
 
-  const createSseCallbacks = (streamId: string, logPrefix: string, onDone?: (stepId: string | null) => void): SseCallbacks => {
+  const createSseCallbacks = (
+    streamId: string,
+    logPrefix: string,
+    onDone?: (stepId: string | null) => void,
+  ): SseCallbacks => {
     let capturedStepId: string | null = null;
 
     return {
@@ -108,10 +112,7 @@ export default function App() {
         setStreamingMessages((prev) => {
           if (
             prev.length === messages.length &&
-            prev.every(
-              (m, i) =>
-                m.text === messages[i].text && m.speaker === messages[i].speaker,
-            )
+            prev.every((m, i) => m.text === messages[i].text && m.speaker === messages[i].speaker)
           ) {
             return prev;
           }
@@ -159,10 +160,18 @@ export default function App() {
           `[${logPrefix}] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
         );
       },
-      onWorldUpdate: () => { worldManager.loadState(); },
-      onPlotUpdate: () => { worldManager.loadState(); },
-      onPlotCreate: () => { worldManager.loadState(); },
-      onPlotEdit: () => { worldManager.loadState(); },
+      onWorldUpdate: () => {
+        worldManager.loadState();
+      },
+      onPlotUpdate: () => {
+        worldManager.loadState();
+      },
+      onPlotCreate: () => {
+        worldManager.loadState();
+      },
+      onPlotEdit: () => {
+        worldManager.loadState();
+      },
       onError: async (message) => {
         isRetryingRef.current = false;
         console.error(`[${logPrefix}] error: ${message}`);
@@ -576,7 +585,6 @@ export default function App() {
       },
     );
   };
-
 
   useEffect(() => {
     if (changedMessageIds.size === 0) return;

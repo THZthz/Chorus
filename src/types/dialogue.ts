@@ -26,6 +26,7 @@ export interface Message {
 export interface DialogueOption {
   id: string;
   text: string;
+  selectionMessage?: string; // First-person narration for the YOU message in dialogue history
   hintBefore?: string; // e.g. "[Consult the Void]"
   hintAfter?: string; // e.g. "[Charm her.]"
   nextStepId?: string; // Standard transition

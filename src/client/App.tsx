@@ -39,8 +39,8 @@ function buildHistoryFromTree(
       const parent = chain[i - 1];
       const opt = parent.options.find((o) => o.id === step.parentOptionId);
       if (opt) {
-        const cleanText = opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
-        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: cleanText });
+        const youText = opt.selectionMessage ?? opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: youText });
       }
     }
     result.push(...step.messages);
@@ -271,13 +271,13 @@ export default function App() {
     }
 
     let updatedHistory = history;
-    const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 
     const youMessage: Message = {
       id: `you-${await nextId()}`,
       speaker: "YOU",
       type: "YOU",
-      text: cleanText,
+      text: youText,
     };
     updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);
@@ -291,10 +291,10 @@ export default function App() {
       const skillBonus = getStatBySkillName(check.skill);
       const total = dice.reduce((a, b) => a + b, 0) + skillBonus;
       const success = total >= check.difficulty;
-      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory, cleanText);
+      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory, youText);
     } else {
       setHasBegun(true);
-      handleStreamingResponse(cleanText, updatedHistory, lastStepId, option.id);
+      handleStreamingResponse(youText, updatedHistory, lastStepId, option.id);
     }
   };
 
@@ -483,12 +483,12 @@ export default function App() {
       return;
     }
 
-    const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
     const youMessage: Message = {
       id: `you-${await nextId()}`,
       speaker: "YOU",
       type: "YOU",
-      text: cleanText,
+      text: youText,
     };
 
     console.log(
@@ -548,7 +548,7 @@ export default function App() {
     const parentIdAtTime = currentReplayStepId;
 
     handleStreamingResponse(
-      cleanText,
+      youText,
       updatedHistory,
       currentReplayStepId,
       option.id,

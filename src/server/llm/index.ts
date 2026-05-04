@@ -296,7 +296,8 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
   ],
   "options": [
     {
-      "text": "Ask him what he knows about the clockwrights working there.",
+      "text": "Ask about the clockwrights",
+      "selectionMessage": "I asked Orin what he knew about the clockwrights working in the old ward.",
       "hintBefore": "[Investigates the workshop]"
     },
     {
@@ -379,6 +380,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 - **Align options with active plot childPlots.** The options you present should correspond to the triggerConditions in the current plot's childPlots array. Some options can unrelated to plot progressing — they just serve to let player experience the world and immerse into it more deeply.
 - **Use skill checks sparingly.** Only when failure has interesting consequences. Don't check for trivial actions.
 
+- **text vs selectionMessage:** \`text\` is the short, imperative button label. Use \`selectionMessage\` (optional) for a first-person narrative sentence that flows naturally as the YOU message in dialogue history (e.g. "I tried to convince the guard to let us pass."). If you omit \`selectionMessage\`, the system uses \`text\` with any \`[SKILL]\` prefix stripped. Keep \`selectionMessage\` to one sentence, past or present tense, and in first person.
 - **Use hintBefore** to add flavor tags like "[Bribe]", "[Lie]", "[Force]", or to show skill names when there is no skill check.
 
 ---

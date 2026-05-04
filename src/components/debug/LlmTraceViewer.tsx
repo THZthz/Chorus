@@ -38,10 +38,8 @@ export const LlmTraceViewer: React.FC = () => {
   };
 
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [requestHeight, setRequestHeight] = useState(300);
   const [responseHeight, setResponseHeight] = useState(300);
   const dragRef = useRef<{
-    target: "request" | "response";
     startY: number;
     startHeight: number;
   } | null>(null);
@@ -51,11 +49,7 @@ export const LlmTraceViewer: React.FC = () => {
       if (!dragRef.current) return;
       const delta = e.clientY - dragRef.current.startY;
       const newHeight = Math.max(80, dragRef.current.startHeight + delta);
-      if (dragRef.current.target === "request") {
-        setRequestHeight(newHeight);
-      } else {
-        setResponseHeight(newHeight);
-      }
+      setResponseHeight(newHeight);
     };
     const onUp = () => {
       dragRef.current = null;
@@ -92,6 +86,21 @@ export const LlmTraceViewer: React.FC = () => {
     } catch (e) {
       return jsonStr;
     }
+  };
+
+  const extractDynamicSections = (
+    systemPrompt: string,
+  ): { entities: string | null; plots: string | null } => {
+    // Extract from section header to the next structural delimiter (--- or ## or end)
+    const entitiesMatch = systemPrompt.match(
+      /## WORLD ENTITIES\n\n([\s\S]*?)\n\n---/,
+    );
+    const entities = entitiesMatch ? entitiesMatch[1].trim() : null;
+    const plotsMatch = systemPrompt.match(
+      /## ACTIVE PLOTS\n\n([\s\S]*?)(?:\n\n---|\n\n## |$)/,
+    );
+    const plots = plotsMatch ? plotsMatch[1].trim() : null;
+    return { entities, plots };
   };
 
   const renderToolOutput = (output: unknown, compact?: boolean) => {
@@ -262,39 +271,20 @@ export const LlmTraceViewer: React.FC = () => {
                       className="overflow-hidden border-t border-white/10"
                     >
                       <div className="divide-y divide-white/[0.03]">
-                        <div className="p-5 bg-[#0b0c0e]">
-                          <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3">
-                              <div className="w-[1px] h-3 bg-[#e06c75]" />
-                              Outgoing_Request
-                            </h3>
-                            <CopyButton content={formatJson(log.request)} />
-                          </div>
-                          <div
-                            style={{ maxHeight: `${requestHeight}px` }}
-                            className="overflow-auto debug-scrollbar"
-                          >
-                            <JsonExplorer data={log.request} isWrapping={isWrapping} className="" />
-                          </div>
-                          <div
-                            className="h-6 -mx-5 mt-1 cursor-ns-resize flex items-center justify-center group/drag"
-                            onMouseDown={(e) => {
-                              dragRef.current = {
-                                target: "request",
-                                startY: e.clientY,
-                                startHeight: requestHeight,
-                              };
-                            }}
-                          >
-                            <div className="h-0.5 w-12 rounded-sm bg-white/10 group-hover/drag:bg-white/30 transition-colors" />
-                          </div>
-                        </div>
-
                         {(() => {
                           // Parse request for display
                           let req: any = {};
                           try {
                             req = JSON.parse(log.request);
+                          } catch (e) {}
+
+                          // Parse response for metadata
+                          let resp: any = {};
+                          try {
+                            resp =
+                              typeof log.response === "string"
+                                ? JSON.parse(log.response || "{}")
+                                : (log.response ?? {});
                           } catch (e) {}
 
                           // Build normalized steps with tool calls paired to their results
@@ -390,7 +380,83 @@ export const LlmTraceViewer: React.FC = () => {
                                     </span>
                                   )}
                                 </div>
+                                {/* Response metadata */}
+                                {(resp.finishReason || resp.totalUsage) && (
+                                  <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-3 text-[10px] font-mono items-center">
+                                    {resp.finishReason && (
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded-sm text-[8px] font-bold uppercase tracking-widest border ${
+                                          resp.finishReason === "stop"
+                                            ? "bg-[#98c379]/5 text-[#98c379] border-[#98c379]/20"
+                                            : resp.finishReason === "tool-calls"
+                                              ? "bg-[#61afef]/5 text-[#61afef] border-[#61afef]/20"
+                                              : "bg-white/5 text-white/40 border-white/10"
+                                        }`}
+                                      >
+                                        {resp.finishReason}
+                                      </span>
+                                    )}
+                                    {resp.totalUsage && (
+                                      <>
+                                        <span className="text-white/40">
+                                          in <span className="text-[#d19a66] tabular-nums">{resp.totalUsage.inputTokens ?? 0}</span>
+                                        </span>
+                                        <span className="text-white/40">
+                                          out <span className="text-[#d19a66] tabular-nums">{resp.totalUsage.outputTokens ?? 0}</span>
+                                        </span>
+                                        <span className="text-white/40">
+                                          tot <span className="text-[#d19a66] tabular-nums">{resp.totalUsage.totalTokens ?? 0}</span>
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                               </div>
+
+                              {/* System Context — dynamic portions of the system prompt */}
+                              {req.system &&
+                                (() => {
+                                  const { entities, plots } = extractDynamicSections(
+                                    String(req.system),
+                                  );
+                                  if (!entities && !plots) return null;
+                                  return (
+                                    <div className="mb-6 p-4 bg-[#0a0a0c] border border-white/5 rounded-sm">
+                                      <div className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-3">
+                                        System Context
+                                        <span className="text-white/10 ml-1">
+                                          (dynamic content injected into prompt)
+                                        </span>
+                                      </div>
+                                      {entities && (
+                                        <div className="mb-3">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <div className="w-[1px] h-3 bg-[#e06c75]" />
+                                            <span className="text-[9px] font-bold text-white/25 uppercase tracking-wider">
+                                              World Entities
+                                            </span>
+                                          </div>
+                                          <pre className="text-[10px] text-white/50 font-mono whitespace-pre-wrap break-words leading-relaxed bg-white/[0.01] p-3 rounded-sm border border-white/5 max-h-[200px] overflow-auto debug-scrollbar">
+                                            {entities}
+                                          </pre>
+                                        </div>
+                                      )}
+                                      {plots && (
+                                        <div>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <div className="w-[1px] h-3 bg-[#eab308]" />
+                                            <span className="text-[9px] font-bold text-white/25 uppercase tracking-wider">
+                                              Active Plots
+                                            </span>
+                                          </div>
+                                          <pre className="text-[10px] text-white/50 font-mono whitespace-pre-wrap break-words leading-relaxed bg-white/[0.01] p-3 rounded-sm border border-white/5 max-h-[200px] overflow-auto debug-scrollbar">
+                                            {plots}
+                                          </pre>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                               {/* Step timeline */}
                               <div className="space-y-4">
@@ -691,7 +757,20 @@ export const LlmTraceViewer: React.FC = () => {
                               {/* Exchange footer */}
                               <div className="mt-6 pt-4 border-t border-white/5 flex items-center gap-4 text-[10px] font-mono text-white/30">
                                 <span className="tracking-wider uppercase">Total</span>
-                                <span className="tabular-nums">{totalTokens} tokens</span>
+                                {resp.totalUsage?.totalTokens != null ? (
+                                  <span className="tabular-nums text-[#d19a66]">
+                                    {resp.totalUsage.totalTokens} tokens
+                                  </span>
+                                ) : (
+                                  <span className="tabular-nums">{totalTokens} tokens</span>
+                                )}
+                                {resp.totalUsage?.totalTokens != null &&
+                                  totalTokens > 0 &&
+                                  totalTokens !== resp.totalUsage.totalTokens && (
+                                    <span className="tabular-nums text-white/15">
+                                      (steps sum: {totalTokens})
+                                    </span>
+                                  )}
                                 <span className="text-white/10">·</span>
                                 <span className="tabular-nums">{log.duration}ms</span>
                                 <span className="text-white/10">·</span>
@@ -1086,7 +1165,6 @@ export const LlmTraceViewer: React.FC = () => {
                             className="h-6 -mx-5 mt-1 cursor-ns-resize flex items-center justify-center group/drag"
                             onMouseDown={(e) => {
                               dragRef.current = {
-                                target: "response",
                                 startY: e.clientY,
                                 startHeight: responseHeight,
                               };

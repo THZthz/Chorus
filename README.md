@@ -83,4 +83,4 @@ See [DEVELOPER.md](DEVELOPER.md) for architecture deep-dive, API endpoints, data
 
 ## License
 
-Private
+[AGPL v3](./LICENSE)

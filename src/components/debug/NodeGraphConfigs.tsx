@@ -336,8 +336,8 @@ const DialogueInspector: React.FC<
                     <ResizableTextarea
                       autoFocus
                       className="w-full bg-white/[0.04] border border-white/8 rounded-sm px-1.5 py-1 text-[10px] font-mono text-white/70 focus:outline-none"
-                      initialHeight={40}
-                      minHeight={28}
+                      initialHeight={80}
+                      minHeight={36}
                       value={msg.text}
                       onChange={(e) => updateMsg(idx, "text", e.target.value)}
                       onKeyDown={(e) => e.key === "Escape" && setEditingIdx(null)}
@@ -786,8 +786,8 @@ const PlotInspector: React.FC<
             </label>
             <ResizableTextarea
               className="w-full bg-white/[0.04] border border-white/8 rounded-sm px-2 py-1 text-[11px] font-mono text-white/70 focus:outline-none focus:border-white/15"
-              initialHeight={56}
-              minHeight={40}
+              initialHeight={96}
+              minHeight={44}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />

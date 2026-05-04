@@ -225,7 +225,7 @@ const OpinionPills: React.FC<{
               <ResizableTextarea
                 autoFocus
                 className="w-full bg-transparent text-[11px] font-mono text-white/70 focus:outline-none leading-relaxed"
-                initialHeight={36}
+                initialHeight={88}
                 minHeight={28}
                 value={editVal}
                 onChange={(e) => setEditVal(e.target.value)}
@@ -482,7 +482,7 @@ export const WorldEditor: React.FC = () => {
                 <FieldLabel label="longDescription" />
                 <ResizableTextarea
                   className={`${inputCls} leading-relaxed`}
-                  initialHeight={66}
+                  initialHeight={110}
                   value={editing.longDescription}
                   onChange={(e) => updateField("longDescription", e.target.value)}
                 />

@@ -74,6 +74,30 @@
     scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
 }
 
+/* ResizableTextarea scrollbar — match debug-scrollbar */
+textarea.debug-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+textarea.debug-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+textarea.debug-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0px;
+}
+
+textarea.debug-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+textarea.debug-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
+}
+
 /* CodeMirror scrollbar — match debug-scrollbar */
 .cm-scroller::-webkit-scrollbar {
   width: 4px;

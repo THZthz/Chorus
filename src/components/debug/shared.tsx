@@ -152,7 +152,7 @@ export const ResizableTextarea: React.FC<
 
   return (
     <div className="flex flex-col group/rta">
-      <textarea className={`debug-scrollbar ${className}`} style={{ ...style, height, resize: "none" }} {...props} />
+      <textarea className={`debug-scrollbar overflow-y-auto ${className}`} style={{ ...style, height, resize: "none" }} {...props} />
       <div
         onMouseDown={onHandleDown}
         className="h-2 flex items-center justify-center cursor-ns-resize select-none"

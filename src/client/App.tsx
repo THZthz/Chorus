@@ -268,7 +268,7 @@ export default function App() {
       const skillBonus = getStatBySkillName(check.skill);
       const total = dice.reduce((a, b) => a + b, 0) + skillBonus;
       const success = total >= check.difficulty;
-      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory);
+      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory, cleanText);
     } else {
       setHasBegun(true);
       handleStreamingResponse(cleanText, updatedHistory, lastStepId, option.id);
@@ -284,10 +284,12 @@ export default function App() {
     dice: number[],
     skillBonus: number,
     historySnapshot: Message[],
+    optionText: string,
   ) => {
     const resultLabel = success ? "SUCCESS" : "FAILURE";
 
     const rollDescription = [
+      `[Player action: ${optionText}]`,
       `[Skill Check Result: ${check.skill.toUpperCase()} (${check.difficultyText})]`,
       `Rolled ${dice.join(" + ")} + ${skillBonus} (${check.skill}) = ${total} vs Difficulty ${check.difficulty}`,
       `Result: ${resultLabel}`,
@@ -299,7 +301,12 @@ export default function App() {
       id: `roll-${Date.now()}`,
       speaker: "SYSTEM",
       type: "NOTIFICATION",
-      text: `[${check.skill.toUpperCase()} - ${check.difficultyText} ${check.difficulty}] ${resultLabel} (${total} vs ${check.difficulty})`,
+      text: optionText,
+      skillCheck: {
+        skill: check.skill,
+        difficulty: `${check.difficultyText} ${check.difficulty}`,
+        success,
+      },
       rollResult: {
         dice,
         total,

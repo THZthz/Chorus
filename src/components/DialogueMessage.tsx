@@ -115,12 +115,14 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
 
   // Compact status-line for notifications
   if (isNotification) {
+    const hasRoll = !!message.rollResult;
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 5 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="mb-5 flex items-center gap-4 relative"
+        className="mb-6 relative"
       >
         <AnimatePresence>
           {isFlashing && (
@@ -134,31 +136,100 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
             />
           )}
         </AnimatePresence>
-        <div className="flex-1 h-px bg-[#a3c2a3]/12" />
-        <div className="flex items-center gap-2">
-          {message.skillCheck && (
-            <div
-              className="relative inline-block"
-              onMouseEnter={() => setIsTooltipVisible(true)}
-              onMouseLeave={() => setIsTooltipVisible(false)}
-            >
-              <span
-                className={`text-[11px] font-mono cursor-help uppercase tracking-wider transition-opacity hover:opacity-100 ${message.skillCheck.success ? "text-[#9eff9e]/70" : "text-[#ff6b6b]/70"}`}
-              >
-                [{message.skillCheck.skill} · {message.skillCheck.success ? "Pass" : "Fail"}]
-              </span>
-              <AnimatePresence>
-                {isTooltipVisible && message.rollResult && (
-                  <RollTooltip rollResult={message.rollResult} />
-                )}
-              </AnimatePresence>
+
+        {hasRoll ? (
+          <div className="border border-white/10 bg-[#0d0d0d] rounded-sm p-5">
+            {/* Option text */}
+            <div className="text-[15px] text-[#ccc] italic leading-relaxed mb-4 pb-4 border-b border-white/5">
+              &ldquo;{message.text}&rdquo;
             </div>
-          )}
-          <span className="text-[#a3c2a3]/60 text-[11px] uppercase tracking-[0.18em] font-mono">
-            {message.text}
-          </span>
-        </div>
-        <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+
+            {/* Dice + stats row */}
+            <div className="flex gap-5 items-center">
+              {/* Dice faces */}
+              <div className="flex gap-2 items-center">
+                {message.rollResult!.dice.map((val, i) => (
+                  <div
+                    key={i}
+                    className="w-10 h-10 rounded-sm border border-white/20 bg-[#1a1a1a] flex items-center justify-center"
+                  >
+                    <DieFace value={val} size="md" />
+                  </div>
+                ))}
+                <span className="text-[13px] text-[#4fb0c6] font-mono mx-0.5">+</span>
+                <span className="text-[13px] text-[#4fb0c6] font-mono">
+                  {message.rollResult!.skillBonus ?? 0}
+                </span>
+              </div>
+
+              {/* Vertical divider */}
+              <div className="w-px h-10 bg-white/10" />
+
+              {/* Stat lines */}
+              <div className="space-y-0.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider w-16">
+                    Skill
+                  </span>
+                  <span className="text-[13px] text-white font-mono">
+                    {message.rollResult!.skill}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider w-16">
+                    Roll
+                  </span>
+                  <span className="text-[13px] text-white font-mono">
+                    {message.rollResult!.total}
+                    <span className="text-gray-500"> vs </span>
+                    {message.rollResult!.difficulty}
+                  </span>
+                </div>
+              </div>
+
+              {/* Result badge */}
+              <div className="ml-auto">
+                <span
+                  className={`text-[12px] font-black uppercase tracking-[0.15em] px-3 py-1.5 border ${
+                    message.rollResult!.success
+                      ? "text-[#9eff9e] border-[#9eff9e]/30 bg-[#9eff9e]/5"
+                      : "text-[#ff6b6b] border-[#ff6b6b]/30 bg-[#ff6b6b]/5"
+                  }`}
+                >
+                  {message.rollResult!.success ? "Success" : "Failure"}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+            <div className="flex items-center gap-2">
+              {message.skillCheck && (
+                <div
+                  className="relative inline-block"
+                  onMouseEnter={() => setIsTooltipVisible(true)}
+                  onMouseLeave={() => setIsTooltipVisible(false)}
+                >
+                  <span
+                    className={`text-[11px] font-mono cursor-help uppercase tracking-wider transition-opacity hover:opacity-100 ${message.skillCheck.success ? "text-[#9eff9e]/70" : "text-[#ff6b6b]/70"}`}
+                  >
+                    [{message.skillCheck.skill} · {message.skillCheck.success ? "Pass" : "Fail"}]
+                  </span>
+                  <AnimatePresence>
+                    {isTooltipVisible && message.rollResult && (
+                      <RollTooltip rollResult={message.rollResult} />
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+              <span className="text-[#a3c2a3]/60 text-[11px] uppercase tracking-[0.18em] font-mono">
+                {message.text}
+              </span>
+            </div>
+            <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+          </div>
+        )}
       </motion.div>
     );
   }

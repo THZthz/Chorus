@@ -6,7 +6,6 @@ import type { WorldSnapshot } from "@/types/entities";
 import { DialogueMessage } from "@/components/DialogueMessage";
 import { DialogueOptions } from "@/components/DialogueOptions";
 import { TypingIndicator } from "@/components/TypingIndicator";
-import { DiceRoller } from "@/components/DiceRoller";
 import { CharacterPanel } from "@/components/CharacterPanel";
 import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
@@ -49,10 +48,10 @@ function buildHistoryFromTree(
 }
 
 export default function App() {
-  const { character } = useCharacter();
+  const { character, getStatBySkillName } = useCharacter();
   const [history, setHistory] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [currentCheck, setCurrentCheck] = useState<DialogueOption["check"] | null>(null);
+  const [isRolling, setIsRolling] = useState(false);
   const [dynamicOptions, setDynamicOptions] = useState<DialogueOption[] | null>(null);
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([]);
   const [changedMessageIds, setChangedMessageIds] = useState<Set<string>>(new Set());
@@ -240,7 +239,7 @@ export default function App() {
   // ── Option selection ──
 
   const handleOptionSelect = async (option: DialogueOption) => {
-    if (isTyping || currentCheck || isRevealingRef.current) return;
+    if (isTyping || isRolling || isRevealingRef.current) return;
 
     // Replay mode — navigate existing tree, no LLM
     if (mode === "replay") {
@@ -261,7 +260,15 @@ export default function App() {
     setHistory(updatedHistory);
 
     if (option.check) {
-      setCurrentCheck(option.check);
+      setIsRolling(true);
+      const check = option.check;
+      const diceCount = check.diceCount ?? 2;
+      await new Promise((r) => setTimeout(r, 1000));
+      const dice = Array.from({ length: diceCount }, () => Math.floor(Math.random() * 6) + 1);
+      const skillBonus = getStatBySkillName(check.skill);
+      const total = dice.reduce((a, b) => a + b, 0) + skillBonus;
+      const success = total >= check.difficulty;
+      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory);
     } else {
       setHasBegun(true);
       handleStreamingResponse(cleanText, updatedHistory, lastStepId, option.id);
@@ -270,40 +277,41 @@ export default function App() {
 
   // ── Dice roll completion ──
 
-  const handleRollComplete = async (total: number, success: boolean, dice: number[]) => {
-    if (!currentCheck) return;
-
-    const skillBonus = total - dice.reduce((a, b) => a + b, 0);
+  const handleRollComplete = async (
+    check: NonNullable<DialogueOption["check"]>,
+    total: number,
+    success: boolean,
+    dice: number[],
+    skillBonus: number,
+    historySnapshot: Message[],
+  ) => {
     const resultLabel = success ? "SUCCESS" : "FAILURE";
 
-    // Build the user input describing the roll outcome
     const rollDescription = [
-      `[Skill Check Result: ${currentCheck.skill.toUpperCase()} (${currentCheck.difficultyText})]`,
-      `Rolled ${dice.join(" + ")} + ${skillBonus} (${currentCheck.skill}) = ${total} vs Difficulty ${currentCheck.difficulty}`,
+      `[Skill Check Result: ${check.skill.toUpperCase()} (${check.difficultyText})]`,
+      `Rolled ${dice.join(" + ")} + ${skillBonus} (${check.skill}) = ${total} vs Difficulty ${check.difficulty}`,
       `Result: ${resultLabel}`,
     ].join("\n");
 
-    setCurrentCheck(null);
+    setIsRolling(false);
 
-    // Add a system notification about the roll
     const rollMessage: Message = {
       id: `roll-${Date.now()}`,
       speaker: "SYSTEM",
       type: "NOTIFICATION",
-      text: `[${currentCheck.skill.toUpperCase()} - ${currentCheck.difficultyText} ${currentCheck.difficulty}] ${resultLabel} (${total} vs ${currentCheck.difficulty})`,
+      text: `[${check.skill.toUpperCase()} - ${check.difficultyText} ${check.difficulty}] ${resultLabel} (${total} vs ${check.difficulty})`,
       rollResult: {
         dice,
         total,
-        difficulty: currentCheck.difficulty,
+        difficulty: check.difficulty,
         success,
-        skill: currentCheck.skill,
+        skill: check.skill,
         skillBonus,
       },
     };
-    const updatedHistory = [...history, rollMessage];
+    const updatedHistory = [...historySnapshot, rollMessage];
     setHistory(updatedHistory);
 
-    // Let the AI narrate the outcome
     handleStreamingResponse(rollDescription, updatedHistory, lastStepId, null);
   };
 
@@ -603,7 +611,7 @@ export default function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [history, isTyping, currentCheck, streamingMessages]);
+  }, [history, isTyping, isRolling, streamingMessages]);
 
   // ── Begin story ──
 
@@ -755,11 +763,6 @@ export default function App() {
               </div>
             ))}
 
-            {/* Dice roller modal */}
-            <AnimatePresence>
-              {currentCheck && <DiceRoller {...currentCheck} onComplete={handleRollComplete} />}
-            </AnimatePresence>
-
             {/* Typing indicator */}
             {isTyping && streamingMessages.length === 0 && <TypingIndicator />}
             <div ref={messagesEndRef} className="h-4" />
@@ -802,7 +805,7 @@ export default function App() {
                 </motion.button>
               </div>
             )}
-            {!isTyping && !currentCheck && dynamicOptions && dynamicOptions.length > 0 && (
+            {!isTyping && !isRolling && dynamicOptions && dynamicOptions.length > 0 && (
               <DialogueOptions
                 key="dynamic"
                 options={dynamicOptions}

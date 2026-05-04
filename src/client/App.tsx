@@ -108,6 +108,20 @@ export default function App() {
           ) {
             return prev;
           }
+          // During a retry, incoming messages rebuild from scratch. Compare
+          // against the pre-reset snapshot so identical content stays stable
+          // and the typing cursor doesn't re-animate through old messages.
+          const snapshot = retrySnapshotRef.current;
+          if (
+            snapshot.length > 0 &&
+            messages.length <= snapshot.length &&
+            messages.every(
+              (m, i) =>
+                m.text === snapshot[i].text && m.speaker === snapshot[i].speaker,
+            )
+          ) {
+            return prev;
+          }
           return messages.map((m, i) => ({
             id: `${streamId}-${i}`,
             speaker: m.speaker,

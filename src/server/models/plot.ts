@@ -227,8 +227,8 @@ export function buildActivePlotTree(): string {
     const lines: string[] = [];
     const marker = depth === 0 ? "▶" : "└─";
     lines.push(`${indent}${marker} ${plot.id} ${statusTag} "${plot.title}"`);
-    if (locations) lines.push(`${indent}   📍 ${locations}`);
-    if (characters) lines.push(`${indent}   👤 ${characters}`);
+    if (locations) lines.push(`${indent}   locations_ids [${locations}]`);
+    if (characters) lines.push(`${indent}   characters_ids [${characters}]`);
     lines.push(`${indent}   ${plot.description}`);
 
     if (plot.childPlots.length > 0) {

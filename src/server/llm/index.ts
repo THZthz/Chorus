@@ -245,11 +245,6 @@ Call ${TOOL_NAMES.GENERATE_DIALOGUE} with:
       "speaker": "CLOCKWORK",
       "type": "INNER_VOICE",
       "text": "Look at those gear ratios. That's not brute force — that's *precision*. Whoever built this knew what they were doing. And they used alchemical silver for the bearings, which means they expected heat. A lot of it."
-    },
-    {
-      "speaker": "INSTINCT",
-      "type": "INNER_VOICE",
-      "text": "Don't touch the canvas. Don't get closer. *Leave.*"
     }
   ],
   "options": [
@@ -257,8 +252,7 @@ Call ${TOOL_NAMES.GENERATE_DIALOGUE} with:
       "text": "Pull the canvas back and see what's underneath."
     },
     {
-      "text": "Examine the schematics on the table first.",
-      "hintBefore": "[Study]"
+      "text": "Examine the schematics on the table first."
     },
     {
       "text": "Listen at the back door before proceeding.",
@@ -281,7 +275,7 @@ Step 1 — call ${TOOL_NAMES.EDIT_PLOT} to mark the plot IN_PROGRESS and add a n
 {
   "id": "plot_1",
   "status": "IN_PROGRESS",
-  "childPlots": [
+  "childPlots": [ // This should be used prudently, but yes, you can modify plot which is IN_PROGRESS or PENDING.
     { "plotId": null, "triggerCondition": "Player investigates the strange workshop in the old ward" },
     { "plotId": null, "triggerCondition": "Player sides with the Clockwrights against the Mages' Circle" }
   ]
@@ -302,11 +296,11 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
   "options": [
     {
       "text": "Ask him what he knows about the clockwrights working there.",
-      "hintBefore": "[investigates the workshop]"
+      "hintBefore": "[Investigates the workshop]"
     },
     {
       "text": "Mention the Mages' Circle — see which side he's on.",
-      "hintBefore": "[probes guild loyalties]"
+      "hintBefore": "[Probes guild loyalties]"
     }
   ]
 }
@@ -341,7 +335,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 }
 \`\`\`
 
-→ Use "INSTINCT" or "SORCERY" as the speaker.
+→ Use "INSTINCT", "SORCERY", etc for the speaker name.
 
 **Wrong: speaker name duplicated in text**
 
@@ -359,7 +353,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 → The player receives NO response. The turn is broken. Always end with ${TOOL_NAMES.GENERATE_DIALOGUE}.
 
 **Wrong: raw text outside tools**
-→ "I think the player should encounter..." — this text is DISCARDED. Put it in a NARRATOR message instead.
+→ "You walk into a brothel, its name Lunar Whisper..." — this text is DISCARDED. Put it in a message instead.
 
 **Wrong: skill check option that also has hintBefore**
 
@@ -381,7 +375,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 
 - **Action-oriented, not abstract.** "Intimidate the guard" not "Be scary." "Examine the engine" not "Do mechanics."
 - **Keep options in the same scene.** All options should respond to what just happened, not jump to a different location or plot unless the scene naturally concludes.
-- **Align options with active plot childPlots.** The options you present should correspond to the triggerConditions in the current plot's childPlots array.
+- **Align options with active plot childPlots.** The options you present should correspond to the triggerConditions in the current plot's childPlots array. Some options can unrelated to plot progressing — they just serve to let player experience the world and immerse into it more deeply.
 - **Use skill checks sparingly.** Only when failure has interesting consequences. Don't check for trivial actions.
 
 - **Use hintBefore** to add flavor tags like "[Bribe]", "[Lie]", "[Force]", or to show skill names when there is no skill check.
@@ -423,9 +417,9 @@ export function buildSystemPrompt(): string {
       .join("\n");
 
   const entityIndex = [
-    summaries.some((e) => e.type === "CHARACTER") ? `Characters:\n${byType("CHARACTER")}` : null,
-    summaries.some((e) => e.type === "LOCATION") ? `Locations:\n${byType("LOCATION")}` : null,
-    summaries.some((e) => e.type === "OBJECT") ? `Objects:\n${byType("OBJECT")}` : null,
+    summaries.some((e) => e.type === "CHARACTER") ? `Characters IDs:\n${byType("CHARACTER")}` : null,
+    summaries.some((e) => e.type === "LOCATION") ? `Locations IDs:\n${byType("LOCATION")}` : null,
+    summaries.some((e) => e.type === "OBJECT") ? `Objects IDs:\n${byType("OBJECT")}` : null,
   ]
     .filter(Boolean)
     .join("\n");

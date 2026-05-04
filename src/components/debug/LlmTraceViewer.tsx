@@ -5,6 +5,7 @@ import { LlmLog } from "@/server/models/debug";
 import { TOOL_NAMES } from "@/shared/constants";
 import { CopyButton } from "@/components/debug/CopyButton";
 import { JsonExplorer } from "@/components/debug/JsonExplorer";
+import { JsonNode } from "@/components/debug/JsonNode";
 
 export const LlmTraceViewer: React.FC = () => {
   const [logs, setLogs] = useState<LlmLog[]>([]);
@@ -91,6 +92,42 @@ export const LlmTraceViewer: React.FC = () => {
     } catch (e) {
       return jsonStr;
     }
+  };
+
+  const renderToolOutput = (output: unknown, compact?: boolean) => {
+    if (output === null || output === undefined) return null;
+    if (typeof output !== "string") {
+      return (
+        <JsonExplorer
+          data={JSON.stringify(output)}
+          isWrapping={isWrapping}
+          className={`overflow-auto ${compact ? "max-h-[100px]" : "max-h-[150px]"}`}
+        />
+      );
+    }
+    // Try to parse string as JSON for structured display
+    try {
+      const parsed = JSON.parse(output);
+      if (parsed !== null && typeof parsed === "object") {
+        return (
+          <div
+            className={`debug-scrollbar bg-transparent overflow-auto ${compact ? "max-h-[100px]" : "max-h-[150px]"}`}
+          >
+            <JsonNode value={parsed} depth={0} isWrapping={isWrapping} />
+          </div>
+        );
+      }
+    } catch {}
+    // Fallback to plain text
+    return (
+      <div
+        className={`whitespace-pre-wrap break-words leading-relaxed ${
+          compact ? "text-[10px]" : "text-[11px]"
+        } ${output.includes("SUCCESS") ? "text-[#98c379]" : "text-white/40"}`}
+      >
+        {output}
+      </div>
+    );
   };
 
   return (
@@ -638,23 +675,7 @@ export const LlmTraceViewer: React.FC = () => {
                                                       Result
                                                     </span>
                                                     <div className="mt-1">
-                                                      {typeof call.output === "string" ? (
-                                                        <div
-                                                          className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed ${
-                                                            call.output.includes("SUCCESS")
-                                                              ? "text-[#98c379]"
-                                                              : "text-white/40"
-                                                          }`}
-                                                        >
-                                                          {call.output}
-                                                        </div>
-                                                      ) : (
-                                                        <JsonExplorer
-                                                          data={JSON.stringify(call.output)}
-                                                          isWrapping={isWrapping}
-                                                          className="max-h-[150px] overflow-auto"
-                                                        />
-                                                      )}
+                                                      {renderToolOutput(call.output)}
                                                     </div>
                                                   </>
                                                 )}
@@ -1012,23 +1033,7 @@ export const LlmTraceViewer: React.FC = () => {
                                                       </div>
                                                     ) : (
                                                       <>
-                                                        {typeof call.output === "string" ? (
-                                                          <div
-                                                            className={`text-[10px] whitespace-pre-wrap break-words ${
-                                                              call.output.includes("SUCCESS")
-                                                                ? "text-[#98c379]"
-                                                                : "text-white/40"
-                                                            }`}
-                                                          >
-                                                            {call.output}
-                                                          </div>
-                                                        ) : (
-                                                          <JsonExplorer
-                                                            data={JSON.stringify(call.output)}
-                                                            isWrapping={isWrapping}
-                                                            className="max-h-[100px] overflow-auto"
-                                                          />
-                                                        )}
+                                                        {renderToolOutput(call.output, true)}
                                                       </>
                                                     )}
                                                   </div>

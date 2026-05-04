@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
@@ -33,8 +51,7 @@ export const JsonNode: React.FC<{
 
     if (Array.isArray(value)) {
       if (isEmpty) return <span className="text-[#abb2bf]/20">[]</span>;
-      if (isMaxDepth)
-        return <span className="text-[#5c6370]">[{value.length} items]</span>;
+      if (isMaxDepth) return <span className="text-[#5c6370]">[{value.length} items]</span>;
 
       return isExpanded ? (
         <span>
@@ -64,8 +81,7 @@ export const JsonNode: React.FC<{
 
     // Object
     if (isEmpty) return <span className="text-[#abb2bf]/20">{"{}"}</span>;
-    if (isMaxDepth)
-      return <span className="text-[#5c6370]">{"{…}"}</span>;
+    if (isMaxDepth) return <span className="text-[#5c6370]">{"{…}"}</span>;
 
     return isExpanded ? (
       <span>

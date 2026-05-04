@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { useState, useEffect, useRef } from "react";
 import { Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "motion/react";
@@ -89,7 +107,11 @@ export default function App() {
 
   // ── SSE streaming ──
 
-  const createSseCallbacks = (streamId: string, logPrefix: string, onDone?: (stepId: string | null) => void): SseCallbacks => {
+  const createSseCallbacks = (
+    streamId: string,
+    logPrefix: string,
+    onDone?: (stepId: string | null) => void,
+  ): SseCallbacks => {
     let capturedStepId: string | null = null;
 
     return {
@@ -108,10 +130,7 @@ export default function App() {
         setStreamingMessages((prev) => {
           if (
             prev.length === messages.length &&
-            prev.every(
-              (m, i) =>
-                m.text === messages[i].text && m.speaker === messages[i].speaker,
-            )
+            prev.every((m, i) => m.text === messages[i].text && m.speaker === messages[i].speaker)
           ) {
             return prev;
           }
@@ -159,10 +178,18 @@ export default function App() {
           `[${logPrefix}] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
         );
       },
-      onWorldUpdate: () => { worldManager.loadState(); },
-      onPlotUpdate: () => { worldManager.loadState(); },
-      onPlotCreate: () => { worldManager.loadState(); },
-      onPlotEdit: () => { worldManager.loadState(); },
+      onWorldUpdate: () => {
+        worldManager.loadState();
+      },
+      onPlotUpdate: () => {
+        worldManager.loadState();
+      },
+      onPlotCreate: () => {
+        worldManager.loadState();
+      },
+      onPlotEdit: () => {
+        worldManager.loadState();
+      },
       onError: async (message) => {
         isRetryingRef.current = false;
         console.error(`[${logPrefix}] error: ${message}`);

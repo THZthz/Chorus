@@ -161,9 +161,12 @@ All 7 tools defined once in `src/server/llm/tools.ts`:
 | `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
 
-All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns an
-`ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error
-and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by
+All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns
+an
+`ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the
+error
+and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted
+by
 the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
 
 `editEntity`, `createPlot`, `editPlot`, and `getPlot` report failure conditions (entity not found, plot not found, tree
@@ -232,7 +235,8 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - **Start from any step**: The "Jump to Replay" button in `NodeGraph (dialogue)` calls `handleJumpToStep(stepId)` which
   fetches the tree, calls `buildHistoryFromTree` to reconstruct history with YOU messages, and sets `lastStepId` +
   `canRegenerate = true` so REGENERATE is immediately available.
-- **Plot tree sync**: During replay, the plot `NodeGraph` reads plots from `worldManager`'s replay snapshot (not the live
+- **Plot tree sync**: During replay, the plot `NodeGraph` reads plots from `worldManager`'s replay snapshot (not the
+  live
   DB),
   so the plot tree reflects the state at the current dialogue step. Editing a plot in the inspector during replay
   updates
@@ -415,7 +419,12 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
 Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and
 `initialCharacters` records there. The root plot is also seeded with two childPlots branch options.
 
-### 7.4 Debug Panel Tab Layout
+### 7.4 License Headers
+
+All source files in `src/` require an AGPL v3 license header at the top of the file. Run `npm run add-license-header` to
+add headers to any new files that are missing them — it skips files that already have a header.
+
+### 7.5 Debug Panel Tab Layout
 
 Debug tabs are defined in `DebugPanel.tsx` with a `TabButton` component. Currently 5 tabs are active:
 "Logs", "Console", "World", "Tree", "Plots". The `HistoryEditor.tsx` component exists but is NOT currently

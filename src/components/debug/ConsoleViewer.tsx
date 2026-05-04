@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import {
   RefreshCw,
@@ -72,9 +90,7 @@ const LogRow = React.memo<{
       <span className="text-white/20 select-none w-24 flex-shrink-0 text-[10px] whitespace-nowrap">
         {timeStr}
       </span>
-      <span
-        className={`uppercase font-bold text-[9px] w-12 flex-shrink-0 mt-0.5 ${badgeColor}`}
-      >
+      <span className={`uppercase font-bold text-[9px] w-12 flex-shrink-0 mt-0.5 ${badgeColor}`}>
         [{log.level}]
       </span>
       <div className="flex-1 flex flex-wrap items-start gap-x-2 min-w-0">
@@ -213,7 +229,8 @@ export const ConsoleViewer: React.FC = () => {
           <Monitor size={16} />
           <h3 className="text-[10px] font-bold uppercase tracking-[0.2em]">CONSOLE_LOGS</h3>
           <span className="text-[9px] text-white/20 ml-1 tabular-nums">
-            ({filteredLogs.length}{hiddenCount > 0 && !showAll ? ` / ${logs.length}` : ""})
+            ({filteredLogs.length}
+            {hiddenCount > 0 && !showAll ? ` / ${logs.length}` : ""})
           </span>
         </div>
         <div className="flex items-center gap-2">

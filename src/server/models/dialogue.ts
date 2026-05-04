@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import db from "@/server/db";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { WorldSnapshot } from "@/types/entities";
@@ -264,9 +282,9 @@ export function updateOptionNextStepId(stepId: string, optionId: string, nextSte
 }
 
 export function updateStepSnapshot(id: string, worldSnapshot: WorldSnapshot): boolean {
-  const existing = db
-    .prepare("SELECT id FROM dialogue_steps WHERE id = ?")
-    .get(id) as { id: string } | undefined;
+  const existing = db.prepare("SELECT id FROM dialogue_steps WHERE id = ?").get(id) as
+    | { id: string }
+    | undefined;
   if (!existing) return false;
   db.prepare("UPDATE dialogue_steps SET world_snapshot = ? WHERE id = ?").run(
     JSON.stringify(worldSnapshot),

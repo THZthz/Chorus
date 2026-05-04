@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Save, RotateCcw, FileText, Check, AlertTriangle, Braces } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
@@ -14,11 +32,13 @@ import { createTableExtension, tableDarkTheme } from "@markwhen/codemirror-table
 const TEMPLATE_VARS = [
   {
     var: "{{entities_brief}}",
-    label: "Entity summaries grouped by type (CHARACTER, LOCATION, OBJECT) with id, displayName, and shortDescription.",
+    label:
+      "Entity summaries grouped by type (CHARACTER, LOCATION, OBJECT) with id, displayName, and shortDescription.",
   },
   {
     var: "{{active_plots}}",
-    label: "Full active plot tree rendering with status tags, involved entities, and childPlots branch options.",
+    label:
+      "Full active plot tree rendering with status tags, involved entities, and childPlots branch options.",
   },
 ];
 
@@ -26,7 +46,7 @@ type Status = { type: "success" | "error"; message: string } | null;
 
 markdoc.transformer.findSchema = (node, config) => {
   return node.tag
-    ? config?.tags?.[node.tag] ?? config?.tags?.$$fallback
+    ? (config?.tags?.[node.tag] ?? config?.tags?.$$fallback)
     : config?.nodes?.[node.type];
 };
 
@@ -49,75 +69,118 @@ const mutedColor = "rgba(255,255,255,0.35)";
 const accentColor = "rgba(255,200,130,0.7)";
 
 const debugHighlightStyle = HighlightStyle.define([
-  { tag: t.heading1, fontWeight: "bold", fontSize: "15px", color: textColor, fontFamily: "inherit" },
-  { tag: t.heading2, fontWeight: "bold", fontSize: "13px", color: textColor, fontFamily: "inherit" },
-  { tag: t.heading3, fontWeight: "bold", fontSize: "12px", color: textColor, fontFamily: "inherit" },
-  { tag: t.heading4, fontWeight: "bold", fontSize: "11px", color: textColor, fontFamily: "inherit" },
-  { tag: t.link, textDecoration: "underline", color: "rgba(100,170,255,0.55)", fontFamily: "inherit" },
+  {
+    tag: t.heading1,
+    fontWeight: "bold",
+    fontSize: "15px",
+    color: textColor,
+    fontFamily: "inherit",
+  },
+  {
+    tag: t.heading2,
+    fontWeight: "bold",
+    fontSize: "13px",
+    color: textColor,
+    fontFamily: "inherit",
+  },
+  {
+    tag: t.heading3,
+    fontWeight: "bold",
+    fontSize: "12px",
+    color: textColor,
+    fontFamily: "inherit",
+  },
+  {
+    tag: t.heading4,
+    fontWeight: "bold",
+    fontSize: "11px",
+    color: textColor,
+    fontFamily: "inherit",
+  },
+  {
+    tag: t.link,
+    textDecoration: "underline",
+    color: "rgba(100,170,255,0.55)",
+    fontFamily: "inherit",
+  },
   { tag: t.emphasis, fontStyle: "italic", fontFamily: "inherit" },
   { tag: t.strong, fontWeight: "bold", fontFamily: "inherit" },
   { tag: t.monospace, fontFamily: "'JetBrains Mono','Fira Code',monospace" },
   { tag: t.content, color: textColor, fontFamily: "inherit" },
   { tag: t.meta, color: mutedColor, fontFamily: "inherit" },
-  { tag: t.strikethrough, textDecoration: "line-through", color: mutedColor, fontFamily: "inherit" },
+  {
+    tag: t.strikethrough,
+    textDecoration: "line-through",
+    color: mutedColor,
+    fontFamily: "inherit",
+  },
   { tag: t.url, color: "rgba(100,170,255,0.45)", fontFamily: "inherit" },
   { tag: t.processingInstruction, color: accentColor, fontFamily: "inherit" },
 ]);
 
-const debugEditorTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "#0d0d0f",
+const debugEditorTheme = EditorView.theme(
+  {
+    "&": {
+      backgroundColor: "#0d0d0f",
+    },
+    ".cm-content": {
+      caretColor: "rgba(255,255,255,0.5)",
+      fontFamily: "'Inter','Helvetica Neue',sans-serif",
+      fontSize: "12px",
+      lineHeight: "1.7",
+      padding: "14px 16px",
+    },
+    ".cm-scroller": {
+      fontFamily: "'Inter','Helvetica Neue',sans-serif",
+      lineHeight: "1.7",
+    },
+    "&.cm-focused .cm-cursor": {
+      borderLeftColor: "rgba(255,255,255,0.5)",
+    },
+    "&.cm-focused": {
+      outline: "none",
+    },
+    ".cm-activeLine": {
+      backgroundColor: "transparent",
+    },
+    ".cm-selectionMatch": {
+      backgroundColor: "transparent",
+    },
+    ".cm-selectionBackground": {
+      backgroundColor: "rgba(255,255,255,0.07)",
+    },
+    ".cm-placeholder": {
+      color: "rgba(255,255,255,0.15)",
+    },
   },
-  ".cm-content": {
-    caretColor: "rgba(255,255,255,0.5)",
-    fontFamily: "'Inter','Helvetica Neue',sans-serif",
-    fontSize: "12px",
-    lineHeight: "1.7",
-    padding: "14px 16px",
-  },
-  ".cm-scroller": {
-    fontFamily: "'Inter','Helvetica Neue',sans-serif",
-    lineHeight: "1.7",
-  },
-  "&.cm-focused .cm-cursor": {
-    borderLeftColor: "rgba(255,255,255,0.5)",
-  },
-  "&.cm-focused": {
-    outline: "none",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "transparent",
-  },
-  ".cm-selectionMatch": {
-    backgroundColor: "transparent",
-  },
-  ".cm-selectionBackground": {
-    backgroundColor: "rgba(255,255,255,0.07)",
-  },
-  ".cm-placeholder": {
-    color: "rgba(255,255,255,0.15)",
-  },
-}, { dark: true });
+  { dark: true },
+);
 
-const tableOverrides = EditorView.theme({
-  "&": {
-    "--table-toolbar-bg": "#2d2d2d",
-    "--table-toolbar-color": "#e0e0e0",
-    "--table-toolbar-hover-bg": "#3d3d3d",
-    "--table-toolbar-border": "#444",
+const tableOverrides = EditorView.theme(
+  {
+    "&": {
+      "--table-toolbar-bg": "#2d2d2d",
+      "--table-toolbar-color": "#e0e0e0",
+      "--table-toolbar-hover-bg": "#3d3d3d",
+      "--table-toolbar-border": "#444",
+    },
   },
-}, { dark: true });
+  { dark: true },
+);
 
 // JSON fenced-code-block highlight colors — matches JsonExplorer/JsonNode theme
-const jsonHighlightTheme = EditorView.theme({
-  ".cm-json-string": { color: "#98c379" },
-  ".cm-json-number": { color: "#d19a66" },
-  ".cm-json-bool": { color: "#c678dd", fontWeight: "bold" },
-  ".cm-json-null": { color: "#5c6370" },
-  ".cm-json-property": { color: "#e06c75" },
-  ".cm-json-separator": { color: "#abb2bf" },
-  ".cm-json-bracket": { color: "#abb2bf" },
-}, { dark: true });
+const jsonHighlightTheme = EditorView.theme(
+  {
+    ".cm-json-string": { color: "#98c379" },
+    ".cm-json-number": { color: "#d19a66" },
+    ".cm-json-bool": { color: "#c678dd", fontWeight: "bold" },
+    ".cm-json-null": { color: "#5c6370" },
+    ".cm-json-property": { color: "#e06c75" },
+    ".cm-json-separator": { color: "#abb2bf" },
+    ".cm-json-bracket": { color: "#abb2bf" },
+  },
+  { dark: true },
+);
 
 const jsonParser = jsonLanguage.parser;
 
@@ -293,7 +356,9 @@ export const SystemPromptEditor: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-white/30 text-xs">Loading...</div>
+      <div className="flex items-center justify-center h-full text-white/30 text-xs">
+        Loading...
+      </div>
     );
   }
 
@@ -304,9 +369,7 @@ export const SystemPromptEditor: React.FC = () => {
           <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-white/60">
             GM System Prompt
           </h2>
-          {!saved && (
-            <span className="text-[10px] text-amber-400/80 italic">Unsaved changes</span>
-          )}
+          {!saved && <span className="text-[10px] text-amber-400/80 italic">Unsaved changes</span>}
           {status && (
             <span
               className={`text-[10px] flex items-center gap-1 ${

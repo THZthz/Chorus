@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { GitBranch, Network, X, Save, AlertCircle, ChevronRight } from "lucide-react";
@@ -51,9 +69,15 @@ const TYPE_COLOR: Record<string, string> = {
 
 // ── Dialogue node card ────────────────────────────────────────────────────
 
-const DialogueNodeCard: React.FC<
-  NodeRenderProps<StepData> & { isCurrentReplay: boolean }
-> = ({ node, pos, isSelected, isLeaf, isRoot, isEffectivelyActive, isCurrentReplay }) => {
+const DialogueNodeCard: React.FC<NodeRenderProps<StepData> & { isCurrentReplay: boolean }> = ({
+  node,
+  pos,
+  isSelected,
+  isLeaf,
+  isRoot,
+  isEffectivelyActive,
+  isCurrentReplay,
+}) => {
   const firstMsg = node.messages[0];
   const preview = firstMsg
     ? firstMsg.text.slice(0, 42) + (firstMsg.text.length > 42 ? "…" : "")
@@ -161,7 +185,16 @@ const DialogueNodeCard: React.FC<
 
 const DialogueInspector: React.FC<
   InspectorProps<StepData> & { onJumpToReplay?: (stepId: string) => void }
-> = ({ node, isLeaf, isEffectivelyActive, onClose, onSaved, onJumpToReplay, height, onResizeStart }) => {
+> = ({
+  node,
+  isLeaf,
+  isEffectivelyActive,
+  onClose,
+  onSaved,
+  onJumpToReplay,
+  height,
+  onResizeStart,
+}) => {
   const [messages, setMessages] = useState<Message[]>(node.messages);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -878,8 +911,7 @@ export function createPlotConfig(opts: {
       const parent = nodeMap[parentId] as Plot | undefined;
       const option = parent?.childPlots.find((o) => o.plotId === childId);
       return option?.triggerCondition
-        ? option.triggerCondition.slice(0, 22) +
-            (option.triggerCondition.length > 22 ? "…" : "")
+        ? option.triggerCondition.slice(0, 22) + (option.triggerCondition.length > 22 ? "…" : "")
         : "";
     },
     renderNode: PlotNodeCard,

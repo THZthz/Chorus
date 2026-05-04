@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -364,7 +382,9 @@ export const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming
       {isStreaming && (
         <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-sm flex items-center gap-2 text-yellow-400 text-[11px] flex-shrink-0">
           <AlertCircle size={12} />
-          <span>Dialogue streaming in progress — buffer is read-only until streaming completes.</span>
+          <span>
+            Dialogue streaming in progress — buffer is read-only until streaming completes.
+          </span>
         </div>
       )}
 

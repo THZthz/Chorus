@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence } from "motion/react";
 import { Maximize2, RotateCcw, RefreshCw } from "lucide-react";
@@ -80,9 +98,7 @@ function computeLayout<T extends TreeNode>(
     childrenMap.get(parent)!.push(id);
   }
   for (const [, children] of childrenMap) {
-    children.sort((a, b) =>
-      (getSortKey(nodes[a]) ?? "").localeCompare(getSortKey(nodes[b]) ?? ""),
-    );
+    children.sort((a, b) => (getSortKey(nodes[a]) ?? "").localeCompare(getSortKey(nodes[b]) ?? ""));
   }
 
   function subtreeWidth(id: string): number {
@@ -203,7 +219,13 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
     const cfg = configRef.current;
     const nodeMap: Record<string, T> = {};
     for (const n of nodes) nodeMap[n.id] = n;
-    const positions = computeLayout(nodeMap, cfg.getParentId, cfg.getSortKey, cfg.nodeWidth, cfg.nodeHeight);
+    const positions = computeLayout(
+      nodeMap,
+      cfg.getParentId,
+      cfg.getSortKey,
+      cfg.nodeWidth,
+      cfg.nodeHeight,
+    );
     setLayout(positions);
     if (positions.length > 0) {
       requestAnimationFrame(() => {
@@ -349,9 +371,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
   }
 
   const totalNodes = nodes.length;
-  const branchCount = nodes.filter((n) =>
-    nodes.some((c) => cfg.getParentId(c) === n.id),
-  ).length;
+  const branchCount = nodes.filter((n) => nodes.some((c) => cfg.getParentId(c) === n.id)).length;
   const activeLeaves = Array.from(leafIds).filter((id) => effectivelyActiveIds.has(id)).length;
   const statsLabel = cfg.getStatsLabel({ total: totalNodes, branches: branchCount, activeLeaves });
 
@@ -372,9 +392,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-white/50">
               {cfg.icon}
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                {cfg.title}
-              </span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{cfg.title}</span>
             </div>
             <span className="text-white/20 text-[9px] font-mono">{statsLabel}</span>
           </div>

@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useEffect, useRef, useState } from "react";
 import { Terminal, ChevronDown, RefreshCw, Trash2, Bug, WrapText, Clock } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -445,12 +463,15 @@ export const LlmTraceViewer: React.FC = () => {
                                         const callIsError = isToolError(call.output);
                                         const isGenDialogue =
                                           call.toolName === TOOL_NAMES.GENERATE_DIALOGUE;
-                                        const isWorldUpdate = call.toolName === TOOL_NAMES.EDIT_ENTITY;
+                                        const isWorldUpdate =
+                                          call.toolName === TOOL_NAMES.EDIT_ENTITY;
                                         const isPlotStatus = call.toolName === TOOL_NAMES.EDIT_PLOT;
-                                        const isCreatePlot = call.toolName === TOOL_NAMES.CREATE_PLOT;
+                                        const isCreatePlot =
+                                          call.toolName === TOOL_NAMES.CREATE_PLOT;
                                         const isGetAllEntities =
                                           call.toolName === TOOL_NAMES.GET_ALL_ENTITIES;
-                                        const isQueryEntity = call.toolName === TOOL_NAMES.QUERY_ENTITY;
+                                        const isQueryEntity =
+                                          call.toolName === TOOL_NAMES.QUERY_ENTITY;
                                         const isGetPlot = call.toolName === TOOL_NAMES.GET_PLOT;
 
                                         return (
@@ -585,14 +606,22 @@ export const LlmTraceViewer: React.FC = () => {
                                                     </>
                                                   ) : input.ids ? (
                                                     <>
-                                                      <span className="text-white/40">Bulk ({input.ids.length}): </span>
+                                                      <span className="text-white/40">
+                                                        Bulk ({input.ids.length}):{" "}
+                                                      </span>
                                                       <span className="text-[#d19a66] font-mono">
-                                                        [{input.ids.slice(0, 3).join(", ")}{input.ids.length > 3 ? `, +${input.ids.length - 3} more` : ""}]
+                                                        [{input.ids.slice(0, 3).join(", ")}
+                                                        {input.ids.length > 3
+                                                          ? `, +${input.ids.length - 3} more`
+                                                          : ""}
+                                                        ]
                                                       </span>
                                                     </>
                                                   ) : input.search ? (
                                                     <>
-                                                      <span className="text-white/40">Search: </span>
+                                                      <span className="text-white/40">
+                                                        Search:{" "}
+                                                      </span>
                                                       <span className="text-[#98c379]">
                                                         "{input.search}"
                                                       </span>
@@ -619,7 +648,11 @@ export const LlmTraceViewer: React.FC = () => {
                                                         Bulk ({input.ids.length}):{" "}
                                                       </span>
                                                       <span className="text-[#d19a66] font-mono">
-                                                        [{input.ids.slice(0, 3).join(", ")}{input.ids.length > 3 ? `, +${input.ids.length - 3} more` : ""}]
+                                                        [{input.ids.slice(0, 3).join(", ")}
+                                                        {input.ids.length > 3
+                                                          ? `, +${input.ids.length - 3} more`
+                                                          : ""}
+                                                        ]
                                                       </span>
                                                     </>
                                                   ) : input.status ? (
@@ -656,7 +689,9 @@ export const LlmTraceViewer: React.FC = () => {
                                                 {callIsError ? (
                                                   <div className="flex items-start gap-2">
                                                     <span className="mt-[1px] shrink-0 w-3.5 h-3.5 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
-                                                      <span className="text-[8px] text-red-400 font-bold leading-none">!</span>
+                                                      <span className="text-[8px] text-red-400 font-bold leading-none">
+                                                        !
+                                                      </span>
                                                     </span>
                                                     <div className="min-w-0 flex-1">
                                                       <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">
@@ -839,23 +874,27 @@ export const LlmTraceViewer: React.FC = () => {
                                                 <div className="mt-1">
                                                   {(() => {
                                                     const isGen =
-                                                      call.toolName === TOOL_NAMES.GENERATE_DIALOGUE;
+                                                      call.toolName ===
+                                                      TOOL_NAMES.GENERATE_DIALOGUE;
                                                     const isWorld =
                                                       call.toolName === TOOL_NAMES.EDIT_ENTITY;
-                                                    const isPlot = call.toolName === TOOL_NAMES.EDIT_PLOT;
+                                                    const isPlot =
+                                                      call.toolName === TOOL_NAMES.EDIT_PLOT;
                                                     const isCreate =
                                                       call.toolName === TOOL_NAMES.CREATE_PLOT;
                                                     const isGetAll =
                                                       call.toolName === TOOL_NAMES.GET_ALL_ENTITIES;
                                                     const isQuery =
                                                       call.toolName === TOOL_NAMES.QUERY_ENTITY;
-                                                    const isGetP = call.toolName === TOOL_NAMES.GET_PLOT;
+                                                    const isGetP =
+                                                      call.toolName === TOOL_NAMES.GET_PLOT;
 
                                                     if (isGen) {
                                                       return (
                                                         <div className="text-[10px]">
                                                           <span className="text-white/30">
-                                                            {(input.messages || []).length} msgs,{" "}
+                                                            {(input.messages || []).length}{" "}
+                                                            msgs,{" "}
                                                           </span>
                                                           <span className="text-white/30">
                                                             {(input.options || []).length} opts
@@ -948,7 +987,11 @@ export const LlmTraceViewer: React.FC = () => {
                                                                 Bulk ({input.ids.length}):{" "}
                                                               </span>
                                                               <span className="text-[#d19a66] font-mono">
-                                                                [{input.ids.slice(0, 3).join(", ")}{input.ids.length > 3 ? `, +${input.ids.length - 3} more` : ""}]
+                                                                [{input.ids.slice(0, 3).join(", ")}
+                                                                {input.ids.length > 3
+                                                                  ? `, +${input.ids.length - 3} more`
+                                                                  : ""}
+                                                                ]
                                                               </span>
                                                             </>
                                                           ) : input.search ? (
@@ -986,7 +1029,11 @@ export const LlmTraceViewer: React.FC = () => {
                                                                 Bulk ({input.ids.length}):{" "}
                                                               </span>
                                                               <span className="text-[#d19a66] font-mono">
-                                                                [{input.ids.slice(0, 3).join(", ")}{input.ids.length > 3 ? `, +${input.ids.length - 3} more` : ""}]
+                                                                [{input.ids.slice(0, 3).join(", ")}
+                                                                {input.ids.length > 3
+                                                                  ? `, +${input.ids.length - 3} more`
+                                                                  : ""}
+                                                                ]
                                                               </span>
                                                             </>
                                                           ) : input.status ? (
@@ -1020,7 +1067,9 @@ export const LlmTraceViewer: React.FC = () => {
                                                     {callIsError ? (
                                                       <div className="flex items-start gap-1.5">
                                                         <span className="mt-[2px] shrink-0 w-3 h-3 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
-                                                          <span className="text-[6px] text-red-400 font-bold leading-none">!</span>
+                                                          <span className="text-[6px] text-red-400 font-bold leading-none">
+                                                            !
+                                                          </span>
                                                         </span>
                                                         <div className="min-w-0 flex-1">
                                                           <span className="text-[8px] font-bold text-red-400 uppercase tracking-wider">
@@ -1032,9 +1081,7 @@ export const LlmTraceViewer: React.FC = () => {
                                                         </div>
                                                       </div>
                                                     ) : (
-                                                      <>
-                                                        {renderToolOutput(call.output, true)}
-                                                      </>
+                                                      <>{renderToolOutput(call.output, true)}</>
                                                     )}
                                                   </div>
                                                 )}

@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Terminal, X, Bug, Database, Monitor, GitBranch, Network, FileText } from "lucide-react";
@@ -129,12 +147,48 @@ export const DebugPanel: React.FC<{
               </div>
               <div className="flex items-center justify-between px-4 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center">
-                  <TabButton id="logs" activeTab={activeTab} onSelect={setActiveTab} label="Logs" icon={<Terminal size={14} />} />
-                  <TabButton id="console" activeTab={activeTab} onSelect={setActiveTab} label="Console" icon={<Monitor size={14} />} />
-                  <TabButton id="world" activeTab={activeTab} onSelect={setActiveTab} label="World" icon={<Database size={14} />} />
-                  <TabButton id="tree" activeTab={activeTab} onSelect={setActiveTab} label="Tree" icon={<GitBranch size={14} />} />
-                  <TabButton id="plots" activeTab={activeTab} onSelect={setActiveTab} label="Plots" icon={<Network size={14} />} />
-                  <TabButton id="prompt" activeTab={activeTab} onSelect={setActiveTab} label="Prompt" icon={<FileText size={14} />} />
+                  <TabButton
+                    id="logs"
+                    activeTab={activeTab}
+                    onSelect={setActiveTab}
+                    label="Logs"
+                    icon={<Terminal size={14} />}
+                  />
+                  <TabButton
+                    id="console"
+                    activeTab={activeTab}
+                    onSelect={setActiveTab}
+                    label="Console"
+                    icon={<Monitor size={14} />}
+                  />
+                  <TabButton
+                    id="world"
+                    activeTab={activeTab}
+                    onSelect={setActiveTab}
+                    label="World"
+                    icon={<Database size={14} />}
+                  />
+                  <TabButton
+                    id="tree"
+                    activeTab={activeTab}
+                    onSelect={setActiveTab}
+                    label="Tree"
+                    icon={<GitBranch size={14} />}
+                  />
+                  <TabButton
+                    id="plots"
+                    activeTab={activeTab}
+                    onSelect={setActiveTab}
+                    label="Plots"
+                    icon={<Network size={14} />}
+                  />
+                  <TabButton
+                    id="prompt"
+                    activeTab={activeTab}
+                    onSelect={setActiveTab}
+                    label="Prompt"
+                    icon={<FileText size={14} />}
+                  />
                 </div>
                 <div className="flex items-center gap-3 pr-4">
                   <button

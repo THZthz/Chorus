@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 export type LogLevel = "trace" | "log" | "info" | "warn" | "error";
 
 export interface ConsoleLog {
@@ -19,7 +37,8 @@ function safeSerialize(value: unknown, depth: number = 0): unknown {
     return value;
   if (typeof value === "bigint") return `BigInt(${value})`;
   if (typeof value === "symbol") return value.toString();
-  if (typeof value === "function") return `[Function: ${(value as (...args: unknown[]) => unknown).name || "anonymous"}]`;
+  if (typeof value === "function")
+    return `[Function: ${(value as (...args: unknown[]) => unknown).name || "anonymous"}]`;
 
   if (typeof value === "object") {
     if (depth >= MAX_DEPTH) return "[MaxDepth]";
@@ -74,9 +93,7 @@ function safeStringify(value: unknown): string {
 class ConsoleLogger {
   private logs: ConsoleLog[] = [];
   private listeners: Set<LogListener> = new Set();
-  private originalConsole: Partial<
-    Record<LogLevel | "debug", (...args: any[]) => void>
-  > = {};
+  private originalConsole: Partial<Record<LogLevel | "debug", (...args: any[]) => void>> = {};
   private batchQueue: ConsoleLog[] = [];
   private batchTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly BATCH_MS = 500;
@@ -119,14 +136,7 @@ class ConsoleLogger {
   }
 
   private init() {
-    const levels: (LogLevel | "debug")[] = [
-      "trace",
-      "debug",
-      "log",
-      "info",
-      "warn",
-      "error",
-    ];
+    const levels: (LogLevel | "debug")[] = ["trace", "debug", "log", "info", "warn", "error"];
 
     levels.forEach((level) => {
       if (typeof console[level] === "function") {
@@ -137,8 +147,7 @@ class ConsoleLogger {
         this.originalConsole[level]?.(...args);
 
         const safeArgs = args.map((arg) => safeSerialize(arg));
-        const normalizedLevel: LogLevel =
-          level === "debug" ? "trace" : level;
+        const normalizedLevel: LogLevel = level === "debug" ? "trace" : level;
 
         const log: ConsoleLog = {
           id: Math.random().toString(36).substring(2, 9),

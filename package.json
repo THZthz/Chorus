@@ -11,7 +11,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "format": "npx prettier --write \"src/**/*.{js,ts,tsx}\"",
-    "format:check": "npx prettier --check \"src/**/*.{js,ts,tsx}\""
+    "format:check": "npx prettier --check \"src/**/*.{js,ts,tsx}\"",
+    "add-license-header": "node scripts/add-license-header.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.6",

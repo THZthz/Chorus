@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -129,18 +129,41 @@ export const ResizableTextarea: React.FC<
     minHeight?: number;
     initialHeight?: number;
   }
-> = ({ minHeight = 56, initialHeight, className = "", style, ...props }) => {
-  const [height, setHeight] = useState(initialHeight ?? minHeight);
+> = ({ minHeight = 56, initialHeight, className = "", style, onChange, value, defaultValue, ...props }) => {
+  const [maxH, setMaxH] = useState(initialHeight ?? minHeight);
   const startYRef = useRef(0);
   const startHRef = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.overflowY = "scroll";
+    el.style.height = "auto";
+    const sh = el.scrollHeight;
+    el.style.height = `${Math.max(minHeight, sh)}px`;
+    el.style.overflowY = "hidden";
+  }, [minHeight]);
+
+  useLayoutEffect(() => {
+    adjustHeight();
+  }, [value, adjustHeight]);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      adjustHeight();
+      onChange?.(e);
+    },
+    [adjustHeight, onChange],
+  );
 
   const onHandleDown = (e: React.MouseEvent) => {
     startYRef.current = e.clientY;
-    startHRef.current = height;
+    startHRef.current = maxH;
     e.preventDefault();
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientY - startYRef.current;
-      setHeight(Math.max(minHeight, startHRef.current + delta));
+      setMaxH(Math.max(minHeight, startHRef.current + delta));
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
@@ -152,7 +175,20 @@ export const ResizableTextarea: React.FC<
 
   return (
     <div className="flex flex-col group/rta">
-      <textarea className={className} style={{ ...style, height, resize: "none" }} {...props} />
+      <div
+        className="debug-scrollbar"
+        style={{ maxHeight: maxH, overflowY: "auto" }}
+      >
+        <textarea
+          ref={textareaRef}
+          className={className}
+          style={{ ...style, resize: "none", overflow: "hidden" }}
+          value={value}
+          defaultValue={defaultValue}
+          onChange={handleChange}
+          {...props}
+        />
+      </div>
       <div
         onMouseDown={onHandleDown}
         className="h-2 flex items-center justify-center cursor-ns-resize select-none"

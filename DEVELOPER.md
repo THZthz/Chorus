@@ -256,7 +256,6 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 - `POST /api/chat/stream` — Primary AI turn (SSE streaming)
 - `POST /api/regenerate` — Archive current step as alternative, generate new response
-- `POST /api/regenerate-all` — Bulk regenerate all leaf steps in the dialogue tree (uses `generateTurnBatch`)
 
 ### 4.2 Dialogue Tree
 

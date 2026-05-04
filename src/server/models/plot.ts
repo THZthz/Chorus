@@ -1,5 +1,6 @@
 import db from "@/server/db";
 import type { Plot, PlotOption, PlotPatch } from "@/types/plot";
+import { nextId } from "@/server/models/ids";
 
 function rowToPlot(row: any): Plot {
   return {
@@ -46,7 +47,7 @@ export function getRootPlot(): Plot | null {
 type AddPlotInput = Omit<Plot, "id"> & { id?: string };
 
 export function addPlot(input: AddPlotInput): { ok: true; id: string } | { ok: false; error: string } {
-  const id = input.id ?? `plot_${Date.now()}`;
+  const id = input.id ?? `plot_${nextId()}`;
   const isRoot = input.parentPlotId === null;
 
   if (isRoot) {

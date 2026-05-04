@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Database, Save, Plus, X, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { WorldState, WorldEntity, Character } from "@/types/entities";
 import { ResizableTextarea } from "./shared";
+import { nextId } from "@/client/idPool";
 
 const TYPE_META = {
   CHARACTER: { color: "#c678dd", dimColor: "rgba(198,120,221,0.12)", label: "CHARACTER" },
@@ -296,9 +297,9 @@ export const WorldEditor: React.FC = () => {
     }
   };
 
-  const addNewEntity = () => {
+  const addNewEntity = async () => {
     const blank: WorldEntity = {
-      id: `entity_${Date.now()}`,
+      id: `entity_${await nextId()}`,
       type: "OBJECT",
       displayName: "New Entity",
       shortDescription: "",

@@ -11,6 +11,7 @@ import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
 import { SseClient, type SseCallbacks } from "@/services/SseClient";
 import { useCharacter } from "@/context/CharacterContext";
+import { nextId, initIdPool } from "@/client/idPool";
 
 function buildHistoryFromTree(
   stepId: string,
@@ -153,14 +154,15 @@ export default function App() {
       onPlotUpdate: () => { worldManager.loadState(); },
       onPlotCreate: () => { worldManager.loadState(); },
       onPlotEdit: () => { worldManager.loadState(); },
-      onError: (message) => {
+      onError: async (message) => {
         console.error(`[${logPrefix}] error: ${message}`);
         setIsTyping(false);
         setStreamingMessages([]);
+        const errorId = `error-${await nextId()}`;
         setHistory((prev) => [
           ...prev,
           {
-            id: `error-${Date.now()}`,
+            id: errorId,
             speaker: "SYSTEM",
             type: "SYSTEM",
             text: `[Error: ${message}]`,
@@ -178,7 +180,7 @@ export default function App() {
     };
   };
 
-  const handleStreamingResponse = (
+  const handleStreamingResponse = async (
     userInput: string,
     updatedHistory: Message[],
     parentStepId: string | null,
@@ -193,7 +195,7 @@ export default function App() {
     setDynamicOptions(null);
     setCanRegenerate(false);
 
-    const streamId = `stream-${Date.now()}`;
+    const streamId = `stream-${await nextId()}`;
     setStreamingId(streamId);
 
     const client = new SseClient();
@@ -218,6 +220,7 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
+      await initIdPool();
       await worldManager.loadState();
       const res = await fetch("/api/history");
       if (res.ok) {
@@ -260,7 +263,7 @@ export default function App() {
     const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 
     const youMessage: Message = {
-      id: `you-${Date.now()}`,
+      id: `you-${await nextId()}`,
       speaker: "YOU",
       type: "YOU",
       text: cleanText,
@@ -307,7 +310,7 @@ export default function App() {
     setIsRolling(false);
 
     const rollMessage: Message = {
-      id: `roll-${Date.now()}`,
+      id: `roll-${await nextId()}`,
       speaker: "SYSTEM",
       type: "NOTIFICATION",
       text: optionText,
@@ -333,7 +336,7 @@ export default function App() {
 
   // ── Regenerate ──
 
-  const handleRegenerate = () => {
+  const handleRegenerate = async () => {
     if (!lastStepId || isTyping) return;
     sseRef.current?.abort();
 
@@ -350,7 +353,7 @@ export default function App() {
     setStreamingMessages([]);
     setIsTyping(true);
 
-    const streamId = `stream-${Date.now()}`;
+    const streamId = `stream-${await nextId()}`;
     setStreamingId(streamId);
 
     const client = new SseClient();
@@ -471,7 +474,7 @@ export default function App() {
 
     const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
     const youMessage: Message = {
-      id: `you-${Date.now()}`,
+      id: `you-${await nextId()}`,
       speaker: "YOU",
       type: "YOU",
       text: cleanText,

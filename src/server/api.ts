@@ -365,6 +365,15 @@ apiRouter.post("/regenerate-all", async (_req, res) => {
   }
 });
 
+// ── ID Generation ──
+
+import { nextIdBatch } from "@/server/models/ids";
+
+apiRouter.get("/ids/batch", (req, res) => {
+  const count = Math.min(Math.max(parseInt(String(req.query.count), 10) || 20, 1), 100);
+  res.json({ ids: nextIdBatch(count) });
+});
+
 // ── Debug ──
 
 apiRouter.get("/debug/logs", (_req, res) => {

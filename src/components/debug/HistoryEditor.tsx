@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Message, SpeakerType } from "@/types/dialogue";
 import { CustomSelect, ResizableTextarea } from "@/components/debug/shared";
+import { nextId } from "@/client/idPool";
 
 const SPEAKER_TYPES: SpeakerType[] = [
   "YOU",
@@ -304,15 +305,15 @@ export const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming
     if (editingId === id) setEditingId(null);
   };
 
-  const addMessage = () => {
-    const id = `msg_${Date.now()}`;
+  const addMessage = async () => {
+    const id = `msg_${await nextId()}`;
     const msg: Message = { id, speaker: "CHARACTER", type: "CHARACTER", text: "" };
     setMessages((prev) => [...prev, msg]);
     setEditingId(id);
   };
 
-  const insertAfter = (afterId: string) => {
-    const id = `msg_${Date.now()}`;
+  const insertAfter = async (afterId: string) => {
+    const id = `msg_${await nextId()}`;
     const msg: Message = { id, speaker: "CHARACTER", type: "CHARACTER", text: "" };
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === afterId);

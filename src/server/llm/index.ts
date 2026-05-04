@@ -1,3 +1,4 @@
+import { nextId } from "@/server/models/ids";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText, generateText, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
@@ -493,7 +494,7 @@ export async function generateTurn(
   playerCharacter: Character | null = null,
 ): Promise<void> {
   const systemPrompt = buildSystemPrompt();
-  const stepId = `step_${Date.now()}`;
+  const stepId = `step_${nextId()}`;
   const events = new TurnEventEmitter(res, stepId);
 
   console.log(
@@ -757,7 +758,7 @@ export async function generateTurnBatch(
   playerCharacter: Character | null = null,
 ): Promise<{ stepId: string; messages: Message[]; options: DialogueOption[] }> {
   const systemPrompt = buildSystemPrompt();
-  const stepId = `step_${Date.now()}`;
+  const stepId = `step_${nextId()}`;
 
   console.log(
     `[generateTurnBatch] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length}`,

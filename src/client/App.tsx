@@ -83,6 +83,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<SseClient | null>(null);
   const retrySnapshotRef = useRef<Message[]>([]);
+  const isRetryingRef = useRef(false);
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRevealingRef = useRef(false);
 
@@ -98,26 +99,18 @@ export default function App() {
         console.trace(`[${logPrefix}] step_start stepId=${data.stepId}`);
       },
       onStreamingMessages: (messages) => {
+        // During a retry, the LLM re-streams messages from scratch. Because
+        // parsePartial produces different intermediate states across chunk
+        // boundaries, content comparison is too fragile. Instead, freeze
+        // the UI at the pre-reset state until parsed delivers the final result.
+        if (isRetryingRef.current) return;
+
         setStreamingMessages((prev) => {
           if (
             prev.length === messages.length &&
             prev.every(
               (m, i) =>
                 m.text === messages[i].text && m.speaker === messages[i].speaker,
-            )
-          ) {
-            return prev;
-          }
-          // During a retry, incoming messages rebuild from scratch. Compare
-          // against the pre-reset snapshot so identical content stays stable
-          // and the typing cursor doesn't re-animate through old messages.
-          const snapshot = retrySnapshotRef.current;
-          if (
-            snapshot.length > 0 &&
-            messages.length <= snapshot.length &&
-            messages.every(
-              (m, i) =>
-                m.text === snapshot[i].text && m.speaker === snapshot[i].speaker,
             )
           ) {
             return prev;
@@ -132,6 +125,7 @@ export default function App() {
         });
       },
       onStreamingReset: () => {
+        isRetryingRef.current = true;
         setStreamingMessages((prev) => {
           retrySnapshotRef.current = prev;
           return prev;
@@ -142,6 +136,7 @@ export default function App() {
         console.trace(`[${logPrefix}] options received: ${options.length}`);
       },
       onParsed: (data) => {
+        isRetryingRef.current = false;
         const snapshot = retrySnapshotRef.current;
         retrySnapshotRef.current = [];
         const messages: Message[] = data.messages.map((m, i) => ({
@@ -169,6 +164,7 @@ export default function App() {
       onPlotCreate: () => { worldManager.loadState(); },
       onPlotEdit: () => { worldManager.loadState(); },
       onError: async (message) => {
+        isRetryingRef.current = false;
         console.error(`[${logPrefix}] error: ${message}`);
         setIsTyping(false);
         setStreamingMessages([]);
@@ -208,6 +204,7 @@ export default function App() {
     setStreamingMessages([]);
     setDynamicOptions(null);
     setCanRegenerate(false);
+    isRetryingRef.current = false;
 
     const streamId = `stream-${await nextId()}`;
     setStreamingId(streamId);

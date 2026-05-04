@@ -577,24 +577,6 @@ export default function App() {
     );
   };
 
-  // ── Bulk regenerate ──
-
-  const handleBulkRegenerate = async () => {
-    console.log(`[regenerate-all] starting bulk regenerate`);
-    setRegeneratingAll(true);
-    try {
-      const res = await fetch("/api/regenerate-all", { method: "POST" });
-      const data = await res.json();
-      const succeeded = data.results?.filter((r: { success: boolean }) => r.success).length ?? 0;
-      const total = data.results?.length ?? 0;
-      console.log(`[regenerate-all] completed: ${succeeded}/${total} leaf steps regenerated`);
-    } catch (err) {
-      console.error("[regenerate-all] failed:", err);
-    } finally {
-      setRegeneratingAll(false);
-      window.location.reload();
-    }
-  };
 
   useEffect(() => {
     if (changedMessageIds.size === 0) return;
@@ -729,26 +711,6 @@ export default function App() {
                 className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
               >
                 <RotateCcw size={18} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-
-          {/* Bulk regenerate */}
-          <AnimatePresence>
-            {mode === "live" && canRegenerate && !isTyping && (
-              <motion.button
-                key="regenerate-all"
-                layout
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
-                onClick={handleBulkRegenerate}
-                disabled={regeneratingAll}
-                title="Regenerate All Leaf Steps"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-purple-400/30 rounded-full text-purple-400 hover:bg-purple-400 hover:text-white transition-all duration-300 shadow-xl disabled:opacity-50"
-              >
-                <RefreshCw size={18} className={regeneratingAll ? "animate-spin" : ""} />
               </motion.button>
             )}
           </AnimatePresence>

@@ -32,3 +32,9 @@ Order does not matter.
 - [ ] Significant checks should be recorded.
 - [ ] A system to analyze user's input.
 - [ ] Analyze dialogue steps and see if there are any points to improve.
+- [x] Analyze the structure of following INCOMING_RESPONSE example, Remove OUTGOING_REQUEST, improve PARSED_EXCHANGE UI to cover most information shown in INCOMING_RESPONSE (focus on "steps" field). For system prompt, only show content that are different (dynamic content, plots and entities info).                                                                                                  
+- [x] Check the usage of "Regenerate All Leaf Steps". Should we remove it? (Removed)
+- [x] Dialogue options should have two separate display: one to display on options text, another to display as a message in dialogue history after player chosen the option. Keep skill check result display option text. Update system prompt for this. Make sure this is also persisted in database. No need to consider data migration or backward compatibility.
+- [x] `textarea` in ENTITY_MANIFEST, DIALOGUE_TREE and PLOT_TREE should have thinner scrollbar like the scrollbar used in JsonExplorer/JsonNode.
+
+

@@ -29,7 +29,7 @@ export interface DialogueOption {
   hintBefore?: string; // e.g. "[Consult the Void]"
   hintAfter?: string; // e.g. "[Charm her.]"
   nextStepId?: string; // Standard transition
-  isAiTrigger?: boolean; // If true, request response from LLM
+
   check?: {
     skill: string;
     difficulty: number;

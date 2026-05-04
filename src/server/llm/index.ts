@@ -1,21 +1,3 @@
-/**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
- * Copyright (C) 2026  Amias
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import { nextId } from "@/server/models/ids";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -314,7 +296,8 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
   ],
   "options": [
     {
-      "text": "Ask him what he knows about the clockwrights working there.",
+      "text": "Ask about the clockwrights",
+      "selectionMessage": "I asked Orin what he knew about the clockwrights working in the old ward.",
       "hintBefore": "[Investigates the workshop]"
     },
     {
@@ -397,6 +380,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 - **Align options with active plot childPlots.** The options you present should correspond to the triggerConditions in the current plot's childPlots array. Some options can unrelated to plot progressing — they just serve to let player experience the world and immerse into it more deeply.
 - **Use skill checks sparingly.** Only when failure has interesting consequences. Don't check for trivial actions.
 
+- **text vs selectionMessage:** \`text\` is the short, imperative button label. Use \`selectionMessage\` (optional) for a first-person narrative sentence that flows naturally as the YOU message in dialogue history (e.g. "I tried to convince the guard to let us pass."). If you omit \`selectionMessage\`, the system uses \`text\` with any \`[SKILL]\` prefix stripped. Keep \`selectionMessage\` to one sentence, past or present tense, and in first person.
 - **Use hintBefore** to add flavor tags like "[Bribe]", "[Lie]", "[Force]", or to show skill names when there is no skill check.
 
 ---
@@ -419,17 +403,12 @@ Use ${TOOL_NAMES.QUERY_ENTITY}(id) or ${TOOL_NAMES.QUERY_ENTITY}(ids: [...]) for
 `.trim();
 
 export function getSystemPromptTemplate(): string {
-  const row = db
-    .prepare("SELECT value FROM system_state WHERE key = ?")
-    .get(PROMPT_TEMPLATE_KEY) as { value: string } | undefined;
+  const row = db.prepare("SELECT value FROM system_state WHERE key = ?").get(PROMPT_TEMPLATE_KEY) as { value: string } | undefined;
   return row?.value || DEFAULT_SYSTEM_PROMPT_TEMPLATE;
 }
 
 export function setSystemPromptTemplate(template: string): void {
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    PROMPT_TEMPLATE_KEY,
-    template,
-  );
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(PROMPT_TEMPLATE_KEY, template);
 }
 
 export function buildSystemPrompt(): string {
@@ -441,9 +420,7 @@ export function buildSystemPrompt(): string {
       .join("\n");
 
   const entityIndex = [
-    summaries.some((e) => e.type === "CHARACTER")
-      ? `Characters IDs:\n${byType("CHARACTER")}`
-      : null,
+    summaries.some((e) => e.type === "CHARACTER") ? `Characters IDs:\n${byType("CHARACTER")}` : null,
     summaries.some((e) => e.type === "LOCATION") ? `Locations IDs:\n${byType("LOCATION")}` : null,
     summaries.some((e) => e.type === "OBJECT") ? `Objects IDs:\n${byType("OBJECT")}` : null,
   ]
@@ -489,7 +466,9 @@ function persistStep(
 
   if (parentStepId && parentOptionId) {
     updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(`[${label}] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`);
+    console.log(
+      `[${label}] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`,
+    );
   }
 
   for (const msg of messages) {
@@ -689,10 +668,7 @@ export async function generateTurn(
         case "error":
           // A tool execution threw unexpectedly — capture the error so the
           // final-messages check surfaces the real reason instead of a generic message.
-          streamError =
-            chunk.error instanceof Error
-              ? chunk.error.message
-              : String(chunk.error ?? "Unknown stream error");
+          streamError = chunk.error instanceof Error ? chunk.error.message : String(chunk.error ?? "Unknown stream error");
           console.error(`[generateTurn] stream error chunk: ${streamError}`);
           break;
 
@@ -770,15 +746,7 @@ export async function generateTurn(
   );
   events.emitOptions(finalOptions);
 
-  persistStep(
-    stepId,
-    parentStepId,
-    parentOptionId,
-    messages,
-    finalOptions,
-    playerCharacter,
-    "generateTurn",
-  );
+  persistStep(stepId, parentStepId, parentOptionId, messages, finalOptions, playerCharacter, "generateTurn");
   events.finish();
 }
 
@@ -869,14 +837,6 @@ export async function generateTurnBatch(
     metadata: m.metadata,
   }));
 
-  persistStep(
-    stepId,
-    parentStepId,
-    parentOptionId,
-    messages,
-    finalOptions,
-    playerCharacter,
-    "generateTurnBatch",
-  );
+  persistStep(stepId, parentStepId, parentOptionId, messages, finalOptions, playerCharacter, "generateTurnBatch");
   return { stepId, messages, options: finalOptions };
 }

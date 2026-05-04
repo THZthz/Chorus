@@ -1,21 +1,3 @@
-/**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
- * Copyright (C) 2026  Amias
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import { useState, useEffect, useRef } from "react";
 import { Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "motion/react";
@@ -57,8 +39,8 @@ function buildHistoryFromTree(
       const parent = chain[i - 1];
       const opt = parent.options.find((o) => o.id === step.parentOptionId);
       if (opt) {
-        const cleanText = opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
-        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: cleanText });
+        const youText = opt.selectionMessage ?? opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: youText });
       }
     }
     result.push(...step.messages);
@@ -95,6 +77,7 @@ export default function App() {
     >
   >({});
   const [currentReplayStepId, setCurrentReplayStepId] = useState<string | null>(null);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -106,11 +89,7 @@ export default function App() {
 
   // ── SSE streaming ──
 
-  const createSseCallbacks = (
-    streamId: string,
-    logPrefix: string,
-    onDone?: (stepId: string | null) => void,
-  ): SseCallbacks => {
+  const createSseCallbacks = (streamId: string, logPrefix: string, onDone?: (stepId: string | null) => void): SseCallbacks => {
     let capturedStepId: string | null = null;
 
     return {
@@ -129,7 +108,10 @@ export default function App() {
         setStreamingMessages((prev) => {
           if (
             prev.length === messages.length &&
-            prev.every((m, i) => m.text === messages[i].text && m.speaker === messages[i].speaker)
+            prev.every(
+              (m, i) =>
+                m.text === messages[i].text && m.speaker === messages[i].speaker,
+            )
           ) {
             return prev;
           }
@@ -177,18 +159,10 @@ export default function App() {
           `[${logPrefix}] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
         );
       },
-      onWorldUpdate: () => {
-        worldManager.loadState();
-      },
-      onPlotUpdate: () => {
-        worldManager.loadState();
-      },
-      onPlotCreate: () => {
-        worldManager.loadState();
-      },
-      onPlotEdit: () => {
-        worldManager.loadState();
-      },
+      onWorldUpdate: () => { worldManager.loadState(); },
+      onPlotUpdate: () => { worldManager.loadState(); },
+      onPlotCreate: () => { worldManager.loadState(); },
+      onPlotEdit: () => { worldManager.loadState(); },
       onError: async (message) => {
         isRetryingRef.current = false;
         console.error(`[${logPrefix}] error: ${message}`);
@@ -297,13 +271,13 @@ export default function App() {
     }
 
     let updatedHistory = history;
-    const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 
     const youMessage: Message = {
       id: `you-${await nextId()}`,
       speaker: "YOU",
       type: "YOU",
-      text: cleanText,
+      text: youText,
     };
     updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);
@@ -317,10 +291,10 @@ export default function App() {
       const skillBonus = getStatBySkillName(check.skill);
       const total = dice.reduce((a, b) => a + b, 0) + skillBonus;
       const success = total >= check.difficulty;
-      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory, cleanText);
+      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory, youText);
     } else {
       setHasBegun(true);
-      handleStreamingResponse(cleanText, updatedHistory, lastStepId, option.id);
+      handleStreamingResponse(youText, updatedHistory, lastStepId, option.id);
     }
   };
 
@@ -509,12 +483,12 @@ export default function App() {
       return;
     }
 
-    const cleanText = option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
     const youMessage: Message = {
       id: `you-${await nextId()}`,
       speaker: "YOU",
       type: "YOU",
-      text: cleanText,
+      text: youText,
     };
 
     console.log(
@@ -574,7 +548,7 @@ export default function App() {
     const parentIdAtTime = currentReplayStepId;
 
     handleStreamingResponse(
-      cleanText,
+      youText,
       updatedHistory,
       currentReplayStepId,
       option.id,
@@ -603,6 +577,24 @@ export default function App() {
     );
   };
 
+  // ── Bulk regenerate ──
+
+  const handleBulkRegenerate = async () => {
+    console.log(`[regenerate-all] starting bulk regenerate`);
+    setRegeneratingAll(true);
+    try {
+      const res = await fetch("/api/regenerate-all", { method: "POST" });
+      const data = await res.json();
+      const succeeded = data.results?.filter((r: { success: boolean }) => r.success).length ?? 0;
+      const total = data.results?.length ?? 0;
+      console.log(`[regenerate-all] completed: ${succeeded}/${total} leaf steps regenerated`);
+    } catch (err) {
+      console.error("[regenerate-all] failed:", err);
+    } finally {
+      setRegeneratingAll(false);
+      window.location.reload();
+    }
+  };
 
   useEffect(() => {
     if (changedMessageIds.size === 0) return;
@@ -741,6 +733,25 @@ export default function App() {
             )}
           </AnimatePresence>
 
+          {/* Bulk regenerate */}
+          <AnimatePresence>
+            {mode === "live" && canRegenerate && !isTyping && (
+              <motion.button
+                key="regenerate-all"
+                layout
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                onClick={handleBulkRegenerate}
+                disabled={regeneratingAll}
+                title="Regenerate All Leaf Steps"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-purple-400/30 rounded-full text-purple-400 hover:bg-purple-400 hover:text-white transition-all duration-300 shadow-xl disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={regeneratingAll ? "animate-spin" : ""} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </LayoutGroup>
       </div>
 

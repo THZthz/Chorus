@@ -25,6 +25,79 @@ import { CopyButton } from "@/components/debug/CopyButton";
 import { JsonExplorer } from "@/components/debug/JsonExplorer";
 import { JsonNode } from "@/components/debug/JsonNode";
 
+const MAX_CONTENT_PREVIEW = 500;
+
+function normalizeDbStep(s: any) {
+  const toolCalls = s.tool_calls ? JSON.parse(s.tool_calls) : [];
+  const toolResults = s.tool_results ? JSON.parse(s.tool_results) : [];
+  const usage = s.usage ? JSON.parse(s.usage) : null;
+  return {
+    stepNumber: s.step_number,
+    finishReason: s.finish_reason,
+    usage,
+    text: s.text,
+    duration_ms: s.duration_ms,
+    userPrompt: s.user_prompt,
+    reasoning: s.reasoning,
+    toolCalls: toolCalls.map((tc: any) => {
+      const result = toolResults.find((r: any) => r.toolCallId === tc.toolCallId);
+      return { ...tc, output: result?.output };
+    }),
+  };
+}
+
+function normalizeLegacyStep(s: any) {
+  const contents = s.content || [];
+  const toolCalls = contents.filter((c: any) => c.type === "tool-call");
+  const toolResults = contents.filter((c: any) => c.type === "tool-result");
+  return {
+    stepNumber: s.stepNumber,
+    finishReason: s.finishReason,
+    usage: s.usage,
+    text: s.text,
+    duration_ms: s.duration_ms,
+    userPrompt: s.user_prompt,
+    reasoning: s.reasoning,
+    toolCalls: toolCalls.map((tc: any) => {
+      const result = toolResults.find((r: any) => r.toolCallId === tc.toolCallId);
+      return { ...tc, output: result?.output ?? result?.result };
+    }),
+  };
+}
+
+function renderUserPrompt(rawPrompt: string) {
+  try {
+    const msgs = JSON.parse(rawPrompt);
+    if (!Array.isArray(msgs) || msgs.length === 0) return null;
+    const lastMsg = msgs[msgs.length - 1];
+    const content =
+      typeof lastMsg.content === "string"
+        ? lastMsg.content
+        : JSON.stringify(lastMsg.content);
+    return (
+      <>
+        <div className="text-[10px] text-white/40 font-mono mb-1">
+          {msgs.length} message{msgs.length !== 1 ? "s" : ""}
+          {lastMsg.role && (
+            <span className="text-white/20"> · last: {lastMsg.role}</span>
+          )}
+        </div>
+        <div className="text-[11px] text-white/60 whitespace-pre-wrap break-words leading-relaxed pl-2 border-l-2 border-white/[0.06] max-h-[120px] overflow-auto debug-scrollbar">
+          {content.length > MAX_CONTENT_PREVIEW
+            ? content.slice(0, MAX_CONTENT_PREVIEW) + "..."
+            : content}
+        </div>
+      </>
+    );
+  } catch {
+    return (
+      <div className="text-[11px] text-white/50 whitespace-pre-wrap break-words leading-relaxed">
+        {rawPrompt}
+      </div>
+    );
+  }
+}
+
 export const LlmTraceViewer: React.FC = () => {
   const [logs, setLogs] = useState<LlmLog[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -304,24 +377,7 @@ export const LlmTraceViewer: React.FC = () => {
                           // Build normalized steps with tool calls paired to their results
                           let steps: any[] = [];
                           if (log.steps && log.steps.length > 0) {
-                            steps = log.steps.map((s) => {
-                              const toolCalls = s.tool_calls ? JSON.parse(s.tool_calls) : [];
-                              const toolResults = s.tool_results ? JSON.parse(s.tool_results) : [];
-                              const usage = s.usage ? JSON.parse(s.usage) : null;
-                              return {
-                                stepNumber: s.step_number,
-                                finishReason: s.finish_reason,
-                                usage,
-                                text: s.text,
-                                duration_ms: s.duration_ms,
-                                toolCalls: toolCalls.map((tc: any) => {
-                                  const result = toolResults.find(
-                                    (r: any) => r.toolCallId === tc.toolCallId,
-                                  );
-                                  return { ...tc, output: result?.output };
-                                }),
-                              };
-                            });
+                            steps = log.steps.map(normalizeDbStep);
                           } else {
                             // Fallback for old logs without structured steps
                             try {
@@ -330,28 +386,7 @@ export const LlmTraceViewer: React.FC = () => {
                                   ? JSON.parse(log.response || "{}")
                                   : log.response;
                               const rawSteps = parsed?.steps || [];
-                              steps = rawSteps.map((s: any) => {
-                                const contents = s.content || [];
-                                const toolCalls = contents.filter(
-                                  (c: any) => c.type === "tool-call",
-                                );
-                                const toolResults = contents.filter(
-                                  (c: any) => c.type === "tool-result",
-                                );
-                                return {
-                                  stepNumber: s.stepNumber,
-                                  finishReason: s.finishReason,
-                                  usage: s.usage,
-                                  text: s.text,
-                                  duration_ms: s.duration_ms,
-                                  toolCalls: toolCalls.map((tc: any) => {
-                                    const result = toolResults.find(
-                                      (r: any) => r.toolCallId === tc.toolCallId,
-                                    );
-                                    return { ...tc, output: result?.output ?? result?.result };
-                                  }),
-                                };
-                              });
+                              steps = rawSteps.map(normalizeLegacyStep);
                             } catch (e) {}
                           }
 
@@ -519,10 +554,38 @@ export const LlmTraceViewer: React.FC = () => {
                                       )}
                                     </div>
 
+                                    {/* User prompt */}
+                                    {step.userPrompt && (
+                                      <div className="mb-2 p-3 bg-[#1a1a2e]/40 border border-[#61afef]/10 rounded-sm">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <div className="w-[1px] h-3 bg-[#61afef]" />
+                                          <span className="text-[9px] font-bold text-[#61afef]/60 uppercase tracking-wider">
+                                            Prompt
+                                          </span>
+                                        </div>
+                                        {renderUserPrompt(step.userPrompt)}
+                                      </div>
+                                    )}
+
                                     {/* Text content */}
                                     {step.text && (
                                       <div className="mb-2 p-3 bg-white/[0.01] border border-white/5 rounded-sm text-[11px] text-white/50 italic whitespace-pre-wrap break-words leading-relaxed">
                                         {step.text}
+                                      </div>
+                                    )}
+
+                                    {/* Reasoning */}
+                                    {step.reasoning && (
+                                      <div className="mb-2 p-3 bg-[#1a1a2e]/30 border border-[#c678dd]/10 rounded-sm">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <div className="w-[1px] h-3 bg-[#c678dd]" />
+                                          <span className="text-[9px] font-bold text-[#c678dd]/60 uppercase tracking-wider">
+                                            Reasoning
+                                          </span>
+                                        </div>
+                                        <div className="text-[11px] text-white/50 whitespace-pre-wrap break-words leading-relaxed italic max-h-[200px] overflow-auto debug-scrollbar">
+                                          {step.reasoning}
+                                        </div>
                                       </div>
                                     )}
 
@@ -851,25 +914,7 @@ export const LlmTraceViewer: React.FC = () => {
                               {(() => {
                                 let childSteps: any[] = [];
                                 if (child.steps && child.steps.length > 0) {
-                                  childSteps = child.steps.map((s: any) => {
-                                    const toolCalls = s.tool_calls ? JSON.parse(s.tool_calls) : [];
-                                    const toolResults = s.tool_results
-                                      ? JSON.parse(s.tool_results)
-                                      : [];
-                                    const usage = s.usage ? JSON.parse(s.usage) : null;
-                                    return {
-                                      stepNumber: s.step_number,
-                                      finishReason: s.finish_reason,
-                                      usage,
-                                      duration_ms: s.duration_ms,
-                                      toolCalls: toolCalls.map((tc: any) => {
-                                        const result = toolResults.find(
-                                          (r: any) => r.toolCallId === tc.toolCallId,
-                                        );
-                                        return { ...tc, output: result?.output };
-                                      }),
-                                    };
-                                  });
+                                  childSteps = child.steps.map(normalizeDbStep);
                                 } else {
                                   try {
                                     const parsed =
@@ -877,30 +922,7 @@ export const LlmTraceViewer: React.FC = () => {
                                         ? JSON.parse(child.response || "{}")
                                         : child.response;
                                     const rawSteps = parsed?.steps || [];
-                                    childSteps = rawSteps.map((s: any) => {
-                                      const contents = s.content || [];
-                                      const toolCalls = contents.filter(
-                                        (c: any) => c.type === "tool-call",
-                                      );
-                                      const toolResults = contents.filter(
-                                        (c: any) => c.type === "tool-result",
-                                      );
-                                      return {
-                                        stepNumber: s.stepNumber,
-                                        finishReason: s.finishReason,
-                                        usage: s.usage,
-                                        duration_ms: s.duration_ms,
-                                        toolCalls: toolCalls.map((tc: any) => {
-                                          const result = toolResults.find(
-                                            (r: any) => r.toolCallId === tc.toolCallId,
-                                          );
-                                          return {
-                                            ...tc,
-                                            output: result?.output ?? result?.result,
-                                          };
-                                        }),
-                                      };
-                                    });
+                                    childSteps = rawSteps.map(normalizeLegacyStep);
                                   } catch (e) {}
                                 }
                                 if (childSteps.length === 0) return null;

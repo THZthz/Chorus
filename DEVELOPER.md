@@ -302,7 +302,7 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 | `dialogue_steps`        | Generated dialogue tree nodes (with world_snapshot JSON for replays)                     |
 | `dialogue_alternatives` | Archived alternative versions (regeneration)                                             |
 | `llm_logs`              | LLM request/response logging (with parent_id + label for child traces)                   |
-| `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings)                                  |
+| `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings, user_prompt, reasoning)          |
 | `console_logs`          | Intercepted browser console logs                                                         |
 | `system_state`          | Key-value system state storage                                                           |
 
@@ -368,8 +368,9 @@ that are replaced with live data by `buildSystemPrompt()`. If no custom template
 
 The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
 
-- **LLM Trace Viewer**: Parsed exchange timeline with step breakdown, resizable raw JSON viewers, auto-refresh, and
-  child trace nesting (`src/components/debug/LlmTraceViewer.tsx`)
+- **LLM Trace Viewer**: Parsed exchange timeline with per-step prompt display, model reasoning text (when available),
+  step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting
+  (`src/components/debug/LlmTraceViewer.tsx`)
 - **Console Logs**: Intercepted browser console output with filtering (by level, keyword/regex, date range), text wrap
   toggle, and sync/clear (`src/components/debug/ConsoleViewer.tsx`)
 - **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form

@@ -25,6 +25,8 @@ interface StepData {
   toolCalls?: { toolCallId: string; toolName: string; input: unknown }[];
   toolResults?: { toolCallId: string; toolName: string; output: unknown }[];
   text?: string;
+  reasoning?: string;
+  userPrompt?: string;
 }
 
 interface FinishData {
@@ -69,6 +71,8 @@ export class LlmDebugIntegration {
         })),
       ),
       text: event.text ?? null,
+      reasoning: event.reasoning ?? null,
+      user_prompt: event.userPrompt ?? null,
       duration_ms: Date.now() - this.startTime,
     });
   }

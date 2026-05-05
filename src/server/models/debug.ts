@@ -42,6 +42,8 @@ export interface LlmStep {
   text: string | null;
   duration_ms: number | null;
   timestamp: string;
+  user_prompt: string | null;
+  reasoning: string | null;
 }
 
 export interface ConsoleLog {
@@ -82,8 +84,8 @@ export function addLlmStep(step: Omit<LlmStep, "id" | "timestamp">): string {
   const id = uuidv4();
   db.prepare(
     `
-    INSERT INTO llm_steps (id, log_id, step_number, finish_reason, usage, tool_calls, tool_results, text, duration_ms)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO llm_steps (id, log_id, step_number, finish_reason, usage, tool_calls, tool_results, text, duration_ms, user_prompt, reasoning)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     id,
@@ -95,6 +97,8 @@ export function addLlmStep(step: Omit<LlmStep, "id" | "timestamp">): string {
     step.tool_results,
     step.text,
     step.duration_ms,
+    step.user_prompt ?? null,
+    step.reasoning ?? null,
   );
   return id;
 }

@@ -129,5 +129,11 @@ try {
 try {
   db.exec("ALTER TABLE llm_logs ADD COLUMN label TEXT");
 } catch {}
+try {
+  db.exec("ALTER TABLE llm_steps ADD COLUMN user_prompt TEXT");
+} catch {}
+try {
+  db.exec("ALTER TABLE llm_steps ADD COLUMN reasoning TEXT");
+} catch {}
 
 export default db;

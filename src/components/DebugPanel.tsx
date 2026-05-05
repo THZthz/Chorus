@@ -18,7 +18,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, Database, Monitor, GitBranch, Network, FileText } from "lucide-react";
+import { Terminal, X, Bug, Database, Monitor, GitBranch, FileText, Map, Ellipsis } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";
@@ -26,8 +26,10 @@ import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeG
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
+import { SceneViewer } from "@/components/debug/SceneViewer";
 
-type TabId = "logs" | "console" | "world" | "tree" | "plots" | "prompt";
+type TabId = "logs" | "console" | "world" | "graphs" | "prompt" | "scene";
+type GraphMode = "dialogue" | "plot";
 
 const TabButton: React.FC<{
   id: TabId;
@@ -49,6 +51,64 @@ const TabButton: React.FC<{
   </button>
 );
 
+const MoreMenu: React.FC<{
+  activeTab: TabId;
+  onSelect: (id: TabId) => void;
+}> = ({ activeTab, onSelect }) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    if (open) document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const isActive = activeTab === "prompt" || activeTab === "scene";
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`px-4 py-3 flex items-center gap-2 border-b transition-colors ${
+          isActive
+            ? "border-white text-white bg-white/5"
+            : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
+        }`}
+      >
+        <Ellipsis size={14} />
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">More</span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-[#141414] border border-white/10 rounded-sm shadow-xl z-30 min-w-[140px]">
+          <button
+            onClick={() => { onSelect("prompt"); setOpen(false); }}
+            className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left hover:bg-white/5 transition-colors ${
+              activeTab === "prompt" ? "text-white" : "text-white/40"
+            }`}
+          >
+            <FileText size={12} />
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em]">Prompt</span>
+          </button>
+          <button
+            onClick={() => { onSelect("scene"); setOpen(false); }}
+            className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left hover:bg-white/5 transition-colors ${
+              activeTab === "scene" ? "text-white" : "text-white/40"
+            }`}
+          >
+            <Map size={12} />
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em]">Scene</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
   currentReplayStepId?: string | null;
@@ -56,6 +116,7 @@ export const DebugPanel: React.FC<{
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("logs");
   const [panelWidth, setPanelWidth] = useState(640);
+  const [graphMode, setGraphMode] = useState<GraphMode>("dialogue");
   const panelDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
@@ -169,26 +230,13 @@ export const DebugPanel: React.FC<{
                     icon={<Database size={14} />}
                   />
                   <TabButton
-                    id="tree"
+                    id="graphs"
                     activeTab={activeTab}
                     onSelect={setActiveTab}
-                    label="Tree"
+                    label="Graphs"
                     icon={<GitBranch size={14} />}
                   />
-                  <TabButton
-                    id="plots"
-                    activeTab={activeTab}
-                    onSelect={setActiveTab}
-                    label="Plots"
-                    icon={<Network size={14} />}
-                  />
-                  <TabButton
-                    id="prompt"
-                    activeTab={activeTab}
-                    onSelect={setActiveTab}
-                    label="Prompt"
-                    icon={<FileText size={14} />}
-                  />
+                  <MoreMenu activeTab={activeTab} onSelect={setActiveTab} />
                 </div>
                 <div className="flex items-center gap-3 pr-4">
                   <button
@@ -203,11 +251,42 @@ export const DebugPanel: React.FC<{
               <div className="flex-1 p-6 min-h-0 flex flex-col">
                 {activeTab === "logs" && <LlmTraceViewer />}
                 {activeTab === "console" && <ConsoleViewer />}
-
                 {activeTab === "world" && <WorldEditor />}
-                {activeTab === "tree" && <NodeGraph config={dialogueConfig} />}
-                {activeTab === "plots" && <NodeGraph config={plotConfig} />}
+                {activeTab === "graphs" && (
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center gap-1 mb-4 flex-shrink-0">
+                      <button
+                        onClick={() => setGraphMode("dialogue")}
+                        className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.15em] border rounded-sm transition-colors ${
+                          graphMode === "dialogue"
+                            ? "text-white border-white/20 bg-white/5"
+                            : "text-white/30 border-transparent hover:text-white/50 hover:bg-white/2"
+                        }`}
+                      >
+                        Dialogue
+                      </button>
+                      <button
+                        onClick={() => setGraphMode("plot")}
+                        className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.15em] border rounded-sm transition-colors ${
+                          graphMode === "plot"
+                            ? "text-white border-white/20 bg-white/5"
+                            : "text-white/30 border-transparent hover:text-white/50 hover:bg-white/2"
+                        }`}
+                      >
+                        Plots
+                      </button>
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      {graphMode === "dialogue" ? (
+                        <NodeGraph config={dialogueConfig} />
+                      ) : (
+                        <NodeGraph config={plotConfig} />
+                      )}
+                    </div>
+                  </div>
+                )}
                 {activeTab === "prompt" && <SystemPromptEditor />}
+                {activeTab === "scene" && <SceneViewer />}
               </div>
             </motion.div>
           </>

@@ -278,9 +278,9 @@ export const DebugPanel: React.FC<{
                     </div>
                     <div className="flex-1 min-h-0">
                       {graphMode === "dialogue" ? (
-                        <NodeGraph config={dialogueConfig} />
+                        <NodeGraph key="dialogue" config={dialogueConfig} />
                       ) : (
-                        <NodeGraph config={plotConfig} />
+                        <NodeGraph key="plot" config={plotConfig} />
                       )}
                     </div>
                   </div>

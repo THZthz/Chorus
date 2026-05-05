@@ -78,7 +78,7 @@ const DialogueNodeCard: React.FC<NodeRenderProps<StepData> & { isCurrentReplay: 
   isEffectivelyActive,
   isCurrentReplay,
 }) => {
-  const firstMsg = node.messages[0];
+  const firstMsg = node.messages?.[0];
   const preview = firstMsg
     ? firstMsg.text.slice(0, 42) + (firstMsg.text.length > 42 ? "…" : "")
     : "(no messages)";
@@ -170,11 +170,11 @@ const DialogueNodeCard: React.FC<NodeRenderProps<StepData> & { isCurrentReplay: 
         style={{ borderColor: "rgba(255,255,255,0.04)" }}
       >
         <span className="text-[9px] font-mono text-white/20">
-          {node.messages.length} msg{node.messages.length !== 1 ? "s" : ""}
+          {node.messages?.length ?? 0} msg{(node.messages?.length ?? 0) !== 1 ? "s" : ""}
         </span>
         <span className="text-white/10">·</span>
         <span className="text-[9px] font-mono text-white/20">
-          {node.options.length} opt{node.options.length !== 1 ? "s" : ""}
+          {node.options?.length ?? 0} opt{(node.options?.length ?? 0) !== 1 ? "s" : ""}
         </span>
       </div>
     </div>
@@ -195,14 +195,14 @@ const DialogueInspector: React.FC<
   height,
   onResizeStart,
 }) => {
-  const [messages, setMessages] = useState<Message[]>(node.messages);
+  const [messages, setMessages] = useState<Message[]>(node.messages ?? []);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setMessages(node.messages);
+    setMessages(node.messages ?? []);
     setEditingIdx(null);
     setError(null);
   }, [node.id]);
@@ -214,7 +214,7 @@ const DialogueInspector: React.FC<
       const res = await fetch(`/api/dialogue/${node.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, options: node.options }),
+        body: JSON.stringify({ messages, options: node.options ?? [] }),
       });
       if (!res.ok) throw new Error(await res.text());
       setSavedFlash(true);
@@ -262,7 +262,7 @@ const DialogueInspector: React.FC<
               </span>
             )}
             <span className="text-[9px] text-white/20 font-mono">
-              {node.messages.length} msgs · {node.options.length} opts
+              {node.messages?.length ?? 0} msgs · {node.options?.length ?? 0} opts
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -368,7 +368,7 @@ const DialogueInspector: React.FC<
             <div className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
               Options
             </div>
-            {node.options.map((opt) => (
+            {(node.options ?? []).map((opt) => (
               <div key={opt.id} className="py-1">
                 <div className="flex items-start gap-1.5">
                   <ChevronRight size={9} className="text-white/20 flex-shrink-0 mt-0.5" />
@@ -390,7 +390,7 @@ const DialogueInspector: React.FC<
                 </div>
               </div>
             ))}
-            {node.options.length === 0 && (
+            {!(node.options?.length) && (
               <p className="text-[9px] text-white/15 italic">No options</p>
             )}
           </div>

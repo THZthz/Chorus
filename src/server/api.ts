@@ -17,6 +17,7 @@
  */
 
 import express from "express";
+import chalk from "chalk";
 import type { Message } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
 import {
@@ -353,6 +354,23 @@ apiRouter.get("/ids/batch", (req, res) => {
   res.json({ ids: nextIdBatch(count) });
 });
 
+const levelColor = (level: string) => {
+  switch (level) {
+    case "error": return chalk.red;
+    case "warn":  return chalk.yellow;
+    case "info":  return chalk.cyan;
+    case "trace": return chalk.gray;
+    default:      return chalk.white;
+  }
+};
+
+const printClientLog = (level: string, message: string) => {
+  const now = new Date().toLocaleTimeString([], { hour12: false });
+  const color = levelColor(level);
+  const tag = chalk.dim(`[${now}]`) + " " + chalk.magenta("[CLIENT]") + " " + color(`[${level.toUpperCase()}]`);
+  process.stdout.write(`${tag} ${message}\n`);
+};
+
 // ── Debug ──
 
 apiRouter.get("/debug/logs", (_req, res) => {
@@ -372,14 +390,11 @@ apiRouter.get("/debug/console", (req, res) => {
 apiRouter.post("/debug/console", (req, res) => {
   try {
     const body = req.body;
-    if (Array.isArray(body)) {
-      for (const entry of body) {
-        const { level, message, args } = entry;
-        addConsoleLog(level, message, args);
-      }
-    } else {
-      const { level, message, args } = body;
+    const entries = Array.isArray(body) ? body : [body];
+    for (const entry of entries) {
+      const { level, message, args } = entry;
       addConsoleLog(level, message, args);
+      printClientLog(level, message);
     }
     res.json({ success: true });
   } catch (error: unknown) {

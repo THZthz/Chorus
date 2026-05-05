@@ -27,7 +27,13 @@ import {
 } from "@/server/models/world";
 import { addPlot, updatePlot, getPlotById, getPlotsByIds, getAllPlots } from "@/server/models/plot";
 import { nextId } from "@/server/models/ids";
-import { getSceneState, setSceneState, getGameTime, advanceGameTime, describeTime } from "@/server/models/scene";
+import {
+  getSceneState,
+  setSceneState,
+  getGameTime,
+  advanceGameTime,
+  describeTime,
+} from "@/server/models/scene";
 import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import type { DialogueOption } from "@/types/dialogue";
@@ -39,13 +45,15 @@ const disallowedRe =
   /[\p{Emoji}\p{Script=Han}\p{Script=Arabic}\p{Script=Cyrillic}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
 function isAllowedText(str: string): boolean {
-  return !disallowedRe.test(str);
+  if (!disallowedRe.test(str)) return true;
+  // \p{Emoji} matches ASCII digits 0-9, #, * (emoji keycap bases) — allow them
+  return /^[0-9#*]$/.test(str);
 }
 
 function checkText(value: unknown, context: string): string | null {
   const str = typeof value === "string" ? value : JSON.stringify(value);
-  if (!isAllowedText(str)) {
-    const disallowed = [...str].filter((c) => !isAllowedText(c));
+  const disallowed = [...str].filter((c) => !isAllowedText(c));
+  if (disallowed.length !== 0) {
     const unique = [...new Set(disallowed)].slice(0, 10);
     return `TEXT VERIFICATION FAILED in ${context}: disallowed characters detected [${unique.join(" ")}]. Only Latin-script text and typographic punctuation (no emoji, no non-Latin scripts) is allowed. Please retry with allowed content.`;
   }
@@ -599,7 +607,9 @@ export function createAdvanceTimeTool(events: TurnEventEmitter) {
       reason: z
         .string()
         .optional()
-        .describe("Brief narrative reason for the time advance (e.g. 'The conversation dragged on')."),
+        .describe(
+          "Brief narrative reason for the time advance (e.g. 'The conversation dragged on').",
+        ),
     }),
     execute: wrapSafe(async (args: { segments: number; reason?: string }) => {
       const { oldTime, newTime } = advanceGameTime(args.segments);

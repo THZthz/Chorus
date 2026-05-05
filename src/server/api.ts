@@ -30,10 +30,7 @@ import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/worl
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";
 import { getGameTime, getSceneState } from "@/server/models/scene";
-import {
-  getLlmLogs,
-  clearLlmLogs,
-} from "@/server/models/debug";
+import { getLlmLogs, clearLlmLogs } from "@/server/models/debug";
 import {
   getStep,
   saveStep,
@@ -349,7 +346,6 @@ apiRouter.get("/ids/batch", (req, res) => {
   const count = Math.min(Math.max(parseInt(String(req.query.count), 10) || 20, 1), 100);
   res.json({ ids: nextIdBatch(count) });
 });
-
 
 // ── Debug ──
 

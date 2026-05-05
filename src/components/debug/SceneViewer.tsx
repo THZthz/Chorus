@@ -100,7 +100,11 @@ const EntityBadge: React.FC<{ id: string; detail?: string }> = ({ id, detail }) 
   const type = resolveEntityType(id);
   return (
     <div className="flex items-center gap-1.5 px-2 py-1 bg-white/[0.03] border border-white/6 rounded-sm">
-      {type === "CHARACTER" ? <User size={10} className="text-white/30 flex-shrink-0" /> : <Box size={10} className="text-white/30 flex-shrink-0" />}
+      {type === "CHARACTER" ? (
+        <User size={10} className="text-white/30 flex-shrink-0" />
+      ) : (
+        <Box size={10} className="text-white/30 flex-shrink-0" />
+      )}
       <span className="text-[10px] text-white/60 font-mono">{name}</span>
       {detail && <span className="text-[9px] text-white/20 ml-0.5">{detail}</span>}
     </div>
@@ -110,10 +114,7 @@ const EntityBadge: React.FC<{ id: string; detail?: string }> = ({ id, detail }) 
 // ── Main component ──────────────────────────────────────────────────────────
 
 export const SceneViewer: React.FC = () => {
-  const isReplay = useSyncExternalStore(
-    subscribeToReplay,
-    () => worldManager.isReplayActive(),
-  );
+  const isReplay = useSyncExternalStore(subscribeToReplay, () => worldManager.isReplayActive());
 
   const [liveData, setLiveData] = useState<LiveSceneData | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -124,22 +125,25 @@ export const SceneViewer: React.FC = () => {
     const load = async () => {
       try {
         const data = await fetchLiveScene();
-        if (!cancelled) { setLiveData(data); setLiveError(null); }
+        if (!cancelled) {
+          setLiveData(data);
+          setLiveError(null);
+        }
       } catch (e) {
         if (!cancelled) setLiveError(e instanceof Error ? e.message : String(e));
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isReplay]);
 
   const gameTime: GameTime | null = isReplay
     ? worldManager.getGameTime()
-    : liveData?.gameTime ?? null;
+    : (liveData?.gameTime ?? null);
 
-  const scene: SceneState | null = isReplay
-    ? worldManager.getScene()
-    : liveData?.scene ?? null;
+  const scene: SceneState | null = isReplay ? worldManager.getScene() : (liveData?.scene ?? null);
 
   // ── Empty state ──────────────────────────────────────────────────────────
 
@@ -150,12 +154,16 @@ export const SceneViewer: React.FC = () => {
           {liveError ? (
             <>
               <AlertCircle size={24} className="text-red-400/40" />
-              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-red-400/40">{liveError}</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-red-400/40">
+                {liveError}
+              </span>
             </>
           ) : (
             <>
               <Clock size={24} />
-              <span className="text-[9px] font-bold uppercase tracking-[0.2em]">No scene data yet</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.2em]">
+                No scene data yet
+              </span>
             </>
           )}
         </div>
@@ -172,8 +180,9 @@ export const SceneViewer: React.FC = () => {
     .filter(([, locId]) => locId === currentLocationId)
     .map(([charId]) => charId);
 
-  const charactersElsewhere = Object.entries(scene.characterLocations)
-    .filter(([, locId]) => locId !== currentLocationId);
+  const charactersElsewhere = Object.entries(scene.characterLocations).filter(
+    ([, locId]) => locId !== currentLocationId,
+  );
 
   const objectsAtLocation = Object.entries(scene.objectPositions)
     .filter(([, pos]) => pos.type === "location" && pos.locationId === currentLocationId)
@@ -183,12 +192,11 @@ export const SceneViewer: React.FC = () => {
     .filter(([, pos]) => pos.type === "character" && charactersHere.includes(pos.characterId))
     .map(([objId, pos]) => ({ objId, carrierId: (pos as { characterId: string }).characterId }));
 
-  const objectsOther = Object.entries(scene.objectPositions)
-    .filter(([, pos]) => {
-      if (pos.type === "location" && pos.locationId === currentLocationId) return false;
-      if (pos.type === "character" && charactersHere.includes(pos.characterId)) return false;
-      return true;
-    });
+  const objectsOther = Object.entries(scene.objectPositions).filter(([, pos]) => {
+    if (pos.type === "location" && pos.locationId === currentLocationId) return false;
+    if (pos.type === "character" && charactersHere.includes(pos.characterId)) return false;
+    return true;
+  });
 
   return (
     <div className="flex-1 overflow-y-auto debug-scrollbar space-y-5">
@@ -196,18 +204,20 @@ export const SceneViewer: React.FC = () => {
       <section>
         <div className="flex items-center gap-2 mb-3">
           <Clock size={12} className="text-white/30" />
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/30">Time</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/30">
+            Time
+          </span>
         </div>
-        <p className="text-[13px] text-white/70 font-mono">
-          {describeTime(gameTime)}
-        </p>
+        <p className="text-[13px] text-white/70 font-mono">{describeTime(gameTime)}</p>
       </section>
 
       {/* Current location */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <MapPin size={12} className="text-white/30" />
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/30">Current Location</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/30">
+            Current Location
+          </span>
         </div>
         <EntityBadge id={currentLocationId} />
       </section>
@@ -259,7 +269,11 @@ export const SceneViewer: React.FC = () => {
           </div>
           <div className="flex flex-wrap gap-2">
             {objectsCarriedHere.map(({ objId, carrierId }) => (
-              <EntityBadge key={objId} id={objId} detail={`held by ${resolveEntityName(carrierId)}`} />
+              <EntityBadge
+                key={objId}
+                id={objId}
+                detail={`held by ${resolveEntityName(carrierId)}`}
+              />
             ))}
           </div>
         </section>

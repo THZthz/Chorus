@@ -193,9 +193,7 @@ export default function App() {
         worldManager.loadState();
       },
       onTimeUpdate: (data) => {
-        console.trace(
-          `[${logPrefix}] time_update day=${data.day} segment=${data.segment}`,
-        );
+        console.trace(`[${logPrefix}] time_update day=${data.day} segment=${data.segment}`);
         setGameTime({ day: data.day, segment: data.segment });
       },
       onSceneUpdate: (data) => {
@@ -690,9 +688,18 @@ export default function App() {
           <div className="text-xs text-white/40 font-mono tracking-wider">
             {(() => {
               const segLabels = [
-                "Midnight", "Late Night", "Dawn", "Early Morning",
-                "Morning", "Late Morning", "Noon", "Afternoon",
-                "Late Afternoon", "Dusk", "Evening", "Night",
+                "Midnight",
+                "Late Night",
+                "Dawn",
+                "Early Morning",
+                "Morning",
+                "Late Morning",
+                "Noon",
+                "Afternoon",
+                "Late Afternoon",
+                "Dusk",
+                "Evening",
+                "Night",
               ];
               const t = mode === "replay" ? worldManager.getGameTime() : gameTime;
               if (!t) return null;

@@ -18,7 +18,8 @@
 
 import type { Plot } from "@/types/plot";
 
-export type EntityType = "OBJECT" | "LOCATION" | "CHARACTER";
+export const ENTITY_TYPES = ["OBJECT", "LOCATION", "CHARACTER"] as const;
+export type EntityType = (typeof ENTITY_TYPES)[number];
 
 export interface CharacterStats {
   logic: number;

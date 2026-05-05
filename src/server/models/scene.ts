@@ -54,9 +54,9 @@ const SEGMENT_HOURS: Record<number, string> = {
 // ── Time Functions ──
 
 export function getGameTime(): GameTime {
-  const dayRow = db
-    .prepare("SELECT value FROM system_state WHERE key = ?")
-    .get("game_time_day") as { value: string } | undefined;
+  const dayRow = db.prepare("SELECT value FROM system_state WHERE key = ?").get("game_time_day") as
+    | { value: string }
+    | undefined;
   const segRow = db
     .prepare("SELECT value FROM system_state WHERE key = ?")
     .get("game_time_segment") as { value: string } | undefined;
@@ -67,17 +67,17 @@ export function getGameTime(): GameTime {
 }
 
 export function setGameTime(time: GameTime): void {
-  db.prepare(
-    "INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)",
-  ).run("game_time_day", String(time.day));
-  db.prepare(
-    "INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)",
-  ).run("game_time_segment", String(time.segment));
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    "game_time_day",
+    String(time.day),
+  );
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    "game_time_segment",
+    String(time.segment),
+  );
 }
 
-export function advanceGameTime(
-  segments: number,
-): { oldTime: GameTime; newTime: GameTime } {
+export function advanceGameTime(segments: number): { oldTime: GameTime; newTime: GameTime } {
   const oldTime = getGameTime();
   const totalSegments = oldTime.day * 12 + oldTime.segment + segments;
   const newTime: GameTime = {
@@ -103,9 +103,9 @@ const DEFAULT_SCENE: SceneState = {
 };
 
 export function getSceneState(): SceneState {
-  const row = db
-    .prepare("SELECT value FROM system_state WHERE key = ?")
-    .get("current_scene") as { value: string } | undefined;
+  const row = db.prepare("SELECT value FROM system_state WHERE key = ?").get("current_scene") as
+    | { value: string }
+    | undefined;
   if (!row) return { ...DEFAULT_SCENE };
   try {
     return JSON.parse(row.value) as SceneState;
@@ -115,7 +115,8 @@ export function getSceneState(): SceneState {
 }
 
 export function setSceneState(scene: SceneState): void {
-  db.prepare(
-    "INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)",
-  ).run("current_scene", JSON.stringify(scene));
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    "current_scene",
+    JSON.stringify(scene),
+  );
 }

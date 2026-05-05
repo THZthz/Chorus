@@ -16,7 +16,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-export type SpeakerType = "YOU" | "INNER_VOICE" | "CHARACTER" | "SYSTEM" | "ROLL" | "NOTIFICATION";
+export const SPEAKER_TYPES = [
+  "YOU",
+  "INNER_VOICE",
+  "CHARACTER",
+  "SYSTEM",
+  "ROLL",
+  "NOTIFICATION",
+] as const;
+export type SpeakerType = (typeof SPEAKER_TYPES)[number];
+
+export const NOTIFICATION_TYPES = ["XP", "TASK", "ITEM"] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export interface Message {
   id: string;
@@ -24,7 +35,7 @@ export interface Message {
   type: SpeakerType;
   text: string;
   metadata?: {
-    notificationType?: "XP" | "TASK" | "ITEM";
+    notificationType?: NotificationType;
   };
   skillCheck?: {
     skill: string;
@@ -48,7 +59,6 @@ export interface DialogueOption {
   hintBefore?: string; // e.g. "[Consult the Void]"
   hintAfter?: string; // e.g. "[Charm her.]"
   nextStepId?: string; // Standard transition
-
   check?: {
     skill: string;
     difficulty: number;

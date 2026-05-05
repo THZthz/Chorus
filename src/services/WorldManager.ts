@@ -16,7 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { WorldEntity, WorldState, WorldSnapshot, Character, GameTime, SceneState } from "@/types/entities";
+import type {
+  WorldEntity,
+  WorldState,
+  WorldSnapshot,
+  Character,
+  GameTime,
+  SceneState,
+} from "@/types/entities";
 import type { Plot } from "@/types/plot";
 
 class WorldManager {

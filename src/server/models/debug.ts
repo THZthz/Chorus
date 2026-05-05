@@ -122,4 +122,3 @@ export function clearLlmLogs() {
   db.prepare("DELETE FROM llm_steps").run();
   db.prepare("DELETE FROM llm_logs").run();
 }
-

@@ -21,11 +21,14 @@ export interface PlotOption {
   triggerCondition: string;
 }
 
+export const PLOT_STATUSES = ["PENDING", "IN_PROGRESS", "RESOLVED"] as const;
+export type PlotStatus = (typeof PLOT_STATUSES)[number];
+
 export interface Plot {
   id: string;
   title: string;
   description: string;
-  status: "PENDING" | "IN_PROGRESS" | "RESOLVED";
+  status: PlotStatus;
   involvedLocations: string[];
   involvedCharacters: string[];
   parentPlotId: string | null;

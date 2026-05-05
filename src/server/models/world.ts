@@ -272,7 +272,7 @@ export function getEntityById(id: string): WorldEntity | null {
   return row ? rowToEntity(row) : null;
 }
 
-export function searchEntities(query: string): WorldEntity[] {
+export function getEntitiesByText(query: string): WorldEntity[] {
   const lower = query.toLowerCase();
   const rows = db.prepare("SELECT * FROM entities").all() as any[];
   return rows

@@ -71,16 +71,12 @@ function renderUserPrompt(rawPrompt: string) {
     if (!Array.isArray(msgs) || msgs.length === 0) return null;
     const lastMsg = msgs[msgs.length - 1];
     const content =
-      typeof lastMsg.content === "string"
-        ? lastMsg.content
-        : JSON.stringify(lastMsg.content);
+      typeof lastMsg.content === "string" ? lastMsg.content : JSON.stringify(lastMsg.content);
     return (
       <>
         <div className="text-[10px] text-white/40 font-mono mb-1">
           {msgs.length} message{msgs.length !== 1 ? "s" : ""}
-          {lastMsg.role && (
-            <span className="text-white/20"> · last: {lastMsg.role}</span>
-          )}
+          {lastMsg.role && <span className="text-white/20"> · last: {lastMsg.role}</span>}
         </div>
         <div className="text-[11px] text-white/60 whitespace-pre-wrap break-words leading-relaxed pl-2 border-l-2 border-white/[0.06] max-h-[120px] overflow-auto debug-scrollbar">
           {content.length > MAX_CONTENT_PREVIEW

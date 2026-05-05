@@ -23,7 +23,7 @@ import {
   getEntityById,
   getEntitiesByIds,
   getAllEntitySummaries,
-  searchEntities,
+  getEntitiesByText,
 } from "@/server/models/world";
 import { addPlot, updatePlot, getPlotById, getPlotsByIds, getAllPlots } from "@/server/models/plot";
 import { nextId } from "@/server/models/ids";
@@ -34,10 +34,11 @@ import {
   advanceGameTime,
   describeTime,
 } from "@/server/models/scene";
-import type { PlotOption } from "@/types/plot";
+import { PLOT_STATUSES, PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
-import type { DialogueOption } from "@/types/dialogue";
-import type { SceneState } from "@/types/entities";
+import { DialogueOption, NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
+import { ENTITY_TYPES, EntityType, SceneState } from "@/types/entities";
+import { TOOL_NAMES } from "@/shared/constants.ts";
 
 // ── Text verification ──
 
@@ -55,7 +56,7 @@ function checkText(value: unknown, context: string): string | null {
   const disallowed = [...str].filter((c) => !isAllowedText(c));
   if (disallowed.length !== 0) {
     const unique = [...new Set(disallowed)].slice(0, 10);
-    return `TEXT VERIFICATION FAILED in ${context}: disallowed characters detected [${unique.join(" ")}]. Only Latin-script text and typographic punctuation (no emoji, no non-Latin scripts) is allowed. Please retry with allowed content.`;
+    return `TEXT VERIFICATION FAILED in ${context}: disallowed characters detected [${unique.join(",")}]. Only Latin-script text and typographic punctuation (no emoji, no non-Latin scripts) is allowed. Please retry with allowed content.`;
   }
   return null;
 }
@@ -83,58 +84,6 @@ function wrapSafe<T>(
   };
 }
 
-// ── Shared schemas ──
-
-const checkConditionSchema = z.object({
-  expression: z.string().describe("JS expression e.g. 'success' or 'total < difficulty'"),
-  label: z.string().optional(),
-  color: z.string().optional(),
-});
-
-const skillCheckSchema = z.object({
-  skill: z.string().describe("The skill to check (e.g. 'LOGIC')"),
-  difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
-  difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
-  diceCount: z.number().default(2),
-  isRed: z.boolean().optional().describe("High-stakes, one-time check."),
-  conditions: z.array(checkConditionSchema).describe("Outcome conditions."),
-});
-
-const messageSchema = z.object({
-  speaker: z
-    .string()
-    .describe(
-      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
-    ),
-  type: z.enum(["YOU", "INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]),
-  text: z.string().describe("The dialogue text, supports markdown."),
-  metadata: z
-    .object({
-      notificationType: z.enum(["XP", "TASK", "ITEM"]).optional(),
-    })
-    .optional(),
-});
-
-const optionSchema = z.object({
-  text: z.string().describe("Short imperative button label (e.g. 'Try to convince the guard')."),
-  id: z.string().optional(),
-  selectionMessage: z
-    .string()
-    .optional()
-    .describe(
-      "Optional first-person sentence for the YOU message in dialogue history after the player selects this option. Past or present tense describing what the player actually said/did (e.g. 'I tried to convince the guard to let us pass.'). If omitted, the text field is used with any [SKILL] prefix removed.",
-    ),
-  hintBefore: z.string().optional().describe("Hint shown before the text e.g. [Logic]"),
-  hintAfter: z.string().optional().describe("Hint shown after the text e.g. [Red Check]"),
-
-  check: skillCheckSchema.optional(),
-});
-
-const plotOptionSchema = z.object({
-  plotId: z.string().nullable().describe("ID of the child plot, or null if not created yet."),
-  triggerCondition: z.string().describe("What player action activates this branch."),
-});
-
 // ── Helpers ──
 
 export function mapToDialogueOption(
@@ -147,10 +96,9 @@ export function mapToDialogueOption(
   return {
     id: optId,
     text: (o.text as string) || "",
+    selectionMessage: o.selectionMessage as string | undefined,
     hintBefore: o.hintBefore as string | undefined,
     hintAfter: o.hintAfter as string | undefined,
-    selectionMessage: o.selectionMessage as string | undefined,
-
     check: check
       ? {
           skill: check.skill as string,
@@ -177,168 +125,165 @@ export function mapToDialogueOption(
 export function createGetAllEntitiesNameTool() {
   return tool({
     title: "Get All Entities Name",
-    description:
-      "Returns the id, displayName, type, and shortDescription of all world entities. Use this to discover what exists before calling queryEntity for full details.",
+    description: "Returns the id, displayName, type, and shortDescription of all world entities.",
     inputSchema: z.object({
-      type: z
-        .enum(["CHARACTER", "LOCATION", "OBJECT"])
-        .optional()
-        .describe("Optional filter by entity type."),
+      type: z.enum(ENTITY_TYPES).optional().describe("Optional filter by entity type."),
     }),
-    execute: wrapSafe(async (args: { type?: "CHARACTER" | "LOCATION" | "OBJECT" }) => {
+    execute: wrapSafe(async (args: { type?: EntityType }) => {
       const summaries = getAllEntitySummaries(args.type);
       if (summaries.length === 0) return "No entities found.";
       return JSON.stringify(summaries, null, 2);
-    }, "getAllEntitiesName"),
+    }, TOOL_NAMES.GET_ALL_ENTITIES),
   });
 }
+
+const queryEntitySchema = z.object({
+  id: z.string().optional().describe("Exact entity ID for single lookup (e.g. 'madam_vespera')."),
+  ids: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of entity IDs for bulk lookup. Returns results in the same order, skipping missing IDs.",
+    ),
+  search: z
+    .string()
+    .optional()
+    .describe("Text to search for in entity names/descriptions (up to 5 results)."),
+});
 
 export function createQueryEntityTool() {
   return tool({
     title: "Query Entity",
     description:
       "Get full details of world entities. Provide an id for single lookup, ids array for bulk lookup, or a search term for text search (case-insensitive match on name/description, up to 5 results).",
-    inputSchema: z.object({
-      id: z
-        .string()
-        .optional()
-        .describe("Exact entity ID for single lookup (e.g. 'madam_vespera')."),
-      ids: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Array of entity IDs for bulk lookup. Returns results in the same order, skipping missing IDs.",
-        ),
-      search: z
-        .string()
-        .optional()
-        .describe("Text to search for in entity names/descriptions (up to 5 results)."),
-    }),
-    execute: wrapSafe(async (args: { id?: string; ids?: string[]; search?: string }) => {
+    inputSchema: queryEntitySchema,
+    execute: wrapSafe(async (args: z.infer<typeof queryEntitySchema>) => {
       if (!args.id && !args.ids && !args.search) {
-        return "ERROR: Provide 'id' for single lookup, 'ids' for bulk lookup, or 'search' for text search.";
+        return "ERROR: Search intention is unknown. Provide 'id' for single lookup, 'ids' for bulk lookup, or 'search' for text search.";
       }
       if (args.id) {
         const entity = getEntityById(args.id);
         if (!entity) {
-          return `ERROR: Entity '${args.id}' not found. Call getAllEntitiesName() to discover valid IDs.`;
+          return `ERROR: Entity '${args.id}' not found. You may call ${TOOL_NAMES.GET_ALL_ENTITIES}() to discover valid IDs.`;
         }
         return JSON.stringify(entity, null, 2);
       }
       if (args.ids && args.ids.length > 0) {
         const results = getEntitiesByIds(args.ids);
         if (results.length === 0) {
-          return `ERROR: None of the requested IDs were found: [${args.ids.join(", ")}]. Call getAllEntitiesName() to discover valid IDs.`;
+          return `ERROR: None of the requested IDs were found: [${args.ids.join(", ")}]. You may call ${TOOL_NAMES.GET_ALL_ENTITIES}() to discover valid IDs.`;
         }
         if (results.length < args.ids.length) {
           const foundIds = new Set(results.map((e) => e.id));
           const missing = args.ids.filter((id) => !foundIds.has(id));
-          const resultJson = JSON.stringify(results, null, 2);
-          return `${resultJson}\n\nNOTE: The following IDs were not found: [${missing.join(", ")}]. They may have been removed or misspelled.`;
+          return JSON.stringify(
+            {
+              note: `The following IDs were not found: [${missing.join(", ")}]. They may have been removed or misspelled.`,
+              results,
+            },
+            null,
+            2,
+          );
         }
-        return JSON.stringify(results, null, 2);
+        return JSON.stringify(
+          {
+            note: "All IDs is successfully queried",
+            results,
+          },
+          null,
+          2,
+        );
       }
-      const results = searchEntities(args.search!);
+      const results = getEntitiesByText(args.search!);
       if (results.length === 0) {
-        return `No entities matched '${args.search}'. Call getAllEntitiesName() to see all entities.`;
+        return `No entities matched '${args.search}'. You may call ${TOOL_NAMES.GET_ALL_ENTITIES}() to see all entities.`;
       }
       return JSON.stringify(results, null, 2);
-    }, "queryEntity"),
+    }, TOOL_NAMES.QUERY_ENTITY),
   });
 }
+
+const entitySchema = z.object({
+  id: z.string().describe("The unique ID of the entity to update (e.g. 'madam_vespera')."),
+  shortDescription: z.string().nullish().describe("New concise label."),
+  longDescription: z.string().nullish().describe("New detailed observation."),
+  attributes: z
+    .record(z.string(), z.string())
+    .nullish()
+    .describe("Physical or mental traits (merged)."),
+  opinions: z
+    .record(z.string(), z.string())
+    .nullish()
+    .describe("How this character feels about others (merged). Only valid for CHARACTER entities."),
+});
 
 export function createEditEntityTool(events: TurnEventEmitter) {
   return tool({
     title: "Edit Entity",
     description:
       "Mutate a single world entity's description, attributes, or opinions. One entity per call. Reports an error if the entity ID does not exist.",
-    inputSchema: z.object({
-      id: z.string().describe("The unique ID of the entity to update (e.g. 'madam_vespera')."),
-      longDescription: z.string().nullish().describe("New detailed observation."),
-      shortDescription: z.string().nullish().describe("New concise label."),
-      attributes: z
-        .record(z.string(), z.string())
-        .nullish()
-        .describe("Physical or mental traits (merged)."),
-      opinions: z
-        .record(z.string(), z.string())
-        .nullish()
-        .describe(
-          "How this character feels about others (merged). Only valid for CHARACTER entities.",
-        ),
-    }),
-    execute: wrapSafe(
-      async (args: {
-        id: string;
-        longDescription?: string | null;
-        shortDescription?: string | null;
-        attributes?: Record<string, string> | null;
-        opinions?: Record<string, string> | null;
-      }) => {
-        const existing = getEntityById(args.id);
-        if (!existing) {
-          return `ERROR: Entity '${args.id}' not found. Use getAllEntitiesName() to discover valid IDs.`;
-        }
-        updateEntity(args);
-        const changes: Record<string, unknown> = {};
-        if (args.longDescription != null) changes.longDescription = args.longDescription;
-        if (args.shortDescription != null) changes.shortDescription = args.shortDescription;
-        if (args.attributes) changes.attributes = args.attributes;
-        if (args.opinions) changes.opinions = args.opinions;
-        events.emitWorldUpdate(args.id, changes);
-        return `Entity '${existing.displayName}' (${args.id}) updated.`;
-      },
-      "editEntity",
-    ),
+    inputSchema: entitySchema,
+    execute: wrapSafe(async (args: z.infer<typeof entitySchema>) => {
+      const existing = getEntityById(args.id);
+      if (!existing) {
+        return `ERROR: Entity '${args.id}' not found. You may use ${TOOL_NAMES.GET_ALL_ENTITIES}() to discover valid IDs.`;
+      }
+      updateEntity(args);
+      const changes: Record<string, unknown> = {};
+      if (args.longDescription != null) changes.longDescription = args.longDescription;
+      if (args.shortDescription != null) changes.shortDescription = args.shortDescription;
+      if (args.attributes) changes.attributes = args.attributes;
+      if (args.opinions) changes.opinions = args.opinions;
+      events.emitWorldUpdate(args.id, changes);
+      return `Entity with name '${existing.displayName}' (id: ${args.id}) updated.`;
+    }, TOOL_NAMES.EDIT_ENTITY),
   });
 }
+
+const plotOptionSchema = z.object({
+  plotId: z.string().nullable().describe("ID of the child plot, or null if not created yet."),
+  triggerCondition: z.string().describe("What player action activates this branch."),
+});
+
+const plotSchema = z.object({
+  title: z.string().describe("Concise title of the plot/quest."),
+  description: z.string().describe("Detailed description of what this plot is about."),
+  status: z
+    .enum(PLOT_STATUSES)
+    .optional()
+    .describe("Initial status (default: PENDING)."),
+  involvedLocations: z
+    .array(z.string())
+    .optional()
+    .describe("Entity IDs of involved locations (prefer one)."),
+  involvedCharacters: z
+    .array(z.string())
+    .optional()
+    .describe("Entity IDs of involved characters (player is implicit)."),
+  parentPlotId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("ID of the parent plot. Omit or set null for a root plot."),
+  parentOptionId: z
+    .number()
+    .nullable()
+    .optional()
+    .describe("Index into parent.childPlots that this plot fulfils."),
+  childPlots: z
+    .array(plotOptionSchema)
+    .optional()
+    .describe("Pre-defined branch options for this plot."),
+});
 
 export function createCreatePlotTool(events: TurnEventEmitter) {
   return tool({
     title: "Create Plot",
     description:
       "Create a new plot node in the story tree. If this is the first plot, omit parentPlotId to create the root. Otherwise provide parentPlotId and parentOptionId (index into parent's childPlots array) to link it into the tree. The parent's childPlots[parentOptionId].plotId will be auto-updated.",
-    inputSchema: z.object({
-      title: z.string().describe("Concise title of the plot/quest."),
-      description: z.string().describe("Detailed description of what this plot is about."),
-      status: z
-        .enum(["PENDING", "IN_PROGRESS", "RESOLVED"])
-        .optional()
-        .describe("Initial status (default: PENDING)."),
-      involvedLocations: z
-        .array(z.string())
-        .optional()
-        .describe("Entity IDs of involved locations (prefer one)."),
-      involvedCharacters: z
-        .array(z.string())
-        .optional()
-        .describe("Entity IDs of involved characters (player is implicit)."),
-      parentPlotId: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("ID of the parent plot. Omit or set null for a root plot."),
-      parentOptionId: z
-        .number()
-        .nullable()
-        .optional()
-        .describe("Index into parent.childPlots that this plot fulfils."),
-      childPlots: z
-        .array(plotOptionSchema)
-        .optional()
-        .describe("Pre-defined branch options for this plot."),
-    }),
+    inputSchema: plotSchema,
     execute: wrapSafe(
-      async (args: {
-        title: string;
-        description: string;
-        status?: "PENDING" | "IN_PROGRESS" | "RESOLVED";
-        involvedLocations?: string[];
-        involvedCharacters?: string[];
-        parentPlotId?: string | null;
-        parentOptionId?: number | null;
-        childPlots?: PlotOption[];
-      }) => {
+      async (args: z.infer<typeof plotSchema>) => {
         const plotId = `plot_${nextId()}`;
         const result = addPlot({
           id: plotId,
@@ -349,7 +294,7 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
           involvedCharacters: args.involvedCharacters ?? [],
           parentPlotId: args.parentPlotId ?? null,
           parentOptionId: args.parentOptionId ?? null,
-          childPlots: args.childPlots ?? [],
+          childPlots: (args.childPlots ?? []) as PlotOption[],
         });
 
         if (result.ok === false) {
@@ -359,51 +304,43 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
         events.emitPlotCreate(plotId, args.title, args.parentPlotId ?? null);
         return `Plot created: "${args.title}" (${plotId}).`;
       },
-      "createPlot",
+      TOOL_NAMES.CREATE_PLOT,
     ),
   });
 }
+
+const plotEditSchema = z.object({
+  id: z.string().describe("The ID of the plot to update."),
+  status: z.enum(PLOT_STATUSES).optional().describe("New status for the plot."),
+  description: z.string().optional().describe("Updated plot description."),
+  involvedLocations: z
+    .array(z.string())
+    .optional()
+    .describe("Replacement list of involved location entity IDs."),
+  involvedCharacters: z
+    .array(z.string())
+    .optional()
+    .describe("Replacement list of involved character entity IDs."),
+  childPlots: z
+    .array(plotOptionSchema)
+    .optional()
+    .describe("Replacement list of branch options (replaces all existing childPlots)."),
+});
 
 export function createEditPlotTool(events: TurnEventEmitter) {
   return tool({
     title: "Edit Plot",
     description:
       "Update an existing plot's status, description, involved entities, or childPlots options. Only PENDING or IN_PROGRESS plots can be edited — RESOLVED plots are locked. Reports an error if the plot ID does not exist, the plot is RESOLVED, or the change would break the plot tree.",
-    inputSchema: z.object({
-      id: z.string().describe("The ID of the plot to update."),
-      status: z
-        .enum(["PENDING", "IN_PROGRESS", "RESOLVED"])
-        .optional()
-        .describe("New status for the plot."),
-      description: z.string().optional().describe("Updated plot description."),
-      involvedLocations: z
-        .array(z.string())
-        .optional()
-        .describe("Replacement list of involved location entity IDs."),
-      involvedCharacters: z
-        .array(z.string())
-        .optional()
-        .describe("Replacement list of involved character entity IDs."),
-      childPlots: z
-        .array(plotOptionSchema)
-        .optional()
-        .describe("Replacement list of branch options (replaces all existing childPlots)."),
-    }),
+    inputSchema: plotEditSchema,
     execute: wrapSafe(
-      async (args: {
-        id: string;
-        status?: "PENDING" | "IN_PROGRESS" | "RESOLVED";
-        description?: string;
-        involvedLocations?: string[];
-        involvedCharacters?: string[];
-        childPlots?: PlotOption[];
-      }) => {
+      async (args: z.infer<typeof plotEditSchema>) => {
         const result = updatePlot(args.id, {
           status: args.status,
           description: args.description,
           involvedLocations: args.involvedLocations,
           involvedCharacters: args.involvedCharacters,
-          childPlots: args.childPlots,
+          childPlots: args.childPlots as PlotOption[] | undefined,
         });
 
         if (result.ok === false) {
@@ -424,37 +361,35 @@ export function createEditPlotTool(events: TurnEventEmitter) {
         if (!plot) return `Plot ${args.id} updated but could not be re-read.`;
         return `Plot "${plot.title}" (${args.id}) updated.`;
       },
-      "editPlot",
+      TOOL_NAMES.EDIT_PLOT,
     ),
   });
 }
+
+const getPlotSchema = z.object({
+  id: z.string().optional().describe("Exact plot ID to fetch."),
+  ids: z.array(z.string()).optional().describe("Array of plot IDs to bulk fetch."),
+  status: z
+    .enum(PLOT_STATUSES)
+    .optional()
+    .describe("Filter by status. Omit to return all plots."),
+});
 
 export function createGetPlotTool() {
   return tool({
     title: "Get Plot",
     description:
       "Retrieve plot(s): by single ID, by multiple IDs (bulk), or filter by status. Returns full plot data including childPlots.",
-    inputSchema: z.object({
-      id: z.string().optional().describe("Exact plot ID to fetch."),
-      ids: z.array(z.string()).optional().describe("Array of plot IDs to bulk fetch."),
-      status: z
-        .enum(["PENDING", "IN_PROGRESS", "RESOLVED", "ALL"])
-        .optional()
-        .describe("Filter by status. Omit to return all plots."),
-    }),
+    inputSchema: getPlotSchema,
     execute: wrapSafe(
-      async (args: {
-        id?: string;
-        ids?: string[];
-        status?: "PENDING" | "IN_PROGRESS" | "RESOLVED" | "ALL";
-      }) => {
-        if (args.id && args.ids) {
+      async (args: z.infer<typeof getPlotSchema>) => {
+        if (args.id && args.ids && args.ids.length !== 0) {
           return "ERROR: Provide either 'id' for a single plot or 'ids' for bulk fetch, not both.";
         }
         if (args.id) {
           const plot = getPlotById(args.id);
           if (!plot) {
-            return `ERROR: Plot '${args.id}' not found. Use getPlot() without an id to list all plots.`;
+            return `ERROR: Plot '${args.id}' not found. You may use ${TOOL_NAMES.GET_PLOT}() without an id to list all plots.`;
           }
           return JSON.stringify(plot, null, 2);
         }
@@ -473,15 +408,70 @@ export function createGetPlotTool() {
         }
         const all = getAllPlots();
         const filtered =
-          !args.status || args.status === "ALL" ? all : all.filter((p) => p.status === args.status);
+          !args.status ? all : all.filter((p) => p.status === args.status);
         if (filtered.length === 0)
           return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
         return JSON.stringify(filtered, null, 2);
       },
-      "getPlot",
+      TOOL_NAMES.GET_PLOT,
     ),
   });
 }
+
+const messageSchema = z.object({
+  speaker: z
+    .string()
+    .describe(
+      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
+    ),
+  type: z.enum(SPEAKER_TYPES),
+  text: z.string().describe("The dialogue text, supports markdown."),
+  metadata: z
+    .object({
+      notificationType: z.enum(NOTIFICATION_TYPES).optional(),
+    })
+    .optional(),
+});
+
+const checkConditionSchema = z.object({
+  expression: z.string().describe("JS expression e.g. 'success' or 'total < difficulty'"),
+  label: z.string().optional(),
+  color: z.string().optional(),
+});
+
+const skillCheckSchema = z.object({
+  skill: z.string().describe("The skill to check (e.g. 'LOGIC')"),
+  difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
+  difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
+  diceCount: z.number().default(2),
+  isRed: z.boolean().optional().describe("High-stakes, one-time check."),
+  conditions: z.array(checkConditionSchema).describe("Outcome conditions."),
+});
+
+const optionSchema = z.object({
+  id: z.string().optional(),
+  text: z.string().describe("Short imperative button label (e.g. 'Try to convince the guard')."),
+  selectionMessage: z
+    .string()
+    .optional()
+    .describe(
+      "Optional first-person sentence for the YOU message in dialogue history after the player selects this option. Past or present tense describing what the player actually said/did (e.g. 'I tried to convince the guard to let us pass.'). If omitted, the text field is used with any [SKILL] prefix removed.",
+    ),
+  hintBefore: z
+    .string()
+    .optional()
+    .describe("Hint shown before the text, e.g. [Logic]. Do not overuse it."),
+  hintAfter: z
+    .string()
+    .optional()
+    .describe("Hint shown after the text, e.g. [Red Check]. Do not overuse it."),
+  check: skillCheckSchema.optional(),
+});
+
+const dialogueStepSchema = z.object({
+  messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
+  options: z.array(optionSchema).describe("The choices presented to the player."),
+});
 
 export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
   let lastCallValid = false;
@@ -489,11 +479,8 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
   const dialogueTool = tool({
     description:
       "Generate the narrative dialogue steps and final player choices. This is the ONLY way to communicate to the player. Options should align with the active plot's childPlots.",
-    inputSchema: z.object({
-      messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
-      options: z.array(optionSchema).describe("The choices presented to the player."),
-    }),
-    execute: async (args) => {
+    inputSchema: dialogueStepSchema,
+    execute: async (args: z.infer<typeof dialogueStepSchema>) => {
       const errors: string[] = [];
 
       for (const msg of args.messages) {
@@ -590,8 +577,6 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
   return { tool: dialogueTool, wasValid: () => lastCallValid };
 }
 
-// ── Time & Scene tools ──
-
 export function createAdvanceTimeTool(events: TurnEventEmitter) {
   return tool({
     title: "Advance Time",
@@ -619,7 +604,7 @@ export function createAdvanceTimeTool(events: TurnEventEmitter) {
         return `Time unchanged. It is still ${describeTime(newTime)}.`;
       }
       return `Time advanced by ${args.segments} segment(s).${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
-    }, "advanceTime"),
+    }, TOOL_NAMES.ADVANCE_TIME),
   });
 }
 
@@ -718,7 +703,7 @@ export function createUpdateSceneTool(events: TurnEventEmitter) {
         }
         return `Scene updated:\n${changes.map((c) => `- ${c}`).join("\n")}`;
       },
-      "updateScene",
+      TOOL_NAMES.UPDATE_SCENE,
     ),
   });
 }
@@ -740,6 +725,6 @@ export function createGetSceneTool() {
         null,
         2,
       );
-    }, "getScene"),
+    }, TOOL_NAMES.GET_SCENE),
   });
 }

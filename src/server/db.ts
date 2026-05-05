@@ -131,31 +131,34 @@ try {
 } catch {}
 
 // Seed default game time
-const timeDayRow = db.prepare(
-  "SELECT value FROM system_state WHERE key = ?",
-).get("game_time_day") as { value: string } | undefined;
+const timeDayRow = db
+  .prepare("SELECT value FROM system_state WHERE key = ?")
+  .get("game_time_day") as { value: string } | undefined;
 if (!timeDayRow) {
-  db.prepare(
-    "INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)",
-  ).run("game_time_day", "1");
-  db.prepare(
-    "INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)",
-  ).run("game_time_segment", "0");
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    "game_time_day",
+    "1",
+  );
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    "game_time_segment",
+    "0",
+  );
 }
 
 // Seed default scene state
-const sceneRow = db.prepare(
-  "SELECT value FROM system_state WHERE key = ?",
-).get("current_scene") as { value: string } | undefined;
+const sceneRow = db.prepare("SELECT value FROM system_state WHERE key = ?").get("current_scene") as
+  | { value: string }
+  | undefined;
 if (!sceneRow) {
   const defaultScene = {
     currentLocationId: "rusted_cog",
     characterLocations: { orin_fell: "rusted_cog" },
     objectPositions: {},
   };
-  db.prepare(
-    "INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)",
-  ).run("current_scene", JSON.stringify(defaultScene));
+  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+    "current_scene",
+    JSON.stringify(defaultScene),
+  );
 }
 
 export default db;

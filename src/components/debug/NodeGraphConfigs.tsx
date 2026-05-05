@@ -390,9 +390,7 @@ const DialogueInspector: React.FC<
                 </div>
               </div>
             ))}
-            {!(node.options?.length) && (
-              <p className="text-[9px] text-white/15 italic">No options</p>
-            )}
+            {!node.options?.length && <p className="text-[9px] text-white/15 italic">No options</p>}
           </div>
         </div>
       </div>
@@ -585,7 +583,8 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
         <span className="text-[9px] font-mono text-white/20">
           {node.childPlots?.length ?? 0} branch{(node.childPlots?.length ?? 0) !== 1 ? "es" : ""}
         </span>
-        {((node.involvedLocations?.length ?? 0) > 0 || (node.involvedCharacters?.length ?? 0) > 0) && (
+        {((node.involvedLocations?.length ?? 0) > 0 ||
+          (node.involvedCharacters?.length ?? 0) > 0) && (
           <>
             <span className="text-white/10">·</span>
             <span className="text-[9px] font-mono text-white/20">

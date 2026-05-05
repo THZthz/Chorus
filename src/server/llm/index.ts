@@ -496,9 +496,7 @@ function buildSceneSummary(scene: SceneState): string {
     lines.push("**Character positions:**");
     for (const [loc, chars] of charsByLoc) {
       const locLabel = nameMap.get(loc) ?? loc;
-      const charList = chars
-        .map((cid) => `${cid} ("${nameMap.get(cid) ?? cid}")`)
-        .join(", ");
+      const charList = chars.map((cid) => `${cid} ("${nameMap.get(cid) ?? cid}")`).join(", ");
       lines.push(`  ${locLabel}: ${charList}`);
     }
   }

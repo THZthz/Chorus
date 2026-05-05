@@ -205,15 +205,15 @@ export function createQueryEntityTool() {
 
 const entitySchema = z.object({
   id: z.string().describe("The unique ID of the entity to update (e.g. 'madam_vespera')."),
-  shortDescription: z.string().nullish().describe("New concise label."),
-  longDescription: z.string().nullish().describe("New detailed observation."),
+  shortDescription: z.string().optional().describe("New concise label."),
+  longDescription: z.string().optional().describe("New detailed observation."),
   attributes: z
     .record(z.string(), z.string())
-    .nullish()
+    .optional()
     .describe("Physical or mental traits (merged)."),
   opinions: z
     .record(z.string(), z.string())
-    .nullish()
+    .optional()
     .describe("How this character feels about others (merged). Only valid for CHARACTER entities."),
 });
 
@@ -248,10 +248,7 @@ const plotOptionSchema = z.object({
 const plotSchema = z.object({
   title: z.string().describe("Concise title of the plot/quest."),
   description: z.string().describe("Detailed description of what this plot is about."),
-  status: z
-    .enum(PLOT_STATUSES)
-    .optional()
-    .describe("Initial status (default: PENDING)."),
+  status: z.enum(PLOT_STATUSES).optional().describe("Initial status (default: PENDING)."),
   involvedLocations: z
     .array(z.string())
     .optional()
@@ -282,30 +279,27 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
     description:
       "Create a new plot node in the story tree. If this is the first plot, omit parentPlotId to create the root. Otherwise provide parentPlotId and parentOptionId (index into parent's childPlots array) to link it into the tree. The parent's childPlots[parentOptionId].plotId will be auto-updated.",
     inputSchema: plotSchema,
-    execute: wrapSafe(
-      async (args: z.infer<typeof plotSchema>) => {
-        const plotId = `plot_${nextId()}`;
-        const result = addPlot({
-          id: plotId,
-          title: args.title,
-          description: args.description,
-          status: args.status ?? "PENDING",
-          involvedLocations: args.involvedLocations ?? [],
-          involvedCharacters: args.involvedCharacters ?? [],
-          parentPlotId: args.parentPlotId ?? null,
-          parentOptionId: args.parentOptionId ?? null,
-          childPlots: (args.childPlots ?? []) as PlotOption[],
-        });
+    execute: wrapSafe(async (args: z.infer<typeof plotSchema>) => {
+      const plotId = `plot_${nextId()}`;
+      const result = addPlot({
+        id: plotId,
+        title: args.title,
+        description: args.description,
+        status: args.status ?? "PENDING",
+        involvedLocations: args.involvedLocations ?? [],
+        involvedCharacters: args.involvedCharacters ?? [],
+        parentPlotId: args.parentPlotId ?? null,
+        parentOptionId: args.parentOptionId ?? null,
+        childPlots: (args.childPlots ?? []) as PlotOption[],
+      });
 
-        if (result.ok === false) {
-          return `ERROR: ${result.error}`;
-        }
+      if (result.ok === false) {
+        return `ERROR: ${result.error}`;
+      }
 
-        events.emitPlotCreate(plotId, args.title, args.parentPlotId ?? null);
-        return `Plot created: "${args.title}" (${plotId}).`;
-      },
-      TOOL_NAMES.CREATE_PLOT,
-    ),
+      events.emitPlotCreate(plotId, args.title, args.parentPlotId ?? null);
+      return `Plot created: "${args.title}" (${plotId}).`;
+    }, TOOL_NAMES.CREATE_PLOT),
   });
 }
 
@@ -333,46 +327,39 @@ export function createEditPlotTool(events: TurnEventEmitter) {
     description:
       "Update an existing plot's status, description, involved entities, or childPlots options. Only PENDING or IN_PROGRESS plots can be edited — RESOLVED plots are locked. Reports an error if the plot ID does not exist, the plot is RESOLVED, or the change would break the plot tree.",
     inputSchema: plotEditSchema,
-    execute: wrapSafe(
-      async (args: z.infer<typeof plotEditSchema>) => {
-        const result = updatePlot(args.id, {
-          status: args.status,
-          description: args.description,
-          involvedLocations: args.involvedLocations,
-          involvedCharacters: args.involvedCharacters,
-          childPlots: args.childPlots as PlotOption[] | undefined,
-        });
+    execute: wrapSafe(async (args: z.infer<typeof plotEditSchema>) => {
+      const result = updatePlot(args.id, {
+        status: args.status,
+        description: args.description,
+        involvedLocations: args.involvedLocations,
+        involvedCharacters: args.involvedCharacters,
+        childPlots: args.childPlots as PlotOption[] | undefined,
+      });
 
-        if (result.ok === false) {
-          return `ERROR: ${result.error}`;
-        }
+      if (result.ok === false) {
+        return `ERROR: ${result.error}`;
+      }
 
-        const changes: Record<string, unknown> = {};
-        if (args.status !== undefined) changes.status = args.status;
-        if (args.description !== undefined) changes.description = args.description;
-        if (args.involvedLocations !== undefined)
-          changes.involvedLocations = args.involvedLocations;
-        if (args.involvedCharacters !== undefined)
-          changes.involvedCharacters = args.involvedCharacters;
-        if (args.childPlots !== undefined) changes.childPlots = args.childPlots;
-        events.emitPlotEdit(args.id, changes);
+      const changes: Record<string, unknown> = {};
+      if (args.status !== undefined) changes.status = args.status;
+      if (args.description !== undefined) changes.description = args.description;
+      if (args.involvedLocations !== undefined) changes.involvedLocations = args.involvedLocations;
+      if (args.involvedCharacters !== undefined)
+        changes.involvedCharacters = args.involvedCharacters;
+      if (args.childPlots !== undefined) changes.childPlots = args.childPlots;
+      events.emitPlotEdit(args.id, changes);
 
-        const plot = getPlotById(args.id);
-        if (!plot) return `Plot ${args.id} updated but could not be re-read.`;
-        return `Plot "${plot.title}" (${args.id}) updated.`;
-      },
-      TOOL_NAMES.EDIT_PLOT,
-    ),
+      const plot = getPlotById(args.id);
+      if (!plot) return `Plot ${args.id} updated but could not be re-read.`;
+      return `Plot "${plot.title}" (${args.id}) updated.`;
+    }, TOOL_NAMES.EDIT_PLOT),
   });
 }
 
 const getPlotSchema = z.object({
   id: z.string().optional().describe("Exact plot ID to fetch."),
   ids: z.array(z.string()).optional().describe("Array of plot IDs to bulk fetch."),
-  status: z
-    .enum(PLOT_STATUSES)
-    .optional()
-    .describe("Filter by status. Omit to return all plots."),
+  status: z.enum(PLOT_STATUSES).optional().describe("Filter by status. Omit to return all plots."),
 });
 
 export function createGetPlotTool() {
@@ -381,40 +368,36 @@ export function createGetPlotTool() {
     description:
       "Retrieve plot(s): by single ID, by multiple IDs (bulk), or filter by status. Returns full plot data including childPlots.",
     inputSchema: getPlotSchema,
-    execute: wrapSafe(
-      async (args: z.infer<typeof getPlotSchema>) => {
-        if (args.id && args.ids && args.ids.length !== 0) {
-          return "ERROR: Provide either 'id' for a single plot or 'ids' for bulk fetch, not both.";
+    execute: wrapSafe(async (args: z.infer<typeof getPlotSchema>) => {
+      if (args.id && args.ids && args.ids.length !== 0) {
+        return "ERROR: Provide either 'id' for a single plot or 'ids' for bulk fetch, not both.";
+      }
+      if (args.id) {
+        const plot = getPlotById(args.id);
+        if (!plot) {
+          return `ERROR: Plot '${args.id}' not found. You may use ${TOOL_NAMES.GET_PLOT}() without an id to list all plots.`;
         }
-        if (args.id) {
-          const plot = getPlotById(args.id);
-          if (!plot) {
-            return `ERROR: Plot '${args.id}' not found. You may use ${TOOL_NAMES.GET_PLOT}() without an id to list all plots.`;
-          }
-          return JSON.stringify(plot, null, 2);
+        return JSON.stringify(plot, null, 2);
+      }
+      if (args.ids && args.ids.length > 0) {
+        const plots = getPlotsByIds(args.ids);
+        if (plots.length === 0) {
+          return `No plots found with the provided IDs: [${args.ids.join(", ")}].`;
         }
-        if (args.ids && args.ids.length > 0) {
-          const plots = getPlotsByIds(args.ids);
-          if (plots.length === 0) {
-            return `No plots found with the provided IDs: [${args.ids.join(", ")}].`;
-          }
-          const found = new Set(plots.map((p) => p.id));
-          const missing = args.ids.filter((id) => !found.has(id));
-          const result: Record<string, unknown> = { plots };
-          if (missing.length > 0) {
-            result.missingIds = missing;
-          }
-          return JSON.stringify(result, null, 2);
+        const found = new Set(plots.map((p) => p.id));
+        const missing = args.ids.filter((id) => !found.has(id));
+        const result: Record<string, unknown> = { plots };
+        if (missing.length > 0) {
+          result.missingIds = missing;
         }
-        const all = getAllPlots();
-        const filtered =
-          !args.status ? all : all.filter((p) => p.status === args.status);
-        if (filtered.length === 0)
-          return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
-        return JSON.stringify(filtered, null, 2);
-      },
-      TOOL_NAMES.GET_PLOT,
-    ),
+        return JSON.stringify(result, null, 2);
+      }
+      const all = getAllPlots();
+      const filtered = !args.status ? all : all.filter((p) => p.status === args.status);
+      if (filtered.length === 0)
+        return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
+      return JSON.stringify(filtered, null, 2);
+    }, TOOL_NAMES.GET_PLOT),
   });
 }
 

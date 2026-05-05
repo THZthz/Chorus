@@ -27,7 +27,7 @@ src/
 │   └── index.css             # Global styles (Tailwind + noise filters)
 ├── components/
 │   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser, quest tree
-│   ├── DebugPanel.tsx        # Developer toolbox: 5 tabs (Logs, Console, World, Tree, Plots)
+│   ├── DebugPanel.tsx        # Developer toolbox: 4 visible tabs + More dropdown (Logs, Console, World, Graphs, Prompt, Scene)
 │   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links, roll tooltips)
 │   ├── DialogueOptions.tsx   # Player choices (actions, skill checks, unexplored branches)
 │   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat) — modal with animations
@@ -44,6 +44,7 @@ src/
 │       ├── NodeGraph.tsx           # Generic canvas node graph: layout, pan/zoom, edge rendering
 │       ├── NodeGraphConfigs.tsx    # Dialogue and plot tree configs, node cards, inspectors
 │       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
+│       ├── SceneViewer.tsx          # Current scene viewer: location, characters, objects (live/replay)
 │       ├── SystemPromptEditor.tsx  # Live markdown editor (CodeMirror + codemirror-rich-markdoc)
 │       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
 ├── context/
@@ -378,35 +379,31 @@ that are replaced with live data by `buildSystemPrompt()`. If no custom template
 
 ### 6.3 Debug Panel
 
-The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
+The Debug Panel (`DebugPanel.tsx`) provides 6 tabs across a 4-tab visible bar + "More" dropdown:
 
-- **LLM Trace Viewer**: Parsed exchange timeline with per-step prompt display, model reasoning text (when available),
-  step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting
+**Visible tabs:**
+- **LLM Trace Viewer** (`"logs"`): Parsed exchange timeline with per-step prompt display, model reasoning text (when
+  available), step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting
   (`src/components/debug/LlmTraceViewer.tsx`)
-- **Console Logs**: Intercepted browser console output with filtering (by level, keyword/regex, date range), text wrap
-  toggle, and sync/clear (`src/components/debug/ConsoleViewer.tsx`)
-- **World Editor**: Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form
-  with stat bars, opinion pills, attribute k/v table, and add-new-entity (`src/components/debug/WorldEditor.tsx`)
-- **Dialogue Tree**: Canvas node graph — recursive tree layout, pan/zoom, SVG edges, node states (
-  active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay" (
-  `src/components/debug/NodeGraph.tsx` with dialogue config). Uses `PATCH /api/dialogue/:id` to save edits.
-  Receives `currentStepId` and highlights the actively-replaying node with a green "NOW" badge.
-- **Plot Tree**: Canvas node graph for plot inspection and editing during replay (
-  `src/components/debug/NodeGraph.tsx` with plot config). Reads from `worldManager`'s replay snapshot when replay is
-  active, or from the live API. Inspector allows editing title, description, status, involved entities.
-  Saving in replay mode updates the step's world snapshot via `PATCH /api/dialogue/:id/snapshot`.
-- **System Prompt**: Obsidian-style live markdown editor for the GM system prompt template. Uses
-  `@uiw/react-codemirror` + `codemirror-rich-markdoc` — markdown syntax characters (`#`, `**`) are hidden when the
-  cursor is away and revealed for editing. JSON fenced code blocks are syntax-highlighted using
-  `@lezer/json` (via custom `ViewPlugin`) with colors matching the LLM Trace Viewer's `JsonExplorer` theme.
-  GFM tables are rendered as interactive widgets via `@markwhen/codemirror-tables` with inline cell editing,
-  keyboard navigation (Tab/Shift+Tab/Enter), and a floating toolbar for row/column operations.
+- **Console Logs** (`"console"`): Intercepted browser console output with filtering (by level, keyword/regex, date range),
+  text wrap toggle, and sync/clear (`src/components/debug/ConsoleViewer.tsx`)
+- **World Editor** (`"world"`): Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT),
+  inline-editable form with stat bars, opinion pills, attribute k/v table, and add-new-entity
+  (`src/components/debug/WorldEditor.tsx`)
+- **Graphs** (`"graphs"`): Merged Dialogue Tree + Plot Tree node graphs with internal mode toggle. Dialogue mode —
+  recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root/now), bottom inspector panel
+  with message/option editing and "Jump to Replay". Plot mode — canvas node graph for plot inspection and editing,
+  reads from `worldManager`'s replay snapshot when replay is active. Both use
+  `src/components/debug/NodeGraph.tsx` with their respective configs from `NodeGraphConfigs.tsx`.
+
+**"More" dropdown tabs:**
+- **System Prompt** (`"prompt"`): Obsidian-style live markdown editor for the GM system prompt template. Uses
+  `@uiw/react-codemirror` + `codemirror-rich-markdoc`. GFM tables rendered as interactive widgets.
   Supports `{{entities_brief}}` and `{{active_plots}}` template variables.
-  Template stored in `system_state` table, editable via `GET/PUT /api/debug/system-prompt`. Reset via
-  `POST /api/debug/system-prompt/reset`. Load Default (without saving) via `GET /api/debug/system-prompt/default`.
-  (`src/components/debug/SystemPromptEditor.tsx`). The `buildSystemPrompt()` function in
-  `src/server/llm/index.ts` loads the template from DB (falling back to `DEFAULT_SYSTEM_PROMPT_TEMPLATE`)
-  and replaces template variables with live data at generation time.
+  (`src/components/debug/SystemPromptEditor.tsx`)
+- **Scene Viewer** (`"scene"`): Current scene state — game time, current location, characters present, object
+  positions. Aligns with replay mode: fetches `GET /api/scene` live or reads from `worldManager` during replay.
+  (`src/components/debug/SceneViewer.tsx`)
 
 ---
 
@@ -483,7 +480,8 @@ add headers to any new files that are missing them — it skips files that alrea
 
 ### 7.5 Debug Panel Tab Layout
 
-Debug tabs are defined in `DebugPanel.tsx` with a `TabButton` component. Currently 5 tabs are active:
-"Logs", "Console", "World", "Tree", "Plots". The `HistoryEditor.tsx` component exists but is NOT currently
-registered in any tab — it was removed from the tab bar in a recent commit. To add a tab, import the component
-and add a `TabButton` + conditional render in the panel body.
+Debug tabs are defined in `DebugPanel.tsx` with a `TabButton` component for visible tabs and a `MoreMenu`
+dropdown for overflow. The 4 visible tabs are "Logs", "Console", "World", "Graphs" (the latter merges the
+former "Tree" and "Plots" with an internal Dialogue/Plot sub-toggle). The "More" dropdown contains "Prompt"
+and "Scene". To add a new tab, extend the `TabId` type, import the component, and add it to either the
+visible tab bar or the dropdown menu.

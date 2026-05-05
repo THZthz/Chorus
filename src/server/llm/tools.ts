@@ -33,16 +33,17 @@ import type { DialogueOption } from "@/types/dialogue";
 
 // ── Text verification ──
 
+const disallowedRe =
+  /[\p{Emoji}\p{Script=Han}\p{Script=Arabic}\p{Script=Cyrillic}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
 function isAllowedText(str: string): boolean {
-  return !/[\p{Emoji}\p{Script=Han}\p{Script=Arabic}\p{Script=Cyrillic}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(str);
+  return !disallowedRe.test(str);
 }
 
 function checkText(value: unknown, context: string): string | null {
   const str = typeof value === "string" ? value : JSON.stringify(value);
   if (!isAllowedText(str)) {
-    const disallowed = [...str].filter(
-      (c) => c.charCodeAt(0) > 0x24f && (c.charCodeAt(0) < 0x2000 || c.charCodeAt(0) > 0x206f),
-    );
+    const disallowed = [...str].filter((c) => !isAllowedText(c));
     const unique = [...new Set(disallowed)].slice(0, 10);
     return `TEXT VERIFICATION FAILED in ${context}: disallowed characters detected [${unique.join(" ")}]. Only Latin-script text and typographic punctuation (no emoji, no non-Latin scripts) is allowed. Please retry with allowed content.`;
   }

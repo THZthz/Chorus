@@ -36,4 +36,6 @@ The TODO is more like prompts.
 - [x] Dialogue options should have two separate display: one to display on options text, another to display as a message in dialogue history after player chosen the option. Keep skill check result display option text. Update system prompt for this. Make sure this is also persisted in database. No need to consider data migration or backward compatibility.
 - [x] `textarea` in ENTITY_MANIFEST, DIALOGUE_TREE and PLOT_TREE should have thinner scrollbar like the scrollbar used in JsonExplorer/JsonNode.
 - [x] In PARSED_EXCHANGE section of LLM_TRACE page, also show user prompt for each step, and show "reasoning" and "text" (is this exists in ai-sdk?) chunk of GM for each step.
+- [ ] GM is still outputting dialogue message on their plain text response, not tool call.
+- [x] `isAllowedText` is erroneous.
 

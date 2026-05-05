@@ -367,7 +367,7 @@ export const SystemPromptEditor: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-white/60">
-            GM System Prompt
+            GM_System_Prompt
           </h2>
           {!saved && <span className="text-[10px] text-amber-400/80 italic">Unsaved changes</span>}
           {status && (

@@ -6,8 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
-.claude/
-.idea/
+/.claude/skills
+/.claude/worktrees
+/.idea/
 /*.db
 /*.db-shm
 /*.db-wal

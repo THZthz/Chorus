@@ -2,8 +2,6 @@ None of your business, LLM coding agent (your name's Claude?). This file is ONLY
 
 The TODO is more like prompts.
 
-Order does not matter.
-
 - [x] Refresh story-telling style.
 - [x] Remove HISTORY/DIALOGUE_BUFFER page in DebugPanel, I don't think it is useful.
 - [x] Improve UI of PARSED_EXCHANGE in LLM_TRACE page of DebugPanel. Specifically, do not simply display JSON for tool call input.
@@ -29,12 +27,13 @@ Order does not matter.
 - [ ] Review system prompts' sections about tool using.
 - [ ] Simplify system prompt, inject into user's prompts.
 - [ ] Further refine system prompt to make GM generate well polished and consistent styled text.
-- [ ] Significant checks should be recorded.
-- [ ] A system to analyze user's input.
+- [ ] Add a time system, each day is divided into 12 pieces, every time player chooses an option, GM can choose to advance time. Add a scene management system, this system can record in a time unit (2 hours), characters and objects (carried by a character or just exists on scene) on a location. Design tools / system prompt for GM. Persist this data on database, note that it should have snapshot so player can replay in REPLAY mode.
+- [ ] Significant events and player's chosen check should be recorded. We can call it `Fact`, which have a short description, main characters (who made the choice, took action, etc., initiative), other involved characters, and optionally locations. Two extra tools named `addFact` and `queryFact` should be added.
+- [ ] A system to analyze user's input, ignore choices made on REPLAY mode.
 - [ ] Analyze dialogue steps and see if there are any points to improve.
 - [x] Analyze the structure of following INCOMING_RESPONSE example, Remove OUTGOING_REQUEST, improve PARSED_EXCHANGE UI to cover most information shown in INCOMING_RESPONSE (focus on "steps" field). For system prompt, only show content that are different (dynamic content, plots and entities info).                                                                                                  
 - [x] Check the usage of "Regenerate All Leaf Steps". Should we remove it? (Removed)
 - [x] Dialogue options should have two separate display: one to display on options text, another to display as a message in dialogue history after player chosen the option. Keep skill check result display option text. Update system prompt for this. Make sure this is also persisted in database. No need to consider data migration or backward compatibility.
 - [x] `textarea` in ENTITY_MANIFEST, DIALOGUE_TREE and PLOT_TREE should have thinner scrollbar like the scrollbar used in JsonExplorer/JsonNode.
-
+- [ ] In PARSED_EXCHANGE section of LLM_TRACE page, also show user prompt for each step, and show "reasoning" and "text" (is this exists in ai-sdk?) chunk of GM for each step.
 

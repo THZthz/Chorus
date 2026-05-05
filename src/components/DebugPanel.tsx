@@ -18,7 +18,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, Database, Monitor, GitBranch, FileText, Map, Ellipsis } from "lucide-react";
+import { Terminal, X, Bug, Database, Monitor, GitBranch, FileText, Map, GripVertical } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";
@@ -31,83 +31,16 @@ import { SceneViewer } from "@/components/debug/SceneViewer";
 type TabId = "logs" | "console" | "world" | "graphs" | "prompt" | "scene";
 type GraphMode = "dialogue" | "plot";
 
-const TabButton: React.FC<{
-  id: TabId;
-  activeTab: TabId;
-  onSelect: (id: TabId) => void;
-  label: string;
-  icon: React.ReactNode;
-}> = ({ id, activeTab, onSelect, label, icon }) => (
-  <button
-    onClick={() => onSelect(id)}
-    className={`px-4 py-3 flex items-center gap-2 border-b transition-colors ${
-      activeTab === id
-        ? "border-white text-white bg-white/5"
-        : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
-    }`}
-  >
-    {icon}
-    <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{label}</span>
-  </button>
-);
-
-const MoreMenu: React.FC<{
-  activeTab: TabId;
-  onSelect: (id: TabId) => void;
-}> = ({ activeTab, onSelect }) => {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    if (open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
-  const isActive = activeTab === "prompt" || activeTab === "scene";
-
-  return (
-    <div ref={menuRef} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className={`px-4 py-3 flex items-center gap-2 border-b transition-colors ${
-          isActive
-            ? "border-white text-white bg-white/5"
-            : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
-        }`}
-      >
-        <Ellipsis size={14} />
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">More</span>
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 bg-[#141414] border border-white/10 rounded-sm shadow-xl z-30 min-w-[140px]">
-          <button
-            onClick={() => { onSelect("prompt"); setOpen(false); }}
-            className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left hover:bg-white/5 transition-colors ${
-              activeTab === "prompt" ? "text-white" : "text-white/40"
-            }`}
-          >
-            <FileText size={12} />
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em]">Prompt</span>
-          </button>
-          <button
-            onClick={() => { onSelect("scene"); setOpen(false); }}
-            className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left hover:bg-white/5 transition-colors ${
-              activeTab === "scene" ? "text-white" : "text-white/40"
-            }`}
-          >
-            <Map size={12} />
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em]">Scene</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
+const TAB_DEFS: Record<TabId, { label: string; icon: React.ReactNode }> = {
+  logs: { label: "Logs", icon: <Terminal size={14} /> },
+  console: { label: "Console", icon: <Monitor size={14} /> },
+  world: { label: "World", icon: <Database size={14} /> },
+  graphs: { label: "Graphs", icon: <GitBranch size={14} /> },
+  prompt: { label: "Prompt", icon: <FileText size={14} /> },
+  scene: { label: "Scene", icon: <Map size={14} /> },
 };
+
+const DEFAULT_TAB_ORDER: TabId[] = ["logs", "console", "world", "graphs", "prompt", "scene"];
 
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
@@ -117,6 +50,9 @@ export const DebugPanel: React.FC<{
   const [activeTab, setActiveTab] = useState<TabId>("logs");
   const [panelWidth, setPanelWidth] = useState(640);
   const [graphMode, setGraphMode] = useState<GraphMode>("dialogue");
+  const [tabOrder, setTabOrder] = useState<TabId[]>(DEFAULT_TAB_ORDER);
+  const [dragTabId, setDragTabId] = useState<TabId | null>(null);
+  const [dragOverTabId, setDragOverTabId] = useState<TabId | null>(null);
   const panelDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
@@ -208,35 +144,56 @@ export const DebugPanel: React.FC<{
               </div>
               <div className="flex items-center justify-between px-4 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center">
-                  <TabButton
-                    id="logs"
-                    activeTab={activeTab}
-                    onSelect={setActiveTab}
-                    label="Logs"
-                    icon={<Terminal size={14} />}
-                  />
-                  <TabButton
-                    id="console"
-                    activeTab={activeTab}
-                    onSelect={setActiveTab}
-                    label="Console"
-                    icon={<Monitor size={14} />}
-                  />
-                  <TabButton
-                    id="world"
-                    activeTab={activeTab}
-                    onSelect={setActiveTab}
-                    label="World"
-                    icon={<Database size={14} />}
-                  />
-                  <TabButton
-                    id="graphs"
-                    activeTab={activeTab}
-                    onSelect={setActiveTab}
-                    label="Graphs"
-                    icon={<GitBranch size={14} />}
-                  />
-                  <MoreMenu activeTab={activeTab} onSelect={setActiveTab} />
+                  {tabOrder.map((id) => {
+                    const def = TAB_DEFS[id];
+                    const handleDrop = () => {
+                      if (dragTabId === null || dragTabId === id) return;
+                      setTabOrder((prev) => {
+                        const from = prev.indexOf(dragTabId);
+                        const to = prev.indexOf(id);
+                        const next = [...prev];
+                        next.splice(from, 1);
+                        next.splice(to, 0, dragTabId);
+                        return next;
+                      });
+                      setDragTabId(null);
+                      setDragOverTabId(null);
+                    };
+                    return (
+                      <button
+                        key={id}
+                        draggable
+                        onClick={() => setActiveTab(id)}
+                        onDragStart={() => setDragTabId(id)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (dragTabId !== id) setDragOverTabId(id);
+                        }}
+                        onDrop={handleDrop}
+                        onDragEnd={() => {
+                          setDragTabId(null);
+                          setDragOverTabId(null);
+                        }}
+                        className={`relative group/tab px-3 py-3 flex items-center gap-2 border-b transition-colors ${
+                          activeTab === id
+                            ? "border-white text-white bg-white/5"
+                            : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
+                        } ${dragTabId === id ? "opacity-30" : "opacity-100"} ${
+                          dragOverTabId === id && dragTabId !== id
+                            ? "border-l-2 border-l-[#ff6b35]/60"
+                            : ""
+                        }`}
+                      >
+                        <span className="absolute left-0.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/tab:opacity-100 transition-opacity text-white/15 cursor-grab active:cursor-grabbing">
+                          <GripVertical size={10} />
+                        </span>
+                        {def.icon}
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
+                          {def.label}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="flex items-center gap-3 pr-4">
                   <button

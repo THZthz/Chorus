@@ -379,9 +379,8 @@ that are replaced with live data by `buildSystemPrompt()`. If no custom template
 
 ### 6.3 Debug Panel
 
-The Debug Panel (`DebugPanel.tsx`) provides 6 tabs across a 4-tab visible bar + "More" dropdown:
+The Debug Panel (`DebugPanel.tsx`) provides 6 draggable-reorderable tabs in a single tab bar:
 
-**Visible tabs:**
 - **LLM Trace Viewer** (`"logs"`): Parsed exchange timeline with per-step prompt display, model reasoning text (when
   available), step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting
   (`src/components/debug/LlmTraceViewer.tsx`)
@@ -395,8 +394,6 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs across a 4-tab visible bar + 
   with message/option editing and "Jump to Replay". Plot mode — canvas node graph for plot inspection and editing,
   reads from `worldManager`'s replay snapshot when replay is active. Both use
   `src/components/debug/NodeGraph.tsx` with their respective configs from `NodeGraphConfigs.tsx`.
-
-**"More" dropdown tabs:**
 - **System Prompt** (`"prompt"`): Obsidian-style live markdown editor for the GM system prompt template. Uses
   `@uiw/react-codemirror` + `codemirror-rich-markdoc`. GFM tables rendered as interactive widgets.
   Supports `{{entities_brief}}` and `{{active_plots}}` template variables.
@@ -404,6 +401,8 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs across a 4-tab visible bar + 
 - **Scene Viewer** (`"scene"`): Current scene state — game time, current location, characters present, object
   positions. Aligns with replay mode: fetches `GET /api/scene` live or reads from `worldManager` during replay.
   (`src/components/debug/SceneViewer.tsx`)
+
+Tabs can be reordered by dragging (HTML5 native drag-and-drop with GripVertical handle on hover).
 
 ---
 
@@ -480,8 +479,7 @@ add headers to any new files that are missing them — it skips files that alrea
 
 ### 7.5 Debug Panel Tab Layout
 
-Debug tabs are defined in `DebugPanel.tsx` with a `TabButton` component for visible tabs and a `MoreMenu`
-dropdown for overflow. The 4 visible tabs are "Logs", "Console", "World", "Graphs" (the latter merges the
-former "Tree" and "Plots" with an internal Dialogue/Plot sub-toggle). The "More" dropdown contains "Prompt"
-and "Scene". To add a new tab, extend the `TabId` type, import the component, and add it to either the
-visible tab bar or the dropdown menu.
+Debug tabs are defined in `DebugPanel.tsx` with a `TAB_DEFS` map and `DEFAULT_TAB_ORDER` array. All 6 tabs are
+rendered in a single bar and can be reordered by dragging (HTML5 native drag-and-drop). To add a new tab,
+extend the `TabId` type, add an entry to `TAB_DEFS`, add it to `DEFAULT_TAB_ORDER`, and add the corresponding
+content render branch.

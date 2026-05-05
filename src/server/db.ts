@@ -76,13 +76,7 @@ db.exec(`
     status TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS console_logs (
-    id TEXT PRIMARY KEY,
-    level TEXT NOT NULL,
-    message TEXT NOT NULL,
-    args TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+
 
   CREATE TABLE IF NOT EXISTS llm_steps (
     id TEXT PRIMARY KEY,

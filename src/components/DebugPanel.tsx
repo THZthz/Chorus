@@ -18,29 +18,27 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, Database, Monitor, GitBranch, FileText, Map, GripVertical } from "lucide-react";
+import { Terminal, X, Bug, Database, GitBranch, FileText, Map, GripVertical } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";
 import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeGraphConfigs";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
-import { ConsoleViewer } from "@/components/debug/ConsoleViewer";
 import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
 import { SceneViewer } from "@/components/debug/SceneViewer";
 
-type TabId = "logs" | "console" | "world" | "graphs" | "prompt" | "scene";
+type TabId = "logs" | "world" | "graphs" | "prompt" | "scene";
 type GraphMode = "dialogue" | "plot";
 
 const TAB_DEFS: Record<TabId, { label: string; icon: React.ReactNode }> = {
   logs: { label: "Logs", icon: <Terminal size={14} /> },
-  console: { label: "Console", icon: <Monitor size={14} /> },
   world: { label: "World", icon: <Database size={14} /> },
   graphs: { label: "Graphs", icon: <GitBranch size={14} /> },
   prompt: { label: "Prompt", icon: <FileText size={14} /> },
   scene: { label: "Scene", icon: <Map size={14} /> },
 };
 
-const DEFAULT_TAB_ORDER: TabId[] = ["logs", "console", "world", "graphs", "prompt", "scene"];
+const DEFAULT_TAB_ORDER: TabId[] = ["logs", "world", "graphs", "prompt", "scene"];
 
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
@@ -207,7 +205,6 @@ export const DebugPanel: React.FC<{
 
               <div className="flex-1 p-6 min-h-0 flex flex-col">
                 {activeTab === "logs" && <LlmTraceViewer />}
-                {activeTab === "console" && <ConsoleViewer />}
                 {activeTab === "world" && <WorldEditor />}
                 {activeTab === "graphs" && (
                   <div className="flex flex-col h-full">

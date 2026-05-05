@@ -29,7 +29,7 @@ src/
 │   └── index.css             # Global styles (Tailwind + noise filters)
 ├── components/
 │   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser, quest tree
-│   ├── DebugPanel.tsx        # Developer toolbox: 6 draggable-reorderable tabs (Logs, Console, World, Graphs, Prompt, Scene)
+│   ├── DebugPanel.tsx        # Developer toolbox: 5 draggable-reorderable tabs (Logs, World, Graphs, Prompt, Scene)
 │   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links, roll tooltips)
 │   ├── DialogueOptions.tsx   # Player choices (actions, skill checks, unexplored branches)
 │   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat) — modal with animations
@@ -37,7 +37,6 @@ src/
 │   ├── ObjectTooltip.tsx     # Entity lore popup (auto-positioning, expandable)
 │   ├── TypingIndicator.tsx   # Animated dots during AI generation
 │   └── debug/
-│       ├── ConsoleViewer.tsx       # Intercepted browser console log viewer (throttled, filterable)
 │       ├── CopyButton.tsx          # One-click JSON copy utility
 │       ├── HistoryEditor.tsx       # Visual message timeline with inline editing (unused in tabs)
 │       ├── JsonExplorer.tsx        # Resizable, collapsible JSON tree viewer
@@ -61,7 +60,6 @@ src/
 │   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
 │   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
 │   └── models/
-│       ├── debug.ts          # llm_logs + llm_steps + console_logs CRUD
 │       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots)
 │       ├── ids.ts            # Base62-encoded unique ID generation (nextId, nextIdBatch)
 │       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
@@ -69,7 +67,6 @@ src/
 │       ├── scene.ts           # Time + scene state CRUD (system_state keys)
 │       └── world.ts          # Entity CRUD + seed data + entity query helpers
 ├── services/
-│   ├── ConsoleLogger.ts      # Browser console.log interception (batched persistence, safe serialization)
 │   ├── SseClient.ts          # Browser SSE streaming consumer with AbortController support
 │   └── WorldManager.ts       # Client-side world/plot cache; replay snapshot override; subscriber pattern
 ├── shared/
@@ -300,9 +297,6 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 - `GET /api/debug/logs` — LLM interaction logs (with nested steps)
 - `POST /api/debug/logs/clear` — Clear all LLM logs
-- `GET /api/debug/console` — Persisted browser console logs
-- `POST /api/debug/console` — Upload console log entries (single or batch array)
-- `POST /api/debug/console/clear` — Clear all console logs
 - `POST /api/reset` — Wipe DB (entities, plots, dialogue_steps, alternatives, history) and re-seed
 
 ### 4.5 ID Generation
@@ -320,7 +314,7 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 ## 5. Database Schema
 
-9 tables in SQLite (`game.db`, WAL mode):
+8 tables in SQLite (`game.db`, WAL mode):
 
 | Table                   | Purpose                                                                                  |
 |-------------------------|------------------------------------------------------------------------------------------|
@@ -331,7 +325,6 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 | `dialogue_alternatives` | Archived alternative versions (regeneration)                                             |
 | `llm_logs`              | LLM request/response logging (with parent_id + label for child traces)                   |
 | `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings, user_prompt, reasoning)          |
-| `console_logs`          | Intercepted browser console logs                                                         |
 | `system_state`          | Key-value system state storage                                                           |
 
 ### 5.1 Plot Tree Architecture
@@ -394,14 +387,11 @@ that are replaced with live data by `buildSystemPrompt()`. If no custom template
 
 ### 6.3 Debug Panel
 
-The Debug Panel (`DebugPanel.tsx`) provides 6 draggable-reorderable tabs in a single tab bar:
+The Debug Panel (`DebugPanel.tsx`) provides 5 draggable-reorderable tabs in a single tab bar:
 
 - **LLM Trace Viewer** (`"logs"`): Parsed exchange timeline with per-step prompt display, model reasoning text (when
   available), step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting
   (`src/components/debug/LlmTraceViewer.tsx`)
-- **Console Logs** (`"console"`): Intercepted browser console output with filtering (by level, keyword/regex, date
-  range),
-  text wrap toggle, and sync/clear (`src/components/debug/ConsoleViewer.tsx`)
 - **World Editor** (`"world"`): Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT),
   inline-editable form with stat bars, opinion pills, attribute k/v table, and add-new-entity
   (`src/components/debug/WorldEditor.tsx`)

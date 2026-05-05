@@ -17,7 +17,6 @@
  */
 
 import express from "express";
-import chalk from "chalk";
 import type { Message } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
 import {
@@ -34,9 +33,6 @@ import { getGameTime, getSceneState } from "@/server/models/scene";
 import {
   getLlmLogs,
   clearLlmLogs,
-  getConsoleLogs,
-  addConsoleLog,
-  clearConsoleLogs,
 } from "@/server/models/debug";
 import {
   getStep,
@@ -354,22 +350,6 @@ apiRouter.get("/ids/batch", (req, res) => {
   res.json({ ids: nextIdBatch(count) });
 });
 
-const levelColor = (level: string) => {
-  switch (level) {
-    case "error": return chalk.red;
-    case "warn":  return chalk.yellow;
-    case "info":  return chalk.cyan;
-    case "trace": return chalk.gray;
-    default:      return chalk.white;
-  }
-};
-
-const printClientLog = (level: string, message: string) => {
-  const now = new Date().toLocaleTimeString([], { hour12: false });
-  const color = levelColor(level);
-  const tag = chalk.dim(`[${now}]`) + " " + chalk.magenta("[CLIENT]") + " " + color(`[${level.toUpperCase()}]`);
-  process.stdout.write(`${tag} ${message}\n`);
-};
 
 // ── Debug ──
 
@@ -379,32 +359,6 @@ apiRouter.get("/debug/logs", (_req, res) => {
 
 apiRouter.post("/debug/logs/clear", (_req, res) => {
   clearLlmLogs();
-  res.json({ success: true });
-});
-
-apiRouter.get("/debug/console", (req, res) => {
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  res.json(getConsoleLogs(limit));
-});
-
-apiRouter.post("/debug/console", (req, res) => {
-  try {
-    const body = req.body;
-    const entries = Array.isArray(body) ? body : [body];
-    for (const entry of entries) {
-      const { level, message, args } = entry;
-      addConsoleLog(level, message, args);
-      printClientLog(level, message);
-    }
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: errorMessage });
-  }
-});
-
-apiRouter.post("/debug/console/clear", (_req, res) => {
-  clearConsoleLogs();
   res.json({ success: true });
 });
 

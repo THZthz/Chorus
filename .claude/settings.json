@@ -1,0 +1,11 @@
+{
+  "enabledPlugins": {
+    "commit-commands@claude-plugins-official": true,
+    "sourcegraph@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false,
+    "superpowers@claude-plugins-official": false,
+    "code-review@claude-plugins-official": false,
+    "typescript-lsp@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": false
+  }
+}

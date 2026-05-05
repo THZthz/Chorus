@@ -18,8 +18,7 @@ Agent is spawned via `EnterWorktree` with a unique name. This:
 
 1. Read CLAUDE.md and DEVELOPER.md from the worktree root
 2. Implement the assigned task — all file changes stay within the worktree
-3. Commit changes on the worktree branch with meaningful messages
-4. Run type-check (`npx tsc --noEmit`) and any relevant tests
+3. Commit changes on the worktree branch with meaningful messages and consistent style
 
 ### 1.3 Push & Delete Local Worktree
 
@@ -82,14 +81,7 @@ git commit -m "<summary of worktree changes>"
 
 If merge conflict occurs → abort, release lock, notify user with conflict details.
 
-### 2.4 Clean Up Remote Branch
-
-```bash
-# Delete the remote worktree branch
-git push origin --delete worktree-<name>
-```
-
-### 2.5 Release Lock & Notify
+### 2.4 Release Lock & Notify
 
 ```bash
 rm .claude/.merge.lock

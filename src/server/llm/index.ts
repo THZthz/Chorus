@@ -44,8 +44,13 @@ import {
   createEditPlotTool,
   createGetPlotTool,
   createGenerateDialogueStepTool,
+  createAdvanceTimeTool,
+  createUpdateSceneTool,
+  createGetSceneTool,
 } from "@/server/llm/tools";
 import { TOOL_NAMES } from "@/shared/constants";
+import { getSceneState, getGameTime, describeTime } from "@/server/models/scene";
+import type { SceneState } from "@/types/entities";
 
 // ── Model management ──
 
@@ -99,7 +104,7 @@ TONE: Atmospheric, morally ambiguous, and brooding. Rich sensory detail — soot
 
 ## YOUR TOOLS
 
-You have seven tools. Use them in this order each turn:
+You have ten tools. Use them in this order each turn:
 
 1. **${TOOL_NAMES.GET_ALL_ENTITIES}** — Discover entities by id and name. Use before ${TOOL_NAMES.QUERY_ENTITY} if unsure of an ID.
 2. **${TOOL_NAMES.QUERY_ENTITY}** — Get full details of entities by exact ID, array of IDs (bulk), or text search.
@@ -107,15 +112,19 @@ You have seven tools. Use them in this order each turn:
 4. **${TOOL_NAMES.CREATE_PLOT}** — Add a new plot node to the story tree (link via parentPlotId + parentOptionId).
 5. **${TOOL_NAMES.EDIT_PLOT}** — Update an existing plot's status, description, involved entities, or childPlots.
 6. **${TOOL_NAMES.GET_PLOT}** — Retrieve a specific plot or filter by status.
-7. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
+7. **${TOOL_NAMES.GET_SCENE}** — Get current game time and scene state (who is where, who is carrying what).
+8. **${TOOL_NAMES.UPDATE_SCENE}** — Move characters/objects between locations, or give objects to characters.
+9. **${TOOL_NAMES.ADVANCE_TIME}** — Advance the in-game clock by N segments (each segment = 2 hours).
+10. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
 
 **Turn order guideline:**
-- First: read world/plot state if needed (${TOOL_NAMES.GET_ALL_ENTITIES}, ${TOOL_NAMES.QUERY_ENTITY}, ${TOOL_NAMES.GET_PLOT})
+- First: read world/plot/scene state if needed (${TOOL_NAMES.GET_ALL_ENTITIES}, ${TOOL_NAMES.QUERY_ENTITY}, ${TOOL_NAMES.GET_PLOT}, ${TOOL_NAMES.GET_SCENE})
 - Second: update story structure if plot progresses (${TOOL_NAMES.CREATE_PLOT}, ${TOOL_NAMES.EDIT_PLOT})
 - Third: mutate entity state if something changed (${TOOL_NAMES.EDIT_ENTITY})
+- Fourth: update scene and time if needed (${TOOL_NAMES.UPDATE_SCENE}, ${TOOL_NAMES.ADVANCE_TIME})
 - Last: ALWAYS call ${TOOL_NAMES.GENERATE_DIALOGUE} — options must align with the active plot's childPlots
 
-World-mutation and plot tools are optional. ${TOOL_NAMES.GENERATE_DIALOGUE} is MANDATORY.
+World-mutation, plot, scene, and time tools are optional. ${TOOL_NAMES.GENERATE_DIALOGUE} is MANDATORY.
 
 ---
 
@@ -403,6 +412,38 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 
 ---
 
+## GAME TIME
+
+{{game_time}}
+
+Each in-game day is divided into 12 segments of 2 hours each (0 = midnight–2am … 11 = 10pm–midnight). Time flows only when you explicitly advance it via ${TOOL_NAMES.ADVANCE_TIME}. The current day and segment are shown above.
+
+**When to advance time:**
+- A brief conversation or inspection — advance 0 or 1 segments
+- Walking across town — advance 1–2 segments
+- A long negotiation or investigation — advance 2–3 segments
+- Travel to another district — advance 3–4 segments
+- A full rest or wait — advance 4–6 segments
+- **Maximum per call is 11 segments.** For longer waits, spread across multiple turns.
+
+**Time of day affects narrative:** Dawn brings grey light and waking streets. Noon is harsh and bright. Dusk casts long shadows. Midnight is cold, quiet, and dangerous. Adjust your sensory descriptions to match the time.
+
+---
+
+## CURRENT SCENE
+
+{{current_scene}}
+
+The scene tracks the current location, where each character is, and where each object is (at a location or carried by a character). Use ${TOOL_NAMES.GET_SCENE} to refresh this view, and ${TOOL_NAMES.UPDATE_SCENE} to move characters or objects.
+
+**Character movement:** When a character leaves or enters the current location, call ${TOOL_NAMES.UPDATE_SCENE} to move them. The player character is implicitly at the current location unless you decide otherwise.
+
+**Object handling:** When a player or NPC picks up, drops, or gives away an object, call ${TOOL_NAMES.UPDATE_SCENE} with moveObjects to update its position. Objects can be at a location (use toLocationId) or carried by a character (use toCharacterId).
+
+**Scene changes:** When the action moves to a different location, update currentLocationId in ${TOOL_NAMES.UPDATE_SCENE}. This usually warrants a time advance as well.
+
+---
+
 ## WORLD ENTITIES
 
 {{entities_brief}}
@@ -434,6 +475,59 @@ export function setSystemPromptTemplate(template: string): void {
   );
 }
 
+function buildSceneSummary(scene: SceneState): string {
+  const summaries = getAllEntitySummaries();
+  const nameMap = new Map(summaries.map((e) => [e.id, e.displayName]));
+
+  const locId = scene.currentLocationId;
+  const locName = nameMap.get(locId) ?? locId;
+  const lines: string[] = [];
+  lines.push(`**Current Location:** ${locId} ("${locName}")`);
+
+  // Characters at each location
+  const charsByLoc = new Map<string, string[]>();
+  for (const [charId, loc] of Object.entries(scene.characterLocations)) {
+    if (!charsByLoc.has(loc)) charsByLoc.set(loc, []);
+    charsByLoc.get(loc)!.push(charId);
+  }
+
+  if (charsByLoc.size > 0) {
+    lines.push("");
+    lines.push("**Character positions:**");
+    for (const [loc, chars] of charsByLoc) {
+      const locLabel = nameMap.get(loc) ?? loc;
+      const charList = chars
+        .map((cid) => `${cid} ("${nameMap.get(cid) ?? cid}")`)
+        .join(", ");
+      lines.push(`  ${locLabel}: ${charList}`);
+    }
+  }
+
+  // Object positions
+  const objEntries = Object.entries(scene.objectPositions);
+  if (objEntries.length > 0) {
+    lines.push("");
+    lines.push("**Object positions:**");
+    for (const [objId, pos] of objEntries) {
+      const objLabel = nameMap.get(objId) ?? objId;
+      if (pos.type === "location") {
+        const pLoc = nameMap.get(pos.locationId) ?? pos.locationId;
+        lines.push(`  ${objId} ("${objLabel}") — at location ${pLoc}`);
+      } else {
+        const carrier = nameMap.get(pos.characterId) ?? pos.characterId;
+        lines.push(`  ${objId} ("${objLabel}") — carried by ${carrier}`);
+      }
+    }
+  }
+
+  if (Object.keys(scene.characterLocations).length === 0 && objEntries.length === 0) {
+    lines.push("");
+    lines.push("(No characters or objects positioned in the scene yet.)");
+  }
+
+  return lines.join("\n");
+}
+
 export function buildSystemPrompt(): string {
   const summaries = getAllEntitySummaries();
   const byType = (type: string) =>
@@ -456,7 +550,9 @@ export function buildSystemPrompt(): string {
 
   return template
     .replace("{{entities_brief}}", entityIndex || "(no entities yet)")
-    .replace("{{active_plots}}", buildActivePlotTree());
+    .replace("{{active_plots}}", buildActivePlotTree())
+    .replace("{{game_time}}", describeTime(getGameTime()))
+    .replace("{{current_scene}}", buildSceneSummary(getSceneState()));
 }
 
 // ── Game Master ──
@@ -480,6 +576,8 @@ function persistStep(
       entities: getAllEntities(),
       plots: getAllPlots(),
       playerCharacter,
+      gameTime: getGameTime(),
+      scene: getSceneState(),
     },
     isGenerated: true,
     isActive: true,
@@ -590,6 +688,9 @@ export async function generateTurn(
         createPlot: createCreatePlotTool(events),
         editPlot: createEditPlotTool(events),
         getPlot: createGetPlotTool(),
+        getScene: createGetSceneTool(),
+        updateScene: createUpdateSceneTool(events),
+        advanceTime: createAdvanceTimeTool(events),
         generateDialogueStep: dialogueStepTool.tool,
       },
       stopWhen: [
@@ -857,6 +958,9 @@ export async function generateTurnBatch(
       createPlot: createCreatePlotTool(noopEvents),
       editPlot: createEditPlotTool(noopEvents),
       getPlot: createGetPlotTool(),
+      getScene: createGetSceneTool(),
+      updateScene: createUpdateSceneTool(noopEvents),
+      advanceTime: createAdvanceTimeTool(noopEvents),
       generateDialogueStep: dialogueStepTool.tool,
     },
   });

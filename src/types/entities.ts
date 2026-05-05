@@ -66,8 +66,30 @@ export interface WorldState {
   characters: Record<string, Character>;
 }
 
+// ── Time System ──
+
+/** 12 two-hour segments per in-game day: 0 = midnight–2am … 11 = 10pm–midnight */
+export interface GameTime {
+  day: number;
+  segment: number; // 0–11
+}
+
+// ── Scene System ──
+
+export type ObjectPosition =
+  | { type: "location"; locationId: string }
+  | { type: "character"; characterId: string };
+
+export interface SceneState {
+  currentLocationId: string;
+  characterLocations: Record<string, string>; // characterId → locationId
+  objectPositions: Record<string, ObjectPosition>; // objectId → where it is
+}
+
 export interface WorldSnapshot {
   entities: WorldState;
   plots: Plot[];
   playerCharacter: Character | null;
+  gameTime: GameTime | null;
+  scene: SceneState | null;
 }

@@ -33,6 +33,8 @@ export interface SseCallbacks {
   onParsed?: (data: CallbackData<"parsed">) => void;
   onError?: (message: CallbackData<"error">["message"]) => void;
   onDone?: () => void;
+  onTimeUpdate?: (data: CallbackData<"time_update">) => void;
+  onSceneUpdate?: (data: CallbackData<"scene_update">) => void;
 }
 
 export class SseClient {
@@ -151,6 +153,14 @@ export class SseClient {
       case "done":
         console.trace(`[sse] event=done`);
         cb.onDone?.();
+        break;
+      case "time_update":
+        console.trace(`[sse] event=time_update day=${data.day} segment=${data.segment}`);
+        cb.onTimeUpdate?.(data);
+        break;
+      case "scene_update":
+        console.trace(`[sse] event=scene_update`);
+        cb.onSceneUpdate?.(data);
         break;
     }
   }

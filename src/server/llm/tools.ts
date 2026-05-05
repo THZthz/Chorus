@@ -27,9 +27,11 @@ import {
 } from "@/server/models/world";
 import { addPlot, updatePlot, getPlotById, getPlotsByIds, getAllPlots } from "@/server/models/plot";
 import { nextId } from "@/server/models/ids";
+import { getSceneState, setSceneState, getGameTime, advanceGameTime, describeTime } from "@/server/models/scene";
 import type { PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import type { DialogueOption } from "@/types/dialogue";
+import type { SceneState } from "@/types/entities";
 
 // ── Text verification ──
 
@@ -578,4 +580,156 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
   });
 
   return { tool: dialogueTool, wasValid: () => lastCallValid };
+}
+
+// ── Time & Scene tools ──
+
+export function createAdvanceTimeTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Advance Time",
+    description:
+      "Advance the in-game clock by N segments (0-11, where each segment is 2 hours). Use 0 to describe the current time without advancing. Use this when the player's action takes time — a conversation might be 0-1 segments, travel may be 2-4, a rest is 4-6. Describe why time passes in the reason field.",
+    inputSchema: z.object({
+      segments: z
+        .number()
+        .int()
+        .min(0)
+        .max(11)
+        .describe("Number of 2-hour segments to advance (0-11)."),
+      reason: z
+        .string()
+        .optional()
+        .describe("Brief narrative reason for the time advance (e.g. 'The conversation dragged on')."),
+    }),
+    execute: wrapSafe(async (args: { segments: number; reason?: string }) => {
+      const { oldTime, newTime } = advanceGameTime(args.segments);
+      events.emitTimeUpdate(newTime.day, newTime.segment, args.segments);
+      const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
+      if (args.segments === 0) {
+        return `Time unchanged. It is still ${describeTime(newTime)}.`;
+      }
+      return `Time advanced by ${args.segments} segment(s).${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
+    }, "advanceTime"),
+  });
+}
+
+export function createUpdateSceneTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Update Scene",
+    description:
+      "Update the current scene: change the active location, move characters between locations, or move objects (to a location or into a character's possession). All fields are optional — only specified changes are applied. The scene tracks who is where and who is carrying what.",
+    inputSchema: z.object({
+      currentLocationId: z
+        .string()
+        .optional()
+        .describe("Change the current scene's location to this entity ID."),
+      moveCharacters: z
+        .array(
+          z.object({
+            characterId: z.string().describe("Character entity ID to move."),
+            locationId: z.string().describe("Destination location entity ID."),
+          }),
+        )
+        .optional()
+        .describe("Characters to relocate to a different location."),
+      moveObjects: z
+        .array(
+          z.object({
+            objectId: z.string().describe("Object entity ID to move."),
+            toLocationId: z
+              .string()
+              .optional()
+              .describe("Location entity ID to place the object at."),
+            toCharacterId: z
+              .string()
+              .optional()
+              .describe("Character entity ID to give the object to (carried)."),
+          }),
+        )
+        .optional()
+        .describe(
+          "Objects to move. Provide toLocationId to place at a location, or toCharacterId to give to a character (not both).",
+        ),
+    }),
+    execute: wrapSafe(
+      async (args: {
+        currentLocationId?: string;
+        moveCharacters?: { characterId: string; locationId: string }[];
+        moveObjects?: {
+          objectId: string;
+          toLocationId?: string;
+          toCharacterId?: string;
+        }[];
+      }) => {
+        const scene = getSceneState();
+        const changes: string[] = [];
+
+        if (args.currentLocationId) {
+          scene.currentLocationId = args.currentLocationId;
+          changes.push(`Current location set to '${args.currentLocationId}'.`);
+        }
+
+        if (args.moveCharacters) {
+          for (const { characterId, locationId } of args.moveCharacters) {
+            scene.characterLocations[characterId] = locationId;
+            changes.push(`Moved character '${characterId}' to location '${locationId}'.`);
+          }
+        }
+
+        if (args.moveObjects) {
+          for (const { objectId, toLocationId, toCharacterId } of args.moveObjects) {
+            if (toLocationId && toCharacterId) {
+              return `ERROR: Object '${objectId}' has both toLocationId and toCharacterId — choose one.`;
+            }
+            if (!toLocationId && !toCharacterId) {
+              return `ERROR: Object '${objectId}' needs either toLocationId or toCharacterId.`;
+            }
+            if (toLocationId) {
+              scene.objectPositions[objectId] = {
+                type: "location",
+                locationId: toLocationId,
+              };
+              changes.push(`Placed object '${objectId}' at location '${toLocationId}'.`);
+            } else {
+              scene.objectPositions[objectId] = {
+                type: "character",
+                characterId: toCharacterId!,
+              };
+              changes.push(`Gave object '${objectId}' to character '${toCharacterId}'.`);
+            }
+          }
+        }
+
+        setSceneState(scene);
+        events.emitSceneUpdate(scene);
+
+        if (changes.length === 0) {
+          return "Scene unchanged. No fields were specified.";
+        }
+        return `Scene updated:\n${changes.map((c) => `- ${c}`).join("\n")}`;
+      },
+      "updateScene",
+    ),
+  });
+}
+
+export function createGetSceneTool() {
+  return tool({
+    title: "Get Scene",
+    description:
+      "Returns the current game time and full scene state: where each character is, where each object is (and who is carrying it). Use this to check the current situation before making changes.",
+    inputSchema: z.object({}),
+    execute: wrapSafe(async () => {
+      const time = getGameTime();
+      const scene = getSceneState();
+      return JSON.stringify(
+        {
+          gameTime: { day: time.day, segment: time.segment, label: describeTime(time) },
+          scene,
+        },
+        null,
+        2,
+      );
+    }, "getScene"),
+  });
 }

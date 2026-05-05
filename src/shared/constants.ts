@@ -24,6 +24,9 @@ export const TOOL_NAMES = {
   EDIT_PLOT: "editPlot",
   GET_PLOT: "getPlot",
   GENERATE_DIALOGUE: "generateDialogueStep",
+  ADVANCE_TIME: "advanceTime",
+  UPDATE_SCENE: "updateScene",
+  GET_SCENE: "getScene",
 } as const;
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];

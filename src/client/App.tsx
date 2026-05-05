@@ -20,7 +20,7 @@ import { useState, useEffect, useRef } from "react";
 import { Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "motion/react";
 import type { Message, DialogueOption } from "@/types/dialogue";
-import type { WorldSnapshot } from "@/types/entities";
+import type { WorldSnapshot, GameTime, SceneState } from "@/types/entities";
 import { DialogueMessage } from "@/components/DialogueMessage";
 import { DialogueOptions } from "@/components/DialogueOptions";
 import { TypingIndicator } from "@/components/TypingIndicator";
@@ -96,6 +96,8 @@ export default function App() {
   >({});
   const [currentReplayStepId, setCurrentReplayStepId] = useState<string | null>(null);
   const [regeneratingAll, setRegeneratingAll] = useState(false);
+  const [gameTime, setGameTime] = useState<GameTime | null>(null);
+  const [currentScene, setCurrentScene] = useState<SceneState | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -189,6 +191,16 @@ export default function App() {
       },
       onPlotEdit: () => {
         worldManager.loadState();
+      },
+      onTimeUpdate: (data) => {
+        console.trace(
+          `[${logPrefix}] time_update day=${data.day} segment=${data.segment}`,
+        );
+        setGameTime({ day: data.day, segment: data.segment });
+      },
+      onSceneUpdate: (data) => {
+        console.trace(`[${logPrefix}] scene_update`);
+        setCurrentScene(data.scene);
       },
       onError: async (message) => {
         isRetryingRef.current = false;
@@ -671,6 +683,29 @@ export default function App() {
       <div className="fixed left-6 top-1/2 -translate-y-1/2 vertical-text rotate-180 text-[10px] uppercase tracking-[0.4em] text-white/10 font-mono hidden lg:block select-none pointer-events-none">
         RHE&Gamma;ORIC &middot; LOGIC &middot; EMPA&Gamma;HY &middot; VISUAL CALCULUS
       </div>
+
+      {/* Time / Scene indicator */}
+      {(gameTime || (mode === "replay" && worldManager.getGameTime())) && (
+        <div className="fixed top-8 right-8 z-50 text-right pointer-events-none">
+          <div className="text-xs text-white/40 font-mono tracking-wider">
+            {(() => {
+              const segLabels = [
+                "Midnight", "Late Night", "Dawn", "Early Morning",
+                "Morning", "Late Morning", "Noon", "Afternoon",
+                "Late Afternoon", "Dusk", "Evening", "Night",
+              ];
+              const t = mode === "replay" ? worldManager.getGameTime() : gameTime;
+              if (!t) return null;
+              return `Day ${t.day} · ${segLabels[t.segment] ?? `Segment ${t.segment}`}`;
+            })()}
+          </div>
+          {currentScene && (
+            <div className="text-xs text-white/25 font-mono mt-0.5 max-w-[200px] truncate">
+              {currentScene.currentLocationId}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Action Controls */}
       <div className="fixed top-8 left-8 z-50 flex gap-3 items-center h-12">

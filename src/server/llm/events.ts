@@ -20,6 +20,7 @@ import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
 import type { StreamingMessage } from "@/shared/events";
+import type { SceneState } from "@/types/entities";
 
 /**
  * Manages SSE output for a single turn.
@@ -88,5 +89,13 @@ export class TurnEventEmitter {
 
   emitError(message: string) {
     this.send("error", { message });
+  }
+
+  emitTimeUpdate(day: number, segment: number, segmentsAdvanced: number) {
+    this.send("time_update", { day, segment, segmentsAdvanced });
+  }
+
+  emitSceneUpdate(scene: SceneState) {
+    this.send("scene_update", { scene });
   }
 }

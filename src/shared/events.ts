@@ -18,6 +18,7 @@
 
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
+import type { SceneState } from "@/types/entities";
 
 // ── SSE Event Payloads ──
 
@@ -80,6 +81,18 @@ export interface DoneEvent {
   type: "done";
 }
 
+export interface TimeUpdateEvent {
+  type: "time_update";
+  day: number;
+  segment: number;
+  segmentsAdvanced: number;
+}
+
+export interface SceneUpdateEvent {
+  type: "scene_update";
+  scene: SceneState;
+}
+
 /** A message payload from the LLM before it gets a persistent ID. */
 export interface StreamingMessage {
   speaker: string;
@@ -99,7 +112,9 @@ export type SseEventPayload =
   | OptionsEvent
   | ParsedEvent
   | ErrorEvent
-  | DoneEvent;
+  | DoneEvent
+  | TimeUpdateEvent
+  | SceneUpdateEvent;
 
 export type SseEventType = SseEventPayload["type"];
 
@@ -116,4 +131,6 @@ export interface SseEventMap {
   parsed: ParsedEvent;
   error: ErrorEvent;
   done: DoneEvent;
+  time_update: TimeUpdateEvent;
+  scene_update: SceneUpdateEvent;
 }

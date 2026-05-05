@@ -29,6 +29,7 @@ import {
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";
+import { getGameTime, getSceneState } from "@/server/models/scene";
 import {
   getLlmLogs,
   clearLlmLogs,
@@ -92,6 +93,12 @@ apiRouter.patch("/plots/:id", (req, res) => {
     return;
   }
   res.json({ success: true });
+});
+
+// ── Scene ──
+
+apiRouter.get("/scene", (_req, res) => {
+  res.json({ gameTime: getGameTime(), scene: getSceneState() });
 });
 
 // ── History ──

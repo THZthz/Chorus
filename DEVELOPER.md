@@ -54,7 +54,7 @@ src/
 │   ├── db.ts                 # SQLite connection + schema (9 tables + idempotent migrations)
 │   ├── llm/
 │   │   ├── index.ts          # GameMaster: model init, system prompt, generateTurn(), generateTurnBatch()
-│   │   ├── tools.ts          # All 7 LLM tool definitions (schemas + executors)
+│   │   ├── tools.ts          # All 10 LLM tool definitions (schemas + executors)
 │   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
 │   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
 │   └── models/
@@ -62,6 +62,7 @@ src/
 │       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots)
 │       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
+│       ├── scene.ts           # Time + scene state CRUD (system_state keys)
 │       └── world.ts          # Entity CRUD + seed data + entity query helpers
 ├── services/
 │   ├── ConsoleLogger.ts      # Browser console.log interception (batched persistence, safe serialization)
@@ -100,6 +101,9 @@ POST /api/chat/stream
 │      createPlot,          ──► DB + SSE event    │
 │      editPlot,            ──► DB + SSE event    │
 │      getPlot,             ──► returns JSON      │
+│      getScene,            ──► returns JSON      │
+│      updateScene,         ──► DB + SSE event    │
+│      advanceTime,         ──► DB + SSE event    │
 │      generateDialogueStep ──► SSE streaming     │
 │    },                                           │
 │    stopWhen: generates once + passes validation │
@@ -124,6 +128,8 @@ POST /api/chat/stream
 │    streaming_reset     → retry guard │
 │    world_update        → refresh     │
 │    plot_update/create  → refresh     │
+│    time_update         → refresh     │
+│    scene_update        → refresh     │
 │    parsed              → final       │
 │    done                → end turn    │
 └──────────────────────────────────────┘
@@ -142,6 +148,8 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 | `plot_update`        | Server → Client | `{ plotId, status }`              | `updatePlotStatus` tool executes           |
 | `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }` | `createPlot` tool executes                 |
 | `plot_edit`          | Server → Client | `{ plotId, changes }`             | `editPlot` tool executes                   |
+| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes       |
+| `scene_update`       | Server → Client | `{ scene }`                        | `updateScene` tool executes        |
 | `options`            | Server → Client | `{ options }`                     | Options available mid-stream               |
 | `parsed`             | Server → Client | `{ messages, options }`           | Final structured output                    |
 | `error`              | Server → Client | `{ message }`                     | Error during generation                    |
@@ -149,7 +157,7 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 
 ### 3.3 LLM Tools
 
-All 7 tools defined once in `src/server/llm/tools.ts`:
+All 10 tools defined once in `src/server/llm/tools.ts`:
 
 | Tool                   | Purpose                                                   | DB Operation              | SSE Event                       |
 |------------------------|-----------------------------------------------------------|---------------------------|---------------------------------|
@@ -159,6 +167,9 @@ All 7 tools defined once in `src/server/llm/tools.ts`:
 | `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                   |
 | `editPlot`             | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
 | `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
+| `getScene`             | Get current game time and full scene state               | None (read query)         | None (returns JSON)             |
+| `updateScene`          | Move characters/objects between locations                | `setSceneState()`         | `scene_update`                  |
+| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)         | `setGameTime()`           | `time_update`                   |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns
@@ -199,8 +210,8 @@ as a circuit breaker.
    plot tree first, then generates dialogue options that align with the active plot's branch options
 8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName +
    shortDescription); full details fetched via `queryEntity`
-9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter)
-   so replay mode shows historical world state
+9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter
+   + gameTime + scene) so replay mode shows historical world state including time and scene composition
 10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`)
     not the live plot table
 
@@ -277,6 +288,7 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - `POST /api/world/entity` — Upsert entity
 - `GET /api/plots` — All plots
 - `PATCH /api/plots/:id` — Update a plot's fields (with tree validation)
+- `GET /api/scene` — Current game time and scene state
 - `GET /api/history` / `POST /api/history` — Dialogue history (GET reads; POST replaces all)
 
 ### 4.4 Debug
@@ -398,7 +410,52 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 tabs:
 
 ---
 
-## 7. Development Workflow
+## 7. Time System
+
+Each in-game day is divided into 12 segments of 2 hours each (segment 0 = midnight–2am, segment 11 = 10pm–midnight).
+Time only advances when the GM calls the `advanceTime` tool — the player cannot directly control time.
+
+**Storage**: `game_time_day` and `game_time_segment` keys in `system_state` table. Defaults to day 1, segment 0.
+
+**`GameTime`** (in `src/types/entities.ts`): `{ day: number, segment: number }`
+
+**Model functions** (in `src/server/models/scene.ts`):
+- `getGameTime()` / `setGameTime(time)` — read/write time from system_state
+- `advanceGameTime(segments)` — adds segments (wraps days at 12), returns old and new times
+- `describeTime(time)` — human-readable string: "Day 3, Dawn (~4am-6am)"
+- `SEGMENT_LABELS` — constant map: `{ 0: "Midnight", 1: "Late Night", 2: "Dawn", … }`
+
+**Time in snapshots**: `WorldSnapshot.gameTime` stores the time at each dialogue step for replay.
+
+---
+
+## 8. Scene Management
+
+The scene system tracks "who is where, with what" — character positions, object positions, and the current location.
+Objects can be at a location or carried by a character.
+
+**Storage**: `current_scene` key in `system_state` table (JSON). Default scene: `rusted_cog` with `orin_fell` present.
+
+**`SceneState`** (in `src/types/entities.ts`):
+```
+{
+  currentLocationId: string,
+  characterLocations: Record<string, string>,   // characterId → locationId
+  objectPositions: Record<string, ObjectPosition> // objectId → { type, locationId/characterId }
+}
+```
+
+**Model functions** (in `src/server/models/scene.ts`):
+- `getSceneState()` / `setSceneState(scene)` — read/write parsed scene JSON
+- `buildSceneSummary(scene)` (in `llm/index.ts`) — resolves entity IDs to display names for the system prompt
+
+**Scene in snapshots**: `WorldSnapshot.scene` stores the full scene state at each dialogue step for replay.
+
+**API**: `GET /api/scene` returns `{ gameTime, scene }` for live-mode frontend display.
+
+---
+
+## 9. Development Workflow
 
 ### 7.1 Adding a New Tool for the LLM
 

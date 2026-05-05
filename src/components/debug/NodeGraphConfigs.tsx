@@ -563,7 +563,7 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
             opacity: isEffectivelyActive ? 1 : 0.5,
           }}
         >
-          {node.status.replace("_", " ")}
+          {(node.status ?? "PENDING").replace("_", " ")}
         </span>
       </div>
       {/* Description preview */}
@@ -583,13 +583,13 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
         style={{ borderColor: "rgba(255,255,255,0.1)" }}
       >
         <span className="text-[9px] font-mono text-white/20">
-          {node.childPlots.length} branch{node.childPlots.length !== 1 ? "es" : ""}
+          {node.childPlots?.length ?? 0} branch{(node.childPlots?.length ?? 0) !== 1 ? "es" : ""}
         </span>
-        {(node.involvedLocations.length > 0 || node.involvedCharacters.length > 0) && (
+        {((node.involvedLocations?.length ?? 0) > 0 || (node.involvedCharacters?.length ?? 0) > 0) && (
           <>
             <span className="text-white/10">·</span>
             <span className="text-[9px] font-mono text-white/20">
-              {node.involvedLocations.length + node.involvedCharacters.length} refs
+              {(node.involvedLocations?.length ?? 0) + (node.involvedCharacters?.length ?? 0)} refs
             </span>
           </>
         )}
@@ -619,8 +619,8 @@ const PlotInspector: React.FC<
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description);
   const [status, setStatus] = useState(node.status);
-  const [locationsText, setLocationsText] = useState(node.involvedLocations.join(", "));
-  const [charactersText, setCharactersText] = useState(node.involvedCharacters.join(", "));
+  const [locationsText, setLocationsText] = useState((node.involvedLocations ?? []).join(", "));
+  const [charactersText, setCharactersText] = useState((node.involvedCharacters ?? []).join(", "));
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -629,8 +629,8 @@ const PlotInspector: React.FC<
     setTitle(node.title);
     setDescription(node.description);
     setStatus(node.status);
-    setLocationsText(node.involvedLocations.join(", "));
-    setCharactersText(node.involvedCharacters.join(", "));
+    setLocationsText((node.involvedLocations ?? []).join(", "));
+    setCharactersText((node.involvedCharacters ?? []).join(", "));
     setError(null);
   }, [node.id]);
 
@@ -721,7 +721,7 @@ const PlotInspector: React.FC<
               </span>
             )}
             <span className="text-[9px] text-white/20 font-mono">
-              {node.childPlots.length} branches
+              {node.childPlots?.length ?? 0} branches
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -822,7 +822,7 @@ const PlotInspector: React.FC<
             <label className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/20 block mb-1">
               Child Plots
             </label>
-            {node.childPlots.length === 0 ? (
+            {!node.childPlots?.length ? (
               <p className="text-[10px] text-white/15 italic">No branch options</p>
             ) : (
               <div className="space-y-1">
@@ -901,7 +901,7 @@ export function createPlotConfig(opts: {
     isLeaf: (id, nodeMap) => {
       const plot = nodeMap[id] as Plot | undefined;
       if (!plot) return false;
-      return !plot.childPlots.some((opt) => opt.plotId !== null);
+      return !plot.childPlots?.some((opt) => opt.plotId !== null);
     },
     getRootId: (nodes) => {
       const root = nodes.find((n) => (n as Plot).parentPlotId === null);
@@ -909,7 +909,7 @@ export function createPlotConfig(opts: {
     },
     getEdgeLabel: (childId, parentId, nodeMap) => {
       const parent = nodeMap[parentId] as Plot | undefined;
-      const option = parent?.childPlots.find((o) => o.plotId === childId);
+      const option = parent?.childPlots?.find((o) => o.plotId === childId);
       return option?.triggerCondition
         ? option.triggerCondition.slice(0, 22) + (option.triggerCondition.length > 22 ? "…" : "")
         : "";

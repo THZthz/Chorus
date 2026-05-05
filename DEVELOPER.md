@@ -14,6 +14,7 @@ dialogue paths, and probabilistic skill checks influenced by character attribute
 - **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
 - **Styling:** Tailwind CSS v4, `motion` (formly `framer-motion`), Lucide icons, CodeMirror (debug)
 - **SSE:** Server-Sent Events for real-time streaming of LLM output and world mutations
+- **Deployment:** Local-only — runs on localhost, no authentication required by design
 
 ---
 
@@ -24,10 +25,11 @@ src/
 ├── client/
 │   ├── main.tsx              # React entry point
 │   ├── App.tsx               # Main orchestrator: state machine, SSE consumer, replay mode
+│   ├── idPool.ts             # Client-side ID batch fetcher (pre-allocates unique IDs)
 │   └── index.css             # Global styles (Tailwind + noise filters)
 ├── components/
 │   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser, quest tree
-│   ├── DebugPanel.tsx        # Developer toolbox: 4 visible tabs + More dropdown (Logs, Console, World, Graphs, Prompt, Scene)
+│   ├── DebugPanel.tsx        # Developer toolbox: 6 draggable-reorderable tabs (Logs, Console, World, Graphs, Prompt, Scene)
 │   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links, roll tooltips)
 │   ├── DialogueOptions.tsx   # Player choices (actions, skill checks, unexplored branches)
 │   ├── DiceRoller.tsx        # Skill check simulation (2D6 + stat) — modal with animations
@@ -61,6 +63,7 @@ src/
 │   └── models/
 │       ├── debug.ts          # llm_logs + llm_steps + console_logs CRUD
 │       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots)
+│       ├── ids.ts            # Base62-encoded unique ID generation (nextId, nextIdBatch)
 │       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
 │       ├── scene.ts           # Time + scene state CRUD (system_state keys)
@@ -70,6 +73,7 @@ src/
 │   ├── SseClient.ts          # Browser SSE streaming consumer with AbortController support
 │   └── WorldManager.ts       # Client-side world/plot cache; replay snapshot override; subscriber pattern
 ├── shared/
+│   ├── constants.ts          # TOOL_NAMES constant and ToolName type (shared tool name strings)
 │   └── events.ts             # SSE event type definitions (shared backend/frontend, typed event map)
 └── types/
     ├── codemirror-rich-markdoc.d.ts  # Module declaration for untyped package
@@ -140,21 +144,21 @@ POST /api/chat/stream
 
 Defined in `src/shared/events.ts` (single source of truth for both backend and frontend):
 
-| Event                | Direction       | Payload                           | Trigger                                    |
-|----------------------|-----------------|-----------------------------------|--------------------------------------------|
-| `step_start`         | Server → Client | `{ stepId }`                      | Turn begins                                |
-| `streaming_messages` | Server → Client | `{ messages }`                    | Progressive during `generateDialogueStep`  |
-| `streaming_reset`    | Server → Client | `{}`                              | LLM retried — previous streaming discarded |
-| `world_update`       | Server → Client | `{ entityId, changes }`           | `editEntity` tool executes                 |
-| `plot_update`        | Server → Client | `{ plotId, status }`              | `updatePlotStatus` tool executes           |
-| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }` | `createPlot` tool executes                 |
-| `plot_edit`          | Server → Client | `{ plotId, changes }`             | `editPlot` tool executes                   |
-| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes       |
-| `scene_update`       | Server → Client | `{ scene }`                        | `updateScene` tool executes        |
-| `options`            | Server → Client | `{ options }`                     | Options available mid-stream               |
-| `parsed`             | Server → Client | `{ messages, options }`           | Final structured output                    |
-| `error`              | Server → Client | `{ message }`                     | Error during generation                    |
-| `done`               | Server → Client | `{}`                              | Turn complete                              |
+| Event                | Direction       | Payload                              | Trigger                                    |
+|----------------------|-----------------|--------------------------------------|--------------------------------------------|
+| `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                                |
+| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep`  |
+| `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — previous streaming discarded |
+| `world_update`       | Server → Client | `{ entityId, changes }`              | `editEntity` tool executes                 |
+| `plot_update`        | Server → Client | `{ plotId, status }`                 | Reserved (defined but not currently emitted) |
+| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`    | `createPlot` tool executes                 |
+| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `editPlot` tool executes                   |
+| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                |
+| `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                |
+| `options`            | Server → Client | `{ options }`                        | Options available mid-stream               |
+| `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                    |
+| `error`              | Server → Client | `{ message }`                        | Error during generation                    |
+| `done`               | Server → Client | `{}`                                 | Turn complete                              |
 
 ### 3.3 LLM Tools
 
@@ -168,9 +172,9 @@ All 10 tools defined once in `src/server/llm/tools.ts`:
 | `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                   |
 | `editPlot`             | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
 | `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
-| `getScene`             | Get current game time and full scene state               | None (read query)         | None (returns JSON)             |
-| `updateScene`          | Move characters/objects between locations                | `setSceneState()`         | `scene_update`                  |
-| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)         | `setGameTime()`           | `time_update`                   |
+| `getScene`             | Get current game time and full scene state                | None (read query)         | None (returns JSON)             |
+| `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                  |
+| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `setGameTime()`           | `time_update`                   |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns
@@ -212,7 +216,7 @@ as a circuit breaker.
 8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName +
    shortDescription); full details fetched via `queryEntity`
 9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter
-   + gameTime + scene) so replay mode shows historical world state including time and scene composition
+    + gameTime + scene) so replay mode shows historical world state including time and scene composition
 10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`)
     not the live plot table
 
@@ -301,6 +305,17 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - `POST /api/debug/console/clear` — Clear all console logs
 - `POST /api/reset` — Wipe DB (entities, plots, dialogue_steps, alternatives, history) and re-seed
 
+### 4.5 ID Generation
+
+- `GET /api/ids/batch` — Generate a batch of unique base62-encoded IDs
+
+### 4.6 System Prompt
+
+- `GET /api/debug/system-prompt` — Get current system prompt template
+- `PUT /api/debug/system-prompt` — Update system prompt template
+- `GET /api/debug/system-prompt/default` — Get default system prompt template
+- `POST /api/debug/system-prompt/reset` — Reset system prompt to default
+
 ---
 
 ## 5. Database Schema
@@ -384,7 +399,8 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 draggable-reorderable tabs in a si
 - **LLM Trace Viewer** (`"logs"`): Parsed exchange timeline with per-step prompt display, model reasoning text (when
   available), step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting
   (`src/components/debug/LlmTraceViewer.tsx`)
-- **Console Logs** (`"console"`): Intercepted browser console output with filtering (by level, keyword/regex, date range),
+- **Console Logs** (`"console"`): Intercepted browser console output with filtering (by level, keyword/regex, date
+  range),
   text wrap toggle, and sync/clear (`src/components/debug/ConsoleViewer.tsx`)
 - **World Editor** (`"world"`): Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT),
   inline-editable form with stat bars, opinion pills, attribute k/v table, and add-new-entity
@@ -416,6 +432,7 @@ Time only advances when the GM calls the `advanceTime` tool — the player canno
 **`GameTime`** (in `src/types/entities.ts`): `{ day: number, segment: number }`
 
 **Model functions** (in `src/server/models/scene.ts`):
+
 - `getGameTime()` / `setGameTime(time)` — read/write time from system_state
 - `advanceGameTime(segments)` — adds segments (wraps days at 12), returns old and new times
 - `describeTime(time)` — human-readable string: "Day 3, Dawn (~4am-6am)"
@@ -433,6 +450,7 @@ Objects can be at a location or carried by a character.
 **Storage**: `current_scene` key in `system_state` table (JSON). Default scene: `rusted_cog` with `orin_fell` present.
 
 **`SceneState`** (in `src/types/entities.ts`):
+
 ```
 {
   currentLocationId: string,
@@ -442,6 +460,7 @@ Objects can be at a location or carried by a character.
 ```
 
 **Model functions** (in `src/server/models/scene.ts`):
+
 - `getSceneState()` / `setSceneState(scene)` — read/write parsed scene JSON
 - `buildSceneSummary(scene)` (in `llm/index.ts`) — resolves entity IDs to display names for the system prompt
 
@@ -453,31 +472,31 @@ Objects can be at a location or carried by a character.
 
 ## 9. Development Workflow
 
-### 7.1 Adding a New Tool for the LLM
+### 9.1 Adding a New Tool for the LLM
 
 1. Define the tool in `src/server/llm/tools.ts` using the `tool()` function from `@ai-sdk`
 2. Register it in the `tools` object inside `generateTurn()` in `src/server/llm/index.ts`
 3. Update the system prompt if the LLM needs guidance on when to use it
 4. Add SSE event emission in the tool's `execute` function for immediate UI feedback
 
-### 7.2 Adding a New Voice/Skill
+### 9.2 Adding a New Voice/Skill
 
 1. Add the stat to `CharacterStats` in `src/types/entities.ts`
 2. Add default value in `src/context/CharacterContext.tsx`
 3. Add voice personality description to the system prompt in `src/server/llm/index.ts`
 4. Add a color entry in `DialogueMessage.tsx`'s `VOICE_COLORS` map
 
-### 7.3 Managing the World
+### 9.3 Managing the World
 
 Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and
 `initialCharacters` records there. The root plot is also seeded with two childPlots branch options.
 
-### 7.4 License Headers
+### 9.4 License Headers
 
 All source files in `src/` require an AGPL v3 license header at the top of the file. Run `npm run add-license-header` to
 add headers to any new files that are missing them — it skips files that already have a header.
 
-### 7.5 Debug Panel Tab Layout
+### 9.5 Debug Panel Tab Layout
 
 Debug tabs are defined in `DebugPanel.tsx` with a `TAB_DEFS` map and `DEFAULT_TAB_ORDER` array. All 6 tabs are
 rendered in a single bar and can be reordered by dragging (HTML5 native drag-and-drop). To add a new tab,

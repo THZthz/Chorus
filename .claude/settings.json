@@ -5,7 +5,7 @@
     "frontend-design@claude-plugins-official": false,
     "superpowers@claude-plugins-official": false,
     "code-review@claude-plugins-official": false,
-    "typescript-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": false
   }
 }

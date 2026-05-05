@@ -555,6 +555,11 @@ export async function generateTurn(
 
   let streamError: string | null = null;
 
+  // Accumulators for per-step text/reasoning from the stream
+  let currentText = "";
+  let currentReasoning = "";
+  const stepUserPrompts = new Map<number, string>();
+
   try {
     const result = streamText({
       model,
@@ -579,17 +584,25 @@ export async function generateTurn(
         stepCountIs(10),
       ],
       prepareStep: ({ stepNumber, steps, messages }) => {
-        if (stepNumber === 0) return undefined;
+        if (stepNumber === 0) {
+          stepUserPrompts.set(stepNumber, JSON.stringify(messages));
+          return undefined;
+        }
         const dialogueCalled = steps.some((s) =>
           s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
         );
-        if (dialogueCalled) return undefined;
+        if (dialogueCalled) {
+          stepUserPrompts.set(stepNumber, JSON.stringify(messages));
+          return undefined;
+        }
         const allToolsUsed = steps.flatMap((s) => s.toolCalls?.map((tc) => tc.toolName) ?? []);
         const errorMsg =
           allToolsUsed.length > 0
             ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`
             : `ERROR: You did not call ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`;
-        return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
+        const newMessages = [...messages, { role: "user" as const, content: errorMsg }];
+        stepUserPrompts.set(stepNumber, JSON.stringify(newMessages));
+        return { messages: newMessages };
       },
       onStepFinish: (event) => {
         debugging.onStepFinish({
@@ -606,8 +619,11 @@ export async function generateTurn(
             toolName: tr.toolName,
             output: tr.output,
           })),
-          text: event.text ?? undefined,
+          text: event.text || currentText || undefined,
+          reasoning: currentReasoning || undefined,
+          userPrompt: stepUserPrompts.get(event.stepNumber ?? 0),
         });
+        stepUserPrompts.delete(event.stepNumber ?? 0);
       },
       onFinish: (event) => {
         debugging.onFinish({
@@ -625,7 +641,17 @@ export async function generateTurn(
     let hasEmittedStreaming = false;
     for await (const chunk of result.fullStream) {
       switch (chunk.type) {
+        case "text-start":
+          currentText = "";
+          break;
+        case "reasoning-start":
+          currentReasoning = "";
+          break;
         case "text-delta":
+          currentText += chunk.text;
+          break;
+        case "reasoning-delta":
+          currentReasoning += chunk.text;
           break;
         case "tool-input-start":
           if (chunk.toolName === TOOL_NAMES.GENERATE_DIALOGUE) {

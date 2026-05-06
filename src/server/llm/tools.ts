@@ -122,14 +122,16 @@ export function mapToDialogueOption(
 
 // ── Tool factories ──
 
+const entityGetSechema = z.object({
+  type: z.enum(ENTITY_TYPES).optional().describe("Optional filter by entity type."),
+});
+
 export function createGetAllEntitiesNameTool() {
   return tool({
     title: "Get All Entities Name",
     description: "Returns the id, displayName, type, and shortDescription of all world entities.",
-    inputSchema: z.object({
-      type: z.enum(ENTITY_TYPES).optional().describe("Optional filter by entity type."),
-    }),
-    execute: wrapSafe(async (args: { type?: EntityType }) => {
+    inputSchema: entityGetSechema,
+    execute: wrapSafe(async (args: z.infer<typeof entityGetSechema>) => {
       const summaries = getAllEntitySummaries(args.type);
       if (summaries.length === 0) return "No entities found.";
       return JSON.stringify(summaries, null, 2);
@@ -157,7 +159,10 @@ export function createQueryEntityTool() {
     description:
       "Get full details of world entities. Provide an id for single lookup, ids array for bulk lookup, or a search term for text search (case-insensitive match on name/description, up to 5 results).",
     inputSchema: queryEntitySchema,
-    execute: wrapSafe(async (args: z.infer<typeof queryEntitySchema>) => {
+    execute: wrapSafe(async (args: z.infer<typeof queryEntitySchema>): Promise<string> => {
+      if (args.id && args.ids && args.search) {
+        return "ERROR: You can only search in only one of these ways: provide 'id' for single lookup, 'ids' for bulk lookup, or 'search' for text search.";
+      }
       if (!args.id && !args.ids && !args.search) {
         return "ERROR: Search intention is unknown. Provide 'id' for single lookup, 'ids' for bulk lookup, or 'search' for text search.";
       }
@@ -478,12 +483,18 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
       // text verification on messages
       for (let i = 0; i < args.messages.length; i++) {
         const msg = args.messages[i];
-        const speakerError = checkText(msg.speaker, `generateDialogueStep messages[${i}].speaker`);
+        const speakerError = checkText(
+          msg.speaker,
+          `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].speaker`,
+        );
         if (speakerError) {
           errors.push(speakerError);
           break;
         }
-        const textError = checkText(msg.text, `generateDialogueStep messages[${i}].text`);
+        const textError = checkText(
+          msg.text,
+          `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].text`,
+        );
         if (textError) {
           errors.push(textError);
           break;
@@ -492,7 +503,7 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
 
       if (!args.options || args.options.length === 0) {
         errors.push(
-          "Missing options — every generateDialogueStep call must include 2-5 choices for the player. Provide options that respond to the current scene.",
+          "Missing options — every ${TOOL_NAMES.GENERATE_DIALOGUE} call must include 2-5 choices for the player. Provide options that respond to the current scene.",
         );
       }
 
@@ -509,7 +520,10 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
         // text verification on options
         for (let i = 0; i < args.options.length; i++) {
           const opt = args.options[i];
-          const textError = checkText(opt.text, `generateDialogueStep options[${i}].text`);
+          const textError = checkText(
+            opt.text,
+            `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`,
+          );
           if (textError) {
             errors.push(textError);
             break;
@@ -517,7 +531,7 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
           if (opt.hintBefore) {
             const hintError = checkText(
               opt.hintBefore,
-              `generateDialogueStep options[${i}].hintBefore`,
+              `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintBefore`,
             );
             if (hintError) {
               errors.push(hintError);
@@ -527,7 +541,7 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
           if (opt.hintAfter) {
             const hintError = checkText(
               opt.hintAfter,
-              `generateDialogueStep options[${i}].hintAfter`,
+              `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintAfter`,
             );
             if (hintError) {
               errors.push(hintError);
@@ -537,7 +551,7 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
           if (opt.selectionMessage) {
             const selMsgError = checkText(
               opt.selectionMessage,
-              `generateDialogueStep options[${i}].selectionMessage`,
+              `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
             );
             if (selMsgError) {
               errors.push(selMsgError);
@@ -549,11 +563,11 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
 
       if (errors.length > 0) {
         lastCallValid = false;
-        return `VALIDATION FAILED — call generateDialogueStep again with corrections:\n${errors.map((e) => `• ${e}`).join("\n")}`;
+        return `VALIDATION FAILED — call ${TOOL_NAMES.GENERATE_DIALOGUE} again with corrections:\n${errors.map((e) => `• ${e}`).join("\n")}`;
       }
 
       lastCallValid = true;
-      return "Dialogue streamed.";
+      return "Dialogue successfully streamed.";
     },
   });
 
@@ -564,7 +578,7 @@ export function createAdvanceTimeTool(events: TurnEventEmitter) {
   return tool({
     title: "Advance Time",
     description:
-      "Advance the in-game clock by N segments (0-11, where each segment is 2 hours). Use 0 to describe the current time without advancing. Use this when the player's action takes time — a conversation might be 0-1 segments, travel may be 2-4, a rest is 4-6. Describe why time passes in the reason field.",
+      "Advance the in-game clock by N segments (0-11, where each segment is 2 hours). Use 0 to describe the current time without advancing. Use this when the player's action takes time. Describe why time passes in the reason field.",
     inputSchema: z.object({
       segments: z
         .number()

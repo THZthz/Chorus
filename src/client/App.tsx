@@ -599,7 +599,7 @@ export default function App() {
           if (parent) {
             updated[parentIdAtTime] = {
               ...parent,
-              options: parent.options.map((o) =>
+              options: parent.options.map((o: any) =>
                 o.id === option.id ? { ...o, nextStepId: newStepId } : o,
               ),
             };
@@ -665,7 +665,7 @@ export default function App() {
 
   const handleBegin = () => {
     setHasBegun(true);
-    handleStreamingResponse("Begin the story. Set the scene.", [], null, null);
+    handleStreamingResponse("[SYSTEM MESSAGE: Begin the story. Set the scene.]", [], null, null);
   };
 
   // ── Render ──

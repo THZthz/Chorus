@@ -184,7 +184,7 @@ apiRouter.post("/regenerate", async (req, res) => {
     const userInput = lastYouMsg?.text ?? "Continue";
 
     await generateTurn(
-      `[REGENERATE] ${userInput}`,
+      `[SYSTEM MESSAGE: REGENERATE \`${userInput}\`]`,
       history ?? [],
       res,
       step.parentStepId ?? null,

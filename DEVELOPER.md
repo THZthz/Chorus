@@ -141,28 +141,28 @@ POST /api/chat/stream
 
 Defined in `src/shared/events.ts` (single source of truth for both backend and frontend):
 
-| Event                | Direction       | Payload                              | Trigger                                    |
-|----------------------|-----------------|--------------------------------------|--------------------------------------------|
-| `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                                |
-| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep`  |
-| `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — previous streaming discarded |
-| `world_update`       | Server → Client | `{ entityId, changes }`              | `editEntity` tool executes                 |
+| Event                | Direction       | Payload                              | Trigger                                      |
+| -------------------- | --------------- | ------------------------------------ | -------------------------------------------- |
+| `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                                  |
+| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep`    |
+| `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — previous streaming discarded   |
+| `world_update`       | Server → Client | `{ entityId, changes }`              | `editEntity` tool executes                   |
 | `plot_update`        | Server → Client | `{ plotId, status }`                 | Reserved (defined but not currently emitted) |
-| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`    | `createPlot` tool executes                 |
-| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `editPlot` tool executes                   |
-| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                |
-| `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                |
-| `options`            | Server → Client | `{ options }`                        | Options available mid-stream               |
-| `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                    |
-| `error`              | Server → Client | `{ message }`                        | Error during generation                    |
-| `done`               | Server → Client | `{}`                                 | Turn complete                              |
+| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`    | `createPlot` tool executes                   |
+| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `editPlot` tool executes                     |
+| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                  |
+| `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                  |
+| `options`            | Server → Client | `{ options }`                        | Options available mid-stream                 |
+| `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                      |
+| `error`              | Server → Client | `{ message }`                        | Error during generation                      |
+| `done`               | Server → Client | `{}`                                 | Turn complete                                |
 
 ### 3.3 LLM Tools
 
 All 10 tools defined once in `src/server/llm/tools.ts`:
 
 | Tool                   | Purpose                                                   | DB Operation              | SSE Event                       |
-|------------------------|-----------------------------------------------------------|---------------------------|---------------------------------|
+| ---------------------- | --------------------------------------------------------- | ------------------------- | ------------------------------- |
 | `getAllEntitiesName`   | List entity IDs, names, types, shortDescriptions          | None (read query)         | None (returns JSON)             |
 | `queryEntity`          | Get full entity by ID or text search                      | None (read query)         | None (returns JSON)             |
 | `editEntity`           | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                  |
@@ -213,7 +213,7 @@ as a circuit breaker.
 8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName +
    shortDescription); full details fetched via `queryEntity`
 9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter
-    + gameTime + scene) so replay mode shows historical world state including time and scene composition
+   - gameTime + scene) so replay mode shows historical world state including time and scene composition
 10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`)
     not the live plot table
 
@@ -317,7 +317,7 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 8 tables in SQLite (`game.db`, WAL mode):
 
 | Table                   | Purpose                                                                                  |
-|-------------------------|------------------------------------------------------------------------------------------|
+| ----------------------- | ---------------------------------------------------------------------------------------- |
 | `entities`              | World entities (characters, locations, objects) with JSON attributes                     |
 | `history_messages`      | Persisted narrative message history (with metadata, skillCheck, rollResult JSON columns) |
 | `plots`                 | Quest/objective tree with JSON childPlots, entity links, status                          |
@@ -349,7 +349,7 @@ status tags, involved entities, and the childPlots options tree.
 **GM workflow** (explicitly guided by system prompt in `src/server/llm/index.ts`):
 
 1. Read state: `getPlot()`, `getAllEntitiesName()`, `queryEntity()`
-2. Structure story: `createPlot()` / `editPlot()` — update the plot tree *before* generating dialogue
+2. Structure story: `createPlot()` / `editPlot()` — update the plot tree _before_ generating dialogue
 3. Mutate world: `editEntity()` if descriptions or opinions changed
 4. Generate: `generateDialogueStep` — options should map to active plot's `childPlots`
 

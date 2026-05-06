@@ -443,7 +443,7 @@ const optionSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Optional first-person sentence for the YOU message in dialogue history after the player selects this option. Past or present tense describing what the player actually said/did (e.g. 'I tried to convince the guard to let us pass.'). If omitted, the text field is used with any [SKILL] prefix removed.",
+      "Optional sentence for the YOU message in dialogue history after the player selects this option. Write in past or present tense WITHOUT the pronoun 'I' — the system prefixes with 'You:' automatically (e.g. 'Tried to convince the guard to let us pass.' reads as 'You: Tried to convince...'). Using 'I' would produce the awkward 'You: I tried...'. If omitted, the text field is used with any [SKILL] prefix removed.",
     ),
   hintBefore: z
     .string()

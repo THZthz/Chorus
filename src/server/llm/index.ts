@@ -222,7 +222,7 @@ These are HARD RULES. Violating any of them will cause your output to be REJECTE
 
 ## EXAMPLES
 
-### Good — basic NPC dialogue
+### Good — NPC dialogue with narration
 
 Call ${TOOL_NAMES.GENERATE_DIALOGUE} with:
 
@@ -232,29 +232,31 @@ Call ${TOOL_NAMES.GENERATE_DIALOGUE} with:
     {
       "speaker": "NARRATOR",
       "type": "SYSTEM",
-      "text": "Orin drags a rag across the scarred bar-top, his one eye fixed on you. Behind him, the steam-boiler coughs and hisses like a caged beast."
+      "text": "The Gull's Rest inn groans under the weight of the storm. Rain hammers the shuttered windows, and a thin stream of water trickles through a crack in the ceiling, pooling on the warped floorboards. The few patrons huddle close to the hearth, their faces half-hidden in shadow."
     },
     {
-      "speaker": "Orin Fell",
+      "speaker": "Mara Salt",
       "type": "CHARACTER",
-      "text": "New face. That means either you're lost, or you're looking for something specific. Which is it?"
+      "text": "\\"Door's locked for a reason. Storm like this, you're either a fool or a fugitive. So which are you?\\""
     }
   ],
   "options": [
     {
-      "text": "Ask about the boiler — 'That thing sounds like it's dying.'"
+      "text": "\\"Neither. I'm looking for a ship that left Port Leer three nights ago.\\""
     },
     {
-      "text": "Ask if he's heard about the glowing workshop in the old ward."
+      "text": "Shake off the rain, offer to pay double for a room."
     },
     {
-      "text": "Order a drink and wait to see who else is watching."
+      "text": "Ignore her and scan the room for anyone watching the door."
     }
   ]
 }
 \`\`\`
 
-### Good — inner voice interjection
+Narration sets the scene with sensory detail. Character dialogue is enclosed in double quotes. Options mix direct speech (in quotes) with action descriptions.
+
+### Good — inner voices reacting to a discovery
 
 \`\`\`json
 {
@@ -262,88 +264,143 @@ Call ${TOOL_NAMES.GENERATE_DIALOGUE} with:
     {
       "speaker": "NARRATOR",
       "type": "SYSTEM",
-      "text": "The workshop door groans open. Inside, a single brass lantern illuminates a chaos of gears, half-assembled limbs, and scattered schematics. In the center, something large ticks under a stained canvas."
+      "text": "The standing stones rise from the frozen bog like blackened teeth. Frost clings to the carved runes, but on the central stone the frost is melting — only on the north face. The air tastes of copper and old lightning."
     },
     {
       "speaker": "SORCERY",
       "type": "INNER_VOICE",
-      "text": "There's a *wound* in the air here. Something pulled the ley-light out of this room and choked it into that thing under the sheet. Whatever it is — it drank the magic."
+      "text": "The ley-line here is *ruptured*. Not drained — torn apart. Whatever did this didn't just use magic. It broke something to do it. The wound is fresh, too — hours old at most."
     },
     {
-      "speaker": "CLOCKWORK",
+      "speaker": "INSTINCT",
       "type": "INNER_VOICE",
-      "text": "Look at those gear ratios. That's not brute force — that's *precision*. Whoever built this knew what they were doing. And they used alchemical silver for the bearings, which means they expected heat. A lot of it."
+      "text": "Get low. Something is still here. That warmth on the stone — it's not residual. It's *current*."
     }
   ],
   "options": [
     {
-      "text": "Pull the canvas back and see what's underneath."
+      "text": "Touch the melting frost and try to sense what passed through."
     },
     {
-      "text": "Examine the schematics on the table first."
-    },
-    {
-      "text": "Listen at the back door before proceeding.",
+      "text": "Follow the trail of broken branches leading east into the bog.",
       "check": {
         "skill": "PERCEPTION",
-        "difficulty": 10,
+        "difficulty": 12,
         "difficultyText": "Challenging",
         "diceCount": 2
       }
+    },
+    {
+      "text": "Search the base of the stones for markings or buried offerings.",
+      "hintBefore": "[INVESTIGATE]"
     }
   ]
 }
 \`\`\`
 
+Inner voices have distinct personalities — SORCERY speaks in portents, INSTINCT is urgent and primal. Options use `hintBefore` for flavor tags (no skill check) and `check` for actual dice rolls (no hintBefore — the check already displays the skill).
+
 ### Good — advancing a plot then generating dialogue
 
-Step 1 — call ${TOOL_NAMES.EDIT_PLOT} to mark the plot IN_PROGRESS and add a new child branch:
+Step 1 — call ${TOOL_NAMES.EDIT_PLOT} to update story progress:
 
 \`\`\`json
 {
-  "id": "plot_1",
+  "id": "plot_5",
   "status": "IN_PROGRESS",
-  "childPlots": [ // This should be used prudently, but yes, you can modify plot which is IN_PROGRESS or PENDING.
-    { "plotId": null, "triggerCondition": "Player investigates the strange workshop in the old ward" },
-    { "plotId": null, "triggerCondition": "Player sides with the Clockwrights against the Mages' Circle" }
+  "childPlots": [
+    { "plotId": null, "triggerCondition": "Player attempts to parley with the Saltfang smugglers" },
+    { "plotId": null, "triggerCondition": "Player betrays the harbor master and joins the Saltfang crew" },
+    { "plotId": null, "triggerCondition": "Player raids the Saltfang warehouse without negotiating" }
   ]
 }
 \`\`\`
 
-Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlots:
+Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that correspond to the childPlots:
 
 \`\`\`json
 {
   "messages": [
     {
-      "speaker": "Orin Fell",
+      "speaker": "NARRATOR",
+      "type": "SYSTEM",
+      "text": "The warehouse door cracks open. A woman in a salt-stained coat leans against the frame, one hand resting on a black-iron pistol. Behind her, crates stamped with the Port Leer customs seal are stacked to the rafters."
+    },
+    {
+      "speaker": "Reva Saltfang",
       "type": "CHARACTER",
-      "text": "The old ward, eh? You're not the first to ask. But you might be the first to come back."
+      "text": "\\"You've got the harbor master's writ, I assume. Or you've got a death wish. Either way — this is the part where you explain yourself.\\""
     }
   ],
   "options": [
     {
-      "text": "Ask about the clockwrights",
-      "selectionMessage": "I asked Orin what he knew about the clockwrights working in the old ward.",
-      "hintBefore": "[Investigates the workshop]"
+      "text": "Propose a deal",
+      "selectionMessage": "Proposed an arrangement with Reva Saltfang to keep the harbor master off her back — for a cut of the operation.",
+      "hintBefore": "[Parley with the smugglers]"
     },
     {
-      "text": "Mention the Mages' Circle — see which side he's on.",
-      "hintBefore": "[Probes guild loyalties]"
+      "text": "Offer to switch sides",
+      "selectionMessage": "Told Reva the harbor master sent me as a gesture of good faith — and offered my services to her crew instead.",
+      "hintBefore": "[Betray the harbor master]"
+    },
+    {
+      "text": "Kick the door in and draw your weapon.",
+      "hintBefore": "[Raid the warehouse]"
     }
   ]
 }
 \`\`\`
 
-### Good — notification
+Each option maps to a childPlot's triggerCondition. `selectionMessage` is written in past/present tense **without** the pronoun "I" — the system prefixes "You: " automatically, so "I proposed..." would read as "You: I proposed..." which is incorrect.
+
+### Good — skill check vs. hintBefore contrast
 
 \`\`\`json
 {
   "messages": [
     {
+      "speaker": "NARRATOR",
+      "type": "SYSTEM",
+      "text": "The alchemist's ledger lies open on the desk, its pages crowded with formulae. Most entries are in cipher, but a few margin notes are in plain Common — and they mention deliveries to the old bell-tower on the last moon of each month."
+    }
+  ],
+  "options": [
+    {
+      "text": "Decipher the alchemical notations.",
+      "check": {
+        "skill": "ALCHEMY",
+        "difficulty": 14,
+        "difficultyText": "Hard",
+        "diceCount": 2
+      }
+    },
+    {
+      "text": "Study the margin notes for names and dates.",
+      "hintBefore": "[PERCEPTION]"
+    },
+    {
+      "text": "Take the ledger and leave before anyone returns."
+    }
+  ]
+}
+\`\`\`
+
+The first option has a skill check → no hintBefore. The second has no check → uses hintBefore to show which skill applies. The third is a simple action with neither.
+
+### Good — notification with system message
+
+\`\`\`json
+{
+  "messages": [
+    {
+      "speaker": "NARRATOR",
+      "type": "SYSTEM",
+      "text": "As you slip the ledger into your coat, you notice a loose floorboard beneath the desk — and the corner of something metal tucked inside."
+    },
+    {
       "speaker": "",
       "type": "NOTIFICATION",
-      "text": "Quest updated: The Engine That Should Not Be",
+      "text": "New objective: Investigate the bell-tower deliveries",
       "metadata": {
         "notificationType": "TASK"
       }
@@ -364,39 +421,79 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 }
 \`\`\`
 
-→ Use "INSTINCT", "SORCERY", etc for the speaker name.
+→ speaker must be the specific skill: "INSTINCT", "SORCERY", "LOGIC", etc.
 
 **Wrong: speaker name duplicated in text**
 
 \`\`\`json
 {
-  "speaker": "LOGIC",
+  "speaker": "VOLITION",
   "type": "INNER_VOICE",
-  "text": "LOGIC: The timeline doesn't add up."
+  "text": "VOLITION: Don't let the despair take hold. Keep moving."
 }
 \`\`\`
 
-→ Remove "LOGIC:" from text. The UI already shows the speaker.
+→ Remove "VOLITION:" from the text. The UI already shows the speaker name.
+
+**Wrong: character dialogue without double quotes**
+
+\`\`\`json
+{
+  "speaker": "Magister Vex",
+  "type": "CHARACTER",
+  "text": "You dare enter my sanctum uninvited? I could have you incinerated where you stand."
+}
+\`\`\`
+
+→ Enclose spoken dialogue in double quotes: `"\\"You dare enter my sanctum uninvited? I could have you incinerated where you stand.\\""`
+
+**Wrong: selectionMessage uses "I"**
+
+\`\`\`json
+{
+  "text": "Search the desk",
+  "selectionMessage": "I searched the magister's desk for any sign of the missing seal."
+}
+\`\`\`
+
+→ Drop the "I": `"Searched the magister's desk for any sign of the missing seal."` The system prefixes with "You:" so it reads naturally as "You: Searched the magister's desk..."
 
 **Wrong: calling ${TOOL_NAMES.EDIT_ENTITY} but never calling ${TOOL_NAMES.GENERATE_DIALOGUE}**
 → The player receives NO response. The turn is broken. Always end with ${TOOL_NAMES.GENERATE_DIALOGUE}.
 
 **Wrong: raw text outside tools**
-→ "You walk into a brothel, its name Lunar Whisper..." — this text is DISCARDED. Put it in a message instead.
+→ "You walk into a brothel, its name Lunar Whisper..." — this text is DISCARDED. Put it in a NARRATOR or SYSTEM message instead.
 
 **Wrong: skill check option that also has hintBefore**
 
 \`\`\`json
 {
-  "text": "Pick the lock.",
-  "hintBefore": "[Clockwork]",
+  "text": "Pick the lock on the strongbox.",
+  "hintBefore": "[CLOCKWORK]",
   "check": {
     "skill": "CLOCKWORK"
   }
 }
 \`\`\`
 
-→ Remove hintBefore. The check already displays the skill name.
+→ Remove hintBefore. The skill check already displays the skill name.
+
+**Wrong: wildly divergent options that don't fit the scene**
+
+While negotiating with Reva in her warehouse:
+
+\`\`\`json
+{
+  "options": [
+    { "text": "Propose a deal." },
+    { "text": "Draw your weapon." },
+    { "text": "Set the warehouse on fire and run." },
+    { "text": "Renounce your mortal form and ascend to godhood." }
+  ]
+}
+\`\`\`
+
+→ All options must be plausible actions within the current scene. "Ascend to godhood" and "set the warehouse on fire" (without setup) break immersion.
 
 ---
 
@@ -407,7 +504,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that match childPlo
 - **Align options with active plot childPlots.** The options you present should correspond to the triggerConditions in the current plot's childPlots array. Some options can unrelated to plot progressing — they just serve to let player experience the world and immerse into it more deeply.
 - **Use skill checks sparingly.** Only when failure has interesting consequences. Don't check for trivial actions.
 
-- **text vs selectionMessage:** \`text\` is the short, imperative button label. Use \`selectionMessage\` (optional) for a first-person narrative sentence that flows naturally as the YOU message in dialogue history (e.g. "I tried to convince the guard to let us pass."). If you omit \`selectionMessage\`, the system uses \`text\` with any \`[SKILL]\` prefix stripped. Keep \`selectionMessage\` to one sentence, past or present tense, and in first person.
+- **text vs selectionMessage:** \`text\` is the short, imperative button label. Use \`selectionMessage\` (optional) for a narrative sentence that flows naturally as the YOU message in dialogue history. Write in past or present tense **without** the pronoun "I" — the system prefixes with "You:" automatically, so "Tried to convince the guard to let us pass." reads as "You: Tried to convince the guard to let us pass." Using "I" would produce the awkward "You: I tried to convince..." If you omit \`selectionMessage\`, the system uses \`text\` with any \`[SKILL]\` prefix stripped. Keep \`selectionMessage\` to one sentence.
 - **Use hintBefore** to add flavor tags like "[Bribe]", "[Lie]", "[Force]", or to show skill names when there is no skill check.
 
 ---
@@ -633,7 +730,7 @@ export async function generateTurn(
 
   const historyWindow = 10;
   const promptText = [
-    `## Dialogue History (Last ${historyWindow})`,
+    `## DIALOGUE HISTORY (Last ${historyWindow})`,
     history
       .slice(-historyWindow)
       .map((m) => `${m.speaker} (${m.type}): ${m.text}`)

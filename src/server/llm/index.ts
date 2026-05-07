@@ -298,7 +298,7 @@ Narration sets the scene with sensory detail. Character dialogue is enclosed in 
 }
 \`\`\`
 
-Inner voices have distinct personalities — SORCERY speaks in portents, INSTINCT is urgent and primal. Options use `hintBefore` for flavor tags (no skill check) and `check` for actual dice rolls (no hintBefore — the check already displays the skill).
+Inner voices have distinct personalities — SORCERY speaks in portents, INSTINCT is urgent and primal. Options use \`hintBefore\` for flavor tags (no skill check) and \`check\` for actual dice rolls (no hintBefore — the check already displays the skill).
 
 ### Good — advancing a plot then generating dialogue
 

@@ -18,7 +18,7 @@
 
 import db from "@/server/db";
 
-const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const CHARS = "1fER78GIDVbh95ngu6adzmkjZy2sSQoJTL0vXrx3MCtcPeKYUBWAiFpl4HqOwN";
 
 function encodeBase62(n: number): string {
   let result = "";

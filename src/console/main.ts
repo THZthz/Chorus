@@ -122,7 +122,11 @@ function renderMessage(msg: Message | StreamingMessage, indent = 0): number {
     const rr = msg.rollResult;
     const result = rr.success ? chalk.green("SUCCESS") : chalk.red("FAILURE");
     process.stdout.write(
-      prefix + speakerColor(`${displayName}`) + chalk.dim(`  [${rr.skill} ${rr.total} vs ${rr.difficulty}] `) + result + "\n",
+      prefix +
+        speakerColor(`${displayName}`) +
+        chalk.dim(`  [${rr.skill} ${rr.total} vs ${rr.difficulty}] `) +
+        result +
+        "\n",
     );
     return 1;
   }
@@ -181,18 +185,8 @@ function renderOptions(opts: DialogueOption[]) {
 
 function renderBanner() {
   console.log("");
-  console.log(
-    chalk.hex("#e63946")("  ╔════════════════════════════════════════════════════╗"),
-  );
-  console.log(
-    chalk.hex("#e63946")("  ║") + chalk.bold("                  ELYSIAN DIALOGUE                  ") + chalk.hex("#e63946")("║"),
-  );
-  console.log(
-    chalk.hex("#e63946")("  ║") + chalk.dim("               A Narrative RPG Engine               ") + chalk.hex("#e63946")("║"),
-  );
-  console.log(
-    chalk.hex("#e63946")("  ╚════════════════════════════════════════════════════╝"),
-  );
+  console.log(chalk.bold("                  ELYSIAN DIALOGUE                  "));
+  console.log(chalk.dim("               A Narrative RPG Engine               "));
   console.log("");
 }
 
@@ -320,12 +314,7 @@ async function postRegenerate(stepId: string, hist: Message[]) {
 
 async function handleBegin() {
   console.log(chalk.dim("Starting story...\n"));
-  await postChatStream(
-    "[SYSTEM MESSAGE: Begin the story. Set the scene.]",
-    [],
-    null,
-    null,
-  );
+  await postChatStream("[SYSTEM MESSAGE: Begin the story. Set the scene.]", [], null, null);
 }
 
 async function handleOptionSelect(option: DialogueOption) {

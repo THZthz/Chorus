@@ -11,7 +11,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 - **Stack:** React 19, TypeScript, Vite
 - **Backend:** Express + SQLite (`better-sqlite3`)
 - **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
-- **Styling:** Tailwind CSS v4, `motion` (formly `framer-motion`), Lucide icons, CodeMirror (debug)
+- **Styling:** Tailwind CSS v4, `motion` (formerly `framer-motion`), Lucide icons, CodeMirror (debug)
 - **SSE:** Server-Sent Events for real-time streaming of LLM output and world mutations
 - **Deployment:** Local-only — runs on localhost, no authentication required by design
 
@@ -54,7 +54,7 @@ src/
 │   └── CharacterContext.tsx  # Global character stats (React Context) with default fantasy-steampunk stats
 ├── server/
 │   ├── api.ts                # REST API + SSE streaming endpoints (world, plots, history, chat, debug)
-│   ├── db.ts                 # SQLite connection + schema (9 tables + idempotent migrations)
+│   ├── db.ts                 # SQLite connection + schema (8 tables + idempotent migrations)
 │   ├── llm/
 │   │   ├── index.ts          # GameMaster: model init, system prompt, generateTurn(), generateTurnBatch()
 │   │   ├── tools.ts          # All 10 LLM tool definitions (schemas + executors)
@@ -87,7 +87,7 @@ src/
 
 ## 3. Architecture: Event-Driven Tool Execution
 
-The LLM is a pure tool-calling Game Master. Every meaningful output comes through tool calls. The backend streams tool execution results to the frontend as typed SSE events.
+The LLM is a pure tool-calling Game Master. Every meaningful output comes through tool calls. The backend streams tool execution results to the frontend as typed SSE events. The `parseSseStream` async generator in `src/shared/sse.ts` provides the shared SSE parser used by both the browser and console SSE clients.
 
 ### 3.1 Turn Lifecycle
 
@@ -174,7 +174,7 @@ All 10 tools defined once in `src/server/llm/tools.ts`:
 | `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
 | `getScene`             | Get current game time and full scene state                | None (read query)         | None (returns JSON)             |
 | `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                  |
-| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `setGameTime()`           | `time_update`                   |
+| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `advanceGameTime()`       | `time_update`                   |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns an `ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
@@ -201,6 +201,7 @@ The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep`
 8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName + shortDescription); full details fetched via `queryEntity`
 9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter + gameTime + scene) so replay mode shows historical world state including time and scene composition
 10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`) not the live plot table
+11. **Client-side ID pre-allocation** — `idPool.ts` fetches batches of unique IDs from `GET /api/ids/batch` so the frontend can assign IDs to new messages/snapshots without waiting for a server round-trip
 
 ### 3.5 Dialogue Branching & Alternatives
 
@@ -221,6 +222,16 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 - **Exit replay**: Click the Return button. Calls `worldManager.clearReplayState()` (immediate visual restore to cached live entities/plots), then `worldManager.loadState()` (refreshes from DB), then fetches history from `history_messages`.
 - **`buildHistoryFromTree(stepId, treeSteps)`**: Pure function (top of `App.tsx`) that walks the parent chain from root to the given step and injects YOU messages between steps using each child's `parentOptionId` to find the option text.
 
+### 3.7 Console Client
+
+A standalone Node.js REPL client (`src/console/main.ts`) that validates the SSE protocol is client-agnostic. It implements the full dialogue loop — begin story, select options, regenerate, and resume — through the same SSE endpoints as the browser frontend.
+
+- **State machine**: `IDLE → WAITING → AWAITING_OPTION → WAITING → ...` (simpler than the browser's, no replay mode)
+- **Rendering**: Terminal output via `chalk` (speaker colors mirrored from `DialogueMessage.tsx`'s `VOICE_COLORS`) and `log-update` (progressive streaming updates). NPC speaker colors are derived from a hash of the character name.
+- **SSE handling**: `ConsoleSseClient` (`src/console/SseClient.ts`) handles only core dialogue events (`step_start`, `streaming_messages`, `streaming_reset`, `options`, `parsed`, `error`, `done`). World/plot/time/scene events are intentionally ignored — the console has no entity editor or debug panel.
+- **Session resume**: On startup, fetches `GET /api/history` + `GET /api/session/current` to restore the last dialogue state if an active session exists.
+- **Regenerate**: Trims history to the last YOU message and calls `POST /api/regenerate`, identical flow to the browser frontend.
+
 ---
 
 ## 4. API Endpoints
@@ -232,13 +243,13 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 ### 4.2 Dialogue Tree
 
+- `GET /api/dialogue/tree` — Full dialogue tree (root, all steps, leaf IDs, stats) — registered first to avoid `:id` route shadowing
 - `GET /api/dialogue/:id` — Step + children + alternatives
 - `GET /api/dialogue/:id/children` — Child steps
 - `GET /api/dialogue/:id/path` — Branch path from root
 - `GET /api/dialogue/:id/alternatives` — Alternative versions
 - `POST /api/dialogue/:id/alternatives/:altId/select` — Switch to alternative
 - `POST /api/branches/activate` — Activate a branch (deactivates siblings)
-- `GET /api/dialogue/tree` — Full dialogue tree (root, all steps, leaf IDs, stats)
 - `PATCH /api/dialogue/:id` — Update dialogue step (messages, options, skill checks)
 - `PATCH /api/dialogue/:id/snapshot` — Update a step's `worldSnapshot` (replay plot editing)
 - `POST /api/dialogue/traverse` — Navigate from step to child via option `{ stepId, optionId }`
@@ -291,9 +302,9 @@ Replay mode allows navigating the existing dialogue tree and expanding it with n
 
 Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot holds an array of `childPlots` — branch options that guide the GM when generating dialogue. The tree is validated on every `createPlot`/`editPlot` call.
 
-**`PlotOption`** (branch slot in `src/types/plot.ts`)
+**`PlotOption`** (branch slot in `src/types/plot.ts`): `{ plotId: string | null, triggerCondition: string }` — links a child plot node with its trigger condition text.
 
-**`Plot`** (stored in `plots` table, defined in `src/types/plot.ts`)
+**`Plot`** (stored in `plots` table, defined in `src/types/plot.ts`): `{ id, title, description, status, involvedLocations, involvedCharacters, parentPlotId, parentOptionId, childPlots }` — `status` is one of `PENDING | IN_PROGRESS | RESOLVED`.
 
 **Tree validation rules** (in `validatePlotTree()` in `src/server/models/plot.ts`):
 

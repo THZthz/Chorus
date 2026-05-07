@@ -78,7 +78,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
 }
 
-function getSpeakerColor(speaker: string, type: string): chalk.Chalk {
+function getSpeakerColor(speaker: string, type: string) {
   if (type === "YOU") return chalk.hex("#d8d8d8");
   if (type === "INNER_VOICE") return chalk.hex(VOICE_COLORS[speaker.toUpperCase()] ?? "#9081e3");
   if (type === "SYSTEM" || type === "NOTIFICATION") return chalk.hex("#6b7280");
@@ -118,7 +118,7 @@ function renderMessage(msg: Message | StreamingMessage, indent = 0): number {
   const displayName = msg.type === "CHARACTER" ? msg.speaker : speakerName;
 
   // Check for roll result display
-  if (msg.rollResult) {
+  if ("rollResult" in msg && msg.rollResult) {
     const rr = msg.rollResult;
     const result = rr.success ? chalk.green("SUCCESS") : chalk.red("FAILURE");
     process.stdout.write(
@@ -155,14 +155,9 @@ function renderMessages(msgs: (Message | StreamingMessage)[]): number {
   return total;
 }
 
-function renderStreamingMessages(msgs: StreamingMessage[]): number {
-  let total = 0;
-  process.stdout.write(chalk.dim("  ── streaming ──\n"));
-  total++;
-  for (const msg of msgs) {
-    total += renderMessage(msg, 2);
-  }
-  return total;
+function renderStreamingStatus(): number {
+  process.stdout.write(chalk.dim("  Generating story...\n"));
+  return 1;
 }
 
 function renderOptions(opts: DialogueOption[]) {
@@ -187,16 +182,16 @@ function renderOptions(opts: DialogueOption[]) {
 function renderBanner() {
   console.log("");
   console.log(
-    chalk.hex("#e63946")("  ╔══════════════════════════════════════════╗"),
+    chalk.hex("#e63946")("  ╔════════════════════════════════════════════════════╗"),
   );
   console.log(
-    chalk.hex("#e63946")("  ║") + chalk.bold("        ELYSIAN DIALOGUE                 ") + chalk.hex("#e63946")("║"),
+    chalk.hex("#e63946")("  ║") + chalk.bold("                  ELYSIAN DIALOGUE                  ") + chalk.hex("#e63946")("║"),
   );
   console.log(
-    chalk.hex("#e63946")("  ║") + chalk.dim("        A Narrative RPG Engine           ") + chalk.hex("#e63946")("║"),
+    chalk.hex("#e63946")("  ║") + chalk.dim("               A Narrative RPG Engine               ") + chalk.hex("#e63946")("║"),
   );
   console.log(
-    chalk.hex("#e63946")("  ╚══════════════════════════════════════════╝"),
+    chalk.hex("#e63946")("  ╚════════════════════════════════════════════════════╝"),
   );
   console.log("");
 }
@@ -208,10 +203,11 @@ function createSseCallbacks(): SseCallbacks {
     onStepStart: (data) => {
       lastStepId = data.stepId;
     },
-    onStreamingMessages: (messages) => {
+    onStreamingMessages: (_messages) => {
       if (isRetrying) return;
+      if (streamingLineCount > 0) return; // already showing indicator
       clearStreamingLines();
-      streamingLineCount = renderStreamingMessages(messages);
+      streamingLineCount = renderStreamingStatus();
     },
     onStreamingReset: () => {
       isRetrying = true;

@@ -351,7 +351,7 @@ Step 2 — call ${TOOL_NAMES.GENERATE_DIALOGUE} with options that correspond to 
 }
 \`\`\`
 
-Each option maps to a childPlot's triggerCondition. `selectionMessage` is written in past/present tense **without** the pronoun "I" — the system prefixes "You: " automatically, so "I proposed..." would read as "You: I proposed..." which is incorrect.
+Each option maps to a childPlot's triggerCondition. \`selectionMessage\` is written in past/present tense **without** the pronoun "I" — the system prefixes "You: " automatically, so "I proposed..." would read as "You: I proposed..." which is incorrect.
 
 ### Good — skill check vs. hintBefore contrast
 
@@ -445,7 +445,7 @@ The first option has a skill check → no hintBefore. The second has no check �
 }
 \`\`\`
 
-→ Enclose spoken dialogue in double quotes: `"\\"You dare enter my sanctum uninvited? I could have you incinerated where you stand.\\""`
+→ Enclose spoken dialogue in double quotes: \`"You dare enter my sanctum uninvited? I could have you incinerated where you stand."\`
 
 **Wrong: selectionMessage uses "I"**
 
@@ -456,7 +456,7 @@ The first option has a skill check → no hintBefore. The second has no check �
 }
 \`\`\`
 
-→ Drop the "I": `"Searched the magister's desk for any sign of the missing seal."` The system prefixes with "You:" so it reads naturally as "You: Searched the magister's desk..."
+→ Drop the "I": \`"Searched the magister's desk for any sign of the missing seal."\` The system prefixes with "You:" so it reads naturally as "You: Searched the magister's desk..."
 
 **Wrong: calling ${TOOL_NAMES.EDIT_ENTITY} but never calling ${TOOL_NAMES.GENERATE_DIALOGUE}**
 → The player receives NO response. The turn is broken. Always end with ${TOOL_NAMES.GENERATE_DIALOGUE}.

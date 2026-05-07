@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { parseSseStream } from "@/shared/sse";
 import type { DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage, SseEventMap } from "@/shared/events";
 
@@ -61,42 +62,13 @@ export class SseClient {
         return;
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
+      if (!response.body) {
         callbacks.onError?.("No response body");
         return;
       }
 
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        let currentEvent = "";
-        let currentData = "";
-
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            currentData = line.slice(6);
-          } else if (line.trim() === "" && currentData) {
-            try {
-              const data = JSON.parse(currentData);
-              this.dispatch(currentEvent, data, callbacks);
-            } catch {
-              // Skip unparseable data
-            }
-            currentEvent = "";
-            currentData = "";
-          }
-        }
+      for await (const { event, data } of parseSseStream(response.body)) {
+        this.dispatch(event, data, callbacks);
       }
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") {

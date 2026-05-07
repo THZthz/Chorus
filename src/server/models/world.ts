@@ -27,70 +27,137 @@ import {
 } from "@/types/entities";
 
 const initialObjects: Record<string, WorldObject> = {
-  brass_resonator: {
-    id: "brass_resonator",
+  crumpled_letter: {
+    id: "crumpled_letter",
     type: "OBJECT",
-    displayName: "Brass Ley-Resonator",
-    shortDescription: "A humming device of black-iron gears and etched copper coils.",
+    displayName: "Crumpled Letter",
+    shortDescription: "A creased parchment sealed with black wax, tucked inside your coat.",
     longDescription:
-      "A fist-sized contraption of riveted brass and alchemically treated copper. Its innards click and whir, and a faint blue glow pulses from a cracked crystal at its core — a crude attempt to 'tune' ley-line energy through clockwork. The thing feels warm, almost alive, and gives off a faint smell of ozone and burnt herbs. It should not work. It does.",
+      "The letter is written in a tight, elegant hand. The black wax seal bears an emblem you don't recognize — a tower pierced by a crescent moon. The ink is smudged in places, as if damp.\n\n_To whom it concerns — Lady Seraphine Vex was found at dawn in the fountain of the upper courtyard. Her throat had been opened from ear to ear. The duke has locked down the upper levels. No one leaves Karavelle until the killer is found. I trust you remember why you were summoned._\n\nIt is unsigned.",
     attributes: {
-      Function: "Ley-resonance transduction (unstable)",
-      Origin: "Unknown — possibly the Workshop of the Veiled Hand",
-      "Steam Pressure": "Dangerously high",
+      Case: "Murder of Lady Seraphine Vex",
+      "Seal Emblem": "Tower pierced by crescent moon",
+      Signed: "No",
     },
   },
-  cogwheel_amulet: {
-    id: "cogwheel_amulet",
+  gilded_key: {
+    id: "gilded_key",
     type: "OBJECT",
-    displayName: "Cogwheel Amulet",
-    shortDescription: "A brass cog on a leather string, etched with faded runes.",
+    displayName: "Gilded Key",
+    shortDescription: "A brass key with an ivory lotus fob, to room seven of the Gilded Lotus.",
     longDescription:
-      "The cog is warm to the touch, its teeth worn smooth by fingers that have worried it for years. Faint runes — old magical script — have been etched into the brass and filled with a dark, tarnished silver. It is a symbol of the Clockwrights' Guild, worn by those who walk the line between the arcane and the mechanical.",
+      "The key is warm from your pocket. The ivory fob is carved into a lotus flower, petals slightly yellowed with age. The number '7' is stamped into the brass bow. The teeth are worn — this key has seen use.",
     attributes: {
-      Affiliation: "Clockwrights' Guild",
-      Material: "Brass, silver, leather",
-      Age: "Several decades",
+      Room: "7, The Gilded Lotus",
+      Material: "Brass and carved ivory",
     },
   },
 };
 
 const initialLocations: Record<string, Location> = {
-  rusted_cog: {
-    id: "rusted_cog",
+  the_gilded_lotus: {
+    id: "the_gilded_lotus",
     type: "LOCATION",
-    displayName: "The Rusted Cog",
-    shortDescription: "A smoke-stained tavern clinging to the edge of the Steamward quarter.",
+    displayName: "The Gilded Lotus",
+    shortDescription: "An upscale pleasure house in the upper levels of Karavelle.",
     longDescription:
-      "The Cog is a low-ceilinged haunt of timber and blackened stone, sagging under the weight of its own years. A massive alchemical steam-boiler — installed by the late owner's son before he disappeared — hisses and clanks behind the bar, its copper pipes snaking across soot-stained walls like metallic ivy. The air is thick with pipe smoke, cheap tallow, and the bitter tang of boiled chicory. The clientele are a grim lot: discharged soldiers, hedge witches, failed alchemists, and the occasional steam-engineer nursing a grudge. A brass plaque above the hearth reads: 'The Old Ways End Here.'",
+      "The Gilded Lotus occupies the top three floors of a renovated merchant's palace, its facade draped in silk banners that snap in the salt breeze off the harbor. Inside, the air is thick with incense — sandalwood and something floral, heavy and sweet. Dim lamplight filters through crimson silk shades, casting the corridors in a warm, perpetual dusk. Velvet divans line the walls of the common lounge, where courtesans in various states of undress lounge and whisper. The floors are dark hardwood, oiled and gleaming, muffling footsteps. From behind closed doors come murmurs, laughter, and the rhythmic creak of bedframes. The madam runs the house with an iron fist wrapped in velvet — no violence, no theft, and absolute discretion for those who can pay.",
     attributes: {
-      Atmosphere: "Smoke-choked and wary",
-      District: "Steamward",
-      "Notable Feature": "Installation of an alchemical steam-boiler behind the bar",
+      District: "Upper Levels — Velvet Row",
+      Proprietor: "Madam Cressida",
+      Atmosphere: "Incense-choked, warm, deliberately languid",
+    },
+  },
+  matt_harbor_upper: {
+    id: "matt_harbor_upper",
+    type: "LOCATION",
+    displayName: "Upper Karavelle",
+    shortDescription: "White limestone terraces where the merchant princes and minor nobility keep their townhouses.",
+    longDescription:
+      "White limestone terraces climb the hillside above the harbor, lined with acacia trees and gas-lamps that burn with alchemical flame. The streets are swept clean, patrolled by the duke's watch in polished breastplates. At night, the upper levels glitter like a necklace against the dark. But even here, in the shadow of the duke's clock-tower, the smell of the lower city drifts up on the wind — brine, smoke, and something rotting.",
+    attributes: {
+      Patrolled: "Duke's Watch — frequent patrols",
+      Architecture: "White limestone, wrought iron, alchemical gas-lamps",
+      "Notable Feature": "The Duke's Spire, a clock-tower that chimes in strange intervals",
+    },
+  },
+  matt_harbor_lower: {
+    id: "matt_harbor_lower",
+    type: "LOCATION",
+    displayName: "The Warrens",
+    shortDescription: "The sunken underbelly of Karavelle — slave markets, smoke-belching workshops, and the lawless docks.",
+    longDescription:
+      "The lower levels are a labyrinth of leaning tenements, smoke-belching workshops, and open-air markets where anything can be bought — spices, stolen goods, information, and people. The slave markets huddle near the docks: orcish stevedores and elven merchants haggle over beastfolk laborers while gaunt-eyed handlers prod their wares. The air is a fog of coal smoke, fish-gut, cheap tallow, and the ever-present brine of the harbor. The duke's watch rarely descends below the third tier. Down here, the Harbor Rats run things, and justice is measured in coin and blood.",
+    attributes: {
+      Atmosphere: "Choking, crowded, lawless",
+      "Notable Locations": "Slave markets, fighting pits, the Sinking Dock tavern",
+      "Ruled By": "The Harbor Rats syndicate",
     },
   },
 };
 
 const initialCharacters: Record<string, Character> = {
-  orin_fell: {
-    id: "orin_fell",
+  veyla: {
+    id: "veyla",
     type: "CHARACTER",
-    displayName: "Orin Fell",
-    shortDescription: "The one-eyed keeper of the Rusted Cog, nursing old resentments.",
+    displayName: "Veyla",
+    shortDescription: "A sharp-eyed courtesan at the Gilded Lotus, nursing secrets beneath silk.",
     longDescription:
-      "Orin Fell has the look of a man who has been carved from bog-wood and left out in the rain. His one good eye — the other is a puckered scar hidden beneath a stained leather patch — misses nothing. He moves with a quiet, deliberate weight, wiping the same tankard with a rag that has long since given up on cleanliness. He despises the steam-boiler his son installed ('that infernal racket'), but he keeps it running because the ale-taps need the pressure. He knows everyone's name, everyone's debt, and everyone's secret. He just pretends not to.",
+      "Veyla has the look of a woman who has learned to read people the way a thief reads a lock — patiently, quietly, looking for the weak spring. She is tall, with dark copper skin and close-cropped black hair. A faded scar runs from her left collarbone to her shoulder blade, half-hidden by the strap of her shift. She moves with a dancer's economy. Her voice is low, with a slight accent — from the southern isles, perhaps. She found you unconscious in your room this morning and has been watching you ever since. She believes you are an investigator hired to look into Lady Seraphine's murder. She needs you to be that person. But she does not trust the confusion in your eyes — and confusion gets people killed in Karavelle.",
     stats: {
-      authority: 6,
-      perception: 7,
-      volition: 5,
+      logic: 4,
+      rhetoric: 5,
+      empathy: 6,
+      perception: 6,
+      volition: 3,
+      endurance: 3,
+      sorcery: 1,
+      suggestion: 5,
+      instinct: 4,
+      might: 2,
+      clockwork: 1,
+      alchemy: 2,
     },
     opinions: {
-      YOU: "A new face with old eyes. Trouble walks behind him like a faithful hound.",
+      YOU: "Says they're an investigator. Doesn't remember. But the letter in their pocket is real, and so is the danger. I need them to be who they claim — because if they're not, I've already said too much.",
+      madam_cressida: "Cressida knows everything that happens under her roof. She's let me stay despite the trouble I'm bringing. That means she wants something from this too.",
     },
     attributes: {
-      Status: "Tavern Keeper",
-      Affiliation: "None — despises all guilds equally",
-      "Missing Eye": "Lost to a shrapnel burst during the Gutter-Wars",
+      Occupation: "Courtesan, Gilded Lotus",
+      Origin: "Southern Isles (she claims)",
+      "Known Associates": "Lady Seraphine Vex (deceased) — they were seen together the night of the murder",
+      Status: "Nervous, hiding something",
+    },
+  },
+  madam_cressida: {
+    id: "madam_cressida",
+    type: "CHARACTER",
+    displayName: "Madam Cressida",
+    shortDescription: "Proprietor of the Gilded Lotus — silk and steel in equal measure.",
+    longDescription:
+      "Cressida is a woman in her fifties, handsome rather than beautiful, with silver-streaked auburn hair pinned up in an elaborate coil. She wears dresses that cost more than most in the lower levels earn in a year — deep velvets, embroidered silks, always high-collared and long-sleeved. She is never without a glass of fortified wine and never drunk. Her smile is a social instrument, deployed with precision. She has run the Gilded Lotus for twenty years, and in that time she has accumulated enough secrets to bring down half the noble houses in Karavelle. She does not trade in them — not directly. She simply knows. And knowledge, in a city of liars, is the only real currency.",
+    stats: {
+      logic: 5,
+      rhetoric: 7,
+      empathy: 4,
+      perception: 7,
+      volition: 6,
+      endurance: 3,
+      sorcery: 1,
+      suggestion: 6,
+      instinct: 3,
+      might: 1,
+      clockwork: 2,
+      alchemy: 2,
+    },
+    opinions: {
+      YOU: "A guest who arrived three nights ago, paid in advance, and collapsed before reaching their room. Veyla has taken an interest — which means they're either valuable or dangerous. Possibly both.",
+      veyla: "A good girl, clever, wasted on the trade. She's involved in something above her station. I should cut her loose before the trouble spreads. I won't.",
+    },
+    attributes: {
+      Occupation: "Proprietor, The Gilded Lotus",
+      Tenure: "20 years",
+      "Known For": "Discretion, information brokerage, impeccable taste",
     },
   },
 };
@@ -119,28 +186,49 @@ export function seedDatabase() {
     Object.values(initialLocations).forEach(insertEntity);
     Object.values(initialCharacters).forEach(insertEntity);
 
-    // Seed the root plot with two branch options
+    // Seed the root plot — the murder of Lady Seraphine Vex
     db.prepare(
       `INSERT INTO plots (id, title, description, status, involved_locations, involved_characters, parent_plot_id, parent_option_id, child_plots)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       "plot_1",
-      "The Engine That Should Not Be",
-      "Strange things are happening in the Steamward quarter. A forgotten workshop in the old ward has begun to glow at night, and those who draw near hear the ticking of a thousand gears. Orin Fell's missing son may be connected — he was a clockwright's apprentice before he vanished. The air itself feels wrong, like magic is being drained from the leylines and fed into something metallic.",
-      "PENDING",
-      JSON.stringify(["rusted_cog"]),
-      JSON.stringify(["orin_fell"]),
+      "The Murder of Lady Seraphine Vex",
+      "Three nights ago, the duke's daughter was found in the upper courtyard fountain, her throat cut ear to ear. The duke has locked down the upper levels — no one leaves Karavelle. The player arrived at the Gilded Lotus claiming to investigate, or so Veyla says. But the player remembers nothing before waking in a silk-draped bed, a crumpled letter in their pocket and a stranger's name on their lips. The truth lies somewhere in the layers of Karavelle — the gilded lies of the upper city and the raw commerce of the Warrens below.",
+      "IN_PROGRESS",
+      JSON.stringify(["the_gilded_lotus", "matt_harbor_upper"]),
+      JSON.stringify(["veyla", "madam_cressida"]),
       null,
       null,
       JSON.stringify([
-        {
-          plotId: null,
-          triggerCondition: "Player investigates the strange workshop in the old ward",
-        },
-        { plotId: null, triggerCondition: "Player presses Orin for answers about his missing son" },
+        { plotId: null, triggerCondition: "Player investigates Seraphine's death through the noble houses of the upper levels" },
+        { plotId: null, triggerCondition: "Player descends into the Warrens, where slaves and secrets are traded freely" },
+        { plotId: null, triggerCondition: "Player uncovers Veyla's true connection to the murder" },
       ]),
     );
-    console.log("Seeded initial plot: The Engine That Should Not Be.");
+    console.log("Seeded initial plot: The Murder of Lady Seraphine Vex.");
+
+    // Set initial game time to dawn
+    db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+      "game_time_day",
+      "1",
+    );
+    db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+      "game_time_segment",
+      "2",
+    );
+
+    // Set initial scene — player's room at the Gilded Lotus
+    db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
+      "current_scene",
+      JSON.stringify({
+        currentLocationId: "the_gilded_lotus",
+        characterLocations: {
+          veyla: "the_gilded_lotus",
+          madam_cressida: "the_gilded_lotus",
+        },
+        objectPositions: {},
+      }),
+    );
   }
 }
 

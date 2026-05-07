@@ -97,8 +97,11 @@ export function describeTime(time: GameTime): string {
 // ── Scene Functions ──
 
 const DEFAULT_SCENE: SceneState = {
-  currentLocationId: "rusted_cog",
-  characterLocations: {},
+  currentLocationId: "the_gilded_lotus",
+  characterLocations: {
+    veyla: "the_gilded_lotus",
+    madam_cressida: "the_gilded_lotus",
+  },
   objectPositions: {},
 };
 

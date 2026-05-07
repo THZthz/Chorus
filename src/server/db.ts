@@ -141,7 +141,7 @@ if (!timeDayRow) {
   );
   db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
     "game_time_segment",
-    "0",
+    "2",
   );
 }
 
@@ -151,8 +151,8 @@ const sceneRow = db.prepare("SELECT value FROM system_state WHERE key = ?").get(
   | undefined;
 if (!sceneRow) {
   const defaultScene = {
-    currentLocationId: "rusted_cog",
-    characterLocations: { orin_fell: "rusted_cog" },
+    currentLocationId: "the_gilded_lotus",
+    characterLocations: { veyla: "the_gilded_lotus", madam_cressida: "the_gilded_lotus" },
     objectPositions: {},
   };
   db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(

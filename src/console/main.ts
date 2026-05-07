@@ -124,8 +124,7 @@ function formatMessage(msg: Message | StreamingMessage, indent = 0, showCursor =
     const line = textLines[i];
     const isLastLine = i === textLines.length - 1;
     if (line.trim() !== "" || textLines.length === 1) {
-      const cursor =
-        showCursor && isLastLine ? chalk.hex("#ff6b35")("▌") : "";
+      const cursor = showCursor && isLastLine ? chalk.hex("#ff6b35")("▌") : "";
       output += prefix + "  " + line + cursor + "\n";
     } else {
       output += "\n";

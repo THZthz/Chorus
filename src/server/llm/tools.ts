@@ -122,7 +122,7 @@ export function mapToDialogueOption(
 
 // ── Tool factories ──
 
-const entityGetSechema = z.object({
+const entityGetSchema = z.object({
   type: z.enum(ENTITY_TYPES).optional().describe("Optional filter by entity type."),
 });
 
@@ -130,8 +130,8 @@ export function createGetAllEntitiesNameTool() {
   return tool({
     title: "Get All Entities Name",
     description: "Returns the id, displayName, type, and shortDescription of all world entities.",
-    inputSchema: entityGetSechema,
-    execute: wrapSafe(async (args: z.infer<typeof entityGetSechema>) => {
+    inputSchema: entityGetSchema,
+    execute: wrapSafe(async (args: z.infer<typeof entityGetSchema>) => {
       const summaries = getAllEntitySummaries(args.type);
       if (summaries.length === 0) return "No entities found.";
       return JSON.stringify(summaries, null, 2);

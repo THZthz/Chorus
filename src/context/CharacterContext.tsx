@@ -30,8 +30,8 @@ const defaultCharacter: Character = {
   id: "player",
   type: "CHARACTER",
   displayName: "YOU",
-  shortDescription: "The protagonist.",
-  longDescription: "A wanderer marked by old magic and new obsessions.",
+  shortDescription: "An amnesiac waking in a strange bed at the Gilded Lotus.",
+  longDescription: "You remember fragments — a letter sealed with black wax, a woman's scream, salt spray against stone. The rest is fog. You woke in a silk-draped room at the Gilded Lotus with Veyla's eyes on you and a dead woman's name in your pocket. Whatever brought you to Karavelle, you'll have to piece it together from the lies people tell.",
   attributes: {},
   opinions: {},
   stats: {

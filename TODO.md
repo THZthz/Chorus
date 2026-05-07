@@ -39,3 +39,4 @@ The TODO is more like prompts.
 - [ ] GM is still outputting dialogue message on their plain text response, not tool call.
 - [x] `isAllowedText` is erroneous.
 - [ ] `YOU` should be removed from generateDialogueStep tool in `type` field.
+- [ ] Separate character's memory system.

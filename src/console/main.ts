@@ -50,6 +50,7 @@ let history: Message[] = [];
 let currentOptions: DialogueOption[] = [];
 let lastStepId: string | null = null;
 let streamingLineCount = 0;
+let streamingMessages: Message[] = [];
 let isRetrying = false;
 let sseClient: ConsoleSseClient | null = null;
 let messageIdCounter = 0;
@@ -111,7 +112,7 @@ function clearStreamingLines() {
 
 // ── Rendering ──
 
-function renderMessage(msg: Message | StreamingMessage, indent = 0): number {
+function renderMessage(msg: Message | StreamingMessage, indent = 0, showCursor = false): number {
   const prefix = " ".repeat(indent);
   const speakerColor = getSpeakerColor(msg.speaker, msg.type);
   const speakerName = msg.speaker === msg.type ? msg.type : `${msg.speaker}`;
@@ -140,9 +141,13 @@ function renderMessage(msg: Message | StreamingMessage, indent = 0): number {
 
   let lineCount = 1;
   const textLines = msg.text.split("\n");
-  for (const line of textLines) {
+  for (let i = 0; i < textLines.length; i++) {
+    const line = textLines[i];
+    const isLastLine = i === textLines.length - 1;
     if (line.trim() !== "" || textLines.length === 1) {
-      process.stdout.write(prefix + "  " + line + "\n");
+      const cursor =
+        showCursor && isLastLine ? chalk.hex("#ff6b35")("▌") : "";
+      process.stdout.write(prefix + "  " + line + cursor + "\n");
     } else {
       process.stdout.write("\n");
     }
@@ -159,9 +164,17 @@ function renderMessages(msgs: (Message | StreamingMessage)[]): number {
   return total;
 }
 
-function renderStreamingStatus(): number {
-  process.stdout.write(chalk.dim("  Generating story...\n"));
-  return 1;
+function renderStreamingMessages(): number {
+  if (streamingMessages.length === 0) {
+    process.stdout.write(chalk.dim("  Generating story...\n"));
+    return 1;
+  }
+  let total = 0;
+  for (let i = 0; i < streamingMessages.length; i++) {
+    const isLast = i === streamingMessages.length - 1;
+    total += renderMessage(streamingMessages[i], 0, isLast);
+  }
+  return total;
 }
 
 function renderOptions(opts: DialogueOption[]) {
@@ -197,11 +210,17 @@ function createSseCallbacks(): SseCallbacks {
     onStepStart: (data) => {
       lastStepId = data.stepId;
     },
-    onStreamingMessages: (_messages) => {
+    onStreamingMessages: (messages) => {
       if (isRetrying) return;
-      if (streamingLineCount > 0) return; // already showing indicator
+      streamingMessages = messages.map((m, i) => ({
+        id: `stream-${i}`,
+        speaker: m.speaker,
+        type: m.type as Message["type"],
+        text: m.text,
+        metadata: m.metadata as Message["metadata"],
+      }));
       clearStreamingLines();
-      streamingLineCount = renderStreamingStatus();
+      streamingLineCount = renderStreamingMessages();
     },
     onStreamingReset: () => {
       isRetrying = true;
@@ -212,6 +231,7 @@ function createSseCallbacks(): SseCallbacks {
     onParsed: (data) => {
       isRetrying = false;
       clearStreamingLines();
+      streamingMessages = [];
 
       const messages: Message[] = data.messages.map((m) => ({
         id: `console-${messageIdCounter++}`,
@@ -244,6 +264,7 @@ function createSseCallbacks(): SseCallbacks {
     onError: (message) => {
       isRetrying = false;
       clearStreamingLines();
+      streamingMessages = [];
       console.log(chalk.red(`\n[ERROR] ${message}\n`));
       if (currentOptions.length > 0) {
         state = "AWAITING_OPTION";
@@ -270,6 +291,7 @@ async function postChatStream(
   state = "WAITING";
   isRetrying = false;
   streamingLineCount = 0;
+  streamingMessages = [];
   currentOptions = [];
   sseClient?.abort();
 
@@ -293,6 +315,7 @@ async function postRegenerate(stepId: string, hist: Message[]) {
   state = "WAITING";
   isRetrying = false;
   streamingLineCount = 0;
+  streamingMessages = [];
   currentOptions = [];
   sseClient?.abort();
 

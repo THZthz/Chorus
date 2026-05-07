@@ -38,4 +38,4 @@ The TODO is more like prompts.
 - [x] In PARSED_EXCHANGE section of LLM_TRACE page, also show user prompt for each step, and show "reasoning" and "text" (is this exists in ai-sdk?) chunk of GM for each step.
 - [ ] GM is still outputting dialogue message on their plain text response, not tool call.
 - [x] `isAllowedText` is erroneous.
-
+- [ ] `YOU` should be removed from generateDialogueStep tool in `type` field.

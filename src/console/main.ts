@@ -18,6 +18,7 @@
 
 import readline from "node:readline";
 import chalk from "chalk";
+import logUpdate from "log-update";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/shared/events";
 import { ConsoleSseClient, type SseCallbacks } from "./SseClient";
@@ -39,8 +40,6 @@ const VOICE_COLORS: Record<string, string> = {
   ALCHEMY: "#9eff9e",
 };
 
-const CSI = "\x1b[";
-
 // ── State ──
 
 type GameState = "IDLE" | "WAITING" | "AWAITING_OPTION";
@@ -49,7 +48,6 @@ let state: GameState = "IDLE";
 let history: Message[] = [];
 let currentOptions: DialogueOption[] = [];
 let lastStepId: string | null = null;
-let streamingLineCount = 0;
 let streamingMessages: Message[] = [];
 let isRetrying = false;
 let sseClient: ConsoleSseClient | null = null;
@@ -92,27 +90,10 @@ function stripOptionText(text: string): string {
   return text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 }
 
-// ── ANSI Helpers ──
-
-function cursorUp(n: number) {
-  if (n > 0) process.stdout.write(`${CSI}${n}A`);
-}
-
-function eraseLine() {
-  process.stdout.write(`${CSI}2K`);
-}
-
-function clearStreamingLines() {
-  for (let i = 0; i < streamingLineCount; i++) {
-    cursorUp(1);
-    eraseLine();
-  }
-  streamingLineCount = 0;
-}
-
 // ── Rendering ──
 
-function renderMessage(msg: Message | StreamingMessage, indent = 0, showCursor = false): number {
+function formatMessage(msg: Message | StreamingMessage, indent = 0, showCursor = false): string {
+  let output = "";
   const prefix = " ".repeat(indent);
   const speakerColor = getSpeakerColor(msg.speaker, msg.type);
   const speakerName = msg.speaker === msg.type ? msg.type : `${msg.speaker}`;
@@ -122,24 +103,22 @@ function renderMessage(msg: Message | StreamingMessage, indent = 0, showCursor =
   if ("rollResult" in msg && msg.rollResult) {
     const rr = msg.rollResult;
     const result = rr.success ? chalk.green("SUCCESS") : chalk.red("FAILURE");
-    process.stdout.write(
+    output +=
       prefix +
-        speakerColor(`${displayName}`) +
-        chalk.dim(`  [${rr.skill} ${rr.total} vs ${rr.difficulty}] `) +
-        result +
-        "\n",
-    );
-    return 1;
+      speakerColor(`${displayName}`) +
+      chalk.dim(`  [${rr.skill} ${rr.total} vs ${rr.difficulty}] `) +
+      result +
+      "\n";
+    return output;
   }
 
   if (msg.type === "ROLL") {
-    process.stdout.write(prefix + chalk.dim(`${msg.text}`) + "\n");
-    return 1;
+    output += prefix + chalk.dim(`${msg.text}`) + "\n";
+    return output;
   }
 
-  process.stdout.write(prefix + speakerColor(displayName) + "\n");
+  output += prefix + speakerColor(displayName) + "\n";
 
-  let lineCount = 1;
   const textLines = msg.text.split("\n");
   for (let i = 0; i < textLines.length; i++) {
     const line = textLines[i];
@@ -147,34 +126,28 @@ function renderMessage(msg: Message | StreamingMessage, indent = 0, showCursor =
     if (line.trim() !== "" || textLines.length === 1) {
       const cursor =
         showCursor && isLastLine ? chalk.hex("#ff6b35")("▌") : "";
-      process.stdout.write(prefix + "  " + line + cursor + "\n");
+      output += prefix + "  " + line + cursor + "\n";
     } else {
-      process.stdout.write("\n");
+      output += "\n";
     }
-    lineCount++;
   }
-  return lineCount;
+  return output;
 }
 
-function renderMessages(msgs: (Message | StreamingMessage)[]): number {
-  let total = 0;
-  for (const msg of msgs) {
-    total += renderMessage(msg);
-  }
-  return total;
+function formatMessages(msgs: (Message | StreamingMessage)[]): string {
+  return msgs.map((msg) => formatMessage(msg)).join("");
 }
 
-function renderStreamingMessages(): number {
+function formatStreamingMessages(): string {
   if (streamingMessages.length === 0) {
-    process.stdout.write(chalk.dim("  Generating story...\n"));
-    return 1;
+    return chalk.dim("  Generating story...\n");
   }
-  let total = 0;
+  let output = "";
   for (let i = 0; i < streamingMessages.length; i++) {
     const isLast = i === streamingMessages.length - 1;
-    total += renderMessage(streamingMessages[i], 0, isLast);
+    output += formatMessage(streamingMessages[i], 0, isLast);
   }
-  return total;
+  return output;
 }
 
 function renderOptions(opts: DialogueOption[]) {
@@ -219,8 +192,7 @@ function createSseCallbacks(): SseCallbacks {
         text: m.text,
         metadata: m.metadata as Message["metadata"],
       }));
-      clearStreamingLines();
-      streamingLineCount = renderStreamingMessages();
+      logUpdate(formatStreamingMessages());
     },
     onStreamingReset: () => {
       isRetrying = true;
@@ -230,7 +202,8 @@ function createSseCallbacks(): SseCallbacks {
     },
     onParsed: (data) => {
       isRetrying = false;
-      clearStreamingLines();
+      logUpdate.clear();
+      logUpdate.done();
       streamingMessages = [];
 
       const messages: Message[] = data.messages.map((m) => ({
@@ -241,7 +214,7 @@ function createSseCallbacks(): SseCallbacks {
         metadata: m.metadata as Message["metadata"],
       }));
 
-      renderMessages(messages);
+      process.stdout.write(formatMessages(messages));
       history.push(...messages);
       console.log(""); // blank line before options
 
@@ -263,7 +236,8 @@ function createSseCallbacks(): SseCallbacks {
     },
     onError: (message) => {
       isRetrying = false;
-      clearStreamingLines();
+      logUpdate.clear();
+      logUpdate.done();
       streamingMessages = [];
       console.log(chalk.red(`\n[ERROR] ${message}\n`));
       if (currentOptions.length > 0) {
@@ -290,7 +264,6 @@ async function postChatStream(
 ) {
   state = "WAITING";
   isRetrying = false;
-  streamingLineCount = 0;
   streamingMessages = [];
   currentOptions = [];
   sseClient?.abort();
@@ -314,7 +287,6 @@ async function postChatStream(
 async function postRegenerate(stepId: string, hist: Message[]) {
   state = "WAITING";
   isRetrying = false;
-  streamingLineCount = 0;
   streamingMessages = [];
   currentOptions = [];
   sseClient?.abort();
@@ -352,7 +324,7 @@ async function handleOptionSelect(option: DialogueOption) {
   history = [...history, youMessage];
 
   process.stdout.write("\n");
-  renderMessage(youMessage);
+  process.stdout.write(formatMessage(youMessage));
   console.log("");
 
   await postChatStream(youText, history, lastStepId, option.id);
@@ -391,7 +363,7 @@ async function tryResume(): Promise<boolean> {
     messageIdCounter = hist.length;
 
     console.log(chalk.dim("\n╌╌╌ Resuming session ╌╌╌\n"));
-    renderMessages(hist);
+    process.stdout.write(formatMessages(hist));
     console.log("");
     renderOptions(current.options);
 

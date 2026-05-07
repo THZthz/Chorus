@@ -45,6 +45,7 @@
     "codemirror-rich-markdoc": "^0.0.2",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "log-update": "^8.0.0",
     "lucide-react": "^0.546.0",
     "marked": "^18.0.3",
     "mcp-hashline-edit-server": "^0.2.0",

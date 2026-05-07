@@ -47,10 +47,12 @@ src/
 │       ├── SceneViewer.tsx          # Current scene viewer: location, characters, objects (live/replay)
 │       ├── SystemPromptEditor.tsx  # Live markdown editor (CodeMirror + codemirror-rich-markdoc)
 │       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
+├── console/
+│   ├── main.ts               # Standalone Node.js REPL client for testing dialogue flows
+│   └── SseClient.ts          # Lightweight SSE consumer for the console client
 ├── context/
 │   └── CharacterContext.tsx  # Global character stats (React Context) with default fantasy-steampunk stats
 ├── server/
-│   ├── main.ts               # Express + Vite middleware entry
 │   ├── api.ts                # REST API + SSE streaming endpoints (world, plots, history, chat, debug)
 │   ├── db.ts                 # SQLite connection + schema (9 tables + idempotent migrations)
 │   ├── llm/
@@ -58,10 +60,12 @@ src/
 │   │   ├── tools.ts          # All 10 LLM tool definitions (schemas + executors)
 │   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
 │   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
+│   ├── main.ts               # Express + Vite middleware entry
 │   └── models/
+│       ├── debug.ts          # LLM interaction log query and management (getLlmLogs, clearLlmLogs)
 │       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots)
-│       ├── ids.ts            # Base62-encoded unique ID generation (nextId, nextIdBatch)
 │       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
+│       ├── ids.ts            # Base62-encoded unique ID generation (nextId, nextIdBatch)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
 │       ├── scene.ts           # Time + scene state CRUD (system_state keys)
 │       └── world.ts          # Entity CRUD + seed data + entity query helpers
@@ -70,7 +74,8 @@ src/
 │   └── WorldManager.ts       # Client-side world/plot cache; replay snapshot override; subscriber pattern
 ├── shared/
 │   ├── constants.ts          # TOOL_NAMES constant and ToolName type (shared tool name strings)
-│   └── events.ts             # SSE event type definitions (shared backend/frontend, typed event map)
+│   ├── events.ts             # SSE event type definitions (shared backend/frontend, typed event map)
+│   └── sse.ts                # Shared SSE stream parser (extracted for console + client reuse)
 └── types/
     ├── codemirror-rich-markdoc.d.ts  # Module declaration for untyped package
     ├── dialogue.ts           # Message, DialogueOption, DialogueStep interfaces
@@ -347,7 +352,7 @@ Tabs can be reordered by dragging (HTML5 native drag-and-drop with GripVertical 
 
 Each in-game day is divided into 12 segments of 2 hours each (segment 0 = midnight–2am, segment 11 = 10pm–midnight). Time only advances when the GM calls the `advanceTime` tool — the player cannot directly control time.
 
-**Storage**: `game_time_day` and `game_time_segment` keys in `system_state` table. Defaults to day 1, segment 0.
+**Storage**: `game_time_day` and `game_time_segment` keys in `system_state` table. Defaults to day 1, segment 2 (dawn).
 
 **`GameTime`** (in `src/types/entities.ts`): `{ day: number, segment: number }`
 
@@ -366,7 +371,7 @@ Each in-game day is divided into 12 segments of 2 hours each (segment 0 = midnig
 
 The scene system tracks "who is where, with what" — character positions, object positions, and the current location. Objects can be at a location or carried by a character.
 
-**Storage**: `current_scene` key in `system_state` table (JSON). Default scene: `rusted_cog` with `orin_fell` present.
+**Storage**: `current_scene` key in `system_state` table (JSON). Default scene: `the_gilded_lotus` with `veyla` and `madam_cressida` present.
 
 **`SceneState`** (in `src/types/entities.ts`):
 
@@ -407,7 +412,7 @@ The scene system tracks "who is where, with what" — character positions, objec
 
 ### 9.3 Managing the World
 
-Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and `initialCharacters` records there. The root plot is also seeded with two childPlots branch options.
+Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and `initialCharacters` records there. The root plot is also seeded with three childPlots branch options.
 
 ### 9.4 License Headers
 
@@ -415,4 +420,4 @@ All source files in `src/` require an AGPL v3 license header at the top of the f
 
 ### 9.5 Debug Panel Tab Layout
 
-Debug tabs are defined in `DebugPanel.tsx` with a `TAB_DEFS` map and `DEFAULT_TAB_ORDER` array. All 6 tabs are rendered in a single bar and can be reordered by dragging (HTML5 native drag-and-drop). To add a new tab, extend the `TabId` type, add an entry to `TAB_DEFS`, add it to `DEFAULT_TAB_ORDER`, and add the corresponding content render branch.
+Debug tabs are defined in `DebugPanel.tsx` with a `TAB_DEFS` map and `DEFAULT_TAB_ORDER` array. All 5 tabs are rendered in a single bar and can be reordered by dragging (HTML5 native drag-and-drop). To add a new tab, extend the `TabId` type, add an entry to `TAB_DEFS`, add it to `DEFAULT_TAB_ORDER`, and add the corresponding content render branch.

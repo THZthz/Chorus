@@ -117,6 +117,7 @@ const characters: SeedStory["characters"] = {
       YOU: "They don't remember who they are, but that crystal isn't ordinary and neither are they. When they look at me, the shard burns — and so does my skin. I should be careful. But I brought them here. I tied the ribbon. Whatever this is, I started it.",
       madam_cressida: "Cressida sees everything. She knows the crystal is magic. She knows I'm lying about where I found them. She's letting it happen — which means either she cares about me more than she lets on, or she's already calculated the profit in it.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Courtesan, The Velvet Thorn",
       Race: "Half-elf (southern isles heritage)",
@@ -150,6 +151,7 @@ const characters: SeedStory["characters"] = {
       YOU: "Came in on Veyla's arm, three nights ago. Unconscious. No name, no coin, but that crystal in their hand would fetch a month's earnings from the right buyer. Veyla is besotted — or ensorcelled. Either way, trouble is brewing, and I need to decide whose side I'm on before it boils over.",
       veyla: "She's been with me two years. Clever, wounded, too good for this trade. That girl has been running from something since she stepped off the boat. Now she's running toward something — or someone. I hope she knows what she's doing. I hope I'm not the one who has to clean up the mess.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Proprietor, The Velvet Thorn",
       Tenure: "15 years at the Thorn; formerly ran a house in the upper levels",

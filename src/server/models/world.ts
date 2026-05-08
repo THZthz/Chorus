@@ -33,7 +33,7 @@ export function seedDatabase() {
     const story = getActiveSeedStory();
 
     const insert = db.prepare(
-      "INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions, conditions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     const insertEntity = (entity: any) => {
       insert.run(
@@ -45,6 +45,7 @@ export function seedDatabase() {
         JSON.stringify(entity.attributes || {}),
         entity.type === "CHARACTER" ? JSON.stringify(entity.stats || {}) : null,
         entity.type === "CHARACTER" ? JSON.stringify(entity.opinions || {}) : null,
+        entity.type === "CHARACTER" ? JSON.stringify(entity.conditions || {}) : null,
       );
       console.log(`Inserted ${entity.displayName}.`);
     };
@@ -98,6 +99,7 @@ function rowToEntity(row: any): WorldEntity {
     ...(row.type === "CHARACTER" && {
       stats: JSON.parse(row.stats ?? "{}"),
       opinions: JSON.parse(row.opinions ?? "{}"),
+      conditions: JSON.parse(row.conditions ?? "{}"),
     }),
   } as WorldEntity;
 }
@@ -122,11 +124,13 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
   const currentAttrs = JSON.parse(existing.attributes);
   const currentStats = existing.stats ? JSON.parse(existing.stats) : {};
   const currentOpinions = existing.opinions ? JSON.parse(existing.opinions) : {};
+  const currentConditions = existing.conditions ? JSON.parse(existing.conditions) : {};
 
   // For update, we merge properties
   const newAttrs = entity.attributes ? { ...currentAttrs, ...entity.attributes } : currentAttrs;
   let newStats = currentStats;
   let newOpinions = currentOpinions;
+  let newConditions = currentConditions;
 
   if (existing.type === "CHARACTER" && (entity as any).stats) {
     newStats = { ...currentStats, ...(entity as any).stats };
@@ -134,16 +138,29 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
   if (existing.type === "CHARACTER" && (entity as any).opinions) {
     newOpinions = { ...currentOpinions, ...(entity as any).opinions };
   }
+  if (existing.type === "CHARACTER" && (entity as any).conditions) {
+    // Merge conditions: null values remove the key
+    const incoming = (entity as any).conditions as Record<string, unknown>;
+    newConditions = { ...currentConditions };
+    for (const [key, value] of Object.entries(incoming)) {
+      if (value === null) {
+        delete newConditions[key];
+      } else {
+        newConditions[key] = value;
+      }
+    }
+  }
 
   db.prepare(
     `
-    UPDATE entities SET 
+    UPDATE entities SET
       displayName = COALESCE(?, displayName),
       shortDescription = COALESCE(?, shortDescription),
       longDescription = COALESCE(?, longDescription),
       attributes = ?,
       stats = ?,
-      opinions = ?
+      opinions = ?,
+      conditions = ?
     WHERE id = ?
   `,
   ).run(
@@ -153,6 +170,7 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
     JSON.stringify(newAttrs),
     existing.type === "CHARACTER" ? JSON.stringify(newStats) : null,
     existing.type === "CHARACTER" ? JSON.stringify(newOpinions) : null,
+    existing.type === "CHARACTER" ? JSON.stringify(newConditions) : null,
     entity.id,
   );
   console.log(`Updated ${entity.displayName}.`);
@@ -161,8 +179,8 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
 export function upsertEntity(entity: WorldEntity) {
   db.prepare(
     `
-    INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entities (id, type, displayName, shortDescription, longDescription, attributes, stats, opinions, conditions)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       type = excluded.type,
       displayName = excluded.displayName,
@@ -170,7 +188,8 @@ export function upsertEntity(entity: WorldEntity) {
       longDescription = excluded.longDescription,
       attributes = excluded.attributes,
       stats = excluded.stats,
-      opinions = excluded.opinions
+      opinions = excluded.opinions,
+      conditions = excluded.conditions
   `,
   ).run(
     entity.id,
@@ -181,6 +200,7 @@ export function upsertEntity(entity: WorldEntity) {
     JSON.stringify(entity.attributes || {}),
     entity.type === "CHARACTER" ? JSON.stringify((entity as any).stats || {}) : null,
     entity.type === "CHARACTER" ? JSON.stringify((entity as any).opinions || {}) : null,
+    entity.type === "CHARACTER" ? JSON.stringify((entity as Character).conditions || {}) : null,
   );
 }
 

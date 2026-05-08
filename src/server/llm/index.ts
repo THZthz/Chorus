@@ -41,6 +41,10 @@ import {
   createListEntitiesTool,
   createGetEntityTool,
   createUpdateEntityTool,
+  createUpdateEntitiesTool,
+  createCreateEntityTool,
+  createGetCharacterStateTool,
+  createUpdateCharacterStateTool,
   createCreatePlotTool,
   createUpdatePlotTool,
   createGetPlotTool,
@@ -109,23 +113,27 @@ TONE: Atmospheric, sensual, morally ambiguous. Rich sensory detail — smoke, si
 
 ## YOUR TOOLS
 
-You have ten tools:
+You have fourteen tools:
 
 1. **${TOOL_NAMES.LIST_ENTITIES}** — Discover entities by id and name. Use before ${TOOL_NAMES.GET_ENTITY} if unsure of an ID.
 2. **${TOOL_NAMES.GET_ENTITY}** — Get full details of entities by exact ID, array of IDs (bulk), or text search.
 3. **${TOOL_NAMES.UPDATE_ENTITY}** — Mutate a single entity's description, attributes, or opinions. One call per entity.
-4. **${TOOL_NAMES.CREATE_PLOT}** — Add a new plot node to the story tree (link via parentPlotId + parentOptionId).
-5. **${TOOL_NAMES.UPDATE_PLOT}** — Update an existing plot's status, description, involved entities, or childPlots.
-6. **${TOOL_NAMES.GET_PLOT}** — Retrieve a specific plot or filter by status.
-7. **${TOOL_NAMES.GET_SCENE}** — Get current game time and scene state (who is where, who is carrying what).
-8. **${TOOL_NAMES.UPDATE_SCENE}** — Move characters/objects between locations, or give objects to characters.
-9. **${TOOL_NAMES.ADVANCE_TIME}** — Advance the in-game clock. Use \`segments\` (0-11, each = 2 hours) for short advances or \`days\` (0+) for multi-day travel.
-10. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
+4. **${TOOL_NAMES.UPDATE_ENTITIES}** — Bulk-update multiple entities at once. Prefer this over multiple ${TOOL_NAMES.UPDATE_ENTITY} calls when changing several entities.
+5. **${TOOL_NAMES.CREATE_ENTITY}** — Create a new world entity (character, location, or object). Optionally place it in the scene via initialLocationId.
+6. **${TOOL_NAMES.GET_CHARACTER_STATE}** — Get a character's full state: entity details, stats, conditions, carried objects, and scene location.
+7. **${TOOL_NAMES.UPDATE_CHARACTER_STATE}** — Update a character's stats, conditions (set null to remove), or inventory (add/remove carried objects via scene).
+8. **${TOOL_NAMES.CREATE_PLOT}** — Add a new plot node to the story tree (link via parentPlotId + parentOptionId).
+9. **${TOOL_NAMES.UPDATE_PLOT}** — Update an existing plot's status, description, involved entities, or childPlots.
+10. **${TOOL_NAMES.GET_PLOT}** — Retrieve a specific plot or filter by status.
+11. **${TOOL_NAMES.GET_SCENE}** — Get current game time and scene state (who is where, who is carrying what).
+12. **${TOOL_NAMES.UPDATE_SCENE}** — Move characters/objects between locations, or give objects to characters.
+13. **${TOOL_NAMES.ADVANCE_TIME}** — Advance the in-game clock. Use \`segments\` (0-11, each = 2 hours) for short advances or \`days\` (0+) for multi-day travel.
+14. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
 
 **Turn order example:**
-- First: read world/plot/scene state if needed (${TOOL_NAMES.LIST_ENTITIES}, ${TOOL_NAMES.GET_ENTITY}, ${TOOL_NAMES.GET_PLOT}, ${TOOL_NAMES.GET_SCENE})
+- First: read world/plot/scene/character state if needed (${TOOL_NAMES.LIST_ENTITIES}, ${TOOL_NAMES.GET_ENTITY}, ${TOOL_NAMES.GET_PLOT}, ${TOOL_NAMES.GET_SCENE}, ${TOOL_NAMES.GET_CHARACTER_STATE})
 - Second: update story structure if plot progresses (${TOOL_NAMES.CREATE_PLOT}, ${TOOL_NAMES.UPDATE_PLOT})
-- Third: mutate entity state if something changed (${TOOL_NAMES.UPDATE_ENTITY})
+- Third: mutate entity/character state if something changed (${TOOL_NAMES.UPDATE_ENTITY}, ${TOOL_NAMES.UPDATE_ENTITIES}, ${TOOL_NAMES.CREATE_ENTITY}, ${TOOL_NAMES.UPDATE_CHARACTER_STATE})
 - Fourth: update scene and time if needed (${TOOL_NAMES.UPDATE_SCENE}, ${TOOL_NAMES.ADVANCE_TIME})
 - Last: ALWAYS call ${TOOL_NAMES.GENERATE_DIALOGUE} — options must align with the active plot's childPlots
 
@@ -866,6 +874,10 @@ export async function generateTurn(
         listEntities: createListEntitiesTool(),
         getEntity: createGetEntityTool(),
         updateEntity: createUpdateEntityTool(events),
+        updateEntities: createUpdateEntitiesTool(events),
+        createEntity: createCreateEntityTool(events),
+        getCharacterState: createGetCharacterStateTool(),
+        updateCharacterState: createUpdateCharacterStateTool(events),
         createPlot: createCreatePlotTool(events),
         updatePlot: createUpdatePlotTool(events),
         getPlot: createGetPlotTool(),
@@ -1137,6 +1149,10 @@ export async function generateTurnBatch(
       listEntities: createListEntitiesTool(),
       getEntity: createGetEntityTool(),
       updateEntity: createUpdateEntityTool(noopEvents),
+      updateEntities: createUpdateEntitiesTool(noopEvents),
+      createEntity: createCreateEntityTool(noopEvents),
+      getCharacterState: createGetCharacterStateTool(),
+      updateCharacterState: createUpdateCharacterStateTool(noopEvents),
       createPlot: createCreatePlotTool(noopEvents),
       updatePlot: createUpdatePlotTool(noopEvents),
       getPlot: createGetPlotTool(),

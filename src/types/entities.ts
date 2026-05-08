@@ -57,6 +57,7 @@ export interface Character extends BaseEntity {
   type: "CHARACTER";
   stats: Record<string, number>;
   opinions: Record<string, string>; // characterId -> opinion text
+  conditions: Record<string, string | number | boolean>;
 }
 
 export type WorldEntity = WorldObject | Location | Character;

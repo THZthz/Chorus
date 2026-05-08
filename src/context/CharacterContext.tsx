@@ -34,6 +34,7 @@ const defaultCharacter: Character = {
   longDescription: "You remember nothing before the rain. Cold cobblestones. The distant clang of a harbor bell. A woman's voice, low and urgent, calling you back from somewhere dark. Then the warm glow of a violet crystal in your palm, pulsing in time with your heartbeat. You woke in a velvet-draped room at the Velvet Thorn, a brothel in the Warrens, with Veyla's golden eyes watching you and a name you don't recognize on her lips. The shard responds to your emotions — flaring bright when your pulse quickens, when Veyla draws close, when desire or fear or fury surge through you. You don't know what you are. You don't know where the power comes from. But in a city where unlicensed magic is a crime and the Warrens devour the weak, ignorance is a death sentence — and what burns between you and the half-elf who saved you might be the only truth worth trusting.",
   attributes: {},
   opinions: {},
+  conditions: {},
   stats: {
     logic: 3,
     rhetoric: 2,

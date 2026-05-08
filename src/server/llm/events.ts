@@ -20,7 +20,7 @@ import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
 import type { StreamingMessage } from "@/shared/events";
-import type { SceneState } from "@/types/entities";
+import type { SceneState, EntityType } from "@/types/entities";
 
 /**
  * Manages SSE output for a single turn.
@@ -97,5 +97,9 @@ export class TurnEventEmitter {
 
   emitSceneUpdate(scene: SceneState) {
     this.send("scene_update", { scene });
+  }
+
+  emitEntityCreate(entityId: string, entityType: EntityType, displayName: string) {
+    this.send("entity_create", { entityId, entityType, displayName });
   }
 }

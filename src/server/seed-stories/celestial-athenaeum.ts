@@ -112,6 +112,7 @@ const characters: SeedStory["characters"] = {
       YOU: "They carry a crystal that pulses in time with the star chart. That's not coincidence — there are no coincidences left. They don't remember who they are, but their presence here, now, three days before the convergence... the universe doesn't arrange things this neatly without intention. Are they here to stop it, or to complete it? I don't know. I need them. That frightens me more than the whispers.",
       the_hermit: "He's been living in the lower vaults for years — years, and I never knew. Or maybe I did, and I chose not to. He speaks of the sleeper as if it's inevitable, as if resistance is vanity. He may be right. But he's also been alone in the dark for a very long time, and that kind of solitude bends things. People. Truths. I don't know if he's a prophet or a symptom.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Sole Custodian, Celestial Athenaeum — 10 years",
       "Academy": "Karavelle Academy — astronomy and alchemical mechanics",
@@ -145,6 +146,7 @@ const characters: SeedStory["characters"] = {
       YOU: "The crystal. I felt it the moment you entered the Athenaeum — a resonance I haven't felt since I read the Codex. You're connected to the sleeper somehow. Not a threat — a key. Or perhaps both. The texts talk about a bearer, a vessel, someone who carries a fragment of the sleeper's power without knowing it. But the bearer has a choice. The texts are unclear on what happens if they choose wrong.",
       astronomer_lyra: "She's been here ten years and still thinks the universe is benevolent. I envy that. But her faith in reason, in science, in the idea that the stars follow rules — it's going to break when the convergence comes. I've seen what's in the vault. The rules were written by something that isn't bound by them.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Archivist, Celestial Athenaeum — 5 years (originally a 3-month assignment)",
       "Sent By": "The Magewardens — she was supposed to inventory the vaults",
@@ -178,6 +180,7 @@ const characters: SeedStory["characters"] = {
       YOU: "There. There. The bearer comes at last. I knew — I knew the prophecies were not metaphor, not the ravings of frightened men sealing their doom. The crystal. You carry it. You feel its pulse. That is the heartbeat of a god, child. The sleeper chose you before you were born. Before you forgot. Before the world made you small. Do not fear the convergence. Fear what happens if you refuse it.",
       archivist_elowen: "Poor child. She knows the truth — she has read it, written it, filled her journals with it — but she cannot speak it. The curse is not the sleeper's doing. It is the Magewardens' ward, a coward's lock on a door that was never theirs to seal. She could be free if she accepted the truth instead of fighting it. But she still believes knowledge is neutral. It isn't. Knowledge has a side. It always has.",
     },
+    conditions: {},
     attributes: {
       Identity: "One of the original astronomer-monks — true name lost or erased",
       "Time in Vaults": "20+ years — has not seen sunlight in two decades",

@@ -107,6 +107,7 @@ const characters: SeedStory["characters"] = {
       YOU: "No memory. No name. A crystal that glows when they're agitated. They're either the most dangerous person on this train or the most vulnerable. Either way, they're involved — the question is how. I've been doing this long enough to know when someone is at the center of a web. They are.",
       lady_marianne: "She's lying about who she is. The jewels are paste, the accent slips, and a woman of her supposed station doesn't travel without a maid. She was seen near Carriage 3 ten minutes before the body was discovered. But she's too clever to be this careless — unless she wants to be caught.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Detective Inspector, Royal Investigative Service",
       "Traveling From": "Verdantis — returning from a consultation",
@@ -139,6 +140,7 @@ const characters: SeedStory["characters"] = {
       YOU: "The amnesiac. How romantic. How convenient. They're either a brilliant actor or the most unlucky soul on this train. Either way, they're in my way — unless I can make them useful. A person with no past is a person with nothing to lose. That's dangerous. That's valuable.",
       inspector_ashworth: "He sees too much. Those gray eyes miss nothing, and he's already circling. I need to give him a suspect before he starts looking too closely at me. But I can't point him at the wrong person too obviously — he'd smell the misdirection. He's not like the others. He's competent.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Alleged widow of a Verdantine merchant prince",
       "Traveling Under": "Lady Marianne d'Vere — almost certainly an alias",
@@ -171,6 +173,7 @@ const characters: SeedStory["characters"] = {
       YOU: "Another stray. This train collects them. They've got that look — the one people get when their past has been cut loose and they're drifting. I've seen it before, in the war. But that crystal they carry... I felt it the moment they walked past the engine room. The pressure gauges spiked. Something about them makes the alchemy unstable. I should keep them away from the boiler.",
       inspector_ashworth: "He's thorough. That's a problem. A thorough man will find the baggage car eventually, and then I'll have to explain why I didn't report the sealed cargo. I was following orders. That's not going to sound like enough, is it?",
     },
+    conditions: {},
     attributes: {
       Occupation: "Chief Engineer, Iron Serpent — 8 years on this locomotive",
       "Partial Clockwork Hand": "Brass prosthetics replacing three fingers — fine motor control",
@@ -203,6 +206,7 @@ const characters: SeedStory["characters"] = {
       YOU: "I don't know who they are. They're not on the manifest — I checked. I checked six times. But Inspector Ashworth hasn't detained them, so maybe... maybe it's fine. Maybe they're working with him? Or maybe I should tell him. But if I do, he'll start asking about the other names. The ones I added. The ones I removed.",
       chief_engineer_kade: "Kade knows about the baggage car. We haven't spoken about it — we don't need to. We've been on this route together for eight years; we know when to look the other way. But Kade's worried. That makes me worried. Kade doesn't worry about anything.",
     },
+    conditions: {},
     attributes: {
       Occupation: "Conductor, Karavelle-Verdantis Railway — 30 years of service",
       "Current State": "Fraying — first murder on his train, and he knows more than he's saying",

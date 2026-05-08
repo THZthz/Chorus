@@ -31,7 +31,7 @@ The TODO is more like prompts.
 - [ ] Significant events and player's chosen check should be recorded. We can call it `Fact`, which have a short description, main characters (who made the choice, took action, etc., initiative), other involved characters, and optionally locations. Two extra tools named `addFact` and `queryFact` should be added.
 - [ ] A system to analyze user's input, ignore choices made on REPLAY mode.
 - [ ] Analyze dialogue steps and see if there are any points to improve.
-- [x] Analyze the structure of following INCOMING_RESPONSE example, Remove OUTGOING_REQUEST, improve PARSED_EXCHANGE UI to cover most information shown in INCOMING_RESPONSE (focus on "steps" field). For system prompt, only show content that are different (dynamic content, plots and entities info).                                 
+- [x] Analyze the structure of following INCOMING_RESPONSE example, Remove OUTGOING_REQUEST, improve PARSED_EXCHANGE UI to cover most information shown in INCOMING_RESPONSE (focus on "steps" field). For system prompt, only show content that are different (dynamic content, plots and entities info).
 - [x] Check the usage of "Regenerate All Leaf Steps". Should we remove it? (Removed)
 - [x] Dialogue options should have two separate display: one to display on options text, another to display as a message in dialogue history after player chosen the option. Keep skill check result display option text. Update system prompt for this. Make sure this is also persisted in database. No need to consider data migration or backward compatibility.
 - [x] `textarea` in ENTITY_MANIFEST, DIALOGUE_TREE and PLOT_TREE should have thinner scrollbar like the scrollbar used in JsonExplorer/JsonNode.
@@ -40,3 +40,7 @@ The TODO is more like prompts.
 - [x] `isAllowedText` is erroneous.
 - [ ] `YOU` should be removed from generateDialogueStep tool in `type` field.
 - [ ] Separate character's memory system.
+- [ ] Standardize all GM tool names to `{verb}{Noun}` pattern. This is a mechanical rename — no behavior change, no new functionality.
+- [ ] Build a GM-only "facts" system with CRUD tools and database tables for key-value notes, plus a new Debug Panel tab to view and edit them during live play and replays.
+- [ ] Add tools for getting/updating character state (including new status conditions), creating new entities, and bulk-updating entity descriptions or attributes.
+- [ ] Scope world flags to plot nodes, enable incremental plot editing (add/remove children), allow advancing time by days, and add stricter validation rules for dialogue options (length limits, required messages, and valid skill names).

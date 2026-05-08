@@ -36,6 +36,9 @@ export interface SseCallbacks {
   onDone?: () => void;
   onTimeUpdate?: (data: CallbackData<"time_update">) => void;
   onSceneUpdate?: (data: CallbackData<"scene_update">) => void;
+  onFactAdd?: (data: CallbackData<"fact_add">) => void;
+  onFactUpdate?: (data: CallbackData<"fact_update">) => void;
+  onFactRemove?: (data: CallbackData<"fact_remove">) => void;
 }
 
 export class SseClient {
@@ -133,6 +136,18 @@ export class SseClient {
       case "scene_update":
         console.trace(`[sse] event=scene_update`);
         cb.onSceneUpdate?.(data);
+        break;
+      case "fact_add":
+        console.trace(`[sse] event=fact_add factId=${data.fact.id}`);
+        cb.onFactAdd?.(data);
+        break;
+      case "fact_update":
+        console.trace(`[sse] event=fact_update factId=${data.factId}`);
+        cb.onFactUpdate?.(data);
+        break;
+      case "fact_remove":
+        console.trace(`[sse] event=fact_remove factId=${data.factId}`);
+        cb.onFactRemove?.(data);
         break;
     }
   }

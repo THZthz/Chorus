@@ -382,7 +382,7 @@ Each in-game day is divided into 12 segments of 2 hours each (segment 0 = midnig
 
 The scene system tracks "who is where, with what" — character positions, object positions, and the current location. Objects can be at a location or carried by a character.
 
-**Storage**: `current_scene` key in `system_state` table (JSON). Default scene: `the_gilded_lotus` with `veyla` and `madam_cressida` present.
+**Storage**: `current_scene` key in `system_state` table (JSON). Default scene: `the_velvet_thorn` with `veyla` and `madam_cressida` present, `soul_shard` and `veyllas_ribbon` carried by the player.
 
 **`SceneState`** (in `src/types/entities.ts`):
 

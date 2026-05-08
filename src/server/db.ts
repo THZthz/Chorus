@@ -151,9 +151,12 @@ const sceneRow = db.prepare("SELECT value FROM system_state WHERE key = ?").get(
   | undefined;
 if (!sceneRow) {
   const defaultScene = {
-    currentLocationId: "the_gilded_lotus",
-    characterLocations: { veyla: "the_gilded_lotus", madam_cressida: "the_gilded_lotus" },
-    objectPositions: {},
+    currentLocationId: "the_velvet_thorn",
+    characterLocations: { veyla: "the_velvet_thorn", madam_cressida: "the_velvet_thorn" },
+    objectPositions: {
+      soul_shard: { type: "character", characterId: "player" },
+      veyllas_ribbon: { type: "character", characterId: "player" },
+    },
   };
   db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
     "current_scene",

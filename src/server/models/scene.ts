@@ -97,12 +97,15 @@ export function describeTime(time: GameTime): string {
 // ── Scene Functions ──
 
 const DEFAULT_SCENE: SceneState = {
-  currentLocationId: "the_gilded_lotus",
+  currentLocationId: "the_velvet_thorn",
   characterLocations: {
-    veyla: "the_gilded_lotus",
-    madam_cressida: "the_gilded_lotus",
+    veyla: "the_velvet_thorn",
+    madam_cressida: "the_velvet_thorn",
   },
-  objectPositions: {},
+  objectPositions: {
+    soul_shard: { type: "character", characterId: "player" },
+    veyllas_ribbon: { type: "character", characterId: "player" },
+  },
 };
 
 export function getSceneState(): SceneState {

@@ -18,11 +18,15 @@
 
 import type { SeedStory } from "./types";
 import { romanticMagicAwakening } from "./romantic-magic-awakening";
+import { ironSerpentMurder } from "./iron-serpent-murder";
+import { celestialAthenaeum } from "./celestial-athenaeum";
 
 export const ACTIVE_SEED_STORY = "romantic-magic-awakening";
 
 const STORIES: Record<string, SeedStory> = {
   "romantic-magic-awakening": romanticMagicAwakening,
+  "iron-serpent-murder": ironSerpentMurder,
+  "celestial-athenaeum": celestialAthenaeum,
 };
 
 export function getActiveSeedStory(): SeedStory {

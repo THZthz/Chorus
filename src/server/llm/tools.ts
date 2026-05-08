@@ -20,6 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import {
   updateEntity,
+  upsertEntity,
   getEntityById,
   getEntitiesByIds,
   getAllEntitySummaries,
@@ -37,7 +38,7 @@ import {
 import { PLOT_STATUSES, PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import { DialogueOption, NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
-import { ENTITY_TYPES, EntityType, SceneState } from "@/types/entities";
+import { ENTITY_TYPES, EntityType, SceneState, Character, WorldEntity } from "@/types/entities";
 import { TOOL_NAMES } from "@/shared/constants.ts";
 
 // ── Text verification ──
@@ -723,5 +724,249 @@ export function createGetSceneTool() {
         2,
       );
     }, TOOL_NAMES.GET_SCENE),
+  });
+}
+
+// ── Character State Tools ──
+
+export function createGetCharacterStateTool() {
+  return tool({
+    title: "Get Character State",
+    description:
+      "Get a character's full state: entity details, stats, opinions, conditions, and what objects they carry per the current scene.",
+    inputSchema: z.object({
+      characterId: z.string().describe("The character entity ID to query."),
+    }),
+    execute: wrapSafe(async (args: { characterId: string }) => {
+      const entity = getEntityById(args.characterId);
+      if (!entity) {
+        return `ERROR: Entity '${args.characterId}' not found.`;
+      }
+      if (entity.type !== "CHARACTER") {
+        return `ERROR: Entity '${args.characterId}' is a ${entity.type}, not a CHARACTER.`;
+      }
+      const scene = getSceneState();
+      const carriedObjects: string[] = [];
+      for (const [objId, pos] of Object.entries(scene.objectPositions)) {
+        if (pos.type === "character" && pos.characterId === args.characterId) {
+          carriedObjects.push(objId);
+        }
+      }
+      return JSON.stringify(
+        { character: entity, carriedObjects, sceneLocation: scene.characterLocations[args.characterId] ?? null },
+        null,
+        2,
+      );
+    }, TOOL_NAMES.GET_CHARACTER_STATE),
+  });
+}
+
+export function createUpdateCharacterStateTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Update Character State",
+    description:
+      "Update a character's stats, conditions, or carried inventory. Stats are merged. Conditions are merged — set a key to null to remove it. Carried objects update scene objectPositions.",
+    inputSchema: z.object({
+      characterId: z.string().describe("The character entity ID to update."),
+      stats: z.record(z.string(), z.number()).optional().describe("Stat changes to merge."),
+      conditions: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+        .optional()
+        .describe("Conditions to merge. Set a value to null to remove that condition."),
+      carriedObjects: z
+        .object({
+          add: z.array(z.string()).optional().describe("Object IDs to give to this character."),
+          remove: z.array(z.string()).optional().describe("Object IDs to remove from this character."),
+        })
+        .optional()
+        .describe("Inventory changes (updates scene objectPositions)."),
+    }),
+    execute: wrapSafe(async (args: {
+      characterId: string;
+      stats?: Record<string, number>;
+      conditions?: Record<string, string | number | boolean | null>;
+      carriedObjects?: { add?: string[]; remove?: string[] };
+    }) => {
+      const existing = getEntityById(args.characterId);
+      if (!existing) {
+        return `ERROR: Entity '${args.characterId}' not found.`;
+      }
+      if (existing.type !== "CHARACTER") {
+        return `ERROR: Entity '${args.characterId}' is a ${existing.type}, not a CHARACTER.`;
+      }
+
+      const changes: Record<string, unknown> = {};
+      const resultParts: string[] = [];
+
+      // Update stats
+      if (args.stats && Object.keys(args.stats).length > 0) {
+        updateEntity({ id: args.characterId, stats: args.stats } as any);
+        changes.stats = args.stats;
+        resultParts.push(`stats updated: ${JSON.stringify(args.stats)}`);
+      }
+
+      // Update conditions (merge, null = remove)
+      if (args.conditions) {
+        const char = existing as Character;
+        const merged = { ...char.conditions };
+        for (const [key, value] of Object.entries(args.conditions)) {
+          if (value === null) {
+            delete merged[key];
+          } else {
+            merged[key] = value;
+          }
+        }
+        updateEntity({ id: args.characterId, conditions: merged } as any);
+        changes.conditions = merged;
+        resultParts.push(`conditions updated: ${JSON.stringify(merged)}`);
+      }
+
+      // Update carried objects (scene)
+      if (args.carriedObjects) {
+        const scene = getSceneState();
+        const { add, remove } = args.carriedObjects;
+        if (add) {
+          for (const objId of add) {
+            scene.objectPositions[objId] = { type: "character", characterId: args.characterId };
+          }
+        }
+        if (remove) {
+          for (const objId of remove) {
+            const pos = scene.objectPositions[objId];
+            if (pos && pos.type === "character" && pos.characterId === args.characterId) {
+              delete scene.objectPositions[objId];
+            }
+          }
+        }
+        setSceneState(scene);
+        events.emitSceneUpdate(scene);
+        if (add) resultParts.push(`objects given: [${add.join(", ")}]`);
+        if (remove) resultParts.push(`objects removed: [${remove.join(", ")}]`);
+      }
+
+      if (Object.keys(changes).length > 0) {
+        events.emitWorldUpdate(args.characterId, changes);
+      }
+
+      if (resultParts.length === 0) {
+        return `Character '${existing.displayName}' unchanged. No fields were specified.`;
+      }
+      return `Character '${existing.displayName}' updated:\n${resultParts.map((p) => `- ${p}`).join("\n")}`;
+    }, TOOL_NAMES.UPDATE_CHARACTER_STATE),
+  });
+}
+
+// ── Create Entity Tool ──
+
+export function createCreateEntityTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Create Entity",
+    description:
+      "Create a new world entity (character, location, or object). Generates an ID automatically. Optionally set an initial scene position via initialLocationId.",
+    inputSchema: z.object({
+      type: z.enum(ENTITY_TYPES).describe("Type of entity to create."),
+      displayName: z.string().describe("Display name for the entity."),
+      shortDescription: z.string().describe("One-line summary."),
+      longDescription: z.string().describe("Detailed narrative description."),
+      attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Physical or mental traits."),
+      stats: z.record(z.string(), z.number()).optional().describe("Character stats (CHARACTER only)."),
+      opinions: z.record(z.string(), z.string()).optional().describe("Opinions about others as JSON keyed by characterId (CHARACTER only)."),
+      conditions: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Status effects (CHARACTER only)."),
+      initialLocationId: z.string().optional().describe("If set, place this entity at this location in the scene."),
+    }),
+    execute: wrapSafe(async (args: {
+      type: EntityType;
+      displayName: string;
+      shortDescription: string;
+      longDescription: string;
+      attributes?: Record<string, string | number | boolean>;
+      stats?: Record<string, number>;
+      opinions?: Record<string, string>;
+      conditions?: Record<string, string | number | boolean>;
+      initialLocationId?: string;
+    }) => {
+      const entityId = `entity_${nextId()}`;
+
+      const entity: any = {
+        id: entityId,
+        type: args.type,
+        displayName: args.displayName,
+        shortDescription: args.shortDescription,
+        longDescription: args.longDescription,
+        attributes: args.attributes || {},
+      };
+
+      if (args.type === "CHARACTER") {
+        entity.stats = args.stats || {};
+        entity.opinions = args.opinions || {};
+        entity.conditions = args.conditions || {};
+      }
+
+      upsertEntity(entity as WorldEntity);
+
+      // Optionally add to scene
+      if (args.initialLocationId) {
+        const scene = getSceneState();
+        if (args.type === "CHARACTER") {
+          scene.characterLocations[entityId] = args.initialLocationId;
+        } else if (args.type === "OBJECT") {
+          scene.objectPositions[entityId] = { type: "location", locationId: args.initialLocationId };
+        }
+        setSceneState(scene);
+        events.emitSceneUpdate(scene);
+      }
+
+      events.emitEntityCreate(entityId, args.type, args.displayName);
+      const locInfo = args.initialLocationId ? ` at location '${args.initialLocationId}'` : "";
+      return `Entity created: "${args.displayName}" (${entityId}, ${args.type})${locInfo}.`;
+    }, TOOL_NAMES.CREATE_ENTITY),
+  });
+}
+
+// ── Bulk Entity Update Tool ──
+
+export function createUpdateEntitiesTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Update Entities",
+    description:
+      "Bulk-update multiple entities at once. Each entry needs an id and any combination of shortDescription, longDescription, attributes, or opinions. Emits one world_update per entity.",
+    inputSchema: z.object({
+      entries: z.array(
+        z.object({
+          id: z.string().describe("Entity ID to update."),
+          shortDescription: z.string().optional().describe("New concise label."),
+          longDescription: z.string().optional().describe("New detailed observation."),
+          attributes: z.record(z.string(), z.string()).optional().describe("Physical or mental traits (merged)."),
+          opinions: z.record(z.string(), z.string()).optional().describe("Opinion changes (merged, CHARACTER only)."),
+        }),
+      ).describe("Array of entity updates to apply."),
+    }),
+    execute: wrapSafe(async (args: {
+      entries: {
+        id: string;
+        shortDescription?: string;
+        longDescription?: string;
+        attributes?: Record<string, string>;
+        opinions?: Record<string, string>;
+      }[];
+    }) => {
+      const results: string[] = [];
+      for (const entry of args.entries) {
+        const existing = getEntityById(entry.id);
+        if (!existing) {
+          results.push(`ERROR: Entity '${entry.id}' not found — skipped.`);
+          continue;
+        }
+        updateEntity(entry);
+        const changes: Record<string, unknown> = {};
+        if (entry.longDescription != null) changes.longDescription = entry.longDescription;
+        if (entry.shortDescription != null) changes.shortDescription = entry.shortDescription;
+        if (entry.attributes) changes.attributes = entry.attributes;
+        if (entry.opinions) changes.opinions = entry.opinions;
+        events.emitWorldUpdate(entry.id, changes);
+        results.push(`Updated '${existing.displayName}' (${entry.id}).`);
+      }
+      return results.join("\n");
+    }, TOOL_NAMES.UPDATE_ENTITIES),
   });
 }

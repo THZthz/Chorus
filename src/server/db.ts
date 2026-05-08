@@ -34,7 +34,8 @@ db.exec(`
     longDescription TEXT NOT NULL,
     attributes TEXT NOT NULL,
     stats TEXT,
-    opinions TEXT
+    opinions TEXT,
+    conditions TEXT
   );
 
   CREATE TABLE IF NOT EXISTS history_messages (
@@ -127,6 +128,9 @@ try {
 } catch {}
 try {
   db.exec("ALTER TABLE llm_steps ADD COLUMN reasoning TEXT");
+} catch {}
+try {
+  db.exec("ALTER TABLE entities ADD COLUMN conditions TEXT");
 } catch {}
 
 export default db;

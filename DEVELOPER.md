@@ -36,19 +36,19 @@ src/
 │   ├── ObjectTooltip.tsx     # Entity lore popup (auto-positioning, expandable)
 │   ├── TypingIndicator.tsx   # Animated dots during AI generation
 │   └── debug/
-│       ├── CopyButton.tsx          # One-click JSON copy utility
-│       ├── HistoryEditor.tsx       # Visual message timeline with inline editing (unused in tabs)
-│       ├── JsonExplorer.tsx        # Resizable, collapsible JSON tree viewer
-│       ├── JsonNode.tsx            # Single JSON node renderer (string/number/object/array)
-│       ├── LlmTraceViewer.tsx      # Parsed LLM exchange timeline with step breakdown
-│       ├── NodeGraph.tsx           # Generic canvas node graph: layout, pan/zoom, edge rendering
-│       ├── DialogueConfig.tsx       # Dialogue tree node cards, inspector, config factory
+│       ├── CopyButton.tsx            # One-click JSON copy utility
+│       ├── HistoryEditor.tsx         # Visual message timeline with inline editing (unused in tabs)
+│       ├── JsonExplorer.tsx          # Resizable, collapsible JSON tree viewer
+│       ├── JsonNode.tsx              # Single JSON node renderer (string/number/object/array)
+│       ├── LlmTraceViewer.tsx        # Parsed LLM exchange timeline with step breakdown
+│       ├── NodeGraph.tsx             # Generic canvas node graph: layout, pan/zoom, edge rendering
+│       ├── DialogueConfig.tsx        # Dialogue tree node cards, inspector, config factory
 │       ├── PlotConfig.tsx            # Plot tree node cards, inspector, config factory
 │       ├── ToolCallCard.tsx          # Reusable tool-call card (input preview, error, result) for LLM traces
-│       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
-│       ├── SceneViewer.tsx          # Current scene viewer: location, characters, objects (live/replay)
-│       ├── SystemPromptEditor.tsx  # Live markdown editor (CodeMirror + codemirror-rich-markdoc)
-│       └── shared.tsx              # Shared debug UI utilities (CustomSelect, ResizableTextarea)
+│       ├── WorldEditor.tsx           # Grouped entity editor with stat bars and opinion pills
+│       ├── SceneViewer.tsx           # Current scene viewer: location, characters, objects (live/replay)
+│       ├── SystemPromptEditor.tsx    # Live markdown editor (CodeMirror + codemirror-rich-markdoc)
+│       └── shared.tsx                # Shared debug UI utilities (CustomSelect, ResizableTextarea)
 ├── console/
 │   ├── main.ts               # Standalone Node.js REPL client for testing dialogue flows
 │   └── SseClient.ts          # Lightweight SSE consumer for the console client
@@ -60,13 +60,33 @@ src/
 │   ├── llm/
 │   │   ├── index.ts          # GameMaster: model init, generateTurn(), generateTurnBatch()
 │   │   ├── prompt.ts         # System prompt template, getter/setter, buildSystemPrompt()
-│   │   ├── tools.ts          # All tool definitions (schemas + executors)
 │   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
-│   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
-│   ├── main.ts               # Express + Vite middleware entry
+│   │   ├── debug.ts          # LlmDebugIntegration: request/response/step logging
+│   │   └── tools/
+│   │       ├── index.ts                  # Barrel re-export of all tool factories
+│   │       ├── shared.ts                 # Helpers: checkText, wrapSafe, mapToDialogueOption
+│   │       ├── listEntities.ts           # createListEntitiesTool
+│   │       ├── getEntity.ts              # createGetEntityTool
+│   │       ├── updateEntity.ts           # createUpdateEntityTool
+│   │       ├── updateEntities.ts         # createUpdateEntitiesTool (bulk)
+│   │       ├── createEntity.ts           # createCreateEntityTool
+│   │       ├── getCharacterState.ts      # createGetCharacterStateTool
+│   │       ├── updateCharacterState.ts   # createUpdateCharacterStateTool
+│   │       ├── createPlot.ts             # createCreatePlotTool
+│   │       ├── updatePlot.ts             # createUpdatePlotTool
+│   │       ├── getPlot.ts                # createGetPlotTool
+│   │       ├── generateDialogueStep.ts   # createGenerateDialogueStepTool
+│   │       ├── advanceTime.ts            # createAdvanceTimeTool
+│   │       ├── updateScene.ts            # createUpdateSceneTool
+│   │       ├── getScene.ts               # createGetSceneTool
+│   │       ├── addFact.ts                # createAddFactTool
+│   │       ├── getFact.ts                # createGetFactTool
+│   │       ├── updateFact.ts             # createUpdateFactTool
+│   │       └── removeFact.ts             # createRemoveFactTool
+│   ├── main.ts                          # Express + Vite middleware entry
 │   ├── seed-stories/
-│   │   ├── index.ts           # Story registry + ACTIVE_SEED_STORY constant
-│   │   ├── types.ts           # SeedStory, SeedPlot interfaces
+│   │   ├── index.ts                     # Story registry + ACTIVE_SEED_STORY constant
+│   │   ├── types.ts                     # SeedStory, SeedPlot interfaces
 │   │   ├── romantic-magic-awakening.ts  # Default seed story
 │   │   ├── celestial-athenaeum.ts       # Cosmic horror seed story
 │   │   └── iron-serpent-murder.ts       # Murder mystery seed story
@@ -76,7 +96,7 @@ src/
 │       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
 │       ├── ids.ts            # Base62-encoded unique ID generation (nextId, nextIdBatch)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
-│       ├── scene.ts           # Time + scene state CRUD (system_state keys)
+│       ├── scene.ts          # Time + scene state CRUD (system_state keys)
 │       └── world.ts          # Entity CRUD via active seed story + entity query helpers
 ├── services/
 │   ├── SseClient.ts          # Browser SSE streaming consumer with AbortController support
@@ -87,9 +107,9 @@ src/
 │   └── sse.ts                # Shared SSE stream parser (extracted for console + client reuse)
 └── types/
     ├── codemirror-rich-markdoc.d.ts  # Module declaration for untyped package
-    ├── dialogue.ts           # Message, DialogueOption, DialogueStep interfaces
-    ├── entities.ts           # WorldEntity, Character, Location, WorldObject, CharacterStats
-    └── plot.ts               # Plot, PlotOption interfaces
+    ├── dialogue.ts                   # Message, DialogueOption, DialogueStep interfaces
+    ├── entities.ts                   # WorldEntity, Character, Location, WorldObject, CharacterStats
+    └── plot.ts                       # Plot, PlotOption interfaces
 ```
 
 ---
@@ -109,7 +129,7 @@ POST /api/chat/stream
 │                                                 │
 │  streamText({                                   │
 │    tools: {                                     │
-│      listEntities,        ──► returns JSON     │
+│      listEntities,        ──► returns JSON      │
 │      getEntity,           ──► returns JSON      │
 │      updateEntity,        ──► DB + SSE event    │
 │      createPlot,          ──► DB + SSE event    │
@@ -118,7 +138,7 @@ POST /api/chat/stream
 │      getScene,            ──► returns JSON      │
 │      updateScene,         ──► DB + SSE event    │
 │      advanceTime,         ──► DB + SSE event    │
-│      generateDialogue     ──► SSE streaming     │
+│      generateDialogueStep ──► SSE streaming     │
 │    },                                           │
 │    stopWhen: generates once + passes validation │
 │    prepareStep: nudges if GM forgets dialogue   │
@@ -156,12 +176,12 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 | Event                | Direction       | Payload                              | Trigger                                      |
 |----------------------|-----------------|--------------------------------------|----------------------------------------------|
 | `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                                  |
-| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogue`    |
+| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep`    |
 | `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — previous streaming discarded   |
-| `world_update`       | Server → Client | `{ entityId, changes }`              | `updateEntity` tool executes                   |
+| `world_update`       | Server → Client | `{ entityId, changes }`              | `updateEntity` tool executes                 |
 | `plot_update`        | Server → Client | `{ plotId, status }`                 | Reserved (defined but not currently emitted) |
 | `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`    | `createPlot` tool executes                   |
-| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `updatePlot` tool executes                     |
+| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `updatePlot` tool executes                   |
 | `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                  |
 | `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                  |
 | `options`            | Server → Client | `{ options }`                        | Options available mid-stream                 |
@@ -171,22 +191,30 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 
 ### 3.3 LLM Tools
 
-All 10 tools defined once in `src/server/llm/tools.ts`:
+All 18 tools, each defined in its own file under `src/server/llm/tools/` with a barrel re-export at `tools/index.ts`:
 
-| Tool                   | Purpose                                                   | DB Operation              | SSE Event                       |
-|------------------------|-----------------------------------------------------------|---------------------------|---------------------------------|
-| `listEntities`         | List entity IDs, names, types, shortDescriptions          | None (read query)         | None (returns JSON)             |
-| `getEntity`            | Get full entity by ID or text search                      | None (read query)         | None (returns JSON)             |
-| `updateEntity`         | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                  |
-| `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                   |
-| `updatePlot`           | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
-| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
-| `getScene`             | Get current game time and full scene state                | None (read query)         | None (returns JSON)             |
-| `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                  |
-| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `advanceGameTime()`       | `time_update`                   |
-| `generateDialogue`     | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
+| Tool                   | Purpose                                                   | DB Operation              | SSE Event                        |
+|------------------------|-----------------------------------------------------------|---------------------------|----------------------------------|
+| `listEntities`         | List entity IDs, names, types, shortDescriptions          | None (read query)         | None (returns JSON)              |
+| `getEntity`            | Get full entity by ID or text search                      | None (read query)         | None (returns JSON)              |
+| `updateEntity`         | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                   |
+| `updateEntities`       | Bulk-update multiple entities at once                     | `updateEntity()`          | `world_update`                   |
+| `createEntity`         | Create a new world entity (character/location/object)     | `upsertEntity()`          | `entity_create` + `scene_update` |
+| `getCharacterState`    | Get character stats, conditions, carried objects          | None (read query)         | None (returns JSON)              |
+| `updateCharacterState` | Update character stats, conditions, or inventory          | `updateEntity()` + scene  | `world_update` + `scene_update`  |
+| `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                    |
+| `updatePlot`           | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                      |
+| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)              |
+| `getScene`             | Get current game time and full scene state                | None (read query)         | None (returns JSON)              |
+| `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                   |
+| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `advanceGameTime()`       | `time_update`                    |
+| `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed`  |
+| `addFact`              | Record a new GM fact                                      | `addFact()`               | `fact_add`                       |
+| `getFact`              | Retrieve facts by ID, bulk IDs, or filter                 | None (read query)         | None (returns JSON)              |
+| `updateFact`           | Update an existing fact's key/value/links                 | `updateFact()`            | `fact_update`                    |
+| `removeFact`           | Soft-delete a fact by ID                                  | `removeFact()`            | `fact_remove`                    |
 
-All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns an `ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
+All tool `execute` functions are wrapped with `wrapSafe` (in `tools/shared.ts`) which catches any thrown exceptions and returns an `ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
 
 `updateEntity`, `createPlot`, `updatePlot`, and `getPlot` report failure conditions (entity not found, plot not found, tree validation error) in their return messages so the GM can retry.
 
@@ -196,11 +224,11 @@ All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which c
 
 On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM and keeps `wasValid()` false, so the `stopWhen` condition in `streamText` does not trigger and the agentic loop continues for a retry.
 
-The `prepareStep` callback in `streamText` tracks whether `generateDialogue` was called in any prior step. If not, it injects an error message into the message array to nudge the model. A hard limit of 10 steps (`stepCountIs(10)`) acts as a circuit breaker.
+The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep` was called in any prior step. If not, it injects an error message into the message array to nudge the model. A hard limit of 10 steps (`stepCountIs(10)`) acts as a circuit breaker.
 
 ### 3.4 Key Design Decisions
 
-1. **Tools defined once** — `src/server/llm/tools.ts` is the single source for all tool schemas/executors
+1. **Tools defined once** — `src/server/llm/tools/` is the single source for all tool schemas/executors; each factory lives in its own file
 2. **LLM text output silently discarded** — the system prompt instructs tool-only output; any text deltas are ignored
 3. **No pre-generation** — turns are generated on-demand. Latency is acceptable for RPG pacing
 4. **No static dialogue** — all narrative is AI-generated. No `sampleDialogue.ts`
@@ -330,7 +358,7 @@ Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot 
 1. Read state: `getPlot()`, `listEntities()`, `getEntity()`
 2. Structure story: `createPlot()` / `updatePlot()` — update the plot tree _before_ generating dialogue
 3. Mutate world: `updateEntity()` if descriptions or opinions changed
-4. Generate: `generateDialogue` — options should map to active plot's `childPlots`
+4. Generate: `generateDialogueStep` — options should map to active plot's `childPlots`
 
 ---
 
@@ -437,8 +465,8 @@ The scene system tracks "who is where, with what" — character positions, objec
 
 ### 9.1 Adding a New Tool for the LLM
 
-1. Define the tool in `src/server/llm/tools.ts` using the `tool()` function from `@ai-sdk`
-2. Register it in the `tools` object inside `generateTurn()` in `src/server/llm/index.ts`
+1. Create a new file in `src/server/llm/tools/` (camelCase, matching the export name) using the `tool()` function from `@ai-sdk`. Follow the existing pattern: extract the Zod schema as a module-level `const inputSchema`, use `z.infer<typeof inputSchema>` for execute args, and import helpers from `@/server/llm/tools/shared`.
+2. Export it from `src/server/llm/tools/index.ts` and register it in the `tools` object inside `generateTurn()` in `src/server/llm/index.ts`
 3. Update the system prompt if the LLM needs guidance on when to use it
 4. Add SSE event emission in the tool's `execute` function for immediate UI feedback
 

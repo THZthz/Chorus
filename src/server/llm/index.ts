@@ -48,7 +48,7 @@ import {
   createCreatePlotTool,
   createUpdatePlotTool,
   createGetPlotTool,
-  createGenerateDialogueTool,
+  createGenerateDialogueStepTool,
   createAdvanceTimeTool,
   createUpdateSceneTool,
   createGetSceneTool,
@@ -106,11 +106,19 @@ export function getModel(): { model: LanguageModel; name: string } {
 
 // ── System prompt (see ./prompt.ts) ──
 
-export { DEFAULT_SYSTEM_PROMPT_TEMPLATE, getSystemPromptTemplate, setSystemPromptTemplate, buildSystemPrompt } from "@/server/llm/prompt";
+export {
+  DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+  getSystemPromptTemplate,
+  setSystemPromptTemplate,
+  buildSystemPrompt,
+} from "@/server/llm/prompt";
 
 // ── Shared tool set ──
 
-function createAllTools(events: TurnEventEmitter, dialogueTool: ReturnType<typeof createGenerateDialogueTool>["tool"]) {
+function createAllTools(
+  events: TurnEventEmitter,
+  dialogueTool: ReturnType<typeof createGenerateDialogueStepTool>["tool"],
+) {
   return {
     listEntities: createListEntitiesTool(),
     getEntity: createGetEntityTool(),
@@ -129,7 +137,7 @@ function createAllTools(events: TurnEventEmitter, dialogueTool: ReturnType<typeo
     getFact: createGetFactTool(),
     updateFact: createUpdateFactTool(events),
     removeFact: createRemoveFactTool(events),
-    generateDialogue: dialogueTool,
+    generateDialogueStep: dialogueTool,
   };
 }
 
@@ -252,7 +260,7 @@ export async function generateTurn(
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
 
-  const dialogueStepTool = createGenerateDialogueTool(events);
+  const dialogueStepTool = createGenerateDialogueStepTool(events);
 
   const debugging = new LlmDebugIntegration(
     {
@@ -533,7 +541,7 @@ export async function generateTurnBatch(
 
   const { model } = getModel();
   const noopEvents = new TurnEventEmitter(null, stepId);
-  const dialogueStepTool = createGenerateDialogueTool(noopEvents);
+  const dialogueStepTool = createGenerateDialogueStepTool(noopEvents);
 
   const result = await generateText({
     model,
@@ -542,7 +550,7 @@ export async function generateTurnBatch(
     tools: createAllTools(noopEvents, dialogueStepTool.tool),
   });
 
-  // Extract the generateDialogue tool input
+  // Extract the generateDialogueStep tool input
   const dialogueCall = result.toolCalls?.find((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE);
   const rawInput = dialogueCall?.input;
 

@@ -78,8 +78,12 @@ function ToolInputRenderer({
     return (
       <div>
         <div className="mb-2">
-          <span className="text-white/40">{(input.messages as any[] | undefined)?.length ?? 0} messages, </span>
-          <span className="text-white/40">{(input.options as any[] | undefined)?.length ?? 0} options</span>
+          <span className="text-white/40">
+            {(input.messages as any[] | undefined)?.length ?? 0} messages,{" "}
+          </span>
+          <span className="text-white/40">
+            {(input.options as any[] | undefined)?.length ?? 0} options
+          </span>
         </div>
         <JsonExplorer
           data={JSON.stringify(input)}
@@ -94,8 +98,10 @@ function ToolInputRenderer({
     return (
       <div>
         <div className="mb-2 text-white/40">
-          <span className="text-[#d19a66] font-mono">{input.id as string ?? "?"}</span>
-          {input.shortDescription != null && <span className="text-white/30"> shortDescription</span>}
+          <span className="text-[#d19a66] font-mono">{(input.id as string) ?? "?"}</span>
+          {input.shortDescription != null && (
+            <span className="text-white/30"> shortDescription</span>
+          )}
           {input.longDescription != null && <span className="text-white/30"> longDescription</span>}
           {input.attributes != null && <span className="text-white/30"> attributes</span>}
           {input.opinions != null && <span className="text-white/30"> opinions</span>}
@@ -123,7 +129,9 @@ function ToolInputRenderer({
     return (
       <div>
         <div className="text-white/60">"{input.title as string}"</div>
-        {input.description && <div className="text-white/30 mt-1">{input.description as string}</div>}
+        {input.description && (
+          <div className="text-white/30 mt-1">{input.description as string}</div>
+        )}
       </div>
     );
   }
@@ -216,15 +224,19 @@ function ToolInputRendererCompact({
   if (toolName === TOOL_NAMES.GENERATE_DIALOGUE) {
     return (
       <div className="text-[10px]">
-        <span className="text-white/30">{(input.messages as any[] | undefined)?.length ?? 0} msgs, </span>
-        <span className="text-white/30">{(input.options as any[] | undefined)?.length ?? 0} opts</span>
+        <span className="text-white/30">
+          {(input.messages as any[] | undefined)?.length ?? 0} msgs,{" "}
+        </span>
+        <span className="text-white/30">
+          {(input.options as any[] | undefined)?.length ?? 0} opts
+        </span>
       </div>
     );
   }
   if (toolName === TOOL_NAMES.UPDATE_ENTITY) {
     return (
       <div className="text-[10px]">
-        <span className="text-[#d19a66] font-mono">{input.id as string ?? "?"}</span>
+        <span className="text-[#d19a66] font-mono">{(input.id as string) ?? "?"}</span>
         {input.shortDescription != null && <span className="text-white/30"> shortDesc</span>}
         {input.longDescription != null && <span className="text-white/30"> longDesc</span>}
         {input.attributes != null && <span className="text-white/30"> attrs</span>}
@@ -328,7 +340,12 @@ function toolColor(toolName: string) {
 }
 
 interface ToolCallCardProps {
-  call: { toolName: string; input?: Record<string, unknown>; args?: Record<string, unknown>; output?: unknown };
+  call: {
+    toolName: string;
+    input?: Record<string, unknown>;
+    args?: Record<string, unknown>;
+    output?: unknown;
+  };
   isWrapping: boolean;
   compact?: boolean;
 }
@@ -341,7 +358,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ call, isWrapping, co
     return (
       <div
         className={`mb-1 p-2 rounded-sm ${
-          callIsError ? "bg-red-500/[0.04] border border-red-500/30" : "bg-white/[0.02] border border-white/5"
+          callIsError
+            ? "bg-red-500/[0.04] border border-red-500/30"
+            : "bg-white/[0.02] border border-white/5"
         }`}
       >
         <div className="flex items-center justify-between">
@@ -366,7 +385,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ call, isWrapping, co
                   <span className="text-[6px] text-red-400 font-bold leading-none">!</span>
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="text-[8px] font-bold text-red-400 uppercase tracking-wider">Error</span>
+                  <span className="text-[8px] font-bold text-red-400 uppercase tracking-wider">
+                    Error
+                  </span>
                   <div className="mt-0.5 text-[10px] whitespace-pre-wrap break-words leading-relaxed text-red-400/90 font-mono bg-red-500/[0.03] p-1.5 rounded-sm border border-red-500/10">
                     {String(call.output)}
                   </div>
@@ -384,7 +405,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ call, isWrapping, co
   return (
     <div
       className={`mb-2 p-3 rounded-sm ${
-        callIsError ? "bg-red-500/[0.04] border border-red-500/30" : "bg-white/[0.02] border border-white/5"
+        callIsError
+          ? "bg-red-500/[0.04] border border-red-500/30"
+          : "bg-white/[0.02] border border-white/5"
       }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -412,7 +435,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ call, isWrapping, co
                 <span className="text-[8px] text-red-400 font-bold leading-none">!</span>
               </span>
               <div className="min-w-0 flex-1">
-                <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Error</span>
+                <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">
+                  Error
+                </span>
                 <div className="mt-1">
                   <div className="text-[11px] whitespace-pre-wrap break-words leading-relaxed text-red-400/90 font-mono bg-red-500/[0.03] p-2 rounded-sm border border-red-500/10">
                     {String(call.output)}
@@ -422,7 +447,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ call, isWrapping, co
             </div>
           ) : (
             <>
-              <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">Result</span>
+              <span className="text-[9px] font-bold text-white/15 uppercase tracking-wider">
+                Result
+              </span>
               <div className="mt-1">{renderToolOutput(call.output)}</div>
             </>
           )}

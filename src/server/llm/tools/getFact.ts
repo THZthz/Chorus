@@ -1,0 +1,71 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { tool } from "ai";
+import { z } from "zod";
+import { getFactById, getFacts, getFactsByIds } from "@/server/models/facts";
+import { TOOL_NAMES } from "@/shared/constants";
+import { wrapSafe } from "@/server/llm/tools/shared";
+
+const inputSchema = z.object({
+  id: z.string().optional().describe("Exact fact ID to fetch."),
+  ids: z.array(z.string()).optional().describe("Array of fact IDs for bulk fetch."),
+  relatedEntityId: z.string().optional().describe("Filter facts linked to this entity ID."),
+  relatedPlotId: z.string().optional().describe("Filter facts linked to this plot ID."),
+  relatedScene: z.boolean().optional().describe("Filter facts linked (or not) to scene state."),
+  relatedTime: z.boolean().optional().describe("Filter facts linked (or not) to game time."),
+});
+
+export function createGetFactTool() {
+  return tool({
+    title: "Get Fact",
+    description:
+      "Retrieve facts: by single ID, multiple IDs (bulk), or filter by related entity, plot, scene, or time. Only returns valid (non-removed) facts.",
+    inputSchema,
+    execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
+      if (args.id) {
+        const fact = getFactById(args.id);
+        if (!fact || !fact.isValid) {
+          return `ERROR: Fact '${args.id}' not found.`;
+        }
+        return JSON.stringify(fact, null, 2);
+      }
+
+      if (args.ids && args.ids.length > 0) {
+        const facts = getFactsByIds(args.ids);
+        if (facts.length === 0) {
+          return `No valid facts found for the provided IDs: [${args.ids.join(", ")}].`;
+        }
+        const found = new Set(facts.map((f) => f.id));
+        const missing = args.ids.filter((id) => !found.has(id));
+        const result: Record<string, unknown> = { facts };
+        if (missing.length > 0) result.missingIds = missing;
+        return JSON.stringify(result, null, 2);
+      }
+
+      const facts = getFacts({
+        relatedEntityId: args.relatedEntityId,
+        relatedPlotId: args.relatedPlotId,
+        relatedScene: args.relatedScene,
+        relatedTime: args.relatedTime,
+      });
+      if (facts.length === 0) return "No facts found matching the filter.";
+      return JSON.stringify(facts, null, 2);
+    }, TOOL_NAMES.GET_FACT),
+  });
+}

@@ -44,7 +44,7 @@ export const TOOL_NAMES = {
   CREATE_PLOT: "createPlot",
   UPDATE_PLOT: "updatePlot",
   GET_PLOT: "getPlot",
-  GENERATE_DIALOGUE: "generateDialogue",
+  GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
   UPDATE_SCENE: "updateScene",
   GET_SCENE: "getScene",

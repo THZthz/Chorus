@@ -545,7 +545,11 @@ export const LlmTraceViewer: React.FC = () => {
                                     {step.toolCalls &&
                                       step.toolCalls.length > 0 &&
                                       step.toolCalls.map((call: any, ci: number) => (
-                                        <ToolCallCard key={ci} call={call} isWrapping={isWrapping} />
+                                        <ToolCallCard
+                                          key={ci}
+                                          call={call}
+                                          isWrapping={isWrapping}
+                                        />
                                       ))}
                                   </div>
                                 ))}
@@ -647,7 +651,12 @@ export const LlmTraceViewer: React.FC = () => {
                                         </div>
                                         {cStep.toolCalls &&
                                           cStep.toolCalls.map((call: any, ci: number) => (
-                                            <ToolCallCard key={ci} call={call} isWrapping={isWrapping} compact />
+                                            <ToolCallCard
+                                              key={ci}
+                                              call={call}
+                                              isWrapping={isWrapping}
+                                              compact
+                                            />
                                           ))}
                                       </div>
                                     ))}

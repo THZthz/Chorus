@@ -28,7 +28,7 @@ import type { SceneState, EntityType, Fact } from "@/types/entities";
  * The stream writer calls start/finish to manage the SSE lifecycle.
  */
 export class TurnEventEmitter {
-  private res: Response | null;
+  private readonly res: Response | null;
 
   constructor(
     res: Response | null,

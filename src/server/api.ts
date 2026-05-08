@@ -17,15 +17,13 @@
  */
 
 import express from "express";
-import type { Message } from "@/types/dialogue";
-import type { Character } from "@/types/entities";
 import {
   generateTurn,
   generateTurnBatch,
   getSystemPromptTemplate,
   setSystemPromptTemplate,
   DEFAULT_SYSTEM_PROMPT_TEMPLATE,
-} from "@/server/llm/index";
+} from "@/server/llm";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
 import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";

@@ -38,8 +38,8 @@ interface FinishData {
 }
 
 export class LlmDebugIntegration {
-  private logId: string;
-  private startTime: number;
+  private readonly logId: string;
+  private readonly startTime: number;
 
   constructor(request: unknown, parentId?: string, label?: string) {
     this.logId = addLlmLog(request, parentId, label);

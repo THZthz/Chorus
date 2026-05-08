@@ -61,6 +61,12 @@ src/
 │   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
 │   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
 │   ├── main.ts               # Express + Vite middleware entry
+│   ├── seed-stories/
+│   │   ├── index.ts           # Story registry + ACTIVE_SEED_STORY constant
+│   │   ├── types.ts           # SeedStory, SeedPlot interfaces
+│   │   ├── romantic-magic-awakening.ts  # Default seed story
+│   │   ├── celestial-athenaeum.ts       # Cosmic horror seed story
+│   │   └── iron-serpent-murder.ts       # Murder mystery seed story
 │   └── models/
 │       ├── debug.ts          # LLM interaction log query and management (getLlmLogs, clearLlmLogs)
 │       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots)
@@ -68,7 +74,7 @@ src/
 │       ├── ids.ts            # Base62-encoded unique ID generation (nextId, nextIdBatch)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
 │       ├── scene.ts           # Time + scene state CRUD (system_state keys)
-│       └── world.ts          # Entity CRUD + seed data + entity query helpers
+│       └── world.ts          # Entity CRUD via active seed story + entity query helpers
 ├── services/
 │   ├── SseClient.ts          # Browser SSE streaming consumer with AbortController support
 │   └── WorldManager.ts       # Client-side world/plot cache; replay snapshot override; subscriber pattern
@@ -207,6 +213,7 @@ The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep`
 
 - **Steps**: A single interaction "moment" stored in `dialogue_steps` table
 - **Branches**: When a user selects an option, a new child step is created. The parent option's `nextStepId` is updated to link forward to the child, creating a doubly-linked tree (parent → child via `parent_step_id`, child ← parent via `nextStepId` on the option).
+- **Custom input**: When the player types their own dialogue instead of selecting a generated option, `persistStep()` in `src/server/llm/index.ts` creates a synthetic `custom_*` option on the parent step via `addOptionToStep()`. This ensures custom-input branches are navigable in replay mode. Custom options are styled with italic text and a "custom" badge in `DialogueOptions.tsx`.
 - **Alternatives**: When a user clicks "Regenerate", the current step is archived as an alternative, and a new one is generated. The UI allows "swiping" between versions
 
 ### 3.6 Dialogue Replay
@@ -357,6 +364,24 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 draggable-reorderable tabs in a si
 
 Tabs can be reordered by dragging (HTML5 native drag-and-drop with GripVertical handle on hover).
 
+### 6.4 Seed Story System
+
+Seed data (entities, locations, characters, root plot, initial time, initial scene) is organized into pluggable seed story modules under `src/server/seed-stories/`. Each module exports a `SeedStory` object conforming to the interface in `types.ts`.
+
+**Available seed stories** (registered in `index.ts`):
+| Story ID | File | Genre |
+|---|---|---|
+| `romantic-magic-awakening` | `romantic-magic-awakening.ts` | Romantic fantasy (default, active) |
+| `celestial-athenaeum` | `celestial-athenaeum.ts` | Cosmic horror |
+| `iron-serpent-murder` | `iron-serpent-murder.ts` | Murder mystery |
+
+The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `world.ts` reads from it to populate the database on first run.
+
+**To add a new seed story:**
+1. Create a new file in `src/server/seed-stories/` exporting a `SeedStory` object
+2. Register it in the `STORIES` map in `index.ts`
+3. Change `ACTIVE_SEED_STORY` to the new story ID
+
 ---
 
 ## 7. Time System
@@ -423,7 +448,7 @@ The scene system tracks "who is where, with what" — character positions, objec
 
 ### 9.3 Managing the World
 
-Initial world state is seeded in `src/server/models/world.ts`. Modify the `initialObjects`, `initialLocations`, and `initialCharacters` records there. The root plot is also seeded with three childPlots branch options.
+Initial world state is defined by the active seed story in `src/server/seed-stories/`. Each seed story module exports its own `objects`, `locations`, `characters`, `rootPlot`, `initialTime`, and `initialScene`. To change or add seed data, edit the active story's module (set by `ACTIVE_SEED_STORY` in `index.ts`). See section 6.4 for the full seed story system.
 
 ### 9.4 License Headers
 

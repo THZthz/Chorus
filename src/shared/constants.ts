@@ -17,13 +17,13 @@
  */
 
 export const TOOL_NAMES = {
-  GET_ALL_ENTITIES: "getAllEntitiesName",
-  QUERY_ENTITY: "queryEntity",
-  EDIT_ENTITY: "editEntity",
+  LIST_ENTITIES: "listEntities",
+  GET_ENTITY: "getEntity",
+  UPDATE_ENTITY: "updateEntity",
   CREATE_PLOT: "createPlot",
-  EDIT_PLOT: "editPlot",
+  UPDATE_PLOT: "updatePlot",
   GET_PLOT: "getPlot",
-  GENERATE_DIALOGUE: "generateDialogueStep",
+  GENERATE_DIALOGUE: "generateDialogue",
   ADVANCE_TIME: "advanceTime",
   UPDATE_SCENE: "updateScene",
   GET_SCENE: "getScene",

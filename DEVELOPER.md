@@ -106,16 +106,16 @@ POST /api/chat/stream
 │                                                 │
 │  streamText({                                   │
 │    tools: {                                     │
-│      getAllEntitiesName,   ──► returns JSON     │
-│      queryEntity,         ──► returns JSON      │
-│      editEntity,          ──► DB + SSE event    │
+│      listEntities,        ──► returns JSON     │
+│      getEntity,           ──► returns JSON      │
+│      updateEntity,        ──► DB + SSE event    │
 │      createPlot,          ──► DB + SSE event    │
-│      editPlot,            ──► DB + SSE event    │
+│      updatePlot,          ──► DB + SSE event    │
 │      getPlot,             ──► returns JSON      │
 │      getScene,            ──► returns JSON      │
 │      updateScene,         ──► DB + SSE event    │
 │      advanceTime,         ──► DB + SSE event    │
-│      generateDialogueStep ──► SSE streaming     │
+│      generateDialogue     ──► SSE streaming     │
 │    },                                           │
 │    stopWhen: generates once + passes validation │
 │    prepareStep: nudges if GM forgets dialogue   │
@@ -153,12 +153,12 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 | Event                | Direction       | Payload                              | Trigger                                      |
 |----------------------|-----------------|--------------------------------------|----------------------------------------------|
 | `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                                  |
-| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep`    |
+| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogue`    |
 | `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — previous streaming discarded   |
-| `world_update`       | Server → Client | `{ entityId, changes }`              | `editEntity` tool executes                   |
+| `world_update`       | Server → Client | `{ entityId, changes }`              | `updateEntity` tool executes                   |
 | `plot_update`        | Server → Client | `{ plotId, status }`                 | Reserved (defined but not currently emitted) |
 | `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`    | `createPlot` tool executes                   |
-| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `editPlot` tool executes                     |
+| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `updatePlot` tool executes                     |
 | `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                  |
 | `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                  |
 | `options`            | Server → Client | `{ options }`                        | Options available mid-stream                 |
@@ -172,20 +172,20 @@ All 10 tools defined once in `src/server/llm/tools.ts`:
 
 | Tool                   | Purpose                                                   | DB Operation              | SSE Event                       |
 |------------------------|-----------------------------------------------------------|---------------------------|---------------------------------|
-| `getAllEntitiesName`   | List entity IDs, names, types, shortDescriptions          | None (read query)         | None (returns JSON)             |
-| `queryEntity`          | Get full entity by ID or text search                      | None (read query)         | None (returns JSON)             |
-| `editEntity`           | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                  |
+| `listEntities`         | List entity IDs, names, types, shortDescriptions          | None (read query)         | None (returns JSON)             |
+| `getEntity`            | Get full entity by ID or text search                      | None (read query)         | None (returns JSON)             |
+| `updateEntity`         | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                  |
 | `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                   |
-| `editPlot`             | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
+| `updatePlot`           | Update plot status, description, childPlots, etc.         | `updatePlot()`            | `plot_edit`                     |
 | `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)             |
 | `getScene`             | Get current game time and full scene state                | None (read query)         | None (returns JSON)             |
 | `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                  |
 | `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `advanceGameTime()`       | `time_update`                   |
-| `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
+| `generateDialogue`     | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed` |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which catches any thrown exceptions and returns an `ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
 
-`editEntity`, `createPlot`, `editPlot`, and `getPlot` report failure conditions (entity not found, plot not found, tree validation error) in their return messages so the GM can retry.
+`updateEntity`, `createPlot`, `updatePlot`, and `getPlot` report failure conditions (entity not found, plot not found, tree validation error) in their return messages so the GM can retry.
 
 `createGenerateDialogueStepTool` returns `{ tool, wasValid }`. The `execute` function validates the GM's output before accepting it:
 - **`speaker === "INNER_VOICE"`**: Rejected — the speaker must be the specific skill name (`"LOGIC"`, `"HALF LIGHT"`, etc.), not the type string.
@@ -193,7 +193,7 @@ All tool `execute` functions are wrapped with `wrapSafe` (in `tools.ts`) which c
 
 On validation failure, `execute` returns a `VALIDATION FAILED` string to the GM and keeps `wasValid()` false, so the `stopWhen` condition in `streamText` does not trigger and the agentic loop continues for a retry.
 
-The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep` was called in any prior step. If not, it injects an error message into the message array to nudge the model. A hard limit of 10 steps (`stepCountIs(10)`) acts as a circuit breaker.
+The `prepareStep` callback in `streamText` tracks whether `generateDialogue` was called in any prior step. If not, it injects an error message into the message array to nudge the model. A hard limit of 10 steps (`stepCountIs(10)`) acts as a circuit breaker.
 
 ### 3.4 Key Design Decisions
 
@@ -204,7 +204,7 @@ The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep`
 5. **Shared event types** — `src/shared/events.ts` ensures backend/frontend event contracts match
 6. **App.tsx state machine** — clean `idle → streaming → idle` cycle instead of scattered booleans
 7. **Plot-first story architecture** — plots form a tree (one root, branches via `childPlots`): the GM creates/edits the plot tree first, then generates dialogue options that align with the active plot's branch options
-8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName + shortDescription); full details fetched via `queryEntity`
+8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName + shortDescription); full details fetched via `getEntity`
 9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter + gameTime + scene) so replay mode shows historical world state including time and scene composition
 10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`) not the live plot table
 11. **Client-side ID pre-allocation** — `idPool.ts` fetches batches of unique IDs from `GET /api/ids/batch` so the frontend can assign IDs to new messages/snapshots without waiting for a server round-trip
@@ -307,7 +307,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that validates the SSE 
 
 ### 5.1 Plot Tree Architecture
 
-Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot holds an array of `childPlots` — branch options that guide the GM when generating dialogue. The tree is validated on every `createPlot`/`editPlot` call.
+Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot holds an array of `childPlots` — branch options that guide the GM when generating dialogue. The tree is validated on every `createPlot`/`updatePlot` call.
 
 **`PlotOption`** (branch slot in `src/types/plot.ts`): `{ plotId: string | null, triggerCondition: string }` — links a child plot node with its trigger condition text.
 
@@ -324,10 +324,10 @@ Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot 
 
 **GM workflow** (explicitly guided by system prompt in `src/server/llm/index.ts`):
 
-1. Read state: `getPlot()`, `getAllEntitiesName()`, `queryEntity()`
-2. Structure story: `createPlot()` / `editPlot()` — update the plot tree _before_ generating dialogue
-3. Mutate world: `editEntity()` if descriptions or opinions changed
-4. Generate: `generateDialogueStep` — options should map to active plot's `childPlots`
+1. Read state: `getPlot()`, `listEntities()`, `getEntity()`
+2. Structure story: `createPlot()` / `updatePlot()` — update the plot tree _before_ generating dialogue
+3. Mutate world: `updateEntity()` if descriptions or opinions changed
+4. Generate: `generateDialogue` — options should map to active plot's `childPlots`
 
 ---
 
@@ -337,7 +337,7 @@ Plots form a single-rooted tree (`parentPlotId = null` for the root). Each plot 
 
 Fantasy-steampunk inner monologue — each skill is a distinct voice in the player's mind. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`, `SORCERY`, `SUGGESTION`, `INSTINCT`, `MIGHT`, `CLOCKWORK`, `ALCHEMY`.
 
-These map to character stats in `src/types/entities.ts` (`CharacterStats` interface) and the default player in `src/context/CharacterContext.tsx`. The system prompt in `src/server/llm/index.ts` instructs the LLM about voice personalities and includes a compact entity index (id + displayName + shortDescription per entity) and the active plot tree (from `buildActivePlotTree()`). Full entity/plot details are fetched via `queryEntity`/`getPlot` tools, not dumped into the prompt.
+These map to character stats in `src/types/entities.ts` (`CharacterStats` interface) and the default player in `src/context/CharacterContext.tsx`. The system prompt in `src/server/llm/index.ts` instructs the LLM about voice personalities and includes a compact entity index (id + displayName + shortDescription per entity) and the active plot tree (from `buildActivePlotTree()`). Full entity/plot details are fetched via `getEntity`/`getPlot` tools, not dumped into the prompt.
 
 The system prompt is runtime-configurable via the Debug Panel's **Prompt** tab. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{entities_brief}}` and `{{active_plots}}` variables that are replaced with live data by `buildSystemPrompt()`. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
 

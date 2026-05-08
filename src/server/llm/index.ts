@@ -38,13 +38,13 @@ import { LlmDebugIntegration } from "@/server/llm/debug";
 import { TurnEventEmitter } from "@/server/llm/events";
 import {
   mapToDialogueOption,
-  createGetAllEntitiesNameTool,
-  createQueryEntityTool,
-  createEditEntityTool,
+  createListEntitiesTool,
+  createGetEntityTool,
+  createUpdateEntityTool,
   createCreatePlotTool,
-  createEditPlotTool,
+  createUpdatePlotTool,
   createGetPlotTool,
-  createGenerateDialogueStepTool,
+  createGenerateDialogueTool,
   createAdvanceTimeTool,
   createUpdateSceneTool,
   createGetSceneTool,
@@ -111,11 +111,11 @@ TONE: Atmospheric, sensual, morally ambiguous. Rich sensory detail — smoke, si
 
 You have ten tools:
 
-1. **${TOOL_NAMES.GET_ALL_ENTITIES}** — Discover entities by id and name. Use before ${TOOL_NAMES.QUERY_ENTITY} if unsure of an ID.
-2. **${TOOL_NAMES.QUERY_ENTITY}** — Get full details of entities by exact ID, array of IDs (bulk), or text search.
-3. **${TOOL_NAMES.EDIT_ENTITY}** — Mutate a single entity's description, attributes, or opinions. One call per entity.
+1. **${TOOL_NAMES.LIST_ENTITIES}** — Discover entities by id and name. Use before ${TOOL_NAMES.GET_ENTITY} if unsure of an ID.
+2. **${TOOL_NAMES.GET_ENTITY}** — Get full details of entities by exact ID, array of IDs (bulk), or text search.
+3. **${TOOL_NAMES.UPDATE_ENTITY}** — Mutate a single entity's description, attributes, or opinions. One call per entity.
 4. **${TOOL_NAMES.CREATE_PLOT}** — Add a new plot node to the story tree (link via parentPlotId + parentOptionId).
-5. **${TOOL_NAMES.EDIT_PLOT}** — Update an existing plot's status, description, involved entities, or childPlots.
+5. **${TOOL_NAMES.UPDATE_PLOT}** — Update an existing plot's status, description, involved entities, or childPlots.
 6. **${TOOL_NAMES.GET_PLOT}** — Retrieve a specific plot or filter by status.
 7. **${TOOL_NAMES.GET_SCENE}** — Get current game time and scene state (who is where, who is carrying what).
 8. **${TOOL_NAMES.UPDATE_SCENE}** — Move characters/objects between locations, or give objects to characters.
@@ -123,9 +123,9 @@ You have ten tools:
 10. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
 
 **Turn order example:**
-- First: read world/plot/scene state if needed (${TOOL_NAMES.GET_ALL_ENTITIES}, ${TOOL_NAMES.QUERY_ENTITY}, ${TOOL_NAMES.GET_PLOT}, ${TOOL_NAMES.GET_SCENE})
-- Second: update story structure if plot progresses (${TOOL_NAMES.CREATE_PLOT}, ${TOOL_NAMES.EDIT_PLOT})
-- Third: mutate entity state if something changed (${TOOL_NAMES.EDIT_ENTITY})
+- First: read world/plot/scene state if needed (${TOOL_NAMES.LIST_ENTITIES}, ${TOOL_NAMES.GET_ENTITY}, ${TOOL_NAMES.GET_PLOT}, ${TOOL_NAMES.GET_SCENE})
+- Second: update story structure if plot progresses (${TOOL_NAMES.CREATE_PLOT}, ${TOOL_NAMES.UPDATE_PLOT})
+- Third: mutate entity state if something changed (${TOOL_NAMES.UPDATE_ENTITY})
 - Fourth: update scene and time if needed (${TOOL_NAMES.UPDATE_SCENE}, ${TOOL_NAMES.ADVANCE_TIME})
 - Last: ALWAYS call ${TOOL_NAMES.GENERATE_DIALOGUE} — options must align with the active plot's childPlots
 
@@ -162,7 +162,7 @@ A plot represents a story chapter or quest — it should span multiple dialogue 
 
 **Rule of thumb:** If a childPlot's triggerCondition could be a single line of dialogue, it is too granular. A plot branch should describe a *course of action* or *allegiance*, not a single utterance.
 
-When the player's decisions align with a childPlot's triggerCondition, call ${TOOL_NAMES.EDIT_PLOT} to update progress and ${TOOL_NAMES.CREATE_PLOT} to instantiate the new branch.
+When the player's decisions align with a childPlot's triggerCondition, call ${TOOL_NAMES.UPDATE_PLOT} to update progress and ${TOOL_NAMES.CREATE_PLOT} to instantiate the new branch.
 
 ---
 
@@ -233,12 +233,12 @@ These are HARD RULES. Violating any of them will cause your output to be REJECTE
 
 1. **NEVER set speaker name to "INNER_VOICE".** INNER_VOICE is a type, not a speaker name. Use the specific skill for type \`INNER_VOICE\`: "LOGIC", "SORCERY", "INSTINCT", "CLOCKWORK", etc.
 2. **NEVER output dialogues in raw text outside a tool call.** Any text outside ${TOOL_NAMES.GENERATE_DIALOGUE} will not shown to the player.
-3. **NEVER end a turn without calling ${TOOL_NAMES.GENERATE_DIALOGUE}.** A turn with only ${TOOL_NAMES.EDIT_ENTITY} leaves the player stuck in silence.
+3. **NEVER end a turn without calling ${TOOL_NAMES.GENERATE_DIALOGUE}.** A turn with only ${TOOL_NAMES.UPDATE_ENTITY} leaves the player stuck in silence.
 4. **NEVER put the speaker name inside the text field.** The speaker field already displays the name. Repeating it in text creates ugly duplication: "LOGIC: LOGIC: This is wrong."
 5. **NEVER use hintBefore on an option that has a skill check.** The check already renders the skill name as a hint. Using both creates duplicate labels.
 6. **NEVER create wildly divergent options.** Every option should be a plausible action in the current scene. No "ascend to godhood" or "burn down the city" unless the scene actually supports it.
 7. **NEVER use type YOU in messages created by ${TOOL_NAMES.GENERATE_DIALOGUE}.** The system handles player messages.
-8. **NEVER invent entity names or IDs.** If unsure, call ${TOOL_NAMES.GET_ALL_ENTITIES}() first.
+8. **NEVER invent entity names or IDs.** If unsure, call ${TOOL_NAMES.LIST_ENTITIES}() first.
 
 ---
 
@@ -336,7 +336,7 @@ Assume \`plot_3\` ("Expose the corruption in House Ashvale") is the root plot, w
 
 The player signals they want to infiltrate the estate. The GM marks the parent's progress and instantiates the infiltration branch with its own narrative directions:
 
-Step 1 — call ${TOOL_NAMES.EDIT_PLOT} to mark the parent. Only update what changed:
+Step 1 — call ${TOOL_NAMES.UPDATE_PLOT} to mark the parent. Only update what changed:
 
 \`\`\`json
 {
@@ -365,7 +365,7 @@ Step 2 — call ${TOOL_NAMES.CREATE_PLOT} with \`parentOptionId: 0\` to instanti
 
 The \`triggerCondition\` values describe *courses of action*, not specific lines of dialogue. Each could unfold over several turns.
 
-\`createPlot\` auto-links: \`plot_3.childPlots[0].plotId\` is automatically updated to point to this new plot. You do NOT need to call \`editPlot\` on the parent to wire the link.
+\`createPlot\` auto-links: \`plot_3.childPlots[0].plotId\` is automatically updated to point to this new plot. You do NOT need to call \`updatePlot\` on the parent to wire the link.
 
 Step 3 — call ${TOOL_NAMES.GENERATE_DIALOGUE}. The options present natural, moment-to-moment choices. Not every option advances the plot — some exist for world immersion and character. The options that DO advance the plot lean toward the NEW plot's childPlots without mechanically enumerating them:
 
@@ -462,7 +462,7 @@ The first option has a skill check → no hintBefore. The second has no check �
 }
 \`\`\`
 
-### Good — editing an entity with ${TOOL_NAMES.EDIT_ENTITY}
+### Good — editing an entity with ${TOOL_NAMES.UPDATE_ENTITY}
 
 Update only the fields that changed. \`opinions\` tracks how this entity feels about others. Omitted fields are left unchanged:
 
@@ -543,7 +543,7 @@ When the player moves to a new location, update \`currentLocationId\` and move a
 
 → Drop the "I": \`"Searched the magister's desk for any sign of the missing seal."\` The system prefixes with "You:" so it reads naturally as "You: Searched the magister's desk..."
 
-**Wrong: calling ${TOOL_NAMES.EDIT_ENTITY} but never calling ${TOOL_NAMES.GENERATE_DIALOGUE}**
+**Wrong: calling ${TOOL_NAMES.UPDATE_ENTITY} but never calling ${TOOL_NAMES.GENERATE_DIALOGUE}**
 → The player receives NO response. The turn is broken. Always end with ${TOOL_NAMES.GENERATE_DIALOGUE}.
 
 **Wrong: showing dialogue messages outside tools**
@@ -608,7 +608,7 @@ The scene tracks the current location, where each character is, and where each o
 
 {{entities_brief}}
 
-Use ${TOOL_NAMES.QUERY_ENTITY}(id) or ${TOOL_NAMES.QUERY_ENTITY}(ids: [...]) for full details, or ${TOOL_NAMES.QUERY_ENTITY} with a search term. Never invent entity names or IDs.
+Use ${TOOL_NAMES.GET_ENTITY}(id) or ${TOOL_NAMES.GET_ENTITY}(ids: [...]) for full details, or ${TOOL_NAMES.GET_ENTITY} with a search term. Never invent entity names or IDs.
 
 ---
 
@@ -617,7 +617,7 @@ Use ${TOOL_NAMES.QUERY_ENTITY}(id) or ${TOOL_NAMES.QUERY_ENTITY}(ids: [...]) for
 {{active_plots}}
 
 - Plots are BROAD narrative arcs, no need to align with dialogues step by step. A plot should progress: PENDING → IN_PROGRESS → RESOLVED across multiple dialogue turns.
-- When the player's actions align with a childPlot's triggerCondition, update the plot tree: ${TOOL_NAMES.EDIT_PLOT} to mark progress, ${TOOL_NAMES.CREATE_PLOT} to instantiate the branch.
+- When the player's actions align with a childPlot's triggerCondition, update the plot tree: ${TOOL_NAMES.UPDATE_PLOT} to mark progress, ${TOOL_NAMES.CREATE_PLOT} to instantiate the branch.
 - Keep triggerConditions at the story-decision level — they describe *what the player chooses to pursue*, not a specific thing they say.
 `.trim();
 
@@ -831,7 +831,7 @@ export async function generateTurn(
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
 
-  const dialogueStepTool = createGenerateDialogueStepTool(events);
+  const dialogueStepTool = createGenerateDialogueTool(events);
 
   const debugging = new LlmDebugIntegration(
     {
@@ -859,16 +859,16 @@ export async function generateTurn(
       system: systemPrompt,
       messages: [{ role: "user", content: promptText }],
       tools: {
-        getAllEntitiesName: createGetAllEntitiesNameTool(),
-        queryEntity: createQueryEntityTool(),
-        editEntity: createEditEntityTool(events),
+        listEntities: createListEntitiesTool(),
+        getEntity: createGetEntityTool(),
+        updateEntity: createUpdateEntityTool(events),
         createPlot: createCreatePlotTool(events),
-        editPlot: createEditPlotTool(events),
+        updatePlot: createUpdatePlotTool(events),
         getPlot: createGetPlotTool(),
         getScene: createGetSceneTool(),
         updateScene: createUpdateSceneTool(events),
         advanceTime: createAdvanceTimeTool(events),
-        generateDialogueStep: dialogueStepTool.tool,
+        generateDialogue: dialogueStepTool.tool,
       },
       stopWhen: [
         (state) => {
@@ -1123,27 +1123,27 @@ export async function generateTurnBatch(
 
   const { model } = getModel();
   const noopEvents = new TurnEventEmitter(null, stepId);
-  const dialogueStepTool = createGenerateDialogueStepTool(noopEvents);
+  const dialogueStepTool = createGenerateDialogueTool(noopEvents);
 
   const result = await generateText({
     model,
     system: systemPrompt,
     messages: [{ role: "user", content: promptText }],
     tools: {
-      getAllEntitiesName: createGetAllEntitiesNameTool(),
-      queryEntity: createQueryEntityTool(),
-      editEntity: createEditEntityTool(noopEvents),
+      listEntities: createListEntitiesTool(),
+      getEntity: createGetEntityTool(),
+      updateEntity: createUpdateEntityTool(noopEvents),
       createPlot: createCreatePlotTool(noopEvents),
-      editPlot: createEditPlotTool(noopEvents),
+      updatePlot: createUpdatePlotTool(noopEvents),
       getPlot: createGetPlotTool(),
       getScene: createGetSceneTool(),
       updateScene: createUpdateSceneTool(noopEvents),
       advanceTime: createAdvanceTimeTool(noopEvents),
-      generateDialogueStep: dialogueStepTool.tool,
+      generateDialogue: dialogueStepTool.tool,
     },
   });
 
-  // Extract the generateDialogueStep tool input
+  // Extract the generateDialogue tool input
   const dialogueCall = result.toolCalls?.find((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE);
   const rawInput = dialogueCall?.input;
 

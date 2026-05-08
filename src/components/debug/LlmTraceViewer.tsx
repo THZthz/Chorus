@@ -594,14 +594,14 @@ export const LlmTraceViewer: React.FC = () => {
                                         const isGenDialogue =
                                           call.toolName === TOOL_NAMES.GENERATE_DIALOGUE;
                                         const isWorldUpdate =
-                                          call.toolName === TOOL_NAMES.EDIT_ENTITY;
-                                        const isPlotStatus = call.toolName === TOOL_NAMES.EDIT_PLOT;
+                                          call.toolName === TOOL_NAMES.UPDATE_ENTITY;
+                                        const isPlotStatus = call.toolName === TOOL_NAMES.UPDATE_PLOT;
                                         const isCreatePlot =
                                           call.toolName === TOOL_NAMES.CREATE_PLOT;
                                         const isGetAllEntities =
-                                          call.toolName === TOOL_NAMES.GET_ALL_ENTITIES;
+                                          call.toolName === TOOL_NAMES.LIST_ENTITIES;
                                         const isQueryEntity =
-                                          call.toolName === TOOL_NAMES.QUERY_ENTITY;
+                                          call.toolName === TOOL_NAMES.GET_ENTITY;
                                         const isGetPlot = call.toolName === TOOL_NAMES.GET_PLOT;
 
                                         return (
@@ -979,15 +979,15 @@ export const LlmTraceViewer: React.FC = () => {
                                                       call.toolName ===
                                                       TOOL_NAMES.GENERATE_DIALOGUE;
                                                     const isWorld =
-                                                      call.toolName === TOOL_NAMES.EDIT_ENTITY;
+                                                      call.toolName === TOOL_NAMES.UPDATE_ENTITY;
                                                     const isPlot =
-                                                      call.toolName === TOOL_NAMES.EDIT_PLOT;
+                                                      call.toolName === TOOL_NAMES.UPDATE_PLOT;
                                                     const isCreate =
                                                       call.toolName === TOOL_NAMES.CREATE_PLOT;
                                                     const isGetAll =
-                                                      call.toolName === TOOL_NAMES.GET_ALL_ENTITIES;
+                                                      call.toolName === TOOL_NAMES.LIST_ENTITIES;
                                                     const isQuery =
-                                                      call.toolName === TOOL_NAMES.QUERY_ENTITY;
+                                                      call.toolName === TOOL_NAMES.GET_ENTITY;
                                                     const isGetP =
                                                       call.toolName === TOOL_NAMES.GET_PLOT;
 

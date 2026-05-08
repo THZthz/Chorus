@@ -126,20 +126,20 @@ const entityGetSchema = z.object({
   type: z.enum(ENTITY_TYPES).optional().describe("Optional filter by entity type."),
 });
 
-export function createGetAllEntitiesNameTool() {
+export function createListEntitiesTool() {
   return tool({
-    title: "Get All Entities Name",
+    title: "List Entities",
     description: "Returns the id, displayName, type, and shortDescription of all world entities.",
     inputSchema: entityGetSchema,
     execute: wrapSafe(async (args: z.infer<typeof entityGetSchema>) => {
       const summaries = getAllEntitySummaries(args.type);
       if (summaries.length === 0) return "No entities found.";
       return JSON.stringify(summaries, null, 2);
-    }, TOOL_NAMES.GET_ALL_ENTITIES),
+    }, TOOL_NAMES.LIST_ENTITIES),
   });
 }
 
-const queryEntitySchema = z.object({
+const getEntitySchema = z.object({
   id: z.string().optional().describe("Exact entity ID for single lookup (e.g. 'madam_vespera')."),
   ids: z
     .array(z.string())
@@ -153,13 +153,13 @@ const queryEntitySchema = z.object({
     .describe("Text to search for in entity names/descriptions (up to 5 results)."),
 });
 
-export function createQueryEntityTool() {
+export function createGetEntityTool() {
   return tool({
-    title: "Query Entity",
+    title: "Get Entity",
     description:
       "Get full details of world entities. Provide an id for single lookup, ids array for bulk lookup, or a search term for text search (case-insensitive match on name/description, up to 5 results).",
-    inputSchema: queryEntitySchema,
-    execute: wrapSafe(async (args: z.infer<typeof queryEntitySchema>): Promise<string> => {
+    inputSchema: getEntitySchema,
+    execute: wrapSafe(async (args: z.infer<typeof getEntitySchema>): Promise<string> => {
       if (args.id && args.ids && args.search) {
         return "ERROR: You can only search in only one of these ways: provide 'id' for single lookup, 'ids' for bulk lookup, or 'search' for text search.";
       }
@@ -169,14 +169,14 @@ export function createQueryEntityTool() {
       if (args.id) {
         const entity = getEntityById(args.id);
         if (!entity) {
-          return `ERROR: Entity '${args.id}' not found. You may call ${TOOL_NAMES.GET_ALL_ENTITIES}() to discover valid IDs.`;
+          return `ERROR: Entity '${args.id}' not found. You may call ${TOOL_NAMES.LIST_ENTITIES}() to discover valid IDs.`;
         }
         return JSON.stringify(entity, null, 2);
       }
       if (args.ids && args.ids.length > 0) {
         const results = getEntitiesByIds(args.ids);
         if (results.length === 0) {
-          return `ERROR: None of the requested IDs were found: [${args.ids.join(", ")}]. You may call ${TOOL_NAMES.GET_ALL_ENTITIES}() to discover valid IDs.`;
+          return `ERROR: None of the requested IDs were found: [${args.ids.join(", ")}]. You may call ${TOOL_NAMES.LIST_ENTITIES}() to discover valid IDs.`;
         }
         if (results.length < args.ids.length) {
           const foundIds = new Set(results.map((e) => e.id));
@@ -201,10 +201,10 @@ export function createQueryEntityTool() {
       }
       const results = getEntitiesByText(args.search!);
       if (results.length === 0) {
-        return `No entities matched '${args.search}'. You may call ${TOOL_NAMES.GET_ALL_ENTITIES}() to see all entities.`;
+        return `No entities matched '${args.search}'. You may call ${TOOL_NAMES.LIST_ENTITIES}() to see all entities.`;
       }
       return JSON.stringify(results, null, 2);
-    }, TOOL_NAMES.QUERY_ENTITY),
+    }, TOOL_NAMES.GET_ENTITY),
   });
 }
 
@@ -222,16 +222,16 @@ const entitySchema = z.object({
     .describe("How this character feels about others (merged). Only valid for CHARACTER entities."),
 });
 
-export function createEditEntityTool(events: TurnEventEmitter) {
+export function createUpdateEntityTool(events: TurnEventEmitter) {
   return tool({
-    title: "Edit Entity",
+    title: "Update Entity",
     description:
       "Mutate a single world entity's description, attributes, or opinions. One entity per call. Reports an error if the entity ID does not exist.",
     inputSchema: entitySchema,
     execute: wrapSafe(async (args: z.infer<typeof entitySchema>) => {
       const existing = getEntityById(args.id);
       if (!existing) {
-        return `ERROR: Entity '${args.id}' not found. You may use ${TOOL_NAMES.GET_ALL_ENTITIES}() to discover valid IDs.`;
+        return `ERROR: Entity '${args.id}' not found. You may use ${TOOL_NAMES.LIST_ENTITIES}() to discover valid IDs.`;
       }
       updateEntity(args);
       const changes: Record<string, unknown> = {};
@@ -241,7 +241,7 @@ export function createEditEntityTool(events: TurnEventEmitter) {
       if (args.opinions) changes.opinions = args.opinions;
       events.emitWorldUpdate(args.id, changes);
       return `Entity with name '${existing.displayName}' (id: ${args.id}) updated.`;
-    }, TOOL_NAMES.EDIT_ENTITY),
+    }, TOOL_NAMES.UPDATE_ENTITY),
   });
 }
 
@@ -326,9 +326,9 @@ const plotEditSchema = z.object({
     .describe("Replacement list of branch options (replaces all existing childPlots)."),
 });
 
-export function createEditPlotTool(events: TurnEventEmitter) {
+export function createUpdatePlotTool(events: TurnEventEmitter) {
   return tool({
-    title: "Edit Plot",
+    title: "Update Plot",
     description:
       "Update an existing plot's status, description, involved entities, or childPlots options. Only PENDING or IN_PROGRESS plots can be edited — RESOLVED plots are locked. Reports an error if the plot ID does not exist, the plot is RESOLVED, or the change would break the plot tree.",
     inputSchema: plotEditSchema,
@@ -357,7 +357,7 @@ export function createEditPlotTool(events: TurnEventEmitter) {
       const plot = getPlotById(args.id);
       if (!plot) return `Plot ${args.id} updated but could not be re-read.`;
       return `Plot "${plot.title}" (${args.id}) updated.`;
-    }, TOOL_NAMES.EDIT_PLOT),
+    }, TOOL_NAMES.UPDATE_PLOT),
   });
 }
 
@@ -461,7 +461,7 @@ const dialogueStepSchema = z.object({
   options: z.array(optionSchema).describe("The choices presented to the player."),
 });
 
-export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
+export function createGenerateDialogueTool(_events: TurnEventEmitter) {
   let lastCallValid = false;
 
   const dialogueTool = tool({

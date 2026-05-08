@@ -164,6 +164,8 @@ A plot represents a story chapter or quest — it should span multiple dialogue 
 
 When the player's decisions align with a childPlot's triggerCondition, call ${TOOL_NAMES.UPDATE_PLOT} to update progress and ${TOOL_NAMES.CREATE_PLOT} to instantiate the new branch.
 
+Plots carry a \`flags\` field — scoped key-value metadata (e.g. \`{"alarm_raised": true, "player_allegiance": "clockwrights"}\`). Set flags on ${TOOL_NAMES.CREATE_PLOT} or ${TOOL_NAMES.UPDATE_PLOT} when story conditions change. Flags are defined per-plot, not globally — only set flags relevant to the plot's own narrative scope.
+
 ---
 
 ## DIALOGUE STEP DETAILS

@@ -31,6 +31,7 @@ function rowToPlot(row: any): Plot {
     parentPlotId: row.parent_plot_id ?? null,
     parentOptionId: row.parent_option_id ?? null,
     childPlots: JSON.parse(row.child_plots ?? "[]"),
+    flags: JSON.parse(row.plot_flags ?? "{}"),
   };
 }
 
@@ -62,7 +63,7 @@ export function getRootPlot(): Plot | null {
   return row ? rowToPlot(row) : null;
 }
 
-type AddPlotInput = Omit<Plot, "id"> & { id?: string };
+type AddPlotInput = Omit<Plot, "id" | "flags"> & { id?: string; flags?: Plot["flags"] };
 
 export function addPlot(
   input: AddPlotInput,
@@ -103,8 +104,8 @@ export function addPlot(
   }
 
   db.prepare(
-    `INSERT INTO plots (id, title, description, status, involved_locations, involved_characters, parent_plot_id, parent_option_id, child_plots)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO plots (id, title, description, status, involved_locations, involved_characters, parent_plot_id, parent_option_id, child_plots, plot_flags)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.title,
@@ -115,6 +116,7 @@ export function addPlot(
     input.parentPlotId ?? null,
     input.parentOptionId ?? null,
     JSON.stringify(input.childPlots ?? []),
+    JSON.stringify(input.flags ?? {}),
   );
 
   // Auto-link: update parent's childPlots[parentOptionId].plotId
@@ -166,6 +168,25 @@ export function updatePlot(
     };
   }
 
+  let childPlots: PlotOption[];
+  if (patch.addChildPlot !== undefined || patch.removeChildPlot !== undefined) {
+    childPlots = [...existing.childPlots];
+    if (patch.removeChildPlot !== undefined) {
+      if (patch.removeChildPlot < 0 || patch.removeChildPlot >= childPlots.length) {
+        return {
+          ok: false,
+          error: `removeChildPlot index ${patch.removeChildPlot} is out of range. Plot "${existing.title}" has ${childPlots.length} childPlots (indices 0–${childPlots.length - 1}).`,
+        };
+      }
+      childPlots.splice(patch.removeChildPlot, 1);
+    }
+    if (patch.addChildPlot !== undefined) {
+      childPlots.push(patch.addChildPlot);
+    }
+  } else {
+    childPlots = patch.childPlots ?? existing.childPlots;
+  }
+
   const updated: Plot = {
     ...existing,
     title: patch.title ?? existing.title,
@@ -173,11 +194,12 @@ export function updatePlot(
     description: patch.description ?? existing.description,
     involvedLocations: patch.involvedLocations ?? existing.involvedLocations,
     involvedCharacters: patch.involvedCharacters ?? existing.involvedCharacters,
-    childPlots: patch.childPlots ?? existing.childPlots,
+    childPlots,
+    flags: patch.flags ?? existing.flags,
   };
 
   db.prepare(
-    `UPDATE plots SET title = ?, status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ? WHERE id = ?`,
+    `UPDATE plots SET title = ?, status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ?, plot_flags = ? WHERE id = ?`,
   ).run(
     updated.title,
     updated.status,
@@ -185,6 +207,7 @@ export function updatePlot(
     JSON.stringify(updated.involvedLocations),
     JSON.stringify(updated.involvedCharacters),
     JSON.stringify(updated.childPlots),
+    JSON.stringify(updated.flags),
     id,
   );
 
@@ -192,7 +215,7 @@ export function updatePlot(
   if (treeError) {
     // Restore original
     db.prepare(
-      `UPDATE plots SET title = ?, status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ? WHERE id = ?`,
+      `UPDATE plots SET title = ?, status = ?, description = ?, involved_locations = ?, involved_characters = ?, child_plots = ?, plot_flags = ? WHERE id = ?`,
     ).run(
       existing.title,
       existing.status,
@@ -200,6 +223,7 @@ export function updatePlot(
       JSON.stringify(existing.involvedLocations),
       JSON.stringify(existing.involvedCharacters),
       JSON.stringify(existing.childPlots),
+      JSON.stringify(existing.flags),
       id,
     );
     return { ok: false, error: `Plot tree validation failed: ${treeError}` };
@@ -251,6 +275,11 @@ export function buildActivePlotTree(): string {
     if (locations) lines.push(`${indent}   locations_ids [${locations}]`);
     if (characters) lines.push(`${indent}   characters_ids [${characters}]`);
     lines.push(`${indent}   ${plot.description}`);
+    const flagEntries = Object.entries(plot.flags);
+    if (flagEntries.length > 0) {
+      const flagsStr = flagEntries.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ");
+      lines.push(`${indent}   flags {${flagsStr}}`);
+    }
 
     if (plot.childPlots.length > 0) {
       lines.push(`${indent}   Options:`);

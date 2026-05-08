@@ -55,8 +55,8 @@ export function seedDatabase() {
 
     const rp = story.rootPlot;
     db.prepare(
-      `INSERT INTO plots (id, title, description, status, involved_locations, involved_characters, parent_plot_id, parent_option_id, child_plots)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO plots (id, title, description, status, involved_locations, involved_characters, parent_plot_id, parent_option_id, child_plots, plot_flags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       rp.id,
       rp.title,
@@ -67,6 +67,7 @@ export function seedDatabase() {
       null,
       null,
       JSON.stringify(rp.childPlots),
+      "{}",
     );
     console.log(`Seeded initial plot: ${rp.title}.`);
 

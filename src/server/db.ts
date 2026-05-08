@@ -128,5 +128,8 @@ try {
 try {
   db.exec("ALTER TABLE llm_steps ADD COLUMN reasoning TEXT");
 } catch {}
+try {
+  db.exec("ALTER TABLE plots ADD COLUMN plot_flags TEXT DEFAULT '{}'");
+} catch {}
 
 export default db;

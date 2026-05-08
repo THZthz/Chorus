@@ -230,6 +230,10 @@ const characters: SeedStory["characters"] = {
 
 export const ironSerpentMurder: SeedStory = {
   id: "iron-serpent-murder",
+  settingDescription:
+    "The Iron Serpent, a steam-powered luxury express hurtling through the frozen Ironfang Mountains — twelve carriages of dark mahogany, crystal chandeliers, and alchemical fire. Six hours from Karavelle, a blizzard seals the train from the outside world. The player wakes to a scream in Carriage 3, a violet crystal pulsing in their palm, with no memory of who they are — or whether they are witness or suspect. A man is dead, a ceremonial dagger in his chest, a defaced locket in his hand, and a cryptic telegram warning of a compromised package that must not reach the city. Two hundred souls, no stops, no escape — and one killer who cannot leave.",
+  toneDescription:
+    "Tense, claustrophobic, noir-inflected. Rich sensory detail — steam and polished brass, the sway of chandeliers, the howl of wind against frosted windows, the weight of secrets in confined spaces. A closed-circle mystery where everyone has something to hide. Suspicion and seduction intertwined. Every conversation is a chess move; every alliance has a cost.",
   objects,
   locations,
   characters,

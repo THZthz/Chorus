@@ -342,7 +342,7 @@ Fantasy-steampunk inner monologue — each skill is a distinct voice in the play
 
 These map to character stats in `src/types/entities.ts` (`CharacterStats` interface) and the default player in `src/context/CharacterContext.tsx`. The system prompt in `src/server/llm/index.ts` instructs the LLM about voice personalities and includes a compact entity index (id + displayName + shortDescription per entity) and the active plot tree (from `buildActivePlotTree()`). Full entity/plot details are fetched via `getEntity`/`getPlot` tools, not dumped into the prompt.
 
-The system prompt is runtime-configurable via the Debug Panel's **Prompt** tab. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{entities_brief}}` and `{{active_plots}}` variables that are replaced with live data by `buildSystemPrompt()`. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
+The system prompt is runtime-configurable via the Debug Panel's **Prompt** tab. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{setting_description}}`, `{{tone_description}}`, `{{entities_brief}}`, `{{active_plots}}`, `{{game_time}}`, and `{{current_scene}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
 
 ### 6.2 Skill Checks
 

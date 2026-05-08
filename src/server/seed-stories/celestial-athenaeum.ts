@@ -208,6 +208,10 @@ const characters: SeedStory["characters"] = {
 
 export const celestialAthenaeum: SeedStory = {
   id: "celestial-athenaeum",
+  settingDescription:
+    "The Celestial Athenaeum, a black stone observatory-library perched on the summit of Mount Aethel, accessible only by a funicular railway. The player wakes with no memory on the mountainside, a violet crystal pulsing in their palm — a crystal that resonates with an ancient star chart in the observatory dome. Below, in vaults carved into the mountain, something stirs: whispers that know the astronomer's name, texts too dangerous to burn, and a hermit who has waited twenty years for a bearer to arrive. The constellations are rearranging themselves toward an unknown convergence. In seventy-two hours, the pattern completes — and whatever sleeps beneath the mountain will wake.",
+  toneDescription:
+    "Cosmic horror, intellectual dread, the vertigo of forbidden knowledge. Rich sensory detail — cold mountain air, old parchment, alchemical residue, the electric prickle of aetheric energy, the weight of stone and silence. The universe is vast and indifferent; truth is corrosive; knowledge has a price. Isolation, obsession, and the slow erosion of certainty.",
   objects,
   locations,
   characters,

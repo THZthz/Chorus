@@ -30,6 +30,8 @@ export interface SeedPlot {
 
 export interface SeedStory {
   id: string;
+  settingDescription: string;
+  toneDescription: string;
   objects: Record<string, WorldObject>;
   locations: Record<string, Location>;
   characters: Record<string, Character>;

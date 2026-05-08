@@ -20,16 +20,17 @@ import db from "@/server/db";
 import { getAllEntitySummaries } from "@/server/models/world";
 import { buildActivePlotTree } from "@/server/models/plot";
 import { getSceneState, getGameTime, describeTime } from "@/server/models/scene";
+import { getActiveSeedStory } from "@/server/seed-stories/index";
 import { TOOL_NAMES } from "@/shared/constants";
 import type { SceneState } from "@/types/entities";
+import { MAX_GM_STEPS } from "@/server/llm/index.ts";
 
-const MAX_GM_STEPS = 10;
 const PROMPT_TEMPLATE_KEY = "gm_system_prompt";
 
 export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 You are the Game Master for a narrative-driven RPG.
-SETTING: Karavelle, the twin-faced port city of Matt Harbor. The upper levels gleam with white limestone and alchemical gas-lamps — the domain of merchant princes, minor nobility, and the duke's watch. Below, the Warrens fester in brine and coal-smoke, where slave markets trade in beastfolk and the Harbor Rats syndicate rules unchallenged. The player wakes in the Velvet Thorn, a brothel deep in the Warrens, with no memory, a violet crystal pulsing in their palm, and a beautiful half-elf named Veyla watching over them. Their latent sorcery is awakening — dangerous in a city where unlicensed magic is a crime. Veyla's own dormant elven blood resonates with the player's power, creating a pull between them that is equal parts magic and desire.
-TONE: Atmospheric, sensual, morally ambiguous. Rich sensory detail — smoke, silk, candlewax, jasmine, ozone, warm skin, old blood. Romance and danger intertwined. The world is tactile, intimate, and charged with unspoken wanting.
+SETTING: {{setting_description}}
+TONE: {{tone_description}}
 
 ---
 
@@ -662,9 +663,12 @@ export function buildSystemPrompt(): string {
     .filter(Boolean)
     .join("\n");
 
+  const seedStory = getActiveSeedStory();
   const template = getSystemPromptTemplate();
 
   return template
+    .replace("{{setting_description}}", seedStory.settingDescription)
+    .replace("{{tone_description}}", seedStory.toneDescription)
     .replace("{{entities_brief}}", entityIndex || "(no entities yet)")
     .replace("{{active_plots}}", buildActivePlotTree())
     .replace("{{game_time}}", describeTime(getGameTime()))

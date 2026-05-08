@@ -173,6 +173,10 @@ const characters: SeedStory["characters"] = {
 
 export const romanticMagicAwakening: SeedStory = {
   id: "romantic-magic-awakening",
+  settingDescription:
+    "Karavelle, the twin-faced port city of Matt Harbor. The upper levels gleam with white limestone and alchemical gas-lamps — the domain of merchant princes, minor nobility, and the duke's watch. Below, the Warrens fester in brine and coal-smoke, where slave markets trade in beastfolk and the Harbor Rats syndicate rules unchallenged. The player wakes in the Velvet Thorn, a brothel deep in the Warrens, with no memory, a violet crystal pulsing in their palm, and a beautiful half-elf named Veyla watching over them. Their latent sorcery is awakening — dangerous in a city where unlicensed magic is a crime. Veyla's own dormant elven blood resonates with the player's power, creating a pull between them that is equal parts magic and desire.",
+  toneDescription:
+    "Atmospheric, sensual, morally ambiguous. Rich sensory detail — smoke, silk, candlewax, jasmine, ozone, warm skin, old blood. Romance and danger intertwined. The world is tactile, intimate, and charged with unspoken wanting.",
   objects,
   locations,
   characters,

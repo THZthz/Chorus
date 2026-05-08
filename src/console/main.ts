@@ -19,6 +19,7 @@
 import { select, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import logUpdate from "log-update";
+import wrapAnsi from "wrap-ansi";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/shared/events";
 import { ConsoleSseClient, type SseCallbacks } from "./SseClient";
@@ -119,16 +120,16 @@ function formatMessage(msg: Message | StreamingMessage, indent = 0, showCursor =
 
   output += prefix + speakerColor(displayName) + "\n";
 
-  const textLines = msg.text.split("\n");
-  for (let i = 0; i < textLines.length; i++) {
-    const line = textLines[i];
-    const isLastLine = i === textLines.length - 1;
-    if (line.trim() !== "" || textLines.length === 1) {
-      const cursor = showCursor && isLastLine ? chalk.hex("#ff6b35")("▌") : "";
-      output += prefix + "  " + line + cursor + "\n";
-    } else {
-      output += "\n";
-    }
+  const termWidth = process.stdout.columns ?? 80;
+  const textWidth = Math.max(40, termWidth - indent - 2);
+
+  const wrapped = wrapAnsi(msg.text, textWidth, { hard: true });
+  const wrappedLines = wrapped.split("\n");
+  for (let i = 0; i < wrappedLines.length; i++) {
+    const line = wrappedLines[i];
+    const isLastLine = i === wrappedLines.length - 1;
+    const cursor = showCursor && isLastLine ? chalk.hex("#ff6b35")("▌") : "";
+    output += prefix + "  " + line + cursor + "\n";
   }
   return output;
 }

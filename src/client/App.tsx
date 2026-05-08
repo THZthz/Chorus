@@ -59,6 +59,8 @@ function buildHistoryFromTree(
       if (opt) {
         const youText = opt.selectionMessage ?? opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
         result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: youText });
+      } else if (!step.parentOptionId) {
+        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: "[Free choice]" });
       }
     }
     result.push(...step.messages);
@@ -336,6 +338,21 @@ export default function App() {
   };
 
   // ── Dice roll completion ──
+
+  const handleCustomInput = async (text: string) => {
+    if (isTyping || isRolling || isRevealingRef.current) return;
+
+    const youMessage: Message = {
+      id: `you-${await nextId()}`,
+      speaker: "YOU",
+      type: "YOU",
+      text,
+    };
+    const updatedHistory = [...history, youMessage];
+    setHistory(updatedHistory);
+    setHasBegun(true);
+    handleStreamingResponse(text, updatedHistory, lastStepId, null);
+  };
 
   const handleRollComplete = async (
     check: NonNullable<DialogueOption["check"]>,
@@ -875,6 +892,8 @@ export default function App() {
                     ? new Set(dynamicOptions.filter((o) => !o.nextStepId).map((o) => o.id))
                     : undefined
                 }
+                onCustomInput={handleCustomInput}
+                disabled={isTyping || isRolling}
               />
             )}
           </AnimatePresence>

@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
+import React, { useState, useRef } from "react";
 import { GitBranch } from "lucide-react";
 import { motion } from "motion/react";
 import { DialogueOption } from "@/types/dialogue";
@@ -25,9 +25,31 @@ interface Props {
   options: DialogueOption[];
   onSelect: (option: DialogueOption) => void;
   unexploredOptionIds?: Set<string>;
+  onCustomInput?: (text: string) => void;
+  disabled?: boolean;
 }
 
-export const DialogueOptions: React.FC<Props> = ({ options, onSelect, unexploredOptionIds }) => {
+export const DialogueOptions: React.FC<Props> = ({
+  options,
+  onSelect,
+  unexploredOptionIds,
+  onCustomInput,
+  disabled,
+}) => {
+  const [customText, setCustomText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && customText.trim()) {
+      e.preventDefault();
+      onCustomInput?.(customText.trim());
+      setCustomText("");
+    } else if (e.key === "Escape") {
+      setCustomText("");
+      inputRef.current?.blur();
+    }
+  };
+
   return (
     <div className="mt-12 font-serif">
       <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-8" />
@@ -86,6 +108,23 @@ export const DialogueOptions: React.FC<Props> = ({ options, onSelect, unexplored
           );
         })}
       </div>
+      {onCustomInput && (
+        <>
+          <div className="h-px bg-gradient-to-r from-transparent via-white/5 to-transparent my-4" />
+          <div className="px-1">
+            <input
+              ref={inputRef}
+              type="text"
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={disabled}
+              placeholder="Or type your own..."
+              className="w-full bg-transparent border-b border-white/10 text-[#ff6b35]/60 placeholder:text-white/15 text-[16px] py-1.5 outline-none focus:border-[#ff6b35]/40 focus:text-[#ff6b35]/90 transition-colors disabled:opacity-30"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 };

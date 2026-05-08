@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { select, Separator } from "@inquirer/prompts";
+import { select, input, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import logUpdate from "log-update";
 import wrapAnsi from "wrap-ansi";
@@ -355,11 +355,14 @@ async function tryResume(): Promise<boolean> {
 
 // ── Prompt Helpers ──
 
-async function presentChoice(options: DialogueOption[]): Promise<number | "regenerate" | "quit"> {
+async function presentChoice(options: DialogueOption[]): Promise<number | "regenerate" | "custom" | "quit"> {
   const sep = "─".repeat(50);
   console.log(chalk.dim(sep));
 
-  const choices: Array<{ name: string; value: number | "regenerate" | "quit"; description?: string } | InstanceType<typeof Separator>> = [
+  const choices: Array<
+    | { name: string; value: number | "regenerate" | "custom" | "quit"; description?: string }
+    | InstanceType<typeof Separator>
+  > = [
     ...options.map((opt, i) => ({
       name: formatOptionLabel(opt),
       value: i as number,
@@ -368,14 +371,15 @@ async function presentChoice(options: DialogueOption[]): Promise<number | "regen
         : undefined,
     })),
     new Separator(chalk.dim(sep)),
+    { name: chalk.hex("#ff6b35")("[Custom input...]"), value: "custom" as const },
     { name: chalk.dim("⟳ Regenerate"), value: "regenerate" as const },
     { name: "Quit", value: "quit" as const },
   ];
 
-  return await select<number | "regenerate" | "quit">({
+  return await select<number | "regenerate" | "custom" | "quit">({
     message: "Choose your action:",
     choices,
-    pageSize: Math.min(options.length + 3, 12),
+    pageSize: Math.min(options.length + 4, 12),
   });
 }
 
@@ -416,6 +420,23 @@ async function main() {
 
       if (choice === "regenerate") {
         await handleRegenerate();
+      } else if (choice === "custom") {
+        const customText = await input({ message: "What do you want to do or say?" });
+        if (!customText.trim()) continue;
+
+        const youMessage: Message = {
+          id: `console-${messageIdCounter++}`,
+          speaker: "YOU",
+          type: "YOU",
+          text: customText.trim(),
+        };
+        history = [...history, youMessage];
+
+        process.stdout.write("\n");
+        process.stdout.write(formatMessage(youMessage));
+        console.log("");
+
+        await postChatStream(customText.trim(), history, lastStepId, null);
       } else if (choice === "quit") {
         break;
       } else {

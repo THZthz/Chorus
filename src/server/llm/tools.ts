@@ -276,6 +276,10 @@ const plotSchema = z.object({
     .array(plotOptionSchema)
     .optional()
     .describe("Pre-defined branch options for this plot."),
+  flags: z
+    .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
+    .optional()
+    .describe("Optional key-value metadata scoped to this plot (e.g. {'alarm_raised': true})."),
 });
 
 export function createCreatePlotTool(events: TurnEventEmitter) {
@@ -296,6 +300,7 @@ export function createCreatePlotTool(events: TurnEventEmitter) {
         parentPlotId: args.parentPlotId ?? null,
         parentOptionId: args.parentOptionId ?? null,
         childPlots: (args.childPlots ?? []) as PlotOption[],
+        flags: args.flags ?? {},
       });
 
       if (result.ok === false) {
@@ -324,6 +329,19 @@ const plotEditSchema = z.object({
     .array(plotOptionSchema)
     .optional()
     .describe("Replacement list of branch options (replaces all existing childPlots)."),
+  addChildPlot: plotOptionSchema
+    .optional()
+    .describe("Append a single branch option to the existing childPlots array."),
+  removeChildPlot: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("Remove the branch option at this index from childPlots."),
+  flags: z
+    .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
+    .optional()
+    .describe("Key-value metadata scoped to this plot. Merged with existing flags."),
 });
 
 export function createUpdatePlotTool(events: TurnEventEmitter) {
@@ -339,6 +357,9 @@ export function createUpdatePlotTool(events: TurnEventEmitter) {
         involvedLocations: args.involvedLocations,
         involvedCharacters: args.involvedCharacters,
         childPlots: args.childPlots as PlotOption[] | undefined,
+        addChildPlot: args.addChildPlot as PlotOption | undefined,
+        removeChildPlot: args.removeChildPlot,
+        flags: args.flags,
       });
 
       if (result.ok === false) {
@@ -352,6 +373,9 @@ export function createUpdatePlotTool(events: TurnEventEmitter) {
       if (args.involvedCharacters !== undefined)
         changes.involvedCharacters = args.involvedCharacters;
       if (args.childPlots !== undefined) changes.childPlots = args.childPlots;
+      if (args.addChildPlot !== undefined) changes.addChildPlot = args.addChildPlot;
+      if (args.removeChildPlot !== undefined) changes.removeChildPlot = args.removeChildPlot;
+      if (args.flags !== undefined) changes.flags = args.flags;
       events.emitPlotEdit(args.id, changes);
 
       const plot = getPlotById(args.id);

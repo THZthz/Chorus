@@ -34,11 +34,21 @@ export interface Plot {
   parentPlotId: string | null;
   parentOptionId: number | null;
   childPlots: PlotOption[];
+  flags: Record<string, string | boolean | number>;
 }
 
 export type PlotPatch = Partial<
   Pick<
     Plot,
-    "title" | "status" | "description" | "involvedLocations" | "involvedCharacters" | "childPlots"
+    | "title"
+    | "status"
+    | "description"
+    | "involvedLocations"
+    | "involvedCharacters"
+    | "childPlots"
+    | "flags"
   >
->;
+> & {
+  addChildPlot?: PlotOption;
+  removeChildPlot?: number;
+};

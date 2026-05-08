@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import readline from "node:readline";
+import { select, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import logUpdate from "log-update";
 import type { Message, DialogueOption } from "@/types/dialogue";
@@ -149,23 +149,12 @@ function formatStreamingMessages(): string {
   return output;
 }
 
-function renderOptions(opts: DialogueOption[]) {
-  const separator = "─".repeat(50);
-  process.stdout.write(chalk.dim(`\n${separator}\n`));
-  for (let i = 0; i < opts.length; i++) {
-    const opt = opts[i];
-    const num = chalk.hex("#ff6b35")(`${i + 1}.`);
-
-    if (opt.check) {
-      const checkColor = opt.check.isRed ? chalk.hex("#d34b34") : chalk.hex("#4fb0c6");
-      process.stdout.write(
-        `  ${num} ${checkColor(`[${opt.check.skill} - ${opt.check.difficultyText}]`)} ${opt.text}\n`,
-      );
-    } else {
-      process.stdout.write(`  ${num} ${opt.text}\n`);
-    }
+function formatOptionLabel(opt: DialogueOption): string {
+  if (opt.check) {
+    const checkColor = opt.check.isRed ? chalk.hex("#d34b34") : chalk.hex("#4fb0c6");
+    return `${checkColor(`[${opt.check.skill} - ${opt.check.difficultyText}]`)} ${opt.text}`;
   }
-  process.stdout.write(chalk.dim(`${separator}\n`));
+  return opt.text;
 }
 
 function renderBanner() {
@@ -219,18 +208,11 @@ function createSseCallbacks(): SseCallbacks {
 
       if (data.options && data.options.length > 0) {
         currentOptions = data.options;
-        renderOptions(data.options);
         state = "AWAITING_OPTION";
       } else {
         currentOptions = [];
         console.log(chalk.dim("(No choices available)"));
         state = "IDLE";
-      }
-
-      if (state === "AWAITING_OPTION") {
-        showPrompt();
-      } else {
-        showBeginPrompt();
       }
     },
     onError: (message) => {
@@ -241,10 +223,8 @@ function createSseCallbacks(): SseCallbacks {
       console.log(chalk.red(`\n[ERROR] ${message}\n`));
       if (currentOptions.length > 0) {
         state = "AWAITING_OPTION";
-        showPrompt();
       } else {
         state = "IDLE";
-        showBeginPrompt();
       }
     },
     onDone: () => {
@@ -364,7 +344,6 @@ async function tryResume(): Promise<boolean> {
     console.log(chalk.dim("\n╌╌╌ Resuming session ╌╌╌\n"));
     process.stdout.write(formatMessages(hist));
     console.log("");
-    renderOptions(current.options);
 
     state = "AWAITING_OPTION";
     return true;
@@ -375,18 +354,28 @@ async function tryResume(): Promise<boolean> {
 
 // ── Prompt Helpers ──
 
-function showPrompt() {
-  process.stdout.write(
-    chalk.hex("#ff6b35")("> ") +
-      chalk.dim("[1-") +
-      chalk.hex("#ff6b35")(`${currentOptions.length}`) +
-      chalk.dim("] choose  ") +
-      chalk.dim("[r]egenerate  [q]uit\n"),
-  );
-}
+async function presentChoice(options: DialogueOption[]): Promise<number | "regenerate" | "quit"> {
+  const sep = "─".repeat(50);
+  console.log(chalk.dim(sep));
 
-function showBeginPrompt() {
-  process.stdout.write(chalk.dim("\nPress ENTER to begin your story...\n"));
+  const choices: Array<{ name: string; value: number | "regenerate" | "quit"; description?: string } | InstanceType<typeof Separator>> = [
+    ...options.map((opt, i) => ({
+      name: formatOptionLabel(opt),
+      value: i as number,
+      description: opt.check
+        ? `${opt.check.isRed ? "RED CHECK — one-time only. " : ""}Roll 2D6 + ${opt.check.skill} vs ${opt.check.difficultyText}`
+        : undefined,
+    })),
+    new Separator(chalk.dim(sep)),
+    { name: chalk.dim("⟳ Regenerate"), value: "regenerate" as const },
+    { name: "Quit", value: "quit" as const },
+  ];
+
+  return await select<number | "regenerate" | "quit">({
+    message: "Choose your action:",
+    choices,
+    pageSize: Math.min(options.length + 3, 12),
+  });
 }
 
 // ── Main ──
@@ -395,61 +384,50 @@ async function main() {
   console.clear();
   renderBanner();
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
   // Graceful shutdown
   process.on("SIGINT", () => {
     sseClient?.abort();
     console.log(chalk.dim("\n\nFarewell.\n"));
-    rl.close();
     process.exit(0);
   });
 
   // Check for existing session
-  const resumed = await tryResume();
+  await tryResume();
 
-  if (!resumed) {
-    console.log(chalk.dim("Press ENTER to begin your story..."));
-  }
-
-  // Main input loop
-  for await (const line of rl) {
-    const input = line.trim().toLowerCase();
-
+  // Main loop
+  while (true) {
     if (state === "IDLE") {
-      if (input === "" || input === "b" || input === "begin") {
+      const answer = await select({
+        message: "What would you like to do?",
+        choices: [
+          { name: "Begin your story", value: "begin" },
+          { name: "Quit", value: "quit" },
+        ],
+      });
+
+      if (answer === "begin") {
         await handleBegin();
-      } else if (input === "q") {
+      } else {
         break;
       }
     } else if (state === "AWAITING_OPTION") {
-      if (input === "r") {
+      const choice = await presentChoice(currentOptions);
+
+      if (choice === "regenerate") {
         await handleRegenerate();
-      } else if (input === "q") {
+      } else if (choice === "quit") {
         break;
       } else {
-        const idx = parseInt(input, 10);
-        if (isNaN(idx) || idx < 1 || idx > currentOptions.length) {
-          console.log(
-            chalk.yellow(
-              `Invalid choice. Pick 1-${currentOptions.length}, 'r' to regenerate, or 'q' to quit.`,
-            ),
-          );
-          showPrompt();
-        } else {
-          await handleOptionSelect(currentOptions[idx - 1]);
-        }
+        await handleOptionSelect(currentOptions[choice]);
       }
+    } else {
+      // WAITING state: pause briefly to avoid busy-waiting
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    // WAITING state: input is ignored, SSE callbacks drive transitions
   }
 
   sseClient?.abort();
   console.log(chalk.dim("\n" + "Farewell." + "\n"));
-  rl.close();
   process.exit(0);
 }
 

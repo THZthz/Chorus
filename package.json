@@ -30,6 +30,7 @@
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/theme-one-dark": "^6.1.3",
     "@google/genai": "^1.50.1",
+    "@inquirer/prompts": "^8.4.2",
     "@markdoc/markdoc": "^0.5.7",
     "@markwhen/codemirror-tables": "^0.1.1",
     "@tailwindcss/vite": "^4.1.14",

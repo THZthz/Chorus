@@ -18,7 +18,7 @@
 
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
-import type { SceneState } from "@/types/entities";
+import type { SceneState, Fact } from "@/types/entities";
 
 // ── SSE Event Payloads ──
 
@@ -93,6 +93,22 @@ export interface SceneUpdateEvent {
   scene: SceneState;
 }
 
+export interface FactAddEvent {
+  type: "fact_add";
+  fact: Fact;
+}
+
+export interface FactUpdateEvent {
+  type: "fact_update";
+  factId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface FactRemoveEvent {
+  type: "fact_remove";
+  factId: string;
+}
+
 /** A message payload from the LLM before it gets a persistent ID. */
 export interface StreamingMessage {
   speaker: string;
@@ -114,7 +130,10 @@ export type SseEventPayload =
   | ErrorEvent
   | DoneEvent
   | TimeUpdateEvent
-  | SceneUpdateEvent;
+  | SceneUpdateEvent
+  | FactAddEvent
+  | FactUpdateEvent
+  | FactRemoveEvent;
 
 export type SseEventType = SseEventPayload["type"];
 
@@ -133,4 +152,7 @@ export interface SseEventMap {
   done: DoneEvent;
   time_update: TimeUpdateEvent;
   scene_update: SceneUpdateEvent;
+  fact_add: FactAddEvent;
+  fact_update: FactUpdateEvent;
+  fact_remove: FactRemoveEvent;
 }

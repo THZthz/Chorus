@@ -18,6 +18,19 @@
 
 import type { Plot } from "@/types/plot";
 
+export interface Fact {
+  id: string;
+  key: string;
+  value: string;
+  relatedEntityIds: string[];
+  relatedPlotIds: string[];
+  relatedScene: boolean;
+  relatedTime: boolean;
+  isValid: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const ENTITY_TYPES = ["OBJECT", "LOCATION", "CHARACTER"] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
@@ -93,4 +106,5 @@ export interface WorldSnapshot {
   playerCharacter: Character | null;
   gameTime: GameTime | null;
   scene: SceneState | null;
+  facts: Fact[];
 }

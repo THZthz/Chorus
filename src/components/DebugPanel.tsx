@@ -18,7 +18,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, Database, GitBranch, FileText, Map, GripVertical } from "lucide-react";
+import { Terminal, X, Bug, Database, GitBranch, FileText, Map, StickyNote, GripVertical } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";
@@ -26,8 +26,9 @@ import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeG
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
 import { SceneViewer } from "@/components/debug/SceneViewer";
+import { FactsViewer } from "@/components/debug/FactsViewer";
 
-type TabId = "logs" | "world" | "graphs" | "prompt" | "scene";
+type TabId = "logs" | "world" | "graphs" | "prompt" | "scene" | "facts";
 type GraphMode = "dialogue" | "plot";
 
 const TAB_DEFS: Record<TabId, { label: string; icon: React.ReactNode }> = {
@@ -36,9 +37,10 @@ const TAB_DEFS: Record<TabId, { label: string; icon: React.ReactNode }> = {
   graphs: { label: "Graphs", icon: <GitBranch size={14} /> },
   prompt: { label: "Prompt", icon: <FileText size={14} /> },
   scene: { label: "Scene", icon: <Map size={14} /> },
+  facts: { label: "Facts", icon: <StickyNote size={14} /> },
 };
 
-const DEFAULT_TAB_ORDER: TabId[] = ["logs", "world", "graphs", "prompt", "scene"];
+const DEFAULT_TAB_ORDER: TabId[] = ["logs", "world", "graphs", "prompt", "scene", "facts"];
 
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
@@ -241,6 +243,7 @@ export const DebugPanel: React.FC<{
                 )}
                 {activeTab === "prompt" && <SystemPromptEditor />}
                 {activeTab === "scene" && <SceneViewer />}
+                {activeTab === "facts" && <FactsViewer />}
               </div>
             </motion.div>
           </>

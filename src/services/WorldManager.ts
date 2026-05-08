@@ -23,12 +23,14 @@ import type {
   Character,
   GameTime,
   SceneState,
+  Fact,
 } from "@/types/entities";
 import type { Plot } from "@/types/plot";
 
 class WorldManager {
   private state: WorldState = { objects: {}, locations: {}, characters: {} };
   private plots: Plot[] = [];
+  private facts: Fact[] = [];
   private replayOverride: WorldSnapshot | null = null;
   private listeners = new Set<() => void>();
 
@@ -42,9 +44,14 @@ class WorldManager {
   }
 
   async loadState() {
-    const [worldRes, plotsRes] = await Promise.all([fetch("/api/world"), fetch("/api/plots")]);
+    const [worldRes, plotsRes, factsRes] = await Promise.all([
+      fetch("/api/world"),
+      fetch("/api/plots"),
+      fetch("/api/facts"),
+    ]);
     if (worldRes.ok) this.state = await worldRes.json();
     if (plotsRes.ok) this.plots = await plotsRes.json();
+    if (factsRes.ok) this.facts = await factsRes.json();
     this.notify();
   }
 
@@ -112,6 +119,29 @@ class WorldManager {
 
   getScene(): SceneState | null {
     return this.replayOverride?.scene ?? null;
+  }
+
+  getFacts(): Fact[] {
+    return this.replayOverride?.facts ?? this.facts;
+  }
+
+  addFactToCache(fact: Fact) {
+    this.facts = [fact, ...this.facts];
+    this.notify();
+  }
+
+  updateFactInCache(factId: string, changes: Record<string, unknown>) {
+    this.facts = this.facts.map((f) =>
+      f.id === factId ? { ...f, ...(changes as Partial<Fact>) } : f,
+    );
+    this.notify();
+  }
+
+  removeFactFromCache(factId: string) {
+    this.facts = this.facts.map((f) =>
+      f.id === factId ? { ...f, isValid: false } : f,
+    );
+    this.notify();
   }
 }
 

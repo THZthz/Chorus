@@ -23,10 +23,11 @@ import { streamText, generateText, stepCountIs, type LanguageModel, type ModelMe
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
-import type { Character } from "@/types/entities";
+import type { Character, SceneState } from "@/types/entities";
 import db from "@/server/db";
 import { getAllEntities, getAllEntitySummaries } from "@/server/models/world";
 import { getAllPlots, buildActivePlotTree } from "@/server/models/plot";
+import { getFactsSnapshot } from "@/server/models/facts";
 import {
   saveStep,
   deactivateSiblingBranches,
@@ -48,10 +49,13 @@ import {
   createAdvanceTimeTool,
   createUpdateSceneTool,
   createGetSceneTool,
+  createAddFactTool,
+  createGetFactTool,
+  createUpdateFactTool,
+  createRemoveFactTool,
 } from "@/server/llm/tools";
 import { TOOL_NAMES } from "@/shared/constants";
 import { getSceneState, getGameTime, describeTime } from "@/server/models/scene";
-import type { SceneState } from "@/types/entities";
 
 // ── Constants ──
 
@@ -109,7 +113,7 @@ TONE: Atmospheric, sensual, morally ambiguous. Rich sensory detail — smoke, si
 
 ## YOUR TOOLS
 
-You have ten tools:
+You have fourteen tools:
 
 1. **${TOOL_NAMES.LIST_ENTITIES}** — Discover entities by id and name. Use before ${TOOL_NAMES.GET_ENTITY} if unsure of an ID.
 2. **${TOOL_NAMES.GET_ENTITY}** — Get full details of entities by exact ID, array of IDs (bulk), or text search.
@@ -120,7 +124,11 @@ You have ten tools:
 7. **${TOOL_NAMES.GET_SCENE}** — Get current game time and scene state (who is where, who is carrying what).
 8. **${TOOL_NAMES.UPDATE_SCENE}** — Move characters/objects between locations, or give objects to characters.
 9. **${TOOL_NAMES.ADVANCE_TIME}** — Advance the in-game clock by N segments (each segment = 2 hours).
-10. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
+10. **${TOOL_NAMES.ADD_FACT}** — Record a private GM memory. Facts persist between turns and are your scratchpad — use them for suspicions, countdowns, relationship changes, or any narrative state that isn't a plot.
+11. **${TOOL_NAMES.GET_FACT}** — Query facts by ID, bulk IDs, or filter by related entity/plot/scene/time.
+12. **${TOOL_NAMES.UPDATE_FACT}** — Update a fact's key, value, or related links.
+13. **${TOOL_NAMES.REMOVE_FACT}** — Soft-delete a fact that is no longer relevant.
+14. **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn.
 
 **Turn order example:**
 - First: read world/plot/scene state if needed (${TOOL_NAMES.LIST_ENTITIES}, ${TOOL_NAMES.GET_ENTITY}, ${TOOL_NAMES.GET_PLOT}, ${TOOL_NAMES.GET_SCENE})
@@ -129,7 +137,27 @@ You have ten tools:
 - Fourth: update scene and time if needed (${TOOL_NAMES.UPDATE_SCENE}, ${TOOL_NAMES.ADVANCE_TIME})
 - Last: ALWAYS call ${TOOL_NAMES.GENERATE_DIALOGUE} — options must align with the active plot's childPlots
 
-World-mutation, plot, scene, and time tools are optional. ${TOOL_NAMES.GENERATE_DIALOGUE} is MANDATORY.
+World-mutation, plot, scene, time, and fact tools are optional. ${TOOL_NAMES.GENERATE_DIALOGUE} is MANDATORY.
+
+---
+
+## FACTS: YOUR PRIVATE WORKING MEMORY
+
+Facts are your scratchpad. They persist between turns and are only visible to you, the GM — the player never sees them. Use facts to remember narrative state that doesn't fit into the plot tree:
+
+- **Suspicions and deductions:** "player believes Madam Cressida is lying about the ledger"
+- **Countdowns and timers:** "alchemical engine rigged to explode in 3 turns"
+- **Relationship changes:** "Veyla's trust in the player has weakened after the warehouse incident"
+- **Environmental details:** "the bell-tower glyph is now glowing faintly blue"
+- **Unresolved questions:** "what did Magister Vex take from the vault before it was sealed?"
+
+**When to use facts vs. plots:**
+- **Facts** = state notes, observations, loose threads. No structure required.
+- **Plots** = structured story arcs with branches (childPlots). Have formal status tracking.
+
+**Linking facts:** Use the relationship fields to tag facts with relevant entities, plots, scene, or time. This makes them filterable when you need to recall what you know about a specific character or quest.
+
+**Fact hygiene:** Update or remove facts when they become outdated. A fact about a suspicion that was resolved should be updated or removed.
 
 ---
 
@@ -753,6 +781,7 @@ function persistStep(
       playerCharacter,
       gameTime: getGameTime(),
       scene: getSceneState(),
+      facts: getFactsSnapshot(),
     },
     isGenerated: true,
     isActive: true,
@@ -868,6 +897,10 @@ export async function generateTurn(
         getScene: createGetSceneTool(),
         updateScene: createUpdateSceneTool(events),
         advanceTime: createAdvanceTimeTool(events),
+        addFact: createAddFactTool(events),
+        getFact: createGetFactTool(),
+        updateFact: createUpdateFactTool(events),
+        removeFact: createRemoveFactTool(events),
         generateDialogue: dialogueStepTool.tool,
       },
       stopWhen: [
@@ -1139,6 +1172,10 @@ export async function generateTurnBatch(
       getScene: createGetSceneTool(),
       updateScene: createUpdateSceneTool(noopEvents),
       advanceTime: createAdvanceTimeTool(noopEvents),
+      addFact: createAddFactTool(noopEvents),
+      getFact: createGetFactTool(),
+      updateFact: createUpdateFactTool(noopEvents),
+      removeFact: createRemoveFactTool(noopEvents),
       generateDialogue: dialogueStepTool.tool,
     },
   });

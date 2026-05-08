@@ -20,7 +20,7 @@ import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
 import type { StreamingMessage } from "@/shared/events";
-import type { SceneState } from "@/types/entities";
+import type { SceneState, Fact } from "@/types/entities";
 
 /**
  * Manages SSE output for a single turn.
@@ -97,5 +97,17 @@ export class TurnEventEmitter {
 
   emitSceneUpdate(scene: SceneState) {
     this.send("scene_update", { scene });
+  }
+
+  emitFactAdd(fact: Fact) {
+    this.send("fact_add", { fact });
+  }
+
+  emitFactUpdate(factId: string, changes: Record<string, unknown>) {
+    this.send("fact_update", { factId, changes });
+  }
+
+  emitFactRemove(factId: string) {
+    this.send("fact_remove", { factId });
   }
 }

@@ -202,6 +202,18 @@ export default function App() {
         console.trace(`[${logPrefix}] scene_update`);
         setCurrentScene(data.scene);
       },
+      onFactAdd: (data) => {
+        console.trace(`[${logPrefix}] fact_add factId=${data.fact.id}`);
+        worldManager.addFactToCache(data.fact);
+      },
+      onFactUpdate: (data) => {
+        console.trace(`[${logPrefix}] fact_update factId=${data.factId}`);
+        worldManager.updateFactInCache(data.factId, data.changes);
+      },
+      onFactRemove: (data) => {
+        console.trace(`[${logPrefix}] fact_remove factId=${data.factId}`);
+        worldManager.removeFactFromCache(data.factId);
+      },
       onError: async (message) => {
         isRetryingRef.current = false;
         console.error(`[${logPrefix}] error: ${message}`);

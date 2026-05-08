@@ -28,6 +28,14 @@ import {
 import { addPlot, updatePlot, getPlotById, getPlotsByIds, getAllPlots } from "@/server/models/plot";
 import { nextId } from "@/server/models/ids";
 import {
+  addFact,
+  getFactById,
+  getFacts,
+  getFactsByIds,
+  updateFact,
+  removeFact,
+} from "@/server/models/facts";
+import {
   getSceneState,
   setSceneState,
   getGameTime,
@@ -37,7 +45,7 @@ import {
 import { PLOT_STATUSES, PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import { DialogueOption, NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
-import { ENTITY_TYPES, EntityType, SceneState } from "@/types/entities";
+import { ENTITY_TYPES, EntityType, SceneState, type Fact } from "@/types/entities";
 import { TOOL_NAMES } from "@/shared/constants.ts";
 
 // ── Text verification ──
@@ -723,5 +731,179 @@ export function createGetSceneTool() {
         2,
       );
     }, TOOL_NAMES.GET_SCENE),
+  });
+}
+
+// ── Facts tools ──
+
+export function createAddFactTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Add Fact",
+    description:
+      "Record a GM fact — private working memory that persists between turns. Use this to remember narrative state that isn't a plot: suspicions, countdowns, character relationship changes, environmental details, etc. Facts link to related entities, plots, scene, or time for filtering.",
+    inputSchema: z.object({
+      key: z.string().describe("Short label for the fact (e.g. 'player_suspects_cressida')."),
+      value: z.string().describe("The fact value — what the GM needs to remember."),
+      relatedEntityIds: z
+        .array(z.string())
+        .optional()
+        .describe("Entity IDs this fact relates to."),
+      relatedPlotIds: z
+        .array(z.string())
+        .optional()
+        .describe("Plot IDs this fact relates to."),
+      relatedScene: z
+        .boolean()
+        .optional()
+        .describe("Set true if this fact relates to the current scene state."),
+      relatedTime: z
+        .boolean()
+        .optional()
+        .describe("Set true if this fact relates to the current game time."),
+    }),
+    execute: wrapSafe(async (args) => {
+      const fact = addFact({
+        key: args.key,
+        value: args.value,
+        relatedEntityIds: args.relatedEntityIds,
+        relatedPlotIds: args.relatedPlotIds,
+        relatedScene: args.relatedScene,
+        relatedTime: args.relatedTime,
+      });
+      events.emitFactAdd(fact);
+      return `Fact recorded: "${args.key}" (${fact.id}).`;
+    }, TOOL_NAMES.ADD_FACT),
+  });
+}
+
+const getFactSchema = z.object({
+  id: z.string().optional().describe("Exact fact ID to fetch."),
+  ids: z.array(z.string()).optional().describe("Array of fact IDs for bulk fetch."),
+  relatedEntityId: z
+    .string()
+    .optional()
+    .describe("Filter facts linked to this entity ID."),
+  relatedPlotId: z
+    .string()
+    .optional()
+    .describe("Filter facts linked to this plot ID."),
+  relatedScene: z
+    .boolean()
+    .optional()
+    .describe("Filter facts linked (or not) to scene state."),
+  relatedTime: z
+    .boolean()
+    .optional()
+    .describe("Filter facts linked (or not) to game time."),
+});
+
+export function createGetFactTool() {
+  return tool({
+    title: "Get Fact",
+    description:
+      "Retrieve facts: by single ID, multiple IDs (bulk), or filter by related entity, plot, scene, or time. Only returns valid (non-removed) facts.",
+    inputSchema: getFactSchema,
+    execute: wrapSafe(async (args) => {
+      // Single ID
+      if (args.id) {
+        const fact = getFactById(args.id);
+        if (!fact || !fact.isValid) {
+          return `ERROR: Fact '${args.id}' not found.`;
+        }
+        return JSON.stringify(fact, null, 2);
+      }
+
+      // Bulk IDs
+      if (args.ids && args.ids.length > 0) {
+        const facts = getFactsByIds(args.ids);
+        if (facts.length === 0) {
+          return `No valid facts found for the provided IDs: [${args.ids.join(", ")}].`;
+        }
+        const found = new Set(facts.map((f) => f.id));
+        const missing = args.ids.filter((id) => !found.has(id));
+        const result: Record<string, unknown> = { facts };
+        if (missing.length > 0) result.missingIds = missing;
+        return JSON.stringify(result, null, 2);
+      }
+
+      // Filter
+      const facts = getFacts({
+        relatedEntityId: args.relatedEntityId,
+        relatedPlotId: args.relatedPlotId,
+        relatedScene: args.relatedScene,
+        relatedTime: args.relatedTime,
+      });
+      if (facts.length === 0) return "No facts found matching the filter.";
+      return JSON.stringify(facts, null, 2);
+    }, TOOL_NAMES.GET_FACT),
+  });
+}
+
+const updateFactSchema = z.object({
+  id: z.string().describe("ID of the fact to update."),
+  key: z.string().optional().describe("New key label."),
+  value: z.string().optional().describe("New value."),
+  relatedEntityIds: z
+    .array(z.string())
+    .optional()
+    .describe("Replacement list of related entity IDs."),
+  relatedPlotIds: z
+    .array(z.string())
+    .optional()
+    .describe("Replacement list of related plot IDs."),
+  relatedScene: z.boolean().optional().describe("Whether this relates to scene state."),
+  relatedTime: z.boolean().optional().describe("Whether this relates to game time."),
+});
+
+export function createUpdateFactTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Update Fact",
+    description:
+      "Update an existing fact's key, value, or related links. Only valid facts can be updated. Reports an error if the fact ID does not exist.",
+    inputSchema: updateFactSchema,
+    execute: wrapSafe(async (args) => {
+      const result = updateFact(args.id, {
+        key: args.key,
+        value: args.value,
+        relatedEntityIds: args.relatedEntityIds,
+        relatedPlotIds: args.relatedPlotIds,
+        relatedScene: args.relatedScene,
+        relatedTime: args.relatedTime,
+      });
+
+      if (result.ok === false) {
+        return `ERROR: ${result.error}`;
+      }
+
+      const changes: Record<string, unknown> = {};
+      if (args.key !== undefined) changes.key = args.key;
+      if (args.value !== undefined) changes.value = args.value;
+      if (args.relatedEntityIds !== undefined) changes.relatedEntityIds = args.relatedEntityIds;
+      if (args.relatedPlotIds !== undefined) changes.relatedPlotIds = args.relatedPlotIds;
+      if (args.relatedScene !== undefined) changes.relatedScene = args.relatedScene;
+      if (args.relatedTime !== undefined) changes.relatedTime = args.relatedTime;
+      events.emitFactUpdate(args.id, changes);
+
+      return `Fact "${result.fact.key}" (${args.id}) updated.`;
+    }, TOOL_NAMES.UPDATE_FACT),
+  });
+}
+
+export function createRemoveFactTool(events: TurnEventEmitter) {
+  return tool({
+    title: "Remove Fact",
+    description:
+      "Soft-delete a fact by ID. The fact is marked invalid but retained in the database. Reports an error if the fact ID does not exist.",
+    inputSchema: z.object({
+      id: z.string().describe("ID of the fact to remove."),
+    }),
+    execute: wrapSafe(async (args) => {
+      const result = removeFact(args.id);
+      if (result.ok === false) {
+        return `ERROR: ${result.error}`;
+      }
+      events.emitFactRemove(args.id);
+      return `Fact '${args.id}' removed.`;
+    }, TOOL_NAMES.REMOVE_FACT),
   });
 }

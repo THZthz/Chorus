@@ -113,6 +113,19 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (step_id) REFERENCES dialogue_steps(id)
   );
+
+  CREATE TABLE IF NOT EXISTS facts (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    related_entity_ids TEXT NOT NULL DEFAULT '[]',
+    related_plot_ids TEXT NOT NULL DEFAULT '[]',
+    related_scene INTEGER NOT NULL DEFAULT 0,
+    related_time INTEGER NOT NULL DEFAULT 0,
+    is_valid INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Idempotent migrations for columns added after initial schema

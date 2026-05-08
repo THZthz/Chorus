@@ -89,6 +89,14 @@ apiRouter.patch("/plots/:id", (req, res) => {
   res.json({ success: true });
 });
 
+// ── Facts ──
+
+import { getFacts } from "@/server/models/facts";
+
+apiRouter.get("/facts", (_req, res) => {
+  res.json(getFacts());
+});
+
 // ── Scene ──
 
 apiRouter.get("/scene", (_req, res) => {

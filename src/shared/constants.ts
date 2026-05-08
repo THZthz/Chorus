@@ -27,6 +27,10 @@ export const TOOL_NAMES = {
   ADVANCE_TIME: "advanceTime",
   UPDATE_SCENE: "updateScene",
   GET_SCENE: "getScene",
+  ADD_FACT: "addFact",
+  GET_FACT: "getFact",
+  UPDATE_FACT: "updateFact",
+  REMOVE_FACT: "removeFact",
 } as const;
 
 export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];

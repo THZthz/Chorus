@@ -138,9 +138,7 @@ class WorldManager {
   }
 
   removeFactFromCache(factId: string) {
-    this.facts = this.facts.map((f) =>
-      f.id === factId ? { ...f, isValid: false } : f,
-    );
+    this.facts = this.facts.map((f) => (f.id === factId ? { ...f, isValid: false } : f));
     this.notify();
   }
 }

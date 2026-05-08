@@ -18,7 +18,17 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, X, Bug, Database, GitBranch, FileText, Map, StickyNote, GripVertical } from "lucide-react";
+import {
+  Terminal,
+  X,
+  Bug,
+  Database,
+  GitBranch,
+  FileText,
+  Map,
+  StickyNote,
+  GripVertical,
+} from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";

@@ -92,9 +92,7 @@ export const FactsViewer: React.FC = () => {
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-white/20">
           <StickyNote size={24} />
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em]">
-            Loading facts...
-          </span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.2em]">Loading facts...</span>
         </div>
       </div>
     );
@@ -153,9 +151,7 @@ export const FactsViewer: React.FC = () => {
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-white/15">
             <StickyNote size={24} />
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em]">
-              No facts yet
-            </span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em]">No facts yet</span>
           </div>
         ) : (
           <table className="w-full text-left border-collapse">
@@ -236,7 +232,9 @@ export const FactsViewer: React.FC = () => {
                   </td>
                   <td className="py-2 px-2">
                     {!fact.isValid && (
-                      <span className="text-[8px] text-red-400/30 font-bold uppercase">removed</span>
+                      <span className="text-[8px] text-red-400/30 font-bold uppercase">
+                        removed
+                      </span>
                     )}
                   </td>
                 </tr>

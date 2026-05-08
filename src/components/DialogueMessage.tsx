@@ -21,28 +21,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { Message, SpeakerType } from "@/types/dialogue";
 import { DieFace } from "@/components/DiceRoller";
 import { ObjectLink } from "@/components/ObjectLink";
+import { VOICE_COLORS } from "@/shared/colors.ts";
 
 interface Props {
   message: Message;
   isStreaming?: boolean;
   isFlashing?: boolean;
 }
-
-// Skill voice colors for the inner-mind pantheon
-const VOICE_COLORS: Record<string, string> = {
-  LOGIC: "#4fb0c6",
-  RHETORIC: "#c6b050",
-  EMPATHY: "#c67080",
-  PERCEPTION: "#50c6a0",
-  VOLITION: "#e07840",
-  ENDURANCE: "#c05050",
-  SORCERY: "#9081e3",
-  SUGGESTION: "#a0c650",
-  INSTINCT: "#e05858",
-  MIGHT: "#50c060",
-  CLOCKWORK: "#50b0c6",
-  ALCHEMY: "#9eff9e",
-};
 
 function hashNpcColor(name: string): string {
   let h = 5381;

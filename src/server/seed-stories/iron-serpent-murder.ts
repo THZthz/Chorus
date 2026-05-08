@@ -30,35 +30,38 @@ const objects: SeedStory["objects"] = {
       "Maker's Mark": "A tiny gear encircled by thorns — a Karavelle guild mark",
       Condition: "Recently used — blood still tacky, no oxidation",
       Significance: "Ceremonial, not practical — chosen deliberately, not grabbed in haste",
-      "Found": "Embedded in the victim's chest in Carriage 3",
+      Found: "Embedded in the victim's chest in Carriage 3",
     },
   },
   cryptic_telegram: {
     id: "cryptic_telegram",
     type: "OBJECT",
     displayName: "Folded Telegram",
-    shortDescription: "A crumpled telegraph slip with a message that makes no sense — unless it does.",
+    shortDescription:
+      "A crumpled telegraph slip with a message that makes no sense — unless it does.",
     longDescription:
       "The paper is cheap telegraph stock, the kind you'd pick up at any relay station. But it's been folded and refolded so many times the creases are worn white. The message is brief, stamped in the mechanical type of an alchemical printer:\n\n  IRON SERPENT STOP CARRIAGE 3 STOP PACKAGE IS COMPROMISED STOP DO NOT LET IT REACH KARAVELLE STOP TRUST NO ONE STOP\n\nNo sender. No date. But the paper smells faintly of machine oil and ozone — the residue of aetheric transmission. Whoever sent this knew something was wrong before the train left the station. And whoever received it is now dead.",
     attributes: {
       Medium: "Alchemical telegraph — aetheric transmission residue present",
       Condition: "Heavily folded, creases worn white from repeated handling",
-      "Key Phrases": 'IRON SERPENT / CARRIAGE 3 / PACKAGE IS COMPROMISED / DO NOT LET IT REACH KARAVELLE',
-      "Missing": "No sender, no date — either redacted or deliberately omitted",
+      "Key Phrases":
+        "IRON SERPENT / CARRIAGE 3 / PACKAGE IS COMPROMISED / DO NOT LET IT REACH KARAVELLE",
+      Missing: "No sender, no date — either redacted or deliberately omitted",
     },
   },
   silver_locket: {
     id: "silver_locket",
     type: "OBJECT",
     displayName: "Silver Locket",
-    shortDescription: "A tarnished locket pried from the victim's hand, its portrait scratched beyond recognition.",
+    shortDescription:
+      "A tarnished locket pried from the victim's hand, its portrait scratched beyond recognition.",
     longDescription:
       "The locket is old — the silver worn thin at the edges, the chain repaired twice with mismatched links. It was found clutched in the victim's left hand, the fingers frozen around it in rigor mortis. Someone had to break the thumb to get it free.\n\nInside, a miniature portrait has been deliberately scratched — gouged with the tip of a blade until the face beneath is nothing but a blur of scored paint and pale canvas. Whoever did this didn't want the victim identified. But they didn't throw the locket away. They left it in his hand. A message? A warning? Or sentiment — the killer couldn't destroy it entirely, even as they erased the face within.\n\nThe clasp is engraved with two initials, almost worn smooth: E.V.",
     attributes: {
       Material: "Tarnished silver, repaired chain with mismatched links",
-      "Portrait": "Deliberately defaced — gouged with a blade tip",
+      Portrait: "Deliberately defaced — gouged with a blade tip",
       "Initials on Clasp": "E.V. — nearly worn smooth",
-      "Found": "Clutched in the victim's left hand",
+      Found: "Clutched in the victim's left hand",
     },
   },
 };
@@ -68,7 +71,8 @@ const locations: SeedStory["locations"] = {
     id: "iron_serpent",
     type: "LOCATION",
     displayName: "The Iron Serpent",
-    shortDescription: "A steam-powered luxury express hurtling through the mountain passes — 200 souls, one killer.",
+    shortDescription:
+      "A steam-powered luxury express hurtling through the mountain passes — 200 souls, one killer.",
     longDescription:
       "The Iron Serpent is the pride of the Karavelle-Verdantis Railway — a steam-powered locomotive of gleaming brass and black iron, its engine a roaring heart of alchemical fire that drives it through the frozen mountain passes at impossible speed. Twelve carriages snake behind it: sleeping compartments paneled in dark mahogany, a dining car lit by crystal chandeliers that sway with the motion of the tracks, a lounge where the wealthy play cards and drink imported wine, and a baggage car where things less savory than luggage sometimes travel.\n\nThe train left Verdantis Station six hours ago. It is scheduled to reach Karavelle in another six. The blizzard outside has sealed the windows with frost; the mountain passes offer no stops, no escape. For the next six hours, the Iron Serpent is a closed world — a steel snake of steam and secrets, carrying a murderer who cannot leave.\n\nOutside, the wind howls. Inside, the chandeliers flicker. And in Carriage 3, the body of a man with no name lies cooling on the velvet floor.",
     attributes: {
@@ -76,7 +80,8 @@ const locations: SeedStory["locations"] = {
       "Current Status": "Six hours from Karavelle, blizzard conditions, no stops possible",
       "Train Composition": "12 carriages — sleepers, dining, lounge, baggage, crew quarters",
       Atmosphere: "Claustrophobic, luxurious, suspended — a sealed world in motion",
-      "Notable Feature": "The engine runs on alchemical combustion — silent, powerful, and volatile if mishandled",
+      "Notable Feature":
+        "The engine runs on alchemical combustion — silent, powerful, and volatile if mishandled",
     },
   },
 };
@@ -86,7 +91,8 @@ const characters: SeedStory["characters"] = {
     id: "inspector_ashworth",
     type: "CHARACTER",
     displayName: "Inspector Ashworth",
-    shortDescription: "A detective of the Royal Investigative Service — too sharp for comfort, too curious for safety.",
+    shortDescription:
+      "A detective of the Royal Investigative Service — too sharp for comfort, too curious for safety.",
     longDescription:
       "Ashworth is a man in his forties, lean and angular, with the kind of face that remembers everything and forgives nothing. Gray eyes, pale as winter slate, sit behind wire-rimmed spectacles that he polishes when he's thinking — which is constantly. He wears a traveling coat of dark wool, cut for function not fashion, and carries a pocket watch that he checks with mechanical regularity.\n\nHe joined the Royal Investigative Service young and rose fast — too fast, some said. His methods are unorthodox; his conviction rate is unmatched. He was on this train by accident, returning from a consultation in Verdantis, when the body was found. Now he's the only law on board — and he knows it. He has already sealed the crime scene, interviewed the staff, and begun building a list of suspects.\n\nThe problem is: everyone on this train has a secret. Including, perhaps, the inspector himself. He watches the player with a gaze that lingers a beat too long. He knows something. Or suspects something. Or maybe — just maybe — he's wondering if the amnesiac with the violet crystal is a witness, or a threat.",
     stats: {
@@ -105,7 +111,8 @@ const characters: SeedStory["characters"] = {
     },
     opinions: {
       YOU: "No memory. No name. A crystal that glows when they're agitated. They're either the most dangerous person on this train or the most vulnerable. Either way, they're involved — the question is how. I've been doing this long enough to know when someone is at the center of a web. They are.",
-      lady_marianne: "She's lying about who she is. The jewels are paste, the accent slips, and a woman of her supposed station doesn't travel without a maid. She was seen near Carriage 3 ten minutes before the body was discovered. But she's too clever to be this careless — unless she wants to be caught.",
+      lady_marianne:
+        "She's lying about who she is. The jewels are paste, the accent slips, and a woman of her supposed station doesn't travel without a maid. She was seen near Carriage 3 ten minutes before the body was discovered. But she's too clever to be this careless — unless she wants to be caught.",
     },
     conditions: {},
     attributes: {
@@ -138,21 +145,23 @@ const characters: SeedStory["characters"] = {
     },
     opinions: {
       YOU: "The amnesiac. How romantic. How convenient. They're either a brilliant actor or the most unlucky soul on this train. Either way, they're in my way — unless I can make them useful. A person with no past is a person with nothing to lose. That's dangerous. That's valuable.",
-      inspector_ashworth: "He sees too much. Those gray eyes miss nothing, and he's already circling. I need to give him a suspect before he starts looking too closely at me. But I can't point him at the wrong person too obviously — he'd smell the misdirection. He's not like the others. He's competent.",
+      inspector_ashworth:
+        "He sees too much. Those gray eyes miss nothing, and he's already circling. I need to give him a suspect before he starts looking too closely at me. But I can't point him at the wrong person too obviously — he'd smell the misdirection. He's not like the others. He's competent.",
     },
     conditions: {},
     attributes: {
       Occupation: "Alleged widow of a Verdantine merchant prince",
       "Traveling Under": "Lady Marianne d'Vere — almost certainly an alias",
-      "Tell": "Jewelry is paste, accent slips under pressure",
-      "Comportment": "Too calm, too cooperative, entirely too prepared",
+      Tell: "Jewelry is paste, accent slips under pressure",
+      Comportment: "Too calm, too cooperative, entirely too prepared",
     },
   },
   chief_engineer_kade: {
     id: "chief_engineer_kade",
     type: "CHARACTER",
     displayName: "Chief Engineer Kade",
-    shortDescription: "The train's master of alchemical fire — grease-stained hands, clockwork heart, and a loyalty that runs deeper than steel.",
+    shortDescription:
+      "The train's master of alchemical fire — grease-stained hands, clockwork heart, and a loyalty that runs deeper than steel.",
     longDescription:
       "Kade is built like the engine they tend — broad-shouldered, burn-scarred, perpetually humming with contained energy. Their forearms are a map of old burns and gear-grease tattoos; their right hand is partially clockwork — brass knuckles and delicate gears replacing three fingers lost to a steam accident years ago. They wear the railway uniform with the collar unbuttoned and the sleeves rolled to the elbow, as if formality itself is a heat they can't tolerate.\n\nKade has been with the Iron Serpent since her maiden voyage eight years ago. They know every bolt, every piston, every secret compartment in the locomotive's groaning heart. They know the schedule, the crew, the cargo manifests — and they know when something doesn't add up. The baggage car was sealed before departure on orders from the railway office. No manifest. No inspection. Kade didn't like it, but orders are orders.\n\nNow there's a body, a dagger with a gear-and-thorn mark Kade recognizes but won't explain, and a blizzard that's forcing the engine to burn hotter than safe limits. They're worried about the train. But they're also worried about something else — something in the baggage car that wasn't on any manifest.",
     stats: {
@@ -171,13 +180,14 @@ const characters: SeedStory["characters"] = {
     },
     opinions: {
       YOU: "Another stray. This train collects them. They've got that look — the one people get when their past has been cut loose and they're drifting. I've seen it before, in the war. But that crystal they carry... I felt it the moment they walked past the engine room. The pressure gauges spiked. Something about them makes the alchemy unstable. I should keep them away from the boiler.",
-      inspector_ashworth: "He's thorough. That's a problem. A thorough man will find the baggage car eventually, and then I'll have to explain why I didn't report the sealed cargo. I was following orders. That's not going to sound like enough, is it?",
+      inspector_ashworth:
+        "He's thorough. That's a problem. A thorough man will find the baggage car eventually, and then I'll have to explain why I didn't report the sealed cargo. I was following orders. That's not going to sound like enough, is it?",
     },
     conditions: {},
     attributes: {
       Occupation: "Chief Engineer, Iron Serpent — 8 years on this locomotive",
       "Partial Clockwork Hand": "Brass prosthetics replacing three fingers — fine motor control",
-      "Knows": "Every bolt, every secret, every unofficial cargo on the train",
+      Knows: "Every bolt, every secret, every unofficial cargo on the train",
       Concerned: "The baggage car was sealed on railway office orders — no manifest, no inspection",
     },
   },
@@ -185,7 +195,8 @@ const characters: SeedStory["characters"] = {
     id: "the_conductor",
     type: "CHARACTER",
     displayName: "Conductor Pell",
-    shortDescription: "The train's chief of staff — impeccable uniform, fraying nerves, and a ledger full of irregularities.",
+    shortDescription:
+      "The train's chief of staff — impeccable uniform, fraying nerves, and a ledger full of irregularities.",
     longDescription:
       "Conductor Pell is a man in his late fifties, silver-haired and ramrod-straight in a uniform that has been pressed to a razor's edge. His mustache is waxed, his shoes are mirrors, his ticket punch gleams like a ceremonial weapon. He has worked the railway for thirty years and has never — never — had a murder on his train. He is taking it as a personal affront.\n\nBeneath the polish, Pell is fraying. His hands tremble when he isn't gripping something. He has checked the passenger manifest seven times since the body was discovered, as if a new name might appear that explains everything. The truth is simpler and worse: there are passengers on this train who are not on the manifest. There is cargo that was never inspected. And Pell looked the other way — a bribe, a favor, a debt called in — and now a man is dead and he can't tell the inspector what he knows without incriminating himself.\n\nHe wants to do the right thing. He always has. But the right thing has become expensive, and Pell has a daughter in Karavelle with medical bills and a railway pension that won't cover them.",
     stats: {
@@ -204,14 +215,15 @@ const characters: SeedStory["characters"] = {
     },
     opinions: {
       YOU: "I don't know who they are. They're not on the manifest — I checked. I checked six times. But Inspector Ashworth hasn't detained them, so maybe... maybe it's fine. Maybe they're working with him? Or maybe I should tell him. But if I do, he'll start asking about the other names. The ones I added. The ones I removed.",
-      chief_engineer_kade: "Kade knows about the baggage car. We haven't spoken about it — we don't need to. We've been on this route together for eight years; we know when to look the other way. But Kade's worried. That makes me worried. Kade doesn't worry about anything.",
+      chief_engineer_kade:
+        "Kade knows about the baggage car. We haven't spoken about it — we don't need to. We've been on this route together for eight years; we know when to look the other way. But Kade's worried. That makes me worried. Kade doesn't worry about anything.",
     },
     conditions: {},
     attributes: {
       Occupation: "Conductor, Karavelle-Verdantis Railway — 30 years of service",
       "Current State": "Fraying — first murder on his train, and he knows more than he's saying",
       "Complicit In": "Falsified passenger manifest, uninspected cargo in the baggage car",
-      "Vulnerability": "A daughter in Karavelle, medical bills, a pension that won't cover them",
+      Vulnerability: "A daughter in Karavelle, medical bills, a pension that won't cover them",
     },
   },
 };
@@ -228,11 +240,28 @@ export const ironSerpentMurder: SeedStory = {
       "The Iron Serpent thunders through the frozen Ironfang Mountains, six hours from Karavelle with no stops and no escape. In Carriage 3, a man lies dead — a ceremonial dagger in his chest, a defaced locket in his hand, and a cryptic telegram in his pocket warning of a compromised package that must not reach the city. The player woke to the scream that discovered the body, still clutching the violet crystal, still with no memory of who they are. Inspector Ashworth of the Royal Investigative Service has sealed the train and begun his investigation. Lady Marianne d'Vere, a noblewoman with a false identity, was seen near the crime scene. Chief Engineer Kade is hiding something in the baggage car. Conductor Pell falsified the passenger manifest. And somewhere on this train, a killer is waiting out the blizzard. With six hours until Karavelle, the player must navigate a web of secrets, survive the suspicions of a brilliant detective, and discover whether they are a witness to murder — or the architect of it.",
     status: "IN_PROGRESS",
     involvedLocations: ["iron_serpent"],
-    involvedCharacters: ["inspector_ashworth", "lady_marianne", "chief_engineer_kade", "the_conductor"],
+    involvedCharacters: [
+      "inspector_ashworth",
+      "lady_marianne",
+      "chief_engineer_kade",
+      "the_conductor",
+    ],
     childPlots: [
-      { plotId: null, triggerCondition: "Player aids Inspector Ashworth's investigation, gaining his trust while hiding their own secrets" },
-      { plotId: null, triggerCondition: "Player forms an uneasy alliance with Lady Marianne, navigating her web of half-truths to uncover the bigger conspiracy" },
-      { plotId: null, triggerCondition: "Player investigates the baggage car with Kade, discovering what the killer is really after — and what it has to do with the crystal" },
+      {
+        plotId: null,
+        triggerCondition:
+          "Player aids Inspector Ashworth's investigation, gaining his trust while hiding their own secrets",
+      },
+      {
+        plotId: null,
+        triggerCondition:
+          "Player forms an uneasy alliance with Lady Marianne, navigating her web of half-truths to uncover the bigger conspiracy",
+      },
+      {
+        plotId: null,
+        triggerCondition:
+          "Player investigates the baggage car with Kade, discovering what the killer is really after — and what it has to do with the crystal",
+      },
     ],
   },
   initialTime: { day: 1, segment: 11 },

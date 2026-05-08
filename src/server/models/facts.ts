@@ -117,14 +117,18 @@ export function getFacts(filter?: FactFilter): Fact[] {
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const rows = db.prepare(`SELECT * FROM facts ${where} ORDER BY created_at DESC`).all(...params) as FactRow[];
+  const rows = db
+    .prepare(`SELECT * FROM facts ${where} ORDER BY created_at DESC`)
+    .all(...params) as FactRow[];
   return rows.map(rowToFact);
 }
 
 export function getFactsByIds(ids: string[]): Fact[] {
   const placeholders = ids.map(() => "?").join(", ");
   const rows = db
-    .prepare(`SELECT * FROM facts WHERE id IN (${placeholders}) AND is_valid = 1 ORDER BY created_at DESC`)
+    .prepare(
+      `SELECT * FROM facts WHERE id IN (${placeholders}) AND is_valid = 1 ORDER BY created_at DESC`,
+    )
     .all(...ids) as FactRow[];
   return rows.map(rowToFact);
 }

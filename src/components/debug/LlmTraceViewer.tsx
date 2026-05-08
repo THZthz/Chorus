@@ -595,7 +595,8 @@ export const LlmTraceViewer: React.FC = () => {
                                           call.toolName === TOOL_NAMES.GENERATE_DIALOGUE;
                                         const isWorldUpdate =
                                           call.toolName === TOOL_NAMES.UPDATE_ENTITY;
-                                        const isPlotStatus = call.toolName === TOOL_NAMES.UPDATE_PLOT;
+                                        const isPlotStatus =
+                                          call.toolName === TOOL_NAMES.UPDATE_PLOT;
                                         const isCreatePlot =
                                           call.toolName === TOOL_NAMES.CREATE_PLOT;
                                         const isGetAllEntities =

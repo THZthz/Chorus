@@ -46,7 +46,14 @@ import {
 import { PLOT_STATUSES, PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import { DialogueOption, NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
-import { ENTITY_TYPES, EntityType, SceneState, Character, WorldEntity, type Fact } from "@/types/entities";
+import {
+  ENTITY_TYPES,
+  EntityType,
+  SceneState,
+  Character,
+  WorldEntity,
+  type Fact,
+} from "@/types/entities";
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants.ts";
 
 // ── Text verification ──
@@ -517,7 +524,10 @@ export function createGenerateDialogueTool(_events: TurnEventEmitter) {
           );
           break;
         }
-        if (msg.type === "INNER_VOICE" && !(SKILL_NAMES as readonly string[]).includes(msg.speaker)) {
+        if (
+          msg.type === "INNER_VOICE" &&
+          !(SKILL_NAMES as readonly string[]).includes(msg.speaker)
+        ) {
           errors.push(
             `Message with type INNER_VOICE has speaker="${msg.speaker}" which is not a valid skill name. Valid skill names are: ${SKILL_NAMES.join(", ")}. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
           );
@@ -649,23 +659,20 @@ export function createAdvanceTimeTool(events: TurnEventEmitter) {
           "Brief narrative reason for the time advance (e.g. 'The conversation dragged on').",
         ),
     }),
-    execute: wrapSafe(
-      async (args: { segments?: number; days?: number; reason?: string }) => {
-        const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
-        const { oldTime, newTime } = advanceGameTime(totalSegments);
-        events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
-        const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
-        if (totalSegments === 0) {
-          return `Time unchanged. It is still ${describeTime(newTime)}.`;
-        }
-        const parts: string[] = [];
-        if (args.days && args.days > 0) parts.push(`${args.days} day(s)`);
-        if (args.segments && args.segments > 0) parts.push(`${args.segments} segment(s)`);
-        const label = parts.join(", ");
-        return `Time advanced by ${label}.${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
-      },
-      TOOL_NAMES.ADVANCE_TIME,
-    ),
+    execute: wrapSafe(async (args: { segments?: number; days?: number; reason?: string }) => {
+      const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
+      const { oldTime, newTime } = advanceGameTime(totalSegments);
+      events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
+      const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
+      if (totalSegments === 0) {
+        return `Time unchanged. It is still ${describeTime(newTime)}.`;
+      }
+      const parts: string[] = [];
+      if (args.days && args.days > 0) parts.push(`${args.days} day(s)`);
+      if (args.segments && args.segments > 0) parts.push(`${args.segments} segment(s)`);
+      const label = parts.join(", ");
+      return `Time advanced by ${label}.${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
+    }, TOOL_NAMES.ADVANCE_TIME),
   });
 }
 
@@ -816,7 +823,11 @@ export function createGetCharacterStateTool() {
         }
       }
       return JSON.stringify(
-        { character: entity, carriedObjects, sceneLocation: scene.characterLocations[args.characterId] ?? null },
+        {
+          character: entity,
+          carriedObjects,
+          sceneLocation: scene.characterLocations[args.characterId] ?? null,
+        },
         null,
         2,
       );
@@ -839,83 +850,89 @@ export function createUpdateCharacterStateTool(events: TurnEventEmitter) {
       carriedObjects: z
         .object({
           add: z.array(z.string()).optional().describe("Object IDs to give to this character."),
-          remove: z.array(z.string()).optional().describe("Object IDs to remove from this character."),
+          remove: z
+            .array(z.string())
+            .optional()
+            .describe("Object IDs to remove from this character."),
         })
         .optional()
         .describe("Inventory changes (updates scene objectPositions)."),
     }),
-    execute: wrapSafe(async (args: {
-      characterId: string;
-      stats?: Record<string, number>;
-      conditions?: Record<string, string | number | boolean | null>;
-      carriedObjects?: { add?: string[]; remove?: string[] };
-    }) => {
-      const existing = getEntityById(args.characterId);
-      if (!existing) {
-        return `ERROR: Entity '${args.characterId}' not found.`;
-      }
-      if (existing.type !== "CHARACTER") {
-        return `ERROR: Entity '${args.characterId}' is a ${existing.type}, not a CHARACTER.`;
-      }
-
-      const changes: Record<string, unknown> = {};
-      const resultParts: string[] = [];
-
-      // Update stats
-      if (args.stats && Object.keys(args.stats).length > 0) {
-        updateEntity({ id: args.characterId, stats: args.stats } as any);
-        changes.stats = args.stats;
-        resultParts.push(`stats updated: ${JSON.stringify(args.stats)}`);
-      }
-
-      // Update conditions (merge, null = remove)
-      if (args.conditions) {
-        const char = existing as Character;
-        const merged = { ...char.conditions };
-        for (const [key, value] of Object.entries(args.conditions)) {
-          if (value === null) {
-            delete merged[key];
-          } else {
-            merged[key] = value;
-          }
+    execute: wrapSafe(
+      async (args: {
+        characterId: string;
+        stats?: Record<string, number>;
+        conditions?: Record<string, string | number | boolean | null>;
+        carriedObjects?: { add?: string[]; remove?: string[] };
+      }) => {
+        const existing = getEntityById(args.characterId);
+        if (!existing) {
+          return `ERROR: Entity '${args.characterId}' not found.`;
         }
-        updateEntity({ id: args.characterId, conditions: merged } as any);
-        changes.conditions = merged;
-        resultParts.push(`conditions updated: ${JSON.stringify(merged)}`);
-      }
-
-      // Update carried objects (scene)
-      if (args.carriedObjects) {
-        const scene = getSceneState();
-        const { add, remove } = args.carriedObjects;
-        if (add) {
-          for (const objId of add) {
-            scene.objectPositions[objId] = { type: "character", characterId: args.characterId };
-          }
+        if (existing.type !== "CHARACTER") {
+          return `ERROR: Entity '${args.characterId}' is a ${existing.type}, not a CHARACTER.`;
         }
-        if (remove) {
-          for (const objId of remove) {
-            const pos = scene.objectPositions[objId];
-            if (pos && pos.type === "character" && pos.characterId === args.characterId) {
-              delete scene.objectPositions[objId];
+
+        const changes: Record<string, unknown> = {};
+        const resultParts: string[] = [];
+
+        // Update stats
+        if (args.stats && Object.keys(args.stats).length > 0) {
+          updateEntity({ id: args.characterId, stats: args.stats } as any);
+          changes.stats = args.stats;
+          resultParts.push(`stats updated: ${JSON.stringify(args.stats)}`);
+        }
+
+        // Update conditions (merge, null = remove)
+        if (args.conditions) {
+          const char = existing as Character;
+          const merged = { ...char.conditions };
+          for (const [key, value] of Object.entries(args.conditions)) {
+            if (value === null) {
+              delete merged[key];
+            } else {
+              merged[key] = value;
             }
           }
+          updateEntity({ id: args.characterId, conditions: merged } as any);
+          changes.conditions = merged;
+          resultParts.push(`conditions updated: ${JSON.stringify(merged)}`);
         }
-        setSceneState(scene);
-        events.emitSceneUpdate(scene);
-        if (add) resultParts.push(`objects given: [${add.join(", ")}]`);
-        if (remove) resultParts.push(`objects removed: [${remove.join(", ")}]`);
-      }
 
-      if (Object.keys(changes).length > 0) {
-        events.emitWorldUpdate(args.characterId, changes);
-      }
+        // Update carried objects (scene)
+        if (args.carriedObjects) {
+          const scene = getSceneState();
+          const { add, remove } = args.carriedObjects;
+          if (add) {
+            for (const objId of add) {
+              scene.objectPositions[objId] = { type: "character", characterId: args.characterId };
+            }
+          }
+          if (remove) {
+            for (const objId of remove) {
+              const pos = scene.objectPositions[objId];
+              if (pos && pos.type === "character" && pos.characterId === args.characterId) {
+                delete scene.objectPositions[objId];
+              }
+            }
+          }
+          setSceneState(scene);
+          events.emitSceneUpdate(scene);
+          if (add) resultParts.push(`objects given: [${add.join(", ")}]`);
+          if (remove) resultParts.push(`objects removed: [${remove.join(", ")}]`);
+        }
 
-      if (resultParts.length === 0) {
-        return `Character '${existing.displayName}' unchanged. No fields were specified.`;
-      }
-      return `Character '${existing.displayName}' updated:\n${resultParts.map((p) => `- ${p}`).join("\n")}`;
-    }, TOOL_NAMES.UPDATE_CHARACTER_STATE),
+        if (Object.keys(changes).length > 0) {
+          events.emitWorldUpdate(args.characterId, changes);
+        }
+
+        if (resultParts.length === 0) {
+          return `Character '${existing.displayName}' unchanged. No fields were specified.`;
+        }
+        return `Character '${existing.displayName}' updated:\n${resultParts.map((p) => `- ${p}`).join("\n")}`;
+      },
+      TOOL_NAMES.UPDATE_CHARACTER_STATE,
+    ),
   });
 }
 
@@ -931,58 +948,79 @@ export function createCreateEntityTool(events: TurnEventEmitter) {
       displayName: z.string().describe("Display name for the entity."),
       shortDescription: z.string().describe("One-line summary."),
       longDescription: z.string().describe("Detailed narrative description."),
-      attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Physical or mental traits."),
-      stats: z.record(z.string(), z.number()).optional().describe("Character stats (CHARACTER only)."),
-      opinions: z.record(z.string(), z.string()).optional().describe("Opinions about others as JSON keyed by characterId (CHARACTER only)."),
-      conditions: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Status effects (CHARACTER only)."),
-      initialLocationId: z.string().optional().describe("If set, place this entity at this location in the scene."),
+      attributes: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe("Physical or mental traits."),
+      stats: z
+        .record(z.string(), z.number())
+        .optional()
+        .describe("Character stats (CHARACTER only)."),
+      opinions: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe("Opinions about others as JSON keyed by characterId (CHARACTER only)."),
+      conditions: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe("Status effects (CHARACTER only)."),
+      initialLocationId: z
+        .string()
+        .optional()
+        .describe("If set, place this entity at this location in the scene."),
     }),
-    execute: wrapSafe(async (args: {
-      type: EntityType;
-      displayName: string;
-      shortDescription: string;
-      longDescription: string;
-      attributes?: Record<string, string | number | boolean>;
-      stats?: Record<string, number>;
-      opinions?: Record<string, string>;
-      conditions?: Record<string, string | number | boolean>;
-      initialLocationId?: string;
-    }) => {
-      const entityId = `entity_${nextId()}`;
+    execute: wrapSafe(
+      async (args: {
+        type: EntityType;
+        displayName: string;
+        shortDescription: string;
+        longDescription: string;
+        attributes?: Record<string, string | number | boolean>;
+        stats?: Record<string, number>;
+        opinions?: Record<string, string>;
+        conditions?: Record<string, string | number | boolean>;
+        initialLocationId?: string;
+      }) => {
+        const entityId = `entity_${nextId()}`;
 
-      const entity: any = {
-        id: entityId,
-        type: args.type,
-        displayName: args.displayName,
-        shortDescription: args.shortDescription,
-        longDescription: args.longDescription,
-        attributes: args.attributes || {},
-      };
+        const entity: any = {
+          id: entityId,
+          type: args.type,
+          displayName: args.displayName,
+          shortDescription: args.shortDescription,
+          longDescription: args.longDescription,
+          attributes: args.attributes || {},
+        };
 
-      if (args.type === "CHARACTER") {
-        entity.stats = args.stats || {};
-        entity.opinions = args.opinions || {};
-        entity.conditions = args.conditions || {};
-      }
-
-      upsertEntity(entity as WorldEntity);
-
-      // Optionally add to scene
-      if (args.initialLocationId) {
-        const scene = getSceneState();
         if (args.type === "CHARACTER") {
-          scene.characterLocations[entityId] = args.initialLocationId;
-        } else if (args.type === "OBJECT") {
-          scene.objectPositions[entityId] = { type: "location", locationId: args.initialLocationId };
+          entity.stats = args.stats || {};
+          entity.opinions = args.opinions || {};
+          entity.conditions = args.conditions || {};
         }
-        setSceneState(scene);
-        events.emitSceneUpdate(scene);
-      }
 
-      events.emitEntityCreate(entityId, args.type, args.displayName);
-      const locInfo = args.initialLocationId ? ` at location '${args.initialLocationId}'` : "";
-      return `Entity created: "${args.displayName}" (${entityId}, ${args.type})${locInfo}.`;
-    }, TOOL_NAMES.CREATE_ENTITY),
+        upsertEntity(entity as WorldEntity);
+
+        // Optionally add to scene
+        if (args.initialLocationId) {
+          const scene = getSceneState();
+          if (args.type === "CHARACTER") {
+            scene.characterLocations[entityId] = args.initialLocationId;
+          } else if (args.type === "OBJECT") {
+            scene.objectPositions[entityId] = {
+              type: "location",
+              locationId: args.initialLocationId,
+            };
+          }
+          setSceneState(scene);
+          events.emitSceneUpdate(scene);
+        }
+
+        events.emitEntityCreate(entityId, args.type, args.displayName);
+        const locInfo = args.initialLocationId ? ` at location '${args.initialLocationId}'` : "";
+        return `Entity created: "${args.displayName}" (${entityId}, ${args.type})${locInfo}.`;
+      },
+      TOOL_NAMES.CREATE_ENTITY,
+    ),
   });
 }
 
@@ -994,43 +1032,54 @@ export function createUpdateEntitiesTool(events: TurnEventEmitter) {
     description:
       "Bulk-update multiple entities at once. Each entry needs an id and any combination of shortDescription, longDescription, attributes, or opinions. Emits one world_update per entity.",
     inputSchema: z.object({
-      entries: z.array(
-        z.object({
-          id: z.string().describe("Entity ID to update."),
-          shortDescription: z.string().optional().describe("New concise label."),
-          longDescription: z.string().optional().describe("New detailed observation."),
-          attributes: z.record(z.string(), z.string()).optional().describe("Physical or mental traits (merged)."),
-          opinions: z.record(z.string(), z.string()).optional().describe("Opinion changes (merged, CHARACTER only)."),
-        }),
-      ).describe("Array of entity updates to apply."),
+      entries: z
+        .array(
+          z.object({
+            id: z.string().describe("Entity ID to update."),
+            shortDescription: z.string().optional().describe("New concise label."),
+            longDescription: z.string().optional().describe("New detailed observation."),
+            attributes: z
+              .record(z.string(), z.string())
+              .optional()
+              .describe("Physical or mental traits (merged)."),
+            opinions: z
+              .record(z.string(), z.string())
+              .optional()
+              .describe("Opinion changes (merged, CHARACTER only)."),
+          }),
+        )
+        .describe("Array of entity updates to apply."),
     }),
-    execute: wrapSafe(async (args: {
-      entries: {
-        id: string;
-        shortDescription?: string;
-        longDescription?: string;
-        attributes?: Record<string, string>;
-        opinions?: Record<string, string>;
-      }[];
-    }) => {
-      const results: string[] = [];
-      for (const entry of args.entries) {
-        const existing = getEntityById(entry.id);
-        if (!existing) {
-          results.push(`ERROR: Entity '${entry.id}' not found — skipped.`);
-          continue;
+    execute: wrapSafe(
+      async (args: {
+        entries: {
+          id: string;
+          shortDescription?: string;
+          longDescription?: string;
+          attributes?: Record<string, string>;
+          opinions?: Record<string, string>;
+        }[];
+      }) => {
+        const results: string[] = [];
+        for (const entry of args.entries) {
+          const existing = getEntityById(entry.id);
+          if (!existing) {
+            results.push(`ERROR: Entity '${entry.id}' not found — skipped.`);
+            continue;
+          }
+          updateEntity(entry);
+          const changes: Record<string, unknown> = {};
+          if (entry.longDescription != null) changes.longDescription = entry.longDescription;
+          if (entry.shortDescription != null) changes.shortDescription = entry.shortDescription;
+          if (entry.attributes) changes.attributes = entry.attributes;
+          if (entry.opinions) changes.opinions = entry.opinions;
+          events.emitWorldUpdate(entry.id, changes);
+          results.push(`Updated '${existing.displayName}' (${entry.id}).`);
         }
-        updateEntity(entry);
-        const changes: Record<string, unknown> = {};
-        if (entry.longDescription != null) changes.longDescription = entry.longDescription;
-        if (entry.shortDescription != null) changes.shortDescription = entry.shortDescription;
-        if (entry.attributes) changes.attributes = entry.attributes;
-        if (entry.opinions) changes.opinions = entry.opinions;
-        events.emitWorldUpdate(entry.id, changes);
-        results.push(`Updated '${existing.displayName}' (${entry.id}).`);
-      }
-      return results.join("\n");
-    }, TOOL_NAMES.UPDATE_ENTITIES),
+        return results.join("\n");
+      },
+      TOOL_NAMES.UPDATE_ENTITIES,
+    ),
   });
 }
 
@@ -1044,14 +1093,8 @@ export function createAddFactTool(events: TurnEventEmitter) {
     inputSchema: z.object({
       key: z.string().describe("Short label for the fact (e.g. 'player_suspects_cressida')."),
       value: z.string().describe("The fact value — what the GM needs to remember."),
-      relatedEntityIds: z
-        .array(z.string())
-        .optional()
-        .describe("Entity IDs this fact relates to."),
-      relatedPlotIds: z
-        .array(z.string())
-        .optional()
-        .describe("Plot IDs this fact relates to."),
+      relatedEntityIds: z.array(z.string()).optional().describe("Entity IDs this fact relates to."),
+      relatedPlotIds: z.array(z.string()).optional().describe("Plot IDs this fact relates to."),
       relatedScene: z
         .boolean()
         .optional()
@@ -1079,22 +1122,10 @@ export function createAddFactTool(events: TurnEventEmitter) {
 const getFactSchema = z.object({
   id: z.string().optional().describe("Exact fact ID to fetch."),
   ids: z.array(z.string()).optional().describe("Array of fact IDs for bulk fetch."),
-  relatedEntityId: z
-    .string()
-    .optional()
-    .describe("Filter facts linked to this entity ID."),
-  relatedPlotId: z
-    .string()
-    .optional()
-    .describe("Filter facts linked to this plot ID."),
-  relatedScene: z
-    .boolean()
-    .optional()
-    .describe("Filter facts linked (or not) to scene state."),
-  relatedTime: z
-    .boolean()
-    .optional()
-    .describe("Filter facts linked (or not) to game time."),
+  relatedEntityId: z.string().optional().describe("Filter facts linked to this entity ID."),
+  relatedPlotId: z.string().optional().describe("Filter facts linked to this plot ID."),
+  relatedScene: z.boolean().optional().describe("Filter facts linked (or not) to scene state."),
+  relatedTime: z.boolean().optional().describe("Filter facts linked (or not) to game time."),
 });
 
 export function createGetFactTool() {
@@ -1147,10 +1178,7 @@ const updateFactSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Replacement list of related entity IDs."),
-  relatedPlotIds: z
-    .array(z.string())
-    .optional()
-    .describe("Replacement list of related plot IDs."),
+  relatedPlotIds: z.array(z.string()).optional().describe("Replacement list of related plot IDs."),
   relatedScene: z.boolean().optional().describe("Whether this relates to scene state."),
   relatedTime: z.boolean().optional().describe("Whether this relates to game time."),
 });

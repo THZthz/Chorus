@@ -16,25 +16,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SeedStory } from "./types";
-import { romanticMagicAwakening } from "./romantic-magic-awakening";
-import { ironSerpentMurder } from "./iron-serpent-murder";
-import { celestialAthenaeum } from "./celestial-athenaeum";
-
-export const ACTIVE_SEED_STORY = "romantic-magic-awakening";
-
-const STORIES: Record<string, SeedStory> = {
-  "romantic-magic-awakening": romanticMagicAwakening,
-  "iron-serpent-murder": ironSerpentMurder,
-  "celestial-athenaeum": celestialAthenaeum,
+// Skill voice colors for the inner-mind pantheon
+export const VOICE_COLORS: Record<string, string> = {
+  LOGIC: "#4fb0c6",
+  RHETORIC: "#c6b050",
+  EMPATHY: "#c67080",
+  PERCEPTION: "#50c6a0",
+  VOLITION: "#e07840",
+  ENDURANCE: "#c05050",
+  SORCERY: "#9081e3",
+  SUGGESTION: "#a0c650",
+  INSTINCT: "#e05858",
+  MIGHT: "#50c060",
+  CLOCKWORK: "#50b0c6",
+  ALCHEMY: "#9eff9e",
 };
-
-export function getActiveSeedStory(): SeedStory {
-  const story = STORIES[ACTIVE_SEED_STORY];
-  if (!story) {
-    throw new Error(
-      `Unknown seed story: "${ACTIVE_SEED_STORY}". Available: ${Object.keys(STORIES).join(", ")}`,
-    );
-  }
-  return story;
-}

@@ -22,24 +22,8 @@ import logUpdate from "log-update";
 import wrapAnsi from "wrap-ansi";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/shared/events";
-import { ConsoleSseClient, type SseCallbacks } from "./SseClient";
-
-// ── Constants ──
-
-const VOICE_COLORS: Record<string, string> = {
-  LOGIC: "#4fb0c6",
-  RHETORIC: "#c6b050",
-  EMPATHY: "#c67080",
-  PERCEPTION: "#50c6a0",
-  VOLITION: "#e07840",
-  ENDURANCE: "#c05050",
-  SORCERY: "#9081e3",
-  SUGGESTION: "#a0c650",
-  INSTINCT: "#e05858",
-  MIGHT: "#50c060",
-  CLOCKWORK: "#50b0c6",
-  ALCHEMY: "#9eff9e",
-};
+import { ConsoleSseClient, type SseCallbacks } from "@/console/SseClient";
+import { VOICE_COLORS } from "@/shared/colors.ts";
 
 // ── State ──
 
@@ -355,7 +339,9 @@ async function tryResume(): Promise<boolean> {
 
 // ── Prompt Helpers ──
 
-async function presentChoice(options: DialogueOption[]): Promise<number | "regenerate" | "custom" | "quit"> {
+async function presentChoice(
+  options: DialogueOption[],
+): Promise<number | "regenerate" | "custom" | "quit"> {
   const sep = "─".repeat(50);
   console.log(chalk.dim(sep));
 

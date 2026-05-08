@@ -42,7 +42,9 @@ src/
 │       ├── JsonNode.tsx            # Single JSON node renderer (string/number/object/array)
 │       ├── LlmTraceViewer.tsx      # Parsed LLM exchange timeline with step breakdown
 │       ├── NodeGraph.tsx           # Generic canvas node graph: layout, pan/zoom, edge rendering
-│       ├── NodeGraphConfigs.tsx    # Dialogue and plot tree configs, node cards, inspectors
+│       ├── DialogueConfig.tsx       # Dialogue tree node cards, inspector, config factory
+│       ├── PlotConfig.tsx            # Plot tree node cards, inspector, config factory
+│       ├── ToolCallCard.tsx          # Reusable tool-call card (input preview, error, result) for LLM traces
 │       ├── WorldEditor.tsx         # Grouped entity editor with stat bars and opinion pills
 │       ├── SceneViewer.tsx          # Current scene viewer: location, characters, objects (live/replay)
 │       ├── SystemPromptEditor.tsx  # Live markdown editor (CodeMirror + codemirror-rich-markdoc)
@@ -56,8 +58,9 @@ src/
 │   ├── api.ts                # REST API + SSE streaming endpoints (world, plots, history, chat, debug)
 │   ├── db.ts                 # SQLite connection + schema (8 tables + idempotent migrations)
 │   ├── llm/
-│   │   ├── index.ts          # GameMaster: model init, system prompt, generateTurn(), generateTurnBatch()
-│   │   ├── tools.ts          # All 10 LLM tool definitions (schemas + executors)
+│   │   ├── index.ts          # GameMaster: model init, generateTurn(), generateTurnBatch()
+│   │   ├── prompt.ts         # System prompt template, getter/setter, buildSystemPrompt()
+│   │   ├── tools.ts          # All tool definitions (schemas + executors)
 │   │   ├── events.ts         # TurnEventEmitter: typed SSE dispatch for a single turn
 │   │   └── debug.ts          # LlmDebugIntegration: request/response/step logging
 │   ├── main.ts               # Express + Vite middleware entry

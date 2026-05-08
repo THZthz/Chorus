@@ -32,7 +32,8 @@ import {
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
 import { NodeGraph } from "@/components/debug/NodeGraph";
-import { createDialogueConfig, createPlotConfig } from "@/components/debug/NodeGraphConfigs";
+import { createDialogueConfig } from "@/components/debug/DialogueConfig";
+import { createPlotConfig } from "@/components/debug/PlotConfig";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
 import { SceneViewer } from "@/components/debug/SceneViewer";

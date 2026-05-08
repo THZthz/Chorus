@@ -17,7 +17,6 @@
  */
 
 import Database from "better-sqlite3";
-import fs from "fs";
 import path from "path";
 
 const dbPath = path.join(process.cwd(), "game.db");
@@ -129,39 +128,5 @@ try {
 try {
   db.exec("ALTER TABLE llm_steps ADD COLUMN reasoning TEXT");
 } catch {}
-
-// Seed default game time
-const timeDayRow = db
-  .prepare("SELECT value FROM system_state WHERE key = ?")
-  .get("game_time_day") as { value: string } | undefined;
-if (!timeDayRow) {
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    "game_time_day",
-    "1",
-  );
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    "game_time_segment",
-    "2",
-  );
-}
-
-// Seed default scene state
-const sceneRow = db.prepare("SELECT value FROM system_state WHERE key = ?").get("current_scene") as
-  | { value: string }
-  | undefined;
-if (!sceneRow) {
-  const defaultScene = {
-    currentLocationId: "the_velvet_thorn",
-    characterLocations: { veyla: "the_velvet_thorn", madam_cressida: "the_velvet_thorn" },
-    objectPositions: {
-      soul_shard: { type: "character", characterId: "player" },
-      veyllas_ribbon: { type: "character", characterId: "player" },
-    },
-  };
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    "current_scene",
-    JSON.stringify(defaultScene),
-  );
-}
 
 export default db;

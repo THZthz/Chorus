@@ -56,6 +56,7 @@ export const DialogueOptions: React.FC<Props> = ({
       <div className="space-y-1">
         {options.map((option, index) => {
           const isRedCheck = option.check?.isRed;
+          const isCustom = option.id.startsWith("custom_");
           const skillCheckHint = option.check
             ? `[${option.check.skill} - ${option.check.difficultyText || "Unknown"} ${option.check.difficulty}]`
             : null;
@@ -83,8 +84,13 @@ export const DialogueOptions: React.FC<Props> = ({
                   {index + 1}.
                 </span>
                 <span
-                  className={`flex-1 ${!isRedCheck && "group-hover:underline underline-offset-4 decoration-1 decoration-[#ff6b35]/40 text-pretty"}`}
+                  className={`flex-1 ${!isRedCheck && "group-hover:underline underline-offset-4 decoration-1 decoration-[#ff6b35]/40 text-pretty"} ${isCustom ? "italic text-[#ff6b35]/50" : ""}`}
                 >
+                  {isCustom && (
+                    <span className="not-italic text-[10px] uppercase tracking-wider text-white/20 mr-1.5">
+                      custom
+                    </span>
+                  )}
                   {skillCheckHint && (
                     <span
                       className={`font-bold mr-2 ${isRedCheck ? "text-white" : "text-[#4fb0c6]"}`}

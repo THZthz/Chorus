@@ -31,6 +31,7 @@ import {
   saveStep,
   deactivateSiblingBranches,
   updateOptionNextStepId,
+  addOptionToStep,
 } from "@/server/models/dialogue";
 import { addMessage } from "@/server/models/history";
 import { LlmDebugIntegration } from "@/server/llm/debug";
@@ -722,11 +723,28 @@ function persistStep(
   options: DialogueOption[],
   playerCharacter: Character | null,
   label: string,
+  userInput: string | null,
 ) {
+  // Custom input: parentStepId set but no parentOptionId → create a synthetic option
+  // on the parent step so this branch is navigable in replay mode.
+  let effectiveParentOptionId = parentOptionId;
+  if (parentStepId && !effectiveParentOptionId) {
+    const customOptionId = `custom_${nextId()}`;
+    const optionText = (userInput ?? "Custom input").slice(0, 120);
+    const customOption: DialogueOption = {
+      id: customOptionId,
+      text: optionText.length >= 120 ? optionText.slice(0, 117) + "…" : optionText,
+      selectionMessage: userInput ?? "Custom input",
+    };
+    addOptionToStep(parentStepId, customOption);
+    effectiveParentOptionId = customOptionId;
+    console.log(`[${label}] synthetic custom option: ${parentStepId}.${customOptionId}`);
+  }
+
   saveStep({
     id: stepId,
     parentStepId,
-    parentOptionId,
+    parentOptionId: effectiveParentOptionId,
     messages,
     options,
     worldSnapshot: {
@@ -744,9 +762,11 @@ function persistStep(
     `[${label}] persisted step=${stepId} messages=${messages.length} options=${options.length}`,
   );
 
-  if (parentStepId && parentOptionId) {
-    updateOptionNextStepId(parentStepId, parentOptionId, stepId);
-    console.log(`[${label}] linked parent option: ${parentStepId}.${parentOptionId} -> ${stepId}`);
+  if (parentStepId && effectiveParentOptionId) {
+    updateOptionNextStepId(parentStepId, effectiveParentOptionId, stepId);
+    console.log(
+      `[${label}] linked parent option: ${parentStepId}.${effectiveParentOptionId} -> ${stepId}`,
+    );
   }
 
   for (const msg of messages) {
@@ -1064,6 +1084,7 @@ export async function generateTurn(
     finalOptions,
     playerCharacter,
     "generateTurn",
+    userInput,
   );
   events.finish();
 }
@@ -1166,6 +1187,7 @@ export async function generateTurnBatch(
     finalOptions,
     playerCharacter,
     "generateTurnBatch",
+    userInput,
   );
   return { stepId, messages, options: finalOptions };
 }

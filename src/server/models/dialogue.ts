@@ -121,6 +121,16 @@ export function deactivateSiblingBranches(parentStepId: string, exceptStepId: st
   );
 }
 
+export function addOptionToStep(stepId: string, option: DialogueOption): void {
+  const step = getStep(stepId);
+  if (!step) return;
+  const updatedOptions = [...step.options, option];
+  db.prepare("UPDATE dialogue_steps SET options = ? WHERE id = ?").run(
+    JSON.stringify(updatedOptions),
+    stepId,
+  );
+}
+
 // Alternatives (regenerate/swipe support)
 
 export interface AlternativeRow {

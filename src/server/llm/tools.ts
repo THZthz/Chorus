@@ -38,7 +38,7 @@ import { PLOT_STATUSES, PlotOption } from "@/types/plot";
 import type { TurnEventEmitter } from "@/server/llm/events";
 import { DialogueOption, NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
 import { ENTITY_TYPES, EntityType, SceneState } from "@/types/entities";
-import { TOOL_NAMES } from "@/shared/constants.ts";
+import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants.ts";
 
 // ── Text verification ──
 
@@ -471,10 +471,22 @@ export function createGenerateDialogueTool(_events: TurnEventEmitter) {
     execute: async (args: z.infer<typeof dialogueStepSchema>) => {
       const errors: string[] = [];
 
+      if (args.messages.length === 0) {
+        errors.push(
+          "No messages — at least 1 message is required. Provide a NARRATOR message, an NPC line, or an inner voice observation.",
+        );
+      }
+
       for (const msg of args.messages) {
         if (msg.speaker === "INNER_VOICE") {
           errors.push(
             `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
+          );
+          break;
+        }
+        if (msg.type === "INNER_VOICE" && !(SKILL_NAMES as readonly string[]).includes(msg.speaker)) {
+          errors.push(
+            `Message with type INNER_VOICE has speaker="${msg.speaker}" which is not a valid skill name. Valid skill names are: ${SKILL_NAMES.join(", ")}. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
           );
           break;
         }
@@ -501,9 +513,13 @@ export function createGenerateDialogueTool(_events: TurnEventEmitter) {
         }
       }
 
-      if (!args.options || args.options.length === 0) {
+      if (!args.options || args.options.length < 2) {
         errors.push(
-          "Missing options — every ${TOOL_NAMES.GENERATE_DIALOGUE} call must include 2-5 choices for the player. Provide options that respond to the current scene.",
+          "Too few options — at least 2 options are required. Every generateDialogue call must include 2-5 choices for the player.",
+        );
+      } else if (args.options.length > 5) {
+        errors.push(
+          `Too many options (${args.options.length}) — at most 5 options are allowed. Provide 2-5 focused choices that respond to the current scene.`,
         );
       }
 
@@ -578,14 +594,21 @@ export function createAdvanceTimeTool(events: TurnEventEmitter) {
   return tool({
     title: "Advance Time",
     description:
-      "Advance the in-game clock by N segments (0-11, where each segment is 2 hours). Use 0 to describe the current time without advancing. Use this when the player's action takes time. Describe why time passes in the reason field.",
+      "Advance the in-game clock. Use `segments` (0-11, each = 2 hours) for short advances, or `days` (0+) for multi-day travel. Total advancement = days * 12 + segments. Use 0 total to describe the current time without advancing. Use this when the player's action takes time. Describe why time passes in the reason field.",
     inputSchema: z.object({
       segments: z
         .number()
         .int()
         .min(0)
         .max(11)
+        .optional()
         .describe("Number of 2-hour segments to advance (0-11)."),
+      days: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Number of full days to advance (0+), for multi-day travel or long activities."),
       reason: z
         .string()
         .optional()
@@ -593,15 +616,23 @@ export function createAdvanceTimeTool(events: TurnEventEmitter) {
           "Brief narrative reason for the time advance (e.g. 'The conversation dragged on').",
         ),
     }),
-    execute: wrapSafe(async (args: { segments: number; reason?: string }) => {
-      const { oldTime, newTime } = advanceGameTime(args.segments);
-      events.emitTimeUpdate(newTime.day, newTime.segment, args.segments);
-      const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
-      if (args.segments === 0) {
-        return `Time unchanged. It is still ${describeTime(newTime)}.`;
-      }
-      return `Time advanced by ${args.segments} segment(s).${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
-    }, TOOL_NAMES.ADVANCE_TIME),
+    execute: wrapSafe(
+      async (args: { segments?: number; days?: number; reason?: string }) => {
+        const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
+        const { oldTime, newTime } = advanceGameTime(totalSegments);
+        events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
+        const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
+        if (totalSegments === 0) {
+          return `Time unchanged. It is still ${describeTime(newTime)}.`;
+        }
+        const parts: string[] = [];
+        if (args.days && args.days > 0) parts.push(`${args.days} day(s)`);
+        if (args.segments && args.segments > 0) parts.push(`${args.segments} segment(s)`);
+        const label = parts.join(", ");
+        return `Time advanced by ${label}.${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
+      },
+      TOOL_NAMES.ADVANCE_TIME,
+    ),
   });
 }
 

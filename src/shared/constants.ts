@@ -16,6 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+export const SKILL_NAMES = [
+  "LOGIC",
+  "RHETORIC",
+  "EMPATHY",
+  "PERCEPTION",
+  "VOLITION",
+  "ENDURANCE",
+  "SORCERY",
+  "SUGGESTION",
+  "INSTINCT",
+  "MIGHT",
+  "CLOCKWORK",
+  "ALCHEMY",
+] as const;
+
+export type SkillName = (typeof SKILL_NAMES)[number];
+
 export const TOOL_NAMES = {
   LIST_ENTITIES: "listEntities",
   GET_ENTITY: "getEntity",

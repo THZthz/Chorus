@@ -24,7 +24,7 @@ import type { WorldSnapshot, GameTime, SceneState } from "@/types/entities";
 import { DialogueMessage } from "@/components/DialogueMessage";
 import { DialogueOptions } from "@/components/DialogueOptions";
 import { TypingIndicator } from "@/components/TypingIndicator";
-import { CharacterPanel } from "@/components/CharacterPanel";
+// import { CharacterPanel } from "@/components/CharacterPanel";
 import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
 import { SseClient, type SseCallbacks } from "@/services/SseClient";
@@ -701,16 +701,31 @@ export default function App() {
   // ── Render ──
 
   return (
-    <div className="h-screen w-screen bg-surface text-gray-100 flex justify-center selection:bg-accent selection:text-white overflow-hidden relative">
-      <CharacterPanel />
+    <div className="h-screen w-screen bg-surface text-gray-100 flex justify-center selection:bg-accent/60 selection:text-white overflow-hidden relative">
+      {/* Brass Frame */}
+      <div className="fixed inset-0 pointer-events-none z-[100]">
+        <div className="absolute inset-0 border-[3px] border-[#c4944a]/25 rounded-none" />
+        <div className="absolute top-0 left-0 right-0 h-[6px] bg-gradient-to-b from-[#c4944a]/40 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-[6px] bg-gradient-to-t from-[#c4944a]/40 to-transparent" />
+        <div className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-[#c4944a]/30" />
+        <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#c4944a]/30" />
+        <div className="absolute bottom-1.5 left-1.5 w-2 h-2 rounded-full bg-[#c4944a]/30" />
+        <div className="absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-[#c4944a]/30" />
+      </div>
 
-      {/* Decorative text */}
-      <div className="fixed right-6 top-1/2 -translate-y-1/2 vertical-text text-[10px] uppercase tracking-[0.4em] text-white/10 font-mono hidden lg:block select-none pointer-events-none">
-        LEFD &middot; B&Gamma;YAB &middot; SNAIO &middot; S&Gamma;A&Gamma;O
-      </div>
-      <div className="fixed left-6 top-1/2 -translate-y-1/2 vertical-text rotate-180 text-[10px] uppercase tracking-[0.4em] text-white/10 font-mono hidden lg:block select-none pointer-events-none">
-        RHE&Gamma;ORIC &middot; LOGIC &middot; EMPA&Gamma;HY &middot; VISUAL CALCULUS
-      </div>
+      {/* Ground Glass Background */}
+      <div className="fixed inset-0 pointer-events-none bg-ground-glass z-0" />
+
+      {/* Lens Vignette Overlay */}
+      <div
+        className="fixed inset-0 pointer-events-none z-0"
+        style={{
+          background: "radial-gradient(ellipse 85% 80% at 50% 50%, transparent 30%, rgba(13,9,6,0.7) 75%, rgba(13,9,6,0.95) 100%)",
+        }}
+      />
+
+      {/* <CharacterPanel /> */}
+
 
       {/* Time / Scene indicator */}
       {(gameTime || (mode === "replay" && worldManager.getGameTime())) && (
@@ -801,18 +816,6 @@ export default function App() {
         </LayoutGroup>
       </div>
 
-      {/* Background */}
-      <div className="bg-texture" />
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `radial-gradient(circle at 50% 50%, #444, #000)`,
-            filter: "contrast(120%) brightness(80%)",
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent" />
-      </div>
 
       {/* Main Content */}
       <main
@@ -911,8 +914,6 @@ export default function App() {
       </main>
 
       <DebugPanel onJumpToReplay={handleJumpToStep} currentReplayStepId={currentReplayStepId} />
-      <div className="fixed left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/50 to-transparent" />
-      <div className="fixed right-0 top-0 bottom-0 w-2 bg-gradient-to-l from-black/50 to-transparent" />
     </div>
   );
 }

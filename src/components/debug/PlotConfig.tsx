@@ -29,7 +29,7 @@ import type { NodeGraphConfig, NodeRenderProps, InspectorProps } from "./NodeGra
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PLOT_NODE_W = 200;
-const PLOT_NODE_H = 130;
+const PLOT_NODE_H = 144;
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "#eab308",
@@ -135,7 +135,7 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
         </span>
       </div>
       {/* Description preview */}
-      <div className="px-2.5 py-1.5 flex-1 min-h-0">
+      <div className="px-2.5 pt-1.5 flex-1 min-h-0">
         <p
           className="text-[10px] leading-snug italic line-clamp-2"
           style={{
@@ -145,6 +145,31 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
           {preview}
         </p>
       </div>
+      {/* Flags */}
+      {node.flags && Object.keys(node.flags).length > 0 && (
+        <div className="px-2.5 py-0.5 flex items-center gap-1 flex-shrink-0 overflow-hidden">
+          {Object.entries(node.flags)
+            .slice(0, 3)
+            .map(([k, v]) => (
+              <span
+                key={k}
+                className="text-[7px] px-1 py-0.5 rounded-sm border max-w-[56px] truncate flex-shrink-0"
+                style={{
+                  color: isEffectivelyActive ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.15)",
+                  borderColor: isEffectivelyActive ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)",
+                  backgroundColor: isEffectivelyActive ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.01)",
+                }}
+              >
+                {typeof v === "boolean" ? k : `${k}:${String(v)}`}
+              </span>
+            ))}
+          {Object.keys(node.flags).length > 3 && (
+            <span className="text-[7px] text-white/15 flex-shrink-0">
+              +{Object.keys(node.flags).length - 3}
+            </span>
+          )}
+        </div>
+      )}
       {/* Footer badges */}
       <div
         className="mt-auto px-2.5 py-1.5 flex items-center gap-2 border-t flex-shrink-0"
@@ -190,6 +215,9 @@ const PlotInspector: React.FC<
   const [status, setStatus] = useState(node.status);
   const [locationsText, setLocationsText] = useState((node.involvedLocations ?? []).join(", "));
   const [charactersText, setCharactersText] = useState((node.involvedCharacters ?? []).join(", "));
+  const [flags, setFlags] = useState<[string, string, string][]>(() =>
+    Object.entries(node.flags ?? {}).map(([k, v]) => [k, String(v), typeof v] as [string, string, string]),
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +228,7 @@ const PlotInspector: React.FC<
     setStatus(node.status);
     setLocationsText((node.involvedLocations ?? []).join(", "));
     setCharactersText((node.involvedCharacters ?? []).join(", "));
+    setFlags(Object.entries(node.flags ?? {}).map(([k, v]) => [k, String(v), typeof v] as [string, string, string]));
     setError(null);
   }, [node.id]);
 
@@ -207,6 +236,14 @@ const PlotInspector: React.FC<
     setIsSaving(true);
     setError(null);
     try {
+      const parsedFlags: Record<string, string | boolean | number> = {};
+      for (const [k, v, t] of flags) {
+        if (!k.trim()) continue;
+        if (t === "boolean") parsedFlags[k.trim()] = v === "true";
+        else if (t === "number") parsedFlags[k.trim()] = Number(v) || 0;
+        else parsedFlags[k.trim()] = v;
+      }
+
       const patch = {
         title,
         description,
@@ -219,6 +256,7 @@ const PlotInspector: React.FC<
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
+        flags: parsedFlags,
       };
 
       if (isReplayActive && currentReplayStepId && worldManager.isReplayActive()) {
@@ -384,6 +422,73 @@ const PlotInspector: React.FC<
               value={charactersText}
               onChange={(e) => setCharactersText(e.target.value)}
             />
+          </div>
+
+          {/* Flags */}
+          <div>
+            <label className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/20 block mb-1">
+              Flags
+            </label>
+            {flags.length === 0 ? (
+              <p className="text-[10px] text-white/15 italic">No flags</p>
+            ) : (
+              <div className="space-y-1 mb-1.5">
+                {flags.map(([k, v, t], i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <input
+                      className="w-[36%] bg-white/[0.04] border border-white/8 rounded-sm px-1.5 py-0.5 text-[10px] font-mono text-white/60 focus:outline-none focus:border-white/15"
+                      placeholder="key"
+                      value={k}
+                      onChange={(e) => {
+                        const next = [...flags] as [string, string, string][];
+                        next[i] = [e.target.value, v, t];
+                        setFlags(next);
+                      }}
+                    />
+                    <select
+                      className="w-[13%] bg-white/[0.04] border border-white/8 rounded-sm px-0.5 py-0.5 text-[9px] font-mono text-white/50 focus:outline-none"
+                      value={t}
+                      onChange={(e) => {
+                        const nextType = e.target.value;
+                        const next = [...flags] as [string, string, string][];
+                        const defaultVal = nextType === "boolean" ? "true" : nextType === "number" ? "0" : "";
+                        next[i] = [k, defaultVal, nextType];
+                        setFlags(next);
+                      }}
+                    >
+                      <option value="string">str</option>
+                      <option value="boolean">bool</option>
+                      <option value="number">num</option>
+                    </select>
+                    <input
+                      className="flex-1 bg-white/[0.04] border border-white/8 rounded-sm px-1.5 py-0.5 text-[10px] font-mono text-white/60 focus:outline-none focus:border-white/15"
+                      placeholder={t === "boolean" ? "true / false" : "value"}
+                      value={v}
+                      onChange={(e) => {
+                        const next = [...flags] as [string, string, string][];
+                        next[i] = [k, e.target.value, t];
+                        setFlags(next);
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const next = flags.filter((_, idx) => idx !== i);
+                        setFlags(next);
+                      }}
+                      className="p-0.5 text-white/12 hover:text-red-400/60 transition-colors flex-shrink-0"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setFlags([...flags, ["", "", "string"]])}
+              className="text-[9px] text-white/25 hover:text-white/50 border border-dashed border-white/8 hover:border-white/15 rounded-sm px-2 py-0.5 transition-colors"
+            >
+              + add flag
+            </button>
           </div>
 
           {/* Child Plots (read-only) */}

@@ -120,14 +120,14 @@ export const FactsViewer: React.FC = () => {
           placeholder="Filter by entity ID..."
           value={filterEntityId}
           onChange={(e) => setFilterEntityId(e.target.value)}
-          className="px-2 py-1 text-[10px] bg-white/[0.03] border border-white/10 rounded-sm text-white/60 placeholder:text-white/15 font-mono focus:outline-none focus:border-white/20 w-40"
+          className="px-2 py-1 text-[10px] bg-white/[0.03] border border-white/10 rounded-sm text-white/60 placeholder:text-white/15 font-mono focus:outline-none focus:border-white/20 focus-visible:ring-1 focus-visible:ring-accent/50 w-40"
         />
         <input
           type="text"
           placeholder="Filter by plot ID..."
           value={filterPlotId}
           onChange={(e) => setFilterPlotId(e.target.value)}
-          className="px-2 py-1 text-[10px] bg-white/[0.03] border border-white/10 rounded-sm text-white/60 placeholder:text-white/15 font-mono focus:outline-none focus:border-white/20 w-40"
+          className="px-2 py-1 text-[10px] bg-white/[0.03] border border-white/10 rounded-sm text-white/60 placeholder:text-white/15 font-mono focus:outline-none focus:border-white/20 focus-visible:ring-1 focus-visible:ring-accent/50 w-40"
         />
         <button
           onClick={() => setShowRemoved(!showRemoved)}

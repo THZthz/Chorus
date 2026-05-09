@@ -52,9 +52,9 @@ const RollTooltip: React.FC<{ rollResult: NonNullable<Message["rollResult"]> }> 
     initial={{ opacity: 0, y: 5, scale: 0.95 }}
     animate={{ opacity: 1, y: 0, scale: 1 }}
     exit={{ opacity: 0, scale: 0.95 }}
-    className="absolute bottom-full left-0 mb-4 p-4 bg-[#111] border border-white/10 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-50 min-w-[180px]"
+    className="absolute bottom-full left-0 mb-4 p-4 bg-surface-input border border-white/10 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-50 min-w-[180px]"
   >
-    <div className="absolute -bottom-2 left-4 w-4 h-4 bg-[#111] rotate-45 border-r border-b border-white/10" />
+    <div className="absolute -bottom-2 left-4 w-4 h-4 bg-surface-input rotate-45 border-r border-b border-white/10" />
     <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-3 border-b border-white/10 pb-2">
       Roll Result
     </div>
@@ -154,7 +154,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
                 {message.rollResult!.dice.map((val, i) => (
                   <div
                     key={i}
-                    className="w-10 h-10 rounded-sm border border-white/20 bg-[#1a1a1a] flex items-center justify-center"
+                    className="w-10 h-10 rounded-sm border border-white/20 bg-surface-card flex items-center justify-center"
                   >
                     <DieFace value={val} size="md" />
                   </div>
@@ -306,12 +306,12 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
 
             {/* Dialogue body */}
             <div
-              className={`leading-[1.75] whitespace-pre-wrap ${isSystem ? "text-[16px] text-gray-500" : "text-[18px]"}`}
+              className={`leading-[1.75] whitespace-pre-wrap text-pretty ${isSystem ? "text-[16px] text-gray-500" : "text-[18px]"}`}
               style={isInnerVoice ? { color: speakerColor } : { color: "#e8e8e8" }}
             >
               {renderText(paragraphText)}
               {isStreaming && idx === paragraphs.length - 1 && (
-                <span className="inline-block w-[2px] h-[1em] bg-[#ff6b35] ml-0.5 align-text-bottom animate-pulse" />
+                <span className="inline-block w-[2px] h-[1em] bg-accent ml-0.5 align-text-bottom animate-pulse" />
               )}
             </div>
           </div>

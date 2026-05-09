@@ -98,7 +98,7 @@ function ToolInputRenderer({
     return (
       <div>
         <div className="mb-2 text-white/40">
-          <span className="text-[#d19a66] font-mono">{(input.id as string) ?? "?"}</span>
+          <span className="text-entity-object font-mono">{(input.id as string) ?? "?"}</span>
           {input.shortDescription != null && (
             <span className="text-white/30"> shortDescription</span>
           )}
@@ -118,7 +118,7 @@ function ToolInputRenderer({
   if (toolName === TOOL_NAMES.UPDATE_PLOT) {
     return (
       <div>
-        <span className="text-[#d19a66]">{input.id as string}</span>
+        <span className="text-entity-object">{input.id as string}</span>
         <span className="text-white/20"> → </span>
         <span className="text-[#98c379]">{input.status as string}</span>
       </div>
@@ -140,7 +140,7 @@ function ToolInputRenderer({
     return (
       <div>
         <span className="text-white/40">Fetch </span>
-        <span className="text-[#d19a66]">{input.type ? (input.type as string) : "all types"}</span>
+        <span className="text-entity-object">{input.type ? (input.type as string) : "all types"}</span>
       </div>
     );
   }
@@ -152,12 +152,12 @@ function ToolInputRenderer({
         {inputAny.id ? (
           <>
             <span className="text-white/40">ID: </span>
-            <span className="text-[#d19a66] font-mono">{inputAny.id as string}</span>
+            <span className="text-entity-object font-mono">{inputAny.id as string}</span>
           </>
         ) : inputAny.ids ? (
           <>
             <span className="text-white/40">Bulk ({inputAny.ids.length}): </span>
-            <span className="text-[#d19a66] font-mono">
+            <span className="text-entity-object font-mono">
               [{(inputAny.ids as string[]).slice(0, 3).join(", ")}
               {inputAny.ids.length > 3 ? `, +${inputAny.ids.length - 3} more` : ""}]
             </span>
@@ -181,12 +181,12 @@ function ToolInputRenderer({
         {inputAny.id ? (
           <>
             <span className="text-white/40">Plot: </span>
-            <span className="text-[#d19a66] font-mono">{inputAny.id as string}</span>
+            <span className="text-entity-object font-mono">{inputAny.id as string}</span>
           </>
         ) : inputAny.ids ? (
           <>
             <span className="text-white/40">Bulk ({inputAny.ids.length}): </span>
-            <span className="text-[#d19a66] font-mono">
+            <span className="text-entity-object font-mono">
               [{(inputAny.ids as string[]).slice(0, 3).join(", ")}
               {inputAny.ids.length > 3 ? `, +${inputAny.ids.length - 3} more` : ""}]
             </span>
@@ -236,7 +236,7 @@ function ToolInputRendererCompact({
   if (toolName === TOOL_NAMES.UPDATE_ENTITY) {
     return (
       <div className="text-[10px]">
-        <span className="text-[#d19a66] font-mono">{(input.id as string) ?? "?"}</span>
+        <span className="text-entity-object font-mono">{(input.id as string) ?? "?"}</span>
         {input.shortDescription != null && <span className="text-white/30"> shortDesc</span>}
         {input.longDescription != null && <span className="text-white/30"> longDesc</span>}
         {input.attributes != null && <span className="text-white/30"> attrs</span>}
@@ -247,7 +247,7 @@ function ToolInputRendererCompact({
   if (toolName === TOOL_NAMES.UPDATE_PLOT) {
     return (
       <div className="text-[10px]">
-        <span className="text-[#d19a66]">{input.id as string}</span>
+        <span className="text-entity-object">{input.id as string}</span>
         <span className="text-white/20"> → </span>
         <span className="text-[#98c379]">{input.status as string}</span>
       </div>
@@ -264,7 +264,7 @@ function ToolInputRendererCompact({
     return (
       <div className="text-[10px]">
         <span className="text-white/30">Fetch </span>
-        <span className="text-[#d19a66]">{input.type ? (input.type as string) : "all types"}</span>
+        <span className="text-entity-object">{input.type ? (input.type as string) : "all types"}</span>
       </div>
     );
   }
@@ -274,12 +274,12 @@ function ToolInputRendererCompact({
         {inputAny.id ? (
           <>
             <span className="text-white/30">ID: </span>
-            <span className="text-[#d19a66] font-mono">{inputAny.id as string}</span>
+            <span className="text-entity-object font-mono">{inputAny.id as string}</span>
           </>
         ) : inputAny.ids ? (
           <>
             <span className="text-white/30">Bulk ({inputAny.ids.length}): </span>
-            <span className="text-[#d19a66] font-mono">
+            <span className="text-entity-object font-mono">
               [{(inputAny.ids as string[]).slice(0, 3).join(", ")}
               {inputAny.ids.length > 3 ? `, +${inputAny.ids.length - 3} more` : ""}]
             </span>
@@ -301,12 +301,12 @@ function ToolInputRendererCompact({
         {inputAny.id ? (
           <>
             <span className="text-white/30">Plot: </span>
-            <span className="text-[#d19a66] font-mono">{inputAny.id as string}</span>
+            <span className="text-entity-object font-mono">{inputAny.id as string}</span>
           </>
         ) : inputAny.ids ? (
           <>
             <span className="text-white/30">Bulk ({inputAny.ids.length}): </span>
-            <span className="text-[#d19a66] font-mono">
+            <span className="text-entity-object font-mono">
               [{(inputAny.ids as string[]).slice(0, 3).join(", ")}
               {inputAny.ids.length > 3 ? `, +${inputAny.ids.length - 3} more` : ""}]
             </span>
@@ -332,8 +332,8 @@ function ToolInputRendererCompact({
 }
 
 function toolColor(toolName: string) {
-  if (toolName === TOOL_NAMES.GENERATE_DIALOGUE) return "bg-[#c678dd]";
-  if (toolName === TOOL_NAMES.UPDATE_ENTITY) return "bg-[#61afef]";
+  if (toolName === TOOL_NAMES.GENERATE_DIALOGUE) return "bg-entity-character";
+  if (toolName === TOOL_NAMES.UPDATE_ENTITY) return "bg-entity-location";
   if (toolName === TOOL_NAMES.UPDATE_PLOT) return "bg-[#eab308]";
   if (toolName === TOOL_NAMES.CREATE_PLOT) return "bg-[#98c379]";
   return "bg-white/20";

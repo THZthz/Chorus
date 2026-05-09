@@ -130,7 +130,7 @@ const DialogueNodeCard: React.FC<NodeRenderProps<StepData> & { isCurrentReplay: 
         <span className="text-[9px] font-mono text-white/30 truncate">{shortId}</span>
         <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
           {isRoot && (
-            <span className="text-[8px] font-bold uppercase tracking-wider text-[#ff6b35]/60 border border-[#ff6b35]/20 px-1 rounded-sm">
+            <span className="text-[8px] font-bold uppercase tracking-wider text-accent/60 border border-accent/20 px-1 rounded-sm">
               ROOT
             </span>
           )}

@@ -75,8 +75,8 @@ export const DialogueOptions: React.FC<Props> = ({
                 isRedCheck
                   ? "bg-[#d34b34] text-white hover:bg-[#e05a44]"
                   : isUnexplored
-                    ? "text-[#ff6b35]/50 hover:text-[#ff8d61] border border-dashed border-white/10"
-                    : "text-[#ff6b35] hover:text-[#ff8d61]"
+                    ? "text-accent/50 hover:text-[#ff8d61] border border-dashed border-white/10"
+                    : "text-accent hover:text-[#ff8d61]"
               }`}
             >
               <div className="flex gap-2 items-start">
@@ -84,7 +84,7 @@ export const DialogueOptions: React.FC<Props> = ({
                   {index + 1}.
                 </span>
                 <span
-                  className={`flex-1 ${!isRedCheck && "group-hover:underline underline-offset-4 decoration-1 decoration-[#ff6b35]/40 text-pretty"} ${isCustom ? "italic text-[#ff6b35]/50" : ""}`}
+                  className={`flex-1 ${!isRedCheck && "group-hover:underline underline-offset-4 decoration-1 decoration-accent/40 text-pretty"} ${isCustom ? "italic text-accent/50" : ""}`}
                 >
                   {isCustom && (
                     <span className="not-italic text-[10px] uppercase tracking-wider text-white/20 mr-1.5">
@@ -126,7 +126,7 @@ export const DialogueOptions: React.FC<Props> = ({
               onKeyDown={handleKeyDown}
               disabled={disabled}
               placeholder="Or type your own..."
-              className="w-full bg-transparent border-b border-white/10 text-[#ff6b35]/60 placeholder:text-white/15 text-[16px] py-1.5 outline-none focus:border-[#ff6b35]/40 focus:text-[#ff6b35]/90 transition-colors disabled:opacity-30"
+              className="w-full bg-transparent border-b border-white/10 text-accent/60 placeholder:text-white/15 text-[16px] py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-accent/50 focus:border-accent/40 focus:text-accent/90 transition-colors disabled:opacity-40"
             />
           </div>
         </>

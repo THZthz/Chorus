@@ -75,7 +75,7 @@ export const CustomSelect: React.FC<{
         ref={buttonRef}
         type="button"
         onMouseDown={toggleOpen}
-        className="w-full flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-sm px-2 py-1 text-[11px] font-mono text-white/70 hover:border-white/20 focus:outline-none transition-colors"
+        className="w-full flex items-center justify-between bg-white/[0.04] border border-white/10 rounded-sm px-2 py-1 text-[11px] font-mono text-white/70 hover:border-white/20 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 transition-colors"
       >
         <span className="truncate">{selected?.label ?? value}</span>
         <ChevronDown
@@ -106,7 +106,7 @@ export const CustomSelect: React.FC<{
                   onChange(opt.value);
                   setOpen(false);
                 }}
-                className={`w-full text-left px-2 py-1.5 text-[11px] font-mono transition-colors ${
+                className={`w-full text-left px-2 py-1.5 text-[11px] font-mono transition-colors focus-visible:ring-1 focus-visible:ring-accent/50 focus-visible:ring-inset ${
                   opt.value === value
                     ? "bg-white/8 text-white/90"
                     : "text-white/55 hover:bg-white/[0.05] hover:text-white/80"

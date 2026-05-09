@@ -30,6 +30,7 @@ import { worldManager } from "@/services/WorldManager";
 import { SseClient, type SseCallbacks } from "@/services/SseClient";
 import { useCharacter } from "@/context/CharacterContext";
 import { nextId, initIdPool } from "@/client/idPool";
+import { SEGMENT_LABELS } from "@/shared/constants";
 
 function buildHistoryFromTree(
   stepId: string,
@@ -700,7 +701,7 @@ export default function App() {
   // ── Render ──
 
   return (
-    <div className="h-screen w-screen bg-[#0a0a0a] text-gray-100 flex justify-center selection:bg-[#ff6b35] selection:text-white overflow-hidden relative">
+    <div className="h-screen w-screen bg-surface text-gray-100 flex justify-center selection:bg-accent selection:text-white overflow-hidden relative">
       <CharacterPanel />
 
       {/* Decorative text */}
@@ -716,23 +717,9 @@ export default function App() {
         <div className="fixed top-8 right-8 z-50 text-right pointer-events-none">
           <div className="text-xs text-white/40 font-mono tracking-wider">
             {(() => {
-              const segLabels = [
-                "Midnight",
-                "Late Night",
-                "Dawn",
-                "Early Morning",
-                "Morning",
-                "Late Morning",
-                "Noon",
-                "Afternoon",
-                "Late Afternoon",
-                "Dusk",
-                "Evening",
-                "Night",
-              ];
               const t = mode === "replay" ? worldManager.getGameTime() : gameTime;
               if (!t) return null;
-              return `Day ${t.day} · ${segLabels[t.segment] ?? `Segment ${t.segment}`}`;
+              return `Day ${t.day} · ${SEGMENT_LABELS[t.segment] ?? `Segment ${t.segment}`}`;
             })()}
           </div>
           {currentScene && (
@@ -752,7 +739,7 @@ export default function App() {
             initial={{ color: "#6b7280", borderColor: "rgba(255, 255, 255, 0.05)" }}
             whileHover={{ scale: 1.1, color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.5)" }}
             whileTap={{ scale: 0.95 }}
-            className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border rounded-full shadow-lg z-10"
+            className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border rounded-full shadow-lg z-10"
           >
             <Trash2 size={18} />
           </motion.button>
@@ -768,7 +755,7 @@ export default function App() {
                 transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
                 onClick={handleRegenerate}
                 title="Regenerate Response"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-blue-400/30 rounded-full text-blue-400 hover:bg-blue-400 hover:text-white transition-all duration-300 shadow-xl"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-blue-400/30 rounded-full text-blue-400 hover:bg-blue-400 hover:text-white transition-all duration-300 shadow-xl"
               >
                 <RefreshCw size={18} />
               </motion.button>
@@ -787,7 +774,7 @@ export default function App() {
                 transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
                 onClick={enterReplayMode}
                 title="Replay Dialogue Tree"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
               >
                 <GitBranch size={18} />
               </motion.button>
@@ -805,7 +792,7 @@ export default function App() {
                 transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
                 onClick={exitReplayMode}
                 title="Return to Live Mode"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-[#1a1a1a] border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
+                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
               >
                 <RotateCcw size={18} />
               </motion.button>
@@ -824,7 +811,7 @@ export default function App() {
             filter: "contrast(120%) brightness(80%)",
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent" />
       </div>
 
       {/* Main Content */}

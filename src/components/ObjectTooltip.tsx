@@ -65,10 +65,10 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
   const Icon = object.type === "CHARACTER" ? User : object.type === "LOCATION" ? MapPin : Box;
   const typeColor =
     object.type === "CHARACTER"
-      ? "text-pink-500"
+      ? "text-entity-character"
       : object.type === "LOCATION"
-        ? "text-green-500"
-        : "text-cyan-500";
+        ? "text-entity-location"
+        : "text-entity-object";
 
   const positionClasses = [
     position.vertical === "above" ? "bottom-full mb-2" : "top-full mt-2",
@@ -86,7 +86,7 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
       className={`absolute z-[100] w-72 overflow-visible ${positionClasses}`}
       id={`object-tooltip-${object.id}`}
     >
-      <div className="bg-[#0a0a0a]/95 backdrop-blur-md border border-gray-800 rounded-lg shadow-2xl p-4 overflow-hidden">
+      <div className="bg-surface/95 backdrop-blur-md border border-gray-800 rounded-lg shadow-2xl p-4 overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between mb-3 border-b border-gray-800 pb-2">
           <div>
@@ -166,7 +166,7 @@ export const ObjectTooltip: React.FC<Props> = ({ object }) => {
         </AnimatePresence>
 
         {/* Decorative pulse element */}
-        <div className="absolute top-0 right-0 w-1 h-1 bg-cyan-500 rounded-full animate-pulse m-2 opacity-50" />
+        <div className="absolute top-0 right-0 w-1 h-1 bg-entity-object rounded-full animate-pulse m-2 opacity-50" />
       </div>
     </motion.div>
   );

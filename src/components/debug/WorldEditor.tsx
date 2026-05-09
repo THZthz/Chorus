@@ -63,12 +63,12 @@ const StatBar: React.FC<{
             key={i}
             onClick={() => onChange(Math.max(1, Math.round(((i + 1) / segments) * max)))}
             className={`h-2 flex-1 transition-colors ${
-              i < filled ? "bg-[#ff6b35]/55 hover:bg-[#ff6b35]/80" : "bg-white/8 hover:bg-white/20"
+              i < filled ? "bg-accent/55 hover:bg-accent/80" : "bg-white/8 hover:bg-white/20"
             }`}
           />
         ))}
       </div>
-      <span className="text-[#d19a66] text-[11px] font-mono w-4 text-right tabular-nums">
+      <span className="text-accent text-[11px] font-mono w-4 text-right tabular-nums">
         {value}
       </span>
       <div className="flex gap-px opacity-0 group-hover/stat:opacity-100 transition-opacity">
@@ -187,8 +187,8 @@ const OpinionPills: React.FC<{
             onClick={() => startEdit(k)}
             className={`flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-mono border transition-all ${
               editingKey === k
-                ? "bg-[#c678dd]/15 border-[#c678dd]/40 text-[#c678dd]"
-                : "bg-[#c678dd]/8 border-[#c678dd]/15 text-[#c678dd]/70 hover:border-[#c678dd]/30"
+                ? "bg-entity-character/15 border-entity-character/40 text-entity-character"
+                : "bg-entity-character/8 border-entity-character/15 text-entity-character/70 hover:border-entity-character/30"
             }`}
           >
             <span className="truncate max-w-[80px]">{k}</span>
@@ -220,7 +220,7 @@ const OpinionPills: React.FC<{
             className="overflow-hidden"
           >
             <div className="p-3 bg-white/[0.03] border border-white/8 rounded-sm space-y-2">
-              <div className="text-[9px] font-bold text-[#c678dd]/60 uppercase tracking-widest">
+              <div className="text-[9px] font-bold text-entity-character/60 uppercase tracking-widest">
                 {editingKey}
               </div>
               <ResizableTextarea
@@ -234,7 +234,7 @@ const OpinionPills: React.FC<{
               <div className="flex gap-2">
                 <button
                   onClick={applyEdit}
-                  className="px-3 py-1 bg-[#c678dd]/10 border border-[#c678dd]/20 text-[#c678dd] text-[9px] font-bold uppercase tracking-wider rounded-sm hover:bg-[#c678dd]/20 transition-colors"
+                  className="px-3 py-1 bg-entity-character/10 border border-entity-character/20 text-entity-character text-[9px] font-bold uppercase tracking-wider rounded-sm hover:bg-entity-character/20 transition-colors"
                 >
                   Apply
                 </button>
@@ -390,7 +390,7 @@ export const WorldEditor: React.FC = () => {
                         <button
                           key={entity.id}
                           onClick={() => selectEntity(entity)}
-                          className={`w-full text-left px-2.5 py-2 rounded-sm text-[11px] transition-all flex items-center gap-2 ${
+                          className={`w-full text-left px-2.5 py-2 rounded-sm text-[11px] transition-all flex items-center gap-2 focus-visible:ring-1 focus-visible:ring-accent/50 ${
                             selectedId === entity.id
                               ? "bg-white/8 text-white"
                               : "text-white/40 hover:bg-white/[0.03] hover:text-white/60"
@@ -412,7 +412,7 @@ export const WorldEditor: React.FC = () => {
           })}
           <button
             onClick={addNewEntity}
-            className="w-full flex items-center gap-2 px-2.5 py-2 text-[9px] uppercase tracking-widest font-bold text-white/20 hover:text-white/40 border border-dashed border-white/8 hover:border-white/20 transition-all rounded-sm"
+            className="w-full flex items-center gap-2 px-2.5 py-2 text-[9px] uppercase tracking-widest font-bold text-white/20 hover:text-white/40 border border-dashed border-white/8 hover:border-white/20 transition-all rounded-sm focus-visible:ring-1 focus-visible:ring-accent/50"
           >
             <Plus size={10} />
             Append_Entity
@@ -443,7 +443,7 @@ export const WorldEditor: React.FC = () => {
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className={`flex items-center gap-2 px-3 py-1 rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 ${
+                className={`flex items-center gap-2 px-3 py-1 rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 focus-visible:ring-1 focus-visible:ring-accent/50 ${
                   savedFlash
                     ? "bg-[#98c379]/15 text-[#98c379] border-[#98c379]/30"
                     : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white border-white/10"

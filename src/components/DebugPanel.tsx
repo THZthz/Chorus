@@ -143,7 +143,7 @@ export const DebugPanel: React.FC<{
       <button
         id="debug-panel-toggle"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-8 right-8 z-50 h-11 min-w-[2.75rem] px-3 bg-[#1a1a1a] border border-[#ff6b35]/30 rounded-full text-[#ff6b35] hover:bg-[#ff6b35] hover:text-white transition-all duration-300 shadow-lg group flex items-center justify-center overflow-hidden"
+        className="fixed bottom-8 right-8 z-50 h-11 min-w-[2.75rem] px-3 bg-surface-card border border-accent/30 rounded-full text-accent hover:bg-accent hover:text-white transition-all duration-300 shadow-lg group flex items-center justify-center overflow-hidden"
         title="Open Debug Panel"
       >
         <div className="flex items-center justify-center">
@@ -162,14 +162,14 @@ export const DebugPanel: React.FC<{
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsOpen(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
             />
             <motion.div
               id="debug-panel-modal"
               initial={{ opacity: 0, x: 300 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 300 }}
-              className="fixed inset-y-0 right-0 bg-[#0a0a0a] text-gray-100 shadow-2xl z-50 flex flex-col border-l border-white/10 font-mono text-sm"
+              className="fixed inset-y-0 right-0 bg-surface text-gray-100 shadow-2xl z-50 flex flex-col border-l border-white/10 font-mono text-sm"
               style={{ width: `${panelWidth}px`, maxWidth: "100%" }}
             >
               {/* Left-edge resize handle */}
@@ -181,7 +181,7 @@ export const DebugPanel: React.FC<{
               >
                 <div className="w-0.5 h-12 rounded-sm bg-white/5 group-hover/panel:bg-white/20 transition-colors" />
               </div>
-              <div className="flex items-center justify-between px-4 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-md sticky top-0 z-10">
+              <div className="flex items-center justify-between px-4 border-b border-white/10 bg-surface/90 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center">
                   {tabOrder.map((id) => {
                     const def = TAB_DEFS[id];
@@ -219,7 +219,7 @@ export const DebugPanel: React.FC<{
                             : "border-transparent text-white/30 hover:text-white/60 hover:bg-white/2"
                         } ${dragTabId === id ? "opacity-30" : "opacity-100"} ${
                           dragOverTabId === id && dragTabId !== id
-                            ? "border-l-2 border-l-[#ff6b35]/60"
+                            ? "border-l-2 border-l-accent/60"
                             : ""
                         }`}
                       >
@@ -237,7 +237,7 @@ export const DebugPanel: React.FC<{
                 <div className="flex items-center gap-3 pr-4">
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="p-1.5 hover:bg-white/5 rounded-sm text-white/40 hover:text-white transition-colors"
+                    className="p-1.5 hover:bg-white/5 rounded-sm text-white/40 hover:text-white transition-colors focus-visible:ring-1 focus-visible:ring-accent/50"
                   >
                     <X size={18} />
                   </button>
@@ -288,7 +288,7 @@ export const DebugPanel: React.FC<{
                           <button
                             onClick={handlePregeneratePlots}
                             disabled={pregenerating}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#ff6b35]/10 text-[#ff6b35] hover:bg-[#ff6b35]/20 rounded-sm border border-[#ff6b35]/20 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-accent/10 text-accent hover:bg-accent/20 rounded-sm border border-accent/20 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-50"
                           >
                             {pregenerating ? (
                               <Loader2 size={11} className="animate-spin" />

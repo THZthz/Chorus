@@ -48,7 +48,7 @@ function PlotNode({ plot, plots, depth = 0 }: { plot: Plot; plots: Plot[]; depth
   return (
     <div className={depth > 0 ? "mt-2" : ""}>
       <div
-        className={`p-3 bg-[#1a1a1a] border border-white/5 rounded-sm transition-opacity ${!active ? "opacity-40" : ""}`}
+        className={`p-3 bg-surface-card border border-white/5 rounded-sm transition-opacity ${!active ? "opacity-40" : ""}`}
         style={
           depth > 0
             ? { marginLeft: `${depth * 12}px`, borderLeft: `2px solid rgba(255,107,53,0.2)` }
@@ -83,10 +83,10 @@ function PlotNode({ plot, plots, depth = 0 }: { plot: Plot; plots: Plot[]; depth
           <div className="mt-2 pt-2 border-t border-white/5 space-y-1">
             {plot.childPlots.map((opt, i) => (
               <div key={i} className="flex items-start gap-1.5 text-[10px] text-gray-500">
-                <span className="text-[#ff6b35]/50 mt-0.5">›</span>
+                <span className="text-accent/50 mt-0.5">›</span>
                 <span className={opt.plotId ? "text-gray-400" : "italic"}>
                   {opt.triggerCondition}
-                  {opt.plotId && <span className="text-[#ff6b35]/70 ml-1">→ {opt.plotId}</span>}
+                  {opt.plotId && <span className="text-accent/70 ml-1">→ {opt.plotId}</span>}
                 </span>
               </div>
             ))}
@@ -131,7 +131,7 @@ export const CharacterPanel: React.FC = () => {
       <button
         id="character-panel-toggle"
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-8 right-8 z-50 h-11 min-w-[2.75rem] px-3 bg-[#1a1a1a] border border-[#ff6b35]/30 rounded-full text-[#ff6b35] hover:bg-[#ff6b35] hover:text-white transition-all duration-300 shadow-lg group flex items-center justify-center overflow-hidden"
+        className="fixed top-8 right-8 z-50 h-11 min-w-[2.75rem] px-3 bg-surface-card border border-accent/30 rounded-full text-accent hover:bg-accent hover:text-white transition-all duration-300 shadow-lg group flex items-center justify-center overflow-hidden"
       >
         <div className="flex items-center justify-center">
           <User size={20} className="shrink-0" />
@@ -149,7 +149,7 @@ export const CharacterPanel: React.FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsOpen(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[51]"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[51]"
           />
         )}
       </AnimatePresence>
@@ -162,7 +162,7 @@ export const CharacterPanel: React.FC = () => {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-80 bg-[#0f0f0f] border-l border-[#ff6b35]/20 z-[52] shadow-2xl p-8 flex flex-col"
+            className="fixed top-0 right-0 h-full w-80 bg-surface-raised border-l border-accent/20 z-[52] shadow-2xl p-8 flex flex-col"
           >
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-[20px] font-sans font-bold uppercase tracking-[0.2em] text-white">
@@ -180,13 +180,13 @@ export const CharacterPanel: React.FC = () => {
             <div className="flex border-b border-white/10 mb-8">
               <button
                 onClick={() => setActiveTab("STATS")}
-                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none ${activeTab === "STATS" ? "text-[#ff6b35] border-b-2 border-[#ff6b35]" : "text-gray-500 hover:text-gray-300"}`}
+                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${activeTab === "STATS" ? "text-accent border-b-2 border-accent" : "text-gray-500 hover:text-gray-300"}`}
               >
                 Attributes
               </button>
               <button
                 onClick={() => setActiveTab("WORLD")}
-                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none ${activeTab === "WORLD" ? "text-[#ff6b35] border-b-2 border-[#ff6b35]" : "text-gray-500 hover:text-gray-300"}`}
+                className={`pb-2 px-4 text-[10px] uppercase tracking-[0.2em] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${activeTab === "WORLD" ? "text-accent border-b-2 border-accent" : "text-gray-500 hover:text-gray-300"}`}
               >
                 World
               </button>
@@ -197,10 +197,10 @@ export const CharacterPanel: React.FC = () => {
                 <>
                   {/* Identity */}
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#ff6b35] mb-4">
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-4">
                       Identity
                     </div>
-                    <div className="p-4 bg-[#1a1a1a] border border-white/5 rounded-sm">
+                    <div className="p-4 bg-surface-card border border-white/5 rounded-sm">
                       <div className="text-[18px] font-sans text-white mb-1">
                         {character.displayName}
                       </div>
@@ -212,7 +212,7 @@ export const CharacterPanel: React.FC = () => {
 
                   {/* Stats */}
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#ff6b35] mb-4">
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-4">
                       Attributes
                     </div>
                     <div className="space-y-3">
@@ -230,7 +230,7 @@ export const CharacterPanel: React.FC = () => {
                             <motion.div
                               initial={{ width: 0 }}
                               animate={{ width: `${(value / 10) * 100}%` }}
-                              className="absolute h-full bg-[#ff6b35]"
+                              className="absolute h-full bg-accent"
                             />
                           </div>
                         </div>
@@ -242,7 +242,7 @@ export const CharacterPanel: React.FC = () => {
                 <>
                   {/* World Entities */}
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#ff6b35] mb-4">
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-4">
                       Registered Entities
                     </div>
                     <div className="space-y-4">
@@ -256,11 +256,11 @@ export const CharacterPanel: React.FC = () => {
                         return (
                           <div
                             key={entity.id}
-                            className="p-3 bg-[#1a1a1a] border border-white/5 rounded-sm"
+                            className="p-3 bg-surface-card border border-white/5 rounded-sm"
                           >
                             <div className="flex items-center gap-2 mb-2">
                               <Icon size={14} className="text-gray-500" />
-                              <span className="text-[14px] font-sans text-white font-bold">
+                              <span className="text-[14px] font-mono text-white font-bold">
                                 {entity.displayName}
                               </span>
                             </div>
@@ -270,7 +270,7 @@ export const CharacterPanel: React.FC = () => {
 
                             {entity.type === "CHARACTER" && entity.opinions && (
                               <div className="mt-2 pt-2 border-t border-white/5">
-                                <div className="flex items-center gap-1 text-[9px] text-[#ff6b35] uppercase tracking-widest mb-1">
+                                <div className="flex items-center gap-1 text-[9px] text-accent uppercase tracking-widest mb-1">
                                   <Heart size={10} /> Opinions
                                 </div>
                                 {Object.entries(entity.opinions).map(([target, text]) => (
@@ -289,7 +289,7 @@ export const CharacterPanel: React.FC = () => {
 
                   {/* Quests / Plots */}
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#ff6b35] mb-4 flex items-center gap-2">
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-4 flex items-center gap-2">
                       <Scroll size={11} />
                       Quests
                     </div>

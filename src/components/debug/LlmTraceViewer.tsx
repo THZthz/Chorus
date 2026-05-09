@@ -360,17 +360,17 @@ export const LlmTraceViewer: React.FC = () => {
                                 <div className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-3">
                                   Player Input
                                 </div>
-                                <div className="text-[12px] text-white/80 font-medium leading-relaxed mb-4 pl-3 border-l-2 border-[#61afef]/40 whitespace-pre-wrap break-words">
+                                <div className="text-[12px] text-white/80 font-medium leading-relaxed mb-4 pl-3 border-l-2 border-entity-location/40 whitespace-pre-wrap break-words">
                                   {req.userInput || "(no input)"}
                                 </div>
                                 <div className="flex flex-wrap gap-3 text-[10px] font-mono text-white/40">
                                   <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
                                     model:{" "}
-                                    <span className="text-[#d19a66]">{req.model || "unknown"}</span>
+                                    <span className="text-entity-object">{req.model || "unknown"}</span>
                                   </span>
                                   <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
                                     history:{" "}
-                                    <span className="text-[#d19a66]">
+                                    <span className="text-entity-object">
                                       {(req.history || []).length} msgs
                                     </span>
                                   </span>
@@ -390,7 +390,7 @@ export const LlmTraceViewer: React.FC = () => {
                                           resp.finishReason === "stop"
                                             ? "bg-[#98c379]/5 text-[#98c379] border-[#98c379]/20"
                                             : resp.finishReason === "tool-calls"
-                                              ? "bg-[#61afef]/5 text-[#61afef] border-[#61afef]/20"
+                                              ? "bg-entity-location/5 text-entity-location border-entity-location/20"
                                               : "bg-white/5 text-white/40 border-white/10"
                                         }`}
                                       >
@@ -401,19 +401,19 @@ export const LlmTraceViewer: React.FC = () => {
                                       <>
                                         <span className="text-white/40">
                                           in{" "}
-                                          <span className="text-[#d19a66] tabular-nums">
+                                          <span className="text-entity-object tabular-nums">
                                             {resp.totalUsage.inputTokens ?? 0}
                                           </span>
                                         </span>
                                         <span className="text-white/40">
                                           out{" "}
-                                          <span className="text-[#d19a66] tabular-nums">
+                                          <span className="text-entity-object tabular-nums">
                                             {resp.totalUsage.outputTokens ?? 0}
                                           </span>
                                         </span>
                                         <span className="text-white/40">
                                           tot{" "}
-                                          <span className="text-[#d19a66] tabular-nums">
+                                          <span className="text-entity-object tabular-nums">
                                             {resp.totalUsage.totalTokens ?? 0}
                                           </span>
                                         </span>
@@ -483,7 +483,7 @@ export const LlmTraceViewer: React.FC = () => {
                                       <span
                                         className={`px-1.5 py-0.5 rounded-sm text-[8px] font-bold uppercase tracking-widest border ${
                                           step.finishReason === "tool-calls"
-                                            ? "bg-[#61afef]/5 text-[#61afef] border-[#61afef]/20"
+                                            ? "bg-entity-location/5 text-entity-location border-entity-location/20"
                                             : step.finishReason === "stop"
                                               ? "bg-[#98c379]/5 text-[#98c379] border-[#98c379]/20"
                                               : "bg-white/5 text-white/40 border-white/10"
@@ -508,10 +508,10 @@ export const LlmTraceViewer: React.FC = () => {
 
                                     {/* User prompt */}
                                     {step.userPrompt && (
-                                      <div className="mb-2 p-3 bg-[#1a1a2e]/40 border border-[#61afef]/10 rounded-sm">
+                                      <div className="mb-2 p-3 bg-[#1a1a2e]/40 border border-entity-location/10 rounded-sm">
                                         <div className="flex items-center gap-2 mb-1">
-                                          <div className="w-[1px] h-3 bg-[#61afef]" />
-                                          <span className="text-[9px] font-bold text-[#61afef]/60 uppercase tracking-wider">
+                                          <div className="w-[1px] h-3 bg-entity-location" />
+                                          <span className="text-[9px] font-bold text-entity-location/60 uppercase tracking-wider">
                                             Prompt
                                           </span>
                                         </div>
@@ -528,10 +528,10 @@ export const LlmTraceViewer: React.FC = () => {
 
                                     {/* Reasoning */}
                                     {step.reasoning && (
-                                      <div className="mb-2 p-3 bg-[#1a1a2e]/30 border border-[#c678dd]/10 rounded-sm">
+                                      <div className="mb-2 p-3 bg-[#1a1a2e]/30 border border-entity-character/10 rounded-sm">
                                         <div className="flex items-center gap-2 mb-1">
-                                          <div className="w-[1px] h-3 bg-[#c678dd]" />
-                                          <span className="text-[9px] font-bold text-[#c678dd]/60 uppercase tracking-wider">
+                                          <div className="w-[1px] h-3 bg-entity-character" />
+                                          <span className="text-[9px] font-bold text-entity-character/60 uppercase tracking-wider">
                                             Reasoning
                                           </span>
                                         </div>
@@ -559,7 +559,7 @@ export const LlmTraceViewer: React.FC = () => {
                               <div className="mt-6 pt-4 border-t border-white/5 flex items-center gap-4 text-[10px] font-mono text-white/30">
                                 <span className="tracking-wider uppercase">Total</span>
                                 {resp.totalUsage?.totalTokens != null ? (
-                                  <span className="tabular-nums text-[#d19a66]">
+                                  <span className="tabular-nums text-entity-object">
                                     {resp.totalUsage.totalTokens} tokens
                                   </span>
                                 ) : (
@@ -592,7 +592,7 @@ export const LlmTraceViewer: React.FC = () => {
                               className="p-5 bg-[#0f1013] border-l-2 border-purple-500/30 ml-4"
                             >
                               <h3 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] flex items-center gap-3 mb-4">
-                                <div className="w-[1px] h-3 bg-[#c678dd]" />
+                                <div className="w-[1px] h-3 bg-entity-character" />
                                 AssistANT_TRACE
                                 <span
                                   className={`px-2 py-0.5 rounded-sm text-[9px] font-bold tracking-widest uppercase border ${

@@ -399,7 +399,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => fitToView()}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all focus-visible:ring-1 focus-visible:ring-white/20"
               title="Fit to view"
             >
               <Maximize2 size={11} />
@@ -407,7 +407,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
             </button>
             <button
               onClick={resetZoom}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all focus-visible:ring-1 focus-visible:ring-white/20"
             >
               <RotateCcw size={11} />
               Reset
@@ -415,7 +415,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
             <button
               onClick={loadData}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 text-white/40 hover:bg-white/8 hover:text-white rounded-sm border border-white/8 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-40 focus-visible:ring-1 focus-visible:ring-white/20"
             >
               <RefreshCw size={11} className={isLoading ? "animate-spin" : ""} />
               Refresh

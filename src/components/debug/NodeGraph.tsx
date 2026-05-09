@@ -169,7 +169,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
   }, []);
 
   useEffect(() => {
-    void loadData();
+    loadData();
   }, [config.fetchData, loadData]);
 
   // ── External subscription ───────────────────────────────────────────────
@@ -310,7 +310,7 @@ export function NodeGraph<T extends TreeNode>({ config }: { config: NodeGraphCon
   };
 
   const handleSaved = useCallback(() => {
-    void loadData();
+    loadData();
   }, [loadData]);
 
   // ── Derived data ────────────────────────────────────────────────────────

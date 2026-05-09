@@ -149,7 +149,7 @@ export const LlmTraceViewer: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    void fetchLogs();
+    fetchLogs();
   }, []);
 
   useEffect(() => {

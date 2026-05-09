@@ -53,6 +53,12 @@ export function getPlotsByIds(ids: string[]): Plot[] {
   );
 }
 
+export function getActivePlots(): Plot[] {
+  return (
+    db.prepare("SELECT * FROM plots WHERE status IN ('PENDING', 'IN_PROGRESS')").all() as any[]
+  ).map(rowToPlot);
+}
+
 export function getRootPlot(): Plot | null {
   const row = db.prepare("SELECT * FROM plots WHERE parent_plot_id IS NULL LIMIT 1").get() as any;
   return row ? rowToPlot(row) : null;

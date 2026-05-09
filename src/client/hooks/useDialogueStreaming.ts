@@ -25,9 +25,9 @@ import { nextId } from "@/client/idPool";
 
 interface UseDialogueStreamingParams {
   character: Character;
-  sseRef: React.RefObject<SseClient | null>;
-  retrySnapshotRef: React.RefObject<Message[]>;
-  isRetryingRef: React.RefObject<boolean>;
+  sseRef: React.MutableRefObject<SseClient | null>;
+  retrySnapshotRef: React.MutableRefObject<Message[]>;
+  isRetryingRef: React.MutableRefObject<boolean>;
   setHistory: React.Dispatch<React.SetStateAction<Message[]>>;
   setGameTime: React.Dispatch<React.SetStateAction<GameTime | null>>;
   setCurrentScene: React.Dispatch<React.SetStateAction<SceneState | null>>;
@@ -128,17 +128,17 @@ export function useDialogueStreaming({
           `[${logPrefix}] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
         );
       },
-      onWorldUpdate: async () => {
-        await worldManager.loadState();
+      onWorldUpdate: () => {
+        worldManager.loadState();
       },
-      onPlotUpdate: async () => {
-        await worldManager.loadState();
+      onPlotUpdate: () => {
+        worldManager.loadState();
       },
-      onPlotCreate: async () => {
-        await worldManager.loadState();
+      onPlotCreate: () => {
+        worldManager.loadState();
       },
-      onPlotEdit: async () => {
-        await worldManager.loadState();
+      onPlotEdit: () => {
+        worldManager.loadState();
       },
       onTimeUpdate: (data) => {
         console.trace(`[${logPrefix}] time_update day=${data.day} segment=${data.segment}`);
@@ -176,12 +176,12 @@ export function useDialogueStreaming({
           },
         ]);
       },
-      onDone: async () => {
+      onDone: () => {
         console.trace(`[${logPrefix}] done`);
         setIsTyping(false);
         setCanRegenerate(true);
         sseRef.current = null;
-        await worldManager.loadState();
+        worldManager.loadState();
         onDone?.(capturedStepId);
       },
     };
@@ -209,7 +209,7 @@ export function useDialogueStreaming({
     const client = new SseClient();
     sseRef.current = client;
 
-    await client.stream(
+    client.stream(
       "/api/chat/stream",
       {
         userInput,
@@ -247,7 +247,7 @@ export function useDialogueStreaming({
     const client = new SseClient();
     sseRef.current = client;
 
-    await client.stream(
+    client.stream(
       "/api/regenerate",
       { stepId: lastStepId, history: trimmedHistory, playerCharacter: character },
       createSseCallbacks(streamId, "regenerate"),

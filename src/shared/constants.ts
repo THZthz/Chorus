@@ -31,6 +31,8 @@ export const SKILL_NAMES = [
   "ALCHEMY",
 ] as const;
 
+export type SkillName = (typeof SKILL_NAMES)[number];
+
 export const PLAYER_ID = "player" as const;
 
 export const TOOL_NAMES = {
@@ -53,6 +55,8 @@ export const TOOL_NAMES = {
   UPDATE_FACT: "updateFact",
   REMOVE_FACT: "removeFact",
 } as const;
+
+export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];
 
 export const SEGMENT_LABELS: Record<number, string> = {
   0: "Midnight",

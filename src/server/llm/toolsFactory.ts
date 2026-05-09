@@ -17,6 +17,7 @@
  */
 
 import type { EventEmitter } from "@/server/llm/events";
+import { TOOL_NAMES } from "@/shared/constants";
 import {
   createListEntitiesTool,
   createGetEntityTool,

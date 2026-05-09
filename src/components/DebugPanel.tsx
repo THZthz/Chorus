@@ -110,13 +110,11 @@ export const DebugPanel: React.FC<{
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: res.statusText }));
-        setPregenError(body.error || `HTTP ${res.status}`);
-        return;
+        throw new Error(body.error || `HTTP ${res.status}`);
       }
       setPregenVersion((v) => v + 1);
     } catch (e: unknown) {
       setPregenError(e instanceof Error ? e.message : String(e));
-      return;
     } finally {
       setPregenerating(false);
     }

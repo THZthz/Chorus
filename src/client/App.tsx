@@ -57,6 +57,7 @@ export default function App() {
     >
   >({});
   const [currentReplayStepId, setCurrentReplayStepId] = useState<string | null>(null);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
   const [gameTime, setGameTime] = useState<GameTime | null>(null);
   const [currentScene, setCurrentScene] = useState<SceneState | null>(null);
 
@@ -150,7 +151,7 @@ export default function App() {
         }
       }
     }
-    void init();
+    init();
   }, []);
 
   // ── Option selection ──
@@ -160,12 +161,12 @@ export default function App() {
 
     // Replay mode — navigate existing tree, no LLM
     if (mode === "replay") {
-      await handleReplayOptionSelect(option);
+      handleReplayOptionSelect(option);
       return;
     }
 
-    let updatedHistory: Message[];
-    const youText = option.selectionMessage ?? option.text.replace(/^\[[^]]*?:[^]]*?\]\s*/, "");
+    let updatedHistory = history;
+    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 
     const youMessage: Message = {
       id: `you-${await nextId()}`,
@@ -198,7 +199,7 @@ export default function App() {
 
     if (!handled) {
       setHasBegun(true);
-      await handleStreamingResponse(youText, updatedHistory, lastStepId, option.id);
+      handleStreamingResponse(youText, updatedHistory, lastStepId, option.id);
     }
   };
 
@@ -216,7 +217,7 @@ export default function App() {
     const updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);
     setHasBegun(true);
-    await handleStreamingResponse(text, updatedHistory, lastStepId, null);
+    handleStreamingResponse(text, updatedHistory, lastStepId, null);
   };
 
   // ── Reset ──
@@ -245,9 +246,9 @@ export default function App() {
 
   // ── Begin story ──
 
-  const handleBegin = async () => {
+  const handleBegin = () => {
     setHasBegun(true);
-    await handleStreamingResponse("[SYSTEM MESSAGE: Begin the story. Set the scene.]", [], null, null);
+    handleStreamingResponse("[SYSTEM MESSAGE: Begin the story. Set the scene.]", [], null, null);
   };
 
   // ── Render ──

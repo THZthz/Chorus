@@ -263,7 +263,7 @@ const EditOverlay: React.FC<{
   );
 };
 
-const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming }) => {
+export const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -284,13 +284,13 @@ const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming }) => 
   const [prevStreaming, setPrevStreaming] = useState(isStreaming);
 
   useEffect(() => {
-    void fetchHistory();
+    fetchHistory();
   }, []);
 
   useEffect(() => {
     // Re-fetch when streaming finishes
     if (prevStreaming && !isStreaming) {
-      void fetchHistory();
+      fetchHistory();
     }
     setPrevStreaming(isStreaming);
   }, [isStreaming, prevStreaming]);
@@ -304,10 +304,7 @@ const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming }) => 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(messages),
       });
-      if (!res.ok) {
-        setError(await res.text());
-        return;
-      }
+      if (!res.ok) throw new Error(await res.text());
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch (e: unknown) {
@@ -435,7 +432,7 @@ const HistoryEditor: React.FC<{ isStreaming?: boolean }> = ({ isStreaming }) => 
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  void insertAfter(msg.id);
+                  insertAfter(msg.id);
                 }}
                 className="w-5 h-5 flex items-center justify-center bg-[#0a0a0a]/90 border border-white/10 text-white/30 hover:text-white/60 rounded-sm transition-colors"
                 title="Insert after"

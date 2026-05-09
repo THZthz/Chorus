@@ -97,7 +97,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
   const speakerColor = getSpeakerColor(message.speaker, message.type);
 
   const renderText = (text: string) => {
-    const pattern = /(\*.*?\*|\[.*?]\(#.*?\))/g;
+    const pattern = /(\*.*?\*|\[.*?\]\(#.*?\))/g;
     const parts = text.split(pattern);
     return parts.map((part, i) => {
       if (part.startsWith("*") && part.endsWith("*")) {
@@ -107,7 +107,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
           </em>
         );
       }
-      const objMatch = part.match(/\[(.*?)]\(#(.*?)\)/);
+      const objMatch = part.match(/\[(.*?)\]\(#(.*?)\)/);
       if (objMatch) {
         const [, displayName, objectId] = objMatch;
         return <ObjectLink key={i} displayName={displayName} objectId={objectId} />;

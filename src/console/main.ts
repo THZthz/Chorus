@@ -72,7 +72,7 @@ function getSpeakerColor(speaker: string, type: string) {
 }
 
 function stripOptionText(text: string): string {
-  return text.replace(/^\[[^\]]*?:[^\]]*?]\s*/, "");
+  return text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 }
 
 // ── Rendering ──
@@ -439,7 +439,4 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+main();

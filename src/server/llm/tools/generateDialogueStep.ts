@@ -23,6 +23,8 @@ import { NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
 import { checkText } from "@/server/llm/tools/shared";
 
+const MAX_MESSAGE_TEXT_LENGTH = 500;
+
 const messageSchema = z.object({
   speaker: z
     .string()
@@ -128,6 +130,12 @@ export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
         );
         if (textError) {
           errors.push(textError);
+          break;
+        }
+        if (msg.text.length > MAX_MESSAGE_TEXT_LENGTH) {
+          errors.push(
+            `Message ${i + 1} ("${msg.speaker}") text is too long (${msg.text.length} chars, max ${MAX_MESSAGE_TEXT_LENGTH}). Shorten it to keep the UI readable.`,
+          );
           break;
         }
       }

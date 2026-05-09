@@ -18,39 +18,9 @@
 
 import db from "@/server/db";
 import type { GameTime, SceneState } from "@/types/entities";
-import { PLAYER_ID } from "@/shared/constants";
+import { PLAYER_ID, SEGMENT_LABELS, SEGMENT_HOURS } from "@/shared/constants";
 
-// ── Segment Labels ──
-
-export const SEGMENT_LABELS: Record<number, string> = {
-  0: "Midnight",
-  1: "Late Night",
-  2: "Dawn",
-  3: "Early Morning",
-  4: "Morning",
-  5: "Late Morning",
-  6: "Noon",
-  7: "Afternoon",
-  8: "Late Afternoon",
-  9: "Dusk",
-  10: "Evening",
-  11: "Night",
-};
-
-const SEGMENT_HOURS: Record<number, string> = {
-  0: "12am–2am",
-  1: "2am–4am",
-  2: "4am–6am",
-  3: "6am–8am",
-  4: "8am–10am",
-  5: "10am–12pm",
-  6: "12pm–2pm",
-  7: "2pm–4pm",
-  8: "4pm–6pm",
-  9: "6pm–8pm",
-  10: "8pm–10pm",
-  11: "10pm–12am",
-};
+export { SEGMENT_LABELS };
 
 // ── Time Functions ──
 

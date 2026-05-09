@@ -20,6 +20,7 @@ import db from "@/server/db";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { WorldSnapshot } from "@/types/entities";
 import { v4 as uuidv4 } from "uuid";
+import { safeJsonParse } from "./shared";
 
 export interface DialogueStepRow {
   id: string;
@@ -50,9 +51,9 @@ function parseStep(row: DialogueStepRow): DialogueStepParsed {
     id: row.id,
     parentStepId: row.parent_step_id,
     parentOptionId: row.parent_option_id,
-    messages: JSON.parse(row.messages),
-    options: JSON.parse(row.options),
-    worldSnapshot: row.world_snapshot ? JSON.parse(row.world_snapshot) : null,
+    messages: safeJsonParse(row.messages, []),
+    options: safeJsonParse(row.options, []),
+    worldSnapshot: safeJsonParse(row.world_snapshot, null),
     isGenerated: row.is_generated === 1,
     isActive: row.is_active === 1,
     createdAt: row.created_at,
@@ -180,8 +181,8 @@ export function getAlternatives(
     .all(stepId) as AlternativeRow[];
   return rows.map((r) => ({
     id: r.id,
-    messages: JSON.parse(r.messages),
-    options: JSON.parse(r.options),
+    messages: safeJsonParse(r.messages, []),
+    options: safeJsonParse(r.options, []),
     sequenceNum: r.sequence_num,
   }));
 }

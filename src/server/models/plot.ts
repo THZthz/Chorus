@@ -19,6 +19,7 @@
 import db from "@/server/db";
 import type { Plot, PlotOption, PlotPatch } from "@/types/plot";
 import { nextId } from "@/server/models/ids";
+import { safeJsonParse } from "./shared";
 
 function rowToPlot(row: any): Plot {
   return {
@@ -26,12 +27,12 @@ function rowToPlot(row: any): Plot {
     title: row.title,
     description: row.description,
     status: row.status,
-    involvedLocations: JSON.parse(row.involved_locations ?? "[]"),
-    involvedCharacters: JSON.parse(row.involved_characters ?? "[]"),
+    involvedLocations: safeJsonParse<string[]>(row.involved_locations, []),
+    involvedCharacters: safeJsonParse<string[]>(row.involved_characters, []),
     parentPlotId: row.parent_plot_id ?? null,
     parentOptionId: row.parent_option_id ?? null,
-    childPlots: JSON.parse(row.child_plots ?? "[]"),
-    flags: JSON.parse(row.plot_flags ?? "{}"),
+    childPlots: safeJsonParse(row.child_plots, []),
+    flags: safeJsonParse(row.plot_flags, {}),
   };
 }
 

@@ -26,6 +26,7 @@ import {
   EntityType,
 } from "@/types/entities";
 import { getActiveSeedStory } from "@/server/seed-stories";
+import { safeJsonParse } from "./shared";
 
 export function seedDatabase() {
   const count = db.prepare("SELECT COUNT(*) as count FROM entities").get() as { count: number };
@@ -95,11 +96,11 @@ function rowToEntity(row: any): WorldEntity {
     displayName: row.displayName,
     shortDescription: row.shortDescription,
     longDescription: row.longDescription,
-    attributes: JSON.parse(row.attributes),
+    attributes: safeJsonParse(row.attributes, {}),
     ...(row.type === "CHARACTER" && {
-      stats: JSON.parse(row.stats ?? "{}"),
-      opinions: JSON.parse(row.opinions ?? "{}"),
-      conditions: JSON.parse(row.conditions ?? "{}"),
+      stats: safeJsonParse(row.stats, {}),
+      opinions: safeJsonParse(row.opinions, {}),
+      conditions: safeJsonParse(row.conditions, {}),
     }),
   } as WorldEntity;
 }
@@ -121,10 +122,10 @@ export function updateEntity(entity: Partial<WorldEntity> & { id: string }) {
   const existing = db.prepare("SELECT * FROM entities WHERE id = ?").get(entity.id) as any;
   if (!existing) return;
 
-  const currentAttrs = JSON.parse(existing.attributes);
-  const currentStats = existing.stats ? JSON.parse(existing.stats) : {};
-  const currentOpinions = existing.opinions ? JSON.parse(existing.opinions) : {};
-  const currentConditions = existing.conditions ? JSON.parse(existing.conditions) : {};
+  const currentAttrs = safeJsonParse(existing.attributes, {});
+  const currentStats = safeJsonParse(existing.stats, {});
+  const currentOpinions = safeJsonParse(existing.opinions, {});
+  const currentConditions = safeJsonParse(existing.conditions, {});
 
   // For update, we merge properties
   const newAttrs = entity.attributes ? { ...currentAttrs, ...entity.attributes } : currentAttrs;

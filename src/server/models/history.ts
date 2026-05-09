@@ -18,6 +18,7 @@
 
 import db from "@/server/db";
 import { Message } from "@/types/dialogue";
+import { safeJsonParse } from "./shared";
 
 export function getHistory(): Message[] {
   const rows = db.prepare("SELECT * FROM history_messages ORDER BY timestamp ASC").all() as any[];
@@ -26,9 +27,9 @@ export function getHistory(): Message[] {
     speaker: r.speaker,
     type: r.type,
     text: r.text,
-    metadata: r.metadata ? JSON.parse(r.metadata) : undefined,
-    skillCheck: r.skillCheck ? JSON.parse(r.skillCheck) : undefined,
-    rollResult: r.rollResult ? JSON.parse(r.rollResult) : undefined,
+    metadata: safeJsonParse(r.metadata, undefined),
+    skillCheck: safeJsonParse(r.skillCheck, undefined),
+    rollResult: safeJsonParse(r.rollResult, undefined),
   }));
 }
 

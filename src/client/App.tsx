@@ -727,93 +727,126 @@ export default function App() {
       {/* <CharacterPanel /> */}
 
 
-      {/* Time / Scene indicator */}
-      {(gameTime || (mode === "replay" && worldManager.getGameTime())) && (
-        <div className="fixed top-8 right-8 z-50 text-right pointer-events-none">
-          <div className="text-xs text-white/40 font-mono tracking-wider">
-            {(() => {
-              const t = mode === "replay" ? worldManager.getGameTime() : gameTime;
-              if (!t) return null;
-              return `Day ${t.day} · ${SEGMENT_LABELS[t.segment] ?? `Segment ${t.segment}`}`;
-            })()}
-          </div>
-          {currentScene && (
-            <div className="text-xs text-white/25 font-mono mt-0.5 max-w-[200px] truncate">
-              {currentScene.currentLocationId}
-            </div>
+      {/* Top Rail */}
+      <div className="fixed top-0 left-0 right-0 z-50 h-10 flex items-center justify-between px-6 pointer-events-none">
+        {/* Left: Time + Scene */}
+        <div className="flex items-center gap-4">
+          {(gameTime || (mode === "replay" && worldManager.getGameTime())) && (
+            <>
+              <span className="text-engraved text-[10px]">
+                {(() => {
+                  const t = mode === "replay" ? worldManager.getGameTime() : gameTime;
+                  if (!t) return null;
+                  return `DAY ${t.day} · ${SEGMENT_LABELS[t.segment] ?? `SEG ${t.segment}`}`;
+                })()}
+              </span>
+              {currentScene && (
+                <>
+                  <span className="text-[#c4944a]/30 text-[10px]">◆</span>
+                  <span className="text-engraved text-[10px] opacity-60">
+                    {currentScene.currentLocationId}
+                  </span>
+                </>
+              )}
+              {(mode === "replay" || hasBegun) && (
+                <>
+                  <span className="text-[#c4944a]/30 text-[10px]">◆</span>
+                  <span className="text-[#d4786c]/60 text-[8px] font-mono uppercase tracking-[0.3em]">
+                    {mode === "replay" ? "RECORDED" : "LIVE"}
+                  </span>
+                </>
+              )}
+            </>
           )}
         </div>
-      )}
 
-      {/* Action Controls */}
-      <div className="fixed top-8 left-8 z-50 flex gap-3 items-center h-12">
-        <LayoutGroup>
-          <motion.button
-            onClick={resetHistory}
-            title="Reset Thought Stream"
-            initial={{ color: "#6b7280", borderColor: "rgba(255, 255, 255, 0.05)" }}
-            whileHover={{ scale: 1.1, color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.5)" }}
-            whileTap={{ scale: 0.95 }}
-            className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border rounded-full shadow-lg z-10"
-          >
-            <Trash2 size={18} />
-          </motion.button>
+        {/* Right: Action Toggles */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <LayoutGroup>
+            {/* Reset */}
+            <motion.button
+              onClick={resetHistory}
+              title="Reset"
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              className="h-8 w-8 flex items-center justify-center brass-ring rounded-full text-[#c4944a]/60 hover:text-[#d4786c] hover:border-[#d4786c]/50 transition-colors duration-200"
+            >
+              <Trash2 size={14} />
+            </motion.button>
 
-          <AnimatePresence>
-            {canRegenerate && !isTyping && (
-              <motion.button
-                key="regenerate"
-                layout
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
-                onClick={handleRegenerate}
-                title="Regenerate Response"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-blue-400/30 rounded-full text-blue-400 hover:bg-blue-400 hover:text-white transition-all duration-300 shadow-xl"
-              >
-                <RefreshCw size={18} />
-              </motion.button>
-            )}
-          </AnimatePresence>
+            <AnimatePresence>
+              {canRegenerate && !isTyping && (
+                <motion.button
+                  key="regenerate"
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                  onClick={handleRegenerate}
+                  title="Regenerate Response"
+                  className="h-8 w-8 flex items-center justify-center brass-ring rounded-full text-[#c4944a]/60 hover:text-[#e0b460] hover:border-[#e0b460]/50 transition-colors duration-200"
+                >
+                  <RefreshCw size={14} />
+                </motion.button>
+              )}
+            </AnimatePresence>
 
-          {/* Replay mode toggle */}
-          <AnimatePresence>
-            {mode === "live" && !isTyping && hasBegun && (
-              <motion.button
-                key="replay"
-                layout
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
-                onClick={enterReplayMode}
-                title="Replay Dialogue Tree"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
-              >
-                <GitBranch size={18} />
-              </motion.button>
-            )}
-          </AnimatePresence>
+            <AnimatePresence>
+              {mode === "live" && !isTyping && hasBegun && (
+                <motion.button
+                  key="replay"
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                  onClick={enterReplayMode}
+                  title="Replay Dialogue Tree"
+                  className="h-8 w-8 flex items-center justify-center brass-ring rounded-full text-[#7ec8e0]/60 hover:text-[#7ec8e0] hover:border-[#7ec8e0]/50 transition-colors duration-200"
+                >
+                  <GitBranch size={14} />
+                </motion.button>
+              )}
+            </AnimatePresence>
 
-          <AnimatePresence>
-            {mode === "replay" && (
-              <motion.button
-                key="exit-replay"
-                layout
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
-                onClick={exitReplayMode}
-                title="Return to Live Mode"
-                className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-emerald-400/30 rounded-full text-emerald-400 hover:bg-emerald-400 hover:text-white transition-all duration-300 shadow-xl"
-              >
-                <RotateCcw size={18} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </LayoutGroup>
+            <AnimatePresence>
+              {mode === "replay" && (
+                <motion.button
+                  key="exit-replay"
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
+                  onClick={exitReplayMode}
+                  title="Return to Live Mode"
+                  className="h-8 w-8 flex items-center justify-center brass-ring rounded-full text-[#8fbc8f]/60 hover:text-[#8fbc8f] hover:border-[#8fbc8f]/50 transition-colors duration-200"
+                >
+                  <RotateCcw size={14} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+
+            {/* Debug iris toggle */}
+            <span className="text-[#c4944a]/15 text-[10px] mx-1">|</span>
+            <motion.button
+              onClick={() => {
+                const debugBtn = document.getElementById("debug-panel-toggle");
+                debugBtn?.click();
+              }}
+              title="Debug Tools"
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              className="h-8 w-8 flex items-center justify-center brass-ring rounded-full text-[#c4944a]/40 hover:text-[#c4944a] hover:border-[#c4944a]/50 transition-colors duration-200"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+              </svg>
+            </motion.button>
+          </LayoutGroup>
+        </div>
       </div>
 
 

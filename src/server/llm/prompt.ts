@@ -23,7 +23,8 @@ import { getSceneState, getGameTime, describeTime } from "@/server/models/scene"
 import { getActiveSeedStory } from "@/server/seed-stories/index";
 import { TOOL_NAMES } from "@/shared/constants";
 import type { SceneState } from "@/types/entities";
-import { MAX_GM_STEPS } from "@/server/llm/index.ts";
+
+const MAX_GM_STEPS = 10;
 
 const PROMPT_TEMPLATE_KEY = "gm_system_prompt";
 

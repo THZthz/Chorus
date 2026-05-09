@@ -352,7 +352,7 @@ export const WorldEditor: React.FC = () => {
           <Database size={14} />
           <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Entity_Manifest</span>
         </div>
-        <div className="flex-1 overflow-y-auto debug-scrollbar space-y-3 pr-1">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden debug-scrollbar space-y-3 pr-1">
           {(["CHARACTER", "LOCATION", "OBJECT"] as const).map((type) => {
             const entities = grouped[type];
             if (entities.length === 0) return null;
@@ -460,7 +460,7 @@ export const WorldEditor: React.FC = () => {
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto debug-scrollbar space-y-5 pr-2">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden debug-scrollbar space-y-5 pr-2">
               {/* Core fields */}
               <div>
                 <FieldLabel label="displayName" />

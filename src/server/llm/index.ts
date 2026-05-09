@@ -63,7 +63,7 @@ import { buildSystemPrompt } from "@/server/llm/prompt";
 
 // ── Constants ──
 
-export const MAX_GM_STEPS = 10;
+const MAX_GM_STEPS = 10;
 
 // ── Model management ──
 

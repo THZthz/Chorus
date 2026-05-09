@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { removeFact } from "@/server/models/facts";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
@@ -27,7 +27,7 @@ const inputSchema = z.object({
   id: z.string().describe("ID of the fact to remove."),
 });
 
-export function createRemoveFactTool(events: TurnEventEmitter) {
+export function createRemoveFactTool(events: EventEmitter) {
   return tool({
     title: "Remove Fact",
     description:

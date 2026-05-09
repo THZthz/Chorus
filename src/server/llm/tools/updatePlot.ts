@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { updatePlot, getPlotById } from "@/server/models/plot";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { PLOT_STATUSES, type PlotOption } from "@/types/plot";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
@@ -60,7 +60,7 @@ const inputSchema = z.object({
     .describe("Key-value metadata scoped to this plot. Merged with existing flags."),
 });
 
-export function createUpdatePlotTool(events: TurnEventEmitter) {
+export function createUpdatePlotTool(events: EventEmitter) {
   return tool({
     title: "Update Plot",
     description:

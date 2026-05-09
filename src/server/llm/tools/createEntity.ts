@@ -21,7 +21,7 @@ import { z } from "zod";
 import { upsertEntity } from "@/server/models/world";
 import { nextId } from "@/server/models/ids";
 import { getSceneState, setSceneState } from "@/server/models/scene";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { ENTITY_TYPES, type WorldEntity } from "@/types/entities";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
@@ -50,7 +50,7 @@ const inputSchema = z.object({
     .describe("If set, place this entity at this location in the scene."),
 });
 
-export function createCreateEntityTool(events: TurnEventEmitter) {
+export function createCreateEntityTool(events: EventEmitter) {
   return tool({
     title: "Create Entity",
     description:

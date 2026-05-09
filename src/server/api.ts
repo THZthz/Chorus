@@ -23,11 +23,26 @@ import {
   getSystemPromptTemplate,
   setSystemPromptTemplate,
   DEFAULT_SYSTEM_PROMPT_TEMPLATE,
-  pregeneratePlotTree,
+  generatePlotDefs,
+  type PlotDef,
 } from "@/server/llm";
+import {
+  chatStreamSchema,
+  upsertEntitySchema,
+  patchDialogueSchema,
+  patchPlotSchema,
+  patchSnapshotSchema,
+  systemPromptSchema,
+  regenerateSchema,
+  traverseSchema,
+  activateBranchSchema,
+  pregenSchema,
+} from "@/server/validation";
+import type { WorldEntity, WorldSnapshot } from "@/types/entities";
+import type { Plot, PlotPatch, PlotStatus } from "@/types/plot";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
-import { getAllPlots, getPlotById, updatePlot } from "@/server/models/plot";
+import { getAllPlots, getPlotById, updatePlot, addPlot } from "@/server/models/plot";
 import { getGameTime, getSceneState } from "@/server/models/scene";
 import { getLlmLogs, clearLlmLogs } from "@/server/models/debug";
 import {
@@ -59,8 +74,13 @@ apiRouter.get("/world", (_req, res) => {
 });
 
 apiRouter.post("/world/entity", (req, res) => {
+  const parsed = upsertEntitySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   try {
-    upsertEntity(req.body);
+    upsertEntity(parsed.data as unknown as WorldEntity);
     res.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -75,12 +95,17 @@ apiRouter.get("/plots", (_req, res) => {
 });
 
 apiRouter.patch("/plots/:id", (req, res) => {
+  const parsed = patchPlotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   const existing = getPlotById(req.params.id);
   if (!existing) {
     res.status(404).json({ error: "Plot not found" });
     return;
   }
-  const result = updatePlot(req.params.id, req.body);
+  const result = updatePlot(req.params.id, parsed.data as PlotPatch);
   if ("error" in result) {
     res.status(400).json({ error: result.error });
     return;
@@ -89,11 +114,91 @@ apiRouter.patch("/plots/:id", (req, res) => {
 });
 
 apiRouter.post("/plots/pregen", async (req, res) => {
+  const parsed = pregenSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   try {
-    const size = Math.min(Math.max(parseInt(String(req.body.size), 10) || 10, 2), 50);
-    // Clear existing plots
-    (await import("./db")).default.prepare("DELETE FROM plots").run();
-    const plots = await pregeneratePlotTree(size);
+    const size = parsed.data.size;
+    const plotDefs = await generatePlotDefs(size);
+
+    const db = (await import("./db")).default;
+
+    // Assign real IDs
+    const indexToId = new Map<number, string>();
+    for (const def of plotDefs) {
+      indexToId.set(def.index, `plot_${nextId()}`);
+    }
+
+    // Build child -> parent mapping
+    const childParentMap = new Map<number, { parentIndex: number; optionIndex: number }>();
+    for (const def of plotDefs) {
+      for (let i = 0; i < def.childPlots.length; i++) {
+        const child = def.childPlots[i];
+        if (child.childPlotIndex !== null) {
+          childParentMap.set(child.childPlotIndex, { parentIndex: def.index, optionIndex: i });
+        }
+      }
+    }
+
+    // Topological sort: parent before children
+    const visited = new Set<number>();
+    const order: number[] = [];
+
+    function visit(index: number) {
+      if (visited.has(index)) return;
+      const parentInfo = childParentMap.get(index);
+      if (parentInfo) visit(parentInfo.parentIndex);
+      visited.add(index);
+      order.push(index);
+    }
+
+    for (const def of plotDefs) {
+      visit(def.index);
+    }
+
+    // Insert in transaction
+    const insertAll = db.transaction(() => {
+      db.prepare("DELETE FROM plots").run();
+
+      const inserted: Plot[] = [];
+      for (const index of order) {
+        const def = plotDefs.find((d) => d.index === index)!;
+
+        const id = indexToId.get(index)!;
+        const parentInfo = childParentMap.get(index);
+        const parentPlotId = parentInfo ? indexToId.get(parentInfo.parentIndex)! : null;
+        const parentOptionId = parentInfo ? parentInfo.optionIndex : null;
+
+        const childPlots = def.childPlots.map((cp) => ({
+          plotId: null as string | null,
+          triggerCondition: cp.triggerCondition,
+        }));
+
+        const addResult = addPlot({
+          id,
+          title: def.title,
+          description: def.description,
+          status: (def.status as PlotStatus) ?? "PENDING",
+          involvedLocations: def.involvedLocations ?? [],
+          involvedCharacters: def.involvedCharacters ?? [],
+          parentPlotId,
+          parentOptionId,
+          childPlots,
+        });
+
+        if ("error" in addResult) {
+          throw new Error(`Failed to insert plot "${def.title}": ${addResult.error}`);
+        }
+
+        const plot = getPlotById(id);
+        if (plot) inserted.push(plot);
+      }
+      return inserted;
+    });
+
+    const plots = insertAll();
     res.json({ plots });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -135,8 +240,13 @@ apiRouter.post("/history", (req, res) => {
 // ── Chat (streaming SSE) ──
 
 apiRouter.post("/chat/stream", async (req, res) => {
+  const parsed = chatStreamSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   try {
-    const { userInput, history, parentStepId, parentOptionId, playerCharacter } = req.body;
+    const { userInput, history, parentStepId, parentOptionId, playerCharacter } = parsed.data;
     console.log(
       `[chat/stream] userInput="${String(userInput).slice(0, 80)}" parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history?.length ?? 0}`,
     );
@@ -177,13 +287,13 @@ apiRouter.post("/chat/stream", async (req, res) => {
 // ── Regenerate ──
 
 apiRouter.post("/regenerate", async (req, res) => {
+  const parsed = regenerateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   try {
-    const { stepId, history, playerCharacter } = req.body;
-
-    if (!stepId) {
-      res.status(400).json({ error: "stepId required" });
-      return;
-    }
+    const { stepId, history, playerCharacter } = parsed.data;
 
     const step = getStep(stepId);
     if (!step) {
@@ -283,8 +393,13 @@ apiRouter.post("/dialogue/:id/alternatives/:altId/select", (req, res) => {
 // ── Branch Management ──
 
 apiRouter.post("/branches/activate", (req, res) => {
+  const parsed = activateBranchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   try {
-    const { stepId, parentStepId } = req.body;
+    const { stepId, parentStepId } = parsed.data;
     setBranchActive(stepId, true);
     if (parentStepId) {
       deactivateSiblingBranches(parentStepId, stepId);
@@ -304,13 +419,18 @@ apiRouter.get("/session/current", (_req, res) => {
 });
 
 apiRouter.patch("/dialogue/:id", (req, res) => {
+  const parsed = patchDialogueSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   const step = getStep(req.params.id);
   if (!step) {
     res.status(404).json({ error: "Step not found" });
     return;
   }
   try {
-    saveStep({ ...step, messages: req.body.messages, options: req.body.options });
+    saveStep({ ...step, messages: parsed.data.messages, options: parsed.data.options });
     res.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -319,12 +439,13 @@ apiRouter.patch("/dialogue/:id", (req, res) => {
 });
 
 apiRouter.patch("/dialogue/:id/snapshot", (req, res) => {
-  const { worldSnapshot } = req.body;
-  if (!worldSnapshot || typeof worldSnapshot !== "object") {
-    res.status(400).json({ error: "worldSnapshot object required" });
+  const parsed = patchSnapshotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
     return;
   }
-  const ok = updateStepSnapshot(req.params.id, worldSnapshot);
+  const { worldSnapshot } = parsed.data;
+  const ok = updateStepSnapshot(req.params.id, worldSnapshot as WorldSnapshot);
   if (!ok) {
     res.status(404).json({ error: "Step not found" });
     return;
@@ -333,11 +454,12 @@ apiRouter.patch("/dialogue/:id/snapshot", (req, res) => {
 });
 
 apiRouter.post("/dialogue/traverse", (req, res) => {
-  const { stepId, optionId } = req.body;
-  if (!stepId || !optionId) {
-    res.status(400).json({ error: "stepId and optionId required" });
+  const parsed = traverseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
     return;
   }
+  const { stepId, optionId } = parsed.data;
 
   const step = getStep(stepId);
   if (step) {
@@ -361,7 +483,7 @@ apiRouter.post("/dialogue/traverse", (req, res) => {
 
 // ── ID Generation ──
 
-import { nextIdBatch } from "@/server/models/ids";
+import { nextId, nextIdBatch } from "@/server/models/ids";
 
 apiRouter.get("/ids/batch", (req, res) => {
   const count = Math.min(Math.max(parseInt(String(req.query.count), 10) || 20, 1), 100);
@@ -386,12 +508,13 @@ apiRouter.get("/debug/system-prompt", (_req, res) => {
 });
 
 apiRouter.put("/debug/system-prompt", (req, res) => {
+  const parsed = systemPromptSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    return;
+  }
   try {
-    const { template } = req.body;
-    if (typeof template !== "string" || !template.trim()) {
-      res.status(400).json({ error: "template string required" });
-      return;
-    }
+    const { template } = parsed.data;
     setSystemPromptTemplate(template);
     res.json({ success: true });
   } catch (error: unknown) {

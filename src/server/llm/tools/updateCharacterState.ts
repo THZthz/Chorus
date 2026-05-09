@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { updateEntity, getEntityById } from "@/server/models/world";
 import { getSceneState, setSceneState } from "@/server/models/scene";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import type { Character } from "@/types/entities";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
@@ -41,7 +41,7 @@ const inputSchema = z.object({
     .describe("Inventory changes (updates scene objectPositions)."),
 });
 
-export function createUpdateCharacterStateTool(events: TurnEventEmitter) {
+export function createUpdateCharacterStateTool(events: EventEmitter) {
   return tool({
     title: "Update Character State",
     description:

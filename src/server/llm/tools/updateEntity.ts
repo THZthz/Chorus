@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { updateEntity, getEntityById } from "@/server/models/world";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
@@ -37,7 +37,7 @@ const inputSchema = z.object({
     .describe("How this character feels about others (merged). Only valid for CHARACTER entities."),
 });
 
-export function createUpdateEntityTool(events: TurnEventEmitter) {
+export function createUpdateEntityTool(events: EventEmitter) {
   return tool({
     title: "Update Entity",
     description:

@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getSceneState, setSceneState } from "@/server/models/scene";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
@@ -54,7 +54,7 @@ const inputSchema = z.object({
     ),
 });
 
-export function createUpdateSceneTool(events: TurnEventEmitter) {
+export function createUpdateSceneTool(events: EventEmitter) {
   return tool({
     title: "Update Scene",
     description:

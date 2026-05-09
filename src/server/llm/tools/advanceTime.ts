@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { advanceGameTime, describeTime } from "@/server/models/scene";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
@@ -43,7 +43,7 @@ const inputSchema = z.object({
     .describe("Brief narrative reason for the time advance (e.g. 'The conversation dragged on')."),
 });
 
-export function createAdvanceTimeTool(events: TurnEventEmitter) {
+export function createAdvanceTimeTool(events: EventEmitter) {
   return tool({
     title: "Advance Time",
     description:

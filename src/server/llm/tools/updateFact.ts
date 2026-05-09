@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { updateFact } from "@/server/models/facts";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
@@ -36,7 +36,7 @@ const inputSchema = z.object({
   relatedTime: z.boolean().optional().describe("Whether this relates to game time."),
 });
 
-export function createUpdateFactTool(events: TurnEventEmitter) {
+export function createUpdateFactTool(events: EventEmitter) {
   return tool({
     title: "Update Fact",
     description:

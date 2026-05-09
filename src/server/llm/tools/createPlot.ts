@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { addPlot } from "@/server/models/plot";
 import { nextId } from "@/server/models/ids";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { PLOT_STATUSES, type PlotOption } from "@/types/plot";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
@@ -62,7 +62,7 @@ const inputSchema = z.object({
     .describe("Optional key-value metadata scoped to this plot (e.g. {'alarm_raised': true})."),
 });
 
-export function createCreatePlotTool(events: TurnEventEmitter) {
+export function createCreatePlotTool(events: EventEmitter) {
   return tool({
     title: "Create Plot",
     description:

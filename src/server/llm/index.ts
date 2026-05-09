@@ -17,94 +17,23 @@
  */
 
 import { nextId } from "@/server/models/ids";
-import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamText, generateText, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
+import { streamText, generateText, stepCountIs } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
-import { getAllEntities, getAllEntitySummaries } from "@/server/models/world";
-import { getAllPlots, addPlot, getPlotById } from "@/server/models/plot";
-import type { Plot, PlotStatus } from "@/types/plot";
-import { getFactsSnapshot } from "@/server/models/facts";
-import {
-  saveStep,
-  deactivateSiblingBranches,
-  updateOptionNextStepId,
-  addOptionToStep,
-} from "@/server/models/dialogue";
-import { addMessage } from "@/server/models/history";
 import { LlmDebugIntegration } from "@/server/llm/debug";
-import { TurnEventEmitter } from "@/server/llm/events";
-import {
-  mapToDialogueOption,
-  createListEntitiesTool,
-  createGetEntityTool,
-  createUpdateEntityTool,
-  createUpdateEntitiesTool,
-  createCreateEntityTool,
-  createGetCharacterStateTool,
-  createUpdateCharacterStateTool,
-  createCreatePlotTool,
-  createUpdatePlotTool,
-  createGetPlotTool,
-  createGenerateDialogueStepTool,
-  createAdvanceTimeTool,
-  createUpdateSceneTool,
-  createGetSceneTool,
-  createAddFactTool,
-  createGetFactTool,
-  createUpdateFactTool,
-  createRemoveFactTool,
-} from "@/server/llm/tools";
+import { TurnEventEmitter, NoopEventEmitter } from "@/server/llm/events";
+import { mapToDialogueOption, createGenerateDialogueStepTool } from "@/server/llm/tools";
 import { TOOL_NAMES } from "@/shared/constants";
-import { getSceneState, getGameTime } from "@/server/models/scene";
 import { buildSystemPrompt } from "@/server/llm/prompt";
-import { getActiveSeedStory } from "@/server/seed-stories";
+import { getModel } from "@/server/llm/model";
+import { persistStep } from "@/server/llm/persistStep";
+import { createAllTools } from "@/server/llm/toolsFactory";
 
 // ── Constants ──
 
 const MAX_GM_STEPS = 10;
-
-// ── Model management ──
-
-let googleModelInstance: LanguageModel | null = null;
-let deepseekModelInstance: LanguageModel | null = null;
-
-function getGoogleModel(): LanguageModel | null {
-  if (!googleModelInstance && process.env.GEMINI_API_KEY) {
-    try {
-      googleModelInstance = createGoogleGenerativeAI({
-        apiKey: process.env.GEMINI_API_KEY,
-      })("gemini-2.0-flash-lite-preview-02-05");
-    } catch (e) {
-      console.error("Failed to initialize Google model:", e);
-    }
-  }
-  return googleModelInstance;
-}
-
-function getDeepSeekModel(): LanguageModel | null {
-  if (!deepseekModelInstance && process.env.DEEPSEEK_API_KEY) {
-    try {
-      deepseekModelInstance = createDeepSeek({
-        apiKey: process.env.DEEPSEEK_API_KEY,
-      })("deepseek-v4-flash");
-    } catch (e) {
-      console.error("Failed to initialize DeepSeek model:", e);
-    }
-  }
-  return deepseekModelInstance;
-}
-
-export function getModel(): { model: LanguageModel; name: string } {
-  const google = getGoogleModel();
-  if (google) return { model: google, name: "gemini-2.0-flash" };
-  const deepseek = getDeepSeekModel();
-  if (deepseek) return { model: deepseek, name: "deepseek-v4-flash" };
-  throw new Error("Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in .env");
-}
 
 // ── System prompt (see ./prompt.ts) ──
 
@@ -115,106 +44,11 @@ export {
   buildSystemPrompt,
 } from "@/server/llm/prompt";
 
-// ── Shared tool set ──
+// ── Plot tree pre-generation ──
 
-function createAllTools(
-  events: TurnEventEmitter,
-  dialogueTool: ReturnType<typeof createGenerateDialogueStepTool>["tool"],
-) {
-  return {
-    listEntities: createListEntitiesTool(),
-    getEntity: createGetEntityTool(),
-    updateEntity: createUpdateEntityTool(events),
-    updateEntities: createUpdateEntitiesTool(events),
-    createEntity: createCreateEntityTool(events),
-    getCharacterState: createGetCharacterStateTool(),
-    updateCharacterState: createUpdateCharacterStateTool(events),
-    createPlot: createCreatePlotTool(events),
-    updatePlot: createUpdatePlotTool(events),
-    getPlot: createGetPlotTool(),
-    getScene: createGetSceneTool(),
-    updateScene: createUpdateSceneTool(events),
-    advanceTime: createAdvanceTimeTool(events),
-    addFact: createAddFactTool(events),
-    getFact: createGetFactTool(),
-    updateFact: createUpdateFactTool(events),
-    removeFact: createRemoveFactTool(events),
-    generateDialogueStep: dialogueTool,
-  };
-}
+export { generatePlotDefs, type PlotDef } from "@/server/llm/pregeneratePlotTree";
 
 // ── Game Master ──
-
-function persistStep(
-  stepId: string,
-  parentStepId: string | null,
-  parentOptionId: string | null,
-  messages: Message[],
-  options: DialogueOption[],
-  playerCharacter: Character | null,
-  label: string,
-  userInput: string | null,
-) {
-  // Custom input: parentStepId set but no parentOptionId → create a synthetic option
-  // on the parent step so this branch is navigable in replay mode.
-  let effectiveParentOptionId = parentOptionId;
-  if (parentStepId && !effectiveParentOptionId) {
-    const customOptionId = `custom_${nextId()}`;
-    const optionText = (userInput ?? "Custom input").slice(0, 120);
-    const customOption: DialogueOption = {
-      id: customOptionId,
-      text: optionText.length >= 120 ? optionText.slice(0, 117) + "…" : optionText,
-      selectionMessage: userInput ?? "Custom input",
-    };
-    addOptionToStep(parentStepId, customOption);
-    effectiveParentOptionId = customOptionId;
-    console.log(`[${label}] synthetic custom option: ${parentStepId}.${customOptionId}`);
-  }
-
-  saveStep({
-    id: stepId,
-    parentStepId,
-    parentOptionId: effectiveParentOptionId,
-    messages,
-    options,
-    worldSnapshot: {
-      entities: getAllEntities(),
-      plots: getAllPlots(),
-      playerCharacter,
-      gameTime: getGameTime(),
-      scene: getSceneState(),
-      facts: getFactsSnapshot(),
-    },
-    isGenerated: true,
-    isActive: true,
-  });
-
-  console.log(
-    `[${label}] persisted step=${stepId} messages=${messages.length} options=${options.length}`,
-  );
-
-  if (parentStepId && effectiveParentOptionId) {
-    updateOptionNextStepId(parentStepId, effectiveParentOptionId, stepId);
-    console.log(
-      `[${label}] linked parent option: ${parentStepId}.${effectiveParentOptionId} -> ${stepId}`,
-    );
-  }
-
-  for (const msg of messages) {
-    try {
-      addMessage(msg);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!message.includes("UNIQUE constraint failed")) {
-        console.error("Failed to save message to history:", message);
-      }
-    }
-  }
-
-  if (parentStepId) {
-    deactivateSiblingBranches(parentStepId, stepId);
-  }
-}
 
 export async function generateTurn(
   userInput: string,
@@ -542,18 +376,31 @@ export async function generateTurnBatch(
   ].join("\n");
 
   const { model } = getModel();
-  const noopEvents = new TurnEventEmitter(null, stepId);
-  const dialogueStepTool = createGenerateDialogueStepTool(noopEvents);
+  const noopEvents = new NoopEventEmitter(stepId);
 
-  const result = await generateText({
-    model,
-    system: systemPrompt,
-    messages: [{ role: "user", content: promptText }],
-    tools: createAllTools(noopEvents, dialogueStepTool.tool),
-  });
+  const MAX_BATCH_ATTEMPTS = 2;
+  let dialogueCall: { toolCallId: string; toolName: string; input: unknown } | undefined;
+
+  for (let attempt = 0; attempt < MAX_BATCH_ATTEMPTS; attempt++) {
+    const messages = attempt === 0
+      ? [{ role: "user" as const, content: promptText }]
+      : [{ role: "user" as const, content: promptText + "\n\nERROR: You must call generateDialogueStep. The player cannot see any response without it. Call generateDialogueStep now." }];
+
+    // Re-create dialogue tool to reset wasValid state
+    const dialogueToolAttempt = createGenerateDialogueStepTool(noopEvents);
+
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      messages,
+      tools: createAllTools(noopEvents, dialogueToolAttempt.tool),
+    });
+
+    dialogueCall = result.toolCalls?.find((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE);
+    if (dialogueCall) break;
+  }
 
   // Extract the generateDialogueStep tool input
-  const dialogueCall = result.toolCalls?.find((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE);
   const rawInput = dialogueCall?.input;
 
   // Recover from malformed JSON with tolerant partial-json parser.
@@ -580,6 +427,10 @@ export async function generateTurnBatch(
     (o, i) => mapToDialogueOption(o, i, stepId),
   );
 
+  if (finalMessages.length === 0) {
+    throw new Error("generateTurnBatch: failed to generate valid dialogue after retries");
+  }
+
   const messages: Message[] = finalMessages.map((m: any, i) => ({
     id: `msg_${stepId}_${i}`,
     speaker: m.speaker || "SYSTEM",
@@ -599,190 +450,4 @@ export async function generateTurnBatch(
     userInput,
   );
   return { stepId, messages, options: finalOptions };
-}
-
-// ── Plot tree pre-generation ──
-
-interface PlotDef {
-  index: number;
-  title: string;
-  description: string;
-  status: string;
-  involvedLocations: string[];
-  involvedCharacters: string[];
-  childPlots: Array<{ childPlotIndex: number | null; triggerCondition: string }>;
-}
-
-export async function pregeneratePlotTree(size: number): Promise<Plot[]> {
-  const seedStory = getActiveSeedStory();
-  const summaries = getAllEntitySummaries();
-
-  const entityLines = summaries
-    .map((e) => `  ${e.id} — "${e.displayName}" (${e.type}) — ${e.shortDescription}`)
-    .join("\n");
-
-  const prompt = [
-    `You are designing a complete plot tree for a narrative RPG.`,
-    ``,
-    `SETTING: ${seedStory.settingDescription}`,
-    `TONE: ${seedStory.toneDescription}`,
-    ``,
-    `Available entities (use these exact IDs):`,
-    entityLines,
-    ``,
-    `Generate a plot tree with approximately ${size} nodes. Follow these rules:`,
-    ``,
-    `1. Plot index 0 is the ROOT — it has no parent. It represents the overarching story.`,
-    `2. Each plot is a BROAD narrative arc (chapter/quest), not a single scene or dialogue beat.`,
-    `3. childPlots define narrative branch directions — each triggerCondition describes a story-level choice ("Player sides with the rebels"), not a specific dialogue line.`,
-    `4. Status must be "PENDING" for all nodes.`,
-    `5. The tree should be SHALLOW and WIDE — prefer 2-3 levels with many branches over deep nesting.`,
-    `6. Use exact entity IDs from the list above for involvedLocations and involvedCharacters.`,
-    `7. Every non-root plot must be referenced by exactly one parent's childPlots via childPlotIndex.`,
-    `8. Each non-leaf node should have 2-5 childPlots (some with childPlotIndex set to a valid index, some null for future expansion).`,
-    `9. The tree must be connected — every node must be reachable from the root.`,
-    ``,
-    `Output ONLY valid JSON in this exact format (no markdown, no explanation):`,
-    `{"plots":[{"index":0,"title":"string","description":"string","status":"PENDING","involvedLocations":["id"],"involvedCharacters":["id"],"childPlots":[{"childPlotIndex":1,"triggerCondition":"string"},{"childPlotIndex":null,"triggerCondition":"string"}]}]}`,
-  ].join("\n");
-
-  const { model } = getModel();
-  const result = await generateText({ model, messages: [{ role: "user", content: prompt }] });
-
-  // Strip markdown code fences before extracting JSON — the regex /\{[\s\S]*\}/
-  // would otherwise match across fences and include non-JSON text.
-  let text = result.text.trim();
-  text = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/```\s*$/gm, "").trim();
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Failed to parse plot tree JSON from LLM response");
-
-  let parsed: { plots: PlotDef[] };
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    throw new Error("Invalid JSON in LLM response for plot tree");
-  }
-
-  if (!Array.isArray(parsed.plots) || parsed.plots.length === 0) {
-    throw new Error("No plots in generated tree");
-  }
-
-  const plotDefs = parsed.plots;
-
-  // ── Validate LLM output before any side effects ──────────────────────────
-
-  // Duplicate indices would silently corrupt the index→ID map
-  const indexSet = new Set<number>();
-  for (const def of plotDefs) {
-    if (indexSet.has(def.index)) {
-      throw new Error(`Duplicate plot index ${def.index} in generated tree`);
-    }
-    indexSet.add(def.index);
-  }
-
-  // Root (index 0) must exist
-  if (!indexSet.has(0)) {
-    throw new Error("Root plot (index 0) is required but missing from generated tree");
-  }
-
-  // Every childPlotIndex must reference an existing plot index
-  for (const def of plotDefs) {
-    for (const cp of def.childPlots) {
-      if (cp.childPlotIndex !== null && !indexSet.has(cp.childPlotIndex)) {
-        throw new Error(
-          `Plot ${def.index} references non-existent childPlotIndex ${cp.childPlotIndex}`,
-        );
-      }
-    }
-  }
-
-  // Every non-root plot must be reachable from root via childPlots
-  const referenced = new Set<number>();
-  for (const def of plotDefs) {
-    for (const cp of def.childPlots) {
-      if (cp.childPlotIndex !== null) referenced.add(cp.childPlotIndex);
-    }
-  }
-  for (const def of plotDefs) {
-    if (def.index !== 0 && !referenced.has(def.index)) {
-      throw new Error(
-        `Plot ${def.index} ("${def.title}") is not referenced by any parent's childPlots — orphans are not allowed`,
-      );
-    }
-  }
-
-  // ── Assign real IDs ──────────────────────────────────────────────────────
-
-  const indexToId = new Map<number, string>();
-  for (const def of plotDefs) {
-    indexToId.set(def.index, `plot_${nextId()}`);
-  }
-
-  // Build child → parent mapping
-  const childParentMap = new Map<number, { parentIndex: number; optionIndex: number }>();
-  for (const def of plotDefs) {
-    for (let i = 0; i < def.childPlots.length; i++) {
-      const child = def.childPlots[i];
-      if (child.childPlotIndex !== null) {
-        childParentMap.set(child.childPlotIndex, { parentIndex: def.index, optionIndex: i });
-      }
-    }
-  }
-
-  // Topological sort: parent before children
-  const visited = new Set<number>();
-  const order: number[] = [];
-
-  function visit(index: number) {
-    if (visited.has(index)) return;
-    const parentInfo = childParentMap.get(index);
-    if (parentInfo) visit(parentInfo.parentIndex);
-    visited.add(index);
-    order.push(index);
-  }
-
-  for (const def of plotDefs) {
-    visit(def.index);
-  }
-
-  // Insert in order
-  const inserted: Plot[] = [];
-  for (const index of order) {
-    const def = plotDefs.find((d) => d.index === index)!;
-
-    const id = indexToId.get(index)!;
-    const parentInfo = childParentMap.get(index);
-    const parentPlotId = parentInfo ? indexToId.get(parentInfo.parentIndex)! : null;
-    const parentOptionId = parentInfo ? parentInfo.optionIndex : null;
-
-    // Set all plotIds to null — addPlot's auto-link mechanism updates the
-    // parent's childPlots when each child is inserted, so links are wired
-    // incrementally without triggering validatePlotTree failures from
-    // forward-references to not-yet-inserted children.
-    const childPlots = def.childPlots.map((cp) => ({
-      plotId: null,
-      triggerCondition: cp.triggerCondition,
-    }));
-
-    const addResult = addPlot({
-      id,
-      title: def.title,
-      description: def.description,
-      status: (def.status as PlotStatus) ?? "PENDING",
-      involvedLocations: def.involvedLocations ?? [],
-      involvedCharacters: def.involvedCharacters ?? [],
-      parentPlotId,
-      parentOptionId,
-      childPlots,
-    });
-
-    if ("error" in addResult) {
-      throw new Error(`Failed to insert plot "${def.title}": ${addResult.error}`);
-    }
-
-    const plot = getPlotById(id);
-    if (plot) inserted.push(plot);
-  }
-
-  return inserted;
 }

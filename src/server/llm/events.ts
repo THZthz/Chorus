@@ -22,23 +22,24 @@ import type { PlotPatch } from "@/types/plot";
 import type { SseEventType, SseEventMap, StreamingMessage } from "@/shared/events";
 import type { SceneState, EntityType, Fact } from "@/types/entities";
 
+export type EventEmitter = TurnEventEmitter | NoopEventEmitter;
+
 /**
  * Manages SSE output for a single turn.
  * Tools call emit* methods during their execute phase.
  * The stream writer calls start/finish to manage the SSE lifecycle.
  */
 export class TurnEventEmitter {
-  private readonly res: Response | null;
+  private readonly res: Response;
 
   constructor(
-    res: Response | null,
+    res: Response,
     public readonly stepId: string,
   ) {
     this.res = res;
   }
 
   private send<T extends SseEventType>(event: T, data: Omit<SseEventMap[T], "type">) {
-    if (!this.res) return;
     this.res.write(`event: ${event}\ndata: ${JSON.stringify({ ...data, type: event })}\n\n`);
   }
 
@@ -50,7 +51,7 @@ export class TurnEventEmitter {
 
   finish() {
     this.send("done", {});
-    if (this.res) this.res.end();
+    this.res.end();
   }
 
   // ── Tool-triggered events (immediately visible to user) ──
@@ -114,4 +115,30 @@ export class TurnEventEmitter {
   emitFactRemove(factId: string) {
     this.send("fact_remove", { factId });
   }
+}
+
+/**
+ * No-op event emitter for non-streaming batch generation.
+ * Has the same public API as TurnEventEmitter but does nothing.
+ */
+export class NoopEventEmitter {
+  readonly stepId: string;
+  constructor(stepId: string) { this.stepId = stepId; }
+  startStep() {}
+  finish() {}
+  emitWorldUpdate(_entityId: string, _changes: Record<string, unknown>) {}
+  emitPlotUpdate(_plotId: string, _status: string) {}
+  emitPlotCreate(_plotId: string, _title: string, _parentPlotId: string | null) {}
+  emitPlotEdit(_plotId: string, _changes: Record<string, unknown>) {}
+  emitStreamingReset() {}
+  emitStreamingMessages(_messages: unknown[]) {}
+  emitOptions(_options: unknown[]) {}
+  emitParsed(_messages: unknown[], _options: unknown[]) {}
+  emitError(_message: string) {}
+  emitTimeUpdate(_day: number, _segment: number, _segmentsAdvanced: number) {}
+  emitSceneUpdate(_scene: unknown) {}
+  emitEntityCreate(_entityId: string, _entityType: string, _displayName: string) {}
+  emitFactAdd(_fact: unknown) {}
+  emitFactUpdate(_factId: string, _changes: Record<string, unknown>) {}
+  emitFactRemove(_factId: string) {}
 }

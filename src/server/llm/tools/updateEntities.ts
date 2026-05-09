@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { updateEntity, getEntityById } from "@/server/models/world";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { TOOL_NAMES } from "@/shared/constants";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
@@ -43,7 +43,7 @@ const inputSchema = z.object({
     .describe("Array of entity updates to apply."),
 });
 
-export function createUpdateEntitiesTool(events: TurnEventEmitter) {
+export function createUpdateEntitiesTool(events: EventEmitter) {
   return tool({
     title: "Update Entities",
     description:

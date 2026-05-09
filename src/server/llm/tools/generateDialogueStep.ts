@@ -18,7 +18,7 @@
 
 import { tool } from "ai";
 import { z } from "zod";
-import type { TurnEventEmitter } from "@/server/llm/events";
+import type { EventEmitter } from "@/server/llm/events";
 import { NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
 import { checkText } from "@/server/llm/tools/shared";
@@ -80,7 +80,7 @@ const inputSchema = z.object({
   options: z.array(optionSchema).describe("The choices presented to the player."),
 });
 
-export function createGenerateDialogueStepTool(_events: TurnEventEmitter) {
+export function createGenerateDialogueStepTool(_events: EventEmitter) {
   let lastCallValid = false;
 
   const dialogueTool = tool({

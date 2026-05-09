@@ -45,7 +45,7 @@ The TODO is more like prompts.
 - [x] Add tools for getting/updating character state (including new status conditions), creating new entities, and bulk-updating entity descriptions or attributes.
 - [ ] Scope world flags to plot nodes, enable incremental plot editing (add/remove children), allow advancing time by days, and add stricter validation rules for dialogue options (length limits, required messages, and valid skill names).
 - [x] The div `class="flex-1 flex flex-col min-w-0 overflow-hidden"` should not have horizontal scrollbar, but it appears along with the vertical scrollbar.
-- [ ] Let GM regenerate dialogue message if it is too long.
-- [ ] Pre-generate a larger plot tree in advance, player can choose the size.
-- [ ] Explicitly add a `Character` entity "player". Remove "STATS - 12 VALUES" from all other characters except "player" they do not need it. All other places which may implicitly include "player" should explicitly specify it (like current scene management).
-- [ ] What is the usage of generateTurnBatch? Can we remove it?
+- [x] Let GM regenerate dialogue message if it is too long.
+- [x] Pre-generate a larger plot tree in advance, player can choose the size.
+- [x] Explicitly add a `Character` entity "player". Remove "STATS - 12 VALUES" from all other characters except "player" they do not need it. All other places which may implicitly include "player" should explicitly specify it (like current scene management).
+- [x] What is the usage of generateTurnBatch? Can we remove it?

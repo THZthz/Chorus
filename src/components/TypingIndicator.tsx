@@ -1,21 +1,3 @@
-/**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
- * Copyright (C) 2026  Amias
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import React from "react";
 import { motion } from "motion/react";
 
@@ -25,23 +7,38 @@ export const TypingIndicator: React.FC = () => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="flex gap-1 mb-8"
+      className="flex items-center gap-3 mb-8 pl-1"
     >
-      {[0, 1, 2].map((i) => (
-        <motion.div
-          key={i}
-          className="w-2 h-2 bg-white/20 rounded-full"
-          animate={{
-            opacity: [0.3, 1, 0.3],
-            y: [0, -4, 0],
-          }}
-          transition={{
-            duration: 0.8,
-            repeat: Infinity,
-            delay: i * 0.2,
-          }}
-        />
-      ))}
+      {/* Amber pilot lamp */}
+      <motion.div
+        className="w-2 h-2 rounded-full"
+        style={{
+          background: "radial-gradient(circle, #e8c547, #c4944a)",
+          boxShadow: "0 0 6px rgba(232,197,71,0.4), 0 0 12px rgba(232,197,71,0.15)",
+        }}
+        animate={{
+          opacity: [1, 0.4, 1, 0.6, 1],
+          boxShadow: [
+            "0 0 6px rgba(232,197,71,0.4), 0 0 12px rgba(232,197,71,0.15)",
+            "0 0 3px rgba(232,197,71,0.2), 0 0 6px rgba(232,197,71,0.08)",
+            "0 0 6px rgba(232,197,71,0.4), 0 0 12px rgba(232,197,71,0.15)",
+            "0 0 4px rgba(232,197,71,0.3), 0 0 8px rgba(232,197,71,0.1)",
+            "0 0 6px rgba(232,197,71,0.4), 0 0 12px rgba(232,197,71,0.15)",
+          ],
+        }}
+        transition={{
+          duration: 1.5,
+          repeat: Infinity,
+          ease: "easeInOut",
+          times: [0, 0.2, 0.3, 0.5, 1],
+        }}
+      />
+      <span
+        className="text-[10px] uppercase tracking-[0.2em] text-[#c4944a]/50"
+        style={{ fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif" }}
+      >
+        Thinking
+      </span>
     </motion.div>
   );
 };

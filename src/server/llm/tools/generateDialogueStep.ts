@@ -19,7 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { EventEmitter } from "@/server/llm/events";
-import { NOTIFICATION_TYPES, SPEAKER_TYPES } from "@/types/dialogue";
+import { NOTIFICATION_TYPES } from "@/types/dialogue";
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
 import { checkText } from "@/server/llm/tools/shared";
 
@@ -31,7 +31,7 @@ const messageSchema = z.object({
     .describe(
       "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
     ),
-  type: z.enum(SPEAKER_TYPES),
+  type: z.enum(["INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]),
   text: z.string().describe("The dialogue text, supports markdown."),
   metadata: z
     .object({

@@ -21,68 +21,27 @@ import { Trash2, RefreshCw, GitBranch, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "motion/react";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { WorldSnapshot, GameTime, SceneState } from "@/types/entities";
+import type { SseClient } from "@/services/SseClient";
 import { DialogueMessage } from "@/components/DialogueMessage";
 import { DialogueOptions } from "@/components/DialogueOptions";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { CharacterPanel } from "@/components/CharacterPanel";
 import { DebugPanel } from "@/components/DebugPanel";
 import { worldManager } from "@/services/WorldManager";
-import { SseClient, type SseCallbacks } from "@/services/SseClient";
 import { useCharacter } from "@/context/CharacterContext";
 import { nextId, initIdPool } from "@/client/idPool";
 import { SEGMENT_LABELS } from "@/shared/constants";
-
-function buildHistoryFromTree(
-  stepId: string,
-  treeSteps: Record<
-    string,
-    {
-      id: string;
-      parentStepId: string | null;
-      parentOptionId: string | null;
-      messages: Message[];
-      options: DialogueOption[];
-    }
-  >,
-): Message[] {
-  const chain: (typeof treeSteps)[string][] = [];
-  let cur: (typeof treeSteps)[string] | undefined = treeSteps[stepId];
-  while (cur) {
-    chain.unshift(cur);
-    cur = cur.parentStepId ? treeSteps[cur.parentStepId] : undefined;
-  }
-  const result: Message[] = [];
-  for (let i = 0; i < chain.length; i++) {
-    const step = chain[i];
-    if (i > 0) {
-      const parent = chain[i - 1];
-      const opt = parent.options.find((o) => o.id === step.parentOptionId);
-      if (opt) {
-        const youText = opt.selectionMessage ?? opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
-        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: youText });
-      } else if (!step.parentOptionId) {
-        result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: "[Free choice]" });
-      }
-    }
-    result.push(...step.messages);
-  }
-  return result;
-}
+import { useSkillChecks } from "@/client/hooks/useSkillChecks";
+import { useDialogueStreaming } from "@/client/hooks/useDialogueStreaming";
+import { useReplayMode } from "@/client/hooks/useReplayMode";
 
 export default function App() {
   const { character, getStatBySkillName } = useCharacter();
-  const [history, setHistory] = useState<Message[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
-  const [isRolling, setIsRolling] = useState(false);
-  const [dynamicOptions, setDynamicOptions] = useState<DialogueOption[] | null>(null);
-  const [streamingMessages, setStreamingMessages] = useState<Message[]>([]);
-  const [changedMessageIds, setChangedMessageIds] = useState<Set<string>>(new Set());
-  const [canRegenerate, setCanRegenerate] = useState(false);
-  const [lastStepId, setLastStepId] = useState<string | null>(null);
-  const [hasBegun, setHasBegun] = useState(false);
-  const [streamingId, setStreamingId] = useState<string | null>(null);
 
-  // Replay mode state
+  // ── App-level state ──
+
+  const [history, setHistory] = useState<Message[]>([]);
+  const [hasBegun, setHasBegun] = useState(false);
   const [mode, setMode] = useState<"live" | "replay">("live");
   const [treeSteps, setTreeSteps] = useState<
     Record<
@@ -102,6 +61,8 @@ export default function App() {
   const [gameTime, setGameTime] = useState<GameTime | null>(null);
   const [currentScene, setCurrentScene] = useState<SceneState | null>(null);
 
+  // ── Refs ──
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<SseClient | null>(null);
@@ -110,174 +71,60 @@ export default function App() {
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRevealingRef = useRef(false);
 
-  // ── SSE streaming ──
+  // ── Custom hooks ──
 
-  const createSseCallbacks = (
-    streamId: string,
-    logPrefix: string,
-    onDone?: (stepId: string | null) => void,
-  ): SseCallbacks => {
-    let capturedStepId: string | null = null;
+  const { isRolling, handleSkillCheck } = useSkillChecks({ getStatBySkillName });
 
-    return {
-      onStepStart: (data) => {
-        setLastStepId(data.stepId);
-        capturedStepId = data.stepId;
-        console.trace(`[${logPrefix}] step_start stepId=${data.stepId}`);
-      },
-      onStreamingMessages: (messages) => {
-        // During a retry, the LLM re-streams messages from scratch. Because
-        // parsePartial produces different intermediate states across chunk
-        // boundaries, content comparison is too fragile. Instead, freeze
-        // the UI at the pre-reset state until parsed delivers the final result.
-        if (isRetryingRef.current) return;
+  const {
+    isTyping,
+    streamingMessages,
+    dynamicOptions,
+    canRegenerate,
+    lastStepId,
+    changedMessageIds,
+    setLastStepId,
+    setDynamicOptions,
+    setCanRegenerate,
+    setStreamingMessages,
+    setIsTyping,
+    handleStreamingResponse,
+    handleRegenerate,
+  } = useDialogueStreaming({
+    character,
+    sseRef,
+    retrySnapshotRef,
+    isRetryingRef,
+    setHistory,
+    setGameTime,
+    setCurrentScene,
+  });
 
-        setStreamingMessages((prev) => {
-          if (
-            prev.length === messages.length &&
-            prev.every((m, i) => m.text === messages[i].text && m.speaker === messages[i].speaker)
-          ) {
-            return prev;
-          }
-          return messages.map((m, i) => ({
-            id: `${streamId}-${i}`,
-            speaker: m.speaker,
-            type: m.type as Message["type"],
-            text: m.text,
-            metadata: m.metadata as Message["metadata"],
-          }));
-        });
-      },
-      onStreamingReset: () => {
-        isRetryingRef.current = true;
-        setStreamingMessages((prev) => {
-          retrySnapshotRef.current = prev;
-          return prev;
-        });
-      },
-      onOptions: (options) => {
-        setDynamicOptions(options);
-        console.trace(`[${logPrefix}] options received: ${options.length}`);
-      },
-      onParsed: (data) => {
-        isRetryingRef.current = false;
-        const snapshot = retrySnapshotRef.current;
-        retrySnapshotRef.current = [];
-        const messages: Message[] = data.messages.map((m, i) => ({
-          id: `${streamId}-final-${i}`,
-          speaker: m.speaker,
-          type: m.type as Message["type"],
-          text: m.text,
-          metadata: m.metadata as Message["metadata"],
-        }));
-        const changed = new Set(
-          messages.filter((m, i) => (snapshot[i]?.text ?? null) !== m.text).map((m) => m.id),
-        );
-        setStreamingMessages([]);
-        setHistory((prev) => [...prev, ...messages]);
-        if (changed.size > 0) setChangedMessageIds(changed);
-        if (data.options && data.options.length > 0) {
-          setDynamicOptions(data.options);
-        }
-        console.trace(
-          `[${logPrefix}] parsed: ${messages.length} msgs, ${data.options?.length ?? 0} options, ${changed.size} changed`,
-        );
-      },
-      onWorldUpdate: () => {
-        worldManager.loadState();
-      },
-      onPlotUpdate: () => {
-        worldManager.loadState();
-      },
-      onPlotCreate: () => {
-        worldManager.loadState();
-      },
-      onPlotEdit: () => {
-        worldManager.loadState();
-      },
-      onTimeUpdate: (data) => {
-        console.trace(`[${logPrefix}] time_update day=${data.day} segment=${data.segment}`);
-        setGameTime({ day: data.day, segment: data.segment });
-      },
-      onSceneUpdate: (data) => {
-        console.trace(`[${logPrefix}] scene_update`);
-        setCurrentScene(data.scene);
-      },
-      onFactAdd: (data) => {
-        console.trace(`[${logPrefix}] fact_add factId=${data.fact.id}`);
-        worldManager.addFactToCache(data.fact);
-      },
-      onFactUpdate: (data) => {
-        console.trace(`[${logPrefix}] fact_update factId=${data.factId}`);
-        worldManager.updateFactInCache(data.factId, data.changes);
-      },
-      onFactRemove: (data) => {
-        console.trace(`[${logPrefix}] fact_remove factId=${data.factId}`);
-        worldManager.removeFactFromCache(data.factId);
-      },
-      onError: async (message) => {
-        isRetryingRef.current = false;
-        console.error(`[${logPrefix}] error: ${message}`);
-        setIsTyping(false);
-        setStreamingMessages([]);
-        const errorId = `error-${await nextId()}`;
-        setHistory((prev) => [
-          ...prev,
-          {
-            id: errorId,
-            speaker: "SYSTEM",
-            type: "SYSTEM",
-            text: `[Error: ${message}]`,
-          },
-        ]);
-      },
-      onDone: () => {
-        console.trace(`[${logPrefix}] done`);
-        setIsTyping(false);
-        setCanRegenerate(true);
-        sseRef.current = null;
-        worldManager.loadState();
-        onDone?.(capturedStepId);
-      },
-    };
-  };
-
-  const handleStreamingResponse = async (
-    userInput: string,
-    updatedHistory: Message[],
-    parentStepId: string | null,
-    parentOptionId: string | null,
-    onReplayDone?: (newStepId: string) => void,
-  ) => {
-    console.trace(
-      `[stream] starting, parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${updatedHistory.length} input="${String(userInput).slice(0, 60)}"`,
-    );
-    setIsTyping(true);
-    setStreamingMessages([]);
-    setDynamicOptions(null);
-    setCanRegenerate(false);
-    isRetryingRef.current = false;
-
-    const streamId = `stream-${await nextId()}`;
-    setStreamingId(streamId);
-
-    const client = new SseClient();
-    sseRef.current = client;
-
-    client.stream(
-      "/api/chat/stream",
-      {
-        userInput,
-        history: updatedHistory,
-        parentStepId,
-        parentOptionId,
-        playerCharacter: character,
-      },
-      createSseCallbacks(streamId, "stream", (stepId) => {
-        if (onReplayDone && stepId) onReplayDone(stepId);
-      }),
-    );
-  };
+  const {
+    enterReplayMode,
+    exitReplayMode,
+    handleReplayOptionSelect,
+    handleJumpToStep,
+  } = useReplayMode({
+    treeSteps,
+    setTreeSteps,
+    history,
+    setHistory,
+    currentReplayStepId,
+    setCurrentReplayStepId,
+    lastStepId,
+    setLastStepId,
+    mode,
+    setMode,
+    isRevealingRef,
+    revealTimeoutRef,
+    sseRef,
+    setDynamicOptions,
+    setCanRegenerate,
+    setStreamingMessages,
+    setIsTyping,
+    setHasBegun,
+    handleStreamingResponse,
+  });
 
   // ── Initial load ──
 
@@ -334,23 +181,29 @@ export default function App() {
     updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);
 
-    if (option.check) {
-      setIsRolling(true);
-      const check = option.check;
-      const diceCount = check.diceCount ?? 2;
-      await new Promise((r) => setTimeout(r, 1000));
-      const dice = Array.from({ length: diceCount }, () => Math.floor(Math.random() * 6) + 1);
-      const skillBonus = getStatBySkillName(check.skill);
-      const total = dice.reduce((a, b) => a + b, 0) + skillBonus;
-      const success = total >= check.difficulty;
-      handleRollComplete(check, total, success, dice, skillBonus, updatedHistory, youText);
-    } else {
+    const handled = await handleSkillCheck(option, updatedHistory, (rollMessage, updatedHistoryWithRoll) => {
+      const rr = rollMessage.rollResult!;
+      const rc = option.check!;
+      const resultLabel = rr.success ? "SUCCESS" : "FAILURE";
+
+      const rollDescription = [
+        `[Player action: ${youText}]`,
+        `[Skill Check Result: ${rc.skill.toUpperCase()} (${rc.difficultyText})]`,
+        `Rolled ${rr.dice.join(" + ")} + ${rr.skillBonus ?? 0} (${rc.skill}) = ${rr.total} vs Difficulty ${rc.difficulty}`,
+        `Result: ${resultLabel}`,
+      ].join("\n");
+
+      setHistory(updatedHistoryWithRoll);
+      handleStreamingResponse(rollDescription, updatedHistoryWithRoll, lastStepId, null);
+    });
+
+    if (!handled) {
       setHasBegun(true);
       handleStreamingResponse(youText, updatedHistory, lastStepId, option.id);
     }
   };
 
-  // ── Dice roll completion ──
+  // ── Custom input ──
 
   const handleCustomInput = async (text: string) => {
     if (isTyping || isRolling || isRevealingRef.current) return;
@@ -367,112 +220,6 @@ export default function App() {
     handleStreamingResponse(text, updatedHistory, lastStepId, null);
   };
 
-  const handleRollComplete = async (
-    check: NonNullable<DialogueOption["check"]>,
-    total: number,
-    success: boolean,
-    dice: number[],
-    skillBonus: number,
-    historySnapshot: Message[],
-    optionText: string,
-  ) => {
-    const resultLabel = success ? "SUCCESS" : "FAILURE";
-
-    const rollDescription = [
-      `[Player action: ${optionText}]`,
-      `[Skill Check Result: ${check.skill.toUpperCase()} (${check.difficultyText})]`,
-      `Rolled ${dice.join(" + ")} + ${skillBonus} (${check.skill}) = ${total} vs Difficulty ${check.difficulty}`,
-      `Result: ${resultLabel}`,
-    ].join("\n");
-
-    setIsRolling(false);
-
-    const rollMessage: Message = {
-      id: `roll-${await nextId()}`,
-      speaker: "SYSTEM",
-      type: "NOTIFICATION",
-      text: optionText,
-      skillCheck: {
-        skill: check.skill,
-        difficulty: `${check.difficultyText} ${check.difficulty}`,
-        success,
-      },
-      rollResult: {
-        dice,
-        total,
-        difficulty: check.difficulty,
-        success,
-        skill: check.skill,
-        skillBonus,
-      },
-    };
-    const updatedHistory = [...historySnapshot, rollMessage];
-    setHistory(updatedHistory);
-
-    handleStreamingResponse(rollDescription, updatedHistory, lastStepId, null);
-  };
-
-  // ── Regenerate ──
-
-  const handleRegenerate = async () => {
-    if (!lastStepId || isTyping) return;
-    sseRef.current?.abort();
-
-    // Trim history to last YOU message (compute before setState to avoid stale closure)
-    const lastYouIdx = history.map((m) => m.type).lastIndexOf("YOU");
-    const trimmedHistory = lastYouIdx >= 0 ? history.slice(0, lastYouIdx + 1) : history;
-
-    console.log(
-      `[regenerate] triggering, stepId=${lastStepId} historyLen=${trimmedHistory.length}`,
-    );
-
-    setHistory(trimmedHistory);
-    setDynamicOptions(null);
-    setStreamingMessages([]);
-    setIsTyping(true);
-
-    const streamId = `stream-${await nextId()}`;
-    setStreamingId(streamId);
-
-    const client = new SseClient();
-    sseRef.current = client;
-
-    client.stream(
-      "/api/regenerate",
-      { stepId: lastStepId, history: trimmedHistory, playerCharacter: character },
-      createSseCallbacks(streamId, "regenerate"),
-    );
-  };
-
-  // ── Jump to specific step (from DebugPanel dialogue tree) ──
-
-  const handleJumpToStep = async (stepId: string) => {
-    sseRef.current?.abort();
-    setIsTyping(false);
-    setStreamingMessages([]);
-    setCanRegenerate(false);
-
-    const treeRes = await fetch("/api/dialogue/tree");
-    if (!treeRes.ok) return;
-
-    const treeData = await treeRes.json();
-    const targetStep = treeData.steps[stepId];
-    if (!targetStep) return;
-
-    // Use buildHistoryFromTree so YOU messages are injected between steps
-    const messages = buildHistoryFromTree(stepId, treeData.steps);
-
-    setTreeSteps(treeData.steps);
-    setHistory(messages);
-    setDynamicOptions(targetStep.options);
-    setCurrentReplayStepId(stepId);
-    setLastStepId(stepId);
-    setCanRegenerate(true);
-    setHasBegun(true);
-    setMode("replay");
-    worldManager.applyStepSnapshot(targetStep.worldSnapshot);
-  };
-
   // ── Reset ──
 
   const resetHistory = async () => {
@@ -485,200 +232,6 @@ export default function App() {
     setHasBegun(false);
     await fetch("/api/reset", { method: "POST" });
     window.location.reload();
-  };
-
-  // ── Replay mode ──
-
-  const enterReplayMode = async () => {
-    sseRef.current?.abort();
-    setIsTyping(false);
-    setStreamingMessages([]);
-    setCanRegenerate(false);
-
-    console.log(`[replay] entering replay mode, fetching tree...`);
-    const res = await fetch("/api/dialogue/tree");
-    if (!res.ok) {
-      console.error(`[replay] tree fetch failed: ${res.status}`);
-      return;
-    }
-    const data = await res.json();
-    if (!data.root) {
-      console.warn(`[replay] no root step found in tree`);
-      return;
-    }
-
-    const stepCount = Object.keys(data.steps).length;
-    console.log(
-      `[replay] tree loaded: root=${data.root.id}, steps=${stepCount}, leaves=${data.leafIds?.length ?? 0}, totalMsgs=${data.root.messages?.length ?? 0}, options=${data.root.options?.length ?? 0}`,
-    );
-
-    setTreeSteps(data.steps);
-    setCurrentReplayStepId(data.root.id);
-    setHistory(data.root.messages);
-    setDynamicOptions(data.root.options);
-    setHasBegun(true);
-    setMode("replay");
-    worldManager.applyStepSnapshot(data.steps[data.root.id]?.worldSnapshot);
-  };
-
-  const exitReplayMode = async () => {
-    console.log(`[replay] exiting replay mode, restoring live history`);
-    setMode("live");
-    setTreeSteps({});
-    setCurrentReplayStepId(null);
-    worldManager.clearReplayState();
-
-    const res = await fetch("/api/history");
-    if (res.ok) {
-      const hist = await res.json();
-      if (hist.length > 0) {
-        setHistory(hist);
-        setHasBegun(true);
-        setDynamicOptions([]);
-      } else {
-        setHistory([]);
-        setHasBegun(false);
-        setDynamicOptions(null);
-      }
-    }
-    worldManager.loadState();
-  };
-
-  const handleReplayOptionSelect = async (option: DialogueOption) => {
-    if (!currentReplayStepId) {
-      console.warn(`[replay] no current step, cannot navigate`);
-      return;
-    }
-
-    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
-    const youMessage: Message = {
-      id: `you-${await nextId()}`,
-      speaker: "YOU",
-      type: "YOU",
-      text: youText,
-    };
-
-    console.log(
-      `[replay] option selected: id=${option.id} nextStepId=${option.nextStepId || "none"} text="${String(option.text).slice(0, 40)}"`,
-    );
-
-    // Fast path — child already in local treeSteps
-    if (option.nextStepId && treeSteps[option.nextStepId]) {
-      const child = treeSteps[option.nextStepId];
-      console.log(`[replay] fast-path navigate to step=${child.id}`);
-      const baseWithYou = [...history, youMessage];
-      setHistory(baseWithYou);
-      revealMessagesStaggered(baseWithYou, child.messages, () => {
-        setDynamicOptions(child.options);
-        setCurrentReplayStepId(child.id);
-        setLastStepId(child.id);
-        setCanRegenerate(true);
-        worldManager.applyStepSnapshot(child.worldSnapshot);
-      });
-      return;
-    }
-
-    // Slow path — nextStepId exists but not in local cache; check server
-    if (option.nextStepId) {
-      console.log(`[replay] slow-path lookup: stepId=${currentReplayStepId} optionId=${option.id}`);
-      const res = await fetch("/api/dialogue/traverse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stepId: currentReplayStepId, optionId: option.id }),
-      });
-      if (res.ok) {
-        const { child } = await res.json();
-        if (child) {
-          console.log(`[replay] slow-path found child step=${child.id}`);
-          setTreeSteps((prev) => ({ ...prev, [child.id]: child }));
-          const baseWithYou = [...history, youMessage];
-          setHistory(baseWithYou);
-          revealMessagesStaggered(baseWithYou, child.messages, () => {
-            setDynamicOptions(child.options);
-            setCurrentReplayStepId(child.id);
-            setLastStepId(child.id);
-            setCanRegenerate(true);
-            worldManager.applyStepSnapshot(child.worldSnapshot);
-          });
-          return;
-        }
-      }
-    }
-
-    // New branch — no child exists yet, generate one
-    console.log(
-      `[replay] generating new branch from step=${currentReplayStepId} option=${option.id}`,
-    );
-    setHistory((prev) => [...prev, youMessage]);
-    const branchHistory = buildHistoryFromTree(currentReplayStepId, treeSteps);
-    const updatedHistory = [...branchHistory, youMessage];
-    const parentIdAtTime = currentReplayStepId;
-
-    handleStreamingResponse(
-      youText,
-      updatedHistory,
-      currentReplayStepId,
-      option.id,
-      async (newStepId) => {
-        const stepRes = await fetch(`/api/dialogue/${newStepId}`);
-        if (!stepRes.ok) return;
-        const { step } = await stepRes.json();
-        setTreeSteps((prev) => {
-          const updated = { ...prev, [newStepId]: step };
-          const parent = updated[parentIdAtTime];
-          if (parent) {
-            updated[parentIdAtTime] = {
-              ...parent,
-              options: parent.options.map((o: any) =>
-                o.id === option.id ? { ...o, nextStepId: newStepId } : o,
-              ),
-            };
-          }
-          return updated;
-        });
-        setCurrentReplayStepId(newStepId);
-        // New branch used live world state — clear override so CharacterPanel shows live state
-        worldManager.loadState();
-        console.log(`[replay] new branch saved: step=${newStepId}`);
-      },
-    );
-  };
-
-  useEffect(() => {
-    if (changedMessageIds.size === 0) return;
-    const t = setTimeout(() => setChangedMessageIds(new Set()), 900);
-    return () => clearTimeout(t);
-  }, [changedMessageIds]);
-
-  // ── Staggered message reveal (replay navigation) ──
-
-  useEffect(() => {
-    return () => {
-      if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
-    };
-  }, []);
-
-  const revealMessagesStaggered = (
-    baseMessages: Message[],
-    newMessages: Message[],
-    onDone: () => void,
-  ) => {
-    if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
-    isRevealingRef.current = true;
-    setDynamicOptions([]);
-
-    let revealed = 0;
-    const revealNext = () => {
-      if (revealed >= newMessages.length) {
-        isRevealingRef.current = false;
-        onDone();
-        return;
-      }
-      setHistory([...baseMessages, ...newMessages.slice(0, revealed + 1)]);
-      revealed++;
-      revealTimeoutRef.current = setTimeout(revealNext, 120);
-    };
-    revealNext();
   };
 
   // ── Auto-scroll ──
@@ -753,7 +306,7 @@ export default function App() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ type: "spring", stiffness: 500, damping: 45, mass: 0.5 }}
-                onClick={handleRegenerate}
+                onClick={() => handleRegenerate(history)}
                 title="Regenerate Response"
                 className="h-11 w-11 flex-shrink-0 flex items-center justify-center bg-surface-card border border-blue-400/30 rounded-full text-blue-400 hover:bg-blue-400 hover:text-white transition-all duration-300 shadow-xl"
               >

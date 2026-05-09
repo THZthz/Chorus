@@ -31,6 +31,23 @@ import { createTableExtension, tableDarkTheme } from "@markwhen/codemirror-table
 
 const TEMPLATE_VARS = [
   {
+    var: "{{setting_description}}",
+    label: "Narrative setting description from the active seed story.",
+  },
+  {
+    var: "{{tone_description}}",
+    label: "Narrative tone description from the active seed story.",
+  },
+  {
+    var: "{{game_time}}",
+    label: "Current in-game time as \"Day X, Segment Y (~approx time)\".",
+  },
+  {
+    var: "{{current_scene}}",
+    label:
+      "Current location, character positions (who is where), and object positions (at location or carried by character).",
+  },
+  {
     var: "{{entities_brief}}",
     label:
       "Entity summaries grouped by type (CHARACTER, LOCATION, OBJECT) with id, displayName, and shortDescription.",

@@ -40,6 +40,7 @@ import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
 import { SceneViewer } from "@/components/debug/SceneViewer";
 import { FactsViewer } from "@/components/debug/FactsViewer";
+import { CustomSelect } from "@/components/debug/shared";
 
 type TabId = "logs" | "world" | "graphs" | "prompt" | "scene" | "facts";
 type GraphMode = "dialogue" | "plot";
@@ -272,18 +273,18 @@ export const DebugPanel: React.FC<{
                       {graphMode === "plot" && (
                         <>
                           <span className="text-white/10 mx-1">|</span>
-                          <select
-                            value={pregenSize}
-                            onChange={(e) => setPregenSize(Number(e.target.value))}
-                            disabled={pregenerating}
-                            className="bg-white/[0.04] border border-white/10 rounded-sm px-2 py-1.5 text-[9px] font-mono text-white/50 focus:outline-none focus:border-white/20 disabled:opacity-30"
-                          >
-                            <option value={5}>5 nodes</option>
-                            <option value={10}>10 nodes</option>
-                            <option value={15}>15 nodes</option>
-                            <option value={20}>20 nodes</option>
-                            <option value={30}>30 nodes</option>
-                          </select>
+                          <CustomSelect
+                            value={String(pregenSize)}
+                            options={[
+                              { value: "5", label: "5 nodes" },
+                              { value: "10", label: "10 nodes" },
+                              { value: "15", label: "15 nodes" },
+                              { value: "20", label: "20 nodes" },
+                              { value: "30", label: "30 nodes" },
+                            ]}
+                            onChange={(v) => setPregenSize(Number(v))}
+                            className="w-[90px] min-w-0"
+                          />
                           <button
                             onClick={handlePregeneratePlots}
                             disabled={pregenerating}

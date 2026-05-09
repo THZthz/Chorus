@@ -9,6 +9,7 @@
     ]
   },
   "enabledPlugins": {
-    "sourcegraph@claude-plugins-official": false
+    "sourcegraph@claude-plugins-official": false,
+    "code-review@claude-plugins-official": false
   }
 }

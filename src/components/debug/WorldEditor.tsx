@@ -22,6 +22,7 @@ import { Database, Save, Plus, X, AlertCircle, ChevronDown, ChevronRight } from 
 import { WorldState, WorldEntity, Character } from "@/types/entities";
 import { ResizableTextarea } from "./shared";
 import { nextId } from "@/client/idPool";
+import { PLAYER_ID } from "@/shared/constants";
 
 const TYPE_META = {
   CHARACTER: { color: "#c678dd", dimColor: "rgba(198,120,221,0.12)", label: "CHARACTER" },
@@ -488,11 +489,11 @@ export const WorldEditor: React.FC = () => {
                 />
               </div>
 
-              {/* CHARACTER-only */}
               {editing.type === "CHARACTER" &&
                 (() => {
                   const ch = editing as Character;
-                  const statsEntries = Object.entries(ch.stats ?? {});
+                  const isPlayer = editing.id === PLAYER_ID;
+                  const statsEntries = isPlayer ? Object.entries(ch.stats ?? {}) : [];
                   return (
                     <>
                       {statsEntries.length > 0 && (

@@ -17,6 +17,7 @@
  */
 
 import type { SeedStory } from "./types";
+import { PLAYER_ID } from "@/shared/constants";
 
 const objects: SeedStory["objects"] = {
   obsidian_lens: {
@@ -94,6 +95,36 @@ const locations: SeedStory["locations"] = {
 };
 
 const characters: SeedStory["characters"] = {
+  [PLAYER_ID]: {
+    id: PLAYER_ID,
+    type: "CHARACTER",
+    displayName: "YOU",
+    shortDescription:
+      "An amnesiac carrying a violet crystal that resonates with an ancient star chart — key to a cosmic convergence.",
+    longDescription:
+      "You remember nothing before the cold of the mountain. The sharp bite of thin air. The crunch of frost beneath your cheek. And then the pull — something in the stone beneath you, something in the sky above, drawing you toward the black tower that pierces the clouds. A violet crystal in your palm pulses with a rhythm that isn't your heartbeat. It matches something deeper. Older. The convergence is coming, the constellations are shifting, and you are either the one who will stop it or the vessel it will inhabit when it wakes. Every text in the Athenaeum points to a bearer. Every prophecy names a crystal. Every whisper from the vault knows your name — even if you don't.",
+    stats: {
+      logic: 4,
+      rhetoric: 2,
+      empathy: 3,
+      perception: 5,
+      volition: 6,
+      endurance: 4,
+      sorcery: 5,
+      suggestion: 3,
+      instinct: 5,
+      might: 2,
+      clockwork: 3,
+      alchemy: 3,
+    },
+    opinions: {},
+    conditions: {},
+    attributes: {
+      Amnesia: "Remembers nothing — drawn to the Athenaeum by an inexplicable pull",
+      "Magical Affinity": "The violet crystal resonates with the star chart and the sleeper beneath",
+      "The Prophecy": "Unknown — but the Hermit believes he is the prophesied bearer",
+    },
+  },
   astronomer_lyra: {
     id: "astronomer_lyra",
     type: "CHARACTER",
@@ -102,20 +133,7 @@ const characters: SeedStory["characters"] = {
       "The Athenaeum's sole custodian — brilliant, isolated, and no longer certain what is real.",
     longDescription:
       "Lyra is thirty-four years old and has spent the last ten of them alone on a mountain. She came to the Athenaeum as a junior archivist, fresh from the Karavelle Academy, tasked with cataloguing the astronomical records. The senior staff left one by one — retirement, transfer, disappearance — until only Lyra remained. She told herself she preferred the solitude. The stars were company enough. The work was important.\n\nShe is sharp-featured and perpetually cold, wrapped in wool coats and fingerless gloves even indoors. Her dark hair is pulled back in a functional twist, streaked with premature gray at the temples. Her eyes are the color of weak tea and carry the particular exhaustion of someone who hasn't slept well in years. She paces when she talks. She annotates everything — margins of books, edges of charts, the backs of her own hands.\n\nThree days ago, the whispers from the vault became intelligible. They said her name. They said other things. She has not slept since. The arrival of the player — amnesiac, carrying a crystal that resonates with the star chart's pulse — is either a miracle or a catastrophe. Lyra has spent too long alone to tell the difference. But she knows one thing: the convergence is real, the countdown is accelerating, and she cannot stop it by herself.",
-    stats: {
-      logic: 7,
-      rhetoric: 3,
-      empathy: 2,
-      perception: 7,
-      volition: 5,
-      endurance: 4,
-      sorcery: 5,
-      suggestion: 2,
-      instinct: 6,
-      might: 2,
-      clockwork: 6,
-      alchemy: 7,
-    },
+    stats: {},
     opinions: {
       YOU: "They carry a crystal that pulses in time with the star chart. That's not coincidence — there are no coincidences left. They don't remember who they are, but their presence here, now, three days before the convergence... the universe doesn't arrange things this neatly without intention. Are they here to stop it, or to complete it? I don't know. I need them. That frightens me more than the whispers.",
       the_hermit:
@@ -138,20 +156,7 @@ const characters: SeedStory["characters"] = {
       "A reclusive keeper of forbidden texts — ink-stained fingers, a tremor in her voice, and knowledge she wishes she could un-learn.",
     longDescription:
       "Elowen came to the Athenaeum five years ago as an assistant archivist, sent by the Magewardens to inventory the vault contents. She was supposed to stay three months. She never left. Not because she was trapped — because she learned something in the vaults that made leaving impossible. There is a secret buried in the Codex Umbrarum, a truth about the nature of the stars, and once you know it, the sky looks different. You can see the patterns. You can feel the convergence approaching. And if you try to tell anyone who hasn't read the texts, the words won't come — your throat closes, your tongue numbs, the knowledge defends itself.\n\nShe is small, pale, perpetually hunched as if expecting a blow. Ink stains her fingers in layers — black, blue, the deep violet of the vault's restricted inks. She carries a ring of keys that jangle when she walks, though she's forgotten which key opens which lock. She speaks in fragments, trailing off mid-sentence when the words vanish from her throat. She wants to help. The knowledge won't let her. But she can write — the prohibition only affects speech — and she has been writing for five years, filling journal after journal with everything she's learned about the sleeper, the convergence, and what happens when it wakes.",
-    stats: {
-      logic: 6,
-      rhetoric: 1,
-      empathy: 5,
-      perception: 6,
-      volition: 3,
-      endurance: 2,
-      sorcery: 4,
-      suggestion: 1,
-      instinct: 7,
-      might: 1,
-      clockwork: 4,
-      alchemy: 3,
-    },
+    stats: {},
     opinions: {
       YOU: "The crystal. I felt it the moment you entered the Athenaeum — a resonance I haven't felt since I read the Codex. You're connected to the sleeper somehow. Not a threat — a key. Or perhaps both. The texts talk about a bearer, a vessel, someone who carries a fragment of the sleeper's power without knowing it. But the bearer has a choice. The texts are unclear on what happens if they choose wrong.",
       astronomer_lyra:
@@ -175,20 +180,7 @@ const characters: SeedStory["characters"] = {
       "A figure in the vaults who hasn't seen the sun in twenty years — and no longer believes the sky is empty.",
     longDescription:
       "No one knows his name. If the Athenaeum's records ever held it, those pages have been eaten by time or deliberately removed. He has lived in the lower vaults for at least two decades, surviving on mushrooms that grow in the dark, water that seeps through the mountain, and a faith so absolute it has become indistinguishable from madness.\n\nHe is old — sixty, seventy, ageless in the way deep darkness is ageless. His skin is translucent from years without sun, his eyes clouded with cataracts that make them gleam silver in low light. He wears robes that were once the order's habit, now reduced to rags held together with twine and conviction. He does not walk so much as drift, appearing in rooms you were certain were empty, standing at the edge of your vision until you turn.\n\nThe Hermit was one of the original astronomer-monks. He was present when the order sealed the deepest vault and abandoned the Athenaeum. He chose to stay — not as a custodian, but as a worshipper. He believes the sleeper beneath the mountain is not a monster but a god, and the convergence is not an apocalypse but an awakening. He has been waiting twenty years for someone to arrive carrying a crystal that glows violet. He was beginning to think the prophecies were wrong. Then you walked in.\n\nHe is not hostile. He is something worse: helpful. He will answer any question, guide any exploration, open any lock. He wants you to understand. He wants you to see what he sees. He wants you to be ready — because when the sleeper wakes, it will need a vessel, and all signs point to you.",
-    stats: {
-      logic: 4,
-      rhetoric: 7,
-      empathy: 6,
-      perception: 8,
-      volition: 9,
-      endurance: 5,
-      sorcery: 6,
-      suggestion: 7,
-      instinct: 8,
-      might: 2,
-      clockwork: 1,
-      alchemy: 4,
-    },
+    stats: {},
     opinions: {
       YOU: "There. There. The bearer comes at last. I knew — I knew the prophecies were not metaphor, not the ravings of frightened men sealing their doom. The crystal. You carry it. You feel its pulse. That is the heartbeat of a god, child. The sleeper chose you before you were born. Before you forgot. Before the world made you small. Do not fear the convergence. Fear what happens if you refuse it.",
       archivist_elowen:
@@ -245,6 +237,7 @@ export const celestialAthenaeum: SeedStory = {
   initialScene: {
     currentLocationId: "celestial_athenaeum",
     characterLocations: {
+      player: "celestial_athenaeum",
       astronomer_lyra: "celestial_athenaeum",
       archivist_elowen: "celestial_athenaeum",
       the_hermit: "celestial_athenaeum",

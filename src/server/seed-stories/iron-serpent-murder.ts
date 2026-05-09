@@ -17,6 +17,7 @@
  */
 
 import type { SeedStory } from "./types";
+import { PLAYER_ID } from "@/shared/constants";
 
 const objects: SeedStory["objects"] = {
   ornate_dagger: {
@@ -87,6 +88,36 @@ const locations: SeedStory["locations"] = {
 };
 
 const characters: SeedStory["characters"] = {
+  [PLAYER_ID]: {
+    id: PLAYER_ID,
+    type: "CHARACTER",
+    displayName: "YOU",
+    shortDescription:
+      "An amnesiac on a luxury train with a violet crystal — witness, suspect, or something else entirely.",
+    longDescription:
+      "You remember nothing before the scream. The shriek of steam. The shudder of steel wheels on frozen track. A violet crystal pulsing in your clenched fist — and a woman's voice, somewhere in the carriage ahead, crying murder. You woke on the Iron Serpent, a luxury express hurtling through the frozen Ironfang Mountains, with no name, no ticket, and no idea how you got aboard. Now a man lies dead in Carriage 3, a detective watches everyone with suspicion, a noblewoman with a false identity was seen near the scene, the engineer is hiding cargo, and the conductor falsified the manifest. Six hours to Karavelle. Two hundred souls sealed in by a blizzard. One killer who cannot leave. And you — amnesiac, crystal-carrier, unknown to everyone including yourself — might be the key to the mystery, or its next victim.",
+    stats: {
+      logic: 4,
+      rhetoric: 3,
+      empathy: 4,
+      perception: 5,
+      volition: 4,
+      endurance: 3,
+      sorcery: 3,
+      suggestion: 4,
+      instinct: 5,
+      might: 3,
+      clockwork: 3,
+      alchemy: 2,
+    },
+    opinions: {},
+    conditions: {},
+    attributes: {
+      Amnesia: "Remembers nothing — woke on the train with no name or ticket",
+      "Magical Affinity": "The violet crystal pulses with unknown energy",
+      Status: "Unknown to everyone including himself — passenger, stowaway, or suspect",
+    },
+  },
   inspector_ashworth: {
     id: "inspector_ashworth",
     type: "CHARACTER",
@@ -95,20 +126,7 @@ const characters: SeedStory["characters"] = {
       "A detective of the Royal Investigative Service — too sharp for comfort, too curious for safety.",
     longDescription:
       "Ashworth is a man in his forties, lean and angular, with the kind of face that remembers everything and forgives nothing. Gray eyes, pale as winter slate, sit behind wire-rimmed spectacles that he polishes when he's thinking — which is constantly. He wears a traveling coat of dark wool, cut for function not fashion, and carries a pocket watch that he checks with mechanical regularity.\n\nHe joined the Royal Investigative Service young and rose fast — too fast, some said. His methods are unorthodox; his conviction rate is unmatched. He was on this train by accident, returning from a consultation in Verdantis, when the body was found. Now he's the only law on board — and he knows it. He has already sealed the crime scene, interviewed the staff, and begun building a list of suspects.\n\nThe problem is: everyone on this train has a secret. Including, perhaps, the inspector himself. He watches the player with a gaze that lingers a beat too long. He knows something. Or suspects something. Or maybe — just maybe — he's wondering if the amnesiac with the violet crystal is a witness, or a threat.",
-    stats: {
-      logic: 8,
-      rhetoric: 6,
-      empathy: 4,
-      perception: 8,
-      volition: 7,
-      endurance: 3,
-      sorcery: 1,
-      suggestion: 5,
-      instinct: 6,
-      might: 3,
-      clockwork: 4,
-      alchemy: 2,
-    },
+    stats: {},
     opinions: {
       YOU: "No memory. No name. A crystal that glows when they're agitated. They're either the most dangerous person on this train or the most vulnerable. Either way, they're involved — the question is how. I've been doing this long enough to know when someone is at the center of a web. They are.",
       lady_marianne:
@@ -129,20 +147,7 @@ const characters: SeedStory["characters"] = {
     shortDescription: "A noblewoman with a viper's smile and a story that doesn't stay still.",
     longDescription:
       "She calls herself Lady Marianne d'Vere, widow of a Verdantine merchant prince, traveling to Karavelle to settle her late husband's affairs. The story is smooth as polished glass. Too smooth. The jewels at her throat are glass, not garnet. The accent drifts — one moment Verdantine refinement, the next something harder, forged in rougher places. And a woman of her supposed station does not travel without a maid, yet here she is, alone in a first-class compartment, remarkably unbothered by a murder one carriage over.\n\nShe is beautiful in a sharp, angular way — dark hair swept up with a single silver pin, cheekbones that could cut paper, a mouth that seems perpetually on the edge of a knowing smile. She wears black, ostensibly for mourning, but the cut is too fashionable, too deliberate. She ordered champagne at dinner. She laughed at something the conductor said. A woman whose husband recently died does not laugh like that.\n\nWhen interrogated, she is cooperative to the point of performance — answering questions before they're asked, volunteering details that seem helpful but lead nowhere. She is playing a game. The question is: what game, and who else is playing?",
-    stats: {
-      logic: 5,
-      rhetoric: 8,
-      empathy: 3,
-      perception: 6,
-      volition: 7,
-      endurance: 3,
-      sorcery: 2,
-      suggestion: 8,
-      instinct: 5,
-      might: 2,
-      clockwork: 3,
-      alchemy: 3,
-    },
+    stats: {},
     opinions: {
       YOU: "The amnesiac. How romantic. How convenient. They're either a brilliant actor or the most unlucky soul on this train. Either way, they're in my way — unless I can make them useful. A person with no past is a person with nothing to lose. That's dangerous. That's valuable.",
       inspector_ashworth:
@@ -164,20 +169,7 @@ const characters: SeedStory["characters"] = {
       "The train's master of alchemical fire — grease-stained hands, clockwork heart, and a loyalty that runs deeper than steel.",
     longDescription:
       "Kade is built like the engine they tend — broad-shouldered, burn-scarred, perpetually humming with contained energy. Their forearms are a map of old burns and gear-grease tattoos; their right hand is partially clockwork — brass knuckles and delicate gears replacing three fingers lost to a steam accident years ago. They wear the railway uniform with the collar unbuttoned and the sleeves rolled to the elbow, as if formality itself is a heat they can't tolerate.\n\nKade has been with the Iron Serpent since her maiden voyage eight years ago. They know every bolt, every piston, every secret compartment in the locomotive's groaning heart. They know the schedule, the crew, the cargo manifests — and they know when something doesn't add up. The baggage car was sealed before departure on orders from the railway office. No manifest. No inspection. Kade didn't like it, but orders are orders.\n\nNow there's a body, a dagger with a gear-and-thorn mark Kade recognizes but won't explain, and a blizzard that's forcing the engine to burn hotter than safe limits. They're worried about the train. But they're also worried about something else — something in the baggage car that wasn't on any manifest.",
-    stats: {
-      logic: 5,
-      rhetoric: 2,
-      empathy: 3,
-      perception: 5,
-      volition: 6,
-      endurance: 8,
-      sorcery: 1,
-      suggestion: 2,
-      instinct: 5,
-      might: 7,
-      clockwork: 8,
-      alchemy: 5,
-    },
+    stats: {},
     opinions: {
       YOU: "Another stray. This train collects them. They've got that look — the one people get when their past has been cut loose and they're drifting. I've seen it before, in the war. But that crystal they carry... I felt it the moment they walked past the engine room. The pressure gauges spiked. Something about them makes the alchemy unstable. I should keep them away from the boiler.",
       inspector_ashworth:
@@ -199,20 +191,7 @@ const characters: SeedStory["characters"] = {
       "The train's chief of staff — impeccable uniform, fraying nerves, and a ledger full of irregularities.",
     longDescription:
       "Conductor Pell is a man in his late fifties, silver-haired and ramrod-straight in a uniform that has been pressed to a razor's edge. His mustache is waxed, his shoes are mirrors, his ticket punch gleams like a ceremonial weapon. He has worked the railway for thirty years and has never — never — had a murder on his train. He is taking it as a personal affront.\n\nBeneath the polish, Pell is fraying. His hands tremble when he isn't gripping something. He has checked the passenger manifest seven times since the body was discovered, as if a new name might appear that explains everything. The truth is simpler and worse: there are passengers on this train who are not on the manifest. There is cargo that was never inspected. And Pell looked the other way — a bribe, a favor, a debt called in — and now a man is dead and he can't tell the inspector what he knows without incriminating himself.\n\nHe wants to do the right thing. He always has. But the right thing has become expensive, and Pell has a daughter in Karavelle with medical bills and a railway pension that won't cover them.",
-    stats: {
-      logic: 4,
-      rhetoric: 5,
-      empathy: 6,
-      perception: 5,
-      volition: 2,
-      endurance: 3,
-      sorcery: 0,
-      suggestion: 4,
-      instinct: 4,
-      might: 2,
-      clockwork: 3,
-      alchemy: 0,
-    },
+    stats: {},
     opinions: {
       YOU: "I don't know who they are. They're not on the manifest — I checked. I checked six times. But Inspector Ashworth hasn't detained them, so maybe... maybe it's fine. Maybe they're working with him? Or maybe I should tell him. But if I do, he'll start asking about the other names. The ones I added. The ones I removed.",
       chief_engineer_kade:
@@ -272,6 +251,7 @@ export const ironSerpentMurder: SeedStory = {
   initialScene: {
     currentLocationId: "iron_serpent",
     characterLocations: {
+      player: "iron_serpent",
       inspector_ashworth: "iron_serpent",
       lady_marianne: "iron_serpent",
       chief_engineer_kade: "iron_serpent",

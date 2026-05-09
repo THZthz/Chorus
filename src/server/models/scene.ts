@@ -18,6 +18,7 @@
 
 import db from "@/server/db";
 import type { GameTime, SceneState } from "@/types/entities";
+import { PLAYER_ID } from "@/shared/constants";
 
 // ── Segment Labels ──
 
@@ -99,12 +100,13 @@ export function describeTime(time: GameTime): string {
 const DEFAULT_SCENE: SceneState = {
   currentLocationId: "the_velvet_thorn",
   characterLocations: {
+    player: "the_velvet_thorn",
     veyla: "the_velvet_thorn",
     madam_cressida: "the_velvet_thorn",
   },
   objectPositions: {
-    soul_shard: { type: "character", characterId: "player" },
-    veyllas_ribbon: { type: "character", characterId: "player" },
+    soul_shard: { type: "character", characterId: PLAYER_ID },
+    veyllas_ribbon: { type: "character", characterId: PLAYER_ID },
   },
 };
 

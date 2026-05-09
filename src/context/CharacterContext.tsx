@@ -18,6 +18,7 @@
 
 import { ReactNode, createContext, useContext, useState } from "react";
 import { Character, CharacterStats } from "@/types/entities";
+import { PLAYER_ID } from "@/shared/constants";
 
 interface CharacterContextType {
   character: Character;
@@ -27,7 +28,7 @@ interface CharacterContextType {
 }
 
 const defaultCharacter: Character = {
-  id: "player",
+  id: PLAYER_ID,
   type: "CHARACTER",
   displayName: "YOU",
   shortDescription:

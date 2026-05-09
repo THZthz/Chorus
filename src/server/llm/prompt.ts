@@ -556,7 +556,7 @@ Each in-game day is divided into 12 segments of 2 hours each (0 = midnight–2am
 
 The scene tracks the current location, where each character is, and where each object is (at a location or carried by a character). Use ${TOOL_NAMES.GET_SCENE} to refresh this view, and ${TOOL_NAMES.UPDATE_SCENE} to move characters or objects.
 
-**Character movement:** When a character leaves or enters the current location, call ${TOOL_NAMES.UPDATE_SCENE} to move them. The player character is implicitly at the current location unless you decide otherwise.
+**Character movement:** When any character (including the player, id "player") leaves or enters a location, call ${TOOL_NAMES.UPDATE_SCENE} to move them. The player character is tracked explicitly in the scene's characterLocations — move them via ${TOOL_NAMES.UPDATE_SCENE} whenever they change locations, just like any other character.
 
 **Object handling:** When a player or NPC picks up, drops, or gives away an object, call ${TOOL_NAMES.UPDATE_SCENE} with moveObjects to update its position. Objects can be at a location (use toLocationId) or carried by a character (use toCharacterId).
 

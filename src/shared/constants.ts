@@ -33,6 +33,8 @@ export const SKILL_NAMES = [
 
 export type SkillName = (typeof SKILL_NAMES)[number];
 
+export const PLAYER_ID = "player" as const;
+
 export const TOOL_NAMES = {
   LIST_ENTITIES: "listEntities",
   GET_ENTITY: "getEntity",

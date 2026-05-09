@@ -69,7 +69,7 @@ export const FactsViewer: React.FC = () => {
         if (!cancelled) setLiveError(e instanceof Error ? e.message : String(e));
       }
     };
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
@@ -81,8 +81,7 @@ export const FactsViewer: React.FC = () => {
     if (!showRemoved && !f.isValid) return false;
     if (filterEntityId && !f.relatedEntityIds.some((id) => id.includes(filterEntityId)))
       return false;
-    if (filterPlotId && !f.relatedPlotIds.some((id) => id.includes(filterPlotId))) return false;
-    return true;
+    return !filterPlotId || f.relatedPlotIds.some((id) => id.includes(filterPlotId));
   });
 
   // ── Empty state ──────────────────────────────────────────────────────────

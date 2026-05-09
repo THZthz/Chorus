@@ -214,7 +214,10 @@ const DialogueInspector: React.FC<
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages, options: node.options ?? [] }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        setError(await res.text());
+        return;
+      }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
       onSaved();

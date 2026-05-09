@@ -265,7 +265,7 @@ export async function generateTurn(
             // Also repair a known LLM bug: premature `}` after messages array
             // e.g. {"messages": [...]}, "metadata": ... → {"messages": [...], "metadata": ...
             if (typeof chunk.input === "string" && chunk.input.trim()) {
-              const repaired = chunk.input.replace(/\]\s*\}\s*,\s*"/g, '], "');
+              const repaired = chunk.input.replace(/]\s*}\s*,\s*"/g, '], "');
               try {
                 args = parsePartial(repaired) as Record<string, unknown>;
               } catch {
@@ -415,7 +415,7 @@ export async function generateTurnBatch(
   // Also repair a known LLM bug: premature `}` after messages array
   let args: Record<string, unknown> | null = null;
   if (typeof rawInput === "string" && rawInput.trim()) {
-    const repaired = rawInput.replace(/\]\s*\}\s*,\s*"/g, '], "');
+    const repaired = rawInput.replace(/]\s*}\s*,\s*"/g, '], "');
     try {
       args = parsePartial(repaired) as Record<string, unknown>;
     } catch {

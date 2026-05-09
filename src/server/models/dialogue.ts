@@ -266,13 +266,6 @@ export function getChildByOption(
   return row ? parseStep(row) : null;
 }
 
-export function getAllActiveSteps(): DialogueStepParsed[] {
-  const rows = db
-    .prepare("SELECT * FROM dialogue_steps WHERE is_active = 1 ORDER BY created_at ASC")
-    .all() as DialogueStepRow[];
-  return rows.map(parseStep);
-}
-
 export function getAllSteps(): DialogueStepParsed[] {
   const rows = db
     .prepare("SELECT * FROM dialogue_steps ORDER BY created_at ASC")

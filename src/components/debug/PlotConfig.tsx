@@ -279,14 +279,20 @@ const PlotInspector: React.FC<
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ worldSnapshot: snapshot }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          setError(await res.text());
+          return;
+        }
       } else {
         const res = await fetch(`/api/plots/${node.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          setError(await res.text());
+          return;
+        }
       }
 
       setSavedFlash(true);

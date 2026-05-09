@@ -20,7 +20,7 @@ import db from "@/server/db";
 import { getAllEntitySummaries } from "@/server/models/world";
 import { buildActivePlotTree } from "@/server/models/plot";
 import { getSceneState, getGameTime, describeTime } from "@/server/models/scene";
-import { getActiveSeedStory } from "@/server/seed-stories/index";
+import { getActiveSeedStory } from "@/server/seed-stories";
 import { TOOL_NAMES } from "@/shared/constants";
 import type { SceneState } from "@/types/entities";
 

@@ -46,9 +46,9 @@ interface UseReplayModeParams {
   setLastStepId: React.Dispatch<React.SetStateAction<string | null>>;
   mode: "live" | "replay";
   setMode: React.Dispatch<React.SetStateAction<"live" | "replay">>;
-  isRevealingRef: React.MutableRefObject<boolean>;
-  revealTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
-  sseRef: React.MutableRefObject<SseClient | null>;
+  isRevealingRef: React.RefObject<boolean>;
+  revealTimeoutRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
+  sseRef: React.RefObject<SseClient | null>;
   setDynamicOptions: React.Dispatch<React.SetStateAction<DialogueOption[] | null>>;
   setCanRegenerate: React.Dispatch<React.SetStateAction<boolean>>;
   setStreamingMessages: React.Dispatch<React.SetStateAction<Message[]>>;
@@ -70,9 +70,7 @@ export function useReplayMode({
   setHistory,
   currentReplayStepId,
   setCurrentReplayStepId,
-  lastStepId,
   setLastStepId,
-  mode,
   setMode,
   isRevealingRef,
   revealTimeoutRef,
@@ -166,7 +164,7 @@ export function useReplayMode({
         setDynamicOptions(null);
       }
     }
-    worldManager.loadState();
+    await worldManager.loadState();
   };
 
   const handleReplayOptionSelect = async (option: DialogueOption) => {
@@ -175,7 +173,7 @@ export function useReplayMode({
       return;
     }
 
-    const youText = option.selectionMessage ?? option.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+    const youText = option.selectionMessage ?? option.text.replace(/^\[[^]]*?:[^]]*?\]\s*/, "");
     const youMessage: Message = {
       id: `you-${await nextId()}`,
       speaker: "YOU",
@@ -239,7 +237,7 @@ export function useReplayMode({
     const updatedHistory = [...branchHistory, youMessage];
     const parentIdAtTime = currentReplayStepId;
 
-    handleStreamingResponse(
+    await handleStreamingResponse(
       youText,
       updatedHistory,
       currentReplayStepId,
@@ -263,7 +261,7 @@ export function useReplayMode({
         });
         setCurrentReplayStepId(newStepId);
         // New branch used live world state — clear override so CharacterPanel shows live state
-        worldManager.loadState();
+        await worldManager.loadState();
         console.log(`[replay] new branch saved: step=${newStepId}`);
       },
     );

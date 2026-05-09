@@ -60,10 +60,6 @@ export class TurnEventEmitter {
     this.send("world_update", { entityId, changes });
   }
 
-  emitPlotUpdate(plotId: string, status: string) {
-    this.send("plot_update", { plotId, status });
-  }
-
   emitPlotCreate(plotId: string, title: string, parentPlotId: string | null) {
     this.send("plot_create", { plotId, title, parentPlotId });
   }
@@ -129,7 +125,6 @@ export class NoopEventEmitter {
   startStep() {}
   finish() {}
   emitWorldUpdate(_entityId: string, _changes: Record<string, unknown>) {}
-  emitPlotUpdate(_plotId: string, _status: string) {}
   emitPlotCreate(_plotId: string, _title: string, _parentPlotId: string | null) {}
   emitPlotEdit(_plotId: string, _changes: Record<string, unknown>) {}
   emitStreamingReset() {}

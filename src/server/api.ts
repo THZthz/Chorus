@@ -19,12 +19,10 @@
 import express from "express";
 import {
   generateTurn,
-  generateTurnBatch,
   getSystemPromptTemplate,
   setSystemPromptTemplate,
   DEFAULT_SYSTEM_PROMPT_TEMPLATE,
   generatePlotDefs,
-  type PlotDef,
 } from "@/server/llm";
 import {
   chatStreamSchema,
@@ -41,7 +39,7 @@ import {
 import type { WorldEntity, WorldSnapshot } from "@/types/entities";
 import type { Plot, PlotPatch, PlotStatus } from "@/types/plot";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
-import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
+import { getHistory, addMessage, setHistory } from "@/server/models/history";
 import { getAllPlots, getPlotById, updatePlot, addPlot } from "@/server/models/plot";
 import { getGameTime, getSceneState } from "@/server/models/scene";
 import { getLlmLogs, clearLlmLogs } from "@/server/models/debug";

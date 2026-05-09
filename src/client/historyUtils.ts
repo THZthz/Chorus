@@ -44,7 +44,7 @@ export function buildHistoryFromTree(
       const parent = chain[i - 1];
       const opt = parent.options.find((o) => o.id === step.parentOptionId);
       if (opt) {
-        const youText = opt.selectionMessage ?? opt.text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
+        const youText = opt.selectionMessage ?? opt.text.replace(/^\[[^]]*?:[^]]*?\]\s*/, "");
         result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: youText });
       } else if (!step.parentOptionId) {
         result.push({ id: `you-tree-${i}`, speaker: "YOU", type: "YOU", text: "[Free choice]" });

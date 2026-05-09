@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Database, Save, Plus, X, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { WorldState, WorldEntity, Character } from "@/types/entities";
@@ -179,7 +179,7 @@ const OpinionPills: React.FC<{
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
-        {entries.map(([k, v]) => (
+        {entries.map(([k, _v]) => (
           <button
             key={k}
             onClick={() => startEdit(k)}
@@ -270,7 +270,7 @@ export const WorldEditor: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchWorld();
+    void fetchWorld();
   }, []);
 
   const selectEntity = (entity: WorldEntity) => {
@@ -305,7 +305,8 @@ export const WorldEditor: React.FC = () => {
         setSavedFlash(true);
         setTimeout(() => setSavedFlash(false), 1500);
       } else {
-        throw new Error(await res.text());
+        setError(await res.text());
+        return;
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));

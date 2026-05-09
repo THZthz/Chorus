@@ -74,7 +74,7 @@ export async function generatePlotDefs(size: number): Promise<PlotDef[]> {
     .replace(/^```(?:json)?\s*\n?/gm, "")
     .replace(/```\s*$/gm, "")
     .trim();
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  const jsonMatch = text.match(/\{[\s\S]*}/);
   if (!jsonMatch) throw new Error("Failed to parse plot tree JSON from LLM response");
 
   let parsed: { plots: PlotDef[] };

@@ -17,8 +17,7 @@
  */
 
 import { parseSseStream } from "@/shared/sse";
-import type { DialogueOption } from "@/types/dialogue";
-import type { StreamingMessage, SseEventMap } from "@/shared/events";
+import type { SseEventMap } from "@/shared/events";
 
 type CallbackData<T extends keyof SseEventMap> = Omit<SseEventMap[T], "type">;
 

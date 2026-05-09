@@ -18,7 +18,7 @@
 
 import React, { useState, useEffect, useSyncExternalStore } from "react";
 import { MapPin, Clock, User, Box, AlertCircle } from "lucide-react";
-import type { GameTime, SceneState, WorldEntity } from "@/types/entities";
+import type { GameTime, SceneState } from "@/types/entities";
 import { worldManager } from "@/services/WorldManager";
 import { SEGMENT_LABELS, SEGMENT_HOURS } from "@/shared/constants";
 
@@ -52,13 +52,6 @@ async function fetchLiveScene(): Promise<LiveSceneData> {
 }
 
 // ── Replay mode snapshot ────────────────────────────────────────────────────
-
-function getReplaySnapshot() {
-  return {
-    gameTime: worldManager.getGameTime(),
-    scene: worldManager.getScene(),
-  };
-}
 
 function subscribeToReplay(cb: () => void) {
   return worldManager.subscribe(cb);
@@ -104,7 +97,7 @@ export const SceneViewer: React.FC = () => {
         if (!cancelled) setLiveError(e instanceof Error ? e.message : String(e));
       }
     };
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
@@ -145,8 +138,6 @@ export const SceneViewer: React.FC = () => {
   // ── Derived data ─────────────────────────────────────────────────────────
 
   const currentLocationId = scene.currentLocationId;
-  const currentLocationName = resolveEntityName(currentLocationId);
-
   const charactersHere = Object.entries(scene.characterLocations)
     .filter(([, locId]) => locId === currentLocationId)
     .map(([charId]) => charId);
@@ -165,8 +156,7 @@ export const SceneViewer: React.FC = () => {
 
   const objectsOther = Object.entries(scene.objectPositions).filter(([, pos]) => {
     if (pos.type === "location" && pos.locationId === currentLocationId) return false;
-    if (pos.type === "character" && charactersHere.includes(pos.characterId)) return false;
-    return true;
+    return !(pos.type === "character" && charactersHere.includes(pos.characterId));
   });
 
   return (

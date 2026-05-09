@@ -68,9 +68,7 @@ const StatBar: React.FC<{
           />
         ))}
       </div>
-      <span className="text-accent text-[11px] font-mono w-4 text-right tabular-nums">
-        {value}
-      </span>
+      <span className="text-accent text-[11px] font-mono w-4 text-right tabular-nums">{value}</span>
       <div className="flex gap-px opacity-0 group-hover/stat:opacity-100 transition-opacity">
         <button
           onClick={() => onChange(Math.max(0, value - 1))}

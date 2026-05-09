@@ -70,7 +70,10 @@ export async function generatePlotDefs(size: number): Promise<PlotDef[]> {
   // Strip markdown code fences before extracting JSON — the regex /\{[\s\S]*\}/
   // would otherwise match across fences and include non-JSON text.
   let text = result.text.trim();
-  text = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/```\s*$/gm, "").trim();
+  text = text
+    .replace(/^```(?:json)?\s*\n?/gm, "")
+    .replace(/```\s*$/gm, "")
+    .trim();
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Failed to parse plot tree JSON from LLM response");
 

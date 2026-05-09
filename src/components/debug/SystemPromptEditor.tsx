@@ -40,7 +40,7 @@ const TEMPLATE_VARS = [
   },
   {
     var: "{{game_time}}",
-    label: "Current in-game time as \"Day X, Segment Y (~approx time)\".",
+    label: 'Current in-game time as "Day X, Segment Y (~approx time)".',
   },
   {
     var: "{{current_scene}}",

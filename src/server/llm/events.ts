@@ -123,7 +123,9 @@ export class TurnEventEmitter {
  */
 export class NoopEventEmitter {
   readonly stepId: string;
-  constructor(stepId: string) { this.stepId = stepId; }
+  constructor(stepId: string) {
+    this.stepId = stepId;
+  }
   startStep() {}
   finish() {}
   emitWorldUpdate(_entityId: string, _changes: Record<string, unknown>) {}

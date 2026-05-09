@@ -366,7 +366,9 @@ export const LlmTraceViewer: React.FC = () => {
                                 <div className="flex flex-wrap gap-3 text-[10px] font-mono text-white/40">
                                   <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
                                     model:{" "}
-                                    <span className="text-entity-object">{req.model || "unknown"}</span>
+                                    <span className="text-entity-object">
+                                      {req.model || "unknown"}
+                                    </span>
                                   </span>
                                   <span className="px-2 py-0.5 bg-white/[0.03] border border-white/5 rounded-sm">
                                     history:{" "}

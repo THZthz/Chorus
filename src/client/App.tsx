@@ -99,32 +99,28 @@ export default function App() {
     setCurrentScene,
   });
 
-  const {
-    enterReplayMode,
-    exitReplayMode,
-    handleReplayOptionSelect,
-    handleJumpToStep,
-  } = useReplayMode({
-    treeSteps,
-    setTreeSteps,
-    history,
-    setHistory,
-    currentReplayStepId,
-    setCurrentReplayStepId,
-    lastStepId,
-    setLastStepId,
-    mode,
-    setMode,
-    isRevealingRef,
-    revealTimeoutRef,
-    sseRef,
-    setDynamicOptions,
-    setCanRegenerate,
-    setStreamingMessages,
-    setIsTyping,
-    setHasBegun,
-    handleStreamingResponse,
-  });
+  const { enterReplayMode, exitReplayMode, handleReplayOptionSelect, handleJumpToStep } =
+    useReplayMode({
+      treeSteps,
+      setTreeSteps,
+      history,
+      setHistory,
+      currentReplayStepId,
+      setCurrentReplayStepId,
+      lastStepId,
+      setLastStepId,
+      mode,
+      setMode,
+      isRevealingRef,
+      revealTimeoutRef,
+      sseRef,
+      setDynamicOptions,
+      setCanRegenerate,
+      setStreamingMessages,
+      setIsTyping,
+      setHasBegun,
+      handleStreamingResponse,
+    });
 
   // ── Initial load ──
 
@@ -181,21 +177,25 @@ export default function App() {
     updatedHistory = [...history, youMessage];
     setHistory(updatedHistory);
 
-    const handled = await handleSkillCheck(option, updatedHistory, (rollMessage, updatedHistoryWithRoll) => {
-      const rr = rollMessage.rollResult!;
-      const rc = option.check!;
-      const resultLabel = rr.success ? "SUCCESS" : "FAILURE";
+    const handled = await handleSkillCheck(
+      option,
+      updatedHistory,
+      (rollMessage, updatedHistoryWithRoll) => {
+        const rr = rollMessage.rollResult!;
+        const rc = option.check!;
+        const resultLabel = rr.success ? "SUCCESS" : "FAILURE";
 
-      const rollDescription = [
-        `[Player action: ${youText}]`,
-        `[Skill Check Result: ${rc.skill.toUpperCase()} (${rc.difficultyText})]`,
-        `Rolled ${rr.dice.join(" + ")} + ${rr.skillBonus ?? 0} (${rc.skill}) = ${rr.total} vs Difficulty ${rc.difficulty}`,
-        `Result: ${resultLabel}`,
-      ].join("\n");
+        const rollDescription = [
+          `[Player action: ${youText}]`,
+          `[Skill Check Result: ${rc.skill.toUpperCase()} (${rc.difficultyText})]`,
+          `Rolled ${rr.dice.join(" + ")} + ${rr.skillBonus ?? 0} (${rc.skill}) = ${rr.total} vs Difficulty ${rc.difficulty}`,
+          `Result: ${resultLabel}`,
+        ].join("\n");
 
-      setHistory(updatedHistoryWithRoll);
-      handleStreamingResponse(rollDescription, updatedHistoryWithRoll, lastStepId, null);
-    });
+        setHistory(updatedHistoryWithRoll);
+        handleStreamingResponse(rollDescription, updatedHistoryWithRoll, lastStepId, null);
+      },
+    );
 
     if (!handled) {
       setHasBegun(true);
@@ -273,7 +273,8 @@ export default function App() {
       <div
         className="fixed inset-0 pointer-events-none z-0"
         style={{
-          background: "radial-gradient(ellipse 85% 80% at 50% 50%, transparent 30%, rgba(13,9,6,0.7) 75%, rgba(13,9,6,0.95) 100%)",
+          background:
+            "radial-gradient(ellipse 85% 80% at 50% 50%, transparent 30%, rgba(13,9,6,0.7) 75%, rgba(13,9,6,0.95) 100%)",
         }}
       />
 

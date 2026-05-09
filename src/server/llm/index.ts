@@ -382,9 +382,17 @@ export async function generateTurnBatch(
   let dialogueCall: { toolCallId: string; toolName: string; input: unknown } | undefined;
 
   for (let attempt = 0; attempt < MAX_BATCH_ATTEMPTS; attempt++) {
-    const messages = attempt === 0
-      ? [{ role: "user" as const, content: promptText }]
-      : [{ role: "user" as const, content: promptText + "\n\nERROR: You must call generateDialogueStep. The player cannot see any response without it. Call generateDialogueStep now." }];
+    const messages =
+      attempt === 0
+        ? [{ role: "user" as const, content: promptText }]
+        : [
+            {
+              role: "user" as const,
+              content:
+                promptText +
+                "\n\nERROR: You must call generateDialogueStep. The player cannot see any response without it. Call generateDialogueStep now.",
+            },
+          ];
 
     // Re-create dialogue tool to reset wasValid state
     const dialogueToolAttempt = createGenerateDialogueStepTool(noopEvents);

@@ -156,8 +156,12 @@ const PlotNodeCard: React.FC<NodeRenderProps<Plot>> = ({
                 className="text-[7px] px-1 py-0.5 rounded-sm border max-w-[56px] truncate flex-shrink-0"
                 style={{
                   color: isEffectivelyActive ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.15)",
-                  borderColor: isEffectivelyActive ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)",
-                  backgroundColor: isEffectivelyActive ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.01)",
+                  borderColor: isEffectivelyActive
+                    ? "rgba(255,255,255,0.07)"
+                    : "rgba(255,255,255,0.04)",
+                  backgroundColor: isEffectivelyActive
+                    ? "rgba(255,255,255,0.03)"
+                    : "rgba(255,255,255,0.01)",
                 }}
               >
                 {typeof v === "boolean" ? k : `${k}:${String(v)}`}
@@ -216,7 +220,9 @@ const PlotInspector: React.FC<
   const [locationsText, setLocationsText] = useState((node.involvedLocations ?? []).join(", "));
   const [charactersText, setCharactersText] = useState((node.involvedCharacters ?? []).join(", "));
   const [flags, setFlags] = useState<[string, string, string][]>(() =>
-    Object.entries(node.flags ?? {}).map(([k, v]) => [k, String(v), typeof v] as [string, string, string]),
+    Object.entries(node.flags ?? {}).map(
+      ([k, v]) => [k, String(v), typeof v] as [string, string, string],
+    ),
   );
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -228,7 +234,11 @@ const PlotInspector: React.FC<
     setStatus(node.status);
     setLocationsText((node.involvedLocations ?? []).join(", "));
     setCharactersText((node.involvedCharacters ?? []).join(", "));
-    setFlags(Object.entries(node.flags ?? {}).map(([k, v]) => [k, String(v), typeof v] as [string, string, string]));
+    setFlags(
+      Object.entries(node.flags ?? {}).map(
+        ([k, v]) => [k, String(v), typeof v] as [string, string, string],
+      ),
+    );
     setError(null);
   }, [node.id]);
 
@@ -451,7 +461,8 @@ const PlotInspector: React.FC<
                       onChange={(e) => {
                         const nextType = e.target.value;
                         const next = [...flags] as [string, string, string][];
-                        const defaultVal = nextType === "boolean" ? "true" : nextType === "number" ? "0" : "";
+                        const defaultVal =
+                          nextType === "boolean" ? "true" : nextType === "number" ? "0" : "";
                         next[i] = [k, defaultVal, nextType];
                         setFlags(next);
                       }}

@@ -140,7 +140,9 @@ function ToolInputRenderer({
     return (
       <div>
         <span className="text-white/40">Fetch </span>
-        <span className="text-entity-object">{input.type ? (input.type as string) : "all types"}</span>
+        <span className="text-entity-object">
+          {input.type ? (input.type as string) : "all types"}
+        </span>
       </div>
     );
   }
@@ -264,7 +266,9 @@ function ToolInputRendererCompact({
     return (
       <div className="text-[10px]">
         <span className="text-white/30">Fetch </span>
-        <span className="text-entity-object">{input.type ? (input.type as string) : "all types"}</span>
+        <span className="text-entity-object">
+          {input.type ? (input.type as string) : "all types"}
+        </span>
       </div>
     );
   }

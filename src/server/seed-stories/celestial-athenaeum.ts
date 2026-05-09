@@ -121,7 +121,8 @@ const characters: SeedStory["characters"] = {
     conditions: {},
     attributes: {
       Amnesia: "Remembers nothing — drawn to the Athenaeum by an inexplicable pull",
-      "Magical Affinity": "The violet crystal resonates with the star chart and the sleeper beneath",
+      "Magical Affinity":
+        "The violet crystal resonates with the star chart and the sleeper beneath",
       "The Prophecy": "Unknown — but the Hermit believes he is the prophesied bearer",
     },
   },

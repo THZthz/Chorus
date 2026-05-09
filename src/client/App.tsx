@@ -26,6 +26,7 @@ import { DialogueOptions } from "@/components/DialogueOptions";
 import { TypingIndicator } from "@/components/TypingIndicator";
 // import { CharacterPanel } from "@/components/CharacterPanel";
 import { DebugPanel } from "@/components/DebugPanel";
+import { CharacterInstrumentCluster } from "@/components/CharacterInstrumentCluster";
 import { worldManager } from "@/services/WorldManager";
 import { SseClient, type SseCallbacks } from "@/services/SseClient";
 import { useCharacter } from "@/context/CharacterContext";
@@ -947,6 +948,18 @@ export default function App() {
       </main>
 
       <DebugPanel onJumpToReplay={handleJumpToStep} currentReplayStepId={currentReplayStepId} />
+
+      {/* Bottom Rail */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 h-14 flex items-center justify-center pointer-events-none">
+        <div className="flex items-center gap-6 px-6 py-2 pointer-events-auto"
+          style={{
+            background: "rgba(13,9,6,0.8)",
+            borderTop: "1px solid rgba(196,148,74,0.2)",
+          }}
+        >
+          <CharacterInstrumentCluster />
+        </div>
+      </div>
     </div>
   );
 }

@@ -230,7 +230,7 @@ The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep`
 
 1. **Tools defined once** — `src/server/llm/tools/` is the single source for all tool schemas/executors; each factory lives in its own file
 2. **LLM text output silently discarded** — the system prompt instructs tool-only output; any text deltas are ignored
-3. **No pre-generation** — turns are generated on-demand. Latency is acceptable for RPG pacing
+3. **Plot tree pre-generation** — a complete plot tree can be pre-generated in advance via `POST /api/plots/pregen` with a configurable size (2–50 nodes). The LLM generates a coherent tree structure in one shot, which is bulk-inserted into the plots table. This is accessible from the Debug Panel's Graphs → Plots tab.
 4. **No static dialogue** — all narrative is AI-generated. No `sampleDialogue.ts`
 5. **Shared event types** — `src/shared/events.ts` ensures backend/frontend event contracts match
 6. **App.tsx state machine** — clean `idle → streaming → idle` cycle instead of scattered booleans
@@ -299,6 +299,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that validates the SSE 
 - `POST /api/world/entity` — Upsert entity
 - `GET /api/plots` — All plots
 - `PATCH /api/plots/:id` — Update a plot's fields (with tree validation)
+- `POST /api/plots/pregen` — Pre-generate a complete plot tree `{ size: number (2-50, default 10) }`. Clears existing plots, calls LLM to generate a coherent tree, bulk-inserts all plots, returns `{ plots: Plot[] }`.
 - `GET /api/scene` — Current game time and scene state
 - `GET /api/history` / `POST /api/history` — Dialogue history (GET reads; POST replaces all)
 
@@ -389,7 +390,7 @@ The Debug Panel (`DebugPanel.tsx`) provides 5 draggable-reorderable tabs in a si
 
 - **LLM Trace Viewer** (`"logs"`): Parsed exchange timeline with per-step prompt display, model reasoning text (when available), step breakdown, resizable raw JSON viewers, auto-refresh, and child trace nesting (`src/components/debug/LlmTraceViewer.tsx`)
 - **World Editor** (`"world"`): Visual entity editor — grouped sidebar by type (CHARACTER/LOCATION/OBJECT), inline-editable form with stat bars, opinion pills, attribute k/v table, and add-new-entity (`src/components/debug/WorldEditor.tsx`)
-- **Graphs** (`"graphs"`): Merged Dialogue Tree + Plot Tree node graphs with internal mode toggle. Dialogue mode — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay". Plot mode — canvas node graph for plot inspection and editing, reads from `worldManager`'s replay snapshot when replay is active. Both use `src/components/debug/NodeGraph.tsx` with their respective configs from `NodeGraphConfigs.tsx`.
+- **Graphs** (`"graphs"`): Merged Dialogue Tree + Plot Tree node graphs with internal mode toggle. Dialogue mode — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay". Plot mode — canvas node graph for plot inspection and editing, reads from `worldManager`'s replay snapshot when replay is active. Includes a **Pre-generate** button with a size selector (5–30 nodes) that calls the LLM to generate a complete plot tree in advance, then displays it in the graph. Both use `src/components/debug/NodeGraph.tsx` with their respective configs from `NodeGraphConfigs.tsx`.
 - **System Prompt** (`"prompt"`): Obsidian-style live markdown editor for the GM system prompt template. Uses `@uiw/react-codemirror` + `codemirror-rich-markdoc`. GFM tables rendered as interactive widgets. Supports `{{entities_brief}}` and `{{active_plots}}` template variables. (`src/components/debug/SystemPromptEditor.tsx`)
 - **Scene Viewer** (`"scene"`): Current scene state — game time, current location, characters present, object positions. Aligns with replay mode: fetches `GET /api/scene` live or reads from `worldManager` during replay. (`src/components/debug/SceneViewer.tsx`)
 

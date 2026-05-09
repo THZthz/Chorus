@@ -16,18 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Skill voice colors for the inner-mind pantheon
 export const VOICE_COLORS: Record<string, string> = {
-  LOGIC: "#4fb0c6",
-  RHETORIC: "#c6b050",
-  EMPATHY: "#c67080",
-  PERCEPTION: "#50c6a0",
-  VOLITION: "#e07840",
-  ENDURANCE: "#c05050",
-  SORCERY: "#9081e3",
-  SUGGESTION: "#a0c650",
-  INSTINCT: "#e05858",
-  MIGHT: "#50c060",
-  CLOCKWORK: "#50b0c6",
-  ALCHEMY: "#9eff9e",
+  LOGIC: "#5ca8b8",
+  RHETORIC: "#b8a45a",
+  EMPATHY: "#b86878",
+  PERCEPTION: "#5ab898",
+  VOLITION: "#c87848",
+  ENDURANCE: "#b05858",
+  SORCERY: "#8878d0",
+  SUGGESTION: "#98b85a",
+  INSTINCT: "#c86060",
+  MIGHT: "#5ab868",
+  CLOCKWORK: "#5aa8b8",
+  ALCHEMY: "#8fdf8f",
 };

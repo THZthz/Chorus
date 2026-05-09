@@ -19,18 +19,35 @@
 @import "tailwindcss";
 
 @theme {
-    --color-accent: #ff6b35;
-    --color-surface: #0a0a0a;
-    --color-surface-raised: #0f0f0f;
-    --color-surface-card: #1a1a1a;
-    --color-surface-input: #111;
-    --color-entity-character: #c678dd;
-    --color-entity-location: #61afef;
-    --color-entity-object: #d19a66;
+    /* Surface — warm sepia-blacks */
+    --color-surface: #0d0906;
+    --color-surface-raised: #14100c;
+    --color-surface-card: #1a1510;
+    --color-surface-input: #0f0c09;
+
+    /* Brass — replaces orange accent */
+    --color-accent: #c4944a;
+    --color-accent-bright: #e0b460;
+    --color-accent-dark: #8b6914;
+
+    /* Glass accents */
+    --color-glass: #7ec8e0;
+    --color-glass-green: #8fbc8f;
+    --color-glass-red: #d4786c;
+
+    /* Amber glow */
+    --color-amber: #e8c547;
+
+    /* Copper verdigris */
+    --color-verdigris: #5f8764;
+
+    /* Entity colors — aged */
+    --color-entity-character: #b892d6;
+    --color-entity-location: #7eb8da;
+    --color-entity-object: #c9a05c;
 }
 
 @layer base {
-
     html,
     body {
         background-color: var(--color-surface);
@@ -38,30 +55,89 @@
         -moz-osx-font-smoothing: grayscale;
         overflow: hidden;
         height: 100%;
-        font-family: 'Inter', sans-serif;
+        font-family: 'Libre Baskerville', 'Georgia', serif;
     }
 }
 
 @layer utilities {
     .no-scrollbar {
         -ms-overflow-style: none;
-        /* IE and Edge */
         scrollbar-width: none;
-        /* Firefox */
     }
 
     .no-scrollbar::-webkit-scrollbar {
         display: none;
-        /* Chrome, Safari, Opera */
     }
 
-    .vertical-text {
-        writing-mode: vertical-rl;
-        text-orientation: mixed;
+    /* Brass engraved text */
+    .text-engraved {
+        font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--color-accent);
+        text-shadow:
+            0 1px 0 rgba(0, 0, 0, 0.6),
+            0 -1px 0 rgba(224, 180, 96, 0.15);
+    }
+
+    /* Etched glass text */
+    .text-etched {
+        text-shadow:
+            0 1px 0 rgba(0, 0, 0, 0.5),
+            0 -1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    /* Brass rule — horizontal hairline divider */
+    .brass-rule {
+        height: 1px;
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(196, 148, 74, 0.3) 20%,
+            rgba(196, 148, 74, 0.5) 50%,
+            rgba(196, 148, 74, 0.3) 80%,
+            transparent 100%
+        );
+    }
+
+    /* Brass border ring */
+    .brass-ring {
+        border: 1px solid rgba(196, 148, 74, 0.3);
+        box-shadow:
+            0 1px 0 rgba(196, 148, 74, 0.1),
+            inset 0 1px 0 rgba(196, 148, 74, 0.05);
+    }
+
+    /* Glass plate backdrop */
+    .glass-plate {
+        background: rgba(26, 21, 16, 0.4);
+        border-top: 1px solid rgba(196, 148, 74, 0.15);
+        border-bottom: 1px solid rgba(196, 148, 74, 0.15);
+    }
+
+    /* Lens vignette */
+    .lens-vignette {
+        mask-image: radial-gradient(
+            ellipse 85% 80% at 50% 50%,
+            black 40%,
+            rgba(0, 0, 0, 0.6) 75%,
+            transparent 100%
+        );
+        -webkit-mask-image: radial-gradient(
+            ellipse 85% 80% at 50% 50%,
+            black 40%,
+            rgba(0, 0, 0, 0.6) 75%,
+            transparent 100%
+        );
+    }
+
+    /* Ground glass background */
+    .bg-ground-glass {
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='glass'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23glass)' opacity='0.06'/%3E%3C/svg%3E");
     }
 }
 
-/* Custom scrollbar for Debug Panel */
+/* Custom scrollbar — brass toned */
 .debug-scrollbar::-webkit-scrollbar {
     width: 4px;
     height: 4px;
@@ -72,114 +148,102 @@
 }
 
 .debug-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(196, 148, 74, 0.15);
     border-radius: 0px;
 }
 
 .debug-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(196, 148, 74, 0.3);
 }
 
 .debug-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
+    scrollbar-color: rgba(196, 148, 74, 0.15) transparent;
 }
 
-/* CodeMirror scrollbar — match debug-scrollbar */
+/* CodeMirror scrollbar */
 .cm-scroller::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+    width: 4px;
+    height: 4px;
 }
 
 .cm-scroller::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 
 .cm-scroller::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 0px;
+    background: rgba(196, 148, 74, 0.15);
+    border-radius: 0px;
 }
 
 .cm-scroller::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+    background: rgba(196, 148, 74, 0.3);
 }
 
 .cm-scroller {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.05) transparent;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(196, 148, 74, 0.15) transparent;
 }
 
-/* Markdoc rich editor — hide markdown syntax, reveal near cursor */
+/* Markdoc rich editor */
 .cm-markdoc-hidden {
-  display: none;
+    display: none;
 }
 
 .cm-markdoc-bullet * {
-  display: none;
+    display: none;
 }
 
 .cm-markdoc-bullet::after {
-  display: inline !important;
-  color: rgba(255, 255, 255, 0.25);
-  content: '•';
+    display: inline !important;
+    color: rgba(196, 148, 74, 0.30);
+    content: '•';
 }
 
 .cm-markdoc-renderBlock {
-  font-family: 'Inter', sans-serif;
-  font-size: 11px;
+    font-family: 'Libre Baskerville', 'Georgia', serif;
+    font-size: 11px;
 }
 
 .cm-markdoc-renderBlock table {
-  border-collapse: collapse;
-  margin-left: 5px;
+    border-collapse: collapse;
+    margin-left: 5px;
 }
 
 .cm-markdoc-renderBlock th,
 .cm-markdoc-renderBlock td {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 5px 10px;
+    border: 1px solid rgba(196, 148, 74, 0.15);
+    padding: 5px 10px;
 }
 
 .cm-markdoc-renderBlock blockquote {
-  border-left: 3px solid rgba(255, 255, 255, 0.15);
-  padding-left: 10px;
-  margin: 0 0 0 15px;
-  color: rgba(255, 255, 255, 0.5);
+    border-left: 3px solid rgba(196, 148, 74, 0.2);
+    padding-left: 10px;
+    margin: 0 0 0 15px;
+    color: rgba(232, 220, 200, 0.5);
 }
 
 .cm-markdoc-renderBlock p {
-  margin: 3px;
+    margin: 3px;
 }
 
 .cm-markdoc-tag {
-  color: rgba(255, 255, 255, 0.3);
+    color: rgba(196, 148, 74, 0.35);
 }
 
 .cm-markdoc-fallbackTag {
-  border: 2px solid rgba(139, 122, 200, 0.5);
-  border-radius: 3px;
-  margin: 0 5px;
+    border: 2px solid rgba(139, 105, 20, 0.5);
+    border-radius: 3px;
+    margin: 0 5px;
 }
 
 .cm-markdoc-fallbackTag--name {
-  background-color: rgba(139, 122, 200, 0.4);
-  color: white;
-  padding: 2px 5px;
-  font-size: 10px;
+    background-color: rgba(139, 105, 20, 0.4);
+    color: white;
+    padding: 2px 5px;
+    font-size: 10px;
 }
 
 .cm-markdoc-fallbackTag--inner {
-  padding: 5px 10px;
-}
-
-/* Background texture effect */
-.bg-texture {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0.05;
-    pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    padding: 5px 10px;
 }

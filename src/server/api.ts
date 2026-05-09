@@ -23,6 +23,7 @@ import {
   getSystemPromptTemplate,
   setSystemPromptTemplate,
   DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+  pregeneratePlotTree,
 } from "@/server/llm";
 import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
 import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
@@ -85,6 +86,20 @@ apiRouter.patch("/plots/:id", (req, res) => {
     return;
   }
   res.json({ success: true });
+});
+
+apiRouter.post("/plots/pregen", async (req, res) => {
+  try {
+    const size = Math.min(Math.max(parseInt(String(req.body.size), 10) || 10, 2), 50);
+    // Clear existing plots
+    (await import("./db")).default.prepare("DELETE FROM plots").run();
+    const plots = await pregeneratePlotTree(size);
+    res.json({ plots });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Plot pregen error:", message);
+    res.status(500).json({ error: message });
+  }
 });
 
 // ── Facts ──

@@ -28,6 +28,8 @@ import {
   Map,
   StickyNote,
   GripVertical,
+  Loader2,
+  Sparkles,
 } from "lucide-react";
 import { WorldEditor } from "@/components/debug/WorldEditor";
 
@@ -65,6 +67,10 @@ export const DebugPanel: React.FC<{
   const [dragTabId, setDragTabId] = useState<TabId | null>(null);
   const [dragOverTabId, setDragOverTabId] = useState<TabId | null>(null);
   const panelDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [pregenSize, setPregenSize] = useState(10);
+  const [pregenerating, setPregenerating] = useState(false);
+  const [pregenError, setPregenError] = useState<string | null>(null);
+  const [pregenVersion, setPregenVersion] = useState(0);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -92,6 +98,27 @@ export const DebugPanel: React.FC<{
     [onJumpToReplay],
   );
 
+  const handlePregeneratePlots = useCallback(async () => {
+    setPregenerating(true);
+    setPregenError(null);
+    try {
+      const res = await fetch("/api/plots/pregen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ size: pregenSize }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      setPregenVersion((v) => v + 1);
+    } catch (e: unknown) {
+      setPregenError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPregenerating(false);
+    }
+  }, [pregenSize]);
+
   const dialogueConfig = useMemo(
     () =>
       createDialogueConfig({
@@ -107,7 +134,7 @@ export const DebugPanel: React.FC<{
         isReplayActive: !!currentReplayStepId,
         currentReplayStepId: currentReplayStepId ?? null,
       }),
-    [currentReplayStepId],
+    [currentReplayStepId, pregenVersion],
   );
 
   return (
@@ -221,7 +248,7 @@ export const DebugPanel: React.FC<{
                 {activeTab === "world" && <WorldEditor />}
                 {activeTab === "graphs" && (
                   <div className="flex flex-col h-full">
-                    <div className="flex items-center gap-1 mb-4 flex-shrink-0">
+                    <div className="flex items-center gap-1 mb-4 flex-shrink-0 flex-wrap">
                       <button
                         onClick={() => setGraphMode("dialogue")}
                         className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.15em] border rounded-sm transition-colors ${
@@ -242,12 +269,46 @@ export const DebugPanel: React.FC<{
                       >
                         Plots
                       </button>
+                      {graphMode === "plot" && (
+                        <>
+                          <span className="text-white/10 mx-1">|</span>
+                          <select
+                            value={pregenSize}
+                            onChange={(e) => setPregenSize(Number(e.target.value))}
+                            disabled={pregenerating}
+                            className="bg-white/[0.04] border border-white/10 rounded-sm px-2 py-1.5 text-[9px] font-mono text-white/50 focus:outline-none focus:border-white/20 disabled:opacity-30"
+                          >
+                            <option value={5}>5 nodes</option>
+                            <option value={10}>10 nodes</option>
+                            <option value={15}>15 nodes</option>
+                            <option value={20}>20 nodes</option>
+                            <option value={30}>30 nodes</option>
+                          </select>
+                          <button
+                            onClick={handlePregeneratePlots}
+                            disabled={pregenerating}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#ff6b35]/10 text-[#ff6b35] hover:bg-[#ff6b35]/20 rounded-sm border border-[#ff6b35]/20 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+                          >
+                            {pregenerating ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <Sparkles size={11} />
+                            )}
+                            Pre-generate
+                          </button>
+                          {pregenError && (
+                            <span className="text-[9px] font-mono text-red-400/80 ml-1">
+                              {pregenError}
+                            </span>
+                          )}
+                        </>
+                      )}
                     </div>
                     <div className="flex-1 min-h-0">
                       {graphMode === "dialogue" ? (
                         <NodeGraph key="dialogue" config={dialogueConfig} />
                       ) : (
-                        <NodeGraph key="plot" config={plotConfig} />
+                        <NodeGraph key={`plot-v${pregenVersion}`} config={plotConfig} />
                       )}
                     </div>
                   </div>

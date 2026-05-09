@@ -26,6 +26,7 @@ import type {
   Fact,
 } from "@/types/entities";
 import type { Plot } from "@/types/plot";
+import { PLAYER_ID } from "@/shared/constants";
 
 class WorldManager {
   private state: WorldState = { objects: {}, locations: {}, characters: {} };
@@ -97,7 +98,9 @@ class WorldManager {
   }
 
   getPlayerCharacter(): Character | null {
-    return this.replayOverride?.playerCharacter ?? null;
+    if (this.replayOverride?.playerCharacter) return this.replayOverride.playerCharacter;
+    const s = this.getState();
+    return (s.characters[PLAYER_ID] as Character) ?? null;
   }
 
   updatePlotInReplaySnapshot(id: string, patch: Partial<Plot>): boolean {

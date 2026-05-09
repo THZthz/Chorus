@@ -17,6 +17,7 @@
  */
 
 import type { SeedStory } from "./types";
+import { PLAYER_ID } from "@/shared/constants";
 
 const objects: SeedStory["objects"] = {
   soul_shard: {
@@ -98,6 +99,36 @@ const locations: SeedStory["locations"] = {
 };
 
 const characters: SeedStory["characters"] = {
+  [PLAYER_ID]: {
+    id: PLAYER_ID,
+    type: "CHARACTER",
+    displayName: "YOU",
+    shortDescription:
+      "An amnesiac with a glowing crystal and a secret power, waking in the Velvet Thorn brothel deep in the Warrens.",
+    longDescription:
+      "You remember nothing before the rain. Cold cobblestones. The distant clang of a harbor bell. A woman's voice, low and urgent, calling you back from somewhere dark. Then the warm glow of a violet crystal in your palm, pulsing in time with your heartbeat. You woke in a velvet-draped room at the Velvet Thorn, a brothel in the Warrens, with Veyla's golden eyes watching you and a name you don't recognize on her lips. The shard responds to your emotions — flaring bright when your pulse quickens, when Veyla draws close, when desire or fear or fury surge through you. You don't know what you are. You don't know where the power comes from. But in a city where unlicensed magic is a crime and the Warrens devour the weak, ignorance is a death sentence — and what burns between you and the half-elf who saved you might be the only truth worth trusting.",
+    stats: {
+      logic: 3,
+      rhetoric: 2,
+      empathy: 4,
+      perception: 4,
+      volition: 3,
+      endurance: 3,
+      sorcery: 6,
+      suggestion: 5,
+      instinct: 3,
+      might: 2,
+      clockwork: 2,
+      alchemy: 2,
+    },
+    opinions: {},
+    conditions: {},
+    attributes: {
+      Amnesia: "Remembers nothing before waking in the Warrens three nights ago",
+      "Magical Affinity": "Unknown latent sorcery — the violet crystal responds to his emotions",
+      Status: "Vulnerable, powerful, unaware — a secret waiting to be discovered",
+    },
+  },
   veyla: {
     id: "veyla",
     type: "CHARACTER",
@@ -106,20 +137,7 @@ const characters: SeedStory["characters"] = {
       "A half-elf courtesan with eyes like burnished gold — equal parts savior and temptation.",
     longDescription:
       "Veyla is tall and languid, with the kind of beauty that makes people forget what they were about to say. Her dark copper skin gleams in candlelight; her hair is cropped short, black silk threaded with a single streak of silver at the left temple. Her ears taper to delicate points she usually hides beneath a wrap, and her eyes — large, luminous, the color of aged whiskey held up to flame — betray her half-elven blood more than she'd like. A faded scar traces from her left collarbone to her shoulder blade, a memento of something she won't discuss.\n\nShe moves like smoke — slow, deliberate, impossible to hold. Her voice is low and rough at the edges, salted with an accent from the southern isles. She smells of jasmine oil and something sharper underneath: ozone before a storm, the faint electric prickle of dormant magic she claims is too weak to matter.\n\nShe found you three nights ago, crumpled in the rain outside the Sinking Dock, a violet crystal clutched to your chest and no memory of your name. Something in that crystal sang to her blood. She dragged you through the Warrens herself — half-carried, half-coaxed — and paid Cressida for the room from her own purse. She has not left your side since. She tells herself it's because you need protection. But when your hand brushes hers, the shard flares, and she feels it too — a resonance that has nothing to do with magic and everything to do with hunger. She knows you are dangerous. She does not know whether she wants to save you or devour you. The truth, she suspects, is both.",
-    stats: {
-      logic: 4,
-      rhetoric: 5,
-      empathy: 6,
-      perception: 6,
-      volition: 3,
-      endurance: 3,
-      sorcery: 3,
-      suggestion: 6,
-      instinct: 5,
-      might: 2,
-      clockwork: 1,
-      alchemy: 2,
-    },
+    stats: {},
     opinions: {
       YOU: "They don't remember who they are, but that crystal isn't ordinary and neither are they. When they look at me, the shard burns — and so does my skin. I should be careful. But I brought them here. I tied the ribbon. Whatever this is, I started it.",
       madam_cressida:
@@ -142,20 +160,7 @@ const characters: SeedStory["characters"] = {
       "Proprietor of the Velvet Thorn — a woman who has seen everything and forgotten nothing.",
     longDescription:
       "Cressida is a woman in her fifties, handsome in the way a well-worn blade is handsome — all function beneath the polish. Silver-streaked auburn hair is pinned in a coil that has seen better hours; she wears velvet in deep plum and emerald, dresses cut low but never cheap. A glass of fortified wine lives in her left hand like a prosthetic. She is never drunk, never shocked, and never without an angle.\n\nShe has run the Velvet Thorn for fifteen years. Before that, she ran a finer house in the upper levels — until a nobleman's indiscretion became a scandal and Cressida took the fall with a severance of scars across her back. She rebuilt in the Warrens, where the clientele is rougher but the truths are sharper. The Thorn is not luxurious, but it is safe — Cressida's rules are iron: no forced company, no unpaid debts, and no magic that draws the Magewardens' attention. The last rule is the one Veyla is currently testing.\n\nShe watches the player with the guarded patience of someone who has seen magic destroy lives before. She has not thrown them out — yet. Partly for Veyla's sake, partly because a man with no memory and a glowing crystal might be worth something to someone. The question is whether that someone is friend or buyer.",
-    stats: {
-      logic: 6,
-      rhetoric: 7,
-      empathy: 3,
-      perception: 7,
-      volition: 6,
-      endurance: 4,
-      sorcery: 1,
-      suggestion: 6,
-      instinct: 4,
-      might: 1,
-      clockwork: 2,
-      alchemy: 2,
-    },
+    stats: {},
     opinions: {
       YOU: "Came in on Veyla's arm, three nights ago. Unconscious. No name, no coin, but that crystal in their hand would fetch a month's earnings from the right buyer. Veyla is besotted — or ensorcelled. Either way, trouble is brewing, and I need to decide whose side I'm on before it boils over.",
       veyla:
@@ -210,12 +215,13 @@ export const romanticMagicAwakening: SeedStory = {
   initialScene: {
     currentLocationId: "the_velvet_thorn",
     characterLocations: {
+      player: "the_velvet_thorn",
       veyla: "the_velvet_thorn",
       madam_cressida: "the_velvet_thorn",
     },
     objectPositions: {
-      soul_shard: { type: "character", characterId: "player" },
-      veyllas_ribbon: { type: "character", characterId: "player" },
+      soul_shard: { type: "character", characterId: PLAYER_ID },
+      veyllas_ribbon: { type: "character", characterId: PLAYER_ID },
     },
   },
 };

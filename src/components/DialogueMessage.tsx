@@ -52,10 +52,11 @@ const RollTooltip: React.FC<{ rollResult: NonNullable<Message["rollResult"]> }> 
     initial={{ opacity: 0, y: 5, scale: 0.95 }}
     animate={{ opacity: 1, y: 0, scale: 1 }}
     exit={{ opacity: 0, scale: 0.95 }}
-    className="absolute bottom-full left-0 mb-4 p-4 bg-surface-input border border-white/10 rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-50 min-w-[180px]"
+    className="absolute bottom-full left-0 mb-4 p-4 bg-[#1a1510] brass-ring rounded-sm shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-50 min-w-[180px]"
   >
-    <div className="absolute -bottom-2 left-4 w-4 h-4 bg-surface-input rotate-45 border-r border-b border-white/10" />
-    <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-3 border-b border-white/10 pb-2">
+    <div className="absolute -bottom-2 left-4 w-4 h-4 bg-[#1a1510] rotate-45 border-r border-b border-[#c4944a]/20" />
+    <div className="text-[10px] text-[#c4944a]/60 uppercase tracking-[0.2em] mb-3 border-b border-[#c4944a]/10 pb-2"
+      style={{ fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif" }}>
       Roll Result
     </div>
     <div className="flex gap-2 mb-4 items-center">
@@ -141,63 +142,58 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
         </AnimatePresence>
 
         {hasRoll ? (
-          <div className="border border-white/10 bg-[#0d0d0d] rounded-sm p-5">
-            {/* Option text */}
-            <div className="text-[15px] text-[#ccc] italic leading-relaxed mb-4 pb-4 border-b border-white/5">
+          <div className="brass-ring bg-[#0d0906]/60 p-5 rounded-sm">
+            <div className="text-[15px] text-[#d8cfc0] italic leading-relaxed mb-4 pb-4 border-b border-[#c4944a]/10">
               &ldquo;{message.text}&rdquo;
             </div>
-
-            {/* Dice + stats row */}
             <div className="flex gap-5 items-center">
-              {/* Dice faces */}
               <div className="flex gap-2 items-center">
                 {message.rollResult!.dice.map((val, i) => (
                   <div
                     key={i}
-                    className="w-10 h-10 rounded-sm border border-white/20 bg-surface-card flex items-center justify-center"
+                    className="w-10 h-10 rounded-sm border border-[#c4944a]/30 bg-[#1a1510] flex items-center justify-center"
                   >
                     <DieFace value={val} size="md" />
                   </div>
                 ))}
-                <span className="text-[13px] text-[#4fb0c6] font-mono mx-0.5">+</span>
-                <span className="text-[13px] text-[#4fb0c6] font-mono">
+                <span className="text-[13px] text-[#7ec8e0] font-mono mx-0.5">+</span>
+                <span className="text-[13px] text-[#7ec8e0] font-mono">
                   {message.rollResult!.skillBonus ?? 0}
                 </span>
               </div>
-
-              {/* Vertical divider */}
-              <div className="w-px h-10 bg-white/10" />
-
-              {/* Stat lines */}
+              <div className="w-px h-10 bg-[#c4944a]/15" />
               <div className="space-y-0.5">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider w-16">
+                  <span className="text-[10px] text-[#c4944a]/60 uppercase tracking-wider w-16"
+                    style={{ fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif" }}>
                     Skill
                   </span>
-                  <span className="text-[13px] text-white font-mono">
+                  <span className="text-[13px] text-[#e8dcc8] font-mono">
                     {message.rollResult!.skill}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider w-16">
+                  <span className="text-[10px] text-[#c4944a]/60 uppercase tracking-wider w-16"
+                    style={{ fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif" }}>
                     Roll
                   </span>
-                  <span className="text-[13px] text-white font-mono">
+                  <span className="text-[13px] text-[#e8dcc8] font-mono">
                     {message.rollResult!.total}
-                    <span className="text-gray-500"> vs </span>
+                    <span className="text-[#c4944a]/40"> vs </span>
                     {message.rollResult!.difficulty}
                   </span>
                 </div>
               </div>
-
-              {/* Result badge */}
               <div className="ml-auto">
                 <span
-                  className={`text-[12px] font-black uppercase tracking-[0.15em] px-3 py-1.5 border ${
-                    message.rollResult!.success
-                      ? "text-[#9eff9e] border-[#9eff9e]/30 bg-[#9eff9e]/5"
-                      : "text-[#ff6b6b] border-[#ff6b6b]/30 bg-[#ff6b6b]/5"
-                  }`}
+                  className="text-[12px] font-black uppercase tracking-[0.15em] px-3 py-1.5 border"
+                  style={{
+                    fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif",
+                    ...(message.rollResult!.success
+                      ? { color: "#8fbc8f", borderColor: "rgba(143,188,143,0.3)", backgroundColor: "rgba(143,188,143,0.05)" }
+                      : { color: "#d4786c", borderColor: "rgba(212,120,108,0.3)", backgroundColor: "rgba(212,120,108,0.05)" }
+                    ),
+                  }}
                 >
                   {message.rollResult!.success ? "Success" : "Failure"}
                 </span>
@@ -206,7 +202,7 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
           </div>
         ) : (
           <div className="flex items-center gap-4">
-            <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+            <div className="flex-1 h-px bg-[#c4944a]/8" />
             <div className="flex items-center gap-2">
               {message.skillCheck && (
                 <div
@@ -215,7 +211,11 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
                   onMouseLeave={() => setIsTooltipVisible(false)}
                 >
                   <span
-                    className={`text-[11px] font-mono cursor-help uppercase tracking-wider transition-opacity hover:opacity-100 ${message.skillCheck.success ? "text-[#9eff9e]/70" : "text-[#ff6b6b]/70"}`}
+                    className="text-[11px] cursor-help uppercase tracking-wider transition-opacity hover:opacity-100"
+                    style={{
+                      fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif",
+                      color: message.skillCheck.success ? "rgba(143,188,143,0.7)" : "rgba(212,120,108,0.7)",
+                    }}
                   >
                     [{message.skillCheck.skill} · {message.skillCheck.success ? "Pass" : "Fail"}]
                   </span>
@@ -226,11 +226,11 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
                   </AnimatePresence>
                 </div>
               )}
-              <span className="text-[#a3c2a3]/60 text-[11px] uppercase tracking-[0.18em] font-mono">
+              <span className="text-[#5f8764]/60 text-[11px] uppercase tracking-[0.18em]">
                 {message.text}
               </span>
             </div>
-            <div className="flex-1 h-px bg-[#a3c2a3]/12" />
+            <div className="flex-1 h-px bg-[#c4944a]/8" />
           </div>
         )}
       </motion.div>
@@ -239,26 +239,46 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
 
   const paragraphs = (message.text ?? "").split(/(?:\r?\n){2,}/);
 
-  // Inner voice: colored left border matches the voice's identity color
-  const borderStyle = isInnerVoice ? { borderLeftColor: speakerColor + "55" } : undefined;
+  let plateStyle: React.CSSProperties = {};
+  if (isInnerVoice) {
+    plateStyle = {
+      background: `linear-gradient(90deg, ${speakerColor}10 0%, ${speakerColor}04 100%)`,
+      borderLeft: `3px solid ${speakerColor}60`,
+    };
+  } else if (!isSystem && !isYou) {
+    plateStyle = {
+      background: "rgba(196,148,74,0.03)",
+      borderTop: "1px solid rgba(196,148,74,0.12)",
+      borderBottom: "1px solid rgba(196,148,74,0.12)",
+    };
+  } else if (isYou) {
+    plateStyle = {
+      background: "rgba(232,220,200,0.02)",
+      borderLeft: "2px solid rgba(232,220,200,0.15)",
+    };
+  } else if (isSystem) {
+    plateStyle = {
+      background: "rgba(95,135,100,0.03)",
+    };
+  }
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`mb-8 relative ${isInnerVoice ? "border-l-2 pl-4 font-serif" : isYou ? "font-['Times_New_Roman',Times]" : "font-serif"}`}
-      style={borderStyle}
+      className="mb-8 relative px-5 py-3 rounded-sm"
+      style={plateStyle}
     >
       <AnimatePresence>
         {isFlashing && (
           <motion.div
             key="flash"
-            className="pointer-events-none absolute inset-0"
-            initial={{ opacity: 0.6 }}
+            className="pointer-events-none absolute inset-0 rounded-sm"
+            initial={{ opacity: 0.4 }}
             animate={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            style={{ background: "linear-gradient(90deg, #ff6b3530 0%, transparent 70%)" }}
+            style={{ background: "linear-gradient(90deg, #e8c54730 0%, transparent 70%)" }}
           />
         )}
       </AnimatePresence>
@@ -267,15 +287,32 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
 
         return (
           <div key={idx} className={idx > 0 ? "mt-5" : ""}>
-            {/* Speaker label — shown only on the first paragraph */}
             {idx === 0 && (
               <div className="flex items-center gap-3 mb-2">
-                <span
-                  className="font-mono text-[22px] uppercase tracking-[0.001em] font-semibold leading-none"
-                  style={{ color: speakerColor }}
-                >
-                  {message.speaker}
-                </span>
+                {!isYou && !isSystem && (
+                  <span
+                    className="text-[13px] uppercase tracking-[0.2em] font-semibold leading-none"
+                    style={{
+                      fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif",
+                      color: speakerColor,
+                      textShadow: "0 1px 0 rgba(0,0,0,0.4)",
+                    }}
+                  >
+                    — {message.speaker} —
+                  </span>
+                )}
+                {isYou && (
+                  <span
+                    className="text-[13px] uppercase tracking-[0.2em] font-semibold leading-none"
+                    style={{
+                      fontFamily: "'Barlow Condensed', 'Arial Narrow', sans-serif",
+                      color: "#e8dcc8",
+                      textShadow: "0 1px 0 rgba(0,0,0,0.4)",
+                    }}
+                  >
+                    — YOU —
+                  </span>
+                )}
 
                 {message.skillCheck && (
                   <div
@@ -283,11 +320,11 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
                     onMouseEnter={() => setIsTooltipVisible(true)}
                     onMouseLeave={() => setIsTooltipVisible(false)}
                   >
-                    <span className="text-white/35 text-[10px] font-mono uppercase cursor-help hover:text-white/65 transition-colors tracking-wider">
+                    <span className="text-white/25 text-[10px] uppercase cursor-help hover:text-white/55 transition-colors tracking-wider">
                       [{message.skillCheck.difficulty}:{" "}
                       <span
                         className={
-                          message.skillCheck.success ? "text-[#9eff9e]/70" : "text-[#ff6b6b]/70"
+                          message.skillCheck.success ? "text-[#8fbc8f]/70" : "text-[#d4786c]/70"
                         }
                       >
                         {message.skillCheck.success ? "Pass" : "Fail"}
@@ -304,14 +341,24 @@ export const DialogueMessage: React.FC<Props> = ({ message, isStreaming, isFlash
               </div>
             )}
 
-            {/* Dialogue body */}
             <div
-              className={`leading-[1.75] whitespace-pre-wrap text-pretty ${isSystem ? "text-[16px] text-gray-500" : "text-[18px]"}`}
-              style={isInnerVoice ? { color: speakerColor } : { color: "#e8e8e8" }}
+              className={`leading-[1.75] whitespace-pre-wrap text-pretty ${isSystem ? "text-[15px]" : "text-[17px]"}`}
+              style={{
+                fontFamily: "'Libre Baskerville', 'Georgia', serif",
+                fontStyle: isInnerVoice ? "italic" : "normal",
+                color: isSystem
+                  ? "#5f8764"
+                  : isInnerVoice
+                    ? speakerColor
+                    : isYou
+                      ? "#e8dcc8"
+                      : "#d8cfc0",
+              }}
             >
               {renderText(paragraphText)}
               {isStreaming && idx === paragraphs.length - 1 && (
-                <span className="inline-block w-[2px] h-[1em] bg-accent ml-0.5 align-text-bottom animate-pulse" />
+                <span className="inline-block w-1.5 h-1.5 bg-[#e8c547] rounded-full ml-0.5 align-middle animate-pulse"
+                  style={{ boxShadow: "0 0 4px rgba(232,197,71,0.5)" }} />
               )}
             </div>
           </div>

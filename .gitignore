@@ -14,3 +14,4 @@ coverage/
 /*.db-shm
 /*.db-wal
 /docs
+/.superpowers

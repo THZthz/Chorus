@@ -19,7 +19,7 @@
 import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
-import type { StreamingMessage } from "@/shared/events";
+import type { SseEventType, SseEventMap, StreamingMessage } from "@/shared/events";
 import type { SceneState, EntityType, Fact } from "@/types/entities";
 
 /**
@@ -37,9 +37,9 @@ export class TurnEventEmitter {
     this.res = res;
   }
 
-  private send(event: string, data: unknown) {
+  private send<T extends SseEventType>(event: T, data: Omit<SseEventMap[T], "type">) {
     if (!this.res) return;
-    this.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    this.res.write(`event: ${event}\ndata: ${JSON.stringify({ ...data, type: event })}\n\n`);
   }
 
   // ── Lifecycle ──

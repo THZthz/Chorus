@@ -220,12 +220,7 @@ function createSseCallbacks(): SseCallbacks {
 
 // ── API Calls ──
 
-async function postChatStream(
-  userInput: string,
-  hist: Message[],
-  parentStepId: string | null,
-  parentOptionId: string | null,
-) {
+async function postChatStream(userInput: string, hist: Message[]) {
   state = "WAITING";
   isRetrying = false;
   streamingMessages = [];
@@ -237,34 +232,7 @@ async function postChatStream(
 
   await client.stream(
     `${BASE_URL}/api/chat/stream`,
-    {
-      userInput,
-      history: hist,
-      parentStepId,
-      parentOptionId,
-      playerCharacter: null,
-    },
-    createSseCallbacks(),
-  );
-}
-
-async function postRegenerate(stepId: string, hist: Message[]) {
-  state = "WAITING";
-  isRetrying = false;
-  streamingMessages = [];
-  currentOptions = [];
-  sseClient?.abort();
-
-  const client = new ConsoleSseClient();
-  sseClient = client;
-
-  await client.stream(
-    `${BASE_URL}/api/regenerate`,
-    {
-      stepId,
-      history: hist,
-      playerCharacter: null,
-    },
+    { userInput, history: hist },
     createSseCallbacks(),
   );
 }
@@ -273,7 +241,7 @@ async function postRegenerate(stepId: string, hist: Message[]) {
 
 async function handleBegin() {
   console.log(chalk.dim("Starting story...\n"));
-  await postChatStream("[SYSTEM MESSAGE: Begin the story. Set the scene.]", [], null, null);
+  await postChatStream("[SYSTEM MESSAGE: Begin the story. Set the scene.]", []);
 }
 
 async function handleOptionSelect(option: DialogueOption) {
@@ -291,20 +259,7 @@ async function handleOptionSelect(option: DialogueOption) {
   process.stdout.write(formatMessage(youMessage));
   console.log("");
 
-  await postChatStream(youText, history, lastStepId, option.id);
-}
-
-async function handleRegenerate() {
-  if (!lastStepId) return;
-  sseClient?.abort();
-
-  const lastYouIdx = history.map((m) => m.type).lastIndexOf("YOU");
-  const trimmedHistory = lastYouIdx >= 0 ? history.slice(0, lastYouIdx + 1) : history;
-
-  console.log(chalk.dim("\nRegenerating...\n"));
-  history = trimmedHistory;
-
-  await postRegenerate(lastStepId, trimmedHistory);
+  await postChatStream(youText, history);
 }
 
 // ── Resume ──
@@ -341,12 +296,12 @@ async function tryResume(): Promise<boolean> {
 
 async function presentChoice(
   options: DialogueOption[],
-): Promise<number | "regenerate" | "custom" | "quit"> {
+): Promise<number | "custom" | "reset" | "help" | "quit"> {
   const sep = "─".repeat(50);
   console.log(chalk.dim(sep));
 
   const choices: Array<
-    | { name: string; value: number | "regenerate" | "custom" | "quit"; description?: string }
+    | { name: string; value: number | "custom" | "reset" | "help" | "quit"; description?: string }
     | InstanceType<typeof Separator>
   > = [
     ...options.map((opt, i) => ({
@@ -358,11 +313,12 @@ async function presentChoice(
     })),
     new Separator(chalk.dim(sep)),
     { name: chalk.hex("#ff6b35")("[Custom input...]"), value: "custom" as const },
-    { name: chalk.dim("⟳ Regenerate"), value: "regenerate" as const },
+    { name: chalk.dim("/reset  Clear and restart"), value: "reset" as const },
+    { name: chalk.dim("/help   Show available commands"), value: "help" as const },
     { name: "Quit", value: "quit" as const },
   ];
 
-  return await select<number | "regenerate" | "custom" | "quit">({
+  return await select<number | "custom" | "reset" | "help" | "quit">({
     message: "Choose your action:",
     choices,
     pageSize: Math.min(options.length + 4, 12),
@@ -392,21 +348,22 @@ async function main() {
         message: "What would you like to do?",
         choices: [
           { name: "Begin your story", value: "begin" },
+          { name: "/help   Show available commands", value: "help" },
           { name: "Quit", value: "quit" },
         ],
       });
 
       if (answer === "begin") {
         await handleBegin();
+      } else if (answer === "help") {
+        showHelp();
       } else {
         break;
       }
     } else if (state === "AWAITING_OPTION") {
       const choice = await presentChoice(currentOptions);
 
-      if (choice === "regenerate") {
-        await handleRegenerate();
-      } else if (choice === "custom") {
+      if (choice === "custom") {
         const customText = await input({ message: "What do you want to do or say?" });
         if (!customText.trim()) continue;
 
@@ -422,7 +379,27 @@ async function main() {
         process.stdout.write(formatMessage(youMessage));
         console.log("");
 
-        await postChatStream(customText.trim(), history, lastStepId, null);
+        await postChatStream(customText.trim(), history);
+      } else if (choice === "reset") {
+        const answer = await select({
+          message: "Reset will clear the session. Are you sure?",
+          choices: [
+            { name: "Yes, reset", value: "yes" },
+            { name: "Cancel", value: "cancel" },
+          ],
+        });
+        if (answer === "yes") {
+          state = "IDLE";
+          history = [];
+          currentOptions = [];
+          streamingMessages = [];
+          lastStepId = null;
+          messageIdCounter = 0;
+          sseClient?.abort();
+          console.log(chalk.dim("\nSession reset.\n"));
+        }
+      } else if (choice === "help") {
+        showHelp();
       } else if (choice === "quit") {
         break;
       } else {
@@ -437,6 +414,17 @@ async function main() {
   sseClient?.abort();
   console.log(chalk.dim("\n" + "Farewell." + "\n"));
   process.exit(0);
+}
+
+function showHelp() {
+  console.log("");
+  console.log(chalk.bold("Available commands:"));
+  console.log("");
+  console.log(chalk.dim("  Type text  ") + "  Send input and generate a response");
+  console.log(chalk.dim("  /reset     ") + "  Clear the session and restart");
+  console.log(chalk.dim("  /help      ") + "  Show this help message");
+  console.log(chalk.dim("  /exit      ") + "  Quit the console client");
+  console.log("");
 }
 
 main();

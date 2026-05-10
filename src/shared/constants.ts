@@ -17,73 +17,23 @@
  */
 
 export const SKILL_NAMES = [
-  "LOGIC",
-  "RHETORIC",
-  "EMPATHY",
-  "PERCEPTION",
-  "VOLITION",
-  "ENDURANCE",
-  "SORCERY",
-  "SUGGESTION",
-  "INSTINCT",
-  "MIGHT",
-  "CLOCKWORK",
-  "ALCHEMY",
+  "LOGIC", "RHETORIC", "EMPATHY", "PERCEPTION", "VOLITION",
+  "ENDURANCE", "SORCERY", "SUGGESTION", "INSTINCT", "MIGHT",
+  "CLOCKWORK", "ALCHEMY",
 ] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
 
 export const PLAYER_ID = "player" as const;
 
-export const TOOL_NAMES = {
-  LIST_ENTITIES: "listEntities",
-  GET_ENTITY: "getEntity",
-  UPDATE_ENTITY: "updateEntity",
-  UPDATE_ENTITIES: "updateEntities",
-  CREATE_ENTITY: "createEntity",
-  GET_CHARACTER_STATE: "getCharacterState",
-  UPDATE_CHARACTER_STATE: "updateCharacterState",
-  CREATE_PLOT: "createPlot",
-  UPDATE_PLOT: "updatePlot",
-  GET_PLOT: "getPlot",
-  GENERATE_DIALOGUE: "generateDialogueStep",
-  ADVANCE_TIME: "advanceTime",
-  UPDATE_SCENE: "updateScene",
-  GET_SCENE: "getScene",
-  ADD_NOTE: "addNote",
-  GET_NOTE: "getNote",
-  UPDATE_NOTE: "updateNote",
-  REMOVE_NOTE: "removeNote",
-} as const;
-
-export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];
-
 export const SEGMENT_LABELS: Record<number, string> = {
-  0: "Midnight",
-  1: "Late Night",
-  2: "Dawn",
-  3: "Early Morning",
-  4: "Morning",
-  5: "Late Morning",
-  6: "Noon",
-  7: "Afternoon",
-  8: "Late Afternoon",
-  9: "Dusk",
-  10: "Evening",
-  11: "Night",
+  0: "Midnight", 1: "Late Night", 2: "Dawn", 3: "Early Morning",
+  4: "Morning", 5: "Late Morning", 6: "Noon", 7: "Afternoon",
+  8: "Late Afternoon", 9: "Dusk", 10: "Evening", 11: "Night",
 };
 
 export const SEGMENT_HOURS: Record<number, string> = {
-  0: "12am–2am",
-  1: "2am–4am",
-  2: "4am–6am",
-  3: "6am–8am",
-  4: "8am–10am",
-  5: "10am–12pm",
-  6: "12pm–2pm",
-  7: "2pm–4pm",
-  8: "4pm–6pm",
-  9: "6pm–8pm",
-  10: "8pm–10pm",
-  11: "10pm–12am",
+  0: "12am–2am", 1: "2am–4am", 2: "4am–6am", 3: "6am–8am",
+  4: "8am–10am", 5: "10am–12pm", 6: "12pm–2pm", 7: "2pm–4pm",
+  8: "4pm–6pm", 9: "6pm–8pm", 10: "8pm–10pm", 11: "10pm–12am",
 };

@@ -18,11 +18,17 @@
 
 import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
-import type { PlotPatch } from "@/types/plot";
-import type { SseEventType, SseEventMap, StreamingMessage } from "@/shared/events";
-import type { SceneState, EntityType, Note } from "@/types/entities";
+import type { SseEventName, SseEventMap } from "@/shared/events";
 
 export type EventEmitter = TurnEventEmitter | NoopEventEmitter;
+
+/** A message payload from the LLM before it gets a persistent ID. */
+export interface StreamingMessage {
+  speaker: string;
+  type: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}
 
 /**
  * Manages SSE output for a single turn.
@@ -32,21 +38,18 @@ export type EventEmitter = TurnEventEmitter | NoopEventEmitter;
 export class TurnEventEmitter {
   private readonly res: Response;
 
-  constructor(
-    res: Response,
-    public readonly stepId: string,
-  ) {
+  constructor(res: Response) {
     this.res = res;
   }
 
-  private send<T extends SseEventType>(event: T, data: Omit<SseEventMap[T], "type">) {
+  private send<T extends SseEventName>(event: T, data: Omit<SseEventMap[T], "type">) {
     this.res.write(`event: ${event}\ndata: ${JSON.stringify({ ...data, type: event })}\n\n`);
   }
 
   // ── Lifecycle ──
 
-  startStep() {
-    this.send("step_start", { stepId: this.stepId });
+  startStep(stepId: string) {
+    this.send("step_start", { stepId });
   }
 
   finish() {
@@ -55,22 +58,6 @@ export class TurnEventEmitter {
   }
 
   // ── Tool-triggered events (immediately visible to user) ──
-
-  emitWorldUpdate(entityId: string, changes: Record<string, unknown>) {
-    this.send("world_update", { entityId, changes });
-  }
-
-  emitPlotUpdate(plotId: string, status: string) {
-    this.send("plot_update", { plotId, status });
-  }
-
-  emitPlotCreate(plotId: string, title: string, parentPlotId: string | null) {
-    this.send("plot_create", { plotId, title, parentPlotId });
-  }
-
-  emitPlotEdit(plotId: string, changes: PlotPatch) {
-    this.send("plot_edit", { plotId, changes });
-  }
 
   emitStreamingReset() {
     this.send("streaming_reset", {});
@@ -95,26 +82,6 @@ export class TurnEventEmitter {
   emitTimeUpdate(day: number, segment: number, segmentsAdvanced: number) {
     this.send("time_update", { day, segment, segmentsAdvanced });
   }
-
-  emitSceneUpdate(scene: SceneState) {
-    this.send("scene_update", { scene });
-  }
-
-  emitEntityCreate(entityId: string, entityType: EntityType, displayName: string) {
-    this.send("entity_create", { entityId, entityType, displayName });
-  }
-
-  emitNoteAdd(note: Note) {
-    this.send("note_add", { note });
-  }
-
-  emitNoteUpdate(noteId: string, changes: Record<string, unknown>) {
-    this.send("note_update", { noteId, changes });
-  }
-
-  emitNoteRemove(noteId: string) {
-    this.send("note_remove", { noteId });
-  }
 }
 
 /**
@@ -122,25 +89,13 @@ export class TurnEventEmitter {
  * Has the same public API as TurnEventEmitter but does nothing.
  */
 export class NoopEventEmitter {
-  readonly stepId: string;
-  constructor(stepId: string) {
-    this.stepId = stepId;
-  }
-  startStep() {}
+  constructor() {}
+  startStep(_stepId: string) {}
   finish() {}
-  emitWorldUpdate(_entityId: string, _changes: Record<string, unknown>) {}
-  emitPlotUpdate(_plotId: string, _status: string) {}
-  emitPlotCreate(_plotId: string, _title: string, _parentPlotId: string | null) {}
-  emitPlotEdit(_plotId: string, _changes: Record<string, unknown>) {}
   emitStreamingReset() {}
   emitStreamingMessages(_messages: unknown[]) {}
   emitOptions(_options: unknown[]) {}
   emitParsed(_messages: unknown[], _options: unknown[]) {}
   emitError(_message: string) {}
   emitTimeUpdate(_day: number, _segment: number, _segmentsAdvanced: number) {}
-  emitSceneUpdate(_scene: unknown) {}
-  emitEntityCreate(_entityId: string, _entityType: string, _displayName: string) {}
-  emitNoteAdd(_note: unknown) {}
-  emitNoteUpdate(_noteId: string, _changes: Record<string, unknown>) {}
-  emitNoteRemove(_noteId: string) {}
 }

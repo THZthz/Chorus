@@ -16,142 +16,49 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { DialogueOption } from "@/types/dialogue";
-import type { PlotPatch } from "@/types/plot";
-import type { SceneState, EntityType, Note } from "@/types/entities";
-
-// ── SSE Event Payloads ──
-
 export interface StepStartEvent {
-  type: "step_start";
   stepId: string;
 }
 
-export interface WorldUpdateEvent {
-  type: "world_update";
-  entityId: string;
-  changes: Record<string, unknown>;
-}
-
-export interface PlotUpdateEvent {
-  type: "plot_update";
-  plotId: string;
-  status: string;
-}
-
-export interface PlotCreateEvent {
-  type: "plot_create";
-  plotId: string;
-  title: string;
-  parentPlotId: string | null;
-}
-
-export interface PlotEditEvent {
-  type: "plot_edit";
-  plotId: string;
-  changes: PlotPatch;
-}
-
 export interface StreamingMessagesEvent {
-  type: "streaming_messages";
-  messages: StreamingMessage[];
+  messages: Array<{
+    speaker: string;
+    type: string;
+    text: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }
+
+export interface StreamingResetEvent {}
 
 export interface OptionsEvent {
-  type: "options";
-  options: DialogueOption[];
+  options: Array<Record<string, unknown>>;
 }
 
 export interface ParsedEvent {
-  type: "parsed";
-  messages: StreamingMessage[];
-  options: DialogueOption[];
+  messages: Array<{
+    speaker: string;
+    type: string;
+    text: string;
+    metadata?: Record<string, unknown>;
+  }>;
+  options: Array<Record<string, unknown>>;
 }
 
 export interface ErrorEvent {
-  type: "error";
   message: string;
 }
 
-export interface StreamingResetEvent {
-  type: "streaming_reset";
-}
-
-export interface DoneEvent {
-  type: "done";
-}
+export interface DoneEvent {}
 
 export interface TimeUpdateEvent {
-  type: "time_update";
   day: number;
   segment: number;
   segmentsAdvanced: number;
 }
 
-export interface SceneUpdateEvent {
-  type: "scene_update";
-  scene: SceneState;
-}
-
-export interface EntityCreateEvent {
-  type: "entity_create";
-  entityId: string;
-  entityType: EntityType;
-  displayName: string;
-}
-
-export interface NoteAddEvent {
-  type: "note_add";
-  note: Note;
-}
-
-export interface NoteUpdateEvent {
-  type: "note_update";
-  noteId: string;
-  changes: Record<string, unknown>;
-}
-
-export interface NoteRemoveEvent {
-  type: "note_remove";
-  noteId: string;
-}
-
-/** A message payload from the LLM before it gets a persistent ID. */
-export interface StreamingMessage {
-  speaker: string;
-  type: string;
-  text: string;
-  metadata?: Record<string, unknown>;
-}
-
-export type SseEventPayload =
-  | StepStartEvent
-  | WorldUpdateEvent
-  | PlotUpdateEvent
-  | PlotCreateEvent
-  | PlotEditEvent
-  | StreamingMessagesEvent
-  | StreamingResetEvent
-  | OptionsEvent
-  | ParsedEvent
-  | ErrorEvent
-  | DoneEvent
-  | TimeUpdateEvent
-  | SceneUpdateEvent
-  | EntityCreateEvent
-  | NoteAddEvent
-  | NoteUpdateEvent
-  | NoteRemoveEvent;
-
-export type SseEventType = SseEventPayload["type"];
-
-/** Map from event type string to its payload type. */
 export interface SseEventMap {
   step_start: StepStartEvent;
-  world_update: WorldUpdateEvent;
-  plot_update: PlotUpdateEvent;
-  plot_create: PlotCreateEvent;
-  plot_edit: PlotEditEvent;
   streaming_messages: StreamingMessagesEvent;
   streaming_reset: StreamingResetEvent;
   options: OptionsEvent;
@@ -159,9 +66,6 @@ export interface SseEventMap {
   error: ErrorEvent;
   done: DoneEvent;
   time_update: TimeUpdateEvent;
-  scene_update: SceneUpdateEvent;
-  entity_create: EntityCreateEvent;
-  note_add: NoteAddEvent;
-  note_update: NoteUpdateEvent;
-  note_remove: NoteRemoveEvent;
 }
+
+export type SseEventName = keyof SseEventMap;

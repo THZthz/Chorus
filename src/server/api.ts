@@ -1,241 +1,11 @@
-/**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
- * Copyright (C) 2026  Amias
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import express from "express";
-import {
-  generateTurn,
-  generateTurnBatch,
-  getSystemPromptTemplate,
-  setSystemPromptTemplate,
-  DEFAULT_SYSTEM_PROMPT_TEMPLATE,
-  generatePlotDefs,
-  type PlotDef,
-} from "@/server/llm";
-import {
-  chatStreamSchema,
-  upsertEntitySchema,
-  patchDialogueSchema,
-  patchPlotSchema,
-  patchSnapshotSchema,
-  systemPromptSchema,
-  regenerateSchema,
-  traverseSchema,
-  activateBranchSchema,
-  pregenSchema,
-} from "@/server/validation";
-import type { WorldEntity, WorldSnapshot } from "@/types/entities";
-import type { Plot, PlotPatch, PlotStatus } from "@/types/plot";
-import { getAllEntities, seedDatabase, upsertEntity } from "@/server/models/world";
-import { getHistory, addMessage, clearHistory, setHistory } from "@/server/models/history";
-import { getAllPlots, getPlotById, updatePlot, addPlot } from "@/server/models/plot";
-import { getGameTime, getSceneState } from "@/server/models/scene";
+import { generateTurn, getSystemPromptTemplate, setSystemPromptTemplate, DEFAULT_SYSTEM_PROMPT_TEMPLATE } from "@/server/llm";
+import { chatStreamSchema, systemPromptSchema } from "@/server/validation";
 import { getLlmLogs, clearLlmLogs } from "@/server/models/debug";
-import {
-  getStep,
-  saveStep,
-  getChildSteps,
-  getBranchPath,
-  deactivateSiblingBranches,
-  setBranchActive,
-  saveAlternative,
-  getAlternatives,
-  setCurrentAlternative,
-  getRootStep,
-  getAllSteps,
-  getChildByOption,
-  getTreeStats,
-  getLatestLeafStep,
-  updateStepSnapshot,
-} from "@/server/models/dialogue";
+import { nextId, nextIdBatch } from "@/server/models/ids";
+import db from "@/server/db";
 
 const apiRouter = express.Router();
-
-seedDatabase();
-
-// ── World ──
-
-apiRouter.get("/world", (_req, res) => {
-  res.json(getAllEntities());
-});
-
-apiRouter.post("/world/entity", (req, res) => {
-  const parsed = upsertEntitySchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  try {
-    upsertEntity(parsed.data as unknown as WorldEntity);
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-// ── Plots ──
-
-apiRouter.get("/plots", (_req, res) => {
-  res.json(getAllPlots());
-});
-
-apiRouter.patch("/plots/:id", (req, res) => {
-  const parsed = patchPlotSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  const existing = getPlotById(req.params.id);
-  if (!existing) {
-    res.status(404).json({ error: "Plot not found" });
-    return;
-  }
-  const result = updatePlot(req.params.id, parsed.data as PlotPatch);
-  if ("error" in result) {
-    res.status(400).json({ error: result.error });
-    return;
-  }
-  res.json({ success: true });
-});
-
-apiRouter.post("/plots/pregen", async (req, res) => {
-  const parsed = pregenSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  try {
-    const size = parsed.data.size;
-    const plotDefs = await generatePlotDefs(size);
-
-    const db = (await import("./db")).default;
-
-    // Assign real IDs
-    const indexToId = new Map<number, string>();
-    for (const def of plotDefs) {
-      indexToId.set(def.index, `plot_${nextId()}`);
-    }
-
-    // Build child -> parent mapping
-    const childParentMap = new Map<number, { parentIndex: number; optionIndex: number }>();
-    for (const def of plotDefs) {
-      for (let i = 0; i < def.childPlots.length; i++) {
-        const child = def.childPlots[i];
-        if (child.childPlotIndex !== null) {
-          childParentMap.set(child.childPlotIndex, { parentIndex: def.index, optionIndex: i });
-        }
-      }
-    }
-
-    // Topological sort: parent before children
-    const visited = new Set<number>();
-    const order: number[] = [];
-
-    function visit(index: number) {
-      if (visited.has(index)) return;
-      const parentInfo = childParentMap.get(index);
-      if (parentInfo) visit(parentInfo.parentIndex);
-      visited.add(index);
-      order.push(index);
-    }
-
-    for (const def of plotDefs) {
-      visit(def.index);
-    }
-
-    // Insert in transaction
-    const insertAll = db.transaction(() => {
-      db.prepare("DELETE FROM plots").run();
-
-      const inserted: Plot[] = [];
-      for (const index of order) {
-        const def = plotDefs.find((d) => d.index === index)!;
-
-        const id = indexToId.get(index)!;
-        const parentInfo = childParentMap.get(index);
-        const parentPlotId = parentInfo ? indexToId.get(parentInfo.parentIndex)! : null;
-        const parentOptionId = parentInfo ? parentInfo.optionIndex : null;
-
-        const childPlots = def.childPlots.map((cp) => ({
-          plotId: null as string | null,
-          triggerCondition: cp.triggerCondition,
-        }));
-
-        const addResult = addPlot({
-          id,
-          title: def.title,
-          description: def.description,
-          status: (def.status as PlotStatus) ?? "PENDING",
-          involvedLocations: def.involvedLocations ?? [],
-          involvedCharacters: def.involvedCharacters ?? [],
-          parentPlotId,
-          parentOptionId,
-          childPlots,
-        });
-
-        if ("error" in addResult) {
-          throw new Error(`Failed to insert plot "${def.title}": ${addResult.error}`);
-        }
-
-        const plot = getPlotById(id);
-        if (plot) inserted.push(plot);
-      }
-      return inserted;
-    });
-
-    const plots = insertAll();
-    res.json({ plots });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("Plot pregen error:", message);
-    res.status(500).json({ error: message });
-  }
-});
-
-// ── Notes ──
-
-import { getNotes } from "@/server/models/notes";
-
-apiRouter.get("/notes", (_req, res) => {
-  res.json(getNotes());
-});
-
-// ── Scene ──
-
-apiRouter.get("/scene", (_req, res) => {
-  res.json({ gameTime: getGameTime(), scene: getSceneState() });
-});
-
-// ── History ──
-
-apiRouter.get("/history", (_req, res) => {
-  res.json(getHistory());
-});
-
-apiRouter.post("/history", (req, res) => {
-  try {
-    setHistory(req.body);
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
 
 // ── Chat (streaming SSE) ──
 
@@ -246,32 +16,9 @@ apiRouter.post("/chat/stream", async (req, res) => {
     return;
   }
   try {
-    const { userInput, history, parentStepId, parentOptionId, playerCharacter } = parsed.data;
-    console.log(
-      `[chat/stream] userInput="${String(userInput).slice(0, 80)}" parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history?.length ?? 0}`,
-    );
-
-    // Save the player's last YOU message to history
-    const lastMsg = history?.[history.length - 1];
-    if (lastMsg && lastMsg.type === "YOU") {
-      try {
-        addMessage(lastMsg);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes("UNIQUE constraint failed")) {
-          // Non-fatal
-        }
-      }
-    }
-
-    await generateTurn(
-      userInput,
-      history ?? [],
-      res,
-      parentStepId ?? null,
-      parentOptionId ?? null,
-      playerCharacter ?? null,
-    );
+    const { userInput, history } = parsed.data;
+    console.log(`[chat/stream] userInput="${String(userInput).slice(0, 80)}" historyLen=${history?.length ?? 0}`);
+    await generateTurn(userInput, history ?? [], res);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat stream error:", message);
@@ -284,206 +31,22 @@ apiRouter.post("/chat/stream", async (req, res) => {
   }
 });
 
-// ── Regenerate ──
+// ── History ──
 
-apiRouter.post("/regenerate", async (req, res) => {
-  const parsed = regenerateSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  try {
-    const { stepId, history, playerCharacter } = parsed.data;
-
-    const step = getStep(stepId);
-    if (!step) {
-      res.status(404).json({ error: "Step not found" });
-      return;
-    }
-
-    console.log(
-      `[regenerate] archiving step=${stepId} parentStepId=${step.parentStepId} parentOptionId=${step.parentOptionId} historyLen=${history?.length ?? 0}`,
-    );
-
-    // Save current as alternative before regenerating
-    const altId = saveAlternative(stepId, step.messages, step.options);
-    console.log(`[regenerate] saved alternative ${altId} for step ${stepId}`);
-
-    const lastYouMsg = history
-      ? history.filter((m: { type: string }) => m.type === "YOU").pop()
-      : null;
-    const userInput = lastYouMsg?.text ?? "Continue";
-
-    await generateTurn(
-      `[SYSTEM MESSAGE: REGENERATE \`${userInput}\`]`,
-      history ?? [],
-      res,
-      step.parentStepId ?? null,
-      step.parentOptionId ?? null,
-      playerCharacter ?? null,
-    );
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("Regenerate error:", message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: message });
-    } else {
-      res.write(`event: error\ndata: ${JSON.stringify({ message })}\n\n`);
-      res.end();
-    }
-  }
-});
-
-// ── Tree replay (must be before /dialogue/:id to avoid route shadowing) ──
-
-apiRouter.get("/dialogue/tree", (_req, res) => {
-  const root = getRootStep();
-  const allSteps = getAllSteps();
-  const steps: Record<string, (typeof allSteps)[number]> = {};
-  for (const step of allSteps) {
-    steps[step.id] = step;
-  }
-  const stats = getTreeStats();
-  console.log(
-    `[dialogue/tree] root=${root?.id}, totalSteps=${allSteps.length}, leaves=${stats.leafIds.length}, branches=${stats.branchCount}`,
-  );
-  res.json({ root, steps, leafIds: stats.leafIds, stats });
-});
-
-// ── Dialogue Tree ──
-
-apiRouter.get("/dialogue/:id", (req, res) => {
-  const step = getStep(req.params.id);
-  if (!step) {
-    res.status(404).json({ error: "Step not found" });
-    return;
-  }
-  const children = getChildSteps(req.params.id);
-  const alternatives = getAlternatives(req.params.id);
-  res.json({ step, children, alternatives });
-});
-
-apiRouter.get("/dialogue/:id/path", (req, res) => {
-  const path = getBranchPath(req.params.id);
-  res.json(path);
-});
-
-apiRouter.get("/dialogue/:id/children", (req, res) => {
-  const children = getChildSteps(req.params.id);
-  res.json(children);
-});
-
-// ── Alternatives ──
-
-apiRouter.get("/dialogue/:id/alternatives", (req, res) => {
-  const alternatives = getAlternatives(req.params.id);
-  res.json(alternatives);
-});
-
-apiRouter.post("/dialogue/:id/alternatives/:altId/select", (req, res) => {
-  try {
-    setCurrentAlternative(req.params.id, req.params.altId);
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-// ── Branch Management ──
-
-apiRouter.post("/branches/activate", (req, res) => {
-  const parsed = activateBranchSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  try {
-    const { stepId, parentStepId } = parsed.data;
-    setBranchActive(stepId, true);
-    if (parentStepId) {
-      deactivateSiblingBranches(parentStepId, stepId);
-    }
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
+apiRouter.get("/history", (_req, res) => {
+  // Return empty for now — the GM uses memory_get_conversation for history.
+  // Console client uses this for resume; returns empty array as placeholder.
+  res.json([]);
 });
 
 // ── Session current ──
 
 apiRouter.get("/session/current", (_req, res) => {
-  const step = getLatestLeafStep();
-  res.json(step ?? null);
-});
-
-apiRouter.patch("/dialogue/:id", (req, res) => {
-  const parsed = patchDialogueSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  const step = getStep(req.params.id);
-  if (!step) {
-    res.status(404).json({ error: "Step not found" });
-    return;
-  }
-  try {
-    saveStep({ ...step, messages: parsed.data.messages, options: parsed.data.options });
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-apiRouter.patch("/dialogue/:id/snapshot", (req, res) => {
-  const parsed = patchSnapshotSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  const { worldSnapshot } = parsed.data;
-  const ok = updateStepSnapshot(req.params.id, worldSnapshot as WorldSnapshot);
-  if (!ok) {
-    res.status(404).json({ error: "Step not found" });
-    return;
-  }
-  res.json({ success: true });
-});
-
-apiRouter.post("/dialogue/traverse", (req, res) => {
-  const parsed = traverseSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-    return;
-  }
-  const { stepId, optionId } = parsed.data;
-
-  const step = getStep(stepId);
-  if (step) {
-    const option = step.options.find((o) => o.id === optionId);
-    if (option?.nextStepId) {
-      const child = getStep(option.nextStepId);
-      console.log(
-        `[dialogue/traverse] fast-path: stepId=${stepId} optionId=${optionId} nextStepId=${option.nextStepId} found=${!!child}`,
-      );
-      res.json({ child: child || null });
-      return;
-    }
-  }
-
-  const child = getChildByOption(stepId, optionId);
-  console.log(
-    `[dialogue/traverse] fallback: stepId=${stepId} optionId=${optionId} found=${!!child}`,
-  );
-  res.json({ child: child || null });
+  // No dialogue tree — return null to signal fresh session
+  res.json(null);
 });
 
 // ── ID Generation ──
-
-import { nextId, nextIdBatch } from "@/server/models/ids";
 
 apiRouter.get("/ids/batch", (req, res) => {
   const count = Math.min(Math.max(parseInt(String(req.query.count), 10) || 20, 1), 100);
@@ -514,8 +77,7 @@ apiRouter.put("/debug/system-prompt", (req, res) => {
     return;
   }
   try {
-    const { template } = parsed.data;
-    setSystemPromptTemplate(template);
+    setSystemPromptTemplate(parsed.data.template);
     res.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -529,10 +91,8 @@ apiRouter.get("/debug/system-prompt/default", (_req, res) => {
 
 apiRouter.post("/debug/system-prompt/reset", (_req, res) => {
   try {
-    import("./db").then(({ default: db }) => {
-      db.prepare("DELETE FROM system_state WHERE key = ?").run("gm_system_prompt");
-      res.json({ success: true });
-    });
+    db.prepare("DELETE FROM system_state WHERE key = ?").run("gm_system_prompt");
+    res.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: message });
@@ -541,16 +101,24 @@ apiRouter.post("/debug/system-prompt/reset", (_req, res) => {
 
 // ── Reset ──
 
-apiRouter.post("/reset", (_req, res) => {
-  import("./db").then(({ default: db }) => {
-    db.prepare("DELETE FROM history_messages").run();
-    db.prepare("DELETE FROM plots").run();
-    db.prepare("DELETE FROM entities").run();
-    db.prepare("DELETE FROM dialogue_steps").run();
-    db.prepare("DELETE FROM dialogue_alternatives").run();
-    seedDatabase();
+apiRouter.post("/reset", async (_req, res) => {
+  try {
+    // Clear SQLite logs
+    db.prepare("DELETE FROM llm_logs").run();
+    db.prepare("DELETE FROM llm_steps").run();
+    // Re-seed time to initial state
+    db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run("game_time_day", "1");
+    db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run("game_time_segment", "2");
+    // Clear Neo4j and re-seed
+    const { clearNeo4jDatabase } = await import("@/server/mcp/reset");
+    await clearNeo4jDatabase();
+    const { seedDatabase } = await import("@/server/mcp/seed");
+    await seedDatabase();
     res.json({ success: true });
-  });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: message });
+  }
 });
 
 export default apiRouter;

@@ -59,7 +59,7 @@ src/
 │   └── sse.ts                 # Shared SSE stream parser (async generator)
 └── types/
     ├── dialogue.ts             # Message, DialogueOption, NotificationType interfaces
-    └── entities.ts             # WorldEntity, Character, Location, WorldObject, CharacterStats, GameTime, SceneState
+    └── entities.ts             # CharacterStats, Character, EntityType, GameEntitySubtype
 ```
 
 ---
@@ -137,26 +137,26 @@ Two layers of tools:
 | `generateDialogueStep` | Produce narrative messages + player options       | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments               | `time_update`      |
 
-**MCP tools** (16 tools from agent-memory Neo4j bridge):
+**MCP tools** (16 tools from agent-memory Neo4j bridge, auto-discovered via `getMcpTools()`):
 
-| Tool                        | Purpose                                        |
-|-----------------------------|------------------------------------------------|
-| `memory_add_entity`         | Create a new entity (character/location/object)|
-| `memory_get_entity`         | Get entity by name or ID                       |
-| `memory_list_entities`      | List all entities in Neo4j                     |
-| `memory_update_entity`      | Update entity attributes                       |
-| `memory_delete_entity`      | Delete an entity                               |
-| `memory_add_observation`    | Add an observation (fact) about an entity      |
-| `memory_get_observations`   | Get observations about an entity               |
-| `memory_update_observation` | Update an observation                          |
-| `memory_delete_observation` | Delete an observation                          |
-| `memory_create_relationship`| Create a relationship between two entities     |
-| `memory_get_relationships`  | Get relationships for an entity                |
-| `memory_delete_relationship`| Delete a relationship                          |
-| `memory_get_conversation`   | Get conversation history for a session         |
-| `memory_store_message`      | Store a message in conversation history        |
-| `memory_search_memory`      | Semantic search across memories                |
-| `memory_get_session_summary`| Get summary of session state                   |
+| Tool                        | Purpose                                          |
+|-----------------------------|--------------------------------------------------|
+| `memory_search`             | Hybrid vector + graph search across all memory   |
+| `memory_get_context`        | Auto-assembled context for the current session   |
+| `memory_store_message`      | Store a message in conversation history          |
+| `memory_add_entity`         | Create/update an entity (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) |
+| `memory_add_preference`     | Record a user preference                         |
+| `memory_add_fact`           | Store a subject-predicate-object fact triple    |
+| `memory_get_entity`         | Get entity details with graph traversal          |
+| `memory_get_conversation`   | Get full conversation history for a session      |
+| `memory_list_sessions`      | List available conversation sessions             |
+| `memory_create_relationship`| Create a typed relationship between entities     |
+| `memory_start_trace`        | Begin recording a reasoning trace                |
+| `memory_record_step`        | Record a reasoning step within a trace           |
+| `memory_complete_trace`     | Complete a reasoning trace with outcome          |
+| `memory_get_observations`   | Get session observations and reflections         |
+| `memory_export_graph`       | Export subgraph as JSON for visualization        |
+| `graph_query`               | Execute read-only Cypher queries                 |
 
 All 16 MCP tools are dynamically discovered at turn start via `getMcpTools()` in `src/server/mcp/client.ts`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
 
@@ -170,13 +170,9 @@ The MCP bridge (`src/server/mcp/client.ts`) connects to the agent-memory MCP ser
 
 ### 3.5 Seed System
 
-On startup, `main.ts` seeds Neo4j with initial world data from the active seed story:
+On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses the Neo4j JavaScript driver directly to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in SQLite.
 
-1. Creates all entities via `memory_add_entity`
-2. Creates all relationships via `memory_create_relationship`
-3. Sets initial game time in SQLite
-
-The `/api/reset` endpoint clears Neo4j (via `memory_delete_entity` and `memory_delete_observation`) then re-seeds.
+The `/api/reset` endpoint clears Neo4j (via direct `MATCH (n) DETACH DELETE n` through the Neo4j driver in `src/server/mcp/reset.ts`) then re-seeds.
 
 Seed stories live in `src/server/seed-stories/`. The active story is set via `ACTIVE_SEED_STORY` in `index.ts`.
 
@@ -247,7 +243,7 @@ Fantasy-steampunk inner monologue — each skill is a distinct voice in the play
 
 These map to character stats in `src/types/entities.ts` (`CharacterStats` interface). The system prompt in `src/server/llm/prompt.ts` instructs the LLM about voice personalities and includes the active plot tree.
 
-The system prompt is runtime-configurable via the system prompt API endpoints. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{setting_description}}`, `{{tone_description}}`, `{{entities_brief}}`, `{{active_plots}}`, `{{game_time}}`, and `{{current_scene}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
+The system prompt is runtime-configurable via the system prompt API endpoints. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{setting_description}}`, `{{tone_description}}`, and `{{game_time}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. World state and plots are not dumped into the prompt — the GM fetches them on demand via `memory_get_context`. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
 
 ### 6.2 Skill Checks
 

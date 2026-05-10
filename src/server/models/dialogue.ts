@@ -16,11 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { v4 as uuidv4 } from "uuid";
 import db from "@/server/db";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { WorldSnapshot } from "@/types/entities";
-import { v4 as uuidv4 } from "uuid";
-import { safeJsonParse } from "./shared";
+import { safeJsonParse } from "@/server/models/shared";
 
 export interface DialogueStepRow {
   id: string;

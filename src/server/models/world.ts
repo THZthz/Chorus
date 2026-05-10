@@ -26,7 +26,7 @@ import {
   EntityType,
 } from "@/types/entities";
 import { getActiveSeedStory } from "@/server/seed-stories";
-import { safeJsonParse } from "./shared";
+import { safeJsonParse } from "@/server/seed-stories/shared";
 
 export function seedDatabase() {
   const count = db.prepare("SELECT COUNT(*) as count FROM entities").get() as { count: number };

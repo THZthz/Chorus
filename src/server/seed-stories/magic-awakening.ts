@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SeedStory } from "./types";
+import type { SeedStory } from "@/server/seed-stories/types";
 import { PLAYER_ID } from "@/shared/constants";
 
 const objects: SeedStory["objects"] = {

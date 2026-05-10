@@ -18,7 +18,7 @@
 
 import db from "@/server/db";
 import { Message } from "@/types/dialogue";
-import { safeJsonParse } from "./shared";
+import { safeJsonParse } from "@/server/models/shared";
 
 export function getHistory(): Message[] {
   const rows = db.prepare("SELECT * FROM history_messages ORDER BY timestamp ASC").all() as any[];

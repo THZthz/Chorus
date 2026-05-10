@@ -19,7 +19,7 @@
 import db from "@/server/db";
 import type { Plot, PlotOption, PlotPatch } from "@/types/plot";
 import { nextId } from "@/server/models/ids";
-import { safeJsonParse } from "./shared";
+import { safeJsonParse } from "@/server/models/shared";
 
 function rowToPlot(row: any): Plot {
   return {

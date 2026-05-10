@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SeedStory } from "./types";
-import { magicAwakening } from "./magic-awakening";
-import { ironSerpentMurder } from "./iron-serpent-murder";
-import { celestialAthenaeum } from "./celestial-athenaeum";
+import type { SeedStory } from "@/server/seed-stories/types";
+import { magicAwakening } from "@/server/seed-stories/magic-awakening";
+import { ironSerpentMurder } from "@/server/seed-stories/iron-serpent-murder";
+import { celestialAthenaeum } from "@/server/seed-stories/celestial-athenaeum";
 
 export const ACTIVE_SEED_STORY = "magic-awakening";
 

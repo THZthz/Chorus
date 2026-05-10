@@ -39,10 +39,10 @@ import { createPlotConfig } from "@/components/debug/PlotConfig";
 import { LlmTraceViewer } from "@/components/debug/LlmTraceViewer";
 import { SystemPromptEditor } from "@/components/debug/SystemPromptEditor";
 import { SceneViewer } from "@/components/debug/SceneViewer";
-import { FactsViewer } from "@/components/debug/FactsViewer";
+import { NotesViewer } from "@/components/debug/NotesViewer";
 import { CustomSelect } from "@/components/debug/shared";
 
-type TabId = "logs" | "world" | "graphs" | "prompt" | "scene" | "facts";
+type TabId = "logs" | "world" | "graphs" | "prompt" | "scene" | "notes";
 type GraphMode = "dialogue" | "plot";
 
 const TAB_DEFS: Record<TabId, { label: string; icon: React.ReactNode }> = {
@@ -51,10 +51,10 @@ const TAB_DEFS: Record<TabId, { label: string; icon: React.ReactNode }> = {
   graphs: { label: "Graphs", icon: <GitBranch size={14} /> },
   prompt: { label: "Prompt", icon: <FileText size={14} /> },
   scene: { label: "Scene", icon: <Map size={14} /> },
-  facts: { label: "Facts", icon: <StickyNote size={14} /> },
+  notes: { label: "Notes", icon: <StickyNote size={14} /> },
 };
 
-const DEFAULT_TAB_ORDER: TabId[] = ["logs", "world", "graphs", "prompt", "scene", "facts"];
+const DEFAULT_TAB_ORDER: TabId[] = ["logs", "world", "graphs", "prompt", "scene", "notes"];
 
 export const DebugPanel: React.FC<{
   onJumpToReplay?: (stepId: string) => void;
@@ -316,7 +316,7 @@ export const DebugPanel: React.FC<{
                 )}
                 {activeTab === "prompt" && <SystemPromptEditor />}
                 {activeTab === "scene" && <SceneViewer />}
-                {activeTab === "facts" && <FactsViewer />}
+                {activeTab === "notes" && <NotesViewer />}
               </div>
             </motion.div>
           </>

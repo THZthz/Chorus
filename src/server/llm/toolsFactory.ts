@@ -33,10 +33,10 @@ import {
   createAdvanceTimeTool,
   createUpdateSceneTool,
   createGetSceneTool,
-  createAddFactTool,
-  createGetFactTool,
-  createUpdateFactTool,
-  createRemoveFactTool,
+  createAddNoteTool,
+  createGetNoteTool,
+  createUpdateNoteTool,
+  createRemoveNoteTool,
 } from "@/server/llm/tools";
 
 export function createAllTools(
@@ -57,10 +57,10 @@ export function createAllTools(
     getScene: createGetSceneTool(),
     updateScene: createUpdateSceneTool(events),
     advanceTime: createAdvanceTimeTool(events),
-    addFact: createAddFactTool(events),
-    getFact: createGetFactTool(),
-    updateFact: createUpdateFactTool(events),
-    removeFact: createRemoveFactTool(events),
+    addNote: createAddNoteTool(events),
+    getNote: createGetNoteTool(),
+    updateNote: createUpdateNoteTool(events),
+    removeNote: createRemoveNoteTool(events),
     generateDialogueStep: dialogueTool,
   };
 }

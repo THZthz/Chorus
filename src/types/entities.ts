@@ -18,7 +18,7 @@
 
 import type { Plot } from "@/types/plot";
 
-export interface Fact {
+export interface Note {
   id: string;
   key: string;
   value: string;
@@ -107,5 +107,5 @@ export interface WorldSnapshot {
   playerCharacter: Character | null;
   gameTime: GameTime | null;
   scene: SceneState | null;
-  facts: Fact[];
+  notes: Note[];
 }

@@ -31,7 +31,7 @@ export { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialo
 export { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 export { createUpdateSceneTool } from "@/server/llm/tools/updateScene";
 export { createGetSceneTool } from "@/server/llm/tools/getScene";
-export { createAddFactTool } from "@/server/llm/tools/addFact";
-export { createGetFactTool } from "@/server/llm/tools/getFact";
-export { createUpdateFactTool } from "@/server/llm/tools/updateFact";
-export { createRemoveFactTool } from "@/server/llm/tools/removeFact";
+export { createAddNoteTool } from "@/server/llm/tools/addNote";
+export { createGetNoteTool } from "@/server/llm/tools/getNote";
+export { createUpdateNoteTool } from "@/server/llm/tools/updateNote";
+export { createRemoveNoteTool } from "@/server/llm/tools/removeNote";

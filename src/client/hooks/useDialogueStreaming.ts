@@ -148,17 +148,17 @@ export function useDialogueStreaming({
         console.trace(`[${logPrefix}] scene_update`);
         setCurrentScene(data.scene);
       },
-      onFactAdd: (data) => {
-        console.trace(`[${logPrefix}] fact_add factId=${data.fact.id}`);
-        worldManager.addFactToCache(data.fact);
+      onNoteAdd: (data) => {
+        console.trace(`[${logPrefix}] note_add noteId=${data.note.id}`);
+        worldManager.addNoteToCache(data.note);
       },
-      onFactUpdate: (data) => {
-        console.trace(`[${logPrefix}] fact_update factId=${data.factId}`);
-        worldManager.updateFactInCache(data.factId, data.changes);
+      onNoteUpdate: (data) => {
+        console.trace(`[${logPrefix}] note_update noteId=${data.noteId}`);
+        worldManager.updateNoteInCache(data.noteId, data.changes);
       },
-      onFactRemove: (data) => {
-        console.trace(`[${logPrefix}] fact_remove factId=${data.factId}`);
-        worldManager.removeFactFromCache(data.factId);
+      onNoteRemove: (data) => {
+        console.trace(`[${logPrefix}] note_remove noteId=${data.noteId}`);
+        worldManager.removeNoteFromCache(data.noteId);
       },
       onError: async (message) => {
         isRetryingRef.current = false;

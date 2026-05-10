@@ -207,12 +207,12 @@ apiRouter.post("/plots/pregen", async (req, res) => {
   }
 });
 
-// ── Facts ──
+// ── Notes ──
 
-import { getFacts } from "@/server/models/facts";
+import { getNotes } from "@/server/models/notes";
 
-apiRouter.get("/facts", (_req, res) => {
-  res.json(getFacts());
+apiRouter.get("/notes", (_req, res) => {
+  res.json(getNotes());
 });
 
 // ── Scene ──

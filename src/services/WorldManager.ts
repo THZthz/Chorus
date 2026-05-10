@@ -23,7 +23,7 @@ import type {
   Character,
   GameTime,
   SceneState,
-  Fact,
+  Note,
 } from "@/types/entities";
 import type { Plot } from "@/types/plot";
 import { PLAYER_ID } from "@/shared/constants";
@@ -31,7 +31,7 @@ import { PLAYER_ID } from "@/shared/constants";
 class WorldManager {
   private state: WorldState = { objects: {}, locations: {}, characters: {} };
   private plots: Plot[] = [];
-  private facts: Fact[] = [];
+  private notes: Note[] = [];
   private replayOverride: WorldSnapshot | null = null;
   private listeners = new Set<() => void>();
 
@@ -45,14 +45,14 @@ class WorldManager {
   }
 
   async loadState() {
-    const [worldRes, plotsRes, factsRes] = await Promise.all([
+    const [worldRes, plotsRes, notesRes] = await Promise.all([
       fetch("/api/world"),
       fetch("/api/plots"),
-      fetch("/api/facts"),
+      fetch("/api/notes"),
     ]);
     if (worldRes.ok) this.state = await worldRes.json();
     if (plotsRes.ok) this.plots = await plotsRes.json();
-    if (factsRes.ok) this.facts = await factsRes.json();
+    if (notesRes.ok) this.notes = await notesRes.json();
     this.notify();
   }
 
@@ -124,24 +124,24 @@ class WorldManager {
     return this.replayOverride?.scene ?? null;
   }
 
-  getFacts(): Fact[] {
-    return this.replayOverride?.facts ?? this.facts;
+  getNotes(): Note[] {
+    return this.replayOverride?.notes ?? this.notes;
   }
 
-  addFactToCache(fact: Fact) {
-    this.facts = [fact, ...this.facts];
+  addNoteToCache(note: Note) {
+    this.notes = [note, ...this.notes];
     this.notify();
   }
 
-  updateFactInCache(factId: string, changes: Record<string, unknown>) {
-    this.facts = this.facts.map((f) =>
-      f.id === factId ? { ...f, ...(changes as Partial<Fact>) } : f,
+  updateNoteInCache(noteId: string, changes: Record<string, unknown>) {
+    this.notes = this.notes.map((n) =>
+      n.id === noteId ? { ...n, ...(changes as Partial<Note>) } : n,
     );
     this.notify();
   }
 
-  removeFactFromCache(factId: string) {
-    this.facts = this.facts.map((f) => (f.id === factId ? { ...f, isValid: false } : f));
+  removeNoteFromCache(noteId: string) {
+    this.notes = this.notes.map((n) => (n.id === noteId ? { ...n, isValid: false } : n));
     this.notify();
   }
 }

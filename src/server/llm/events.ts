@@ -20,7 +20,7 @@ import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
 import type { PlotPatch } from "@/types/plot";
 import type { SseEventType, SseEventMap, StreamingMessage } from "@/shared/events";
-import type { SceneState, EntityType, Fact } from "@/types/entities";
+import type { SceneState, EntityType, Note } from "@/types/entities";
 
 export type EventEmitter = TurnEventEmitter | NoopEventEmitter;
 
@@ -104,16 +104,16 @@ export class TurnEventEmitter {
     this.send("entity_create", { entityId, entityType, displayName });
   }
 
-  emitFactAdd(fact: Fact) {
-    this.send("fact_add", { fact });
+  emitNoteAdd(note: Note) {
+    this.send("note_add", { note });
   }
 
-  emitFactUpdate(factId: string, changes: Record<string, unknown>) {
-    this.send("fact_update", { factId, changes });
+  emitNoteUpdate(noteId: string, changes: Record<string, unknown>) {
+    this.send("note_update", { noteId, changes });
   }
 
-  emitFactRemove(factId: string) {
-    this.send("fact_remove", { factId });
+  emitNoteRemove(noteId: string) {
+    this.send("note_remove", { noteId });
   }
 }
 
@@ -140,7 +140,7 @@ export class NoopEventEmitter {
   emitTimeUpdate(_day: number, _segment: number, _segmentsAdvanced: number) {}
   emitSceneUpdate(_scene: unknown) {}
   emitEntityCreate(_entityId: string, _entityType: string, _displayName: string) {}
-  emitFactAdd(_fact: unknown) {}
-  emitFactUpdate(_factId: string, _changes: Record<string, unknown>) {}
-  emitFactRemove(_factId: string) {}
+  emitNoteAdd(_note: unknown) {}
+  emitNoteUpdate(_noteId: string, _changes: Record<string, unknown>) {}
+  emitNoteRemove(_noteId: string) {}
 }

@@ -1,26 +1,8 @@
-/**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
- * Copyright (C) 2026  Amias
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import db from "@/server/db";
 import { nextId } from "@/server/models/ids";
-import type { Fact } from "@/types/entities";
+import type { Note } from "@/types/entities";
 
-interface FactRow {
+interface NoteRow {
   id: string;
   key: string;
   value: string;
@@ -33,7 +15,7 @@ interface FactRow {
   updated_at: string;
 }
 
-function rowToFact(row: FactRow): Fact {
+function rowToNote(row: NoteRow): Note {
   return {
     id: row.id,
     key: row.key,
@@ -48,18 +30,18 @@ function rowToFact(row: FactRow): Fact {
   };
 }
 
-export function addFact(input: {
+export function addNote(input: {
   key: string;
   value: string;
   relatedEntityIds?: string[];
   relatedPlotIds?: string[];
   relatedScene?: boolean;
   relatedTime?: boolean;
-}): Fact {
-  const id = `fact_${nextId()}`;
+}): Note {
+  const id = `note_${nextId()}`;
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO facts (id, key, value, related_entity_ids, related_plot_ids, related_scene, related_time, is_valid, created_at, updated_at)
+    `INSERT INTO notes (id, key, value, related_entity_ids, related_plot_ids, related_scene, related_time, is_valid, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   ).run(
     id,
@@ -72,15 +54,15 @@ export function addFact(input: {
     now,
     now,
   );
-  return getFactById(id)!;
+  return getNoteById(id)!;
 }
 
-export function getFactById(id: string): Fact | undefined {
-  const row = db.prepare("SELECT * FROM facts WHERE id = ?").get(id) as FactRow | undefined;
-  return row ? rowToFact(row) : undefined;
+export function getNoteById(id: string): Note | undefined {
+  const row = db.prepare("SELECT * FROM notes WHERE id = ?").get(id) as NoteRow | undefined;
+  return row ? rowToNote(row) : undefined;
 }
 
-export interface FactFilter {
+export interface NoteFilter {
   relatedEntityId?: string;
   relatedPlotId?: string;
   relatedScene?: boolean;
@@ -88,7 +70,7 @@ export interface FactFilter {
   includeInvalid?: boolean;
 }
 
-export function getFacts(filter?: FactFilter): Fact[] {
+export function getNotes(filter?: NoteFilter): Note[] {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -118,22 +100,22 @@ export function getFacts(filter?: FactFilter): Fact[] {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = db
-    .prepare(`SELECT * FROM facts ${where} ORDER BY created_at DESC`)
-    .all(...params) as FactRow[];
-  return rows.map(rowToFact);
+    .prepare(`SELECT * FROM notes ${where} ORDER BY created_at DESC`)
+    .all(...params) as NoteRow[];
+  return rows.map(rowToNote);
 }
 
-export function getFactsByIds(ids: string[]): Fact[] {
+export function getNotesByIds(ids: string[]): Note[] {
   const placeholders = ids.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT * FROM facts WHERE id IN (${placeholders}) AND is_valid = 1 ORDER BY created_at DESC`,
+      `SELECT * FROM notes WHERE id IN (${placeholders}) AND is_valid = 1 ORDER BY created_at DESC`,
     )
-    .all(...ids) as FactRow[];
-  return rows.map(rowToFact);
+    .all(...ids) as NoteRow[];
+  return rows.map(rowToNote);
 }
 
-export function updateFact(
+export function updateNote(
   id: string,
   changes: {
     key?: string;
@@ -143,12 +125,12 @@ export function updateFact(
     relatedScene?: boolean;
     relatedTime?: boolean;
   },
-): { ok: true; fact: Fact } | { ok: false; error: string } {
-  const existing = db.prepare("SELECT * FROM facts WHERE id = ? AND is_valid = 1").get(id) as
-    | FactRow
+): { ok: true; note: Note } | { ok: false; error: string } {
+  const existing = db.prepare("SELECT * FROM notes WHERE id = ? AND is_valid = 1").get(id) as
+    | NoteRow
     | undefined;
   if (!existing) {
-    return { ok: false, error: `Fact '${id}' not found.` };
+    return { ok: false, error: `Note '${id}' not found.` };
   }
 
   const setters: string[] = ["updated_at = CURRENT_TIMESTAMP"];
@@ -180,21 +162,21 @@ export function updateFact(
   }
 
   params.push(id);
-  db.prepare(`UPDATE facts SET ${setters.join(", ")} WHERE id = ?`).run(...params);
-  return { ok: true, fact: getFactById(id)! };
+  db.prepare(`UPDATE notes SET ${setters.join(", ")} WHERE id = ?`).run(...params);
+  return { ok: true, note: getNoteById(id)! };
 }
 
-export function removeFact(id: string): { ok: true } | { ok: false; error: string } {
-  const existing = db.prepare("SELECT * FROM facts WHERE id = ? AND is_valid = 1").get(id) as
-    | FactRow
+export function removeNote(id: string): { ok: true } | { ok: false; error: string } {
+  const existing = db.prepare("SELECT * FROM notes WHERE id = ? AND is_valid = 1").get(id) as
+    | NoteRow
     | undefined;
   if (!existing) {
-    return { ok: false, error: `Fact '${id}' not found.` };
+    return { ok: false, error: `Note '${id}' not found.` };
   }
-  db.prepare("UPDATE facts SET is_valid = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+  db.prepare("UPDATE notes SET is_valid = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
   return { ok: true };
 }
 
-export function getFactsSnapshot(): Fact[] {
-  return getFacts();
+export function getNotesSnapshot(): Note[] {
+  return getNotes();
 }

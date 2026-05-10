@@ -115,7 +115,7 @@ db.exec(`
     FOREIGN KEY (step_id) REFERENCES dialogue_steps(id)
   );
 
-  CREATE TABLE IF NOT EXISTS facts (
+  CREATE TABLE IF NOT EXISTS notes (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL,
     value TEXT NOT NULL,
@@ -147,6 +147,11 @@ try {
 } catch {}
 try {
   db.exec("ALTER TABLE entities ADD COLUMN conditions TEXT");
+} catch {}
+
+// Migration: rename facts table to notes
+try {
+  db.exec("ALTER TABLE facts RENAME TO notes");
 } catch {}
 
 export default db;

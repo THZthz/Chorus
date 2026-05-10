@@ -33,7 +33,7 @@ src/
 │   └── index.css             # Global styles (Tailwind + noise filters + scrollbar + Markdoc editor CSS)
 ├── components/
 │   ├── CharacterPanel.tsx    # Sidebar: character stats, world entity browser, quest tree
-│   ├── DebugPanel.tsx        # Developer toolbox: 6 draggable-reorderable tabs (Logs, World, Graphs, Prompt, Scene, Facts)
+│   ├── DebugPanel.tsx        # Developer toolbox: 6 draggable-reorderable tabs (Logs, World, Graphs, Prompt, Scene, Notes)
 │   ├── DialogueMessage.tsx   # Message rendering (speaker types, object links, roll tooltips, colors from shared/colors)
 │   ├── DialogueOptions.tsx   # Player choices (actions, skill checks, unexplored branches, custom input)
 │   ├── DiceRoller.tsx        # D6 die face renderer (dot-pattern, sizes xs–lg)
@@ -42,7 +42,7 @@ src/
 │   ├── TypingIndicator.tsx   # Animated bouncing dots during AI generation (motion/react)
 │   └── debug/
 │       ├── CopyButton.tsx            # One-click JSON copy utility with "Copied" feedback
-│       ├── FactsViewer.tsx           # Facts table with entity/plot filter, show-removed toggle, replay-aware
+│       ├── NotesViewer.tsx           # Notes table with entity/plot filter, show-removed toggle, replay-aware
 │       ├── HistoryEditor.tsx         # Visual message timeline with inline editing, drag-and-drop reorder
 │       ├── JsonExplorer.tsx          # Resizable, collapsible JSON tree viewer (parses JSON → JsonNode)
 │       ├── JsonNode.tsx              # Recursive JSON node renderer (collapsible, color-coded types)
@@ -90,10 +90,10 @@ src/
 │   │       ├── advanceTime.ts            # createAdvanceTimeTool — advance clock by segments/days
 │   │       ├── updateScene.ts            # createUpdateSceneTool — move characters/objects between locations
 │   │       ├── getScene.ts               # createGetSceneTool — get game time + full scene state
-│   │       ├── addFact.ts                # createAddFactTool — record GM fact (key-value with entity/plot links)
-│   │       ├── getFact.ts                # createGetFactTool — retrieve facts by ID, bulk, or filter
-│   │       ├── updateFact.ts             # createUpdateFactTool — update existing fact key/value/links
-│   │       └── removeFact.ts             # createRemoveFactTool — soft-delete a fact
+│   │       ├── addNote.ts                # createAddNoteTool — record GM note (key-value with entity/plot links)
+│   │       ├── getNote.ts                # createGetNoteTool — retrieve notes by ID, bulk, or filter
+│   │       ├── updateNote.ts             # createUpdateNoteTool — update existing note key/value/links
+│   │       └── removeNote.ts             # createRemoveNoteTool — soft-delete a note
 │   ├── main.ts                          # Express + Vite middleware entry (port 3000)
 │   ├── seed-stories/
 │   │   ├── index.ts                     # Story registry + ACTIVE_SEED_STORY constant
@@ -104,7 +104,7 @@ src/
 │   └── models/
 │       ├── debug.ts          # LLM interaction log query and management (getLlmLogs, clearLlmLogs, addLlmLog)
 │       ├── dialogue.ts       # Dialogue tree CRUD (steps, branches, alternatives, snapshots, tree traversal)
-│       ├── facts.ts          # Facts CRUD (addFact, getFacts, updateFact, removeFact, getFactsSnapshot)
+│       ├── notes.ts          # Notes CRUD (addNote, getNotes, updateNote, removeNote, getNotesSnapshot)
 │       ├── history.ts        # Narrative message persistence (with metadata, skillCheck, rollResult)
 │       ├── ids.ts            # Base62-encoded 4-char unique ID generation (nextId, nextIdBatch)
 │       ├── plot.ts           # Plot tree CRUD + tree validation + buildActivePlotTree()
@@ -113,7 +113,7 @@ src/
 │       └── world.ts          # Entity CRUD via active seed story + entity query helpers + seeding
 ├── services/
 │   ├── SseClient.ts          # Browser SSE streaming consumer (15 event types, AbortController support)
-│   └── WorldManager.ts       # Client-side world/plot/fact cache; replay snapshot override; subscriber pattern
+│   └── WorldManager.ts       # Client-side world/plot/note cache; replay snapshot override; subscriber pattern
 ├── shared/
 │   ├── colors.ts             # VOICE_COLORS: 12 inner-voice → hex color map
 │   ├── constants.ts          # TOOL_NAMES, SKILL_NAMES, PLAYER_ID, SEGMENT_LABELS, SEGMENT_HOURS
@@ -122,7 +122,7 @@ src/
 └── types/
     ├── codemirror-rich-markdoc.d.ts  # Module declaration for untyped package
     ├── dialogue.ts                   # Message, DialogueOption, DialogueStep interfaces
-    ├── entities.ts                   # WorldEntity, Character, Location, WorldObject, CharacterStats, Fact, GameTime, SceneState, WorldSnapshot
+    ├── entities.ts                   # WorldEntity, Character, Location, WorldObject, CharacterStats, Note, GameTime, SceneState, WorldSnapshot
     └── plot.ts                       # Plot, PlotOption, PlotPatch interfaces
 ```
 
@@ -199,9 +199,9 @@ Defined in `src/shared/events.ts` (single source of truth for both backend and f
 | `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                  |
 | `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                  |
 | `entity_create`      | Server → Client | `{ entityId, entityType, displayName }` | `createEntity` tool executes             |
-| `fact_add`           | Server → Client | `{ fact }`                           | `addFact` tool executes                      |
-| `fact_update`        | Server → Client | `{ factId, changes }`                | `updateFact` tool executes                   |
-| `fact_remove`        | Server → Client | `{ factId }`                         | `removeFact` tool executes                   |
+| `note_add`           | Server → Client | `{ note }`                           | `addNote` tool executes                      |
+| `note_update`        | Server → Client | `{ noteId, changes }`                | `updateNote` tool executes                   |
+| `note_remove`        | Server → Client | `{ noteId }`                         | `removeNote` tool executes                   |
 | `options`            | Server → Client | `{ options }`                        | Options available mid-stream                 |
 | `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                      |
 | `error`              | Server → Client | `{ message }`                        | Error during generation                      |
@@ -227,10 +227,10 @@ All 18 tools, each defined in its own file under `src/server/llm/tools/` with a 
 | `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                   |
 | `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `advanceGameTime()`       | `time_update`                    |
 | `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed`  |
-| `addFact`              | Record a new GM fact (key-value with entity/plot links)   | `addFact()`               | `fact_add`                       |
-| `getFact`              | Retrieve facts by ID, bulk IDs, or entity/plot filter     | None (read query)         | None (returns JSON)              |
-| `updateFact`           | Update an existing fact's key/value/links                 | `updateFact()`            | `fact_update`                    |
-| `removeFact`           | Soft-delete a fact by ID (sets `is_valid = 0`)            | `removeFact()`            | `fact_remove`                    |
+| `addNote`              | Record a new GM note (key-value with entity/plot links)   | `addNote()`               | `note_add`                       |
+| `getNote`              | Retrieve notes by ID, bulk IDs, or entity/plot filter     | None (read query)         | None (returns JSON)              |
+| `updateNote`           | Update an existing note's key/value/links                 | `updateNote()`            | `note_update`                    |
+| `removeNote`           | Soft-delete a note by ID (sets `is_valid = 0`)            | `removeNote()`            | `note_remove`                    |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools/shared.ts`) which catches any thrown exceptions and returns an `ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
 
@@ -254,7 +254,7 @@ The `prepareStep` callback in `streamText` tracks whether `generateDialogueStep`
 6. **App.tsx state machine** — clean `idle → streaming → idle` cycle instead of scattered booleans
 7. **Plot-first story architecture** — plots form a tree (one root, branches via `childPlots`): the GM creates/edits the plot tree first, then generates dialogue options that align with the active plot's branch options
 8. **Entity lazy loading** — world entities are described compactly in the system prompt (id + displayName + shortDescription); full details fetched via `getEntity`
-9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter + gameTime + scene + facts) via `persistStep()` in `src/server/llm/persistStep.ts` so replay mode shows historical world state including time, scene, and facts
+9. **World snapshots on steps** — each `dialogue_step` persists a `world_snapshot` (entities + plots + playerCharacter + gameTime + scene + notes) via `persistStep()` in `src/server/llm/persistStep.ts` so replay mode shows historical world state including time, scene, and notes
 10. **Replay-safe plot editing** — during replay, plot edits go to the step's snapshot (local + DB via `PATCH snapshot`) not the live plot table
 11. **Client-side ID pre-allocation** — `idPool.ts` fetches batches of unique IDs from `GET /api/ids/batch` so the frontend can assign IDs to new messages/snapshots without waiting for a server round-trip
 12. **Shared SSE parser** — `src/shared/sse.ts` provides `parseSseStream`, a single async generator used by both the browser `SseClient` and the console `ConsoleSseClient`, avoiding duplication
@@ -316,7 +316,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that validates the SSE 
 - `GET /api/session/current` — Latest active leaf step (options + stepId) for page-reload resume
 - `GET /api/world` — All entities (grouped by type: characters, locations, objects)
 - `POST /api/world/entity` — Upsert entity
-- `GET /api/facts` — All facts (with optional query filters: `relatedEntityId`, `relatedPlotId`, `relatedScene`, `relatedTime`, `includeInvalid`)
+- `GET /api/notes` — All notes (with optional query filters: `relatedEntityId`, `relatedPlotId`, `relatedScene`, `relatedTime`, `includeInvalid`)
 - `GET /api/plots` — All plots
 - `PATCH /api/plots/:id` — Update a plot's fields (with tree validation)
 - `POST /api/plots/pregen` — Pre-generate a complete plot tree `{ size: number (2-50, default 10) }`. Clears existing plots, calls LLM to generate a coherent tree, bulk-inserts all plots, returns `{ plots: Plot[] }`.
@@ -355,7 +355,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that validates the SSE 
 | `dialogue_alternatives` | Archived alternative versions (regeneration)                                             |
 | `llm_logs`              | LLM request/response logging (with parent_id + label for child traces)                   |
 | `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings, user_prompt, reasoning)          |
-| `facts`                 | GM working memory: key-value facts with entity/plot/scene/time links and validity flag   |
+| `notes`                 | GM scratchpad: key-value notes with entity/plot/scene/time links and validity flag   |
 | `system_state`          | Key-value system state storage (time, scene, counters, system prompt template)           |
 
 ### 5.1 Plot Tree Architecture
@@ -414,33 +414,33 @@ The Debug Panel (`DebugPanel.tsx`) provides 6 draggable-reorderable tabs in a si
 - **Graphs** (`"graphs"`): Merged Dialogue Tree + Plot Tree node graphs with internal mode toggle. Dialogue mode — recursive tree layout, pan/zoom, SVG edges, node states (active/inactive/leaf/root/now), bottom inspector panel with message/option editing and "Jump to Replay". Plot mode — canvas node graph for plot inspection and editing, reads from `worldManager`'s replay snapshot when replay is active. Includes a **Pre-generate** button with a size selector (5–30 nodes) that calls the LLM to generate a complete plot tree in advance, then displays it in the graph. Both use `src/components/debug/NodeGraph.tsx` with config factories from `DialogConfig.tsx` and `PlotConfig.tsx`.
 - **System Prompt** (`"prompt"`): Obsidian-style live markdown editor for the GM system prompt template. Uses `@uiw/react-codemirror` + `codemirror-rich-markdoc`. GFM tables rendered as interactive widgets. Supports `{{entities_brief}}` and `{{active_plots}}` template variables. (`src/components/debug/SystemPromptEditor.tsx`)
 - **Scene Viewer** (`"scene"`): Current scene state — game time, current location, characters present, object positions. Aligns with replay mode: fetches `GET /api/scene` live or reads from `worldManager` during replay. (`src/components/debug/SceneViewer.tsx`)
-- **Facts Viewer** (`"facts"`): Table of world facts with filter-by-entity-ID and filter-by-plot-ID inputs, show-removed toggle. Uses `worldManager` for live/replay switching. (`src/components/debug/FactsViewer.tsx`)
+- **Notes Viewer** (`"notes"`): Table of world notes with filter-by-entity-ID and filter-by-plot-ID inputs, show-removed toggle. Uses `worldManager` for live/replay switching. (`src/components/debug/NotesViewer.tsx`)
 
 Tabs can be reordered by dragging (HTML5 native drag-and-drop with GripVertical handle on hover).
 
-### 6.4 Facts System
+### 6.4 Notes System
 
-The Facts system provides the GM with working memory — a persistent key-value store for narrative continuity across turns.
+The Notes system provides the GM with a scratchpad — a persistent key-value store for narrative continuity across turns.
 
-**`Fact`** (in `src/types/entities.ts`): `{ id, key, value, relatedEntityIds[], relatedPlotIds[], relatedScene, relatedTime, is_valid }`
+**`Note`** (in `src/types/entities.ts`): `{ id, key, value, relatedEntityIds[], relatedPlotIds[], relatedScene, relatedTime, is_valid }`
 
-**Model functions** (in `src/server/models/facts.ts`):
+**Model functions** (in `src/server/models/notes.ts`):
 
-- `addFact(input)` — Creates a new fact with auto-ID (`fact_{nextId()}`)
-- `getFactById(id)` — Single fact lookup
-- `getFacts(filter?)` — Filter by relatedEntityId (LIKE), relatedPlotId, relatedScene, relatedTime; optional `includeInvalid` flag
-- `getFactsByIds(ids)` — Bulk lookup (valid only)
-- `updateFact(id, changes)` — Partial update of key/value/links
-- `removeFact(id)` — Soft-delete (sets `is_valid = 0`)
-- `getFactsSnapshot()` — Returns all valid facts for step snapshot persistence
+- `addNote(input)` — Creates a new note with auto-ID (`note_{nextId()}`)
+- `getNoteById(id)` — Single note lookup
+- `getNotes(filter?)` — Filter by relatedEntityId (LIKE), relatedPlotId, relatedScene, relatedTime; optional `includeInvalid` flag
+- `getNotesByIds(ids)` — Bulk lookup (valid only)
+- `updateNote(id, changes)` — Partial update of key/value/links
+- `removeNote(id)` — Soft-delete (sets `is_valid = 0`)
+- `getNotesSnapshot()` — Returns all valid notes for step snapshot persistence
 
-**LLM tools** (in `src/server/llm/tools/`): `addFact`, `getFact`, `updateFact`, `removeFact` — allow the GM to record, query, update, and remove facts as the narrative unfolds.
+**LLM tools** (in `src/server/llm/tools/`): `addNote`, `getNote`, `updateNote`, `removeNote` — allow the GM to record, query, update, and remove notes as the narrative unfolds.
 
-**SSE events**: `fact_add`, `fact_update`, `fact_remove` — streamed to the frontend for live UI updates. The `WorldManager` subscriber pattern propagates these to `FactsViewer` and other consumers.
+**SSE events**: `note_add`, `note_update`, `note_remove` — streamed to the frontend for live UI updates. The `WorldManager` subscriber pattern propagates these to `NotesViewer` and other consumers.
 
-**In snapshots**: `WorldSnapshot.facts` stores the full facts state at each dialogue step for replay. During replay, `FactsViewer` reads from `worldManager`'s replay snapshot rather than the live API.
+**In snapshots**: `WorldSnapshot.notes` stores the full notes state at each dialogue step for replay. During replay, `NotesViewer` reads from `worldManager`'s replay snapshot rather than the live API.
 
-**Debug**: The Debug Panel's **Facts tab** (`FactsViewer.tsx`) provides a filterable table of all facts with entity/plot filter inputs and a show-removed toggle.
+**Debug**: The Debug Panel's **Notes tab** (`NotesViewer.tsx`) provides a filterable table of all notes with entity/plot filter inputs and a show-removed toggle.
 
 ### 6.5 Seed Story System
 

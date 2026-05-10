@@ -28,7 +28,7 @@ The TODO is more like prompts.
 - [ ] Simplify system prompt, inject into user's prompts.
 - [ ] Further refine system prompt to make GM generate well polished and consistent styled text.
 - [x] Add a time system, each day is divided into 12 pieces, every time player chooses an option, GM can choose to advance time. Add a scene management system, this system can record in a time unit (2 hours), characters and objects (carried by a character or just exists on scene) on a location. Design tools / system prompt for GM. Persist this data on database, note that it should have snapshot so player can replay in REPLAY mode.
-- [x] Significant events and player's chosen check should be recorded. We can call it `Fact`, which have a short description, main characters (who made the choice, took action, etc., initiative), other involved characters, and optionally locations. Two extra tools named `addFact` and `queryFact` should be added.
+- [x] Significant events and player's chosen check should be recorded. We can call it `Note`, which have a short description, main characters (who made the choice, took action, etc., initiative), other involved characters, and optionally locations. Two extra tools named `addNote` and `queryNote` should be added.
 - [ ] A system to analyze user's input, ignore choices made on REPLAY mode.
 - [ ] Analyze dialogue steps and see if there are any points to improve.
 - [x] Analyze the structure of following INCOMING_RESPONSE example, Remove OUTGOING_REQUEST, improve PARSED_EXCHANGE UI to cover most information shown in INCOMING_RESPONSE (focus on "steps" field). For system prompt, only show content that are different (dynamic content, plots and entities info).
@@ -41,7 +41,7 @@ The TODO is more like prompts.
 - [ ] `YOU` should be removed from generateDialogueStep tool in `type` field.
 - [ ] Separate character's memory system.
 - [x] Standardize all GM tool names to `{verb}{Noun}` pattern. This is a mechanical rename — no behavior change, no new functionality.
-- [x] Build a GM-only "facts" system with CRUD tools and database tables for key-value notes, plus a new Debug Panel tab to view and edit them during live play and replays.
+- [x] Build a GM-only "notes" system with CRUD tools and database tables for key-value notes, plus a new Debug Panel tab to view and edit them during live play and replays.
 - [x] Add tools for getting/updating character state (including new status conditions), creating new entities, and bulk-updating entity descriptions or attributes.
 - [ ] Scope world flags to plot nodes, enable incremental plot editing (add/remove children), allow advancing time by days, and add stricter validation rules for dialogue options (length limits, required messages, and valid skill names).
 - [x] The div `class="flex-1 flex flex-col min-w-0 overflow-hidden"` should not have horizontal scrollbar, but it appears along with the vertical scrollbar.

@@ -27,7 +27,7 @@ import { addMessage } from "@/server/models/history";
 import { getAllEntities } from "@/server/models/world";
 import { getAllPlots } from "@/server/models/plot";
 import { getGameTime, getSceneState } from "@/server/models/scene";
-import { getFactsSnapshot } from "@/server/models/facts";
+import { getNotesSnapshot } from "@/server/models/notes";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { Character } from "@/types/entities";
 
@@ -69,7 +69,7 @@ export function persistStep(
       playerCharacter,
       gameTime: getGameTime(),
       scene: getSceneState(),
-      facts: getFactsSnapshot(),
+      notes: getNotesSnapshot(),
     },
     isGenerated: true,
     isActive: true,

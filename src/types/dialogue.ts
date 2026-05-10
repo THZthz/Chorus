@@ -16,66 +16,46 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-export const SPEAKER_TYPES = [
-  "YOU",
-  "INNER_VOICE",
-  "CHARACTER",
-  "SYSTEM",
-  "ROLL",
-  "NOTIFICATION",
-] as const;
-export type SpeakerType = (typeof SPEAKER_TYPES)[number];
-
-export const NOTIFICATION_TYPES = ["XP", "TASK", "ITEM"] as const;
+export const NOTIFICATION_TYPES = ["TASK", "INFO", "WARNING", "ITEM_RECEIVED"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export interface Message {
   id: string;
   speaker: string;
-  type: SpeakerType;
+  type: "INNER_VOICE" | "CHARACTER" | "SYSTEM" | "ROLL" | "NOTIFICATION" | "YOU";
   text: string;
   metadata?: {
     notificationType?: NotificationType;
   };
   skillCheck?: {
     skill: string;
-    difficulty: string;
-    success: boolean;
+    difficulty: number;
+    diceCount: number;
   };
   rollResult?: {
     dice: number[];
     total: number;
-    difficulty: number;
     success: boolean;
-    skill: string;
-    skillBonus?: number;
   };
 }
 
 export interface DialogueOption {
   id: string;
   text: string;
-  selectionMessage?: string; // First-person narration for the YOU message in dialogue history
-  hintBefore?: string; // e.g. "[Consult the Void]"
-  hintAfter?: string; // e.g. "[Charm her.]"
-  nextStepId?: string; // Standard transition
+  selectionMessage?: string;
+  hintBefore?: string;
+  hintAfter?: string;
   check?: {
     skill: string;
     difficulty: number;
     difficultyText: string;
     diceCount: number;
-    isRed?: boolean; // High stakes, non-repeatable check
-    conditions: {
-      expression: string; // e.g. "success", "total < difficulty", "dice[0] === 1"
-      stepId: string;
-      label?: string; // Optional label for display
-      color?: string; // Optional color for display
-    }[];
+    isRed?: boolean;
+    conditions?: Array<{
+      expression: string;
+      label?: string;
+      color?: string;
+      stepId?: string;
+    }>;
   };
-}
-
-export interface DialogueStep {
-  id: string;
-  messages: (Omit<Message, "id"> & { id?: string })[];
-  options: DialogueOption[];
 }

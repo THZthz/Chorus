@@ -17,6 +17,143 @@
  */
 
 import type { DialogueOption } from "@/types/dialogue";
+import type { WorldEntity, Character, Note } from "@/types/entities";
+import type { Plot } from "@/types/plot";
+
+// ── Markdown formatters ──
+
+export function formatEntityMarkdown(entity: WorldEntity): string {
+  const lines: string[] = [];
+  lines.push(`## Entity: ${entity.displayName}`);
+  lines.push("");
+  lines.push(`**ID:** \`${entity.id}\` | **Type:** ${entity.type}`);
+  lines.push(`**Short Description:** ${entity.shortDescription}`);
+  lines.push("");
+  lines.push(`### Long Description`);
+  lines.push("");
+  lines.push(entity.longDescription);
+  lines.push("");
+
+  if (Object.keys(entity.attributes).length > 0) {
+    lines.push("### Attributes");
+    lines.push("");
+    lines.push("| Key | Value |");
+    lines.push("|---|---|");
+    for (const [k, v] of Object.entries(entity.attributes)) {
+      lines.push(`| ${k} | ${String(v)} |`);
+    }
+    lines.push("");
+  }
+
+  if (entity.type === "CHARACTER") {
+    const char = entity as Character;
+
+    if (Object.keys(char.stats).length > 0) {
+      lines.push("### Stats");
+      lines.push("");
+      lines.push("| Skill | Value |");
+      lines.push("|---|---|");
+      for (const [k, v] of Object.entries(char.stats)) {
+        lines.push(`| ${k} | ${v} |`);
+      }
+      lines.push("");
+    }
+
+    if (Object.keys(char.opinions).length > 0) {
+      lines.push("### Opinions");
+      lines.push("");
+      for (const [targetId, opinion] of Object.entries(char.opinions)) {
+        lines.push(`- **${targetId}:** ${opinion}`);
+      }
+      lines.push("");
+    }
+
+    if (Object.keys(char.conditions).length > 0) {
+      lines.push("### Conditions");
+      lines.push("");
+      lines.push("| Key | Value |");
+      lines.push("|---|---|");
+      for (const [k, v] of Object.entries(char.conditions)) {
+        lines.push(`| ${k} | ${String(v)} |`);
+      }
+      lines.push("");
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
+export function formatPlotMarkdown(plot: Plot): string {
+  const lines: string[] = [];
+  lines.push(`## Plot: ${plot.title}`);
+  lines.push("");
+  lines.push(`**ID:** \`${plot.id}\` | **Status:** ${plot.status}`);
+  lines.push(`**Parent Plot:** ${plot.parentPlotId ? `\`${plot.parentPlotId}\`` : "None (root plot)"}`);
+  lines.push("");
+  lines.push(`### Description`);
+  lines.push("");
+  lines.push(plot.description);
+  lines.push("");
+
+  if (plot.involvedCharacters.length > 0) {
+    lines.push("### Involved Characters");
+    lines.push("");
+    for (const c of plot.involvedCharacters) {
+      lines.push(`- \`${c}\``);
+    }
+    lines.push("");
+  }
+
+  if (plot.involvedLocations.length > 0) {
+    lines.push("### Involved Locations");
+    lines.push("");
+    for (const loc of plot.involvedLocations) {
+      lines.push(`- \`${loc}\``);
+    }
+    lines.push("");
+  }
+
+  lines.push("### Child Plots");
+  lines.push("");
+  if (plot.childPlots.length > 0) {
+    lines.push("| # | Plot ID | Trigger Condition |");
+    lines.push("|---|---|---|");
+    for (let i = 0; i < plot.childPlots.length; i++) {
+      const cp = plot.childPlots[i];
+      lines.push(`| ${i} | \`${cp.plotId ?? "—"}\` | ${cp.triggerCondition} |`);
+    }
+    lines.push("");
+  } else {
+    lines.push("*None*");
+    lines.push("");
+  }
+
+  if (Object.keys(plot.flags).length > 0) {
+    lines.push("### Flags");
+    lines.push("");
+    lines.push("| Key | Value |");
+    lines.push("|---|---|");
+    for (const [k, v] of Object.entries(plot.flags)) {
+      lines.push(`| ${k} | ${String(v)} |`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n").trim();
+}
+
+export function formatNoteMarkdown(note: Note): string {
+  const lines: string[] = [];
+  lines.push(`## Note: ${note.key}`);
+  lines.push("");
+  lines.push(`**ID:** \`${note.id}\``);
+  lines.push(`**Value:** ${note.value}`);
+  lines.push(`**Related Entities:** ${note.relatedEntityIds.length > 0 ? note.relatedEntityIds.map((id) => `\`${id}\``).join(", ") : "None"}`);
+  lines.push(`**Related Plots:** ${note.relatedPlotIds.length > 0 ? note.relatedPlotIds.map((id) => `\`${id}\``).join(", ") : "None"}`);
+  lines.push(`**Related Scene:** ${note.relatedScene ? "Yes" : "No"} | **Related Time:** ${note.relatedTime ? "Yes" : "No"}`);
+  lines.push(`**Created:** ${note.createdAt} | **Updated:** ${note.updatedAt}`);
+  return lines.join("\n").trim();
+}
 
 // ── Text verification ──
 

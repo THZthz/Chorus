@@ -21,7 +21,7 @@ import { z } from "zod";
 import { getEntityById } from "@/server/models/world";
 import { getSceneState } from "@/server/models/scene";
 import { TOOL_NAMES } from "@/shared/constants";
-import { wrapSafe } from "@/server/llm/tools/shared";
+import { wrapSafe, formatEntityMarkdown } from "@/server/llm/tools/shared";
 
 const inputSchema = z.object({
   characterId: z.string().describe("The character entity ID to query."),
@@ -48,15 +48,30 @@ export function createGetCharacterStateTool() {
           carriedObjects.push(objId);
         }
       }
-      return JSON.stringify(
-        {
-          character: entity,
-          carriedObjects,
-          sceneLocation: scene.characterLocations[args.characterId] ?? null,
-        },
-        null,
-        2,
-      );
+
+      const sceneLocation = scene.characterLocations[args.characterId] ?? null;
+
+      const lines: string[] = [];
+      lines.push(`## Character State: ${entity.displayName}`);
+      lines.push("");
+      lines.push(`**ID:** \`${entity.id}\` | **Type:** CHARACTER`);
+      lines.push(`**Current Location:** ${sceneLocation ? `\`${sceneLocation}\`` : "Unknown"}`);
+      lines.push("");
+
+      lines.push(formatEntityMarkdown(entity));
+
+      lines.push("");
+      lines.push("### Carried Objects");
+      lines.push("");
+      if (carriedObjects.length > 0) {
+        for (const objId of carriedObjects) {
+          lines.push(`- \`${objId}\``);
+        }
+      } else {
+        lines.push("*None*");
+      }
+
+      return lines.join("\n").trim();
     }, TOOL_NAMES.GET_CHARACTER_STATE),
   });
 }

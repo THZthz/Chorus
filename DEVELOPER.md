@@ -143,13 +143,13 @@ POST /api/chat/stream
 │                                                 │
 │  streamText({                                   │
 │    tools: {                                     │
-│      listEntities,        ──► returns JSON      │
-│      getEntity,           ──► returns JSON      │
+│      listEntities,        ──► returns markdown  │
+│      getEntity,           ──► returns markdown  │
 │      updateEntity,        ──► DB + SSE event    │
 │      createPlot,          ──► DB + SSE event    │
 │      updatePlot,          ──► DB + SSE event    │
-│      getPlot,             ──► returns JSON      │
-│      getScene,            ──► returns JSON      │
+│      getPlot,             ──► returns markdown  │
+│      getScene,            ──► returns markdown  │
 │      updateScene,         ──► DB + SSE event    │
 │      advanceTime,         ──► DB + SSE event    │
 │      generateDialogueStep ──► SSE streaming     │
@@ -213,22 +213,22 @@ All 18 tools, each defined in its own file under `src/server/llm/tools/` with a 
 
 | Tool                   | Purpose                                                    | DB Operation              | SSE Event                        |
 |------------------------|------------------------------------------------------------|---------------------------|----------------------------------|
-| `listEntities`         | List entity IDs, names, types, shortDescriptions           | None (read query)         | None (returns JSON)              |
-| `getEntity`            | Get full entity by ID or text search                       | None (read query)         | None (returns JSON)              |
+| `listEntities`         | List entity IDs, names, types, shortDescriptions           | None (read query)         | None (returns markdown)          |
+| `getEntity`            | Get full entity by ID or text search                       | None (read query)         | None (returns markdown)          |
 | `updateEntity`         | Mutate a single entity's attributes/descriptions/opinions  | `updateEntity()`          | `world_update`                   |
 | `updateEntities`       | Bulk-update multiple entities at once                      | `updateEntity()`          | `world_update`                   |
 | `createEntity`         | Create a new world entity (character/location/object)      | `upsertEntity()` + scene  | `entity_create` + `scene_update` |
-| `getCharacterState`    | Get character stats, conditions, carried objects, location | None (read query)         | None (returns JSON)              |
+| `getCharacterState`    | Get character stats, conditions, carried objects, location | None (read query)         | None (returns markdown)          |
 | `updateCharacterState` | Update character stats, conditions, or inventory           | `updateEntity()` + scene  | `world_update` + `scene_update`  |
 | `createPlot`           | Create a new plot node in the story tree                   | `addPlot()`               | `plot_create`                    |
 | `updatePlot`           | Update plot status, description, childPlots, flags, etc.   | `updatePlot()`            | `plot_edit`                      |
-| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter         | None (read query)         | None (returns JSON)              |
-| `getScene`             | Get current game time and full scene state                 | None (read query)         | None (returns JSON)              |
+| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter         | None (read query)         | None (returns markdown)          |
+| `getScene`             | Get current game time and full scene state                 | None (read query)         | None (returns markdown)          |
 | `updateScene`          | Move characters/objects between locations                  | `setSceneState()`         | `scene_update`                   |
 | `advanceTime`          | Advance in-game clock by N segments (2 hrs each)           | `advanceGameTime()`       | `time_update`                    |
 | `generateDialogueStep` | Produce narrative messages + player options                | None (data via streaming) | `streaming_messages` + `parsed`  |
 | `addNote`              | Record a new GM note (key-value with entity/plot links)    | `addNote()`               | `note_add`                       |
-| `getNote`              | Retrieve notes by ID, bulk IDs, or entity/plot filter      | None (read query)         | None (returns JSON)              |
+| `getNote`              | Retrieve notes by ID, bulk IDs, or entity/plot filter      | None (read query)         | None (returns markdown)          |
 | `updateNote`           | Update an existing note's key/value/links                  | `updateNote()`            | `note_update`                    |
 | `removeNote`           | Soft-delete a note by ID (sets `is_valid = 0`)             | `removeNote()`            | `note_remove`                    |
 

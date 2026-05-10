@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { getEntityById, getEntitiesByIds, getEntitiesByText } from "@/server/models/world";
 import { TOOL_NAMES } from "@/shared/constants";
-import { wrapSafe } from "@/server/llm/tools/shared";
+import { wrapSafe, formatEntityMarkdown } from "@/server/llm/tools/shared";
 
 const inputSchema = z.object({
   id: z.string().optional().describe("Exact entity ID for single lookup (e.g. 'madam_vespera')."),
@@ -54,39 +54,42 @@ export function createGetEntityTool() {
         if (!entity) {
           return `ERROR: Entity '${args.id}' not found. You may call ${TOOL_NAMES.LIST_ENTITIES}() to discover valid IDs.`;
         }
-        return JSON.stringify(entity, null, 2);
+        return formatEntityMarkdown(entity);
       }
       if (args.ids && args.ids.length > 0) {
         const results = getEntitiesByIds(args.ids);
         if (results.length === 0) {
           return `ERROR: None of the requested IDs were found: [${args.ids.join(", ")}]. You may call ${TOOL_NAMES.LIST_ENTITIES}() to discover valid IDs.`;
         }
+        const parts: string[] = [];
         if (results.length < args.ids.length) {
           const foundIds = new Set(results.map((e) => e.id));
           const missing = args.ids.filter((id) => !foundIds.has(id));
-          return JSON.stringify(
-            {
-              note: `The following IDs were not found: [${missing.join(", ")}]. They may have been removed or misspelled.`,
-              results,
-            },
-            null,
-            2,
-          );
+          parts.push(`> Note: The following IDs were not found: [${missing.join(", ")}]`);
+          parts.push("");
         }
-        return JSON.stringify(
-          {
-            note: "All IDs is successfully queried",
-            results,
-          },
-          null,
-          2,
-        );
+        parts.push(`## Entities (${results.length} results)`);
+        parts.push("");
+        for (const entity of results) {
+          parts.push(formatEntityMarkdown(entity));
+          parts.push("");
+          parts.push("---");
+          parts.push("");
+        }
+        return parts.join("\n").trim();
       }
       const results = getEntitiesByText(args.search!);
       if (results.length === 0) {
         return `No entities matched '${args.search}'. You may call ${TOOL_NAMES.LIST_ENTITIES}() to see all entities.`;
       }
-      return JSON.stringify(results, null, 2);
+      const parts: string[] = [`## Search Results for "${args.search}" (${results.length} entities)`, ""];
+      for (const entity of results) {
+        parts.push(formatEntityMarkdown(entity));
+        parts.push("");
+        parts.push("---");
+        parts.push("");
+      }
+      return parts.join("\n").trim();
     }, TOOL_NAMES.GET_ENTITY),
   });
 }

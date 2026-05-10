@@ -31,6 +31,182 @@ export function isToolError(output: unknown): boolean {
   return /^(ERROR|VALIDATION FAILED)/.test(output);
 }
 
+// ── Lightweight markdown renderer ──
+
+/** Render inline markdown spans: **bold**, `code` */
+function InlineMarkdown({ text }: { text: string }) {
+  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={i} className="text-white/90 font-semibold">
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        if (part.startsWith("`") && part.endsWith("`")) {
+          return (
+            <code
+              key={i}
+              className="text-[#eab308] bg-white/[0.04] px-1 py-[1px] rounded-sm font-mono text-[0.95em]"
+            >
+              {part.slice(1, -1)}
+            </code>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+const TEXT_CLASS =
+  "text-[11px] text-white/40 whitespace-pre-wrap break-words leading-relaxed";
+const TEXT_COMPACT = "text-[10px] text-white/40 whitespace-pre-wrap break-words leading-relaxed";
+
+function MarkdownRenderer({ text, compact }: { text: string; compact?: boolean }) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const textCls = compact ? TEXT_COMPACT : TEXT_CLASS;
+
+    // Blank line
+    if (line.trim() === "") {
+      elements.push(<div key={i} className="h-2" />);
+      i++;
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} className="border-white/5 my-2" />);
+      i++;
+      continue;
+    }
+
+    // Heading
+    const h2Match = line.match(/^## (.+)/);
+    if (h2Match) {
+      elements.push(
+        <h3 key={i} className={`${compact ? "text-[11px]" : "text-xs"} font-bold text-white/65 uppercase tracking-wider mt-3 mb-1`}>
+          <InlineMarkdown text={h2Match[1]} />
+        </h3>,
+      );
+      i++;
+      continue;
+    }
+    const h3Match = line.match(/^### (.+)/);
+    if (h3Match) {
+      elements.push(
+        <h4 key={i} className={`${compact ? "text-[10px]" : "text-[11px]"} font-semibold text-white/50 mt-2 mb-0.5`}>
+          <InlineMarkdown text={h3Match[1]} />
+        </h4>,
+      );
+      i++;
+      continue;
+    }
+
+    // Table — collect consecutive table lines
+    if (/^\|.+\|$/.test(line.trim())) {
+      const tableLines: string[] = [];
+      while (i < lines.length && /^\|.+\|$/.test(lines[i].trim())) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+      // filter separator line (|---|---|)
+      const dataLines = tableLines.filter((l) => !/^\|[\s\-:|]+\|$/.test(l));
+      if (dataLines.length > 0) {
+        const headers = dataLines[0]
+          .split("|")
+          .slice(1, -1)
+          .map((c) => c.trim());
+        const rows = dataLines.slice(1);
+        elements.push(
+          <table
+            key={`tbl-${i - tableLines.length}`}
+            className={`${compact ? "text-[8px]" : "text-[10px]"} w-full border-collapse mt-1 mb-2`}
+          >
+            <thead>
+              <tr className="border-b border-white/5">
+                {headers.map((h, hi) => (
+                  <th key={hi} className="text-left py-1 px-2 text-white/30 font-medium uppercase tracking-wider">
+                    <InlineMarkdown text={h} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => {
+                const cells = row.split("|").slice(1, -1).map((c) => c.trim());
+                return (
+                  <tr key={ri} className="border-b border-white/[0.02]">
+                    {cells.map((cell, ci) => (
+                      <td key={ci} className="py-1 px-2 text-white/40">
+                        <InlineMarkdown text={cell} />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>,
+        );
+      }
+      continue;
+    }
+
+    // Blockquote
+    const bqMatch = line.match(/^>\s?(.*)/);
+    if (bqMatch) {
+      elements.push(
+        <div key={i} className={`border-l-2 border-[#eab308]/30 pl-2.5 my-1 ${compact ? "text-[9px]" : "text-[10px]"} text-white/30 italic`}>
+          <InlineMarkdown text={bqMatch[1]} />
+        </div>,
+      );
+      i++;
+      continue;
+    }
+
+    // Bullet list — collect consecutive list items
+    if (/^-\s/.test(line)) {
+      const listItems: string[] = [];
+      while (i < lines.length && /^-\s/.test(lines[i])) {
+        listItems.push(lines[i].replace(/^-\s/, ""));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i - listItems.length}`} className="list-disc list-inside my-1 space-y-0.5">
+          {listItems.map((item, li) => (
+            <li key={li} className={compact ? "text-[9px] text-white/35" : "text-[10px] text-white/40"}>
+              <InlineMarkdown text={item} />
+            </li>
+          ))}
+        </ul>,
+      );
+      continue;
+    }
+
+    // Regular paragraph / key-value line
+    elements.push(
+      <p key={i} className={textCls}>
+        <InlineMarkdown text={line} />
+      </p>,
+    );
+    i++;
+  }
+
+  return <div className="overflow-auto max-h-[300px]">{elements}</div>;
+}
+
+function isMarkdown(text: string): boolean {
+  return /^#{1,4}\s|\*\*|`[^`]+`|^\|.*\|$|^-\s|^>\s|^---+$/m.test(text);
+}
+
 function renderToolOutput(output: unknown, compact?: boolean) {
   if (output === null || output === undefined) return null;
   if (typeof output !== "string") {
@@ -54,6 +230,9 @@ function renderToolOutput(output: unknown, compact?: boolean) {
       );
     }
   } catch {}
+  if (isMarkdown(output)) {
+    return <MarkdownRenderer text={output} compact={compact} />;
+  }
   return (
     <div
       className={`whitespace-pre-wrap break-words leading-relaxed ${

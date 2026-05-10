@@ -33,14 +33,50 @@ export function createGetSceneTool() {
     execute: wrapSafe(async (_args: z.infer<typeof inputSchema>) => {
       const time = getGameTime();
       const scene = getSceneState();
-      return JSON.stringify(
-        {
-          gameTime: { day: time.day, segment: time.segment, label: describeTime(time) },
-          scene,
-        },
-        null,
-        2,
+
+      const lines: string[] = [];
+      lines.push("## Current Scene");
+      lines.push("");
+      lines.push(`**Game Time:** ${describeTime(time)}`);
+      lines.push("");
+
+      const charsHere = Object.entries(scene.characterLocations).filter(
+        ([, locId]) => locId === scene.currentLocationId,
       );
+      const charsElsewhere = Object.entries(scene.characterLocations).filter(
+        ([, locId]) => locId !== scene.currentLocationId,
+      );
+
+      lines.push("### Characters Present");
+      lines.push("");
+      if (charsHere.length > 0) {
+        lines.push("| Character | Location |");
+        lines.push("|---|---|");
+        for (const [charId, locId] of [...charsHere, ...charsElsewhere]) {
+          lines.push(`| \`${charId}\` | \`${locId}\` |`);
+        }
+      } else {
+        lines.push("*No characters in scene*");
+      }
+      lines.push("");
+
+      lines.push("### Object Positions");
+      lines.push("");
+      if (Object.keys(scene.objectPositions).length > 0) {
+        lines.push("| Object | Position |");
+        lines.push("|---|---|");
+        for (const [objId, pos] of Object.entries(scene.objectPositions)) {
+          const where =
+            pos.type === "character"
+              ? `Carried by \`${pos.characterId}\``
+              : `At \`${pos.locationId}\``;
+          lines.push(`| \`${objId}\` | ${where} |`);
+        }
+      } else {
+        lines.push("*No objects in scene*");
+      }
+
+      return lines.join("\n").trim();
     }, TOOL_NAMES.GET_SCENE),
   });
 }

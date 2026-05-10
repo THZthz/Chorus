@@ -21,7 +21,7 @@ import { z } from "zod";
 import { getPlotById, getPlotsByIds, getAllPlots } from "@/server/models/plot";
 import { PLOT_STATUSES } from "@/types/plot";
 import { TOOL_NAMES } from "@/shared/constants";
-import { wrapSafe } from "@/server/llm/tools/shared";
+import { wrapSafe, formatPlotMarkdown } from "@/server/llm/tools/shared";
 
 const inputSchema = z.object({
   id: z.string().optional().describe("Exact plot ID to fetch."),
@@ -44,7 +44,7 @@ export function createGetPlotTool() {
         if (!plot) {
           return `ERROR: Plot '${args.id}' not found. You may use ${TOOL_NAMES.GET_PLOT}() without an id to list all plots.`;
         }
-        return JSON.stringify(plot, null, 2);
+        return formatPlotMarkdown(plot);
       }
       if (args.ids && args.ids.length > 0) {
         const plots = getPlotsByIds(args.ids);
@@ -53,17 +53,33 @@ export function createGetPlotTool() {
         }
         const found = new Set(plots.map((p) => p.id));
         const missing = args.ids.filter((id) => !found.has(id));
-        const result: Record<string, unknown> = { plots };
+        const parts: string[] = [];
         if (missing.length > 0) {
-          result.missingIds = missing;
+          parts.push(`> Note: The following IDs were not found: [${missing.join(", ")}]`);
+          parts.push("");
         }
-        return JSON.stringify(result, null, 2);
+        parts.push(`## Plots (${plots.length} results)`);
+        parts.push("");
+        for (const plot of plots) {
+          parts.push(formatPlotMarkdown(plot));
+          parts.push("");
+          parts.push("---");
+          parts.push("");
+        }
+        return parts.join("\n").trim();
       }
       const all = getAllPlots();
       const filtered = !args.status ? all : all.filter((p) => p.status === args.status);
       if (filtered.length === 0)
         return `No plots found${args.status ? ` with status ${args.status}` : ""}.`;
-      return JSON.stringify(filtered, null, 2);
+      const parts: string[] = [`## Plots (${filtered.length} total${args.status ? `, status: ${args.status}` : ""})`, ""];
+      for (const plot of filtered) {
+        parts.push(formatPlotMarkdown(plot));
+        parts.push("");
+        parts.push("---");
+        parts.push("");
+      }
+      return parts.join("\n").trim();
     }, TOOL_NAMES.GET_PLOT),
   });
 }

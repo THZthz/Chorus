@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { getNoteById, getNotes, getNotesByIds } from "@/server/models/notes";
 import { TOOL_NAMES } from "@/shared/constants";
-import { wrapSafe } from "@/server/llm/tools/shared";
+import { wrapSafe, formatNoteMarkdown } from "@/server/llm/tools/shared";
 
 const inputSchema = z.object({
   id: z.string().optional().describe("Exact note ID to fetch."),
@@ -43,7 +43,7 @@ export function createGetNoteTool() {
         if (!note || !note.isValid) {
           return `ERROR: Note '${args.id}' not found.`;
         }
-        return JSON.stringify(note, null, 2);
+        return formatNoteMarkdown(note);
       }
 
       if (args.ids && args.ids.length > 0) {
@@ -53,9 +53,20 @@ export function createGetNoteTool() {
         }
         const found = new Set(notes.map((n) => n.id));
         const missing = args.ids.filter((id) => !found.has(id));
-        const result: Record<string, unknown> = { notes };
-        if (missing.length > 0) result.missingIds = missing;
-        return JSON.stringify(result, null, 2);
+        const parts: string[] = [];
+        if (missing.length > 0) {
+          parts.push(`> Note: The following IDs were not found: [${missing.join(", ")}]`);
+          parts.push("");
+        }
+        parts.push(`## Notes (${notes.length} results)`);
+        parts.push("");
+        for (const note of notes) {
+          parts.push(formatNoteMarkdown(note));
+          parts.push("");
+          parts.push("---");
+          parts.push("");
+        }
+        return parts.join("\n").trim();
       }
 
       const notes = getNotes({
@@ -65,7 +76,14 @@ export function createGetNoteTool() {
         relatedTime: args.relatedTime,
       });
       if (notes.length === 0) return "No notes found matching the filter.";
-      return JSON.stringify(notes, null, 2);
+      const parts: string[] = [`## Notes (${notes.length} results)`, ""];
+      for (const note of notes) {
+        parts.push(formatNoteMarkdown(note));
+        parts.push("");
+        parts.push("---");
+        parts.push("");
+      }
+      return parts.join("\n").trim();
     }, TOOL_NAMES.GET_NOTE),
   });
 }

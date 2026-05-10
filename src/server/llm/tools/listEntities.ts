@@ -35,7 +35,25 @@ export function createListEntitiesTool() {
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
       const summaries = getAllEntitySummaries(args.type);
       if (summaries.length === 0) return "No entities found.";
-      return JSON.stringify(summaries, null, 2);
+
+      const byType: Record<string, typeof summaries> = {};
+      for (const e of summaries) {
+        (byType[e.type] ??= []).push(e);
+      }
+
+      const lines: string[] = [`## Entities (${summaries.length} total)`, ""];
+      const order = ["CHARACTER", "LOCATION", "OBJECT"];
+      for (const type of order) {
+        const group = byType[type];
+        if (!group || group.length === 0) continue;
+        lines.push(`### ${type}S (${group.length})`);
+        lines.push("");
+        for (const e of group) {
+          lines.push(`- **\`${e.id}\`** — ${e.displayName} — ${e.shortDescription}`);
+        }
+        lines.push("");
+      }
+      return lines.join("\n").trim();
     }, TOOL_NAMES.LIST_ENTITIES),
   });
 }

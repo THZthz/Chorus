@@ -98,7 +98,7 @@ src/
 │   ├── seed-stories/
 │   │   ├── index.ts                     # Story registry + ACTIVE_SEED_STORY constant
 │   │   ├── types.ts                     # SeedStory, SeedPlot interfaces
-│   │   ├── romantic-magic-awakening.ts  # Default seed story (romantic urban-fantasy, Karavelle)
+│   │   ├── magic-awakening.ts  # Default seed story (romantic urban-fantasy, Karavelle)
 │   │   ├── celestial-athenaeum.ts       # Cosmic horror seed story (The Sleeper Beneath)
 │   │   └── iron-serpent-murder.ts       # Noir murder mystery seed story (train mystery)
 │   └── models/
@@ -449,7 +449,7 @@ Seed data (entities, locations, characters, root plot, initial time, initial sce
 **Available seed stories** (registered in `index.ts`):
 | Story ID | File | Genre |
 |---|---|---|
-| `romantic-magic-awakening` | `romantic-magic-awakening.ts` | Romantic fantasy (default, active) |
+| `magic-awakening` | `magic-awakening.ts` | Romantic fantasy (default, active) |
 | `celestial-athenaeum` | `celestial-athenaeum.ts` | Cosmic horror |
 | `iron-serpent-murder` | `iron-serpent-murder.ts` | Murder mystery |
 

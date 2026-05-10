@@ -17,14 +17,14 @@
  */
 
 import type { SeedStory } from "./types";
-import { romanticMagicAwakening } from "./romantic-magic-awakening";
+import { magicAwakening } from "./magic-awakening";
 import { ironSerpentMurder } from "./iron-serpent-murder";
 import { celestialAthenaeum } from "./celestial-athenaeum";
 
-export const ACTIVE_SEED_STORY = "romantic-magic-awakening";
+export const ACTIVE_SEED_STORY = "magic-awakening";
 
 const STORIES: Record<string, SeedStory> = {
-  "romantic-magic-awakening": romanticMagicAwakening,
+  "magic-awakening": magicAwakening,
   "iron-serpent-murder": ironSerpentMurder,
   "celestial-athenaeum": celestialAthenaeum,
 };

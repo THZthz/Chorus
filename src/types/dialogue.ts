@@ -33,6 +33,8 @@ export interface Message {
     diceCount: number;
   };
   rollResult?: {
+    skill: string;
+    difficulty: number;
     dice: number[];
     total: number;
     success: boolean;

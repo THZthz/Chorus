@@ -21,7 +21,7 @@ import chalk from "chalk";
 import logUpdate from "log-update";
 import wrapAnsi from "wrap-ansi";
 import type { Message, DialogueOption } from "@/types/dialogue";
-import type { StreamingMessage } from "@/shared/events";
+import type { StreamingMessage } from "@/server/llm/events";
 import { ConsoleSseClient, type SseCallbacks } from "@/console/SseClient";
 import { VOICE_COLORS } from "@/shared/colors.ts";
 
@@ -171,7 +171,7 @@ function createSseCallbacks(): SseCallbacks {
       isRetrying = true;
     },
     onOptions: (options) => {
-      currentOptions = options;
+      currentOptions = options as unknown as DialogueOption[];
     },
     onParsed: (data) => {
       isRetrying = false;
@@ -192,7 +192,7 @@ function createSseCallbacks(): SseCallbacks {
       console.log(""); // blank line before options
 
       if (data.options && data.options.length > 0) {
-        currentOptions = data.options;
+        currentOptions = data.options as unknown as DialogueOption[];
         state = "AWAITING_OPTION";
       } else {
         currentOptions = [];
@@ -268,12 +268,12 @@ async function tryResume(): Promise<boolean> {
   try {
     const histRes = await fetch(`${BASE_URL}/api/history`);
     if (!histRes.ok) return false;
-    const hist: Message[] = await histRes.json();
+    const hist = (await histRes.json()) as Message[];
     if (hist.length === 0) return false;
 
     const currRes = await fetch(`${BASE_URL}/api/session/current`);
     if (!currRes.ok) return false;
-    const current = await currRes.json();
+    const current = (await currRes.json()) as { id: string; options: DialogueOption[] };
     if (!current || !current.options || current.options.length === 0) return false;
 
     history = hist;

@@ -37,3 +37,8 @@ export const SEGMENT_HOURS: Record<number, string> = {
   4: "8am–10am", 5: "10am–12pm", 6: "12pm–2pm", 7: "2pm–4pm",
   8: "4pm–6pm", 9: "6pm–8pm", 10: "8pm–10pm", 11: "10pm–12am",
 };
+
+export const TOOL_NAMES = {
+  GENERATE_DIALOGUE: "generateDialogueStep",
+  ADVANCE_TIME: "advanceTime",
+} as const;

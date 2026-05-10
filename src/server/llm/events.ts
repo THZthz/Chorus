@@ -68,11 +68,11 @@ export class TurnEventEmitter {
   }
 
   emitOptions(options: DialogueOption[]) {
-    this.send("options", { options });
+    this.send("options", { options: options as unknown as Record<string, unknown>[] });
   }
 
   emitParsed(messages: StreamingMessage[], options: DialogueOption[]) {
-    this.send("parsed", { messages, options });
+    this.send("parsed", { messages, options: options as unknown as Record<string, unknown>[] });
   }
 
   emitError(message: string) {

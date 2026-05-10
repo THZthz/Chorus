@@ -16,26 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { nextId } from "@/server/models/ids";
-import { streamText, generateText, stepCountIs } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
-import type { Character } from "@/types/entities";
 import { LlmDebugIntegration } from "@/server/llm/debug";
-import { TurnEventEmitter, NoopEventEmitter } from "@/server/llm/events";
-import { mapToDialogueOption, createGenerateDialogueStepTool } from "@/server/llm/tools";
-import { TOOL_NAMES } from "@/shared/constants";
-import { buildSystemPrompt } from "@/server/llm/prompt";
+import { TurnEventEmitter } from "@/server/llm/events";
+import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
-import { persistStep } from "@/server/llm/persistStep";
-import { createAllTools } from "@/server/llm/toolsFactory";
-
-// ── Constants ──
-
-const MAX_GM_STEPS = 10;
-
-// ── System prompt (see ./prompt.ts) ──
+import { getMcpTools } from "@/server/mcp/client";
+import { createGenerateDialogueStepTool } from "@/server/llm/generateDialogueStep";
+import { createAdvanceTimeTool } from "@/server/llm/advanceTime";
 
 export {
   DEFAULT_SYSTEM_PROMPT_TEMPLATE,
@@ -44,26 +35,16 @@ export {
   buildSystemPrompt,
 } from "@/server/llm/prompt";
 
-// ── Plot tree pre-generation ──
-
-export { generatePlotDefs, type PlotDef } from "@/server/llm/pregeneratePlotTree";
-
-// ── Game Master ──
-
 export async function generateTurn(
   userInput: string,
   history: Message[],
   res: Response,
-  parentStepId: string | null,
-  parentOptionId: string | null,
-  playerCharacter: Character | null = null,
 ): Promise<void> {
   const systemPrompt = buildSystemPrompt();
-  const stepId = `step_${nextId()}`;
-  const events = new TurnEventEmitter(res, stepId);
+  const events = new TurnEventEmitter(res);
 
   console.log(
-    `[generateTurn] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length} userInput="${String(userInput).slice(0, 80)}"`,
+    `[generateTurn] historyLen=${history.length} userInput="${String(userInput).slice(0, 80)}"`,
   );
 
   res.writeHead(200, {
@@ -73,15 +54,12 @@ export async function generateTurn(
     "X-Accel-Buffering": "no",
   });
 
-  events.startStep();
+  events.startStep(`step_${Date.now()}`);
 
   const historyWindow = 10;
   const promptText = [
     `## DIALOGUE HISTORY (Last ${historyWindow})`,
-    history
-      .slice(-historyWindow)
-      .map((m) => `${m.speaker} (${m.type}): ${m.text}`)
-      .join("\n"),
+    history.slice(-historyWindow).map((m) => `${m.speaker} (${m.type}): ${m.text}`).join("\n"),
     "",
     "---",
     "",
@@ -96,7 +74,16 @@ export async function generateTurn(
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
 
+  // Discover MCP tools from agent-memory
+  const mcpTools = await getMcpTools();
   const dialogueStepTool = createGenerateDialogueStepTool(events);
+  const advanceTimeTool = createAdvanceTimeTool(events);
+
+  const allTools = {
+    ...mcpTools,
+    generateDialogueStep: dialogueStepTool.tool,
+    advanceTime: advanceTimeTool,
+  };
 
   const debugging = new LlmDebugIntegration(
     {
@@ -105,15 +92,13 @@ export async function generateTurn(
       prompt: promptText,
       userInput,
       history,
-      tools: Object.values(TOOL_NAMES),
+      tools: [...Object.keys(mcpTools), "generateDialogueStep", "advanceTime"],
     },
     undefined,
     "GM",
   );
 
   let streamError: string | null = null;
-
-  // Accumulators for per-step text/reasoning from the stream
   let currentText = "";
   let currentReasoning = "";
   const stepUserPrompts = new Map<number, string>();
@@ -123,11 +108,11 @@ export async function generateTurn(
       model,
       system: systemPrompt,
       messages: [{ role: "user", content: promptText }],
-      tools: createAllTools(events, dialogueStepTool.tool),
+      tools: allTools,
       stopWhen: [
         (state) => {
           const called = state.steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
+            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
           );
           return called && dialogueStepTool.wasValid();
         },
@@ -139,17 +124,16 @@ export async function generateTurn(
           return undefined;
         }
         const dialogueCalled = steps.some((s) =>
-          s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
+          s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
         );
         if (dialogueCalled) {
           stepUserPrompts.set(stepNumber, JSON.stringify(messages));
           return undefined;
         }
         const allToolsUsed = steps.flatMap((s) => s.toolCalls?.map((tc) => tc.toolName) ?? []);
-        const errorMsg =
-          allToolsUsed.length > 0
-            ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`
-            : `ERROR: You did not call ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`;
+        const errorMsg = allToolsUsed.length > 0
+          ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`
+          : `ERROR: You did not call generateDialogueStep. You MUST call generateDialogueStep now.`;
         const newMessages = [...messages, { role: "user" as const, content: errorMsg }];
         stepUserPrompts.set(stepNumber, JSON.stringify(newMessages));
         return { messages: newMessages };
@@ -204,9 +188,8 @@ export async function generateTurn(
           currentReasoning += chunk.text;
           break;
         case "tool-input-start":
-          if (chunk.toolName === TOOL_NAMES.GENERATE_DIALOGUE) {
+          if (chunk.toolName === "generateDialogueStep") {
             if (hasEmittedStreaming) {
-              // A retry is starting — notify the client so it can show a visual reset
               events.emitStreamingReset();
             }
             dialogueToolId = chunk.id;
@@ -214,7 +197,6 @@ export async function generateTurn(
             hasEmittedStreaming = false;
           }
           break;
-
         case "tool-input-delta":
           if (chunk.id === dialogueToolId) {
             toolRawArgs += chunk.delta;
@@ -233,37 +215,44 @@ export async function generateTurn(
                 );
               }
               if (parsed.options && Array.isArray(parsed.options)) {
-                finalOptions = parsed.options.map((o: any, i: number) =>
-                  mapToDialogueOption(o, i, stepId),
-                );
+                finalOptions = parsed.options.map((o: any, i: number) => ({
+                  id: o.id || `opt_${i}`,
+                  text: o.text || "",
+                  selectionMessage: o.selectionMessage,
+                  hintBefore: o.hintBefore,
+                  hintAfter: o.hintAfter,
+                  check: o.check ? {
+                    skill: o.check.skill,
+                    difficulty: o.check.difficulty,
+                    difficultyText: o.check.difficultyText || "",
+                    diceCount: o.check.diceCount ?? 2,
+                    isRed: o.check.isRed,
+                    conditions: (o.check.conditions || []).map((c: any, ci: number) => ({
+                      expression: c.expression,
+                      label: c.label,
+                      color: c.color,
+                      stepId: c.stepId || `step_res_${ci}`,
+                    })),
+                  } : undefined,
+                }));
                 if (finalOptions.length > 0) {
                   events.emitOptions(finalOptions);
                 }
               }
             } catch {
-              // Partial JSON may not be parseable yet — that's fine
+              // Partial JSON not parseable yet — fine
             }
           }
           break;
-
         case "error":
-          // A tool execution threw unexpectedly — capture the error so the
-          // final-messages check surfaces the real reason instead of a generic message.
-          streamError =
-            chunk.error instanceof Error
-              ? chunk.error.message
-              : String(chunk.error ?? "Unknown stream error");
-          console.error(`[generateTurn] stream error chunk: ${streamError}`);
+          streamError = chunk.error instanceof Error
+            ? chunk.error.message
+            : String(chunk.error ?? "Unknown stream error");
+          console.error(`[generateTurn] stream error: ${streamError}`);
           break;
-
         case "tool-call":
-          if (chunk.toolName === TOOL_NAMES.GENERATE_DIALOGUE) {
+          if (chunk.toolName === "generateDialogueStep") {
             let args: Record<string, unknown> | null = null;
-
-            // SDK may leave input as a raw string when JSON parsing fails —
-            // try the more tolerant partial-json parser to recover.
-            // Also repair a known LLM bug: premature `}` after messages array
-            // e.g. {"messages": [...]}, "metadata": ... → {"messages": [...], "metadata": ...
             if (typeof chunk.input === "string" && chunk.input.trim()) {
               const repaired = chunk.input.replace(/\]\s*\}\s*,\s*"/g, '], "');
               try {
@@ -272,21 +261,37 @@ export async function generateTurn(
                 try {
                   args = parsePartial(chunk.input) as Record<string, unknown>;
                 } catch {
-                  console.warn(`[generateTurn] parsePartial recovery failed for tool-call input`);
+                  console.warn("[generateTurn] parsePartial recovery failed");
                 }
               }
             } else if (chunk.input && typeof chunk.input === "object") {
               args = chunk.input as Record<string, unknown>;
             }
-
             if (args) {
               if (args.messages && Array.isArray(args.messages)) {
                 finalMessages = args.messages as Record<string, unknown>[];
               }
               if (args.options && Array.isArray(args.options)) {
-                finalOptions = (args.options as Record<string, unknown>[]).map((o, i) =>
-                  mapToDialogueOption(o, i, stepId),
-                );
+                finalOptions = (args.options as Record<string, unknown>[]).map((o, i) => ({
+                  id: (o.id as string) || `opt_${i}`,
+                  text: (o.text as string) || "",
+                  selectionMessage: o.selectionMessage as string | undefined,
+                  hintBefore: o.hintBefore as string | undefined,
+                  hintAfter: o.hintAfter as string | undefined,
+                  check: o.check ? {
+                    skill: (o.check as any).skill as string,
+                    difficulty: (o.check as any).difficulty as number,
+                    difficultyText: ((o.check as any).difficultyText as string) || "",
+                    diceCount: ((o.check as any).diceCount as number) ?? 2,
+                    isRed: (o.check as any).isRed as boolean | undefined,
+                    conditions: (((o.check as any).conditions as any[]) || []).map((c: any, ci: number) => ({
+                      expression: c.expression as string,
+                      label: c.label as string | undefined,
+                      color: c.color as string | undefined,
+                      stepId: (c.stepId as string) || `step_res_${ci}`,
+                    })),
+                  } : undefined,
+                }));
               }
             }
           }
@@ -310,9 +315,8 @@ export async function generateTurn(
     return;
   }
 
-  // Emit final state
   const messages: Message[] = finalMessages.map((m: any, i) => ({
-    id: `msg_${stepId}_${i}`,
+    id: `msg_${Date.now()}_${i}`,
     speaker: m.speaker || "SYSTEM",
     type: (m.type as Message["type"]) || "SYSTEM",
     text: m.text || "",
@@ -320,142 +324,9 @@ export async function generateTurn(
   }));
 
   events.emitParsed(
-    messages.map((m) => ({
-      speaker: m.speaker,
-      type: m.type,
-      text: m.text,
-      metadata: m.metadata,
-    })),
+    messages.map((m) => ({ speaker: m.speaker, type: m.type, text: m.text, metadata: m.metadata })),
     finalOptions,
   );
   events.emitOptions(finalOptions);
-
-  persistStep(
-    stepId,
-    parentStepId,
-    parentOptionId,
-    messages,
-    finalOptions,
-    playerCharacter,
-    "generateTurn",
-    userInput,
-  );
   events.finish();
-}
-
-// ── Batch generation (non-streaming, for bulk regenerate) ──
-
-export async function generateTurnBatch(
-  userInput: string,
-  history: Message[],
-  parentStepId: string | null,
-  parentOptionId: string | null,
-  playerCharacter: Character | null = null,
-): Promise<{ stepId: string; messages: Message[]; options: DialogueOption[] }> {
-  const systemPrompt = buildSystemPrompt();
-  const stepId = `step_${nextId()}`;
-
-  console.log(
-    `[generateTurnBatch] stepId=${stepId} parentStepId=${parentStepId} parentOptionId=${parentOptionId} historyLen=${history.length}`,
-  );
-
-  const historyWindow = 10;
-  const promptText = [
-    `## Dialogue History (Last ${historyWindow})`,
-    history
-      .slice(-historyWindow)
-      .map((m) => `${m.speaker} (${m.type}): ${m.text}`)
-      .join("\n"),
-    "",
-    "---",
-    "",
-    "## PLAYER ACTION",
-    `The player just said/did: "${userInput}"`,
-    "",
-    "Generate the narrative response following the output format exactly.",
-  ].join("\n");
-
-  const { model } = getModel();
-  const noopEvents = new NoopEventEmitter(stepId);
-
-  const MAX_BATCH_ATTEMPTS = 2;
-  let dialogueCall: { toolCallId: string; toolName: string; input: unknown } | undefined;
-
-  for (let attempt = 0; attempt < MAX_BATCH_ATTEMPTS; attempt++) {
-    const messages =
-      attempt === 0
-        ? [{ role: "user" as const, content: promptText }]
-        : [
-            {
-              role: "user" as const,
-              content:
-                promptText +
-                "\n\nERROR: You must call generateDialogueStep. The player cannot see any response without it. Call generateDialogueStep now.",
-            },
-          ];
-
-    // Re-create dialogue tool to reset wasValid state
-    const dialogueToolAttempt = createGenerateDialogueStepTool(noopEvents);
-
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      messages,
-      tools: createAllTools(noopEvents, dialogueToolAttempt.tool),
-    });
-
-    dialogueCall = result.toolCalls?.find((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE);
-    if (dialogueCall) break;
-  }
-
-  // Extract the generateDialogueStep tool input
-  const rawInput = dialogueCall?.input;
-
-  // Recover from malformed JSON with tolerant partial-json parser.
-  // Also repair a known LLM bug: premature `}` after messages array
-  let args: Record<string, unknown> | null = null;
-  if (typeof rawInput === "string" && rawInput.trim()) {
-    const repaired = rawInput.replace(/\]\s*\}\s*,\s*"/g, '], "');
-    try {
-      args = parsePartial(repaired) as Record<string, unknown>;
-    } catch {
-      try {
-        args = parsePartial(rawInput) as Record<string, unknown>;
-      } catch {
-        console.warn("[generateTurnBatch] parsePartial recovery failed for tool input");
-      }
-    }
-  } else if (rawInput && typeof rawInput === "object") {
-    args = rawInput as Record<string, unknown>;
-  }
-
-  const finalMessages: Record<string, unknown>[] =
-    (args?.messages as Record<string, unknown>[]) ?? [];
-  const finalOptions: DialogueOption[] = ((args?.options as Record<string, unknown>[]) ?? []).map(
-    (o, i) => mapToDialogueOption(o, i, stepId),
-  );
-
-  if (finalMessages.length === 0) {
-    throw new Error("generateTurnBatch: failed to generate valid dialogue after retries");
-  }
-
-  const messages: Message[] = finalMessages.map((m: any, i) => ({
-    id: `msg_${stepId}_${i}`,
-    speaker: m.speaker || "SYSTEM",
-    type: (m.type as Message["type"]) || "SYSTEM",
-    text: m.text || "",
-    metadata: m.metadata,
-  }));
-
-  persistStep(
-    stepId,
-    parentStepId,
-    parentOptionId,
-    messages,
-    finalOptions,
-    playerCharacter,
-    "generateTurnBatch",
-    userInput,
-  );
-  return { stepId, messages, options: finalOptions };
 }

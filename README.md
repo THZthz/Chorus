@@ -30,8 +30,8 @@ cp .env.example .env
 #   DEEPSEEK_API_KEY=your_key_here
 
 npm install
-npm run dev # Start web page client
-npm run console # or start console client
+npm run dev # Start server and web page client
+npm run console # Start console client
 ```
 
 On first run, the database is seeded with a default fantasy-steampunk world — characters, locations, objects, and a root plot with two branching threads.

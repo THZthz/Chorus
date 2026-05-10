@@ -9,4 +9,4 @@ Do not start multiple `Explore` sub-agents unless you have read DEVELOPER.md and
 ## Other notice
 
 - No need to add license header for new files, user will run `npm run add-license-header` manually.
-- When you want to get the overall files structure, run `wsl -e tree -I 'node_modules|.git|dist|build|target'`.
+- When you want to get the overall files structure, run exactly this command: `wsl -e tree -I 'node_modules|.git|dist|build|target'`.

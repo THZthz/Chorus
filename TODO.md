@@ -38,14 +38,16 @@ The TODO is more like prompts.
 - [x] In PARSED_EXCHANGE section of LLM_TRACE page, also show user prompt for each step, and show "reasoning" and "text" (is this exists in ai-sdk?) chunk of GM for each step.
 - [ ] GM is still outputting dialogue message on their plain text response, not tool call.
 - [x] `isAllowedText` is erroneous.
-- [ ] `YOU` should be removed from generateDialogueStep tool in `type` field.
+- [x] `YOU` should be removed from generateDialogueStep tool in `type` field.
 - [ ] Separate character's memory system.
 - [x] Standardize all GM tool names to `{verb}{Noun}` pattern. This is a mechanical rename — no behavior change, no new functionality.
 - [x] Build a GM-only "notes" system with CRUD tools and database tables for key-value notes, plus a new Debug Panel tab to view and edit them during live play and replays.
 - [x] Add tools for getting/updating character state (including new status conditions), creating new entities, and bulk-updating entity descriptions or attributes.
-- [ ] Scope world flags to plot nodes, enable incremental plot editing (add/remove children), allow advancing time by days, and add stricter validation rules for dialogue options (length limits, required messages, and valid skill names).
+- [x] Scope world flags to plot nodes, enable incremental plot editing (add/remove children), allow advancing time by days, and add stricter validation rules for dialogue options (length limits, required messages, and valid skill names).
 - [x] The div `class="flex-1 flex flex-col min-w-0 overflow-hidden"` should not have horizontal scrollbar, but it appears along with the vertical scrollbar.
 - [x] Let GM regenerate dialogue message if it is too long.
 - [x] Pre-generate a larger plot tree in advance, player can choose the size.
 - [x] Explicitly add a `Character` entity "player". Remove "STATS - 12 VALUES" from all other characters except "player" they do not need it. All other places which may implicitly include "player" should explicitly specify it (like current scene management).
 - [x] What is the usage of generateTurnBatch? Can we remove it?
+- [ ] Some tools directly return JSON, should return detailed message instead.
+- [ ] 

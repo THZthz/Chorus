@@ -98,7 +98,7 @@ src/
 │   ├── seed-stories/
 │   │   ├── index.ts                     # Story registry + ACTIVE_SEED_STORY constant
 │   │   ├── types.ts                     # SeedStory, SeedPlot interfaces
-│   │   ├── magic-awakening.ts  # Default seed story (romantic urban-fantasy, Karavelle)
+│   │   ├── magic-awakening.ts           # Default seed story
 │   │   ├── celestial-athenaeum.ts       # Cosmic horror seed story (The Sleeper Beneath)
 │   │   └── iron-serpent-murder.ts       # Noir murder mystery seed story (train mystery)
 │   └── models/
@@ -187,50 +187,50 @@ POST /api/chat/stream
 
 Defined in `src/shared/events.ts` (single source of truth for both backend and frontend):
 
-| Event                | Direction       | Payload                              | Trigger                                      |
-|----------------------|-----------------|--------------------------------------|----------------------------------------------|
-| `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                                  |
-| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep`    |
-| `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — previous streaming discarded   |
-| `world_update`       | Server → Client | `{ entityId, changes }`              | `updateEntity` tool executes                 |
-| `plot_update`        | Server → Client | `{ plotId, status }`                 | Reserved (defined but not currently emitted) |
-| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`    | `createPlot` tool executes                   |
-| `plot_edit`          | Server → Client | `{ plotId, changes }`                | `updatePlot` tool executes                   |
-| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes                  |
-| `scene_update`       | Server → Client | `{ scene }`                          | `updateScene` tool executes                  |
-| `entity_create`      | Server → Client | `{ entityId, entityType, displayName }` | `createEntity` tool executes             |
-| `note_add`           | Server → Client | `{ note }`                           | `addNote` tool executes                      |
-| `note_update`        | Server → Client | `{ noteId, changes }`                | `updateNote` tool executes                   |
-| `note_remove`        | Server → Client | `{ noteId }`                         | `removeNote` tool executes                   |
-| `options`            | Server → Client | `{ options }`                        | Options available mid-stream                 |
-| `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                      |
-| `error`              | Server → Client | `{ message }`                        | Error during generation                      |
-| `done`               | Server → Client | `{}`                                 | Turn complete                                |
+| Event                | Direction       | Payload                                 | Trigger                                      |
+|----------------------|-----------------|-----------------------------------------|----------------------------------------------|
+| `step_start`         | Server → Client | `{ stepId }`                            | Turn begins                                  |
+| `streaming_messages` | Server → Client | `{ messages }`                          | Progressive during `generateDialogueStep`    |
+| `streaming_reset`    | Server → Client | `{}`                                    | LLM retried — previous streaming discarded   |
+| `world_update`       | Server → Client | `{ entityId, changes }`                 | `updateEntity` tool executes                 |
+| `plot_update`        | Server → Client | `{ plotId, status }`                    | Reserved (defined but not currently emitted) |
+| `plot_create`        | Server → Client | `{ plotId, title, parentPlotId }`       | `createPlot` tool executes                   |
+| `plot_edit`          | Server → Client | `{ plotId, changes }`                   | `updatePlot` tool executes                   |
+| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }`    | `advanceTime` tool executes                  |
+| `scene_update`       | Server → Client | `{ scene }`                             | `updateScene` tool executes                  |
+| `entity_create`      | Server → Client | `{ entityId, entityType, displayName }` | `createEntity` tool executes                 |
+| `note_add`           | Server → Client | `{ note }`                              | `addNote` tool executes                      |
+| `note_update`        | Server → Client | `{ noteId, changes }`                   | `updateNote` tool executes                   |
+| `note_remove`        | Server → Client | `{ noteId }`                            | `removeNote` tool executes                   |
+| `options`            | Server → Client | `{ options }`                           | Options available mid-stream                 |
+| `parsed`             | Server → Client | `{ messages, options }`                 | Final structured output                      |
+| `error`              | Server → Client | `{ message }`                           | Error during generation                      |
+| `done`               | Server → Client | `{}`                                    | Turn complete                                |
 
 ### 3.3 LLM Tools
 
 All 18 tools, each defined in its own file under `src/server/llm/tools/` with a barrel re-export at `tools/index.ts`:
 
-| Tool                   | Purpose                                                   | DB Operation              | SSE Event                        |
-|------------------------|-----------------------------------------------------------|---------------------------|----------------------------------|
-| `listEntities`         | List entity IDs, names, types, shortDescriptions          | None (read query)         | None (returns JSON)              |
-| `getEntity`            | Get full entity by ID or text search                      | None (read query)         | None (returns JSON)              |
-| `updateEntity`         | Mutate a single entity's attributes/descriptions/opinions | `updateEntity()`          | `world_update`                   |
-| `updateEntities`       | Bulk-update multiple entities at once                     | `updateEntity()`          | `world_update`                   |
-| `createEntity`         | Create a new world entity (character/location/object)     | `upsertEntity()` + scene  | `entity_create` + `scene_update` |
-| `getCharacterState`    | Get character stats, conditions, carried objects, location| None (read query)         | None (returns JSON)              |
-| `updateCharacterState` | Update character stats, conditions, or inventory          | `updateEntity()` + scene  | `world_update` + `scene_update`  |
-| `createPlot`           | Create a new plot node in the story tree                  | `addPlot()`               | `plot_create`                    |
-| `updatePlot`           | Update plot status, description, childPlots, flags, etc.  | `updatePlot()`            | `plot_edit`                      |
-| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter        | None (read query)         | None (returns JSON)              |
-| `getScene`             | Get current game time and full scene state                | None (read query)         | None (returns JSON)              |
-| `updateScene`          | Move characters/objects between locations                 | `setSceneState()`         | `scene_update`                   |
-| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)          | `advanceGameTime()`       | `time_update`                    |
-| `generateDialogueStep` | Produce narrative messages + player options               | None (data via streaming) | `streaming_messages` + `parsed`  |
-| `addNote`              | Record a new GM note (key-value with entity/plot links)   | `addNote()`               | `note_add`                       |
-| `getNote`              | Retrieve notes by ID, bulk IDs, or entity/plot filter     | None (read query)         | None (returns JSON)              |
-| `updateNote`           | Update an existing note's key/value/links                 | `updateNote()`            | `note_update`                    |
-| `removeNote`           | Soft-delete a note by ID (sets `is_valid = 0`)            | `removeNote()`            | `note_remove`                    |
+| Tool                   | Purpose                                                    | DB Operation              | SSE Event                        |
+|------------------------|------------------------------------------------------------|---------------------------|----------------------------------|
+| `listEntities`         | List entity IDs, names, types, shortDescriptions           | None (read query)         | None (returns JSON)              |
+| `getEntity`            | Get full entity by ID or text search                       | None (read query)         | None (returns JSON)              |
+| `updateEntity`         | Mutate a single entity's attributes/descriptions/opinions  | `updateEntity()`          | `world_update`                   |
+| `updateEntities`       | Bulk-update multiple entities at once                      | `updateEntity()`          | `world_update`                   |
+| `createEntity`         | Create a new world entity (character/location/object)      | `upsertEntity()` + scene  | `entity_create` + `scene_update` |
+| `getCharacterState`    | Get character stats, conditions, carried objects, location | None (read query)         | None (returns JSON)              |
+| `updateCharacterState` | Update character stats, conditions, or inventory           | `updateEntity()` + scene  | `world_update` + `scene_update`  |
+| `createPlot`           | Create a new plot node in the story tree                   | `addPlot()`               | `plot_create`                    |
+| `updatePlot`           | Update plot status, description, childPlots, flags, etc.   | `updatePlot()`            | `plot_edit`                      |
+| `getPlot`              | Retrieve plot(s) by ID, bulk IDs, or status filter         | None (read query)         | None (returns JSON)              |
+| `getScene`             | Get current game time and full scene state                 | None (read query)         | None (returns JSON)              |
+| `updateScene`          | Move characters/objects between locations                  | `setSceneState()`         | `scene_update`                   |
+| `advanceTime`          | Advance in-game clock by N segments (2 hrs each)           | `advanceGameTime()`       | `time_update`                    |
+| `generateDialogueStep` | Produce narrative messages + player options                | None (data via streaming) | `streaming_messages` + `parsed`  |
+| `addNote`              | Record a new GM note (key-value with entity/plot links)    | `addNote()`               | `note_add`                       |
+| `getNote`              | Retrieve notes by ID, bulk IDs, or entity/plot filter      | None (read query)         | None (returns JSON)              |
+| `updateNote`           | Update an existing note's key/value/links                  | `updateNote()`            | `note_update`                    |
+| `removeNote`           | Soft-delete a note by ID (sets `is_valid = 0`)             | `removeNote()`            | `note_remove`                    |
 
 All tool `execute` functions are wrapped with `wrapSafe` (in `tools/shared.ts`) which catches any thrown exceptions and returns an `ERROR:` string to the LLM instead of propagating the exception. This keeps the agentic loop alive — the GM sees the error and can retry with different input. The `fullStream` loop in `generateTurn` also handles the `error` chunk type (emitted by the SDK when a tool throws) and surfaces the actual error message to the frontend rather than a generic failure.
 
@@ -355,7 +355,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that validates the SSE 
 | `dialogue_alternatives` | Archived alternative versions (regeneration)                                             |
 | `llm_logs`              | LLM request/response logging (with parent_id + label for child traces)                   |
 | `llm_steps`             | Per-step LLM metrics (tool calls, token usage, timings, user_prompt, reasoning)          |
-| `notes`                 | GM scratchpad: key-value notes with entity/plot/scene/time links and validity flag   |
+| `notes`                 | GM scratchpad: key-value notes with entity/plot/scene/time links and validity flag       |
 | `system_state`          | Key-value system state storage (time, scene, counters, system prompt template)           |
 
 ### 5.1 Plot Tree Architecture
@@ -447,11 +447,12 @@ The Notes system provides the GM with a scratchpad — a persistent key-value st
 Seed data (entities, locations, characters, root plot, initial time, initial scene) is organized into pluggable seed story modules under `src/server/seed-stories/`. Each module exports a `SeedStory` object conforming to the interface in `types.ts`.
 
 **Available seed stories** (registered in `index.ts`):
-| Story ID | File | Genre |
-|---|---|---|
-| `magic-awakening` | `magic-awakening.ts` | Romantic fantasy (default, active) |
-| `celestial-athenaeum` | `celestial-athenaeum.ts` | Cosmic horror |
-| `iron-serpent-murder` | `iron-serpent-murder.ts` | Murder mystery |
+
+| Story ID              | File                     | Genre                              |
+|-----------------------|--------------------------|------------------------------------|
+| `magic-awakening`     | `magic-awakening.ts`     | Romantic fantasy (default, active) |
+| `celestial-athenaeum` | `celestial-athenaeum.ts` | Cosmic horror                      |
+| `iron-serpent-murder` | `iron-serpent-murder.ts` | Murder mystery                     |
 
 The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `world.ts` reads from it to populate the database on first run.
 
@@ -528,10 +529,6 @@ The scene system tracks "who is where, with what" — character positions, objec
 
 Initial world state is defined by the active seed story in `src/server/seed-stories/`. Each seed story module exports its own `objects`, `locations`, `characters`, `rootPlot`, `initialTime`, and `initialScene`. To change or add seed data, edit the active story's module (set by `ACTIVE_SEED_STORY` in `index.ts`). See section 6.5 for the full seed story system.
 
-### 9.4 License Headers
-
-All source files in `src/` require an AGPL v3 license header at the top of the file. Run `npm run add-license-header` to add headers to any new files that are missing them — it skips files that already have a header.
-
-### 9.5 Debug Panel Tab Layout
+### 9.4 Debug Panel Tab Layout
 
 Debug tabs are defined in `DebugPanel.tsx` with a `TAB_DEFS` map and `DEFAULT_TAB_ORDER` array. All 6 tabs are rendered in a single bar and can be reordered by dragging (HTML5 native drag-and-drop with GripVertical handle on hover). To add a new tab, extend the `TabId` type, add an entry to `TAB_DEFS`, add it to `DEFAULT_TAB_ORDER`, and add the corresponding content render branch.

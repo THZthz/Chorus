@@ -17,9 +17,11 @@
  */
 
 import Database from "better-sqlite3";
+import fs from "node:fs";
 import path from "path";
 
 const dbPath = path.join(process.cwd(), process.env.SQLITE_PATH ?? "data/sqlite/game.db");
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");

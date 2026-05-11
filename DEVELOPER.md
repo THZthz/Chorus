@@ -9,7 +9,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 **Elysian Dialogue** is a cinematic RPG-style dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
 - **Stack:** TypeScript, Node.js
-- **Backend:** Express + SQLite (`better-sqlite3`) + Neo4j
+- **Backend:** Express + SQLite (`better-sqlite3`) + Neo4j (via local `src/server/memory/` module)
 - **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
 - **SSE:** Server-Sent Events for real-time streaming of LLM output
 - **Console client:** Standalone Node.js REPL with chalk rendering
@@ -28,7 +28,7 @@ src/
 │   ├── api.ts                 # REST API + SSE streaming endpoints
 │   ├── db.ts                  # SQLite connection + schema (3 tables + migration)
 │   ├── validation.ts          # Zod schemas for API endpoints
-│   ├── main.ts                # Express entry (port 3000), Neo4j init, seed on startup
+│   ├── main.ts                # Express entry (port 3000), MemoryClient init, seed on startup
 │   ├── llm/
 │   │   ├── index.ts           # generateTurn(): full-stream SSE turn loop
 │   │   ├── model.ts           # getModel(): lazy-init provider model (Gemini → DeepSeek fallback)
@@ -39,9 +39,22 @@ src/
 │   │       ├── advanceTime.ts           # Elysian tool: advance in-game clock by segments/days
 │   │       ├── generateDialogueStep.ts  # Elysian tool: produce messages + options with validation
 │   │       └── shared.ts                # Helpers: checkText (character filter)
+│   ├── memory/
+│   │   ├── client.ts          # MemoryClient singleton — wires all memory layers
+│   │   ├── types.ts           # Shared types (Entity, Message, Fact, etc.)
+│   │   ├── neo4j.ts           # Neo4jClient — thin wrapper over neo4j-driver
+│   │   ├── schema.ts          # Index/constraint/vector index creation
+│   │   ├── embedder.ts        # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
+│   │   ├── short-term.ts      # Conversations & messages with sequential linking
+│   │   ├── long-term.ts       # Entities (POLE+O), preferences, facts, relationships
+│   │   ├── reasoning.ts       # Reasoning traces, steps, tool calls
+│   │   ├── observer.ts        # Observational memory — token-threshold compression
+│   │   ├── search.ts          # Hybrid vector + graph search across memory types
+│   │   ├── context.ts         # Assembled context for GM consumption
+│   │   └── tools.ts           # 16 AI SDK tool definitions
 │   ├── mcp/
-│   │   ├── seed.ts            # Seed Neo4j with initial world data from seed story
-│   │   └── reset.ts           # Clear Neo4j database
+│   │   ├── seed.ts            # Seed Neo4j via MemoryClient
+│   │   └── reset.ts           # Clear Neo4j via MemoryClient
 │   ├── models/
 │   │   ├── debug.ts           # LLM interaction log query and management
 │   │   ├── ids.ts             # Base62-encoded 4-char unique ID generation
@@ -63,9 +76,9 @@ src/
 
 ---
 
-## 3. Architecture: Neo4j-Backed Tool Execution
+## 3. Architecture: Memory-Backed Tool Execution
 
-The LLM is a pure tool-calling Game Master. World state lives in Neo4j, while SQLite holds only logs and time state. The backend streams tool execution results to the console as typed SSE events.
+The LLM is a pure tool-calling Game Master. World state lives in Neo4j via the local memory module (`src/server/memory/`), while SQLite holds only logs and time state. The backend streams tool execution results to the console as typed SSE events.
 
 ### 3.1 Turn Lifecycle
 
@@ -78,7 +91,7 @@ POST /api/chat/stream
 │                                                      │
 │  streamText({                                        │
 │    tools: {                                          │
-│      ← 16 Neo4j-backed tools →     │
+│      ← 16 Neo4j-backed tools from createMemoryTools()│
 │      generateDialogueStep  ──► SSE streaming         │
 │      advanceTime           ──► DB + SSE event        │
 │    },                                                │
@@ -136,41 +149,41 @@ Two layers of tools:
 | `generateDialogueStep` | Produce narrative messages + player options       | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments               | `time_update`      |
 
-**Neo4j-backed tools** (16 tools from agent-memory, defined in `src/memory/tools/`):
+**Neo4j-backed tools** (16 tools defined in `src/server/memory/tools.ts`):
 
 | Tool                        | Purpose                                          |
 |-----------------------------|--------------------------------------------------|
-| `memory_search`             | Hybrid vector + graph search across all memory   |
-| `memory_get_context`        | Auto-assembled context for the current session   |
-| `memory_store_message`      | Store a message in conversation history          |
-| `memory_add_entity`         | Create/update an entity (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) |
-| `memory_add_preference`     | Record a user preference                         |
-| `memory_add_fact`           | Store a subject-predicate-object fact triple    |
-| `memory_get_entity`         | Get entity details with graph traversal          |
-| `memory_get_conversation`   | Get full conversation history for a session      |
-| `memory_list_sessions`      | List available conversation sessions             |
-| `memory_create_relationship`| Create a typed relationship between entities     |
-| `memory_start_trace`        | Begin recording a reasoning trace                |
-| `memory_record_step`        | Record a reasoning step within a trace           |
-| `memory_complete_trace`     | Complete a reasoning trace with outcome          |
-| `memory_get_observations`   | Get session observations and reflections         |
-| `memory_export_graph`       | Export subgraph as JSON for visualization        |
-| `graph_query`               | Execute read-only Cypher queries                 |
+| `searchMemory`             | Hybrid vector + graph search across all memory   |
+| `getContext`               | Auto-assembled context for the current session   |
+| `storeMessage`             | Store a message in conversation history          |
+| `saveEntity`               | Create/update an entity (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) |
+| `setPreference`            | Record a user preference                         |
+| `recordFact`               | Store a subject-predicate-object fact triple    |
+| `getEntity`                | Get entity details with graph traversal          |
+| `getConversation`          | Get full conversation history for a session      |
+| `listSessions`             | List available conversation sessions             |
+| `linkEntities`             | Create a typed relationship between entities     |
+| `startTrace`               | Begin recording a reasoning trace                |
+| `recordStep`               | Record a reasoning step within a trace           |
+| `completeTrace`            | Complete a reasoning trace with outcome          |
+| `getObservations`          | Get session observations and reflections         |
+| `exportGraph`              | Export subgraph as JSON for visualization        |
+| `queryGraph`               | Execute read-only Cypher queries                 |
 
-All 16 tools are defined as AI SDK tools in `src/memory/tools/` and registered in `generateTurn()`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
+All 16 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and registered in `generateTurn()`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
 
 ### 3.4 Seed System
 
-On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses the Neo4j JavaScript driver directly to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in SQLite.
+On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses `MemoryClient.longTerm` to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in SQLite.
 
-The `/api/reset` endpoint clears Neo4j (via direct `MATCH (n) DETACH DELETE n` through the Neo4j driver in `src/server/mcp/reset.ts`) then re-seeds.
+The `/api/reset` endpoint clears Neo4j (via `client.neo4j.executeWrite("MATCH (n) DETACH DELETE n")` in `src/server/mcp/reset.ts`) then re-seeds.
 
 Seed stories live in `src/server/seed-stories/`. The active story is set via `ACTIVE_SEED_STORY` in `index.ts`.
 
 ### 3.5 Key Design Decisions
 
-1. **World state in Neo4j** — entities, observations, and relationships stored in Neo4j; SQLite holds only logs and time
-2. **Tools statically defined** — all tools (Elysian + Neo4j-backed) are registered in `generateTurn()`; no dynamic discovery needed
+1. **World state in Neo4j** — entities, observations, and relationships stored in Neo4j via local memory module; SQLite holds only logs and time
+2. **Tools statically defined** — all 18 tools (2 Elysian + 16 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -187,7 +200,7 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 
 ### 4.2 State
 
-- `GET /api/history` — Returns empty array (placeholder; GM uses `memory_get_conversation`)
+- `GET /api/history` — Returns empty array (placeholder; GM uses `getConversation`)
 - `GET /api/session/current` — Returns null (no dialogue tree persistence)
 
 ### 4.3 ID Generation
@@ -234,7 +247,7 @@ Fantasy-steampunk inner monologue — each skill is a distinct voice in the play
 
 These map to character stats in `src/types/entities.ts` (`CharacterStats` interface). The system prompt in `src/server/llm/prompt.ts` instructs the LLM about voice personalities and includes the active plot tree.
 
-The system prompt is runtime-configurable via the system prompt API endpoints. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{setting_description}}`, `{{tone_description}}`, and `{{game_time}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. World state and plots are not dumped into the prompt — the GM fetches them on demand via `memory_get_context`. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
+The system prompt is runtime-configurable via the system prompt API endpoints. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{setting_description}}`, `{{tone_description}}`, and `{{game_time}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. World state and plots are not dumped into the prompt — the GM fetches them on demand via `getContext`. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
 
 ### 6.2 Skill Checks
 
@@ -300,7 +313,7 @@ Elysian tools (custom LLM tools defined in this codebase) are created with the `
 
 ### 9.2 Neo4j-Backed Tools
 
-World manipulation tools are defined as AI SDK tools in `src/memory/tools/`. To add a new tool, create a new file in that directory following the existing patterns and register it in the tools array used by `generateTurn()`.
+World manipulation tools are defined as AI SDK tools in `src/server/memory/tools.ts`. To add a new Neo4j-backed tool, add a new tool definition in `createMemoryTools()` following the existing patterns. To add a new Elysian tool, follow section 9.1.
 
 ### 9.3 Adding a New Voice/Skill
 

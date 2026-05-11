@@ -13,6 +13,8 @@ export interface MemoryEntity {
   metadata: Record<string, unknown>;
   embedding?: number[];
   createdAt: Date;
+  /** True if the entity was newly created (MERGE semantics). */
+  isNew?: boolean;
 }
 
 export interface MemoryMessage {

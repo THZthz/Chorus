@@ -265,12 +265,12 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        await client.longTerm.addRelationship(
+        const relResult = await client.longTerm.addRelationship(
           input.sourceName, input.targetName, input.relationshipType,
           { description: input.description, confidence: sanitizeConfidence(input.confidence) },
         );
         return JSON.stringify(
-          { stored: true, source: input.sourceName, target: input.targetName, type: input.relationshipType },
+          { stored: true, created: relResult.created, source: input.sourceName, target: input.targetName, type: input.relationshipType },
           null, 2,
         );
       },

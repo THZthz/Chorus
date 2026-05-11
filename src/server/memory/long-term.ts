@@ -80,9 +80,6 @@ export class LongTermMemory {
     // Build dynamic labels: e.g. :Entity:Person:Character
     const typeLabel = pascalCase(finalType);
     const subtypeLabel = finalSubtype ? pascalCase(finalSubtype) : null;
-    const labelStr = subtypeLabel
-      ? `:Entity:${typeLabel}:${subtypeLabel}`
-      : `:Entity:${typeLabel}`;
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
@@ -95,17 +92,20 @@ export class LongTermMemory {
       storageMetadata["aliases"] = aliases;
     }
 
-    await this.client.executeWrite(
-      `CREATE (e${labelStr} {
-         id: $id,
-         name: $name,
-         type: $type,
-         subtype: $subtype,
-         description: $description,
-         embedding: $embedding,
-         metadata: $metadata,
-         created_at: datetime()
-       })`,
+    const rows = await this.client.executeWrite(
+      `MERGE (e:Entity {name: $name})
+       ON CREATE SET
+         e.id = $id,
+         e.created_at = datetime()
+       SET
+         e.type = $type,
+         e.subtype = $subtype,
+         e.description = $description,
+         e.embedding = $embedding,
+         e.metadata = $metadata
+       SET e:${typeLabel}
+       ${subtypeLabel ? `SET e:${subtypeLabel}` : ""}
+       RETURN e, e.id = $id AS isNew`,
       {
         id: entityId,
         name,
@@ -119,8 +119,16 @@ export class LongTermMemory {
       },
     );
 
+    const result = rows[0];
+    const isNew = (result?.isNew as boolean) || false;
+    const persistedNode = result?.e as Record<string, unknown> | undefined;
+    const persistedId = (persistedNode?.id as string) || entityId;
+    const persistedCreatedAt = persistedNode?.created_at
+      ? new Date(persistedNode.created_at as string | number)
+      : new Date();
+
     return {
-      id: entityId,
+      id: persistedId,
       name,
       type: finalType as EntityType,
       subtype: finalSubtype,
@@ -128,7 +136,8 @@ export class LongTermMemory {
       aliases: aliases || [],
       metadata: metadata || {},
       embedding,
-      createdAt: new Date(),
+      createdAt: persistedCreatedAt,
+      isNew,
     };
   }
 
@@ -365,17 +374,18 @@ export class LongTermMemory {
       description?: string;
       confidence?: number;
     },
-  ): Promise<void> {
+  ): Promise<{ created: boolean }> {
     const { description, confidence = 1.0 } = options || {};
     // Sanitize relationship type for use as a Cypher relationship type
     const safeType = relationshipType.replace(/[^A-Za-z0-9_]/g, "_");
-    await this.client.executeWrite(
+    const rows = await this.client.executeWrite(
       `MATCH (a:Entity {name: $src}), (b:Entity {name: $tgt})
-       CREATE (a)-[r:${safeType} {
-         description: $desc,
-         confidence: $conf,
-         created_at: datetime()
-       }]->(b)`,
+       MERGE (a)-[r:${safeType}]->(b)
+       ON CREATE SET
+         r.description = $desc,
+         r.confidence = $conf,
+         r.created_at = datetime()
+       RETURN r, r.created_at IS NOT NULL AS isNew`,
       {
         src: sourceName,
         tgt: targetName,
@@ -383,6 +393,8 @@ export class LongTermMemory {
         conf: confidence,
       },
     );
+    const created = rows.length > 0 && (rows[0]?.isNew as boolean || false);
+    return { created };
   }
 
   // ═══════════════════════════════════════════════════════════════

@@ -24,7 +24,7 @@ import { LlmDebugIntegration } from "@/server/llm/debug";
 import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
-import { getMcpTools } from "@/server/mcp/client";
+import { createMemoryTools } from "@/server/memory/tools";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 
@@ -75,12 +75,12 @@ export async function generateTurn(
   let finalOptions: DialogueOption[] = [];
 
   // Discover MCP tools from agent-memory
-  const mcpTools = await getMcpTools();
+  const memoryTools = createMemoryTools();
   const dialogueStepTool = createGenerateDialogueStepTool(events);
   const advanceTimeTool = createAdvanceTimeTool(events);
 
   const allTools = {
-    ...mcpTools,
+    ...memoryTools,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
   };
@@ -92,7 +92,7 @@ export async function generateTurn(
       prompt: promptText,
       userInput,
       history,
-      tools: [...Object.keys(mcpTools), "generateDialogueStep", "advanceTime"],
+      tools: [...Object.keys(memoryTools), "generateDialogueStep", "advanceTime"],
     },
     undefined,
     "GM",

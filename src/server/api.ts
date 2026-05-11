@@ -68,9 +68,9 @@ apiRouter.get("/session/current", (_req, res) => {
 apiRouter.post("/reset", async (_req, res) => {
   try {
     // Clear Neo4j and re-seed
-    const { clearNeo4jDatabase } = await import("@/server/mcp/reset");
+    const { clearNeo4jDatabase } = await import("@/server/memory/reset");
     await clearNeo4jDatabase();
-    const { seedDatabase } = await import("@/server/mcp/seed");
+    const { seedDatabase } = await import("@/server/seed-stories/seed");
     await seedDatabase();
     res.json({ success: true });
   } catch (error: unknown) {

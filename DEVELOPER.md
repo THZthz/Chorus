@@ -43,6 +43,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │       └── shared.ts               # Helpers: checkText (character filter)
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
+    │   │   ├── reset.ts       # Clear Neo4j database (used by /api/reset)
     │   │   ├── types.ts       # Shared types (Entity, Message, Fact, Preference, etc.)
     │   │   ├── neo4j.ts       # Neo4jClient — thin wrapper over neo4j-driver
     │   │   ├── schema.ts      # Index/constraint/vector index creation
@@ -54,15 +55,13 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── search.ts      # Hybrid vector + graph search across memory types
     │   │   ├── context.ts     # Assembled context for GM consumption
     │   │   └── tools.ts       # 16 AI SDK tool definitions
-    │   ├── mcp/
-    │   │   ├── seed.ts        # Seed Neo4j via MemoryClient
-    │   │   └── reset.ts       # Clear Neo4j via MemoryClient
     │   ├── models/
     │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
     │   │   └── shared.ts      # safeJsonParse utility
     │   └── seed-stories/
     │       ├── index.ts       # Story registry + ACTIVE_SEED_STORY constant
     │       ├── types.ts       # SeedStory, SeedPlot interfaces
+    │       ├── seed.ts            # Apply active seed story to Neo4j via MemoryClient
     │       └── magic-awakening.ts  # Default seed story
     ├── shared/
     │   ├── events.ts          # SSE event type definitions (typed event map)
@@ -174,9 +173,9 @@ All 16 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and reg
 
 ### 3.4 Seed System
 
-On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses `MemoryClient.longTerm` to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in Neo4j.
+On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/seed-stories/seed.ts` uses `MemoryClient.longTerm` to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in Neo4j.
 
-The `/api/reset` endpoint clears Neo4j (via `client.neo4j.executeWrite("MATCH (n) DETACH DELETE n")` in `src/server/mcp/reset.ts`) then re-seeds.
+The `/api/reset` endpoint clears Neo4j (via `client.neo4j.executeWrite("MATCH (n) DETACH DELETE n")` in `src/server/memory/reset.ts`) then re-seeds.
 
 Seed stories live in `src/server/seed-stories/`. The active story is set via `ACTIVE_SEED_STORY` in `index.ts`.
 
@@ -241,7 +240,7 @@ The system prompt uses `DEFAULT_SYSTEM_PROMPT_TEMPLATE` from `src/server/llm/pro
 
 Seed data (entities, locations, characters, root plot, initial time, initial scene) is organized into pluggable seed story modules under `src/server/seed-stories/`. Each module exports a `SeedStory` object conforming to the interface in `types.ts`.
 
-The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `src/server/mcp/seed.ts` reads from it to populate Neo4j on startup.
+The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `src/server/seed-stories/seed.ts` reads from it to populate Neo4j on startup.
 
 **To add a new seed story:**
 1. Create a new file in `src/server/seed-stories/` exporting a `SeedStory` object

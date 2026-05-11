@@ -51,4 +51,6 @@ The TODO is more like prompts.
 - [x] What is the usage of generateTurnBatch? Can we remove it?
 - [x] Some tools of GM directly return JSON, should return detailed message instead, i.e., output a formatted markdown message.
 - [x] Use @ai-sdk/devtools to inspect LLM calls.
-- [ ] Console should support printing Markdown.
+- [x] Console should support printing Markdown.
+- [ ] Resume game play.
+- [ ] Need to remove src/server/mcp folder.

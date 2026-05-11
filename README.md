@@ -6,13 +6,13 @@ Cinematic RPG-style dialogue engine with a fantasy-steampunk setting. The AI Gam
 
 ## Tech Stack
 
-| Layer     | Technology                                  |
-|-----------|---------------------------------------------|
+| Layer     | Technology                                       |
+|-----------|--------------------------------------------------|
 | Console   | TypeScript, Node.js, chalk (`@inquirer/prompts`) |
-| Backend   | Express, Neo4j                              |
-| AI        | Gemini / DeepSeek via Vercel AI SDK v6      |
-| Streaming | Server-Sent Events                          |
-| Memory    | Neo4j via local memory module (12 files)    |
+| Backend   | Express, Neo4j                                   |
+| AI        | Gemini / DeepSeek via Vercel AI SDK v6           |
+| Streaming | Server-Sent Events                               |
+| Memory    | Neo4j via local memory module (12 files)         |
 
 ## Getting Started
 
@@ -30,13 +30,13 @@ cp .env.example .env
 #   GEMINI_API_KEY=your_key_here
 #   DEEPSEEK_API_KEY=your_key_here
 
-npm install
+make install
 
 # Terminal 1 — Start Neo4j + Express server
 make dev
 
 # Terminal 2 — Play
-npm run console
+make console
 ```
 
 On first run, Neo4j is seeded with a default fantasy-steampunk world — characters, locations, objects, and a root plot with three branching threads.

@@ -1,6 +1,6 @@
-.PHONY: help install install-all neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-clean neo4j-restart \
-        server console lint typecheck clean clean-all \
-        dev dev-stop check reset
+.PHONY: help install server console lint format format-check check \
+        neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
+        dev dev-stop reset clean clean-all
 
 # MSYS2 bash can't resolve Windows-style paths inside the npm/npx
 # bash-script wrappers; use the .cmd launcher on Windows instead.
@@ -15,22 +15,24 @@ help:
 	@echo "Elysian Dialogue — Development Commands"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make install          Install root (npm) + agent-memory (uv) dependencies"
-	@echo "  make install-root     Install root npm dependencies only"
-	@echo "  make install-am       Install agent-memory uv dependencies only"
+	@echo "  make install          Install npm dependencies"
 	@echo ""
 	@echo "Neo4j (Docker):"
 	@echo "  make neo4j-start      Start Neo4j test container"
 	@echo "  make neo4j-stop       Stop Neo4j test container"
 	@echo "  make neo4j-wait       Wait for Neo4j to be ready"
 	@echo "  make neo4j-status     Check Neo4j container status"
+	@echo "  make neo4j-logs       Tail Neo4j container logs"
 	@echo "  make neo4j-restart    Restart Neo4j container"
 	@echo "  make neo4j-clean      Stop container and remove volumes"
 	@echo ""
 	@echo "Elysian Server & Client:"
 	@echo "  make server           Start Express server (:3000)"
 	@echo "  make console          Start console REPL client"
-	@echo "  make lint             TypeScript type-check"
+	@echo "  make lint             TypeScript type-check (tsc --noEmit)"
+	@echo "  make format           Format source with Prettier"
+	@echo "  make format-check     Check formatting with Prettier"
+	@echo "  make check            Run all code quality checks"
 	@echo ""
 	@echo "Full Dev Environment:"
 	@echo "  make dev              Start Neo4j + Server (foreground)"
@@ -45,14 +47,8 @@ help:
 # Setup
 # =============================================================================
 
-install: install-root install-am
-	@echo "All dependencies installed!"
-
-install-root:
+install:
 	$(NPM) install
-
-install-am:
-	uv sync
 
 # =============================================================================
 # Neo4j Docker Management
@@ -110,23 +106,13 @@ console:
 lint:
 	$(NPM) run lint
 
-typecheck: lint
+format:
+	$(NPM) run format
 
-# Agent-memory code quality (Python)
-lint-am:
-	uv run ruff check agent-memory/src agent-memory/tests
+format-check:
+	$(NPM) run format:check
 
-format-am:
-	uv run ruff format agent-memory/src agent-memory/tests
-
-typecheck-am:
-	uv run mypy agent-memory/src
-
-check-am: lint-am format-am typecheck-am
-	@echo "All agent-memory code quality checks passed!"
-
-# Full check (both projects)
-check: lint
+check: lint format-check
 	@echo "All code quality checks passed!"
 
 # =============================================================================
@@ -146,10 +132,6 @@ reset:
 
 clean:
 	rm -rf dist
-	rm -rf .pytest_cache .mypy_cache .ruff_cache
-	rm -rf htmlcov .coverage
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 clean-all: clean
 	rm -rf node_modules
-	rm -rf agent-memory/.venv

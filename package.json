@@ -8,7 +8,9 @@
     "console": "tsx src/console/main.ts",
     "lint": "tsc --noEmit",
     "add-license-header": "node scripts/add-license-header.mjs",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "format": "npx prettier --write \"src/**/*.{js,ts,tsx}\"",
+    "format:check": "npx prettier --check \"src/**/*.{js,ts,tsx}\""
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.6",

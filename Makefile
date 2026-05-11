@@ -90,17 +90,17 @@ neo4j-clean:
 # =============================================================================
 
 server:
-	node --import tsx/esm src/server/main.ts
+	MSYS2_PATH_TYPE=inherit npm start
 
 console:
-	node --import tsx/esm src/console/main.ts
+	MSYS2_PATH_TYPE=inherit npm run console
 
 # =============================================================================
 # Code Quality
 # =============================================================================
 
 lint:
-	node node_modules/typescript/bin/tsc --noEmit
+	MSYS2_PATH_TYPE=inherit npm run lint
 
 typecheck: lint
 

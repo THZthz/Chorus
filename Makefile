@@ -1,5 +1,5 @@
 .PHONY: help install install-all neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-clean neo4j-restart \
-        mcp-install mcp-start mcp-dev server console lint typecheck clean clean-all \
+        server console lint typecheck clean clean-all \
         dev dev-stop check reset
 
 # Default target
@@ -19,17 +19,13 @@ help:
 	@echo "  make neo4j-restart    Restart Neo4j container"
 	@echo "  make neo4j-clean      Stop container and remove volumes"
 	@echo ""
-	@echo "Agent Memory MCP:"
-	@echo "  make mcp-install      Install agent-memory Python deps"
-	@echo "  make mcp-start        Start MCP server (SSE on :8080)"
-	@echo ""
 	@echo "Elysian Server & Client:"
 	@echo "  make server           Start Express server (:3000)"
 	@echo "  make console          Start console REPL client"
 	@echo "  make lint             TypeScript type-check"
 	@echo ""
 	@echo "Full Dev Environment:"
-	@echo "  make dev              Start Neo4j + MCP + Server (foreground)"
+	@echo "  make dev              Start Neo4j + Server (foreground)"
 	@echo "  make dev-stop         Stop Neo4j container"
 	@echo ""
 	@echo "Maintenance:"
@@ -90,17 +86,6 @@ neo4j-clean:
 	@echo "Neo4j container and volumes removed"
 
 # =============================================================================
-# Agent Memory MCP Server
-# =============================================================================
-
-mcp-install: install-am
-
-mcp-start:
-	uv run python agent-memory/run_elysian_mcp.py
-
-mcp-dev: neo4j-wait mcp-start
-
-# =============================================================================
 # Elysian Server & Console Client
 # =============================================================================
 
@@ -140,7 +125,7 @@ check: lint
 # Full Dev Environment
 # =============================================================================
 
-dev: neo4j-start neo4j-wait mcp-start
+dev: neo4j-start neo4j-wait server
 
 dev-stop: neo4j-stop
 

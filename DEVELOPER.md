@@ -9,7 +9,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 **Elysian Dialogue** is a cinematic RPG-style dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
 - **Stack:** TypeScript, Node.js
-- **Backend:** Express + SQLite (`better-sqlite3`) + Neo4j (via agent-memory MCP)
+- **Backend:** Express + SQLite (`better-sqlite3`) + Neo4j
 - **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
 - **SSE:** Server-Sent Events for real-time streaming of LLM output
 - **Console client:** Standalone Node.js REPL with chalk rendering
@@ -28,7 +28,7 @@ src/
 │   ├── api.ts                 # REST API + SSE streaming endpoints
 │   ├── db.ts                  # SQLite connection + schema (3 tables + migration)
 │   ├── validation.ts          # Zod schemas for API endpoints
-│   ├── main.ts                # Express entry (port 3000), MCP init, seed on startup
+│   ├── main.ts                # Express entry (port 3000), Neo4j init, seed on startup
 │   ├── llm/
 │   │   ├── index.ts           # generateTurn(): full-stream SSE turn loop
 │   │   ├── model.ts           # getModel(): lazy-init provider model (Gemini → DeepSeek fallback)
@@ -40,9 +40,8 @@ src/
 │   │       ├── generateDialogueStep.ts  # Elysian tool: produce messages + options with validation
 │   │       └── shared.ts                # Helpers: checkText (character filter)
 │   ├── mcp/
-│   │   ├── client.ts          # MCP client bridge to agent-memory (Neo4j)
 │   │   ├── seed.ts            # Seed Neo4j with initial world data from seed story
-│   │   └── reset.ts           # Clear Neo4j database via MCP tools
+│   │   └── reset.ts           # Clear Neo4j database
 │   ├── models/
 │   │   ├── debug.ts           # LLM interaction log query and management
 │   │   ├── ids.ts             # Base62-encoded 4-char unique ID generation
@@ -64,9 +63,9 @@ src/
 
 ---
 
-## 3. Architecture: MCP-Bridged Tool Execution
+## 3. Architecture: Neo4j-Backed Tool Execution
 
-The LLM is a pure tool-calling Game Master. World state lives in Neo4j (via agent-memory MCP), while SQLite holds only logs and time state. The backend streams tool execution results to the console as typed SSE events.
+The LLM is a pure tool-calling Game Master. World state lives in Neo4j, while SQLite holds only logs and time state. The backend streams tool execution results to the console as typed SSE events.
 
 ### 3.1 Turn Lifecycle
 
@@ -79,7 +78,7 @@ POST /api/chat/stream
 │                                                      │
 │  streamText({                                        │
 │    tools: {                                          │
-│      ← 16 MCP tools from agent-memory (Neo4j) →     │
+│      ← 16 Neo4j-backed tools →     │
 │      generateDialogueStep  ──► SSE streaming         │
 │      advanceTime           ──► DB + SSE event        │
 │    },                                                │
@@ -137,7 +136,7 @@ Two layers of tools:
 | `generateDialogueStep` | Produce narrative messages + player options       | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments               | `time_update`      |
 
-**MCP tools** (16 tools from agent-memory Neo4j bridge, auto-discovered via `getMcpTools()`):
+**Neo4j-backed tools** (16 tools from agent-memory, defined in `src/memory/tools/`):
 
 | Tool                        | Purpose                                          |
 |-----------------------------|--------------------------------------------------|
@@ -158,17 +157,9 @@ Two layers of tools:
 | `memory_export_graph`       | Export subgraph as JSON for visualization        |
 | `graph_query`               | Execute read-only Cypher queries                 |
 
-All 16 MCP tools are dynamically discovered at turn start via `getMcpTools()` in `src/server/mcp/client.ts`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
+All 16 tools are defined as AI SDK tools in `src/memory/tools/` and registered in `generateTurn()`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
 
-### 3.4 MCP Bridge
-
-The MCP bridge (`src/server/mcp/client.ts`) connects to the agent-memory MCP server at the URL specified by `AGENT_MEMORY_MCP_URL` (default `http://127.0.0.1:8080/sse`). It uses `@ai-sdk/mcp` to create a persistent SSE transport that stays alive for the server lifetime.
-
-- `getMcpClient()` — lazy-initializes and caches the MCP connection
-- `getMcpTools()` — returns all tools from the MCP server for use in `streamText()`
-- `closeMcpClient()` — graceful shutdown on SIGINT/SIGTERM
-
-### 3.5 Seed System
+### 3.4 Seed System
 
 On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses the Neo4j JavaScript driver directly to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in SQLite.
 
@@ -176,10 +167,10 @@ The `/api/reset` endpoint clears Neo4j (via direct `MATCH (n) DETACH DELETE n` t
 
 Seed stories live in `src/server/seed-stories/`. The active story is set via `ACTIVE_SEED_STORY` in `index.ts`.
 
-### 3.6 Key Design Decisions
+### 3.5 Key Design Decisions
 
-1. **World state in Neo4j** — entities, observations, and relationships stored in Neo4j via agent-memory MCP; SQLite holds only logs and time
-2. **Tools dynamically discovered** — MCP tools auto-registered each turn via `getMcpTools()`; Elysian tools (`generateDialogueStep`, `advanceTime`) are static
+1. **World state in Neo4j** — entities, observations, and relationships stored in Neo4j; SQLite holds only logs and time
+2. **Tools statically defined** — all tools (Elysian + Neo4j-backed) are registered in `generateTurn()`; no dynamic discovery needed
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -231,7 +222,7 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 | `llm_logs`     | LLM request/response logging (with parent_id + label)        |
 | `llm_steps`    | Per-step LLM metrics (tool calls, token usage, timings, reasoning) |
 
-World state (entities, observations, relationships, conversation history) is stored in Neo4j via the agent-memory MCP server, not in SQLite.
+World state (entities, observations, relationships, conversation history) is stored in Neo4j via the Neo4j driver, not in SQLite.
 
 ---
 
@@ -307,9 +298,9 @@ Elysian tools (custom LLM tools defined in this codebase) are created with the `
 3. Register it in `src/server/llm/index.ts` in the `allTools` object within `generateTurn()`
 4. Update the system prompt in `src/server/llm/prompt.ts` if the LLM needs guidance on when to use it
 
-### 9.2 MCP Tools (Neo4j)
+### 9.2 Neo4j-Backed Tools
 
-World manipulation tools come from the agent-memory MCP server and are auto-discovered each turn. To add a new MCP tool, add it to the agent-memory MCP server implementation, and it will automatically be available to the GM.
+World manipulation tools are defined as AI SDK tools in `src/memory/tools/`. To add a new tool, create a new file in that directory following the existing patterns and register it in the tools array used by `generateTurn()`.
 
 ### 9.3 Adding a New Voice/Skill
 

@@ -1,12 +1,6 @@
 import chalk from "chalk";
 
-/**
- * Render Markdown text to ANSI-styled terminal output.
- * Handles common Markdown formatting: **bold**, *italic*, `code`, ~~strikethrough~~,
- * links, and escape sequences.
- */
 export function renderMarkdown(text: string): string {
-  // Track protected regions to avoid formatting inside code spans
   const codeSpans: string[] = [];
 
   // Extract inline code spans first (they take precedence over all other formatting)

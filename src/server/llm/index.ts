@@ -96,15 +96,20 @@ export async function generateTurn(
         },
         stepCountIs(MAX_GM_STEPS),
       ],
-      prepareStep: ((nudgeState: { count: number }) =>
+      prepareStep: ((nudgeState: { count: number; timeReminded: boolean }) =>
         ({ steps, messages }) => {
           const dialogueCalled = steps.some((s) =>
             s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
           );
           if (dialogueCalled) {
             nudgeState.count = 0;
+            nudgeState.timeReminded = false;
             return undefined;
           }
+
+          const timeCalled = steps.some((s) =>
+            s.toolCalls?.some((tc) => tc.toolName === "advanceTime"),
+          );
 
           // Collect tool names preserving order
           const allToolsUsed: string[] = [];
@@ -131,9 +136,16 @@ export async function generateTurn(
           const toolList = grouped.length > 0
             ? ` You called [${grouped.join(", ")}] but`
             : " You";
-          const errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+          let errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+
+          // Soft one-time reminder for advanceTime on step 3+
+          if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
+            nudgeState.timeReminded = true;
+            errorMsg += "\n\nReminder: You can call advanceTime() if the player's action takes significant time. Skip if not needed.";
+          }
+
           return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
-        })({ count: 0 }),
+        })({ count: 0, timeReminded: false }),
     });
 
     let toolRawArgs = "";

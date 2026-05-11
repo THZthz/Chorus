@@ -80,7 +80,15 @@ const inputSchema = z.object({
   options: z.array(optionSchema).describe("The choices presented to the player."),
 });
 
-export function createGenerateDialogueStepTool(_events: EventEmitter) {
+export function createGenerateDialogueStepTool(
+  _events: EventEmitter,
+  persistMessage?: (msg: {
+    speaker: string;
+    type: string;
+    text: string;
+    metadata?: Record<string, unknown>;
+  }) => Promise<void>,
+) {
   let lastCallValid = false;
 
   const dialogueTool = tool({
@@ -209,6 +217,29 @@ export function createGenerateDialogueStepTool(_events: EventEmitter) {
       }
 
       lastCallValid = true;
+
+      // Auto-persist each message so conversation history queries work.
+      if (persistMessage) {
+        let persisted = 0;
+        for (const msg of args.messages) {
+          try {
+            await persistMessage({
+              speaker: msg.speaker,
+              type: msg.type,
+              text: msg.text,
+              metadata: msg.metadata,
+            });
+            persisted++;
+          } catch (err) {
+            console.warn(
+              `[generateDialogueStep] Failed to persist message from "${msg.speaker}":`,
+              err,
+            );
+          }
+        }
+        return `Dialogue successfully streamed and ${persisted} message(s) persisted.`;
+      }
+
       return "Dialogue successfully streamed.";
     },
   });

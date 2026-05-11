@@ -23,6 +23,7 @@ import type { Message, DialogueOption } from "@/types/dialogue";
 import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
+import { MemoryClient } from "@/server/memory/client";
 import { createMemoryTools } from "@/server/memory/tools";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
@@ -70,7 +71,26 @@ export async function generateTurn(
 
   // Discover MCP tools from agent-memory
   const memoryTools = createMemoryTools();
-  const dialogueStepTool = createGenerateDialogueStepTool(events);
+
+  // Auto-persist each generated message to Neo4j after validation passes.
+  const persistMessage = async (msg: {
+    speaker: string;
+    type: string;
+    text: string;
+    metadata?: Record<string, unknown>;
+  }) => {
+    const client = MemoryClient.getCachedInstance();
+    const sessionId = "elysian-game";
+    const role: "user" | "assistant" | "system" =
+      msg.type === "CHARACTER" ? "assistant" : "system";
+    const stored = await client.shortTerm.addMessage(
+      sessionId, role, msg.text,
+      { speaker: msg.speaker, type: msg.type, ...msg.metadata },
+    );
+    await client.observer.onMessageStored(sessionId, msg.text, stored.id, role);
+  };
+
+  const dialogueStepTool = createGenerateDialogueStepTool(events, persistMessage);
   const advanceTimeTool = createAdvanceTimeTool(events);
 
   const allTools = {

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import apiRouter from "@/server/api";
-import { getMcpClient, closeMcpClient } from "@/server/mcp/client";
+import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/mcp/seed";
 
 async function start() {
@@ -11,8 +11,9 @@ async function start() {
   app.use(express.json());
   app.use("/api", apiRouter);
 
-  // Initialize MCP connection (stays alive for server lifetime)
-  await getMcpClient();
+  // Initialize MemoryClient (stays alive for server lifetime)
+  console.log("[memory] initializing local memory layer...");
+  await MemoryClient.getInstance();
 
   // Seed Neo4j with initial world data
   await seedDatabase();
@@ -23,7 +24,7 @@ async function start() {
 
   const shutdown = async () => {
     console.log("\nShutting down...");
-    await closeMcpClient();
+    await MemoryClient.closeInstance();
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

@@ -1,5 +1,5 @@
 import { MemoryClient } from "@/server/memory/client";
-import { getActiveSeedStory } from "@/server/seed-stories/index";
+import { getActiveSeedStory } from "@/server/seed-stories";
 import { setGameTime } from "@/server/models/time";
 
 export async function seedDatabase(): Promise<void> {

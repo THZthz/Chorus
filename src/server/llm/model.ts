@@ -18,7 +18,8 @@
 
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import type { LanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModel } from "ai";
+import { devToolsMiddleware } from "@ai-sdk/devtools";
 
 let googleModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
@@ -26,9 +27,13 @@ let deepseekModelInstance: LanguageModel | null = null;
 function getGoogleModel(): LanguageModel | null {
   if (!googleModelInstance && process.env.GEMINI_API_KEY) {
     try {
-      googleModelInstance = createGoogleGenerativeAI({
+      const raw = createGoogleGenerativeAI({
         apiKey: process.env.GEMINI_API_KEY,
       })("gemini-2.0-flash-lite-preview-02-05");
+      googleModelInstance = wrapLanguageModel({
+        model: raw,
+        middleware: devToolsMiddleware(),
+      });
     } catch (e) {
       console.error("Failed to initialize Google model:", e);
     }
@@ -39,9 +44,13 @@ function getGoogleModel(): LanguageModel | null {
 function getDeepSeekModel(): LanguageModel | null {
   if (!deepseekModelInstance && process.env.DEEPSEEK_API_KEY) {
     try {
-      deepseekModelInstance = createDeepSeek({
+      const raw = createDeepSeek({
         apiKey: process.env.DEEPSEEK_API_KEY,
       })("deepseek-v4-flash");
+      deepseekModelInstance = wrapLanguageModel({
+        model: raw,
+        middleware: devToolsMiddleware(),
+      });
     } catch (e) {
       console.error("Failed to initialize DeepSeek model:", e);
     }

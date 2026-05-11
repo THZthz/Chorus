@@ -71,7 +71,7 @@ neo4j-wait:
 	@echo "Waiting for Neo4j to be ready..."
 	@$(NEO4J_COMPOSE) up -d
 	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
-		if $(NEO4J_COMPOSE) exec -T neo4j cypher-shell -u neo4j -p test-password "RETURN 1" > /dev/null 2>&1; then \
+		if $(NEO4J_COMPOSE) exec -T neo4j cypher-shell -u neo4j -p 12345678 "RETURN 1" > /dev/null 2>&1; then \
 			echo "Neo4j is ready!"; \
 			exit 0; \
 		fi; \
@@ -90,17 +90,17 @@ neo4j-clean:
 # =============================================================================
 
 server:
-	npm start
+	npx tsx src/server/main.ts
 
 console:
-	npm run console
+	npx tsx src/console/main.ts
 
 # =============================================================================
 # Code Quality
 # =============================================================================
 
 lint:
-	npm run lint
+	npx tsc --noEmit
 
 typecheck: lint
 

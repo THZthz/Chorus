@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import type { SeedStory } from "@/server/seed-stories/types";
 
 export const magicAwakening: SeedStory = {
@@ -38,7 +56,8 @@ export const magicAwakening: SeedStory = {
         conditions: {},
         attributes: {
           Amnesia: "Remembers nothing before waking in the Warrens three nights ago",
-          "Magical Affinity": "Unknown latent sorcery — the violet crystal responds to his emotions",
+          "Magical Affinity":
+            "Unknown latent sorcery — the violet crystal responds to his emotions",
           Status: "Vulnerable, powerful, unaware — a secret waiting to be discovered",
         },
       },
@@ -258,13 +277,15 @@ export const magicAwakening: SeedStory = {
       sourceName: "Player",
       targetName: "Soul Shard",
       type: "CARRIES",
-      description: "The player clutches this violet crystal — it was in their hand when Veyla found them.",
+      description:
+        "The player clutches this violet crystal — it was in their hand when Veyla found them.",
     },
     {
       sourceName: "Player",
       targetName: "Veyla's Ribbon",
       type: "CARRIES",
-      description: "Veyla tied this midnight-blue silk ribbon around the player's wrist as a protective charm.",
+      description:
+        "Veyla tied this midnight-blue silk ribbon around the player's wrist as a protective charm.",
     },
 
     // ── Character Relations (ALLIED_WITH) ──────────────────────────
@@ -310,7 +331,8 @@ export const magicAwakening: SeedStory = {
       sourceName: "The Awakening",
       targetName: "The Bond",
       type: "CHILD_PLOT",
-      description: "Deepen the connection between the player and Veyla — explore magic through intimacy.",
+      description:
+        "Deepen the connection between the player and Veyla — explore magic through intimacy.",
     },
     {
       sourceName: "The Awakening",
@@ -322,7 +344,8 @@ export const magicAwakening: SeedStory = {
       sourceName: "The Awakening",
       targetName: "The Upper City",
       type: "CHILD_PLOT",
-      description: "Risk the upper levels where unlicensed magic is a crime — but knowledge may be found.",
+      description:
+        "Risk the upper levels where unlicensed magic is a crime — but knowledge may be found.",
     },
   ],
 

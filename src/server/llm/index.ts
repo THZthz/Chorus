@@ -54,7 +54,10 @@ export async function generateTurn(
   const historyWindow = 10;
   const promptText = [
     `## DIALOGUE HISTORY (Last ${historyWindow})`,
-    history.slice(-historyWindow).map((m) => `${m.speaker} (${m.type}): ${m.text}`).join("\n"),
+    history
+      .slice(-historyWindow)
+      .map((m) => `${m.speaker} (${m.type}): ${m.text}`)
+      .join("\n"),
     "",
     "---",
     "",
@@ -81,12 +84,12 @@ export async function generateTurn(
   }) => {
     const client = MemoryClient.getCachedInstance();
     const sessionId = "elysian-game";
-    const role: "user" | "assistant" | "system" =
-      msg.type === "CHARACTER" ? "assistant" : "system";
-    const stored = await client.shortTerm.addMessage(
-      sessionId, role, msg.text,
-      { speaker: msg.speaker, type: msg.type, ...msg.metadata },
-    );
+    const role: "user" | "assistant" | "system" = msg.type === "CHARACTER" ? "assistant" : "system";
+    const stored = await client.shortTerm.addMessage(sessionId, role, msg.text, {
+      speaker: msg.speaker,
+      type: msg.type,
+      ...msg.metadata,
+    });
     await client.observer.onMessageStored(sessionId, msg.text, stored.id, role);
   };
 
@@ -116,7 +119,8 @@ export async function generateTurn(
         },
         stepCountIs(MAX_GM_STEPS),
       ],
-      prepareStep: ((nudgeState: { count: number; timeReminded: boolean }) =>
+      prepareStep: (
+        (nudgeState: { count: number; timeReminded: boolean }) =>
         ({ steps, messages }) => {
           const dialogueCalled = steps.some((s) =>
             s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
@@ -153,19 +157,19 @@ export async function generateTurn(
 
           nudgeState.count++;
           const prefix = nudgeState.count === 1 ? "Reminder:" : "ERROR:";
-          const toolList = grouped.length > 0
-            ? ` You called [${grouped.join(", ")}] but`
-            : " You";
+          const toolList = grouped.length > 0 ? ` You called [${grouped.join(", ")}] but` : " You";
           let errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
 
           // Soft one-time reminder for advanceTime on step 3+
           if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
             nudgeState.timeReminded = true;
-            errorMsg += "\n\nReminder: You can call advanceTime() if the player's action takes significant time. Skip if not needed.";
+            errorMsg +=
+              "\n\nReminder: You can call advanceTime() if the player's action takes significant time. Skip if not needed.";
           }
 
           return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
-        })({ count: 0, timeReminded: false }),
+        }
+      )({ count: 0, timeReminded: false }),
     });
 
     let toolRawArgs = "";
@@ -207,19 +211,21 @@ export async function generateTurn(
                   selectionMessage: o.selectionMessage,
                   hintBefore: o.hintBefore,
                   hintAfter: o.hintAfter,
-                  check: o.check ? {
-                    skill: o.check.skill,
-                    difficulty: o.check.difficulty,
-                    difficultyText: o.check.difficultyText || "",
-                    diceCount: o.check.diceCount ?? 2,
-                    isRed: o.check.isRed,
-                    conditions: (o.check.conditions || []).map((c: any, ci: number) => ({
-                      expression: c.expression,
-                      label: c.label,
-                      color: c.color,
-                      stepId: c.stepId || `step_res_${ci}`,
-                    })),
-                  } : undefined,
+                  check: o.check
+                    ? {
+                        skill: o.check.skill,
+                        difficulty: o.check.difficulty,
+                        difficultyText: o.check.difficultyText || "",
+                        diceCount: o.check.diceCount ?? 2,
+                        isRed: o.check.isRed,
+                        conditions: (o.check.conditions || []).map((c: any, ci: number) => ({
+                          expression: c.expression,
+                          label: c.label,
+                          color: c.color,
+                          stepId: c.stepId || `step_res_${ci}`,
+                        })),
+                      }
+                    : undefined,
                 }));
                 if (finalOptions.length > 0) {
                   events.emitOptions(finalOptions);
@@ -231,9 +237,10 @@ export async function generateTurn(
           }
           break;
         case "error":
-          streamError = chunk.error instanceof Error
-            ? chunk.error.message
-            : String(chunk.error ?? "Unknown stream error");
+          streamError =
+            chunk.error instanceof Error
+              ? chunk.error.message
+              : String(chunk.error ?? "Unknown stream error");
           console.error(`[generateTurn] stream error: ${streamError}`);
           break;
         case "tool-call":
@@ -264,19 +271,23 @@ export async function generateTurn(
                   selectionMessage: o.selectionMessage as string | undefined,
                   hintBefore: o.hintBefore as string | undefined,
                   hintAfter: o.hintAfter as string | undefined,
-                  check: o.check ? {
-                    skill: (o.check as any).skill as string,
-                    difficulty: (o.check as any).difficulty as number,
-                    difficultyText: ((o.check as any).difficultyText as string) || "",
-                    diceCount: ((o.check as any).diceCount as number) ?? 2,
-                    isRed: (o.check as any).isRed as boolean | undefined,
-                    conditions: (((o.check as any).conditions as any[]) || []).map((c: any, ci: number) => ({
-                      expression: c.expression as string,
-                      label: c.label as string | undefined,
-                      color: c.color as string | undefined,
-                      stepId: (c.stepId as string) || `step_res_${ci}`,
-                    })),
-                  } : undefined,
+                  check: o.check
+                    ? {
+                        skill: (o.check as any).skill as string,
+                        difficulty: (o.check as any).difficulty as number,
+                        difficultyText: ((o.check as any).difficultyText as string) || "",
+                        diceCount: ((o.check as any).diceCount as number) ?? 2,
+                        isRed: (o.check as any).isRed as boolean | undefined,
+                        conditions: (((o.check as any).conditions as any[]) || []).map(
+                          (c: any, ci: number) => ({
+                            expression: c.expression as string,
+                            label: c.label as string | undefined,
+                            color: c.color as string | undefined,
+                            stepId: (c.stepId as string) || `step_res_${ci}`,
+                          }),
+                        ),
+                      }
+                    : undefined,
                 }));
               }
             }

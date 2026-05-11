@@ -306,6 +306,8 @@ Initial world state is defined by the active seed story in `src/server/seed-stor
 
 ### 9.5 Debugging LLM Calls with DevTools
 
+This section is only provided as a immature experience, improve it while you can.
+
 All `streamText` calls are captured to `.devtools/generations.json` via the `devToolsMiddleware()` wrapper in `src/server/llm/model.ts`. This is the primary debugging tool for the GM's tool-calling behavior.
 
 **Data model:** One top-level entry per `streamText` call. `runs[]` = individual invocations of `generateTurn()`; `steps[]` = each tool-calling iteration within a run (one step = LLM thinks + calls zero or more tools, then results are fed back as messages for the next step). The system prompt is sent once per run, not per step.
@@ -382,15 +384,15 @@ cat .devtools/generations.json | jq -r '
 
 **What to look for when debugging:**
 
-| Symptom | What to check |
-|---------|---------------|
-| GM calls wrong tools or misses steps | Tool call results for validation errors; `getContext` returning garbage |
-| GM re-creates existing entities | `getContext` returning empty — check for Neo4j LIMIT errors on float params |
-| Nudge messages too aggressive | `prepareStep` injection pattern — look for "ERROR:" in user messages between steps |
-| Dialogue never reaches player | `finishReason` stuck on `tool-calls` across many steps — GM may be stuck in a loop |
-| Messages not persisted | `storeMessage` never appears in any step's tool calls |
-| DeepSeek float weirdness | Tool result errors containing `'20.0' is not a valid value` — integer fields need `Math.floor()` sanitization |
-| GM calls same tool repeatedly | Consecutive identical tool names in a single step — likely duplicate-creating entities |
+| Symptom                              | What to check                                                                                                 |
+|--------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| GM calls wrong tools or misses steps | Tool call results for validation errors; `getContext` returning garbage                                       |
+| GM re-creates existing entities      | `getContext` returning empty — check for Neo4j LIMIT errors on float params                                   |
+| Nudge messages too aggressive        | `prepareStep` injection pattern — look for "ERROR:" in user messages between steps                            |
+| Dialogue never reaches player        | `finishReason` stuck on `tool-calls` across many steps — GM may be stuck in a loop                            |
+| Messages not persisted               | `storeMessage` never appears in any step's tool calls                                                         |
+| DeepSeek float weirdness             | Tool result errors containing `'20.0' is not a valid value` — integer fields need `Math.floor()` sanitization |
+| GM calls same tool repeatedly        | Consecutive identical tool names in a single step — likely duplicate-creating entities                        |
 
 **Token usage pattern:** Early steps have high cache-hit ratios (cached system prompt). Watch `usage.outputTokens.total` for reasoning overhead — DeepSeek reports `completion_tokens_details.reasoning_tokens` separately. Zero `textParts` per step is expected — the code discards LLM text output; only tool calls are used.
 

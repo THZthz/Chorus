@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { v4 as uuidv4 } from "uuid";
 import { Neo4jClient } from "./neo4j";
 import { Embedder, getEmbedder } from "./embedder";
@@ -64,13 +82,7 @@ export class ReasoningMemory {
       metadata?: Record<string, unknown>;
     },
   ): Promise<ReasoningStep> {
-    const {
-      thought,
-      action,
-      observation,
-      generateEmbedding = true,
-      metadata,
-    } = options || {};
+    const { thought, action, observation, generateEmbedding = true, metadata } = options || {};
     const stepId = uuidv4();
 
     const countRows = await this.client.executeRead(
@@ -217,9 +229,7 @@ export class ReasoningMemory {
         outcome: rt.outcome as string | undefined,
         success: rt.success as boolean | undefined,
         startedAt: new Date((rt.started_at as string) || Date.now()),
-        completedAt: rt.completed_at
-          ? new Date(rt.completed_at as string)
-          : undefined,
+        completedAt: rt.completed_at ? new Date(rt.completed_at as string) : undefined,
         similarity: r.score as number,
         steps: [],
         metadata: { similarity: r.score as number },
@@ -234,9 +244,7 @@ export class ReasoningMemory {
       successOnly?: boolean;
       threshold?: number;
     },
-  ): Promise<
-    Array<{ step: ReasoningStep; similarity: number; parentTask: string }>
-  > {
+  ): Promise<Array<{ step: ReasoningStep; similarity: number; parentTask: string }>> {
     const { limit = 10, successOnly = true, threshold = 0.7 } = options || {};
     const queryEmbedding = await this.embedder.embed(query);
 

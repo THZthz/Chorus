@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { MemoryClient } from "@/server/memory/client";
 import { SEGMENT_LABELS, SEGMENT_HOURS } from "@/shared/constants";
 
@@ -30,7 +48,9 @@ export async function setGameTime(time: GameTime): Promise<void> {
   );
 }
 
-export async function advanceGameTime(segments: number): Promise<{ oldTime: GameTime; newTime: GameTime; totalSegments: number }> {
+export async function advanceGameTime(
+  segments: number,
+): Promise<{ oldTime: GameTime; newTime: GameTime; totalSegments: number }> {
   const oldTime = await getGameTime();
   const totalSegments = oldTime.day * 12 + oldTime.segment + segments;
   const newDay = Math.floor(totalSegments / 12);

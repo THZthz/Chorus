@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "./client";
@@ -92,8 +110,15 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const messages = await client.shortTerm.getConversation(input.sessionId, sanitizeInt(input.limit, 50));
-        return JSON.stringify({ sessionId: input.sessionId, messageCount: messages.length, messages }, null, 2);
+        const messages = await client.shortTerm.getConversation(
+          input.sessionId,
+          sanitizeInt(input.limit, 50),
+        );
+        return JSON.stringify(
+          { sessionId: input.sessionId, messageCount: messages.length, messages },
+          null,
+          2,
+        );
       },
     }),
 
@@ -105,7 +130,10 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const sessions = await client.shortTerm.listSessions(sanitizeInt(input.limit, 20), sanitizeInt(input.offset, 0));
+        const sessions = await client.shortTerm.listSessions(
+          sanitizeInt(input.limit, 20),
+          sanitizeInt(input.offset, 0),
+        );
         return JSON.stringify({ sessionCount: sessions.length, sessions }, null, 2);
       },
     }),
@@ -130,7 +158,10 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const entities = await client.longTerm.searchEntities("", { limit: sanitizeInt(input.limit, 500), threshold: 0 });
+        const entities = await client.longTerm.searchEntities("", {
+          limit: sanitizeInt(input.limit, 500),
+          threshold: 0,
+        });
         return JSON.stringify({ nodeCount: entities.length, nodes: entities }, null, 2);
       },
     }),
@@ -143,7 +174,8 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const upper = input.query.toUpperCase();
-        const writePattern = /\b(CREATE|MERGE|DELETE|DETACH\s+DELETE|SET|REMOVE|DROP|LOAD\s+CSV|FOREACH)\b/;
+        const writePattern =
+          /\b(CREATE|MERGE|DELETE|DETACH\s+DELETE|SET|REMOVE|DROP|LOAD\s+CSV|FOREACH)\b/;
         if (writePattern.test(upper)) {
           return JSON.stringify({ error: "Only read-only queries are allowed." });
         }
@@ -170,7 +202,9 @@ export function createMemoryTools() {
         const client = getClient();
         const sessionId = input.sessionId || "elysian-game";
         const msg = await client.shortTerm.addMessage(
-          sessionId, input.role, input.content,
+          sessionId,
+          input.role,
+          input.content,
           input.metadata as Record<string, unknown> | undefined,
         );
         await client.observer.onMessageStored(sessionId, input.content, msg.id, input.role);
@@ -201,7 +235,8 @@ export function createMemoryTools() {
         });
         return JSON.stringify(
           { stored: true, id: entity.id, name: entity.name, type: entity.type },
-          null, 2,
+          null,
+          2,
         );
       },
     }),
@@ -220,10 +255,7 @@ export function createMemoryTools() {
           context: input.context,
           confidence: sanitizeConfidence(input.confidence),
         });
-        return JSON.stringify(
-          { stored: true, id: pref.id, category: pref.category },
-          null, 2,
-        );
+        return JSON.stringify({ stored: true, id: pref.id, category: pref.category }, null, 2);
       },
     }),
 
@@ -240,15 +272,21 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const fact = await client.longTerm.addFact(input.subject, input.predicate, input.objectValue, {
-          confidence: sanitizeConfidence(input.confidence),
-          validFrom: input.validFrom ? new Date(input.validFrom) : undefined,
-          validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
-          metadata: input.metadata as Record<string, unknown> | undefined,
-        });
+        const fact = await client.longTerm.addFact(
+          input.subject,
+          input.predicate,
+          input.objectValue,
+          {
+            confidence: sanitizeConfidence(input.confidence),
+            validFrom: input.validFrom ? new Date(input.validFrom) : undefined,
+            validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+            metadata: input.metadata as Record<string, unknown> | undefined,
+          },
+        );
         return JSON.stringify(
           { stored: true, id: fact.id, subject: fact.subject, predicate: fact.predicate },
-          null, 2,
+          null,
+          2,
         );
       },
     }),
@@ -266,12 +304,21 @@ export function createMemoryTools() {
       execute: async (input) => {
         const client = getClient();
         const relResult = await client.longTerm.addRelationship(
-          input.sourceName, input.targetName, input.relationshipType,
+          input.sourceName,
+          input.targetName,
+          input.relationshipType,
           { description: input.description, confidence: sanitizeConfidence(input.confidence) },
         );
         return JSON.stringify(
-          { stored: true, created: relResult.created, source: input.sourceName, target: input.targetName, type: input.relationshipType },
-          null, 2,
+          {
+            stored: true,
+            created: relResult.created,
+            source: input.sourceName,
+            target: input.targetName,
+            type: input.relationshipType,
+          },
+          null,
+          2,
         );
       },
     }),
@@ -288,10 +335,7 @@ export function createMemoryTools() {
         const trace = await client.reasoning.startTrace(input.sessionId, input.task, {
           metadata: input.metadata as Record<string, unknown> | undefined,
         });
-        return JSON.stringify(
-          { started: true, traceId: trace.id, task: trace.task },
-          null, 2,
-        );
+        return JSON.stringify({ started: true, traceId: trace.id, task: trace.task }, null, 2);
       },
     }),
 
@@ -314,15 +358,11 @@ export function createMemoryTools() {
           observation: input.observation,
         });
         if (input.toolName) {
-          await client.reasoning.recordToolCall(
-            step.id, input.toolName, input.toolArgs || {},
-            { result: input.toolResult },
-          );
+          await client.reasoning.recordToolCall(step.id, input.toolName, input.toolArgs || {}, {
+            result: input.toolResult,
+          });
         }
-        return JSON.stringify(
-          { recorded: true, stepId: step.id, traceId: input.traceId },
-          null, 2,
-        );
+        return JSON.stringify({ recorded: true, stepId: step.id, traceId: input.traceId }, null, 2);
       },
     }),
 

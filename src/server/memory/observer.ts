@@ -1,4 +1,40 @@
 /**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Observational Memory - context compression and observation extraction.
  *
  * The MemoryObserver monitors accumulated context per session and extracts
@@ -136,8 +172,7 @@ export class MemoryObserver {
       messageCount: ctx.messageCount,
       approximateTokens: Math.floor(ctx.totalChars / CHARS_PER_TOKEN),
       thresholdTokens: this.thresholdTokens,
-      thresholdExceeded:
-        Math.floor(ctx.totalChars / CHARS_PER_TOKEN) > this.thresholdTokens,
+      thresholdExceeded: Math.floor(ctx.totalChars / CHARS_PER_TOKEN) > this.thresholdTokens,
       reflections: ctx.reflections,
       observations: ctx.observations.map((o) => ({
         type: o.type,
@@ -192,15 +227,8 @@ export class MemoryObserver {
           const word = words[i];
           if (word && word[0] === word[0].toUpperCase() && word.length > 2) {
             const parts = [word];
-            for (
-              let j = i + 1;
-              j < Math.min(i + 4, words.length);
-              j++
-            ) {
-              if (
-                words[j] &&
-                words[j][0] === words[j][0].toUpperCase()
-              ) {
+            for (let j = i + 1; j < Math.min(i + 4, words.length); j++) {
+              if (words[j] && words[j][0] === words[j][0].toUpperCase()) {
                 parts.push(words[j]);
               } else {
                 break;
@@ -224,14 +252,11 @@ export class MemoryObserver {
       }
       if (entities.size > 0) {
         const topEntities = Array.from(entities).sort().slice(0, 10);
-        reflectionParts.push(
-          `Entities discussed: ${topEntities.join(", ")}`,
-        );
+        reflectionParts.push(`Entities discussed: ${topEntities.join(", ")}`);
       }
       if (reflectionParts.length > 0) {
         ctx.reflections.push(
-          `Session summary (${ctx.messageCount} messages): ` +
-            reflectionParts.join(". "),
+          `Session summary (${ctx.messageCount} messages): ` + reflectionParts.join(". "),
         );
       }
 
@@ -241,10 +266,7 @@ export class MemoryObserver {
     }
   }
 
-  private extractInlineObservations(
-    content: string,
-    messageId?: string,
-  ): Observation[] {
+  private extractInlineObservations(content: string, messageId?: string): Observation[] {
     const observations: Observation[] = [];
     const now = new Date().toISOString();
 

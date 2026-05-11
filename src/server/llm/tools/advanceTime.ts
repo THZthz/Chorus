@@ -23,12 +23,15 @@ import type { EventEmitter } from "@/server/llm/events";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
 const inputSchema = z.object({
-  segments: z.number().int().min(0).max(11).optional()
+  segments: z
+    .number()
+    .int()
+    .min(0)
+    .max(11)
+    .optional()
     .describe("Number of 2-hour segments to advance (0-11)."),
-  days: z.number().int().min(0).optional()
-    .describe("Number of full days to advance (0+)."),
-  reason: z.string().optional()
-    .describe("Brief narrative reason for the time advance."),
+  days: z.number().int().min(0).optional().describe("Number of full days to advance (0+)."),
+  reason: z.string().optional().describe("Brief narrative reason for the time advance."),
 });
 
 export function createAdvanceTimeTool(events: EventEmitter) {

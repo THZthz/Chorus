@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { v4 as uuidv4 } from "uuid";
 import { Neo4jClient } from "./neo4j";
 import { Embedder, getEmbedder } from "./embedder";
@@ -64,10 +82,7 @@ export class ShortTermMemory {
     };
   }
 
-  async getConversation(
-    sessionId: string,
-    limit: number = 1000,
-  ): Promise<MemoryMessage[]> {
+  async getConversation(sessionId: string, limit: number = 1000): Promise<MemoryMessage[]> {
     const rows = await this.client.executeRead(
       `MATCH (c:Conversation {session_id: $sessionId})
        MATCH (c)-[:HAS_MESSAGE]->(m:Message)
@@ -89,10 +104,7 @@ export class ShortTermMemory {
     });
   }
 
-  async listSessions(
-    limit: number = 20,
-    offset: number = 0,
-  ): Promise<SessionSummary[]> {
+  async listSessions(limit: number = 20, offset: number = 0): Promise<SessionSummary[]> {
     const rows = await this.client.executeRead(
       `MATCH (c:Conversation)
        OPTIONAL MATCH (c)-[:FIRST_MESSAGE]->(first:Message)
@@ -118,12 +130,8 @@ export class ShortTermMemory {
         messageCount: r.messageCount as number,
         createdAt: toDate(c.created_at),
         updatedAt: c.updated_at ? toDate(c.updated_at) : undefined,
-        firstMessagePreview: first
-          ? (first.content as string).slice(0, 100)
-          : undefined,
-        lastMessagePreview: last
-          ? (last.content as string).slice(0, 100)
-          : undefined,
+        firstMessagePreview: first ? (first.content as string).slice(0, 100) : undefined,
+        lastMessagePreview: last ? (last.content as string).slice(0, 100) : undefined,
       };
     });
   }
@@ -150,9 +158,7 @@ export class ShortTermMemory {
     );
 
     return rows
-      .filter(
-        (r) => !sessionId || (r.session_id as string) === sessionId,
-      )
+      .filter((r) => !sessionId || (r.session_id as string) === sessionId)
       .map((r) => {
         const m = r.m as Record<string, unknown>;
         return {
@@ -160,9 +166,7 @@ export class ShortTermMemory {
           sessionId: (r.session_id as string) || "",
           role: m.role as "user" | "assistant" | "system",
           content: m.content as string,
-          metadata: m.metadata
-            ? JSON.parse(m.metadata as string)
-            : {},
+          metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
           similarity: r.score as number,
           createdAt: toDate(m.timestamp),
         };
@@ -190,10 +194,7 @@ export class ShortTermMemory {
     return convId;
   }
 
-  private async getLastMessageId(
-    convId: string,
-    excludeId: string,
-  ): Promise<string | null> {
+  private async getLastMessageId(convId: string, excludeId: string): Promise<string | null> {
     const rows = await this.client.executeRead(
       `MATCH (c:Conversation {id: $convId})-[:HAS_MESSAGE]->(m:Message)
        WHERE m.id <> $excludeId AND NOT (m)-[:NEXT_MESSAGE]->(:Message)

@@ -54,3 +54,4 @@ The TODO is more like prompts.
 - [x] Console should support printing Markdown.
 - [ ] Resume game play.
 - [ ] Need to remove src/server/mcp folder.
+- [ ] Console client's options select UI is broken, we can press arrow down infinitely and the options just cycle around.

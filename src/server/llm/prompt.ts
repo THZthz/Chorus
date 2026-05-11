@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { describeTime, getGameTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";
 
@@ -101,8 +119,10 @@ Time flows only via advanceTime(). Adjust sensory descriptions to match time of 
 export async function buildSystemPrompt(): Promise<string> {
   const seedStory = getActiveSeedStory();
   const gameTime = await getGameTime();
-  return DEFAULT_SYSTEM_PROMPT_TEMPLATE
-    .replace("{{setting_description}}", seedStory.settingDescription)
+  return DEFAULT_SYSTEM_PROMPT_TEMPLATE.replace(
+    "{{setting_description}}",
+    seedStory.settingDescription,
+  )
     .replace("{{tone_description}}", seedStory.toneDescription)
     .replace("{{game_time}}", describeTime(gameTime));
 }

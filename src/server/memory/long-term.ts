@@ -1,12 +1,25 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { v4 as uuidv4 } from "uuid";
 import { Neo4jClient } from "./neo4j";
 import { Embedder, getEmbedder } from "./embedder";
-import type {
-  EntityType,
-  MemoryEntity,
-  MemoryPreference,
-  MemoryFact,
-} from "./types";
+import type { EntityType, MemoryEntity, MemoryPreference, MemoryFact } from "./types";
 
 // ── Helpers ──
 
@@ -26,9 +39,7 @@ function pascalCase(str: string): string {
  * Parse an entity type string that may include a subtype.
  * Matches Python's parse_entity_type: "TYPE:SUBTYPE" -> ("TYPE", "SUBTYPE")
  */
-function parseEntityType(
-  typeStr: string,
-): { type: string; subtype: string | null } {
+function parseEntityType(typeStr: string): { type: string; subtype: string | null } {
   if (typeStr.includes(":")) {
     const parts = typeStr.toUpperCase().split(":", 2);
     return { type: parts[0], subtype: parts[1] || null };
@@ -62,13 +73,7 @@ export class LongTermMemory {
       generateEmbedding?: boolean;
     },
   ): Promise<MemoryEntity> {
-    const {
-      subtype,
-      description,
-      aliases,
-      metadata,
-      generateEmbedding = true,
-    } = options || {};
+    const { subtype, description, aliases, metadata, generateEmbedding = true } = options || {};
 
     // Support "TYPE:SUBTYPE" in entityType (Python compat)
     const parsed = parseEntityType(String(entityType));
@@ -113,9 +118,7 @@ export class LongTermMemory {
         subtype: finalSubtype || null,
         description: description || null,
         embedding: embedding || null,
-        metadata: Object.keys(storageMetadata).length > 0
-          ? JSON.stringify(storageMetadata)
-          : null,
+        metadata: Object.keys(storageMetadata).length > 0 ? JSON.stringify(storageMetadata) : null,
       },
     );
 
@@ -141,10 +144,7 @@ export class LongTermMemory {
     };
   }
 
-  async getEntity(
-    name: string,
-    type?: string,
-  ): Promise<MemoryEntity | null> {
+  async getEntity(name: string, type?: string): Promise<MemoryEntity | null> {
     let query = "MATCH (e:Entity {name: $name})";
     const params: Record<string, unknown> = { name };
 
@@ -179,9 +179,7 @@ export class LongTermMemory {
       { embedding: queryEmbedding, limit: limit * 2, threshold },
     );
 
-    const filterTypes = entityTypes
-      ? new Set(entityTypes.map((t) => t.toUpperCase()))
-      : null;
+    const filterTypes = entityTypes ? new Set(entityTypes.map((t) => t.toUpperCase())) : null;
 
     const results: Array<MemoryEntity & { similarity: number }> = [];
     for (const row of rows) {
@@ -207,12 +205,7 @@ export class LongTermMemory {
       generateEmbedding?: boolean;
     },
   ): Promise<MemoryPreference> {
-    const {
-      context,
-      confidence = 1.0,
-      metadata,
-      generateEmbedding = true,
-    } = options || {};
+    const { context, confidence = 1.0, metadata, generateEmbedding = true } = options || {};
 
     const prefId = uuidv4();
 
@@ -258,10 +251,7 @@ export class LongTermMemory {
     };
   }
 
-  async getPreferences(
-    category?: string,
-    limit: number = 100,
-  ): Promise<MemoryPreference[]> {
+  async getPreferences(category?: string, limit: number = 100): Promise<MemoryPreference[]> {
     const query = category
       ? `MATCH (p:Preference {category: $category}) RETURN p ORDER BY p.created_at DESC LIMIT $limit`
       : `MATCH (p:Preference) RETURN p ORDER BY p.created_at DESC LIMIT $limit`;
@@ -269,9 +259,7 @@ export class LongTermMemory {
       category: category || null,
       limit,
     });
-    return rows.map((r) =>
-      this.parsePreference(r.p as Record<string, unknown>),
-    );
+    return rows.map((r) => this.parsePreference(r.p as Record<string, unknown>));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -302,9 +290,7 @@ export class LongTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      embedding = await this.embedder.embed(
-        `${subject} ${predicate} ${objectValue}`,
-      );
+      embedding = await this.embedder.embed(`${subject} ${predicate} ${objectValue}`);
     }
 
     await this.client.executeWrite(
@@ -346,10 +332,7 @@ export class LongTermMemory {
     };
   }
 
-  async getFacts(
-    subject?: string,
-    limit: number = 100,
-  ): Promise<MemoryFact[]> {
+  async getFacts(subject?: string, limit: number = 100): Promise<MemoryFact[]> {
     const query = subject
       ? `MATCH (f:Fact {subject: $subject}) RETURN f ORDER BY f.created_at DESC LIMIT $limit`
       : `MATCH (f:Fact) RETURN f ORDER BY f.created_at DESC LIMIT $limit`;
@@ -357,9 +340,7 @@ export class LongTermMemory {
       subject: subject || null,
       limit,
     });
-    return rows.map((r) =>
-      this.parseFact(r.f as Record<string, unknown>),
-    );
+    return rows.map((r) => this.parseFact(r.f as Record<string, unknown>));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -393,7 +374,7 @@ export class LongTermMemory {
         conf: confidence,
       },
     );
-    const created = rows.length > 0 && (rows[0]?.isNew as boolean || false);
+    const created = rows.length > 0 && ((rows[0]?.isNew as boolean) || false);
     return { created };
   }
 
@@ -402,9 +383,10 @@ export class LongTermMemory {
   // ═══════════════════════════════════════════════════════════════
 
   private parseEntity(data: Record<string, unknown>): MemoryEntity {
-    const meta = typeof data.metadata === "string"
-      ? (JSON.parse(data.metadata) as Record<string, unknown>)
-      : {};
+    const meta =
+      typeof data.metadata === "string"
+        ? (JSON.parse(data.metadata) as Record<string, unknown>)
+        : {};
     const aliases = (meta.aliases as string[]) || [];
     delete meta.aliases;
     return {
@@ -416,9 +398,7 @@ export class LongTermMemory {
       aliases,
       metadata: meta,
       embedding: data.embedding as number[] | undefined,
-      createdAt: new Date(
-        (data.created_at as string | number) || Date.now(),
-      ),
+      createdAt: new Date((data.created_at as string | number) || Date.now()),
     };
   }
 
@@ -433,9 +413,7 @@ export class LongTermMemory {
         typeof data.metadata === "string"
           ? (JSON.parse(data.metadata) as Record<string, unknown>)
           : {},
-      createdAt: new Date(
-        (data.created_at as string | number) || Date.now(),
-      ),
+      createdAt: new Date((data.created_at as string | number) || Date.now()),
     };
   }
 
@@ -446,19 +424,13 @@ export class LongTermMemory {
       predicate: data.predicate as string,
       object: data.object as string,
       confidence: (data.confidence as number) || 1.0,
-      validFrom: data.valid_from
-        ? new Date(data.valid_from as string)
-        : undefined,
-      validUntil: data.valid_until
-        ? new Date(data.valid_until as string)
-        : undefined,
+      validFrom: data.valid_from ? new Date(data.valid_from as string) : undefined,
+      validUntil: data.valid_until ? new Date(data.valid_until as string) : undefined,
       metadata:
         typeof data.metadata === "string"
           ? (JSON.parse(data.metadata) as Record<string, unknown>)
           : {},
-      createdAt: new Date(
-        (data.created_at as string | number) || Date.now(),
-      ),
+      createdAt: new Date((data.created_at as string | number) || Date.now()),
     };
   }
 }

@@ -323,7 +323,8 @@ async function presentChoice(
   return await select<number | "custom" | "reset" | "help" | "quit">({
     message: "Choose your action:",
     choices,
-    pageSize: Math.min(options.length + 4, 12),
+    pageSize: Math.min(options.length + 5, 12),
+    loop: false,
   });
 }
 
@@ -353,6 +354,7 @@ async function main() {
           { name: "/help   Show available commands", value: "help" },
           { name: "Quit", value: "quit" },
         ],
+        loop: false,
       });
 
       if (answer === "begin") {
@@ -389,6 +391,7 @@ async function main() {
             { name: "Yes, reset", value: "yes" },
             { name: "Cancel", value: "cancel" },
           ],
+          loop: false,
         });
         if (answer === "yes") {
           state = "IDLE";

@@ -53,5 +53,5 @@ The TODO is more like prompts.
 - [x] Use @ai-sdk/devtools to inspect LLM calls.
 - [x] Console should support printing Markdown.
 - [ ] Resume game play.
-- [ ] Need to remove src/server/mcp folder.
-- [ ] Console client's options select UI is broken, we can press arrow down infinitely and the options just cycle around.
+- [x] Need to remove src/server/mcp folder.
+- [x] Console client's options select UI is broken, we can press arrow down infinitely and the options just cycle around.

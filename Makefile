@@ -90,17 +90,17 @@ neo4j-clean:
 # =============================================================================
 
 server:
-	npx tsx src/server/main.ts
+	node --import tsx/esm src/server/main.ts
 
 console:
-	npx tsx src/console/main.ts
+	node --import tsx/esm src/console/main.ts
 
 # =============================================================================
 # Code Quality
 # =============================================================================
 
 lint:
-	npx tsc --noEmit
+	node node_modules/typescript/bin/tsc --noEmit
 
 typecheck: lint
 

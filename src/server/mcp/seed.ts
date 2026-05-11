@@ -1,6 +1,6 @@
 import { MemoryClient } from "@/server/memory/client";
 import { getActiveSeedStory } from "@/server/seed-stories/index";
-import db from "@/server/db";
+import { setGameTime } from "@/server/models/time";
 
 export async function seedDatabase(): Promise<void> {
   const story = getActiveSeedStory();
@@ -22,13 +22,8 @@ export async function seedDatabase(): Promise<void> {
     });
   }
 
-  // Set initial time in SQLite
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    "game_time_day", String(story.initialDay),
-  );
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    "game_time_segment", String(story.initialSegment),
-  );
+  // Set initial time in Neo4j
+  await setGameTime({ day: story.initialDay, segment: story.initialSegment });
 
   console.log(`[seed] done — ${story.entities.length} entities, ${story.relationships.length} relationships`);
 }

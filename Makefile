@@ -50,7 +50,7 @@ install-am:
 # Neo4j Docker Management
 # =============================================================================
 
-NEO4J_COMPOSE := docker compose -f agent-memory/docker-compose.test.yml
+NEO4J_COMPOSE := docker compose -f docker-compose.test.yml
 
 neo4j-start:
 	$(NEO4J_COMPOSE) up -d

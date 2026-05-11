@@ -35,10 +35,10 @@ src/
 │   │   ├── prompt.ts          # System prompt template + buildSystemPrompt()
 │   │   ├── events.ts          # TurnEventEmitter + NoopEventEmitter: typed SSE dispatch
 │   │   ├── debug.ts           # LlmDebugIntegration: request/response/step logging
-│   │   ├── generateDialogueStep.ts  # Elysian tool: produce messages + options with validation
-│   │   ├── advanceTime.ts     # Elysian tool: advance in-game clock by segments/days
 │   │   └── tools/
-│   │       └── shared.ts      # Helpers: checkText (character filter)
+│   │       ├── advanceTime.ts           # Elysian tool: advance in-game clock by segments/days
+│   │       ├── generateDialogueStep.ts  # Elysian tool: produce messages + options with validation
+│   │       └── shared.ts                # Helpers: checkText (character filter)
 │   ├── mcp/
 │   │   ├── client.ts          # MCP client bridge to agent-memory (Neo4j)
 │   │   ├── seed.ts            # Seed Neo4j with initial world data from seed story

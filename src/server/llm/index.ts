@@ -25,8 +25,8 @@ import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
 import { getMcpTools } from "@/server/mcp/client";
-import { createGenerateDialogueStepTool } from "@/server/llm/generateDialogueStep";
-import { createAdvanceTimeTool } from "@/server/llm/advanceTime";
+import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
+import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 
 export {
   DEFAULT_SYSTEM_PROMPT_TEMPLATE,

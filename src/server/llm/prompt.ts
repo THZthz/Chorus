@@ -1,6 +1,6 @@
 import db from "@/server/db";
 import { describeTime, getGameTime } from "@/server/models/time";
-import { getActiveSeedStory } from "@/server/seed-stories/index";
+import { getActiveSeedStory } from "@/server/seed-stories";
 
 const MAX_GM_STEPS = 10;
 const PROMPT_TEMPLATE_KEY = "gm_system_prompt";

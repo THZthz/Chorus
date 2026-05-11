@@ -50,4 +50,4 @@ The TODO is more like prompts.
 - [x] Explicitly add a `Character` entity "player". Remove "STATS - 12 VALUES" from all other characters except "player" they do not need it. All other places which may implicitly include "player" should explicitly specify it (like current scene management).
 - [x] What is the usage of generateTurnBatch? Can we remove it?
 - [ ] Some tools of GM directly return JSON, should return detailed message instead, i.e., output a formatted markdown message.
-- [ ] 
+- [ ] Use @ai-sdk/devtools to inspect LLM calls.

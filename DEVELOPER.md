@@ -20,58 +20,64 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 ## 2. Project Structure
 
 ```
-src/
-├── console/
-│   ├── main.ts               # Standalone Node.js REPL client for dialogue interaction
-│   └── SseClient.ts           # Lightweight SSE consumer for the console (core dialogue events)
-├── server/
-│   ├── api.ts                 # REST API + SSE streaming endpoints
-│   ├── db.ts                  # SQLite connection + schema (3 tables + migration)
-│   ├── validation.ts          # Zod schemas for API endpoints
-│   ├── main.ts                # Express entry (port 3000), MemoryClient init, seed on startup
-│   ├── llm/
-│   │   ├── index.ts           # generateTurn(): full-stream SSE turn loop
-│   │   ├── model.ts           # getModel(): lazy-init provider model (Gemini → DeepSeek fallback)
-│   │   ├── prompt.ts          # System prompt template + buildSystemPrompt()
-│   │   ├── events.ts          # TurnEventEmitter + NoopEventEmitter: typed SSE dispatch
-│   │   ├── debug.ts           # LlmDebugIntegration: request/response/step logging
-│   │   └── tools/
-│   │       ├── advanceTime.ts           # Elysian tool: advance in-game clock by segments/days
-│   │       ├── generateDialogueStep.ts  # Elysian tool: produce messages + options with validation
-│   │       └── shared.ts                # Helpers: checkText (character filter)
-│   ├── memory/
-│   │   ├── client.ts          # MemoryClient singleton — wires all memory layers
-│   │   ├── types.ts           # Shared types (Entity, Message, Fact, etc.)
-│   │   ├── neo4j.ts           # Neo4jClient — thin wrapper over neo4j-driver
-│   │   ├── schema.ts          # Index/constraint/vector index creation
-│   │   ├── embedder.ts        # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
-│   │   ├── short-term.ts      # Conversations & messages with sequential linking
-│   │   ├── long-term.ts       # Entities (POLE+O), preferences, facts, relationships
-│   │   ├── reasoning.ts       # Reasoning traces, steps, tool calls
-│   │   ├── observer.ts        # Observational memory — token-threshold compression
-│   │   ├── search.ts          # Hybrid vector + graph search across memory types
-│   │   ├── context.ts         # Assembled context for GM consumption
-│   │   └── tools.ts           # 16 AI SDK tool definitions
-│   ├── mcp/
-│   │   ├── seed.ts            # Seed Neo4j via MemoryClient
-│   │   └── reset.ts           # Clear Neo4j via MemoryClient
-│   ├── models/
-│   │   ├── debug.ts           # LLM interaction log query and management
-│   │   ├── ids.ts             # Base62-encoded 4-char unique ID generation
-│   │   ├── shared.ts          # safeJsonParse utility
-│   │   └── time.ts            # Game time CRUD (read/write/advance from system_state)
-│   └── seed-stories/
-│       ├── index.ts           # Story registry + ACTIVE_SEED_STORY constant
-│       ├── types.ts           # SeedStory, SeedPlot interfaces
-│       └── magic-awakening.ts # Default seed story
-├── shared/
-│   ├── colors.ts              # VOICE_COLORS: 12 inner-voice → hex color map
-│   ├── constants.ts           # SKILL_NAMES, PLAYER_ID, SEGMENT_LABELS, SEGMENT_HOURS, TOOL_NAMES
-│   ├── events.ts              # SSE event type definitions (typed event map)
-│   └── sse.ts                 # Shared SSE stream parser (async generator)
-└── types/
-    ├── dialogue.ts             # Message, DialogueOption, NotificationType interfaces
-    └── entities.ts             # CharacterStats, Character, EntityType, GameEntitySubtype
+.
+├── Makefile                   # Unified dev commands (Neo4j, server, console, lint)
+├── docker-compose.test.yml    # Neo4j test container
+├── package.json               # TypeScript project config
+├── pyproject.toml             # Python project config (agent-memory, dev dependency)
+├── tsconfig.json
+└── src/
+    ├── console/
+    │   ├── main.ts            # Standalone Node.js REPL client for dialogue interaction
+    │   └── SseClient.ts       # Lightweight SSE consumer for the console
+    ├── server/
+    │   ├── main.ts            # Express entry (port 3000), MemoryClient init, seed on startup
+    │   ├── api.ts             # REST API + SSE streaming endpoints
+    │   ├── db.ts              # SQLite connection + schema
+    │   ├── validation.ts      # Zod schemas for API endpoints
+    │   ├── llm/
+    │   │   ├── index.ts       # generateTurn(): full-stream SSE turn loop
+    │   │   ├── model.ts       # getModel(): lazy-init provider model (Gemini → DeepSeek)
+    │   │   ├── prompt.ts      # System prompt template + buildSystemPrompt()
+    │   │   ├── events.ts      # TurnEventEmitter: typed SSE dispatch
+    │   │   ├── debug.ts       # LlmDebugIntegration: request/response/step logging
+    │   │   └── tools/
+    │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
+    │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
+    │   │       └── shared.ts               # Helpers: checkText (character filter)
+    │   ├── memory/
+    │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
+    │   │   ├── types.ts       # Shared types (Entity, Message, Fact, Preference, etc.)
+    │   │   ├── neo4j.ts       # Neo4jClient — thin wrapper over neo4j-driver
+    │   │   ├── schema.ts      # Index/constraint/vector index creation
+    │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
+    │   │   ├── short-term.ts  # Conversations & messages with sequential linking
+    │   │   ├── long-term.ts   # Entities (POLE+O), preferences, facts, relationships
+    │   │   ├── reasoning.ts   # Reasoning traces, steps, tool calls
+    │   │   ├── observer.ts    # Observational memory — token-threshold compression
+    │   │   ├── search.ts      # Hybrid vector + graph search across memory types
+    │   │   ├── context.ts     # Assembled context for GM consumption
+    │   │   └── tools.ts       # 16 AI SDK tool definitions
+    │   ├── mcp/
+    │   │   ├── seed.ts        # Seed Neo4j via MemoryClient
+    │   │   └── reset.ts       # Clear Neo4j via MemoryClient
+    │   ├── models/
+    │   │   ├── time.ts        # Game time CRUD (read/write/advance from system_state)
+    │   │   ├── ids.ts         # Base62-encoded 4-char unique ID generation
+    │   │   ├── debug.ts       # LLM interaction log query and management
+    │   │   └── shared.ts      # safeJsonParse utility
+    │   └── seed-stories/
+    │       ├── index.ts       # Story registry + ACTIVE_SEED_STORY constant
+    │       ├── types.ts       # SeedStory, SeedPlot interfaces
+    │       └── magic-awakening.ts  # Default seed story
+    ├── shared/
+    │   ├── events.ts          # SSE event type definitions (typed event map)
+    │   ├── sse.ts             # Shared SSE stream parser (async generator)
+    │   ├── colors.ts          # VOICE_COLORS: 12 inner-voice → hex color map
+    │   └── constants.ts       # SKILL_NAMES, TOOL_NAMES, SEGMENT_LABELS, etc.
+    └── types/
+        ├── dialogue.ts        # Message, DialogueOption, NotificationType
+        └── entities.ts        # CharacterStats, Character, GameTime
 ```
 
 ---
@@ -144,31 +150,31 @@ Two layers of tools:
 
 **Elysian tools** (defined in `src/server/llm/`):
 
-| Tool                   | Purpose                                           | SSE Event          |
-|------------------------|---------------------------------------------------|--------------------|
-| `generateDialogueStep` | Produce narrative messages + player options       | `streaming_messages`, `options`, `parsed` |
-| `advanceTime`          | Advance in-game clock by N segments               | `time_update`      |
+| Tool                   | Purpose                                     | SSE Event                                 |
+|------------------------|---------------------------------------------|-------------------------------------------|
+| `generateDialogueStep` | Produce narrative messages + player options | `streaming_messages`, `options`, `parsed` |
+| `advanceTime`          | Advance in-game clock by N segments         | `time_update`                             |
 
 **Neo4j-backed tools** (16 tools defined in `src/server/memory/tools.ts`):
 
-| Tool                        | Purpose                                          |
-|-----------------------------|--------------------------------------------------|
-| `searchMemory`             | Hybrid vector + graph search across all memory   |
-| `getContext`               | Auto-assembled context for the current session   |
-| `storeMessage`             | Store a message in conversation history          |
-| `saveEntity`               | Create/update an entity (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) |
-| `setPreference`            | Record a user preference                         |
-| `recordFact`               | Store a subject-predicate-object fact triple    |
-| `getEntity`                | Get entity details with graph traversal          |
-| `getConversation`          | Get full conversation history for a session      |
-| `listSessions`             | List available conversation sessions             |
-| `linkEntities`             | Create a typed relationship between entities     |
-| `startTrace`               | Begin recording a reasoning trace                |
-| `recordStep`               | Record a reasoning step within a trace           |
-| `completeTrace`            | Complete a reasoning trace with outcome          |
-| `getObservations`          | Get session observations and reflections         |
-| `exportGraph`              | Export subgraph as JSON for visualization        |
-| `queryGraph`               | Execute read-only Cypher queries                 |
+| Tool              | Purpose                                                             |
+|-------------------|---------------------------------------------------------------------|
+| `searchMemory`    | Hybrid vector + graph search across all memory                      |
+| `getContext`      | Auto-assembled context for the current session                      |
+| `storeMessage`    | Store a message in conversation history                             |
+| `saveEntity`      | Create/update an entity (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) |
+| `setPreference`   | Record a user preference                                            |
+| `recordFact`      | Store a subject-predicate-object fact triple                        |
+| `getEntity`       | Get entity details with graph traversal                             |
+| `getConversation` | Get full conversation history for a session                         |
+| `listSessions`    | List available conversation sessions                                |
+| `linkEntities`    | Create a typed relationship between entities                        |
+| `startTrace`      | Begin recording a reasoning trace                                   |
+| `recordStep`      | Record a reasoning step within a trace                              |
+| `completeTrace`   | Complete a reasoning trace with outcome                             |
+| `getObservations` | Get session observations and reflections                            |
+| `exportGraph`     | Export subgraph as JSON for visualization                           |
+| `queryGraph`      | Execute read-only Cypher queries                                    |
 
 All 16 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and registered in `generateTurn()`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
 
@@ -229,10 +235,10 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 
 3 tables in SQLite (`game.db`, WAL mode):
 
-| Table          | Purpose                                                      |
-|----------------|--------------------------------------------------------------|
-| `system_state` | Key-value storage (game time, system prompt template)        |
-| `llm_logs`     | LLM request/response logging (with parent_id + label)        |
+| Table          | Purpose                                                            |
+|----------------|--------------------------------------------------------------------|
+| `system_state` | Key-value storage (game time, system prompt template)              |
+| `llm_logs`     | LLM request/response logging (with parent_id + label)              |
 | `llm_steps`    | Per-step LLM metrics (tool calls, token usage, timings, reasoning) |
 
 World state (entities, observations, relationships, conversation history) is stored in Neo4j via the Neo4j driver, not in SQLite.

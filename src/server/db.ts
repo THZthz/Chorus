@@ -19,7 +19,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 
-const dbPath = path.join(process.cwd(), "game.db");
+const dbPath = path.join(process.cwd(), process.env.SQLITE_PATH ?? "data/sqlite/game.db");
 const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");

@@ -38,7 +38,7 @@ let isRetrying = false;
 let sseClient: ConsoleSseClient | null = null;
 let messageIdCounter = 0;
 
-const BASE_URL = process.env.ELYSSIAN_URL ?? "http://localhost:3000";
+const BASE_URL = process.env.ELYSIAN_URL ?? "http://localhost:3000";
 
 // ── Color Helpers ──
 

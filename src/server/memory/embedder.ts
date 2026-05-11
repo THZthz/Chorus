@@ -5,6 +5,15 @@ export interface Embedder {
 }
 
 // Default model: all-MiniLM-L6-v2, 384 dimensions, ~80MB
+// Set EMBEDDING_LOCAL_MODEL_PATH to a directory containing models, e.g.:
+//   EMBEDDING_LOCAL_MODEL_PATH=data/huggingface
+// Expected structure: {EMBEDDING_LOCAL_MODEL_PATH}/Xenova/all-MiniLM-L6-v2/
+//   ├── config.json
+//   ├── tokenizer.json
+//   ├── tokenizer_config.json
+//   └── onnx/
+//       └── model.onnx
+// Download from: https://huggingface.co/Xenova/all-MiniLM-L6-v2
 const DEFAULT_LOCAL_MODEL = "Xenova/all-MiniLM-L6-v2";
 const LOCAL_DIMENSIONS = 384;
 
@@ -12,7 +21,12 @@ let localPipeline: unknown = null;
 
 async function getLocalPipeline() {
   if (!localPipeline) {
-    const { pipeline } = await import("@xenova/transformers");
+    const { pipeline, env } = await import("@xenova/transformers");
+    const modelPath = process.env.EMBEDDING_LOCAL_MODEL_PATH;
+    if (modelPath) {
+      env.localModelPath = modelPath.replace(/\\/g, "/");
+      env.allowRemoteModels = false;
+    }
     localPipeline = await pipeline("feature-extraction", DEFAULT_LOCAL_MODEL);
   }
   return localPipeline as {

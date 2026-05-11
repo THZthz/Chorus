@@ -9,7 +9,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 **Elysian Dialogue** is a cinematic RPG-style dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
 - **Stack:** TypeScript, Node.js
-- **Backend:** Express + SQLite (`better-sqlite3`) + Neo4j (via local `src/server/memory/` module)
+- **Backend:** Express + Neo4j (via local `src/server/memory/` module)
 - **AI:** Single-LLM Game Master (Gemini/DeepSeek via Vercel AI SDK v6)
 - **SSE:** Server-Sent Events for real-time streaming of LLM output
 - **Console client:** Standalone Node.js REPL with chalk rendering
@@ -24,7 +24,6 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 ├── Makefile                   # Unified dev commands (Neo4j, server, console, lint)
 ├── docker-compose.test.yml    # Neo4j test container
 ├── package.json               # TypeScript project config
-├── pyproject.toml             # Python project config (agent-memory, dev dependency)
 ├── tsconfig.json
 └── src/
     ├── console/
@@ -33,14 +32,11 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     ├── server/
     │   ├── main.ts            # Express entry (port 3000), MemoryClient init, seed on startup
     │   ├── api.ts             # REST API + SSE streaming endpoints
-    │   ├── db.ts              # SQLite connection + schema
-    │   ├── validation.ts      # Zod schemas for API endpoints
     │   ├── llm/
     │   │   ├── index.ts       # generateTurn(): full-stream SSE turn loop
     │   │   ├── model.ts       # getModel(): lazy-init provider model (Gemini → DeepSeek)
     │   │   ├── prompt.ts      # System prompt template + buildSystemPrompt()
     │   │   ├── events.ts      # TurnEventEmitter: typed SSE dispatch
-    │   │   ├── debug.ts       # LlmDebugIntegration: request/response/step logging
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
@@ -62,9 +58,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── seed.ts        # Seed Neo4j via MemoryClient
     │   │   └── reset.ts       # Clear Neo4j via MemoryClient
     │   ├── models/
-    │   │   ├── time.ts        # Game time CRUD (read/write/advance from system_state)
-    │   │   ├── ids.ts         # Base62-encoded 4-char unique ID generation
-    │   │   ├── debug.ts       # LLM interaction log query and management
+    │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
     │   │   └── shared.ts      # safeJsonParse utility
     │   └── seed-stories/
     │       ├── index.ts       # Story registry + ACTIVE_SEED_STORY constant
@@ -84,7 +78,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 
 ## 3. Architecture: Memory-Backed Tool Execution
 
-The LLM is a pure tool-calling Game Master. World state lives in Neo4j via the local memory module (`src/server/memory/`), while SQLite holds only logs and time state. The backend streams tool execution results to the console as typed SSE events.
+The LLM is a pure tool-calling Game Master. World state and game time live in Neo4j via the local memory module (`src/server/memory/`). The backend streams tool execution results to the console as typed SSE events.
 
 ### 3.1 Turn Lifecycle
 
@@ -180,7 +174,7 @@ All 16 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and reg
 
 ### 3.4 Seed System
 
-On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses `MemoryClient.longTerm` to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in SQLite.
+On startup, `main.ts` seeds Neo4j with initial world data from the active seed story. The `seedDatabase()` function in `src/server/mcp/seed.ts` uses `MemoryClient.longTerm` to create entity nodes with proper POLE+O labels (`:Entity:Person:Character`, `:Entity:Location`, `:Entity:Object`, `:Entity:Event`), typed relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `CHILD_PLOT`), and initial game time in Neo4j.
 
 The `/api/reset` endpoint clears Neo4j (via `client.neo4j.executeWrite("MATCH (n) DETACH DELETE n")` in `src/server/mcp/reset.ts`) then re-seeds.
 
@@ -188,7 +182,7 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 
 ### 3.5 Key Design Decisions
 
-1. **World state in Neo4j** — entities, observations, and relationships stored in Neo4j via local memory module; SQLite holds only logs and time
+1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
 2. **Tools statically defined** — all 18 tools (2 Elysian + 16 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
@@ -209,39 +203,18 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 - `GET /api/history` — Returns empty array (placeholder; GM uses `getConversation`)
 - `GET /api/session/current` — Returns null (no dialogue tree persistence)
 
-### 4.3 ID Generation
+### 4.3 Reset
 
-- `GET /api/ids/batch?count=N` — Generate a batch of unique base62-encoded IDs
-
-### 4.4 Debug
-
-- `GET /api/debug/logs` — LLM interaction logs
-- `POST /api/debug/logs/clear` — Clear all LLM logs
-
-### 4.5 System Prompt
-
-- `GET /api/debug/system-prompt` — Get current system prompt template
-- `PUT /api/debug/system-prompt` — Update system prompt template
-- `GET /api/debug/system-prompt/default` — Get default system prompt template
-- `POST /api/debug/system-prompt/reset` — Reset system prompt to default
-
-### 4.6 Reset
-
-- `POST /api/reset` — Clear SQLite logs, clear Neo4j, re-seed
+- `POST /api/reset` — Clear Neo4j and re-seed
 
 ---
 
-## 5. Database Schema
+## 5. Game Time
 
-3 tables in SQLite (`game.db`, WAL mode):
+Game time is stored as a singleton `:GameTime {id: "current"}` node in Neo4j with `day` and `segment` properties.
+Read/written via `src/server/models/time.ts` functions.
 
-| Table          | Purpose                                                            |
-|----------------|--------------------------------------------------------------------|
-| `system_state` | Key-value storage (game time, system prompt template)              |
-| `llm_logs`     | LLM request/response logging (with parent_id + label)              |
-| `llm_steps`    | Per-step LLM metrics (tool calls, token usage, timings, reasoning) |
-
-World state (entities, observations, relationships, conversation history) is stored in Neo4j via the Neo4j driver, not in SQLite.
+World state (entities, observations, relationships, conversation history) is stored in Neo4j via the Neo4j driver.
 
 ---
 
@@ -253,7 +226,7 @@ Fantasy-steampunk inner monologue — each skill is a distinct voice in the play
 
 These map to character stats in `src/types/entities.ts` (`CharacterStats` interface). The system prompt in `src/server/llm/prompt.ts` instructs the LLM about voice personalities and includes the active plot tree.
 
-The system prompt is runtime-configurable via the system prompt API endpoints. The template is stored in the `system_state` table (key `gm_system_prompt`) and supports `{{setting_description}}`, `{{tone_description}}`, and `{{game_time}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. World state and plots are not dumped into the prompt — the GM fetches them on demand via `getContext`. If no custom template is stored, the `DEFAULT_SYSTEM_PROMPT_TEMPLATE` constant is used.
+The system prompt uses `DEFAULT_SYSTEM_PROMPT_TEMPLATE` from `src/server/llm/prompt.ts` and supports `{{setting_description}}`, `{{tone_description}}`, and `{{game_time}}` variables that are replaced with live data by `buildSystemPrompt()`. Setting and tone come from the active seed story. World state and plots are not dumped into the prompt — the GM fetches them on demand via `getContext`.
 
 ### 6.2 Skill Checks
 
@@ -281,13 +254,13 @@ The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`
 
 Each in-game day is divided into 12 segments of 2 hours each (segment 0 = midnight–2am, segment 11 = 10pm–midnight). Time only advances when the GM calls the `advanceTime` tool — the player cannot directly control time.
 
-**Storage**: `game_time_day` and `game_time_segment` keys in `system_state` table. Defaults to day 1, segment 2 (dawn).
+**Storage**: Singleton `:GameTime {id: "current"}` node in Neo4j with `day` and `segment` properties. Defaults to day 1, segment 2 (dawn).
 
 **`GameTime`** (in `src/types/entities.ts`): `{ day: number, segment: number }`
 
 **Model functions** (in `src/server/models/time.ts`):
 
-- `getGameTime()` / `setGameTime(time)` — read/write time from system_state
+- `getGameTime()` / `setGameTime(time)` — read/write time from Neo4j :GameTime node
 - `advanceGameTime(segments)` — adds segments (wraps days at 12), returns old and new times
 - `describeTime(time)` — human-readable string: "Day 3, Dawn (~4am-6am)"
 - `SEGMENT_LABELS` — constant map: `{ 0: "Midnight", 1: "Late Night", 2: "Dawn", ... }`

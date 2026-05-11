@@ -38,7 +38,7 @@ export function createAdvanceTimeTool(events: EventEmitter) {
     inputSchema,
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
       const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
-      const { oldTime, newTime } = advanceGameTime(totalSegments);
+      const { oldTime, newTime } = await advanceGameTime(totalSegments);
       events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
       const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
       if (totalSegments === 0) {

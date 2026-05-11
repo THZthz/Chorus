@@ -20,6 +20,7 @@ import { select, input, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import logUpdate from "log-update";
 import wrapAnsi from "wrap-ansi";
+import { renderMarkdown } from "@/console/markdown";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/server/llm/events";
 import { ConsoleSseClient, type SseCallbacks } from "@/console/SseClient";
@@ -107,7 +108,8 @@ function formatMessage(msg: Message | StreamingMessage, indent = 0, showCursor =
   const termWidth = process.stdout.columns ?? 80;
   const textWidth = Math.max(40, termWidth - indent - 2);
 
-  const wrapped = wrapAnsi(msg.text, textWidth, { hard: true });
+  const rendered = renderMarkdown(msg.text);
+  const wrapped = wrapAnsi(rendered, textWidth, { hard: true });
   const wrappedLines = wrapped.split("\n");
   for (let i = 0; i < wrappedLines.length; i++) {
     const line = wrappedLines[i];

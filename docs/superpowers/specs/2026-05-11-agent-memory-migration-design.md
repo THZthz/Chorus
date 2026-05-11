@@ -158,6 +158,8 @@ Entity extraction pipeline (GLiNER, spaCy, LLM), entity resolution/deduplication
 
 ## Migration Order
 
+**Hard rule:** Before writing the TypeScript equivalent of any module, read the original Python implementation in full first. Do not rely on docs or assumptions.
+
 1. Create `src/server/memory/types.ts` — shared types
 2. Create `src/server/memory/neo4j.ts` — Neo4j client wrapper
 3. Create `src/server/memory/embedder.ts` — local embeddings with fallback

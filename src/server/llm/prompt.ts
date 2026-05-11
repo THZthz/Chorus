@@ -85,7 +85,7 @@ Use flags in metadata for plot-specific state: \`{"alarm_raised": true, "player_
 ## DIALOGUE RULES
 
 - **Messages**: Keep them short (max 3 sentences). Use NARRATOR for environment, character names for NPCs, skill names (LOGIC, SORCERY, etc.) for inner voices.
-- **Options**: 2-5 per turn. Action-oriented. Align with plot childPlots where applicable, but some can be for immersion.
+- **Options**: 2-3 per turn is ideal for most scenes. Reserve 4-5 for pivotal narrative moments (e.g., major decisions, combat, confrontation). All options should be action-oriented. Align with plot childPlots where applicable, but some can be for immersion.
 - **Skill checks**: Use sparingly, only when failure is interesting. No hintBefore on checked options.
 - **Never**: Use speaker="INNER_VOICE" (use specific skill name), duplicate speaker in text, invent entity IDs.
 

@@ -1,9 +1,7 @@
-import db from "@/server/db";
 import { describeTime, getGameTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";
 
 const MAX_GM_STEPS = 10;
-const PROMPT_TEMPLATE_KEY = "gm_system_prompt";
 
 export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 You are the Game Master for a narrative-driven RPG.
@@ -100,24 +98,13 @@ Use flags in metadata for plot-specific state: \`{"alarm_raised": true, "player_
 Time flows only via advanceTime(). Adjust sensory descriptions to match time of day.
 `.trim();
 
-export function getSystemPromptTemplate(): string {
-  const row = db.prepare("SELECT value FROM system_state WHERE key = ?").get(PROMPT_TEMPLATE_KEY) as { value: string } | undefined;
-  return row?.value || DEFAULT_SYSTEM_PROMPT_TEMPLATE;
-}
-
-export function setSystemPromptTemplate(template: string): void {
-  db.prepare("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)").run(
-    PROMPT_TEMPLATE_KEY, template,
-  );
-}
-
-export function buildSystemPrompt(): string {
+export async function buildSystemPrompt(): Promise<string> {
   const seedStory = getActiveSeedStory();
-  const template = getSystemPromptTemplate();
-  return template
+  const gameTime = await getGameTime();
+  return DEFAULT_SYSTEM_PROMPT_TEMPLATE
     .replace("{{setting_description}}", seedStory.settingDescription)
     .replace("{{tone_description}}", seedStory.toneDescription)
-    .replace("{{game_time}}", describeTime(getGameTime()));
+    .replace("{{game_time}}", describeTime(gameTime));
 }
 
 export { MAX_GM_STEPS };

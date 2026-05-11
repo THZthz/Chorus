@@ -6,6 +6,22 @@ function getClient(): MemoryClient {
   return MemoryClient.getCachedInstance();
 }
 
+/** DeepSeek serializes integers as floats (e.g. 20 → 20.0). Neo4j rejects
+ *  floats in LIMIT/SKIP clauses. Truncate to integer before Cypher use. */
+function sanitizeInt(n: number, fallback: number = 1): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+  const int = Math.floor(n);
+  return int >= 0 ? int : fallback;
+}
+
+/** Clamp confidence values to [0, 1] range for Neo4j storage. */
+function sanitizeConfidence(n: number): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return 1.0;
+  if (n < 1e-6) return 0;
+  if (n > 1) return 1;
+  return n;
+}
+
 export function createMemoryTools() {
   const readTools = {
     searchMemory: tool({
@@ -22,7 +38,7 @@ export function createMemoryTools() {
         const results = await client.search.search(input.query, {
           memoryTypes: input.memoryTypes,
           sessionId: input.sessionId,
-          limit: input.limit,
+          limit: sanitizeInt(input.limit, 10),
           threshold: input.threshold,
         });
         return JSON.stringify(results, null, 2);
@@ -43,7 +59,7 @@ export function createMemoryTools() {
         const client = getClient();
         const ctx = await client.context.assemble(input.sessionId, {
           query: input.query,
-          maxItems: input.maxItems,
+          maxItems: sanitizeInt(input.maxItems, 10),
           includeShortTerm: input.includeShortTerm,
           includeLongTerm: input.includeLongTerm,
           includeReasoning: input.includeReasoning,
@@ -76,7 +92,7 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const messages = await client.shortTerm.getConversation(input.sessionId, input.limit);
+        const messages = await client.shortTerm.getConversation(input.sessionId, sanitizeInt(input.limit, 50));
         return JSON.stringify({ sessionId: input.sessionId, messageCount: messages.length, messages }, null, 2);
       },
     }),
@@ -89,7 +105,7 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const sessions = await client.shortTerm.listSessions(input.limit, input.offset);
+        const sessions = await client.shortTerm.listSessions(sanitizeInt(input.limit, 20), sanitizeInt(input.offset, 0));
         return JSON.stringify({ sessionCount: sessions.length, sessions }, null, 2);
       },
     }),
@@ -114,7 +130,7 @@ export function createMemoryTools() {
       }),
       execute: async (input) => {
         const client = getClient();
-        const entities = await client.longTerm.searchEntities("", { limit: input.limit, threshold: 0 });
+        const entities = await client.longTerm.searchEntities("", { limit: sanitizeInt(input.limit, 500), threshold: 0 });
         return JSON.stringify({ nodeCount: entities.length, nodes: entities }, null, 2);
       },
     }),
@@ -202,7 +218,7 @@ export function createMemoryTools() {
         const client = getClient();
         const pref = await client.longTerm.addPreference(input.category, input.preference, {
           context: input.context,
-          confidence: input.confidence,
+          confidence: sanitizeConfidence(input.confidence),
         });
         return JSON.stringify(
           { stored: true, id: pref.id, category: pref.category },
@@ -225,7 +241,7 @@ export function createMemoryTools() {
       execute: async (input) => {
         const client = getClient();
         const fact = await client.longTerm.addFact(input.subject, input.predicate, input.objectValue, {
-          confidence: input.confidence,
+          confidence: sanitizeConfidence(input.confidence),
           validFrom: input.validFrom ? new Date(input.validFrom) : undefined,
           validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
           metadata: input.metadata as Record<string, unknown> | undefined,
@@ -251,7 +267,7 @@ export function createMemoryTools() {
         const client = getClient();
         await client.longTerm.addRelationship(
           input.sourceName, input.targetName, input.relationshipType,
-          { description: input.description, confidence: input.confidence },
+          { description: input.description, confidence: sanitizeConfidence(input.confidence) },
         );
         return JSON.stringify(
           { stored: true, source: input.sourceName, target: input.targetName, type: input.relationshipType },

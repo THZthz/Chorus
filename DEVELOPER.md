@@ -303,3 +303,95 @@ World manipulation tools are defined as AI SDK tools in `src/server/memory/tools
 ### 9.4 Managing Seed Data
 
 Initial world state is defined by the active seed story in `src/server/seed-stories/`. Edit the active story's module or create a new one. Change `ACTIVE_SEED_STORY` in `index.ts` to switch stories. See section 6.3 for the full seed story system.
+
+### 9.5 Debugging LLM Calls with DevTools
+
+All `streamText` calls are captured to `.devtools/generations.json` via the `devToolsMiddleware()` wrapper in `src/server/llm/model.ts`. This is the primary debugging tool for the GM's tool-calling behavior.
+
+**Data model:** One top-level entry per `streamText` call. `runs[]` = individual invocations of `generateTurn()`; `steps[]` = each tool-calling iteration within a run (one step = LLM thinks + calls zero or more tools, then results are fed back as messages for the next step). The system prompt is sent once per run, not per step.
+
+**Viewing data:**
+
+```bash
+# Launch interactive web UI
+npx @ai-sdk/devtools
+# Open http://localhost:4983
+
+# Raw inspection
+cat .devtools/generations.json | jq 'keys'          # ["runs", "steps"]
+cat .devtools/generations.json | jq '.runs | length' # run count
+cat .devtools/generations.json | jq '.steps | length' # step count
+```
+
+**Step overview (quick scan):**
+
+```bash
+cat .devtools/generations.json | jq '[.steps[] | {
+  step: .step_number, type, model: .model_id,
+  duration_ms, error, usage: (.usage | fromjson | .outputTokens.total)
+}]'
+```
+
+**Extracting tool calls per step:**
+
+The `input` and `output` fields are JSON strings — use `fromjson` before accessing nested keys.
+
+```bash
+# Tool call names and argument shapes per step
+cat .devtools/generations.json | jq '[.steps[] | {
+  step: .step_number,
+  tool_calls: [.output | fromjson | .toolCalls[]? | {
+    name: .toolName,
+    args: (.input | fromjson | keys)
+  }] | select(length > 0)
+}]'
+
+# Tool call results (they appear in the NEXT step's input as tool-result messages)
+cat .devtools/generations.json | jq '
+  .steps[1].input | fromjson | .prompt[] | select(.role == "tool")
+'
+
+# Full args for a specific tool call (e.g. generateDialogueStep)
+cat .devtools/generations.json | jq '
+  .steps[3].output | fromjson | .toolCalls[0].input | fromjson
+'
+
+# Finish reasons per step (tool-calls = LLM called tools, stop = stopWhen triggered)
+cat .devtools/generations.json | jq '.steps[] | {
+  step: .step_number,
+  finishReason: (.output | fromjson | .finishReason.unified)
+}'
+```
+
+**Extracting messages flowing through steps:**
+
+```bash
+# First 150 chars of every message per step
+cat .devtools/generations.json | jq -r '
+  .steps[] |
+  "--- Step \(.step_number) ---",
+  (.input | fromjson | .prompt[]? |
+   "  [\(.role)] \(.content | tostring)[0:150]")
+'
+
+# System prompt (first step only, truncated)
+cat .devtools/generations.json | jq -r '
+  .steps[0].input | fromjson | .prompt[0].content[0:500]
+'
+```
+
+**What to look for when debugging:**
+
+| Symptom | What to check |
+|---------|---------------|
+| GM calls wrong tools or misses steps | Tool call results for validation errors; `getContext` returning garbage |
+| GM re-creates existing entities | `getContext` returning empty — check for Neo4j LIMIT errors on float params |
+| Nudge messages too aggressive | `prepareStep` injection pattern — look for "ERROR:" in user messages between steps |
+| Dialogue never reaches player | `finishReason` stuck on `tool-calls` across many steps — GM may be stuck in a loop |
+| Messages not persisted | `storeMessage` never appears in any step's tool calls |
+| DeepSeek float weirdness | Tool result errors containing `'20.0' is not a valid value` — integer fields need `Math.floor()` sanitization |
+| GM calls same tool repeatedly | Consecutive identical tool names in a single step — likely duplicate-creating entities |
+
+**Token usage pattern:** Early steps have high cache-hit ratios (cached system prompt). Watch `usage.outputTokens.total` for reasoning overhead — DeepSeek reports `completion_tokens_details.reasoning_tokens` separately. Zero `textParts` per step is expected — the code discards LLM text output; only tool calls are used.
+
+**Snapshot workflow for development:** Run the server → play a turn in the console client → inspect `.devtools/generations.json`. Delete the file between sessions to avoid mixing old and new runs. The file can grow to hundreds of MB — add `.devtools` to `.gitignore` (done automatically by the middleware).

@@ -20,7 +20,6 @@ import { streamText, stepCountIs } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
-import { LlmDebugIntegration } from "@/server/llm/debug";
 import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
@@ -28,19 +27,14 @@ import { createMemoryTools } from "@/server/memory/tools";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 
-export {
-  DEFAULT_SYSTEM_PROMPT_TEMPLATE,
-  getSystemPromptTemplate,
-  setSystemPromptTemplate,
-  buildSystemPrompt,
-} from "@/server/llm/prompt";
+export { DEFAULT_SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt } from "@/server/llm/prompt";
 
 export async function generateTurn(
   userInput: string,
   history: Message[],
   res: Response,
 ): Promise<void> {
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt();
   const events = new TurnEventEmitter(res);
 
   console.log(
@@ -69,7 +63,7 @@ export async function generateTurn(
     "Generate the narrative response following the output format exactly.",
   ].join("\n");
 
-  const { model, name: modelName } = getModel();
+  const { model } = getModel();
 
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
@@ -85,23 +79,7 @@ export async function generateTurn(
     advanceTime: advanceTimeTool,
   };
 
-  const debugging = new LlmDebugIntegration(
-    {
-      model: modelName,
-      system: systemPrompt,
-      prompt: promptText,
-      userInput,
-      history,
-      tools: [...Object.keys(memoryTools), "generateDialogueStep", "advanceTime"],
-    },
-    undefined,
-    "GM",
-  );
-
   let streamError: string | null = null;
-  let currentText = "";
-  let currentReasoning = "";
-  const stepUserPrompts = new Map<number, string>();
 
   try {
     const result = streamText({
@@ -118,16 +96,11 @@ export async function generateTurn(
         },
         stepCountIs(MAX_GM_STEPS),
       ],
-      prepareStep: ({ stepNumber, steps, messages }) => {
-        if (stepNumber === 0) {
-          stepUserPrompts.set(stepNumber, JSON.stringify(messages));
-          return undefined;
-        }
+      prepareStep: ({ steps, messages }) => {
         const dialogueCalled = steps.some((s) =>
           s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
         );
         if (dialogueCalled) {
-          stepUserPrompts.set(stepNumber, JSON.stringify(messages));
           return undefined;
         }
         const allToolsUsed = steps.flatMap((s) => s.toolCalls?.map((tc) => tc.toolName) ?? []);
@@ -135,38 +108,7 @@ export async function generateTurn(
           ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`
           : `ERROR: You did not call generateDialogueStep. You MUST call generateDialogueStep now.`;
         const newMessages = [...messages, { role: "user" as const, content: errorMsg }];
-        stepUserPrompts.set(stepNumber, JSON.stringify(newMessages));
         return { messages: newMessages };
-      },
-      onStepFinish: (event) => {
-        debugging.onStepFinish({
-          stepNumber: event.stepNumber ?? 0,
-          finishReason: event.finishReason ?? "unknown",
-          usage: event.usage,
-          toolCalls: event.toolCalls?.map((tc) => ({
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-            input: tc.input,
-          })),
-          toolResults: event.toolResults?.map((tr) => ({
-            toolCallId: tr.toolCallId,
-            toolName: tr.toolName,
-            output: tr.output,
-          })),
-          text: event.text || currentText || undefined,
-          reasoning: currentReasoning || undefined,
-          userPrompt: stepUserPrompts.get(event.stepNumber ?? 0),
-        });
-        stepUserPrompts.delete(event.stepNumber ?? 0);
-      },
-      onFinish: (event) => {
-        debugging.onFinish({
-          finishReason: event.finishReason ?? "unknown",
-          usage: event.usage,
-          totalUsage: event.totalUsage,
-          steps: event.steps,
-          text: event.text ?? undefined,
-        });
       },
     });
 
@@ -175,18 +117,6 @@ export async function generateTurn(
     let hasEmittedStreaming = false;
     for await (const chunk of result.fullStream) {
       switch (chunk.type) {
-        case "text-start":
-          currentText = "";
-          break;
-        case "reasoning-start":
-          currentReasoning = "";
-          break;
-        case "text-delta":
-          currentText += chunk.text;
-          break;
-        case "reasoning-delta":
-          currentReasoning += chunk.text;
-          break;
         case "tool-input-start":
           if (chunk.toolName === "generateDialogueStep") {
             if (hasEmittedStreaming) {
@@ -300,7 +230,6 @@ export async function generateTurn(
     }
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    debugging.onError(err);
     events.emitError(err.message);
     events.finish();
     return;

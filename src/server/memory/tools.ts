@@ -3,9 +3,7 @@ import { z } from "zod";
 import { MemoryClient } from "./client";
 
 function getClient(): MemoryClient {
-  const instance = (MemoryClient as unknown as { instance: MemoryClient | null }).instance;
-  if (!instance) throw new Error("MemoryClient not initialized");
-  return instance;
+  return MemoryClient.getCachedInstance();
 }
 
 export function createMemoryTools() {
@@ -159,6 +157,7 @@ export function createMemoryTools() {
           sessionId, input.role, input.content,
           input.metadata as Record<string, unknown> | undefined,
         );
+        await client.observer.onMessageStored(sessionId, input.content, msg.id, input.role);
         return JSON.stringify({ stored: true, id: msg.id }, null, 2);
       },
     }),

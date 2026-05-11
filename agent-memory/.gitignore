@@ -1,0 +1,72 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Node.js (for frontend examples)
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+*.log
+
+# Documentation build output
+docs/_site/
+docs/node_modules/
+
+# Neo4j data (if running locally)
+/data/
+/logs/
+/plugins/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Local plans and research
+plans/
+.mcp.json
+
+# Generated reference doc (not for checkin)
+agent-memory-info.adoc
+docs/modules/ROOT/pages/agent-memory-info.adoc

@@ -71,11 +71,11 @@ export class ShortTermMemory {
     const rows = await this.client.executeRead(
       `MATCH (c:Conversation {session_id: $sessionId})
        MATCH (c)-[:HAS_MESSAGE]->(m:Message)
-       RETURN m ORDER BY m.timestamp ASC LIMIT $limit`,
+       RETURN m ORDER BY m.timestamp DESC LIMIT $limit`,
       { sessionId, limit },
     );
 
-    return rows.map((r) => {
+    return rows.reverse().map((r) => {
       const m = r.m as Record<string, unknown>;
       return {
         id: m.id as string,

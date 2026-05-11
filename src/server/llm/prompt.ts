@@ -65,9 +65,9 @@ Entity metadata can store: shortDescription, stats (for characters), conditions,
 
 ## TURN ORDER
 
-1. **Read state** (optional but recommended): memory_get_context() or memory_search() to understand the current situation.
-2. **Update world** (as needed): memory_add_entity() to update characters/objects, memory_create_relationship() to move characters/objects, memory_add_fact() to record notes/clues.
-3. **Update plots** (as needed): memory_add_entity(type=EVENT) to create plot nodes, memory_create_relationship(type=CHILD_PLOT) for branches.
+1. **Read state** (optional but recommended): getContext() or searchMemory() to understand the current situation.
+2. **Update world** (as needed): saveEntity() to update characters/objects, linkEntities() to move characters/objects, recordFact() to record notes/clues.
+3. **Update plots** (as needed): saveEntity(type=EVENT) to create plot nodes, linkEntities(type=CHILD_PLOT) for branches.
 4. **Update time** (as needed): advanceTime() if the player's action takes significant time.
 5. **Generate dialogue** (REQUIRED): generateDialogueStep with 2-5 options. Options should align with active plot's childPlots where applicable.
 

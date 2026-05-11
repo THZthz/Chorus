@@ -1,5 +1,6 @@
 import { Neo4jClient } from "./neo4j";
 import { setupSchema } from "./schema";
+import { getEmbedder } from "./embedder";
 import { ShortTermMemory } from "./short-term";
 import { LongTermMemory } from "./long-term";
 import { ReasoningMemory } from "./reasoning";
@@ -63,9 +64,17 @@ export class MemoryClient {
     );
 
     await client.verifyConnectivity();
-    await setupSchema(client);
+    const embedder = getEmbedder();
+    await setupSchema(client, embedder.dimensions);
 
     MemoryClient.instance = new MemoryClient(client);
+    return MemoryClient.instance;
+  }
+
+  static getCachedInstance(): MemoryClient {
+    if (!MemoryClient.instance) {
+      throw new Error("MemoryClient not initialized. Call getInstance() first.");
+    }
     return MemoryClient.instance;
   }
 

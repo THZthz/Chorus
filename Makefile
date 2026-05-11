@@ -2,6 +2,14 @@
         server console lint typecheck clean clean-all \
         dev dev-stop check reset
 
+# MSYS2 bash can't resolve Windows-style paths inside the npm/npx
+# bash-script wrappers; use the .cmd launcher on Windows instead.
+ifeq ($(OS),Windows_NT)
+  NPM := npm.cmd
+else
+  NPM := npm
+endif
+
 # Default target
 help:
 	@echo "Elysian Dialogue — Development Commands"
@@ -41,7 +49,7 @@ install: install-root install-am
 	@echo "All dependencies installed!"
 
 install-root:
-	npm install
+	$(NPM) install
 
 install-am:
 	uv sync
@@ -90,17 +98,17 @@ neo4j-clean:
 # =============================================================================
 
 server:
-	MSYS2_PATH_TYPE=inherit npm start
+	$(NPM) start
 
 console:
-	MSYS2_PATH_TYPE=inherit npm run console
+	$(NPM) run console
 
 # =============================================================================
 # Code Quality
 # =============================================================================
 
 lint:
-	MSYS2_PATH_TYPE=inherit npm run lint
+	$(NPM) run lint
 
 typecheck: lint
 

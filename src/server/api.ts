@@ -19,6 +19,9 @@
 import express from "express";
 import { generateTurn } from "@/server/llm";
 import { chatStreamSchema } from "@/server/validation";
+import { MemoryClient } from "@/server/memory/client";
+import { getSessionState } from "@/server/memory/session";
+import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
 
@@ -50,17 +53,40 @@ apiRouter.post("/chat/stream", async (req, res) => {
 
 // ── History ──
 
-apiRouter.get("/history", (_req, res) => {
-  // Return empty for now — the GM uses memory_get_conversation for history.
-  // Console client uses this for resume; returns empty array as placeholder.
-  res.json([]);
+apiRouter.get("/history", async (_req, res) => {
+  try {
+    const client = MemoryClient.getCachedInstance();
+    const messages = await client.shortTerm.getConversation("elysian-game");
+    const history: Message[] = messages.map((m, i) => {
+      const meta = m.metadata || {};
+      const isPlayer = m.role === "user";
+      return {
+        id: m.id,
+        speaker: isPlayer ? "YOU" : (meta.speaker as string) || "SYSTEM",
+        type: isPlayer ? "YOU" : ((meta.type as Message["type"]) || "SYSTEM"),
+        text: m.content,
+        metadata: isPlayer ? undefined : (meta as Message["metadata"]),
+      };
+    });
+    res.json(history);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("History fetch error:", message);
+    res.json([]);
+  }
 });
 
 // ── Session current ──
 
-apiRouter.get("/session/current", (_req, res) => {
-  // No dialogue tree — return null to signal fresh session
-  res.json(null);
+apiRouter.get("/session/current", async (_req, res) => {
+  try {
+    const state = await getSessionState();
+    res.json(state);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Session state fetch error:", message);
+    res.json(null);
+  }
 });
 
 // ── Reset ──

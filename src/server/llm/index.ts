@@ -25,6 +25,7 @@ import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { createMemoryTools } from "@/server/memory/tools";
+import { saveSessionState } from "@/server/memory/session";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 
@@ -50,6 +51,12 @@ export async function generateTurn(
   });
 
   events.startStep(`step_${Date.now()}`);
+
+  // Persist player input so full conversation is available for resume
+  {
+    const client = MemoryClient.getCachedInstance();
+    await client.shortTerm.addMessage("elysian-game", "user", userInput);
+  }
 
   const historyWindow = 10;
   const promptText = [
@@ -325,4 +332,11 @@ export async function generateTurn(
   );
   events.emitOptions(finalOptions);
   events.finish();
+
+  // Persist current options so the player can resume from this point
+  if (finalOptions.length > 0) {
+    saveSessionState(`step_${Date.now()}`, finalOptions).catch((err) =>
+      console.error("[generateTurn] failed to persist session state:", err),
+    );
+  }
 }

@@ -96,20 +96,44 @@ export async function generateTurn(
         },
         stepCountIs(MAX_GM_STEPS),
       ],
-      prepareStep: ({ steps, messages }) => {
-        const dialogueCalled = steps.some((s) =>
-          s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
-        );
-        if (dialogueCalled) {
-          return undefined;
-        }
-        const allToolsUsed = steps.flatMap((s) => s.toolCalls?.map((tc) => tc.toolName) ?? []);
-        const errorMsg = allToolsUsed.length > 0
-          ? `ERROR: You called [${allToolsUsed.join(", ")}] but never called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`
-          : `ERROR: You did not call generateDialogueStep. You MUST call generateDialogueStep now.`;
-        const newMessages = [...messages, { role: "user" as const, content: errorMsg }];
-        return { messages: newMessages };
-      },
+      prepareStep: ((nudgeState: { count: number }) =>
+        ({ steps, messages }) => {
+          const dialogueCalled = steps.some((s) =>
+            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+          );
+          if (dialogueCalled) {
+            nudgeState.count = 0;
+            return undefined;
+          }
+
+          // Collect tool names preserving order
+          const allToolsUsed: string[] = [];
+          for (const s of steps) {
+            const names = s.toolCalls?.map((tc) => tc.toolName) ?? [];
+            for (const name of names) allToolsUsed.push(name);
+          }
+
+          // Group consecutive identical tool names
+          const grouped: string[] = [];
+          let i = 0;
+          while (i < allToolsUsed.length) {
+            const current = allToolsUsed[i];
+            let runLen = 1;
+            while (i + runLen < allToolsUsed.length && allToolsUsed[i + runLen] === current) {
+              runLen++;
+            }
+            grouped.push(runLen > 1 ? `${current} (${runLen} times)` : current);
+            i += runLen;
+          }
+
+          nudgeState.count++;
+          const prefix = nudgeState.count === 1 ? "Reminder:" : "ERROR:";
+          const toolList = grouped.length > 0
+            ? ` You called [${grouped.join(", ")}] but`
+            : " You";
+          const errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+          return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
+        })({ count: 0 }),
     });
 
     let toolRawArgs = "";

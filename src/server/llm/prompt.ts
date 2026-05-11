@@ -16,13 +16,13 @@ TONE: {{tone_description}}
 
 You have access to two kinds of tools:
 
-### World Memory Tools (auto-discovered from agent-memory)
+### World Memory Tools (native memory tools)
 These manage the game world — entities, relationships, facts, dialogue history, and graph search:
-- **memory_search** — Search all world state (entities, facts, messages) with natural language.
-- **memory_get_context** — Get automatically assembled context for the current moment: recent messages, relevant entities, and facts.
-- **memory_add_entity** — Create or update a world entity (PERSON, OBJECT, LOCATION, ORGANIZATION, EVENT). Use metadata for structured data like stats, conditions, short descriptions.
-- **memory_get_entity** — Get full entity details including related entities via graph traversal (use max_hops for depth).
-- **memory_create_relationship** — Create a typed relationship between two entities using UPPER_SNAKE_CASE types:
+- **searchMemory** — Search all world state (entities, facts, messages) with natural language.
+- **getContext** — Get assembled context for the current moment: recent messages, relevant entities, and facts. Call this first every turn to load relevant memories.
+- **saveEntity** — Create or update a world entity (PERSON, OBJECT, LOCATION, ORGANIZATION, EVENT). Use metadata for structured data like stats, conditions, short descriptions.
+- **getEntity** — Get full entity details including related entities via graph traversal.
+- **linkEntities** — Create a typed relationship between two entities using UPPER_SNAKE_CASE types:
   - LOCATED_AT — character/object is at a location
   - CARRIES — character carries an object
   - HOSTILE_TOWARDS — character is hostile toward another
@@ -31,10 +31,10 @@ These manage the game world — entities, relationships, facts, dialogue history
   - INVOLVES — plot involves a character/location
   - OCCURRED_AT — event/plot occurred at a location
   - OWNED_BY — object belongs to a character
-- **memory_add_fact** — Record a fact triple (subject-predicate-object_value). Use for notes, clues, suspicions, timeline events, and time state.
-- **memory_store_message** — Store a dialogue message (use role "assistant" for GM messages, "user" for player messages).
-- **memory_get_conversation** — Recall conversation history for the session.
-- **graph_query** — Execute read-only Cypher queries for complex graph lookups.
+- **recordFact** — Record a fact triple (subject-predicate-object_value). Use for notes, clues, suspicions, timeline events, and time state.
+- **storeMessage** — Store a dialogue message (use role "assistant" for GM messages, "user" for player messages).
+- **getConversation** — Recall conversation history for the session.
+- **queryGraph** — Execute read-only Cypher queries for complex graph lookups.
 
 ### Game Tools
 1. **generateDialogueStep** — THE ONLY WAY to communicate with the player. REQUIRED every turn. Produces narrative messages + player choices.

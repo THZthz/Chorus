@@ -52,6 +52,31 @@ export async function setupSchema(
     await client.executeWrite(`CREATE INDEX ${name} IF NOT EXISTS FOR (n:${label}) ON (n.${prop})`);
   }
 
+  // NPCDisposition composite index
+  try {
+    await client.executeWrite(
+      `CREATE INDEX npc_disposition_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.npcName, d.targetName)`,
+    );
+  } catch {
+    /* Neo4j version compat */
+  }
+  try {
+    await client.executeWrite(
+      `CREATE INDEX npc_disposition_target_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.targetName)`,
+    );
+  } catch {
+    /* Neo4j version compat */
+  }
+
+  // PlayerFlag constraint + index
+  try {
+    await client.executeWrite(
+      `CREATE CONSTRAINT player_flag_id IF NOT EXISTS FOR (f:PlayerFlag) REQUIRE f.flagId IS UNIQUE`,
+    );
+  } catch {
+    /* Neo4j version compat */
+  }
+
   // Vector indexes (require Neo4j 5.11+)
   const vectorIndexes: [string, string, string][] = [
     ["message_embedding_idx", "Message", "embedding"],

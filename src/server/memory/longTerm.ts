@@ -19,7 +19,15 @@
 import { v4 as uuidv4 } from "uuid";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
-import type { EntityType, MemoryEntity, MemoryPreference, MemoryFact } from "@/server/memory/types";
+import type {
+  EntityType,
+  MemoryEntity,
+  MemoryPreference,
+  MemoryFact,
+  NPCDisposition,
+  PlayerFlag,
+  PlayerCondition,
+} from "@/server/memory/types";
 
 // ── Helpers ──
 
@@ -379,6 +387,135 @@ export class LongTermMemory {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // Player Flags
+  // ═══════════════════════════════════════════════════════════════
+
+  async setPlayerFlag(flagId: string, description: string, source?: string): Promise<PlayerFlag> {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    await this.client.executeWrite(
+      `MERGE (f:PlayerFlag {flagId: $flagId})
+       ON CREATE SET f.id = $id, f.created_at = datetime($now)
+       SET f.description = $description, f.source = $source`,
+      { flagId, id, description, source: source || null, now },
+    );
+    return {
+      id,
+      flagId,
+      description,
+      source: source || "",
+      createdAt: new Date(now),
+    };
+  }
+
+  async hasPlayerFlag(flagId: string): Promise<boolean> {
+    const rows = await this.client.executeRead(
+      `MATCH (f:PlayerFlag {flagId: $flagId}) RETURN f LIMIT 1`,
+      { flagId },
+    );
+    return rows.length > 0;
+  }
+
+  async getPlayerFlags(): Promise<PlayerFlag[]> {
+    const rows = await this.client.executeRead(
+      `MATCH (f:PlayerFlag) RETURN f ORDER BY f.created_at DESC`,
+    );
+    return rows.map((r) => {
+      const f = r.f as Record<string, unknown>;
+      return {
+        id: f.id as string,
+        flagId: f.flagId as string,
+        description: f.description as string,
+        source: (f.source as string) || "",
+        createdAt: new Date((f.created_at as string | number) || Date.now()),
+      };
+    });
+  }
+
+  async removePlayerFlag(flagId: string): Promise<void> {
+    await this.client.executeWrite(`MATCH (f:PlayerFlag {flagId: $flagId}) DELETE f`, { flagId });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Player Conditions
+  // ═══════════════════════════════════════════════════════════════
+
+  async updatePlayerCondition(
+    playerName: string,
+    conditionId: string,
+    condition: PlayerCondition | null,
+  ): Promise<void> {
+    const entity = await this.getEntity(playerName);
+    if (!entity) throw new Error(`Player entity "${playerName}" not found`);
+
+    const existingConditions = (entity.metadata.conditions as Record<string, unknown>) || {};
+    if (condition === null) {
+      delete existingConditions[conditionId];
+    } else {
+      existingConditions[conditionId] = condition;
+    }
+
+    // Preserve all existing metadata — addEntity replaces e.metadata entirely
+    const fullMetadata: Record<string, unknown> = { ...entity.metadata, conditions: existingConditions };
+    await this.addEntity(playerName, entity.type, {
+      subtype: entity.subtype,
+      description: entity.description,
+      metadata: fullMetadata,
+    });
+  }
+
+  async getPlayerStats(playerName: string = "Player"): Promise<Record<string, number> | null> {
+    const entity = await this.getEntity(playerName);
+    if (!entity?.metadata.stats) return null;
+    return entity.metadata.stats as Record<string, number>;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Dispositions
+  // ═══════════════════════════════════════════════════════════════
+
+  async setDisposition(
+    npcName: string,
+    targetName: string,
+    sentiment: string,
+    summary: string,
+  ): Promise<NPCDisposition> {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    const rows = await this.client.executeWrite(
+      `MATCH (npc:Entity {name: $npcName})
+       MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npcName: $npcName, targetName: $targetName})
+       ON CREATE SET d.id = $id, d.created_at = datetime($now)
+       SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
+       RETURN d, d.id = $id AS isNew`,
+      { npcName, targetName, sentiment, summary, id, now },
+    );
+    if (rows.length === 0) {
+      throw new Error(`NPC entity "${npcName}" not found`);
+    }
+    return this.parseDisposition(rows[0].d as Record<string, unknown>);
+  }
+
+  async getDisposition(npcName: string, targetName: string): Promise<NPCDisposition | null> {
+    const rows = await this.client.executeRead(
+      `MATCH (d:NPCDisposition {npcName: $npcName, targetName: $targetName})
+       RETURN d LIMIT 1`,
+      { npcName, targetName },
+    );
+    if (rows.length === 0) return null;
+    return this.parseDisposition(rows[0].d as Record<string, unknown>);
+  }
+
+  async getDispositionsToward(targetName: string): Promise<NPCDisposition[]> {
+    const rows = await this.client.executeRead(
+      `MATCH (d:NPCDisposition {targetName: $targetName})
+       RETURN d ORDER BY d.updated_at DESC`,
+      { targetName },
+    );
+    return rows.map((r) => this.parseDisposition(r.d as Record<string, unknown>));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // Parsers
   // ═══════════════════════════════════════════════════════════════
 
@@ -431,6 +568,18 @@ export class LongTermMemory {
           ? (JSON.parse(data.metadata) as Record<string, unknown>)
           : {},
       createdAt: new Date((data.created_at as string | number) || Date.now()),
+    };
+  }
+
+  private parseDisposition(data: Record<string, unknown>): NPCDisposition {
+    return {
+      id: data.id as string,
+      npcName: data.npcName as string,
+      targetName: data.targetName as string,
+      sentiment: data.sentiment as string,
+      summary: data.summary as string,
+      createdAt: new Date((data.created_at as string | number) || Date.now()),
+      updatedAt: new Date((data.updated_at as string | number) || Date.now()),
     };
   }
 }

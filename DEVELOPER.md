@@ -155,14 +155,14 @@ Two layers of tools:
 
 | Tool              | Purpose                                                        |
 |-------------------|----------------------------------------------------------------|
-| `getScene`        | Returns everything in-frame: location, NPCs, objects, inventory, active plots |
-| `updateWorld`     | Change world state (move/change/create/relate/fact actions)     |
+| `getScene`        | Returns everything in-frame: location, NPCs with dispositions, objects, inventory, active plots with beats/branches, and player flags |
+| `updateWorld`     | Change world state (move/change/create/relate/fact/disposition/condition actions) |
 | `remember`        | Store a GM note tied to an entity                               |
 | `getConversation` | Retrieve recent dialogue history                                |
 | `searchMemory`    | Vector search across all memory (entities, facts, messages)     |
-| `advancePlot`     | Update story plot progression and track revealed clues          |
+| `advancePlot`     | Story progression: beat lifecycle, branch management, player flag tracking |
 
-All 6 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and registered in `generateTurn()`. The underlying long-term, short-term, and search subsystem methods are still available for internal use — the tool surface is simply collapsed into GM-native verbs.
+All 6 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and registered in `generateTurn()`. The tool surface uses GM-native verbs: `getScene` provides spatial+narrative context in one call, `updateWorld` multiplexes entity/relationship/fact/disposition/condition mutations, and `advancePlot` manages beat/branch/flag state machines.
 
 ### 3.4 Seed System
 
@@ -244,16 +244,24 @@ The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`
 
 The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world model. All subsystems are wired through the `MemoryClient` singleton (`client.ts`), which owns the Neo4j connection, creates the schema, and initializes the embedder.
 
-**Five subsystems:**
+**Core subsystems:**
 
 | Subsystem  | File            | Responsibility                                                                        |
 |------------|-----------------|---------------------------------------------------------------------------------------|
-| Short-term | `short-term.ts` | Conversation messages with sequential NEXT_MESSAGE linking, vector search             |
-| Long-term  | `long-term.ts`  | Entity CRUD (POLE+O labels), preferences, fact triples, typed relationships           |
+| Short-term | `shortTerm.ts`  | Conversation messages with sequential NEXT_MESSAGE linking, vector search             |
+| Long-term  | `longTerm.ts`   | Entity CRUD (POLE+O labels), preferences, fact triples, typed relationships, NPC dispositions, player flags, conditions |
 | Reasoning  | `reasoning.ts`  | LLM reasoning traces: start → steps → tool calls → completion, vector search          |
 | Observer   | `observer.ts`   | World delta tracking + token-threshold context compression                            |
 | Search     | `search.ts`     | Parallel hybrid search across messages, entities, preferences, and traces             |
 | Context    | `context.ts`    | Assembled GM context from recent messages, relevant entities, preferences, and traces |
+
+**GM-oriented subsystems** (backed by Neo4j node types):
+
+| Subsystem       | Node type         | Responsibility                                              |
+|-----------------|-------------------|-------------------------------------------------------------|
+| RelationshipMap | `:NPCDisposition` | NPC dispositions toward the player and other NPCs — tracked as sentiment + narrative summary, surfaced in getScene |
+| StoryTracker    | `:PlayerFlag`     | Plot progression via beat/branch state machines on EVENT entities + player knowledge flags |
+| PlayerSheet     | composite view    | Player conditions (structured metadata), stats, inventory, flags, and faction reputation — all surfaced in getScene |
 
 **Embeddings** (`embedder.ts`): Two strategies with automatic fallback. The `LocalEmbedder` uses `@xenova/transformers` with `all-MiniLM-L6-v2` (384-dim, ~80MB ONNX model). The `OpenAICompatibleEmbedder` uses any OpenAI-compatible API (configurable via `EMBEDDING_API_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL` env vars). If API credentials are set, the API embedder is used; otherwise local ONNX is the default. Embeddings power vector search across messages, entities, preferences, facts, and reasoning traces.
 
@@ -261,7 +269,7 @@ The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world
 
 **Game state persistence** (`gameState.ts`): Saves game state (current step ID + dialogue options) to a `:SessionState {id: "elysian-game"}` node in Neo4j. On resume, the console fetches this state and the conversation history to restore the game.
 
-**Neo4j schema** (`schema.ts`): On startup, creates 7 unique constraints (`Conversation`, `Message`, `Entity`, `Preference`, `Fact`, `ReasoningTrace`, `ReasoningStep` on `id`), 5 regular indexes (on timestamp, type, name, category, success), and 6 vector indexes (COSINE similarity on embedding properties across Message, Entity, Preference, Fact, ReasoningTrace, ReasoningStep). Vector indexes require Neo4j 5.11+.
+**Neo4j schema** (`schema.ts`): On startup, creates 7 unique constraints (`Conversation`, `Message`, `Entity`, `Preference`, `Fact`, `ReasoningTrace`, `ReasoningStep` on `id`), 1 constraint for `PlayerFlag.flagId`, 5 regular indexes (on timestamp, type, name, category, success), 2 composite indexes on `NPCDisposition` (npcName+targetName, targetName), and 6 vector indexes. Vector indexes require Neo4j 5.11+.
 
 ---
 

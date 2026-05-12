@@ -150,9 +150,9 @@ export class MemoryObserver {
       }
 
       // Summarize older messages (first 100 chars each)
-      const msgExcerpts = olderMessages.slice(-5).map((m) =>
-        `${m.role}: ${m.content.slice(0, 100)}`
-      );
+      const msgExcerpts = olderMessages
+        .slice(-5)
+        .map((m) => `${m.role}: ${m.content.slice(0, 100)}`);
       if (msgExcerpts.length > 0) {
         reflectionParts.push(`Earlier dialogue: ${msgExcerpts.join(" | ")}`);
       }

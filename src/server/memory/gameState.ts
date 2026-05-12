@@ -3,10 +3,7 @@ import type { DialogueOption } from "@/types/dialogue";
 
 export const GAME_ID = "elysian-game";
 
-export async function saveGameState(
-  stepId: string,
-  options: DialogueOption[],
-): Promise<void> {
+export async function saveGameState(stepId: string, options: DialogueOption[]): Promise<void> {
   const client = MemoryClient.getCachedInstance();
   await client.neo4j.executeWrite(
     `MERGE (s:SessionState {id: $gameId})

@@ -214,6 +214,52 @@ export const magicAwakening: SeedStory = {
         status: "IN_PROGRESS",
         involvedLocations: ["The Velvet Thorn", "The Warrens"],
         involvedCharacters: ["Veyla", "Madam Cressida"],
+        beats: [
+          {
+            id: "beat_wake",
+            label: "Wake in the Velvet Thorn",
+            description:
+              "The player wakes with amnesia, a glowing crystal, and Veyla watching over them.",
+            status: "COMPLETED",
+          },
+          {
+            id: "beat_explore_thorn",
+            label: "Explore the Velvet Thorn",
+            description:
+              "Learn about the Thorn, meet Madam Cressida, understand Veyla's role in your rescue.",
+            status: "ACTIVE",
+          },
+          {
+            id: "beat_discover_resonance",
+            label: "Discover the Crystal's Resonance",
+            description:
+              "The crystal's connection to Veyla's elven blood and the player's sorcery becomes undeniable.",
+            status: "LOCKED",
+          },
+          {
+            id: "beat_choose_path",
+            label: "Choose a Path",
+            description:
+              "Decide whether to seek answers in the Warrens underground or risk the upper levels — each choice closes the other path.",
+            status: "LOCKED",
+          },
+        ],
+        branches: [
+          {
+            id: "branch_warrens",
+            label: "Seek answers in the Warrens",
+            description:
+              "Navigate the lawless underbelly — Harbor Rats, rogue mages, black markets, and ancient ley-line secrets.",
+            status: "OPEN",
+          },
+          {
+            id: "branch_upper_city",
+            label: "Risk the Upper City",
+            description:
+              "Seek knowledge where unlicensed magic is a crime — libraries, guilds, the duke's law, and the ever-watching Magewardens.",
+            status: "OPEN",
+          },
+        ],
       },
     },
     {

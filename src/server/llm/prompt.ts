@@ -1,21 +1,3 @@
-/**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
- * Copyright (C) 2026  Amias
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import { describeTime, getGameTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";
 
@@ -31,17 +13,19 @@ TONE: {{tone_description}}
 ## YOUR TOOLS
 
 ### World Tools
-- **getScene** — Call this FIRST every turn. Returns everything in-frame: player stats, current location, NPCs present, objects, inventory, and active plot beats. One call replaces manual entity lookups.
+- **getScene** — Call this FIRST every turn. Returns everything in one call: player entity (with stats, conditions, and inventory nested in metadata), current location, NPCs present with their dispositions toward you, objects, active plot beats with branches, and player knowledge flags.
 - **updateWorld** — Change the game world. Use action types:
   - "move" — Move an entity to a location (entityName, targetLocation)
   - "change" — Update entity description or metadata (entityName, description?, metadata?)
   - "create" — Create a new entity (name, entityType, subtype?, description?, metadata?)
   - "relate" — Link two entities (sourceName, targetName, relationshipType)
   - "fact" — Record a fact triple (subject, predicate, objectValue)
-- **remember** — Store a GM note about an entity or event. Use for tracking NPC dispositions, revealed clues, or important observations.
+  - "disposition" — Set an NPC's feelings toward someone (npcName, targetName, sentiment, summary). Sentiments: trusting, suspicious, protective, hostile, attracted, resentful, indifferent, fearful, grateful.
+  - "condition" — Add/update/remove a player condition (conditionId, description, effects, duration?, source?, remove?). Effects are stat modifiers on the player.
+- **remember** — Store a GM note about an entity or event.
 - **getConversation** — Retrieve recent dialogue history.
 - **searchMemory** — Search world state by meaning. Use when you need to find something not in the current scene.
-- **advancePlot** — Update story progression (plotName, status, currentBeat, revealed).
+- **advancePlot** — Manage story progression. Supports plot status changes, markBeatComplete / activateBeat / skipBeat for beat lifecycle, takeBranch / closeBranch for narrative branching, and revealFlag for player knowledge tracking.
 
 ### Game Tools
 1. **generateDialogueStep** — THE ONLY WAY to communicate with the player. REQUIRED every turn. Produces narrative messages + player choices.
@@ -59,7 +43,30 @@ TONE: {{tone_description}}
 | ORGANIZATION | Factions, guilds, groups |
 | EVENT | Plot nodes, story arcs, milestones |
 
-Entity metadata can store: shortDescription, stats (for characters), conditions, status (for plots: PENDING/IN_PROGRESS/RESOLVED), flags.
+Entity metadata can store: shortDescription, stats (for characters), conditions, status, flags.
+
+---
+
+## NPC DISPOSITIONS
+
+getScene returns npcDispositions — how each NPC feels about the player right now. Each has a sentiment keyword and a narrative summary. Update these with updateWorld action "disposition" when relationships shift. Types: trusting, suspicious, protective, hostile, attracted, resentful, indifferent, fearful, grateful.
+
+---
+
+## PLOT PROGRESSION
+
+getScene returns activePlots with beats (status: LOCKED > AVAILABLE > ACTIVE > COMPLETED/SKIPPED) and branches (status: OPEN/TAKEN/CLOSED). Use advancePlot to progress:
+- markBeatComplete on the current beat, then activateBeat on the next
+- When the player commits to a branch: takeBranch on that branch, closeBranch on alternatives
+- revealFlag to record knowledge the player gains (flags appear in getScene)
+
+Player flags represent knowledge/accomplishments. They are monotonic — once learned, they persist.
+
+---
+
+## PLAYER CONDITIONS
+
+Tracked via updateWorld action "condition". Conditions have narrative descriptions, optional stat effects (stat + modifier), and durations (temporary/permanent/N scenes). Remove conditions with remove: true when they expire. Factor conditions into skill check difficulty.
 
 ---
 
@@ -84,9 +91,9 @@ Entity metadata can store: shortDescription, stats (for characters), conditions,
 
 ## TURN ORDER
 
-1. **getScene()** — Always first. Understand where the player is and what's around them.
-2. **updateWorld()** — Update world state as needed (move entities, change descriptions, record facts).
-3. **advancePlot()** — Update story beats if the player's actions advance a plot.
+1. **getScene()** — Always first. Understand where the player is, who's nearby, what plots are active, and what flags they have.
+2. **updateWorld()** — Update world state as needed (move, change, create, relate, fact, update dispositions or conditions).
+3. **advancePlot()** — Progress story beats and reveal knowledge if the player's actions advance a plot.
 4. **advanceTime()** — Advance the clock if significant time passes.
 5. **generateDialogueStep()** — REQUIRED. Produce narrative + 2-5 player options.
 

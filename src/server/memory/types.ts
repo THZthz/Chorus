@@ -75,6 +75,31 @@ export interface EntityRelationship {
   confidence: number;
 }
 
+export interface NPCDisposition {
+  id: string;
+  npcName: string;
+  targetName: string;
+  sentiment: string;
+  summary: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PlayerFlag {
+  id: string;
+  flagId: string;
+  description: string;
+  source: string;
+  createdAt: Date;
+}
+
+export interface PlayerCondition {
+  description: string;
+  effects: Array<{ stat?: string; modifier: number; description?: string }>;
+  duration?: string;
+  source?: string;
+}
+
 export interface ReasoningTrace {
   id: string;
   task: string;

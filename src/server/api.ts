@@ -63,7 +63,7 @@ apiRouter.get("/history", async (_req, res) => {
       return {
         id: m.id,
         speaker: isPlayer ? "YOU" : (meta.speaker as string) || "SYSTEM",
-        type: isPlayer ? "YOU" : ((meta.type as Message["type"]) || "SYSTEM"),
+        type: isPlayer ? "YOU" : (meta.type as Message["type"]) || "SYSTEM",
         text: m.content,
         metadata: isPlayer ? undefined : (meta as Message["metadata"]),
       };

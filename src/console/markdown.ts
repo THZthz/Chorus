@@ -19,6 +19,7 @@
 import chalk from "chalk";
 
 export function renderMarkdown(text: string): string {
+  if (!text) return "";
   const codeSpans: string[] = [];
 
   // Extract inline code spans first (they take precedence over all other formatting)

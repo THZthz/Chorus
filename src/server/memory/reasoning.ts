@@ -17,6 +17,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
 import type { ReasoningTrace, ReasoningStep, ToolCall } from "@/server/memory/types";
@@ -210,7 +211,7 @@ export class ReasoningMemory {
        RETURN rt, score ORDER BY score DESC`,
       {
         embedding: taskEmbedding,
-        limit,
+        limit: int(limit),
         threshold,
         successOnly,
       },
@@ -255,7 +256,7 @@ export class ReasoningMemory {
        LIMIT $limit`,
       {
         embedding: queryEmbedding,
-        limit,
+        limit: int(limit),
         threshold,
         successOnly,
       },

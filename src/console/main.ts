@@ -99,7 +99,7 @@ function formatMessage(msg: Message | StreamingMessage, indent = 0, showCursor =
   }
 
   if (msg.type === "ROLL") {
-    output += prefix + chalk.dim(`${msg.text}`) + "\n";
+    output += prefix + chalk.dim(`${msg.text ?? ""}`) + "\n";
     return output;
   }
 
@@ -266,30 +266,54 @@ async function handleOptionSelect(option: DialogueOption) {
 
 // ── Resume ──
 
-async function tryResume(): Promise<boolean> {
+async function checkResumable(): Promise<boolean> {
   try {
-    const histRes = await fetch(`${BASE_URL}/api/history`);
-    if (!histRes.ok) return false;
-    const hist = (await histRes.json()) as Message[];
-    if (hist.length === 0) return false;
-
     const currRes = await fetch(`${BASE_URL}/api/game/current`);
     if (!currRes.ok) return false;
     const current = (await currRes.json()) as { id: string; options: DialogueOption[] };
-    if (!current || !current.options || current.options.length === 0) return false;
+    return !!(current && current.options && current.options.length > 0);
+  } catch {
+    return false;
+  }
+}
+
+async function doResume(): Promise<boolean> {
+  try {
+    const histRes = await fetch(`${BASE_URL}/api/history`);
+    if (!histRes.ok) {
+      console.error(`[resume] history fetch failed: ${histRes.status} ${histRes.statusText}`);
+      return false;
+    }
+    const hist = (await histRes.json()) as Message[];
+    if (hist.length === 0) {
+      console.error("[resume] history is empty");
+      return false;
+    }
+
+    const currRes = await fetch(`${BASE_URL}/api/game/current`);
+    if (!currRes.ok) {
+      console.error(`[resume] game/current fetch failed: ${currRes.status} ${currRes.statusText}`);
+      return false;
+    }
+    const current = (await currRes.json()) as { id: string; options: DialogueOption[] };
+    if (!current || !current.options || current.options.length === 0) {
+      console.error("[resume] no current options available");
+      return false;
+    }
 
     history = hist;
     lastStepId = current.id;
     currentOptions = current.options;
     messageIdCounter = hist.length;
 
-    console.log(chalk.dim("\n╌╌╌ Resuming session ╌╌╌\n"));
+    console.log(chalk.dim("\n╌╌╌ Resuming story ╌╌╌\n"));
     process.stdout.write(formatMessages(hist));
     console.log("");
 
     state = "AWAITING_OPTION";
     return true;
-  } catch {
+  } catch (err) {
+    console.error("[resume] unexpected error:", err);
     return false;
   }
 }
@@ -341,23 +365,33 @@ async function main() {
     process.exit(0);
   });
 
-  // Check for existing session
-  await tryResume();
+  // Check if a resumable game exists
+  let resumable = await checkResumable();
 
   // Main loop
   while (true) {
     if (state === "IDLE") {
+      const idleChoices: Array<{ name: string; value: string }> = [];
+      if (resumable) {
+        idleChoices.push({ name: chalk.hex("#4fb0c6")("Resume your story"), value: "resume" });
+      }
+      idleChoices.push({ name: "Begin your story", value: "begin" });
+      idleChoices.push({ name: "/help   Show available commands", value: "help" });
+      idleChoices.push({ name: "Quit", value: "quit" });
+
       const answer = await select({
         message: "What would you like to do?",
-        choices: [
-          { name: "Begin your story", value: "begin" },
-          { name: "/help   Show available commands", value: "help" },
-          { name: "Quit", value: "quit" },
-        ],
+        choices: idleChoices,
         loop: false,
       });
 
-      if (answer === "begin") {
+      if (answer === "resume") {
+        const ok = await doResume();
+        if (!ok) {
+          resumable = false;
+          console.log(chalk.red("\nFailed to resume. Starting a new game instead.\n"));
+        }
+      } else if (answer === "begin") {
         await handleBegin();
       } else if (answer === "help") {
         showHelp();

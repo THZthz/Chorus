@@ -17,6 +17,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
 import type {
@@ -184,7 +185,7 @@ export class LongTermMemory {
       `CALL db.index.vector.queryNodes('entity_embedding_idx', $limit, $embedding)
        YIELD node AS e, score WHERE score >= $threshold
        RETURN e, score ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit: limit * 2, threshold },
+      { embedding: queryEmbedding, limit: int(limit * 2), threshold },
     );
 
     const filterTypes = entityTypes ? new Set(entityTypes.map((t) => t.toUpperCase())) : null;
@@ -265,7 +266,7 @@ export class LongTermMemory {
       : `MATCH (p:Preference) RETURN p ORDER BY p.created_at DESC LIMIT $limit`;
     const rows = await this.client.executeRead(query, {
       category: category || null,
-      limit,
+      limit: int(limit),
     });
     return rows.map((r) => this.parsePreference(r.p as Record<string, unknown>));
   }
@@ -346,7 +347,7 @@ export class LongTermMemory {
       : `MATCH (f:Fact) RETURN f ORDER BY f.created_at DESC LIMIT $limit`;
     const rows = await this.client.executeRead(query, {
       subject: subject || null,
-      limit,
+      limit: int(limit),
     });
     return rows.map((r) => this.parseFact(r.f as Record<string, unknown>));
   }

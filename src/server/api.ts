@@ -64,14 +64,13 @@ apiRouter.get("/history", async (_req, res) => {
         id: m.id,
         speaker: isPlayer ? "YOU" : (meta.speaker as string) || "SYSTEM",
         type: isPlayer ? "YOU" : (meta.type as Message["type"]) || "SYSTEM",
-        text: m.content,
+        text: m.content || "",
         metadata: isPlayer ? undefined : (meta as Message["metadata"]),
       };
     });
     res.json(history);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("History fetch error:", message);
+    console.error("History fetch error:", error);
     res.json([]);
   }
 });

@@ -17,6 +17,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
 import { GAME_ID } from "@/server/memory/gameState";
@@ -86,7 +87,7 @@ export class ShortTermMemory {
       `MATCH (c:Conversation {session_id: $gameId})
        MATCH (c)-[:HAS_MESSAGE]->(m:Message)
        RETURN m ORDER BY m.timestamp DESC LIMIT $limit`,
-      { gameId: GAME_ID, limit },
+      { gameId: GAME_ID, limit: int(limit) },
     );
 
     return rows.reverse().map((r) => {
@@ -120,7 +121,7 @@ export class ShortTermMemory {
        WHERE c.session_id = $gameId
        RETURN m, score
        ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit, threshold, gameId: GAME_ID },
+      { embedding: queryEmbedding, limit: int(limit), threshold, gameId: GAME_ID },
     );
 
     return rows.map((r) => {
@@ -206,15 +207,19 @@ function toDate(val: unknown): Date {
   if (typeof val === "string") return new Date(val);
   if (val && typeof val === "object" && "year" in (val as Record<string, unknown>)) {
     const d = val as Record<string, unknown>;
+    const n = (v: unknown, fallback: number): number => {
+      if (typeof v === "bigint") return Number(v);
+      return (v as number) || fallback;
+    };
     return new Date(
       Date.UTC(
-        (d.year as number) || 1970,
-        ((d.month as number) || 1) - 1,
-        (d.day as number) || 1,
-        (d.hour as number) || 0,
-        (d.minute as number) || 0,
-        (d.second as number) || 0,
-        Math.floor(((d.nanosecond as number) || 0) / 1_000_000),
+        n(d.year, 1970),
+        n(d.month, 1) - 1,
+        n(d.day, 1),
+        n(d.hour, 0),
+        n(d.minute, 0),
+        n(d.second, 0),
+        Math.floor(n(d.nanosecond, 0) / 1_000_000),
       ),
     );
   }

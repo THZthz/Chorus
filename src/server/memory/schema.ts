@@ -27,10 +27,8 @@ export async function setupSchema(
     ["conversation_id", "Conversation", "id"],
     ["message_id", "Message", "id"],
     ["entity_id", "Entity", "id"],
-    ["preference_id", "Preference", "id"],
-    ["fact_id", "Fact", "id"],
-    ["reasoning_trace_id", "ReasoningTrace", "id"],
-    ["reasoning_step_id", "ReasoningStep", "id"],
+    ["note_id", "Note", "id"],
+    ["plot_id", "Plot", "id"],
   ];
 
   for (const [name, label, prop] of constraints) {
@@ -44,8 +42,8 @@ export async function setupSchema(
     ["message_timestamp_idx", "Message", "timestamp"],
     ["entity_type_idx", "Entity", "type"],
     ["entity_name_idx", "Entity", "name"],
-    ["preference_category_idx", "Preference", "category"],
-    ["trace_success_idx", "ReasoningTrace", "success"],
+    ["plot_name_idx", "Plot", "name"],
+    ["plot_status_idx", "Plot", "status"],
   ];
 
   for (const [name, label, prop] of indexes) {
@@ -57,34 +55,19 @@ export async function setupSchema(
     await client.executeWrite(
       `CREATE INDEX npc_disposition_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.npcName, d.targetName)`,
     );
-  } catch {
-    /* Neo4j version compat */
-  }
+  } catch { /* Neo4j version compat */ }
   try {
     await client.executeWrite(
       `CREATE INDEX npc_disposition_target_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.targetName)`,
     );
-  } catch {
-    /* Neo4j version compat */
-  }
-
-  // PlayerFlag constraint + index
-  try {
-    await client.executeWrite(
-      `CREATE CONSTRAINT player_flag_id IF NOT EXISTS FOR (f:PlayerFlag) REQUIRE f.flagId IS UNIQUE`,
-    );
-  } catch {
-    /* Neo4j version compat */
-  }
+  } catch { /* Neo4j version compat */ }
 
   // Vector indexes (require Neo4j 5.11+)
   const vectorIndexes: [string, string, string][] = [
     ["message_embedding_idx", "Message", "embedding"],
     ["entity_embedding_idx", "Entity", "embedding"],
-    ["preference_embedding_idx", "Preference", "embedding"],
-    ["fact_embedding_idx", "Fact", "embedding"],
-    ["task_embedding_idx", "ReasoningTrace", "task_embedding"],
-    ["step_embedding_idx", "ReasoningStep", "embedding"],
+    ["note_embedding_idx", "Note", "embedding"],
+    ["plot_embedding_idx", "Plot", "embedding"],
   ];
 
   for (const [name, label, prop] of vectorIndexes) {

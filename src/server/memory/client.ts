@@ -21,37 +21,41 @@ import { setupSchema } from "@/server/memory/schema";
 import { getEmbedder } from "@/server/memory/embedder";
 import { ShortTermMemory } from "@/server/memory/shortTerm";
 import { LongTermMemory } from "@/server/memory/longTerm";
-import { ReasoningMemory } from "@/server/memory/reasoning";
 import { MemorySearch } from "@/server/memory/search";
 import { ContextAssembler } from "@/server/memory/context";
 import { MemoryObserver } from "@/server/memory/observer";
+import { Notes } from "@/server/memory/notes";
+import { Plots } from "@/server/memory/plots";
 
 export { GAME_ID } from "@/server/memory/gameState";
 export { ShortTermMemory } from "@/server/memory/shortTerm";
 export { LongTermMemory } from "@/server/memory/longTerm";
-export { ReasoningMemory } from "@/server/memory/reasoning";
 export { MemorySearch } from "@/server/memory/search";
 export { ContextAssembler } from "@/server/memory/context";
 export { MemoryObserver } from "@/server/memory/observer";
+export { Notes } from "@/server/memory/notes";
+export { Plots } from "@/server/memory/plots";
 export * from "@/server/memory/types";
 
 export class MemoryClient {
   readonly neo4j: Neo4jClient;
   readonly shortTerm: ShortTermMemory;
   readonly longTerm: LongTermMemory;
-  readonly reasoning: ReasoningMemory;
   readonly search: MemorySearch;
   readonly context: ContextAssembler;
   readonly observer: MemoryObserver;
+  readonly notes: Notes;
+  readonly plots: Plots;
 
   private constructor(neo4j: Neo4jClient) {
     this.neo4j = neo4j;
     this.shortTerm = new ShortTermMemory(neo4j);
     this.longTerm = new LongTermMemory(neo4j);
-    this.reasoning = new ReasoningMemory(neo4j);
-    this.search = new MemorySearch(this.shortTerm, this.longTerm, this.reasoning);
-    this.context = new ContextAssembler(this.shortTerm, this.longTerm, this.reasoning);
+    this.search = new MemorySearch(this.shortTerm, this.longTerm);
+    this.context = new ContextAssembler(this.shortTerm, this.longTerm);
     this.observer = new MemoryObserver(this.shortTerm);
+    this.notes = new Notes(neo4j);
+    this.plots = new Plots(neo4j);
   }
 
   async executeReadOnlyCypher(

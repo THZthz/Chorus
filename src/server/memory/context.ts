@@ -18,14 +18,12 @@
 
 import type { ShortTermMemory } from "@/server/memory/shortTerm";
 import type { LongTermMemory } from "@/server/memory/longTerm";
-import type { ReasoningMemory } from "@/server/memory/reasoning";
 import type { AssembledContext } from "@/server/memory/types";
 
 export class ContextAssembler {
   constructor(
     private shortTerm: ShortTermMemory,
     private longTerm: LongTermMemory,
-    private reasoning: ReasoningMemory,
   ) {}
 
   async assemble(options?: {
@@ -33,21 +31,17 @@ export class ContextAssembler {
     maxItems?: number;
     includeShortTerm?: boolean;
     includeLongTerm?: boolean;
-    includeReasoning?: boolean;
   }): Promise<AssembledContext> {
     const {
       query,
       maxItems = 10,
       includeShortTerm = true,
       includeLongTerm = true,
-      includeReasoning = true,
     } = options || {};
 
     const context: AssembledContext = {
       messages: [],
       entities: [],
-      preferences: [],
-      traces: [],
       summary: "",
     };
 
@@ -67,19 +61,6 @@ export class ContextAssembler {
           context.entities = entities.map(({ similarity: _, ...e }) => e);
         }),
       );
-      tasks.push(
-        this.longTerm.getPreferences(undefined, maxItems).then((prefs) => {
-          context.preferences = prefs;
-        }),
-      );
-    }
-
-    if (includeReasoning && query) {
-      tasks.push(
-        this.reasoning.getSimilarTraces(query, { limit: 3 }).then((traces) => {
-          context.traces = traces.map(({ similarity: _, ...t }) => t);
-        }),
-      );
     }
 
     await Promise.all(tasks);
@@ -97,18 +78,6 @@ export class ContextAssembler {
         parts.push(
           `- ${e.name} (${e.type}${e.subtype ? `:${e.subtype}` : ""})${e.description ? `: ${e.description}` : ""}`,
         );
-      }
-    }
-    if (context.preferences.length > 0) {
-      parts.push("\n### User Preferences");
-      for (const p of context.preferences) {
-        parts.push(`- [${p.category}] ${p.preference}`);
-      }
-    }
-    if (context.traces.length > 0) {
-      parts.push("\n### Similar Past Tasks");
-      for (const t of context.traces) {
-        parts.push(`- ${t.task}${t.outcome ? ` → ${t.outcome}` : ""}`);
       }
     }
     context.summary = parts.join("\n");

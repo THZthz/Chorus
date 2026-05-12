@@ -18,14 +18,12 @@
 
 import type { ShortTermMemory } from "@/server/memory/shortTerm";
 import type { LongTermMemory } from "@/server/memory/longTerm";
-import type { ReasoningMemory } from "@/server/memory/reasoning";
 import type { SearchResults } from "@/server/memory/types";
 
 export class MemorySearch {
   constructor(
     private shortTerm: ShortTermMemory,
     private longTerm: LongTermMemory,
-    private reasoning: ReasoningMemory,
   ) {}
 
   async search(
@@ -37,13 +35,11 @@ export class MemorySearch {
     },
   ): Promise<SearchResults> {
     const { memoryTypes, limit = 10, threshold = 0.7 } = options || {};
-    const types = memoryTypes || ["messages", "entities", "preferences", "traces"];
+    const types = memoryTypes || ["messages", "entities"];
 
     const results: SearchResults = {
       messages: [],
       entities: [],
-      preferences: [],
-      traces: [],
     };
 
     const tasks: Promise<void>[] = [];
@@ -60,22 +56,6 @@ export class MemorySearch {
       tasks.push(
         this.longTerm.searchEntities(query, { limit, threshold }).then((entities) => {
           results.entities = entities;
-        }),
-      );
-    }
-
-    if (types.includes("preferences")) {
-      tasks.push(
-        this.longTerm.getPreferences(undefined, limit).then((prefs) => {
-          results.preferences = prefs.map((p) => ({ ...p, similarity: 1.0 }));
-        }),
-      );
-    }
-
-    if (types.includes("traces")) {
-      tasks.push(
-        this.reasoning.getSimilarTraces(query, { limit, threshold }).then((traces) => {
-          results.traces = traces;
         }),
       );
     }

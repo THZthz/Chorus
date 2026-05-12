@@ -457,7 +457,10 @@ export class LongTermMemory {
     }
 
     // Preserve all existing metadata — addEntity replaces e.metadata entirely
-    const fullMetadata: Record<string, unknown> = { ...entity.metadata, conditions: existingConditions };
+    const fullMetadata: Record<string, unknown> = {
+      ...entity.metadata,
+      conditions: existingConditions,
+    };
     await this.addEntity(playerName, entity.type, {
       subtype: entity.subtype,
       description: entity.description,

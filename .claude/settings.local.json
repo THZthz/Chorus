@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "WebSearch",
+      "Bash(npx tsc *)",
+      "Bash(npm install *)",
+      "Bash(where node *)",
+      "Bash(where npm *)",
+      "Bash(where npx *)",
+      "Bash(where uv *)",
+      "Bash(cmd.exe /c \"where node\")",
+      "Bash(powershell.exe -Command \"Get-Command node | Select-Object -ExpandProperty Source\")",
+      "Bash(git commit *)",
+      "Bash(npm ls *)",
+      "Bash(ls .prettierrc*)",
+      "Bash(ls prettier.config.*)",
+      "Bash(where npm.cmd)",
+      "Bash(where node.exe)",
+      "Bash(cmd.exe /c \"where npm\")",
+      "Bash(cmd.exe /c \"echo %PATH%\")",
+      "Bash(git add *)"
+    ]
+  },
+  "enabledPlugins": {
+    "sourcegraph@claude-plugins-official": false,
+    "code-review@claude-plugins-official": false
+  }
+}

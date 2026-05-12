@@ -25,7 +25,7 @@ export class Neo4jClient {
   constructor(
     uri: string = process.env.NEO4J_URI || "bolt://localhost:7687",
     user: string = process.env.NEO4J_USER || "neo4j",
-    password: string = process.env.NEO4J_PASSWORD || "password",
+    password: string = process.env.NEO4J_PASSWORD || "12345678",
   ) {
     this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
   }

@@ -37,7 +37,6 @@ export interface MemoryEntity {
 
 export interface MemoryMessage {
   id: string;
-  sessionId: string;
   role: MessageRole;
   content: string;
   metadata: Record<string, unknown>;
@@ -78,7 +77,6 @@ export interface EntityRelationship {
 
 export interface ReasoningTrace {
   id: string;
-  sessionId: string;
   task: string;
   taskEmbedding?: number[];
   steps: ReasoningStep[];
@@ -111,16 +109,6 @@ export interface ToolCall {
   error?: string;
 }
 
-export interface SessionSummary {
-  sessionId: string;
-  title?: string;
-  messageCount: number;
-  createdAt: Date;
-  updatedAt?: Date;
-  firstMessagePreview?: string;
-  lastMessagePreview?: string;
-}
-
 export interface Observation {
   type: "fact" | "decision" | "preference" | "topic" | "entity";
   content: string;
@@ -130,7 +118,6 @@ export interface Observation {
 }
 
 export interface ObservationResult {
-  sessionId: string;
   messageCount: number;
   approximateTokens: number;
   thresholdTokens: number;

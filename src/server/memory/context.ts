@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { ShortTermMemory } from "./short-term";
-import type { LongTermMemory } from "./long-term";
-import type { ReasoningMemory } from "./reasoning";
-import type { AssembledContext } from "./types";
+import type { ShortTermMemory } from "@/server/memory/shortTerm";
+import type { LongTermMemory } from "@/server/memory/longTerm";
+import type { ReasoningMemory } from "@/server/memory/reasoning";
+import type { AssembledContext } from "@/server/memory/types";
 
 export class ContextAssembler {
   constructor(
@@ -28,16 +28,13 @@ export class ContextAssembler {
     private reasoning: ReasoningMemory,
   ) {}
 
-  async assemble(
-    sessionId?: string,
-    options?: {
-      query?: string;
-      maxItems?: number;
-      includeShortTerm?: boolean;
-      includeLongTerm?: boolean;
-      includeReasoning?: boolean;
-    },
-  ): Promise<AssembledContext> {
+  async assemble(options?: {
+    query?: string;
+    maxItems?: number;
+    includeShortTerm?: boolean;
+    includeLongTerm?: boolean;
+    includeReasoning?: boolean;
+  }): Promise<AssembledContext> {
     const {
       query,
       maxItems = 10,
@@ -56,9 +53,9 @@ export class ContextAssembler {
 
     const tasks: Promise<void>[] = [];
 
-    if (includeShortTerm && sessionId) {
+    if (includeShortTerm) {
       tasks.push(
-        this.shortTerm.getConversation(sessionId, maxItems).then((msgs) => {
+        this.shortTerm.getConversation(maxItems).then((msgs) => {
           context.messages = msgs;
         }),
       );
@@ -87,7 +84,6 @@ export class ContextAssembler {
 
     await Promise.all(tasks);
 
-    // Build summary text
     const parts: string[] = [];
     if (context.messages.length > 0) {
       parts.push("### Recent Conversation");

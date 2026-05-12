@@ -17,9 +17,9 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { Neo4jClient } from "./neo4j";
-import { Embedder, getEmbedder } from "./embedder";
-import type { EntityType, MemoryEntity, MemoryPreference, MemoryFact } from "./types";
+import { Neo4jClient } from "@/server/memory/neo4j";
+import { Embedder, getEmbedder } from "@/server/memory/embedder";
+import type { EntityType, MemoryEntity, MemoryPreference, MemoryFact } from "@/server/memory/types";
 
 // ── Helpers ──
 

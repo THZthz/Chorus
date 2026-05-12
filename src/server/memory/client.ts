@@ -16,23 +16,24 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Neo4jClient } from "./neo4j";
-import { setupSchema } from "./schema";
-import { getEmbedder } from "./embedder";
-import { ShortTermMemory } from "./short-term";
-import { LongTermMemory } from "./long-term";
-import { ReasoningMemory } from "./reasoning";
-import { MemorySearch } from "./search";
-import { ContextAssembler } from "./context";
-import { MemoryObserver } from "./observer";
+import { Neo4jClient } from "@/server/memory/neo4j";
+import { setupSchema } from "@/server/memory/schema";
+import { getEmbedder } from "@/server/memory/embedder";
+import { ShortTermMemory } from "@/server/memory/shortTerm";
+import { LongTermMemory } from "@/server/memory/longTerm";
+import { ReasoningMemory } from "@/server/memory/reasoning";
+import { MemorySearch } from "@/server/memory/search";
+import { ContextAssembler } from "@/server/memory/context";
+import { MemoryObserver } from "@/server/memory/observer";
 
-export { ShortTermMemory } from "./short-term";
-export { LongTermMemory } from "./long-term";
-export { ReasoningMemory } from "./reasoning";
-export { MemorySearch } from "./search";
-export { ContextAssembler } from "./context";
-export { MemoryObserver } from "./observer";
-export * from "./types";
+export { GAME_ID } from "@/server/memory/gameState";
+export { ShortTermMemory } from "@/server/memory/shortTerm";
+export { LongTermMemory } from "@/server/memory/longTerm";
+export { ReasoningMemory } from "@/server/memory/reasoning";
+export { MemorySearch } from "@/server/memory/search";
+export { ContextAssembler } from "@/server/memory/context";
+export { MemoryObserver } from "@/server/memory/observer";
+export * from "@/server/memory/types";
 
 export class MemoryClient {
   readonly neo4j: Neo4jClient;

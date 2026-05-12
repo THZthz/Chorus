@@ -17,9 +17,9 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { Neo4jClient } from "./neo4j";
-import { Embedder, getEmbedder } from "./embedder";
-import type { ReasoningTrace, ReasoningStep, ToolCall } from "./types";
+import { Neo4jClient } from "@/server/memory/neo4j";
+import { Embedder, getEmbedder } from "@/server/memory/embedder";
+import type { ReasoningTrace, ReasoningStep, ToolCall } from "@/server/memory/types";
 
 export class ReasoningMemory {
   private client: Neo4jClient;
@@ -31,7 +31,6 @@ export class ReasoningMemory {
   }
 
   async startTrace(
-    sessionId: string,
     task: string,
     options?: {
       generateEmbedding?: boolean;
@@ -48,13 +47,12 @@ export class ReasoningMemory {
 
     await this.client.executeWrite(
       `CREATE (rt:ReasoningTrace {
-         id: $id, session_id: $sessionId, task: $task,
+         id: $id, task: $task,
          task_embedding: $embedding, outcome: null, success: null,
          completed_at: null, started_at: datetime(), metadata: $metadata
        })`,
       {
         id: traceId,
-        sessionId,
         task,
         embedding: taskEmbedding || null,
         metadata: metadata ? JSON.stringify(metadata) : null,
@@ -63,7 +61,6 @@ export class ReasoningMemory {
 
     return {
       id: traceId,
-      sessionId,
       task,
       taskEmbedding,
       steps: [],
@@ -223,7 +220,6 @@ export class ReasoningMemory {
       const rt = r.rt as Record<string, unknown>;
       return {
         id: rt.id as string,
-        sessionId: rt.session_id as string,
         task: rt.task as string,
         taskEmbedding: rt.task_embedding as number[] | undefined,
         outcome: rt.outcome as string | undefined,
@@ -232,7 +228,7 @@ export class ReasoningMemory {
         completedAt: rt.completed_at ? new Date(rt.completed_at as string) : undefined,
         similarity: r.score as number,
         steps: [],
-        metadata: { similarity: r.score as number },
+        metadata: {},
       };
     });
   }

@@ -17,9 +17,10 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { Neo4jClient } from "./neo4j";
-import { Embedder, getEmbedder } from "./embedder";
-import type { MemoryMessage, SessionSummary } from "./types";
+import { Neo4jClient } from "@/server/memory/neo4j";
+import { Embedder, getEmbedder } from "@/server/memory/embedder";
+import { GAME_ID } from "@/server/memory/gameState";
+import type { MemoryMessage } from "@/server/memory/types";
 
 export class ShortTermMemory {
   private client: Neo4jClient;
@@ -31,13 +32,12 @@ export class ShortTermMemory {
   }
 
   async addMessage(
-    sessionId: string,
     role: "user" | "assistant" | "system",
     content: string,
     metadata?: Record<string, unknown>,
     generateEmbedding: boolean = true,
   ): Promise<MemoryMessage> {
-    const convId = await this.ensureConversation(sessionId);
+    const convId = await this.ensureConversation();
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
@@ -73,7 +73,6 @@ export class ShortTermMemory {
 
     return {
       id: messageId,
-      sessionId,
       role,
       content,
       metadata: metadata || {},
@@ -82,19 +81,18 @@ export class ShortTermMemory {
     };
   }
 
-  async getConversation(sessionId: string, limit: number = 1000): Promise<MemoryMessage[]> {
+  async getConversation(limit: number = 1000): Promise<MemoryMessage[]> {
     const rows = await this.client.executeRead(
-      `MATCH (c:Conversation {session_id: $sessionId})
+      `MATCH (c:Conversation {session_id: $gameId})
        MATCH (c)-[:HAS_MESSAGE]->(m:Message)
        RETURN m ORDER BY m.timestamp DESC LIMIT $limit`,
-      { sessionId, limit },
+      { gameId: GAME_ID, limit },
     );
 
     return rows.reverse().map((r) => {
       const m = r.m as Record<string, unknown>;
       return {
         id: m.id as string,
-        sessionId,
         role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
         metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
@@ -104,47 +102,14 @@ export class ShortTermMemory {
     });
   }
 
-  async listSessions(limit: number = 20, offset: number = 0): Promise<SessionSummary[]> {
-    const rows = await this.client.executeRead(
-      `MATCH (c:Conversation)
-       OPTIONAL MATCH (c)-[:FIRST_MESSAGE]->(first:Message)
-       OPTIONAL MATCH (c)-[:HAS_MESSAGE]->(m:Message)
-       WITH c, first, count(m) AS messageCount
-       ORDER BY coalesce(c.updated_at, c.created_at) DESC
-       SKIP $offset LIMIT $limit
-       OPTIONAL MATCH (c)-[:HAS_MESSAGE]->(lastMsg:Message)
-       WITH c, first, messageCount, lastMsg
-       ORDER BY lastMsg.timestamp DESC
-       WITH c, first, messageCount, head(collect(lastMsg)) AS last
-       RETURN c, first, last, messageCount`,
-      { limit, offset },
-    );
-
-    return rows.map((r) => {
-      const c = r.c as Record<string, unknown>;
-      const first = r.first as Record<string, unknown> | null;
-      const last = r.last as Record<string, unknown> | null;
-      return {
-        sessionId: c.session_id as string,
-        title: c.title as string | undefined,
-        messageCount: r.messageCount as number,
-        createdAt: toDate(c.created_at),
-        updatedAt: c.updated_at ? toDate(c.updated_at) : undefined,
-        firstMessagePreview: first ? (first.content as string).slice(0, 100) : undefined,
-        lastMessagePreview: last ? (last.content as string).slice(0, 100) : undefined,
-      };
-    });
-  }
-
   async searchMessages(
     query: string,
     options?: {
-      sessionId?: string;
       limit?: number;
       threshold?: number;
     },
   ): Promise<Array<MemoryMessage & { similarity: number }>> {
-    const { sessionId, limit = 10, threshold = 0.7 } = options || {};
+    const { limit = 10, threshold = 0.7 } = options || {};
     const queryEmbedding = await this.embedder.embed(query);
 
     const rows = await this.client.executeRead(
@@ -152,33 +117,31 @@ export class ShortTermMemory {
        YIELD node AS m, score
        WHERE score >= $threshold
        OPTIONAL MATCH (c:Conversation)-[:HAS_MESSAGE]->(m)
-       RETURN m, c.session_id AS session_id, score
+       WHERE c.session_id = $gameId
+       RETURN m, score
        ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit, threshold },
+      { embedding: queryEmbedding, limit, threshold, gameId: GAME_ID },
     );
 
-    return rows
-      .filter((r) => !sessionId || (r.session_id as string) === sessionId)
-      .map((r) => {
-        const m = r.m as Record<string, unknown>;
-        return {
-          id: m.id as string,
-          sessionId: (r.session_id as string) || "",
-          role: m.role as "user" | "assistant" | "system",
-          content: m.content as string,
-          metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
-          similarity: r.score as number,
-          createdAt: toDate(m.timestamp),
-        };
-      });
+    return rows.map((r) => {
+      const m = r.m as Record<string, unknown>;
+      return {
+        id: m.id as string,
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content as string,
+        metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
+        similarity: r.score as number,
+        createdAt: toDate(m.timestamp),
+      };
+    });
   }
 
   // ── Private helpers ──
 
-  private async ensureConversation(sessionId: string): Promise<string> {
+  private async ensureConversation(): Promise<string> {
     const rows = await this.client.executeRead(
-      `MATCH (c:Conversation {session_id: $sessionId}) RETURN c.id AS id`,
-      { sessionId },
+      `MATCH (c:Conversation {session_id: $gameId}) RETURN c.id AS id`,
+      { gameId: GAME_ID },
     );
     if (rows.length > 0) return rows[0].id as string;
 
@@ -186,10 +149,10 @@ export class ShortTermMemory {
     const now = new Date().toISOString();
     await this.client.executeWrite(
       `CREATE (c:Conversation {
-         id: $id, session_id: $sessionId,
+         id: $id, session_id: $gameId,
          created_at: datetime($now), updated_at: datetime($now)
        })`,
-      { id: convId, sessionId, now },
+      { id: convId, gameId: GAME_ID, now },
     );
     return convId;
   }
@@ -212,7 +175,6 @@ export class ShortTermMemory {
   ): Promise<void> {
     if (messageIds.length === 0) return;
 
-    // Link previous last message to the first new message
     if (previousLastId && messageIds.length > 0) {
       await this.client.executeWrite(
         `MATCH (prev:Message {id: $prevId}), (next:Message {id: $nextId})
@@ -221,7 +183,6 @@ export class ShortTermMemory {
       );
     }
 
-    // Link messages within the batch
     for (let i = 0; i < messageIds.length - 1; i++) {
       await this.client.executeWrite(
         `MATCH (prev:Message {id: $prevId}), (next:Message {id: $nextId})
@@ -230,7 +191,6 @@ export class ShortTermMemory {
       );
     }
 
-    // Create FIRST_MESSAGE relationship if this is the first message
     if (createFirstMessage && messageIds.length > 0) {
       await this.client.executeWrite(
         `MATCH (c:Conversation {id: $convId}), (m:Message {id: $msgId})
@@ -241,13 +201,9 @@ export class ShortTermMemory {
   }
 }
 
-/**
- * Convert a Neo4j temporal value or ISO string to a Date.
- */
 function toDate(val: unknown): Date {
   if (val instanceof Date) return val;
   if (typeof val === "string") return new Date(val);
-  // Neo4j driver may return a DateTime-like object with year/month/day etc.
   if (val && typeof val === "object" && "year" in (val as Record<string, unknown>)) {
     const d = val as Record<string, unknown>;
     return new Date(

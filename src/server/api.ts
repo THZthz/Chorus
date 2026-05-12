@@ -20,7 +20,7 @@ import express from "express";
 import { generateTurn } from "@/server/llm";
 import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
-import { getSessionState } from "@/server/memory/session";
+import { getGameState } from "@/server/memory/gameState";
 import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
@@ -56,7 +56,7 @@ apiRouter.post("/chat/stream", async (req, res) => {
 apiRouter.get("/history", async (_req, res) => {
   try {
     const client = MemoryClient.getCachedInstance();
-    const messages = await client.shortTerm.getConversation("elysian-game");
+    const messages = await client.shortTerm.getConversation();
     const history: Message[] = messages.map((m, i) => {
       const meta = m.metadata || {};
       const isPlayer = m.role === "user";
@@ -76,11 +76,11 @@ apiRouter.get("/history", async (_req, res) => {
   }
 });
 
-// ── Session current ──
+// ── Game state ──
 
-apiRouter.get("/session/current", async (_req, res) => {
+apiRouter.get("/game/current", async (_req, res) => {
   try {
-    const state = await getSessionState();
+    const state = await getGameState();
     res.json(state);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

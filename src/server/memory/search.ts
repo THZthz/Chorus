@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { ShortTermMemory } from "./short-term";
-import type { LongTermMemory } from "./long-term";
-import type { ReasoningMemory } from "./reasoning";
-import type { SearchResults } from "./types";
+import type { ShortTermMemory } from "@/server/memory/shortTerm";
+import type { LongTermMemory } from "@/server/memory/longTerm";
+import type { ReasoningMemory } from "@/server/memory/reasoning";
+import type { SearchResults } from "@/server/memory/types";
 
 export class MemorySearch {
   constructor(
@@ -32,12 +32,11 @@ export class MemorySearch {
     query: string,
     options?: {
       memoryTypes?: string[];
-      sessionId?: string;
       limit?: number;
       threshold?: number;
     },
   ): Promise<SearchResults> {
-    const { memoryTypes, sessionId, limit = 10, threshold = 0.7 } = options || {};
+    const { memoryTypes, limit = 10, threshold = 0.7 } = options || {};
     const types = memoryTypes || ["messages", "entities", "preferences", "traces"];
 
     const results: SearchResults = {
@@ -51,7 +50,7 @@ export class MemorySearch {
 
     if (types.includes("messages")) {
       tasks.push(
-        this.shortTerm.searchMessages(query, { sessionId, limit, threshold }).then((msgs) => {
+        this.shortTerm.searchMessages(query, { limit, threshold }).then((msgs) => {
           results.messages = msgs;
         }),
       );

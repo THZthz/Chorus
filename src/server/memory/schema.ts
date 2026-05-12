@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Neo4jClient } from "./neo4j";
+import { Neo4jClient } from "@/server/memory/neo4j";
 
 export async function setupSchema(
   client: Neo4jClient,
@@ -41,12 +41,10 @@ export async function setupSchema(
 
   // Regular indexes
   const indexes: [string, string, string][] = [
-    ["conversation_session_idx", "Conversation", "session_id"],
     ["message_timestamp_idx", "Message", "timestamp"],
     ["entity_type_idx", "Entity", "type"],
     ["entity_name_idx", "Entity", "name"],
     ["preference_category_idx", "Preference", "category"],
-    ["trace_session_idx", "ReasoningTrace", "session_id"],
     ["trace_success_idx", "ReasoningTrace", "success"],
   ];
 

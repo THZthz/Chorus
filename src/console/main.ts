@@ -273,7 +273,7 @@ async function tryResume(): Promise<boolean> {
     const hist = (await histRes.json()) as Message[];
     if (hist.length === 0) return false;
 
-    const currRes = await fetch(`${BASE_URL}/api/session/current`);
+    const currRes = await fetch(`${BASE_URL}/api/game/current`);
     if (!currRes.ok) return false;
     const current = (await currRes.json()) as { id: string; options: DialogueOption[] };
     if (!current || !current.options || current.options.length === 0) return false;

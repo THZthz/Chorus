@@ -53,11 +53,11 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── short-term.ts  # Conversations & messages with sequential linking
     │   │   ├── long-term.ts   # Entities (POLE+O), preferences, facts, relationships
     │   │   ├── reasoning.ts   # Reasoning traces, steps, tool calls
-    │   │   ├── observer.ts    # Observational memory — token-threshold compression
+    │   │   ├── observer.ts    # World delta tracking + context compression
     │   │   ├── search.ts      # Hybrid vector + graph search across memory types
     │   │   ├── context.ts     # Assembled context for GM consumption
-    │   │   ├── session.ts     # Session state persistence (:SessionState node)
-    │   │   └── tools.ts       # 16 AI SDK tool definitions
+    │   │   ├──   gameState.ts  # Game save/resume persistence (:SessionState node)
+    │   │   └── tools.ts       # 6 GM-verb tool definitions
     │   ├── models/
     │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
     │   │   └── shared.ts      # safeJsonParse utility
@@ -93,7 +93,7 @@ POST /api/chat/stream
 │                                                      │
 │  streamText({                                        │
 │    tools: {                                          │
-│      ← 16 Neo4j-backed tools from createMemoryTools()│
+│      ← 6 Neo4j-backed tools from createMemoryTools()│
 │      generateDialogueStep  ──► SSE streaming         │
 │      advanceTime           ──► DB + SSE event        │
 │    },                                                │
@@ -151,28 +151,18 @@ Two layers of tools:
 | `generateDialogueStep` | Produce narrative messages + player options | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments         | `time_update`                             |
 
-**Neo4j-backed tools** (16 tools defined in `src/server/memory/tools.ts`):
+**Neo4j-backed tools** (6 tools defined in `src/server/memory/tools.ts`):
 
-| Tool              | Purpose                                                             |
-|-------------------|---------------------------------------------------------------------|
-| `searchMemory`    | Hybrid vector + graph search across all memory                      |
-| `getContext`      | Auto-assembled context for the current session                      |
-| `storeMessage`    | Store a message in conversation history                             |
-| `saveEntity`      | Create/update an entity (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) |
-| `setPreference`   | Record a user preference                                            |
-| `recordFact`      | Store a subject-predicate-object fact triple                        |
-| `getEntity`       | Get entity details with graph traversal                             |
-| `getConversation` | Get full conversation history for a session                         |
-| `listSessions`    | List available conversation sessions                                |
-| `linkEntities`    | Create a typed relationship between entities                        |
-| `startTrace`      | Begin recording a reasoning trace                                   |
-| `recordStep`      | Record a reasoning step within a trace                              |
-| `completeTrace`   | Complete a reasoning trace with outcome                             |
-| `getObservations` | Get session observations and reflections                            |
-| `exportGraph`     | Export subgraph as JSON for visualization                           |
-| `queryGraph`      | Execute read-only Cypher queries                                    |
+| Tool              | Purpose                                                        |
+|-------------------|----------------------------------------------------------------|
+| `getScene`        | Returns everything in-frame: location, NPCs, objects, inventory, active plots |
+| `updateWorld`     | Change world state (move/change/create/relate/fact actions)     |
+| `remember`        | Store a GM note tied to an entity                               |
+| `getConversation` | Retrieve recent dialogue history                                |
+| `searchMemory`    | Vector search across all memory (entities, facts, messages)     |
+| `advancePlot`     | Update story plot progression and track revealed clues          |
 
-All 16 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and registered in `generateTurn()`. The GM has full access to entity CRUD, observations, relationships, conversation history, and semantic search — all backed by Neo4j.
+All 6 tools are defined as AI SDK tools in `src/server/memory/tools.ts` and registered in `generateTurn()`. The underlying long-term, short-term, and search subsystem methods are still available for internal use — the tool surface is simply collapsed into GM-native verbs.
 
 ### 3.4 Seed System
 
@@ -203,7 +193,7 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 ### 4.2 State
 
 - `GET /api/history` — Returns full conversation history from ShortTermMemory, mapped to the `Message` interface
-- `GET /api/session/current` — Returns persisted session state (stepId + options) from the `:SessionState` Neo4j node
+- `GET /api/game/current` — Returns persisted game state (stepId + options) from the `:SessionState` Neo4j node
 
 ### 4.3 Reset
 
@@ -256,22 +246,22 @@ The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world
 
 **Five subsystems:**
 
-| Subsystem | File | Responsibility |
-|-----------|------|----------------|
-| Short-term | `short-term.ts` | Conversation messages with sequential NEXT_MESSAGE linking, vector search |
-| Long-term | `long-term.ts` | Entity CRUD (POLE+O labels), preferences, fact triples, typed relationships |
-| Reasoning | `reasoning.ts` | LLM reasoning traces: start → steps → tool calls → completion, vector search |
-| Observer | `observer.ts` | Token-threshold context compression, inline observation extraction |
-| Search | `search.ts` | Parallel hybrid search across messages, entities, preferences, and traces |
-| Context | `context.ts` | Assembled GM context from recent messages, relevant entities, preferences, and traces |
+| Subsystem  | File            | Responsibility                                                                        |
+|------------|-----------------|---------------------------------------------------------------------------------------|
+| Short-term | `short-term.ts` | Conversation messages with sequential NEXT_MESSAGE linking, vector search             |
+| Long-term  | `long-term.ts`  | Entity CRUD (POLE+O labels), preferences, fact triples, typed relationships           |
+| Reasoning  | `reasoning.ts`  | LLM reasoning traces: start → steps → tool calls → completion, vector search          |
+| Observer   | `observer.ts`   | World delta tracking + token-threshold context compression                            |
+| Search     | `search.ts`     | Parallel hybrid search across messages, entities, preferences, and traces             |
+| Context    | `context.ts`    | Assembled GM context from recent messages, relevant entities, preferences, and traces |
 
 **Embeddings** (`embedder.ts`): Two strategies with automatic fallback. The `LocalEmbedder` uses `@xenova/transformers` with `all-MiniLM-L6-v2` (384-dim, ~80MB ONNX model). The `OpenAICompatibleEmbedder` uses any OpenAI-compatible API (configurable via `EMBEDDING_API_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL` env vars). If API credentials are set, the API embedder is used; otherwise local ONNX is the default. Embeddings power vector search across messages, entities, preferences, facts, and reasoning traces.
 
-**Observer** (`observer.ts`): Monitors per-session character count. When accumulated context exceeds a token threshold (default 30K), generates reflections from older messages. Extracts inline observations from user messages via keyword matching (decision markers like "i decided", fact patterns like "it turns out"). Implements a three-tier hierarchy: reflections → observations → recent messages.
+**Observer** (`observer.ts`): Hooks into `updateWorld` tool execution to track structured world deltas (moves, entity changes, relationships, facts). Maintains token-threshold compression for long sessions: when accumulated dialogue exceeds a token threshold (default 30K), generates reflections from older messages to keep the GM's context window manageable.
 
-**Session persistence** (`session.ts`): Saves game state (current step ID + dialogue options) to a `:SessionState {id: "elysian-game"}` node in Neo4j. On resume, the console fetches this state and the conversation history to restore the game.
+**Game state persistence** (`gameState.ts`): Saves game state (current step ID + dialogue options) to a `:SessionState {id: "elysian-game"}` node in Neo4j. On resume, the console fetches this state and the conversation history to restore the game.
 
-**Neo4j schema** (`schema.ts`): On startup, creates 7 unique constraints (`Conversation`, `Message`, `Entity`, `Preference`, `Fact`, `ReasoningTrace`, `ReasoningStep` on `id`), 7 regular indexes (on session_id, timestamp, type, name, category), and 6 vector indexes (COSINE similarity on embedding properties across Message, Entity, Preference, Fact, ReasoningTrace, ReasoningStep). Vector indexes require Neo4j 5.11+.
+**Neo4j schema** (`schema.ts`): On startup, creates 7 unique constraints (`Conversation`, `Message`, `Entity`, `Preference`, `Fact`, `ReasoningTrace`, `ReasoningStep` on `id`), 5 regular indexes (on timestamp, type, name, category, success), and 6 vector indexes (COSINE similarity on embedding properties across Message, Entity, Preference, Fact, ReasoningTrace, ReasoningStep). Vector indexes require Neo4j 5.11+.
 
 ---
 
@@ -299,7 +289,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 - **State machine**: `IDLE → WAITING → AWAITING_OPTION → WAITING → ...`
 - **Rendering**: Terminal output via `chalk` (speaker colors mirrored from `src/shared/colors.ts`'s `VOICE_COLORS`) and `log-update` (progressive streaming updates)
 - **SSE handling**: `ConsoleSseClient` (`src/console/SseClient.ts`) handles core dialogue events (`step_start`, `streaming_messages`, `streaming_reset`, `options`, `parsed`, `error`, `done`). World/plot events are intentionally ignored — the console has no world editor.
-- **Session resume**: On startup, fetches `GET /api/history` + `GET /api/session/current` to attempt restore
+- **Session resume**: On startup, fetches `GET /api/history` + `GET /api/game/current` to attempt restore
 - **Markdown rendering**: `renderMarkdown()` in `src/console/markdown.ts` converts basic markdown (bold, italic, strikethrough, inline code) to chalk-styled terminal output
 - **Custom input**: Players can type free-form responses that get sent to the LLM
 
@@ -332,7 +322,7 @@ Initial world state is defined by the active seed story in `src/server/seed-stor
 
 ### 9.5 Debugging LLM Calls with DevTools
 
-This section is only provided as a immature experience, improve it while you can.
+> This section is only provided as a immature experience, improve it while you can.
 
 All `streamText` calls are captured to `.devtools/generations.json` via the `devToolsMiddleware()` wrapper in `src/server/llm/model.ts`. This is the primary debugging tool for the GM's tool-calling behavior.
 

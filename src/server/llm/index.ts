@@ -25,7 +25,7 @@ import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { createMemoryTools } from "@/server/memory/tools";
-import { saveSessionState } from "@/server/memory/session";
+import { saveGameState, GAME_ID } from "@/server/memory/gameState";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 
@@ -55,7 +55,7 @@ export async function generateTurn(
   // Persist player input so full conversation is available for resume
   {
     const client = MemoryClient.getCachedInstance();
-    await client.shortTerm.addMessage("elysian-game", "user", userInput);
+    await client.shortTerm.addMessage("user", userInput);
   }
 
   const historyWindow = 10;
@@ -90,14 +90,13 @@ export async function generateTurn(
     metadata?: Record<string, unknown>;
   }) => {
     const client = MemoryClient.getCachedInstance();
-    const sessionId = "elysian-game";
     const role: "user" | "assistant" | "system" = msg.type === "CHARACTER" ? "assistant" : "system";
-    const stored = await client.shortTerm.addMessage(sessionId, role, msg.text, {
+    const stored = await client.shortTerm.addMessage(role, msg.text, {
       speaker: msg.speaker,
       type: msg.type,
       ...msg.metadata,
     });
-    await client.observer.onMessageStored(sessionId, msg.text, stored.id, role);
+    await client.observer.onMessageStored(msg.text, stored.id, role);
   };
 
   const dialogueStepTool = createGenerateDialogueStepTool(events, persistMessage);
@@ -335,7 +334,7 @@ export async function generateTurn(
 
   // Persist current options so the player can resume from this point
   if (finalOptions.length > 0) {
-    saveSessionState(`step_${Date.now()}`, finalOptions).catch((err) =>
+    saveGameState(`step_${Date.now()}`, finalOptions).catch((err) =>
       console.error("[generateTurn] failed to persist session state:", err),
     );
   }

@@ -39,10 +39,10 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │                                                                      │
 │  streamText({                                                        │
 │    tools: {                                                          │
-│      getScene, updateWorld, remember, getConversation,               │
-│      searchMemory, advancePlot,    ← memory/tools.ts (6 tools)       │
-│      generateDialogueStep,         ← llm/tools/ (Elysian tool)       │
-│      advanceTime                   ← llm/tools/ (Elysian tool)       │
+│      queryWorld, mutateWorld, searchMemory, editNote,                │
+│      searchNotes, editPlot, searchPlots, ← llm/tools/ (7 GM tools)   │
+│      generateDialogueStep,              ← llm/tools/ (Elysian tool)  │
+│      advanceTime                        ← llm/tools/ (Elysian tool)  │
 │    }                                                                 │
 │  })                                                                  │
 │                                                                      │
@@ -55,15 +55,15 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │                     MEMORY LAYER (Neo4j-backed)                      │
 │  src/server/memory/client.ts  ── MemoryClient singleton              │
 │                                                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                   │
-│  │ ShortTerm   │  │  LongTerm   │  │ Reasoning   │                   │
-│  ├─────────────┤  ├─────────────┤  ├─────────────┤                   │
-│  │ messages    │  │ entities    │  │ traces      │                   │
-│  │ conversation│  │ facts       │  │ steps       │                   │
-│  │             │  │ preferences │  │ tool calls  │                   │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                   │
-│         └────────────────┼───────────────┘                           │
-│                          ▼                                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
+│  │ ShortTerm   │  │  LongTerm   │  │   Notes     │  │   Plots     │   │
+│  ├─────────────┤  ├─────────────┤  ├─────────────┤  ├─────────────┤   │
+│  │ messages    │  │ entities    │  │ GM notes    │  │ beats       │   │
+│  │ conversation│  │ facts       │  │ embeddings  │  │ branches    │   │
+│  │             │  │ preferences │  │ CRUD        │  │ flags       │   │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘   │
+│         └────────────────┼───────────────┼───────────────┘           │
+│                          ▼               ▼                           │
 │  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐                  │
 │  │  Search     │  │  Context    │  │  Observer    │                  │
 │  ├─────────────┤  ├─────────────┤  ├──────────────┤                  │
@@ -111,6 +111,13 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
+    │   │       ├── queryWorld.ts            # Read-only Cypher queries (label-confined)
+    │   │       ├── mutateWorld.ts           # Write Cypher queries (label+rel-confined)
+    │   │       ├── searchMemory.ts          # Vector search across entities + messages
+    │   │       ├── editNote.ts              # Create/update/delete GM notes
+    │   │       ├── searchNotes.ts           # Vector search across notes
+    │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
+    │   │       ├── searchPlots.ts           # Vector search across plots
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
@@ -120,12 +127,13 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
     │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
     │   │   ├── longTerm.ts    # Entities (POLE+O), preferences, facts, relationships
-    │   │   ├── reasoning.ts   # Reasoning traces, steps, tool calls
     │   │   ├── observer.ts    # World delta tracking + token-threshold context compression
     │   │   ├── search.ts      # Parallel hybrid vector search across memory types
     │   │   ├── context.ts     # Assembled GM context (markdown summary from all layers)
     │   │   ├── gameState.ts   # Game save/resume via options on :Conversation node
-    │   │   ├── tools.ts       # 6 GM-verb tool definitions (AI SDK tools)
+    │   │   ├── notes.ts       # GM note CRUD with vector embedding
+    │   │   ├── plots.ts       # Plot lifecycle management (beats, branches, flags)
+    │   │   ├── validation.ts  # Cypher query allowlist validation (labels + relationships)
     │   │   └── reset.ts       # Clear Neo4j database (MATCH (n) DETACH DELETE n)
     │   ├── models/
     │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
@@ -142,7 +150,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   └── constants.ts       # SKILL_NAMES, TOOL_NAMES, SEGMENT_LABELS, etc.
     └── types/
         ├── dialogue.ts        # Message, DialogueOption, NotificationType
-        └── entities.ts        # CharacterStats, Character, EntityType, GameEntitySubtype
+        └── entities.ts        # CharacterStats, Character (unused — pending character sheet system)
 ```
 
 ---

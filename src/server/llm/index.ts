@@ -34,8 +34,7 @@ import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
-import { SkillName } from "@/shared/constants.ts";
-
+import { type SkillName } from "@/shared/constants";
 export { DEFAULT_SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt } from "@/server/llm/prompt";
 
 export async function generateTurn(

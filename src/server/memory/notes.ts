@@ -107,7 +107,7 @@ export class Notes {
         { noteId, entityName },
       );
     } catch {
-      /* entity may not exist — skip */
+      // entity may not exist — skip
     }
   }
 
@@ -119,7 +119,7 @@ export class Notes {
         { noteId, messageId },
       );
     } catch {
-      /* message may not exist — skip */
+      // message may not exist — skip
     }
   }
 

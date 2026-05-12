@@ -62,6 +62,14 @@ export class CypherValidator {
       );
     }
 
+    for (const label of this.extractNodeLabels(query)) {
+      if (!READ_ALLOWED_LABELS.has(label)) {
+        errors.push(
+          `Query references forbidden label \`:${label}\`. Allowed read labels: ${[...READ_ALLOWED_LABELS].join(", ")}`,
+        );
+      }
+    }
+
     return { valid: errors.length === 0, errors };
   }
 
@@ -81,7 +89,43 @@ export class CypherValidator {
       );
     }
 
+    for (const label of this.extractNodeLabels(query)) {
+      if (!WRITE_ALLOWED_LABELS.has(label)) {
+        errors.push(
+          `Query references forbidden label \`:${label}\`. Allowed write labels: ${[...WRITE_ALLOWED_LABELS].join(", ")}`,
+        );
+      }
+    }
+
+    for (const relType of this.extractRelationshipTypes(query)) {
+      if (!ALLOWED_RELATIONSHIPS.has(relType)) {
+        errors.push(
+          `Query references forbidden relationship type \`[:${relType}]\`. Allowed: ${[...ALLOWED_RELATIONSHIPS].join(", ")}`,
+        );
+      }
+    }
+
     return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Extract node labels from a Cypher query (e.g. :Entity, :Message).
+   * Only matches labels outside of square brackets to avoid conflating relationship types.
+   */
+  private extractNodeLabels(query: string): string[] {
+    const cleaned = query.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
+    const outsideBrackets = cleaned.replace(/\[[^\]]*\]/g, "");
+    const matches = outsideBrackets.matchAll(/:([A-Z][A-Za-z0-9_]*)/g);
+    return [...new Set([...matches].map((m) => m[1]))];
+  }
+
+  /**
+   * Extract relationship types from a Cypher query (e.g. [:LOCATED_AT], [:CARRIES]).
+   */
+  private extractRelationshipTypes(query: string): string[] {
+    const cleaned = query.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
+    const matches = cleaned.matchAll(/\[:([A-Z][A-Za-z0-9_]+)/g);
+    return [...new Set([...matches].map((m) => m[1]))];
   }
 
   private hasQualifiedMatch(query: string): boolean {

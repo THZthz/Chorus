@@ -42,16 +42,3 @@ export interface Character {
   opinions: Record<string, string>;
   conditions: Record<string, string | number | boolean>;
 }
-
-// Type helpers for Neo4j entities (POLE+O mapping)
-export type EntityType = "PERSON" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
-export type GameEntitySubtype =
-  | "CHARACTER"
-  | "TAVERN"
-  | "TEMPLE"
-  | "WORKSHOP"
-  | "ARTIFACT"
-  | "WEAPON"
-  | "DOCUMENT"
-  | "FACTION"
-  | "GUILD";

@@ -24,7 +24,7 @@ import { renderMarkdown } from "@/console/markdown";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/server/llm/events";
 import { ConsoleSseClient, type SseCallbacks } from "@/console/SseClient";
-import { VOICE_COLORS } from "@/shared/colors.ts";
+import { VOICE_COLORS } from "@/shared/colors";
 
 // ── State ──
 

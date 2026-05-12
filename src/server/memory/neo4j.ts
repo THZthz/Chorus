@@ -19,7 +19,7 @@
 import neo4j, { isNode, isRelationship } from "neo4j-driver";
 import type { Driver } from "neo4j-driver";
 
-/** Recursively convert BigInt values to Number — neo4j-driver 6.x returns integer properties as BigInt. */
+// Recursively convert BigInt values to Number — neo4j-driver 6.x returns integer properties as BigInt.
 function toPlainValue(v: unknown): unknown {
   if (typeof v === "bigint") return Number(v);
   if (Array.isArray(v)) return v.map(toPlainValue);
@@ -51,7 +51,7 @@ function toPlainValue(v: unknown): unknown {
   return v;
 }
 
-/** Unwrap Neo4j Node/Relationship objects from toObject() results — 6.x returns graph types, not plain maps. */
+// Unwrap Neo4j Node/Relationship objects from toObject() results — 6.x returns graph types, not plain maps.
 function unwrapRecord(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(obj)) {

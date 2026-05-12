@@ -1,4 +1,4 @@
-.PHONY: help install server console lint format format-check check \
+.PHONY: help install server console lint format \
         neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
         dev dev-stop reset clean clean-all
 
@@ -29,10 +29,8 @@ help:
 	@echo "Elysian Server & Client:"
 	@echo "  make server           Start Express server (:3000)"
 	@echo "  make console          Start console REPL client"
-	@echo "  make lint             TypeScript type-check (tsc --noEmit)"
+	@echo "  make lint             TypeScript type-check (tsc --noEmit) and unused check by knip"
 	@echo "  make format           Format source with Prettier"
-	@echo "  make format-check     Check formatting with Prettier"
-	@echo "  make check            Run all code quality checks"
 	@echo ""
 	@echo "Full Dev Environment:"
 	@echo "  make dev              Start Neo4j + Server (foreground)"
@@ -89,15 +87,10 @@ console:
 
 lint:
 	$(NPM) run lint
+	$(NPM) run knip
 
 format:
 	$(NPM) run format
-
-format-check:
-	$(NPM) run format:check
-
-check: lint format-check
-	@echo "All code quality checks passed!"
 
 dev: neo4j-start neo4j-wait server-dev
 

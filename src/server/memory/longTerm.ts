@@ -29,9 +29,9 @@ import type {
 
 // ── Helpers ──
 
-/** Convert a string to PascalCase, matching Python's to_pascal_case.
- *  Handles snake_case and simple uppercase inputs.
- *  e.g. "OBJECT" -> "Object", "snake_case" -> "SnakeCase" */
+// Convert a string to PascalCase, matching Python's to_pascal_case.
+//  Handles snake_case and simple uppercase inputs.
+//  e.g. "OBJECT" -> "Object", "snake_case" -> "SnakeCase"
 function pascalCase(str: string): string {
   if (!str) return str;
   return str

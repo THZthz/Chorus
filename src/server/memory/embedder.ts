@@ -26,11 +26,18 @@ export interface Embedder {
 // Set EMBEDDING_LOCAL_MODEL_PATH to a directory containing models, e.g.:
 //   EMBEDDING_LOCAL_MODEL_PATH=data/huggingface
 // Expected structure: {EMBEDDING_LOCAL_MODEL_PATH}/Xenova/all-MiniLM-L6-v2/
-//   ├── config.json
-//   ├── tokenizer.json
-//   ├── tokenizer_config.json
-//   └── onnx/
-//       └── model.onnx
+// {EMBEDDING_LOCAL_MODEL_PATH}
+// └── Xenova
+//     └── all-MiniLM-L6-v2
+//         ├── README.md
+//         ├── config.json
+//         ├── onnx
+//         │   ├── model.onnx
+//         │   └── model_quantized.onnx
+//         ├── special_tokens_map.json
+//         ├── tokenizer.json
+//         ├── tokenizer_config.json
+//         └── vocab.txt
 // Download from: https://huggingface.co/Xenova/all-MiniLM-L6-v2
 const DEFAULT_LOCAL_MODEL = "Xenova/all-MiniLM-L6-v2";
 const LOCAL_DIMENSIONS = 384;

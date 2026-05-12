@@ -62,7 +62,7 @@ export class MemoryObserver {
     this.recentWindow = options?.recentMessageWindow ?? 20;
   }
 
-  /** Called from updateWorld on each state mutation. */
+  // Called from updateWorld on each state mutation.
   onWorldChange(delta: { action: string; summary: string }): void {
     const ctx = this.getContext();
     ctx.deltas.push({
@@ -72,7 +72,7 @@ export class MemoryObserver {
     });
   }
 
-  /** Called when a message is stored (dialogue tracking for compression). */
+  // Called when a message is stored (dialogue tracking for compression).
   async onMessageStored(
     content: string,
     _messageId?: string,

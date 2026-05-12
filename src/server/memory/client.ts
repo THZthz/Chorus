@@ -58,13 +58,6 @@ export class MemoryClient {
     this.plots = new Plots(neo4j);
   }
 
-  async executeReadOnlyCypher(
-    query: string,
-    params?: Record<string, unknown>,
-  ): Promise<Record<string, unknown>[]> {
-    return this.neo4j.executeRead(query, params);
-  }
-
   async close(): Promise<void> {
     await this.neo4j.close();
   }

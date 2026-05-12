@@ -32,12 +32,7 @@ export class ContextAssembler {
     includeShortTerm?: boolean;
     includeLongTerm?: boolean;
   }): Promise<AssembledContext> {
-    const {
-      query,
-      maxItems = 10,
-      includeShortTerm = true,
-      includeLongTerm = true,
-    } = options || {};
+    const { query, maxItems = 10, includeShortTerm = true, includeLongTerm = true } = options || {};
 
     const context: AssembledContext = {
       messages: [],

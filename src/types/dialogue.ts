@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {SkillName} from "@/shared/constants.ts";
+import { SkillName } from "@/shared/constants.ts";
 
 export const NOTIFICATION_TYPES = ["TASK", "INFO", "WARNING", "ITEM_RECEIVED"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

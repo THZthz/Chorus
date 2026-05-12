@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { v4 as uuidv4 } from "uuid";
 import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
@@ -38,20 +56,32 @@ export class Plots {
          created_at: datetime($now), updated_at: datetime($now)
        })`,
       {
-        id, name, description, status, triggerCondition,
+        id,
+        name,
+        description,
+        status,
+        triggerCondition,
         flags: flags.length > 0 ? JSON.stringify(flags) : null,
-        embedding, now,
+        embedding,
+        now,
       },
     );
 
-    return { id, name, description, status, triggerCondition: triggerCondition ?? undefined, flags, embedding, createdAt: new Date(now), updatedAt: new Date(now) };
+    return {
+      id,
+      name,
+      description,
+      status,
+      triggerCondition: triggerCondition ?? undefined,
+      flags,
+      embedding,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    };
   }
 
   async getPlot(name: string): Promise<MemoryPlot | null> {
-    const rows = await this.client.executeRead(
-      `MATCH (p:Plot {name: $name}) RETURN p`,
-      { name },
-    );
+    const rows = await this.client.executeRead(`MATCH (p:Plot {name: $name}) RETURN p`, { name });
     if (rows.length === 0) return null;
     return this.parsePlot(rows[0].p as Record<string, unknown>);
   }
@@ -69,7 +99,10 @@ export class Plots {
 
     const newStatus = options.status ?? existing.status;
     const newDescription = options.description ?? existing.description;
-    const newTrigger = options.triggerCondition !== undefined ? options.triggerCondition : (existing.triggerCondition ?? null);
+    const newTrigger =
+      options.triggerCondition !== undefined
+        ? options.triggerCondition
+        : (existing.triggerCondition ?? null);
     const embedding = options.description
       ? await this.embedder.embed(`${name}: ${options.description}`)
       : existing.embedding;
@@ -80,12 +113,23 @@ export class Plots {
        SET p.description = $description, p.status = $status,
            p.triggerCondition = $triggerCondition, p.embedding = $embedding,
            p.updated_at = datetime($now)`,
-      { name, description: newDescription, status: newStatus, triggerCondition: newTrigger, embedding: embedding || null, now },
+      {
+        name,
+        description: newDescription,
+        status: newStatus,
+        triggerCondition: newTrigger,
+        embedding: embedding || null,
+        now,
+      },
     );
 
     return {
-      ...existing, description: newDescription, status: newStatus,
-      triggerCondition: newTrigger ?? undefined, embedding, updatedAt: new Date(now),
+      ...existing,
+      description: newDescription,
+      status: newStatus,
+      triggerCondition: newTrigger ?? undefined,
+      embedding,
+      updatedAt: new Date(now),
     };
   }
 
@@ -193,7 +237,11 @@ export class Plots {
   private parsePlot(data: Record<string, unknown>): MemoryPlot {
     let flags: PlotFlag[] = [];
     if (typeof data.flags === "string") {
-      try { flags = JSON.parse(data.flags) as PlotFlag[]; } catch { flags = []; }
+      try {
+        flags = JSON.parse(data.flags) as PlotFlag[];
+      } catch {
+        flags = [];
+      }
     }
     return {
       id: data.id as string,

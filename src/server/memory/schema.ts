@@ -55,12 +55,16 @@ export async function setupSchema(
     await client.executeWrite(
       `CREATE INDEX npc_disposition_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.npcName, d.targetName)`,
     );
-  } catch { /* Neo4j version compat */ }
+  } catch {
+    /* Neo4j version compat */
+  }
   try {
     await client.executeWrite(
       `CREATE INDEX npc_disposition_target_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.targetName)`,
     );
-  } catch { /* Neo4j version compat */ }
+  } catch {
+    /* Neo4j version compat */
+  }
 
   // Vector indexes (require Neo4j 5.11+)
   const vectorIndexes: [string, string, string][] = [

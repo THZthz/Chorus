@@ -18,7 +18,7 @@
 
 import { describeTime, getGameTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";
-import {TOOL_NAMES} from "@/shared/constants.ts";
+import { TOOL_NAMES } from "@/shared/constants.ts";
 
 const MAX_GM_STEPS = 10;
 

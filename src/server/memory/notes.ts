@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { v4 as uuidv4 } from "uuid";
 import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
@@ -26,10 +44,7 @@ export class Notes {
     return { id, content, embedding, createdAt: new Date(now), updatedAt: new Date(now) };
   }
 
-  async updateNote(
-    noteId: string,
-    options: { content?: string },
-  ): Promise<MemoryNote | null> {
+  async updateNote(noteId: string, options: { content?: string }): Promise<MemoryNote | null> {
     const existing = await this.getNote(noteId);
     if (!existing) return null;
 
@@ -59,10 +74,7 @@ export class Notes {
   }
 
   async getNote(noteId: string): Promise<MemoryNote | null> {
-    const rows = await this.client.executeRead(
-      `MATCH (n:Note {id: $id}) RETURN n`,
-      { id: noteId },
-    );
+    const rows = await this.client.executeRead(`MATCH (n:Note {id: $id}) RETURN n`, { id: noteId });
     if (rows.length === 0) return null;
     return this.parseNote(rows[0].n as Record<string, unknown>);
   }
@@ -94,7 +106,9 @@ export class Notes {
          MERGE (n)-[:ABOUT]->(e)`,
         { noteId, entityName },
       );
-    } catch { /* entity may not exist — skip */ }
+    } catch {
+      /* entity may not exist — skip */
+    }
   }
 
   async linkToMessage(noteId: string, messageId: string): Promise<void> {
@@ -104,7 +118,9 @@ export class Notes {
          MERGE (n)-[:ABOUT_MESSAGE]->(m)`,
         { noteId, messageId },
       );
-    } catch { /* message may not exist — skip */ }
+    } catch {
+      /* message may not exist — skip */
+    }
   }
 
   async clearLinks(noteId: string): Promise<void> {

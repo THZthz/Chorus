@@ -1,17 +1,45 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
 export const editPlot = tool({
-  description: "Create, update, or delete a plot. Plots track story arcs. Use flags for player knowledge. Use branchTo/unbranch to connect child plots. Plots are separate from world entities — use searchPlots to find them.",
+  description:
+    "Create, update, or delete a plot. Plots track story arcs. Use flags for player knowledge. Use branchTo/unbranch to connect child plots. Plots are separate from world entities — use searchPlots to find them.",
   inputSchema: z.object({
-    plotName: z.string().optional().describe("Plot name. Omit to create, include to update/delete."),
+    plotName: z
+      .string()
+      .optional()
+      .describe("Plot name. Omit to create, include to update/delete."),
     remove: z.boolean().default(false).describe("Set true to delete (requires plotName)."),
     description: z.string().optional().describe("Plot description."),
-    status: z.enum(["PENDING", "ACTIVE", "IN_PROGRESS", "COMPLETED", "ABANDONED"]).optional().describe("Plot status."),
+    status: z
+      .enum(["PENDING", "ACTIVE", "IN_PROGRESS", "COMPLETED", "ABANDONED"])
+      .optional()
+      .describe("Plot status."),
     triggerCondition: z.string().optional().describe("Condition that activates this plot."),
-    setFlag: z.object({ flagId: z.string(), description: z.string() }).optional().describe("Add or update a player flag on this plot."),
+    setFlag: z
+      .object({ flagId: z.string(), description: z.string() })
+      .optional()
+      .describe("Add or update a player flag on this plot."),
     removeFlag: z.string().optional().describe("Flag ID to remove."),
     branchTo: z.string().optional().describe("Child plot name to connect via BRANCHES_TO."),
     unbranch: z.string().optional().describe("Child plot name to disconnect."),

@@ -63,7 +63,7 @@ const files = walk(srcDir).filter(f => {
 let updated = 0;
 for (const file of files) {
   const content = readFileSync(file, 'utf-8');
-  if (content.includes('GNU Affero General Public License')) {
+  if (content.includes(file.endsWith('.css') ? CSS_HEADER : TS_HEADER)) {
     console.log(`SKIP (already has header): ${file}`);
     continue;
   }

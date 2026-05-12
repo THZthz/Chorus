@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/server/main.ts",
+    "start:dev": "tsx --watch src/server/main.ts",
     "console": "tsx src/console/main.ts",
     "lint": "tsc --noEmit",
     "add-license-header": "node scripts/add-license-header.mjs",

@@ -43,16 +43,8 @@ help:
 	@echo "  make clean            Remove build artifacts"
 	@echo "  make clean-all        Remove build artifacts + node_modules"
 
-# =============================================================================
-# Setup
-# =============================================================================
-
 install:
 	$(NPM) install
-
-# =============================================================================
-# Neo4j Docker Management
-# =============================================================================
 
 NEO4J_COMPOSE := docker compose -f docker-compose.test.yml
 
@@ -66,7 +58,7 @@ neo4j-stop:
 neo4j-restart: neo4j-stop neo4j-start neo4j-wait
 
 neo4j-status:
-	@$(NEO4J_COMPOSE) ps
+	@$(NEO4J_COMPOSE) ps -a
 
 neo4j-logs:
 	$(NEO4J_COMPOSE) logs -f
@@ -89,19 +81,11 @@ neo4j-clean:
 	$(NEO4J_COMPOSE) down -v
 	@echo "Neo4j container and volumes removed"
 
-# =============================================================================
-# Elysian Server & Console Client
-# =============================================================================
-
 server:
-	$(NPM) start
+	$(NPM) run start:dev
 
 console:
 	$(NPM) run console
-
-# =============================================================================
-# Code Quality
-# =============================================================================
 
 lint:
 	$(NPM) run lint
@@ -115,17 +99,9 @@ format-check:
 check: lint format-check
 	@echo "All code quality checks passed!"
 
-# =============================================================================
-# Full Dev Environment
-# =============================================================================
-
-dev: neo4j-start neo4j-wait server
+dev: neo4j-start neo4j-wait server-dev
 
 dev-stop: neo4j-stop
-
-# =============================================================================
-# Maintenance
-# =============================================================================
 
 reset:
 	curl -X POST http://localhost:3000/api/reset

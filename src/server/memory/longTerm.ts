@@ -23,10 +23,7 @@ import { Embedder, getEmbedder } from "@/server/memory/embedder";
 import type {
   EntityType,
   MemoryEntity,
-  MemoryPreference,
-  MemoryFact,
   NPCDisposition,
-  PlayerFlag,
   PlayerCondition,
 } from "@/server/memory/types";
 
@@ -201,158 +198,6 @@ export class LongTermMemory {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Preferences
-  // ═══════════════════════════════════════════════════════════════
-
-  async addPreference(
-    category: string,
-    preference: string,
-    options?: {
-      context?: string;
-      confidence?: number;
-      metadata?: Record<string, unknown>;
-      generateEmbedding?: boolean;
-    },
-  ): Promise<MemoryPreference> {
-    const { context, confidence = 1.0, metadata, generateEmbedding = true } = options || {};
-
-    const prefId = uuidv4();
-
-    let embedding: number[] | undefined;
-    if (generateEmbedding) {
-      const text = context
-        ? `${category}: ${preference} (${context})`
-        : `${category}: ${preference}`;
-      embedding = await this.embedder.embed(text);
-    }
-
-    await this.client.executeWrite(
-      `CREATE (p:Preference {
-         id: $id,
-         category: $category,
-         preference: $preference,
-         context: $context,
-         confidence: $confidence,
-         embedding: $embedding,
-         metadata: $metadata,
-         created_at: datetime(),
-         valid_from: datetime()
-       })`,
-      {
-        id: prefId,
-        category,
-        preference,
-        context: context || null,
-        confidence,
-        embedding: embedding || null,
-        metadata: metadata ? JSON.stringify(metadata) : null,
-      },
-    );
-
-    return {
-      id: prefId,
-      category,
-      preference,
-      context,
-      confidence,
-      metadata: metadata || {},
-      createdAt: new Date(),
-    };
-  }
-
-  async getPreferences(category?: string, limit: number = 100): Promise<MemoryPreference[]> {
-    const query = category
-      ? `MATCH (p:Preference {category: $category}) RETURN p ORDER BY p.created_at DESC LIMIT $limit`
-      : `MATCH (p:Preference) RETURN p ORDER BY p.created_at DESC LIMIT $limit`;
-    const rows = await this.client.executeRead(query, {
-      category: category || null,
-      limit: int(limit),
-    });
-    return rows.map((r) => this.parsePreference(r.p as Record<string, unknown>));
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // Facts
-  // ═══════════════════════════════════════════════════════════════
-
-  async addFact(
-    subject: string,
-    predicate: string,
-    objectValue: string,
-    options?: {
-      confidence?: number;
-      validFrom?: Date;
-      validUntil?: Date;
-      metadata?: Record<string, unknown>;
-      generateEmbedding?: boolean;
-    },
-  ): Promise<MemoryFact> {
-    const {
-      confidence = 1.0,
-      validFrom,
-      validUntil,
-      metadata,
-      generateEmbedding = true,
-    } = options || {};
-
-    const factId = uuidv4();
-
-    let embedding: number[] | undefined;
-    if (generateEmbedding) {
-      embedding = await this.embedder.embed(`${subject} ${predicate} ${objectValue}`);
-    }
-
-    await this.client.executeWrite(
-      `CREATE (f:Fact {
-         id: $id,
-         subject: $subject,
-         predicate: $predicate,
-         object: $object,
-         confidence: $confidence,
-         embedding: $embedding,
-         valid_from: $validFrom,
-         valid_until: $validUntil,
-         metadata: $metadata,
-         created_at: datetime()
-       })`,
-      {
-        id: factId,
-        subject,
-        predicate,
-        object: objectValue,
-        confidence,
-        embedding: embedding || null,
-        validFrom: validFrom?.toISOString() || null,
-        validUntil: validUntil?.toISOString() || null,
-        metadata: metadata ? JSON.stringify(metadata) : null,
-      },
-    );
-
-    return {
-      id: factId,
-      subject,
-      predicate,
-      object: objectValue,
-      confidence,
-      validFrom,
-      validUntil,
-      metadata: metadata || {},
-      createdAt: new Date(),
-    };
-  }
-
-  async getFacts(subject?: string, limit: number = 100): Promise<MemoryFact[]> {
-    const query = subject
-      ? `MATCH (f:Fact {subject: $subject}) RETURN f ORDER BY f.created_at DESC LIMIT $limit`
-      : `MATCH (f:Fact) RETURN f ORDER BY f.created_at DESC LIMIT $limit`;
-    const rows = await this.client.executeRead(query, {
-      subject: subject || null,
-      limit: int(limit),
-    });
-    return rows.map((r) => this.parseFact(r.f as Record<string, unknown>));
-  }
-
-  // ═══════════════════════════════════════════════════════════════
   // Relationships
   // ═══════════════════════════════════════════════════════════════
 
@@ -385,56 +230,6 @@ export class LongTermMemory {
     );
     const created = rows.length > 0 && ((rows[0]?.isNew as boolean) || false);
     return { created };
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // Player Flags
-  // ═══════════════════════════════════════════════════════════════
-
-  async setPlayerFlag(flagId: string, description: string, source?: string): Promise<PlayerFlag> {
-    const id = uuidv4();
-    const now = new Date().toISOString();
-    await this.client.executeWrite(
-      `MERGE (f:PlayerFlag {flagId: $flagId})
-       ON CREATE SET f.id = $id, f.created_at = datetime($now)
-       SET f.description = $description, f.source = $source`,
-      { flagId, id, description, source: source || null, now },
-    );
-    return {
-      id,
-      flagId,
-      description,
-      source: source || "",
-      createdAt: new Date(now),
-    };
-  }
-
-  async hasPlayerFlag(flagId: string): Promise<boolean> {
-    const rows = await this.client.executeRead(
-      `MATCH (f:PlayerFlag {flagId: $flagId}) RETURN f LIMIT 1`,
-      { flagId },
-    );
-    return rows.length > 0;
-  }
-
-  async getPlayerFlags(): Promise<PlayerFlag[]> {
-    const rows = await this.client.executeRead(
-      `MATCH (f:PlayerFlag) RETURN f ORDER BY f.created_at DESC`,
-    );
-    return rows.map((r) => {
-      const f = r.f as Record<string, unknown>;
-      return {
-        id: f.id as string,
-        flagId: f.flagId as string,
-        description: f.description as string,
-        source: (f.source as string) || "",
-        createdAt: new Date((f.created_at as string | number) || Date.now()),
-      };
-    });
-  }
-
-  async removePlayerFlag(flagId: string): Promise<void> {
-    await this.client.executeWrite(`MATCH (f:PlayerFlag {flagId: $flagId}) DELETE f`, { flagId });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -539,38 +334,6 @@ export class LongTermMemory {
       aliases,
       metadata: meta,
       embedding: data.embedding as number[] | undefined,
-      createdAt: new Date((data.created_at as string | number) || Date.now()),
-    };
-  }
-
-  private parsePreference(data: Record<string, unknown>): MemoryPreference {
-    return {
-      id: data.id as string,
-      category: data.category as string,
-      preference: data.preference as string,
-      context: (data.context as string) || undefined,
-      confidence: (data.confidence as number) || 1.0,
-      metadata:
-        typeof data.metadata === "string"
-          ? (JSON.parse(data.metadata) as Record<string, unknown>)
-          : {},
-      createdAt: new Date((data.created_at as string | number) || Date.now()),
-    };
-  }
-
-  private parseFact(data: Record<string, unknown>): MemoryFact {
-    return {
-      id: data.id as string,
-      subject: data.subject as string,
-      predicate: data.predicate as string,
-      object: data.object as string,
-      confidence: (data.confidence as number) || 1.0,
-      validFrom: data.valid_from ? new Date(data.valid_from as string) : undefined,
-      validUntil: data.valid_until ? new Date(data.valid_until as string) : undefined,
-      metadata:
-        typeof data.metadata === "string"
-          ? (JSON.parse(data.metadata) as Record<string, unknown>)
-          : {},
       createdAt: new Date((data.created_at as string | number) || Date.now()),
     };
   }

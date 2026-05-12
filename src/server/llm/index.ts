@@ -25,7 +25,7 @@ import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { createMemoryTools } from "@/server/memory/tools";
-import { saveGameState, GAME_ID } from "@/server/memory/gameState";
+import { saveCurrentOptions } from "@/server/memory/gameState";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 
@@ -334,8 +334,8 @@ export async function generateTurn(
 
   // Persist current options so the player can resume from this point
   if (finalOptions.length > 0) {
-    saveGameState(`step_${Date.now()}`, finalOptions).catch((err) =>
-      console.error("[generateTurn] failed to persist session state:", err),
+    saveCurrentOptions(finalOptions).catch((err) =>
+      console.error("[generateTurn] failed to persist options:", err),
     );
   }
 }

@@ -3,22 +3,24 @@ import type { DialogueOption } from "@/types/dialogue";
 
 export const GAME_ID = "elysian-game";
 
-export async function saveGameState(stepId: string, options: DialogueOption[]): Promise<void> {
+/** Store current dialogue options on the one Conversation node for resume. */
+export async function saveCurrentOptions(options: DialogueOption[]): Promise<void> {
   const client = MemoryClient.getCachedInstance();
   await client.neo4j.executeWrite(
-    `MERGE (s:SessionState {id: $gameId})
-     SET s.stepId = $stepId, s.options = $options, s.updated_at = datetime()`,
-    { gameId: GAME_ID, stepId, options: JSON.stringify(options) },
+    `MERGE (c:Conversation {session_id: $gameId})
+     SET c.options = $options, c.updated_at = datetime()`,
+    { gameId: GAME_ID, options: JSON.stringify(options) },
   );
 }
 
-export async function getGameState(): Promise<{
+/** Retrieve current dialogue options from the Conversation node. */
+export async function getCurrentOptions(): Promise<{
   id: string;
   options: DialogueOption[];
 } | null> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
-    `MATCH (s:SessionState {id: $gameId}) RETURN s.stepId AS stepId, s.options AS options`,
+    `MATCH (c:Conversation {session_id: $gameId}) RETURN c.id AS id, c.options AS options`,
     { gameId: GAME_ID },
   );
   if (rows.length === 0) return null;
@@ -29,5 +31,5 @@ export async function getGameState(): Promise<{
   } catch {
     return null;
   }
-  return { id: row.stepId as string, options };
+  return { id: row.id as string, options };
 }

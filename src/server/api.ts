@@ -20,7 +20,7 @@ import express from "express";
 import { generateTurn } from "@/server/llm";
 import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
-import { getGameState } from "@/server/memory/gameState";
+import { getCurrentOptions } from "@/server/memory/gameState";
 import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
@@ -80,7 +80,7 @@ apiRouter.get("/history", async (_req, res) => {
 
 apiRouter.get("/game/current", async (_req, res) => {
   try {
-    const state = await getGameState();
+    const state = await getCurrentOptions();
     res.json(state);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

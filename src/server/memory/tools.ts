@@ -19,7 +19,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
-import { getGameState, saveGameState } from "@/server/memory/gameState";
 
 function getClient(): MemoryClient {
   return MemoryClient.getCachedInstance();

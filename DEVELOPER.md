@@ -56,7 +56,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── observer.ts    # World delta tracking + context compression
     │   │   ├── search.ts      # Hybrid vector + graph search across memory types
     │   │   ├── context.ts     # Assembled context for GM consumption
-    │   │   ├──   gameState.ts  # Game save/resume persistence (:SessionState node)
+    │   │   ├──   gameState.ts  # Game save/resume persistence (options on :Conversation node)
     │   │   └── tools.ts       # 6 GM-verb tool definitions
     │   ├── models/
     │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
@@ -193,7 +193,7 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 ### 4.2 State
 
 - `GET /api/history` — Returns full conversation history from ShortTermMemory, mapped to the `Message` interface
-- `GET /api/game/current` — Returns persisted game state (stepId + options) from the `:SessionState` Neo4j node
+- `GET /api/game/current` — Returns current dialogue options from the `:Conversation` Neo4j node
 
 ### 4.3 Reset
 
@@ -267,7 +267,7 @@ The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world
 
 **Observer** (`observer.ts`): Hooks into `updateWorld` tool execution to track structured world deltas (moves, entity changes, relationships, facts). Maintains token-threshold compression for long sessions: when accumulated dialogue exceeds a token threshold (default 30K), generates reflections from older messages to keep the GM's context window manageable.
 
-**Game state persistence** (`gameState.ts`): Saves game state (current step ID + dialogue options) to a `:SessionState {id: "elysian-game"}` node in Neo4j. On resume, the console fetches this state and the conversation history to restore the game.
+**Game state persistence** (`gameState.ts`): Saves current dialogue options on the `:Conversation` node in Neo4j. On resume, the console fetches these options and the conversation history to restore the game. The Neo4j database state (entities, relationships, game time, conversation messages) is the authoritative world state — there is no separate session concept.
 
 **Neo4j schema** (`schema.ts`): On startup, creates 7 unique constraints (`Conversation`, `Message`, `Entity`, `Preference`, `Fact`, `ReasoningTrace`, `ReasoningStep` on `id`), 1 constraint for `PlayerFlag.flagId`, 5 regular indexes (on timestamp, type, name, category, success), 2 composite indexes on `NPCDisposition` (npcName+targetName, targetName), and 6 vector indexes. Vector indexes require Neo4j 5.11+.
 

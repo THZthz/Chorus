@@ -44,28 +44,6 @@ export interface MemoryMessage {
   createdAt: Date;
 }
 
-export interface MemoryPreference {
-  id: string;
-  category: string;
-  preference: string;
-  context?: string;
-  confidence: number;
-  metadata: Record<string, unknown>;
-  createdAt: Date;
-}
-
-export interface MemoryFact {
-  id: string;
-  subject: string;
-  predicate: string;
-  object: string;
-  confidence: number;
-  validFrom?: Date;
-  validUntil?: Date;
-  metadata: Record<string, unknown>;
-  createdAt: Date;
-}
-
 export interface EntityRelationship {
   id: string;
   sourceId: string;
@@ -73,6 +51,33 @@ export interface EntityRelationship {
   type: string;
   description?: string;
   confidence: number;
+}
+
+export interface MemoryNote {
+  id: string;
+  content: string;
+  embedding?: number[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type PlotStatus = "PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+
+export interface PlotFlag {
+  flagId: string;
+  description: string;
+}
+
+export interface MemoryPlot {
+  id: string;
+  name: string;
+  description: string;
+  status: PlotStatus;
+  triggerCondition?: string;
+  flags: PlotFlag[];
+  embedding?: number[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface NPCDisposition {
@@ -85,53 +90,11 @@ export interface NPCDisposition {
   updatedAt: Date;
 }
 
-export interface PlayerFlag {
-  id: string;
-  flagId: string;
-  description: string;
-  source: string;
-  createdAt: Date;
-}
-
 export interface PlayerCondition {
   description: string;
   effects: Array<{ stat?: string; modifier: number; description?: string }>;
   duration?: string;
   source?: string;
-}
-
-export interface ReasoningTrace {
-  id: string;
-  task: string;
-  taskEmbedding?: number[];
-  steps: ReasoningStep[];
-  outcome?: string;
-  success?: boolean;
-  startedAt: Date;
-  completedAt?: Date;
-  metadata: Record<string, unknown>;
-}
-
-export interface ReasoningStep {
-  id: string;
-  traceId: string;
-  stepNumber: number;
-  thought?: string;
-  action?: string;
-  observation?: string;
-  embedding?: number[];
-  metadata: Record<string, unknown>;
-}
-
-export interface ToolCall {
-  id: string;
-  stepId: string;
-  toolName: string;
-  arguments: Record<string, unknown>;
-  result?: unknown;
-  status: "pending" | "success" | "failure";
-  durationMs?: number;
-  error?: string;
 }
 
 export interface Observation {
@@ -156,14 +119,10 @@ export interface ObservationResult {
 export interface SearchResults {
   messages: Array<MemoryMessage & { similarity: number }>;
   entities: Array<MemoryEntity & { similarity: number }>;
-  preferences: Array<MemoryPreference & { similarity: number }>;
-  traces: Array<ReasoningTrace & { similarity: number }>;
 }
 
 export interface AssembledContext {
   messages: MemoryMessage[];
   entities: MemoryEntity[];
-  preferences: MemoryPreference[];
-  traces: ReasoningTrace[];
   summary: string;
 }

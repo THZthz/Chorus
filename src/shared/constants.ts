@@ -63,12 +63,13 @@ export const SEGMENT_HOURS: Record<number, string> = {
 };
 
 export const TOOL_NAMES = {
+  QUERY_WORLD: "queryWorld",
+  MUTATE_WORLD: "mutateWorld",
   GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
-  GET_SCENE: "getScene",
-  UPDATE_WORLD: "updateWorld",
-  REMEMBER: "remember",
-  GET_CONVERSATION: "getConversation",
   SEARCH_MEMORY: "searchMemory",
-  ADVANCE_PLOT: "advancePlot",
+  EDIT_NOTE: "editNote",
+  SEARCH_NOTES: "searchNotes",
+  EDIT_PLOT: "editPlot",
+  SEARCH_PLOTS: "searchPlots",
 } as const;

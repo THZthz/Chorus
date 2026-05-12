@@ -55,21 +55,21 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │                     MEMORY LAYER (Neo4j-backed)                      │
 │  src/server/memory/client.ts  ── MemoryClient singleton              │
 │                                                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
-│  │ ShortTerm   │  │  LongTerm   │  │   Notes     │  │   Plots     │   │
-│  ├─────────────┤  ├─────────────┤  ├─────────────┤  ├─────────────┤   │
-│  │ messages    │  │ entities    │  │ GM notes    │  │ beats       │   │
-│  │ conversation│  │ facts       │  │ embeddings  │  │ branches    │   │
-│  │             │  │ preferences │  │ CRUD        │  │ flags       │   │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘   │
-│         └────────────────┼───────────────┼───────────────┘           │
-│                          ▼               ▼                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐                  │
-│  │  Search     │  │  Context    │  │  Observer    │                  │
-│  ├─────────────┤  ├─────────────┤  ├──────────────┤                  │
-│  │  parallel   │  │  assemble   │  │  deltas +    │                  │
-│  │  vector     │  │  markdown   │  │  compression │                  │
-│  └─────────────┘  └─────────────┘  └──────────────┘                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│  │ ShortTerm   │  │  LongTerm   │  │   Notes     │  │   Plots     │  │
+│  ├─────────────┤  ├─────────────┤  ├─────────────┤  ├─────────────┤  │
+│  │ messages    │  │ entities    │  │ GM notes    │  │ beats       │  │
+│  │ conversation│  │ facts       │  │ embeddings  │  │ branches    │  │
+│  │             │  │ preferences │  │ CRUD        │  │ flags       │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  │
+│         └────────────────┴───────┬────────┴────────────────┘         │
+│                                  ▼                                   │
+│          ┌─────────────┐  ┌─────────────┐  ┌──────────────┐          │
+│          │  Search     │  │  Context    │  │  Observer    │          │
+│          ├─────────────┤  ├─────────────┤  ├──────────────┤          │
+│          │  parallel   │  │  assemble   │  │  deltas +    │          │
+│          │  vector     │  │  markdown   │  │  compression │          │
+│          └─────────────┘  └─────────────┘  └──────────────┘          │
 │                                                                      │
 │  embedder.ts ── local ONNX (384d) or OpenAI-compatible API           │
 │  neo4j.ts    ── driver wrapper with value normalization              │
@@ -79,8 +79,8 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
                                ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         NEO4J DATABASE                               │
-│  Node labels: Conversation, Message, Entity, Preference, Fact,       │
-│  NPCDisposition, PlayerFlag, ReasoningTrace, ReasoningStep, ToolCall │
+│  Node labels: Conversation, Message, Entity, NPCDisposition,         │
+│  Note, Plot, GameTime                                                │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -121,7 +121,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
-    │   │   ├── types.ts       # Shared types (Entity, Message, Fact, Preference, etc.)
+    │   │   ├── types.ts       # Shared types (MemoryEntity, MemoryMessage, MemoryPlot, etc.)
     │   │   ├── neo4j.ts       # Neo4jClient — thin wrapper over neo4j-driver
     │   │   ├── schema.ts      # Index/constraint/vector index creation
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
@@ -166,7 +166,7 @@ POST /api/chat/stream
 │                                                      │
 │  streamText({                                        │
 │    tools: {                                          │
-│      ← 6 Neo4j-backed tools from createMemoryTools() │
+│      ← 7 Neo4j-backed tools from llm/tools/          │
 │      generateDialogueStep  ──► SSE streaming         │
 │      advanceTime           ──► DB + SSE event        │
 │    },                                                │
@@ -219,27 +219,28 @@ Defined in `src/shared/events.ts` (single source of truth):
 
 ## 6. LLM Tools
 
-Two layers of tools:
+Two layers of tools, all defined in `src/server/llm/tools/`:
 
-**Elysian tools** (defined in `src/server/llm/tools/`):
+**Elysian tools**:
 
 | Tool                   | Purpose                                     | SSE Event                                 |
 |------------------------|---------------------------------------------|-------------------------------------------|
 | `generateDialogueStep` | Produce narrative messages + player options | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments         | `time_update`                             |
 
-**Neo4j-backed tools** (6 tools defined in `src/server/memory/tools.ts`):
+**Neo4j-backed GM tools**:
 
-| Tool              | Purpose                                                                                                                               |
-|-------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| `getScene`        | Returns everything in-frame: location, NPCs with dispositions, objects, inventory, active plots with beats/branches, and player flags |
-| `updateWorld`     | Change world state (move/change/create/relate/fact/disposition/condition actions)                                                     |
-| `remember`        | Store a GM note tied to an entity                                                                                                     |
-| `getConversation` | Retrieve recent dialogue history                                                                                                      |
-| `searchMemory`    | Vector search across all memory (entities, facts, messages)                                                                           |
-| `advancePlot`     | Story progression: beat lifecycle, branch management, player flag tracking                                                            |
+| Tool           | Purpose                                                                  |
+|----------------|--------------------------------------------------------------------------|
+| `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator |
+| `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships         |
+| `searchMemory` | Vector search across entities and messages                               |
+| `editNote`     | Create/update/delete GM notes with vector embedding                      |
+| `searchNotes`  | Vector search across notes                                               |
+| `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
+| `searchPlots`  | Vector search across plots                                               |
 
-All tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()`.
+All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object.
 
 ---
 
@@ -275,62 +276,61 @@ The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world
 
 ### 9.1 MemoryClient (Facade + Singleton)
 
-`MemoryClient` (`client.ts`, ~100 lines) is the single entry point to all memory subsystems. It composes six subsystems and exposes them as readonly properties:
+`MemoryClient` (`client.ts`, ~100 lines) is the single entry point to all memory subsystems. It composes eight subsystems and exposes them as readonly properties:
 
 ```
 MemoryClient.getCachedInstance()
   .neo4j       → Neo4jClient          (driver wrapper)
   .shortTerm   → ShortTermMemory      (conversation + messages)
-  .longTerm    → LongTermMemory       (entities, facts, preferences, dispositions, flags)
-  .reasoning   → ReasoningMemory      (traces, steps, tool calls)
+  .longTerm    → LongTermMemory       (entities, relationships, dispositions, conditions)
   .search      → MemorySearch         (parallel vector search across layers)
   .context     → ContextAssembler     (fetch + format markdown context)
   .observer    → MemoryObserver       (delta tracking + token-threshold compression)
+  .notes       → Notes                (GM note CRUD with vector embedding)
+  .plots       → Plots                (plot lifecycle: beats, branches, flags)
 ```
 
 Boot sequence: `getInstance()` → creates `Neo4jClient` → `verifyConnectivity()` → `getEmbedder()` → `setupSchema()` → constructs all subsystems.
 
 ### 9.2 Type System
 
-All memory types are defined in `types.ts` (~170 lines, type-only):
+All memory types are defined in `types.ts` (~130 lines, type-only):
 
-| Type               | Key Fields                                                                                | Neo4j Node                  |
-|--------------------|-------------------------------------------------------------------------------------------|-----------------------------|
-| `MemoryEntity`     | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, embedding[], isNew? | `:Entity`                   |
-| `MemoryMessage`    | id, role (user/assistant/system), content, metadata, embedding[]                          | `:Message`                  |
-| `MemoryPreference` | id, category, preference, context?, confidence, embedding[]                               | `:Preference`               |
-| `MemoryFact`       | id, subject, predicate, object, confidence, validFrom?/Until?                             | `:Fact`                     |
-| `NPCDisposition`   | id, npcName, targetName, sentiment, summary                                               | `:NPCDisposition`           |
-| `PlayerFlag`       | id, flagId, description, source                                                           | `:PlayerFlag`               |
-| `PlayerCondition`  | description, effects[], duration?, source?                                                | (stored in Entity metadata) |
-| `ReasoningTrace`   | id, task, taskEmbedding[], steps[], outcome?, success?                                    | `:ReasoningTrace`           |
-| `ReasoningStep`    | id, traceId, stepNumber, thought?, action?, observation?                                  | `:ReasoningStep`            |
-| `ToolCall`         | id, stepId, toolName, arguments, result?, status, durationMs?                             | `:ToolCall`                 |
+| Type                 | Key Fields                                                                                         | Neo4j Node                  |
+|----------------------|----------------------------------------------------------------------------------------------------|-----------------------------|
+| `MemoryEntity`       | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, embedding[], isNew?          | `:Entity`                   |
+| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, embedding[], createdAt                        | `:Message`                  |
+| `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                             | (dynamic relationship)      |
+| `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                                  | `:NPCDisposition`           |
+| `PlayerCondition`    | description, effects[] (stat/modifier pairs), duration?, source?                                   | (stored in Entity metadata) |
+| `MemoryNote`         | id, content, embedding[], createdAt, updatedAt                                                     | `:Note`                     |
+| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], embedding[], createdAt, updatedAt       | `:Plot`                     |
+| `PlotFlag`           | flagId, description                                                                                | (stored in Plot.flags JSON) |
+| `Observation`        | type (fact/decision/preference/topic/entity), content, sourceMessageId?, timestamp, confidence     | (in-memory only)            |
+| `ObservationResult`  | messageCount, approximateTokens, thresholdTokens, thresholdExceeded, reflections[], observations[] | (in-memory only)            |
 
-Composite types: `SearchResults` (arrays with `similarity`), `AssembledContext` (arrays stripped of similarity + markdown `summary`), `ObservationResult` (messageCount, reflections[], observations[]).
+Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` arrays with `similarity`), `AssembledContext` (`messages[]`, `entities[]`, markdown `summary`). `PlotStatus` is a union: `"PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"`.
 
 ### 9.3 Neo4j Schema
 
-Managed by `schema.ts` (~100 lines), called once at startup:
+Managed by `schema.ts` (~85 lines), called once at startup:
 
-**Unique constraints (7):** `id` on `:Conversation`, `:Message`, `:Entity`, `:Preference`, `:Fact`, `:ReasoningTrace`, `:ReasoningStep`
+**Unique constraints (5):** `id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`
 
-**Unique constraint (1):** `flagId` on `:PlayerFlag`
+**Regular indexes (5):** `Message.timestamp`, `Entity.type`, `Entity.name`, `Plot.name`, `Plot.status`
 
-**Regular indexes (5):** `Message.timestamp`, `Entity.type`, `Entity.name`, `Preference.category`, `ReasoningTrace.success`
+**Composite indexes (2):** `NPCDisposition(npcName, targetName)`, `NPCDisposition(targetName)` — wrapped in try/catch for Neo4j version compat
 
-**Composite indexes (2):** `NPCDisposition(npcName, targetName)`, `NPCDisposition(targetName)`
+**Vector indexes (4, require Neo4j 5.11+, COSINE similarity):**
 
-**Vector indexes (6, require Neo4j 5.11+, COSINE similarity):**
+| Index                   | Label   | Property  | Dims                       |
+|-------------------------|---------|-----------|----------------------------|
+| `message_embedding_idx` | Message | embedding | 384 (or API embedder dims) |
+| `entity_embedding_idx`  | Entity  | embedding | 384 (or API embedder dims) |
+| `note_embedding_idx`    | Note    | embedding | 384 (or API embedder dims) |
+| `plot_embedding_idx`    | Plot    | embedding | 384 (or API embedder dims) |
 
-| Index                      | Label           | Property        | Dims |
-|----------------------------|-----------------|-----------------|------|
-| `message_embedding_idx`    | Message         | embedding       | 384  |
-| `entity_embedding_idx`     | Entity          | embedding       | 384  |
-| `preference_embedding_idx` | Preference      | embedding       | 384  |
-| `fact_embedding_idx`       | Fact            | embedding       | 384  |
-| `task_embedding_idx`       | ReasoningTrace  | task_embedding  | 384  |
-| `step_embedding_idx`       | ReasoningStep   | embedding       | 384  |
+Vector dimensions are passed from the active embedder at startup (`embedder.dimensions`), so they adapt to the configured embedding provider.
 
 **Relationship types:**
 
@@ -339,14 +339,17 @@ Managed by `schema.ts` (~100 lines), called once at startup:
 | `HAS_MESSAGE`     | `(Conversation)→(Message)`   | Conversation membership       |
 | `FIRST_MESSAGE`   | `(Conversation)→(Message)`   | Head pointer for ordered list |
 | `NEXT_MESSAGE`    | `(Message)→(Message)`        | Sequential linked list        |
-| `HAS_STEP`        | `(ReasoningTrace)→(Step)`    | Trace decomposition           |
-| `HAS_TOOL_CALL`   | `(ReasoningStep)→(ToolCall)` | Tool invocation record        |
 | `HAS_DISPOSITION` | `(Entity)→(NPCDisposition)`  | NPC attitude toward a target  |
 | `LOCATED_AT`      | `(Entity)→(Entity)`          | Spatial placement (dynamic)   |
 | `LOCATED_IN`      | `(Entity)→(Entity)`          | Container hierarchy (dynamic) |
 | `CARRIES`         | `(Entity)→(Entity)`          | Inventory (dynamic)           |
+| `ALLIED_WITH`     | `(Entity)→(Entity)`          | Alliance (dynamic)            |
+| `HOSTILE_TOWARDS` | `(Entity)→(Entity)`          | Hostility (dynamic)           |
+| `BRANCHES_TO`     | `(Plot)→(Plot)`              | Plot branching                |
+| `ABOUT`           | `(Note)→(Entity)`            | Note-to-entity linkage        |
+| `ABOUT_MESSAGE`   | `(Note)→(Message)`           | Note-to-message linkage       |
 
-Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, etc.) are created by `tools.ts` via `longTerm.addRelationship()` with sanitized type names.
+Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
 
 ### 9.4 Embeddings
 
@@ -355,7 +358,7 @@ Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, etc.) are created
 - **`LocalEmbedder`**: `@xenova/transformers` with `Xenova/all-MiniLM-L6-v2` (384-dim, ~80MB ONNX). Uses mean pooling, processes sequentially to avoid ONNX memory pressure.
 - **`OpenAICompatibleEmbedder`**: Any OpenAI-compatible API (configurable via `EMBEDDING_API_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL` env vars). Default model `text-embedding-3-small` (1536-dim).
 
-**Strategy pattern + Factory**: `getEmbedder()` returns a singleton, preferring API if credentials are set, otherwise local ONNX. The embedder is used by `ShortTermMemory`, `LongTermMemory`, and `ReasoningMemory` for vector search indexing.
+**Strategy pattern + Factory**: `getEmbedder()` returns a singleton, preferring API if credentials are set, otherwise local ONNX. The embedder is used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.
 
 ### 9.5 ShortTermMemory
 
@@ -371,45 +374,85 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 ### 9.6 LongTermMemory
 
-`longTerm.ts` (~590 lines). Persistent world state — the largest subsystem. Manages entities, facts, preferences, relationships, NPC dispositions, player flags, player conditions, and player stats.
+`longTerm.ts` (~350 lines). Persistent world state — manages entities, relationships, NPC dispositions, player conditions, and player stats.
 
 **Entity operations (POLE+O model):**
-- `addEntity(name, type, options?)` — MERGE on name, apply dynamic labels (`:Entity:Person:Character` via `SET e:${typeLabel}`), store aliases in metadata JSON
+- `addEntity(name, type, options?)` — MERGE on name, supports `"TYPE:SUBTYPE"` syntax. Applies dynamic Neo4j labels via PascalCase (`:Entity:Person:Character`). Stores aliases inside metadata JSON. Returns `MemoryEntity` with `isNew` flag.
 - `getEntity(name, type?)` — lookup by name with optional type filter
-- `searchEntities(query)` — vector search on `entity_embedding_idx`, post-filter by entityTypes
+- `searchEntities(query, options?)` — vector search on `entity_embedding_idx` with configurable `entityTypes` filter, `limit`, and `threshold`
 
-**Fact triples:** `addFact(subject, predicate, object, options?)` — CREATE with embedding of `"subject predicate object"`, optional temporal validity (`validFrom`/`validUntil`).
+**Relationships:** `addRelationship(sourceName, targetName, type, options?)` — MERGE dynamic relationship `(a)-[r:${safeType}]→(b)`. Type name is sanitized to `[A-Za-z0-9_]`. Returns `{ created: boolean }`.
 
-**Preferences:** `addPreference(category, preference, options?)` — CREATE with embedding of `"category: preference (context)"`.
+**NPC dispositions:**
+- `setDisposition(npcName, targetName, sentiment, summary)` — MERGE `:NPCDisposition` node linked via `HAS_DISPOSITION` from NPC entity. Composite key on `(npcName, targetName)`.
+- `getDisposition(npcName, targetName)` — lookup a single disposition
+- `getDispositionsToward(targetName)` — all dispositions toward a target, ordered by most recently updated
 
-**Relationships:** `addRelationship(sourceName, targetName, type, options?)` — MERGE dynamic relationship `(a)-[r:${safeType}]→(b)`. Type name is sanitized to `[A-Za-z0-9_]`.
+**Player conditions:** `updatePlayerCondition(playerName, conditionId, condition | null)` — reads/writes the `conditions` dict inside the player entity's `metadata` JSON. Pass `null` to remove a condition.
 
-**NPC dispositions:** `setDisposition(npcName, targetName, sentiment, summary)` — MERGE `:NPCDisposition` node linked via `HAS_DISPOSITION` from NPC entity. Composite key on `(npcName, targetName)`.
+**Player stats:** `getPlayerStats(playerName?)` — reads `metadata.stats` from player entity (defaults to `"Player"`).
 
-**Player flags:** `setPlayerFlag` / `hasPlayerFlag` / `getPlayerFlags` / `removePlayerFlag` — MERGE/DELETE on `:PlayerFlag` nodes with unique `flagId`.
+### 9.7 Notes
 
-**Player conditions:** `updatePlayerCondition(playerName, conditionId, condition | null)` — reads/writes the `conditions` dict inside the player entity's `metadata` JSON.
+`notes.ts`. GM note CRUD with vector embedding for semantic recall.
 
-**Player stats:** `getPlayerStats(playerName?)` — reads `metadata.stats` from player entity.
+| Method                     | Behavior                                                    |
+|----------------------------|-------------------------------------------------------------|
+| `createNote(content)`      | CREATE `:Note` with UUID, content embedding, timestamps     |
+| `getNote(noteId)`          | Read a single note by ID, returns `null` if not found       |
+| `updateNote(id, opts)`     | MATCH by id, SET content + re-embed if changed              |
+| `deleteNote(noteId)`       | MATCH by id, DETACH DELETE                                  |
+| `searchNotes(query, opts)` | Vector similarity search on `note_embedding_idx`            |
+| `getAllNotes()`            | Return all `:Note` nodes ordered by updatedAt               |
+| `linkToEntity(id, name)`   | Create `[:ABOUT]` relationship from Note to Entity          |
+| `linkToMessage(id, msgId)` | Create `[:ABOUT_MESSAGE]` relationship from Note to Message |
+| `clearLinks(noteId)`       | Delete all `[:ABOUT]` and `[:ABOUT_MESSAGE]` relationships  |
+| `getLinkedEntities(id)`    | Return entity names linked via `[:ABOUT]`                   |
+| `getLinkedMessages(id)`    | Return message IDs linked via `[:ABOUT_MESSAGE]`            |
 
-### 9.7 ReasoningMemory
+### 9.8 Plots
 
-`reasoning.ts` (~280 lines). Chain-of-thought trace storage for LLM reasoning introspection.
+`plots.ts`. Plot lifecycle management — beats, branches, and player flags.
 
-| Method               | Behavior                                                                  |
-|----------------------|---------------------------------------------------------------------------|
-| `startTrace(task)`   | CREATE `:ReasoningTrace` with optional `task_embedding`                   |
-| `addStep(traceId)`   | Append `:ReasoningStep` via `HAS_STEP`, embeds thought/action/observation |
-| `recordToolCall()`   | Attach `:ToolCall` to step via `HAS_TOOL_CALL`                            |
-| `completeTrace()`    | Set outcome, success, completed_at                                        |
-| `getSimilarTraces()` | Vector search on `task_embedding_idx`, optional success filter            |
-| `searchSteps(query)` | Vector search on `step_embedding_idx`, joins parent trace                 |
+| Method                        | Behavior                                                  |
+|-------------------------------|-----------------------------------------------------------|
+| `createPlot(name, opts)`      | CREATE `:Plot` with UUID, description embedding, status   |
+| `getPlot(name)`               | Read a single plot by name, returns `null` if not found   |
+| `updatePlot(name, opts)`      | Update description, status, or trigger condition          |
+| `deletePlot(name)`            | MATCH by name, DETACH DELETE                              |
+| `searchPlots(query, opts)`    | Vector similarity search on `plot_embedding_idx`          |
+| `getAllPlots()`               | Return all `:Plot` nodes ordered by updatedAt             |
+| `setFlag(plot, flagId, desc)` | Add or update a flag (by flagId) in the plot's flags JSON |
+| `removeFlag(plot, flagId)`    | Remove a flag by flagId                                   |
+| `getFlags(plotName)`          | Return all flags for a plot                               |
+| `branchTo(parent, child)`     | Create `[:BRANCHES_TO]` relationship between two plots    |
+| `unbranch(parent, child)`     | Delete the `[:BRANCHES_TO]` relationship                  |
+| `getChildPlots(plotName)`     | Return plots connected via outbound `[:BRANCHES_TO]`      |
 
-### 9.8 MemoryObserver
+### 9.9 CypherValidator
+
+`validation.ts`. Confines GM Cypher queries to allowed labels and relationship types to prevent schema abuse.
+
+| Method            | Behavior                                                                                                                                                 |
+|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `validateRead()`  | Blocks write clauses, DDL, unbounded paths. Checks labels against `READ_ALLOWED_LABELS`.                                                                 |
+| `validateWrite()` | Blocks DDL, enforces qualified MATCH before DELETE. Checks labels against `WRITE_ALLOWED_LABELS` and relationship types against `ALLOWED_RELATIONSHIPS`. |
+
+**Allowlists** (private module-level constants):
+
+| Constant                | Members                                                                                                                                    |
+|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `READ_ALLOWED_LABELS`   | `Entity`, `Message`, `NPCDisposition`, `GameTime`                                                                                          |
+| `WRITE_ALLOWED_LABELS`  | `Entity`, `Message`, `NPCDisposition`, `GameTime`                                                                                          |
+| `ALLOWED_RELATIONSHIPS` | `LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`, `HAS_DISPOSITION`, `HAS_MESSAGE`, `FIRST_MESSAGE`, `NEXT_MESSAGE` |
+
+Additional validation rules: `validateWrite` requires DELETE/DETACH DELETE to be preceded by a qualified MATCH (with WHERE or property condition). Unbounded variable-length paths (`(*)`) are blocked. DDL statements (CREATE/DROP INDEX, ALTER, etc.) are blocked in both read and write validation.
+
+### 9.10 MemoryObserver
 
 `observer.ts` (~170 lines). Pure in-memory (not persisted) — tracks world deltas and manages token budget.
 
-- **`onWorldChange(delta)`** — called by `tools.ts` after each `updateWorld` mutation. Pushes a `WorldDelta` (action + summary + timestamp) to an in-memory buffer.
+- **`onWorldChange(delta)`** — called after each `mutateWorld` mutation. Pushes a `WorldDelta` (action + summary + timestamp) to an in-memory buffer.
 - **`onMessageStored(content)`** — tracks character count. When approximate token count exceeds **30K tokens** (configurable via `thresholdTokens`), triggers `generateReflection()`:
   1. Fetches last 100 messages from ShortTermMemory
   2. Takes messages older than the `recentWindow` (last 20)
@@ -417,30 +460,29 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
   4. Stores the reflection string for later context injection
 - **`getObservations()`** — returns `ObservationResult` with latest 20 deltas as `Observation` objects plus accumulated reflection strings.
 
-### 9.9 MemorySearch
+### 9.11 MemorySearch
 
-`search.ts` (~90 lines). Parallel hybrid search facade across memory layers.
+`search.ts` (~65 lines). Parallel hybrid search facade across memory layers.
 
 ```
-search(query, { types: ["messages", "entities", "preferences", "traces"] })
-  ├── shortTerm.searchMessages(query)     → vector similarity
-  ├── longTerm.searchEntities(query)       → vector similarity
-  ├── longTerm.getPreferences(category?)   → (no vector, similarity=1.0)
-  └── reasoning.getSimilarTraces(query)    → vector similarity
+search(query, { memoryTypes: ["messages", "entities"], limit: 10, threshold: 0.7 })
+  ├── shortTerm.searchMessages(query)     → vector similarity (if "messages" in types)
+  └── longTerm.searchEntities(query)       → vector similarity (if "entities" in types)
 ```
 
-All selected searches run in parallel via `Promise.all`. Returns `SearchResults` with `similarity` on each item.
+All selected searches run in parallel via `Promise.all`. Returns `SearchResults` with `messages` and `entities` arrays, each item bearing a `similarity` score.
 
-### 9.10 ContextAssembler
+### 9.12 ContextAssembler
 
-`context.ts` (~120 lines). Assembles GM-facing context from all memory layers.
+`context.ts` (~80 lines). Assembles GM-facing context from conversation and world state.
 
-`assemble({ query?, includeShortTerm?, includeLongTerm?, includeReasoning? })`:
-1. Fetches from shortTerm (recent conversation), longTerm (entity vector search + all preferences), reasoning (similar traces, limit 3) — all in parallel
-2. Builds a markdown `summary` string with sections: "Recent Conversation", "Relevant Entities", "User Preferences", "Similar Past Tasks"
-3. Returns `AssembledContext` — raw arrays (stripped of `similarity`) + formatted `summary`
+`assemble({ query?, maxItems?, includeShortTerm?, includeLongTerm? })`:
+1. Fetches in parallel: recent conversation from shortTerm (up to `maxItems`, default 10), entity vector search from longTerm (only if a `query` is provided)
+2. Strips `similarity` from entity results
+3. Builds a markdown `summary` string with sections: "### Recent Conversation" (role-prefixed messages) and "### Relevant Entities" (name, type/subtype, description)
+4. Returns `AssembledContext` — raw arrays + formatted `summary`
 
-### 9.11 Game State Persistence
+### 9.13 Game State Persistence
 
 `gameState.ts` (~36 lines). Save/resume support by persisting dialogue options as JSON on the `:Conversation` node.
 
@@ -449,32 +491,7 @@ All selected searches run in parallel via `Promise.all`. Returns `SearchResults`
 
 The Neo4j database is the authoritative world state — there is no separate session concept.
 
-### 9.12 Tools (AI SDK Definitions)
-
-`tools.ts` (~460 lines). Defines 6 AI SDK tools as `tool()` factory calls with Zod input schemas.
-
-**`getScene`**: Complex Cypher query joining the player's location, co-located NPCs, objects, inventory, parent locations, active plots (PENDING/IN_PROGRESS events), NPC dispositions toward the player, and all player flags. Returns a single map with all scene data.
-
-**`updateWorld`**: Multiplexes 7 mutation actions via a discriminated union:
-- `move` — deletes old `LOCATED_AT`, creates new one
-- `change` — reads existing entity, re-adds with updated fields
-- `create` — calls `longTerm.addEntity`
-- `relate` — calls `longTerm.addRelationship`
-- `fact` — calls `longTerm.addFact`
-- `disposition` — calls `longTerm.setDisposition`
-- `condition` — calls `longTerm.updatePlayerCondition` (pass null to delete)
-
-After each mutation, calls `observer.onWorldChange()` to record the delta.
-
-**`remember`**: Stores a GM note via `shortTerm.addMessage("system", ...)`.
-
-**`getConversation`**: Delegates to `shortTerm.getConversation(limit)`.
-
-**`searchMemory`**: Delegates to `client.search.search(query, { types })`.
-
-**`advancePlot`**: Reads/writes metadata on EVENT entities — manages beat lifecycle (activate/complete), branch selection, and player flag tracking.
-
-### 9.13 Data Flow Summary
+### 9.14 Data Flow Summary
 
 ```
 User Input
@@ -485,12 +502,11 @@ generateTurn()
   ├─► shortTerm.addMessage("user", input)
   ├─► streamText({ tools }) ──► LLM
   │     │
-  │     ├─► getScene ──► direct Cypher (bypasses layers)
-  │     ├─► updateWorld ──► longTerm.* + observer.onWorldChange()
-  │     ├─► remember ──► shortTerm.addMessage("system")
+  │     ├─► queryWorld ──► CypherValidator.validateRead → Neo4j
+  │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.* + observer.onWorldChange()
   │     ├─► searchMemory ──► client.search.search()
-  │     ├─► advancePlot ──► longTerm entity metadata r/w
-  │     ├─► getConversation ──► shortTerm.getConversation()
+  │     ├─► editNote / searchNotes ──► client.notes.*
+  │     ├─► editPlot / searchPlots ──► client.plots.*
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
   │     └─► generateDialogueStep ──► SSE + persist messages
   │
@@ -547,7 +563,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 8 tools (2 Elysian + 6 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 9 tools (2 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -570,7 +586,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 
 ### 14.2 Adding a Neo4j-Backed Tool
 
-Add a new tool definition in `createMemoryTools()` in `src/server/memory/tools.ts` following existing patterns. Delegate to the appropriate memory subsystem (`longTerm.*`, `shortTerm.*`, etc.).
+Add a new tool definition in `src/server/llm/tools/` following existing patterns (see `queryWorld.ts` or `mutateWorld.ts` for examples). Wire it into the `allTools` object in `src/server/llm/index.ts`. Delegate to the appropriate memory subsystem via `MemoryClient.getCachedInstance()` (`client.longTerm.*`, `client.notes.*`, `client.plots.*`, etc.).
 
 ### 14.3 Adding a New Voice/Skill
 

@@ -196,84 +196,6 @@ Owner = "Veyla"
 "Scent Profile" = "Night-blooming jasmine, sandalwood, ozone"
 Purpose = "A protective charm, tied while the player was unconscious"
 
-# ── Plot Events ─────────────────────────────────────────────────
-
-[[entities]]
-id = "plot_awakening"
-type = "EVENT"
-name = "The Awakening"
-description = """
-Three nights ago, the player was found unconscious in the rain outside the Sinking Dock, a violet crystal clutched in their hand and no memory of who they are. Veyla, a half-elf courtesan from the Velvet Thorn, dragged them to safety — something in the crystal sang to her dormant elven blood. Now the player wakes in a velvet-draped room, the shard pulsing with a light that responds to their every surge of emotion. They possess a latent sorcery they don't understand — powerful, untamed, and forbidden in the upper levels. Veyla is drawn to them with a pull that is equal parts magic and desire. But the Warrens are unforgiving, the Magewardens watch from above, and a person with power who doesn't know how to wield it is a prize, not a person. The truth of who the player is — and what they carry — lies somewhere between the velvet shadows of the Thorn, the glittering spires of the upper city, and the dangerous, undeniable heat between them and the half-elf who saved their life.\
-"""
-
-[entities.metadata]
-status = "IN_PROGRESS"
-involvedLocations = ["The Velvet Thorn", "The Warrens"]
-involvedCharacters = ["Veyla", "Madam Cressida"]
-
-[[entities.metadata.beats]]
-id = "beat_wake"
-label = "Wake in the Velvet Thorn"
-description = "The player wakes with amnesia, a glowing crystal, and Veyla watching over them."
-status = "COMPLETED"
-
-[[entities.metadata.beats]]
-id = "beat_explore_thorn"
-label = "Explore the Velvet Thorn"
-description = "Learn about the Thorn, meet Madam Cressida, understand Veyla's role in your rescue."
-status = "ACTIVE"
-
-[[entities.metadata.beats]]
-id = "beat_discover_resonance"
-label = "Discover the Crystal's Resonance"
-description = "The crystal's connection to Veyla's elven blood and the player's sorcery becomes undeniable."
-status = "LOCKED"
-
-[[entities.metadata.beats]]
-id = "beat_choose_path"
-label = "Choose a Path"
-description = "Decide whether to seek answers in the Warrens underground or risk the upper levels — each choice closes the other path."
-status = "LOCKED"
-
-[[entities.metadata.branches]]
-id = "branch_warrens"
-label = "Seek answers in the Warrens"
-description = "Navigate the lawless underbelly — Harbor Rats, rogue mages, black markets, and ancient ley-line secrets."
-status = "OPEN"
-
-[[entities.metadata.branches]]
-id = "branch_upper_city"
-label = "Risk the Upper City"
-description = "Seek knowledge where unlicensed magic is a crime — libraries, guilds, the duke's law, and the ever-watching Magewardens."
-status = "OPEN"
-
-[[entities]]
-id = "plot_bond_with_veyla"
-type = "EVENT"
-name = "The Bond"
-description = "Player deepens their bond with Veyla and explores the nature of their magic through their connection."
-
-[entities.metadata]
-triggerCondition = "Player deepens their bond with Veyla and explores the nature of their magic through their connection"
-
-[[entities]]
-id = "plot_navigate_warrens"
-type = "EVENT"
-name = "The Underworld"
-description = "Player navigates the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers."
-
-[entities.metadata]
-triggerCondition = "Player navigates the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers"
-
-[[entities]]
-id = "plot_seek_upper_levels"
-type = "EVENT"
-name = "The Upper City"
-description = "Player seeks knowledge in the upper levels, risking exposure to the Magewardens and the duke's law."
-
-[entities.metadata]
-triggerCondition = "Player seeks knowledge in the upper levels, risking exposure to the Magewardens and the duke's law"
-
 # ── Relationships ───────────────────────────────────────────────
 
 # Character Locations (LOCATED_AT)
@@ -340,33 +262,36 @@ targetName = "The Warrens"
 type = "LOCATED_IN"
 description = "The Velvet Thorn is nestled deep in the Warrens off the Sinking Dock."
 
-# Plot Structure (CHILD_PLOT)
-[[relationships]]
-sourceName = "The Awakening"
-targetName = "The Bond"
-type = "CHILD_PLOT"
-description = "Deepen the connection between the player and Veyla — explore magic through intimacy."
+# ── Plots ────────────────────────────────────────────────────────
 
-[[relationships]]
-sourceName = "The Awakening"
-targetName = "The Underworld"
-type = "CHILD_PLOT"
-description = "Navigate the lawless Warrens to find answers about the player's past."
+[[plots]]
+name = "The Awakening"
+description = """Three nights ago, the player was found unconscious in the rain outside the Sinking Dock, a violet crystal clutched in their hand and no memory of who they are. Veyla, a half-elf courtesan from the Velvet Thorn, dragged them to safety — something in the crystal sang to her dormant elven blood. Now the player wakes in a velvet-draped room, the shard pulsing with a light that responds to their every surge of emotion. They possess a latent sorcery they don't understand — powerful, untamed, and forbidden in the upper levels."""
+status = "IN_PROGRESS"
+branchesTo = ["The Bond", "The Underworld", "The Upper City"]
 
-[[relationships]]
-sourceName = "The Awakening"
-targetName = "The Upper City"
-type = "CHILD_PLOT"
-description = "Risk the upper levels where unlicensed magic is a crime — but knowledge may be found."
-
-# ── Initial Player Flags ───────────────────────────────────────
-
-[[playerFlags]]
+[[plots.flags]]
 flagId = "has_soul_shard"
 description = "Carries a violet crystal that pulses with the player's heartbeat — responds to emotion and magic"
-source = "Woke holding it in the rain outside Sinking Dock"
 
-[[playerFlags]]
+[[plots.flags]]
 flagId = "has_veyllas_ribbon"
 description = "Wears Veyla's midnight-blue silk ribbon tied around the wrist — a protective charm"
-source = "Veyla tied it while the player slept"
+
+[[plots]]
+name = "The Bond"
+description = """Player deepens their bond with Veyla and explores the nature of their magic through their connection."""
+status = "PENDING"
+triggerCondition = "Player deepens their bond with Veyla and explores the nature of their magic through their connection"
+
+[[plots]]
+name = "The Underworld"
+description = """Player navigates the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers."""
+status = "PENDING"
+triggerCondition = "Player navigates the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers"
+
+[[plots]]
+name = "The Upper City"
+description = """Player seeks knowledge in the upper levels, risking exposure to the Magewardens and the duke's law."""
+status = "PENDING"
+triggerCondition = "Player seeks knowledge in the upper levels, risking exposure to the Magewardens and the duke's law"

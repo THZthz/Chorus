@@ -34,10 +34,13 @@ export interface SeedRelationship {
   description?: string;
 }
 
-export interface SeedPlayerFlag {
-  flagId: string;
+export interface SeedPlot {
+  name: string;
   description: string;
-  source: string;
+  status: "PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+  triggerCondition?: string;
+  flags?: Array<{ flagId: string; description: string }>;
+  branchesTo?: string[];
 }
 
 export interface SeedStory {
@@ -46,7 +49,7 @@ export interface SeedStory {
   toneDescription: string;
   entities: SeedEntity[];
   relationships: SeedRelationship[];
-  playerFlags?: SeedPlayerFlag[];
+  plots?: SeedPlot[];
   initialDay: number;
   initialSegment: number;
   initialLocationId: string;

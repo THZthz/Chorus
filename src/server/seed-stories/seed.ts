@@ -77,10 +77,23 @@ export async function seedDatabase(): Promise<void> {
     }
   }
 
-  // Seed initial player flags from story
-  await client.neo4j.executeWrite(`MATCH (e:Entity {name: "Player"}) SET e:PlayerCharacter`);
-  for (const flag of story.playerFlags || []) {
-    await client.longTerm.setPlayerFlag(flag.flagId, flag.description, flag.source);
+  // Seed plots from story
+  for (const plot of story.plots || []) {
+    await client.plots.createPlot(plot.name, {
+      description: plot.description,
+      status: plot.status,
+      triggerCondition: plot.triggerCondition,
+      flags: plot.flags,
+    });
+  }
+
+  // Seed plot branches
+  for (const plot of story.plots || []) {
+    if (plot.branchesTo) {
+      for (const childName of plot.branchesTo) {
+        await client.plots.branchTo(plot.name, childName);
+      }
+    }
   }
 
   // Set initial time in Neo4j

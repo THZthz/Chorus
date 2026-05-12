@@ -28,10 +28,12 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 └── src/
     ├── console/
     │   ├── main.ts            # Standalone Node.js REPL client for dialogue interaction
-    │   └── SseClient.ts       # Lightweight SSE consumer for the console
+    │   ├── SseClient.ts       # Lightweight SSE consumer for the console
+    │   └── markdown.ts        # Terminal markdown → chalk-styled text
     ├── server/
     │   ├── main.ts            # Express entry (port 3000), MemoryClient init, seed on startup
     │   ├── api.ts             # REST API + SSE streaming endpoints
+    │   ├── validation.ts     # Zod request validation (chatStreamSchema)
     │   ├── llm/
     │   │   ├── index.ts       # generateTurn(): full-stream SSE turn loop
     │   │   ├── model.ts       # getModel(): lazy-init provider model (Gemini → DeepSeek)
@@ -54,6 +56,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── observer.ts    # Observational memory — token-threshold compression
     │   │   ├── search.ts      # Hybrid vector + graph search across memory types
     │   │   ├── context.ts     # Assembled context for GM consumption
+    │   │   ├── session.ts     # Session state persistence (:SessionState node)
     │   │   └── tools.ts       # 16 AI SDK tool definitions
     │   ├── models/
     │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
@@ -199,8 +202,8 @@ Seed stories live in `src/server/seed-stories/`. The active story is set via `AC
 
 ### 4.2 State
 
-- `GET /api/history` — Returns empty array (placeholder; GM uses `getConversation`)
-- `GET /api/session/current` — Returns null (no dialogue tree persistence)
+- `GET /api/history` — Returns full conversation history from ShortTermMemory, mapped to the `Message` interface
+- `GET /api/session/current` — Returns persisted session state (stepId + options) from the `:SessionState` Neo4j node
 
 ### 4.3 Reset
 
@@ -247,6 +250,29 @@ The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`
 2. Register it in the `STORIES` map in `index.ts`
 3. Change `ACTIVE_SEED_STORY` to the new story ID
 
+### 6.4 Memory Architecture
+
+The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world model. All subsystems are wired through the `MemoryClient` singleton (`client.ts`), which owns the Neo4j connection, creates the schema, and initializes the embedder.
+
+**Five subsystems:**
+
+| Subsystem | File | Responsibility |
+|-----------|------|----------------|
+| Short-term | `short-term.ts` | Conversation messages with sequential NEXT_MESSAGE linking, vector search |
+| Long-term | `long-term.ts` | Entity CRUD (POLE+O labels), preferences, fact triples, typed relationships |
+| Reasoning | `reasoning.ts` | LLM reasoning traces: start → steps → tool calls → completion, vector search |
+| Observer | `observer.ts` | Token-threshold context compression, inline observation extraction |
+| Search | `search.ts` | Parallel hybrid search across messages, entities, preferences, and traces |
+| Context | `context.ts` | Assembled GM context from recent messages, relevant entities, preferences, and traces |
+
+**Embeddings** (`embedder.ts`): Two strategies with automatic fallback. The `LocalEmbedder` uses `@xenova/transformers` with `all-MiniLM-L6-v2` (384-dim, ~80MB ONNX model). The `OpenAICompatibleEmbedder` uses any OpenAI-compatible API (configurable via `EMBEDDING_API_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL` env vars). If API credentials are set, the API embedder is used; otherwise local ONNX is the default. Embeddings power vector search across messages, entities, preferences, facts, and reasoning traces.
+
+**Observer** (`observer.ts`): Monitors per-session character count. When accumulated context exceeds a token threshold (default 30K), generates reflections from older messages. Extracts inline observations from user messages via keyword matching (decision markers like "i decided", fact patterns like "it turns out"). Implements a three-tier hierarchy: reflections → observations → recent messages.
+
+**Session persistence** (`session.ts`): Saves game state (current step ID + dialogue options) to a `:SessionState {id: "elysian-game"}` node in Neo4j. On resume, the console fetches this state and the conversation history to restore the game.
+
+**Neo4j schema** (`schema.ts`): On startup, creates 7 unique constraints (`Conversation`, `Message`, `Entity`, `Preference`, `Fact`, `ReasoningTrace`, `ReasoningStep` on `id`), 7 regular indexes (on session_id, timestamp, type, name, category), and 6 vector indexes (COSINE similarity on embedding properties across Message, Entity, Preference, Fact, ReasoningTrace, ReasoningStep). Vector indexes require Neo4j 5.11+.
+
 ---
 
 ## 7. Time System
@@ -274,6 +300,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 - **Rendering**: Terminal output via `chalk` (speaker colors mirrored from `src/shared/colors.ts`'s `VOICE_COLORS`) and `log-update` (progressive streaming updates)
 - **SSE handling**: `ConsoleSseClient` (`src/console/SseClient.ts`) handles core dialogue events (`step_start`, `streaming_messages`, `streaming_reset`, `options`, `parsed`, `error`, `done`). World/plot events are intentionally ignored — the console has no world editor.
 - **Session resume**: On startup, fetches `GET /api/history` + `GET /api/session/current` to attempt restore
+- **Markdown rendering**: `renderMarkdown()` in `src/console/markdown.ts` converts basic markdown (bold, italic, strikethrough, inline code) to chalk-styled terminal output
 - **Custom input**: Players can type free-form responses that get sent to the LLM
 
 ---

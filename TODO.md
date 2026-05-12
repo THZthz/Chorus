@@ -52,6 +52,10 @@ The TODO is more like prompts.
 - [x] Some tools of GM directly return JSON, should return detailed message instead, i.e., output a formatted markdown message.
 - [x] Use @ai-sdk/devtools to inspect LLM calls.
 - [x] Console should support printing Markdown.
-- [ ] Resume game play.
+- [x] Resume game play.
 - [x] Need to remove src/server/mcp folder.
 - [x] Console client's options select UI is broken, we can press arrow down infinitely and the options just cycle around.
+- [ ] Specify the output type of neo4j read.
+- [ ] Handle error occurred during transaction of neo4j.
+
+

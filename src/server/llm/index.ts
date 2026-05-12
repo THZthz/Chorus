@@ -28,6 +28,7 @@ import { createMemoryTools } from "@/server/memory/tools";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
+import {SkillName} from "@/shared/constants.ts";
 
 export { DEFAULT_SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt } from "@/server/llm/prompt";
 
@@ -279,7 +280,7 @@ export async function generateTurn(
                   hintAfter: o.hintAfter as string | undefined,
                   check: o.check
                     ? {
-                        skill: (o.check as any).skill as string,
+                        skill: (o.check as any).skill as SkillName,
                         difficulty: (o.check as any).difficulty as number,
                         difficultyText: ((o.check as any).difficultyText as string) || "",
                         diceCount: ((o.check as any).diceCount as number) ?? 2,

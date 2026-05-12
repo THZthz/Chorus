@@ -22,7 +22,7 @@ import type { SseEventName, SseEventMap } from "@/shared/events";
 
 export type EventEmitter = TurnEventEmitter | NoopEventEmitter;
 
-/** A message payload from the LLM before it gets a persistent ID. */
+// A message payload from the LLM before it gets a persistent ID.
 export interface StreamingMessage {
   speaker: string;
   type: string;
@@ -30,11 +30,9 @@ export interface StreamingMessage {
   metadata?: Record<string, unknown>;
 }
 
-/**
- * Manages SSE output for a single turn.
- * Tools call emit* methods during their execute phase.
- * The stream writer calls start/finish to manage the SSE lifecycle.
- */
+// Manages SSE output for a single turn.
+// Tools call emit* methods during their execute phase.
+// The stream writer calls start/finish to manage the SSE lifecycle.
 export class TurnEventEmitter {
   private readonly res: Response;
 
@@ -84,10 +82,8 @@ export class TurnEventEmitter {
   }
 }
 
-/**
- * No-op event emitter for non-streaming batch generation.
- * Has the same public API as TurnEventEmitter but does nothing.
- */
+// No-op event emitter for non-streaming batch generation.
+// Has the same public API as TurnEventEmitter but does nothing.
 export class NoopEventEmitter {
   constructor() {}
   startStep(_stepId: string) {}

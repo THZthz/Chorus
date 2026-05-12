@@ -30,10 +30,7 @@ export const SKILL_NAMES = [
   "CLOCKWORK",
   "ALCHEMY",
 ] as const;
-
 export type SkillName = (typeof SKILL_NAMES)[number];
-
-export const PLAYER_ID = "player" as const;
 
 export const SEGMENT_LABELS: Record<number, string> = {
   0: "Midnight",
@@ -68,4 +65,10 @@ export const SEGMENT_HOURS: Record<number, string> = {
 export const TOOL_NAMES = {
   GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
+  GET_SCENE: "getScene",
+  UPDATE_WORLD: "updateWorld",
+  REMEMBER: "remember",
+  GET_CONVERSATION: "getConversation",
+  SEARCH_MEMORY: "searchMemory",
+  ADVANCE_PLOT: "advancePlot",
 } as const;

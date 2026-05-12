@@ -19,65 +19,82 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { EventEmitter } from "@/server/llm/events";
-import { NOTIFICATION_TYPES } from "@/types/dialogue";
+import { NOTIFICATION_TYPES, SPEAKER_TYPES, SpeakerType } from "@/types/dialogue";
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
 import { checkText } from "@/server/llm/tools/shared";
 
 const MAX_MESSAGE_TEXT_LENGTH = 500;
 
-const messageSchema = z.object({
-  speaker: z
-    .string()
-    .describe(
-      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
-    ),
-  type: z.enum(["INNER_VOICE", "CHARACTER", "SYSTEM", "ROLL", "NOTIFICATION"]),
-  text: z.string().describe("The dialogue text, supports markdown."),
-  metadata: z
-    .object({
-      notificationType: z.enum(NOTIFICATION_TYPES).optional(),
-    })
-    .optional(),
-});
-
-const checkConditionSchema = z.object({
-  expression: z.string().describe("JS expression e.g. 'success' or 'total < difficulty'"),
-  label: z.string().optional(),
-  color: z.string().optional(),
-});
-
-const skillCheckSchema = z.object({
-  skill: z.string().describe("The skill to check (e.g. 'LOGIC')"),
-  difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
-  difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
-  diceCount: z.number().default(2),
-  isRed: z.boolean().optional().describe("High-stakes, one-time check."),
-  conditions: z.array(checkConditionSchema).describe("Outcome conditions."),
-});
-
-const optionSchema = z.object({
-  id: z.string().optional(),
-  text: z.string().describe("Short imperative button label (e.g. 'Try to convince the guard')."),
-  selectionMessage: z
-    .string()
-    .optional()
-    .describe(
-      "Optional sentence for the YOU message in dialogue history after the player selects this option. Write in past or present tense WITHOUT the pronoun 'I' — the system prefixes with 'You:' automatically (e.g. 'Tried to convince the guard to let us pass.' reads as 'You: Tried to convince...'). Using 'I' would produce the awkward 'You: I tried...'. If omitted, the text field is used with any [SKILL] prefix removed.",
-    ),
-  hintBefore: z
-    .string()
-    .optional()
-    .describe("Hint shown before the text, e.g. [Logic]. Do not overuse it."),
-  hintAfter: z
-    .string()
-    .optional()
-    .describe("Hint shown after the text, e.g. [Red Check]. Do not overuse it."),
-  check: skillCheckSchema.optional(),
-});
-
 const inputSchema = z.object({
-  messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
-  options: z.array(optionSchema).describe("The choices presented to the player."),
+  messages: z
+    .array(
+      z.object({
+        speaker: z
+          .string()
+          .describe(
+            "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
+          ),
+        type: z.enum(
+          SPEAKER_TYPES.filter((type) => type !== "YOU") as Exclude<SpeakerType, "YOU">[],
+        ),
+        text: z.string().describe("The dialogue text, supports markdown."),
+        metadata: z
+          .object({
+            notificationType: z.enum(NOTIFICATION_TYPES).optional(),
+          })
+          .optional(),
+      }),
+    )
+    .describe("The sequence of messages in this dialogue step."),
+  options: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        text: z
+          .string()
+          .describe("Short imperative button label (e.g. 'Try to convince the guard')."),
+        selectionMessage: z
+          .string()
+          .optional()
+          .describe(
+            `
+Optional sentence for the YOU message in dialogue history after the player selects this option.
+Write in past or present tense WITHOUT the pronoun 'I' — the system prefixes with 'You:' automatically
+(e.g. 'Tried to convince the guard to let us pass.' reads as 'You: Tried to convince...').
+Using 'I' would produce the awkward 'You: I tried...'.
+If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
+          ),
+        hintBefore: z
+          .string()
+          .optional()
+          .describe("Hint shown before the text, e.g. [Logic]. Do not overuse it."),
+        hintAfter: z
+          .string()
+          .optional()
+          .describe("Hint shown after the text, e.g. [Red Check]. Do not overuse it."),
+        check: z
+          .object({
+            skill: z.enum(SKILL_NAMES).describe("The skill to check (e.g. 'LOGIC')"),
+            difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
+            difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
+            diceCount: z.number().default(2),
+            isRed: z.boolean().optional().describe("High-stakes, one-time check."), // TODO: Is this used? Can we remove it?
+            conditions: z // TODO: Should check if this is working.
+              .array(
+                z.object({
+                  expression: z
+                    .string()
+                    .describe("JS expression e.g. 'success' or 'total < difficulty'"),
+                  label: z.string().optional(),
+                  color: z.string().optional(),
+                }),
+              )
+              .describe("Outcome conditions."),
+          })
+          .optional(),
+      }),
+    )
+    .describe("The choices presented to the player."),
 });
 
 export function createGenerateDialogueStepTool(
@@ -92,8 +109,10 @@ export function createGenerateDialogueStepTool(
   let lastCallValid = false;
 
   const dialogueTool = tool({
-    description:
-      "Generate the narrative dialogue steps and final player choices. This is the ONLY way to communicate to the player. Options should align with the active plot's childPlots.",
+    description: `
+Generate the narrative dialogue steps and final player choices.
+This is the ONLY way to communicate to the player.
+Options should align with the active plot's childPlots.`.trim(),
     inputSchema,
     execute: async (args: z.infer<typeof inputSchema>) => {
       const errors: string[] = [];

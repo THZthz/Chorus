@@ -16,24 +16,36 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import {SkillName} from "@/shared/constants.ts";
+
 export const NOTIFICATION_TYPES = ["TASK", "INFO", "WARNING", "ITEM_RECEIVED"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const SPEAKER_TYPES = [
+  "INNER_VOICE",
+  "CHARACTER",
+  "SYSTEM",
+  "ROLL",
+  "NOTIFICATION",
+  "YOU",
+] as const;
+export type SpeakerType = (typeof SPEAKER_TYPES)[number];
 
 export interface Message {
   id: string;
   speaker: string;
-  type: "INNER_VOICE" | "CHARACTER" | "SYSTEM" | "ROLL" | "NOTIFICATION" | "YOU";
+  type: SpeakerType;
   text: string;
   metadata?: {
     notificationType?: NotificationType;
   };
   skillCheck?: {
-    skill: string;
+    skill: SkillName;
     difficulty: number;
     diceCount: number;
   };
   rollResult?: {
-    skill: string;
+    skill: SkillName;
     difficulty: number;
     dice: number[];
     total: number;
@@ -48,7 +60,7 @@ export interface DialogueOption {
   hintBefore?: string;
   hintAfter?: string;
   check?: {
-    skill: string;
+    skill: SkillName;
     difficulty: number;
     difficultyText: string;
     diceCount: number;

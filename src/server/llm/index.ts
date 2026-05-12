@@ -24,7 +24,13 @@ import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
-import { createMemoryTools } from "@/server/memory/tools";
+import { queryWorld } from "@/server/llm/tools/queryWorld";
+import { mutateWorld } from "@/server/llm/tools/mutateWorld";
+import { searchMemory } from "@/server/llm/tools/searchMemory";
+import { editNote } from "@/server/llm/tools/editNote";
+import { searchNotes } from "@/server/llm/tools/searchNotes";
+import { editPlot } from "@/server/llm/tools/editPlot";
+import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
@@ -80,9 +86,6 @@ export async function generateTurn(
   let finalMessages: Record<string, unknown>[] = [];
   let finalOptions: DialogueOption[] = [];
 
-  // Discover MCP tools from agent-memory
-  const memoryTools = createMemoryTools();
-
   // Auto-persist each generated message to Neo4j after validation passes.
   const persistMessage = async (msg: {
     speaker: string;
@@ -104,7 +107,13 @@ export async function generateTurn(
   const advanceTimeTool = createAdvanceTimeTool(events);
 
   const allTools = {
-    ...memoryTools,
+    queryWorld,
+    mutateWorld,
+    searchMemory,
+    editNote,
+    searchNotes,
+    editPlot,
+    searchPlots,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
   };

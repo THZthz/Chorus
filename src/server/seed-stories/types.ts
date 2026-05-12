@@ -34,12 +34,19 @@ export interface SeedRelationship {
   description?: string;
 }
 
+export interface SeedPlayerFlag {
+  flagId: string;
+  description: string;
+  source: string;
+}
+
 export interface SeedStory {
   id: string;
   settingDescription: string;
   toneDescription: string;
   entities: SeedEntity[];
   relationships: SeedRelationship[];
+  playerFlags?: SeedPlayerFlag[];
   initialDay: number;
   initialSegment: number;
   initialLocationId: string;

@@ -59,18 +59,11 @@ export async function seedDatabase(): Promise<void> {
     }
   }
 
-  // Seed initial player flags
+  // Seed initial player flags from story
   await client.neo4j.executeWrite(`MATCH (e:Entity {name: "Player"}) SET e:PlayerCharacter`);
-  await client.longTerm.setPlayerFlag(
-    "has_soul_shard",
-    "Carries a violet crystal that pulses with the player's heartbeat — responds to emotion and magic",
-    "Woke holding it in the rain outside Sinking Dock",
-  );
-  await client.longTerm.setPlayerFlag(
-    "has_veyllas_ribbon",
-    "Wears Veyla's midnight-blue silk ribbon tied around the wrist — a protective charm",
-    "Veyla tied it while the player slept",
-  );
+  for (const flag of story.playerFlags || []) {
+    await client.longTerm.setPlayerFlag(flag.flagId, flag.description, flag.source);
+  }
 
   // Set initial time in Neo4j
   await setGameTime({ day: story.initialDay, segment: story.initialSegment });

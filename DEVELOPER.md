@@ -134,7 +134,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │       ├── index.ts       # Story registry + ACTIVE_SEED_STORY constant
     │       ├── types.ts       # SeedStory, SeedPlot interfaces
     │       ├── seed.ts        # Apply active seed story to Neo4j via MemoryClient
-    │       └── magic-awakening.ts  # Default seed story
+    │       └── magic-awakening.toml  # Default seed story (TOML format)
     ├── shared/
     │   ├── events.ts          # SSE event type definitions (typed event map)
     │   ├── sse.ts             # Shared SSE stream parser (async generator)

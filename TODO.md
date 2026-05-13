@@ -59,9 +59,11 @@ The TODO is more like prompts.
 - [ ] Use node-cypher-parser to validate Cypher read/write of GM.
 - [ ] GM can create new Node and Relationship.
 - [x] A proper script to parse generations.json.
-- [ ] Do not call streamText multiple times, discarding GM's history messages, pass all history to GM and let it know what it has done before.
+- [x] Do not call streamText multiple times, discarding GM's history messages, pass all history to GM and let it know what it has done before.
 - [x] Some properties of node should be hidden and shall not be queried/modified by GM (like embedding, this large vector consumes too much token when it is returned).
 - [x] Fix properties of node that has naming inconsistency.
-- [ ] inspect-devtools.sh is mis-parsing user's messages.
+- [x] inspect-devtools.sh is mis-parsing user's messages.
 - [ ] GM is still outputting dialogue message on their plain text response, not tool call.
+- [ ] GM should not manually generate option id.
+- [x] rollSkillCheck should not be a tool. We should calculate the result after player choose an option which require a skill check. The the result is passed to GM by its assistant.
 

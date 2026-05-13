@@ -36,7 +36,7 @@ import { saveCurrentOptions } from "@/server/memory/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
-import { createRollSkillCheckTool } from "@/server/llm/tools/rollSkillCheck";
+import { performSkillCheck } from "@/server/llm/tools/rollSkillCheck";
 import { type SkillName } from "@/shared/constants";
 
 export async function generateTurn(
@@ -100,26 +100,50 @@ export async function generateTurn(
   ];
 
   if (check) {
-    promptParts.push(
-      "",
-      "---",
-      "",
-      "## SKILL CHECK REQUIRED",
-      `The player is attempting an action that requires a skill check:`,
-      `- Skill: ${check.skill}`,
-      `- Difficulty: ${check.difficulty} (${check.difficultyText})`,
-      `- Dice: ${check.diceCount}d6 + ${check.skill} stat bonus`,
-    );
-    if (check.conditions && check.conditions.length > 0) {
-      promptParts.push("- Conditions:");
-      for (const c of check.conditions) {
-        promptParts.push(`  ${c.expression}${c.label ? ` → "${c.label}"` : ""}${c.stepId ? ` → step: ${c.stepId}` : ""}`);
-      }
+    // Auto-perform the skill check server-side
+    let rollResult: Awaited<ReturnType<typeof performSkillCheck>> | null = null;
+    try {
+      rollResult = await performSkillCheck(check);
+    } catch (err) {
+      console.error("[generateTurn] Skill check failed:", err);
     }
-    promptParts.push(
-      "",
-      `Call ${"rollSkillCheck"} with these parameters, then narrate the outcome.`,
-    );
+
+    if (rollResult) {
+      // Emit SSE event for console rendering
+      events.emitRollResult(rollResult);
+
+      // Persist ROLL message
+      const rollText = [
+        `Rolled ${check.diceCount}d6 + ${check.skill}(${rollResult.statBonus})`,
+        `Dice: [${rollResult.dice.join(", ")}]`,
+        `Total: ${rollResult.total} vs Difficulty: ${check.difficulty}`,
+        `Result: ${rollResult.success ? "SUCCESS" : "FAILURE"}`,
+      ].join(" | ");
+
+      await MemoryClient.getCachedInstance().shortTerm.addMessage("system", rollText, {
+        speaker: check.skill,
+        type: "ROLL",
+        rollResult: {
+          skill: rollResult.skill as SkillName,
+          difficulty: rollResult.difficulty,
+          dice: rollResult.dice,
+          total: rollResult.total,
+          success: rollResult.success,
+        },
+      });
+
+      // Inject the result into the prompt — GM narrates, no tool call needed
+      promptParts.push(
+        "",
+        "---",
+        "",
+        "## SKILL CHECK RESULT",
+        rollResult.narrativeSummary,
+        "",
+        `The player ${rollResult.success ? "succeeded" : "failed"} this skill check.`,
+        `Narrate the ${rollResult.success ? "success" : "failure"} naturally via generateDialogueStep.${rollResult.success ? " The player's skill shines through." : " Make the failure interesting but keep the story moving."}`,
+      );
+    }
   }
 
   if (sceneContext) {
@@ -155,7 +179,6 @@ export async function generateTurn(
 
   const dialogueStepTool = createGenerateDialogueStepTool(events, persistMessage);
   const advanceTimeTool = createAdvanceTimeTool(events);
-  const rollSkillCheckTool = createRollSkillCheckTool(events);
 
   const allTools = {
     queryWorld,
@@ -167,7 +190,6 @@ export async function generateTurn(
     searchPlots,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
-    rollSkillCheck: rollSkillCheckTool,
   };
 
   let streamError: string | null = null;

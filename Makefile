@@ -1,6 +1,6 @@
 .PHONY: help install server console lint format \
         neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
-        dev dev-stop reset clean clean-all inspect-generations
+        dev dev-stop reset clean clean-all
 
 # MSYS2 bash can't resolve Windows-style paths inside the npm/npx
 # bash-script wrappers; use the .cmd launcher on Windows instead.
@@ -95,9 +95,6 @@ format:
 dev: neo4j-start neo4j-wait server-dev
 
 dev-stop: neo4j-stop
-
-inspect-generations:
-	bash ./scripts/inspect-devtools.sh
 
 reset:
 	curl -X POST http://localhost:3000/api/reset

@@ -578,7 +578,7 @@ All `streamText` calls are captured to `.devtools/generations.json` via the `dev
 
 **Data model:** One top-level entry per `streamText` call. `runs[]` = individual invocations of `generateTurn()`; `steps[]` = each tool-calling iteration within a run.
 
-**Primary inspection tool** — `scripts/inspect-devtools.sh` renders readable LLM interactions for debugging:
+**Primary inspection tool** — `scripts/inspect-devtools.sh` (or `make inspect-generations`) renders readable LLM interactions for debugging:
 
 ```bash
 # Summary of all runs (time, step count, token usage)
@@ -593,16 +593,19 @@ All `streamText` calls are captured to `.devtools/generations.json` via the `dev
 
 # Single step within a run
 ./scripts/inspect-devtools.sh --run -1 --step 5  # step 5 of latest run
+
+# Show tool call results (from the next step's input)
+./scripts/inspect-devtools.sh --run -1 --step 4 --tool-result
+
+# Disable content truncation, use full terminal width
+./scripts/inspect-devtools.sh --run -1 --step 5 --full --tool-result
 ```
 
-The script displays for each step: user message context, model reasoning/thinking, text output (if any), tool calls with formatted arguments (including special rendering for `generateDialogueStep` messages and options), and token usage with cache-hit info.
+The script displays for each step: user message context, model reasoning/thinking, text output (if any), tool calls with formatted arguments (including special rendering for `generateDialogueStep` messages and options), and token usage with cache-hit info. `--tool-result` adds a box showing each tool call's result. `--full` disables text truncation and uses wider terminal-width boxes.
 
 **Alternative: raw jq** — for ad-hoc queries the script doesn't cover:
 
 ```bash
-# Tool call results (appear in the NEXT step's input)
-jq '.steps[1].input | fromjson | .prompt[] | select(.role == "tool")' .devtools/generations.json
-
 # Full args for a specific tool call
 jq '.steps[3].output | fromjson | .toolCalls[0].input | fromjson' .devtools/generations.json
 

@@ -42,7 +42,6 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │      queryWorld, mutateWorld, searchMemory, editNote,                │
 │      searchNotes, editPlot, searchPlots, ← llm/tools/ (7 GM tools)   │
 │      generateDialogueStep,              ← llm/tools/ (Elysian tool)  │
-│      correctDialogueStep,               ← llm/tools/ (Elysian tool)  │
 │      advanceTime                        ← llm/tools/ (Elysian tool)  │
 │    }                                                                 │
 │  })                                                                  │
@@ -205,16 +204,16 @@ POST /api/chat/stream
 
 Defined in `src/shared/events.ts` (single source of truth):
 
-| Event                | Direction       | Payload                              | Trigger                                   |
-|----------------------|-----------------|--------------------------------------|-------------------------------------------|
-| `step_start`         | Server → Client | `{ stepId }`                         | Turn begins                               |
-| `streaming_messages` | Server → Client | `{ messages }`                       | Progressive during `generateDialogueStep` |
-| `streaming_reset`    | Server → Client | `{}`                                 | LLM retried — discard previous            |
-| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }` | `advanceTime` tool executes               |
-| `options`            | Server → Client | `{ options }`                        | Options available mid-stream              |
-| `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                   |
-| `error`              | Server → Client | `{ message }`                        | Error during generation                   |
-| `done`               | Server → Client | `{}`                                 | Turn complete                             |
+| Event                | Direction       | Payload                                                                       | Trigger                                           |
+|----------------------|-----------------|-------------------------------------------------------------------------------|---------------------------------------------------|
+| `step_start`         | Server → Client | `{ stepId }`                                                                  | Turn begins                                       |
+| `streaming_messages` | Server → Client | `{ messages }`                                                                | Progressive during `generateDialogueStep`         |
+| `streaming_reset`    | Server → Client | `{}`                                                                          | LLM retried — discard previous                    |
+| `time_update`        | Server → Client | `{ day, segment, segmentsAdvanced }`                                          | `advanceTime` tool executes                       |
+| `options`            | Server → Client | `{ options }`                                                                 | Options available mid-stream                      |
+| `parsed`             | Server → Client | `{ messages, options }`                                                       | Final structured output                           |
+| `error`              | Server → Client | `{ message }`                                                                 | Error during generation                           |
+| `done`               | Server → Client | `{}`                                                                          | Turn complete                                     |
 | `roll_result`        | Server → Client | `{ skill, difficulty, dice[], total, statBonus, success, matchedConditions }` | Skill check resolved server-side before GM prompt |
 
 ---
@@ -225,11 +224,10 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 **Elysian tools**:
 
-| Tool                    | Purpose                                                  | SSE Event                                 |
-|-------------------------|----------------------------------------------------------|-------------------------------------------|
-| `generateDialogueStep`  | Produce narrative messages + player options              | `streaming_messages`, `options`, `parsed` |
-| `correctDialogueStep`   | Correct specific errors in a failed generateDialogueStep | `streaming_messages`, `options`, `parsed` |
-| `advanceTime`           | Advance in-game clock by N segments                      | `time_update`                             |
+| Tool                   | Purpose                                                                                                        | SSE Event                                 |
+|------------------------|----------------------------------------------------------------------------------------------------------------|-------------------------------------------|
+| `generateDialogueStep` | Produce narrative messages + player options; supports `isCorrection` flag for targeted retries with auto-merge | `streaming_messages`, `options`, `parsed` |
+| `advanceTime`          | Advance in-game clock by N segments                                                                            | `time_update`                             |
 
 **Neo4j-backed GM tools**:
 
@@ -243,7 +241,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
 | `searchPlots`  | Vector search across plots                                               |
 
-All 10 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `correctDialogueStep` allows the GM to fix specific validation errors without regenerating valid content from scratch. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -297,16 +295,17 @@ Boot sequence: `getInstance()` → creates `Neo4jClient` → `verifyConnectivity
 
 All memory types are defined in `types.ts` (~130 lines, type-only):
 
-| Type                 | Key Fields                                                                                         | Neo4j Node                  |
-|----------------------|----------------------------------------------------------------------------------------------------|-----------------------------|
-| `MemoryEntity`       | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, _embedding[], isNew?          | `:Entity`                   |
-| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, _embedding[], createdAt                        | `:Message`                  |
-| `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                             | (dynamic relationship)      |
-| `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                                  | `:NPCDisposition`           |
-| `PlayerCondition`    | description, effects[] (stat/modifier pairs), duration?, source?                                   | (stored in Entity metadata) |
-| `MemoryNote`         | id, content, _embedding[], createdAt, updatedAt                                                     | `:Note`                     |
-| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], _embedding[], createdAt, updatedAt       | `:Plot`                     |
-| `PlotFlag`           | flagId, description                                                                                | (stored in Plot.flags JSON) |
+| Type                 | Key Fields                                                                                    | Neo4j Node                  |
+|----------------------|-----------------------------------------------------------------------------------------------|-----------------------------|
+| `MemoryEntity`       | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, _embedding[], isNew?    | `:Entity`                   |
+| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, _embedding[], createdAt                  | `:Message`                  |
+| `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                        | (dynamic relationship)      |
+| `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                             | `:NPCDisposition`           |
+| `PlayerCondition`    | description, effects[] (stat/modifier pairs), duration?, source?                              | (stored in Entity metadata) |
+| `MemoryNote`         | id, content, _embedding[], createdAt, updatedAt                                               | `:Note`                     |
+| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], _embedding[], createdAt, updatedAt | `:Plot`                     |
+| `PlotFlag`           | flagId, description                                                                           | (stored in Plot.flags JSON) |
+
 Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` arrays with `similarity`). `PlotStatus` is a union: `"PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"`.
 
 ### 9.3 Neo4j Schema
@@ -321,8 +320,8 @@ Managed by `schema.ts` (~85 lines), called once at startup:
 
 **Vector indexes (4, require Neo4j 5.11+, COSINE similarity):**
 
-| Index                   | Label   | Property  | Dims                       |
-|-------------------------|---------|-----------|----------------------------|
+| Index                   | Label   | Property   | Dims                       |
+|-------------------------|---------|------------|----------------------------|
 | `message_embedding_idx` | Message | _embedding | 384 (or API embedder dims) |
 | `entity_embedding_idx`  | Entity  | _embedding | 384 (or API embedder dims) |
 | `note_embedding_idx`    | Note    | _embedding | 384 (or API embedder dims) |
@@ -484,8 +483,7 @@ generateTurn()
   │     ├─► editNote / searchNotes ──► client.notes.*
   │     ├─► editPlot / searchPlots ──► client.plots.*
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
-  │     ├─► generateDialogueStep ──► SSE + persist messages
-│     └─► correctDialogueStep  ──► SSE + persist messages (targeted correction)
+  │     └─► generateDialogueStep ──► SSE + persist messages (supports isCorrection flag for targeted retries)
   │
   ├─► saveCurrentOptions(finalOptions) ──► Conversation node
   └─► saveGMMessages(response.messages) ──► :GMTurnMessage nodes
@@ -540,7 +538,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 11 tools (4 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 9 tools (2 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match

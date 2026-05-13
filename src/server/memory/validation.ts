@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+import {TOOL_NAMES} from "@/shared/constants.ts";
 
 const READ_ALLOWED_LABELS = new Set([
   "Entity",
@@ -68,7 +69,7 @@ export class CypherValidator {
 
     if (BLOCKED_READ_CLAUSES.test(query)) {
       errors.push(
-        "Query contains write clause (CREATE/MERGE/DELETE/SET/REMOVE/DETACH DELETE/DROP). queryWorld is read-only.",
+        `Query contains write clause (CREATE/MERGE/DELETE/SET/REMOVE/DETACH DELETE/DROP). ${TOOL_NAMES.QUERY_WORLD} is read-only.`,
       );
     }
 

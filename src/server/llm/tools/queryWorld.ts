@@ -22,14 +22,24 @@ import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import {TOOL_NAMES} from "@/shared/constants";
 
 const validator = new CypherValidator();
 const AUTO_LIMIT = 50;
 
 export const queryWorld = tool({
-  description: `Read the game world using Cypher queries. The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT). Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS. Entity types: PERSON, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label. Browse time history via NEXT_TIMEPOINT.
+  title: TOOL_NAMES.QUERY_WORLD,
+  description: `
+Read the game world using Cypher queries.
+The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT).
+Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS.
+Entity types: PERSON, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
+Browse time history via NEXT_TIMEPOINT.
 
-NOTE: The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is already pre-loaded in the user prompt under "SCENE CONTEXT". Do NOT query for scene information that is already present. Use queryWorld only for specific lookups BEYOND the pre-loaded context, such as: entity searches by name, message history, timepoint browsing, or finding entities/relationships not shown in the scene.`,
+NOTE:
+The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is already pre-loaded in the user prompt under "SCENE CONTEXT".
+Do NOT query for scene information that is already present.
+Use queryWorld only for specific lookups BEYOND the pre-loaded context, such as: entity searches by name, message history, timepoint browsing, or finding entities/relationships not shown in the scene.`.trim(),
   inputSchema: z.object({
     query: z.string().describe("A read-only Cypher query (MATCH...RETURN)."),
   }),
@@ -60,5 +70,5 @@ NOTE: The current scene (player location, nearby NPCs, objects, inventory, NPC d
       const msg = err instanceof Error ? err.message : String(err);
       return `QUERY ERROR: ${msg}. Adjust your query and retry.`;
     }
-  }, "queryWorld"),
+  }, TOOL_NAMES.QUERY_WORLD),
 });

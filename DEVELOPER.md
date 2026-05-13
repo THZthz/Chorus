@@ -110,6 +110,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── events.ts      # TurnEventEmitter: typed SSE dispatch
     │   │   ├── gmMessages.ts # Persist AI SDK messages as :GMTurnMessage nodes for multi-turn continuity
     │   │   ├── conditionEvaluator.ts  # Safe expression evaluator for skill check conditions
+    │   │   ├── rollSkillCheck.ts           # Server-side skill check resolver (not a tool)
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
@@ -120,7 +121,6 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │       ├── searchNotes.ts           # Vector search across notes
     │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
     │   │       ├── searchPlots.ts           # Vector search across plots
-    │   │       ├── rollSkillCheck.ts       # Server-side skill check resolver (not a tool)
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers

@@ -20,8 +20,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import {TOOL_NAMES} from "@/shared/constants";
 
 export const searchPlots = tool({
+  title: TOOL_NAMES.SEARCH_PLOTS,
   description:
     "Search plots by meaning using vector similarity. Use to find relevant story arcs, check plot status, and discover connected plots via BRANCHES_TO.",
   inputSchema: z.object({
@@ -46,5 +48,5 @@ export const searchPlots = tool({
       }),
     );
     return JSON.stringify(enriched, null, 2);
-  }, "searchPlots"),
+  }, TOOL_NAMES.SEARCH_PLOTS),
 });

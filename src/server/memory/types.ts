@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+import {NOTIFICATION_TYPES} from "@/types/dialogue.ts";
 
 // Entity types following POLE+O model
 export type EntityType = "PERSON" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
@@ -61,7 +62,8 @@ export interface MemoryNote {
   updatedAt: Date;
 }
 
-export type PlotStatus = "PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
+export const PLOT_STATUSES = ["PENDING", "ACTIVE", "IN_PROGRESS", "COMPLETED", "ABANDONED"] as const;
+export type PlotStatus = (typeof PLOT_STATUSES)[number];
 
 export interface PlotFlag {
   flagId: string;

@@ -21,6 +21,7 @@ import { z } from "zod";
 import { advanceGameTime, describeTime } from "@/server/models/time";
 import type { EventEmitter } from "@/server/llm/events";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import {TOOL_NAMES} from "@/shared/constants";
 
 const inputSchema = z.object({
   segments: z
@@ -36,6 +37,7 @@ const inputSchema = z.object({
 
 export function createAdvanceTimeTool(events: EventEmitter) {
   return tool({
+    title: TOOL_NAMES.ADVANCE_TIME,
     description:
       "Advance the in-game clock. Use segments (0-11, each = 2 hours) for short advances, or days (0+) for multi-day travel. Total advancement = days * 12 + segments.",
     inputSchema,
@@ -51,6 +53,6 @@ export function createAdvanceTimeTool(events: EventEmitter) {
       if (args.days && args.days > 0) parts.push(`${args.days} day(s)`);
       if (args.segments && args.segments > 0) parts.push(`${args.segments} segment(s)`);
       return `Time advanced by ${parts.join(", ")}.${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
-    }, "advanceTime"),
+    }, TOOL_NAMES.ADVANCE_TIME),
   });
 }

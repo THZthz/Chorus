@@ -40,7 +40,7 @@ const messageSchema = z.object({
       "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
     ),
   type: z.enum(SPEAKER_TYPES.filter((type) => type !== "YOU") as Exclude<SpeakerType, "YOU">[]),
-  text: z.string().max(500).describe("The dialogue text, supports markdown."),
+  text: z.string().max(MAX_MESSAGE_TEXT_LENGTH).describe("The dialogue text, supports markdown."),
   metadata: z
     .object({
       notificationType: z.enum(NOTIFICATION_TYPES).optional(),
@@ -346,7 +346,7 @@ async function executeAndPersist(
         persisted++;
       } catch (err) {
         console.warn(
-          `[generateDialogueStep] Failed to persist message from "${msg.speaker}":`,
+          `[${TOOL_NAMES.GENERATE_DIALOGUE}] Failed to persist message from "${msg.speaker}":`,
           err,
         );
       }
@@ -369,6 +369,7 @@ export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn
   let lastCallOptions: DialogueArgs["options"] = [];
 
   const dialogueTool = tool({
+    title: TOOL_NAMES.GENERATE_DIALOGUE,
     description: `
 Generate the narrative dialogue steps and final player choices.
 This is the ONLY way to communicate to the player.

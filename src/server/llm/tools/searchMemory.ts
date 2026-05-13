@@ -21,8 +21,10 @@ import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import {TOOL_NAMES} from "@/shared/constants";
 
 export const searchMemory = tool({
+  title: TOOL_NAMES.SEARCH_MEMORY,
   description:
     "Search world state (entities, messages) by meaning using vector similarity. Use when you need to find something not in the current scene.",
   inputSchema: z.object({
@@ -40,5 +42,5 @@ export const searchMemory = tool({
       limit: args.limit,
     });
     return JSON.stringify(stripHiddenProperties(results), null, 2);
-  }, "searchMemory"),
+  }, TOOL_NAMES.SEARCH_MEMORY),
 });

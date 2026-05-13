@@ -20,8 +20,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import {TOOL_NAMES} from "@/shared/constants";
 
 export const editNote = tool({
+  title: TOOL_NAMES.EDIT_NOTE,
   description:
     "Create, update, or delete a GM scratchpad note. Notes can be linked to entities and messages. Omit noteId to create. Set remove:true with noteId to delete.",
   inputSchema: z.object({
@@ -74,5 +76,5 @@ export const editNote = tool({
     }
 
     return JSON.stringify({ updated: args.noteId });
-  }, "editNote"),
+  }, TOOL_NAMES.EDIT_NOTE),
 });

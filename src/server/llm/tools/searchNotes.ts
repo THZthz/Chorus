@@ -20,8 +20,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import {TOOL_NAMES} from "@/shared/constants";
 
 export const searchNotes = tool({
+  title: TOOL_NAMES.SEARCH_NOTES,
   description:
     "Search GM notes by meaning using vector similarity. Notes are your private scratchpad — use them to record thoughts, plans, and observations.",
   inputSchema: z.object({
@@ -41,5 +43,5 @@ export const searchNotes = tool({
       })),
     );
     return JSON.stringify(enriched, null, 2);
-  }, "searchNotes"),
+  }, TOOL_NAMES.SEARCH_NOTES),
 });

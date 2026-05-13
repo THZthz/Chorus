@@ -263,7 +263,8 @@ render_step() {
       # Write results map to temp file to avoid pipe/echo limits with large JSON
       local R_TMP=$(mktemp)
       printf '%s' "$RESULTS_MAP" > "$R_TMP"
-      local RESULT_COUNT=$(jq 'length' "$R_TMP" 2>/dev/null || echo 0)
+      local RESULT_COUNT=$(jq 'length' "$R_TMP" 2>/dev/null)
+      RESULT_COUNT="${RESULT_COUNT:-0}"
       if [[ "$RESULT_COUNT" -gt 0 ]]; then
         echo ""
         local res_hdr="Tool Results (${RESULT_COUNT})"
@@ -314,7 +315,8 @@ if [[ -n "$STEP_SPEC" ]]; then
     map(select(.role == "tool")) | map(.content[]) |
     map({key: .toolCallId, value: {toolName: .toolName, output: .output}}) |
     from_entries
-  ' 2>/dev/null || echo "{}")
+  ' 2>/dev/null)
+  RESULTS="${RESULTS:-{\}}"
   render_step "$STEP_JSON" "$RESULTS"
 else
   # Precompute results per step using one jq pass — avoids large-JSON-in-bash issues
@@ -323,18 +325,20 @@ else
   jq -n -c --slurpfile d "$FILE" --arg rid "$RUN_ID" '
     [$d[0].steps | map(select(.run_id == $rid)) | sort_by(.step_number) |
      to_entries[] |
-     .key as $i |
      .value.input | fromjson | .prompt // [] |
      map(select(.role == "tool")) | map(.content[]) |
      map({key: .toolCallId, value: {toolName: .toolName, output: .output}}) |
      from_entries]
-  ' "$FILE" > "$RESULTS_FILE" 2>/dev/null
+  ' > "$RESULTS_FILE" 2>/dev/null
+  # Ensure RESULTS_FILE has valid content (empty array if jq failed)
+  if [[ ! -s "$RESULTS_FILE" ]]; then echo "[]" > "$RESULTS_FILE"; fi
 
   for ((i=0; i<STEP_COUNT; i++)); do
     S=$(jq -r ".[$i]" <<<"$STEPS")
     # Results for step i are in step i+1 (because step i's tool calls resolve in step i+1's input)
     NEXT_I=$((i + 1))
-    RESULTS=$(jq -c ".[$NEXT_I] // {}" "$RESULTS_FILE" 2>/dev/null || echo "{}")
+    RESULTS=$(jq -c ".[$NEXT_I] // {}" "$RESULTS_FILE" 2>/dev/null)
+    RESULTS="${RESULTS:-{\}}"
     render_step "$S" "$RESULTS"
   done
   rm -f "$RESULTS_FILE"

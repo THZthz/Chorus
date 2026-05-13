@@ -57,5 +57,8 @@ The TODO is more like prompts.
 - [x] Console client's options select UI is broken, we can press arrow down infinitely and the options just cycle around.
 - [ ] Specify the output type of neo4j read.
 - [ ] Handle error occurred during transaction of neo4j.
+- [ ] Use node-cypher-parser to validate Cypher read/write of GM.
+- [ ] GM can create new Node and Relationship.
+- [ ] A proper script to parse generations.json.
 
 

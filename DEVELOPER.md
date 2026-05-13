@@ -578,71 +578,36 @@ All `streamText` calls are captured to `.devtools/generations.json` via the `dev
 
 **Data model:** One top-level entry per `streamText` call. `runs[]` = individual invocations of `generateTurn()`; `steps[]` = each tool-calling iteration within a run.
 
-**Viewing data:**
+**Primary inspection tool** — `scripts/inspect-devtools.sh` renders readable LLM interactions for debugging:
 
 ```bash
-# Launch interactive web UI
-npx @ai-sdk/devtools
-# Open http://localhost:4983
+# Summary of all runs (time, step count, token usage)
+./scripts/inspect-devtools.sh --show-runs-summary
 
-# Raw inspection
-cat .devtools/generations.json | jq 'keys'          # ["runs", "steps"]
-cat .devtools/generations.json | jq '.runs | length' # run count
-cat .devtools/generations.json | jq '.steps | length' # step count
+# Latest run, all steps (default)
+./scripts/inspect-devtools.sh
+
+# Specific run by index (0-based, negative from end)
+./scripts/inspect-devtools.sh --run 0            # oldest run
+./scripts/inspect-devtools.sh --run -1           # latest run
+
+# Single step within a run
+./scripts/inspect-devtools.sh --run -1 --step 5  # step 5 of latest run
 ```
 
-**Step overview:**
+The script displays for each step: user message context, model reasoning/thinking, text output (if any), tool calls with formatted arguments (including special rendering for `generateDialogueStep` messages and options), and token usage with cache-hit info.
+
+**Alternative: raw jq** — for ad-hoc queries the script doesn't cover:
 
 ```bash
-cat .devtools/generations.json | jq '[.steps[] | {
-  step: .step_number, type, model: .model_id,
-  duration_ms, error, usage: (.usage | fromjson | .outputTokens.total)
-}]'
-```
-
-**Tool call inspection:**
-
-```bash
-# Tool call names and argument shapes per step
-cat .devtools/generations.json | jq '[.steps[] | {
-  step: .step_number,
-  tool_calls: [.output | fromjson | .toolCalls[]? | {
-    name: .toolName,
-    args: (.input | fromjson | keys)
-  }] | select(length > 0)
-}]'
-
 # Tool call results (appear in the NEXT step's input)
-cat .devtools/generations.json | jq '
-  .steps[1].input | fromjson | .prompt[] | select(.role == "tool")
-'
+jq '.steps[1].input | fromjson | .prompt[] | select(.role == "tool")' .devtools/generations.json
 
 # Full args for a specific tool call
-cat .devtools/generations.json | jq '
-  .steps[3].output | fromjson | .toolCalls[0].input | fromjson
-'
-
-# Finish reasons per step
-cat .devtools/generations.json | jq '.steps[] | {
-  step: .step_number,
-  finishReason: (.output | fromjson | .finishReason.unified)
-}'
-```
-
-**Messages flowing through steps:**
-
-```bash
-cat .devtools/generations.json | jq -r '
-  .steps[] |
-  "--- Step \(.step_number) ---",
-  (.input | fromjson | .prompt[]? |
-   "  [\(.role)] \(.content | tostring)[0:150]")
-'
+jq '.steps[3].output | fromjson | .toolCalls[0].input | fromjson' .devtools/generations.json
 
 # System prompt (first step only, truncated)
-cat .devtools/generations.json | jq -r '
-  .steps[0].input | fromjson | .prompt[0].content[0:500]
-'
+jq -r '.steps[0].input | fromjson | .prompt[0].content[0:500]' .devtools/generations.json
 ```
 
 **Common issues:**

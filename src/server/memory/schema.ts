@@ -45,12 +45,16 @@ export async function setupSchema(
     ["entity_name_idx", "Entity", "name"],
     ["plot_name_idx", "Plot", "name"],
     ["plot_status_idx", "Plot", "status"],
-    ["timepoint_calendar_idx", "TimePoint", "(day, segment)"],
   ];
 
   for (const [name, label, prop] of indexes) {
     await client.executeWrite(`CREATE INDEX ${name} IF NOT EXISTS FOR (n:${label}) ON (n.${prop})`);
   }
+
+  // TimePoint composite index
+  await client.executeWrite(
+    `CREATE INDEX timepoint_calendar_idx IF NOT EXISTS FOR (n:TimePoint) ON (n.day, n.segment)`,
+  );
 
   // NPCDisposition composite index
   try {

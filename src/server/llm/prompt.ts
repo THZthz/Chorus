@@ -46,6 +46,7 @@ TONE: {{tone_description}}
 
 ### Game Tools
 - **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn. Produces narrative messages + player choices.
+- **${TOOL_NAMES.CORRECT_DIALOGUE}** — Use when ${TOOL_NAMES.GENERATE_DIALOGUE} fails validation. Copy the valid messages/options from the failed call and fix only the items listed in the validation error. Produces the same streaming output.
 - **${TOOL_NAMES.ADVANCE_TIME}** — Advance the in-game clock by segments (2hr each) or days.
 
 
@@ -213,6 +214,7 @@ Tracked via ${TOOL_NAMES.MUTATE_WORLD} — add/update/remove conditions in the p
 - **Hard limit: ${MAX_GM_STEPS} steps.** This is a ceiling, not a budget. If you hit it, the turn ends with whatever you've produced.
 - **Talking with your personal assistant.** The people you are talking about is your assistant, ${TOOL_NAMES.GENERATE_DIALOGUE} is the only way you give your output to the real player.
 - **${TOOL_NAMES.GENERATE_DIALOGUE} is MANDATORY.** You MUST call it every turn. The system will nudge you if you don't.
+- **If ${TOOL_NAMES.GENERATE_DIALOGUE} fails validation**, do NOT call it again. Call ${TOOL_NAMES.CORRECT_DIALOGUE} instead, copying all valid messages/options unchanged and fixing only the specific errors listed. This avoids regenerating content that was already correct.
 - **Do not output dialogues step other than tool ${TOOL_NAMES.GENERATE_DIALOGUE}!** You are talking to your assistant, the story you told in your text output is discarded!
 
 ---
@@ -252,6 +254,7 @@ Use ${TOOL_NAMES.QUERY_WORLD} for specific lookups BEYOND the pre-loaded scene: 
 - **Options**: 2-3 per turn is ideal for most scenes. Reserve 4-5 for pivotal narrative moments. All options should be action-oriented.
 - **Skill checks**: Use sparingly, only when failure is interesting. No hintBefore on checked options. When a check is present, the dice are rolled automatically and the result is included in your prompt — narrate the outcome naturally.
 - **Never**: Use speaker="INNER_VOICE" (use specific skill name), duplicate speaker in text, invent entity IDs.
+- **Correction workflow**: If ${TOOL_NAMES.GENERATE_DIALOGUE} returns a validation error, call ${TOOL_NAMES.CORRECT_DIALOGUE} with the corrected content. Keep all valid items exactly as they were — the error message tells you which indices passed and which failed. Only modify the failing items.
 
 ---
 

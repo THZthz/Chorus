@@ -42,6 +42,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │      queryWorld, mutateWorld, searchMemory, editNote,                │
 │      searchNotes, editPlot, searchPlots, ← llm/tools/ (7 GM tools)   │
 │      generateDialogueStep,              ← llm/tools/ (Elysian tool)  │
+│      correctDialogueStep,               ← llm/tools/ (Elysian tool)  │
 │      advanceTime                        ← llm/tools/ (Elysian tool)  │
 │    }                                                                 │
 │  })                                                                  │
@@ -224,10 +225,11 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 **Elysian tools**:
 
-| Tool                   | Purpose                                     | SSE Event                                 |
-|------------------------|---------------------------------------------|-------------------------------------------|
-| `generateDialogueStep` | Produce narrative messages + player options | `streaming_messages`, `options`, `parsed` |
-| `advanceTime`          | Advance in-game clock by N segments         | `time_update`                             |
+| Tool                    | Purpose                                                  | SSE Event                                 |
+|-------------------------|----------------------------------------------------------|-------------------------------------------|
+| `generateDialogueStep`  | Produce narrative messages + player options              | `streaming_messages`, `options`, `parsed` |
+| `correctDialogueStep`   | Correct specific errors in a failed generateDialogueStep | `streaming_messages`, `options`, `parsed` |
+| `advanceTime`           | Advance in-game clock by N segments                      | `time_update`                             |
 
 **Neo4j-backed GM tools**:
 
@@ -241,7 +243,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
 | `searchPlots`  | Vector search across plots                                               |
 
-All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 10 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `correctDialogueStep` allows the GM to fix specific validation errors without regenerating valid content from scratch. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -482,7 +484,8 @@ generateTurn()
   │     ├─► editNote / searchNotes ──► client.notes.*
   │     ├─► editPlot / searchPlots ──► client.plots.*
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
-  │     └─► generateDialogueStep ──► SSE + persist messages
+  │     ├─► generateDialogueStep ──► SSE + persist messages
+│     └─► correctDialogueStep  ──► SSE + persist messages (targeted correction)
   │
   ├─► saveCurrentOptions(finalOptions) ──► Conversation node
   └─► saveGMMessages(response.messages) ──► :GMTurnMessage nodes
@@ -537,7 +540,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 10 tools (3 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 11 tools (4 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match

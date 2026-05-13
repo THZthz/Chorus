@@ -34,7 +34,7 @@ import { editPlot } from "@/server/llm/tools/editPlot";
 import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
-import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
+import { createGenerateDialogueStepTool, createCorrectDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 import { performSkillCheck } from "@/server/llm/tools/rollSkillCheck";
 import { type SkillName } from "@/shared/constants";
@@ -177,7 +177,8 @@ export async function generateTurn(
     });
   };
 
-  const dialogueStepTool = createGenerateDialogueStepTool(events, persistMessage);
+  const dialogueStepTool = createGenerateDialogueStepTool(persistMessage);
+  const correctDialogueTool = createCorrectDialogueStepTool(persistMessage);
   const advanceTimeTool = createAdvanceTimeTool(events);
 
   const allTools = {
@@ -189,6 +190,7 @@ export async function generateTurn(
     editPlot,
     searchPlots,
     generateDialogueStep: dialogueStepTool.tool,
+    correctDialogueStep: correctDialogueTool.tool,
     advanceTime: advanceTimeTool,
   };
 
@@ -205,9 +207,9 @@ export async function generateTurn(
       stopWhen: [
         (state) => {
           const called = state.steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep" || tc.toolName === "correctDialogueStep"),
           );
-          const valid = dialogueStepTool.wasValid();
+          const valid = dialogueStepTool.wasValid() || correctDialogueTool.wasValid();
           console.log(`[stopWhen] steps=${state.steps.length} called=${called} valid=${valid} stepToolNames=${JSON.stringify(state.steps.map(s => s.toolCalls?.map(tc => tc.toolName)))}`);
           return called && valid;
         },
@@ -217,7 +219,7 @@ export async function generateTurn(
         (nudgeState: { count: number; timeReminded: boolean }) =>
         ({ steps, messages }) => {
           const dialogueCalled = steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep" || tc.toolName === "correctDialogueStep"),
           );
           console.log(`[prepareStep] stepNumber=${steps.length} nudgeStateCount=${nudgeState.count} dialogueCalled=${dialogueCalled} stepToolNames=${JSON.stringify(steps.map(s => s.toolCalls?.map(tc => tc.toolName)))}`);
           if (dialogueCalled) {
@@ -253,7 +255,7 @@ export async function generateTurn(
           nudgeState.count++;
           const prefix = nudgeState.count === 1 ? "Reminder:" : "ERROR:";
           const toolList = grouped.length > 0 ? ` You called [${grouped.join(", ")}] but` : " You";
-          let errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+          let errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep or correctDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
 
           // Soft one-time reminder for advanceTime on step 3+
           if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
@@ -274,7 +276,7 @@ export async function generateTurn(
       for await (const chunk of result.fullStream) {
       switch (chunk.type) {
         case "tool-input-start":
-          if (chunk.toolName === "generateDialogueStep") {
+          if (chunk.toolName === "generateDialogueStep" || chunk.toolName === "correctDialogueStep") {
             if (hasEmittedStreaming) {
               events.emitStreamingReset();
             }
@@ -339,7 +341,7 @@ export async function generateTurn(
           console.error(`[generateTurn] stream error: ${streamError}`);
           break;
         case "tool-call":
-          if (chunk.toolName === "generateDialogueStep") {
+          if (chunk.toolName === "generateDialogueStep" || chunk.toolName === "correctDialogueStep") {
             let args: Record<string, unknown> | null = null;
             if (typeof chunk.input === "string" && chunk.input.trim()) {
               const repaired = chunk.input.replace(/\]\s*\}\s*,\s*"/g, '], "');
@@ -402,6 +404,14 @@ export async function generateTurn(
     await saveGMMessages(response.messages as ModelMessage[], turnNumber);
   } catch (err) {
     console.error("[generateTurn] Failed to save GM messages:", err);
+  }
+
+  // If no dialogue tool passed validation, discard any invalid partial content
+  // captured during streaming (e.g. when MAX_GM_STEPS fallthrough occurs)
+  const dialogueWasValid = dialogueStepTool.wasValid() || correctDialogueTool.wasValid();
+  if (!dialogueWasValid) {
+    finalMessages = [];
+    finalOptions = [];
   }
 
   if (finalMessages.length === 0) {

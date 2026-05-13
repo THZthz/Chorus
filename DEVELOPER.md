@@ -108,6 +108,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── model.ts       # getModel(): lazy-init provider model (Gemini → DeepSeek)
     │   │   ├── prompt.ts      # System prompt template + buildSystemPrompt()
     │   │   ├── events.ts      # TurnEventEmitter: typed SSE dispatch
+    │   │   ├── gmMessages.ts # Persist AI SDK messages as :GMTurnMessage nodes for multi-turn continuity
     │   │   ├── conditionEvaluator.ts  # Safe expression evaluator for skill check conditions
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
@@ -119,7 +120,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │       ├── searchNotes.ts           # Vector search across notes
     │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
     │   │       ├── searchPlots.ts           # Vector search across plots
-    │   │       ├── rollSkillCheck.ts       # Dice rolling for skill checks
+    │   │       ├── rollSkillCheck.ts       # Server-side skill check resolver (not a tool)
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
@@ -213,7 +214,7 @@ Defined in `src/shared/events.ts` (single source of truth):
 | `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                   |
 | `error`              | Server → Client | `{ message }`                        | Error during generation                   |
 | `done`               | Server → Client | `{}`                                 | Turn complete                             |
-| `roll_result`        | Server → Client | `{ skill, difficulty, dice[], total, statBonus, success, matchedConditions }` | Skill check dice rolled |
+| `roll_result`        | Server → Client | `{ skill, difficulty, dice[], total, statBonus, success, matchedConditions }` | Skill check resolved server-side before GM prompt |
 
 ---
 
@@ -227,7 +228,6 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 |------------------------|---------------------------------------------|-------------------------------------------|
 | `generateDialogueStep` | Produce narrative messages + player options | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments         | `time_update`                             |
-| `rollSkillCheck`       | Roll dice for skill checks                  | `roll_result`                             |
 
 **Neo4j-backed GM tools**:
 
@@ -241,7 +241,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
 | `searchPlots`  | Vector search across plots                                               |
 
-All 10 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object.
+All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -484,7 +484,8 @@ generateTurn()
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
   │     └─► generateDialogueStep ──► SSE + persist messages
   │
-  └─► saveCurrentOptions(finalOptions) ──► Conversation node
+  ├─► saveCurrentOptions(finalOptions) ──► Conversation node
+  └─► saveGMMessages(response.messages) ──► :GMTurnMessage nodes
 ```
 
 ---
@@ -500,10 +501,9 @@ The system prompt uses `DEFAULT_SYSTEM_PROMPT_TEMPLATE` from `src/server/llm/pro
 ### Skill Checks
 
 - **White Checks**: Repeatable after stat increases
-- **Skill Checks**: Probabilistic rolls (`2d6 + Stat >= Difficulty`), resolved via `rollSkillCheck` tool
+- **Skill Checks**: Probabilistic rolls (`2d6 + Stat >= Difficulty`), resolved server-side automatically when a player selects a checked option
 - **Formula**: `2d6 + Stat >= Difficulty`
-- **Probability display**: Arc SVG + percentage before rolling; color-coded thresholds
-- **Narrative**: After a roll completes, the result is sent to the AI as user input for narrative integration
+- **Narrative**: The roll result is injected into the GM's prompt under "SKILL CHECK RESULT"; the GM narrates the outcome
 - **Conditional outcomes**: The `conditions` array on a check can define custom success/failure labels via JS expression evaluation
 
 ---
@@ -545,9 +545,10 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 7. **SSE progressive streaming** — `generateDialogueStep` streams messages/options incrementally via partial JSON parsing
 8. **Singleton MemoryClient** — single entry point to all memory subsystems, lazy-init with caching
 9. **POLE+O entity model** — entities have a type (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
-10. **Skill checks via LLM tool** — `rollSkillCheck` is a dedicated tool the GM calls to mechanically resolve dice rolls; results feed back into the narrative loop
+10. **Skill checks resolved server-side** — Dice rolls are computed automatically when a player selects a checked option; the result is injected into the GM's prompt for narrative integration
 11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchMemory`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
 12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
+13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
 
 ---
 

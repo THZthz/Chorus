@@ -134,6 +134,7 @@ echo "════════════════════════�
 render_step() {
   local STEP="$1"
   local RESULTS_MAP="${2:-{}}"  # JSON object: toolCallId → {toolName, output}
+  local PREV_PROMPT_LEN="${3:-0}"  # previous step's prompt length (show only user msgs at indices >= this)
 
   local STEP_NUM=$(echo "$STEP" | jq -r '.step_number')
   local MODEL=$(echo "$STEP" | jq -r '.model_id // "unknown"')
@@ -152,24 +153,32 @@ render_step() {
     echo "  ⚠ ERROR: $(echo "$STEP" | jq -c '.error')"
   fi
 
-  # --- User input ---
-  local INPUT_MSG=$(echo "$STEP" | jq -r '
-    .input | fromjson | .prompt // [] | map(select(.role == "user")) | last
-  ' 2>/dev/null)
-  if [[ -n "$INPUT_MSG" && "$INPUT_MSG" != "null" ]]; then
-    local CONTENT=$(echo "$INPUT_MSG" | jq -r '
-      .content |
-      if type == "array" then map(.text // "") | join(" | ")
-      else tostring
+  # --- User messages (only new ones since previous step) ---
+  local USER_MSGS=$(echo "$STEP" | jq -c --argjson prev "$PREV_PROMPT_LEN" '
+    .input | fromjson | .prompt // [] | to_entries |
+    map(select(.value.role == "user" and .key >= $prev)) |
+    map({content: (.value.content |
+      if type == "array" then map(.text // "") | join("\n")
+      else .
       end
-    ')
-    if ! $FULL_MODE; then
-      if [[ ${#CONTENT} -gt 300 ]]; then
-        CONTENT="${CONTENT:0:300}…"
-      fi
-    fi
+    )})
+  ' 2>/dev/null)
+  local USER_COUNT=$(echo "$USER_MSGS" | jq 'length' 2>/dev/null)
+  if [[ "${USER_COUNT:-0}" -gt 0 ]]; then
     echo ""
-    echo "  · user: ${CONTENT}"
+    for ((ui=0; ui<USER_COUNT; ui++)); do
+      local UCONTENT=$(echo "$USER_MSGS" | jq -r ".[$ui].content")
+      if ! $FULL_MODE; then
+        if [[ ${#UCONTENT} -gt 300 ]]; then
+          UCONTENT="${UCONTENT:0:300}…"
+        fi
+      fi
+      if [[ "$USER_COUNT" -gt 1 ]]; then
+        echo "  · user[$((ui + 1))]: ${UCONTENT}"
+      else
+        echo "  · user: ${UCONTENT}"
+      fi
+    done
   fi
 
   # --- Reasoning ---
@@ -317,7 +326,13 @@ if [[ -n "$STEP_SPEC" ]]; then
     from_entries
   ' 2>/dev/null)
   RESULTS="${RESULTS:-{\}}"
-  render_step "$STEP_JSON" "$RESULTS"
+  # Compute previous step's prompt length for delta display
+  PREV_LEN=0
+  if [[ "$STEP_NUM" -gt 1 ]]; then
+    PREV_LEN=$(jq -r --argjson sn "$((STEP_NUM - 1))" '.[] | select(.step_number == $sn) | (.input | fromjson | .prompt | length)' <<<"$STEPS" 2>/dev/null)
+    PREV_LEN="${PREV_LEN:-0}"
+  fi
+  render_step "$STEP_JSON" "$RESULTS" "$PREV_LEN"
 else
   # Precompute results per step using one jq pass — avoids large-JSON-in-bash issues
   # Produces a JSON array: [[results_for_step1], [results_for_step2], ...]
@@ -333,13 +348,17 @@ else
   # Ensure RESULTS_FILE has valid content (empty array if jq failed)
   if [[ ! -s "$RESULTS_FILE" ]]; then echo "[]" > "$RESULTS_FILE"; fi
 
+  PREV_LEN=0
   for ((i=0; i<STEP_COUNT; i++)); do
     S=$(jq -r ".[$i]" <<<"$STEPS")
     # Results for step i are in step i+1 (because step i's tool calls resolve in step i+1's input)
     NEXT_I=$((i + 1))
     RESULTS=$(jq -c ".[$NEXT_I] // {}" "$RESULTS_FILE" 2>/dev/null)
     RESULTS="${RESULTS:-{\}}"
-    render_step "$S" "$RESULTS"
+    render_step "$S" "$RESULTS" "$PREV_LEN"
+    # Track this step's prompt length for the next iteration's delta
+    PREV_LEN=$(echo "$S" | jq -r '(.input | fromjson | .prompt | length) // 0' 2>/dev/null)
+    PREV_LEN="${PREV_LEN:-0}"
   done
   rm -f "$RESULTS_FILE"
 fi

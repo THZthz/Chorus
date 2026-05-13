@@ -24,22 +24,21 @@ The TODO is more like prompts.
 - [x] Display more info on skill check result, current one (like `[CLOCKWORK - Challenging 10] FAILURE (8 vs 10)`) is too simple, the option text is missing.
 - [x] When generateDialogueStep retry with same messages, the messages are typed again (redundant animation).
 - [x] Separator '---' in Markdown editor of "GM System Prompt" is not working. [[LIMITATION]]
-- [ ] Review system prompts' sections about tool using.
-- [ ] Simplify system prompt, inject into user's prompts.
-- [ ] Further refine system prompt to make GM generate well polished and consistent styled text.
+- [x] Review system prompts' sections about tool using. [[OUTDATED]]
+- [x] Simplify system prompt, inject into user's prompts. [[OUTDATED]]
+- [x] Further refine system prompt to make GM generate well polished and consistent styled text. [[OUTDATED]]
 - [x] Add a time system, each day is divided into 12 pieces, every time player chooses an option, GM can choose to advance time. Add a scene management system, this system can record in a time unit (2 hours), characters and objects (carried by a character or just exists on scene) on a location. Design tools / system prompt for GM. Persist this data on database, note that it should have snapshot so player can replay in REPLAY mode.
 - [x] Significant events and player's chosen check should be recorded. We can call it `Note`, which have a short description, main characters (who made the choice, took action, etc., initiative), other involved characters, and optionally locations. Two extra tools named `addNote` and `queryNote` should be added.
-- [ ] A system to analyze user's input, ignore choices made on REPLAY mode.
-- [ ] Analyze dialogue steps and see if there are any points to improve.
+- [x] A system to analyze user's input, ignore choices made on REPLAY mode. [[OUTDATED]]
+- [x] Analyze dialogue steps and see if there are any points to improve. [[OUTDATED]]
 - [x] Analyze the structure of following INCOMING_RESPONSE example, Remove OUTGOING_REQUEST, improve PARSED_EXCHANGE UI to cover most information shown in INCOMING_RESPONSE (focus on "steps" field). For system prompt, only show content that are different (dynamic content, plots and entities info).
 - [x] Check the usage of "Regenerate All Leaf Steps". Should we remove it? (Removed)
 - [x] Dialogue options should have two separate display: one to display on options text, another to display as a message in dialogue history after player chosen the option. Keep skill check result display option text. Update system prompt for this. Make sure this is also persisted in database. No need to consider data migration or backward compatibility.
 - [x] `textarea` in ENTITY_MANIFEST, DIALOGUE_TREE and PLOT_TREE should have thinner scrollbar like the scrollbar used in JsonExplorer/JsonNode.
 - [x] In PARSED_EXCHANGE section of LLM_TRACE page, also show user prompt for each step, and show "reasoning" and "text" (is this exists in ai-sdk?) chunk of GM for each step.
-- [ ] GM is still outputting dialogue message on their plain text response, not tool call.
 - [x] `isAllowedText` is erroneous.
 - [x] `YOU` should be removed from generateDialogueStep tool in `type` field.
-- [ ] Separate character's memory system.
+- [x] Separate character's memory system. [[OUTDATED]]
 - [x] Standardize all GM tool names to `{verb}{Noun}` pattern. This is a mechanical rename — no behavior change, no new functionality.
 - [x] Build a GM-only "notes" system with CRUD tools and database tables for key-value notes, plus a new Debug Panel tab to view and edit them during live play and replays.
 - [x] Add tools for getting/updating character state (including new status conditions), creating new entities, and bulk-updating entity descriptions or attributes.
@@ -49,7 +48,7 @@ The TODO is more like prompts.
 - [x] Pre-generate a larger plot tree in advance, player can choose the size.
 - [x] Explicitly add a `Character` entity "player". Remove "STATS - 12 VALUES" from all other characters except "player" they do not need it. All other places which may implicitly include "player" should explicitly specify it (like current scene management).
 - [x] What is the usage of generateTurnBatch? Can we remove it?
-- [x] Some tools of GM directly return JSON, should return detailed message instead, i.e., output a formatted markdown message.
+- [x] Some tools of GM directly return JSON, should return detailed message instead, i.e., output a formatted Markdown message.
 - [x] Use @ai-sdk/devtools to inspect LLM calls.
 - [x] Console should support printing Markdown.
 - [x] Resume game play.
@@ -62,5 +61,7 @@ The TODO is more like prompts.
 - [x] A proper script to parse generations.json.
 - [ ] Do not call streamText multiple times, discarding GM's history messages, pass all history to GM and let it know what it has done before.
 - [x] Some properties of node should be hidden and shall not be queried/modified by GM (like embedding, this large vector consumes too much token when it is returned).
-- [ ] Fix properties of node that has naming inconsistency.
+- [x] Fix properties of node that has naming inconsistency.
+- [ ] inspect-devtools.sh is mis-parsing user's messages.
+- [ ] GM is still outputting dialogue message on their plain text response, not tool call.
 

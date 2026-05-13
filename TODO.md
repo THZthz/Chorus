@@ -60,5 +60,7 @@ The TODO is more like prompts.
 - [ ] Use node-cypher-parser to validate Cypher read/write of GM.
 - [ ] GM can create new Node and Relationship.
 - [ ] A proper script to parse generations.json.
+- [ ] Do not call streamText multiple times, discarding GM's history messages, pass all history to GM and let it know what it has done before.
+- [ ] Some properties of node should be hidden and shall not be queried/modified by GM (like embedding, this large vector consumes too much token when it is returned).
 
 

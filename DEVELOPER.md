@@ -609,17 +609,3 @@ jq '.steps[3].output | fromjson | .toolCalls[0].input | fromjson' .devtools/gene
 # System prompt (first step only, truncated)
 jq -r '.steps[0].input | fromjson | .prompt[0].content[0:500]' .devtools/generations.json
 ```
-
-**Common issues:**
-
-| Symptom                              | What to check                                                                     |
-|--------------------------------------|-----------------------------------------------------------------------------------|
-| GM calls wrong tools or misses steps | Tool call results for validation errors; `getContext` returning garbage           |
-| GM re-creates existing entities      | `getContext` returning empty — check for Neo4j LIMIT errors on float params       |
-| Nudge messages too aggressive        | `prepareStep` injection pattern — look for "ERROR:" in user messages              |
-| Dialogue never reaches player        | `finishReason` stuck on `tool-calls` — GM may be stuck in a loop                  |
-| Messages not persisted               | `storeMessage` never appears in any step's tool calls                             |
-| DeepSeek float weirdness             | Tool result errors containing `'20.0' is not a valid value` — use `sanitizeInt()` |
-| GM calls same tool repeatedly        | Consecutive identical tool names in a single step — likely duplicate-creating     |
-
-**Token usage:** Early steps have high cache-hit ratios. `usage.outputTokens.total` includes reasoning overhead — DeepSeek reports `completion_tokens_details.reasoning_tokens` separately. Zero `textParts` per step is expected (code discards LLM text output).

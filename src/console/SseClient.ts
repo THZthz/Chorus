@@ -29,6 +29,7 @@ export interface SseCallbacks {
   onParsed?: (data: CallbackData<"parsed">) => void;
   onError?: (message: CallbackData<"error">["message"]) => void;
   onDone?: () => void;
+  onRollResult?: (data: CallbackData<"roll_result">) => void;
 }
 
 export class ConsoleSseClient {
@@ -95,7 +96,10 @@ export class ConsoleSseClient {
       case "done":
         cb.onDone?.();
         break;
-      // World/plot/time/scene events ignored for console client
+      case "roll_result":
+        cb.onRollResult?.(data);
+        break;
+      // World/plot/time/time_update events ignored for console client
     }
   }
 }

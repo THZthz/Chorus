@@ -18,7 +18,7 @@
 
 import { MemoryClient } from "@/server/memory/client";
 import { getActiveSeedStory } from "@/server/seed-stories";
-import { setGameTime } from "@/server/models/time";
+import { migrateToTimePoints } from "@/server/models/time";
 
 function inferSentiment(text: string): string {
   const lower = text.toLowerCase();
@@ -96,8 +96,8 @@ export async function seedDatabase(): Promise<void> {
     }
   }
 
-  // Set initial time in Neo4j
-  await setGameTime({ day: story.initialDay, segment: story.initialSegment });
+  // Initialize TimePoint system (idempotent migration)
+  await migrateToTimePoints(story.initialDay, story.initialSegment);
 
   console.log(
     `[seed] done — ${story.entities.length} entities, ${story.relationships.length} relationships, ${dispositionCount} dispositions`,

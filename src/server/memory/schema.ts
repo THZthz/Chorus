@@ -29,6 +29,7 @@ export async function setupSchema(
     ["entity_id", "Entity", "id"],
     ["note_id", "Note", "id"],
     ["plot_id", "Plot", "id"],
+    ["timepoint_id", "TimePoint", "id"],
   ];
 
   for (const [name, label, prop] of constraints) {
@@ -44,6 +45,7 @@ export async function setupSchema(
     ["entity_name_idx", "Entity", "name"],
     ["plot_name_idx", "Plot", "name"],
     ["plot_status_idx", "Plot", "status"],
+    ["timepoint_calendar_idx", "TimePoint", "(day, segment)"],
   ];
 
   for (const [name, label, prop] of indexes) {

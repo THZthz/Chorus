@@ -49,7 +49,6 @@ export const mutateWorld = tool({
       }
 
       const rows = await client.neo4j.executeWrite(args.query);
-      client.observer.onWorldChange({ action: "cypher", summary: args.query.slice(0, 200) });
       return JSON.stringify({ success: true, rowsAffected: rows.length });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

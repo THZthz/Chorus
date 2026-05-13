@@ -16,9 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-const READ_ALLOWED_LABELS = new Set(["Entity", "Message", "NPCDisposition", "GameTime"]);
+const READ_ALLOWED_LABELS = new Set(["Entity", "Message", "NPCDisposition", "GameTime", "TimePoint", "TimeAnchor"]);
 
-const WRITE_ALLOWED_LABELS = new Set(["Entity", "Message", "NPCDisposition", "GameTime"]);
+const WRITE_ALLOWED_LABELS = new Set(["Entity", "Message", "NPCDisposition", "GameTime", "TimePoint", "TimeAnchor"]);
 
 const ALLOWED_RELATIONSHIPS = new Set([
   "LOCATED_AT",
@@ -30,6 +30,12 @@ const ALLOWED_RELATIONSHIPS = new Set([
   "HAS_MESSAGE",
   "FIRST_MESSAGE",
   "NEXT_MESSAGE",
+  "NEXT_TIMEPOINT",
+  "CURRENT_TIMEPOINT",
+  "AT_TIME",
+  "STARTED_AT",
+  "ACTIVE_AT",
+  "COMPLETED_AT",
 ]);
 
 const BLOCKED_READ_CLAUSES = /\b(CREATE|MERGE|DELETE|SET|REMOVE|DETACH\s+DELETE|DROP)\b/i;
@@ -108,10 +114,8 @@ export class CypherValidator {
     return { valid: errors.length === 0, errors };
   }
 
-  /**
-   * Extract node labels from a Cypher query (e.g. :Entity, :Message).
-   * Only matches labels outside of square brackets to avoid conflating relationship types.
-   */
+  // Extract node labels from a Cypher query (e.g. :Entity, :Message).
+  // Only matches labels outside of square brackets to avoid conflating relationship types.
   private extractNodeLabels(query: string): string[] {
     const cleaned = query.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
     const outsideBrackets = cleaned.replace(/\[[^\]]*\]/g, "");
@@ -119,9 +123,7 @@ export class CypherValidator {
     return [...new Set([...matches].map((m) => m[1]))];
   }
 
-  /**
-   * Extract relationship types from a Cypher query (e.g. [:LOCATED_AT], [:CARRIES]).
-   */
+  // Extract relationship types from a Cypher query (e.g. [:LOCATED_AT], [:CARRIES]).
   private extractRelationshipTypes(query: string): string[] {
     const cleaned = query.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
     const matches = cleaned.matchAll(/\[:([A-Z][A-Za-z0-9_]+)/g);

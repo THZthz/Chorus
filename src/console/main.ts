@@ -25,6 +25,7 @@ import type { Message, DialogueOption } from "@/types/dialogue";
 import type { StreamingMessage } from "@/server/llm/events";
 import { ConsoleSseClient, type SseCallbacks } from "@/console/SseClient";
 import { VOICE_COLORS } from "@/shared/colors";
+import type { SkillName } from "@/shared/constants";
 
 // ── State ──
 
@@ -138,7 +139,7 @@ function formatStreamingMessages(): string {
 
 function formatOptionLabel(opt: DialogueOption): string {
   if (opt.check) {
-    const checkColor = opt.check.isRed ? chalk.hex("#d34b34") : chalk.hex("#4fb0c6");
+    const checkColor = chalk.hex("#4fb0c6");
     return `${checkColor(`[${opt.check.skill} - ${opt.check.difficultyText}]`)} ${opt.text}`;
   }
   return opt.text;
@@ -217,12 +218,35 @@ function createSseCallbacks(): SseCallbacks {
     onDone: () => {
       // parsed already transitioned state
     },
+    onRollResult: (data) => {
+      const rollMsg: Message = {
+        id: `console-${messageIdCounter++}`,
+        speaker: data.skill,
+        type: "ROLL",
+        text: `${data.success ? "Success" : "Failure"} — rolled ${data.dice.join("+")} + ${data.statBonus} = ${data.total} vs ${data.difficulty}`,
+        rollResult: {
+          skill: data.skill as SkillName,
+          difficulty: data.difficulty,
+          dice: data.dice,
+          total: data.total,
+          success: data.success,
+        },
+      };
+      history.push(rollMsg);
+      process.stdout.write("\n");
+      process.stdout.write(formatMessage(rollMsg));
+      console.log("");
+    },
   };
 }
 
 // ── API Calls ──
 
-async function postChatStream(userInput: string, hist: Message[]) {
+async function postChatStream(
+  userInput: string,
+  hist: Message[],
+  check?: DialogueOption["check"],
+) {
   state = "WAITING";
   isRetrying = false;
   streamingMessages = [];
@@ -234,7 +258,7 @@ async function postChatStream(userInput: string, hist: Message[]) {
 
   await client.stream(
     `${BASE_URL}/api/chat/stream`,
-    { userInput, history: hist },
+    { userInput, history: hist, check },
     createSseCallbacks(),
   );
 }
@@ -261,7 +285,7 @@ async function handleOptionSelect(option: DialogueOption) {
   process.stdout.write(formatMessage(youMessage));
   console.log("");
 
-  await postChatStream(youText, history);
+  await postChatStream(youText, history, option.check);
 }
 
 // ── Resume ──
@@ -334,7 +358,7 @@ async function presentChoice(
       name: formatOptionLabel(opt),
       value: i as number,
       description: opt.check
-        ? `${opt.check.isRed ? "RED CHECK — one-time only. " : ""}Roll 2D6 + ${opt.check.skill} vs ${opt.check.difficultyText}`
+        ? `Roll ${opt.check.diceCount}D6 + ${opt.check.skill} vs ${opt.check.difficultyText} (Difficulty ${opt.check.difficulty})`
         : undefined,
     })),
     new Separator(chalk.dim(sep)),

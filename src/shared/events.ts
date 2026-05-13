@@ -57,6 +57,21 @@ export interface TimeUpdateEvent {
   segmentsAdvanced: number;
 }
 
+export interface RollResultEvent {
+  skill: string;
+  difficulty: number;
+  dice: number[];
+  total: number;
+  statBonus: number;
+  success: boolean;
+  matchedConditions: Array<{
+    expression: string;
+    label?: string;
+    color?: string;
+    stepId?: string;
+  }>;
+}
+
 export interface SseEventMap {
   step_start: StepStartEvent;
   streaming_messages: StreamingMessagesEvent;
@@ -66,6 +81,7 @@ export interface SseEventMap {
   error: ErrorEvent;
   done: DoneEvent;
   time_update: TimeUpdateEvent;
+  roll_result: RollResultEvent;
 }
 
 export type SseEventName = keyof SseEventMap;

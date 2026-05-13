@@ -39,11 +39,6 @@ export interface Message {
   metadata?: {
     notificationType?: NotificationType;
   };
-  skillCheck?: {
-    skill: SkillName;
-    difficulty: number;
-    diceCount: number;
-  };
   rollResult?: {
     skill: SkillName;
     difficulty: number;
@@ -64,7 +59,6 @@ export interface DialogueOption {
     difficulty: number;
     difficultyText: string;
     diceCount: number;
-    isRed?: boolean;
     conditions?: Array<{
       expression: string;
       label?: string;

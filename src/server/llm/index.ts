@@ -34,13 +34,14 @@ import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
+import { createRollSkillCheckTool } from "@/server/llm/tools/rollSkillCheck";
 import { type SkillName } from "@/shared/constants";
-export { DEFAULT_SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt } from "@/server/llm/prompt";
 
 export async function generateTurn(
   userInput: string,
   history: Message[],
   res: Response,
+  check?: DialogueOption["check"],
 ): Promise<void> {
   const systemPrompt = await buildSystemPrompt();
   const events = new TurnEventEmitter(res);
@@ -65,7 +66,7 @@ export async function generateTurn(
   }
 
   const historyWindow = 10;
-  const promptText = [
+  const promptParts: string[] = [
     `## DIALOGUE HISTORY (Last ${historyWindow})`,
     history
       .slice(-historyWindow)
@@ -76,9 +77,36 @@ export async function generateTurn(
     "",
     "## PLAYER ACTION",
     `The player just said/did: "${userInput}"`,
+  ];
+
+  if (check) {
+    promptParts.push(
+      "",
+      "---",
+      "",
+      "## SKILL CHECK REQUIRED",
+      `The player is attempting an action that requires a skill check:`,
+      `- Skill: ${check.skill}`,
+      `- Difficulty: ${check.difficulty} (${check.difficultyText})`,
+      `- Dice: ${check.diceCount}d6 + ${check.skill} stat bonus`,
+    );
+    if (check.conditions && check.conditions.length > 0) {
+      promptParts.push("- Conditions:");
+      for (const c of check.conditions) {
+        promptParts.push(`  ${c.expression}${c.label ? ` → "${c.label}"` : ""}${c.stepId ? ` → step: ${c.stepId}` : ""}`);
+      }
+    }
+    promptParts.push(
+      "",
+      `Call ${"rollSkillCheck"} with these parameters, then narrate the outcome.`,
+    );
+  }
+
+  promptParts.push(
     "",
     "Generate the narrative response following the output format exactly.",
-  ].join("\n");
+  );
+  const promptText = promptParts.join("\n");
 
   const { model } = getModel();
 
@@ -99,11 +127,11 @@ export async function generateTurn(
       type: msg.type,
       ...msg.metadata,
     });
-    await client.observer.onMessageStored(msg.text, stored.id, role);
   };
 
   const dialogueStepTool = createGenerateDialogueStepTool(events, persistMessage);
   const advanceTimeTool = createAdvanceTimeTool(events);
+  const rollSkillCheckTool = createRollSkillCheckTool(events);
 
   const allTools = {
     queryWorld,
@@ -115,6 +143,7 @@ export async function generateTurn(
     searchPlots,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
+    rollSkillCheck: rollSkillCheckTool,
   };
 
   let streamError: string | null = null;
@@ -232,7 +261,6 @@ export async function generateTurn(
                         difficulty: o.check.difficulty,
                         difficultyText: o.check.difficultyText || "",
                         diceCount: o.check.diceCount ?? 2,
-                        isRed: o.check.isRed,
                         conditions: (o.check.conditions || []).map((c: any, ci: number) => ({
                           expression: c.expression,
                           label: c.label,
@@ -292,7 +320,6 @@ export async function generateTurn(
                         difficulty: (o.check as any).difficulty as number,
                         difficultyText: ((o.check as any).difficultyText as string) || "",
                         diceCount: ((o.check as any).diceCount as number) ?? 2,
-                        isRed: (o.check as any).isRed as boolean | undefined,
                         conditions: (((o.check as any).conditions as any[]) || []).map(
                           (c: any, ci: number) => ({
                             expression: c.expression as string,

@@ -17,8 +17,27 @@
  */
 
 import { z } from "zod";
+import { SKILL_NAMES } from "@/shared/constants";
 
 export const chatStreamSchema = z.object({
   userInput: z.string(),
   history: z.array(z.any()).optional().default([]),
+  check: z
+    .object({
+      skill: z.enum(SKILL_NAMES),
+      difficulty: z.number(),
+      difficultyText: z.string(),
+      diceCount: z.number(),
+      conditions: z
+        .array(
+          z.object({
+            expression: z.string(),
+            label: z.string().optional(),
+            color: z.string().optional(),
+            stepId: z.string().optional(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
 });

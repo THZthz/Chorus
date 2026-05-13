@@ -64,12 +64,12 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  │
 │         └────────────────┴───────┬────────┴────────────────┘         │
 │                                  ▼                                   │
-│          ┌─────────────┐  ┌─────────────┐  ┌──────────────┐          │
-│          │  Search     │  │  Context    │  │  Observer    │          │
-│          ├─────────────┤  ├─────────────┤  ├──────────────┤          │
-│          │  parallel   │  │  assemble   │  │  deltas +    │          │
-│          │  vector     │  │  markdown   │  │  compression │          │
-│          └─────────────┘  └─────────────┘  └──────────────┘          │
+│          ┌─────────────┐                                                  │
+│          │  Search     │                                                  │
+│          ├─────────────┤                                                  │
+│          │  parallel   │                                                  │
+│          │  vector     │                                                  │
+│          └─────────────┘                                                  │
 │                                                                      │
 │  embedder.ts ── local ONNX (384d) or OpenAI-compatible API           │
 │  neo4j.ts    ── driver wrapper with value normalization              │
@@ -108,6 +108,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── model.ts       # getModel(): lazy-init provider model (Gemini → DeepSeek)
     │   │   ├── prompt.ts      # System prompt template + buildSystemPrompt()
     │   │   ├── events.ts      # TurnEventEmitter: typed SSE dispatch
+    │   │   ├── conditionEvaluator.ts  # Safe expression evaluator for skill check conditions
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
@@ -118,6 +119,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │       ├── searchNotes.ts           # Vector search across notes
     │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
     │   │       ├── searchPlots.ts           # Vector search across plots
+    │   │       ├── rollSkillCheck.ts       # Dice rolling for skill checks
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
@@ -127,17 +129,14 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
     │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
     │   │   ├── longTerm.ts    # Entities (POLE+O), preferences, facts, relationships
-    │   │   ├── observer.ts    # World delta tracking + token-threshold context compression
     │   │   ├── search.ts      # Parallel hybrid vector search across memory types
-    │   │   ├── context.ts     # Assembled GM context (markdown summary from all layers)
     │   │   ├── gameState.ts   # Game save/resume via options on :Conversation node
     │   │   ├── notes.ts       # GM note CRUD with vector embedding
     │   │   ├── plots.ts       # Plot lifecycle management (beats, branches, flags)
     │   │   ├── validation.ts  # Cypher query allowlist validation (labels + relationships)
     │   │   └── reset.ts       # Clear Neo4j database (MATCH (n) DETACH DELETE n)
     │   ├── models/
-    │   │   ├── time.ts        # Game time CRUD via Neo4j :GameTime node
-    │   │   └── shared.ts      # safeJsonParse utility
+    │   │   └── time.ts        # Game time CRUD via Neo4j :GameTime node
     │   └── seed-stories/
     │       ├── index.ts       # Story registry + ACTIVE_SEED_STORY constant
     │       ├── types.ts       # SeedStory, SeedPlot interfaces
@@ -214,6 +213,7 @@ Defined in `src/shared/events.ts` (single source of truth):
 | `parsed`             | Server → Client | `{ messages, options }`              | Final structured output                   |
 | `error`              | Server → Client | `{ message }`                        | Error during generation                   |
 | `done`               | Server → Client | `{}`                                 | Turn complete                             |
+| `roll_result`        | Server → Client | `{ skill, difficulty, dice[], total, statBonus, success, matchedConditions }` | Skill check dice rolled |
 
 ---
 
@@ -227,6 +227,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 |------------------------|---------------------------------------------|-------------------------------------------|
 | `generateDialogueStep` | Produce narrative messages + player options | `streaming_messages`, `options`, `parsed` |
 | `advanceTime`          | Advance in-game clock by N segments         | `time_update`                             |
+| `rollSkillCheck`       | Roll dice for skill checks                  | `roll_result`                             |
 
 **Neo4j-backed GM tools**:
 
@@ -240,7 +241,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
 | `searchPlots`  | Vector search across plots                                               |
 
-All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object.
+All 10 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object.
 
 ---
 
@@ -276,7 +277,7 @@ The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world
 
 ### 9.1 MemoryClient (Facade + Singleton)
 
-`MemoryClient` (`client.ts`, ~100 lines) is the single entry point to all memory subsystems. It composes eight subsystems and exposes them as readonly properties:
+`MemoryClient` (`client.ts`, ~90 lines) is the single entry point to all memory subsystems. It composes six subsystems and exposes them as readonly properties:
 
 ```
 MemoryClient.getCachedInstance()
@@ -284,8 +285,6 @@ MemoryClient.getCachedInstance()
   .shortTerm   → ShortTermMemory      (conversation + messages)
   .longTerm    → LongTermMemory       (entities, relationships, dispositions, conditions)
   .search      → MemorySearch         (parallel vector search across layers)
-  .context     → ContextAssembler     (fetch + format markdown context)
-  .observer    → MemoryObserver       (delta tracking + token-threshold compression)
   .notes       → Notes                (GM note CRUD with vector embedding)
   .plots       → Plots                (plot lifecycle: beats, branches, flags)
 ```
@@ -306,10 +305,7 @@ All memory types are defined in `types.ts` (~130 lines, type-only):
 | `MemoryNote`         | id, content, embedding[], createdAt, updatedAt                                                     | `:Note`                     |
 | `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], embedding[], createdAt, updatedAt       | `:Plot`                     |
 | `PlotFlag`           | flagId, description                                                                                | (stored in Plot.flags JSON) |
-| `Observation`        | type (fact/decision/preference/topic/entity), content, sourceMessageId?, timestamp, confidence     | (in-memory only)            |
-| `ObservationResult`  | messageCount, approximateTokens, thresholdTokens, thresholdExceeded, reflections[], observations[] | (in-memory only)            |
-
-Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` arrays with `similarity`), `AssembledContext` (`messages[]`, `entities[]`, markdown `summary`). `PlotStatus` is a union: `"PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"`.
+Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` arrays with `similarity`). `PlotStatus` is a union: `"PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"`.
 
 ### 9.3 Neo4j Schema
 
@@ -448,19 +444,7 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 Additional validation rules: `validateWrite` requires DELETE/DETACH DELETE to be preceded by a qualified MATCH (with WHERE or property condition). Unbounded variable-length paths (`(*)`) are blocked. DDL statements (CREATE/DROP INDEX, ALTER, etc.) are blocked in both read and write validation.
 
-### 9.10 MemoryObserver
-
-`observer.ts` (~170 lines). Pure in-memory (not persisted) — tracks world deltas and manages token budget.
-
-- **`onWorldChange(delta)`** — called after each `mutateWorld` mutation. Pushes a `WorldDelta` (action + summary + timestamp) to an in-memory buffer.
-- **`onMessageStored(content)`** — tracks character count. When approximate token count exceeds **30K tokens** (configurable via `thresholdTokens`), triggers `generateReflection()`:
-  1. Fetches last 100 messages from ShortTermMemory
-  2. Takes messages older than the `recentWindow` (last 20)
-  3. Builds a reflection from last 10 world deltas + first 100 chars of 5 oldest messages
-  4. Stores the reflection string for later context injection
-- **`getObservations()`** — returns `ObservationResult` with latest 20 deltas as `Observation` objects plus accumulated reflection strings.
-
-### 9.11 MemorySearch
+### 9.10 MemorySearch
 
 `search.ts` (~65 lines). Parallel hybrid search facade across memory layers.
 
@@ -472,17 +456,7 @@ search(query, { memoryTypes: ["messages", "entities"], limit: 10, threshold: 0.7
 
 All selected searches run in parallel via `Promise.all`. Returns `SearchResults` with `messages` and `entities` arrays, each item bearing a `similarity` score.
 
-### 9.12 ContextAssembler
-
-`context.ts` (~80 lines). Assembles GM-facing context from conversation and world state.
-
-`assemble({ query?, maxItems?, includeShortTerm?, includeLongTerm? })`:
-1. Fetches in parallel: recent conversation from shortTerm (up to `maxItems`, default 10), entity vector search from longTerm (only if a `query` is provided)
-2. Strips `similarity` from entity results
-3. Builds a markdown `summary` string with sections: "### Recent Conversation" (role-prefixed messages) and "### Relevant Entities" (name, type/subtype, description)
-4. Returns `AssembledContext` — raw arrays + formatted `summary`
-
-### 9.13 Game State Persistence
+### 9.11 Game State Persistence
 
 `gameState.ts` (~36 lines). Save/resume support by persisting dialogue options as JSON on the `:Conversation` node.
 
@@ -491,7 +465,7 @@ All selected searches run in parallel via `Promise.all`. Returns `SearchResults`
 
 The Neo4j database is the authoritative world state — there is no separate session concept.
 
-### 9.14 Data Flow Summary
+### 9.12 Data Flow Summary
 
 ```
 User Input
@@ -503,7 +477,7 @@ generateTurn()
   ├─► streamText({ tools }) ──► LLM
   │     │
   │     ├─► queryWorld ──► CypherValidator.validateRead → Neo4j
-  │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.* + observer.onWorldChange()
+  │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.*
   │     ├─► searchMemory ──► client.search.search()
   │     ├─► editNote / searchNotes ──► client.notes.*
   │     ├─► editPlot / searchPlots ──► client.plots.*
@@ -526,7 +500,7 @@ The system prompt uses `DEFAULT_SYSTEM_PROMPT_TEMPLATE` from `src/server/llm/pro
 ### Skill Checks
 
 - **White Checks**: Repeatable after stat increases
-- **Red Checks**: High-stakes, one-time opportunities (`isRed` in `DialogueOption`)
+- **Skill Checks**: Probabilistic rolls (`2d6 + Stat >= Difficulty`), resolved via `rollSkillCheck` tool
 - **Formula**: `2d6 + Stat >= Difficulty`
 - **Probability display**: Arc SVG + percentage before rolling; color-coded thresholds
 - **Narrative**: After a roll completes, the result is sent to the AI as user input for narrative integration
@@ -563,7 +537,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 9 tools (2 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 10 tools (3 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -571,7 +545,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 7. **SSE progressive streaming** — `generateDialogueStep` streams messages/options incrementally via partial JSON parsing
 8. **Singleton MemoryClient** — single entry point to all memory subsystems, lazy-init with caching
 9. **POLE+O entity model** — entities have a type (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
-10. **Observer as in-memory compression** — world deltas tracked in memory only (not persisted); reflections generated at token threshold to keep LLM context manageable
+10. **Skill checks via LLM tool** — `rollSkillCheck` is a dedicated tool the GM calls to mechanically resolve dice rolls; results feed back into the narrative loop
 
 ---
 

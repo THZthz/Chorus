@@ -34,11 +34,11 @@ apiRouter.post("/chat/stream", async (req, res) => {
     return;
   }
   try {
-    const { userInput, history } = parsed.data;
+    const { userInput, history, check } = parsed.data;
     console.log(
-      `[chat/stream] userInput="${String(userInput).slice(0, 80)}" historyLen=${history?.length ?? 0}`,
+      `[chat/stream] userInput="${String(userInput).slice(0, 80)}" historyLen=${history?.length ?? 0} hasCheck=${!!check}`,
     );
-    await generateTurn(userInput, history ?? [], res);
+    await generateTurn(userInput, history ?? [], res, check);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Chat stream error:", message);
@@ -57,16 +57,20 @@ apiRouter.get("/history", async (_req, res) => {
   try {
     const client = MemoryClient.getCachedInstance();
     const messages = await client.shortTerm.getConversation();
-    const history: Message[] = messages.map((m, i) => {
+    const history: Message[] = messages.map((m) => {
       const meta = m.metadata || {};
       const isPlayer = m.role === "user";
-      return {
+      const msg: Message = {
         id: m.id,
         speaker: isPlayer ? "YOU" : (meta.speaker as string) || "SYSTEM",
         type: isPlayer ? "YOU" : (meta.type as Message["type"]) || "SYSTEM",
         text: m.content || "",
         metadata: isPlayer ? undefined : (meta as Message["metadata"]),
       };
+      if (meta.rollResult) {
+        msg.rollResult = meta.rollResult as Message["rollResult"];
+      }
+      return msg;
     });
     res.json(history);
   } catch (error: unknown) {

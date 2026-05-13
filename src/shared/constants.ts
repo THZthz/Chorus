@@ -72,4 +72,5 @@ export const TOOL_NAMES = {
   SEARCH_NOTES: "searchNotes",
   EDIT_PLOT: "editPlot",
   SEARCH_PLOTS: "searchPlots",
+  ROLL_SKILL_CHECK: "rollSkillCheck",
 } as const;

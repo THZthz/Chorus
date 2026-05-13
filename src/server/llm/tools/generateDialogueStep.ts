@@ -71,15 +71,14 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
         hintAfter: z
           .string()
           .optional()
-          .describe("Hint shown after the text, e.g. [Red Check]. Do not overuse it."),
+          .describe("Hint shown after the text, e.g. [Check]. Do not overuse it."),
         check: z
           .object({
             skill: z.enum(SKILL_NAMES).describe("The skill to check (e.g. 'LOGIC')"),
             difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
             difficultyText: z.string().describe("Textual difficulty (e.g. 'Challenging')"),
             diceCount: z.number().default(2),
-            isRed: z.boolean().optional().describe("High-stakes, one-time check."), // TODO: Is this used? Can we remove it?
-            conditions: z // TODO: Should check if this is working.
+            conditions: z
               .array(
                 z.object({
                   expression: z

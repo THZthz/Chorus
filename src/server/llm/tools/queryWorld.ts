@@ -26,7 +26,7 @@ const validator = new CypherValidator();
 const AUTO_LIMIT = 50;
 
 export const queryWorld = tool({
-  description: `Read the game world using Cypher queries. Use to inspect entities, NPC dispositions, messages, and game time. The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT). Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS. Entity types: PERSON, OBJECT, LOCATION, ORGANIZATION. GameTime node has day and segment properties.`,
+  description: `Read the game world using Cypher queries. Use to inspect entities, NPC dispositions, messages, and game time. The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT). Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS. Entity types: PERSON, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label. Browse time history via NEXT_TIMEPOINT. Messages link to time via AT_TIME, plots via STARTED_AT/ACTIVE_AT/COMPLETED_AT.`,
   inputSchema: z.object({
     query: z.string().describe("A read-only Cypher query (MATCH...RETURN)."),
   }),

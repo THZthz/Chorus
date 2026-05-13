@@ -37,6 +37,7 @@ export class ShortTermMemory {
     content: string,
     metadata?: Record<string, unknown>,
     generateEmbedding: boolean = true,
+    linkToCurrentTime: boolean = true,
   ): Promise<MemoryMessage> {
     const convId = await this.ensureConversation();
 
@@ -71,6 +72,19 @@ export class ShortTermMemory {
     const lastId = await this.getLastMessageId(convId, messageId);
     const isFirst = lastId === null;
     await this.createMessageLinks(convId, [messageId], lastId, isFirst);
+
+    if (linkToCurrentTime) {
+      try {
+        await this.client.executeWrite(
+          `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+           MATCH (m:Message {id: $msgId})
+           MERGE (m)-[:AT_TIME]->(tp)`,
+          { msgId: messageId },
+        );
+      } catch {
+        // TimePoint system not yet initialized — skip
+      }
+    }
 
     return {
       id: messageId,

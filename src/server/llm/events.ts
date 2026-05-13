@@ -20,7 +20,7 @@ import type { Response } from "express";
 import type { DialogueOption } from "@/types/dialogue";
 import type { SseEventName, SseEventMap } from "@/shared/events";
 
-export type EventEmitter = TurnEventEmitter | NoopEventEmitter;
+export type EventEmitter = TurnEventEmitter;
 
 // A message payload from the LLM before it gets a persistent ID.
 export interface StreamingMessage {
@@ -80,18 +80,21 @@ export class TurnEventEmitter {
   emitTimeUpdate(day: number, segment: number, segmentsAdvanced: number) {
     this.send("time_update", { day, segment, segmentsAdvanced });
   }
-}
 
-// No-op event emitter for non-streaming batch generation.
-// Has the same public API as TurnEventEmitter but does nothing.
-export class NoopEventEmitter {
-  constructor() {}
-  startStep(_stepId: string) {}
-  finish() {}
-  emitStreamingReset() {}
-  emitStreamingMessages(_messages: unknown[]) {}
-  emitOptions(_options: unknown[]) {}
-  emitParsed(_messages: unknown[], _options: unknown[]) {}
-  emitError(_message: string) {}
-  emitTimeUpdate(_day: number, _segment: number, _segmentsAdvanced: number) {}
+  emitRollResult(data: {
+    skill: string;
+    difficulty: number;
+    dice: number[];
+    total: number;
+    statBonus: number;
+    success: boolean;
+    matchedConditions: Array<{
+      expression: string;
+      label?: string;
+      color?: string;
+      stepId?: string;
+    }>;
+  }) {
+    this.send("roll_result", data);
+  }
 }

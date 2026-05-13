@@ -65,6 +65,9 @@ export const editPlot = tool({
     const existing = await client.plots.getPlot(args.plotName);
     if (!existing) return JSON.stringify({ error: `Plot "${args.plotName}" not found` });
 
+    const oldStatus = existing.status;
+    const newStatus = (args.status ?? oldStatus) as typeof oldStatus;
+
     const updates: Record<string, unknown> = {};
     if (args.description !== undefined) updates.description = args.description;
     if (args.status !== undefined) updates.status = args.status;
@@ -72,6 +75,23 @@ export const editPlot = tool({
 
     if (Object.keys(updates).length > 0) {
       await client.plots.updatePlot(args.plotName, updates as any);
+    }
+
+    // Auto-wire time relationships on status transition
+    if (newStatus !== oldStatus) {
+      if (
+        (oldStatus === "PENDING" && (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS"))
+      ) {
+        await client.plots.markPlotStarted(args.plotName);
+        await client.plots.markPlotActive(args.plotName);
+      } else if (
+        (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS") &&
+        oldStatus !== "ACTIVE" && oldStatus !== "IN_PROGRESS"
+      ) {
+        await client.plots.markPlotActive(args.plotName);
+      } else if (newStatus === "COMPLETED") {
+        await client.plots.markPlotCompleted(args.plotName);
+      }
     }
 
     if (args.setFlag) {

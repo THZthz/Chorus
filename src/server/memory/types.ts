@@ -97,32 +97,8 @@ export interface PlayerCondition {
   source?: string;
 }
 
-export interface Observation {
-  type: "fact" | "decision" | "preference" | "topic" | "entity";
-  content: string;
-  sourceMessageId?: string;
-  timestamp: string;
-  confidence: number;
-}
-
-export interface ObservationResult {
-  messageCount: number;
-  approximateTokens: number;
-  thresholdTokens: number;
-  thresholdExceeded: boolean;
-  reflections: string[];
-  observations: Observation[];
-  entityNames: string[];
-  topics: string[];
-}
-
 export interface SearchResults {
   messages: Array<MemoryMessage & { similarity: number }>;
   entities: Array<MemoryEntity & { similarity: number }>;
 }
 
-export interface AssembledContext {
-  messages: MemoryMessage[];
-  entities: MemoryEntity[];
-  summary: string;
-}

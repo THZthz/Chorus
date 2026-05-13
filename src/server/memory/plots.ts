@@ -232,6 +232,35 @@ export class Plots {
     }));
   }
 
+  // ── Time Relationships ──
+
+  async markPlotStarted(plotName: string): Promise<void> {
+    await this.client.executeWrite(
+      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+       MATCH (p:Plot {name: $name})
+       MERGE (p)-[:STARTED_AT]->(tp)`,
+      { name: plotName },
+    );
+  }
+
+  async markPlotActive(plotName: string): Promise<void> {
+    await this.client.executeWrite(
+      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+       MATCH (p:Plot {name: $name})
+       MERGE (p)-[:ACTIVE_AT]->(tp)`,
+      { name: plotName },
+    );
+  }
+
+  async markPlotCompleted(plotName: string): Promise<void> {
+    await this.client.executeWrite(
+      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+       MATCH (p:Plot {name: $name})
+       MERGE (p)-[:COMPLETED_AT]->(tp)`,
+      { name: plotName },
+    );
+  }
+
   // ── Parse ──
 
   private parsePlot(data: Record<string, unknown>): MemoryPlot {

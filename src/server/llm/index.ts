@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { streamText, stepCountIs } from "ai";
+import { streamText, stepCountIs, type ModelMessage } from "ai";
 import { parse as parsePartial } from "partial-json";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
@@ -33,6 +33,7 @@ import { searchNotes } from "@/server/llm/tools/searchNotes";
 import { editPlot } from "@/server/llm/tools/editPlot";
 import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { saveCurrentOptions } from "@/server/memory/gameState";
+import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 import { createRollSkillCheckTool } from "@/server/llm/tools/rollSkillCheck";
@@ -72,6 +73,16 @@ export async function generateTurn(
   {
     const client = MemoryClient.getCachedInstance();
     await client.shortTerm.addMessage("user", userInput);
+  }
+
+  // Load previous GM conversation messages for multi-turn continuity
+  let previousMessages: ModelMessage[] = [];
+  let turnNumber = 1;
+  try {
+    previousMessages = await loadGMMessages();
+    turnNumber = await getNextTurnNumber();
+  } catch (err) {
+    console.error("[generateTurn] Failed to load GM messages, starting fresh:", err);
   }
 
   const historyWindow = 10;
@@ -161,18 +172,22 @@ export async function generateTurn(
 
   let streamError: string | null = null;
 
-  try {
-    const result = streamText({
-      model,
-      system: systemPrompt,
-      messages: [{ role: "user", content: promptText }],
+  const result = streamText({
+    model,
+    system: systemPrompt,
+    messages: [
+      ...previousMessages,
+      { role: "user" as const, content: promptText },
+    ],
       tools: allTools,
       stopWhen: [
         (state) => {
           const called = state.steps.some((s) =>
             s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
           );
-          return called && dialogueStepTool.wasValid();
+          const valid = dialogueStepTool.wasValid();
+          console.log(`[stopWhen] steps=${state.steps.length} called=${called} valid=${valid} stepToolNames=${JSON.stringify(state.steps.map(s => s.toolCalls?.map(tc => tc.toolName)))}`);
+          return called && valid;
         },
         stepCountIs(MAX_GM_STEPS),
       ],
@@ -182,6 +197,7 @@ export async function generateTurn(
           const dialogueCalled = steps.some((s) =>
             s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
           );
+          console.log(`[prepareStep] stepNumber=${steps.length} nudgeStateCount=${nudgeState.count} dialogueCalled=${dialogueCalled} stepToolNames=${JSON.stringify(steps.map(s => s.toolCalls?.map(tc => tc.toolName)))}`);
           if (dialogueCalled) {
             nudgeState.count = 0;
             nudgeState.timeReminded = false;
@@ -224,7 +240,7 @@ export async function generateTurn(
               "\n\nReminder: You can call advanceTime() if the player's action takes significant time. Skip if not needed.";
           }
 
-          return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
+          return { messages: [...messages, { role: "system" as const, content: errorMsg }] };
         }
       )({ count: 0, timeReminded: false }),
     });
@@ -232,7 +248,8 @@ export async function generateTurn(
     let toolRawArgs = "";
     let dialogueToolId: string | null = null;
     let hasEmittedStreaming = false;
-    for await (const chunk of result.fullStream) {
+    try {
+      for await (const chunk of result.fullStream) {
       switch (chunk.type) {
         case "tool-input-start":
           if (chunk.toolName === "generateDialogueStep") {
@@ -355,6 +372,14 @@ export async function generateTurn(
     events.emitError(err.message);
     events.finish();
     return;
+  }
+
+  // Persist this turn's messages for multi-turn continuity
+  try {
+    const response = await result.response;
+    await saveGMMessages(response.messages as ModelMessage[], turnNumber);
+  } catch (err) {
+    console.error("[generateTurn] Failed to save GM messages:", err);
   }
 
   if (finalMessages.length === 0) {

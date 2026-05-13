@@ -297,13 +297,13 @@ All memory types are defined in `types.ts` (~130 lines, type-only):
 
 | Type                 | Key Fields                                                                                         | Neo4j Node                  |
 |----------------------|----------------------------------------------------------------------------------------------------|-----------------------------|
-| `MemoryEntity`       | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, embedding[], isNew?          | `:Entity`                   |
-| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, embedding[], createdAt                        | `:Message`                  |
+| `MemoryEntity`       | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, _embedding[], isNew?          | `:Entity`                   |
+| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, _embedding[], createdAt                        | `:Message`                  |
 | `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                             | (dynamic relationship)      |
 | `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                                  | `:NPCDisposition`           |
 | `PlayerCondition`    | description, effects[] (stat/modifier pairs), duration?, source?                                   | (stored in Entity metadata) |
-| `MemoryNote`         | id, content, embedding[], createdAt, updatedAt                                                     | `:Note`                     |
-| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], embedding[], createdAt, updatedAt       | `:Plot`                     |
+| `MemoryNote`         | id, content, _embedding[], createdAt, updatedAt                                                     | `:Note`                     |
+| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], _embedding[], createdAt, updatedAt       | `:Plot`                     |
 | `PlotFlag`           | flagId, description                                                                                | (stored in Plot.flags JSON) |
 Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` arrays with `similarity`). `PlotStatus` is a union: `"PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"`.
 
@@ -315,16 +315,16 @@ Managed by `schema.ts` (~85 lines), called once at startup:
 
 **Regular indexes (5):** `Message.timestamp`, `Entity.type`, `Entity.name`, `Plot.name`, `Plot.status`
 
-**Composite indexes (2):** `NPCDisposition(npcName, targetName)`, `NPCDisposition(targetName)` — wrapped in try/catch for Neo4j version compat
+**Composite indexes (2):** `NPCDisposition(npc_name, target_name)`, `NPCDisposition(target_name)` — wrapped in try/catch for Neo4j version compat
 
 **Vector indexes (4, require Neo4j 5.11+, COSINE similarity):**
 
 | Index                   | Label   | Property  | Dims                       |
 |-------------------------|---------|-----------|----------------------------|
-| `message_embedding_idx` | Message | embedding | 384 (or API embedder dims) |
-| `entity_embedding_idx`  | Entity  | embedding | 384 (or API embedder dims) |
-| `note_embedding_idx`    | Note    | embedding | 384 (or API embedder dims) |
-| `plot_embedding_idx`    | Plot    | embedding | 384 (or API embedder dims) |
+| `message_embedding_idx` | Message | _embedding | 384 (or API embedder dims) |
+| `entity_embedding_idx`  | Entity  | _embedding | 384 (or API embedder dims) |
+| `note_embedding_idx`    | Note    | _embedding | 384 (or API embedder dims) |
+| `plot_embedding_idx`    | Plot    | _embedding | 384 (or API embedder dims) |
 
 Vector dimensions are passed from the active embedder at startup (`embedder.dimensions`), so they adapt to the configured embedding provider.
 
@@ -546,6 +546,8 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 8. **Singleton MemoryClient** — single entry point to all memory subsystems, lazy-init with caching
 9. **POLE+O entity model** — entities have a type (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
 10. **Skill checks via LLM tool** — `rollSkillCheck` is a dedicated tool the GM calls to mechanically resolve dice rolls; results feed back into the narrative loop
+11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchMemory`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
+12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
 
 ---
 

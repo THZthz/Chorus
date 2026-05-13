@@ -19,6 +19,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
+import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
 export const searchMemory = tool({
@@ -38,6 +39,6 @@ export const searchMemory = tool({
       memoryTypes: args.types,
       limit: args.limit,
     });
-    return JSON.stringify(results, null, 2);
+    return JSON.stringify(stripHiddenProperties(results), null, 2);
   }, "searchMemory"),
 });

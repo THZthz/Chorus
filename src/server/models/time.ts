@@ -12,7 +12,7 @@ export interface GameTime {
 interface TimePoint extends GameTime {
   id: string;
   label: string;
-  createdAt: string;
+  created_at: string;
 }
 
 // ── Current Time ──
@@ -55,7 +55,7 @@ async function getCurrentTimePoint(): Promise<TimePoint | null> {
     day: Number(tp.day),
     segment: Number(tp.segment),
     label: tp.label as string,
-    createdAt: tp.createdAt as string,
+    created_at: tp.created_at as string,
   };
 }
 
@@ -85,7 +85,7 @@ export async function advanceGameTime(
        MATCH (old:TimePoint {id: $oldId})
        CREATE (new:TimePoint {
          id: $newId, day: $newDay, segment: $newSegment,
-         label: $label, createdAt: datetime($now)
+         label: $label, created_at: datetime($now)
        })
        CREATE (old)-[:NEXT_TIMEPOINT]->(new)
        DELETE (a)-[:CURRENT_TIMEPOINT]->(old)
@@ -98,7 +98,7 @@ export async function advanceGameTime(
       `MATCH (a:TimeAnchor {id: 'anchor'})
        CREATE (new:TimePoint {
          id: $newId, day: $newDay, segment: $newSegment,
-         label: $label, createdAt: datetime($now)
+         label: $label, created_at: datetime($now)
        })
        CREATE (a)-[:CURRENT_TIMEPOINT]->(new)`,
       { newId, newDay, newSegment, label, now },
@@ -150,7 +150,7 @@ export async function migrateToTimePoints(
 
   await client.neo4j.executeWrite(
     `CREATE (a:TimeAnchor {id: 'anchor', label: 'TimeAnchor'})
-     CREATE (tp:TimePoint {id: $id, day: $day, segment: $segment, label: $label, createdAt: datetime($now)})
+     CREATE (tp:TimePoint {id: $id, day: $day, segment: $segment, label: $label, created_at: datetime($now)})
      CREATE (a)-[:CURRENT_TIMEPOINT]->(tp)`,
     { id, day, segment, label, now },
   );

@@ -37,11 +37,11 @@ export class Notes {
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
-      `CREATE (n:Note {id: $id, content: $content, embedding: $embedding, created_at: datetime($now), updated_at: datetime($now)})`,
+      `CREATE (n:Note {id: $id, content: $content, _embedding: $embedding, created_at: datetime($now), updated_at: datetime($now)})`,
       { id, content, embedding, now },
     );
 
-    return { id, content, embedding, createdAt: new Date(now), updatedAt: new Date(now) };
+    return { id, content, _embedding: embedding, createdAt: new Date(now), updatedAt: new Date(now) };
   }
 
   async updateNote(noteId: string, options: { content?: string }): Promise<MemoryNote | null> {
@@ -49,7 +49,7 @@ export class Notes {
     if (!existing) return null;
 
     const content = options.content ?? existing.content;
-    let embedding = existing.embedding;
+    let embedding = existing._embedding;
     if (options.content) {
       embedding = await this.embedder.embed(options.content);
     }
@@ -57,12 +57,12 @@ export class Notes {
 
     await this.client.executeWrite(
       `MATCH (n:Note {id: $id})
-       SET n.content = $content, n.embedding = $embedding, n.updated_at = datetime($now)
+       SET n.content = $content, n._embedding = $embedding, n.updated_at = datetime($now)
        RETURN n`,
       { id: noteId, content, embedding: embedding || null, now },
     );
 
-    return { ...existing, content, embedding, updatedAt: new Date(now) };
+    return { ...existing, content, _embedding: embedding, updatedAt: new Date(now) };
   }
 
   async deleteNote(noteId: string): Promise<boolean> {
@@ -150,7 +150,7 @@ export class Notes {
     return {
       id: data.id as string,
       content: data.content as string,
-      embedding: data.embedding as number[] | undefined,
+      _embedding: data._embedding as number[] | undefined,
       createdAt: new Date((data.created_at as string | number) || Date.now()),
       updatedAt: new Date((data.updated_at as string | number) || Date.now()),
     };

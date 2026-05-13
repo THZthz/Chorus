@@ -19,6 +19,22 @@
 import neo4j, { isNode, isRelationship } from "neo4j-driver";
 import type { Driver } from "neo4j-driver";
 
+// Properties whose key starts with "_" are internal/hidden and must never be
+// exposed to the LLM (e.g. _embedding vectors, _elementId, _labels).
+export function stripHiddenProperties(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map((item) => stripHiddenProperties(item));
+  if (typeof obj === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
+      if (key.startsWith("_")) continue;
+      out[key] = stripHiddenProperties(val);
+    }
+    return out;
+  }
+  return obj;
+}
+
 // Recursively convert BigInt values to Number — neo4j-driver 6.x returns integer properties as BigInt.
 function toPlainValue(v: unknown): unknown {
   if (typeof v === "bigint") return Number(v);

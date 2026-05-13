@@ -112,7 +112,7 @@ export class LongTermMemory {
          e.type = $type,
          e.subtype = $subtype,
          e.description = $description,
-         e.embedding = $embedding,
+         e._embedding = $embedding,
          e.metadata = $metadata
        SET e:${typeLabel}
        ${subtypeLabel ? `SET e:${subtypeLabel}` : ""}
@@ -144,7 +144,7 @@ export class LongTermMemory {
       description,
       aliases: aliases || [],
       metadata: metadata || {},
-      embedding,
+      _embedding: embedding,
       createdAt: persistedCreatedAt,
       isNew,
     };
@@ -283,7 +283,7 @@ export class LongTermMemory {
     const now = new Date().toISOString();
     const rows = await this.client.executeWrite(
       `MATCH (npc:Entity {name: $npcName})
-       MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npcName: $npcName, targetName: $targetName})
+       MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
        ON CREATE SET d.id = $id, d.created_at = datetime($now)
        SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
        RETURN d, d.id = $id AS isNew`,
@@ -297,7 +297,7 @@ export class LongTermMemory {
 
   async getDisposition(npcName: string, targetName: string): Promise<NPCDisposition | null> {
     const rows = await this.client.executeRead(
-      `MATCH (d:NPCDisposition {npcName: $npcName, targetName: $targetName})
+      `MATCH (d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
        RETURN d LIMIT 1`,
       { npcName, targetName },
     );
@@ -307,7 +307,7 @@ export class LongTermMemory {
 
   async getDispositionsToward(targetName: string): Promise<NPCDisposition[]> {
     const rows = await this.client.executeRead(
-      `MATCH (d:NPCDisposition {targetName: $targetName})
+      `MATCH (d:NPCDisposition {target_name: $targetName})
        RETURN d ORDER BY d.updated_at DESC`,
       { targetName },
     );
@@ -333,7 +333,7 @@ export class LongTermMemory {
       description: (data.description as string) || undefined,
       aliases,
       metadata: meta,
-      embedding: data.embedding as number[] | undefined,
+      _embedding: data._embedding as number[] | undefined,
       createdAt: new Date((data.created_at as string | number) || Date.now()),
     };
   }
@@ -341,8 +341,8 @@ export class LongTermMemory {
   private parseDisposition(data: Record<string, unknown>): NPCDisposition {
     return {
       id: data.id as string,
-      npcName: data.npcName as string,
-      targetName: data.targetName as string,
+      npcName: data.npc_name as string,
+      targetName: data.target_name as string,
       sentiment: data.sentiment as string,
       summary: data.summary as string,
       createdAt: new Date((data.created_at as string | number) || Date.now()),

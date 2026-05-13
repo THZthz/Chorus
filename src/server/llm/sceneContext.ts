@@ -56,8 +56,8 @@ RETURN player, loc, inventory, npcs, COLLECT(DISTINCT {name: obj.name, type: obj
 `;
 
 const DISPOSITIONS_QUERY = `
-MATCH (d:NPCDisposition {targetName: "Player"})
-RETURN d.npcName AS npcName, d.sentiment AS sentiment, d.summary AS summary
+MATCH (d:NPCDisposition {target_name: "Player"})
+RETURN d.npc_name AS npcName, d.sentiment AS sentiment, d.summary AS summary
 ORDER BY d.updated_at DESC
 `;
 
@@ -67,7 +67,7 @@ WHERE p.status IN ["ACTIVE", "IN_PROGRESS"]
 OPTIONAL MATCH (p)-[:BRANCHES_TO]->(child:Plot)
 WITH p, COLLECT(DISTINCT {name: child.name, status: child.status}) AS children
 RETURN p.name AS name, p.description AS description, p.status AS status,
-       p.triggerCondition AS triggerCondition, p.flags AS flags, children
+       p.trigger_condition AS triggerCondition, p.flags AS flags, children
 ORDER BY p.updated_at DESC
 `;
 

@@ -59,14 +59,14 @@ export async function setupSchema(
   // NPCDisposition composite index
   try {
     await client.executeWrite(
-      `CREATE INDEX npc_disposition_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.npcName, d.targetName)`,
+      `CREATE INDEX npc_disposition_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.npc_name, d.target_name)`,
     );
   } catch {
     // Neo4j version compat
   }
   try {
     await client.executeWrite(
-      `CREATE INDEX npc_disposition_target_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.targetName)`,
+      `CREATE INDEX npc_disposition_target_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.target_name)`,
     );
   } catch {
     // Neo4j version compat
@@ -74,10 +74,10 @@ export async function setupSchema(
 
   // Vector indexes (require Neo4j 5.11+)
   const vectorIndexes: [string, string, string][] = [
-    ["message_embedding_idx", "Message", "embedding"],
-    ["entity_embedding_idx", "Entity", "embedding"],
-    ["note_embedding_idx", "Note", "embedding"],
-    ["plot_embedding_idx", "Plot", "embedding"],
+    ["message_embedding_idx", "Message", "_embedding"],
+    ["entity_embedding_idx", "Entity", "_embedding"],
+    ["note_embedding_idx", "Note", "_embedding"],
+    ["plot_embedding_idx", "Plot", "_embedding"],
   ];
 
   for (const [name, label, prop] of vectorIndexes) {

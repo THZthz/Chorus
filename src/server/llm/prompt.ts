@@ -66,7 +66,7 @@ OPTIONAL MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
   WHERE obj.type = "OBJECT"
 OPTIONAL MATCH (player)-[:CARRIES]->(inv:Entity)
 OPTIONAL MATCH (d:NPCDisposition)
-  WHERE d.targetName = "Player"
+  WHERE d.target_name = "Player"
 RETURN player, loc, npcs, objects, inventory, dispositions
 \`\`\`
 
@@ -81,8 +81,8 @@ LIMIT 10
 ### Get Recent Conversation
 \`\`\`cypher
 MATCH (m:Message)
-RETURN m.role, m.content, m.created_at
-ORDER BY m.created_at DESC
+RETURN m.role, m.content, m.timestamp
+ORDER BY m.timestamp DESC
 LIMIT 20
 \`\`\`
 
@@ -120,7 +120,7 @@ CREATE (npc)-[:CARRIES]->(item)
 ### Set NPC Disposition
 \`\`\`cypher
 MATCH (npc:Entity {name: $npcName})
-MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npcName: $npcName, targetName: $targetName})
+MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
 ON CREATE SET d.id = $id, d.created_at = datetime($now)
 SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
 RETURN d, d.id = $id AS isNew
@@ -185,7 +185,7 @@ ${TOOL_NAMES.QUERY_WORLD} returns npcDispositions — how each NPC feels about t
 Plots are managed via ${TOOL_NAMES.EDIT_PLOT} and ${TOOL_NAMES.SEARCH_PLOTS}. Each Plot has:
 - status: PENDING > ACTIVE > IN_PROGRESS > COMPLETED/ABANDONED
 - flags: player knowledge gained through the plot
-- triggerCondition: when the plot activates
+- trigger_condition: when the plot activates
 - BRANCHES_TO relationships: connect parent plots to child plots
 
 ---

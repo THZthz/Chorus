@@ -51,8 +51,8 @@ export class Plots {
     await this.client.executeWrite(
       `CREATE (p:Plot {
          id: $id, name: $name, description: $description,
-         status: $status, triggerCondition: $triggerCondition,
-         flags: $flags, embedding: $embedding,
+         status: $status,
+         flags: $flags, _embedding: $embedding, trigger_condition: $triggerCondition,
          created_at: datetime($now), updated_at: datetime($now)
        })`,
       {
@@ -74,7 +74,7 @@ export class Plots {
       status,
       triggerCondition: triggerCondition ?? undefined,
       flags,
-      embedding,
+      _embedding: embedding,
       createdAt: new Date(now),
       updatedAt: new Date(now),
     };
@@ -105,13 +105,13 @@ export class Plots {
         : (existing.triggerCondition ?? null);
     const embedding = options.description
       ? await this.embedder.embed(`${name}: ${options.description}`)
-      : existing.embedding;
+      : existing._embedding;
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
       `MATCH (p:Plot {name: $name})
        SET p.description = $description, p.status = $status,
-           p.triggerCondition = $triggerCondition, p.embedding = $embedding,
+           p.trigger_condition = $triggerCondition, p._embedding = $embedding,
            p.updated_at = datetime($now)`,
       {
         name,
@@ -128,7 +128,7 @@ export class Plots {
       description: newDescription,
       status: newStatus,
       triggerCondition: newTrigger ?? undefined,
-      embedding,
+      _embedding: embedding,
       updatedAt: new Date(now),
     };
   }
@@ -277,9 +277,9 @@ export class Plots {
       name: data.name as string,
       description: (data.description as string) || "",
       status: (data.status as PlotStatus) || "PENDING",
-      triggerCondition: (data.triggerCondition as string) || undefined,
+      triggerCondition: (data.trigger_condition as string) || undefined,
       flags,
-      embedding: data.embedding as number[] | undefined,
+      _embedding: data._embedding as number[] | undefined,
       createdAt: new Date((data.created_at as string | number) || Date.now()),
       updatedAt: new Date((data.updated_at as string | number) || Date.now()),
     };

@@ -53,7 +53,7 @@ export class ShortTermMemory {
       `MATCH (c:Conversation {id: $convId})
        CREATE (m:Message {
          id: $id, role: $role, content: $content,
-         embedding: $embedding, timestamp: datetime($now),
+         _embedding: $embedding, timestamp: datetime($now),
          metadata: $metadata
        })
        CREATE (c)-[:HAS_MESSAGE]->(m)
@@ -91,7 +91,7 @@ export class ShortTermMemory {
       role,
       content,
       metadata: metadata || {},
-      embedding,
+      _embedding: embedding,
       createdAt: new Date(now),
     };
   }
@@ -111,7 +111,7 @@ export class ShortTermMemory {
         role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
         metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
-        embedding: m.embedding as number[] | undefined,
+        _embedding: m._embedding as number[] | undefined,
         createdAt: toDate(m.timestamp),
       };
     });

@@ -20,6 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
+import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 
 const validator = new CypherValidator();
@@ -53,7 +54,8 @@ NOTE: The current scene (player location, nearby NPCs, objects, inventory, NPC d
       }
 
       const rows = await client.neo4j.executeRead(query);
-      return JSON.stringify({ rowCount: rows.length, rows }, null, 2);
+      const safeRows = stripHiddenProperties(rows);
+      return JSON.stringify({ rowCount: safeRows.length, rows: safeRows }, null, 2);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return `QUERY ERROR: ${msg}. Adjust your query and retry.`;

@@ -29,7 +29,7 @@ export interface MemoryEntity {
   description?: string;
   aliases: string[];
   metadata: Record<string, unknown>;
-  embedding?: number[];
+  _embedding?: number[];
   createdAt: Date;
   /** True if the entity was newly created (MERGE semantics). */
   isNew?: boolean;
@@ -40,7 +40,7 @@ export interface MemoryMessage {
   role: MessageRole;
   content: string;
   metadata: Record<string, unknown>;
-  embedding?: number[];
+  _embedding?: number[];
   createdAt: Date;
 }
 
@@ -56,7 +56,7 @@ export interface EntityRelationship {
 export interface MemoryNote {
   id: string;
   content: string;
-  embedding?: number[];
+  _embedding?: number[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,7 +75,7 @@ export interface MemoryPlot {
   status: PlotStatus;
   triggerCondition?: string;
   flags: PlotFlag[];
-  embedding?: number[];
+  _embedding?: number[];
   createdAt: Date;
   updatedAt: Date;
 }

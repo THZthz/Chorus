@@ -92,7 +92,7 @@ lint:
 format:
 	$(NPM) run format
 
-dev: neo4j-start neo4j-wait server-dev
+dev: neo4j-start neo4j-wait server
 
 dev-stop: neo4j-stop
 

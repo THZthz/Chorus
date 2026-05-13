@@ -242,11 +242,7 @@ function createSseCallbacks(): SseCallbacks {
 
 // ── API Calls ──
 
-async function postChatStream(
-  userInput: string,
-  hist: Message[],
-  check?: DialogueOption["check"],
-) {
+async function postChatStream(userInput: string, hist: Message[], check?: DialogueOption["check"]) {
   state = "WAITING";
   isRetrying = false;
   streamingMessages = [];

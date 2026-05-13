@@ -32,6 +32,7 @@
     "chalk": "^5.6.2",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "jsonrepair": "^3.14.0",
     "log-update": "^8.0.0",
     "mcp-hashline-edit-server": "^0.2.0",
     "neo4j-driver": "^6.0.1",

@@ -41,7 +41,13 @@ export class Notes {
       { id, content, embedding, now },
     );
 
-    return { id, content, _embedding: embedding, createdAt: new Date(now), updatedAt: new Date(now) };
+    return {
+      id,
+      content,
+      _embedding: embedding,
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    };
   }
 
   async updateNote(noteId: string, options: { content?: string }): Promise<MemoryNote | null> {

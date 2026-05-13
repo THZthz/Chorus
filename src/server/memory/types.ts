@@ -101,4 +101,3 @@ export interface SearchResults {
   messages: Array<MemoryMessage & { similarity: number }>;
   entities: Array<MemoryEntity & { similarity: number }>;
 }
-

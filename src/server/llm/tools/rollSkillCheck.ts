@@ -1,3 +1,21 @@
+/**
+ * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { SKILL_NAMES } from "@/shared/constants";
 import { MemoryClient } from "@/server/memory/client";
 import { evaluateConditions } from "@/server/llm/conditionEvaluator";
@@ -33,9 +51,7 @@ export interface SkillCheckResult {
   narrativeSummary: string;
 }
 
-export async function performSkillCheck(
-  args: SkillCheckParams,
-): Promise<SkillCheckResult> {
+export async function performSkillCheck(args: SkillCheckParams): Promise<SkillCheckResult> {
   const client = MemoryClient.getCachedInstance();
 
   const statKey = args.skill.toLowerCase();
@@ -45,9 +61,7 @@ export async function performSkillCheck(
     statBonus = playerStats[statKey];
   }
 
-  const dice = Array.from({ length: args.diceCount }, () =>
-    Math.floor(Math.random() * 6 + 1),
-  );
+  const dice = Array.from({ length: args.diceCount }, () => Math.floor(Math.random() * 6 + 1));
   const diceSum = dice.reduce((a, b) => a + b, 0);
   const total = diceSum + statBonus;
   const success = total >= args.difficulty;

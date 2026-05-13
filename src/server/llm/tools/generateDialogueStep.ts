@@ -39,9 +39,7 @@ const messageSchema = z.object({
     .describe(
       "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
     ),
-  type: z.enum(
-    SPEAKER_TYPES.filter((type) => type !== "YOU") as Exclude<SpeakerType, "YOU">[],
-  ),
+  type: z.enum(SPEAKER_TYPES.filter((type) => type !== "YOU") as Exclude<SpeakerType, "YOU">[]),
   text: z.string().max(500).describe("The dialogue text, supports markdown."),
   metadata: z
     .object({
@@ -109,12 +107,8 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
 });
 
 const inputSchema = z.object({
-  messages: z
-    .array(messageSchema)
-    .describe("The sequence of messages in this dialogue step."),
-  options: z
-    .array(optionSchema)
-    .describe("The choices presented to the player."),
+  messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
+  options: z.array(optionSchema).describe("The choices presented to the player."),
   isCorrection: z
     .boolean()
     .optional()
@@ -161,10 +155,7 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
       );
       validMessageIndices.delete(i);
     }
-    if (
-      msg.type === "INNER_VOICE" &&
-      !(SKILL_NAMES as readonly string[]).includes(msg.speaker)
-    ) {
+    if (msg.type === "INNER_VOICE" && !(SKILL_NAMES as readonly string[]).includes(msg.speaker)) {
       errors.push(
         `Message with type INNER_VOICE has speaker="${msg.speaker}" which is not a valid skill name. Valid skill names are: ${SKILL_NAMES.join(", ")}. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
       );
@@ -182,10 +173,7 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
       errors.push(speakerError);
       validMessageIndices.delete(i);
     }
-    const textError = checkText(
-      msg.text,
-      `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].text`,
-    );
+    const textError = checkText(msg.text, `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].text`);
     if (textError) {
       errors.push(textError);
       validMessageIndices.delete(i);
@@ -227,10 +215,7 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     if (validOptionIndices.size > 0) {
       for (let i = 0; i < args.options.length; i++) {
         const opt = args.options[i];
-        const textError = checkText(
-          opt.text,
-          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`,
-        );
+        const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
         if (textError) {
           errors.push(textError);
           validOptionIndices.delete(i);
@@ -295,8 +280,7 @@ function formatValidationFailure(
     lines.push(`\nValid messages (keep exactly as-is):`);
     for (const i of validMsgs) {
       const msg = args.messages[i];
-      const truncatedText =
-        msg.text.length > 100 ? msg.text.slice(0, 100) + "..." : msg.text;
+      const truncatedText = msg.text.length > 100 ? msg.text.slice(0, 100) + "..." : msg.text;
       lines.push(
         `  messages[${i}]: speaker="${msg.speaker}" type="${msg.type}" text="${truncatedText}"`,
       );
@@ -379,9 +363,7 @@ async function executeAndPersist(
   return "Correction applied — dialogue successfully streamed.";
 }
 
-export function createGenerateDialogueStepTool(
-  persistMessage?: PersistMessageFn,
-) {
+export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn) {
   let lastCallValid = false;
   let lastCallMessages: DialogueArgs["messages"] = [];
   let lastCallOptions: DialogueArgs["options"] = [];
@@ -421,12 +403,9 @@ from the previous call automatically. You do NOT need to copy them.`.trim(),
         args = { ...args, messages: mergedMessages, options: mergedOptions };
       }
 
-      const result = await executeAndPersist(
-        args,
-        isCorrection,
-        persistMessage,
-        (valid) => { lastCallValid = valid; },
-      );
+      const result = await executeAndPersist(args, isCorrection, persistMessage, (valid) => {
+        lastCallValid = valid;
+      });
 
       // Store this call's args for potential future correction (only for non-correction calls,
       // or correction calls that still had some valid items — so the LLM can iterate)

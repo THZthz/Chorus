@@ -79,14 +79,13 @@ export const editPlot = tool({
 
     // Auto-wire time relationships on status transition
     if (newStatus !== oldStatus) {
-      if (
-        (oldStatus === "PENDING" && (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS"))
-      ) {
+      if (oldStatus === "PENDING" && (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS")) {
         await client.plots.markPlotStarted(args.plotName);
         await client.plots.markPlotActive(args.plotName);
       } else if (
         (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS") &&
-        oldStatus !== "ACTIVE" && oldStatus !== "IN_PROGRESS"
+        oldStatus !== "ACTIVE" &&
+        oldStatus !== "IN_PROGRESS"
       ) {
         await client.plots.markPlotActive(args.plotName);
       } else if (newStatus === "COMPLETED") {

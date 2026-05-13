@@ -16,9 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-const READ_ALLOWED_LABELS = new Set(["Entity", "Message", "NPCDisposition", "GameTime", "TimePoint", "TimeAnchor"]);
+const READ_ALLOWED_LABELS = new Set([
+  "Entity",
+  "Message",
+  "NPCDisposition",
+  "GameTime",
+  "TimePoint",
+  "TimeAnchor",
+]);
 
-const WRITE_ALLOWED_LABELS = new Set(["Entity", "Message", "NPCDisposition", "GameTime", "TimePoint", "TimeAnchor"]);
+const WRITE_ALLOWED_LABELS = new Set([
+  "Entity",
+  "Message",
+  "NPCDisposition",
+  "GameTime",
+  "TimePoint",
+  "TimeAnchor",
+]);
 
 const ALLOWED_RELATIONSHIPS = new Set([
   "LOCATED_AT",

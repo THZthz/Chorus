@@ -16,8 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { streamText, stepCountIs, type ModelMessage } from "ai";
+import { streamText, stepCountIs, NoSuchToolError, type ModelMessage } from "ai";
 import { parse as parsePartial } from "partial-json";
+import { jsonrepair } from "jsonrepair";
 import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { TurnEventEmitter } from "@/server/llm/events";
@@ -37,7 +38,7 @@ import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 import { performSkillCheck } from "@/server/llm/tools/rollSkillCheck";
-import { type SkillName } from "@/shared/constants";
+import { type SkillName, TOOL_NAMES } from "@/shared/constants";
 
 export async function generateTurn(
   userInput: string,
@@ -85,20 +86,31 @@ export async function generateTurn(
     console.error("[generateTurn] Failed to load GM messages, starting fresh:", err);
   }
 
+  const includeHistory = false;
   const historyWindow = 10;
-  const promptParts: string[] = [
-    `## DIALOGUE HISTORY (Last ${historyWindow})`,
-    history
-      .slice(-historyWindow)
-      .map((m) => `${m.speaker} (${m.type}): ${m.text}`)
-      .join("\n"),
+  let historyParts: string[] = [];
+  if (includeHistory) {
+    historyParts.push(
+      `## DIALOGUE HISTORY (Last ${historyWindow})`,
+      history
+        .slice(-historyWindow)
+        .map((m) => `${m.speaker} (${m.type}): ${m.text}`)
+        .join("\n"),
+      "",
+      "---",
+      "",
+    );
+  }
+
+  const actionParts: string[] = [
+    "## PLAYER ACTION",
+    `The player just said/did: "${userInput}"`,
     "",
     "---",
     "",
-    "## PLAYER ACTION",
-    `The player just said/did: "${userInput}"`,
   ];
 
+  let skillCheckParts: string[] = [];
   if (check) {
     // Auto-perform the skill check server-side
     let rollResult: Awaited<ReturnType<typeof performSkillCheck>> | null = null;
@@ -133,28 +145,27 @@ export async function generateTurn(
       });
 
       // Inject the result into the prompt — GM narrates, no tool call needed
-      promptParts.push(
-        "",
-        "---",
-        "",
+      skillCheckParts.push(
         "## SKILL CHECK RESULT",
         rollResult.narrativeSummary,
         "",
         `The player ${rollResult.success ? "succeeded" : "failed"} this skill check.`,
-        `Narrate the ${rollResult.success ? "success" : "failure"} naturally via generateDialogueStep.${rollResult.success ? " The player's skill shines through." : " Make the failure interesting but keep the story moving."}`,
+        `Narrate the ${rollResult.success ? "success" : "failure"} naturally via ${TOOL_NAMES.GENERATE_DIALOGUE}.${rollResult.success ? " The player's skill shines through." : " Make the failure interesting but keep the story moving."}`,
+        "",
+        "---",
+        "",
       );
     }
   }
 
+  let contextParts: string[] = [];
   if (sceneContext) {
-    promptParts.push("", "---", "", sceneContext);
+    contextParts.push(sceneContext, "", "---", "");
   }
 
-  promptParts.push(
-    "",
-    "Generate the narrative response following the output format exactly.",
+  const promptText = [...historyParts, ...actionParts, ...skillCheckParts, ...contextParts].join(
+    "\nGenerate the narrative response following the output format exactly.",
   );
-  const promptText = promptParts.join("\n");
 
   const { model } = getModel();
 
@@ -170,7 +181,7 @@ export async function generateTurn(
   }) => {
     const client = MemoryClient.getCachedInstance();
     const role: "user" | "assistant" | "system" = msg.type === "CHARACTER" ? "assistant" : "system";
-    const stored = await client.shortTerm.addMessage(role, msg.text, {
+    await client.shortTerm.addMessage(role, msg.text, {
       speaker: msg.speaker,
       type: msg.type,
       ...msg.metadata,
@@ -197,81 +208,97 @@ export async function generateTurn(
   const result = streamText({
     model,
     system: systemPrompt,
-    messages: [
-      ...previousMessages,
-      { role: "user" as const, content: promptText },
+    messages: [...previousMessages, { role: "user" as const, content: promptText }],
+    tools: allTools,
+    stopWhen: [
+      (state) => {
+        const called = state.steps.some((s) =>
+          s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+        );
+        const valid = dialogueStepTool.wasValid();
+        console.log(
+          `[stopWhen] steps=${state.steps.length} called=${called} valid=${valid} stepToolNames=${JSON.stringify(state.steps.map((s) => s.toolCalls?.map((tc) => tc.toolName)))}`,
+        );
+        return called && valid;
+      },
+      stepCountIs(MAX_GM_STEPS),
     ],
-      tools: allTools,
-      stopWhen: [
-        (state) => {
-          const called = state.steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
-          );
-          const valid = dialogueStepTool.wasValid();
-          console.log(`[stopWhen] steps=${state.steps.length} called=${called} valid=${valid} stepToolNames=${JSON.stringify(state.steps.map(s => s.toolCalls?.map(tc => tc.toolName)))}`);
-          return called && valid;
-        },
-        stepCountIs(MAX_GM_STEPS),
-      ],
-      prepareStep: (
-        (nudgeState: { count: number; timeReminded: boolean }) =>
-        ({ steps, messages }) => {
-          const dialogueCalled = steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
-          );
-          console.log(`[prepareStep] stepNumber=${steps.length} nudgeStateCount=${nudgeState.count} dialogueCalled=${dialogueCalled} stepToolNames=${JSON.stringify(steps.map(s => s.toolCalls?.map(tc => tc.toolName)))}`);
-          if (dialogueCalled) {
-            nudgeState.count = 0;
-            nudgeState.timeReminded = false;
-            return undefined;
-          }
-
-          const timeCalled = steps.some((s) =>
-            s.toolCalls?.some((tc) => tc.toolName === "advanceTime"),
-          );
-
-          // Collect tool names preserving order
-          const allToolsUsed: string[] = [];
-          for (const s of steps) {
-            const names = s.toolCalls?.map((tc) => tc.toolName) ?? [];
-            for (const name of names) allToolsUsed.push(name);
-          }
-
-          // Group consecutive identical tool names
-          const grouped: string[] = [];
-          let i = 0;
-          while (i < allToolsUsed.length) {
-            const current = allToolsUsed[i];
-            let runLen = 1;
-            while (i + runLen < allToolsUsed.length && allToolsUsed[i + runLen] === current) {
-              runLen++;
-            }
-            grouped.push(runLen > 1 ? `${current} (${runLen} times)` : current);
-            i += runLen;
-          }
-
-          nudgeState.count++;
-          const prefix = nudgeState.count === 1 ? "Reminder:" : "ERROR:";
-          const toolList = grouped.length > 0 ? ` You called [${grouped.join(", ")}] but` : " You";
-          let errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
-
-          // Soft one-time reminder for advanceTime on step 3+
-          if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
-            nudgeState.timeReminded = true;
-            errorMsg +=
-              "\n\nReminder: You can call advanceTime() if the player's action takes significant time. Skip if not needed.";
-          }
-
-          return { messages: [...messages, { role: "system" as const, content: errorMsg }] };
+    prepareStep: (
+      (nudgeState: { count: number; timeReminded: boolean }) =>
+      ({ steps, messages }) => {
+        const dialogueCalled = steps.some((s) =>
+          s.toolCalls?.some((tc) => tc.toolName === "generateDialogueStep"),
+        );
+        console.log(
+          `[prepareStep] stepNumber=${steps.length} nudgeStateCount=${nudgeState.count} dialogueCalled=${dialogueCalled} stepToolNames=${JSON.stringify(steps.map((s) => s.toolCalls?.map((tc) => tc.toolName)))}`,
+        );
+        if (dialogueCalled) {
+          nudgeState.count = 0;
+          nudgeState.timeReminded = false;
+          return undefined;
         }
-      )({ count: 0, timeReminded: false }),
-    });
 
-    let toolRawArgs = "";
-    let dialogueToolId: string | null = null;
-    let hasEmittedStreaming = false;
-    try {
-      for await (const chunk of result.fullStream) {
+        const timeCalled = steps.some((s) =>
+          s.toolCalls?.some((tc) => tc.toolName === "advanceTime"),
+        );
+
+        // Collect tool names preserving order
+        const allToolsUsed: string[] = [];
+        for (const s of steps) {
+          const names = s.toolCalls?.map((tc) => tc.toolName) ?? [];
+          for (const name of names) allToolsUsed.push(name);
+        }
+
+        // Group consecutive identical tool names
+        const grouped: string[] = [];
+        let i = 0;
+        while (i < allToolsUsed.length) {
+          const current = allToolsUsed[i];
+          let runLen = 1;
+          while (i + runLen < allToolsUsed.length && allToolsUsed[i + runLen] === current) {
+            runLen++;
+          }
+          grouped.push(runLen > 1 ? `${current} (${runLen} times)` : current);
+          i += runLen;
+        }
+
+        nudgeState.count++;
+        const prefix = nudgeState.count === 1 ? "Reminder:" : "ERROR:";
+        const toolList = grouped.length > 0 ? ` You called [${grouped.join(", ")}] but` : " You";
+        let errorMsg = `${prefix}${toolList} have not yet called generateDialogueStep. The player cannot see any response. You MUST call generateDialogueStep now.`;
+
+        // Soft one-time reminder for advanceTime on step 3+
+        if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
+          nudgeState.timeReminded = true;
+          errorMsg +=
+            "\n\nReminder: You can call advanceTime() if the player's action takes significant time. Skip if not needed.";
+        }
+
+        return { messages: [...messages, { role: "system" as const, content: errorMsg }] };
+      }
+    )({ count: 0, timeReminded: false }),
+    experimental_repairToolCall: async ({ toolCall, error }) => {
+      if (NoSuchToolError.isInstance(error)) {
+        return null;
+      }
+      try {
+        const inputStr =
+          typeof toolCall.input === "string" ? toolCall.input : JSON.stringify(toolCall.input);
+        const repaired = jsonrepair(inputStr);
+        console.log(`[repairToolCall] repaired ${toolCall.toolName} JSON`);
+        return { ...toolCall, input: repaired };
+      } catch (e) {
+        console.warn(`[repairToolCall] jsonrepair failed for ${toolCall.toolName}:`, e);
+        return null;
+      }
+    },
+  });
+
+  let toolRawArgs = "";
+  let dialogueToolId: string | null = null;
+  let hasEmittedStreaming = false;
+  try {
+    for await (const chunk of result.fullStream) {
       switch (chunk.type) {
         case "tool-input-start":
           if (chunk.toolName === "generateDialogueStep") {

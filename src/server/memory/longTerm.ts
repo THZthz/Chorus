@@ -263,6 +263,7 @@ export class LongTermMemory {
     await this.addEntity(playerName, entity.type, {
       subtype: entity.subtype,
       description: entity.description,
+      brief: entity.brief,
       metadata: fullMetadata,
     });
   }

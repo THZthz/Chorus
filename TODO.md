@@ -67,5 +67,5 @@ The TODO is more like prompts.
 - [x] [[OUTDATED]] GM should not manually generate option id.
 - [x] rollSkillCheck should not be a tool. We should calculate the result after player choose an option which require a skill check. The the result is passed to GM by its assistant.
 - [x] Remove unused properties of nodes.
-- [ ] Need a "brief" for Plot/Character/Location/Object. Do not repeat unchanged scene context, at first time, give "full description", later, only give short "brief". 
+- [x] Need a "brief" for Plot/Character/Location/Object. Do not repeat unchanged scene context, at first time, give "full description", later, only give short "brief". Plot brief should have a "tree-like" structure.
 - [ ] Interactive tests of tools. Or play a long enough game to experience what is not on the track.

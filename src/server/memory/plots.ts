@@ -35,6 +35,7 @@ export class Plots {
     name: string,
     options?: {
       description?: string;
+      brief?: string;
       status?: PlotStatus;
       triggerCondition?: string;
       flags?: PlotFlag[];
@@ -42,6 +43,7 @@ export class Plots {
   ): Promise<MemoryPlot> {
     const id = uuidv4();
     const description = options?.description ?? "";
+    const brief = options?.brief ?? null;
     const status = options?.status ?? "PENDING";
     const triggerCondition = options?.triggerCondition ?? null;
     const flags = options?.flags ?? [];
@@ -53,6 +55,7 @@ export class Plots {
        ON CREATE SET
          p.id = $id,
          p.description = $description,
+         p.brief = $brief,
          p.status = $status,
          p.flags = $flags,
          p._embedding = $embedding,
@@ -66,6 +69,7 @@ export class Plots {
         id,
         name,
         description,
+        brief,
         status,
         triggerCondition,
         flags: flags.length > 0 ? JSON.stringify(flags) : null,
@@ -79,6 +83,7 @@ export class Plots {
       id: (node.id as string) || id,
       name,
       description: (node.description as string) || description,
+      brief: (node.brief as string) || brief || undefined,
       status: (node.status as PlotStatus) || status,
       triggerCondition: (node.trigger_condition as string) || (triggerCondition ?? undefined),
       flags,
@@ -98,6 +103,7 @@ export class Plots {
     name: string,
     options: {
       description?: string;
+      brief?: string;
       status?: PlotStatus;
       triggerCondition?: string | null;
     },
@@ -107,6 +113,7 @@ export class Plots {
 
     const newStatus = options.status ?? existing.status;
     const newDescription = options.description ?? existing.description;
+    const newBrief = options.brief !== undefined ? options.brief : existing.brief;
     const newTrigger =
       options.triggerCondition !== undefined
         ? options.triggerCondition
@@ -118,12 +125,13 @@ export class Plots {
 
     await this.client.executeWrite(
       `MATCH (p:Plot {name: $name})
-       SET p.description = $description, p.status = $status,
+       SET p.description = $description, p.brief = $brief, p.status = $status,
            p.trigger_condition = $triggerCondition, p._embedding = $embedding,
            p.updated_at = datetime($now)`,
       {
         name,
         description: newDescription,
+        brief: newBrief || null,
         status: newStatus,
         triggerCondition: newTrigger,
         embedding: embedding || null,
@@ -134,6 +142,7 @@ export class Plots {
     return {
       ...existing,
       description: newDescription,
+      brief: newBrief,
       status: newStatus,
       triggerCondition: newTrigger ?? undefined,
       _embedding: embedding,
@@ -296,6 +305,7 @@ export class Plots {
       id: data.id as string,
       name: data.name as string,
       description: (data.description as string) || "",
+      brief: (data.brief as string) || undefined,
       status: (data.status as PlotStatus) || "PENDING",
       triggerCondition: (data.trigger_condition as string) || undefined,
       flags,

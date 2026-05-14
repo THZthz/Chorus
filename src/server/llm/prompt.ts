@@ -55,19 +55,40 @@ TONE: {{tone_description}}
 
 All world state is in Neo4j graph nodes. Use ${TOOL_NAMES.QUERY_WORLD} to read, ${TOOL_NAMES.MUTATE_WORLD} to write.
 
+### **Cypher Generation Rule: Singular vs. Multiple Relationships**
+
+**1. Use \`OPTIONAL MATCH\` ONLY for Singular Links (1-to-1):**
+Use this when you are looking for a single optional node that shares the same context as the main row (e.g., a person’s spouse, a city’s mayor, or a specific parent category).
+
+* *Example:* \`OPTIONAL MATCH (user)-[:HAS_SPOUSE]->(spouse)\`
+
+**2. Use \`COLLECT { }\` for Multiple Links (1-to-Many):**
+Use subqueries when fetching lists of items (e.g., friends, inventory, tags, or logs). This prevents **Cartesian Products** (Row Explosion), where fetching 10 friends and 10 tags would incorrectly produce 100 rows of data.
+
+* *Example:* \`RETURN user, COLLECT { MATCH (user)-[:HAS_FRIEND]->(f) RETURN f } AS friends\`
+
+**The "Why":** Chaining multiple \`OPTIONAL MATCH\` clauses for different sets of data multiplies the rows exponentially, killing database performance. Subqueries keep the data isolated and efficient.
+
+* **Is it a list?** $\rightarrow$ Use \`COLLECT { ... }\`.
+* **Is it a single optional property/node?** $\rightarrow$ Use \`OPTIONAL MATCH\`.
+* **Are there two or more independent \`OPTIONAL MATCH\` statements?** $\rightarrow$ **Stop.** You are likely creating a Cartesian Product; refactor to \`COLLECT\`.
+
 ### Reading the Scene
 The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is provided in the user prompt as "SCENE CONTEXT". Use ${TOOL_NAMES.QUERY_WORLD} only for lookups beyond what is shown there.
 \`\`\`cypher
 MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
-OPTIONAL MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
-  WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
-OPTIONAL MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
-  WHERE obj.type = "OBJECT"
-OPTIONAL MATCH (player)-[:CARRIES]->(inv:Entity)
-OPTIONAL MATCH (d:NPCDisposition)
-  WHERE d.target_name = "Player"
-RETURN player, loc, npcs, objects, inventory, dispositions
+RETURN player, loc,
+  COLLECT { MATCH (player)-[:CARRIES]->(inv:Entity)
+            RETURN inv.name AS name, inv.type AS type, inv.description AS description } AS inventory,
+  COLLECT { MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
+            WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
+            RETURN npc.name AS name, npc.type AS type, npc.description AS description } AS npcs,
+  COLLECT { MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
+            WHERE obj.type = "OBJECT"
+            RETURN obj.name AS name, obj.type AS type, obj.description AS description } AS objects,
+  COLLECT { MATCH (d:NPCDisposition {target_name: "Player"})
+            RETURN d.npc_name AS npcName, d.sentiment AS sentiment, d.summary AS summary } AS dispositions
 \`\`\`
 
 ### Search Entities by Name

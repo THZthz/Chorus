@@ -62,15 +62,16 @@ interface PlotRow {
 const SCENE_QUERY = `
 MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
-WITH player, loc
-OPTIONAL MATCH (player)-[:CARRIES]->(inv:Entity)
-WITH player, loc, COLLECT(DISTINCT {name: inv.name, type: inv.type, description: inv.description}) AS inventory
-OPTIONAL MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
-  WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
-WITH player, loc, inventory, COLLECT(DISTINCT {name: npc.name, type: npc.type, description: npc.description, subtype: npc.subtype, metadata: npc.metadata}) AS npcs
-OPTIONAL MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
-  WHERE obj.type = "OBJECT"
-RETURN player, loc, inventory, npcs, COLLECT(DISTINCT {name: obj.name, type: obj.type, description: obj.description}) AS objects
+RETURN player, loc,
+  COLLECT { MATCH (player)-[:CARRIES]->(inv:Entity)
+            RETURN inv.name AS name, inv.type AS type, inv.description AS description } AS inventory,
+  COLLECT { MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
+            WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
+            RETURN npc.name AS name, npc.type AS type, npc.description AS description,
+                   npc.subtype AS subtype, npc.metadata AS metadata } AS npcs,
+  COLLECT { MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
+            WHERE obj.type = "OBJECT"
+            RETURN obj.name AS name, obj.type AS type, obj.description AS description } AS objects
 `;
 
 const DISPOSITIONS_QUERY = `
@@ -82,10 +83,10 @@ ORDER BY d.updated_at DESC
 const PLOTS_QUERY = `
 MATCH (p:Plot)
 WHERE p.status IN ["ACTIVE", "IN_PROGRESS"]
-OPTIONAL MATCH (p)-[:BRANCHES_TO]->(child:Plot)
-WITH p, COLLECT(DISTINCT {name: child.name, status: child.status}) AS children
 RETURN p.name AS name, p.description AS description, p.status AS status,
-       p.trigger_condition AS triggerCondition, p.flags AS flags, children
+       p.trigger_condition AS triggerCondition, p.flags AS flags,
+       COLLECT { MATCH (p)-[:BRANCHES_TO]->(child:Plot)
+                 RETURN child.name AS name, child.status AS status } AS children
 ORDER BY p.updated_at DESC
 `;
 

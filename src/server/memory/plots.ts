@@ -80,7 +80,7 @@ export class Plots {
       name,
       description: (node.description as string) || description,
       status: (node.status as PlotStatus) || status,
-      triggerCondition: (node.trigger_condition as string) || triggerCondition ?? undefined,
+      triggerCondition: (node.trigger_condition as string) || (triggerCondition ?? undefined),
       flags,
       _embedding: embedding,
       createdAt: new Date((node.created_at as string | number) || now),

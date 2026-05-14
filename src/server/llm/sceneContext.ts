@@ -128,7 +128,7 @@ function buildPlotTree(plots: PlotRef[]): { tree: string; unseenDescriptions: st
     if (visited.has(plot.name)) return;
     visited.add(plot.name);
 
-    const brief = plot.brief || plot.description.slice(0, 120);
+    const brief = plot.brief || (plot.description || "").slice(0, 120);
     treeLines.push(`${prefix}${connector} ${plot.name} (${plot.status}): ${brief}`);
 
     // Track unseen
@@ -259,7 +259,7 @@ export async function buildSceneContext(): Promise<string> {
   if (plotRows.length > 0) {
     const plotRefs: PlotRef[] = plotRows.map((p: any) => ({
       name: p.name,
-      description: p.description,
+      description: p.description ?? "",
       brief: p.brief || null,
       status: p.status,
       triggerCondition: p.triggerCondition,

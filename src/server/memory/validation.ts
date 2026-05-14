@@ -17,6 +17,7 @@
  */
 
 import { TOOL_NAMES } from "@/shared/constants";
+import { RelationshipManager } from "@/server/memory/relationshipManager";
 
 const READ_ALLOWED_LABELS = new Set([
   "Entity",
@@ -34,24 +35,6 @@ const WRITE_ALLOWED_LABELS = new Set([
   "GameTime",
   "TimePoint",
   "TimeAnchor",
-]);
-
-const ALLOWED_RELATIONSHIPS = new Set([
-  "LOCATED_AT",
-  "CARRIES",
-  "ALLIED_WITH",
-  "HOSTILE_TOWARDS",
-  "LOCATED_IN",
-  "HAS_DISPOSITION",
-  "HAS_MESSAGE",
-  "FIRST_MESSAGE",
-  "NEXT_MESSAGE",
-  "NEXT_TIMEPOINT",
-  "CURRENT_TIMEPOINT",
-  "AT_TIME",
-  "STARTED_AT",
-  "ACTIVE_AT",
-  "COMPLETED_AT",
 ]);
 
 const BLOCKED_READ_CLAUSES = /\b(CREATE|MERGE|DELETE|SET|REMOVE|DETACH\s+DELETE|DROP)\b/i;
@@ -120,9 +103,22 @@ export class CypherValidator {
     }
 
     for (const relType of this.extractRelationshipTypes(query)) {
-      if (!ALLOWED_RELATIONSHIPS.has(relType)) {
+      const manager = RelationshipManager.getCachedInstance();
+      // Auto-register unknown types as GM_DEFINED
+      if (!manager.get(relType)) {
+        manager.register(
+          relType,
+          "Created by GM via mutateWorld",
+          "GM_DEFINED",
+        );
+      }
+      if (!manager.isAllowedForWrite(relType)) {
+        const allowed = [
+          ...manager.getByType("PREDEFINED").map((r) => r.name),
+          ...manager.getByType("GM_DEFINED").map((r) => r.name),
+        ];
         errors.push(
-          `Query references forbidden relationship type \`[:${relType}]\`. Allowed: ${[...ALLOWED_RELATIONSHIPS].join(", ")}`,
+          `Query references forbidden relationship type \`[:${relType}]\`. Allowed: ${allowed.join(", ")}`,
         );
       }
     }

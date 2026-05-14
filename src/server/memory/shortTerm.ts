@@ -81,8 +81,12 @@ export class ShortTermMemory {
            MERGE (m)-[:AT_TIME]->(tp)`,
           { msgId: messageId },
         );
-      } catch {
+      } catch (err) {
         // TimePoint system not yet initialized — skip
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("not found")) {
+          console.warn("[shortTerm] AT_TIME link failed:", msg);
+        }
       }
     }
 

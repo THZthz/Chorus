@@ -61,15 +61,17 @@ export async function setupSchema(
     await client.executeWrite(
       `CREATE INDEX npc_disposition_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.npc_name, d.target_name)`,
     );
-  } catch {
-    // Neo4j version compat
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[memory] npc_disposition_idx not created: ${msg}`);
   }
   try {
     await client.executeWrite(
       `CREATE INDEX npc_disposition_target_idx IF NOT EXISTS FOR (d:NPCDisposition) ON (d.target_name)`,
     );
-  } catch {
-    // Neo4j version compat
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[memory] npc_disposition_target_idx not created: ${msg}`);
   }
 
   // Vector indexes (require Neo4j 5.11+)

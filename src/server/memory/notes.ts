@@ -114,8 +114,11 @@ export class Notes {
          SET r.description = coalesce($desc, r.description)`,
         { noteId, entityName, desc: description || null },
       );
-    } catch {
-      // entity may not exist — skip
+    } catch (err) {
+      console.warn(
+        `[notes] linkToEntity(${noteId}, ${entityName}) failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -128,8 +131,11 @@ export class Notes {
          SET r.description = coalesce($desc, r.description)`,
         { noteId, messageId, desc: description || null },
       );
-    } catch {
-      // message may not exist — skip
+    } catch (err) {
+      console.warn(
+        `[notes] linkToMessage(${noteId}, ${messageId}) failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 

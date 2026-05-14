@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import neo4j, { isNode, isRelationship } from "neo4j-driver";
+import neo4j, { isNode, isRelationship, Neo4jError } from "neo4j-driver";
 import type { Driver } from "neo4j-driver";
 
 // Properties whose key starts with "_" are internal/hidden and must never be
@@ -96,15 +96,45 @@ function unwrapRecord(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+function logQueryError(
+  error: unknown,
+  query: string,
+  kind: "read" | "write",
+): void {
+  if (error instanceof Neo4jError) {
+    console.error(
+      `[neo4j] execute${kind === "read" ? "Read" : "Write"} failed: ${error.code} - ${error.message}`,
+      {
+        code: error.code,
+        retriable: error.retriable,
+        query: query.length > 300 ? query.slice(0, 300) + "..." : query,
+      },
+    );
+  } else {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[neo4j] execute${kind === "read" ? "Read" : "Write"} failed (non-Neo4j): ${msg}`,
+      { query: query.length > 300 ? query.slice(0, 300) + "..." : query },
+    );
+  }
+}
+
 export class Neo4jClient {
   private driver: Driver;
 
   constructor(
     uri: string = process.env.NEO4J_URI || "bolt://localhost:7687",
-    user: string = process.env.NEO4J_USER || "neo4j",
+    user: string = process.env.NEO4J_USER || process.env.NEO4J_USERNAME || "neo4j",
     password: string = process.env.NEO4J_PASSWORD || "12345678",
   ) {
-    this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
+    this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password), {
+      maxTransactionRetryTime: 30_000,
+      logging: {
+        logger: (_level, message) => {
+          console.error(`[neo4j-driver] ${message}`);
+        },
+      },
+    });
   }
 
   async verifyConnectivity(): Promise<void> {
@@ -119,6 +149,9 @@ export class Neo4jClient {
     try {
       const result = await session.executeRead((tx) => tx.run(query, parameters));
       return result.records.map((r) => unwrapRecord(r.toObject()));
+    } catch (error) {
+      logQueryError(error, query, "read");
+      throw error;
     } finally {
       await session.close();
     }
@@ -132,6 +165,9 @@ export class Neo4jClient {
     try {
       const result = await session.executeWrite((tx) => tx.run(query, parameters));
       return result.records.map((r) => unwrapRecord(r.toObject()));
+    } catch (error) {
+      logQueryError(error, query, "write");
+      throw error;
     } finally {
       await session.close();
     }

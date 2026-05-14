@@ -23,30 +23,43 @@ import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/seed-stories/seed";
 
 async function start() {
-  const app = express();
-  const PORT = 3000;
+  try {
+    const app = express();
+    const PORT = 3000;
 
-  app.use(express.json());
-  app.use("/api", apiRouter);
+    app.use(express.json());
+    app.use("/api", apiRouter);
 
-  // Initialize MemoryClient (stays alive for server lifetime)
-  console.log("[memory] initializing local memory layer...");
-  await MemoryClient.getInstance();
+    // Initialize MemoryClient (stays alive for server lifetime)
+    console.log("[memory] initializing local memory layer...");
+    await MemoryClient.getInstance();
 
-  // Seed Neo4j with initial world data
-  await seedDatabase();
+    // Seed Neo4j with initial world data
+    await seedDatabase();
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
 
-  const shutdown = async () => {
-    console.log("\nShutting down...");
-    await MemoryClient.closeInstance();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+    const shutdown = async () => {
+      console.log("\nShutting down...");
+      await MemoryClient.closeInstance();
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+
+    process.on("uncaughtException", (error) => {
+      console.error("[process] uncaughtException — exiting:", error);
+      process.exit(1);
+    });
+    process.on("unhandledRejection", (reason) => {
+      console.error("[process] unhandledRejection:", reason);
+    });
+  } catch (error) {
+    console.error("[start] fatal startup error:", error);
+    process.exit(1);
+  }
 }
 
 start();

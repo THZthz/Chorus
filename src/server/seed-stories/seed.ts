@@ -49,6 +49,17 @@ export async function seedDatabase(): Promise<void> {
   const story = getActiveSeedStory();
   const client = await MemoryClient.getInstance();
 
+  // Skip if database already has data (prevents duplicate injection on restart)
+  const existing = await client.neo4j.executeRead(
+    "MATCH (e:Entity) RETURN count(e) AS count",
+  );
+  if ((existing[0]?.count as number) > 0) {
+    console.log(
+      `[seed] database already has ${existing[0].count} entities, skipping`,
+    );
+    return;
+  }
+
   console.log(`[seed] seeding ${story.entities.length} entities from "${story.id}"`);
 
   for (const entity of story.entities) {

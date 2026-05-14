@@ -513,7 +513,9 @@ The system prompt uses `DEFAULT_SYSTEM_PROMPT_TEMPLATE` from `src/server/llm/pro
 
 Seed data (entities, locations, characters, root plot, initial time, initial scene) is organized into pluggable seed story modules under `src/server/seed-stories/`. Each module exports a `SeedStory` object conforming to the interface in `types.ts`.
 
-The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `seed.ts` reads from it to populate Neo4j on startup. On `/api/reset`, the database is cleared and re-seeded.
+The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `seed.ts` reads from it to populate Neo4j on startup.
+
+`seedDatabase()` checks for existing `:Entity` nodes before seeding — if any exist, it skips injection. This prevents duplicate data on server restart. On `/api/reset`, the database is cleared via `MATCH (n) DETACH DELETE n` and then re-seeded, which works because the clear brings the entity count to zero. `createPlot` uses `MERGE` (not `CREATE`) so that plot nodes are also idempotent.
 
 **To add a new seed story:**
 1. Create a new file in `src/server/seed-stories/` exporting a `SeedStory` object

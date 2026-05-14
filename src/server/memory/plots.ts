@@ -48,13 +48,20 @@ export class Plots {
     const embedding = await this.embedder.embed(`${name}: ${description}`);
     const now = new Date().toISOString();
 
-    await this.client.executeWrite(
-      `CREATE (p:Plot {
-         id: $id, name: $name, description: $description,
-         status: $status,
-         flags: $flags, _embedding: $embedding, trigger_condition: $triggerCondition,
-         created_at: datetime($now), updated_at: datetime($now)
-       })`,
+    const rows = await this.client.executeWrite(
+      `MERGE (p:Plot {name: $name})
+       ON CREATE SET
+         p.id = $id,
+         p.description = $description,
+         p.status = $status,
+         p.flags = $flags,
+         p._embedding = $embedding,
+         p.trigger_condition = $triggerCondition,
+         p.created_at = datetime($now),
+         p.updated_at = datetime($now)
+       ON MATCH SET
+         p.updated_at = datetime($now)
+       RETURN p`,
       {
         id,
         name,
@@ -67,16 +74,17 @@ export class Plots {
       },
     );
 
+    const node = (rows[0]?.p as Record<string, unknown>) || {};
     return {
-      id,
+      id: (node.id as string) || id,
       name,
-      description,
-      status,
-      triggerCondition: triggerCondition ?? undefined,
+      description: (node.description as string) || description,
+      status: (node.status as PlotStatus) || status,
+      triggerCondition: (node.trigger_condition as string) || triggerCondition ?? undefined,
       flags,
       _embedding: embedding,
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
+      createdAt: new Date((node.created_at as string | number) || now),
+      updatedAt: new Date((node.updated_at as string | number) || now),
     };
   }
 

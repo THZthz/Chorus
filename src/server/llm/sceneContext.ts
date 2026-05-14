@@ -18,6 +18,7 @@
 
 import { getGameTime, describeTime } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
+import { getObserver } from "@/server/llm/sceneObserver";
 
 // ── Query result types ──
 
@@ -25,8 +26,8 @@ interface SceneEntityRef {
   name: string;
   type: string;
   description: string | null;
+  brief: string | null;
   subtype?: string | null;
-  metadata?: string | null;
 }
 
 interface SceneRow {
@@ -43,18 +44,13 @@ interface DispositionRow {
   summary: string;
 }
 
-interface PlotChild {
-  name: string;
-  status: string;
-}
-
-interface PlotRow {
+interface PlotRef {
   name: string;
   description: string;
+  brief: string | null;
   status: string;
   triggerCondition: string | null;
-  flags: string | null;
-  children: PlotChild[] | null;
+  children: PlotRef[];
 }
 
 // ── Queries ──
@@ -64,14 +60,16 @@ MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
 RETURN player, loc,
   COLLECT { MATCH (player)-[:CARRIES]->(inv:Entity)
-            RETURN inv.name AS name, inv.type AS type, inv.description AS description } AS inventory,
+            RETURN inv.name AS name, inv.type AS type, inv.description AS description,
+                   inv.brief AS brief } AS inventory,
   COLLECT { MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
             WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
             RETURN npc.name AS name, npc.type AS type, npc.description AS description,
-                   npc.subtype AS subtype, npc.metadata AS metadata } AS npcs,
+                   npc.brief AS brief, npc.subtype AS subtype } AS npcs,
   COLLECT { MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
             WHERE obj.type = "OBJECT"
-            RETURN obj.name AS name, obj.type AS type, obj.description AS description } AS objects
+            RETURN obj.name AS name, obj.type AS type, obj.description AS description,
+                   obj.brief AS brief } AS objects
 `;
 
 const DISPOSITIONS_QUERY = `
@@ -83,39 +81,85 @@ ORDER BY d.updated_at DESC
 const PLOTS_QUERY = `
 MATCH (p:Plot)
 WHERE p.status IN ["ACTIVE", "IN_PROGRESS"]
-RETURN p.name AS name, p.description AS description, p.status AS status,
-       p.trigger_condition AS triggerCondition, p.flags AS flags,
+RETURN p.name AS name, p.description AS description, p.brief AS brief,
+       p.status AS status, p.trigger_condition AS triggerCondition,
        COLLECT { MATCH (p)-[:BRANCHES_TO]->(child:Plot)
-                 RETURN child.name AS name, child.status AS status } AS children
+                 WHERE child.status IN ["ACTIVE", "IN_PROGRESS", "PENDING"]
+                 RETURN child.name AS name, child.description AS description,
+                        child.brief AS brief, child.status AS status } AS children
 ORDER BY p.updated_at DESC
 `;
 
 // ── Formatters ──
 
-function formatEntityBrief(e: SceneEntityRef | null): string {
-  if (!e) return "";
-  const desc = e.description ? ` — ${e.description}` : "";
-  return `**${e.name}** (${e.type})${desc}`;
+function formatEntityCompact(e: SceneEntityRef): string {
+  const brief = e.brief || e.description?.slice(0, 120) || "";
+  return `**${e.name}** (${e.type}) — ${brief}`;
+}
+
+function formatEntityFull(e: SceneEntityRef): string {
+  if (!e.description) return "";
+  return `### ${e.name}\n${e.description}`;
 }
 
 function formatDisposition(d: DispositionRow): string {
   return `- **${d.npcName}**: ${d.sentiment} — "${d.summary}"`;
 }
 
-function formatPlot(p: PlotRow): string {
-  let line = `- **${p.name}** (${p.status}): ${p.description}`;
-  if (p.triggerCondition) line += ` [Trigger: ${p.triggerCondition}]`;
-  const children = p.children?.filter((c) => c.name);
-  if (children && children.length > 0) {
-    line += `\n  Children: ${children.map((c) => `${c.name} (${c.status})`).join(", ")}`;
+function buildPlotTree(plots: PlotRef[]): { tree: string; unseenDescriptions: string } {
+  // Identify roots: plots with no incoming BRANCHES_TO from the active set
+  const activeNames = new Set(plots.map((p) => p.name));
+  const childNames = new Set<string>();
+  for (const p of plots) {
+    for (const c of p.children) {
+      if (activeNames.has(c.name)) childNames.add(c.name);
+    }
   }
-  return line;
+  const roots = plots.filter((p) => !childNames.has(p.name));
+
+  // Also include plots that were loaded but whose parent wasn't in the result
+  // (this shouldn't happen normally, but be safe)
+  const visited = new Set<string>();
+  const observer = getObserver();
+  const treeLines: string[] = [];
+  const fullDescs: string[] = [];
+
+  function renderNode(plot: PlotRef, prefix: string, isLast: boolean, connector: string) {
+    if (visited.has(plot.name)) return;
+    visited.add(plot.name);
+
+    const brief = plot.brief || plot.description.slice(0, 120);
+    treeLines.push(`${prefix}${connector} ${plot.name} (${plot.status}): ${brief}`);
+
+    // Track unseen
+    if (!observer.wasSeen("plot", plot.name)) {
+      fullDescs.push(`### ${plot.name}\n${plot.description}`);
+      observer.markSeen("plot", plot.name);
+    }
+
+    // Render children
+    const kids = plot.children.filter((c) => activeNames.has(c.name) && !visited.has(c.name));
+    const childPrefix = prefix + (isLast ? "    " : "│   ");
+    kids.forEach((child, i) => {
+      renderNode(child, childPrefix, i === kids.length - 1, i === kids.length - 1 ? "└──" : "├──");
+    });
+  }
+
+  roots.forEach((root, i) => {
+    renderNode(root, "", i === roots.length - 1, "");
+  });
+
+  return {
+    tree: treeLines.join("\n"),
+    unseenDescriptions: fullDescs.join("\n\n"),
+  };
 }
 
 // ── Main export ──
 
 export async function buildSceneContext(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
+  const observer = getObserver();
 
   const [gameTime, sceneRows, dispositionRows, plotRows] = await Promise.all([
     getGameTime().catch((err) => {
@@ -144,7 +188,7 @@ export async function buildSceneContext(): Promise<string> {
         "[sceneContext] plots query failed:",
         err instanceof Error ? err.message : String(err),
       );
-      return [] as PlotRow[];
+      return [] as PlotRef[];
     }),
   ]);
 
@@ -163,51 +207,94 @@ export async function buildSceneContext(): Promise<string> {
     return parts.join("\n");
   }
 
+  const compactLines: string[] = [];
+  const fullSections: string[] = [];
+  const allEntities: SceneEntityRef[] = [];
+
   // Location
   const loc = scene.loc as Record<string, unknown> | null;
   if (loc) {
-    const locName = (loc.name as string) ?? "Unknown";
-    const locDesc = loc.description ? ` — ${loc.description}` : "";
-    const locType = loc.type ? ` (${loc.type})` : "";
-    parts.push(`**Location**: **${locName}**${locType}${locDesc}`);
+    const locRef: SceneEntityRef = {
+      name: (loc.name as string) ?? "Unknown",
+      type: (loc.type as string) ?? "LOCATION",
+      description: (loc.description as string) || null,
+      brief: (loc.brief as string) || null,
+    };
+    compactLines.push(`**Location**: ${formatEntityCompact(locRef)}`);
+    allEntities.push(locRef);
   }
 
-  // Inventory
+  // Inventory — names only
   if (scene.inventory && scene.inventory.length > 0) {
-    parts.push(`**Carrying**: ${scene.inventory.map((i) => i.name).join(", ")}`);
+    compactLines.push(`**Carrying**: ${scene.inventory.map((i) => i.name).join(", ")}`);
   }
 
-  // NPCs at location
+  // NPCs
   if (scene.npcs && scene.npcs.length > 0) {
-    parts.push("**Nearby NPCs**:");
+    compactLines.push("**Nearby NPCs**:");
     for (const npc of scene.npcs) {
-      parts.push(formatEntityBrief(npc));
+      compactLines.push(formatEntityCompact(npc));
+      allEntities.push(npc);
     }
   }
 
-  // Objects at location
+  // Objects
   if (scene.objects && scene.objects.length > 0) {
-    parts.push("**Nearby Objects**:");
+    compactLines.push("**Nearby Objects**:");
     for (const obj of scene.objects) {
-      parts.push(formatEntityBrief(obj));
+      compactLines.push(formatEntityCompact(obj));
+      allEntities.push(obj);
     }
   }
 
-  // Dispositions
+  // Dispositions — always compact
   if (dispositionRows.length > 0) {
-    parts.push("**NPC Dispositions toward Player**:");
+    compactLines.push("**NPC Dispositions toward Player**:");
     for (const d of dispositionRows) {
-      parts.push(formatDisposition(d as DispositionRow));
+      compactLines.push(formatDisposition(d as DispositionRow));
     }
   }
 
   // Active plots
   if (plotRows.length > 0) {
-    parts.push("**Active Plots**:");
-    for (const p of plotRows) {
-      parts.push(formatPlot(p as PlotRow));
+    const plotRefs: PlotRef[] = plotRows.map((p: any) => ({
+      name: p.name,
+      description: p.description,
+      brief: p.brief || null,
+      status: p.status,
+      triggerCondition: p.triggerCondition,
+      children: (p.children || []).filter((c: any) => c && c.name),
+    }));
+    const { tree, unseenDescriptions } = buildPlotTree(plotRefs);
+    compactLines.push("**Active Plots**:");
+    compactLines.push(tree);
+    if (unseenDescriptions) {
+      fullSections.push(unseenDescriptions);
     }
   }
+
+  // Build compact section
+  parts.push(compactLines.join("\n"));
+
+  // Build ### full descriptions for unseen entities
+  for (const ref of allEntities) {
+    if (!observer.wasSeen("entity", ref.name)) {
+      const full = formatEntityFull(ref);
+      if (full) {
+        fullSections.push(full);
+      }
+      observer.markSeen("entity", ref.name);
+    }
+  }
+
+  // Append full descriptions section
+  if (fullSections.length > 0) {
+    parts.push("");
+    parts.push(fullSections.join("\n\n"));
+  }
+
+  parts.push("");
+  parts.push("---");
 
   return parts.join("\n");
 }

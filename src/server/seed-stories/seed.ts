@@ -63,10 +63,16 @@ export async function seedDatabase(): Promise<void> {
   console.log(`[seed] seeding ${story.entities.length} entities from "${story.id}"`);
 
   for (const entity of story.entities) {
+    // Strip shortDescription from metadata — it's now a top-level brief
+    const cleanMetadata = entity.metadata ? { ...entity.metadata } : {};
+    delete cleanMetadata.shortDescription;
+
     await client.longTerm.addEntity(entity.name, entity.type, {
       subtype: entity.subtype,
       description: entity.description,
-      metadata: entity.metadata,
+      brief: entity.brief,
+      metadata:
+        Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined,
     });
   }
 
@@ -92,6 +98,7 @@ export async function seedDatabase(): Promise<void> {
   for (const plot of story.plots || []) {
     await client.plots.createPlot(plot.name, {
       description: plot.description,
+      brief: plot.brief,
       status: plot.status,
       triggerCondition: plot.triggerCondition,
       flags: plot.flags,

@@ -33,6 +33,7 @@ import { editNote } from "@/server/llm/tools/editNote";
 import { searchNotes } from "@/server/llm/tools/searchNotes";
 import { editPlot } from "@/server/llm/tools/editPlot";
 import { searchPlots } from "@/server/llm/tools/searchPlots";
+import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
@@ -203,6 +204,7 @@ export async function generateTurn(
     searchNotes,
     editPlot,
     searchPlots,
+    resetSceneContext,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
   };

@@ -41,8 +41,8 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │    tools: {                                                          │
 │      queryWorld, mutateWorld, searchMemory, editNote,                │
 │      searchNotes, editPlot, searchPlots, ← llm/tools/ (7 GM tools)   │
-│      generateDialogueStep,              ← llm/tools/ (Chorus tool)  │
-│      advanceTime                        ← llm/tools/ (Chorus tool)  │
+│      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
+│      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
 │  })                                                                  │
 │                                                                      │
@@ -129,7 +129,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   ├── schema.ts      # Index/constraint/vector index creation
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
     │   │   ├── relationshipManager.ts  # RelationshipManager singleton — three-tier relationship type registry
-    │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
+    │   │   ├── shortTerm.ts   # Conversation messages with sequential _NEXT_MESSAGE linking
     │   │   ├── longTerm.ts    # Entities (COLE+O variant of POLE+O — CHARACTER replaces PERSON), preferences, facts, relationships
     │   │   ├── search.ts      # Parallel hybrid vector search across memory types
     │   │   ├── gameState.ts   # Game save/resume via options on :Conversation node
@@ -334,9 +334,9 @@ Vector dimensions are passed from the active embedder at startup (`embedder.dime
 
 | Type              | Direction                    | Purpose                       |
 |-------------------|------------------------------|-------------------------------|
-| `HAS_MESSAGE`     | `(Conversation)→(Message)`   | Conversation membership       |
-| `FIRST_MESSAGE`   | `(Conversation)→(Message)`   | Head pointer for ordered list |
-| `NEXT_MESSAGE`    | `(Message)→(Message)`        | Sequential linked list        |
+| `_HAS_MESSAGE`     | `(Conversation)→(Message)`   | Conversation membership       |
+| `_FIRST_MESSAGE`   | `(Conversation)→(Message)`   | Head pointer for ordered list |
+| `_NEXT_MESSAGE`    | `(Message)→(Message)`        | Sequential linked list        |
 | `HAS_DISPOSITION` | `(Entity)→(NPCDisposition)`  | NPC attitude toward a target  |
 | `LOCATED_AT`      | `(Entity)→(Entity)`          | Spatial placement (dynamic)   |
 | `LOCATED_IN`      | `(Entity)→(Entity)`          | Container hierarchy (dynamic) |
@@ -348,6 +348,13 @@ Vector dimensions are passed from the active embedder at startup (`embedder.dime
 | `ABOUT_MESSAGE`   | `(Note)→(Message)`           | Note-to-message linkage       |
 
 Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
+
+**Centralized relationship creation:** `Neo4jClient` provides two helpers that all subsystems use to create relationships between existing nodes. Both always set `description` and `created_at` on the relationship:
+
+- **`createRelationship(srcLabel, srcKey, srcVal, tgtLabel, tgtKey, tgtVal, relType, desc?)`** — CREATE with `description` + `created_at`
+- **`mergeRelationship(srcLabel, srcKey, srcVal, tgtLabel, tgtKey, tgtVal, relType, opts?)`** — MERGE with `ON CREATE SET description, created_at` plus optional `onCreateProps` (e.g. `confidence`)
+
+For relationships created inline with node creation (e.g. `_HAS_MESSAGE` alongside a new `:Message`), the `description` and `created_at` properties are set directly in the Cypher rather than using the helpers.
 
 **Relationship type governance:** `relationshipManager.ts` provides a `RelationshipManager` singleton — the single source of truth for all relationship types. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared in TOML or auto-registered at runtime). The `CypherValidator` queries the manager instead of a hardcoded allowlist. New relationship types can be declared per seed story via `[[relationshipTypes]]` in the TOML.
 
@@ -366,11 +373,11 @@ Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`
 
 | Method                   | Behavior                                                                                          |
 |--------------------------|---------------------------------------------------------------------------------------------------|
-| `addMessage()`           | Creates `:Message`, links via `HAS_MESSAGE` + `NEXT_MESSAGE` + `FIRST_MESSAGE`, optionally embeds |
+| `addMessage()`           | Creates `:Message`, links via `_HAS_MESSAGE` + `_NEXT_MESSAGE` + `_FIRST_MESSAGE`, optionally embeds |
 | `getConversation(limit)` | Returns messages ordered oldest-first (reverse of timestamp sort)                                 |
 | `searchMessages(query)`  | Vector similarity search on `message_embedding_idx`                                               |
 
-Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), create `(prev)-[:NEXT_MESSAGE]→(new)`. First message also gets `(conv)-[:FIRST_MESSAGE]→(msg)`.
+Message linking algorithm: find the last message (no outgoing `_NEXT_MESSAGE`), create `(prev)-[:NEXT_MESSAGE]→(new)`. First message also gets `(conv)-[:_FIRST_MESSAGE]→(msg)`.
 
 ### 9.6 LongTermMemory
 

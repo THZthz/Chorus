@@ -205,13 +205,11 @@ export class Plots {
     childPlotName: string,
     description?: string,
   ): Promise<boolean> {
-    const rows = await this.client.executeWrite(
-      `MATCH (parent:Plot {name: $parent}), (child:Plot {name: $child})
-       MERGE (parent)-[r:BRANCHES_TO]->(child)
-       ON CREATE SET r.description = $desc, r.created_at = datetime()
-       SET r.description = coalesce($desc, r.description)
-       RETURN parent.name AS parentName`,
-      { parent: parentPlotName, child: childPlotName, desc: description || null },
+    const rows = await this.client.mergeRelationship(
+      "Plot", "name", parentPlotName,
+      "Plot", "name", childPlotName,
+      "BRANCHES_TO",
+      { description },
     );
     return rows.length > 0;
   }
@@ -259,9 +257,9 @@ export class Plots {
 
   async markPlotStarted(plotName: string, description?: string): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+      `MATCH (a:TimeAnchor {id: 'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
-       MERGE (p)-[r:STARTED_AT]->(tp)
+       MERGE (p)-[r:_STARTED_AT]->(tp)
        ON CREATE SET r.description = $desc, r.created_at = datetime()
        SET r.description = coalesce($desc, r.description)`,
       { name: plotName, desc: description || null },
@@ -270,9 +268,9 @@ export class Plots {
 
   async markPlotActive(plotName: string, description?: string): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+      `MATCH (a:TimeAnchor {id: 'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
-       MERGE (p)-[r:ACTIVE_AT]->(tp)
+       MERGE (p)-[r:_ACTIVE_AT]->(tp)
        ON CREATE SET r.description = $desc, r.created_at = datetime()
        SET r.description = coalesce($desc, r.description)`,
       { name: plotName, desc: description || null },
@@ -281,9 +279,9 @@ export class Plots {
 
   async markPlotCompleted(plotName: string, description?: string): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+      `MATCH (a:TimeAnchor {id: 'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
-       MERGE (p)-[r:COMPLETED_AT]->(tp)
+       MERGE (p)-[r:_COMPLETED_AT]->(tp)
        ON CREATE SET r.description = $desc, r.created_at = datetime()
        SET r.description = coalesce($desc, r.description)`,
       { name: plotName, desc: description || null },

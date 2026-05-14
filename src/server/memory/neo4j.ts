@@ -169,6 +169,77 @@ export class Neo4jClient {
     }
   }
 
+  /**
+   * MERGE a relationship between two existing nodes, always setting description
+   * and created_at. Extra properties are set only ON CREATE.
+   * The source/target nodes must already exist and be matchable by a single
+   * key-value pair.
+   */
+  async mergeRelationship(
+    sourceLabel: string,
+    sourceKey: string,
+    sourceValue: string,
+    targetLabel: string,
+    targetKey: string,
+    targetValue: string,
+    relType: string,
+    options?: { description?: string; onCreateProps?: Record<string, unknown> },
+  ): Promise<Record<string, unknown>[]> {
+    const { description, onCreateProps } = options || {};
+    const safeType = relType.replace(/[^A-Za-z0-9_]/g, "_");
+    const params: Record<string, unknown> = {
+      srcVal: sourceValue,
+      tgtVal: targetValue,
+      desc: description || null,
+    };
+    const onCreateSetters = ["r.description = $desc", "r.created_at = datetime()"];
+    if (onCreateProps) {
+      for (const [key, val] of Object.entries(onCreateProps)) {
+        const paramKey = `_onCreate_${key}`;
+        params[paramKey] = val;
+        onCreateSetters.push(`r.${key} = $${paramKey}`);
+      }
+    }
+    return this.executeWrite(
+      `MATCH (src:${sourceLabel} {${sourceKey}: $srcVal})
+       MATCH (tgt:${targetLabel} {${targetKey}: $tgtVal})
+       MERGE (src)-[r:${safeType}]->(tgt)
+       ON CREATE SET ${onCreateSetters.join(", ")}
+       SET r.description = coalesce($desc, r.description)
+       RETURN r`,
+      params,
+    );
+  }
+
+  /**
+   * CREATE a relationship between two existing nodes, always setting description
+   * and created_at. The source/target nodes must already exist and be matchable
+   * by a single key-value pair.
+   */
+  async createRelationship(
+    sourceLabel: string,
+    sourceKey: string,
+    sourceValue: string,
+    targetLabel: string,
+    targetKey: string,
+    targetValue: string,
+    relType: string,
+    description?: string,
+  ): Promise<void> {
+    const safeType = relType.replace(/[^A-Za-z0-9_]/g, "_");
+    await this.executeWrite(
+      `MATCH (src:${sourceLabel} {${sourceKey}: $srcVal})
+       MATCH (tgt:${targetLabel} {${targetKey}: $tgtVal})
+       CREATE (src)-[r:${safeType}]->(tgt)
+       SET r.description = $desc, r.created_at = datetime()`,
+      {
+        srcVal: sourceValue,
+        tgtVal: targetValue,
+        desc: description || null,
+      },
+    );
+  }
+
   async close(): Promise<void> {
     await this.driver.close();
   }

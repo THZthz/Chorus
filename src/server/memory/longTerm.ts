@@ -222,24 +222,13 @@ export class LongTermMemory {
     },
   ): Promise<{ created: boolean }> {
     const { description, confidence = 1.0 } = options || {};
-    // Sanitize relationship type for use as a Cypher relationship type
-    const safeType = relationshipType.replace(/[^A-Za-z0-9_]/g, "_");
-    const rows = await this.client.executeWrite(
-      `MATCH (a:Entity {name: $src}), (b:Entity {name: $tgt})
-       MERGE (a)-[r:${safeType}]->(b)
-       ON CREATE SET
-         r.description = $desc,
-         r.confidence = $conf,
-         r.created_at = datetime()
-       RETURN r, r.created_at IS NOT NULL AS isNew`,
-      {
-        src: sourceName,
-        tgt: targetName,
-        desc: description || null,
-        conf: confidence,
-      },
+    const rows = await this.client.mergeRelationship(
+      "Entity", "name", sourceName,
+      "Entity", "name", targetName,
+      relationshipType,
+      { description, onCreateProps: { confidence } },
     );
-    const created = rows.length > 0 && ((rows[0]?.isNew as boolean) || false);
+    const created = rows.length > 0;
     return { created };
   }
 
@@ -295,11 +284,11 @@ export class LongTermMemory {
     const now = new Date().toISOString();
     const rows = await this.client.executeWrite(
       `MATCH (npc:Entity {name: $npcName})
-       MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
-       ON CREATE SET d.id = $id, d.created_at = datetime($now)
+       MERGE (npc)-[r:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
+       ON CREATE SET d.id = $id, d.created_at = datetime($now), r.description = $dispDesc, r.created_at = datetime()
        SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
        RETURN d, d.id = $id AS isNew`,
-      { npcName, targetName, sentiment, summary, id, now },
+      { npcName, targetName, sentiment, summary, id, now, dispDesc: null },
     );
     if (rows.length === 0) {
       throw new Error(`NPC entity "${npcName}" not found`);

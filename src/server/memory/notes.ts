@@ -107,12 +107,11 @@ export class Notes {
 
   async linkToEntity(noteId: string, entityName: string, description?: string): Promise<void> {
     try {
-      await this.client.executeWrite(
-        `MATCH (n:Note {id: $noteId}), (e:Entity {name: $entityName})
-         MERGE (n)-[r:ABOUT]->(e)
-         ON CREATE SET r.description = $desc, r.created_at = datetime()
-         SET r.description = coalesce($desc, r.description)`,
-        { noteId, entityName, desc: description || null },
+      await this.client.mergeRelationship(
+        "Note", "id", noteId,
+        "Entity", "name", entityName,
+        "ABOUT",
+        { description },
       );
     } catch (err) {
       console.warn(
@@ -124,12 +123,11 @@ export class Notes {
 
   async linkToMessage(noteId: string, messageId: string, description?: string): Promise<void> {
     try {
-      await this.client.executeWrite(
-        `MATCH (n:Note {id: $noteId}), (m:Message {id: $messageId})
-         MERGE (n)-[r:ABOUT_MESSAGE]->(m)
-         ON CREATE SET r.description = $desc, r.created_at = datetime()
-         SET r.description = coalesce($desc, r.description)`,
-        { noteId, messageId, desc: description || null },
+      await this.client.mergeRelationship(
+        "Note", "id", noteId,
+        "Message", "id", messageId,
+        "ABOUT_MESSAGE",
+        { description },
       );
     } catch (err) {
       console.warn(

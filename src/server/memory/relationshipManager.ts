@@ -24,44 +24,52 @@ export interface RelationshipDef {
 
 const INTERNAL_TYPES: { name: string; description: string }[] = [
   {
-    name: "HAS_MESSAGE",
+    name: "_HAS_MESSAGE",
     description: "Links a Conversation node to its Message nodes.",
   },
   {
-    name: "FIRST_MESSAGE",
+    name: "_FIRST_MESSAGE",
     description: "Points to the first Message in a Conversation's ordered linked list.",
   },
   {
-    name: "NEXT_MESSAGE",
+    name: "_NEXT_MESSAGE",
     description: "Sequentially links Message nodes in conversation order.",
   },
   {
-    name: "HAS_DISPOSITION",
-    description: "Links an Entity (NPC) to its NPCDisposition nodes.",
-  },
-  {
-    name: "NEXT_TIMEPOINT",
+    name: "_NEXT_TIMEPOINT",
     description: "Links TimePoint nodes in chronological sequence.",
   },
   {
-    name: "CURRENT_TIMEPOINT",
+    name: "_CURRENT_TIMEPOINT",
     description: "Points to the current TimePoint from a TimeAnchor node.",
   },
   {
-    name: "AT_TIME",
+    name: "_AT_TIME",
     description: "Links an entity or event to a specific TimePoint.",
   },
   {
-    name: "STARTED_AT",
+    name: "_STARTED_AT",
     description: "Marks the TimePoint when an event or plot started.",
   },
   {
-    name: "ACTIVE_AT",
+    name: "_ACTIVE_AT",
     description: "Marks a TimePoint when an entity or condition is active.",
   },
   {
-    name: "COMPLETED_AT",
+    name: "_COMPLETED_AT",
     description: "Marks the TimePoint when an event or plot completed.",
+  },
+  {
+    name: "_HAS_GM_MESSAGE",
+    description: "Links a Conversation node to its GMTurnMessage nodes.",
+  },
+  {
+    name: "_NEXT_GM_MESSAGE",
+    description: "Sequentially links GMTurnMessage nodes in conversation order.",
+  },
+  {
+    name: "_FIRST_GM_MESSAGE",
+    description: "Points to the first GMTurnMessage in a Conversation's ordered linked list.",
   },
 ];
 
@@ -85,6 +93,10 @@ const PREDEFINED_TYPES: { name: string; description: string }[] = [
   {
     name: "LOCATED_IN",
     description: "A location or entity is contained within a larger location.",
+  },
+  {
+    name: "HAS_DISPOSITION",
+    description: "Links an Entity (NPC) to its NPCDisposition nodes.",
   },
 ];
 

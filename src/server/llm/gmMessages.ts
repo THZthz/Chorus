@@ -32,7 +32,7 @@ import { GAME_ID } from "@/server/memory/gameState";
 export async function loadGMMessages(): Promise<ModelMessage[]> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
-    `MATCH (c:Conversation {session_id: $gameId})-[:HAS_GM_MESSAGE]->(m:GMTurnMessage)
+    `MATCH (c:Conversation {session_id: $gameId})-[:_HAS_GM_MESSAGE]->(m:GMTurnMessage)
      RETURN m ORDER BY m.created_at, m.message_index`,
     { gameId: GAME_ID },
   );
@@ -65,8 +65,8 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
   if (toStore.length === 0) return;
 
   const lastRows = await client.neo4j.executeRead(
-    `MATCH (c:Conversation {id: $convId})-[:HAS_GM_MESSAGE]->(m:GMTurnMessage)
-     WHERE NOT (m)-[:NEXT_GM_MESSAGE]->(:GMTurnMessage)
+    `MATCH (c:Conversation {id: $convId})-[:_HAS_GM_MESSAGE]->(m:GMTurnMessage)
+     WHERE NOT (m)-[:_NEXT_GM_MESSAGE]->(:GMTurnMessage)
      RETURN m.id AS id ORDER BY m.created_at DESC LIMIT 1`,
     { convId },
   );
@@ -80,7 +80,7 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
     ids.push(id);
     await client.neo4j.executeWrite(
       `MATCH (c:Conversation {id: $convId})
-       CREATE (c)-[:HAS_GM_MESSAGE]->(m:GMTurnMessage {
+       CREATE (c)-[r:_HAS_GM_MESSAGE]->(m:GMTurnMessage {
          id: $id,
          role: $role,
          content: $content,
@@ -88,7 +88,8 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
          turn_number: $turnNumber,
          message_index: $messageIndex,
          created_at: datetime($now)
-       })`,
+       })
+       SET r.description = $hasGmDesc, r.created_at = datetime()`,
       {
         convId,
         id,
@@ -98,30 +99,31 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
         turnNumber,
         messageIndex,
         now,
+        hasGmDesc: null,
       },
     );
     messageIndex++;
   }
 
   if (previousLastId) {
-    await client.neo4j.executeWrite(
-      `MATCH (prev:GMTurnMessage {id: $prevId}), (next:GMTurnMessage {id: $nextId})
-       CREATE (prev)-[:NEXT_GM_MESSAGE]->(next)`,
-      { prevId: previousLastId, nextId: ids[0] },
+    await client.neo4j.createRelationship(
+      "GMTurnMessage", "id", previousLastId,
+      "GMTurnMessage", "id", ids[0],
+      "_NEXT_GM_MESSAGE", "",
     );
   }
   for (let i = 0; i < ids.length - 1; i++) {
-    await client.neo4j.executeWrite(
-      `MATCH (prev:GMTurnMessage {id: $prevId}), (next:GMTurnMessage {id: $nextId})
-       CREATE (prev)-[:NEXT_GM_MESSAGE]->(next)`,
-      { prevId: ids[i], nextId: ids[i + 1] },
+    await client.neo4j.createRelationship(
+      "GMTurnMessage", "id", ids[i],
+      "GMTurnMessage", "id", ids[i + 1],
+      "_NEXT_GM_MESSAGE", "",
     );
   }
   if (isFirst && ids.length > 0) {
-    await client.neo4j.executeWrite(
-      `MATCH (c:Conversation {id: $convId}), (m:GMTurnMessage {id: $msgId})
-       CREATE (c)-[:FIRST_GM_MESSAGE]->(m)`,
-      { convId, msgId: ids[0] },
+    await client.neo4j.createRelationship(
+      "Conversation", "id", convId,
+      "GMTurnMessage", "id", ids[0],
+      "_FIRST_GM_MESSAGE", "",
     );
   }
 }
@@ -129,7 +131,7 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
 export async function getNextTurnNumber(): Promise<number> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
-    `MATCH (c:Conversation {session_id: $gameId})-[:HAS_GM_MESSAGE]->(m:GMTurnMessage)
+    `MATCH (c:Conversation {session_id: $gameId})-[:_HAS_GM_MESSAGE]->(m:GMTurnMessage)
      RETURN max(m.turn_number) AS maxTurn`,
     { gameId: GAME_ID },
   );

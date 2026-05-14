@@ -386,10 +386,10 @@ export async function generateTurn(
               args = chunk.input as Record<string, unknown>;
             }
             if (args) {
-              if (args.messages && Array.isArray(args.messages)) {
+              if (args.messages && Array.isArray(args.messages) && args.messages.length > 0) {
                 finalMessages = args.messages as Record<string, unknown>[];
               }
-              if (args.options && Array.isArray(args.options)) {
+              if (args.options && Array.isArray(args.options) && args.options.length > 0) {
                 finalOptions = (args.options as Record<string, unknown>[]).map((o, i) => ({
                   id: (o.id as string) || `opt_${i}`,
                   text: (o.text as string) || "",

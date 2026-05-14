@@ -107,17 +107,22 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
 });
 
 const inputSchema = z.object({
-  messages: z.array(messageSchema).describe("The sequence of messages in this dialogue step."),
-  options: z.array(optionSchema).describe("The choices presented to the player."),
+  messages: z
+    .array(messageSchema)
+    .optional()
+    .describe("The sequence of messages in this dialogue step. Required for fresh calls; omit during corrections if only fixing options."),
+  options: z.array(optionSchema).optional().describe("The choices presented to the player. Required for fresh calls. Omit during corrections if only fixing options."),
   isCorrection: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      "Set to true when correcting specific validation errors from a previous failed call. Only include the failing messages/options — set their 'index' field to the index shown in the error. Valid items are preserved automatically.",
+      "Set to true when correcting specific validation errors from a previous failed call. Only include the failing messages/options — set their 'index' field to the index shown in the error. Valid items are preserved automatically. You can omit messages or options if only the other needs correction.",
     ),
 });
 
+type DialogueMessage = z.infer<typeof messageSchema>;
+type DialogueOpt = z.infer<typeof optionSchema>;
 type DialogueArgs = z.infer<typeof inputSchema>;
 
 interface ValidationResult {
@@ -133,13 +138,14 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   const validMessageIndices = new Set<number>();
   const validOptionIndices = new Set<number>();
 
-  // Mark all indices as potentially valid, then remove failing ones
-  for (let i = 0; i < args.messages.length; i++) validMessageIndices.add(i);
-  if (args.options) {
-    for (let i = 0; i < args.options.length; i++) validOptionIndices.add(i);
-  }
+  const messages = args.messages ?? [];
+  const options = args.options ?? [];
 
-  if (args.messages.length === 0) {
+  // Mark all indices as potentially valid, then remove failing ones
+  for (let i = 0; i < messages.length; i++) validMessageIndices.add(i);
+  for (let i = 0; i < options.length; i++) validOptionIndices.add(i);
+
+  if (messages.length === 0) {
     errors.push(
       "No messages — at least 1 message is required. Provide a NARRATOR message, an NPC line, or an inner voice observation.",
     );
@@ -147,8 +153,8 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   }
 
   // Collect ALL INNER_VOICE errors in one pass (no break)
-  for (let i = 0; i < args.messages.length; i++) {
-    const msg = args.messages[i];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     if (msg.speaker === "INNER_VOICE") {
       errors.push(
         `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
@@ -163,8 +169,8 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     }
   }
 
-  for (let i = 0; i < args.messages.length; i++) {
-    const msg = args.messages[i];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     const speakerError = checkText(
       msg.speaker,
       `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].speaker`,
@@ -186,69 +192,67 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     }
   }
 
-  if (!args.options || args.options.length < 2) {
+  if (options.length < 2) {
     errors.push(
       `Too few options — at least 2 options are required. Every ${TOOL_NAMES.GENERATE_DIALOGUE} call must include 2-5 choices for the player.`,
     );
     validOptionIndices.clear();
-  } else if (args.options.length > 5) {
+  } else if (options.length > 5) {
     errors.push(
-      `Too many options (${args.options.length}) — at most 5 options are allowed. Provide 2-5 focused choices that respond to the current scene.`,
+      `Too many options (${options.length}) — at most 5 options are allowed. Provide 2-5 focused choices that respond to the current scene.`,
     );
     validOptionIndices.clear();
   }
 
-  if (args.options) {
-    // Skip per-option checks when count check already cleared all indices
-    if (validOptionIndices.size > 0) {
-      for (let i = 0; i < args.options.length; i++) {
-        const opt = args.options[i];
-        if (opt.check && opt.hintBefore) {
-          errors.push(
-            `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
-          );
+  // Skip per-option checks when count check already cleared all indices
+  if (validOptionIndices.size > 0) {
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
+      if (opt.check && opt.hintBefore) {
+        errors.push(
+          `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
+        );
+        validOptionIndices.delete(i);
+      }
+    }
+  }
+
+  if (validOptionIndices.size > 0) {
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
+      const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
+      if (textError) {
+        errors.push(textError);
+        validOptionIndices.delete(i);
+      }
+      if (opt.hintBefore) {
+        const hintError = checkText(
+          opt.hintBefore,
+          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintBefore`,
+        );
+        if (hintError) {
+          errors.push(hintError);
           validOptionIndices.delete(i);
         }
       }
-    }
-
-    if (validOptionIndices.size > 0) {
-      for (let i = 0; i < args.options.length; i++) {
-        const opt = args.options[i];
-        const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
-        if (textError) {
-          errors.push(textError);
+      if (opt.hintAfter) {
+        const hintError = checkText(
+          opt.hintAfter,
+          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintAfter`,
+        );
+        if (hintError) {
+          errors.push(hintError);
           validOptionIndices.delete(i);
         }
-        if (opt.hintBefore) {
-          const hintError = checkText(
-            opt.hintBefore,
-            `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintBefore`,
-          );
-          if (hintError) {
-            errors.push(hintError);
-            validOptionIndices.delete(i);
-          }
-        }
-        if (opt.hintAfter) {
-          const hintError = checkText(
-            opt.hintAfter,
-            `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintAfter`,
-          );
-          if (hintError) {
-            errors.push(hintError);
-            validOptionIndices.delete(i);
-          }
-        }
-        if (opt.selectionMessage) {
-          const selMsgError = checkText(
-            opt.selectionMessage,
-            `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
-          );
-          if (selMsgError) {
-            errors.push(selMsgError);
-            validOptionIndices.delete(i);
-          }
+      }
+      if (opt.selectionMessage) {
+        const selMsgError = checkText(
+          opt.selectionMessage,
+          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
+        );
+        if (selMsgError) {
+          errors.push(selMsgError);
+          validOptionIndices.delete(i);
         }
       }
     }
@@ -273,13 +277,16 @@ function formatValidationFailure(
     );
   }
 
+  const msgs = args.messages ?? [];
+  const opts = args.options ?? [];
+
   // Echo valid content — encourages LLM to keep these verbatim
   const validMsgs = [...result.validMessageIndices].sort((a, b) => a - b);
   const validOpts = [...result.validOptionIndices].sort((a, b) => a - b);
   if (validMsgs.length > 0) {
     lines.push(`\nValid messages (keep exactly as-is):`);
     for (const i of validMsgs) {
-      const msg = args.messages[i];
+      const msg = msgs[i];
       const truncatedText = msg.text.length > 100 ? msg.text.slice(0, 100) + "..." : msg.text;
       lines.push(
         `  messages[${i}]: speaker="${msg.speaker}" type="${msg.type}" text="${truncatedText}"`,
@@ -289,7 +296,7 @@ function formatValidationFailure(
   if (validOpts.length > 0) {
     lines.push(`\nValid options (keep exactly as-is):`);
     for (const i of validOpts) {
-      const opt = args.options![i];
+      const opt = opts[i];
       const parts: string[] = [`options[${i}]:`];
       parts.push(`text="${opt.text}"`);
       if (opt.hintBefore) parts.push(`hintBefore="${opt.hintBefore}"`);
@@ -335,7 +342,7 @@ async function executeAndPersist(
 
   if (persistMessage) {
     let persisted = 0;
-    for (const msg of args.messages) {
+    for (const msg of args.messages ?? []) {
       try {
         await persistMessage({
           speaker: msg.speaker,
@@ -365,8 +372,8 @@ async function executeAndPersist(
 
 export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn) {
   let lastCallValid = false;
-  let lastCallMessages: DialogueArgs["messages"] = [];
-  let lastCallOptions: DialogueArgs["options"] = [];
+  let lastCallMessages: DialogueMessage[] = [];
+  let lastCallOptions: DialogueOpt[] = [];
 
   const dialogueTool = tool({
     title: TOOL_NAMES.GENERATE_DIALOGUE,
@@ -383,20 +390,32 @@ from the previous call automatically. You do NOT need to copy them.`.trim(),
     execute: async (args: DialogueArgs) => {
       const isCorrection = args.isCorrection ?? false;
 
-      // Auto-merge: when correcting, start from stored base and patch in the corrections
-      if (isCorrection && lastCallMessages.length > 0) {
+      // Auto-merge: when correcting, start from stored base and patch in the corrections.
+      // Items with index < stored.length replace the existing item at that position.
+      // Items with index == stored.length are appended (supports fixing count errors).
+      if (isCorrection && (lastCallMessages.length > 0 || lastCallOptions.length > 0)) {
         const mergedMessages = [...lastCallMessages];
-        for (const msg of args.messages) {
-          if (msg.index !== undefined && msg.index < mergedMessages.length) {
-            mergedMessages[msg.index] = msg;
+        if (args.messages) {
+          for (const msg of args.messages) {
+            if (msg.index !== undefined && msg.index <= mergedMessages.length) {
+              if (msg.index === mergedMessages.length) {
+                mergedMessages.push(msg);
+              } else {
+                mergedMessages[msg.index] = msg;
+              }
+            }
           }
         }
 
-        const mergedOptions = lastCallOptions ? [...lastCallOptions] : [];
+        const mergedOptions = [...lastCallOptions];
         if (args.options) {
           for (const opt of args.options) {
-            if (opt.index !== undefined && opt.index < mergedOptions.length) {
-              mergedOptions[opt.index] = opt;
+            if (opt.index !== undefined && opt.index <= mergedOptions.length) {
+              if (opt.index === mergedOptions.length) {
+                mergedOptions.push(opt);
+              } else {
+                mergedOptions[opt.index] = opt;
+              }
             }
           }
         }
@@ -408,11 +427,12 @@ from the previous call automatically. You do NOT need to copy them.`.trim(),
         lastCallValid = valid;
       });
 
-      // Store this call's args for potential future correction (only for non-correction calls,
-      // or correction calls that still had some valid items — so the LLM can iterate)
-      if (!isCorrection || args.messages.length > 0) {
-        lastCallMessages = args.messages;
-        lastCallOptions = args.options;
+      // Store this call's args for potential future correction
+      const msgs = args.messages ?? [];
+      const opts = args.options ?? [];
+      if (!isCorrection || msgs.length > 0) {
+        lastCallMessages = msgs;
+        lastCallOptions = opts;
       }
 
       return result;

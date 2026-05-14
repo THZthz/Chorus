@@ -667,30 +667,48 @@ targetName = "Crystal's Lyre"
 type = "CARRIES"
 description = "Crystal carries her lyre everywhere — it was her mother's gift and her livelihood."
 
-# Car Hierarchy (LOCATED_IN)
+# ── Relationship Types ──────────────────────────────────────────
+
+[[relationshipTypes]]
+name = "CONNECTED_TO"
+description = "Sequential adjacency between two locations — cars of a train, floors of a tower, rooms along a corridor."
+
+# Car Connections (CONNECTED_TO) — front to rear
 [[relationships]]
 sourceName = "Engine Car"
-targetName = "Passenger Car A"
-type = "LOCATED_IN"
-description = "Hierarchy note: the engine car leads the conveyor, connected forward of the crew car."
+targetName = "Crew Car"
+type = "CONNECTED_TO"
+description = "The engine car connects directly to the crew car — Kest's domain feeds into the crew's quarters."
+
+[[relationships]]
+sourceName = "Crew Car"
+targetName = "Observation Car"
+type = "CONNECTED_TO"
+description = "The crew car connects to the observation car — crew emerge here to attend passengers under the glass dome."
 
 [[relationships]]
 sourceName = "Observation Car"
 targetName = "Passenger Car A"
-type = "LOCATED_IN"
-description = "Hierarchy note: the observation car sits between the crew car and Passenger Car A."
+type = "CONNECTED_TO"
+description = "The observation car connects to Passenger Car A — social space gives way to private compartments."
 
 [[relationships]]
 sourceName = "Passenger Car A"
-targetName = "Passenger Car B"
-type = "LOCATED_IN"
-description = "Hierarchy note: Passenger Car A is separated from Passenger Car B by the dining car."
+targetName = "Dining Car"
+type = "CONNECTED_TO"
+description = "Passenger Car A connects to the dining car — the first block of compartments opens onto the social hub."
 
 [[relationships]]
-sourceName = "Lounge Car"
+sourceName = "Dining Car"
 targetName = "Passenger Car B"
-type = "LOCATED_IN"
-description = "Hierarchy note: the lounge car sits at the rear, connected aft of Passenger Car B."
+type = "CONNECTED_TO"
+description = "The dining car connects to Passenger Car B — anyone moving between passenger blocks must cross here."
+
+[[relationships]]
+sourceName = "Passenger Car B"
+targetName = "Lounge Car"
+type = "CONNECTED_TO"
+description = "Passenger Car B connects to the lounge car — the rearmost compartments give way to leather chairs and brandy."
 
 # Character Relations (ALLIED_WITH, HOSTILE_TOWARDS)
 [[relationships]]

@@ -16,12 +16,12 @@ initialLocationId = "the_velvet_thorn"
 id = "player"
 type = "CHARACTER"
 name = "Player"
+brief = "An amnesiac with a glowing crystal and a secret power, waking in the Velvet Thorn brothel deep in the Warrens."
 description = """
 You remember nothing before the rain. Cold cobblestones. The distant clang of a harbor bell. A woman's voice, low and urgent, calling you back from somewhere dark. Then the warm glow of a violet crystal in your palm, pulsing in time with your heartbeat. You woke in a velvet-draped room at the Velvet Thorn, a brothel in the Warrens, with Veyla's golden eyes watching you and a name you don't recognize on her lips. The shard responds to your emotions — flaring bright when your pulse quickens, when Veyla draws close, when desire or fear or fury surge through you. You don't know what you are. You don't know where the power comes from. But in a city where unlicensed magic is a crime and the Warrens devour the weak, ignorance is a death sentence — and what burns between you and the half-elf who saved you might be the only truth worth trusting.\
 """
 
 [entities.metadata]
-shortDescription = "An amnesiac with a glowing crystal and a secret power, waking in the Velvet Thorn brothel deep in the Warrens."
 
 [entities.metadata.stats]
 logic = 3
@@ -48,6 +48,7 @@ Status = "Vulnerable, powerful, unaware — a secret waiting to be discovered"
 id = "veyla"
 type = "CHARACTER"
 name = "Veyla"
+brief = "A half-elf courtesan with eyes like burnished gold — equal parts savior and temptation."
 description = """
 Veyla is tall and languid, with the kind of beauty that makes people forget what they were about to say. Her dark copper skin gleams in candlelight; her hair is cropped short, black silk threaded with a single streak of silver at the left temple. Her ears taper to delicate points she usually hides beneath a wrap, and her eyes — large, luminous, the color of aged whiskey held up to flame — betray her half-elven blood more than she'd like. A faded scar traces from her left collarbone to her shoulder blade, a memento of something she won't discuss.
 
@@ -57,7 +58,6 @@ She found you three nights ago, crumpled in the rain outside the Sinking Dock, a
 """
 
 [entities.metadata]
-shortDescription = "A half-elf courtesan with eyes like burnished gold — equal parts savior and temptation."
 
 [entities.metadata.stats]
 
@@ -78,6 +78,7 @@ Status = "Protective, intrigued, increasingly entangled"
 id = "madam_cressida"
 type = "CHARACTER"
 name = "Madam Cressida"
+brief = "Proprietor of the Velvet Thorn — a woman who has seen everything and forgotten nothing."
 description = """
 Cressida is a woman in her fifties, handsome in the way a well-worn blade is handsome — all function beneath the polish. Silver-streaked auburn hair is pinned in a coil that has seen better hours; she wears velvet in deep plum and emerald, dresses cut low but never cheap. A glass of fortified wine lives in her left hand like a prosthetic. She is never drunk, never shocked, and never without an angle.
 
@@ -87,7 +88,6 @@ She watches the player with the guarded patience of someone who has seen magic d
 """
 
 [entities.metadata]
-shortDescription = "Proprietor of the Velvet Thorn — a woman who has seen everything and forgotten nothing."
 
 [entities.metadata.stats]
 
@@ -109,6 +109,7 @@ Past = "Exiled from the upper levels after a noble scandal — rebuilt in the Wa
 id = "the_velvet_thorn"
 type = "LOCATION"
 name = "The Velvet Thorn"
+brief = "A brothel nestled deep in the Warrens — smoke, silk, and whispered promises."
 description = """
 The Velvet Thorn hides in plain sight on a crooked alley off the Sinking Dock, its entrance marked only by a single red lantern and a faded sign bearing a thorn-wrapped rose. Inside, the air is thick with the scent of clove smoke, spilled wine, and something sweeter underneath — jasmine oil, sweat, and candle wax. Low ceilings press down like a held breath. The main parlor is a warren of velvet-draped alcoves and worn leather divans, lit by guttering candles that leave most of the room in suggestive shadow. Upstairs, narrow corridors twist past numbered doors, each one muffling its own secrets. The floorboards creak in a language everyone ignores.
 
@@ -116,7 +117,6 @@ The clientele is a mix of dock workers spending their wages, merchants slumming 
 """
 
 [entities.metadata]
-shortDescription = "A brothel nestled deep in the Warrens — smoke, silk, and whispered promises."
 
 [entities.metadata.attributes]
 District = "Lower Levels — The Warrens, off Sinking Dock"
@@ -127,12 +127,12 @@ Atmosphere = "Smoky, intimate, dangerous — velvet and candlelight over rough t
 id = "matt_harbor_upper"
 type = "LOCATION"
 name = "Upper Karavelle"
+brief = "White limestone terraces where the merchant princes and minor nobility keep their townhouses."
 description = """
 White limestone terraces climb the hillside above the harbor, lined with acacia trees and gas-lamps that burn with alchemical flame. The streets are swept clean, patrolled by the duke's watch in polished breastplates. At night, the upper levels glitter like a necklace against the dark. But even here, in the shadow of the duke's clock-tower, the smell of the lower city drifts up on the wind — brine, smoke, and something rotting. The mages' guild maintains a quiet presence here, and unlicensed sorcery is punished severely.\
 """
 
 [entities.metadata]
-shortDescription = "White limestone terraces where the merchant princes and minor nobility keep their townhouses."
 
 [entities.metadata.attributes]
 Patrolled = "Duke's Watch — frequent patrols"
@@ -144,12 +144,12 @@ Architecture = "White limestone, wrought iron, alchemical gas-lamps"
 id = "matt_harbor_lower"
 type = "LOCATION"
 name = "The Warrens"
+brief = "The sunken underbelly of Karavelle — slave markets, smoke-belching workshops, and the lawless docks."
 description = """
 The lower levels are a labyrinth of leaning tenements, smoke-belching workshops, and open-air markets where anything can be bought — spices, stolen goods, information, and people. The slave markets huddle near the docks: orcish stevedores and elven merchants haggle over beastfolk laborers while gaunt-eyed handlers prod their wares. The air is a fog of coal smoke, fish-gut, cheap tallow, and the ever-present brine of the harbor. The duke's watch rarely descends below the third tier. Down here, the Harbor Rats run things, and justice is measured in coin and blood. In the Warrens, magic is not policed — it is either feared, exploited, or consumed. A person with power who doesn't know how to wield it is not a person for long.\
 """
 
 [entities.metadata]
-shortDescription = "The sunken underbelly of Karavelle — slave markets, smoke-belching workshops, and the lawless docks."
 
 [entities.metadata.attributes]
 Atmosphere = "Choking, crowded, lawless"
@@ -163,6 +163,7 @@ Atmosphere = "Choking, crowded, lawless"
 id = "soul_shard"
 type = "OBJECT"
 name = "Soul Shard"
+brief = "A thumbnail-sized crystal that pulses with a faint violet light, warm against your palm."
 description = """
 The crystal is smooth and oval, like a river stone worn down over centuries. It glows faintly — a deep violet luminescence that seems to breathe in rhythm with your heartbeat. When your emotions surge, it grows warmer, brighter. Veyla says you were clutching it when she found you, your fingers locked around it so tightly she had to pry them open one by one. The surface is unmarked, but when you stare into its depths, you see shapes — half-formed, like faces in smoke. It feels less like an object and more like a piece of something that was once whole.
 
@@ -170,7 +171,6 @@ The shard responds to desire, to fear, to longing. The first time your hand brus
 """
 
 [entities.metadata]
-shortDescription = "A thumbnail-sized crystal that pulses with a faint violet light, warm against your palm."
 
 [entities.metadata.attributes]
 Origin = "Unknown — Veyla found it clutched in the player's hand"
@@ -181,12 +181,12 @@ Material = "Crystalline, warm to the touch, seemingly indestructible"
 id = "veyllas_ribbon"
 type = "OBJECT"
 name = "Veyla's Ribbon"
+brief = "A slip of midnight-blue silk tied around your wrist, carrying the scent of night-blooming jasmine."
 description = """
 The ribbon is soft and worn at the edges — something she's had for years. Midnight blue, the color of the sky just before dawn. She tied it around your wrist while you slept, a small ward against the things that hunt in dreams. The scent of night-blooming jasmine clings to the silk, mingled with something earthier — sandalwood and skin. When you hold it to your nose, you catch the faintest trace of something else beneath the perfume: ozone, the sharp tang of distant lightning. Veyla's own magic, perhaps, or a trace of whatever she touched before she touched you.\
 """
 
 [entities.metadata]
-shortDescription = "A slip of midnight-blue silk tied around your wrist, carrying the scent of night-blooming jasmine."
 
 [entities.metadata.attributes]
 Owner = "Veyla"
@@ -264,6 +264,7 @@ description = "The Velvet Thorn is nestled deep in the Warrens off the Sinking D
 [[plots]]
 name = "The Awakening"
 description = """Three nights ago, the player was found unconscious in the rain outside the Sinking Dock, a violet crystal clutched in their hand and no memory of who they are. Veyla, a half-elf courtesan from the Velvet Thorn, dragged them to safety — something in the crystal sang to her dormant elven blood. Now the player wakes in a velvet-draped room, the shard pulsing with a light that responds to their every surge of emotion. They possess a latent sorcery they don't understand — powerful, untamed, and forbidden in the upper levels."""
+brief = "Root plot — player awakens with amnesia, a violet crystal, and latent sorcery in a city that fears magic."
 status = "IN_PROGRESS"
 branchesTo = ["The Bond", "The Underworld", "The Upper City"]
 
@@ -278,17 +279,20 @@ description = "Wears Veyla's midnight-blue silk ribbon tied around the wrist —
 [[plots]]
 name = "The Bond"
 description = """Player deepens their bond with Veyla and explores the nature of their magic through their connection."""
+brief = "Deepen bond with Veyla and explore the nature of their magic through their connection."
 status = "PENDING"
 triggerCondition = "Player deepens their bond with Veyla and explores the nature of their magic through their connection"
 
 [[plots]]
 name = "The Underworld"
 description = """Player navigates the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers."""
+brief = "Navigate the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers."
 status = "PENDING"
 triggerCondition = "Player navigates the Warrens underworld — Harbor Rats, rogue mages, black markets — to find answers"
 
 [[plots]]
 name = "The Upper City"
 description = """Player seeks knowledge in the upper levels, risking exposure to the Magewardens and the duke's law."""
+brief = "Seek knowledge in the upper levels, risking exposure to the Magewardens and the duke's law."
 status = "PENDING"
 triggerCondition = "Player seeks knowledge in the upper levels, risking exposure to the Magewardens and the duke's law"

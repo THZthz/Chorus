@@ -80,15 +80,15 @@ MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
 RETURN player, loc,
   COLLECT { MATCH (player)-[:CARRIES]->(inv:Entity)
-            RETURN inv.name AS name, inv.type AS type, inv.description AS description } AS inventory,
+            RETURN { name: inv.name, type: inv.type, description: inv.description } } AS inventory,
   COLLECT { MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
             WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
-            RETURN npc.name AS name, npc.type AS type, npc.description AS description } AS npcs,
+            RETURN { name: npc.name, type: npc.type, description: npc.description } } AS npcs,
   COLLECT { MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
             WHERE obj.type = "OBJECT"
-            RETURN obj.name AS name, obj.type AS type, obj.description AS description } AS objects,
+            RETURN { name: obj.name, type: obj.type, description: obj.description } } AS objects,
   COLLECT { MATCH (d:NPCDisposition {target_name: "Player"})
-            RETURN d.npc_name AS npcName, d.sentiment AS sentiment, d.summary AS summary } AS dispositions
+            RETURN { npcName: d.npc_name, sentiment: d.sentiment, summary: d.summary } } AS dispositions
 \`\`\`
 
 ### Search Entities by Name
@@ -205,7 +205,7 @@ ${TOOL_NAMES.QUERY_WORLD} returns npcDispositions — how each NPC feels about t
 
 Plots are managed via ${TOOL_NAMES.EDIT_PLOT} and ${TOOL_NAMES.SEARCH_PLOTS}. Each Plot has:
 - status: PENDING > ACTIVE > IN_PROGRESS > COMPLETED/ABANDONED
-- flags: player knowledge gained through the plot
+- flags: internal state for the plot; critical progress of a goal
 - trigger_condition: when the plot activates
 - BRANCHES_TO relationships: connect parent plots to child plots
 
@@ -254,6 +254,8 @@ When the player selects an option with a skill check, the prompt will include th
 - The "SKILL CHECK RESULT" section tells you the outcome — narrate it naturally via ${TOOL_NAMES.GENERATE_DIALOGUE}
 - On failure: describe the consequence, keep the story moving — failure should be interesting
 - On success: the player's skill shines through the narrative
+
+---
 
 ## WORKFLOW
 

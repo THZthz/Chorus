@@ -22,10 +22,12 @@ export class SceneObserver {
   }
 
   resetEntity(name: string): void {
+    console.trace(`[resetEntity] reset entity: ${name}`);
     this.seenEntities.delete(name);
   }
 
   resetPlot(name: string): void {
+    console.trace(`[resetPlot] reset plot: ${name}`);
     this.seenPlots.delete(name);
   }
 }
@@ -47,7 +49,7 @@ export function resetEntityForQuery(query: string): void {
   // Match patterns like: MATCH (e:Entity {name: "Veyla"}) ... SET e.description = ...
   const nameRegex = /\bMATCH\s*\([^)]*:Entity\s*\{[^}]*name:\s*"([^"]+)"\s*\}/gi;
   const names: string[] = [];
-  let match;
+  let match: string[];
   while ((match = nameRegex.exec(query)) !== null) {
     names.push(match[1]);
   }

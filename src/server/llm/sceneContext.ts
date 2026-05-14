@@ -60,16 +60,16 @@ MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
 RETURN player, loc,
   COLLECT { MATCH (player)-[:CARRIES]->(inv:Entity)
-            RETURN inv.name AS name, inv.type AS type, inv.description AS description,
-                   inv.brief AS brief } AS inventory,
+            RETURN { name: inv.name, type: inv.type, description: inv.description,
+                     brief: inv.brief } } AS inventory,
   COLLECT { MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
             WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
-            RETURN npc.name AS name, npc.type AS type, npc.description AS description,
-                   npc.brief AS brief, npc.subtype AS subtype } AS npcs,
+            RETURN { name: npc.name, type: npc.type, description: npc.description,
+                     brief: npc.brief, subtype: npc.subtype } } AS npcs,
   COLLECT { MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
             WHERE obj.type = "OBJECT"
-            RETURN obj.name AS name, obj.type AS type, obj.description AS description,
-                   obj.brief AS brief } AS objects
+            RETURN { name: obj.name, type: obj.type, description: obj.description,
+                     brief: obj.brief } } AS objects
 `;
 
 const DISPOSITIONS_QUERY = `
@@ -85,8 +85,8 @@ RETURN p.name AS name, p.description AS description, p.brief AS brief,
        p.status AS status, p.trigger_condition AS triggerCondition,
        COLLECT { MATCH (p)-[:BRANCHES_TO]->(child:Plot)
                  WHERE child.status IN ["ACTIVE", "IN_PROGRESS", "PENDING"]
-                 RETURN child.name AS name, child.description AS description,
-                        child.brief AS brief, child.status AS status } AS children
+                 RETURN { name: child.name, description: child.description,
+                          brief: child.brief, status: child.status } } AS children
 ORDER BY p.updated_at DESC
 `;
 

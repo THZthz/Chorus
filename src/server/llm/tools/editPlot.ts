@@ -32,6 +32,7 @@ export const editPlot = tool({
       .describe("Plot name. Omit to create, include to update/delete."),
     remove: z.boolean().default(false).describe("Set true to delete (requires plotName)."),
     description: z.string().optional().describe("Plot description."),
+    brief: z.string().optional().describe("Short one-line summary of the plot for scene context."),
     status: z.enum(PLOT_STATUSES).optional().describe("Plot status."),
     triggerCondition: z.string().optional().describe("Condition that activates this plot."),
     setFlag: z
@@ -54,6 +55,7 @@ export const editPlot = tool({
       if (!args.description) return JSON.stringify({ error: "description required for create" });
       const plot = await client.plots.createPlot(`plot_${Date.now()}`, {
         description: args.description,
+        brief: args.brief,
         status: args.status ?? "PENDING",
         triggerCondition: args.triggerCondition,
       });
@@ -68,6 +70,7 @@ export const editPlot = tool({
 
     const updates: Record<string, unknown> = {};
     if (args.description !== undefined) updates.description = args.description;
+    if (args.brief !== undefined) updates.brief = args.brief;
     if (args.status !== undefined) updates.status = args.status;
     if (args.triggerCondition !== undefined) updates.triggerCondition = args.triggerCondition;
 

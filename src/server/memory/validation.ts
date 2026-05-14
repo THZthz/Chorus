@@ -126,7 +126,53 @@ export class CypherValidator {
       }
     }
 
+    // Check: new relationships must include a description property
+    for (const err of this.checkRelationshipDescriptions(query)) {
+      errors.push(err);
+    }
+
     return { valid: errors.length === 0, errors };
+  }
+
+  // Check that every CREATE/MERGE relationship includes a description property.
+  // Limitation: inline property regex uses {[^}]*}, so a `}` inside a description
+  // string value (e.g. {description: "a } b"}) won't be detected. Detection via
+  // SET r.description scans the full query and works across clauses.
+  private checkRelationshipDescriptions(query: string): string[] {
+    const errors: string[] = [];
+
+    // Quick bail: no relationship creation
+    const hasRelCreation =
+      /(?:CREATE|MERGE)\s.*-\[.*:\w+.*\]->/i.test(query) ||
+      /(?:CREATE|MERGE)\s.*<-\[.*:\w+.*\]-/i.test(query);
+    if (!hasRelCreation) return errors;
+
+    // Match relationship creation: -[var:REL_TYPE {props}]-> or <-[var:REL_TYPE {props}]-
+    const relPattern =
+      /-\[(\w*)\s*:\s*(\w+)\s*(\{[^}]*\})?\s*\]\s*->|<-\[(\w*)\s*:\s*(\w+)\s*(\{[^}]*\})?\s*\]\s*-/g;
+
+    let match: RegExpExecArray | null;
+    while ((match = relPattern.exec(query)) !== null) {
+      const relVar = match[1] || match[4];
+      const relType = match[2] || match[5];
+      const inlineProps = match[3] || match[6];
+
+      const hasInlineDesc = inlineProps ? /\bdescription\s*:/.test(inlineProps) : false;
+
+      let hasSetDesc = false;
+      if (relVar) {
+        hasSetDesc = new RegExp(`SET\\s+${relVar}\\.description\\s*=`, "i").test(query);
+      }
+
+      if (!hasInlineDesc && !hasSetDesc) {
+        errors.push(
+          `New relationship [:${relType}] must include a description property. Add {description: "why"} inline or SET ${relVar ? relVar : "r"}.description. (Note: inline detection can miss values containing "}" — use SET if your description includes braces.)`,
+        );
+        break;
+      }
+    }
+
+    return errors;
   }
 
   // Extract node labels from a Cypher query (e.g. :Entity, :Message).

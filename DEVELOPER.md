@@ -64,12 +64,12 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  │
 │         └────────────────┴───────┬────────┴────────────────┘         │
 │                                  ▼                                   │
-│          ┌─────────────┐                                                  │
-│          │  Search     │                                                  │
-│          ├─────────────┤                                                  │
-│          │  parallel   │                                                  │
-│          │  vector     │                                                  │
-│          └─────────────┘                                                  │
+│                           ┌─────────────┐                            │
+│                           │  Search     │                            │
+│                           ├─────────────┤                            │
+│                           │  parallel   │                            │
+│                           │  vector     │                            │
+│                           └─────────────┘                            │
 │                                                                      │
 │  embedder.ts ── local ONNX (384d) or OpenAI-compatible API           │
 │  neo4j.ts    ── driver wrapper with value normalization              │
@@ -128,6 +128,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── neo4j.ts       # Neo4jClient — thin wrapper over neo4j-driver
     │   │   ├── schema.ts      # Index/constraint/vector index creation
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
+    │   │   ├── relationshipManager.ts  # RelationshipManager singleton — three-tier relationship type registry
     │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
     │   │   ├── longTerm.ts    # Entities (COLE+O variant of POLE+O — CHARACTER replaces PERSON), preferences, facts, relationships
     │   │   ├── search.ts      # Parallel hybrid vector search across memory types
@@ -295,16 +296,16 @@ Boot sequence: `getInstance()` → creates `Neo4jClient` → `verifyConnectivity
 
 All memory types are defined in `types.ts` (type-only):
 
-| Type                 | Key Fields                                                                                    | Neo4j Node                  |
-|----------------------|-----------------------------------------------------------------------------------------------|-----------------------------|
-| `MemoryEntity`       | id, name, type (COLE+O — CHARACTER replaces PERSON), subtype?, description?, aliases[], metadata, _embedding[], isNew?    | `:Entity`                   |
-| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, _embedding[], createdAt                  | `:Message`                  |
-| `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                        | (dynamic relationship)      |
-| `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                             | `:NPCDisposition`           |
-| `PlayerCondition`    | description, effects[] (stat/modifier pairs), duration?, source?                              | (stored in Entity metadata) |
-| `MemoryNote`         | id, content, _embedding[], createdAt, updatedAt                                               | `:Note`                     |
-| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], _embedding[], createdAt, updatedAt | `:Plot`                     |
-| `PlotFlag`           | flagId, description                                                                           | (stored in Plot.flags JSON) |
+| Type                 | Key Fields                                                                                                             | Neo4j Node                  |
+|----------------------|------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| `MemoryEntity`       | id, name, type (COLE+O — CHARACTER replaces PERSON), subtype?, description?, aliases[], metadata, _embedding[], isNew? | `:Entity`                   |
+| `MemoryMessage`      | id, role (user/assistant/system), content, metadata, _embedding[], createdAt                                           | `:Message`                  |
+| `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                                                 | (dynamic relationship)      |
+| `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                                                      | `:NPCDisposition`           |
+| `PlayerCondition`    | description, effects[] (stat/modifier pairs), duration?, source?                                                       | (stored in Entity metadata) |
+| `MemoryNote`         | id, content, _embedding[], createdAt, updatedAt                                                                        | `:Note`                     |
+| `MemoryPlot`         | id, name, description, status, triggerCondition?, flags[], _embedding[], createdAt, updatedAt                          | `:Plot`                     |
+| `PlotFlag`           | flagId, description                                                                                                    | (stored in Plot.flags JSON) |
 
 Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` arrays with `similarity`). `PlotStatus` is a union: `"PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED"`.
 
@@ -347,6 +348,8 @@ Vector dimensions are passed from the active embedder at startup (`embedder.dime
 | `ABOUT_MESSAGE`   | `(Note)→(Message)`           | Note-to-message linkage       |
 
 Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
+
+**Relationship type governance:** `relationshipManager.ts` provides a `RelationshipManager` singleton — the single source of truth for all relationship types. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared in TOML or auto-registered at runtime). The `CypherValidator` queries the manager instead of a hardcoded allowlist. New relationship types can be declared per seed story via `[[relationshipTypes]]` in the TOML.
 
 ### 9.4 Embeddings
 
@@ -428,20 +431,21 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 ### 9.9 CypherValidator
 
-`validation.ts`. Confines GM Cypher queries to allowed labels and relationship types to prevent schema abuse.
+`validation.ts`. Confines GM Cypher queries to allowed labels via hardcoded sets and validates relationship types through the `RelationshipManager` singleton.
 
-| Method            | Behavior                                                                                                                                                 |
-|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `validateRead()`  | Blocks write clauses, DDL, unbounded paths. Checks labels against `READ_ALLOWED_LABELS`.                                                                 |
-| `validateWrite()` | Blocks DDL, enforces qualified MATCH before DELETE. Checks labels against `WRITE_ALLOWED_LABELS` and relationship types against `ALLOWED_RELATIONSHIPS`. |
+| Method            | Behavior                                                                                                                                                                                                                                 |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `validateRead()`  | Blocks write clauses, DDL, unbounded paths. Checks labels against `READ_ALLOWED_LABELS`.                                                                                                                                                 |
+| `validateWrite()` | Blocks DDL, enforces qualified MATCH before DELETE. Checks labels against `WRITE_ALLOWED_LABELS`. Queries `RelationshipManager.isAllowedForWrite()` for relationship type validation. Unknown types are auto-registered as `GM_DEFINED`. |
 
-**Allowlists** (private module-level constants):
+**Label allowlists** (private module-level constants):
 
 | Constant                | Members                                                                                                                                    |
 |-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `READ_ALLOWED_LABELS`   | `Entity`, `Message`, `NPCDisposition`, `GameTime`                                                                                          |
-| `WRITE_ALLOWED_LABELS`  | `Entity`, `Message`, `NPCDisposition`, `GameTime`                                                                                          |
-| `ALLOWED_RELATIONSHIPS` | `LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`, `HAS_DISPOSITION`, `HAS_MESSAGE`, `FIRST_MESSAGE`, `NEXT_MESSAGE` |
+| `READ_ALLOWED_LABELS`   | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`                                                               |
+| `WRITE_ALLOWED_LABELS`  | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`                                                               |
+
+**Relationship types** are governed by `RelationshipManager` (see §9.3), not a hardcoded allowlist. The manager categorizes types as `INTERNAL` (write-blocked), `PREDEFINED`, or `GM_DEFINED` (write-allowed).
 
 Additional validation rules: `validateWrite` requires DELETE/DETACH DELETE to be preceded by a qualified MATCH (with WHERE or property condition). Unbounded variable-length paths (`(*)`) are blocked. DDL statements (CREATE/DROP INDEX, ALTER, etc.) are blocked in both read and write validation.
 
@@ -515,12 +519,15 @@ Seed data (entities, locations, characters, root plot, initial time, initial sce
 
 The active story is determined by the `ACTIVE_SEED_STORY` constant in `index.ts`. `getActiveSeedStory()` returns the active story's data, and `seedDatabase()` in `seed.ts` reads from it to populate Neo4j on startup.
 
+Seed stories can optionally declare relationship types via `[[relationshipTypes]]` in the TOML. These are registered with the `RelationshipManager` as `GM_DEFINED` before relationship instances are created, so new relationship types (e.g., `CONNECTED_TO`) don't require TypeScript changes.
+
 `seedDatabase()` checks for existing `:Entity` nodes before seeding — if any exist, it skips injection. This prevents duplicate data on server restart. On `/api/reset`, the database is cleared via `MATCH (n) DETACH DELETE n` and then re-seeded, which works because the clear brings the entity count to zero. `createPlot` uses `MERGE` (not `CREATE`) so that plot nodes are also idempotent.
 
 **To add a new seed story:**
 1. Create a new file in `src/server/seed-stories/` exporting a `SeedStory` object
-2. Register it in the `STORIES` map in `index.ts`
-3. Change `ACTIVE_SEED_STORY` to the new story ID
+2. Optionally declare custom relationship types via `[[relationshipTypes]]`
+3. Register it in the `STORIES` map in `index.ts`
+4. Change `ACTIVE_SEED_STORY` to the new story ID
 
 ---
 
@@ -552,6 +559,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchMemory`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
 12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
 13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
+14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared in TOML `[[relationshipTypes]]` or auto-registered at runtime). Seed stories can define new relationship types without TypeScript changes.
 
 ---
 

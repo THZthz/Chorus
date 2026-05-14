@@ -33,7 +33,7 @@ export const queryWorld = tool({
 Read the game world using Cypher queries.
 The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT).
 Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS.
-Entity types: PERSON, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
+Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
 Browse time history via NEXT_TIMEPOINT.
 
 NOTE:

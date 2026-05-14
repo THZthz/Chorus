@@ -14,8 +14,7 @@ initialLocationId = "the_velvet_thorn"
 
 [[entities]]
 id = "player"
-type = "PERSON"
-subtype = "CHARACTER"
+type = "CHARACTER"
 name = "Player"
 description = """
 You remember nothing before the rain. Cold cobblestones. The distant clang of a harbor bell. A woman's voice, low and urgent, calling you back from somewhere dark. Then the warm glow of a violet crystal in your palm, pulsing in time with your heartbeat. You woke in a velvet-draped room at the Velvet Thorn, a brothel in the Warrens, with Veyla's golden eyes watching you and a name you don't recognize on her lips. The shard responds to your emotions — flaring bright when your pulse quickens, when Veyla draws close, when desire or fear or fury surge through you. You don't know what you are. You don't know where the power comes from. But in a city where unlicensed magic is a crime and the Warrens devour the weak, ignorance is a death sentence — and what burns between you and the half-elf who saved you might be the only truth worth trusting.\
@@ -47,8 +46,7 @@ Status = "Vulnerable, powerful, unaware — a secret waiting to be discovered"
 
 [[entities]]
 id = "veyla"
-type = "PERSON"
-subtype = "CHARACTER"
+type = "CHARACTER"
 name = "Veyla"
 description = """
 Veyla is tall and languid, with the kind of beauty that makes people forget what they were about to say. Her dark copper skin gleams in candlelight; her hair is cropped short, black silk threaded with a single streak of silver at the left temple. Her ears taper to delicate points she usually hides beneath a wrap, and her eyes — large, luminous, the color of aged whiskey held up to flame — betray her half-elven blood more than she'd like. A faded scar traces from her left collarbone to her shoulder blade, a memento of something she won't discuss.
@@ -78,8 +76,7 @@ Status = "Protective, intrigued, increasingly entangled"
 
 [[entities]]
 id = "madam_cressida"
-type = "PERSON"
-subtype = "CHARACTER"
+type = "CHARACTER"
 name = "Madam Cressida"
 description = """
 Cressida is a woman in her fifties, handsome in the way a well-worn blade is handsome — all function beneath the polish. Silver-streaked auburn hair is pinned in a coil that has seen better hours; she wears velvet in deep plum and emerald, dresses cut low but never cheap. A glass of fortified wine lives in her left hand like a prosthetic. She is never drunk, never shocked, and never without an angle.

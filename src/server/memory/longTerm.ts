@@ -88,7 +88,7 @@ export class LongTermMemory {
 
     const entityId = uuidv4();
 
-    // Build dynamic labels: e.g. :Entity:Person:Character
+    // Build dynamic labels: e.g. :Entity:Character
     const typeLabel = pascalCase(finalType);
     const subtypeLabel = finalSubtype ? pascalCase(finalSubtype) : null;
 

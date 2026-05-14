@@ -129,7 +129,7 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
     │   │   ├── schema.ts      # Index/constraint/vector index creation
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
     │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
-    │   │   ├── longTerm.ts    # Entities (POLE+O), preferences, facts, relationships
+    │   │   ├── longTerm.ts    # Entities (COLE+O variant of POLE+O — CHARACTER replaces PERSON), preferences, facts, relationships
     │   │   ├── search.ts      # Parallel hybrid vector search across memory types
     │   │   ├── gameState.ts   # Game save/resume via options on :Conversation node
     │   │   ├── notes.ts       # GM note CRUD with vector embedding
@@ -277,7 +277,7 @@ The memory layer (`src/server/memory/`) provides a Neo4j-backed persistent world
 
 ### 9.1 MemoryClient (Facade + Singleton)
 
-`MemoryClient` (`client.ts`, ~90 lines) is the single entry point to all memory subsystems. It composes six subsystems and exposes them as readonly properties:
+`MemoryClient` (`client.ts`) is the single entry point to all memory subsystems. It composes six subsystems and exposes them as readonly properties:
 
 ```
 MemoryClient.getCachedInstance()
@@ -293,11 +293,11 @@ Boot sequence: `getInstance()` → creates `Neo4jClient` → `verifyConnectivity
 
 ### 9.2 Type System
 
-All memory types are defined in `types.ts` (~130 lines, type-only):
+All memory types are defined in `types.ts` (type-only):
 
 | Type                 | Key Fields                                                                                    | Neo4j Node                  |
 |----------------------|-----------------------------------------------------------------------------------------------|-----------------------------|
-| `MemoryEntity`       | id, name, type (POLE+O), subtype?, description?, aliases[], metadata, _embedding[], isNew?    | `:Entity`                   |
+| `MemoryEntity`       | id, name, type (COLE+O — CHARACTER replaces PERSON), subtype?, description?, aliases[], metadata, _embedding[], isNew?    | `:Entity`                   |
 | `MemoryMessage`      | id, role (user/assistant/system), content, metadata, _embedding[], createdAt                  | `:Message`                  |
 | `EntityRelationship` | id, sourceId, targetId, type, description?, confidence                                        | (dynamic relationship)      |
 | `NPCDisposition`     | id, npcName, targetName, sentiment, summary, createdAt, updatedAt                             | `:NPCDisposition`           |
@@ -310,7 +310,7 @@ Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` 
 
 ### 9.3 Neo4j Schema
 
-Managed by `schema.ts` (~85 lines), called once at startup:
+Managed by `schema.ts`, called once at startup:
 
 **Unique constraints (5):** `id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`
 
@@ -350,7 +350,7 @@ Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`
 
 ### 9.4 Embeddings
 
-`embedder.ts` (~140 lines) provides two strategies behind an `Embedder` interface:
+`embedder.ts` provides two strategies behind an `Embedder` interface:
 
 - **`LocalEmbedder`**: `@xenova/transformers` with `Xenova/all-MiniLM-L6-v2` (384-dim, ~80MB ONNX). Uses mean pooling, processes sequentially to avoid ONNX memory pressure.
 - **`OpenAICompatibleEmbedder`**: Any OpenAI-compatible API (configurable via `EMBEDDING_API_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL` env vars). Default model `text-embedding-3-small` (1536-dim).
@@ -359,7 +359,7 @@ Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`
 
 ### 9.5 ShortTermMemory
 
-`shortTerm.ts` (~230 lines). Manages conversation history as an ordered linked list of `:Message` nodes under a singleton `:Conversation` node (keyed by `session_id: "elysian-game"`).
+`shortTerm.ts`. Manages conversation history as an ordered linked list of `:Message` nodes under a singleton `:Conversation` node (keyed by `session_id: "elysian-game"`).
 
 | Method                   | Behavior                                                                                          |
 |--------------------------|---------------------------------------------------------------------------------------------------|
@@ -371,10 +371,10 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 ### 9.6 LongTermMemory
 
-`longTerm.ts` (~350 lines). Persistent world state — manages entities, relationships, NPC dispositions, player conditions, and player stats.
+`longTerm.ts`. Persistent world state — manages entities, relationships, NPC dispositions, player conditions, and player stats.
 
-**Entity operations (POLE+O model):**
-- `addEntity(name, type, options?)` — MERGE on name, supports `"TYPE:SUBTYPE"` syntax. Applies dynamic Neo4j labels via PascalCase (`:Entity:Person:Character`). Stores aliases inside metadata JSON. Returns `MemoryEntity` with `isNew` flag.
+**Entity operations (COLE+O — CHARACTER replaces PERSON):**
+- `addEntity(name, type, options?)` — MERGE on name, supports `"TYPE:SUBTYPE"` syntax. Applies dynamic Neo4j labels via PascalCase (`:Entity:Character`). Stores aliases inside metadata JSON. Returns `MemoryEntity` with `isNew` flag.
 - `getEntity(name, type?)` — lookup by name with optional type filter
 - `searchEntities(query, options?)` — vector search on `entity_embedding_idx` with configurable `entityTypes` filter, `limit`, and `threshold`
 
@@ -447,7 +447,7 @@ Additional validation rules: `validateWrite` requires DELETE/DETACH DELETE to be
 
 ### 9.10 MemorySearch
 
-`search.ts` (~65 lines). Parallel hybrid search facade across memory layers.
+`search.ts`. Parallel hybrid search facade across memory layers.
 
 ```
 search(query, { memoryTypes: ["messages", "entities"], limit: 10, threshold: 0.7 })
@@ -459,7 +459,7 @@ All selected searches run in parallel via `Promise.all`. Returns `SearchResults`
 
 ### 9.11 Game State Persistence
 
-`gameState.ts` (~36 lines). Save/resume support by persisting dialogue options as JSON on the `:Conversation` node.
+`gameState.ts`. Save/resume support by persisting dialogue options as JSON on the `:Conversation` node.
 
 - `saveCurrentOptions(options)` — writes `options` JSON to `(c:Conversation {session_id: "elysian-game"})`
 - `getCurrentOptions()` — reads options back on resume
@@ -545,7 +545,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 6. **Lightweight console client** — standalone REPL with chalk rendering; no entity editor or debug panel
 7. **SSE progressive streaming** — `generateDialogueStep` streams messages/options incrementally via partial JSON parsing
 8. **Singleton MemoryClient** — single entry point to all memory subsystems, lazy-init with caching
-9. **POLE+O entity model** — entities have a type (PERSON/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
+9. **COLE+O entity model** (variant of POLE+O — CHARACTER replaces PERSON) — entities have a type (CHARACTER/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
 10. **Skill checks resolved server-side** — Dice rolls are computed automatically when a player selects a checked option; the result is injected into the GM's prompt for narrative integration
 11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchMemory`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
 12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.

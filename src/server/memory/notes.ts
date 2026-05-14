@@ -105,24 +105,28 @@ export class Notes {
     }));
   }
 
-  async linkToEntity(noteId: string, entityName: string): Promise<void> {
+  async linkToEntity(noteId: string, entityName: string, description?: string): Promise<void> {
     try {
       await this.client.executeWrite(
         `MATCH (n:Note {id: $noteId}), (e:Entity {name: $entityName})
-         MERGE (n)-[:ABOUT]->(e)`,
-        { noteId, entityName },
+         MERGE (n)-[r:ABOUT]->(e)
+         ON CREATE SET r.description = $desc, r.created_at = datetime()
+         SET r.description = coalesce($desc, r.description)`,
+        { noteId, entityName, desc: description || null },
       );
     } catch {
       // entity may not exist — skip
     }
   }
 
-  async linkToMessage(noteId: string, messageId: string): Promise<void> {
+  async linkToMessage(noteId: string, messageId: string, description?: string): Promise<void> {
     try {
       await this.client.executeWrite(
         `MATCH (n:Note {id: $noteId}), (m:Message {id: $messageId})
-         MERGE (n)-[:ABOUT_MESSAGE]->(m)`,
-        { noteId, messageId },
+         MERGE (n)-[r:ABOUT_MESSAGE]->(m)
+         ON CREATE SET r.description = $desc, r.created_at = datetime()
+         SET r.description = coalesce($desc, r.description)`,
+        { noteId, messageId, desc: description || null },
       );
     } catch {
       // message may not exist — skip

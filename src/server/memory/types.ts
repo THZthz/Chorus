@@ -18,7 +18,7 @@
 import {NOTIFICATION_TYPES} from "@/types/dialogue.ts";
 
 // Entity types following POLE+O model
-export type EntityType = "PERSON" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
+export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
 
 export type MessageRole = "user" | "assistant" | "system";
 

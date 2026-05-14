@@ -61,7 +61,7 @@ The current scene (player location, nearby NPCs, objects, inventory, NPC disposi
 MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
 OPTIONAL MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
-  WHERE npc.type = "PERSON" AND npc.name <> "Player"
+  WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
 OPTIONAL MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
   WHERE obj.type = "OBJECT"
 OPTIONAL MATCH (player)-[:CARRIES]->(inv:Entity)
@@ -164,7 +164,7 @@ These are the player's inner skills. Each has a distinct personality:
 
 | Type         | Use For                                       |
 |--------------|-----------------------------------------------|
-| PERSON       | Characters (subtype: CHARACTER)               |
+| CHARACTER    | Characters, NPCs, creatures                   |
 | OBJECT       | Objects, items, artifacts, weapons, documents |
 | LOCATION     | Locations, rooms, buildings, areas            |
 | ORGANIZATION | Factions, guilds, groups                      |

@@ -66,7 +66,7 @@ WITH player, loc
 OPTIONAL MATCH (player)-[:CARRIES]->(inv:Entity)
 WITH player, loc, COLLECT(DISTINCT {name: inv.name, type: inv.type, description: inv.description}) AS inventory
 OPTIONAL MATCH (npc:Entity)-[:LOCATED_AT]->(loc)
-  WHERE npc.type = "PERSON" AND npc.name <> "Player"
+  WHERE npc.type = "CHARACTER" AND npc.name <> "Player"
 WITH player, loc, inventory, COLLECT(DISTINCT {name: npc.name, type: npc.type, description: npc.description, subtype: npc.subtype, metadata: npc.metadata}) AS npcs
 OPTIONAL MATCH (obj:Entity)-[:LOCATED_AT]->(loc)
   WHERE obj.type = "OBJECT"

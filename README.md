@@ -1,6 +1,8 @@
 # Elysian Dialogue
 
 > WARNING: Very early in development stage. The story-telling experience is poor right now!
+> NOTE: Current project status - focused on refining tools and prompts of GM.
+> NOTE: This README might be outdated. Check DEVELOPER for updated details.
 
 Cinematic RPG-style dialogue engine with a fantasy-steampunk setting. The AI Game Master generates branching narrative through tool-calling, streamed to a console client in real-time via SSE. Player choices are guided by twelve inner voices — each a distinct personality mapped to a character stat — with skill checks resolved through 2D6 dice rolls.
 

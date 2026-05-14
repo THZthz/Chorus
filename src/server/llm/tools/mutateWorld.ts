@@ -27,7 +27,7 @@ const validator = new CypherValidator();
 
 export const mutateWorld = tool({
   title: TOOL_NAMES.MUTATE_WORLD,
-  description: `Modify the game world using Cypher queries. Use to create/update/delete entities, move characters, set relationships, change NPC dispositions, and store player knowledge. Allowed relationships: LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, LOCATED_IN, HAS_DISPOSITION. Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove entities. Must include a WHERE clause when deleting.`,
+  description: `Modify the game world using Cypher queries. Use to create/update/delete entities, move characters, set relationships, change NPC dispositions, and store player knowledge. Allowed relationships: LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, LOCATED_IN, HAS_DISPOSITION. When creating a new relationship, always set a description property on it explaining why the relationship exists. Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove entities. Must include a WHERE clause when deleting.`,
   inputSchema: z.object({
     query: z
       .string()

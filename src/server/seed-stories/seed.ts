@@ -17,6 +17,7 @@
  */
 
 import { MemoryClient } from "@/server/memory/client";
+import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getActiveSeedStory } from "@/server/seed-stories";
 import { migrateToTimePoints } from "@/server/models/time";
 
@@ -74,6 +75,17 @@ export async function seedDatabase(): Promise<void> {
       metadata:
         Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined,
     });
+  }
+
+  // Register relationship types from seed story before creating instances
+  if (story.relationshipTypes) {
+    const manager = RelationshipManager.getCachedInstance();
+    for (const rt of story.relationshipTypes) {
+      manager.register(rt.name, rt.description, "GM_DEFINED");
+    }
+    console.log(
+      `[seed] registered ${story.relationshipTypes.length} relationship types from "${story.id}"`,
+    );
   }
 
   for (const rel of story.relationships) {

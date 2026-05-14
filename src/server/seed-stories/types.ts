@@ -24,6 +24,7 @@ export interface SeedEntity {
   subtype?: string;
   name: string;
   description: string;
+  brief?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -37,6 +38,7 @@ export interface SeedRelationship {
 export interface SeedPlot {
   name: string;
   description: string;
+  brief?: string;
   status: "PENDING" | "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "ABANDONED";
   triggerCondition?: string;
   flags?: Array<{ flagId: string; description: string }>;

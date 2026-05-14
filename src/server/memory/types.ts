@@ -29,6 +29,7 @@ export interface MemoryEntity {
   type: EntityType;
   subtype?: string;
   description?: string;
+  brief?: string;
   aliases: string[];
   metadata: Record<string, unknown>;
   _embedding?: number[];
@@ -81,6 +82,7 @@ export interface MemoryPlot {
   id: string;
   name: string;
   description: string;
+  brief?: string;
   status: PlotStatus;
   triggerCondition?: string;
   flags: PlotFlag[];

@@ -22,6 +22,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
+import { resetEntityForQuery } from "@/server/llm/sceneObserver";
 
 const validator = new CypherValidator();
 
@@ -51,6 +52,14 @@ export const mutateWorld = tool({
       }
 
       const rows = await client.neo4j.executeWrite(args.query);
+
+      // Auto-reset observer for entities whose description/brief changed
+      try {
+        resetEntityForQuery(args.query);
+      } catch {
+        // Observer reset is best-effort — never fail the tool for it
+      }
+
       return JSON.stringify({ success: true, rowsAffected: rows.length });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

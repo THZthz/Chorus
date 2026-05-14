@@ -36,3 +36,36 @@ export function getObserver(): SceneObserver {
   }
   return observer;
 }
+
+/**
+ * Check a Cypher write query for entity description/brief changes and reset the
+ * observer for affected entities so the GM sees the new description next turn.
+ */
+export function resetEntityForQuery(query: string): void {
+  const obs = getObserver();
+
+  // Match patterns like: MATCH (e:Entity {name: "Veyla"}) ... SET e.description = ...
+  const nameRegex = /\bMATCH\s*\([^)]*:Entity\s*\{[^}]*name:\s*"([^"]+)"\s*\}/gi;
+  const names: string[] = [];
+  let match;
+  while ((match = nameRegex.exec(query)) !== null) {
+    names.push(match[1]);
+  }
+
+  // Also match: MATCH (e:Entity) WHERE e.name = "X" ...
+  const whereRegex = /MATCH\s*\([^)]*:Entity[^)]*\)\s*(?:WHERE\s+\w+\.name\s*=\s*"([^"]+)")/gi;
+  while ((match = whereRegex.exec(query)) !== null) {
+    names.push(match[1]);
+  }
+
+  if (names.length === 0) return;
+
+  const descChanged = /SET\s+\w+\.description\s*=/i.test(query);
+  const briefChanged = /SET\s+\w+\.brief\s*=/i.test(query);
+
+  if (descChanged || briefChanged) {
+    for (const name of names) {
+      obs.resetEntity(name);
+    }
+  }
+}

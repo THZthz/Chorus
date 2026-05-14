@@ -74,12 +74,13 @@ export class LongTermMemory {
     options?: {
       subtype?: string;
       description?: string;
+      brief?: string;
       aliases?: string[];
       metadata?: Record<string, unknown>;
       generateEmbedding?: boolean;
     },
   ): Promise<MemoryEntity> {
-    const { subtype, description, aliases, metadata, generateEmbedding = true } = options || {};
+    const { subtype, description, brief, aliases, metadata, generateEmbedding = true } = options || {};
 
     // Support "TYPE:SUBTYPE" in entityType (Python compat)
     const parsed = parseEntityType(String(entityType));
@@ -111,6 +112,7 @@ export class LongTermMemory {
        SET
          e.type = $type,
          e.subtype = $subtype,
+         e.brief = $brief,
          e.description = $description,
          e._embedding = $embedding,
          e.metadata = $metadata
@@ -122,6 +124,7 @@ export class LongTermMemory {
         name,
         type: finalType,
         subtype: finalSubtype || null,
+        brief: brief || null,
         description: description || null,
         embedding: embedding || null,
         metadata: Object.keys(storageMetadata).length > 0 ? JSON.stringify(storageMetadata) : null,
@@ -141,6 +144,7 @@ export class LongTermMemory {
       name,
       type: finalType as EntityType,
       subtype: finalSubtype,
+      brief,
       description,
       aliases: aliases || [],
       metadata: metadata || {},
@@ -330,6 +334,7 @@ export class LongTermMemory {
       name: data.name as string,
       type: data.type as EntityType,
       subtype: (data.subtype as string) || undefined,
+      brief: (data.brief as string) || undefined,
       description: (data.description as string) || undefined,
       aliases,
       metadata: meta,

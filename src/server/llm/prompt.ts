@@ -74,7 +74,7 @@ Use subqueries when fetching lists of items (e.g., friends, inventory, tags, or 
 * **Are there two or more independent \`OPTIONAL MATCH\` statements?** $\rightarrow$ **Stop.** You are likely creating a Cartesian Product; refactor to \`COLLECT\`.
 
 ### Reading the Scene
-The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is provided in the user prompt as "SCENE CONTEXT". Use ${TOOL_NAMES.QUERY_WORLD} only for lookups beyond what is shown there.
+The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is provided in the user prompt as "SCENE CONTEXT". After the first turn, entities and plots show compact briefs instead of full descriptions — call ${TOOL_NAMES.RESET_SCENE_CONTEXT} if you need full descriptions again. Use ${TOOL_NAMES.QUERY_WORLD} only for lookups beyond what is shown there.
 \`\`\`cypher
 MATCH (player:Entity {name: "Player"})
 OPTIONAL MATCH (player)-[:LOCATED_AT]->(loc:Entity)
@@ -257,7 +257,7 @@ When the player selects an option with a skill check, the prompt will include th
 
 ## WORKFLOW
 
-Scene data (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is PRE-LOADED in the user prompt under "SCENE CONTEXT". You do NOT need to call ${TOOL_NAMES.QUERY_WORLD} for basic scene information.
+Scene data (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is PRE-LOADED in the user prompt under "SCENE CONTEXT". After the first turn, entities and plots show compact briefs instead of full descriptions — call ${TOOL_NAMES.RESET_SCENE_CONTEXT} if you need the full descriptions again. You do NOT need to call ${TOOL_NAMES.QUERY_WORLD} for basic scene information.
 
 1. **${TOOL_NAMES.GENERATE_DIALOGUE}** — REQUIRED every turn. Call this FIRST in most cases. Produce narrative + 2-5 player options.
 2. **Optional mutations** — ${TOOL_NAMES.MUTATE_WORLD}, ${TOOL_NAMES.EDIT_PLOT}, ${TOOL_NAMES.EDIT_NOTE}, or ${TOOL_NAMES.ADVANCE_TIME} — only when the player's action genuinely changes world state.

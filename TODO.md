@@ -54,7 +54,6 @@ The TODO is more like prompts.
 - [x] Resume game play.
 - [x] Need to remove src/server/mcp folder.
 - [x] Console client's options select UI is broken, we can press arrow down infinitely and the options just cycle around.
-- [ ] Specify the output type of neo4j read.
 - [x] Handle error occurred during transaction of neo4j.
 - [x] [[LIMITATION]] Use node-cypher-parser to validate Cypher read/write of GM.
 - [x] GM can create new Node and Relationship.
@@ -69,4 +68,4 @@ The TODO is more like prompts.
 - [x] rollSkillCheck should not be a tool. We should calculate the result after player choose an option which require a skill check. The the result is passed to GM by its assistant.
 - [ ] Remove unused properties of nodes.
 - [ ] Need a "brief" for Plot/Character/Location/Object. Do not repeat unchanged scene context, at first time, give "full description", later, only give short "brief". 
-- [ ] Interactive tests of tools.
+- [ ] Interactive tests of tools. Or play a long enough game to experience what is not on the track.

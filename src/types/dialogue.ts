@@ -49,7 +49,6 @@ export interface Message {
 }
 
 export interface DialogueOption {
-  id: string;
   text: string;
   selectionMessage?: string;
   hintBefore?: string;

@@ -167,7 +167,7 @@ export async function migrateToTimePoints(
   const id = uuidv4();
 
   await client.neo4j.executeWrite(
-    `CREATE (a:TimeAnchor {id: 'anchor', label: 'TimeAnchor'})
+    `CREATE (a:TimeAnchor {id: 'anchor'})
      CREATE (tp:TimePoint {id: $id, day: $day, segment: $segment, label: $label, created_at: datetime($now)})
      CREATE (a)-[:CURRENT_TIMEPOINT]->(tp)`,
     { id, day, segment, label, now },

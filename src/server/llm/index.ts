@@ -331,8 +331,7 @@ export async function generateTurn(
                 );
               }
               if (parsed.options && Array.isArray(parsed.options)) {
-                finalOptions = parsed.options.map((o: any, i: number) => ({
-                  id: o.id || `opt_${i}`,
+                finalOptions = parsed.options.map((o: any) => ({
                   text: o.text || "",
                   selectionMessage: o.selectionMessage,
                   hintBefore: o.hintBefore,

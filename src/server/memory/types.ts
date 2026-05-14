@@ -18,7 +18,7 @@
 
 import { NOTIFICATION_TYPES } from "@/types/dialogue";
 
-// Entity types following POLE+O model
+// Entity types similar to POLE+O model
 export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
 
 export type MessageRole = "user" | "assistant" | "system";
@@ -33,7 +33,7 @@ export interface MemoryEntity {
   metadata: Record<string, unknown>;
   _embedding?: number[];
   createdAt: Date;
-  /** True if the entity was newly created (MERGE semantics). */
+  // True if the entity was newly created (MERGE semantics).
   isNew?: boolean;
 }
 

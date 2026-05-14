@@ -55,7 +55,7 @@ export async function seedDatabase(): Promise<void> {
     await client.longTerm.addEntity(entity.name, entity.type, {
       subtype: entity.subtype,
       description: entity.description,
-      metadata: { dbId: entity.id, ...entity.metadata },
+      metadata: entity.metadata,
     });
   }
 

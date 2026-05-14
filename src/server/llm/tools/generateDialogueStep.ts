@@ -57,7 +57,6 @@ const optionSchema = z.object({
     .describe(
       "When isCorrection is true: the 0-based index of the option to correct (shown in the validation error). Omit when generating fresh.",
     ),
-  id: z.string().max(40).optional(),
   text: z
     .string()
     .max(200)

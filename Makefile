@@ -1,6 +1,6 @@
 .PHONY: help install server console lint format \
         neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
-        dev dev-stop reset clean clean-all
+        reset clean clean-all
 
 # MSYS2 bash can't resolve Windows-style paths inside the npm/npx
 # bash-script wrappers; use the .cmd launcher on Windows instead.
@@ -12,7 +12,7 @@ endif
 
 # Default target
 help:
-	@echo "Elysian Dialogue — Development Commands"
+	@echo "Chorus — Development Commands"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make install          Install npm dependencies"
@@ -26,15 +26,11 @@ help:
 	@echo "  make neo4j-restart    Restart Neo4j container"
 	@echo "  make neo4j-clean      Stop container and remove volumes"
 	@echo ""
-	@echo "Elysian Server & Client:"
+	@echo "Chorus Server & Client:"
 	@echo "  make server           Start Express server (:3000)"
 	@echo "  make console          Start console REPL client"
 	@echo "  make lint             TypeScript type-check (tsc --noEmit) and unused check by knip"
 	@echo "  make format           Format source with Prettier"
-	@echo ""
-	@echo "Full Dev Environment:"
-	@echo "  make dev              Start Neo4j + Server (foreground)"
-	@echo "  make dev-stop         Stop Neo4j container"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make reset            Clear DB, re-seed Neo4j (server must be running)"
@@ -91,10 +87,6 @@ lint:
 
 format:
 	$(NPM) run format
-
-dev: neo4j-start neo4j-wait server
-
-dev-stop: neo4j-stop
 
 reset:
 	curl -X POST http://localhost:3000/api/reset

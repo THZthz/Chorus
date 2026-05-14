@@ -69,3 +69,5 @@ The TODO is more like prompts.
 - [x] Remove unused properties of nodes.
 - [x] Need a "brief" for Plot/Character/Location/Object. Do not repeat unchanged scene context, at first time, give "full description", later, only give short "brief". Plot brief should have a "tree-like" structure.
 - [ ] Interactive tests of tools. Or play a long enough game to experience what is not on the track.
+- [ ] The NEXT_GM_MESSAGE is incorrect.
+- [ ] Markdown format display in the terminal is not working well.

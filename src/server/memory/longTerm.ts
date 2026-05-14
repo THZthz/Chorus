@@ -1,5 +1,5 @@
 /**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Chorus — cinematic RPG-style dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -80,7 +80,14 @@ export class LongTermMemory {
       generateEmbedding?: boolean;
     },
   ): Promise<MemoryEntity> {
-    const { subtype, description, brief, aliases, metadata, generateEmbedding = true } = options || {};
+    const {
+      subtype,
+      description,
+      brief,
+      aliases,
+      metadata,
+      generateEmbedding = true,
+    } = options || {};
 
     // Support "TYPE:SUBTYPE" in entityType (Python compat)
     const parsed = parseEntityType(String(entityType));

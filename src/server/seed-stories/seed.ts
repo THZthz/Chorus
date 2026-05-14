@@ -1,5 +1,5 @@
 /**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Chorus — cinematic RPG-style dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -51,13 +51,9 @@ export async function seedDatabase(): Promise<void> {
   const client = await MemoryClient.getInstance();
 
   // Skip if database already has data (prevents duplicate injection on restart)
-  const existing = await client.neo4j.executeRead(
-    "MATCH (e:Entity) RETURN count(e) AS count",
-  );
+  const existing = await client.neo4j.executeRead("MATCH (e:Entity) RETURN count(e) AS count");
   if ((existing[0]?.count as number) > 0) {
-    console.log(
-      `[seed] database already has ${existing[0].count} entities, skipping`,
-    );
+    console.log(`[seed] database already has ${existing[0].count} entities, skipping`);
     return;
   }
 
@@ -72,8 +68,7 @@ export async function seedDatabase(): Promise<void> {
       subtype: entity.subtype,
       description: entity.description,
       brief: entity.brief,
-      metadata:
-        Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined,
+      metadata: Object.keys(cleanMetadata).length > 0 ? cleanMetadata : undefined,
     });
   }
 

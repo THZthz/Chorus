@@ -1,5 +1,5 @@
 /**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Chorus — cinematic RPG-style dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 import { MemoryClient } from "@/server/memory/client";
 import type { DialogueOption } from "@/types/dialogue";
 
-export const GAME_ID = "elysian-game";
+export const GAME_ID = "chorus-game";
 
 // Store current dialogue options on the one Conversation node for resume.
 export async function saveCurrentOptions(options: DialogueOption[]): Promise<void> {

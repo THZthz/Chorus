@@ -1,12 +1,12 @@
-# Developer Documentation: Elysian Dialogue
+# Developer Documentation: Chorus
 
-Architecture, core systems, and data structures of the **Elysian Dialogue** application.
+Architecture, core systems, and data structures of the **Chorus** application.
 
 ---
 
 ## 1. Project Overview
 
-**Elysian Dialogue** is a cinematic RPG-style dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
+**Chorus** is a cinematic RPG-style dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
 - **Stack:** TypeScript, Node.js
 - **Backend:** Express + Neo4j (via local `src/server/memory/` module)
@@ -41,8 +41,8 @@ Architecture, core systems, and data structures of the **Elysian Dialogue** appl
 │    tools: {                                                          │
 │      queryWorld, mutateWorld, searchMemory, editNote,                │
 │      searchNotes, editPlot, searchPlots, ← llm/tools/ (7 GM tools)   │
-│      generateDialogueStep,              ← llm/tools/ (Elysian tool)  │
-│      advanceTime                        ← llm/tools/ (Elysian tool)  │
+│      generateDialogueStep,              ← llm/tools/ (Chorus tool)  │
+│      advanceTime                        ← llm/tools/ (Chorus tool)  │
 │    }                                                                 │
 │  })                                                                  │
 │                                                                      │
@@ -223,7 +223,7 @@ Defined in `src/shared/events.ts` (single source of truth):
 
 Two layers of tools, all defined in `src/server/llm/tools/`:
 
-**Elysian tools**:
+**Chorus tools**:
 
 | Tool                   | Purpose                                                                                                        | SSE Event                                 |
 |------------------------|----------------------------------------------------------------------------------------------------------------|-------------------------------------------|
@@ -362,7 +362,7 @@ Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`
 
 ### 9.5 ShortTermMemory
 
-`shortTerm.ts`. Manages conversation history as an ordered linked list of `:Message` nodes under a singleton `:Conversation` node (keyed by `session_id: "elysian-game"`).
+`shortTerm.ts`. Manages conversation history as an ordered linked list of `:Message` nodes under a singleton `:Conversation` node (keyed by `session_id: "chorus-game"`).
 
 | Method                   | Behavior                                                                                          |
 |--------------------------|---------------------------------------------------------------------------------------------------|
@@ -465,7 +465,7 @@ All selected searches run in parallel via `Promise.all`. Returns `SearchResults`
 
 `gameState.ts`. Save/resume support by persisting dialogue options as JSON on the `:Conversation` node.
 
-- `saveCurrentOptions(options)` — writes `options` JSON to `(c:Conversation {session_id: "elysian-game"})`
+- `saveCurrentOptions(options)` — writes `options` JSON to `(c:Conversation {session_id: "chorus-game"})`
 - `getCurrentOptions()` — reads options back on resume
 
 The Neo4j database is the authoritative world state — there is no separate session concept.
@@ -547,7 +547,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 9 tools (2 Elysian + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 9 tools (2 Chorus + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -565,7 +565,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 
 ## 14. Development Workflow
 
-### 14.1 Adding a New Elysian Tool
+### 14.1 Adding a New Chorus Tool
 
 1. Create a new file in `src/server/llm/tools/` following the existing pattern
 2. Define the Zod input schema and `execute` function (wrap with `wrapSafe` from `shared.ts`)

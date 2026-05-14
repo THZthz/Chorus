@@ -1,5 +1,5 @@
 /**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Chorus — cinematic RPG-style dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify

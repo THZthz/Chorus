@@ -1,5 +1,5 @@
 /**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Chorus — cinematic RPG-style dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -138,7 +138,7 @@ function buildPlotTree(plots: PlotRef[]): { tree: string; unseenDescriptions: st
     }
 
     // Render children
-    const kids = plot.children.filter((c) => activeNames.has(c.name) && !visited.has(c.name));
+    const kids = (plot.children || []).filter((c) => c.name && !visited.has(c.name));
     const childPrefix = prefix + (isLast ? "    " : "│   ");
     kids.forEach((child, i) => {
       renderNode(child, childPrefix, i === kids.length - 1, i === kids.length - 1 ? "└──" : "├──");

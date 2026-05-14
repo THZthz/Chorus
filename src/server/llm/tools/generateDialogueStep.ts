@@ -1,5 +1,5 @@
 /**
- * Elysian Dialogue — cinematic RPG-style dialogue engine
+ * Chorus — cinematic RPG-style dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -109,8 +109,15 @@ const inputSchema = z.object({
   messages: z
     .array(messageSchema)
     .optional()
-    .describe("The sequence of messages in this dialogue step. Required for fresh calls; omit during corrections if only fixing options."),
-  options: z.array(optionSchema).optional().describe("The choices presented to the player. Required for fresh calls. Omit during corrections if only fixing options."),
+    .describe(
+      "The sequence of messages in this dialogue step. Required for fresh calls; omit during corrections if only fixing options.",
+    ),
+  options: z
+    .array(optionSchema)
+    .optional()
+    .describe(
+      "The choices presented to the player. Required for fresh calls. Omit during corrections if only fixing options.",
+    ),
   isCorrection: z
     .boolean()
     .optional()

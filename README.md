@@ -1,4 +1,4 @@
-# Elysian Dialogue
+# Chorus
 
 > WARNING: Very early in development stage. The story-telling experience is poor right now!
 > NOTE: Current project status - focused on refining tools and prompts of GM.

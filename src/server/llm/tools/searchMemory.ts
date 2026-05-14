@@ -21,7 +21,7 @@ import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
-import {TOOL_NAMES} from "@/shared/constants";
+import { TOOL_NAMES } from "@/shared/constants";
 
 export const searchMemory = tool({
   title: TOOL_NAMES.SEARCH_MEMORY,

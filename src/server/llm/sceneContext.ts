@@ -118,19 +118,31 @@ export async function buildSceneContext(): Promise<string> {
 
   const [gameTime, sceneRows, dispositionRows, plotRows] = await Promise.all([
     getGameTime().catch((err) => {
-      console.error("[sceneContext] getGameTime failed:", err instanceof Error ? err.message : String(err));
+      console.error(
+        "[sceneContext] getGameTime failed:",
+        err instanceof Error ? err.message : String(err),
+      );
       return null;
     }),
     client.neo4j.executeRead(SCENE_QUERY).catch((err) => {
-      console.error("[sceneContext] scene query failed:", err instanceof Error ? err.message : String(err));
+      console.error(
+        "[sceneContext] scene query failed:",
+        err instanceof Error ? err.message : String(err),
+      );
       return [] as SceneRow[];
     }),
     client.neo4j.executeRead(DISPOSITIONS_QUERY).catch((err) => {
-      console.error("[sceneContext] dispositions query failed:", err instanceof Error ? err.message : String(err));
+      console.error(
+        "[sceneContext] dispositions query failed:",
+        err instanceof Error ? err.message : String(err),
+      );
       return [] as DispositionRow[];
     }),
     client.neo4j.executeRead(PLOTS_QUERY).catch((err) => {
-      console.error("[sceneContext] plots query failed:", err instanceof Error ? err.message : String(err));
+      console.error(
+        "[sceneContext] plots query failed:",
+        err instanceof Error ? err.message : String(err),
+      );
       return [] as PlotRow[];
     }),
   ]);

@@ -21,7 +21,7 @@ import { z } from "zod";
 import { advanceGameTime, describeTime } from "@/server/models/time";
 import type { EventEmitter } from "@/server/llm/events";
 import { wrapSafe } from "@/server/llm/tools/shared";
-import {TOOL_NAMES} from "@/shared/constants";
+import { TOOL_NAMES } from "@/shared/constants";
 
 const inputSchema = z.object({
   segments: z

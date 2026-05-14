@@ -18,14 +18,13 @@
 
 import { tool } from "ai";
 import { z } from "zod";
-import { MemoryClient, PLOT_STATUSES} from "@/server/memory/client";
+import { MemoryClient, PLOT_STATUSES } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
-import {TOOL_NAMES} from "@/shared/constants";
+import { TOOL_NAMES } from "@/shared/constants";
 
 export const editPlot = tool({
   title: TOOL_NAMES.EDIT_PLOT,
-  description:
-    `Create, update, or delete a plot. Plots track story arcs. Use flags for player knowledge. Use branchTo/unbranch to connect child plots. Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to find them.`,
+  description: `Create, update, or delete a plot. Plots track story arcs. Use flags for player knowledge. Use branchTo/unbranch to connect child plots. Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to find them.`,
   inputSchema: z.object({
     plotName: z
       .string()
@@ -33,10 +32,7 @@ export const editPlot = tool({
       .describe("Plot name. Omit to create, include to update/delete."),
     remove: z.boolean().default(false).describe("Set true to delete (requires plotName)."),
     description: z.string().optional().describe("Plot description."),
-    status: z
-      .enum(PLOT_STATUSES)
-      .optional()
-      .describe("Plot status."),
+    status: z.enum(PLOT_STATUSES).optional().describe("Plot status."),
     triggerCondition: z.string().optional().describe("Condition that activates this plot."),
     setFlag: z
       .object({ flagId: z.string(), description: z.string() })

@@ -15,7 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import {TOOL_NAMES} from "@/shared/constants.ts";
+
+import { TOOL_NAMES } from "@/shared/constants";
 
 const READ_ALLOWED_LABELS = new Set([
   "Entity",

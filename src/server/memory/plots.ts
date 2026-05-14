@@ -183,7 +183,11 @@ export class Plots {
 
   // ── Branching ──
 
-  async branchTo(parentPlotName: string, childPlotName: string, description?: string): Promise<boolean> {
+  async branchTo(
+    parentPlotName: string,
+    childPlotName: string,
+    description?: string,
+  ): Promise<boolean> {
     const rows = await this.client.executeWrite(
       `MATCH (parent:Plot {name: $parent}), (child:Plot {name: $child})
        MERGE (parent)-[r:BRANCHES_TO]->(child)

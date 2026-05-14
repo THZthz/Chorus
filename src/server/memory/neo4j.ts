@@ -96,11 +96,7 @@ function unwrapRecord(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-function logQueryError(
-  error: unknown,
-  query: string,
-  kind: "read" | "write",
-): void {
+function logQueryError(error: unknown, query: string, kind: "read" | "write"): void {
   if (error instanceof Neo4jError) {
     console.error(
       `[neo4j] execute${kind === "read" ? "Read" : "Write"} failed: ${error.code} - ${error.message}`,

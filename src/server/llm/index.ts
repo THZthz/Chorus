@@ -274,8 +274,7 @@ export async function generateTurn(
         // Soft one-time reminder for advanceTime on step 3+
         if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
           nudgeState.timeReminded = true;
-          errorMsg +=
-            `Reminder: You can call ${TOOL_NAMES.ADVANCE_TIME}() if the player's action takes significant time. Skip if not needed.`;
+          errorMsg += `Reminder: You can call ${TOOL_NAMES.ADVANCE_TIME}() if the player's action takes significant time. Skip if not needed.`;
         }
 
         return { messages: [...messages, { role: "user" as const, content: errorMsg }] };

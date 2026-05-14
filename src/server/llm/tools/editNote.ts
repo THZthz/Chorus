@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
-import {TOOL_NAMES} from "@/shared/constants";
+import { TOOL_NAMES } from "@/shared/constants";
 
 export const editNote = tool({
   title: TOOL_NAMES.EDIT_NOTE,

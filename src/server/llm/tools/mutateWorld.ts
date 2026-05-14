@@ -21,7 +21,7 @@ import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { wrapSafe } from "@/server/llm/tools/shared";
-import {TOOL_NAMES} from "@/shared/constants";
+import { TOOL_NAMES } from "@/shared/constants";
 
 const validator = new CypherValidator();
 

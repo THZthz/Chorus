@@ -22,7 +22,7 @@ import { NOTIFICATION_TYPES, SPEAKER_TYPES, SpeakerType } from "@/types/dialogue
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
 import { checkText } from "@/server/llm/tools/shared";
 
-const MAX_MESSAGE_TEXT_LENGTH = 500;
+export const MAX_MESSAGE_TEXT_LENGTH = 500;
 
 const messageSchema = z.object({
   index: z
@@ -47,9 +47,12 @@ Omit when generating fresh.`.trim(),
     .object({
       notificationType: z.enum(NOTIFICATION_TYPES).optional(),
     })
+    .nullable()
     .optional(),
 });
 
+// NB: .nullable() on optional fields prevents Zod rejection when the LLM
+// outputs "field": null for fields it intends to omit.
 const optionSchema = z.object({
   index: z
     .number()
@@ -68,6 +71,7 @@ Omit when generating fresh.`.trim(),
   selectionMessage: z
     .string()
     .max(300)
+    .nullable()
     .optional()
     .describe(
       `
@@ -80,11 +84,13 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
   hintBefore: z
     .string()
     .max(50)
+    .nullable()
     .optional()
     .describe("Hint shown before the text, e.g. [Logic]. Do not overuse it."),
   hintAfter: z
     .string()
     .max(50)
+    .nullable()
     .optional()
     .describe("Hint shown after the text, e.g. [Check]. Do not overuse it."),
   check: z
@@ -108,12 +114,14 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
         )
         .describe("Outcome conditions."),
     })
+    .nullable()
     .optional(),
 });
 
 const inputSchema = z.object({
   messages: z
     .array(messageSchema)
+    .nullable()
     .optional()
     .describe(
       `
@@ -123,6 +131,7 @@ If you fixing invalid messages, make sure your include "index" field to precisel
     ),
   options: z
     .array(optionSchema)
+    .nullable()
     .optional()
     .describe(
       `
@@ -134,7 +143,6 @@ If you fixing invalid options, make sure your include "index" field to precisely
   isCorrection: z
     .boolean()
     .optional()
-    .default(false)
     .describe(
       `
 Set to true when correcting specific validation errors from a previous failed call.
@@ -144,15 +152,15 @@ You can omit messages or options if only the other needs correction.`.trim(),
     ),
 });
 
-type DialogueMessage = z.infer<typeof messageSchema>;
-type DialogueOpt = z.infer<typeof optionSchema>;
-type DialogueArgs = z.infer<typeof inputSchema>;
+export type DialogueMessage = z.infer<typeof messageSchema>;
+export type DialogueOpt = z.infer<typeof optionSchema>;
+export type DialogueArgs = z.infer<typeof inputSchema>;
 
-interface ValidationResult {
+export interface ValidationResult {
   errors: string[];
 }
 
-function validateDialogueArgs(args: DialogueArgs): ValidationResult {
+export function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   const errors: string[] = [];
 
   const messages = args.messages ?? [];
@@ -271,11 +279,11 @@ async function executeAndPersist(
   if (result.errors.length > 0) {
     onValidChange?.(false);
     return [
-      "VALIDATION FAILED ",
-      "(isCorrection" + (isCorrection ? "true" : "false") + ")\n",
+      "VALIDATION FAILED",
+      ` (isCorrection: ${isCorrection})\n`,
       result.errors.map((e) => "- " + e).join("\n"),
-      "Call generateDialogueStep again with isCorrection: true. ",
-      "Only send the failing items listed in 'failures' — set each item's 'index' field to the index shown. ",
+      "\n\nCall generateDialogueStep again with isCorrection: true. ",
+      "Only send the failing items listed above — set each item's 'index' field to the index shown. ",
       "Valid items are preserved from the previous call automatically (do NOT copy them).",
     ].join("");
   }
@@ -310,9 +318,7 @@ async function executeAndPersist(
   }
 
   return (
-    (isCorrection
-      ? "Correction applied — dialogue successfully streamed. "
-      : "Dialogue successfully streamed. ") +
+    (isCorrection ? "Correction applied — " : "Dialogue successfully streamed — ") +
     `${(args.messages ?? []).length} message(s) received, ${(args.options ?? []).length} option(s) received.`
   );
 }
@@ -341,13 +347,31 @@ You do NOT need to copy them.
 
       const baseEmpty = lastCallMessages.length === 0 && lastCallOptions.length === 0;
 
+      // When correcting but nothing was stored (previous call failed Zod), tell the GM
+      // to resend everything fresh — there's nothing to merge against.
+      if (isCorrection && baseEmpty) {
+        return [
+          "VALIDATION FAILED (isCorrection: true)\n",
+          "- No stored state to correct — the previous call was rejected before reaching validation.\n",
+          "Call generateDialogueStep again WITHOUT isCorrection. ",
+          "Send ALL messages and options fresh (do not use the 'index' field).",
+        ].join("");
+      }
+
       // Auto-merge: when correcting, start from stored base and patch in the corrections.
-      // Skip merge if the stored base is empty (previous call failed Zod validation before
-      // reaching execute, or the state was reset for a new turn). Items with index replace
-      // the existing item at that position; items without index are appended.
+      // Items with index replace the existing item at that position; items without index
+      // are appended. If the correction sends items but NONE have index, treat as full
+      // replacement (the GM thinks the previous call was entirely rejected).
+      let allMessagesFresh = false;
+      let allOptionsFresh = false;
       const replacedMessageIndices = new Set<number>();
-      if (isCorrection && !baseEmpty) {
-        const mergedMessages = [...lastCallMessages];
+      if (isCorrection) {
+        allMessagesFresh = !!(args.messages && args.messages.length > 0 &&
+          args.messages.every((m) => m.index === undefined));
+        allOptionsFresh = !!(args.options && args.options.length > 0 &&
+          args.options.every((o) => o.index === undefined));
+
+        const mergedMessages = allMessagesFresh ? [] : [...lastCallMessages];
         if (args.messages) {
           for (const msg of args.messages) {
             if (msg.index !== undefined && msg.index < mergedMessages.length) {
@@ -359,7 +383,7 @@ You do NOT need to copy them.
           }
         }
 
-        const mergedOptions = [...lastCallOptions];
+        const mergedOptions = allOptionsFresh ? [] : [...lastCallOptions];
         if (args.options) {
           for (const opt of args.options) {
             if (opt.index !== undefined && opt.index < mergedOptions.length) {
@@ -375,8 +399,10 @@ You do NOT need to copy them.
 
       // Messages that were already persisted from a previous call and not
       // replaced in this correction should be skipped.
+      // When doing a full replacement (allMessagesFresh), all old indices are
+      // invalidated so nothing is skipped.
       const skipPersist = new Set<number>();
-      if (isCorrection && lastPersistedCount > 0) {
+      if (isCorrection && lastPersistedCount > 0 && !allMessagesFresh) {
         for (let i = 0; i < lastPersistedCount; i++) {
           if (!replacedMessageIndices.has(i)) skipPersist.add(i);
         }

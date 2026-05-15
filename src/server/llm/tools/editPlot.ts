@@ -24,25 +24,29 @@ import { TOOL_NAMES } from "@/shared/constants";
 
 const PLOT_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 
+// NB: .nullable() on optional fields prevents Zod rejection when the LLM
+// outputs "field": null for fields it intends to omit.
 const inputSchema = z.object({
   plotName: z.string().describe("Plot name."),
   action: z.enum(PLOT_ACTIONS).default("CREATE").describe("Action taken for the plot."),
   description: z
     .string()
+    .nullable()
     .optional()
     .describe(
       "Plot description. CREATE: required; UPDATE: optional, if set, description will be updated, this situation should be rare; DELETE: omit.",
     ),
-  brief: z.string().optional().describe("Short one-line summary of the plot."),
-  status: z.enum(PLOT_STATUSES).optional().describe("Plot status."),
-  triggerCondition: z.string().optional().describe("Condition that activates this plot."),
+  brief: z.string().nullable().optional().describe("Short one-line summary of the plot."),
+  status: z.enum(PLOT_STATUSES).nullable().optional().describe("Plot status."),
+  triggerCondition: z.string().nullable().optional().describe("Condition that activates this plot."),
   setFlag: z
     .object({ flagId: z.string(), description: z.string() })
+    .nullable()
     .optional()
     .describe("Add or update a flag on this plot."),
-  removeFlag: z.string().optional().describe("Flag ID to remove."),
-  branchTo: z.string().optional().describe("Child plot name to connect via BRANCHES_TO."),
-  unbranch: z.string().optional().describe("Child plot name to disconnect."),
+  removeFlag: z.string().nullable().optional().describe("Flag ID to remove."),
+  branchTo: z.string().nullable().optional().describe("Child plot name to connect via BRANCHES_TO."),
+  unbranch: z.string().nullable().optional().describe("Child plot name to disconnect."),
 });
 
 export const editPlot = tool({
@@ -88,10 +92,11 @@ This tool supports partial overwrite when action is UPDATE.
     const newStatus = (args.status ?? oldStatus) as typeof oldStatus;
 
     const updates: Record<string, unknown> = {};
-    if (args.description !== undefined) updates.description = args.description;
-    if (args.brief !== undefined) updates.brief = args.brief;
-    if (args.status !== undefined) updates.status = args.status;
-    if (args.triggerCondition !== undefined) updates.triggerCondition = args.triggerCondition;
+    // != null catches both null and undefined (LLM may output null for omitted fields)
+    if (args.description != null) updates.description = args.description;
+    if (args.brief != null) updates.brief = args.brief;
+    if (args.status != null) updates.status = args.status;
+    if (args.triggerCondition != null) updates.triggerCondition = args.triggerCondition;
 
     if (Object.keys(updates).length > 0) {
       await client.plots.updatePlot(args.plotName, updates as any);

@@ -36,6 +36,8 @@ Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove
 When creating a NEW relationship type (not LOCATED_AT, CARRIES, etc.), optionally provide 'description' to document what the type means — it will be stored as a :RelationshipType node for future reference.
 Never set a 'description' property directly on relationship instances in your Cypher.
 `.trim(),
+  // NB: .nullable() on optional fields prevents Zod rejection when the LLM
+  // outputs "field": null for fields it intends to omit.
   inputSchema: z.object({
     query: z
       .string()
@@ -44,6 +46,7 @@ Never set a 'description' property directly on relationship instances in your Cy
       ),
     description: z
       .string()
+      .nullable()
       .optional()
       .describe(
         "When introducing a NEW relationship type, describe its meaning. Not needed for standard types like LOCATED_AT, CARRIES, HOSTILE_TOWARDS, ALLIED_WITH, LOCATED_IN.",

@@ -27,8 +27,10 @@ const NOTE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 const inputSchema = z.object({
   noteName: z.string().describe("The name of target note."),
   action: z.enum(NOTE_ACTIONS).default("CREATE").describe("Action taken for the note."),
+  // .nullable() is needed because LLMs often output null for omitted optional fields
   content: z
     .string()
+    .nullable()
     .optional()
     .describe(
       `
@@ -36,12 +38,14 @@ Note text. CREATE: required; UPDATE: optional, set to overwrite old content; DEL
     ),
   aboutEntities: z
     .array(z.string())
+    .nullable()
     .optional()
     .describe(
       "Entity names to link this note to (replaces existing links, if an empty array [] is passed, all ABOUT_ENTITY is cleared).",
     ),
   aboutMessages: z
     .array(z.string())
+    .nullable()
     .optional()
     .describe(
       "Message IDs to link this note to (replaces existing links, if an empty array [] is passed, all ABOUT_MESSAGE is cleared).",
@@ -82,7 +86,8 @@ This tool supports partial overwrite when action is UPDATE.
     if (!existing) return `ERROR: Note "${args.noteName}" not found.`;
 
     let flags = 0x0;
-    if (args.content !== undefined) {
+    // != null catches both null and undefined (LLM may output null for omitted fields)
+    if (args.content != null) {
       flags |= 0x1;
       await client.notes.updateNote(args.noteName, { content: args.content });
     }

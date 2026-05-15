@@ -23,16 +23,19 @@ import type { EventEmitter } from "@/server/llm/events";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
+// NB: .nullable() on optional fields prevents Zod rejection when the LLM
+// outputs "field": null for fields it intends to omit.
 const inputSchema = z.object({
   segments: z
     .number()
     .int()
     .min(0)
     .max(11)
+    .nullable()
     .optional()
     .describe("Number of 2-hour segments to advance (0-11)."),
-  days: z.number().int().min(0).optional().describe("Number of full days to advance (0+)."),
-  reason: z.string().optional().describe("Brief narrative reason for the time advance."),
+  days: z.number().int().min(0).nullable().optional().describe("Number of full days to advance (0+)."),
+  reason: z.string().nullable().optional().describe("Brief narrative reason for the time advance."),
 });
 
 export function createAdvanceTimeTool(events: EventEmitter) {

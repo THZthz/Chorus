@@ -264,6 +264,7 @@ async function executeAndPersist(
   isCorrection: boolean,
   persistMessage?: PersistMessageFn,
   onValidChange?: (valid: boolean) => void,
+  skipPersistIndices?: Set<number>,
 ): Promise<string> {
   const result = validateDialogueArgs(args);
 
@@ -282,8 +283,11 @@ async function executeAndPersist(
   onValidChange?.(true);
 
   if (persistMessage) {
+    const messages = args.messages ?? [];
     let persisted = 0;
-    for (const msg of args.messages ?? []) {
+    for (let i = 0; i < messages.length; i++) {
+      if (skipPersistIndices?.has(i)) continue;
+      const msg = messages[i];
       try {
         await persistMessage({
           speaker: msg.speaker,
@@ -299,7 +303,6 @@ async function executeAndPersist(
         );
       }
     }
-    // TODO: Check "persisted" and "received" correctness.
     return (
       (isCorrection ? `Correction applied — ` : `Dialogue successfully streamed — `) +
       `${persisted} message(s) persisted, ${(args.options ?? []).length} option(s) received.`
@@ -318,6 +321,7 @@ export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn
   let lastCallValid = false;
   let lastCallMessages: DialogueMessage[] = [];
   let lastCallOptions: DialogueOpt[] = [];
+  let lastPersistedCount = 0;
 
   const dialogueTool = tool({
     title: TOOL_NAMES.GENERATE_DIALOGUE,
@@ -335,19 +339,22 @@ You do NOT need to copy them.
     execute: async (args: DialogueArgs) => {
       const isCorrection = args.isCorrection ?? false;
 
+      const baseEmpty = lastCallMessages.length === 0 && lastCallOptions.length === 0;
+
       // Auto-merge: when correcting, start from stored base and patch in the corrections.
-      // Items with index < stored.length replace the existing item at that position.
-      // Items with index == stored.length are appended (supports fixing count errors).
-      if (isCorrection && (lastCallMessages.length > 0 || lastCallOptions.length > 0)) {
+      // Skip merge if the stored base is empty (previous call failed Zod validation before
+      // reaching execute, or the state was reset for a new turn). Items with index replace
+      // the existing item at that position; items without index are appended.
+      const replacedMessageIndices = new Set<number>();
+      if (isCorrection && !baseEmpty) {
         const mergedMessages = [...lastCallMessages];
         if (args.messages) {
           for (const msg of args.messages) {
-            if (msg.index !== undefined && msg.index <= mergedMessages.length) {
-              if (msg.index === mergedMessages.length) {
-                mergedMessages.push(msg);
-              } else {
-                mergedMessages[msg.index] = msg;
-              }
+            if (msg.index !== undefined && msg.index < mergedMessages.length) {
+              mergedMessages[msg.index] = msg;
+              replacedMessageIndices.add(msg.index);
+            } else {
+              mergedMessages.push(msg);
             }
           }
         }
@@ -355,12 +362,10 @@ You do NOT need to copy them.
         const mergedOptions = [...lastCallOptions];
         if (args.options) {
           for (const opt of args.options) {
-            if (opt.index !== undefined && opt.index <= mergedOptions.length) {
-              if (opt.index === mergedOptions.length) {
-                mergedOptions.push(opt);
-              } else {
-                mergedOptions[opt.index] = opt;
-              }
+            if (opt.index !== undefined && opt.index < mergedOptions.length) {
+              mergedOptions[opt.index] = opt;
+            } else {
+              mergedOptions.push(opt);
             }
           }
         }
@@ -368,21 +373,38 @@ You do NOT need to copy them.
         args = { ...args, messages: mergedMessages, options: mergedOptions };
       }
 
-      const result = await executeAndPersist(args, isCorrection, persistMessage, (valid) => {
-        lastCallValid = valid;
-      });
-
-      // Store this call's args for potential future correction
-      const msgs = args.messages ?? [];
-      const opts = args.options ?? [];
-      if (!isCorrection || msgs.length > 0) {
-        lastCallMessages = msgs;
-        lastCallOptions = opts;
+      // Messages that were already persisted from a previous call and not
+      // replaced in this correction should be skipped.
+      const skipPersist = new Set<number>();
+      if (isCorrection && lastPersistedCount > 0) {
+        for (let i = 0; i < lastPersistedCount; i++) {
+          if (!replacedMessageIndices.has(i)) skipPersist.add(i);
+        }
       }
+
+      const result = await executeAndPersist(
+        args, isCorrection, persistMessage,
+        (valid) => { lastCallValid = valid; },
+        skipPersist.size > 0 ? skipPersist : undefined,
+      );
+
+      // Store this call's args for potential future correction within the same turn.
+      lastCallMessages = args.messages ?? [];
+      lastCallOptions = args.options ?? [];
+      lastPersistedCount = (args.messages ?? []).length;
 
       return result;
     },
   });
 
-  return { tool: dialogueTool, wasValid: () => lastCallValid };
+  return {
+    tool: dialogueTool,
+    wasValid: () => lastCallValid,
+    resetForTurn: () => {
+      lastCallValid = false;
+      lastCallMessages = [];
+      lastCallOptions = [];
+      lastPersistedCount = 0;
+    },
+  };
 }

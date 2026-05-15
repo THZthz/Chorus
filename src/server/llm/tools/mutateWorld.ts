@@ -52,7 +52,7 @@ Never set a 'description' property directly on relationship instances in your Cy
   execute: wrapSafe(async (args) => {
     const validation = validator.validateWrite(args.query);
     if (!validation.valid) {
-      return  `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`;
+      return `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`;
     }
 
     const client = MemoryClient.getCachedInstance();

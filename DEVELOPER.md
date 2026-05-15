@@ -154,8 +154,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   ├── colors.ts          # VOICE_COLORS: 12 inner-voice → hex color map
     │   └── constants.ts       # SKILL_NAMES, TOOL_NAMES, SEGMENT_LABELS, etc.
     └── types/
-        ├── dialogue.ts        # Message, DialogueOption, NotificationType
-        └── entities.ts        # CharacterStats, Character (unused — pending character sheet system)
+        └── dialogue.ts        # Message, DialogueOption, NotificationType
 ```
 
 ---
@@ -318,7 +317,7 @@ Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` 
 
 Managed by `schema.ts`, called once at startup:
 
-**Unique constraints (6):** `id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`, `:TimePoint`
+**Unique constraints (6):** `_id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`, `:TimePoint`
 
 **Regular indexes (5):** `Message.timestamp`, `Entity.type`, `Entity.name`, `Plot.name`, `Plot.status`
 
@@ -513,7 +512,7 @@ generateTurn()
 
 Fantasy-steampunk inner monologue — each skill is a distinct voice in the player's mind. Voices: `LOGIC`, `RHETORIC`, `EMPATHY`, `PERCEPTION`, `VOLITION`, `ENDURANCE`, `SORCERY`, `SUGGESTION`, `INSTINCT`, `MIGHT`, `CLOCKWORK`, `ALCHEMY`.
 
-These map to `CharacterStats` in `src/types/entities.ts`. The system prompt in `src/server/llm/prompt.ts` instructs the LLM about voice personalities and includes the active plot tree.
+The system prompt in `src/server/llm/prompt.ts` instructs the LLM about voice personalities and includes the active plot tree.
 
 The system prompt uses `DEFAULT_SYSTEM_PROMPT_TEMPLATE` from `src/server/llm/prompt.ts` with `{{setting_description}}`, `{{tone_description}}`, `{{game_time}}` variables replaced by `buildSystemPrompt()`. Setting and tone come from the active seed story. World state is **not** dumped into the prompt — the GM fetches it on demand via tools.
 
@@ -577,30 +576,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 
 ---
 
-## 14. Development Workflow
-
-### 14.1 Adding a New Chorus Tool
-
-1. Create a new file in `src/server/llm/tools/` following the existing pattern
-2. Define the Zod input schema and `execute` function (wrap with `wrapSafe` from `shared.ts`)
-3. Register it in `src/server/llm/index.ts` in the `allTools` object within `generateTurn()`
-4. Update the system prompt in `src/server/llm/prompt.ts` if the LLM needs guidance
-
-### 14.2 Adding a Neo4j-Backed Tool
-
-Add a new tool definition in `src/server/llm/tools/` following existing patterns (see `queryWorld.ts` or `mutateWorld.ts` for examples). Wire it into the `allTools` object in `src/server/llm/index.ts`. Delegate to the appropriate memory subsystem via `MemoryClient.getCachedInstance()` (`client.longTerm.*`, `client.notes.*`, `client.plots.*`, etc.).
-
-### 14.3 Adding a New Voice/Skill
-
-1. Add the stat to `CharacterStats` in `src/types/entities.ts`
-2. Add voice personality description to the system prompt in `src/server/llm/prompt.ts`
-3. Add a color entry in `src/shared/colors.ts`'s `VOICE_COLORS` map
-
-### 14.4 Managing Seed Data
-
-Edit the active seed story in `src/server/seed-stories/` or create a new one. Change `ACTIVE_SEED_STORY` in `index.ts` to switch stories.
-
-### 14.5 Debugging LLM Calls with DevTools
+## Debugging LLM Calls with DevTools
 
 All `streamText` calls are captured to `.devtools/generations.json` via the `devToolsMiddleware()` wrapper in `src/server/llm/model.ts`.
 

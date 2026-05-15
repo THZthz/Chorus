@@ -38,7 +38,7 @@ export async function getCurrentOptions(): Promise<{
 } | null> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
-    `MATCH (c:Conversation {session_id: $gameId}) RETURN c.id AS id, c.options AS options`,
+    `MATCH (c:Conversation {session_id: $gameId}) RETURN c._id AS id, c.options AS options`,
     { gameId: GAME_ID },
   );
   if (rows.length === 0) return null;

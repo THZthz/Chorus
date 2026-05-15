@@ -38,7 +38,7 @@ interface TimePoint extends GameTime {
 export async function getGameTime(): Promise<GameTime> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
-    `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+    `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
      RETURN tp.day AS day, tp.segment AS segment`,
   );
   if (rows.length > 0) {
@@ -49,7 +49,7 @@ export async function getGameTime(): Promise<GameTime> {
   }
   // Fallback: old GameTime node (pre-migration)
   const legacy = await client.neo4j.executeRead(
-    "MATCH (gt:GameTime {id: 'current'}) RETURN gt.day AS day, gt.segment AS segment",
+    "MATCH (gt:GameTime {_id: 'current'}) RETURN gt.day AS day, gt.segment AS segment",
   );
   if (legacy.length > 0) {
     return {
@@ -63,13 +63,13 @@ export async function getGameTime(): Promise<GameTime> {
 async function getCurrentTimePoint(): Promise<TimePoint | null> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
-    `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+    `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
      RETURN tp`,
   );
   if (rows.length === 0) return null;
   const tp = rows[0].tp as Record<string, unknown>;
   return {
-    id: tp.id as string,
+    id: tp._id as string,
     day: Number(tp.day),
     segment: Number(tp.segment),
     label: tp.label as string,
@@ -95,14 +95,14 @@ export async function advanceGameTime(
   const now = new Date().toISOString();
 
   // Ensure TimeAnchor exists
-  await client.neo4j.executeWrite(`MERGE (a:TimeAnchor {id: 'anchor'})`);
+  await client.neo4j.executeWrite(`MERGE (a:TimeAnchor {_id: 'anchor'})`);
 
   if (oldTimePoint) {
     await client.neo4j.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})
-       MATCH (old:TimePoint {id: $oldId})
+      `MATCH (a:TimeAnchor {_id: 'anchor'})
+       MATCH (old:TimePoint {_id: $oldId})
        CREATE (new:TimePoint {
-         id: $newId, day: $newDay, segment: $newSegment,
+         _id: $newId, day: $newDay, segment: $newSegment,
          label: $label, created_at: datetime($now)
        })
        CREATE (old)-[r1:NEXT_TIMEPOINT]->(new)
@@ -122,9 +122,9 @@ export async function advanceGameTime(
   } else {
     // First-ever TimePoint: no old tail to link
     await client.neo4j.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})
+      `MATCH (a:TimeAnchor {_id: 'anchor'})
        CREATE (new:TimePoint {
-         id: $newId, day: $newDay, segment: $newSegment,
+         _id: $newId, day: $newDay, segment: $newSegment,
          label: $label, created_at: datetime($now)
        })
        CREATE (a)-[r:CURRENT_TIMEPOINT]->(new)
@@ -158,14 +158,14 @@ export async function migrateToTimePoints(
   const client = MemoryClient.getCachedInstance();
 
   const existing = await client.neo4j.executeRead(
-    "MATCH (a:TimeAnchor {id: 'anchor'}) RETURN a LIMIT 1",
+    "MATCH (a:TimeAnchor {_id: 'anchor'}) RETURN a LIMIT 1",
   );
   if (existing.length > 0) return;
 
   let day = defaultDay;
   let segment = defaultSegment;
   const legacy = await client.neo4j.executeRead(
-    "MATCH (gt:GameTime {id: 'current'}) RETURN gt.day AS day, gt.segment AS segment",
+    "MATCH (gt:GameTime {_id: 'current'}) RETURN gt.day AS day, gt.segment AS segment",
   );
   if (legacy.length > 0) {
     day = Number(legacy[0].day);
@@ -177,14 +177,14 @@ export async function migrateToTimePoints(
   const id = uuidv4();
 
   await client.neo4j.executeWrite(
-    `CREATE (a:TimeAnchor {id: 'anchor'})
-     CREATE (tp:TimePoint {id: $id, day: $day, segment: $segment, label: $label, created_at: datetime($now)})
+    `CREATE (a:TimeAnchor {_id: 'anchor'})
+     CREATE (tp:TimePoint {_id: $id, day: $day, segment: $segment, label: $label, created_at: datetime($now)})
      CREATE (a)-[r:CURRENT_TIMEPOINT]->(tp)
      SET r.created_at = datetime()`,
     { id, day, segment, label, now },
   );
 
-  await client.neo4j.executeWrite("MATCH (gt:GameTime {id: 'current'}) DETACH DELETE gt");
+  await client.neo4j.executeWrite("MATCH (gt:GameTime {_id: 'current'}) DETACH DELETE gt");
 
   console.log(`[time] migrated to TimePoint: Day ${day}, Segment ${segment} (${label})`);
 }

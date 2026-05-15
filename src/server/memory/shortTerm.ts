@@ -51,9 +51,9 @@ export class ShortTermMemory {
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
-      `MATCH (c:Conversation {id: $convId})
+      `MATCH (c:Conversation {_id: $convId})
        CREATE (m:Message {
-         id: $id, role: $role, content: $content,
+         _id: $id, role: $role, content: $content,
          _embedding: $embedding, timestamp: datetime($now),
          metadata: $metadata
        })
@@ -77,8 +77,8 @@ export class ShortTermMemory {
     if (linkToCurrentTime) {
       try {
         await this.client.executeWrite(
-          `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
-           MATCH (m:Message {id: $msgId})
+          `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+           MATCH (m:Message {_id: $msgId})
            MERGE (m)-[r:AT_TIME]->(tp)
            ON CREATE SET r.created_at = datetime()`,
           { msgId: messageId },
@@ -113,7 +113,7 @@ export class ShortTermMemory {
     return rows.reverse().map((r) => {
       const m = r.m as Record<string, unknown>;
       return {
-        id: m.id as string,
+        id: m._id as string,
         role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
         metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
@@ -147,7 +147,7 @@ export class ShortTermMemory {
     return rows.map((r) => {
       const m = r.m as Record<string, unknown>;
       return {
-        id: m.id as string,
+        id: m._id as string,
         role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
         metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
@@ -161,7 +161,7 @@ export class ShortTermMemory {
 
   private async ensureConversation(): Promise<string> {
     const rows = await this.client.executeRead(
-      `MATCH (c:Conversation {session_id: $gameId}) RETURN c.id AS id`,
+      `MATCH (c:Conversation {session_id: $gameId}) RETURN c._id AS id`,
       { gameId: GAME_ID },
     );
     if (rows.length > 0) return rows[0].id as string;
@@ -170,7 +170,7 @@ export class ShortTermMemory {
     const now = new Date().toISOString();
     await this.client.executeWrite(
       `CREATE (c:Conversation {
-         id: $id, session_id: $gameId,
+         _id: $id, session_id: $gameId,
          created_at: datetime($now), updated_at: datetime($now)
        })`,
       { id: convId, gameId: GAME_ID, now },
@@ -180,9 +180,9 @@ export class ShortTermMemory {
 
   private async getLastMessageId(convId: string, excludeId: string): Promise<string | null> {
     const rows = await this.client.executeRead(
-      `MATCH (c:Conversation {id: $convId})-[:HAS_MESSAGE]->(m:Message)
-       WHERE m.id <> $excludeId AND NOT (m)-[:NEXT_MESSAGE]->(:Message)
-       RETURN m.id AS id ORDER BY m.timestamp DESC LIMIT 1`,
+      `MATCH (c:Conversation {_id: $convId})-[:HAS_MESSAGE]->(m:Message)
+       WHERE m._id <> $excludeId AND NOT (m)-[:NEXT_MESSAGE]->(:Message)
+       RETURN m._id AS id ORDER BY m.timestamp DESC LIMIT 1`,
       { convId, excludeId },
     );
     return rows.length > 0 ? (rows[0].id as string) : null;
@@ -199,10 +199,10 @@ export class ShortTermMemory {
     if (previousLastId && messageIds.length > 0) {
       await this.client.createRelationship(
         "Message",
-        "id",
+        "_id",
         previousLastId,
         "Message",
-        "id",
+        "_id",
         messageIds[0],
         "NEXT_MESSAGE",
       );
@@ -211,10 +211,10 @@ export class ShortTermMemory {
     for (let i = 0; i < messageIds.length - 1; i++) {
       await this.client.createRelationship(
         "Message",
-        "id",
+        "_id",
         messageIds[i],
         "Message",
-        "id",
+        "_id",
         messageIds[i + 1],
         "NEXT_MESSAGE",
       );
@@ -223,10 +223,10 @@ export class ShortTermMemory {
     if (createFirstMessage && messageIds.length > 0) {
       await this.client.createRelationship(
         "Conversation",
-        "id",
+        "_id",
         convId,
         "Message",
-        "id",
+        "_id",
         messageIds[0],
         "FIRST_MESSAGE",
       );

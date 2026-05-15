@@ -24,13 +24,13 @@ export async function setupSchema(
 ): Promise<void> {
   // Unique constraints
   const constraints: [string, string, string][] = [
-    ["conversation_id", "Conversation", "id"],
-    ["message_id", "Message", "id"],
-    ["entity_id", "Entity", "id"],
-    ["note_id", "Note", "id"],
-    ["plot_id", "Plot", "id"],
-    ["timepoint_id", "TimePoint", "id"],
-    ["idcounter_key", "IdCounter", "key"],
+    ["conversation__id", "Conversation", "_id"],
+    ["message__id", "Message", "_id"],
+    ["entity__id", "Entity", "_id"],
+    ["note__id", "Note", "_id"],
+    ["plot__id", "Plot", "_id"],
+    ["timepoint__id", "TimePoint", "_id"],
+    ["idcounter_key", "IdCounter", "session_id"],
   ];
 
   for (const [name, label, prop] of constraints) {

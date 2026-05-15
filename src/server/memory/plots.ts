@@ -53,7 +53,7 @@ export class Plots {
     const rows = await this.client.executeWrite(
       `MERGE (p:Plot {name: $name})
        ON CREATE SET
-         p.id = $id,
+         p._id = $id,
          p.description = $description,
          p.brief = $brief,
          p.status = $status,
@@ -80,7 +80,7 @@ export class Plots {
 
     const node = (rows[0]?.p as Record<string, unknown>) || {};
     return {
-      id: (node.id as string) || id,
+      id: (node._id as string) || id,
       name,
       description: (node.description as string) || description,
       brief: (node.brief as string) || brief || undefined,
@@ -256,7 +256,7 @@ export class Plots {
 
   async markPlotStarted(plotName: string): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+      `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
        MERGE (p)-[r:STARTED_AT]->(tp)
        ON CREATE SET r.created_at = datetime()`,
@@ -266,7 +266,7 @@ export class Plots {
 
   async markPlotActive(plotName: string): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+      `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
        MERGE (p)-[r:ACTIVE_AT]->(tp)
        ON CREATE SET r.created_at = datetime()`,
@@ -276,7 +276,7 @@ export class Plots {
 
   async markPlotCompleted(plotName: string): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
+      `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
        MERGE (p)-[r:COMPLETED_AT]->(tp)
        ON CREATE SET r.created_at = datetime()`,
@@ -296,7 +296,7 @@ export class Plots {
       }
     }
     return {
-      id: data.id as string,
+      id: data._id as string,
       name: data.name as string,
       description: (data.description as string) || "",
       brief: (data.brief as string) || undefined,

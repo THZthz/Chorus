@@ -68,10 +68,7 @@ export async function seedDatabase(): Promise<void> {
   console.log(`[seedDatabase] seeding ${story.entities.length} entities from "${story.id}"`);
 
   for (const entity of story.entities) {
-    // Strip shortDescription from metadata — it's now a top-level brief
     const cleanMetadata = entity.metadata ? { ...entity.metadata } : {};
-    delete cleanMetadata.shortDescription;
-
     await client.longTerm.addEntity(entity.name, entity.type, {
       subtype: entity.subtype,
       description: entity.description,

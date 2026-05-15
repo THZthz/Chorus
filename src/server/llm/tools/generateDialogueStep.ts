@@ -327,9 +327,10 @@ This is the ONLY way to communicate to the player.
 Options should align with the active plot's childPlots.
 
 When a previous call fails validation, call again with isCorrection: true.
-Only include the messages/options that need fixing — set their "index" field
-to the index shown in the validation error. Valid items are preserved
-from the previous call automatically. You do NOT need to copy them.`.trim(),
+Only include the messages/options that need fixing — set their "index" field to the index shown in the validation error.
+Valid items are preserved from the previous call automatically.
+You do NOT need to copy them.
+`.trim(),
     inputSchema,
     execute: async (args: DialogueArgs) => {
       const isCorrection = args.isCorrection ?? false;

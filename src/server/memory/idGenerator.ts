@@ -1,4 +1,23 @@
+/**
+ * Chorus — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import type { Neo4jClient } from "@/server/memory/neo4j";
+import { GAME_ID } from "@/server/memory/gameState";
 
 const CHARS = "1fER78GIDVbh95ngu6adzmkjZy2sSQoJTL0vXrx3MCtcPeKYUBWAiFpl4HqOwN";
 
@@ -16,16 +35,13 @@ function encodeBase62(n: number): string {
  * Uses an :IdCounter node in Neo4j to atomically increment a counter
  * and returns its base62-encoded value as a 4-character string.
  */
-export async function nextId(
-  client: Neo4jClient,
-  key: string = "message_id",
-): Promise<string> {
+export async function nextId(client: Neo4jClient): Promise<string> {
   const rows = await client.executeWrite(
-    `MERGE (c:IdCounter {key: $key})
+    `MERGE (c:IdCounter {session_id: $id})
      ON CREATE SET c.value = 0
      SET c.value = c.value + 1
      RETURN c.value AS value`,
-    { key },
+    { id: GAME_ID },
   );
   const value = rows[0].value as number;
   return encodeBase62(value - 1);
@@ -35,17 +51,13 @@ export async function nextId(
  * Generate a batch of short IDs for a given counter key.
  * Atomically reserves `count` values and returns them.
  */
-export async function nextIdBatch(
-  client: Neo4jClient,
-  count: number,
-  key: string = "message_id",
-): Promise<string[]> {
+export async function nextIdBatch(client: Neo4jClient, count: number): Promise<string[]> {
   const rows = await client.executeWrite(
-    `MERGE (c:IdCounter {key: $key})
+    `MERGE (c:IdCounter {session_id: $id})
      ON CREATE SET c.value = 0
      SET c.value = c.value + $count
      RETURN c.value AS value`,
-    { key, count },
+    { id: GAME_ID, count },
   );
   const endValue = rows[0].value as number;
   const startValue = endValue - count;

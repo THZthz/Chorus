@@ -114,7 +114,7 @@ export class LongTermMemory {
     const rows = await this.client.executeWrite(
       `MERGE (e:Entity {name: $name})
        ON CREATE SET
-         e.id = $id,
+         e._id = $id,
          e.created_at = datetime()
        SET
          e.type = $type,
@@ -125,7 +125,7 @@ export class LongTermMemory {
          e.metadata = $metadata
        SET e:${typeLabel}
        ${subtypeLabel ? `SET e:${subtypeLabel}` : ""}
-       RETURN e, e.id = $id AS isNew`,
+       RETURN e, e._id = $id AS isNew`,
       {
         id: entityId,
         name,
@@ -141,7 +141,7 @@ export class LongTermMemory {
     const result = rows[0];
     const isNew = (result?.isNew as boolean) || false;
     const persistedNode = result?.e as Record<string, unknown> | undefined;
-    const persistedId = (persistedNode?.id as string) || entityId;
+    const persistedId = (persistedNode?._id as string) || entityId;
     const persistedCreatedAt = persistedNode?.created_at
       ? new Date(persistedNode.created_at as string | number)
       : new Date();
@@ -288,9 +288,9 @@ export class LongTermMemory {
     const rows = await this.client.executeWrite(
       `MATCH (npc:Entity {name: $npcName})
        MERGE (npc)-[r:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
-       ON CREATE SET d.id = $id, d.created_at = datetime($now), r.created_at = datetime()
+       ON CREATE SET d._id = $id, d.created_at = datetime($now), r.created_at = datetime()
        SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
-       RETURN d, d.id = $id AS isNew`,
+       RETURN d, d._id = $id AS isNew`,
       { npcName, targetName, sentiment, summary, id, now },
     );
     if (rows.length === 0) {
@@ -330,7 +330,7 @@ export class LongTermMemory {
     const aliases = (meta.aliases as string[]) || [];
     delete meta.aliases;
     return {
-      id: data.id as string,
+      id: data._id as string,
       name: data.name as string,
       type: data.type as EntityType,
       subtype: (data.subtype as string) || undefined,
@@ -345,7 +345,7 @@ export class LongTermMemory {
 
   private parseDisposition(data: Record<string, unknown>): NPCDisposition {
     return {
-      id: data.id as string,
+      id: data._id as string,
       npcName: data.npc_name as string,
       targetName: data.target_name as string,
       sentiment: data.sentiment as string,

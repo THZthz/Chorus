@@ -105,7 +105,7 @@ CREATE (e)-[:LOCATED_AT]->(dest)
 
 \`\`\`cypher
 MERGE (e:Entity {name: "Iron Gate"})
-SET e.id = "<uuid>", e.type = "OBJECT",
+SET e._id = "<uuid>", e.type = "OBJECT",
     e.description = "A heavy wrought-iron gate, rusted at the hinges."
 \`\`\`
 
@@ -131,9 +131,9 @@ CREATE (npc)-[:CARRIES]->(item)
 \`\`\`cypher
 MATCH (npc:Entity {name: $npcName})
 MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
-ON CREATE SET d.id = $id, d.created_at = datetime($now)
+ON CREATE SET d._id = $id, d.created_at = datetime($now)
 SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
-RETURN d, d.id = $id AS isNew
+RETURN d, d._id = $id AS isNew
 \`\`\`
 
 #### Create Relationship
@@ -169,7 +169,7 @@ RETURN rt.name, rt.description, rt.category
 #### Query current time
 
 \`\`\`cypher
-MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp
+MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp
 \`\`\`
 
 #### Browse time history
@@ -190,51 +190,7 @@ You should wisely use the tools to maintain the world states, generate coherent 
 - Plots for story management: ${TOOL_NAMES.EDIT_PLOT} and ${TOOL_NAMES.SEARCH_PLOTS}
 - Interact with player or the game engine: ${TOOL_NAMES.GENERATE_DIALOGUE} and ${TOOL_NAMES.ADVANCE_TIME}
 
-### ${TOOL_NAMES.QUERY_WORLD}
-
-Read the game world with Cypher. Use MATCH...RETURN to inspect entities, NPC dispositions, messages, and game time.
-The validation layer ensures read-only access. Auto-limited to 50 results.
-
-### ${TOOL_NAMES.MUTATE_WORLD}
-
-Modify the game world with Cypher. Use CREATE/MERGE/SET/DELETE to change entities, relationships, NPC dispositions.
-The validation layer enforces safe operations.
-
-### ${TOOL_NAMES.SEARCH_MEMORY}
-
-Vector search across entities and messages by meaning.
-Use when you need to find something not in the current scene.
-
-### ${TOOL_NAMES.EDIT_NOTE}
-
-Create, update, or delete a note.
-Link notes to entities or messages for later retrieval.
-
-### ${TOOL_NAMES.SEARCH_NOTES}
-
-Vector search your notes.
-Use to recall past plans, observations, and ideas.
-
-### ${TOOL_NAMES.EDIT_PLOT}
-
-Create, update, or delete a plot.
-Set status (PENDING/ACTIVE/IN_PROGRESS/COMPLETED/ABANDONED).
-Add/remove player flags.
-Connect child plots via branchTo.
-
-### ${TOOL_NAMES.SEARCH_PLOTS}
-
-Vector search plots. Returns status, flags, trigger conditions, and connected child plots.
-
-### ${TOOL_NAMES.GENERATE_DIALOGUE}
-
-THE ONLY WAY to communicate with the player. REQUIRED every turn. Produces narrative messages + player choices.
-
-### ${TOOL_NAMES.ADVANCE_TIME}
-
-Advance the in-game clock by segments (2hr each) or days.
-Time flows only via tool ${TOOL_NAMES.ADVANCE_TIME}.
-Adjust sensory descriptions to match time of day.
+Time flows only via tool ${TOOL_NAMES.ADVANCE_TIME}. Adjust sensory descriptions to match time of day.
 `.trim();
 
 export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
@@ -283,7 +239,7 @@ These are the player's inner skills. Each has a distinct personality:
 | ORGANIZATION | Factions, guilds, groups                      |
 | EVENT        | Plot arcs, story milestones                   |
 
-Entity metadata can store: shortDescription, stats (for characters), conditions, status, flags.
+Entity metadata can store: stats (for characters), conditions, status, flags.
 
 ---
 
@@ -326,7 +282,7 @@ Tracked via ${TOOL_NAMES.MUTATE_WORLD} — add/update/remove conditions in the p
 When the player selects an option with a skill check, the prompt will include the result under "SKILL CHECK RESULT". The dice have already been rolled — you just need to narrate the outcome.
 
 ### How Checks Work
-- The player has CharacterStats (scores from 0-10+ in 12 skills) stored on the Player entity
+- The player has stats (scores from 0-10+ in 12 skills) stored on the Player entity
 - When a check is triggered: diceCount d6 dice are rolled, summed, and the player's stat bonus for that skill is added
 - Success: final total >= difficulty
 - Conditions: each condition's expression is evaluated against the roll (variables: success, total, difficulty, statBonus)

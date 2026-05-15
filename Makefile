@@ -40,7 +40,7 @@ help:
 install:
 	$(NPM) install
 
-NEO4J_COMPOSE := docker compose -f docker-compose.test.yml
+NEO4J_COMPOSE := docker compose -f docker-compose.yml
 
 neo4j-start:
 	$(NEO4J_COMPOSE) up -d

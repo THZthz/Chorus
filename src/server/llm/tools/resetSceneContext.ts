@@ -24,11 +24,15 @@ import { TOOL_NAMES } from "@/shared/constants";
 
 export const resetSceneContext = tool({
   title: TOOL_NAMES.RESET_SCENE_CONTEXT,
-  description:
-    "Reset the scene context observer so the next turn shows full entity and plot descriptions instead of briefs. Use when the scene has significantly changed and you want the player to see full descriptions again.",
+  description: `
+Reset the scene context observer so the next turn shows full entity and plot descriptions instead of briefs.
+Use when the scene has significantly changed and you want to see full descriptions again.`.trim(),
   inputSchema: z.object({}),
   execute: wrapSafe(async () => {
     getObserver().reset();
-    return "Scene context observer reset. Next turn will show full descriptions for all entities and plots.";
+    return JSON.stringify({
+      success:
+        "Scene context observer reset. Next turn will show full descriptions for all entities and plots.",
+    });
   }, TOOL_NAMES.RESET_SCENE_CONTEXT),
 });

@@ -31,7 +31,7 @@ export class Notes {
     this.embedder = getEmbedder();
   }
 
-  async createNote(content: string): Promise<MemoryNote> {
+  async createNote(noteName: string, content: string): Promise<MemoryNote> {
     const id = uuidv4();
     const embedding = await this.embedder.embed(content);
     const now = new Date().toISOString();
@@ -50,8 +50,8 @@ export class Notes {
     };
   }
 
-  async updateNote(noteId: string, options: { content?: string }): Promise<MemoryNote | null> {
-    const existing = await this.getNote(noteId);
+  async updateNote(noteName: string, options: { content?: string }): Promise<MemoryNote | null> {
+    const existing = await this.getNote(noteName);
     if (!existing) return null;
 
     const content = options.content ?? existing.content;
@@ -62,25 +62,27 @@ export class Notes {
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
-      `MATCH (n:Note {id: $id})
+      `MATCH (n:Note {name: $name})
        SET n.content = $content, n._embedding = $embedding, n.updated_at = datetime($now)
        RETURN n`,
-      { id: noteId, content, embedding: embedding || null, now },
+      { name: noteName, content, embedding: embedding || null, now },
     );
 
     return { ...existing, content, _embedding: embedding, updatedAt: new Date(now) };
   }
 
-  async deleteNote(noteId: string): Promise<boolean> {
+  async deleteNote(noteName: string): Promise<boolean> {
     const result = await this.client.executeWrite(
-      `MATCH (n:Note {id: $id}) DETACH DELETE n RETURN count(n) AS deleted`,
-      { id: noteId },
+      `MATCH (n:Note {name: $name}) DETACH DELETE n RETURN count(n) AS deleted`,
+      { name: noteName },
     );
     return (result[0]?.deleted as number) > 0;
   }
 
-  async getNote(noteId: string): Promise<MemoryNote | null> {
-    const rows = await this.client.executeRead(`MATCH (n:Note {id: $id}) RETURN n`, { id: noteId });
+  async getNote(noteName: string): Promise<MemoryNote | null> {
+    const rows = await this.client.executeRead(`MATCH (n:Note {name: $name}) RETURN n`, {
+      name: noteName,
+    });
     if (rows.length === 0) return null;
     return this.parseNote(rows[0].n as Record<string, unknown>);
   }
@@ -105,57 +107,65 @@ export class Notes {
     }));
   }
 
-  async linkToEntity(noteId: string, entityName: string, description?: string): Promise<void> {
+  async linkToEntity(noteName: string, entityName: string, description?: string): Promise<void> {
     try {
       await this.client.mergeRelationship(
-        "Note", "id", noteId,
-        "Entity", "name", entityName,
+        "Note",
+        "name",
+        noteName,
+        "Entity",
+        "name",
+        entityName,
         "ABOUT",
         { description },
       );
     } catch (err) {
       console.warn(
-        `[notes] linkToEntity(${noteId}, ${entityName}) failed:`,
+        `[notes] linkToEntity(${noteName}, ${entityName}) failed:`,
         err instanceof Error ? err.message : String(err),
       );
     }
   }
 
-  async linkToMessage(noteId: string, messageId: string, description?: string): Promise<void> {
+  async linkToMessage(noteName: string, messageId: string, description?: string): Promise<void> {
     try {
       await this.client.mergeRelationship(
-        "Note", "id", noteId,
-        "Message", "id", messageId,
+        "Note",
+        "name",
+        noteName,
+        "Message",
+        "id",
+        messageId,
         "ABOUT_MESSAGE",
         { description },
       );
     } catch (err) {
       console.warn(
-        `[notes] linkToMessage(${noteId}, ${messageId}) failed:`,
+        `[notes] linkToMessage(${noteName}, ${messageId}) failed:`,
         err instanceof Error ? err.message : String(err),
       );
     }
   }
 
-  async clearLinks(noteId: string): Promise<void> {
+  async clearLinks(noteName: string, type: "ENTITY" | "MESSAGE" | "ALL"): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (n:Note {id: $noteId})-[r:ABOUT|ABOUT_MESSAGE]->() DELETE r`,
-      { noteId },
+      `MATCH (n:Note {name: $noteName})-[r:ABOUT|ABOUT_MESSAGE]->() DELETE r`,
+      { noteName },
     );
   }
 
-  async getLinkedEntities(noteId: string): Promise<string[]> {
+  async getLinkedEntities(noteName: string): Promise<string[]> {
     const rows = await this.client.executeRead(
-      `MATCH (n:Note {id: $noteId})-[:ABOUT]->(e:Entity) RETURN e.name AS name`,
-      { noteId },
+      `MATCH (n:Note {name: $noteName})-[:ABOUT]->(e:Entity) RETURN e.name AS name`,
+      { noteName },
     );
     return rows.map((r) => r.name as string);
   }
 
-  async getLinkedMessages(noteId: string): Promise<string[]> {
+  async getLinkedMessages(noteName: string): Promise<string[]> {
     const rows = await this.client.executeRead(
-      `MATCH (n:Note {id: $noteId})-[:ABOUT_MESSAGE]->(m:Message) RETURN m.id AS id`,
-      { noteId },
+      `MATCH (n:Note {name: $noteName})-[:ABOUT_MESSAGE]->(m:Message) RETURN m.id AS id`,
+      { noteName },
     );
     return rows.map((r) => r.id as string);
   }

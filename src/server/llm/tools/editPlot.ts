@@ -22,38 +22,48 @@ import { MemoryClient, PLOT_STATUSES } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
+const PLOT_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
+
+const inputSchema = z.object({
+  plotName: z.string().describe("Plot name."),
+  action: z.enum(PLOT_ACTIONS).default("CREATE").describe("Action taken for the plot."),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      "Plot description. CREATE: required; UPDATE: optional, if set, description will be updated, this situation should be rare; DELETE: omit.",
+    ),
+  brief: z.string().optional().describe("Short one-line summary of the plot."),
+  status: z.enum(PLOT_STATUSES).optional().describe("Plot status."),
+  triggerCondition: z.string().optional().describe("Condition that activates this plot."),
+  setFlag: z
+    .object({ flagId: z.string(), description: z.string() })
+    .optional()
+    .describe("Add or update a flag on this plot."),
+  removeFlag: z.string().optional().describe("Flag ID to remove."),
+  branchTo: z.string().optional().describe("Child plot name to connect via BRANCHES_TO."),
+  unbranch: z.string().optional().describe("Child plot name to disconnect."),
+});
+
 export const editPlot = tool({
   title: TOOL_NAMES.EDIT_PLOT,
-  description: `Create, update, or delete a plot. Plots track story arcs. Use flags for player knowledge. Use branchTo/unbranch to connect child plots. Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to find them.`,
-  inputSchema: z.object({
-    plotName: z
-      .string()
-      .optional()
-      .describe("Plot name. Omit to create, include to update/delete."),
-    remove: z.boolean().default(false).describe("Set true to delete (requires plotName)."),
-    description: z.string().optional().describe("Plot description."),
-    brief: z.string().optional().describe("Short one-line summary of the plot for scene context."),
-    status: z.enum(PLOT_STATUSES).optional().describe("Plot status."),
-    triggerCondition: z.string().optional().describe("Condition that activates this plot."),
-    setFlag: z
-      .object({ flagId: z.string(), description: z.string() })
-      .optional()
-      .describe("Add or update a player flag on this plot."),
-    removeFlag: z.string().optional().describe("Flag ID to remove."),
-    branchTo: z.string().optional().describe("Child plot name to connect via BRANCHES_TO."),
-    unbranch: z.string().optional().describe("Child plot name to disconnect."),
-  }),
-  execute: wrapSafe(async (args) => {
+  description: `
+CREATE, UPDATE, or DELETE a plot.
+Plots track story arcs.
+Use flags for indicating critical progress of story beats.
+Use branchTo/unbranch to connect child plots.
+Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to find them.`,
+  inputSchema,
+  execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
     const client = MemoryClient.getCachedInstance();
 
-    if (args.plotName && args.remove) {
-      const deleted = await client.plots.deletePlot(args.plotName);
-      return JSON.stringify(deleted ? { removed: args.plotName } : { error: "Plot not found" });
+    if (!args.plotName) {
+      return JSON.stringify({ error: "plotName should be included." });
     }
 
-    if (!args.plotName) {
-      if (!args.description) return JSON.stringify({ error: "description required for create" });
-      const plot = await client.plots.createPlot(`plot_${Date.now()}`, {
+    if (args.action == "CREATE") {
+      if (!args.description) return JSON.stringify({ error: "description required for CREATE." });
+      const plot = await client.plots.createPlot(args.plotName, {
         description: args.description,
         brief: args.brief,
         status: args.status ?? "PENDING",
@@ -62,8 +72,15 @@ export const editPlot = tool({
       return JSON.stringify({ created: plot.name, status: plot.status });
     }
 
+    if (args.action == "DELETE") {
+      const deleted = await client.plots.deletePlot(args.plotName);
+      return JSON.stringify(
+        deleted ? { removed: args.plotName } : { error: `Plot "${args.plotName}" not found.` },
+      );
+    }
+
     const existing = await client.plots.getPlot(args.plotName);
-    if (!existing) return JSON.stringify({ error: `Plot "${args.plotName}" not found` });
+    if (!existing) return JSON.stringify({ error: `Plot "${args.plotName}" not found.` });
 
     const oldStatus = existing.status;
     const newStatus = (args.status ?? oldStatus) as typeof oldStatus;
@@ -78,6 +95,7 @@ export const editPlot = tool({
       await client.plots.updatePlot(args.plotName, updates as any);
     }
 
+    // TODO: How the error occurred in the following code handled?
     // Auto-wire time relationships on status transition
     if (newStatus !== oldStatus) {
       if (oldStatus === "PENDING" && (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS")) {

@@ -31,9 +31,9 @@ export const mutateWorld = tool({
   description: `
 Modify the game world using Cypher queries.
 Use to create/update/delete entities, move characters, set relationships, change NPC dispositions, and store player knowledge.
-Allowed relationships: LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, LOCATED_IN, HAS_DISPOSITION.
 When creating a new relationship, always set a description property on it explaining why the relationship exists. Use MERGE for upserts.
-Use SET to update properties. Use DETACH DELETE to remove entities. Must include a WHERE clause when deleting.`.trim(),
+Use SET to update properties. Use DETACH DELETE to remove entities. Must include a WHERE clause when deleting.
+`.trim(),
   inputSchema: z.object({
     query: z
       .string()
@@ -44,7 +44,9 @@ Use SET to update properties. Use DETACH DELETE to remove entities. Must include
   execute: wrapSafe(async (args) => {
     const validation = validator.validateWrite(args.query);
     if (!validation.valid) {
-      return `VALIDATION FAILED: ${validation.errors.join("; ")}. Rewrite your query and retry.`;
+      return JSON.stringify({
+        error: `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`,
+      });
     }
 
     const client = MemoryClient.getCachedInstance();
@@ -53,7 +55,9 @@ Use SET to update properties. Use DETACH DELETE to remove entities. Must include
         await client.neo4j.executeRead(`EXPLAIN ${args.query}`);
       } catch (explainErr) {
         const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
-        return `CYPHER SYNTAX ERROR: ${msg}. Fix your query and retry.`;
+        return JSON.stringify({
+          error: `CYPHER SYNTAX ERROR:\n${msg}.\nFix your query and retry.`,
+        });
       }
 
       const rows = await client.neo4j.executeWrite(args.query);
@@ -68,7 +72,7 @@ Use SET to update properties. Use DETACH DELETE to remove entities. Must include
       return JSON.stringify({ success: true, rowsAffected: rows.length });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `QUERY ERROR: ${msg}. Adjust your query and retry.`;
+      return JSON.stringify({ error: `QUERY ERROR:\n${msg}.\nAdjust your query and retry.` });
     }
   }, TOOL_NAMES.MUTATE_WORLD),
 });

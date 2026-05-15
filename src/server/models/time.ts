@@ -110,7 +110,16 @@ export async function advanceGameTime(
        DELETE (a)-[:_CURRENT_TIMEPOINT]->(old)
        CREATE (a)-[r2:_CURRENT_TIMEPOINT]->(new)
        SET r2.description = $curTpDesc, r2.created_at = datetime()`,
-      { oldId: oldTimePoint.id, newId, newDay, newSegment, label, now, nextTpDesc: null, curTpDesc: null },
+      {
+        oldId: oldTimePoint.id,
+        newId,
+        newDay,
+        newSegment,
+        label,
+        now,
+        nextTpDesc: null,
+        curTpDesc: null,
+      },
     );
   } else {
     // First-ever TimePoint: no old tail to link

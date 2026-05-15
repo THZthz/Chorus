@@ -24,11 +24,12 @@ import { TOOL_NAMES } from "@/shared/constants";
 
 export const searchNotes = tool({
   title: TOOL_NAMES.SEARCH_NOTES,
-  description:
-    "Search GM notes by meaning using vector similarity. Notes are your private scratchpad — use them to record thoughts, plans, and observations.",
+  description: `
+Search GM notes by meaning using vector similarity.
+`.trim(),
   inputSchema: z.object({
-    query: z.string().describe("Natural language search query"),
-    limit: z.number().default(10).describe("Max results"),
+    query: z.string().describe("Natural language search query."),
+    limit: z.number().default(10).describe("Max results."),
   }),
   execute: wrapSafe(async (args) => {
     const client = MemoryClient.getCachedInstance();

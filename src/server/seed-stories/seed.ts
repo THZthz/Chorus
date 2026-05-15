@@ -53,11 +53,11 @@ export async function seedDatabase(): Promise<void> {
   // Skip if database already has data (prevents duplicate injection on restart)
   const existing = await client.neo4j.executeRead("MATCH (e:Entity) RETURN count(e) AS count");
   if ((existing[0]?.count as number) > 0) {
-    console.log(`[seed] database already has ${existing[0].count} entities, skipping`);
+    console.log(`[seedDatabase] database already has ${existing[0].count} entities, skipping`);
     return;
   }
 
-  console.log(`[seed] seeding ${story.entities.length} entities from "${story.id}"`);
+  console.log(`[seedDatabase] seeding ${story.entities.length} entities from "${story.id}"`);
 
   for (const entity of story.entities) {
     // Strip shortDescription from metadata — it's now a top-level brief
@@ -79,7 +79,7 @@ export async function seedDatabase(): Promise<void> {
       manager.register(rt.name, rt.description, "GM_DEFINED");
     }
     console.log(
-      `[seed] registered ${story.relationshipTypes.length} relationship types from "${story.id}"`,
+      `[seedDatabase] registered ${story.relationshipTypes.length} relationship types from "${story.id}"`,
     );
   }
 
@@ -125,6 +125,6 @@ export async function seedDatabase(): Promise<void> {
   await migrateToTimePoints(story.initialDay, story.initialSegment);
 
   console.log(
-    `[seed] done — ${story.entities.length} entities, ${story.relationships.length} relationships, ${dispositionCount} dispositions`,
+    `[seedDatabase] done — ${story.entities.length} entities, ${story.relationships.length} relationships, ${dispositionCount} dispositions`,
   );
 }

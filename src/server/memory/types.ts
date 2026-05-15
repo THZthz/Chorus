@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { NOTIFICATION_TYPES } from "@/types/dialogue";
-
 // Entity types similar to POLE+O model
 export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
 

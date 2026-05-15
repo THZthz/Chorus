@@ -199,25 +199,40 @@ export class ShortTermMemory {
 
     if (previousLastId && messageIds.length > 0) {
       await this.client.createRelationship(
-        "Message", "id", previousLastId,
-        "Message", "id", messageIds[0],
-        "_NEXT_MESSAGE", "",
+        "Message",
+        "id",
+        previousLastId,
+        "Message",
+        "id",
+        messageIds[0],
+        "_NEXT_MESSAGE",
+        "",
       );
     }
 
     for (let i = 0; i < messageIds.length - 1; i++) {
       await this.client.createRelationship(
-        "Message", "id", messageIds[i],
-        "Message", "id", messageIds[i + 1],
-        "_NEXT_MESSAGE", "",
+        "Message",
+        "id",
+        messageIds[i],
+        "Message",
+        "id",
+        messageIds[i + 1],
+        "_NEXT_MESSAGE",
+        "",
       );
     }
 
     if (createFirstMessage && messageIds.length > 0) {
       await this.client.createRelationship(
-        "Conversation", "id", convId,
-        "Message", "id", messageIds[0],
-        "_FIRST_MESSAGE", "",
+        "Conversation",
+        "id",
+        convId,
+        "Message",
+        "id",
+        messageIds[0],
+        "_FIRST_MESSAGE",
+        "",
       );
     }
   }

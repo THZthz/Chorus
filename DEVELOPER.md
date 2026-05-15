@@ -403,19 +403,19 @@ Message linking algorithm: find the last message (no outgoing `_NEXT_MESSAGE`), 
 
 `notes.ts`. GM note CRUD with vector embedding for semantic recall.
 
-| Method                     | Behavior                                                    |
-|----------------------------|-------------------------------------------------------------|
-| `createNote(content)`      | CREATE `:Note` with UUID, content embedding, timestamps     |
-| `getNote(noteId)`          | Read a single note by ID, returns `null` if not found       |
-| `updateNote(id, opts)`     | MATCH by id, SET content + re-embed if changed              |
-| `deleteNote(noteId)`       | MATCH by id, DETACH DELETE                                  |
-| `searchNotes(query, opts)` | Vector similarity search on `note_embedding_idx`            |
-| `getAllNotes()`            | Return all `:Note` nodes ordered by updatedAt               |
-| `linkToEntity(id, name)`   | Create `[:ABOUT]` relationship from Note to Entity          |
-| `linkToMessage(id, msgId)` | Create `[:ABOUT_MESSAGE]` relationship from Note to Message |
-| `clearLinks(noteId)`       | Delete all `[:ABOUT]` and `[:ABOUT_MESSAGE]` relationships  |
-| `getLinkedEntities(id)`    | Return entity names linked via `[:ABOUT]`                   |
-| `getLinkedMessages(id)`    | Return message IDs linked via `[:ABOUT_MESSAGE]`            |
+| Method                          | Behavior                                                    |
+|---------------------------------|-------------------------------------------------------------|
+| `createNote(noteName, content)` | CREATE `:Note` with name, content embedding, timestamps     |
+| `getNote(noteName)`             | Read a single note by name, returns `null` if not found     |
+| `updateNote(id, opts)`          | MATCH by name, SET content + re-embed if changed            |
+| `deleteNote(noteName)`          | MATCH by name, DETACH DELETE                                |
+| `searchNotes(query, opts)`      | Vector similarity search on `note_embedding_idx`            |
+| `getAllNotes()`                 | Return all `:Note` nodes ordered by updatedAt               |
+| `linkToEntity(id, name)`        | Create `[:ABOUT]` relationship from Note to Entity          |
+| `linkToMessage(id, msgId)`      | Create `[:ABOUT_MESSAGE]` relationship from Note to Message |
+| `clearLinks(noteName, type)`    | Delete `[:ABOUT]`/`[:ABOUT_MESSAGE]` relationships          |
+| `getLinkedEntities(id)`         | Return entity names linked via `[:ABOUT]`                   |
+| `getLinkedMessages(id)`         | Return message IDs linked via `[:ABOUT_MESSAGE]`            |
 
 ### 9.8 Plots
 

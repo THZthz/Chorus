@@ -31,22 +31,26 @@ export const queryWorld = tool({
   title: TOOL_NAMES.QUERY_WORLD,
   description: `
 Read the game world using Cypher queries.
-The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT).
+The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT), otherwise it will be rejected by validator of the tool.
 Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS.
-Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
-Browse time history via NEXT_TIMEPOINT.
+Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
+Browse time history via _NEXT_TIMEPOINT.
 
 NOTE:
-The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) is already pre-loaded in the user prompt under "SCENE CONTEXT".
+The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) will be pre-loaded in the user prompt under section "SCENE CONTEXT".
 Do NOT query for scene information that is already present.
-Use queryWorld only for specific lookups BEYOND the pre-loaded context, such as: entity searches by name, message history, timepoint browsing, or finding entities/relationships not shown in the scene.`.trim(),
+Use ${TOOL_NAMES.QUERY_WORLD} only for specific lookups BEYOND the pre-loaded context, such as: entity searches by name, message history, timepoint browsing, or finding entities/relationships not shown in the scene.
+Some internal properties prefixed with "_" will not shown in the result JSON.
+`.trim(),
   inputSchema: z.object({
     query: z.string().describe("A read-only Cypher query (MATCH...RETURN)."),
   }),
   execute: wrapSafe(async (args) => {
     const validation = validator.validateRead(args.query);
     if (!validation.valid) {
-      return `VALIDATION FAILED: ${validation.errors.join("; ")}. Rewrite your query and retry.`;
+      return JSON.stringify({
+        error: `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`,
+      });
     }
 
     let query = args.query.trim();
@@ -60,7 +64,9 @@ Use queryWorld only for specific lookups BEYOND the pre-loaded context, such as:
         await client.neo4j.executeRead(`EXPLAIN ${query}`);
       } catch (explainErr) {
         const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
-        return `CYPHER SYNTAX ERROR: ${msg}. Fix your query and retry.`;
+        return JSON.stringify({
+          error: `CYPHER SYNTAX ERROR:\n${msg}.\nFix your query and retry.`,
+        });
       }
 
       const rows = await client.neo4j.executeRead(query);
@@ -68,7 +74,7 @@ Use queryWorld only for specific lookups BEYOND the pre-loaded context, such as:
       return JSON.stringify({ rowCount: safeRows.length, rows: safeRows }, null, 2);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `QUERY ERROR: ${msg}. Adjust your query and retry.`;
+      return JSON.stringify({ error: `QUERY ERROR:\n${msg}.\nAdjust your query and retry.` });
     }
   }, TOOL_NAMES.QUERY_WORLD),
 });

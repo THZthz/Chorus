@@ -24,8 +24,9 @@ import { TOOL_NAMES } from "@/shared/constants";
 
 export const searchPlots = tool({
   title: TOOL_NAMES.SEARCH_PLOTS,
-  description:
-    "Search plots by meaning using vector similarity. Use to find relevant story arcs, check plot status, and discover connected plots via BRANCHES_TO.",
+  description: `
+Search plots by meaning using vector similarity.
+`.trim(),
   inputSchema: z.object({
     query: z.string().describe("Natural language search query"),
     limit: z.number().default(10).describe("Max results"),

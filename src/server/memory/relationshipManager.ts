@@ -64,12 +64,12 @@ const INTERNAL_TYPES: { name: string; description: string }[] = [
     description: "Links a Conversation node to its GMTurnMessage nodes.",
   },
   {
-    name: "_NEXT_GM_MESSAGE",
-    description: "Sequentially links GMTurnMessage nodes in conversation order.",
-  },
-  {
     name: "_FIRST_GM_MESSAGE",
     description: "Points to the first GMTurnMessage in a Conversation's ordered linked list.",
+  },
+  {
+    name: "_NEXT_GM_MESSAGE",
+    description: "Sequentially links GMTurnMessage nodes in conversation order.",
   },
 ];
 

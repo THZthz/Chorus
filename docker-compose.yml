@@ -1,7 +1,7 @@
 services:
   neo4j:
     image: neo4j:5.26-community
-    container_name: neo4j-agent-memory-test
+    container_name: neo4j-chorus
     ports:
       - "7474:7474" # HTTP
       - "7687:7687" # Bolt

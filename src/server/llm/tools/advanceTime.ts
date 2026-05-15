@@ -45,6 +45,7 @@ export function createAdvanceTimeTool(events: EventEmitter) {
       const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
       const { oldTime, newTime } = await advanceGameTime(totalSegments);
       events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
+      // TODO: Should be used to display to the player?
       const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
       if (totalSegments === 0) {
         return `Time unchanged. It is still ${describeTime(newTime)}.`;

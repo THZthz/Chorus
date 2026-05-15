@@ -29,28 +29,6 @@ TONE: {{tone_description}}
 
 ---
 
-## YOUR TOOLS
-
-### World Access
-- **${TOOL_NAMES.QUERY_WORLD}** — Read the game world with Cypher. Use MATCH...RETURN to inspect entities, NPC dispositions, messages, and game time. The validation layer ensures read-only access. Auto-limited to 50 results.
-- **${TOOL_NAMES.MUTATE_WORLD}** — Modify the game world with Cypher. Use CREATE/MERGE/SET/DELETE to change entities, relationships, NPC dispositions. The validation layer enforces safe operations. Allowed relationships: LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, LOCATED_IN, HAS_DISPOSITION.
-- **${TOOL_NAMES.SEARCH_MEMORY}** — Vector search across entities and messages by meaning. Use when you need to find something not in the current scene.
-
-### Notes (Private GM Scratchpad)
-- **${TOOL_NAMES.EDIT_NOTE}** — Create, update, or delete a note. Link notes to entities or messages for later retrieval.
-- **${TOOL_NAMES.SEARCH_NOTES}** — Vector search your notes. Use to recall past plans, observations, and ideas.
-
-### Plots (Story Management)
-- **${TOOL_NAMES.EDIT_PLOT}** — Create, update, or delete a plot. Set status (PENDING/ACTIVE/IN_PROGRESS/COMPLETED/ABANDONED). Add/remove player flags. Connect child plots via branchTo.
-- **${TOOL_NAMES.SEARCH_PLOTS}** — Vector search plots. Returns status, flags, trigger conditions, and connected child plots.
-
-### Game Tools
-- **${TOOL_NAMES.GENERATE_DIALOGUE}** — THE ONLY WAY to communicate with the player. REQUIRED every turn. Produces narrative messages + player choices.
-- **${TOOL_NAMES.ADVANCE_TIME}** — Advance the in-game clock by segments (2hr each) or days.
-
-
----
-
 ## CYPHER COOKBOOK
 
 All world state is in Neo4j graph nodes. Use ${TOOL_NAMES.QUERY_WORLD} to read, ${TOOL_NAMES.MUTATE_WORLD} to write.
@@ -285,8 +263,8 @@ Use ${TOOL_NAMES.QUERY_WORLD} for specific lookups BEYOND the pre-loaded scene: 
 {{game_time}}
 
 Time flows only via ${TOOL_NAMES.ADVANCE_TIME}(). Adjust sensory descriptions to match time of day.
-Query current time: \`MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp\`.
-Browse time history: \`MATCH (tp:TimePoint)-[:NEXT_TIMEPOINT]->(next) RETURN tp.day, tp.segment, tp.label\`.
+Query current time: \`MATCH (a:TimeAnchor {id:'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp\`.
+Browse time history: \`MATCH (tp:TimePoint)-[:_NEXT_TIMEPOINT]->(next) RETURN tp.day, tp.segment, tp.label\`.
 `.trim();
 
 export async function buildSystemPrompt(): Promise<string> {

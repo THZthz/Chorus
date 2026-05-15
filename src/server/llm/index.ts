@@ -211,9 +211,22 @@ export async function generateTurn(
 
   let streamError: string | null = null;
 
+  // If a system message is already cached in previous GM messages, reuse it
+  // to avoid re-injecting the (potentially large) system prompt every turn.
+  const cachedSystemIdx = previousMessages.findIndex((m) => m.role === "system");
+  const hasCachedSystem = cachedSystemIdx >= 0;
+  if (hasCachedSystem) {
+    const cachedContent = (previousMessages[cachedSystemIdx] as any).content;
+    if (cachedContent !== systemPrompt) {
+      console.warn(
+        `[generateTurn] Cached system prompt differs from fresh build (len: cached=${cachedContent?.length ?? 0} fresh=${systemPrompt.length}). Using cached.`,
+      );
+    }
+  }
+
   const result = streamText({
     model,
-    system: systemPrompt,
+    system: hasCachedSystem ? undefined : systemPrompt,
     messages: [...previousMessages, { role: "user" as const, content: promptText }],
     tools: allTools,
     stopWhen: [

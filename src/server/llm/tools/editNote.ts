@@ -22,38 +22,54 @@ import { MemoryClient } from "@/server/memory/client";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
+const NOTE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
+
+const inputSchema = z.object({
+  noteName: z.string().describe("The name of target note."),
+  action: z.enum(NOTE_ACTIONS).default("CREATE").describe("Action taken for the note."),
+  content: z
+    .string()
+    .optional()
+    .describe(
+      `
+Note text. CREATE: required; UPDATE: optional, set to overwrite old content; DELETE: omit.`.trim(),
+    ),
+  aboutEntities: z
+    .array(z.string())
+    .optional()
+    .describe("Entity names to link this note to (replaces existing links)."),
+  aboutMessages: z
+    .array(z.string())
+    .optional()
+    .describe("Message IDs to link this note to (replaces existing links)."),
+});
+
 export const editNote = tool({
   title: TOOL_NAMES.EDIT_NOTE,
-  description:
-    "Create, update, or delete a GM scratchpad note. Notes can be linked to entities and messages. Omit noteId to create. Set remove:true with noteId to delete.",
-  inputSchema: z.object({
-    noteId: z.string().optional().describe("Note ID to update/delete. Omit to create."),
-    remove: z.boolean().default(false).describe("Set true to delete this note (requires noteId)."),
-    content: z.string().optional().describe("Note text. Required for create, optional for update."),
-    aboutEntities: z
-      .array(z.string())
-      .optional()
-      .describe("Entity names to link this note to (replaces existing links)."),
-    aboutMessages: z
-      .array(z.string())
-      .optional()
-      .describe("Message IDs to link this note to (replaces existing links)."),
-  }),
-  execute: wrapSafe(async (args) => {
+  description: `
+Create, update, or delete a scratchpad note.
+Notes can be linked to entities and messages.
+`.trim(),
+  inputSchema,
+  execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
     const client = MemoryClient.getCachedInstance();
 
-    if (args.noteId && args.remove) {
-      const deleted = await client.notes.deleteNote(args.noteId);
-      return JSON.stringify(deleted ? { removed: args.noteId } : { error: "Note not found" });
+    if (args.action == "DELETE") {
+      const deleted = await client.notes.deleteNote(args.noteName);
+      return JSON.stringify(
+        deleted ? { removed: args.noteName } : { error: `Note "${args.noteName}" not found.` },
+      );
     }
 
-    if (!args.noteId) {
-      if (!args.content) return JSON.stringify({ error: "content required for create" });
-      const note = await client.notes.createNote(args.content);
-      if (args.aboutEntities)
+    if (args.action == "CREATE") {
+      if (!args.content) return JSON.stringify({ error: "content required for CREATE." });
+      const note = await client.notes.createNote(args.noteName, args.content);
+      if (args.aboutEntities) {
         for (const name of args.aboutEntities) await client.notes.linkToEntity(note.id, name);
-      if (args.aboutMessages)
+      }
+      if (args.aboutMessages) {
         for (const id of args.aboutMessages) await client.notes.linkToMessage(note.id, id);
+      }
       return JSON.stringify({
         created: note.id,
         content: note.content,
@@ -62,19 +78,21 @@ export const editNote = tool({
       });
     }
 
-    const existing = await client.notes.getNote(args.noteId);
-    if (!existing) return JSON.stringify({ error: `Note "${args.noteId}" not found` });
+    const existing = await client.notes.getNote(args.noteName);
+    if (!existing) return JSON.stringify({ error: `Note "${args.noteName}" not found.` });
 
-    if (args.content) await client.notes.updateNote(args.noteId, { content: args.content });
-
-    if (args.aboutEntities !== undefined || args.aboutMessages !== undefined) {
-      await client.notes.clearLinks(args.noteId);
-      if (args.aboutEntities)
-        for (const name of args.aboutEntities) await client.notes.linkToEntity(args.noteId, name);
-      if (args.aboutMessages)
-        for (const id of args.aboutMessages) await client.notes.linkToMessage(args.noteId, id);
+    if (args.content !== undefined) {
+      await client.notes.updateNote(args.noteName, { content: args.content });
+    }
+    if (args.aboutEntities !== undefined && args.aboutEntities) {
+      await client.notes.clearLinks(args.noteName, "ENTITY");
+      for (const name of args.aboutEntities) await client.notes.linkToEntity(args.noteName, name);
+    }
+    if (args.aboutMessages !== undefined && args.aboutMessages) {
+      await client.notes.clearLinks(args.noteName, "MESSAGE");
+      for (const id of args.aboutMessages) await client.notes.linkToMessage(args.noteName, id);
     }
 
-    return JSON.stringify({ updated: args.noteId });
+    return JSON.stringify({ updated: args.noteName });
   }, TOOL_NAMES.EDIT_NOTE),
 });

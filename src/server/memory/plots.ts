@@ -206,8 +206,12 @@ export class Plots {
     description?: string,
   ): Promise<boolean> {
     const rows = await this.client.mergeRelationship(
-      "Plot", "name", parentPlotName,
-      "Plot", "name", childPlotName,
+      "Plot",
+      "name",
+      parentPlotName,
+      "Plot",
+      "name",
+      childPlotName,
       "BRANCHES_TO",
       { description },
     );

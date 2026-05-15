@@ -99,7 +99,9 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
             expression: z
               .string()
               .max(100)
-              .describe("JS expression e.g. 'success' or 'total < difficulty'"),
+              .describe(
+                "JS expression e.g. 'success', 'total - statBonus > difficulty' or 'total < difficulty'",
+              ),
             label: z.string().max(100).optional(),
             color: z.string().max(30).optional(),
           }),
@@ -250,10 +252,7 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   return { errors };
 }
 
-function formatValidationFailure(
-  result: ValidationResult,
-  isCorrection: boolean,
-): string {
+function formatValidationFailure(result: ValidationResult, isCorrection: boolean): string {
   return JSON.stringify({
     error: "VALIDATION FAILED",
     isCorrection,

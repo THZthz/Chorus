@@ -223,8 +223,12 @@ export class LongTermMemory {
   ): Promise<{ created: boolean }> {
     const { description, confidence = 1.0 } = options || {};
     const rows = await this.client.mergeRelationship(
-      "Entity", "name", sourceName,
-      "Entity", "name", targetName,
+      "Entity",
+      "name",
+      sourceName,
+      "Entity",
+      "name",
+      targetName,
       relationshipType,
       { description, onCreateProps: { confidence } },
     );

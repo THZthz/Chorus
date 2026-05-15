@@ -107,23 +107,38 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
 
   if (previousLastId) {
     await client.neo4j.createRelationship(
-      "GMTurnMessage", "id", previousLastId,
-      "GMTurnMessage", "id", ids[0],
-      "_NEXT_GM_MESSAGE", "",
+      "GMTurnMessage",
+      "id",
+      previousLastId,
+      "GMTurnMessage",
+      "id",
+      ids[0],
+      "_NEXT_GM_MESSAGE",
+      "",
     );
   }
   for (let i = 0; i < ids.length - 1; i++) {
     await client.neo4j.createRelationship(
-      "GMTurnMessage", "id", ids[i],
-      "GMTurnMessage", "id", ids[i + 1],
-      "_NEXT_GM_MESSAGE", "",
+      "GMTurnMessage",
+      "id",
+      ids[i],
+      "GMTurnMessage",
+      "id",
+      ids[i + 1],
+      "_NEXT_GM_MESSAGE",
+      "",
     );
   }
   if (isFirst && ids.length > 0) {
     await client.neo4j.createRelationship(
-      "Conversation", "id", convId,
-      "GMTurnMessage", "id", ids[0],
-      "_FIRST_GM_MESSAGE", "",
+      "Conversation",
+      "id",
+      convId,
+      "GMTurnMessage",
+      "id",
+      ids[0],
+      "_FIRST_GM_MESSAGE",
+      "",
     );
   }
 }

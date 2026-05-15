@@ -505,10 +505,8 @@ export async function buildFullSceneContext(): Promise<string> {
     (l) => !["GMTurnMessage", "IdCounter", "RelationshipType", "Conversation"].includes(l),
   );
 
-  const labelProps = new Map<string, string[]>();
-  for (const label of schemaLabels) {
-    labelProps.set(label, await sampleProps(db, label));
-  }
+  const propResults = await Promise.all(schemaLabels.map((l) => sampleProps(db, l)));
+  const labelProps = new Map(schemaLabels.map((l, i) => [l, propResults[i]]));
 
   const allRelTypes = relTypeRows.map((r) => r.relationshipType as string);
 

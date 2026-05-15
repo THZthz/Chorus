@@ -18,6 +18,7 @@
 
 import { TOOL_NAMES } from "@/shared/constants";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import type { Neo4jClient } from "@/server/memory/neo4j";
 
 const READ_ALLOWED_LABELS = new Set([
   "Entity",
@@ -26,6 +27,7 @@ const READ_ALLOWED_LABELS = new Set([
   "GameTime",
   "TimePoint",
   "TimeAnchor",
+  "RelationshipType",
 ]);
 
 const WRITE_ALLOWED_LABELS = new Set([
@@ -119,53 +121,7 @@ export class CypherValidator {
       }
     }
 
-    // Check: new relationships must include a description property
-    for (const err of this.checkRelationshipDescriptions(query)) {
-      errors.push(err);
-    }
-
     return { valid: errors.length === 0, errors };
-  }
-
-  // Check that every CREATE/MERGE relationship includes a description property.
-  // Limitation: inline property regex uses {[^}]*}, so a `}` inside a description
-  // string value (e.g. {description: "a } b"}) won't be detected. Detection via
-  // SET r.description scans the full query and works across clauses.
-  private checkRelationshipDescriptions(query: string): string[] {
-    const errors: string[] = [];
-
-    // Quick bail: no relationship creation
-    const hasRelCreation =
-      /(?:CREATE|MERGE)\s.*-\[.*:\w+.*\]->/i.test(query) ||
-      /(?:CREATE|MERGE)\s.*<-\[.*:\w+.*\]-/i.test(query);
-    if (!hasRelCreation) return errors;
-
-    // Match relationship creation: -[var:REL_TYPE {props}]-> or <-[var:REL_TYPE {props}]-
-    const relPattern =
-      /-\[(\w*)\s*:\s*(\w+)\s*(\{[^}]*\})?\s*\]\s*->|<-\[(\w*)\s*:\s*(\w+)\s*(\{[^}]*\})?\s*\]\s*-/g;
-
-    let match: RegExpExecArray | null;
-    while ((match = relPattern.exec(query)) !== null) {
-      const relVar = match[1] || match[4];
-      const relType = match[2] || match[5];
-      const inlineProps = match[3] || match[6];
-
-      const hasInlineDesc = inlineProps ? /\bdescription\s*:/.test(inlineProps) : false;
-
-      let hasSetDesc = false;
-      if (relVar) {
-        hasSetDesc = new RegExp(`SET\\s+${relVar}\\.description\\s*=`, "i").test(query);
-      }
-
-      if (!hasInlineDesc && !hasSetDesc) {
-        errors.push(
-          `New relationship [:${relType}] must include a description property. Add {description: "why"} inline or SET ${relVar ? relVar : "r"}.description. (Note: inline detection can miss values containing "}" — use SET if your description includes braces.)`,
-        );
-        break;
-      }
-    }
-
-    return errors;
   }
 
   // Extract node labels from a Cypher query (e.g. :Entity, :Message).
@@ -178,7 +134,7 @@ export class CypherValidator {
   }
 
   // Extract relationship types from a Cypher query (e.g. [:LOCATED_AT], [:CARRIES]).
-  private extractRelationshipTypes(query: string): string[] {
+  extractRelationshipTypes(query: string): string[] {
     const cleaned = query.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
     const matches = cleaned.matchAll(/\[:([A-Z][A-Za-z0-9_]+)/g);
     return [...new Set([...matches].map((m) => m[1]))];
@@ -186,5 +142,31 @@ export class CypherValidator {
 
   private hasQualifiedMatch(query: string): boolean {
     return /\bMATCH\b.*\bWHERE\b/i.test(query) || /\bMATCH\b[^}]*\{[^}]*:/i.test(query);
+  }
+
+  // Diagnostic tool: queries all relationship types in the database and checks
+  // whether each has a corresponding :RelationshipType node. Logs warnings for
+  // any types missing a :RelationshipType entry. Never blocks writes.
+  async auditRelationshipDescriptions(client: Neo4jClient): Promise<void> {
+    try {
+      const types = await client.executeRead(
+        "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType",
+      );
+      for (const row of types) {
+        const relType = row.relationshipType as string;
+        const nodes = await client.executeRead(
+          "MATCH (rt:RelationshipType {name: $name}) RETURN rt LIMIT 1",
+          { name: relType },
+        );
+        if (nodes.length === 0) {
+          console.warn(
+            `[CypherValidator] relationship type ":${relType}" exists in graph but has no :RelationshipType node`,
+          );
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[CypherValidator] auditRelationshipDescriptions failed: ${msg}`);
+    }
   }
 }

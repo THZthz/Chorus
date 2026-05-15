@@ -33,8 +33,8 @@ export const queryWorld = tool({
 Read the game world using Cypher queries.
 The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT), otherwise it will be rejected by validator of the tool.
 Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS.
-Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
-Browse time history via _NEXT_TIMEPOINT.
+Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
+Browse time history via NEXT_TIMEPOINT.
 
 NOTE:
 The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) will be pre-loaded in the user prompt under section "SCENE CONTEXT".

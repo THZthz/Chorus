@@ -89,7 +89,7 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
          message_index: $messageIndex,
          created_at: datetime($now)
        })
-       SET r.description = $hasGmDesc, r.created_at = datetime()`,
+       SET r.created_at = datetime()`,
       {
         convId,
         id,
@@ -99,7 +99,6 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
         turnNumber,
         messageIndex,
         now,
-        hasGmDesc: null,
       },
     );
     messageIndex++;
@@ -114,7 +113,6 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
       "id",
       ids[0],
       "_NEXT_GM_MESSAGE",
-      "",
     );
   }
   for (let i = 0; i < ids.length - 1; i++) {
@@ -126,7 +124,6 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
       "id",
       ids[i + 1],
       "_NEXT_GM_MESSAGE",
-      "",
     );
   }
   if (isFirst && ids.length > 0) {
@@ -138,7 +135,6 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
       "id",
       ids[0],
       "_FIRST_GM_MESSAGE",
-      "",
     );
   }
 }

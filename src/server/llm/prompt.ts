@@ -197,11 +197,12 @@ Tracked via ${TOOL_NAMES.MUTATE_WORLD} — add/update/remove conditions in the p
 
 ## RELATIONSHIP TYPES
 
-- LOCATED_AT — entity is at a location
-- CARRIES — character carries an object
-- HOSTILE_TOWARDS — character is hostile toward another
-- ALLIED_WITH — characters are allies
-- LOCATED_IN — location containment hierarchy
+Query available relationship types via ${TOOL_NAMES.QUERY_WORLD}:
+\`\`\`cypher
+MATCH (rt:RelationshipType)
+WHERE rt.category <> "INTERNAL"
+RETURN rt.name, rt.description, rt.category
+\`\`\`
 
 ---
 
@@ -263,8 +264,8 @@ Use ${TOOL_NAMES.QUERY_WORLD} for specific lookups BEYOND the pre-loaded scene: 
 {{game_time}}
 
 Time flows only via ${TOOL_NAMES.ADVANCE_TIME}(). Adjust sensory descriptions to match time of day.
-Query current time: \`MATCH (a:TimeAnchor {id:'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp\`.
-Browse time history: \`MATCH (tp:TimePoint)-[:_NEXT_TIMEPOINT]->(next) RETURN tp.day, tp.segment, tp.label\`.
+Query current time: \`MATCH (a:TimeAnchor {id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp\`.
+Browse time history: \`MATCH (tp:TimePoint)-[:NEXT_TIMEPOINT]->(next) RETURN tp.day, tp.segment, tp.label\`.
 `.trim();
 
 export async function buildSystemPrompt(): Promise<string> {

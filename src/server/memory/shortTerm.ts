@@ -56,7 +56,7 @@ export class ShortTermMemory {
          _embedding: $embedding, timestamp: datetime($now),
          metadata: $metadata
        })
-       CREATE (c)-[r:_HAS_MESSAGE {description: $hasMsgDesc, created_at: datetime()}]->(m)
+       CREATE (c)-[r:HAS_MESSAGE {created_at: datetime()}]->(m)
        RETURN m`,
       {
         convId,
@@ -66,7 +66,6 @@ export class ShortTermMemory {
         embedding: embedding || null,
         now,
         metadata: metadata ? JSON.stringify(metadata) : null,
-        hasMsgDesc: null,
       },
     );
 
@@ -77,18 +76,17 @@ export class ShortTermMemory {
     if (linkToCurrentTime) {
       try {
         await this.client.executeWrite(
-          `MATCH (a:TimeAnchor {id: 'anchor'})-[:_CURRENT_TIMEPOINT]->(tp:TimePoint)
+          `MATCH (a:TimeAnchor {id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
            MATCH (m:Message {id: $msgId})
-           MERGE (m)-[r:_AT_TIME]->(tp)
-           ON CREATE SET r.description = $atTimeDesc, r.created_at = datetime()
-           SET r.description = coalesce($atTimeDesc, r.description)`,
-          { msgId: messageId, atTimeDesc: null },
+           MERGE (m)-[r:AT_TIME]->(tp)
+           ON CREATE SET r.created_at = datetime()`,
+          { msgId: messageId },
         );
       } catch (err) {
         // TimePoint system not yet initialized — skip
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.includes("not found")) {
-          console.warn("[shortTerm] _AT_TIME link failed:", msg);
+          console.warn("[shortTerm] AT_TIME link failed:", msg);
         }
       }
     }
@@ -106,7 +104,7 @@ export class ShortTermMemory {
   async getConversation(limit: number = 1000): Promise<MemoryMessage[]> {
     const rows = await this.client.executeRead(
       `MATCH (c:Conversation {session_id: $gameId})
-       MATCH (c)-[:_HAS_MESSAGE]->(m:Message)
+       MATCH (c)-[:HAS_MESSAGE]->(m:Message)
        RETURN m ORDER BY m.timestamp DESC LIMIT $limit`,
       { gameId: GAME_ID, limit: int(limit) },
     );
@@ -138,7 +136,7 @@ export class ShortTermMemory {
       `CALL db.index.vector.queryNodes('message_embedding_idx', $limit, $embedding)
        YIELD node AS m, score
        WHERE score >= $threshold
-       OPTIONAL MATCH (c:Conversation)-[:_HAS_MESSAGE]->(m)
+       OPTIONAL MATCH (c:Conversation)-[:HAS_MESSAGE]->(m)
        WHERE c.session_id = $gameId
        RETURN m, score
        ORDER BY score DESC`,
@@ -181,8 +179,8 @@ export class ShortTermMemory {
 
   private async getLastMessageId(convId: string, excludeId: string): Promise<string | null> {
     const rows = await this.client.executeRead(
-      `MATCH (c:Conversation {id: $convId})-[:_HAS_MESSAGE]->(m:Message)
-       WHERE m.id <> $excludeId AND NOT (m)-[:_NEXT_MESSAGE]->(:Message)
+      `MATCH (c:Conversation {id: $convId})-[:HAS_MESSAGE]->(m:Message)
+       WHERE m.id <> $excludeId AND NOT (m)-[:NEXT_MESSAGE]->(:Message)
        RETURN m.id AS id ORDER BY m.timestamp DESC LIMIT 1`,
       { convId, excludeId },
     );
@@ -205,8 +203,7 @@ export class ShortTermMemory {
         "Message",
         "id",
         messageIds[0],
-        "_NEXT_MESSAGE",
-        "",
+        "NEXT_MESSAGE",
       );
     }
 
@@ -218,8 +215,7 @@ export class ShortTermMemory {
         "Message",
         "id",
         messageIds[i + 1],
-        "_NEXT_MESSAGE",
-        "",
+        "NEXT_MESSAGE",
       );
     }
 
@@ -231,8 +227,7 @@ export class ShortTermMemory {
         "Message",
         "id",
         messageIds[0],
-        "_FIRST_MESSAGE",
-        "",
+        "FIRST_MESSAGE",
       );
     }
   }

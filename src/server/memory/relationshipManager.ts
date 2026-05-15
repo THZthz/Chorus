@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type { Neo4jClient } from "@/server/memory/neo4j";
+
 export interface RelationshipDef {
   name: string;
   description: string;
@@ -23,42 +25,6 @@ export interface RelationshipDef {
 }
 
 const INTERNAL_TYPES: { name: string; description: string }[] = [
-  {
-    name: "_HAS_MESSAGE",
-    description: "Links a Conversation node to its Message nodes.",
-  },
-  {
-    name: "_FIRST_MESSAGE",
-    description: "Points to the first Message in a Conversation's ordered linked list.",
-  },
-  {
-    name: "_NEXT_MESSAGE",
-    description: "Sequentially links Message nodes in conversation order.",
-  },
-  {
-    name: "_NEXT_TIMEPOINT",
-    description: "Links TimePoint nodes in chronological sequence.",
-  },
-  {
-    name: "_CURRENT_TIMEPOINT",
-    description: "Points to the current TimePoint from a TimeAnchor node.",
-  },
-  {
-    name: "_AT_TIME",
-    description: "Links an entity or event to a specific TimePoint.",
-  },
-  {
-    name: "_STARTED_AT",
-    description: "Marks the TimePoint when an event or plot started.",
-  },
-  {
-    name: "_ACTIVE_AT",
-    description: "Marks a TimePoint when an entity or condition is active.",
-  },
-  {
-    name: "_COMPLETED_AT",
-    description: "Marks the TimePoint when an event or plot completed.",
-  },
   {
     name: "_HAS_GM_MESSAGE",
     description: "Links a Conversation node to its GMTurnMessage nodes.",
@@ -74,6 +40,42 @@ const INTERNAL_TYPES: { name: string; description: string }[] = [
 ];
 
 const PREDEFINED_TYPES: { name: string; description: string }[] = [
+  {
+    name: "HAS_MESSAGE",
+    description: "Links a Conversation node to its Message nodes.",
+  },
+  {
+    name: "FIRST_MESSAGE",
+    description: "Points to the first Message in a Conversation's ordered linked list.",
+  },
+  {
+    name: "NEXT_MESSAGE",
+    description: "Sequentially links Message nodes in conversation order.",
+  },
+  {
+    name: "NEXT_TIMEPOINT",
+    description: "Links TimePoint nodes in chronological sequence.",
+  },
+  {
+    name: "CURRENT_TIMEPOINT",
+    description: "Points to the current TimePoint from a TimeAnchor node.",
+  },
+  {
+    name: "AT_TIME",
+    description: "Links an entity or event to a specific TimePoint.",
+  },
+  {
+    name: "STARTED_AT",
+    description: "Marks the TimePoint when an event or plot started.",
+  },
+  {
+    name: "ACTIVE_AT",
+    description: "Marks a TimePoint when an entity or condition is active.",
+  },
+  {
+    name: "COMPLETED_AT",
+    description: "Marks the TimePoint when an event or plot completed.",
+  },
   {
     name: "LOCATED_AT",
     description: "An entity is physically present at a location.",
@@ -97,6 +99,18 @@ const PREDEFINED_TYPES: { name: string; description: string }[] = [
   {
     name: "HAS_DISPOSITION",
     description: "Links an Entity (NPC) to its NPCDisposition nodes.",
+  },
+  {
+    name: "ABOUT_ENTITY",
+    description: "A Note is about or references an Entity.",
+  },
+  {
+    name: "ABOUT_MESSAGE",
+    description: "A Note is about or references a specific Message.",
+  },
+  {
+    name: "BRANCHES_TO",
+    description: "A parent Plot branches to a child sub-plot.",
   },
 ];
 
@@ -149,6 +163,37 @@ export class RelationshipManager {
 
   isAllowedForRead(name: string): boolean {
     return this.registry.has(name);
+  }
+
+  // Update the description of a GM_DEFINED relationship type.
+  // Returns true if updated, false if type not found or wrong category.
+  updateDescription(name: string, description: string): boolean {
+    const def = this.registry.get(name);
+    if (!def || def.type !== "GM_DEFINED") return false;
+    def.description = description;
+    return true;
+  }
+
+  // Clear all GM_DEFINED types from the registry (keeps INTERNAL + PREDEFINED).
+  // Called on /api/reset.
+  reset(): void {
+    for (const [name, def] of this.registry) {
+      if (def.type === "GM_DEFINED") {
+        this.registry.delete(name);
+      }
+    }
+  }
+
+  // Sync all registered relationship types to Neo4j as :RelationshipType nodes.
+  // Idempotent — safe to call multiple times.
+  async syncToNeo4j(client: Neo4jClient): Promise<void> {
+    for (const def of this.registry.values()) { // TODO: Can we combine this into single write.
+      await client.executeWrite(
+        `MERGE (rt:RelationshipType {name: $name})
+         SET rt.description = $description, rt.category = $category`,
+        { name: def.name, description: def.description, category: def.type },
+      );
+    }
   }
 
   // ── Singleton ──

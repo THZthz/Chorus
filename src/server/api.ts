@@ -20,6 +20,7 @@ import express from "express";
 import { generateTurn } from "@/server/llm";
 import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
+import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
 import type { Message } from "@/types/dialogue";
 
@@ -101,6 +102,13 @@ apiRouter.post("/reset", async (_req, res) => {
     await clearNeo4jDatabase();
     const { seedDatabase } = await import("@/server/seed-stories/seed");
     await seedDatabase();
+
+    // Reset in-memory GM_DEFINED types, then sync INTERNAL + PREDEFINED back to Neo4j
+    const manager = RelationshipManager.getCachedInstance();
+    manager.reset();
+    const client = await MemoryClient.getInstance();
+    await manager.syncToNeo4j(client.neo4j);
+
     res.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

@@ -28,7 +28,11 @@ export const searchNotes = tool({
 Search GM notes by meaning using vector similarity.
 `.trim(),
   inputSchema: z.object({
-    query: z.string().describe("Natural language search query."),
+    query: z
+      .string()
+      .describe(
+        "Natural language search query, should be a list of keywords, keep short and focused.",
+      ),
     limit: z.number().default(10).describe("Max results."),
   }),
   execute: wrapSafe(async (args) => {

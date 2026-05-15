@@ -29,7 +29,11 @@ export const searchMemory = tool({
 Search world state (entities, messages) by meaning using vector similarity.
 Use when you need to find something not in the current scene.`.trim(),
   inputSchema: z.object({
-    query: z.string().describe("Natural language search query."),
+    query: z
+      .string()
+      .describe(
+        "Natural language search query, should be a list of keywords, keep short and focused.",
+      ),
     types: z
       .array(z.enum(["entities", "messages"]))
       .default(["entities", "messages"])

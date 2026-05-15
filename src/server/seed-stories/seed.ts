@@ -18,6 +18,7 @@
 
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { CypherValidator } from "@/server/memory/validation";
 import { getActiveSeedStory } from "@/server/seed-stories";
 import { migrateToTimePoints } from "@/server/models/time";
 
@@ -50,6 +51,13 @@ export async function seedDatabase(): Promise<void> {
   const story = getActiveSeedStory();
   const client = await MemoryClient.getInstance();
 
+  // Always sync INTERNAL + PREDEFINED relationship types to Neo4j on startup
+  await RelationshipManager.getCachedInstance().syncToNeo4j(client.neo4j);
+
+  // Audit: log warnings for any relationship types in the graph missing a :RelationshipType node
+  const validator = new CypherValidator();
+  await validator.auditRelationshipDescriptions(client.neo4j);
+
   // Skip if database already has data (prevents duplicate injection on restart)
   const existing = await client.neo4j.executeRead("MATCH (e:Entity) RETURN count(e) AS count");
   if ((existing[0]?.count as number) > 0) {
@@ -81,12 +89,12 @@ export async function seedDatabase(): Promise<void> {
     console.log(
       `[seedDatabase] registered ${story.relationshipTypes.length} relationship types from "${story.id}"`,
     );
+    // Sync to Neo4j so seed story's custom types are discoverable via :RelationshipType nodes
+    await manager.syncToNeo4j(client.neo4j);
   }
 
   for (const rel of story.relationships) {
-    await client.longTerm.addRelationship(rel.sourceName, rel.targetName, rel.type, {
-      description: rel.description || undefined,
-    });
+    await client.longTerm.addRelationship(rel.sourceName, rel.targetName, rel.type);
   }
 
   // Seed initial NPC dispositions from entity metadata opinions

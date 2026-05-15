@@ -28,8 +28,12 @@ export const searchPlots = tool({
 Search plots by meaning using vector similarity.
 `.trim(),
   inputSchema: z.object({
-    query: z.string().describe("Natural language search query"),
-    limit: z.number().default(10).describe("Max results"),
+    query: z
+      .string()
+      .describe(
+        "Natural language search query, should be a list of keywords, keep short and focused.",
+      ),
+    limit: z.number().default(10).describe("Max results."),
   }),
   execute: wrapSafe(async (args) => {
     const client = MemoryClient.getCachedInstance();

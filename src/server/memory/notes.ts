@@ -107,7 +107,7 @@ export class Notes {
     }));
   }
 
-  async linkToEntity(noteName: string, entityName: string, description?: string): Promise<void> {
+  async linkToEntity(noteName: string, entityName: string): Promise<void> {
     try {
       await this.client.mergeRelationship(
         "Note",
@@ -116,8 +116,7 @@ export class Notes {
         "Entity",
         "name",
         entityName,
-        "ABOUT",
-        { description },
+        "ABOUT_ENTITY",
       );
     } catch (err) {
       console.warn(
@@ -127,7 +126,7 @@ export class Notes {
     }
   }
 
-  async linkToMessage(noteName: string, messageId: string, description?: string): Promise<void> {
+  async linkToMessage(noteName: string, messageId: string): Promise<void> {
     try {
       await this.client.mergeRelationship(
         "Note",
@@ -137,7 +136,6 @@ export class Notes {
         "id",
         messageId,
         "ABOUT_MESSAGE",
-        { description },
       );
     } catch (err) {
       console.warn(
@@ -149,14 +147,14 @@ export class Notes {
 
   async clearLinks(noteName: string, type: "ENTITY" | "MESSAGE" | "ALL"): Promise<void> {
     await this.client.executeWrite(
-      `MATCH (n:Note {name: $noteName})-[r:ABOUT|ABOUT_MESSAGE]->() DELETE r`,
+      `MATCH (n:Note {name: $noteName})-[r:ABOUT_ENTITY|ABOUT_MESSAGE]->() DELETE r`,
       { noteName },
     );
   }
 
   async getLinkedEntities(noteName: string): Promise<string[]> {
     const rows = await this.client.executeRead(
-      `MATCH (n:Note {name: $noteName})-[:ABOUT]->(e:Entity) RETURN e.name AS name`,
+      `MATCH (n:Note {name: $noteName})-[:ABOUT_ENTITY]->(e:Entity) RETURN e.name AS name`,
       { noteName },
     );
     return rows.map((r) => r.name as string);

@@ -256,6 +256,7 @@ All 9 tools are defined as AI SDK `tool()` definitions and registered in `genera
 | `POST` | `/api/chat/stream`  | Primary AI turn (SSE streaming)                      |
 | `GET`  | `/api/history`      | Full conversation history from ShortTermMemory       |
 | `GET`  | `/api/game/current` | Current dialogue options from `:Conversation` node   |
+| `GET`  | `/api/dump`         | Full world state (entities, plots, notes, dispositions, time, relationships) |
 | `POST` | `/api/reset`        | Clear Neo4j and re-seed                              |
 
 ---

@@ -18,6 +18,7 @@
 
 import { getGameTime, describeTime } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
+import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getObserver } from "@/server/llm/sceneObserver";
 
 // ── Query result types ──
@@ -296,5 +297,262 @@ export async function buildSceneContext(): Promise<string> {
   parts.push("");
   parts.push("---");
 
+  return parts.join("\n");
+}
+
+// ── Full world state dump (developer debug) ──
+
+async function sampleProps(db: import("@/server/memory/neo4j").Neo4jClient, label: string): Promise<string[]> {
+  try {
+    const rows = await db.executeRead(`MATCH (n:\`${label}\`) RETURN n LIMIT 1`);
+    if (rows.length > 0) {
+      const n = rows[0].n as Record<string, unknown>;
+      return Object.keys(n).filter((k) => k !== "_elementId" && k !== "_labels").sort();
+    }
+  } catch { /* label may not support direct matching */ }
+  return [];
+}
+
+export async function buildFullSceneContext(): Promise<string> {
+  const client = MemoryClient.getCachedInstance();
+  const db = client.neo4j;
+
+  const extractAliases = (metadata: unknown): string[] => {
+    if (typeof metadata === "string") {
+      try { return ((JSON.parse(metadata) as Record<string, unknown>).aliases as string[]) || []; }
+      catch { return []; }
+    }
+    if (metadata && typeof metadata === "object") {
+      return ((metadata as Record<string, unknown>).aliases as string[]) || [];
+    }
+    return [];
+  };
+  const extractConditions = (metadata: unknown): string[] => {
+    try {
+      const m = typeof metadata === "string"
+        ? JSON.parse(metadata) as Record<string, unknown>
+        : (metadata as Record<string, unknown> | null);
+      if (!m?.conditions) return [];
+      return Object.entries(m.conditions as Record<string, Record<string, unknown>>).map(
+        ([id, c]) => `${id}: ${c.description as string}`,
+      );
+    } catch { return []; }
+  };
+  const parseFlags = (flags: unknown): Array<{ flagId: string; description: string }> => {
+    if (typeof flags === "string") {
+      try { return JSON.parse(flags) as Array<{ flagId: string; description: string }>; }
+      catch { return []; }
+    }
+    return (flags as Array<{ flagId: string; description: string }>) || [];
+  };
+
+  const [entityRows, plotRows, noteRows, dispRows, time, relRows, timeChain,
+    labelRows, relTypeRows] = await Promise.all([
+    db.executeRead("MATCH (e:Entity) RETURN e ORDER BY e.name"),
+    db.executeRead("MATCH (p:Plot) RETURN p ORDER BY p.name"),
+    db.executeRead("MATCH (n:Note) RETURN n ORDER BY n.name"),
+    db.executeRead("MATCH (d:NPCDisposition) RETURN d ORDER BY d.npc_name"),
+    getGameTime(),
+    db.executeRead(
+      `MATCH (a)-[r]->(b)
+       WHERE NOT a:Message AND NOT a:Conversation AND NOT a:GMTurnMessage
+         AND NOT b:Message AND NOT b:Conversation AND NOT b:GMTurnMessage
+         AND NOT a:IdCounter AND NOT b:IdCounter
+         AND NOT a:RelationshipType AND NOT b:RelationshipType
+       RETURN labels(a) AS sourceLabels,
+              COALESCE(a.name, a._id) AS sourceName,
+              type(r) AS type,
+              labels(b) AS targetLabels,
+              COALESCE(b.name, b._id) AS targetName`,
+    ),
+    db.executeRead(
+      `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(current:TimePoint)
+       OPTIONAL MATCH (current)-[:NEXT_TIMEPOINT*]->(future:TimePoint)
+       RETURN current, collect(DISTINCT future) AS future`,
+    ),
+    db.executeRead("CALL db.labels() YIELD label RETURN label ORDER BY label"),
+    db.executeRead("CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType ORDER BY relationshipType"),
+  ]);
+
+  const parts: string[] = [];
+  parts.push("## World State");
+  parts.push(`**Time**: ${describeTime(time)}`);
+  parts.push("");
+
+  // Entities
+  parts.push("## Entities");
+  for (const row of entityRows) {
+    const e = row.e as Record<string, unknown>;
+    const name = e.name as string;
+    const type = e.type as string;
+    const desc = (e.description as string) || "";
+    const brief = (e.brief as string) || "";
+    const subtype = e.subtype ? `:${e.subtype}` : "";
+    const aliases = extractAliases(e.metadata);
+    const aliasStr = aliases.length > 0 ? ` (aka ${aliases.join(", ")})` : "";
+    const conditions = extractConditions(e.metadata);
+
+    parts.push(`### ${name} (${type}${subtype})${aliasStr}`);
+    if (brief) parts.push(`*${brief}*`);
+    if (desc && desc !== brief) parts.push(desc);
+    if (conditions.length > 0) {
+      for (const c of conditions) {
+        parts.push(`- Condition: ${c}`);
+      }
+    }
+    parts.push("");
+  }
+
+  // Plots
+  parts.push("## Plots");
+  for (const row of plotRows) {
+    const p = row.p as Record<string, unknown>;
+    const name = p.name as string;
+    const status = p.status as string;
+    const desc = (p.description as string) || "";
+    const brief = (p.brief as string) || "";
+    const trigger = p.trigger_condition as string | undefined;
+    const flags = parseFlags(p.flags);
+
+    parts.push(`### ${name} (${status})`);
+    if (brief) parts.push(`*${brief}*`);
+    if (desc && desc !== brief) parts.push(desc);
+    if (trigger) parts.push(`Trigger: \`${trigger}\``);
+    if (flags.length > 0) {
+      parts.push(`Flags: ${flags.map((f) => `\`${f.flagId}\` — ${f.description}`).join(", ")}`);
+    }
+    parts.push("");
+  }
+
+  // Notes
+  parts.push("## Notes");
+  for (const row of noteRows) {
+    const n = row.n as Record<string, unknown>;
+    const name = n.name as string;
+    const content = (n.content as string) || "";
+    parts.push(`### ${name}`);
+    parts.push(content);
+    parts.push("");
+  }
+
+  // NPCDispositions
+  parts.push("## NPCDispositions");
+  for (const row of dispRows) {
+    const d = row.d as Record<string, unknown>;
+    const npcName = d.npc_name as string;
+    const targetName = d.target_name as string;
+    const sentiment = d.sentiment as string;
+    const summary = d.summary as string;
+    parts.push(`- **${npcName}** → ${targetName}: ${sentiment} — "${summary}"`);
+  }
+  parts.push("");
+
+  // Relationships
+  parts.push("## Relationships");
+  const rels = relRows as Array<{
+    sourceName: string;
+    type: string;
+    targetName: string;
+  }>;
+  const manager = RelationshipManager.getCachedInstance();
+  // INTERNAL types (GM message bookkeeping) — always hidden
+  const internalTypeNames = new Set(manager.getByType("INTERNAL").map((r) => r.name));
+  // Types covered by dedicated dump sections (Dispositions, Time Chain, Plots)
+  for (const name of ["HAS_DISPOSITION", "CURRENT_TIMEPOINT", "NEXT_TIMEPOINT",
+    "STARTED_AT", "ACTIVE_AT", "COMPLETED_AT", "BRANCHES_TO",
+    "ABOUT_ENTITY", "ABOUT_MESSAGE"]) {
+    internalTypeNames.add(name);
+  }
+  const visible = rels.filter((r) => !internalTypeNames.has(r.type));
+  const byType = new Map<string, typeof visible>();
+  for (const r of visible) {
+    const group = byType.get(r.type) || [];
+    group.push(r);
+    if (!byType.has(r.type)) byType.set(r.type, group);
+  }
+  const sortedTypes = [...byType.keys()].sort();
+  for (const type of sortedTypes) {
+    const group = byType.get(type)!;
+    parts.push(`### ${type}`);
+    const seen = new Set<string>();
+    for (const r of group) {
+      const src = r.sourceName;
+      const tgt = r.targetName;
+      if (type === "LOCATED_AT" || type === "LOCATED_IN") {
+        const key = tgt;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const occupants = group
+            .filter((o) => o.targetName === tgt)
+            .map((o) => o.sourceName)
+            .join(", ");
+          parts.push(`- **${tgt}**: ${occupants}`);
+        }
+      } else {
+        parts.push(`- ${src} → ${tgt}`);
+      }
+    }
+    parts.push("");
+  }
+  if (visible.length === 0) parts.push("(none)");
+
+  // Schema
+  parts.push("");
+  parts.push("## Schema");
+
+  const labels = labelRows.map((r) => r.label as string);
+  const schemaLabels = labels.filter(
+    (l) => !["GMTurnMessage", "IdCounter", "RelationshipType", "Conversation"].includes(l),
+  );
+
+  const labelProps = new Map<string, string[]>();
+  for (const label of schemaLabels) {
+    labelProps.set(label, await sampleProps(db, label));
+  }
+
+  const allRelTypes = relTypeRows.map((r) => r.relationshipType as string);
+
+  parts.push("### Node Labels");
+  for (const [label, props] of [...labelProps.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const propList = props.length > 0 ? props.join(", ") : "(no nodes)";
+    parts.push(`- **${label}**: ${propList}`);
+  }
+  parts.push("");
+
+  parts.push("### Relationship Types");
+  for (const rt of allRelTypes) {
+    const samples = (rels as typeof visible).filter((r) => r.type === rt).slice(0, 2);
+    if (samples.length > 0) {
+      const ctx = samples.map((s) => `(${s.sourceName})→(${s.targetName})`).join(", ");
+      parts.push(`- **${rt}**: ${ctx}`);
+    } else {
+      parts.push(`- **${rt}**`);
+    }
+  }
+  parts.push("");
+
+  // Time Chain
+  parts.push("## Time Chain");
+  const nodes = timeChain.flatMap((r) => {
+    const current = r.current as Record<string, unknown>;
+    const future = (r.future as Record<string, unknown>[]) || [];
+    return [current, ...future];
+  });
+  for (const tp of nodes) {
+    if (!tp) continue;
+    const day = tp.day as number;
+    const segment = tp.segment as number;
+    const label = tp.label as string;
+    const created = tp.created_at as string;
+    parts.push(`- Day ${day}, Segment ${segment} (${label}) — ${created}`);
+  }
+  parts.push("");
+
+  // Mark everything as seen so next turn uses normal (compact) scene context
+  const allEntityNames = entityRows.map((r) => (r.e as Record<string, unknown>).name as string);
+  const allPlotNames = plotRows.map((r) => (r.p as Record<string, unknown>).name as string);
+  getObserver().markAllSeen(allEntityNames, allPlotNames);
+
+  parts.push("---");
   return parts.join("\n");
 }

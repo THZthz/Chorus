@@ -34,6 +34,15 @@ export class SceneObserver {
     }
   }
 
+  isEmpty(): boolean {
+    return this.seenEntities.size === 0 && this.seenPlots.size === 0;
+  }
+
+  markAllSeen(entities: string[], plots: string[]): void {
+    for (const name of entities) this.seenEntities.add(name);
+    for (const name of plots) this.seenPlots.add(name);
+  }
+
   reset(): void {
     this.seenEntities.clear();
     this.seenPlots.clear();

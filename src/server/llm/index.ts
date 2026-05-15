@@ -23,7 +23,8 @@ import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
-import { buildSceneContext } from "@/server/llm/sceneContext";
+import { buildSceneContext, buildFullSceneContext } from "@/server/llm/sceneContext";
+import { getObserver } from "@/server/llm/sceneObserver";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
@@ -50,10 +51,15 @@ export async function generateTurn(
   const systemPrompt = await buildSystemPrompt();
   const events = new TurnEventEmitter(res);
 
-  // Pre-fetch scene context so the GM doesn't need to query for it
+  // Pre-fetch scene context so the GM doesn't need to query for it.
+  // First turn: full world dump. Subsequent turns: focused scene context.
   let sceneContext = "";
   try {
-    sceneContext = await buildSceneContext();
+    if (getObserver().isEmpty()) {
+      sceneContext = await buildFullSceneContext();
+    } else {
+      sceneContext = await buildSceneContext();
+    }
   } catch (err) {
     console.error("[generateTurn] Failed to build scene context:", err);
   }

@@ -22,6 +22,7 @@ import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
+import { buildFullSceneContext } from "@/server/llm/sceneContext";
 import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
@@ -90,6 +91,19 @@ apiRouter.get("/game/current", async (_req, res) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Session state fetch error:", message);
     res.json(null);
+  }
+});
+
+// ── Dump (developer debug: full world state) ──
+
+apiRouter.get("/dump", async (_req, res) => {
+  try {
+    const md = await buildFullSceneContext();
+    res.set("Content-Type", "text/plain; charset=utf-8").send(md);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Dump fetch error:", message);
+    res.status(500).json({ error: message });
   }
 });
 

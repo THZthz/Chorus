@@ -548,11 +548,6 @@ export async function buildFullSceneContext(): Promise<string> {
   }
   parts.push("");
 
-  // Mark everything as seen so next turn uses normal (compact) scene context
-  const allEntityNames = entityRows.map((r) => (r.e as Record<string, unknown>).name as string);
-  const allPlotNames = plotRows.map((r) => (r.p as Record<string, unknown>).name as string);
-  getObserver().markAllSeen(allEntityNames, allPlotNames);
-
   parts.push("---");
   return parts.join("\n");
 }

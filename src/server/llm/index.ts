@@ -57,6 +57,16 @@ export async function generateTurn(
   try {
     if (getObserver().isEmpty()) {
       sceneContext = await buildFullSceneContext();
+      // Mark all entities/plots as seen so next turn uses compact scene context
+      const db = MemoryClient.getCachedInstance().neo4j;
+      const [entityRows, plotRows] = await Promise.all([
+        db.executeRead("MATCH (e:Entity) RETURN e.name AS name"),
+        db.executeRead("MATCH (p:Plot) RETURN p.name AS name"),
+      ]);
+      getObserver().markAllSeen(
+        entityRows.map((r) => r.name as string),
+        plotRows.map((r) => r.name as string),
+      );
     } else {
       sceneContext = await buildSceneContext();
     }
@@ -229,6 +239,8 @@ export async function generateTurn(
       );
     }
   }
+
+  dialogueStepTool.resetForTurn();
 
   const result = streamText({
     model,

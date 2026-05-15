@@ -50,7 +50,11 @@ export async function loadGMMessages(): Promise<ModelMessage[]> {
   });
 }
 
-export async function saveGMMessages(messages: ModelMessage[], turnNumber: number): Promise<void> {
+export async function saveGMMessages(
+  messages: ModelMessage[],
+  turnNumber: number,
+  userInput?: string,
+): Promise<void> {
   const client = MemoryClient.getCachedInstance();
   const now = new Date().toISOString();
 
@@ -61,7 +65,12 @@ export async function saveGMMessages(messages: ModelMessage[], turnNumber: numbe
   if (convRows.length === 0) return;
   const convId = convRows[0].id as string;
 
-  const toStore = messages.filter((m) => m.role !== "system");
+  const filtered = messages.filter((m) => m.role !== "system");
+  const toStore: Array<{ role: string; content: unknown; providerOptions?: unknown }> = [];
+  if (userInput) {
+    toStore.push({ role: "user", content: userInput });
+  }
+  toStore.push(...filtered);
   if (toStore.length === 0) return;
 
   const lastRows = await client.neo4j.executeRead(

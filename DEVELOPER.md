@@ -318,7 +318,7 @@ Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` 
 
 Managed by `schema.ts`, called once at startup:
 
-**Unique constraints (6):** `_id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`, `:TimePoint`
+**Unique constraints (7):** `_id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`, `:TimePoint`; `session_id` on `:IdCounter`
 
 **Regular indexes (5):** `Message.timestamp`, `Entity.type`, `Entity.name`, `Plot.name`, `Plot.status`
 
@@ -351,6 +351,15 @@ Vector dimensions are passed from the active embedder at startup (`embedder.dime
 | `BRANCHES_TO`     | `(Plot)→(Plot)`             | Plot branching                |
 | `ABOUT_ENTITY`    | `(Note)→(Entity)`           | Note-to-entity linkage        |
 | `ABOUT_MESSAGE`   | `(Note)→(Message)`          | Note-to-message linkage       |
+| `CURRENT_TIMEPOINT` | `(TimeAnchor)→(TimePoint)` | Current game time pointer     |
+| `NEXT_TIMEPOINT`  | `(TimePoint)→(TimePoint)`   | TimePoint sequential chain    |
+| `AT_TIME`         | `(Message)→(TimePoint)`     | Message's in-game timestamp   |
+| `STARTED_AT`      | `(Plot)→(TimePoint)`        | Plot start time               |
+| `ACTIVE_AT`       | `(Plot)→(TimePoint)`        | Plot activation time          |
+| `COMPLETED_AT`    | `(Plot)→(TimePoint)`        | Plot completion time          |
+| `_HAS_GM_MESSAGE` | `(Conversation)→(GMTurnMessage)` | GM message persistence |
+| `_FIRST_GM_MESSAGE` | `(Conversation)→(GMTurnMessage)` | Head pointer for GM message list |
+| `_NEXT_GM_MESSAGE` | `(GMTurnMessage)→(GMTurnMessage)` | Sequential GM message list |
 
 Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
 

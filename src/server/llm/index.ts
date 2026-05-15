@@ -449,7 +449,7 @@ export async function generateTurn(
   // Persist this turn's messages for multi-turn continuity
   try {
     const response = await result.response;
-    await saveGMMessages(response.messages as ModelMessage[], turnNumber);
+    await saveGMMessages(response.messages as ModelMessage[], turnNumber, userInput);
   } catch (err) {
     console.error("[generateTurn] Failed to save GM messages:", err);
   }

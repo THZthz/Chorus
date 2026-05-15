@@ -31,13 +31,15 @@ const messageSchema = z.object({
     .min(0)
     .optional()
     .describe(
-      "When isCorrection is true: the 0-based index of the message to correct (shown in the validation error). Omit when generating fresh.",
+      `
+When isCorrection is true: the 0-based index of the message to correct (shown in the validation error).
+Omit when generating fresh.`.trim(),
     ),
   speaker: z
     .string()
     .max(60)
     .describe(
-      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY')",
+      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY').",
     ),
   type: z.enum(SPEAKER_TYPES.filter((type) => type !== "YOU") as Exclude<SpeakerType, "YOU">[]),
   text: z.string().max(MAX_MESSAGE_TEXT_LENGTH).describe("The dialogue text, supports markdown."),
@@ -55,7 +57,9 @@ const optionSchema = z.object({
     .min(0)
     .optional()
     .describe(
-      "When isCorrection is true: the 0-based index of the option to correct (shown in the validation error). Omit when generating fresh.",
+      `
+When isCorrection is true: the 0-based index of the option to correct (shown in the validation error).
+Omit when generating fresh.`.trim(),
     ),
   text: z
     .string()
@@ -110,20 +114,31 @@ const inputSchema = z.object({
     .array(messageSchema)
     .optional()
     .describe(
-      "The sequence of messages in this dialogue step. Required for fresh calls; omit during corrections if only fixing options.",
+      `
+The sequence of messages in this dialogue step.
+Required for fresh calls; omit during corrections if only fixing options.
+If you fixing invalid messages, make sure your include "index" field to precisely repair the corresponding messages.`.trim(),
     ),
   options: z
     .array(optionSchema)
     .optional()
     .describe(
-      "The choices presented to the player. Required for fresh calls. Omit during corrections if only fixing options.",
+      `
+The choices presented to the player.
+Required for fresh calls.
+Omit during corrections if only fixing options.
+If you fixing invalid options, make sure your include "index" field to precisely repair the corresponding options.`.trim(),
     ),
   isCorrection: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      "Set to true when correcting specific validation errors from a previous failed call. Only include the failing messages/options — set their 'index' field to the index shown in the error. Valid items are preserved automatically. You can omit messages or options if only the other needs correction.",
+      `
+Set to true when correcting specific validation errors from a previous failed call.
+Only include the failing messages/options — set their "index" field to the index shown in the error.
+Valid items are preserved automatically.
+You can omit messages or options if only the other needs correction.`.trim(),
     ),
 });
 
@@ -133,29 +148,18 @@ type DialogueArgs = z.infer<typeof inputSchema>;
 
 interface ValidationResult {
   errors: string[];
-  /** 0-based indices of messages that passed individual validation */
-  validMessageIndices: Set<number>;
-  /** 0-based indices of options that passed individual validation */
-  validOptionIndices: Set<number>;
 }
 
 function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   const errors: string[] = [];
-  const validMessageIndices = new Set<number>();
-  const validOptionIndices = new Set<number>();
 
   const messages = args.messages ?? [];
   const options = args.options ?? [];
-
-  // Mark all indices as potentially valid, then remove failing ones
-  for (let i = 0; i < messages.length; i++) validMessageIndices.add(i);
-  for (let i = 0; i < options.length; i++) validOptionIndices.add(i);
 
   if (messages.length === 0) {
     errors.push(
       "No messages — at least 1 message is required. Provide a NARRATOR message, an NPC line, or an inner voice observation.",
     );
-    validMessageIndices.clear();
   }
 
   // Collect ALL INNER_VOICE errors in one pass (no break)
@@ -165,13 +169,11 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
       errors.push(
         `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
       );
-      validMessageIndices.delete(i);
     }
     if (msg.type === "INNER_VOICE" && !(SKILL_NAMES as readonly string[]).includes(msg.speaker)) {
       errors.push(
-        `Message with type INNER_VOICE has speaker="${msg.speaker}" which is not a valid skill name. Valid skill names are: ${SKILL_NAMES.join(", ")}. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
+        `Message with type INNER_VOICE has speaker="${msg.speaker}" which is not a valid skill name. Valid skill names are: ${SKILL_NAMES.join(", ")}. Use the specific skill name as the speaker.`,
       );
-      validMessageIndices.delete(i);
     }
   }
 
@@ -183,18 +185,15 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     );
     if (speakerError) {
       errors.push(speakerError);
-      validMessageIndices.delete(i);
     }
     const textError = checkText(msg.text, `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].text`);
     if (textError) {
       errors.push(textError);
-      validMessageIndices.delete(i);
     }
     if (msg.text.length > MAX_MESSAGE_TEXT_LENGTH) {
       errors.push(
         `Message ${i + 1} ("${msg.speaker}") text is too long (${msg.text.length} chars, max ${MAX_MESSAGE_TEXT_LENGTH}). Shorten it to keep the UI readable.`,
       );
-      validMessageIndices.delete(i);
     }
   }
 
@@ -202,126 +201,66 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     errors.push(
       `Too few options — at least 2 options are required. Every ${TOOL_NAMES.GENERATE_DIALOGUE} call must include 2-5 choices for the player.`,
     );
-    validOptionIndices.clear();
   } else if (options.length > 5) {
     errors.push(
       `Too many options (${options.length}) — at most 5 options are allowed. Provide 2-5 focused choices that respond to the current scene.`,
     );
-    validOptionIndices.clear();
   }
 
-  // Skip per-option checks when count check already cleared all indices
-  if (validOptionIndices.size > 0) {
-    for (let i = 0; i < options.length; i++) {
-      const opt = options[i];
-      if (opt.check && opt.hintBefore) {
-        errors.push(
-          `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
-        );
-        validOptionIndices.delete(i);
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    if (opt.check && opt.hintBefore) {
+      errors.push(
+        `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
+      );
+    }
+    const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
+    if (textError) {
+      errors.push(textError);
+    }
+    if (opt.hintBefore) {
+      const hintError = checkText(
+        opt.hintBefore,
+        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintBefore`,
+      );
+      if (hintError) {
+        errors.push(hintError);
+      }
+    }
+    if (opt.hintAfter) {
+      const hintError = checkText(
+        opt.hintAfter,
+        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintAfter`,
+      );
+      if (hintError) {
+        errors.push(hintError);
+      }
+    }
+    if (opt.selectionMessage) {
+      const selMsgError = checkText(
+        opt.selectionMessage,
+        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
+      );
+      if (selMsgError) {
+        errors.push(selMsgError);
       }
     }
   }
 
-  if (validOptionIndices.size > 0) {
-    for (let i = 0; i < options.length; i++) {
-      const opt = options[i];
-      const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
-      if (textError) {
-        errors.push(textError);
-        validOptionIndices.delete(i);
-      }
-      if (opt.hintBefore) {
-        const hintError = checkText(
-          opt.hintBefore,
-          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintBefore`,
-        );
-        if (hintError) {
-          errors.push(hintError);
-          validOptionIndices.delete(i);
-        }
-      }
-      if (opt.hintAfter) {
-        const hintError = checkText(
-          opt.hintAfter,
-          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintAfter`,
-        );
-        if (hintError) {
-          errors.push(hintError);
-          validOptionIndices.delete(i);
-        }
-      }
-      if (opt.selectionMessage) {
-        const selMsgError = checkText(
-          opt.selectionMessage,
-          `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
-        );
-        if (selMsgError) {
-          errors.push(selMsgError);
-          validOptionIndices.delete(i);
-        }
-      }
-    }
-  }
-
-  return { errors, validMessageIndices, validOptionIndices };
+  return { errors };
 }
 
 function formatValidationFailure(
-  args: DialogueArgs,
   result: ValidationResult,
   isCorrection: boolean,
 ): string {
-  const lines: string[] = [];
-  if (!isCorrection) {
-    lines.push(
-      "VALIDATION FAILED — call generateDialogueStep again with isCorrection: true. Only send the failing items (with their index field set):",
-    );
-  } else {
-    lines.push(
-      "VALIDATION FAILED — call generateDialogueStep again with isCorrection: true and further corrections (only send the still-failing items with their index):",
-    );
-  }
-
-  const msgs = args.messages ?? [];
-  const opts = args.options ?? [];
-
-  // Echo valid content — encourages LLM to keep these verbatim
-  const validMsgs = [...result.validMessageIndices].sort((a, b) => a - b);
-  const validOpts = [...result.validOptionIndices].sort((a, b) => a - b);
-  if (validMsgs.length > 0) {
-    lines.push(`\nValid messages (keep exactly as-is):`);
-    for (const i of validMsgs) {
-      const msg = msgs[i];
-      const truncatedText = msg.text.length > 100 ? msg.text.slice(0, 100) + "..." : msg.text;
-      lines.push(
-        `  messages[${i}]: speaker="${msg.speaker}" type="${msg.type}" text="${truncatedText}"`,
-      );
-    }
-  }
-  if (validOpts.length > 0) {
-    lines.push(`\nValid options (keep exactly as-is):`);
-    for (const i of validOpts) {
-      const opt = opts[i];
-      const parts: string[] = [`options[${i}]:`];
-      parts.push(`text="${opt.text}"`);
-      if (opt.hintBefore) parts.push(`hintBefore="${opt.hintBefore}"`);
-      if (opt.hintAfter) parts.push(`hintAfter="${opt.hintAfter}"`);
-      lines.push(`  ${parts.join(" ")}`);
-    }
-  }
-
-  // Report errors
-  lines.push(`\nErrors to fix:`);
-  for (const e of result.errors) {
-    lines.push(`• ${e}`);
-  }
-
-  lines.push(
-    `\nWhen retrying with isCorrection: true, ONLY send the failing items listed above — set each item's "index" field to the index shown. Valid items are preserved from the previous call automatically (do NOT copy them).`,
-  );
-
-  return lines.join("\n");
+  return JSON.stringify({
+    error: "VALIDATION FAILED",
+    isCorrection,
+    failures: result.errors,
+    instruction:
+      "Call generateDialogueStep again with isCorrection: true. Only send the failing items listed in 'failures' — set each item's 'index' field to the index shown. Valid items are preserved from the previous call automatically (do NOT copy them).",
+  });
 }
 
 type PersistMessageFn = (msg: {
@@ -341,7 +280,7 @@ async function executeAndPersist(
 
   if (result.errors.length > 0) {
     onValidChange?.(false);
-    return formatValidationFailure(args, result, isCorrection);
+    return formatValidationFailure(result, isCorrection);
   }
 
   onValidChange?.(true);
@@ -364,16 +303,22 @@ async function executeAndPersist(
         );
       }
     }
-    if (!isCorrection) {
-      return `Dialogue successfully streamed and ${persisted} message(s) persisted.`;
-    }
-    return `Correction applied — ${persisted} message(s) persisted.`;
+    return JSON.stringify({
+      success: isCorrection
+        ? `Correction applied — ${persisted} message(s) persisted.`
+        : `Dialogue successfully streamed and ${persisted} message(s) persisted.`,
+      messages: persisted,
+      options: (args.options ?? []).length,
+    });
   }
 
-  if (!isCorrection) {
-    return "Dialogue successfully streamed.";
-  }
-  return "Correction applied — dialogue successfully streamed.";
+  return JSON.stringify({
+    success: isCorrection
+      ? "Correction applied — dialogue successfully streamed."
+      : "Dialogue successfully streamed.",
+    messages: (args.messages ?? []).length,
+    options: (args.options ?? []).length,
+  });
 }
 
 export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn) {

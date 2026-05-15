@@ -39,8 +39,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                                                                      │
 │  streamText({                                                        │
 │    tools: {                                                          │
-│      queryWorld, mutateWorld, searchMemory, editNote,                │
-│      searchNotes, editPlot, searchPlots, ← llm/tools/ (7 GM tools)   │
+│      queryWorld, mutateWorld, searchWorld, editNote,                │
+│      searchNotes, editPlot, searchPlots, resetSceneContext,          │
+│      ← llm/tools/ (8 GM tools)                                       │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
 │      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
@@ -73,14 +74,15 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                                                                      │
 │  embedder.ts ── local ONNX (384d) or OpenAI-compatible API           │
 │  neo4j.ts    ── driver wrapper with value normalization              │
-│  schema.ts   ── constraints + indexes (7 unique, 6 vector)           │
+│  schema.ts   ── constraints + indexes (6 unique, 4 vector)           │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         NEO4J DATABASE                               │
 │  Node labels: Conversation, Message, Entity, NPCDisposition,         │
-│  Note, Plot, GameTime                                                │
+│  Note, Plot, TimeAnchor, TimePoint, GMTurnMessage, RelationshipType,  │
+│  IdCounter                                                            │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,12 +113,14 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   ├── gmMessages.ts # Persist AI SDK messages as :GMTurnMessage nodes for multi-turn continuity
     │   │   ├── conditionEvaluator.ts  # Safe expression evaluator for skill check conditions
     │   │   ├── rollSkillCheck.ts           # Server-side skill check resolver (not a tool)
+    │   │   ├── sceneContext.ts             # Pre-loads scene data (location, NPCs, plots) for the GM prompt
+    │   │   ├── sceneObserver.ts            # Tracks which entities/plots the GM has seen across turns
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
     │   │       ├── queryWorld.ts            # Read-only Cypher queries (label-confined)
     │   │       ├── mutateWorld.ts           # Write Cypher queries (label+rel-confined)
-    │   │       ├── searchMemory.ts          # Vector search across entities + messages
+    │   │       ├── searchWorld.ts          # Vector search across entities + messages
     │   │       ├── editNote.ts              # Create/update/delete GM notes
     │   │       ├── searchNotes.ts           # Vector search across notes
     │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
@@ -236,7 +240,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 |----------------|--------------------------------------------------------------------------|
 | `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator |
 | `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships         |
-| `searchMemory` | Vector search across entities and messages                               |
+| `searchWorld` | Vector search across entities and messages                               |
 | `editNote`     | Create/update/delete GM notes with vector embedding                      |
 | `searchNotes`  | Vector search across notes                                               |
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
@@ -261,13 +265,14 @@ All 9 tools are defined as AI SDK `tool()` definitions and registered in `genera
 
 Each in-game day is divided into 12 segments of 2 hours each (segment 0 = midnight–2am, segment 11 = 10pm–midnight). Time only advances when the GM calls `advanceTime`.
 
-**Storage**: Singleton `:GameTime {id: "current"}` node in Neo4j with `day` and `segment` properties. Defaults to day 1, segment 2 (dawn).
+**Storage**: `:TimeAnchor {id: "anchor"}` node linked via `CURRENT_TIMEPOINT` to a chain of `:TimePoint` nodes linked by `NEXT_TIMEPOINT`. Each `TimePoint` stores `day`, `segment`, and `label`. A legacy `:GameTime` node is migrated automatically on startup. Defaults to day 1, segment 2 (dawn) unless the seed story overrides it.
 
 **Model functions** (`src/server/models/time.ts`):
 
-- `getGameTime()` / `setGameTime(time)` — read/write time from Neo4j
-- `advanceGameTime(segments)` — adds segments (wraps days at 12), returns old and new times
+- `getGameTime()` — read current time from Neo4j (falls back to legacy `:GameTime` node)
+- `advanceGameTime(segments)` — adds segments (wraps days at 12), creates a new `:TimePoint` and advances the `CURRENT_TIMEPOINT` pointer
 - `describeTime(time)` — human-readable string: "Day 3, Dawn (~4am-6am)"
+- `migrateToTimePoints(defaultDay, defaultSegment)` — one-time migration from legacy `:GameTime` to `:TimeAnchor`/`:TimePoint` system
 - `SEGMENT_LABELS` — constant map: `{ 0: "Midnight", 1: "Late Night", 2: "Dawn", ... }`
 
 ---
@@ -313,11 +318,11 @@ Types for cross-layer data flow: `SearchResults` (`messages[]` and `entities[]` 
 
 Managed by `schema.ts`, called once at startup:
 
-**Unique constraints (5):** `id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`
+**Unique constraints (6):** `id` on `:Conversation`, `:Message`, `:Entity`, `:Note`, `:Plot`, `:TimePoint`
 
 **Regular indexes (5):** `Message.timestamp`, `Entity.type`, `Entity.name`, `Plot.name`, `Plot.status`
 
-**Composite indexes (2):** `NPCDisposition(npc_name, target_name)`, `NPCDisposition(target_name)` — wrapped in try/catch for Neo4j version compat
+**Composite indexes (3):** `TimePoint(day, segment)`, `NPCDisposition(npc_name, target_name)`, `NPCDisposition(target_name)` — the NPCDisposition indexes are wrapped in try/catch for Neo4j version compat
 
 **Vector indexes (4, require Neo4j 5.11+, COSINE similarity):**
 
@@ -451,7 +456,7 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 | Constant                | Members                                                                                                                                    |
 |-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `READ_ALLOWED_LABELS`   | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`                                                               |
+| `READ_ALLOWED_LABELS`   | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`, `RelationshipType`                                            |
 | `WRITE_ALLOWED_LABELS`  | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`                                                               |
 
 **Relationship types** are governed by `RelationshipManager` (see §9.3), not a hardcoded allowlist. The manager categorizes types as `INTERNAL` (write-blocked), `PREDEFINED`, or `GM_DEFINED` (write-allowed).
@@ -492,7 +497,7 @@ generateTurn()
   │     │
   │     ├─► queryWorld ──► CypherValidator.validateRead → Neo4j
   │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.*
-  │     ├─► searchMemory ──► client.search.search()
+  │     ├─► searchWorld ──► client.search.search()
   │     ├─► editNote / searchNotes ──► client.notes.*
   │     ├─► editPlot / searchPlots ──► client.plots.*
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
@@ -556,7 +561,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 9 tools (2 Chorus + 7 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 10 tools (2 Chorus + 8 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -565,7 +570,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 8. **Singleton MemoryClient** — single entry point to all memory subsystems, lazy-init with caching
 9. **COLE+O entity model** (variant of POLE+O — CHARACTER replaces PERSON) — entities have a type (CHARACTER/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
 10. **Skill checks resolved server-side** — Dice rolls are computed automatically when a player selects a checked option; the result is injected into the GM's prompt for narrative integration
-11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchMemory`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
+11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchWorld`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
 12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
 13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
 14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared in TOML `[[relationshipTypes]]` or auto-registered at runtime). Seed stories can define new relationship types without TypeScript changes.

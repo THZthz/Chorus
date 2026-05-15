@@ -52,9 +52,7 @@ Never set a 'description' property directly on relationship instances in your Cy
   execute: wrapSafe(async (args) => {
     const validation = validator.validateWrite(args.query);
     if (!validation.valid) {
-      return JSON.stringify({
-        error: `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`,
-      });
+      return  `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`;
     }
 
     const client = MemoryClient.getCachedInstance();
@@ -63,9 +61,7 @@ Never set a 'description' property directly on relationship instances in your Cy
         await client.neo4j.executeRead(`EXPLAIN ${args.query}`);
       } catch (explainErr) {
         const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
-        return JSON.stringify({
-          error: `CYPHER SYNTAX ERROR:\n${msg}.\nFix your query and retry.`,
-        });
+        return `CYPHER SYNTAX ERROR:\n${msg}.\nFix your query and retry.`;
       }
 
       const rows = await client.neo4j.executeWrite(args.query);
@@ -99,10 +95,10 @@ Never set a 'description' property directly on relationship instances in your Cy
         // Observer reset is best-effort — never fail the tool for it
       }
 
-      return JSON.stringify({ success: true, rowsAffected: rows.length });
+      return `Success. ${rows.length} row(s) affected.`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return JSON.stringify({ error: `QUERY ERROR:\n${msg}.\nAdjust your query and retry.` });
+      return `QUERY ERROR:\n${msg}.\nAdjust your query and retry.`;
     }
   }, TOOL_NAMES.MUTATE_WORLD),
 });

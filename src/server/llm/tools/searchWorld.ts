@@ -23,7 +23,7 @@ import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
-export const searchMemory = tool({
+export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_MEMORY,
   description: `
 Search world state (entities, messages) by meaning using vector similarity.

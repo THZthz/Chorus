@@ -67,7 +67,7 @@ export const TOOL_NAMES = {
   MUTATE_WORLD: "mutateWorld",
   GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
-  SEARCH_MEMORY: "searchMemory",
+  SEARCH_MEMORY: "searchWorld",
   EDIT_NOTE: "editNote",
   SEARCH_NOTES: "searchNotes",
   EDIT_PLOT: "editPlot",

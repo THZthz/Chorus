@@ -32,17 +32,16 @@ export class Notes {
   }
 
   async createNote(noteName: string, content: string): Promise<MemoryNote> {
-    const id = uuidv4();
     const embedding = await this.embedder.embed(content);
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
-      `CREATE (n:Note {id: $id, content: $content, _embedding: $embedding, created_at: datetime($now), updated_at: datetime($now)})`,
-      { id, content, embedding, now },
+      `CREATE (n:Note {name: $name, content: $content, _embedding: $embedding, created_at: datetime($now), updated_at: datetime($now)})`,
+      { name: noteName, content, embedding, now },
     );
 
     return {
-      id,
+      name: noteName,
       content,
       _embedding: embedding,
       createdAt: new Date(now),
@@ -170,7 +169,7 @@ export class Notes {
 
   private parseNote(data: Record<string, unknown>): MemoryNote {
     return {
-      id: data.id as string,
+      name: data.name as string,
       content: data.content as string,
       _embedding: data._embedding as number[] | undefined,
       createdAt: new Date((data.created_at as string | number) || Date.now()),

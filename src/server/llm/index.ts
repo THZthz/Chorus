@@ -28,7 +28,7 @@ import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { mutateWorld } from "@/server/llm/tools/mutateWorld";
-import { searchMemory } from "@/server/llm/tools/searchMemory";
+import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNote } from "@/server/llm/tools/editNote";
 import { searchNotes } from "@/server/llm/tools/searchNotes";
 import { editPlot } from "@/server/llm/tools/editPlot";
@@ -87,7 +87,7 @@ export async function generateTurn(
     console.error("[generateTurn] Failed to load GM messages, starting fresh:", err);
   }
 
-  const includeHistory = false;
+  const includeHistory = false; // Intentionally kept `false`, GM should know it from the previous generateDialogueStep
   const historyWindow = 10;
   let historyParts: string[] = [];
   if (includeHistory) {
@@ -199,7 +199,7 @@ export async function generateTurn(
   const allTools = {
     queryWorld,
     mutateWorld,
-    searchMemory,
+    searchWorld,
     editNote,
     searchNotes,
     editPlot,

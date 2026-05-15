@@ -187,7 +187,8 @@ export class RelationshipManager {
   // Sync all registered relationship types to Neo4j as :RelationshipType nodes.
   // Idempotent — safe to call multiple times.
   async syncToNeo4j(client: Neo4jClient): Promise<void> {
-    for (const def of this.registry.values()) { // TODO: Can we combine this into single write.
+    for (const def of this.registry.values()) {
+      // TODO: Can we combine this into single write.
       await client.executeWrite(
         `MERGE (rt:RelationshipType {name: $name})
          SET rt.description = $description, rt.category = $category`,

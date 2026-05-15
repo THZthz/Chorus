@@ -37,11 +37,15 @@ Note text. CREATE: required; UPDATE: optional, set to overwrite old content; DEL
   aboutEntities: z
     .array(z.string())
     .optional()
-    .describe("Entity names to link this note to (replaces existing links)."),
+    .describe(
+      "Entity names to link this note to (replaces existing links, if an empty array [] is passed, all ABOUT_ENTITY is cleared).",
+    ),
   aboutMessages: z
     .array(z.string())
     .optional()
-    .describe("Message IDs to link this note to (replaces existing links)."),
+    .describe(
+      "Message IDs to link this note to (replaces existing links, if an empty array [] is passed, all ABOUT_MESSAGE is cleared).",
+    ),
 });
 
 export const editNote = tool({
@@ -56,43 +60,42 @@ Notes can be linked to entities and messages.
 
     if (args.action == "DELETE") {
       const deleted = await client.notes.deleteNote(args.noteName);
-      return JSON.stringify(
-        deleted ? { removed: args.noteName } : { error: `Note "${args.noteName}" not found.` },
-      );
+      return deleted
+        ? `Note "${args.noteName}" is successfully deleted`
+        : `ERROR: Note "${args.noteName}" is not found.`;
     }
 
     if (args.action == "CREATE") {
-      if (!args.content) return JSON.stringify({ error: "content required for CREATE." });
+      if (!args.content) return `ERROR: Parameter "content" is required for CREATE.`;
       const note = await client.notes.createNote(args.noteName, args.content);
       if (args.aboutEntities) {
-        for (const name of args.aboutEntities) await client.notes.linkToEntity(note.id, name);
+        for (const name of args.aboutEntities) await client.notes.linkToEntity(note.name, name);
       }
       if (args.aboutMessages) {
-        for (const id of args.aboutMessages) await client.notes.linkToMessage(note.id, id);
+        for (const id of args.aboutMessages) await client.notes.linkToMessage(note.name, id);
       }
-      return JSON.stringify({
-        created: note.id,
-        content: note.content,
-        linkedEntities: args.aboutEntities?.length ?? 0,
-        linkedMessages: args.aboutMessages?.length ?? 0,
-      });
+      return `Note "${note.name}" is successfully created (${note.content.length} chars, ${args.aboutEntities?.length ?? 0} entities linked, ${args.aboutMessages?.length ?? 0} messages linked).`;
     }
 
     const existing = await client.notes.getNote(args.noteName);
-    if (!existing) return JSON.stringify({ error: `Note "${args.noteName}" not found.` });
+    if (!existing) return `ERROR: Note "${args.noteName}" not found.`;
 
+    let flags = 0x0;
     if (args.content !== undefined) {
+      flags |= 0x1;
       await client.notes.updateNote(args.noteName, { content: args.content });
     }
     if (args.aboutEntities !== undefined && args.aboutEntities) {
+      flags |= 0x2;
       await client.notes.clearLinks(args.noteName, "ENTITY");
       for (const name of args.aboutEntities) await client.notes.linkToEntity(args.noteName, name);
     }
     if (args.aboutMessages !== undefined && args.aboutMessages) {
+      flags |= 0x4;
       await client.notes.clearLinks(args.noteName, "MESSAGE");
       for (const id of args.aboutMessages) await client.notes.linkToMessage(args.noteName, id);
     }
 
-    return JSON.stringify({ updated: args.noteName });
+    return `Note "${args.noteName} is successfully updated (${[flags & 0x1 ? "content" : "", flags & 0x2 ? "all entities links" : "", flags & 0x4 ? "all messages links" : ""].join(", ")} is overwritten).`;
   }, TOOL_NAMES.EDIT_NOTE),
 });

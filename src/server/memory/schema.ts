@@ -30,6 +30,7 @@ export async function setupSchema(
     ["note_id", "Note", "id"],
     ["plot_id", "Plot", "id"],
     ["timepoint_id", "TimePoint", "id"],
+    ["idcounter_key", "IdCounter", "key"],
   ];
 
   for (const [name, label, prop] of constraints) {

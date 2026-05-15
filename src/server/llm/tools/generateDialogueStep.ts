@@ -89,9 +89,9 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
     .describe("Hint shown after the text, e.g. [Check]. Do not overuse it."),
   check: z
     .object({
-      skill: z.enum(SKILL_NAMES).describe("The skill to check (e.g. 'LOGIC')"),
-      difficulty: z.number().describe("Numerical difficulty (e.g. 10)"),
-      difficultyText: z.string().max(30).describe("Textual difficulty (e.g. 'Challenging')"),
+      skill: z.enum(SKILL_NAMES).describe("The skill to check (e.g. 'LOGIC')."),
+      difficulty: z.number().describe("Numerical difficulty (e.g. 10)."),
+      difficultyText: z.string().max(30).describe("Textual difficulty (e.g. 'Challenging')."),
       diceCount: z.number().default(2),
       conditions: z
         .array(
@@ -100,7 +100,7 @@ If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
               .string()
               .max(100)
               .describe(
-                "JS expression e.g. 'success', 'total - statBonus > difficulty' or 'total < difficulty'",
+                "JS expression e.g. 'success', 'total - statBonus > difficulty' or 'total < difficulty'.",
               ),
             label: z.string().max(100).optional(),
             color: z.string().max(30).optional(),
@@ -252,16 +252,6 @@ function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   return { errors };
 }
 
-function formatValidationFailure(result: ValidationResult, isCorrection: boolean): string {
-  return JSON.stringify({
-    error: "VALIDATION FAILED",
-    isCorrection,
-    failures: result.errors,
-    instruction:
-      "Call generateDialogueStep again with isCorrection: true. Only send the failing items listed in 'failures' — set each item's 'index' field to the index shown. Valid items are preserved from the previous call automatically (do NOT copy them).",
-  });
-}
-
 type PersistMessageFn = (msg: {
   speaker: string;
   type: string;
@@ -279,7 +269,14 @@ async function executeAndPersist(
 
   if (result.errors.length > 0) {
     onValidChange?.(false);
-    return formatValidationFailure(result, isCorrection);
+    return [
+      "VALIDATION FAILED ",
+      "(isCorrection" + (isCorrection ? "true" : "false") + ")\n",
+      result.errors.map((e) => "- " + e).join("\n"),
+      "Call generateDialogueStep again with isCorrection: true. ",
+      "Only send the failing items listed in 'failures' — set each item's 'index' field to the index shown. ",
+      "Valid items are preserved from the previous call automatically (do NOT copy them).",
+    ].join("");
   }
 
   onValidChange?.(true);
@@ -302,22 +299,19 @@ async function executeAndPersist(
         );
       }
     }
-    return JSON.stringify({
-      success: isCorrection
-        ? `Correction applied — ${persisted} message(s) persisted.`
-        : `Dialogue successfully streamed and ${persisted} message(s) persisted.`,
-      messages: persisted,
-      options: (args.options ?? []).length,
-    });
+    // TODO: Check "persisted" and "received" correctness.
+    return (
+      (isCorrection ? `Correction applied — ` : `Dialogue successfully streamed — `) +
+      `${persisted} message(s) persisted, ${(args.options ?? []).length} option(s) received.`
+    );
   }
 
-  return JSON.stringify({
-    success: isCorrection
-      ? "Correction applied — dialogue successfully streamed."
-      : "Dialogue successfully streamed.",
-    messages: (args.messages ?? []).length,
-    options: (args.options ?? []).length,
-  });
+  return (
+    (isCorrection
+      ? "Correction applied — dialogue successfully streamed. "
+      : "Dialogue successfully streamed. ") +
+    `${(args.messages ?? []).length} message(s) received, ${(args.options ?? []).length} option(s) received.`
+  );
 }
 
 export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn) {

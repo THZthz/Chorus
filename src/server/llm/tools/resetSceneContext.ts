@@ -30,9 +30,6 @@ Use when the scene has significantly changed and you want to see full descriptio
   inputSchema: z.object({}),
   execute: wrapSafe(async () => {
     getObserver().reset();
-    return JSON.stringify({
-      success:
-        "Scene context observer reset. Next turn will show full descriptions for all entities and plots.",
-    });
+    return "Scene context observer reset. Next turn will show full descriptions for all entities and plots.";
   }, TOOL_NAMES.RESET_SCENE_CONTEXT),
 });

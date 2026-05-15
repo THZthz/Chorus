@@ -1,4 +1,4 @@
-IMPORTANT: **Read DEVELOPER.md BEFORE DOING ANYTHING ELSE**, update it after you have modified the codebase, keep concise.
+IMPORTANT: **Read DEVELOPER.md BEFORE DOING ANYTHING ELSE**. DEVELOPER.md may contain outdated information, so check the exact source files. You should update it after you have modified the codebase, keep concise.
 
 If user's intention is ambiguous, be sure to ask first.
 

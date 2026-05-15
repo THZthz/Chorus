@@ -21,6 +21,7 @@ import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
 import { GAME_ID } from "@/server/memory/gameState";
+import { nextId } from "@/server/memory/idGenerator";
 import type { MemoryMessage } from "@/server/memory/types";
 
 export class ShortTermMemory {
@@ -46,7 +47,7 @@ export class ShortTermMemory {
       embedding = await this.embedder.embed(content);
     }
 
-    const messageId = uuidv4();
+    const messageId = await nextId(this.client);
     const now = new Date().toISOString();
 
     await this.client.executeWrite(

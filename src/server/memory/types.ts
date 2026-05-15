@@ -45,17 +45,8 @@ export interface MemoryMessage {
   createdAt: Date;
 }
 
-export interface EntityRelationship {
-  id: string;
-  sourceId: string;
-  targetId: string;
-  type: string;
-  description?: string;
-  confidence: number;
-}
-
 export interface MemoryNote {
-  id: string;
+  name: string;
   content: string;
   _embedding?: number[];
   createdAt: Date;

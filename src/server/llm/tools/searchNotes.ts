@@ -40,11 +40,11 @@ Search GM notes by meaning using vector similarity.
     const notes = await client.notes.searchNotes(args.query, { limit: args.limit });
     const enriched = await Promise.all(
       notes.map(async (n) => ({
-        id: n.id,
+        name: n.name,
         content: n.content,
         similarity: n.similarity,
-        aboutEntities: await client.notes.getLinkedEntities(n.id),
-        aboutMessages: await client.notes.getLinkedMessages(n.id),
+        aboutEntities: await client.notes.getLinkedEntities(n.name),
+        aboutMessages: await client.notes.getLinkedMessages(n.name),
       })),
     );
     return JSON.stringify(enriched, null, 2);

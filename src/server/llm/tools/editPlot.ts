@@ -58,29 +58,29 @@ Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to fin
     const client = MemoryClient.getCachedInstance();
 
     if (!args.plotName) {
-      return JSON.stringify({ error: "plotName should be included." });
+      return `ERROR: Parameter "plotName" should be included.`;
     }
 
     if (args.action == "CREATE") {
-      if (!args.description) return JSON.stringify({ error: "description required for CREATE." });
+      if (!args.description) return `ERROR: Parameter "description" is required for action CREATE.`;
       const plot = await client.plots.createPlot(args.plotName, {
         description: args.description,
         brief: args.brief,
         status: args.status ?? "PENDING",
         triggerCondition: args.triggerCondition,
       });
-      return JSON.stringify({ created: plot.name, status: plot.status });
+      return `Plot "${plot.name}" (status: ${plot.status}) is successfully created.`;
     }
 
     if (args.action == "DELETE") {
       const deleted = await client.plots.deletePlot(args.plotName);
-      return JSON.stringify(
-        deleted ? { removed: args.plotName } : { error: `Plot "${args.plotName}" not found.` },
-      );
+      return deleted
+        ? `Plot "${args.plotName}" is successfully deleted.`
+        : `ERROR: Plot "${args.plotName}" is not found.`;
     }
 
     const existing = await client.plots.getPlot(args.plotName);
-    if (!existing) return JSON.stringify({ error: `Plot "${args.plotName}" not found.` });
+    if (!existing) return `ERROR: Plot "${args.plotName}" is not found.`;
 
     const oldStatus = existing.status;
     const newStatus = (args.status ?? oldStatus) as typeof oldStatus;
@@ -125,6 +125,6 @@ Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to fin
       await client.plots.unbranch(args.plotName, args.unbranch);
     }
 
-    return JSON.stringify({ updated: args.plotName });
+    return `Plot "${args.plotName}" is successfully updated.`;
   }, TOOL_NAMES.EDIT_PLOT),
 });

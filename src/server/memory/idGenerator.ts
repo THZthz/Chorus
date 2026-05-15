@@ -22,6 +22,7 @@ import { GAME_ID } from "@/server/memory/gameState";
 const CHARS = "1fER78GIDVbh95ngu6adzmkjZy2sSQoJTL0vXrx3MCtcPeKYUBWAiFpl4HqOwN";
 
 function encodeBase62(n: number): string {
+  if (!Number.isFinite(n) || n < 0) throw new Error(`encodeBase62: invalid input ${n}`);
   let result = "";
   for (let i = 0; i < 4; i++) {
     result = CHARS[n % 62] + result;
@@ -30,11 +31,9 @@ function encodeBase62(n: number): string {
   return result;
 }
 
-/**
- * Generate the next short ID for a given counter key.
- * Uses an :IdCounter node in Neo4j to atomically increment a counter
- * and returns its base62-encoded value as a 4-character string.
- */
+// Generate the next short ID for a given counter key.
+// Uses an :IdCounter node in Neo4j to atomically increment a counter
+// and returns its base62-encoded value as a 4-character string.
 export async function nextId(client: Neo4jClient): Promise<string> {
   const rows = await client.executeWrite(
     `MERGE (c:IdCounter {session_id: $id})
@@ -43,14 +42,13 @@ export async function nextId(client: Neo4jClient): Promise<string> {
      RETURN c.value AS value`,
     { id: GAME_ID },
   );
-  const value = rows[0].value as number;
+  const value = Number(rows[0].value);
+  if (!Number.isFinite(value)) throw new Error(`nextId: invalid counter value ${rows[0].value}`);
   return encodeBase62(value - 1);
 }
 
-/**
- * Generate a batch of short IDs for a given counter key.
- * Atomically reserves `count` values and returns them.
- */
+// Generate a batch of short IDs for a given counter key.
+// Atomically reserves `count` values and returns them.
 export async function nextIdBatch(client: Neo4jClient, count: number): Promise<string[]> {
   const rows = await client.executeWrite(
     `MERGE (c:IdCounter {session_id: $id})
@@ -59,7 +57,8 @@ export async function nextIdBatch(client: Neo4jClient, count: number): Promise<s
      RETURN c.value AS value`,
     { id: GAME_ID, count },
   );
-  const endValue = rows[0].value as number;
+  const endValue = Number(rows[0].value);
+  if (!Number.isFinite(endValue)) throw new Error(`nextIdBatch: invalid counter value ${rows[0].value}`);
   const startValue = endValue - count;
   const ids: string[] = [];
   for (let i = startValue; i < endValue; i++) {

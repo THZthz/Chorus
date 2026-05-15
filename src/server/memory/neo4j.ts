@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import neo4j, { isNode, isRelationship, Neo4jError } from "neo4j-driver";
+import neo4j, { isNode, isRelationship, isInt, Neo4jError } from "neo4j-driver";
 import type { Driver } from "neo4j-driver";
 
 // Properties whose key starts with "_" are internal/hidden and must never be
@@ -57,6 +57,8 @@ function toPlainValue(v: unknown): unknown {
         // fall through
       }
     }
+    // Neo4j Integer object (neo4j-driver 5.x, or 6.x with useBigInt: false)
+    if (isInt(v)) return (v as { toNumber(): number }).toNumber();
     // Generic object — recurse into its values
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {

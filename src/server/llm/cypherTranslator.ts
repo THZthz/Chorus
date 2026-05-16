@@ -95,7 +95,7 @@ Every relationship has a fixed direction. Use these exact patterns:
 INTERNAL (never query): _HAS_GM_MESSAGE, _FIRST_GM_MESSAGE, _NEXT_GM_MESSAGE
 \`\`\`
 
-NPCDisposition is a NODE LABEL, not a relationship type. NEVER write \`[d:NPCDisposition]\` or \`[:NPCDisposition]\`. The relationship is \`[:HAS_DISPOSITION]\`. Correct pattern:\n\`\`\`\nMATCH (npc:Entity {name: "Veyla"})-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"})\nRETURN d.sentiment, d.summary\n\`\`\`
+NPCDisposition is a NODE LABEL, not a relationship type. NEVER write \`[d:NPCDisposition]\` or \`[:NPCDisposition]\`. The relationship is \`[:HAS_DISPOSITION]\`. Correct patterns:\n\`\`\`\n// One NPC's disposition toward the Player:\nMATCH (npc:Entity {name: "SomeNPC"})-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"})\nRETURN d.sentiment, d.summary\n\n// ALL dispositions toward the Player:\nMATCH (d:NPCDisposition {target_name: "Player"})\nRETURN d.npc_name, d.sentiment, d.summary\n\`\`\`
 
 ## RULES
 
@@ -110,7 +110,10 @@ NPCDisposition is a NODE LABEL, not a relationship type. NEVER write \`[d:NPCDis
 - This is Cypher, NOT SQL. Never use GROUP BY. Aggregation groups by non-aggregated RETURN columns automatically. Use \`COUNT(e)\` not \`COUNT(*)\`.
 - For multiple status/type values use \`WHERE p.status IN ['ACTIVE', 'IN_PROGRESS']\` not \`{status: 'A', status: 'B'}\`.
 - WHERE before RETURN. ORDER BY before LIMIT. RETURN columns comma-separated.
-- In WHERE NOT, don't bind variables: \`WHERE NOT (e)-[:REL]->()\` not \`WHERE NOT (e)-[r:REL]->()\`.
+- In WHERE NOT, don't bind variables: \`WHERE NOT (e)-[:REL]->()\` not \`WHERE NOT (e)-[r:REL]->()\` or \`WHERE NOT (c:Label)-[:REL]->()\`.
+- Never use \`|\` to alternate relationship types in patterns. Use multiple WHERE NOT clauses instead: \`WHERE NOT (e)-[:REL1]->() AND NOT (e)-[:REL2]->()\`.
+- To find nodes with no relationships of a type: \`MATCH (l:Location) WHERE NOT EXISTS { (c:Character)-[:LOCATED_AT]->(l) } RETURN l\`.
+- Never use map projection with pattern comprehension \`r [(n)-[r]->(m) | ...]\`. Just return \`TYPE(r)\` and the connected node names.
 - To query Message history: \`MATCH (m:Message) RETURN m.role, m.content, m.timestamp ORDER BY m.timestamp DESC LIMIT 10\`.
 - Notes have \`content\`, not \`contentSummary\` or \`summary\`. Plots use \`[:COMPLETED_AT]->(tp:TimePoint)\` not \`.completed_at\`.
 

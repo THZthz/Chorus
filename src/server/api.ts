@@ -23,6 +23,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
 import { buildFullSceneContext } from "@/server/llm/sceneContext";
+import { executeCypherTranslator, DEFAULT_LLM_URL } from "@/server/llm/cypherTranslator";
 import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
@@ -103,6 +104,26 @@ apiRouter.get("/dump", async (_req, res) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Dump fetch error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Query Intent (small-model Cypher translator) ──
+
+apiRouter.post("/query/intent", async (req, res) => {
+  try {
+    const { intent } = req.body as { intent?: string };
+    if (!intent || typeof intent !== "string") {
+      res.status(400).json({ error: "Missing or invalid 'intent' field." });
+      return;
+    }
+
+    const llmUrl = process.env.QUERY_LLM_URL || DEFAULT_LLM_URL;
+    const result = await executeCypherTranslator(llmUrl, intent);
+    res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[query/intent] error:", message);
     res.status(500).json({ error: message });
   }
 });

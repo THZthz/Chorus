@@ -129,9 +129,20 @@ function parseQueryResponse(raw: string): TranslateResult {
   text = text.replace(/^```(?:cypher|sql|graphql)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
 
   // Strip leading "cypher" / "cypher\n" prefix the model sometimes emits
-  text = text.replace(/^cypher\s*\n?/i, "").trim();
+  text = text.replace(/^cypher\s*\n?/i, "");
 
-  // If the text starts with MATCH, CALL, or EXPLAIN, it's likely the query
+  // Gemma model outputs literal \n escape sequences instead of real newlines
+  text = text.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+
+  text = text.trim();
+
+  // Strip EXPLAIN prefix if the model emitted it (we add our own)
+  text = text.replace(/^EXPLAIN\s+/i, "");
+
+  // Fix duplicate LIMIT (e.g. LIMIT 10 LIMIT 50 → LIMIT 10)
+  text = text.replace(/\bLIMIT\s+\d+\s+LIMIT\s+\d+\b/i, (m) => m.split(/\s+LIMIT\s+/i)[0]);
+
+  // If the text starts with MATCH, CALL, or OPTIONAL MATCH, it's likely the query
   if (/^(MATCH|CALL|EXPLAIN|OPTIONAL|RETURN)\b/i.test(text)) {
     const explanation = text.split("\n").slice(-1)[0]?.trim() || "Query executed.";
     // Extract query: everything up to the last non-empty line that looks like Cypher

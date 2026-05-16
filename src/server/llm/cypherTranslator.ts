@@ -2,23 +2,20 @@ import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { getSchemaVisualization, getRelationshipTypeDescriptions, formatSchemaMarkdown } from "@/server/models/schema";
-import { parse as parseToml } from "smol-toml";
 
 const AUTO_LIMIT = 50;
 const MAX_FORMAT_ROWS = 25;
 const DEFAULT_LLM_URL = "http://localhost:8080/v1/chat/completions";
 
-// ── Formatting prompt (lightweight — no schema, just instructions) ──
+// ── Formatting prompt (round 2) — the entire response IS the markdown ──
 
 const FORMATTING_SYSTEM_PROMPT = `
 You format raw Neo4j query results into readable markdown for a Game Master.
 
-Respond with ONLY valid TOML (no fences, no extra text):
-markdown = """
-<human-readable markdown here>
-"""
+Your ENTIRE response is the markdown. Do NOT wrap it in code fences, JSON, TOML, or any other container. Just output the markdown directly.
 
 Rules:
+- Start with a level-2 heading describing what the data shows.
 - Use tables for structured multi-row data: | Col1 | Col2 |\\n|------|------|\\n| ... |
 - Use bullet lists for simple name-value pairs.
 - Omit internal fields (_id, _embedding, _elementId, _labels). Show only meaningful data.
@@ -47,7 +44,7 @@ export interface CypherTranslatorBatchResult {
   error?: string;
 }
 
-// ── System prompt builder ──
+// ── System prompt builder (round 1) ──
 
 export async function buildCypherTranslatorSystemPrompt(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
@@ -76,24 +73,40 @@ ${schemaSection}
 - Entity names are natural keys — use \`{name: "..."}\` to match entities, not \`{_id: "..."}\`.
 - The Player entity has \`name: "Player"\`.
 
-## OUTPUT
+## OUTPUT FORMAT
 
-Respond with ONLY valid TOML (no fences, no extra text):
-query = """
+Respond with EXACTLY this structure (no code fences):
+
+<<<QUERY>>>
 <the Cypher query here>
-"""
-explanation = "<1-sentence summary of what this queries>"
+<<<EXPLANATION>>>
+<1-sentence summary of what this queries>
 `.trim();
 }
 
 // ── LLM helpers ──
 
-async function chatToml(
+function parseQueryResponse(raw: string): TranslateResult {
+  const cleaned = raw.trim();
+
+  const queryMatch = cleaned.match(/<<<QUERY>>>\s*([\s\S]*?)<<<EXPLANATION>>>/i);
+  const query = queryMatch?.[1]?.trim() || "";
+
+  const explanationIdx = cleaned.lastIndexOf("<<<EXPLANATION>>>");
+  let explanation = "";
+  if (explanationIdx !== -1) {
+    explanation = cleaned.slice(explanationIdx + "<<<EXPLANATION>>>".length).trim();
+  }
+
+  return { query, explanation };
+}
+
+async function llmChat(
   llmUrl: string,
   systemPrompt: string,
   userMessage: string,
   maxTokens: number = 2048,
-): Promise<Record<string, unknown>> {
+): Promise<string> {
   const res = await fetch(llmUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -118,20 +131,12 @@ async function chatToml(
   const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new Error("Empty response from LLM");
 
-  // Strip markdown fences if present
-  let toml = content.trim();
-  if (toml.startsWith("```")) {
-    toml = toml.replace(/^```(?:toml)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+  // Strip code fences if present
+  let text = content.trim();
+  if (text.startsWith("```")) {
+    text = text.replace(/^```(?:toml|json|markdown|md)?\s*\n?/, "").replace(/\n?```\s*$/, "");
   }
-
-  try {
-    return parseToml(toml) as Record<string, unknown>;
-  } catch (parseErr) {
-    const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-    console.error("[cypherTranslator] TOML parse failed:", parseMsg);
-    console.error("[cypherTranslator] Raw content (first 500 chars):", toml.slice(0, 500));
-    throw new Error(`LLM returned unparseable TOML. Parse error: ${parseMsg}. Raw (first 200 chars): ${toml.slice(0, 200)}`);
-  }
+  return text;
 }
 
 // ── Round 1: Intent → Cypher ──
@@ -141,20 +146,16 @@ async function translateIntent(
   systemPrompt: string,
   intent: string,
 ): Promise<TranslateResult> {
-  const result = await chatToml(
-    llmUrl,
-    systemPrompt,
-    `Intent: ${intent}`,
-  );
-  const query = typeof result.query === "string" ? result.query.trim() : "";
-  if (!query) throw new Error("LLM did not return a query");
-  return {
-    query,
-    explanation: typeof result.explanation === "string" ? result.explanation : "Query executed.",
-  };
+  const raw = await llmChat(llmUrl, systemPrompt, `Intent: ${intent}`);
+  const result = parseQueryResponse(raw);
+  if (!result.query) {
+    console.error("[cypherTranslator] parseQueryResponse failed, raw (first 500):", raw.slice(0, 500));
+    throw new Error("LLM did not return a parseable query. Ensure <<<QUERY>>> and <<<EXPLANATION>>> tags are present.");
+  }
+  return result;
 }
 
-// ── Round 2: Raw rows → Markdown ──
+// ── Round 2: Raw rows → Markdown (entire response IS the markdown) ──
 
 async function formatResult(
   llmUrl: string,
@@ -180,13 +181,8 @@ ${truncated ? `(${rows.length - MAX_FORMAT_ROWS} more rows not shown)` : ""}
 
 Format these results as readable markdown.`;
 
-  const result = await chatToml(
-    llmUrl,
-    FORMATTING_SYSTEM_PROMPT,
-    userMessage,
-    4096,
-  );
-  let markdown = typeof result.markdown === "string" ? result.markdown.trim() : "(no output)";
+  let markdown = await llmChat(llmUrl, FORMATTING_SYSTEM_PROMPT, userMessage, 4096);
+  if (!markdown || markdown === "(no results)") markdown = "(no output)";
   if (truncated) {
     markdown += `\n\n*(Showing ${MAX_FORMAT_ROWS} of ${rows.length} rows)*`;
   }

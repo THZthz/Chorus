@@ -111,7 +111,8 @@ export async function applyRerank<T>(
   if (!r || items.length === 0) {
     return items.map((item) => {
       const s = (item as Record<string, unknown>).similarity as number;
-      return { ...item, relevance: s || 0 };
+      const { text: _, ...clean } = item as unknown as Record<string, unknown>;
+      return { ...clean, relevance: s || 0 } as T & { relevance: number };
     });
   }
 
@@ -119,7 +120,7 @@ export async function applyRerank<T>(
   const results = await r.rerank(query, docs, topN ?? items.length);
 
   return results.map((result) => {
-    const item = items[result.index];
-    return { ...item, relevance: result.score, _rerankScore: result.score } as T & { relevance: number };
+    const { text: _, ...clean } = items[result.index] as unknown as Record<string, unknown>;
+    return { ...clean, relevance: result.score } as T & { relevance: number };
   });
 }

@@ -26,7 +26,9 @@ import { TOOL_NAMES } from "@/shared/constants";
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_MEMORY,
   description: `
-Search world state (entities, messages) by meaning using vector similarity.
+Search single world state (entities, messages) by meaning using vector similarity. The results will be reranked by a reranker LLM model.
+Entities are node with :Entity. Messages are generated messages by tool \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.
+Entities are embedded by "name (Type): description". Messages are embedded with the full message text.
 Use when you need to find something not in the current scene.`.trim(),
   inputSchema: z.object({
     query: z

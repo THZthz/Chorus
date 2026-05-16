@@ -1,6 +1,6 @@
 .PHONY: install server console lint format \
         neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
-        embedding-server rerank-server \
+        embedding-server rerank-server formatter-server \
         reset clean clean-all
 
 # MSYS2 bash can't resolve Windows-style paths inside the npm/npx

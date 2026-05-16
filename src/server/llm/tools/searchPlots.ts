@@ -25,7 +25,8 @@ import { TOOL_NAMES } from "@/shared/constants";
 export const searchPlots = tool({
   title: TOOL_NAMES.SEARCH_PLOTS,
   description: `
-Search plots by meaning using vector similarity.
+Search plots by meaning using vector similarity. The results will be reranked by a reranker LLM model.
+Plots are stored inside Neo4j (:Plot). Plots are embedded by "name: description".
 `.trim(),
   inputSchema: z.object({
     query: z

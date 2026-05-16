@@ -60,7 +60,7 @@ const inputSchema = z.object({
 export const editPlot = tool({
   title: TOOL_NAMES.EDIT_PLOT,
   description: `
-CREATE, UPDATE, or DELETE a plot.
+CREATE, partial UPDATE, or DELETE a plot.
 Plots track story arcs.
 Use flags for indicating critical progress of story beats.
 Use branchTo/unbranch to connect child plots.

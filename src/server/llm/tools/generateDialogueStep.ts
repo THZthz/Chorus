@@ -161,6 +161,62 @@ export interface ValidationResult {
   errors: string[];
 }
 
+interface MergeResult {
+  mergedArgs: DialogueArgs;
+  allMessagesFresh: boolean;
+  allOptionsFresh: boolean;
+  replacedMessageIndices: Set<number>;
+}
+
+function mergeCorrection(
+  args: DialogueArgs,
+  lastMessages: DialogueMessage[],
+  lastOptions: DialogueOpt[],
+): MergeResult {
+  const allMessagesFresh = !!(
+    args.messages &&
+    args.messages.length > 0 &&
+    args.messages.every((m) => m.index === undefined)
+  );
+  const allOptionsFresh = !!(
+    args.options &&
+    args.options.length > 0 &&
+    args.options.every((o) => o.index === undefined)
+  );
+
+  const replacedMessageIndices = new Set<number>();
+
+  const mergedMessages = allMessagesFresh ? [] : [...lastMessages];
+  if (args.messages) {
+    for (const msg of args.messages) {
+      if (msg.index !== undefined && msg.index < mergedMessages.length) {
+        mergedMessages[msg.index] = msg;
+        replacedMessageIndices.add(msg.index);
+      } else {
+        mergedMessages.push(msg);
+      }
+    }
+  }
+
+  const mergedOptions = allOptionsFresh ? [] : [...lastOptions];
+  if (args.options) {
+    for (const opt of args.options) {
+      if (opt.index !== undefined && opt.index < mergedOptions.length) {
+        mergedOptions[opt.index] = opt;
+      } else {
+        mergedOptions.push(opt);
+      }
+    }
+  }
+
+  return {
+    mergedArgs: { ...args, messages: mergedMessages, options: mergedOptions },
+    allMessagesFresh,
+    allOptionsFresh,
+    replacedMessageIndices,
+  };
+}
+
 export function validateDialogueArgs(args: DialogueArgs): ValidationResult {
   const errors: string[] = [];
 
@@ -203,7 +259,7 @@ export function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     }
     if (msg.text.length > MAX_MESSAGE_TEXT_LENGTH) {
       errors.push(
-        `Message ${i + 1} ("${msg.speaker}") text is too long (${msg.text.length} chars, max ${MAX_MESSAGE_TEXT_LENGTH}). Shorten it to keep the UI readable.`,
+        `Message ${i} ("${msg.speaker}") text is too long (${msg.text.length} chars, max ${MAX_MESSAGE_TEXT_LENGTH}). Shorten it to keep the UI readable.`,
       );
     }
   }
@@ -222,7 +278,7 @@ export function validateDialogueArgs(args: DialogueArgs): ValidationResult {
     const opt = options[i];
     if (opt.check && opt.hintBefore) {
       errors.push(
-        `Option ${i + 1} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
+        `Option ${i} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
       );
     }
     const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
@@ -367,41 +423,11 @@ You do NOT need to copy them.
       let allOptionsFresh = false;
       const replacedMessageIndices = new Set<number>();
       if (isCorrection) {
-        allMessagesFresh = !!(
-          args.messages &&
-          args.messages.length > 0 &&
-          args.messages.every((m) => m.index === undefined)
-        );
-        allOptionsFresh = !!(
-          args.options &&
-          args.options.length > 0 &&
-          args.options.every((o) => o.index === undefined)
-        );
-
-        const mergedMessages = allMessagesFresh ? [] : [...lastCallMessages];
-        if (args.messages) {
-          for (const msg of args.messages) {
-            if (msg.index !== undefined && msg.index < mergedMessages.length) {
-              mergedMessages[msg.index] = msg;
-              replacedMessageIndices.add(msg.index);
-            } else {
-              mergedMessages.push(msg);
-            }
-          }
-        }
-
-        const mergedOptions = allOptionsFresh ? [] : [...lastCallOptions];
-        if (args.options) {
-          for (const opt of args.options) {
-            if (opt.index !== undefined && opt.index < mergedOptions.length) {
-              mergedOptions[opt.index] = opt;
-            } else {
-              mergedOptions.push(opt);
-            }
-          }
-        }
-
-        args = { ...args, messages: mergedMessages, options: mergedOptions };
+        const merged = mergeCorrection(args, lastCallMessages, lastCallOptions);
+        allMessagesFresh = merged.allMessagesFresh;
+        allOptionsFresh = merged.allOptionsFresh;
+        for (const i of merged.replacedMessageIndices) replacedMessageIndices.add(i);
+        args = merged.mergedArgs;
       }
 
       // Messages that were already persisted from a previous call and not
@@ -428,7 +454,7 @@ You do NOT need to copy them.
       // Store this call's args for potential future correction within the same turn.
       lastCallMessages = args.messages ?? [];
       lastCallOptions = args.options ?? [];
-      lastPersistedCount = (args.messages ?? []).length;
+      lastPersistedCount = lastCallValid ? (args.messages ?? []).length : 0;
 
       return result;
     },
@@ -437,6 +463,13 @@ You do NOT need to copy them.
   return {
     tool: dialogueTool,
     wasValid: () => lastCallValid,
+    mergeCorrection: (args: DialogueArgs): DialogueArgs | null => {
+      const isCorrection = args.isCorrection ?? false;
+      if (!isCorrection) return null;
+      const baseEmpty = lastCallMessages.length === 0 && lastCallOptions.length === 0;
+      if (baseEmpty) return null;
+      return mergeCorrection(args, lastCallMessages, lastCallOptions).mergedArgs;
+    },
     resetForTurn: () => {
       lastCallValid = false;
       lastCallMessages = [];

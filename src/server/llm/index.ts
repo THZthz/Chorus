@@ -420,11 +420,24 @@ export async function generateTurn(
               args = chunk.input as Record<string, unknown>;
             }
             if (args) {
-              if (args.messages && Array.isArray(args.messages) && args.messages.length > 0) {
-                finalMessages = args.messages as Record<string, unknown>[];
+              // If this is a correction, merge with stored state to get the full
+              // messages/options for display (the LLM sends only the corrected items).
+              const merged = dialogueStepTool.mergeCorrection(args as any);
+              const effectiveArgs = merged ?? args;
+
+              if (
+                effectiveArgs.messages &&
+                Array.isArray(effectiveArgs.messages) &&
+                effectiveArgs.messages.length > 0
+              ) {
+                finalMessages = effectiveArgs.messages as Record<string, unknown>[];
               }
-              if (args.options && Array.isArray(args.options) && args.options.length > 0) {
-                finalOptions = (args.options as Record<string, unknown>[]).map((o, i) => ({
+              if (
+                effectiveArgs.options &&
+                Array.isArray(effectiveArgs.options) &&
+                effectiveArgs.options.length > 0
+              ) {
+                finalOptions = (effectiveArgs.options as Record<string, unknown>[]).map((o, i) => ({
                   id: (o.id as string) || `opt_${i}`,
                   text: (o.text as string) || "",
                   selectionMessage: o.selectionMessage as string | undefined,

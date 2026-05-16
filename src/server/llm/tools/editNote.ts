@@ -55,7 +55,7 @@ Note text. CREATE: required; UPDATE: optional, set to overwrite old content; DEL
 export const editNote = tool({
   title: TOOL_NAMES.EDIT_NOTE,
   description: `
-CREATE, UPDATE, or DELETE a scratchpad note.
+CREATE, partial UPDATE, or DELETE a scratchpad note.
 Notes can be linked to entities and messages.
 This tool supports partial overwrite when action is UPDATE.
 `.trim(),

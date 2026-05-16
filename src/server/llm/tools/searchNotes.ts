@@ -25,7 +25,8 @@ import { TOOL_NAMES } from "@/shared/constants";
 export const searchNotes = tool({
   title: TOOL_NAMES.SEARCH_NOTES,
   description: `
-Search GM notes by meaning using vector similarity.
+Search GM notes by meaning using vector similarity. The results will be reranked by a reranker LLM model.
+Notes are stored inside Neo4j (:Note). Notes are embedded by full content.
 `.trim(),
   inputSchema: z.object({
     query: z

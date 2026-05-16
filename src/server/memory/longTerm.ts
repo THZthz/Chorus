@@ -102,7 +102,9 @@ export class LongTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      embedding = await this.embedder.embed(name);
+      const desc = description || brief || "";
+      const embedText = desc ? `${name} (${finalType}): ${desc}` : `${name} (${finalType})`;
+      embedding = await this.embedder.embed(embedText);
     }
 
     // Store aliases inside metadata (Python convention)

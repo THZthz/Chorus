@@ -24,22 +24,48 @@ Cinematic RPG-style dialogue engine with a fantasy-steampunk setting. The AI Gam
 
 - Node.js 20+
 - Docker (for Neo4j)
+- [llama-server](https://github.com/ggml-org/llama.cpp) (for embeddings and reranking)
 - A Gemini or DeepSeek API key
+
+### Model Setup
+
+Download the GGUF models into `data/models/`:
+
+```bash
+# Qwen3-Embedding (1024-dim bi-encoder)
+wget -P data/models/ https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf
+
+# Qwen3-Reranker (cross-encoder)
+wget -P data/models/ https://huggingface.co/Qwen/Qwen3-Reranker-0.6B-GGUF/resolve/main/Qwen3-Reranker-0.6B-Q8_0.gguf
+```
 
 ### Setup
 
 ```bash
 cp .env.example .env
-# Add your API key to .env:
+# Add your keys to .env:
+#
 #   GEMINI_API_KEY=your_key_here
 #   DEEPSEEK_API_KEY=your_key_here
+#
+#   # Llama-server endpoints (defaults work with default ports):
+#   LLAMA_EMBED_URL=http://localhost:8080/v1/embeddings
+#   LLAMA_RERANK_URL=http://localhost:8081/v1/rerank
+#   EMBEDDING_DIMENSIONS=1024
 
 make install
 
-# Terminal 1 — Start Neo4j + Express server
-make dev
+# Terminal 1 — Embedding server
+make embedding-server
 
-# Terminal 2 — Play
+# Terminal 2 — Reranker server (optional; improves search precision)
+make rerank-server
+
+# Terminal 3 — Neo4j container and Express server
+make neo4j-start neo4j-wait
+make server
+
+# Terminal 4 — Play
 make console
 ```
 

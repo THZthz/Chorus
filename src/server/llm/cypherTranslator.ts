@@ -5,7 +5,24 @@ import { getSchemaVisualization, getRelationshipTypeDescriptions, formatSchemaMa
 import { jsonrepair } from "jsonrepair";
 
 const AUTO_LIMIT = 50;
+const MAX_FORMAT_ROWS = 25;
 const DEFAULT_LLM_URL = "http://localhost:8080/v1/chat/completions";
+
+// ── Formatting prompt (lightweight — no schema, just instructions) ──
+
+const FORMATTING_SYSTEM_PROMPT = `
+You format raw Neo4j query results into readable markdown for a Game Master.
+
+Respond with ONLY this JSON (no markdown fences, no extra text):
+{"markdown": "<human-readable markdown>"}
+
+Rules:
+- Use tables for structured multi-row data: | Col1 | Col2 |\\n|------|------|\\n| ... |
+- Use bullet lists for simple name-value pairs.
+- Omit internal fields (_id, _embedding, _elementId, _labels). Show only meaningful data.
+- If the rows are empty, write "(no results)".
+- Be concise — the GM needs to scan this quickly.
+`.trim();
 
 // ── Types ──
 
@@ -40,15 +57,12 @@ export async function buildCypherTranslatorSystemPrompt(): Promise<string> {
   const schemaSection = formatSchemaMarkdown(schemaVis, relTypeDescs);
 
   return `
-You are a precise Cypher query assistant for a Neo4j-backed RPG engine.
-You have TWO jobs:
-
-1. **Generate Cypher** — when the user describes what they want to know, produce a read-only Cypher query.
-2. **Format results** — when the user gives you raw query results (JSON rows), format them as readable markdown.
+You are a precise Cypher query generator for a Neo4j-backed RPG engine.
+Given a natural-language intent, produce a read-only Cypher query.
 
 ${schemaSection}
 
-## CYPHER RULES
+## RULES
 
 - Read-only ONLY (MATCH, RETURN, ORDER BY, LIMIT, WHERE, WITH, OPTIONAL MATCH, COLLECT).
 - Use ONLY the labels, properties, and relationship types listed in the Schema above.
@@ -58,22 +72,10 @@ ${schemaSection}
 - Entity names are natural keys — use \`{name: "..."}\` to match entities, not \`{_id: "..."}\`.
 - The Player entity has \`name: "Player"\`.
 
-## OUTPUT FORMATS
+## OUTPUT
 
-### When generating Cypher (user sends "Intent: ...")
 Respond with ONLY this JSON (no markdown fences, no extra text):
 {"query": "<the Cypher query>", "explanation": "<1-sentence summary of what this queries>"}
-
-### When formatting results (user sends raw rows)
-Respond with ONLY this JSON:
-{"markdown": "<human-readable markdown>"}
-
-For markdown formatting:
-- Use tables for structured data with multiple rows/columns: \`| Col1 | Col2 |\\n|------|------|\\n| ... |\`
-- Use bullet lists for simple name-value pairs.
-- Omit internal fields (_id, _embedding, etc.). Show only meaningful data.
-- If the rows are empty, write "(no results)".
-- Be concise — the GM needs to scan this quickly.
 `.trim();
 }
 
@@ -83,6 +85,7 @@ async function chatJson<T>(
   llmUrl: string,
   systemPrompt: string,
   userMessage: string,
+  maxTokens: number = 2048,
 ): Promise<T> {
   const res = await fetch(llmUrl, {
     method: "POST",
@@ -92,8 +95,8 @@ async function chatJson<T>(
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      temperature: 0.1,
-      max_tokens: 2048,
+      temperature: 0,
+      max_tokens: maxTokens,
       response_format: { type: "json_object" },
     }),
   });
@@ -155,11 +158,13 @@ async function translateIntent(
 
 async function formatResult(
   llmUrl: string,
-  systemPrompt: string,
   intent: string,
   query: string,
   rows: Record<string, unknown>[],
 ): Promise<string> {
+  const truncated = rows.length > MAX_FORMAT_ROWS;
+  const displayRows = truncated ? rows.slice(0, MAX_FORMAT_ROWS) : rows;
+
   const userMessage = `The user asked: "${intent}"
 
 The Cypher query executed was:
@@ -167,19 +172,25 @@ The Cypher query executed was:
 ${query}
 \`\`\`
 
-Raw results (${rows.length} rows):
+Raw results (${rows.length} rows${truncated ? `, showing first ${MAX_FORMAT_ROWS}` : ""}):
 \`\`\`json
-${JSON.stringify(rows, null, 2)}
+${JSON.stringify(displayRows, null, 2)}
 \`\`\`
+${truncated ? `(${rows.length - MAX_FORMAT_ROWS} more rows not shown)` : ""}
 
 Format these results as readable markdown.`;
 
   const result = await chatJson<{ markdown?: string }>(
     llmUrl,
-    systemPrompt,
+    FORMATTING_SYSTEM_PROMPT,
     userMessage,
+    4096,
   );
-  return result.markdown || "(no output)";
+  let markdown = result.markdown || "(no output)";
+  if (truncated) {
+    markdown += `\n\n*(Showing ${MAX_FORMAT_ROWS} of ${rows.length} rows)*`;
+  }
+  return markdown;
 }
 
 // ── Orchestrator ──
@@ -222,7 +233,7 @@ export async function executeCypherTranslator(
   // Round 2: format results as markdown (non-fatal if it fails)
   let markdown = "";
   try {
-    markdown = await formatResult(llmUrl, systemPrompt, intent, finalQuery, safeRows);
+    markdown = await formatResult(llmUrl, intent, finalQuery, safeRows);
   } catch (formatErr) {
     const msg = formatErr instanceof Error ? formatErr.message : String(formatErr);
     console.error("[cypherTranslator] formatResult failed:", msg);

@@ -120,7 +120,9 @@ apiRouter.post("/reset", async (_req, res) => {
     // Reset in-memory GM_DEFINED types, then sync INTERNAL + PREDEFINED back to Neo4j
     const relManager = RelationshipManager.getCachedInstance();
     relManager.reset();
-    const nodeManager = (await import("@/server/memory/nodeManager")).NodeManager.getCachedInstance();
+    const nodeManager = (
+      await import("@/server/memory/nodeManager")
+    ).NodeManager.getCachedInstance();
     nodeManager.reset();
     const client = await MemoryClient.getInstance();
     await relManager.syncToNeo4j(client.neo4j);

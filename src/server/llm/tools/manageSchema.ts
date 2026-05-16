@@ -1,3 +1,21 @@
+/**
+ * Chorus — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
@@ -22,7 +40,9 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
       .describe("Whether to register a node type (label) or a relationship type."),
     action: z
       .enum(["register", "unregister"])
-      .describe("Register a new type or remove an existing one. Only GM-defined types can be unregistered."),
+      .describe(
+        "Register a new type or remove an existing one. Only GM-defined types can be unregistered.",
+      ),
     name: z
       .string()
       .describe(
@@ -51,6 +71,20 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
       .optional()
       .describe(
         "For target=node, action=register: the property schema for the new node type. For target=relationship: not needed.",
+      ),
+    sourceLabels: z
+      .array(z.string())
+      .nullable()
+      .optional()
+      .describe(
+        "For target=relationship, action=register: which node labels can be the source (tail) of this relationship. E.g. ['Entity', 'Character'].",
+      ),
+    targetLabels: z
+      .array(z.string())
+      .nullable()
+      .optional()
+      .describe(
+        "For target=relationship, action=register: which node labels can be the target (head) of this relationship. E.g. ['Location'].",
       ),
   }),
   execute: wrapSafe(async (args) => {
@@ -97,22 +131,34 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
           return `Cannot register "${args.name}": it is a ${existing.type} type and cannot be modified.`;
         }
 
+        const srcLabels = args.sourceLabels ?? undefined;
+        const tgtLabels = args.targetLabels ?? undefined;
+
         if (existing) {
-          if (args.description) {
-            manager.updateDescription(args.name, args.description);
-          }
+          const updated = manager.updateDefinition(args.name, {
+            description: args.description ?? undefined,
+            sourceLabels: srcLabels,
+            targetLabels: tgtLabels,
+          });
+          if (!updated) return `Failed to update "${args.name}".`;
         } else {
           manager.register(
             args.name,
             args.description ?? "No description provided.",
             "GM_DEFINED",
+            srcLabels,
+            tgtLabels,
           );
         }
 
         const client = MemoryClient.getCachedInstance();
         await manager.syncToNeo4j(client.neo4j);
 
-        return `Registered relationship type "${args.name}". It is now available for use in mutateWorld.`;
+        const endpoints =
+          srcLabels && tgtLabels
+            ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})`
+            : "";
+        return `Registered relationship type "${args.name}"${endpoints}. It is now available for use in mutateWorld.`;
       }
     }
 
@@ -125,10 +171,9 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
         }
         const client = MemoryClient.getCachedInstance();
         // Remove the corresponding :NodeType node from Neo4j
-        await client.neo4j.executeWrite(
-          `MATCH (nt:NodeType {name: $name}) DETACH DELETE nt`,
-          { name: args.name },
-        );
+        await client.neo4j.executeWrite(`MATCH (nt:NodeType {name: $name}) DETACH DELETE nt`, {
+          name: args.name,
+        });
         return `Unregistered node type "${args.name}".`;
       }
 

@@ -285,9 +285,7 @@ export async function buildFullSceneContext(): Promise<string> {
     }),
     (() => {
       const nodeManager = NodeManager.getCachedInstance();
-      const excluded = new Set(
-        nodeManager.getByType("INTERNAL").map((n) => n.name),
-      );
+      const excluded = new Set(nodeManager.getByType("INTERNAL").map((n) => n.name));
       // Also exclude labels shown in dedicated dump sections
       for (const name of ["Message", "RelationshipType", "NodeType"]) {
         excluded.add(name);

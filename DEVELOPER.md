@@ -39,9 +39,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                                                                      │
 │  streamText({                                                        │
 │    tools: {                                                          │
-│      queryWorld, mutateWorld, manageSchema, searchWorld,               │
-│      editNote, searchNotes, editPlot, searchPlots,                     │
-│      ← llm/tools/ (9 GM tools)                                         │
+│      queryWorld, mutateWorld, manageSchema, searchWorld,             │
+│      editNote, searchNotes, editPlot, searchPlots,                   │
+│      ← llm/tools/ (9 GM tools)                                       │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
 │      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
@@ -81,8 +81,8 @@ Architecture, core systems, and data structures of the **Chorus** application.
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         NEO4J DATABASE                               │
 │  Node labels: Conversation, Message, Entity, NPCDisposition,         │
-│  Note, Plot, TimeAnchor, TimePoint, GMTurnMessage, RelationshipType,  │
-│  NodeType, IdCounter                                                    │
+│  Note, Plot, TimeAnchor, TimePoint, GMTurnMessage, RelationshipType, │
+│  NodeType, IdCounter                                                 │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -239,16 +239,16 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 **Neo4j-backed GM tools**:
 
-| Tool             | Purpose                                                                  |
-|------------------|--------------------------------------------------------------------------|
-| `queryWorld`     | Read-only Cypher queries, confined to allowed labels via CypherValidator |
-| `mutateWorld`    | Write Cypher queries, confined to allowed labels + relationships         |
-| `manageSchema`   | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
-| `searchWorld`   | Vector search across entities and messages                               |
-| `editNote`       | Create/update/delete GM notes with vector embedding                      |
-| `searchNotes`    | Vector search across notes                                               |
-| `editPlot`       | Plot lifecycle management (beats, branches, flags)                       |
-| `searchPlots`    | Vector search across plots                                               |
+| Tool           | Purpose                                                                                           |
+|----------------|---------------------------------------------------------------------------------------------------|
+| `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator                          |
+| `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships                                  |
+| `manageSchema` | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
+| `searchWorld`  | Vector search across entities and messages                                                        |
+| `editNote`     | Create/update/delete GM notes with vector embedding                                               |
+| `searchNotes`  | Vector search across notes                                                                        |
+| `editPlot`     | Plot lifecycle management (beats, branches, flags)                                                |
+| `searchPlots`  | Vector search across plots                                                                        |
 
 All 11 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
@@ -256,13 +256,13 @@ All 11 tools are defined as AI SDK `tool()` definitions and registered in `gener
 
 ## 7. API Endpoints
 
-| Method | Path                | Purpose                                              |
-|--------|---------------------|------------------------------------------------------|
-| `POST` | `/api/chat/stream`  | Primary AI turn (SSE streaming)                      |
-| `GET`  | `/api/history`      | Full conversation history from ShortTermMemory       |
-| `GET`  | `/api/game/current` | Current dialogue options from `:Conversation` node   |
+| Method | Path                | Purpose                                                                      |
+|--------|---------------------|------------------------------------------------------------------------------|
+| `POST` | `/api/chat/stream`  | Primary AI turn (SSE streaming)                                              |
+| `GET`  | `/api/history`      | Full conversation history from ShortTermMemory                               |
+| `GET`  | `/api/game/current` | Current dialogue options from `:Conversation` node                           |
 | `GET`  | `/api/dump`         | Full world state (entities, plots, notes, dispositions, time, relationships) |
-| `POST` | `/api/reset`        | Clear Neo4j and re-seed                              |
+| `POST` | `/api/reset`        | Clear Neo4j and re-seed                                                      |
 
 ---
 
@@ -342,29 +342,29 @@ Vector dimensions are passed from the active embedder at startup (`embedder.dime
 
 **Relationship types:**
 
-| Type              | Direction                   | Purpose                       |
-|-------------------|-----------------------------|-------------------------------|
-| `HAS_MESSAGE`     | `(Conversation)→(Message)`  | Conversation membership       |
-| `FIRST_MESSAGE`   | `(Conversation)→(Message)`  | Head pointer for ordered list |
-| `NEXT_MESSAGE`    | `(Message)→(Message)`       | Sequential linked list        |
-| `HAS_DISPOSITION` | `(Entity)→(NPCDisposition)` | NPC attitude toward a target  |
-| `LOCATED_AT`      | `(Entity)→(Entity)`         | Spatial placement (dynamic)   |
-| `LOCATED_IN`      | `(Entity)→(Entity)`         | Container hierarchy (dynamic) |
-| `CARRIES`         | `(Entity)→(Entity)`         | Inventory (dynamic)           |
-| `ALLIED_WITH`     | `(Entity)→(Entity)`         | Alliance (dynamic)            |
-| `HOSTILE_TOWARDS` | `(Entity)→(Entity)`         | Hostility (dynamic)           |
-| `BRANCHES_TO`     | `(Plot)→(Plot)`             | Plot branching                |
-| `ABOUT_ENTITY`    | `(Note)→(Entity)`           | Note-to-entity linkage        |
-| `ABOUT_MESSAGE`   | `(Note)→(Message)`          | Note-to-message linkage       |
-| `CURRENT_TIMEPOINT` | `(TimeAnchor)→(TimePoint)` | Current game time pointer     |
-| `NEXT_TIMEPOINT`  | `(TimePoint)→(TimePoint)`   | TimePoint sequential chain    |
-| `AT_TIME`         | `(Message)→(TimePoint)`     | Message's in-game timestamp   |
-| `STARTED_AT`      | `(Plot)→(TimePoint)`        | Plot start time               |
-| `ACTIVE_AT`       | `(Plot)→(TimePoint)`        | Plot activation time          |
-| `COMPLETED_AT`    | `(Plot)→(TimePoint)`        | Plot completion time          |
-| `_HAS_GM_MESSAGE` | `(Conversation)→(GMTurnMessage)` | GM message persistence |
-| `_FIRST_GM_MESSAGE` | `(Conversation)→(GMTurnMessage)` | Head pointer for GM message list |
-| `_NEXT_GM_MESSAGE` | `(GMTurnMessage)→(GMTurnMessage)` | Sequential GM message list |
+| Type                | Direction                         | Purpose                          |
+|---------------------|-----------------------------------|----------------------------------|
+| `HAS_MESSAGE`       | `(Conversation)→(Message)`        | Conversation membership          |
+| `FIRST_MESSAGE`     | `(Conversation)→(Message)`        | Head pointer for ordered list    |
+| `NEXT_MESSAGE`      | `(Message)→(Message)`             | Sequential linked list           |
+| `HAS_DISPOSITION`   | `(Entity)→(NPCDisposition)`       | NPC attitude toward a target     |
+| `LOCATED_AT`        | `(Entity)→(Location)`             | Spatial placement                |
+| `LOCATED_IN`        | `(Entity)→(Location)`             | Container hierarchy              |
+| `CARRIES`           | `(Entity)→(Object)`               | Inventory                        |
+| `ALLIED_WITH`       | `(Entity)→(Entity)`               | Alliance (dynamic)               |
+| `HOSTILE_TOWARDS`   | `(Entity)→(Entity)`               | Hostility (dynamic)              |
+| `BRANCHES_TO`       | `(Plot)→(Plot)`                   | Plot branching                   |
+| `ABOUT_ENTITY`      | `(Note)→(Entity)`                 | Note-to-entity linkage           |
+| `ABOUT_MESSAGE`     | `(Note)→(Message)`                | Note-to-message linkage          |
+| `CURRENT_TIMEPOINT` | `(TimeAnchor)→(TimePoint)`        | Current game time pointer        |
+| `NEXT_TIMEPOINT`    | `(TimePoint)→(TimePoint)`         | TimePoint sequential chain       |
+| `AT_TIME`           | `(Message)→(TimePoint)`           | Message's in-game timestamp      |
+| `STARTED_AT`        | `(Plot)→(TimePoint)`              | Plot start time                  |
+| `ACTIVE_AT`         | `(Plot)→(TimePoint)`              | Plot activation time             |
+| `COMPLETED_AT`      | `(Plot)→(TimePoint)`              | Plot completion time             |
+| `_HAS_GM_MESSAGE`   | `(Conversation)→(GMTurnMessage)`  | GM message persistence           |
+| `_FIRST_GM_MESSAGE` | `(Conversation)→(GMTurnMessage)`  | Head pointer for GM message list |
+| `_NEXT_GM_MESSAGE`  | `(GMTurnMessage)→(GMTurnMessage)` | Sequential GM message list       |
 
 Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
 
@@ -375,9 +375,9 @@ Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`
 
 For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongside a new `:Message`), the `created_at` property is set directly in the Cypher rather than using the helpers. Relationship type descriptions are stored as `:RelationshipType` nodes, not on relationship instances — see below.
 
-**:RelationshipType nodes:** Relationship type descriptions are stored as dedicated `:RelationshipType` nodes in Neo4j with properties `name` (the type name, e.g. `LOCATED_AT`), `description` (human-readable meaning), and `category` (`INTERNAL`, `PREDEFINED`, or `GM_DEFINED`). These are synced from the `RelationshipManager` singleton on every server startup (before the seed guard, so the sync always runs) and after `/api/reset` (after clearing and re-seeding). The GM can query `:RelationshipType` nodes via `queryWorld` to discover available relationship types and their meanings.
+**:RelationshipType nodes:** Relationship type descriptions are stored as dedicated `:RelationshipType` nodes in Neo4j with properties `name` (the type name, e.g. `LOCATED_AT`), `description` (human-readable meaning), `category` (`INTERNAL`, `PREDEFINED`, or `GM_DEFINED`), `source_labels` (JSON array of allowed source node labels), and `target_labels` (JSON array of allowed target node labels). These are synced from the `RelationshipManager` singleton on every server startup (before the seed guard, so the sync always runs) and after `/api/reset` (after clearing and re-seeding). The GM can query `:RelationshipType` nodes via `queryWorld` to discover available relationship types, their meanings, and which node types can sit on each end.
 
-**Relationship type governance:** `relationshipManager.ts` provides a `RelationshipManager` singleton — the single source of truth for all relationship types. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` or seed story TOML). The `CypherValidator` queries the manager instead of a hardcoded allowlist. New relationship types can be declared per seed story via `[[relationshipTypes]]` in the TOML, or at runtime via the `manageSchema` tool. The `RelationshipManager` provides `syncToNeo4j(client)` to persist all types as `:RelationshipType` nodes, `updateDescription(name, desc)` to update GM_DEFINED type descriptions, `unregister(name)` to remove GM_DEFINED types, and `reset()` to clear GM_DEFINED types (called on `/api/reset`).
+**Relationship type governance:** `relationshipManager.ts` provides a `RelationshipManager` singleton — the single source of truth for all relationship types. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` or seed story TOML). Each type stores optional `sourceLabels` and `targetLabels` arrays that confine which node labels can sit on each end. The `CypherValidator` queries the manager instead of a hardcoded allowlist. New relationship types can be declared per seed story via `[[relationshipTypes]]` in the TOML, or at runtime via the `manageSchema` tool (which accepts `sourceLabels`/`targetLabels` for endpoint constraints). The `RelationshipManager` provides `syncToNeo4j(client)` to persist all types as `:RelationshipType` nodes, `updateDefinition(name, updates)` to update description/sourceLabels/targetLabels on GM_DEFINED types, `unregister(name)` to remove GM_DEFINED types, and `reset()` to clear GM_DEFINED types (called on `/api/reset`).
 
 **Node type governance:** `nodeManager.ts` provides a `NodeManager` singleton that mirrors `RelationshipManager` for node labels. Each node type stores a `name`, `description`, optional property schema (`{name, description, type}[]`), and `category` (`INTERNAL`, `PREDEFINED`, or `GM_DEFINED`). INTERNAL types (`Conversation`, `GMTurnMessage`, `IdCounter`) are hidden from GM tools entirely. PREDEFINED types (`Entity`, `Message`, `Note`, `Plot`, `NPCDisposition`, `TimePoint`, `TimeAnchor`, `GameTime`) are readable and writable. `RelationshipType` and `NodeType` are readable but write-blocked (the GM uses `manageSchema` instead). Node types are synced to Neo4j as `:NodeType` nodes so the GM can discover available node types and their property schemas via `queryWorld`. The `CypherValidator` uses `NodeManager` instead of the previously hardcoded `READ_ALLOWED_LABELS` / `WRITE_ALLOWED_LABELS` sets.
 
@@ -394,11 +394,11 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 `shortTerm.ts`. Manages conversation history as an ordered linked list of `:Message` nodes under a singleton `:Conversation` node (keyed by `session_id: "chorus-game"`).
 
-| Method                   | Behavior                                                                                             |
-|--------------------------|------------------------------------------------------------------------------------------------------|
+| Method                   | Behavior                                                                                          |
+|--------------------------|---------------------------------------------------------------------------------------------------|
 | `addMessage()`           | Creates `:Message`, links via `HAS_MESSAGE` + `NEXT_MESSAGE` + `FIRST_MESSAGE`, optionally embeds |
-| `getConversation(limit)` | Returns messages ordered oldest-first (reverse of timestamp sort)                                    |
-| `searchMessages(query)`  | Vector similarity search on `message_embedding_idx`                                                  |
+| `getConversation(limit)` | Returns messages ordered oldest-first (reverse of timestamp sort)                                 |
+| `searchMessages(query)`  | Vector similarity search on `message_embedding_idx`                                               |
 
 Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), create `(prev)-[:NEXT_MESSAGE]→(new)`. First message also gets `(conv)-[:FIRST_MESSAGE]→(msg)`.
 
@@ -434,10 +434,10 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 | `deleteNote(noteName)`          | MATCH by name, DETACH DELETE                                |
 | `searchNotes(query, opts)`      | Vector similarity search on `note_embedding_idx`            |
 | `getAllNotes()`                 | Return all `:Note` nodes ordered by updatedAt               |
-| `linkToEntity(id, name)`        | Create `[:ABOUT_ENTITY]` relationship from Note to Entity          |
+| `linkToEntity(id, name)`        | Create `[:ABOUT_ENTITY]` relationship from Note to Entity   |
 | `linkToMessage(id, msgId)`      | Create `[:ABOUT_MESSAGE]` relationship from Note to Message |
-| `clearLinks(noteName, type)`    | Delete `[:ABOUT_ENTITY]`/`[:ABOUT_MESSAGE]` relationships          |
-| `getLinkedEntities(id)`         | Return entity names linked via `[:ABOUT_ENTITY]`                   |
+| `clearLinks(noteName, type)`    | Delete `[:ABOUT_ENTITY]`/`[:ABOUT_MESSAGE]` relationships   |
+| `getLinkedEntities(id)`         | Return entity names linked via `[:ABOUT_ENTITY]`            |
 | `getLinkedMessages(id)`         | Return message IDs linked via `[:ABOUT_MESSAGE]`            |
 
 ### 9.8 Plots
@@ -470,10 +470,10 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 **Label allowlists** (private module-level constants):
 
-| Constant                | Members                                                                                                                                    |
-|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `READ_ALLOWED_LABELS`   | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`, `RelationshipType`                                            |
-| `WRITE_ALLOWED_LABELS`  | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`                                                               |
+| Constant               | Members                                                                                          |
+|------------------------|--------------------------------------------------------------------------------------------------|
+| `READ_ALLOWED_LABELS`  | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`, `RelationshipType` |
+| `WRITE_ALLOWED_LABELS` | `Entity`, `Message`, `NPCDisposition`, `GameTime`, `TimePoint`, `TimeAnchor`                     |
 
 **Relationship types** are governed by `RelationshipManager` (see §9.3), not a hardcoded allowlist. The manager categorizes types as `INTERNAL` (write-blocked), `PREDEFINED`, or `GM_DEFINED` (write-allowed).
 

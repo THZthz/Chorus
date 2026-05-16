@@ -1,3 +1,21 @@
+/**
+ * Chorus — cinematic RPG-style dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import type { Neo4jClient } from "@/server/memory/neo4j";
 
 export interface NodePropertyDef {
@@ -36,12 +54,17 @@ const ENTITY_PROPS: NodePropertyDef[] = [
     description: "Entity type: CHARACTER, OBJECT, LOCATION, ORGANIZATION, or EVENT.",
     type: "string",
   },
-  { name: "subtype", description: "Optional subtype refinement (e.g., 'Weapon' for an OBJECT).", type: "string" },
+  {
+    name: "subtype",
+    description: "Optional subtype refinement (e.g., 'Weapon' for an OBJECT).",
+    type: "string",
+  },
   { name: "description", description: "Full narrative description of the entity.", type: "string" },
   { name: "brief", description: "One-line summary for compact display.", type: "string" },
   {
     name: "metadata",
-    description: "JSON object: stats (skill→value), conditions, attributes (key→description), opinions (target→text), aliases (string[]).",
+    description:
+      "JSON object: stats (skill→value), conditions, attributes (key→description), opinions (target→text), aliases (string[]).",
     type: "json",
   },
   { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
@@ -58,10 +81,18 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
     description:
       "Singleton node storing the game session. Internal bookkeeping — not visible to GM.",
     properties: [
-      { name: "session_id", description: "Fixed game session key ('chorus-game').", type: "string" },
+      {
+        name: "session_id",
+        description: "Fixed game session key ('chorus-game').",
+        type: "string",
+      },
       { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
       { name: "updated_at", description: "ISO 8601 timestamp of last update.", type: "string" },
-      { name: "options", description: "JSON array of current dialogue options for session resume.", type: "json" },
+      {
+        name: "options",
+        description: "JSON array of current dialogue options for session resume.",
+        type: "json",
+      },
       ...INTERNAL_PROPS,
     ],
   },
@@ -71,16 +102,23 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
       "Stores AI SDK messages for multi-turn GM continuity. Internal bookkeeping — not visible to GM.",
     properties: [
       { name: "turn", description: "Turn number for this message group.", type: "number" },
-      { name: "messages", description: "JSON array of serialized AI SDK ModelMessage objects.", type: "json" },
-      { name: "user_input", description: "The player input that triggered this turn.", type: "string" },
+      {
+        name: "messages",
+        description: "JSON array of serialized AI SDK ModelMessage objects.",
+        type: "json",
+      },
+      {
+        name: "user_input",
+        description: "The player input that triggered this turn.",
+        type: "string",
+      },
       { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
       ...INTERNAL_PROPS,
     ],
   },
   {
     name: "IdCounter",
-    description:
-      "Atomic counter for generating short message IDs. Internal bookkeeping.",
+    description: "Atomic counter for generating short message IDs. Internal bookkeeping.",
     properties: [
       { name: "session_id", description: "Fixed session key for the counter.", type: "string" },
       { name: "counter", description: "Current counter value (Neo4j Integer).", type: "number" },
@@ -97,20 +135,17 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "Character",
-    description:
-      "Dynamic sub-label of Entity for CHARACTER type. Inherits all Entity properties.",
+    description: "Dynamic sub-label of Entity for CHARACTER type. Inherits all Entity properties.",
     properties: ENTITY_PROPS,
   },
   {
     name: "Object",
-    description:
-      "Dynamic sub-label of Entity for OBJECT type. Inherits all Entity properties.",
+    description: "Dynamic sub-label of Entity for OBJECT type. Inherits all Entity properties.",
     properties: ENTITY_PROPS,
   },
   {
     name: "Location",
-    description:
-      "Dynamic sub-label of Entity for LOCATION type. Inherits all Entity properties.",
+    description: "Dynamic sub-label of Entity for LOCATION type. Inherits all Entity properties.",
     properties: ENTITY_PROPS,
   },
   {
@@ -121,8 +156,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "Event",
-    description:
-      "Dynamic sub-label of Entity for EVENT type. Inherits all Entity properties.",
+    description: "Dynamic sub-label of Entity for EVENT type. Inherits all Entity properties.",
     properties: ENTITY_PROPS,
   },
   {
@@ -135,7 +169,8 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       { name: "timestamp", description: "ISO 8601 timestamp of the message.", type: "string" },
       {
         name: "metadata",
-        description: "JSON object with speaker (voice name), type (NARRATION/CHARACTER/SYSTEM/ROLL).",
+        description:
+          "JSON object with speaker (voice name), type (NARRATION/CHARACTER/SYSTEM/ROLL).",
         type: "json",
       },
       EMBEDDING_PROP,
@@ -148,7 +183,11 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       "A GM note with vector embedding for semantic recall. Can link to Entities or Messages via ABOUT_ENTITY / ABOUT_MESSAGE.",
     properties: [
       { name: "name", description: "Unique note name (used as lookup key).", type: "string" },
-      { name: "content", description: "Full note content (embedded for vector search).", type: "string" },
+      {
+        name: "content",
+        description: "Full note content (embedded for vector search).",
+        type: "string",
+      },
       ...TIMESTAMP_PROPS,
       EMBEDDING_PROP,
       ...INTERNAL_PROPS,
@@ -160,7 +199,11 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       "A narrative plot with status, beats, branches, and flags. Drives story progression.",
     properties: [
       { name: "name", description: "Unique plot name (used as lookup key).", type: "string" },
-      { name: "description", description: "Full plot description (embedded for vector search).", type: "string" },
+      {
+        name: "description",
+        description: "Full plot description (embedded for vector search).",
+        type: "string",
+      },
       { name: "brief", description: "One-line plot summary for compact display.", type: "string" },
       {
         name: "status",
@@ -187,14 +230,27 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "An NPC's sentiment and summary toward a target entity. Stored as a NODE (not a relationship). Match via (npc:Entity)-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: '...'}).",
     properties: [
-      { name: "npc_name", description: "Name of the NPC entity who holds this disposition.", type: "string" },
-      { name: "target_name", description: "Name of the target entity this disposition is about.", type: "string" },
       {
-        name: "sentiment",
-        description: "Sentiment label: protective, trusting, fearful, hostile, attracted, suspicious, resentful, grateful, or indifferent.",
+        name: "npc_name",
+        description: "Name of the NPC entity who holds this disposition.",
         type: "string",
       },
-      { name: "summary", description: "Human-readable summary of the disposition and its context.", type: "string" },
+      {
+        name: "target_name",
+        description: "Name of the target entity this disposition is about.",
+        type: "string",
+      },
+      {
+        name: "sentiment",
+        description:
+          "Sentiment label: protective, trusting, fearful, hostile, attracted, suspicious, resentful, grateful, or indifferent.",
+        type: "string",
+      },
+      {
+        name: "summary",
+        description: "Human-readable summary of the disposition and its context.",
+        type: "string",
+      },
       ...TIMESTAMP_PROPS,
       ...INTERNAL_PROPS,
     ],
@@ -205,8 +261,17 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       "A point in game time with day, segment, and label. Linked sequentially via NEXT_TIMEPOINT.",
     properties: [
       { name: "day", description: "In-game day number (starts at 1).", type: "number" },
-      { name: "segment", description: "Segment within the day (0–11, each = 2 hours).", type: "number" },
-      { name: "label", description: "Human-readable label: Midnight, Dawn, Morning, Noon, Afternoon, Dusk, Night, etc.", type: "string" },
+      {
+        name: "segment",
+        description: "Segment within the day (0–11, each = 2 hours).",
+        type: "number",
+      },
+      {
+        name: "label",
+        description:
+          "Human-readable label: Midnight, Dawn, Morning, Noon, Afternoon, Dusk, Night, etc.",
+        type: "string",
+      },
       { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
       ...INTERNAL_PROPS,
     ],
@@ -219,8 +284,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "GameTime",
-    description:
-      "Legacy game time node — migrated to TimeAnchor/TimePoint system on startup.",
+    description: "Legacy game time node — migrated to TimeAnchor/TimePoint system on startup.",
     properties: [
       { name: "day", description: "In-game day number.", type: "number" },
       { name: "segment", description: "Segment 0–11.", type: "number" },
@@ -232,8 +296,16 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "Stores the description and category of each relationship type in the schema. Use manageSchema to register new types.",
     properties: [
-      { name: "name", description: "Relationship type name (e.g. 'LOCATED_AT', 'CONNECTED_TO').", type: "string" },
-      { name: "description", description: "Human-readable description of what the relationship means.", type: "string" },
+      {
+        name: "name",
+        description: "Relationship type name (e.g. 'LOCATED_AT', 'CONNECTED_TO').",
+        type: "string",
+      },
+      {
+        name: "description",
+        description: "Human-readable description of what the relationship means.",
+        type: "string",
+      },
       { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", type: "string" },
     ],
   },
@@ -243,11 +315,16 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       "Stores the description, property schema, and category of each node type in the schema. Use manageSchema to register new types.",
     properties: [
       { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", type: "string" },
-      { name: "description", description: "Human-readable description of what the node type represents.", type: "string" },
+      {
+        name: "description",
+        description: "Human-readable description of what the node type represents.",
+        type: "string",
+      },
       { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", type: "string" },
       {
         name: "properties",
-        description: "JSON array of {name, description, type} describing the node's property schema.",
+        description:
+          "JSON array of {name, description, type} describing the node's property schema.",
         type: "json",
       },
     ],
@@ -359,8 +436,7 @@ export class NodeManager {
           name: def.name,
           description: def.description,
           category: def.type,
-          properties:
-            def.properties.length > 0 ? JSON.stringify(def.properties) : null,
+          properties: def.properties.length > 0 ? JSON.stringify(def.properties) : null,
         },
       );
     }

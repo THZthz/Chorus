@@ -22,95 +22,139 @@ export interface RelationshipDef {
   name: string;
   description: string;
   type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED";
+  sourceLabels?: string[];
+  targetLabels?: string[];
 }
 
-const INTERNAL_TYPES: { name: string; description: string }[] = [
+const INTERNAL_TYPES: { name: string; description: string; sourceLabels?: string[]; targetLabels?: string[] }[] = [
   {
     name: "_HAS_GM_MESSAGE",
     description: "Links a Conversation node to its GMTurnMessage nodes.",
+    sourceLabels: ["Conversation"],
+    targetLabels: ["GMTurnMessage"],
   },
   {
     name: "_FIRST_GM_MESSAGE",
     description: "Points to the first GMTurnMessage in a Conversation's ordered linked list.",
+    sourceLabels: ["Conversation"],
+    targetLabels: ["GMTurnMessage"],
   },
   {
     name: "_NEXT_GM_MESSAGE",
     description: "Sequentially links GMTurnMessage nodes in conversation order.",
+    sourceLabels: ["GMTurnMessage"],
+    targetLabels: ["GMTurnMessage"],
   },
 ];
 
-const PREDEFINED_TYPES: { name: string; description: string }[] = [
+const PREDEFINED_TYPES: { name: string; description: string; sourceLabels?: string[]; targetLabels?: string[] }[] = [
   {
     name: "HAS_MESSAGE",
     description: "Links a Conversation node to its Message nodes.",
+    sourceLabels: ["Conversation"],
+    targetLabels: ["Message"],
   },
   {
     name: "FIRST_MESSAGE",
     description: "Points to the first Message in a Conversation's ordered linked list.",
+    sourceLabels: ["Conversation"],
+    targetLabels: ["Message"],
   },
   {
     name: "NEXT_MESSAGE",
     description: "Sequentially links Message nodes in conversation order.",
+    sourceLabels: ["Message"],
+    targetLabels: ["Message"],
   },
   {
     name: "NEXT_TIMEPOINT",
     description: "Links TimePoint nodes in chronological sequence.",
+    sourceLabels: ["TimePoint"],
+    targetLabels: ["TimePoint"],
   },
   {
     name: "CURRENT_TIMEPOINT",
     description: "Points to the current TimePoint from a TimeAnchor node.",
+    sourceLabels: ["TimeAnchor"],
+    targetLabels: ["TimePoint"],
   },
   {
     name: "AT_TIME",
-    description: "Links an entity or event to a specific TimePoint.",
+    description: "Links a Message to the TimePoint when it was created.",
+    sourceLabels: ["Message"],
+    targetLabels: ["TimePoint"],
   },
   {
     name: "STARTED_AT",
-    description: "Marks the TimePoint when an event or plot started.",
+    description: "Marks the TimePoint when a Plot started.",
+    sourceLabels: ["Plot"],
+    targetLabels: ["TimePoint"],
   },
   {
     name: "ACTIVE_AT",
-    description: "Marks a TimePoint when an entity or condition is active.",
+    description: "Marks the TimePoint when a Plot became active.",
+    sourceLabels: ["Plot"],
+    targetLabels: ["TimePoint"],
   },
   {
     name: "COMPLETED_AT",
-    description: "Marks the TimePoint when an event or plot completed.",
+    description: "Marks the TimePoint when a Plot completed.",
+    sourceLabels: ["Plot"],
+    targetLabels: ["TimePoint"],
   },
   {
     name: "LOCATED_AT",
     description: "An entity is physically present at a location.",
+    sourceLabels: ["Entity"],
+    targetLabels: ["Location"],
   },
   {
     name: "CARRIES",
     description: "An entity is carrying or in possession of an object.",
+    sourceLabels: ["Entity"],
+    targetLabels: ["Object"],
   },
   {
     name: "ALLIED_WITH",
     description: "An entity is allied with or friendly toward another entity.",
+    sourceLabels: ["Entity"],
+    targetLabels: ["Entity"],
   },
   {
     name: "HOSTILE_TOWARDS",
     description: "An entity is hostile toward or in conflict with another entity.",
+    sourceLabels: ["Entity"],
+    targetLabels: ["Entity"],
   },
   {
     name: "LOCATED_IN",
     description: "A location or entity is contained within a larger location.",
+    sourceLabels: ["Entity"],
+    targetLabels: ["Location"],
   },
   {
     name: "HAS_DISPOSITION",
-    description: "Links an Entity (NPC) to its NPCDisposition nodes.",
+    description: "Links an Entity (NPC) to its NPCDisposition node.",
+    sourceLabels: ["Entity"],
+    targetLabels: ["NPCDisposition"],
   },
   {
     name: "ABOUT_ENTITY",
     description: "A Note is about or references an Entity.",
+    sourceLabels: ["Note"],
+    targetLabels: ["Entity"],
   },
   {
     name: "ABOUT_MESSAGE",
     description: "A Note is about or references a specific Message.",
+    sourceLabels: ["Note"],
+    targetLabels: ["Message"],
   },
   {
     name: "BRANCHES_TO",
     description: "A parent Plot branches to a child sub-plot.",
+    sourceLabels: ["Plot"],
+    targetLabels: ["Plot"],
   },
 ];
 
@@ -130,6 +174,8 @@ export class RelationshipManager {
     name: string,
     description: string,
     type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED",
+    sourceLabels?: string[],
+    targetLabels?: string[],
   ): void {
     const existing = this.registry.get(name);
     if (existing) {
@@ -140,7 +186,7 @@ export class RelationshipManager {
       }
       return;
     }
-    this.registry.set(name, { name, description, type });
+    this.registry.set(name, { name, description, type, sourceLabels, targetLabels });
   }
 
   get(name: string): RelationshipDef | undefined {
@@ -174,6 +220,19 @@ export class RelationshipManager {
     return true;
   }
 
+  // Update definition fields of a GM_DEFINED relationship type.
+  updateDefinition(
+    name: string,
+    updates: { description?: string; sourceLabels?: string[]; targetLabels?: string[] },
+  ): boolean {
+    const def = this.registry.get(name);
+    if (!def || def.type !== "GM_DEFINED") return false;
+    if (updates.description !== undefined) def.description = updates.description;
+    if (updates.sourceLabels !== undefined) def.sourceLabels = updates.sourceLabels;
+    if (updates.targetLabels !== undefined) def.targetLabels = updates.targetLabels;
+    return true;
+  }
+
   // Remove a GM_DEFINED relationship type from the registry.
   // Returns true if removed, false if type not found or wrong category.
   unregister(name: string): boolean {
@@ -197,11 +256,19 @@ export class RelationshipManager {
   // Idempotent — safe to call multiple times.
   async syncToNeo4j(client: Neo4jClient): Promise<void> {
     for (const def of this.registry.values()) {
-      // TODO: Can we combine this into single write.
       await client.executeWrite(
         `MERGE (rt:RelationshipType {name: $name})
-         SET rt.description = $description, rt.category = $category`,
-        { name: def.name, description: def.description, category: def.type },
+         SET rt.description = $description,
+             rt.category = $category,
+             rt.source_labels = $sourceLabels,
+             rt.target_labels = $targetLabels`,
+        {
+          name: def.name,
+          description: def.description,
+          category: def.type,
+          sourceLabels: def.sourceLabels?.length ? JSON.stringify(def.sourceLabels) : null,
+          targetLabels: def.targetLabels?.length ? JSON.stringify(def.targetLabels) : null,
+        },
       );
     }
   }

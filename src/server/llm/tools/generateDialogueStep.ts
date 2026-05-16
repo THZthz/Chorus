@@ -127,7 +127,8 @@ const inputSchema = z.object({
       `
 The sequence of messages in this dialogue step.
 Required for fresh calls; omit during corrections if only fixing options.
-If you fixing invalid messages, make sure your include "index" field to precisely repair the corresponding messages.`.trim(),
+If you fixing invalid messages, make sure your include "index" field to precisely repair the corresponding messages (only send the failing items, no need to copy).
+`.trim(),
     ),
   options: z
     .array(optionSchema)

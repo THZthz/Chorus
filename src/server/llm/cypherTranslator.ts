@@ -116,6 +116,7 @@ NPCDisposition is a NODE LABEL, not a relationship type. NEVER write \`[d:NPCDis
 - Never use map projection with pattern comprehension \`r [(n)-[r]->(m) | ...]\`. Just return \`TYPE(r)\` and the connected node names.
 - To query Message history: \`MATCH (m:Message) RETURN m.role, m.content, m.timestamp ORDER BY m.timestamp DESC LIMIT 10\`.
 - Notes have \`content\`, not \`contentSummary\` or \`summary\`. Plots use \`[:COMPLETED_AT]->(tp:TimePoint)\` not \`.completed_at\`.
+- Entities have \`type\` (CHARACTER/OBJECT/LOCATION) and \`brief\` (one-line). Use \`e.type\` not \`TYPE(e)\` (TYPE is for relationships). Use \`e.brief\` for the short summary, \`e.description\` for the long text.
 
 ## OUTPUT
 

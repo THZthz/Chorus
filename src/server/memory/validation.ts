@@ -32,7 +32,10 @@ const READ_ALLOWED_LABELS = new Set([
   "GameTime",
   "TimePoint",
   "TimeAnchor",
+  "Plot",
+  "Note",
   "RelationshipType",
+  "Conversation",
 ]);
 
 const WRITE_ALLOWED_LABELS = new Set([

@@ -71,7 +71,7 @@ ${schemaSection}
 - Never use unbounded variable-length paths like \`(*)\` or \`[*]\`. Use a fixed upper bound like \`[*1..5]\`.
 - \`_\`-prefixed properties (_id, _embedding, _elementId, _labels, _type) are internal. Never return them.
 - Entity names are natural keys — use \`{name: "..."}\` to match entities, not \`{_id: "..."}\`.
-- The Player entity has \`name: "Player"\`.
+- The Player is an \`:Entity\` with \`{name: "Player"}\`. Match via \`MATCH (p:Entity {name: "Player"})\`, never \`(p:Player)\`.
 
 ## OUTPUT FORMAT
 

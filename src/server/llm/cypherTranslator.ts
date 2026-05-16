@@ -43,6 +43,12 @@ export interface CypherTranslatorResult {
   rowCount: number;
 }
 
+export interface CypherTranslatorBatchResult {
+  intent: string;
+  result?: CypherTranslatorResult;
+  error?: string;
+}
+
 // ── System prompt builder ──
 
 export async function buildCypherTranslatorSystemPrompt(): Promise<string> {
@@ -247,6 +253,77 @@ export async function executeCypherTranslator(
     rawRows: safeRows,
     rowCount: safeRows.length,
   };
+}
+
+// ── Batch orchestrator ──
+
+async function processOneIntent(
+  llmUrl: string,
+  systemPrompt: string,
+  intent: string,
+): Promise<CypherTranslatorBatchResult> {
+  try {
+    // Round 1: generate Cypher
+    const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent);
+
+    // Validate
+    const validator = new CypherValidator();
+    const validation = validator.validateRead(query);
+    if (!validation.valid) {
+      return { intent, error: `Query failed validation: ${validation.errors.join("; ")}` };
+    }
+
+    // Auto-limit
+    let finalQuery = query.trim();
+    if (!/\bLIMIT\b/i.test(finalQuery)) {
+      finalQuery = `${finalQuery} LIMIT ${AUTO_LIMIT}`;
+    }
+
+    // EXPLAIN check
+    const client = MemoryClient.getCachedInstance();
+    try {
+      await client.neo4j.executeRead(`EXPLAIN ${finalQuery}`);
+    } catch (explainErr) {
+      const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
+      return { intent, error: `Generated query has syntax error: ${msg}` };
+    }
+
+    // Execute
+    const rows = await client.neo4j.executeRead(finalQuery);
+    const safeRows = stripHiddenProperties(rows) as Record<string, unknown>[];
+
+    // Round 2: format results (non-fatal)
+    let markdown = "";
+    try {
+      markdown = await formatResult(llmUrl, intent, finalQuery, safeRows);
+    } catch (formatErr) {
+      const msg = formatErr instanceof Error ? formatErr.message : String(formatErr);
+      console.error("[cypherTranslator] formatResult failed for intent:", intent.slice(0, 80), msg);
+      markdown = `(Formatting failed: ${msg})`;
+    }
+
+    return {
+      intent,
+      result: { query: finalQuery, explanation, markdown, rawRows: safeRows, rowCount: safeRows.length },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[cypherTranslator] intent failed:", intent.slice(0, 80), msg);
+    return { intent, error: msg };
+  }
+}
+
+export async function executeCypherTranslatorBatch(
+  llmUrl: string,
+  intents: string[],
+): Promise<CypherTranslatorBatchResult[]> {
+  const systemPrompt = await buildCypherTranslatorSystemPrompt();
+
+  const results = await Promise.all(
+    intents.map((intent) => processOneIntent(llmUrl, systemPrompt, intent)),
+  );
+
+  return results;
 }
 
 export { DEFAULT_LLM_URL };

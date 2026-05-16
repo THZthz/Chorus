@@ -23,7 +23,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
 import { buildFullSceneContext } from "@/server/llm/sceneContext";
-import { executeCypherTranslator, DEFAULT_LLM_URL } from "@/server/llm/cypherTranslator";
+import { executeCypherTranslator, executeCypherTranslatorBatch, DEFAULT_LLM_URL } from "@/server/llm/cypherTranslator";
 import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
@@ -124,6 +124,26 @@ apiRouter.post("/query/intent", async (req, res) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[query/intent] error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Query Intents (batch) ──
+
+apiRouter.post("/query/intents", async (req, res) => {
+  try {
+    const { intents } = req.body as { intents?: string[] };
+    if (!intents || !Array.isArray(intents) || intents.length === 0) {
+      res.status(400).json({ error: "Missing or invalid 'intents' array." });
+      return;
+    }
+
+    const llmUrl = process.env.QUERY_LLM_URL || DEFAULT_LLM_URL;
+    const results = await executeCypherTranslatorBatch(llmUrl, intents);
+    res.json({ results });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[query/intents] error:", message);
     res.status(500).json({ error: message });
   }
 });

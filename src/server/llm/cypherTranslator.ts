@@ -255,47 +255,83 @@ Format these results as readable markdown.`;
   return markdown;
 }
 
+// ── Generate Cypher with retry ──
+
+async function generateCypherWithRetries(
+  llmUrl: string,
+  systemPrompt: string,
+  intent: string,
+  maxRetries: number = 2,
+): Promise<TranslateResult> {
+  let lastError = "";
+  let lastQuery = "";
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const retryHint = attempt > 0
+      ? `\n\nYour previous query failed:\n\`\`\`cypher\n${lastQuery}\n\`\`\`\nError: ${lastError}\nFix the query and try again.`
+      : "";
+
+    const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent + retryHint);
+    lastQuery = query;
+
+    // Validate
+    const validator = new CypherValidator();
+    const validation = validator.validateRead(query);
+    if (!validation.valid) {
+      lastError = validation.errors.join("; ");
+      if (attempt < maxRetries) {
+        console.error(`[cypherTranslator] validation failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`, lastError);
+        continue;
+      }
+      throw new Error(`Query failed validation after ${maxRetries + 1} attempts: ${lastError}`);
+    }
+
+    // Auto-limit
+    let finalQuery = query.trim();
+    if (!/\bLIMIT\b/i.test(finalQuery)) {
+      finalQuery = `${finalQuery} LIMIT ${AUTO_LIMIT}`;
+    }
+
+    // EXPLAIN check
+    const client = MemoryClient.getCachedInstance();
+    try {
+      await client.neo4j.executeRead(`EXPLAIN ${finalQuery}`);
+    } catch (explainErr) {
+      lastError = explainErr instanceof Error ? explainErr.message : String(explainErr);
+      if (attempt < maxRetries) {
+        console.error(`[cypherTranslator] syntax error (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`, lastError);
+        continue;
+      }
+      throw new Error(`Generated query has syntax error after ${maxRetries + 1} attempts: ${lastError}`);
+    }
+
+    // Reached here = query is valid
+    return { query: finalQuery, explanation };
+  }
+
+  throw new Error(`Failed after ${maxRetries + 1} attempts: ${lastError}`);
+}
+
 // ── Single-intent orchestrator ──
 
 export async function executeCypherTranslator(
   llmUrl: string,
   intent: string,
+  maxRetries: number = 2,
 ): Promise<CypherTranslatorResult> {
   const systemPrompt = await buildCypherTranslatorSystemPrompt();
 
-  // Round 1: generate Cypher
-  const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent);
-
-  // Validate
-  const validator = new CypherValidator();
-  const validation = validator.validateRead(query);
-  if (!validation.valid) {
-    throw new Error(`Generated query failed validation: ${validation.errors.join("; ")}.\nQuery: ${query}`);
-  }
-
-  // Auto-limit
-  let finalQuery = query.trim();
-  if (!/\bLIMIT\b/i.test(finalQuery)) {
-    finalQuery = `${finalQuery} LIMIT ${AUTO_LIMIT}`;
-  }
-
-  // EXPLAIN check
-  const client = MemoryClient.getCachedInstance();
-  try {
-    await client.neo4j.executeRead(`EXPLAIN ${finalQuery}`);
-  } catch (explainErr) {
-    const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
-    throw new Error(`Generated query has syntax error: ${msg}.\nQuery: ${finalQuery}`);
-  }
+  const { query, explanation } = await generateCypherWithRetries(llmUrl, systemPrompt, intent, maxRetries);
 
   // Execute
-  const rows = await client.neo4j.executeRead(finalQuery);
+  const client = MemoryClient.getCachedInstance();
+  const rows = await client.neo4j.executeRead(query);
   const safeRows = stripHiddenProperties(rows) as Record<string, unknown>[];
 
   // Round 2: format results as markdown (non-fatal if it fails)
   let markdown = "";
   try {
-    markdown = await formatResult(llmUrl, intent, finalQuery, safeRows);
+    markdown = await formatResult(llmUrl, intent, query, safeRows);
   } catch (formatErr) {
     const msg = formatErr instanceof Error ? formatErr.message : String(formatErr);
     console.error("[cypherTranslator] formatResult failed:", msg);
@@ -303,7 +339,7 @@ export async function executeCypherTranslator(
   }
 
   return {
-    query: finalQuery,
+    query,
     explanation,
     markdown,
     rawRows: safeRows,
@@ -317,35 +353,18 @@ async function processOneIntent(
   llmUrl: string,
   systemPrompt: string,
   intent: string,
+  maxRetries: number = 2,
 ): Promise<CypherTranslatorBatchResult> {
   try {
-    const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent);
-
-    const validator = new CypherValidator();
-    const validation = validator.validateRead(query);
-    if (!validation.valid) {
-      return { intent, error: `Query failed validation: ${validation.errors.join("; ")}` };
-    }
-
-    let finalQuery = query.trim();
-    if (!/\bLIMIT\b/i.test(finalQuery)) {
-      finalQuery = `${finalQuery} LIMIT ${AUTO_LIMIT}`;
-    }
+    const { query, explanation } = await generateCypherWithRetries(llmUrl, systemPrompt, intent, maxRetries);
 
     const client = MemoryClient.getCachedInstance();
-    try {
-      await client.neo4j.executeRead(`EXPLAIN ${finalQuery}`);
-    } catch (explainErr) {
-      const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
-      return { intent, error: `Generated query has syntax error: ${msg}` };
-    }
-
-    const rows = await client.neo4j.executeRead(finalQuery);
+    const rows = await client.neo4j.executeRead(query);
     const safeRows = stripHiddenProperties(rows) as Record<string, unknown>[];
 
     let markdown = "";
     try {
-      markdown = await formatResult(llmUrl, intent, finalQuery, safeRows);
+      markdown = await formatResult(llmUrl, intent, query, safeRows);
     } catch (formatErr) {
       const msg = formatErr instanceof Error ? formatErr.message : String(formatErr);
       console.error("[cypherTranslator] formatResult failed for intent:", intent.slice(0, 80), msg);
@@ -354,7 +373,7 @@ async function processOneIntent(
 
     return {
       intent,
-      result: { query: finalQuery, explanation, markdown, rawRows: safeRows, rowCount: safeRows.length },
+      result: { query, explanation, markdown, rawRows: safeRows, rowCount: safeRows.length },
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -366,11 +385,12 @@ async function processOneIntent(
 export async function executeCypherTranslatorBatch(
   llmUrl: string,
   intents: string[],
+  maxRetries: number = 2,
 ): Promise<CypherTranslatorBatchResult[]> {
   const systemPrompt = await buildCypherTranslatorSystemPrompt();
 
   const results = await Promise.all(
-    intents.map((intent) => processOneIntent(llmUrl, systemPrompt, intent)),
+    intents.map((intent) => processOneIntent(llmUrl, systemPrompt, intent, maxRetries)),
   );
 
   return results;

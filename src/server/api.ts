@@ -112,14 +112,14 @@ apiRouter.get("/dump", async (_req, res) => {
 
 apiRouter.post("/query/intent", async (req, res) => {
   try {
-    const { intent } = req.body as { intent?: string };
+    const { intent, maxRetries } = req.body as { intent?: string; maxRetries?: number };
     if (!intent || typeof intent !== "string") {
       res.status(400).json({ error: "Missing or invalid 'intent' field." });
       return;
     }
 
     const llmUrl = process.env.QUERY_LLM_URL || DEFAULT_LLM_URL;
-    const result = await executeCypherTranslator(llmUrl, intent);
+    const result = await executeCypherTranslator(llmUrl, intent, maxRetries ?? 2);
     res.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -132,14 +132,14 @@ apiRouter.post("/query/intent", async (req, res) => {
 
 apiRouter.post("/query/intents", async (req, res) => {
   try {
-    const { intents } = req.body as { intents?: string[] };
+    const { intents, maxRetries } = req.body as { intents?: string[]; maxRetries?: number };
     if (!intents || !Array.isArray(intents) || intents.length === 0) {
       res.status(400).json({ error: "Missing or invalid 'intents' array." });
       return;
     }
 
     const llmUrl = process.env.QUERY_LLM_URL || DEFAULT_LLM_URL;
-    const results = await executeCypherTranslatorBatch(llmUrl, intents);
+    const results = await executeCypherTranslatorBatch(llmUrl, intents, maxRetries ?? 2);
     res.json({ results });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

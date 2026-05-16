@@ -2,7 +2,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { getSchemaVisualization, getRelationshipTypeDescriptions, formatSchemaMarkdown } from "@/server/models/schema";
-import { jsonrepair } from "jsonrepair";
+import { parse as parseToml } from "smol-toml";
 
 const AUTO_LIMIT = 50;
 const MAX_FORMAT_ROWS = 25;
@@ -13,8 +13,10 @@ const DEFAULT_LLM_URL = "http://localhost:8080/v1/chat/completions";
 const FORMATTING_SYSTEM_PROMPT = `
 You format raw Neo4j query results into readable markdown for a Game Master.
 
-Respond with ONLY this JSON (no markdown fences, no extra text):
-{"markdown": "<human-readable markdown>"}
+Respond with ONLY valid TOML (no fences, no extra text):
+markdown = """
+<human-readable markdown here>
+"""
 
 Rules:
 - Use tables for structured multi-row data: | Col1 | Col2 |\\n|------|------|\\n| ... |
@@ -29,10 +31,6 @@ Rules:
 interface TranslateResult {
   query: string;
   explanation: string;
-}
-
-interface FormatResult {
-  markdown: string;
 }
 
 export interface CypherTranslatorResult {
@@ -80,19 +78,22 @@ ${schemaSection}
 
 ## OUTPUT
 
-Respond with ONLY this JSON (no markdown fences, no extra text):
-{"query": "<the Cypher query>", "explanation": "<1-sentence summary of what this queries>"}
+Respond with ONLY valid TOML (no fences, no extra text):
+query = """
+<the Cypher query here>
+"""
+explanation = "<1-sentence summary of what this queries>"
 `.trim();
 }
 
 // ── LLM helpers ──
 
-async function chatJson<T>(
+async function chatToml(
   llmUrl: string,
   systemPrompt: string,
   userMessage: string,
   maxTokens: number = 2048,
-): Promise<T> {
+): Promise<Record<string, unknown>> {
   const res = await fetch(llmUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -103,7 +104,6 @@ async function chatJson<T>(
       ],
       temperature: 0,
       max_tokens: maxTokens,
-      response_format: { type: "json_object" },
     }),
   });
 
@@ -118,26 +118,19 @@ async function chatJson<T>(
   const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new Error("Empty response from LLM");
 
-  // Strip markdown code fences if present
-  let json = content.trim();
-  if (json.startsWith("```")) {
-    json = json.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+  // Strip markdown fences if present
+  let toml = content.trim();
+  if (toml.startsWith("```")) {
+    toml = toml.replace(/^```(?:toml)?\s*\n?/, "").replace(/\n?```\s*$/, "");
   }
 
   try {
-    return JSON.parse(json) as T;
+    return parseToml(toml) as Record<string, unknown>;
   } catch (parseErr) {
     const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-    console.error("[cypherTranslator] JSON parse failed:", parseMsg);
-    console.error("[cypherTranslator] Raw content (first 500 chars):", json.slice(0, 500));
-    try {
-      const repaired = jsonrepair(json);
-      console.error("[cypherTranslator] Repaired JSON (first 300 chars):", repaired.slice(0, 300));
-      return JSON.parse(repaired) as T;
-    } catch (repairErr) {
-      const repairMsg = repairErr instanceof Error ? repairErr.message : String(repairErr);
-      throw new Error(`LLM returned unparseable JSON. Parse error: ${parseMsg}. Repair error: ${repairMsg}. Raw (first 200 chars): ${json.slice(0, 200)}`);
-    }
+    console.error("[cypherTranslator] TOML parse failed:", parseMsg);
+    console.error("[cypherTranslator] Raw content (first 500 chars):", toml.slice(0, 500));
+    throw new Error(`LLM returned unparseable TOML. Parse error: ${parseMsg}. Raw (first 200 chars): ${toml.slice(0, 200)}`);
   }
 }
 
@@ -148,15 +141,16 @@ async function translateIntent(
   systemPrompt: string,
   intent: string,
 ): Promise<TranslateResult> {
-  const result = await chatJson<{ query?: string; explanation?: string }>(
+  const result = await chatToml(
     llmUrl,
     systemPrompt,
     `Intent: ${intent}`,
   );
-  if (!result.query) throw new Error("LLM did not return a query");
+  const query = typeof result.query === "string" ? result.query.trim() : "";
+  if (!query) throw new Error("LLM did not return a query");
   return {
-    query: result.query,
-    explanation: result.explanation || "Query executed.",
+    query,
+    explanation: typeof result.explanation === "string" ? result.explanation : "Query executed.",
   };
 }
 
@@ -186,20 +180,20 @@ ${truncated ? `(${rows.length - MAX_FORMAT_ROWS} more rows not shown)` : ""}
 
 Format these results as readable markdown.`;
 
-  const result = await chatJson<{ markdown?: string }>(
+  const result = await chatToml(
     llmUrl,
     FORMATTING_SYSTEM_PROMPT,
     userMessage,
     4096,
   );
-  let markdown = result.markdown || "(no output)";
+  let markdown = typeof result.markdown === "string" ? result.markdown.trim() : "(no output)";
   if (truncated) {
     markdown += `\n\n*(Showing ${MAX_FORMAT_ROWS} of ${rows.length} rows)*`;
   }
   return markdown;
 }
 
-// ── Orchestrator ──
+// ── Single-intent orchestrator ──
 
 export async function executeCypherTranslator(
   llmUrl: string,
@@ -263,23 +257,19 @@ async function processOneIntent(
   intent: string,
 ): Promise<CypherTranslatorBatchResult> {
   try {
-    // Round 1: generate Cypher
     const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent);
 
-    // Validate
     const validator = new CypherValidator();
     const validation = validator.validateRead(query);
     if (!validation.valid) {
       return { intent, error: `Query failed validation: ${validation.errors.join("; ")}` };
     }
 
-    // Auto-limit
     let finalQuery = query.trim();
     if (!/\bLIMIT\b/i.test(finalQuery)) {
       finalQuery = `${finalQuery} LIMIT ${AUTO_LIMIT}`;
     }
 
-    // EXPLAIN check
     const client = MemoryClient.getCachedInstance();
     try {
       await client.neo4j.executeRead(`EXPLAIN ${finalQuery}`);
@@ -288,11 +278,9 @@ async function processOneIntent(
       return { intent, error: `Generated query has syntax error: ${msg}` };
     }
 
-    // Execute
     const rows = await client.neo4j.executeRead(finalQuery);
     const safeRows = stripHiddenProperties(rows) as Record<string, unknown>[];
 
-    // Round 2: format results (non-fatal)
     let markdown = "";
     try {
       markdown = await formatResult(llmUrl, intent, finalQuery, safeRows);

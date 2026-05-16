@@ -63,23 +63,59 @@ Given a natural-language intent, produce a read-only Cypher query.
 
 ${schemaSection}
 
+## RELATIONSHIP DIRECTIONS
+
+Every relationship has a fixed direction. Use these exact patterns:
+
+\`\`\`
+(Entity)-[:LOCATED_AT]->(Entity)       entity is at a location
+(Entity)-[:LOCATED_IN]->(Entity)       entity inside larger location
+(Entity)-[:CARRIES]->(Entity)          carrier carries object/entity
+(Entity)-[:ALLIED_WITH]->(Entity)      entity allied with another
+(Entity)-[:HOSTILE_TOWARDS]->(Entity)  entity hostile toward another
+(Entity)-[:CONNECTED_TO]->(Entity)     generic connection
+(Entity)-[:HAS_DISPOSITION]->(NPCDisposition)  NPC attitude toward a target
+
+(Conversation)-[:HAS_MESSAGE]->(Message)  conversation owns message
+(Conversation)-[:FIRST_MESSAGE]->(Message) head of message list
+(Message)-[:NEXT_MESSAGE]->(Message)      next message in order
+(Message)-[:AT_TIME]->(TimePoint)         message timestamp
+
+(Plot)-[:BRANCHES_TO]->(Plot)         parent plot branches to child
+(Plot)-[:STARTED_AT]->(TimePoint)     plot start time
+(Plot)-[:ACTIVE_AT]->(TimePoint)      plot activation time
+(Plot)-[:COMPLETED_AT]->(TimePoint)   plot completion time
+
+(TimeAnchor)-[:CURRENT_TIMEPOINT]->(TimePoint)  current game time
+(TimePoint)-[:NEXT_TIMEPOINT]->(TimePoint)      time chain
+
+(Note)-[:ABOUT_ENTITY]->(Entity)     note references entity
+(Note)-[:ABOUT_MESSAGE]->(Message)   note references message
+
+INTERNAL (never query): _HAS_GM_MESSAGE, _FIRST_GM_MESSAGE, _NEXT_GM_MESSAGE
+\`\`\`
+
+NPCDisposition is a NODE, not a relationship. To get disposition: \`MATCH (npc:Entity)-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"}) RETURN d.sentiment, d.summary\`.
+
 ## RULES
 
 - Read-only ONLY (MATCH, RETURN, ORDER BY, LIMIT, WHERE, WITH, OPTIONAL MATCH, COLLECT).
-- Use ONLY the labels, properties, and relationship types listed in the Schema above.
-- Use \`COLLECT { }\` subqueries for fetching lists (1-to-many). Use \`OPTIONAL MATCH\` only for single optional links. Never chain independent \`OPTIONAL MATCH\` clauses.
-- Never use unbounded variable-length paths like \`(*)\` or \`[*]\`. Use a fixed upper bound like \`[*1..5]\`.
-- \`_\`-prefixed properties (_id, _embedding, _elementId, _labels, _type) are internal. Never return them.
-- Entity names are natural keys — use \`{name: "..."}\` to match entities, not \`{_id: "..."}\`.
-- The Player is an \`:Entity\` with \`{name: "Player"}\`. Match via \`MATCH (p:Entity {name: "Player"})\`, never \`(p:Player)\`.
+- Use ONLY labels, properties, relationships from the Schema and directions above.
+- Use \`COLLECT { }\` subqueries for lists. Use \`OPTIONAL MATCH\` only for single optional links. Never chain independent \`OPTIONAL MATCH\`s.
+- Never unbounded variable-length paths. Use a fixed upper bound like \`[*1..5]\`.
+- \`_\`-prefixed properties are internal. Never SELECT or RETURN them.
+- Entity key is \`{name: "..."}\`, not \`{_id: "..."}\`.
+- The Player is \`MATCH (p:Entity {name: "Player"})\`, never \`(p:Player)\`.
+- ALL status/type values are UPPERCASE: 'CHARACTER', 'OBJECT', 'LOCATION', 'ACTIVE', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'ABANDONED'.
+- WHERE before RETURN. ORDER BY before LIMIT. RETURN columns comma-separated.
+- In WHERE NOT, don't bind variables: \`WHERE NOT (e)-[:REL]->()\` not \`WHERE NOT (e)-[r:REL]->()\`.
+- To query Message history: \`MATCH (m:Message) RETURN m.role, m.content, m.timestamp ORDER BY m.timestamp DESC LIMIT 10\`.
 
 ## OUTPUT FORMAT
 
-Respond with EXACTLY this structure (no code fences):
-
-<<<QUERY>>>
+\`\`\`cypher
 <the Cypher query here>
-<<<EXPLANATION>>>
+\`\`\`
 <1-sentence summary of what this queries>
 `.trim();
 }

@@ -79,9 +79,9 @@ This tool supports partial overwrite when action is UPDATE.
       if (!args.description) return `ERROR: Parameter "description" is required for action CREATE.`;
       const plot = await client.plots.createPlot(args.plotName, {
         description: args.description,
-        brief: args.brief,
+        brief: args.brief ?? undefined,
         status: args.status ?? "PENDING",
-        triggerCondition: args.triggerCondition,
+        triggerCondition: args.triggerCondition ?? undefined,
       });
       return `Plot "${plot.name}" (status: ${plot.status}) is successfully created.`;
     }

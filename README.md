@@ -51,6 +51,8 @@ cp .env.example .env
 #   # Llama-server endpoints (defaults work with default ports):
 #   LLAMA_EMBED_URL=http://localhost:8080/v1/embeddings
 #   LLAMA_RERANK_URL=http://localhost:8081/v1/rerank
+#   LLAMA_FORMATTER_URL=http://localhost:8082/v1/chat/completions
+#   LLAMA_FORMATTER_MODEL=phi-4-mini-instruct
 #   EMBEDDING_DIMENSIONS=1024
 
 make install
@@ -69,7 +71,7 @@ make server
 make console
 ```
 
-On first run, Neo4j is seeded with a default fantasy-steampunk world — characters, locations, objects, and a root plot with three branching threads.
+On first run, Neo4j is seeded with a default world, see `src/server/seed-stories/`.
 
 ## How It Works
 

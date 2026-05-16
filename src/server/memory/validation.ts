@@ -88,7 +88,7 @@ export class CypherValidator {
       if (!nodeManager.isAllowedForWrite(label)) {
         if (!nodeManager.get(label)) {
           errors.push(
-            `Unknown label \`:${label}\`. Use \`manageSchema\` (target: "node", action: "register") to register it with a description and property schema first.`,
+            `Unknown label \`:${label}\`. Use \`${TOOL_NAMES.MANAGE_SCHEMA}\` (target: "node", action: "register") to register it with a description and property schema first.`,
           );
         } else {
           const allowed = nodeManager

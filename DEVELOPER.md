@@ -242,7 +242,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 | Tool           | Purpose                                                                                           |
 |----------------|---------------------------------------------------------------------------------------------------|
-| `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator                          |
+| `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator. Supports `instruction` + `rawResult` for local LLM formatting of results via llama-server. |
 | `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships                                  |
 | `manageSchema` | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
 | `searchWorld`  | Vector search across entities and messages                                                        |
@@ -392,6 +392,8 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 | Variable | Purpose | Default |
 |---|---|---|
 | `LLAMA_EMBED_URL` | llama-server embeddings endpoint | `http://localhost:8080/v1/embeddings` |
+| `LLAMA_FORMATTER_URL` | llama-server chat completions endpoint (for `queryWorld` result formatting) | `http://localhost:8082/v1/chat/completions` |
+| `LLAMA_FORMATTER_MODEL` | Model name for formatter requests | `phi-4-mini-instruct` |
 | `EMBEDDING_DIMENSIONS` | Vector dimension | `1024` |
 
 **Factory**: `getEmbedder()` returns a singleton. Used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.

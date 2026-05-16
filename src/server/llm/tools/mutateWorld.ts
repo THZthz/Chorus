@@ -32,7 +32,7 @@ export const mutateWorld = tool({
 Modify the game world using Cypher queries.
 Use to create/update/delete entities, move characters, set relationships, change NPC dispositions, and store player knowledge.
 Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove entities. Must include a WHERE clause when deleting.
-Before using a new node label or relationship type, register it via manageSchema (target: "node" or "relationship", action: "register").
+Before using a new node label or relationship type, register it via tool \`${TOOL_NAMES.MANAGE_SCHEMA}\` (target: "node" or "relationship", action: "register").
 Never set a 'description' property directly on relationship instances in your Cypher.
 `.trim(),
   // NB: .nullable() on optional fields prevents Zod rejection when the LLM

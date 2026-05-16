@@ -34,7 +34,13 @@ const inputSchema = z.object({
     .nullable()
     .optional()
     .describe("Number of 2-hour segments to advance (0-11)."),
-  days: z.number().int().min(0).nullable().optional().describe("Number of full days to advance (0+)."),
+  days: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe("Number of full days to advance (0+)."),
   reason: z.string().nullable().optional().describe("Brief narrative reason for the time advance."),
 });
 

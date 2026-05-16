@@ -142,7 +142,10 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   ├── validation.ts  # Cypher query allowlist validation (labels + relationships)
     │   │   └── reset.ts       # Clear Neo4j database (MATCH (n) DETACH DELETE n)
     │   ├── models/
-    │   │   └── time.ts        # Game time CRUD via Neo4j :GameTime node
+    │   │   ├── time.ts        # Game time CRUD via Neo4j :TimePoint nodes
+    │   │   ├── entity.ts      # Entity formatting helpers (compact/full, aliases, conditions)
+    │   │   ├── plot.ts        # Plot tree builder, flag parsing
+    │   │   └── schema.ts      # Schema introspection via db.schema.visualization()
     │   └── seed-stories/
     │       ├── index.ts       # Story registry + ACTIVE_SEED_STORY constant
     │       ├── types.ts       # SeedStory, SeedPlot interfaces

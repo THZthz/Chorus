@@ -87,6 +87,7 @@ lint:
 
 format:
 	$(NPM) run format
+	$(NPM) run add-license-header
 
 reset:
 	curl -X POST http://localhost:3000/api/reset

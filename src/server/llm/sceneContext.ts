@@ -20,38 +20,35 @@ import { getGameTime, describeTime } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getObserver } from "@/server/llm/sceneObserver";
+import type { EntityRef } from "@/server/models/entity";
+import {
+  formatEntityCompact,
+  formatEntityFull,
+  extractAliases,
+  extractConditions,
+} from "@/server/models/entity";
+import type { PlotRef } from "@/server/models/plot";
+import { buildPlotTree, parseFlags } from "@/server/models/plot";
+import {
+  getSchemaVisualization,
+  getRelationshipTypeDescriptions,
+  formatSchemaMarkdown,
+} from "@/server/models/schema";
 
 // ── Query result types ──
-
-interface SceneEntityRef {
-  name: string;
-  type: string;
-  description: string | null;
-  brief: string | null;
-  subtype?: string | null;
-}
 
 interface SceneRow {
   player: Record<string, unknown> | null;
   loc: Record<string, unknown> | null;
-  inventory: SceneEntityRef[] | null;
-  npcs: SceneEntityRef[] | null;
-  objects: SceneEntityRef[] | null;
+  inventory: EntityRef[] | null;
+  npcs: EntityRef[] | null;
+  objects: EntityRef[] | null;
 }
 
 interface DispositionRow {
   npcName: string;
   sentiment: string;
   summary: string;
-}
-
-interface PlotRef {
-  name: string;
-  description: string;
-  brief: string | null;
-  status: string;
-  triggerCondition: string | null;
-  children: PlotRef[];
 }
 
 // ── Queries ──
@@ -93,67 +90,8 @@ ORDER BY p.updated_at DESC
 
 // ── Formatters ──
 
-function formatEntityCompact(e: SceneEntityRef): string {
-  const brief = e.brief || e.description?.slice(0, 120) || "";
-  return `**${e.name}** (${e.type}) — ${brief}`;
-}
-
-function formatEntityFull(e: SceneEntityRef): string {
-  if (!e.description) return "";
-  return `### ${e.name}\n${e.description}`;
-}
-
 function formatDisposition(d: DispositionRow): string {
   return `- **${d.npcName}**: ${d.sentiment} — "${d.summary}"`;
-}
-
-function buildPlotTree(plots: PlotRef[]): { tree: string; unseenDescriptions: string } {
-  // Identify roots: plots with no incoming BRANCHES_TO from the active set
-  const activeNames = new Set(plots.map((p) => p.name));
-  const childNames = new Set<string>();
-  for (const p of plots) {
-    for (const c of p.children) {
-      if (activeNames.has(c.name)) childNames.add(c.name);
-    }
-  }
-  const roots = plots.filter((p) => !childNames.has(p.name));
-
-  // Also include plots that were loaded but whose parent wasn't in the result
-  // (this shouldn't happen normally, but be safe)
-  const visited = new Set<string>();
-  const observer = getObserver();
-  const treeLines: string[] = [];
-  const fullDescs: string[] = [];
-
-  function renderNode(plot: PlotRef, prefix: string, isLast: boolean, connector: string) {
-    if (visited.has(plot.name)) return;
-    visited.add(plot.name);
-
-    const brief = plot.brief || (plot.description || "").slice(0, 120);
-    treeLines.push(`${prefix}${connector} ${plot.name} (${plot.status}): ${brief}`);
-
-    // Track unseen
-    if (!observer.wasSeen("plot", plot.name)) {
-      fullDescs.push(`### ${plot.name}\n${plot.description}`);
-      observer.markSeen("plot", plot.name);
-    }
-
-    // Render children
-    const kids = (plot.children || []).filter((c) => c.name && !visited.has(c.name));
-    const childPrefix = prefix + (isLast ? "    " : "│   ");
-    kids.forEach((child, i) => {
-      renderNode(child, childPrefix, i === kids.length - 1, i === kids.length - 1 ? "└──" : "├──");
-    });
-  }
-
-  roots.forEach((root, i) => {
-    renderNode(root, "", i === roots.length - 1, "");
-  });
-
-  return {
-    tree: treeLines.join("\n"),
-    unseenDescriptions: fullDescs.join("\n\n"),
-  };
 }
 
 // ── Main export ──
@@ -210,12 +148,12 @@ export async function buildSceneContext(): Promise<string> {
 
   const compactLines: string[] = [];
   const fullSections: string[] = [];
-  const allEntities: SceneEntityRef[] = [];
+  const allEntities: EntityRef[] = [];
 
   // Location
   const loc = scene.loc as Record<string, unknown> | null;
   if (loc) {
-    const locRef: SceneEntityRef = {
+    const locRef: EntityRef = {
       name: (loc.name as string) ?? "Unknown",
       type: (loc.type as string) ?? "LOCATION",
       description: (loc.description as string) || null,
@@ -266,7 +204,7 @@ export async function buildSceneContext(): Promise<string> {
       triggerCondition: p.triggerCondition,
       children: (p.children || []).filter((c: any) => c && c.name),
     }));
-    const { tree, unseenDescriptions } = buildPlotTree(plotRefs);
+    const { tree, unseenDescriptions } = buildPlotTree(plotRefs, observer);
     compactLines.push("**Active Plots**:");
     compactLines.push(tree);
     if (unseenDescriptions) {
@@ -302,59 +240,51 @@ export async function buildSceneContext(): Promise<string> {
 
 // ── Full world state dump (developer debug) ──
 
-async function sampleProps(db: import("@/server/memory/neo4j").Neo4jClient, label: string): Promise<string[]> {
-  try {
-    const rows = await db.executeRead(`MATCH (n:\`${label}\`) RETURN n LIMIT 1`);
-    if (rows.length > 0) {
-      const n = rows[0].n as Record<string, unknown>;
-      return Object.keys(n).filter((k) => k !== "_elementId" && k !== "_labels").sort();
-    }
-  } catch { /* label may not support direct matching */ }
-  return [];
-}
-
 export async function buildFullSceneContext(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
   const db = client.neo4j;
 
-  const extractAliases = (metadata: unknown): string[] => {
-    if (typeof metadata === "string") {
-      try { return ((JSON.parse(metadata) as Record<string, unknown>).aliases as string[]) || []; }
-      catch { return []; }
-    }
-    if (metadata && typeof metadata === "object") {
-      return ((metadata as Record<string, unknown>).aliases as string[]) || [];
-    }
-    return [];
-  };
-  const extractConditions = (metadata: unknown): string[] => {
-    try {
-      const m = typeof metadata === "string"
-        ? JSON.parse(metadata) as Record<string, unknown>
-        : (metadata as Record<string, unknown> | null);
-      if (!m?.conditions) return [];
-      return Object.entries(m.conditions as Record<string, Record<string, unknown>>).map(
-        ([id, c]) => `${id}: ${c.description as string}`,
-      );
-    } catch { return []; }
-  };
-  const parseFlags = (flags: unknown): Array<{ flagId: string; description: string }> => {
-    if (typeof flags === "string") {
-      try { return JSON.parse(flags) as Array<{ flagId: string; description: string }>; }
-      catch { return []; }
-    }
-    return (flags as Array<{ flagId: string; description: string }>) || [];
+  const logError = (label: string, err: unknown) => {
+    console.error(
+      `[fullSceneContext] ${label} failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
   };
 
-  const [entityRows, plotRows, noteRows, dispRows, time, relRows, timeChain,
-    labelRows, relTypeRows] = await Promise.all([
-    db.executeRead("MATCH (e:Entity) RETURN e ORDER BY e.name"),
-    db.executeRead("MATCH (p:Plot) RETURN p ORDER BY p.name"),
-    db.executeRead("MATCH (n:Note) RETURN n ORDER BY n.name"),
-    db.executeRead("MATCH (d:NPCDisposition) RETURN d ORDER BY d.npc_name"),
-    getGameTime(),
-    db.executeRead(
-      `MATCH (a)-[r]->(b)
+  const [
+    entityRows,
+    plotRows,
+    noteRows,
+    dispRows,
+    time,
+    relRows,
+    timeChain,
+    schemaVis,
+    relTypeDescs,
+  ] = await Promise.all([
+    db.executeRead("MATCH (e:Entity) RETURN e ORDER BY e.name").catch((err) => {
+      logError("entities query", err);
+      return [] as Record<string, unknown>[];
+    }),
+    db.executeRead("MATCH (p:Plot) RETURN p ORDER BY p.name").catch((err) => {
+      logError("plots query", err);
+      return [] as Record<string, unknown>[];
+    }),
+    db.executeRead("MATCH (n:Note) RETURN n ORDER BY n.name").catch((err) => {
+      logError("notes query", err);
+      return [] as Record<string, unknown>[];
+    }),
+    db.executeRead("MATCH (d:NPCDisposition) RETURN d ORDER BY d.npc_name").catch((err) => {
+      logError("dispositions query", err);
+      return [] as Record<string, unknown>[];
+    }),
+    getGameTime().catch((err) => {
+      logError("getGameTime", err);
+      return { day: 1, segment: 2 };
+    }),
+    db
+      .executeRead(
+        `MATCH (a)-[r]->(b)
        WHERE NOT a:Message AND NOT a:Conversation AND NOT a:GMTurnMessage
          AND NOT b:Message AND NOT b:Conversation AND NOT b:GMTurnMessage
          AND NOT a:IdCounter AND NOT b:IdCounter
@@ -364,14 +294,29 @@ export async function buildFullSceneContext(): Promise<string> {
               type(r) AS type,
               labels(b) AS targetLabels,
               COALESCE(b.name, b._id) AS targetName`,
-    ),
-    db.executeRead(
-      `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(current:TimePoint)
+      )
+      .catch((err) => {
+        logError("relationships query", err);
+        return [] as Record<string, unknown>[];
+      }),
+    db
+      .executeRead(
+        `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(current:TimePoint)
        OPTIONAL MATCH (current)-[:NEXT_TIMEPOINT*]->(future:TimePoint)
        RETURN current, collect(DISTINCT future) AS future`,
-    ),
-    db.executeRead("CALL db.labels() YIELD label RETURN label ORDER BY label"),
-    db.executeRead("CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType ORDER BY relationshipType"),
+      )
+      .catch((err) => {
+        logError("time chain query", err);
+        return [] as Record<string, unknown>[];
+      }),
+    getSchemaVisualization(db).catch((err) => {
+      logError("schema visualization", err);
+      return { nodes: [], relationships: [] };
+    }),
+    getRelationshipTypeDescriptions(db).catch((err) => {
+      logError("relationship type descriptions", err);
+      return [] as { name: string; description: string; category: string }[];
+    }),
   ]);
 
   const parts: string[] = [];
@@ -458,9 +403,17 @@ export async function buildFullSceneContext(): Promise<string> {
   // INTERNAL types (GM message bookkeeping) — always hidden
   const internalTypeNames = new Set(manager.getByType("INTERNAL").map((r) => r.name));
   // Types covered by dedicated dump sections (Dispositions, Time Chain, Plots)
-  for (const name of ["HAS_DISPOSITION", "CURRENT_TIMEPOINT", "NEXT_TIMEPOINT",
-    "STARTED_AT", "ACTIVE_AT", "COMPLETED_AT", "BRANCHES_TO",
-    "ABOUT_ENTITY", "ABOUT_MESSAGE"]) {
+  for (const name of [
+    "HAS_DISPOSITION",
+    "CURRENT_TIMEPOINT",
+    "NEXT_TIMEPOINT",
+    "STARTED_AT",
+    "ACTIVE_AT",
+    "COMPLETED_AT",
+    "BRANCHES_TO",
+    "ABOUT_ENTITY",
+    "ABOUT_MESSAGE",
+  ]) {
     internalTypeNames.add(name);
   }
   const visible = rels.filter((r) => !internalTypeNames.has(r.type));
@@ -496,38 +449,9 @@ export async function buildFullSceneContext(): Promise<string> {
   }
   if (visible.length === 0) parts.push("(none)");
 
-  // Schema
+  // Schema (from db.schema.visualization() + :RelationshipType descriptions)
   parts.push("");
-  parts.push("## Schema");
-
-  const labels = labelRows.map((r) => r.label as string);
-  const schemaLabels = labels.filter(
-    (l) => !["GMTurnMessage", "IdCounter", "RelationshipType", "Conversation"].includes(l),
-  );
-
-  const propResults = await Promise.all(schemaLabels.map((l) => sampleProps(db, l)));
-  const labelProps = new Map(schemaLabels.map((l, i) => [l, propResults[i]]));
-
-  const allRelTypes = relTypeRows.map((r) => r.relationshipType as string);
-
-  parts.push("### Node Labels");
-  for (const [label, props] of [...labelProps.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const propList = props.length > 0 ? props.join(", ") : "(no nodes)";
-    parts.push(`- **${label}**: ${propList}`);
-  }
-  parts.push("");
-
-  parts.push("### Relationship Types");
-  for (const rt of allRelTypes) {
-    const samples = (rels as typeof visible).filter((r) => r.type === rt).slice(0, 2);
-    if (samples.length > 0) {
-      const ctx = samples.map((s) => `(${s.sourceName})→(${s.targetName})`).join(", ");
-      parts.push(`- **${rt}**: ${ctx}`);
-    } else {
-      parts.push(`- **${rt}**`);
-    }
-  }
-  parts.push("");
+  parts.push(formatSchemaMarkdown(schemaVis, relTypeDescs));
 
   // Time Chain
   parts.push("## Time Chain");

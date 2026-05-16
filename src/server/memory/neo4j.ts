@@ -59,6 +59,23 @@ function toPlainValue(v: unknown): unknown {
     }
     // Neo4j Integer object (neo4j-driver 5.x, or 6.x with useBigInt: false)
     if (isInt(v)) return (v as { toNumber(): number }).toNumber();
+    // Neo4j graph types nested inside arrays (e.g. from CALL db.schema.visualization())
+    if (isNode(v)) {
+      return toPlainValue({
+        ...v.properties,
+        _elementId: v.elementId,
+        _labels: v.labels,
+      });
+    }
+    if (isRelationship(v)) {
+      return toPlainValue({
+        ...v.properties,
+        _elementId: v.elementId,
+        _type: v.type,
+        _startNodeElementId: v.startNodeElementId,
+        _endNodeElementId: v.endNodeElementId,
+      });
+    }
     // Generic object — recurse into its values
     const out: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(v as Record<string, unknown>)) {

@@ -38,14 +38,22 @@ const inputSchema = z.object({
     ),
   brief: z.string().nullable().optional().describe("Short one-line summary of the plot."),
   status: z.enum(PLOT_STATUSES).nullable().optional().describe("Plot status."),
-  triggerCondition: z.string().nullable().optional().describe("Condition that activates this plot."),
+  triggerCondition: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Condition that activates this plot."),
   setFlag: z
     .object({ flagId: z.string(), description: z.string() })
     .nullable()
     .optional()
     .describe("Add or update a flag on this plot."),
   removeFlag: z.string().nullable().optional().describe("Flag ID to remove."),
-  branchTo: z.string().nullable().optional().describe("Child plot name to connect via BRANCHES_TO."),
+  branchTo: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Child plot name to connect via BRANCHES_TO."),
   unbranch: z.string().nullable().optional().describe("Child plot name to disconnect."),
 });
 

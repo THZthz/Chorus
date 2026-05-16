@@ -366,10 +366,16 @@ You do NOT need to copy them.
       let allOptionsFresh = false;
       const replacedMessageIndices = new Set<number>();
       if (isCorrection) {
-        allMessagesFresh = !!(args.messages && args.messages.length > 0 &&
-          args.messages.every((m) => m.index === undefined));
-        allOptionsFresh = !!(args.options && args.options.length > 0 &&
-          args.options.every((o) => o.index === undefined));
+        allMessagesFresh = !!(
+          args.messages &&
+          args.messages.length > 0 &&
+          args.messages.every((m) => m.index === undefined)
+        );
+        allOptionsFresh = !!(
+          args.options &&
+          args.options.length > 0 &&
+          args.options.every((o) => o.index === undefined)
+        );
 
         const mergedMessages = allMessagesFresh ? [] : [...lastCallMessages];
         if (args.messages) {
@@ -409,8 +415,12 @@ You do NOT need to copy them.
       }
 
       const result = await executeAndPersist(
-        args, isCorrection, persistMessage,
-        (valid) => { lastCallValid = valid; },
+        args,
+        isCorrection,
+        persistMessage,
+        (valid) => {
+          lastCallValid = valid;
+        },
         skipPersist.size > 0 ? skipPersist : undefined,
       );
 

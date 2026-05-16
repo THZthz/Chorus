@@ -58,7 +58,8 @@ export async function nextIdBatch(client: Neo4jClient, count: number): Promise<s
     { id: GAME_ID, count },
   );
   const endValue = Number(rows[0].value);
-  if (!Number.isFinite(endValue)) throw new Error(`nextIdBatch: invalid counter value ${rows[0].value}`);
+  if (!Number.isFinite(endValue))
+    throw new Error(`nextIdBatch: invalid counter value ${rows[0].value}`);
   const startValue = endValue - count;
   const ids: string[] = [];
   for (let i = startValue; i < endValue; i++) {

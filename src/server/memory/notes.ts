@@ -37,7 +37,7 @@ export class Notes {
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
-      `CREATE (n:Note {name: $name, content: $content, _embedding: $embedding, created_at: datetime($now), updated_at: datetime($now)})`,
+      `CREATE (n:Note {name: $name, content: $content, _embedding: $embedding, _created_at: datetime($now), _updated_at: datetime($now)})`,
       { name: noteName, content, embedding, now },
     );
 
@@ -63,7 +63,7 @@ export class Notes {
 
     await this.client.executeWrite(
       `MATCH (n:Note {name: $name})
-       SET n.content = $content, n._embedding = $embedding, n.updated_at = datetime($now)
+       SET n.content = $content, n._embedding = $embedding, n._updated_at = datetime($now)
        RETURN n`,
       { name: noteName, content, embedding: embedding || null, now },
     );
@@ -190,8 +190,8 @@ export class Notes {
       name: data.name as string,
       content: data.content as string,
       _embedding: data._embedding as number[] | undefined,
-      createdAt: new Date((data.created_at as string | number) || Date.now()),
-      updatedAt: new Date((data.updated_at as string | number) || Date.now()),
+      createdAt: new Date((data._created_at as string | number) || Date.now()),
+      updatedAt: new Date((data._updated_at as string | number) || Date.now()),
     };
   }
 }

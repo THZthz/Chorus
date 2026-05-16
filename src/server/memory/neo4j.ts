@@ -189,7 +189,7 @@ export class Neo4jClient {
   }
 
   /**
-   * MERGE a relationship between two existing nodes, setting created_at.
+   * MERGE a relationship between two existing nodes, setting _created_at.
    * Extra properties are set only ON CREATE.
    * The source/target nodes must already exist and be matchable by a single
    * key-value pair.
@@ -210,7 +210,7 @@ export class Neo4jClient {
       srcVal: sourceValue,
       tgtVal: targetValue,
     };
-    const onCreateSetters = ["r.created_at = datetime()"];
+    const onCreateSetters = ["r._created_at = datetime()"];
     if (onCreateProps) {
       for (const [key, val] of Object.entries(onCreateProps)) {
         const paramKey = `_onCreate_${key}`;
@@ -229,7 +229,7 @@ export class Neo4jClient {
   }
 
   /**
-   * CREATE a relationship between two existing nodes, setting created_at.
+   * CREATE a relationship between two existing nodes, setting _created_at.
    * The source/target nodes must already exist and be matchable
    * by a single key-value pair.
    */
@@ -247,12 +247,36 @@ export class Neo4jClient {
       `MATCH (src:${sourceLabel} {${sourceKey}: $srcVal})
        MATCH (tgt:${targetLabel} {${targetKey}: $tgtVal})
        CREATE (src)-[r:${safeType}]->(tgt)
-       SET r.created_at = datetime()`,
+       SET r._created_at = datetime()`,
       {
         srcVal: sourceValue,
         tgtVal: targetValue,
       },
     );
+  }
+
+  /**
+   * DELETE a relationship between two existing nodes.
+   * Returns true if a relationship was deleted, false if none matched.
+   */
+  async deleteRelationship(
+    sourceLabel: string,
+    sourceKey: string,
+    sourceValue: string,
+    targetLabel: string,
+    targetKey: string,
+    targetValue: string,
+    relType: string,
+  ): Promise<boolean> {
+    const safeType = relType.replace(/[^A-Za-z0-9_]/g, "_");
+    const result = await this.executeWrite(
+      `MATCH (src:${sourceLabel} {${sourceKey}: $srcVal})
+       MATCH (tgt:${targetLabel} {${targetKey}: $tgtVal})
+       MATCH (src)-[r:${safeType}]->(tgt)
+       DELETE r RETURN count(r) AS deleted`,
+      { srcVal: sourceValue, tgtVal: targetValue },
+    );
+    return (result[0]?.deleted as number) > 0;
   }
 
   async close(): Promise<void> {

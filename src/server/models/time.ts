@@ -30,7 +30,7 @@ export interface GameTime {
 interface TimePoint extends GameTime {
   id: string;
   label: string;
-  created_at: string;
+  _created_at: string;
 }
 
 // ── Current Time ──
@@ -73,7 +73,7 @@ async function getCurrentTimePoint(): Promise<TimePoint | null> {
     day: Number(tp.day),
     segment: Number(tp.segment),
     label: tp.label as string,
-    created_at: tp.created_at as string,
+    _created_at: tp._created_at as string,
   };
 }
 
@@ -103,13 +103,13 @@ export async function advanceGameTime(
        MATCH (old:TimePoint {_id: $oldId})
        CREATE (new:TimePoint {
          _id: $newId, day: $newDay, segment: $newSegment,
-         label: $label, created_at: datetime($now)
+         label: $label, _created_at: datetime($now)
        })
        CREATE (old)-[r1:NEXT_TIMEPOINT]->(new)
-       SET r1.created_at = datetime()
+       SET r1._created_at = datetime()
        DELETE (a)-[:CURRENT_TIMEPOINT]->(old)
        CREATE (a)-[r2:CURRENT_TIMEPOINT]->(new)
-       SET r2.created_at = datetime()`,
+       SET r2._created_at = datetime()`,
       {
         oldId: oldTimePoint.id,
         newId,
@@ -125,10 +125,10 @@ export async function advanceGameTime(
       `MATCH (a:TimeAnchor {_id: 'anchor'})
        CREATE (new:TimePoint {
          _id: $newId, day: $newDay, segment: $newSegment,
-         label: $label, created_at: datetime($now)
+         label: $label, _created_at: datetime($now)
        })
        CREATE (a)-[r:CURRENT_TIMEPOINT]->(new)
-       SET r.created_at = datetime()`,
+       SET r._created_at = datetime()`,
       { newId, newDay, newSegment, label, now },
     );
   }
@@ -178,9 +178,9 @@ export async function migrateToTimePoints(
 
   await client.neo4j.executeWrite(
     `CREATE (a:TimeAnchor {_id: 'anchor'})
-     CREATE (tp:TimePoint {_id: $id, day: $day, segment: $segment, label: $label, created_at: datetime($now)})
+     CREATE (tp:TimePoint {_id: $id, day: $day, segment: $segment, label: $label, _created_at: datetime($now)})
      CREATE (a)-[r:CURRENT_TIMEPOINT]->(tp)
-     SET r.created_at = datetime()`,
+     SET r._created_at = datetime()`,
     { id, day, segment, label, now },
   );
 

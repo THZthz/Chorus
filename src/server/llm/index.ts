@@ -36,6 +36,8 @@ import { editPlot } from "@/server/llm/tools/editPlot";
 import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
+import { editNode } from "@/server/llm/tools/editNode";
+import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
@@ -223,6 +225,8 @@ export async function generateTurn(
     searchPlots,
     resetSceneContext,
     manageSchema,
+    editNode,
+    editRelationship,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
   };

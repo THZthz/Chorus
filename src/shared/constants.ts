@@ -74,4 +74,6 @@ export const TOOL_NAMES = {
   SEARCH_PLOTS: "searchPlots",
   RESET_SCENE_CONTEXT: "resetSceneContext",
   MANAGE_SCHEMA: "manageSchema",
+  EDIT_NODE: "editNode",
+  EDIT_RELATIONSHIP: "editRelationship",
 } as const;

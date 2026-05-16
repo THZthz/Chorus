@@ -41,7 +41,8 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │    tools: {                                                          │
 │      queryWorld, mutateWorld, manageSchema, searchWorld,             │
 │      editNote, searchNotes, editPlot, searchPlots,                   │
-│      ← llm/tools/ (9 GM tools)                                       │
+│      editNode, editRelationship,                                     │
+│      ← llm/tools/ (11 GM tools)                                   │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
 │      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
@@ -125,6 +126,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │       ├── searchNotes.ts           # Vector search across notes
     │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
     │   │       ├── searchPlots.ts           # Vector search across plots
+    │   │       ├── manageSchema.ts          # Register/unregister node & relationship types
+    │   │       ├── editNode.ts              # Create/update/delete world nodes (generic, schema-validated)
+    │   │       ├── editRelationship.ts      # Create/delete relationships between nodes (generic, schema-validated)
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
     │   │   ├── client.ts      # MemoryClient singleton — wires all memory layers
@@ -250,8 +254,10 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `searchNotes`  | Vector search across notes                                                                        |
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                                                |
 | `searchPlots`  | Vector search across plots                                                                        |
+| `editNode`     | Create/update/delete world nodes using schema-registered types — validates properties against NodeManager |
+| `editRelationship` | Create/delete relationships between nodes using schema-registered types — validates against RelationshipManager |
 
-All 11 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 13 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -372,12 +378,12 @@ Vector dimensions are passed from the llama-server embedder at startup (`embedde
 
 Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
 
-**Centralized relationship creation:** `Neo4jClient` provides two helpers that all subsystems use to create relationships between existing nodes. Both set `created_at` on the relationship:
+**Centralized relationship creation:** `Neo4jClient` provides two helpers that all subsystems use to create relationships between existing nodes. Both set `_created_at` on the relationship:
 
-- **`createRelationship(srcLabel, srcKey, srcVal, tgtLabel, tgtKey, tgtVal, relType)`** — CREATE with `created_at`
-- **`mergeRelationship(srcLabel, srcKey, srcVal, tgtLabel, tgtKey, tgtVal, relType, opts?)`** — MERGE with `ON CREATE SET created_at` plus optional `onCreateProps` (e.g. `confidence`)
+- **`createRelationship(srcLabel, srcKey, srcVal, tgtLabel, tgtKey, tgtVal, relType)`** — CREATE with `_created_at`
+- **`mergeRelationship(srcLabel, srcKey, srcVal, tgtLabel, tgtKey, tgtVal, relType, opts?)`** — MERGE with `ON CREATE SET _created_at` plus optional `onCreateProps` (e.g. `confidence`)
 
-For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongside a new `:Message`), the `created_at` property is set directly in the Cypher rather than using the helpers. Relationship type descriptions are stored as `:RelationshipType` nodes, not on relationship instances — see below.
+For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongside a new `:Message`), the `_created_at` property is set directly in the Cypher rather than using the helpers. Relationship type descriptions are stored as `:RelationshipType` nodes, not on relationship instances — see below.
 
 **:RelationshipType nodes:** Relationship type descriptions are stored as dedicated `:RelationshipType` nodes in Neo4j with properties `name` (the type name, e.g. `LOCATED_AT`), `description` (human-readable meaning), `category` (`INTERNAL`, `PREDEFINED`, or `GM_DEFINED`), `source_labels` (JSON array of allowed source node labels), and `target_labels` (JSON array of allowed target node labels). These are synced from the `RelationshipManager` singleton on every server startup (before the seed guard, so the sync always runs) and after `/api/reset` (after clearing and re-seeding). The GM can query `:RelationshipType` nodes via `queryWorld` to discover available relationship types, their meanings, and which node types can sit on each end.
 
@@ -542,6 +548,8 @@ generateTurn()
   │     ├─► searchWorld ──► client.search.search()
   │     ├─► editNote / searchNotes ──► client.notes.*
   │     ├─► editPlot / searchPlots ──► client.plots.*
+  │     ├─► editNode ──► NodeManager + Neo4j (generic node CRUD)
+  │     ├─► editRelationship ──► RelationshipManager + Neo4j (generic relationship CRUD)
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
   │     └─► generateDialogueStep ──► SSE + persist messages (supports isCorrection flag for targeted retries)
   │
@@ -613,7 +621,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 9. **COLE+O entity model** (variant of POLE+O — CHARACTER replaces PERSON) — entities have a type (CHARACTER/OBJECT/LOCATION/ORGANIZATION/EVENT) with dynamic Neo4j labels for efficient graph traversal
 10. **Skill checks resolved server-side** — Dice rolls are computed automatically when a player selects a checked option; the result is injected into the GM's prompt for narrative integration
 11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchWorld`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
-12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
+12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`_created_at`, `trigger_condition`, `npc_name`, `target_name`). Internal properties are prefixed with `_` (`_id`, `_embedding`, `_created_at`, `_updated_at`) and are never exposed to the LLM. TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
 13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
 14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` tool or TOML `[[relationshipTypes]]`). Seed stories can define new relationship types without TypeScript changes.
 15. **NodeManager governs node labels** — a singleton registry (`nodeManager.ts`) mirrors `RelationshipManager` for node labels. Each node type stores a `name`, `description`, optional property schema, and `category`. INTERNAL types (`Conversation`, `GMTurnMessage`, `IdCounter`) are hidden from GM tools. `:NodeType` nodes in Neo4j let the GM discover available node types and their schemas via `queryWorld`. The `manageSchema` tool provides a structured interface for registering/unregistering GM-defined node and relationship types, replacing the previous regex-based auto-registration in `mutateWorld`.

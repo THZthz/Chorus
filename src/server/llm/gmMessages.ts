@@ -33,7 +33,7 @@ export async function loadGMMessages(): Promise<ModelMessage[]> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
     `MATCH (c:Conversation {session_id: $gameId})-[:_HAS_GM_MESSAGE]->(m:GMTurnMessage)
-     RETURN m ORDER BY m.created_at, m.message_index`,
+     RETURN m ORDER BY m._created_at, m.message_index`,
     { gameId: GAME_ID },
   );
 
@@ -76,7 +76,7 @@ export async function saveGMMessages(
   const lastRows = await client.neo4j.executeRead(
     `MATCH (c:Conversation {_id: $convId})-[:_HAS_GM_MESSAGE]->(m:GMTurnMessage)
      WHERE NOT (m)-[:_NEXT_GM_MESSAGE]->(:GMTurnMessage)
-     RETURN m._id AS id ORDER BY m.created_at DESC LIMIT 1`,
+     RETURN m._id AS id ORDER BY m._created_at DESC LIMIT 1`,
     { convId },
   );
   const previousLastId = lastRows.length > 0 ? (lastRows[0].id as string) : null;
@@ -96,9 +96,9 @@ export async function saveGMMessages(
          provider_options: $providerOptions,
          turn_number: $turnNumber,
          message_index: $messageIndex,
-         created_at: datetime($now)
+         _created_at: datetime($now)
        })
-       SET r.created_at = datetime()`,
+       SET r._created_at = datetime()`,
       {
         convId,
         id,

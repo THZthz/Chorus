@@ -117,8 +117,8 @@ CREATE (npc)-[:CARRIES]->(item)
 \`\`\`cypher
 MATCH (npc:Entity {name: $npcName})
 MERGE (npc)-[:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
-ON CREATE SET d._id = $id, d.created_at = datetime($now)
-SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
+ON CREATE SET d._id = $id, d._created_at = datetime($now)
+SET d.sentiment = $sentiment, d.summary = $summary, d._updated_at = datetime($now)
 RETURN d, d._id = $id AS isNew
 \`\`\`
 

@@ -68,12 +68,12 @@ const ENTITY_PROPS: NodePropertyDef[] = [
       "JSON object: stats (skill→value), conditions, attributes (key→description), opinions (target→text), aliases (string[]).",
     type: "json",
   },
-  { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
+  { name: "_created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
 ];
 
 const TIMESTAMP_PROPS: NodePropertyDef[] = [
-  { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
-  { name: "updated_at", description: "ISO 8601 timestamp of last update.", type: "string" },
+  { name: "_created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
+  { name: "_updated_at", description: "ISO 8601 timestamp of last update.", type: "string" },
 ];
 
 const INTERNAL_TYPES: { name: string; description: string; properties: NodePropertyDef[] }[] = [
@@ -87,8 +87,8 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
         description: "Fixed game session key ('chorus-game').",
         type: "string",
       },
-      { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
-      { name: "updated_at", description: "ISO 8601 timestamp of last update.", type: "string" },
+      { name: "_created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
+      { name: "_updated_at", description: "ISO 8601 timestamp of last update.", type: "string" },
       {
         name: "options",
         description: "JSON array of current dialogue options for session resume.",
@@ -113,7 +113,7 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
         description: "The player input that triggered this turn.",
         type: "string",
       },
-      { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
+      { name: "_created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
       ...INTERNAL_PROPS,
     ],
   },
@@ -273,7 +273,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
           "Human-readable label: Midnight, Dawn, Morning, Noon, Afternoon, Dusk, Night, etc.",
         type: "string",
       },
-      { name: "created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
+      { name: "_created_at", description: "ISO 8601 timestamp of creation.", type: "string" },
       ...INTERNAL_PROPS,
     ],
   },

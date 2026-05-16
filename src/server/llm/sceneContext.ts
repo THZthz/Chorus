@@ -74,7 +74,7 @@ RETURN player, loc,
 const DISPOSITIONS_QUERY = `
 MATCH (d:NPCDisposition {target_name: "Player"})
 RETURN d.npc_name AS npcName, d.sentiment AS sentiment, d.summary AS summary
-ORDER BY d.updated_at DESC
+ORDER BY d._updated_at DESC
 `;
 
 const PLOTS_QUERY = `
@@ -86,7 +86,7 @@ RETURN p.name AS name, p.description AS description, p.brief AS brief,
                  WHERE child.status IN ["ACTIVE", "IN_PROGRESS", "PENDING"]
                  RETURN { name: child.name, description: child.description,
                           brief: child.brief, status: child.status } } AS children
-ORDER BY p.updated_at DESC
+ORDER BY p._updated_at DESC
 `;
 
 // ── Formatters ──
@@ -473,7 +473,7 @@ export async function buildFullSceneContext(): Promise<string> {
     const day = tp.day as number;
     const segment = tp.segment as number;
     const label = tp.label as string;
-    const created = tp.created_at as string;
+    const created = tp._created_at as string;
     parts.push(`- Day ${day}, Segment ${segment} (${label}) — ${created}`);
   }
   parts.push("");

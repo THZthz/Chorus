@@ -26,7 +26,7 @@ export async function saveCurrentOptions(options: DialogueOption[]): Promise<voi
   const client = MemoryClient.getCachedInstance();
   await client.neo4j.executeWrite(
     `MERGE (c:Conversation {session_id: $gameId})
-     SET c.options = $options, c.updated_at = datetime()`,
+     SET c.options = $options, c._updated_at = datetime()`,
     { gameId: GAME_ID, options: JSON.stringify(options) },
   );
 }

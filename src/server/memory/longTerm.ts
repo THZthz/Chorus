@@ -117,7 +117,7 @@ export class LongTermMemory {
       `MERGE (e:Entity {name: $name})
        ON CREATE SET
          e._id = $id,
-         e.created_at = datetime()
+         e._created_at = datetime()
        SET
          e.type = $type,
          e.subtype = $subtype,
@@ -144,8 +144,8 @@ export class LongTermMemory {
     const isNew = (result?.isNew as boolean) || false;
     const persistedNode = result?.e as Record<string, unknown> | undefined;
     const persistedId = (persistedNode?._id as string) || entityId;
-    const persistedCreatedAt = persistedNode?.created_at
-      ? new Date(persistedNode.created_at as string | number)
+    const persistedCreatedAt = persistedNode?._created_at
+      ? new Date(persistedNode._created_at as string | number)
       : new Date();
 
     return {
@@ -290,8 +290,8 @@ export class LongTermMemory {
     const rows = await this.client.executeWrite(
       `MATCH (npc:Entity {name: $npcName})
        MERGE (npc)-[r:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
-       ON CREATE SET d._id = $id, d.created_at = datetime($now), r.created_at = datetime()
-       SET d.sentiment = $sentiment, d.summary = $summary, d.updated_at = datetime($now)
+       ON CREATE SET d._id = $id, d._created_at = datetime($now), r._created_at = datetime()
+       SET d.sentiment = $sentiment, d.summary = $summary, d._updated_at = datetime($now)
        RETURN d, d._id = $id AS isNew`,
       { npcName, targetName, sentiment, summary, id, now },
     );
@@ -314,7 +314,7 @@ export class LongTermMemory {
   async getDispositionsToward(targetName: string): Promise<NPCDisposition[]> {
     const rows = await this.client.executeRead(
       `MATCH (d:NPCDisposition {target_name: $targetName})
-       RETURN d ORDER BY d.updated_at DESC`,
+       RETURN d ORDER BY d._updated_at DESC`,
       { targetName },
     );
     return rows.map((r) => this.parseDisposition(r.d as Record<string, unknown>));
@@ -341,7 +341,7 @@ export class LongTermMemory {
       aliases,
       metadata: meta,
       _embedding: data._embedding as number[] | undefined,
-      createdAt: new Date((data.created_at as string | number) || Date.now()),
+      createdAt: new Date((data._created_at as string | number) || Date.now()),
     };
   }
 
@@ -352,8 +352,8 @@ export class LongTermMemory {
       targetName: data.target_name as string,
       sentiment: data.sentiment as string,
       summary: data.summary as string,
-      createdAt: new Date((data.created_at as string | number) || Date.now()),
-      updatedAt: new Date((data.updated_at as string | number) || Date.now()),
+      createdAt: new Date((data._created_at as string | number) || Date.now()),
+      updatedAt: new Date((data._updated_at as string | number) || Date.now()),
     };
   }
 }

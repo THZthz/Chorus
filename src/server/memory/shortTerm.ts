@@ -57,7 +57,7 @@ export class ShortTermMemory {
          _embedding: $embedding, timestamp: datetime($now),
          metadata: $metadata
        })
-       CREATE (c)-[r:HAS_MESSAGE {created_at: datetime()}]->(m)
+       CREATE (c)-[r:HAS_MESSAGE {_created_at: datetime()}]->(m)
        RETURN m`,
       {
         convId,
@@ -80,7 +80,7 @@ export class ShortTermMemory {
           `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
            MATCH (m:Message {_id: $msgId})
            MERGE (m)-[r:AT_TIME]->(tp)
-           ON CREATE SET r.created_at = datetime()`,
+           ON CREATE SET r._created_at = datetime()`,
           { msgId: messageId },
         );
       } catch (err) {
@@ -171,7 +171,7 @@ export class ShortTermMemory {
     await this.client.executeWrite(
       `CREATE (c:Conversation {
          _id: $id, session_id: $gameId,
-         created_at: datetime($now), updated_at: datetime($now)
+         _created_at: datetime($now), _updated_at: datetime($now)
        })`,
       { id: convId, gameId: GAME_ID, now },
     );

@@ -61,10 +61,10 @@ export class Plots {
          p.flags = $flags,
          p._embedding = $embedding,
          p.trigger_condition = $triggerCondition,
-         p.created_at = datetime($now),
-         p.updated_at = datetime($now)
+         p._created_at = datetime($now),
+         p._updated_at = datetime($now)
        ON MATCH SET
-         p.updated_at = datetime($now)
+         p._updated_at = datetime($now)
        RETURN p`,
       {
         id,
@@ -89,8 +89,8 @@ export class Plots {
       triggerCondition: (node.trigger_condition as string) || (triggerCondition ?? undefined),
       flags,
       _embedding: embedding,
-      createdAt: new Date((node.created_at as string | number) || now),
-      updatedAt: new Date((node.updated_at as string | number) || now),
+      createdAt: new Date((node._created_at as string | number) || now),
+      updatedAt: new Date((node._updated_at as string | number) || now),
     };
   }
 
@@ -128,7 +128,7 @@ export class Plots {
       `MATCH (p:Plot {name: $name})
        SET p.description = $description, p.brief = $brief, p.status = $status,
            p.trigger_condition = $triggerCondition, p._embedding = $embedding,
-           p.updated_at = datetime($now)`,
+           p._updated_at = datetime($now)`,
       {
         name,
         description: newDescription,
@@ -171,7 +171,7 @@ export class Plots {
 
     await this.client.executeWrite(
       `MATCH (p:Plot {name: $name})
-       SET p.flags = $flags, p.updated_at = datetime($now)`,
+       SET p.flags = $flags, p._updated_at = datetime($now)`,
       { name: plotName, flags: JSON.stringify(flags), now },
     );
 
@@ -187,7 +187,7 @@ export class Plots {
 
     await this.client.executeWrite(
       `MATCH (p:Plot {name: $name})
-       SET p.flags = $flags, p.updated_at = datetime($now)`,
+       SET p.flags = $flags, p._updated_at = datetime($now)`,
       { name: plotName, flags: flags.length > 0 ? JSON.stringify(flags) : null, now },
     );
 
@@ -277,7 +277,7 @@ export class Plots {
       `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
        MERGE (p)-[r:STARTED_AT]->(tp)
-       ON CREATE SET r.created_at = datetime()`,
+       ON CREATE SET r._created_at = datetime()`,
       { name: plotName },
     );
   }
@@ -287,7 +287,7 @@ export class Plots {
       `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
        MERGE (p)-[r:ACTIVE_AT]->(tp)
-       ON CREATE SET r.created_at = datetime()`,
+       ON CREATE SET r._created_at = datetime()`,
       { name: plotName },
     );
   }
@@ -297,7 +297,7 @@ export class Plots {
       `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
        MATCH (p:Plot {name: $name})
        MERGE (p)-[r:COMPLETED_AT]->(tp)
-       ON CREATE SET r.created_at = datetime()`,
+       ON CREATE SET r._created_at = datetime()`,
       { name: plotName },
     );
   }
@@ -322,8 +322,8 @@ export class Plots {
       triggerCondition: (data.trigger_condition as string) || undefined,
       flags,
       _embedding: data._embedding as number[] | undefined,
-      createdAt: new Date((data.created_at as string | number) || Date.now()),
-      updatedAt: new Date((data.updated_at as string | number) || Date.now()),
+      createdAt: new Date((data._created_at as string | number) || Date.now()),
+      updatedAt: new Date((data._updated_at as string | number) || Date.now()),
     };
   }
 }

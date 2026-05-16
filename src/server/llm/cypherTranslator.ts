@@ -56,6 +56,7 @@ export async function buildCypherTranslatorSystemPrompt(): Promise<string> {
   ]);
 
   const schemaSection = formatSchemaMarkdown(schemaVis, relTypeDescs);
+  const dynamicRules = buildDynamicRules(schemaVis, relTypeDescs);
 
   return `
 You are a precise Cypher query generator for a Neo4j-backed RPG engine.
@@ -63,66 +64,80 @@ Given a natural-language intent, produce a read-only Cypher query.
 
 ${schemaSection}
 
-## RELATIONSHIP DIRECTIONS
-
-Every relationship has a fixed direction. Use these exact patterns:
-
-\`\`\`
-(Entity)-[:LOCATED_AT]->(Entity)       entity is at a location
-(Entity)-[:LOCATED_IN]->(Entity)       entity inside larger location
-(Entity)-[:CARRIES]->(Entity)          carrier carries object/entity
-(Entity)-[:ALLIED_WITH]->(Entity)      entity allied with another
-(Entity)-[:HOSTILE_TOWARDS]->(Entity)  entity hostile toward another
-(Entity)-[:CONNECTED_TO]->(Entity)     generic connection
-(Entity)-[:HAS_DISPOSITION]->(NPCDisposition)  NPC attitude toward a target
-
-(Conversation)-[:HAS_MESSAGE]->(Message)  conversation owns message
-(Conversation)-[:FIRST_MESSAGE]->(Message) head of message list
-(Message)-[:NEXT_MESSAGE]->(Message)      next message in order
-(Message)-[:AT_TIME]->(TimePoint)         message timestamp
-
-(Plot)-[:BRANCHES_TO]->(Plot)         parent plot branches to child
-(Plot)-[:STARTED_AT]->(TimePoint)     plot start time
-(Plot)-[:ACTIVE_AT]->(TimePoint)      plot activation time
-(Plot)-[:COMPLETED_AT]->(TimePoint)   plot completion time
-
-(TimeAnchor)-[:CURRENT_TIMEPOINT]->(TimePoint)  current game time
-(TimePoint)-[:NEXT_TIMEPOINT]->(TimePoint)      time chain
-
-(Note)-[:ABOUT_ENTITY]->(Entity)     note references entity
-(Note)-[:ABOUT_MESSAGE]->(Message)   note references message
-
-INTERNAL (never query): _HAS_GM_MESSAGE, _FIRST_GM_MESSAGE, _NEXT_GM_MESSAGE
-\`\`\`
-
-NPCDisposition is a NODE LABEL, not a relationship type. NEVER write \`[d:NPCDisposition]\` or \`[:NPCDisposition]\`. The relationship is \`[:HAS_DISPOSITION]\`. Correct patterns:\n\`\`\`\n// One NPC's disposition toward the Player:\nMATCH (npc:Entity {name: "SomeNPC"})-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"})\nRETURN d.sentiment, d.summary\n\n// ALL dispositions toward the Player:\nMATCH (d:NPCDisposition {target_name: "Player"})\nRETURN d.npc_name, d.sentiment, d.summary\n\`\`\`
-
-## RULES
-
-- Read-only ONLY (MATCH, RETURN, ORDER BY, LIMIT, WHERE, WITH, OPTIONAL MATCH, COLLECT).
-- Use ONLY labels, properties, relationships from the Schema and directions above.
-- Use \`COLLECT { }\` subqueries for lists. Use \`OPTIONAL MATCH\` only for single optional links. Never chain independent \`OPTIONAL MATCH\`s.
-- Never unbounded variable-length paths. Use a fixed upper bound like \`[*1..5]\`.
-- To find entities with NO relationships of any kind, list specific types: \`WHERE NOT (e)-[:LOCATED_AT]->() AND NOT (e)-[:CARRIES]->() AND NOT (e)-[:ALLIED_WITH]->() AND NOT (e)-[:HOSTILE_TOWARDS]->() AND NOT (e)-[:CONNECTED_TO]->() AND NOT (e)-[:HAS_DISPOSITION]->()\`. Never use \`[:*]\`.
-- \`_\`-prefixed properties are internal. Never SELECT or RETURN them.
-- Entity key is \`{name: "..."}\`, not \`{_id: "..."}\`.
-- The Player is \`MATCH (p:Entity {name: "Player"})\`, never \`(p:Player)\`.
-- ALL status/type values are UPPERCASE: 'CHARACTER', 'OBJECT', 'LOCATION', 'ACTIVE', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'ABANDONED'.
-- This is Cypher, NOT SQL. Never use GROUP BY. Aggregation groups by non-aggregated RETURN columns automatically. Use \`COUNT(e)\` not \`COUNT(*)\`.
-- For multiple status/type values use \`WHERE p.status IN ['ACTIVE', 'IN_PROGRESS']\` not \`{status: 'A', status: 'B'}\`.
-- WHERE before RETURN. ORDER BY before LIMIT. RETURN columns comma-separated.
-- In WHERE NOT, don't bind variables: \`WHERE NOT (e)-[:REL]->()\` not \`WHERE NOT (e)-[r:REL]->()\` or \`WHERE NOT (c:Label)-[:REL]->()\`.
-- Never use \`|\` to alternate relationship types in patterns. Use multiple WHERE NOT clauses instead: \`WHERE NOT (e)-[:REL1]->() AND NOT (e)-[:REL2]->()\`.
-- To find nodes with no relationships of a type: \`MATCH (l:Location) WHERE NOT EXISTS { (c:Character)-[:LOCATED_AT]->(l) } RETURN l\`.
-- Never use map projection with pattern comprehension \`r [(n)-[r]->(m) | ...]\`. Just return \`TYPE(r)\` and the connected node names.
-- To query Message history: \`MATCH (m:Message) RETURN m.role, m.content, m.timestamp ORDER BY m.timestamp DESC LIMIT 10\`.
-- Notes have \`content\`, not \`contentSummary\` or \`summary\`. Plots use \`[:COMPLETED_AT]->(tp:TimePoint)\` not \`.completed_at\`.
-- Entities have \`type\` (CHARACTER/OBJECT/LOCATION) and \`brief\` (one-line). Use \`e.type\` not \`TYPE(e)\` (TYPE is for relationships). Use \`e.brief\` for the short summary, \`e.description\` for the long text.
-
-## OUTPUT
+${dynamicRules}
 
 Respond with ONLY the raw Cypher query. No code fences. No explanation. No markdown. No prefix like "cypher". Just the query text, starting with MATCH.
 `.trim();
+}
+
+// ── Dynamic rule builder (adapts to live schema) ──
+
+function buildDynamicRules(
+  schemaVis: import("@/server/models/schema").SchemaVisualization,
+  relTypeDescs: import("@/server/models/schema").RelationshipTypeDescription[],
+): string {
+  const parts: string[] = [];
+
+  // Relationship types from live :RelationshipType nodes
+  const descByName = new Map(relTypeDescs.map((d) => [d.name, d]));
+  const seenTypes = new Set<string>();
+
+  parts.push("## RELATIONSHIP TYPES");
+  for (const rel of schemaVis.relationships) {
+    if (seenTypes.has(rel.type)) continue;
+    seenTypes.add(rel.type);
+    const desc = descByName.get(rel.type);
+    if (rel.type.startsWith("_")) {
+      parts.push(`- **${rel.type}** (INTERNAL — never query)`);
+    } else if (desc) {
+      parts.push(`- **${rel.type}** (${desc.category}): ${desc.description}`);
+    } else {
+      parts.push(`- **${rel.type}**`);
+    }
+  }
+  parts.push("");
+
+  // Collect Entity dynamic sub-labels from schema
+  const nodeLabels = new Set<string>();
+  for (const node of schemaVis.nodes) {
+    for (const label of node.labels) nodeLabels.add(label);
+  }
+  const entitySubs = ["Character", "Object", "Location", "Organization", "Event"]
+    .filter((l) => nodeLabels.has(l));
+
+  // Node-specific notes
+  parts.push("## NODE NOTES");
+  if (entitySubs.length > 0) {
+    parts.push(`- Dynamic Entity sub-labels: ${entitySubs.sort().join(", ")}. Use \`:Entity\` as base.`);
+  }
+  if (nodeLabels.has("NPCDisposition")) {
+    parts.push('- **NPCDisposition is a NODE**, not a relationship. Use `[:HAS_DISPOSITION]->(d:NPCDisposition {...})`. Match by `{target_name: "Player"}`.');
+  }
+  parts.push('- The Player is `MATCH (p:Entity {name: "Player"})`.');
+  parts.push("");
+
+  // Universal Cypher rules
+  parts.push("## RULES");
+  parts.push("- Read-only ONLY (MATCH, RETURN, ORDER BY, LIMIT, WHERE, WITH, OPTIONAL MATCH, COLLECT).");
+  parts.push("- Use ONLY labels, properties, relationships from the Schema above.");
+  parts.push("- Use `COLLECT { }` for lists. Use `OPTIONAL MATCH` only for single optional links.");
+  parts.push("- Never unbounded variable-length paths. Use a fixed upper bound like `[*1..5]`.");
+  parts.push("- `_`-prefixed properties are internal. Never SELECT or RETURN them.");
+  parts.push('- Entity key is `{name: "..."}`, not `{_id: "..."}`.');
+  parts.push("- ALL status/type values are UPPERCASE: CHARACTER, OBJECT, LOCATION, ACTIVE, PENDING, IN_PROGRESS, COMPLETED, ABANDONED.");
+  parts.push("- Cypher, NOT SQL. Never use GROUP BY. Use `COUNT(e)` not `COUNT(*)`.");
+  parts.push("- For multiple values: `WHERE p.status IN ['ACTIVE', 'IN_PROGRESS']` not `{status: 'A', status: 'B'}`.");
+  parts.push("- WHERE before RETURN. ORDER BY before LIMIT.");
+  parts.push("- In WHERE NOT, don't bind variables: `WHERE NOT (e)-[:REL]->()` not `WHERE NOT (e)-[r:REL]->()`.");
+  parts.push("- Never use `|` in patterns. Use multiple AND NOT clauses.");
+  parts.push("- Anti-pattern: `MATCH (l:Location) WHERE NOT EXISTS { (c:Character)-[:LOCATED_AT]->(l) } RETURN l`.");
+  parts.push("- Message history: `MATCH (m:Message) RETURN m.role, m.content, m.timestamp ORDER BY m.timestamp DESC LIMIT 10`.");
+  parts.push("- Notes: `content` not `contentSummary`. Plots: `[:COMPLETED_AT]->(tp)` not `.completed_at`.");
+  parts.push("- Entities: `e.type` not `TYPE(e)`. `e.brief` for summary, `e.description` for full text.");
+  parts.push("- Isolated entities: list relationship types explicitly. Never `[:*]`.");
+  parts.push("");
+
+  return parts.join("\n");
 }
 
 // ── LLM helpers ──

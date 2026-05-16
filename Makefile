@@ -1,5 +1,6 @@
-.PHONY: help install server console lint format \
+.PHONY: install server console lint format \
         neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
+        embedding-server rerank-server \
         reset clean clean-all
 
 # MSYS2 bash can't resolve Windows-style paths inside the npm/npx
@@ -9,33 +10,6 @@ ifeq ($(OS),Windows_NT)
 else
   NPM := npm
 endif
-
-# Default target
-help:
-	@echo "Chorus — Development Commands"
-	@echo ""
-	@echo "Setup:"
-	@echo "  make install          Install npm dependencies"
-	@echo ""
-	@echo "Neo4j (Docker):"
-	@echo "  make neo4j-start      Start Neo4j test container"
-	@echo "  make neo4j-stop       Stop Neo4j test container"
-	@echo "  make neo4j-wait       Wait for Neo4j to be ready"
-	@echo "  make neo4j-status     Check Neo4j container status"
-	@echo "  make neo4j-logs       Tail Neo4j container logs"
-	@echo "  make neo4j-restart    Restart Neo4j container"
-	@echo "  make neo4j-clean      Stop container and remove volumes"
-	@echo ""
-	@echo "Chorus Server & Client:"
-	@echo "  make server           Start Express server (:3000)"
-	@echo "  make console          Start console REPL client"
-	@echo "  make lint             TypeScript type-check (tsc --noEmit) and unused check by knip"
-	@echo "  make format           Format source with Prettier"
-	@echo ""
-	@echo "Maintenance:"
-	@echo "  make reset            Clear DB, re-seed Neo4j (server must be running)"
-	@echo "  make clean            Remove build artifacts"
-	@echo "  make clean-all        Remove build artifacts + node_modules"
 
 install:
 	$(NPM) install
@@ -77,6 +51,12 @@ neo4j-clean:
 
 server:
 	$(NPM) run start:dev
+
+embedding-server:
+	llama-server -m data/models/Qwen3-Embedding-0.6B-Q8_0.gguf --port 8080 -c 32768 -ngl 99 --embeddings
+
+rerank-server:
+	llama-server -m data/models/Qwen3-Reranker-0.6B-Q8_0.gguf --port 8081 -c 32768 -ngl 99 --reranking
 
 console:
 	$(NPM) run console

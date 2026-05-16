@@ -25,38 +25,21 @@ export interface Reranker {
 }
 
 class HttpReranker implements Reranker {
-  private url: string;
-  private model: string;
-  private apiKey?: string;
-
-  constructor(url: string, model: string, apiKey?: string) {
-    this.url = url;
-    this.model = model;
-    this.apiKey = apiKey;
-  }
+  constructor(private url: string) {}
 
   async rerank(
     query: string,
     documents: string[],
     topN?: number,
   ): Promise<Array<{ index: number; score: number }>> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (this.apiKey) {
-      headers["Authorization"] = `Bearer ${this.apiKey}`;
-    }
-
-    const body: Record<string, unknown> = {
-      model: this.model,
-      query,
-      documents,
-    };
+    const body: Record<string, unknown> = { model: "reranking", query, documents };
     if (topN !== undefined) {
       body["top_n"] = topN;
     }
 
     const res = await fetch(this.url, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
@@ -77,16 +60,14 @@ let reranker: Reranker | null | undefined;
 export function getReranker(): Reranker | null {
   if (reranker !== undefined) return reranker;
 
-  const url = process.env.RERANK_API_URL;
+  const url = process.env.LLAMA_RERANK_URL;
   if (!url) {
     reranker = null;
     return null;
   }
 
-  const model = process.env.RERANK_MODEL || "qwen3-reranker-0.6b";
-  const apiKey = process.env.RERANK_API_KEY || undefined;
-  reranker = new HttpReranker(url, model, apiKey);
-  console.log(`[reranker] using ${model} at ${url}`);
+  reranker = new HttpReranker(url);
+  console.log(`[reranker] ${url}`);
   return reranker;
 }
 

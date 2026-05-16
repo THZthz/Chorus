@@ -72,7 +72,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                           │  vector     │                            │
 │                           └─────────────┘                            │
 │                                                                      │
-│  embedder.ts ── local ONNX (384d) or OpenAI-compatible API           │
+│  embedder.ts ── llama-server embeddings (LLAMA_EMBED_URL)           │
 │  neo4j.ts    ── driver wrapper with value normalization              │
 │  schema.ts   ── constraints + indexes (6 unique, 4 vector)           │
 └──────────────────────────────┬───────────────────────────────────────┘
@@ -131,7 +131,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   ├── types.ts       # Shared types (MemoryEntity, MemoryMessage, MemoryPlot, etc.)
     │   │   ├── neo4j.ts       # Neo4jClient — thin wrapper over neo4j-driver
     │   │   ├── schema.ts      # Index/constraint/vector index creation
-    │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
+    │   │   ├── embedder.ts    # llama-server embeddings via /v1/embeddings
     │   │   ├── reranker.ts    # Cross-encoder reranker for two-stage retrieval (optional, API-configured)
     │   │   ├── relationshipManager.ts  # RelationshipManager singleton — three-tier relationship type registry
     │   │   ├── nodeManager.ts  # NodeManager singleton — node label registry mirroring RelationshipManager
@@ -342,7 +342,7 @@ Managed by `schema.ts`, called once at startup:
 | `note_embedding_idx`    | Note    | _embedding | 384 (or API embedder dims) |
 | `plot_embedding_idx`    | Plot    | _embedding | 384 (or API embedder dims) |
 
-Vector dimensions are passed from the active embedder at startup (`embedder.dimensions`), so they adapt to the configured embedding provider.
+Vector dimensions are passed from the llama-server embedder at startup (`embedder.dimensions`).
 
 **Relationship types:**
 
@@ -387,12 +387,14 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 ### 9.4 Embeddings
 
-`embedder.ts` provides two strategies behind an `Embedder` interface:
+`embedder.ts` provides an `Embedder` interface backed by llama-server.
 
-- **`LocalEmbedder`**: `@xenova/transformers` with `Xenova/all-MiniLM-L6-v2` (384-dim, ~80MB ONNX). Uses mean pooling, processes sequentially to avoid ONNX memory pressure.
-- **`OpenAICompatibleEmbedder`**: Any OpenAI-compatible API (configurable via `EMBEDDING_API_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL` env vars). Default model `text-embedding-3-small` (1536-dim).
+| Variable | Purpose | Default |
+|---|---|---|
+| `LLAMA_EMBED_URL` | llama-server embeddings endpoint | `http://localhost:8080/v1/embeddings` |
+| `EMBEDDING_DIMENSIONS` | Vector dimension | `1024` |
 
-**Strategy pattern + Factory**: `getEmbedder()` returns a singleton, preferring API if credentials are set, otherwise local ONNX. The embedder is used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.
+**Factory**: `getEmbedder()` returns a singleton. Used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.
 
 ### 9.5 Reranker (Two-Stage Retrieval)
 
@@ -406,13 +408,9 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `RERANK_API_URL` | Reranker API endpoint (e.g. `http://localhost:8080/v1/rerank`) | (disabled if unset) |
-| `RERANK_API_KEY` | Optional auth token | — |
-| `RERANK_MODEL` | Model name sent to the API | `qwen3-reranker-0.6b` |
+| `LLAMA_RERANK_URL` | llama-server reranking endpoint | (disabled if unset) |
 
-**API protocol**: The `HttpReranker` sends `{ model, query, documents, top_n }` and expects `{ results: [{ index, relevance_score }] }` — compatible with llama-server, Jina, and Cohere rerank endpoints.
-
-**Factory**: `getReranker()` returns a singleton or `null` if `RERANK_API_URL` is unset. When `null`, search behaves as before (single-stage vector similarity).
+**API protocol**: The `HttpReranker` sends `{ query, documents, top_n }` and expects `{ results: [{ index, relevance_score }] }` — compatible with llama-server, Jina, and Cohere rerank endpoints.
 
 The debug search endpoints accept `?rerank=true` to force reranking for testing. Without the flag, reranking is automatic when the reranker is configured.
 
@@ -617,7 +615,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
 14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` tool or TOML `[[relationshipTypes]]`). Seed stories can define new relationship types without TypeScript changes.
 15. **NodeManager governs node labels** — a singleton registry (`nodeManager.ts`) mirrors `RelationshipManager` for node labels. Each node type stores a `name`, `description`, optional property schema, and `category`. INTERNAL types (`Conversation`, `GMTurnMessage`, `IdCounter`) are hidden from GM tools. `:NodeType` nodes in Neo4j let the GM discover available node types and their schemas via `queryWorld`. The `manageSchema` tool provides a structured interface for registering/unregistering GM-defined node and relationship types, replacing the previous regex-based auto-registration in `mutateWorld`.
-16. **Two-stage retrieval with reranker** — vector similarity alone is a coarse signal. When `RERANK_API_URL` is configured, search functions use two-stage retrieval: relaxed vector search (threshold 0.4, 3× more candidates) followed by cross-encoder reranking. This improves precision significantly — the reranker reads query and document text together, catching semantic relationships that cosine similarity on compressed vectors misses. The reranker is optional; search degrades gracefully to single-stage when not configured.
+16. **Two-stage retrieval with reranker** — vector similarity alone is a coarse signal. When `LLAMA_RERANK_URL` is configured, search functions use two-stage retrieval: relaxed vector search (threshold 0.4, 3× more candidates) followed by cross-encoder reranking. This improves precision significantly — the reranker reads query and document text together, catching semantic relationships that cosine similarity on compressed vectors misses. The reranker is optional; search degrades gracefully to single-stage when not configured.
 
 ---
 

@@ -22,108 +22,41 @@ export interface Embedder {
   readonly dimensions: number;
 }
 
-// Default model: all-MiniLM-L6-v2, 384 dimensions, ~80MB
-// Set EMBEDDING_LOCAL_MODEL_PATH to a directory containing models, e.g.:
-//   EMBEDDING_LOCAL_MODEL_PATH=data/huggingface
-// Expected structure: {EMBEDDING_LOCAL_MODEL_PATH}/Xenova/all-MiniLM-L6-v2/
-// {EMBEDDING_LOCAL_MODEL_PATH}
-// └── Xenova
-//     └── all-MiniLM-L6-v2
-//         ├── README.md
-//         ├── config.json
-//         ├── onnx
-//         │   ├── model.onnx
-//         │   └── model_quantized.onnx
-//         ├── special_tokens_map.json
-//         ├── tokenizer.json
-//         ├── tokenizer_config.json
-//         └── vocab.txt
-// Download from: https://huggingface.co/Xenova/all-MiniLM-L6-v2
-const DEFAULT_LOCAL_MODEL = "Xenova/all-MiniLM-L6-v2";
-const LOCAL_DIMENSIONS = 384;
-
-let localPipeline: unknown = null;
-
-async function getLocalPipeline() {
-  if (!localPipeline) {
-    const { pipeline, env } = await import("@xenova/transformers");
-    const modelPath = process.env.EMBEDDING_LOCAL_MODEL_PATH;
-    if (modelPath) {
-      env.localModelPath = modelPath.replace(/\\/g, "/");
-      env.allowRemoteModels = false;
-    }
-    localPipeline = await pipeline("feature-extraction", DEFAULT_LOCAL_MODEL);
-  }
-  return localPipeline as {
-    (text: string, options?: { pooling?: string }): Promise<{ data: Float32Array }>;
-  };
-}
-
-export class LocalEmbedder implements Embedder {
-  readonly dimensions = LOCAL_DIMENSIONS;
-
-  async embed(text: string): Promise<number[]> {
-    const pipe = await getLocalPipeline();
-    const result = await pipe(text, { pooling: "mean" });
-    return Array.from(result.data);
-  }
-
-  async embedBatch(texts: string[]): Promise<number[][]> {
-    // Process sequentially to avoid memory pressure from ONNX
-    const results: number[][] = [];
-    for (const text of texts) {
-      results.push(await this.embed(text));
-    }
-    return results;
-  }
-}
-
-export class OpenAICompatibleEmbedder implements Embedder {
+class LlamaEmbedder implements Embedder {
   readonly dimensions: number;
-  private baseURL: string;
-  private apiKey: string;
-  private model: string;
+  private url: string;
 
-  constructor(
-    baseURL: string,
-    apiKey: string,
-    model: string = "text-embedding-3-small",
-    dimensions: number = 1536,
-  ) {
-    this.baseURL = baseURL;
-    this.apiKey = apiKey;
-    this.model = model;
+  constructor(url: string, dimensions: number) {
+    this.url = url;
     this.dimensions = dimensions;
   }
 
-  async embed(text: string): Promise<number[]> {
-    const res = await fetch(`${this.baseURL}/embeddings`, {
+  private async post(body: unknown): Promise<number[][]> {
+    const res = await fetch(this.url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({ model: this.model, input: text }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-    const json = (await res.json()) as {
-      data: Array<{ embedding: number[] }>;
-    };
-    return json.data[0].embedding;
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Embedder returned ${res.status}: ${err.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as Record<string, unknown>;
+    if (json.data && Array.isArray(json.data)) {
+      return (json.data as Array<{ embedding?: number[] }>).map(
+        (d) => d.embedding || [],
+      );
+    }
+    throw new Error(`Embedder unexpected response: ${JSON.stringify(json).slice(0, 300)}`);
+  }
+
+  async embed(text: string): Promise<number[]> {
+    const embeddings = await this.post({ model: "embedding", input: text });
+    return embeddings[0];
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
-    const res = await fetch(`${this.baseURL}/embeddings`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({ model: this.model, input: texts }),
-    });
-    const json = (await res.json()) as {
-      data: Array<{ embedding: number[] }>;
-    };
-    return json.data.map((d) => d.embedding);
+    return this.post({ model: "embedding", input: texts });
   }
 }
 
@@ -132,16 +65,10 @@ let embedder: Embedder | null = null;
 export function getEmbedder(): Embedder {
   if (embedder) return embedder;
 
-  const apiUrl = process.env.EMBEDDING_API_URL;
-  const apiKey = process.env.EMBEDDING_API_KEY;
+  const url = process.env.LLAMA_EMBED_URL || "http://localhost:8080/v1/embeddings";
+  const dims = parseInt(process.env.EMBEDDING_DIMENSIONS || "1024", 10);
 
-  if (apiUrl && apiKey) {
-    const model = process.env.EMBEDDING_MODEL || "text-embedding-3-small";
-    const dims = parseInt(process.env.EMBEDDING_DIMENSIONS || "1536", 10);
-    embedder = new OpenAICompatibleEmbedder(apiUrl, apiKey, model, dims);
-  } else {
-    embedder = new LocalEmbedder();
-  }
-
+  embedder = new LlamaEmbedder(url, dims);
+  console.log(`[embedder] ${dims}d at ${url}`);
   return embedder;
 }

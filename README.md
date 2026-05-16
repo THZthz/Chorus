@@ -54,7 +54,7 @@ On first run, Neo4j is seeded with a default fantasy-steampunk world — charact
 
 ### World Memory
 
-All game state lives in Neo4j: characters, locations, objects, factions, plots, relationships, facts, and conversation history. The GM accesses it through 16 locally-defined AI SDK tools in `src/server/memory/tools.ts` — semantic search, graph traversal, entity CRUD, relationship management, and Cypher queries. Embeddings are generated locally via Xenova/ONNX with an optional OpenAI-compatible API fallback.
+All game state lives in Neo4j: characters, locations, objects, factions, plots, relationships, facts, and conversation history. The GM accesses it through 16 locally-defined AI SDK tools in `src/server/memory/tools.ts` — semantic search, graph traversal, entity CRUD, relationship management, and Cypher queries. Embeddings and reranking are served via llama-server (Qwen3-Embedding + Qwen3-Reranker).
 
 ### Skill Checks
 

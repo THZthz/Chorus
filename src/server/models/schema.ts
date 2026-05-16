@@ -17,6 +17,7 @@
  */
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
+import { NodeManager } from "@/server/memory/nodeManager";
 
 // ── Types ──
 
@@ -47,10 +48,6 @@ export interface RelationshipTypeDescription {
   category: string;
 }
 
-// ── Labels to exclude from the schema display ──
-
-const INTERNAL_LABELS = new Set(["GMTurnMessage", "IdCounter", "Conversation"]);
-
 // ── Queries ──
 
 export async function getSchemaVisualization(db: Neo4jClient): Promise<SchemaVisualization> {
@@ -74,7 +71,14 @@ export async function getSchemaVisualization(db: Neo4jClient): Promise<SchemaVis
         },
       };
     })
-    .filter((n) => !n.labels.some((l) => INTERNAL_LABELS.has(l)));
+    .filter((n) => {
+      const internalNames = new Set(
+        NodeManager.getCachedInstance()
+          .getByType("INTERNAL")
+          .map((d) => d.name),
+      );
+      return !n.labels.some((l) => internalNames.has(l));
+    });
 
   const relationships: SchemaRelationship[] = rawRels.map((r) => {
     const props = r as Record<string, unknown>;

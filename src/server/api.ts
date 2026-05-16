@@ -118,10 +118,13 @@ apiRouter.post("/reset", async (_req, res) => {
     await seedDatabase();
 
     // Reset in-memory GM_DEFINED types, then sync INTERNAL + PREDEFINED back to Neo4j
-    const manager = RelationshipManager.getCachedInstance();
-    manager.reset();
+    const relManager = RelationshipManager.getCachedInstance();
+    relManager.reset();
+    const nodeManager = (await import("@/server/memory/nodeManager")).NodeManager.getCachedInstance();
+    nodeManager.reset();
     const client = await MemoryClient.getInstance();
-    await manager.syncToNeo4j(client.neo4j);
+    await relManager.syncToNeo4j(client.neo4j);
+    await nodeManager.syncToNeo4j(client.neo4j);
 
     res.json({ success: true });
   } catch (error: unknown) {

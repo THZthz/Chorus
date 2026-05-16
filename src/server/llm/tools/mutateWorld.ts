@@ -20,7 +20,6 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 import { resetEntityForQuery } from "@/server/llm/sceneObserver";
@@ -33,7 +32,7 @@ export const mutateWorld = tool({
 Modify the game world using Cypher queries.
 Use to create/update/delete entities, move characters, set relationships, change NPC dispositions, and store player knowledge.
 Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove entities. Must include a WHERE clause when deleting.
-When creating a NEW relationship type (not LOCATED_AT, CARRIES, etc.), optionally provide 'description' to document what the type means — it will be stored as a :RelationshipType node for future reference.
+Before using a new node label or relationship type, register it via manageSchema (target: "node" or "relationship", action: "register").
 Never set a 'description' property directly on relationship instances in your Cypher.
 `.trim(),
   // NB: .nullable() on optional fields prevents Zod rejection when the LLM
@@ -43,13 +42,6 @@ Never set a 'description' property directly on relationship instances in your Cy
       .string()
       .describe(
         "A Cypher mutation query (CREATE, MERGE, SET, DELETE). Must include MATCH with WHERE for deletions.",
-      ),
-    description: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "When introducing a NEW relationship type, describe its meaning. Not needed for standard types like LOCATED_AT, CARRIES, HOSTILE_TOWARDS, ALLIED_WITH, LOCATED_IN.",
       ),
   }),
   execute: wrapSafe(async (args) => {
@@ -68,28 +60,6 @@ Never set a 'description' property directly on relationship instances in your Cy
       }
 
       const rows = await client.neo4j.executeWrite(args.query);
-
-      // Sync relationship types to Neo4j. The validator auto-registers unknown types
-      // with a placeholder description; if the GM provided a custom description, apply it.
-      try {
-        const manager = RelationshipManager.getCachedInstance();
-        const types = validator.extractRelationshipTypes(args.query);
-        if (args.description) {
-          for (const type of types) {
-            const existing = manager.get(type);
-            if (!existing) {
-              manager.register(type, args.description, "GM_DEFINED");
-            } else {
-              manager.updateDescription(type, args.description);
-            }
-          }
-        }
-        if (types.length > 0) {
-          await manager.syncToNeo4j(client.neo4j);
-        }
-      } catch {
-        // Relationship type sync is best-effort — never fail the tool for it
-      }
 
       // Auto-reset observer for entities whose description/brief changed
       try {

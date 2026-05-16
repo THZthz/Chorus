@@ -18,26 +18,8 @@
 
 import { TOOL_NAMES } from "@/shared/constants";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { NodeManager } from "@/server/memory/nodeManager";
 import type { Neo4jClient } from "@/server/memory/neo4j";
-
-const READ_ALLOWED_LABELS = new Set([
-  "Entity",
-  "Message",
-  "NPCDisposition",
-  "GameTime",
-  "TimePoint",
-  "TimeAnchor",
-  "RelationshipType",
-]);
-
-const WRITE_ALLOWED_LABELS = new Set([
-  "Entity",
-  "Message",
-  "NPCDisposition",
-  "GameTime",
-  "TimePoint",
-  "TimeAnchor",
-]);
 
 const BLOCKED_READ_CLAUSES = /\b(CREATE|MERGE|DELETE|SET|REMOVE|DETACH\s+DELETE|DROP)\b/i;
 const BLOCKED_DDL =
@@ -69,10 +51,15 @@ export class CypherValidator {
       );
     }
 
+    const nodeManager = NodeManager.getCachedInstance();
     for (const label of this.extractNodeLabels(query)) {
-      if (!READ_ALLOWED_LABELS.has(label)) {
+      if (!nodeManager.isAllowedForRead(label)) {
+        const allowed = nodeManager
+          .getAll()
+          .filter((n) => n.type !== "INTERNAL")
+          .map((n) => n.name);
         errors.push(
-          `Query references forbidden label \`:${label}\`. Allowed read labels: ${[...READ_ALLOWED_LABELS].join(", ")}`,
+          `Query references forbidden label \`:${label}\`. Allowed read labels: ${allowed.join(", ")}`,
         );
       }
     }
@@ -96,11 +83,22 @@ export class CypherValidator {
       );
     }
 
+    const nodeManager = NodeManager.getCachedInstance();
     for (const label of this.extractNodeLabels(query)) {
-      if (!WRITE_ALLOWED_LABELS.has(label)) {
-        errors.push(
-          `Query references forbidden label \`:${label}\`. Allowed write labels: ${[...WRITE_ALLOWED_LABELS].join(", ")}`,
-        );
+      if (!nodeManager.isAllowedForWrite(label)) {
+        if (!nodeManager.get(label)) {
+          errors.push(
+            `Unknown label \`:${label}\`. Use \`manageSchema\` (target: "node", action: "register") to register it with a description and property schema first.`,
+          );
+        } else {
+          const allowed = nodeManager
+            .getAll()
+            .filter((n) => nodeManager.isAllowedForWrite(n.name))
+            .map((n) => n.name);
+          errors.push(
+            `Label \`:${label}\` is read-only or internal. Allowed write labels: ${allowed.join(", ")}`,
+          );
+        }
       }
     }
 

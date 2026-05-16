@@ -25,6 +25,7 @@ import { MemorySearch } from "@/server/memory/search";
 import { Notes } from "@/server/memory/notes";
 import { Plots } from "@/server/memory/plots";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { NodeManager } from "@/server/memory/nodeManager";
 
 export { ShortTermMemory } from "@/server/memory/shortTerm";
 export { LongTermMemory } from "@/server/memory/longTerm";
@@ -75,6 +76,9 @@ export class MemoryClient {
 
     // Initialize RelationshipManager singleton (eager, idempotent)
     RelationshipManager.getCachedInstance();
+
+    // Initialize NodeManager singleton (eager, idempotent)
+    NodeManager.getCachedInstance();
 
     // Run TimePoint migration if needed (idempotent before seed runs)
     const { migrateToTimePoints } = await import("@/server/models/time");

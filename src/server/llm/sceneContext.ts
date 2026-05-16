@@ -19,6 +19,7 @@
 import { getGameTime, describeTime } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { NodeManager } from "@/server/memory/nodeManager";
 import { getObserver } from "@/server/llm/sceneObserver";
 import type { EntityRef } from "@/server/models/entity";
 import {
@@ -282,23 +283,32 @@ export async function buildFullSceneContext(): Promise<string> {
       logError("getGameTime", err);
       return { day: 1, segment: 2 };
     }),
-    db
-      .executeRead(
-        `MATCH (a)-[r]->(b)
-       WHERE NOT a:Message AND NOT a:Conversation AND NOT a:GMTurnMessage
-         AND NOT b:Message AND NOT b:Conversation AND NOT b:GMTurnMessage
-         AND NOT a:IdCounter AND NOT b:IdCounter
-         AND NOT a:RelationshipType AND NOT b:RelationshipType
-       RETURN labels(a) AS sourceLabels,
-              COALESCE(a.name, a._id) AS sourceName,
-              type(r) AS type,
-              labels(b) AS targetLabels,
-              COALESCE(b.name, b._id) AS targetName`,
-      )
-      .catch((err) => {
-        logError("relationships query", err);
-        return [] as Record<string, unknown>[];
-      }),
+    (() => {
+      const nodeManager = NodeManager.getCachedInstance();
+      const excluded = new Set(
+        nodeManager.getByType("INTERNAL").map((n) => n.name),
+      );
+      // Also exclude labels shown in dedicated dump sections
+      for (const name of ["Message", "RelationshipType", "NodeType"]) {
+        excluded.add(name);
+      }
+      const aClauses = [...excluded].map((l) => `NOT a:${l}`).join(" AND ");
+      const bClauses = [...excluded].map((l) => `NOT b:${l}`).join(" AND ");
+      return db
+        .executeRead(
+          `MATCH (a)-[r]->(b)
+           WHERE ${aClauses} AND ${bClauses}
+           RETURN labels(a) AS sourceLabels,
+                  COALESCE(a.name, a._id) AS sourceName,
+                  type(r) AS type,
+                  labels(b) AS targetLabels,
+                  COALESCE(b.name, b._id) AS targetName`,
+        )
+        .catch((err) => {
+          logError("relationships query", err);
+          return [] as Record<string, unknown>[];
+        });
+    })(),
     db
       .executeRead(
         `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(current:TimePoint)

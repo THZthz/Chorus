@@ -18,6 +18,7 @@
 
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { NodeManager } from "@/server/memory/nodeManager";
 import { CypherValidator } from "@/server/memory/validation";
 import { getActiveSeedStory } from "@/server/seed-stories";
 import { migrateToTimePoints } from "@/server/models/time";
@@ -53,6 +54,9 @@ export async function seedDatabase(): Promise<void> {
 
   // Always sync INTERNAL + PREDEFINED relationship types to Neo4j on startup
   await RelationshipManager.getCachedInstance().syncToNeo4j(client.neo4j);
+
+  // Sync INTERNAL + PREDEFINED node types to Neo4j on startup
+  await NodeManager.getCachedInstance().syncToNeo4j(client.neo4j);
 
   // Audit: log warnings for any relationship types in the graph missing a :RelationshipType node
   const validator = new CypherValidator();

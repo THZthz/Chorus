@@ -174,6 +174,15 @@ export class RelationshipManager {
     return true;
   }
 
+  // Remove a GM_DEFINED relationship type from the registry.
+  // Returns true if removed, false if type not found or wrong category.
+  unregister(name: string): boolean {
+    const def = this.registry.get(name);
+    if (!def || def.type !== "GM_DEFINED") return false;
+    this.registry.delete(name);
+    return true;
+  }
+
   // Clear all GM_DEFINED types from the registry (keeps INTERNAL + PREDEFINED).
   // Called on /api/reset.
   reset(): void {

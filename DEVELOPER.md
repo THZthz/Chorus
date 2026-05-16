@@ -39,9 +39,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                                                                      │
 │  streamText({                                                        │
 │    tools: {                                                          │
-│      queryWorld, mutateWorld, searchWorld, editNote,                │
-│      searchNotes, editPlot, searchPlots, resetSceneContext,          │
-│      ← llm/tools/ (8 GM tools)                                       │
+│      queryWorld, mutateWorld, manageSchema, searchWorld,               │
+│      editNote, searchNotes, editPlot, searchPlots,                     │
+│      ← llm/tools/ (9 GM tools)                                         │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
 │      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
@@ -82,7 +82,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                         NEO4J DATABASE                               │
 │  Node labels: Conversation, Message, Entity, NPCDisposition,         │
 │  Note, Plot, TimeAnchor, TimePoint, GMTurnMessage, RelationshipType,  │
-│  IdCounter                                                            │
+│  NodeType, IdCounter                                                    │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -133,6 +133,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   ├── schema.ts      # Index/constraint/vector index creation
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
     │   │   ├── relationshipManager.ts  # RelationshipManager singleton — three-tier relationship type registry
+    │   │   ├── nodeManager.ts  # NodeManager singleton — node label registry mirroring RelationshipManager
     │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
     │   │   ├── longTerm.ts    # Entities (COLE+O variant of POLE+O — CHARACTER replaces PERSON), preferences, facts, relationships
     │   │   ├── search.ts      # Parallel hybrid vector search across memory types
@@ -173,7 +174,7 @@ POST /api/chat/stream
 │                                                      │
 │  streamText({                                        │
 │    tools: {                                          │
-│      ← 7 Neo4j-backed tools from llm/tools/          │
+│      ← 9 Neo4j-backed tools from llm/tools/          │
 │      generateDialogueStep  ──► SSE streaming         │
 │      advanceTime           ──► DB + SSE event        │
 │    },                                                │
@@ -238,17 +239,18 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 **Neo4j-backed GM tools**:
 
-| Tool           | Purpose                                                                  |
-|----------------|--------------------------------------------------------------------------|
-| `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator |
-| `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships         |
-| `searchWorld` | Vector search across entities and messages                               |
-| `editNote`     | Create/update/delete GM notes with vector embedding                      |
-| `searchNotes`  | Vector search across notes                                               |
-| `editPlot`     | Plot lifecycle management (beats, branches, flags)                       |
-| `searchPlots`  | Vector search across plots                                               |
+| Tool             | Purpose                                                                  |
+|------------------|--------------------------------------------------------------------------|
+| `queryWorld`     | Read-only Cypher queries, confined to allowed labels via CypherValidator |
+| `mutateWorld`    | Write Cypher queries, confined to allowed labels + relationships         |
+| `manageSchema`   | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
+| `searchWorld`   | Vector search across entities and messages                               |
+| `editNote`       | Create/update/delete GM notes with vector embedding                      |
+| `searchNotes`    | Vector search across notes                                               |
+| `editPlot`       | Plot lifecycle management (beats, branches, flags)                       |
+| `searchPlots`    | Vector search across plots                                               |
 
-All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 11 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -375,7 +377,9 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 **:RelationshipType nodes:** Relationship type descriptions are stored as dedicated `:RelationshipType` nodes in Neo4j with properties `name` (the type name, e.g. `LOCATED_AT`), `description` (human-readable meaning), and `category` (`INTERNAL`, `PREDEFINED`, or `GM_DEFINED`). These are synced from the `RelationshipManager` singleton on every server startup (before the seed guard, so the sync always runs) and after `/api/reset` (after clearing and re-seeding). The GM can query `:RelationshipType` nodes via `queryWorld` to discover available relationship types and their meanings.
 
-**Relationship type governance:** `relationshipManager.ts` provides a `RelationshipManager` singleton — the single source of truth for all relationship types. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared in TOML or auto-registered at runtime). The `CypherValidator` queries the manager instead of a hardcoded allowlist. New relationship types can be declared per seed story via `[[relationshipTypes]]` in the TOML. The `RelationshipManager` provides `syncToNeo4j(client)` to persist all types as `:RelationshipType` nodes, `updateDescription(name, desc)` to update GM_DEFINED type descriptions, and `reset()` to clear GM_DEFINED types (called on `/api/reset`).
+**Relationship type governance:** `relationshipManager.ts` provides a `RelationshipManager` singleton — the single source of truth for all relationship types. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` or seed story TOML). The `CypherValidator` queries the manager instead of a hardcoded allowlist. New relationship types can be declared per seed story via `[[relationshipTypes]]` in the TOML, or at runtime via the `manageSchema` tool. The `RelationshipManager` provides `syncToNeo4j(client)` to persist all types as `:RelationshipType` nodes, `updateDescription(name, desc)` to update GM_DEFINED type descriptions, `unregister(name)` to remove GM_DEFINED types, and `reset()` to clear GM_DEFINED types (called on `/api/reset`).
+
+**Node type governance:** `nodeManager.ts` provides a `NodeManager` singleton that mirrors `RelationshipManager` for node labels. Each node type stores a `name`, `description`, optional property schema (`{name, description, type}[]`), and `category` (`INTERNAL`, `PREDEFINED`, or `GM_DEFINED`). INTERNAL types (`Conversation`, `GMTurnMessage`, `IdCounter`) are hidden from GM tools entirely. PREDEFINED types (`Entity`, `Message`, `Note`, `Plot`, `NPCDisposition`, `TimePoint`, `TimeAnchor`, `GameTime`) are readable and writable. `RelationshipType` and `NodeType` are readable but write-blocked (the GM uses `manageSchema` instead). Node types are synced to Neo4j as `:NodeType` nodes so the GM can discover available node types and their property schemas via `queryWorld`. The `CypherValidator` uses `NodeManager` instead of the previously hardcoded `READ_ALLOWED_LABELS` / `WRITE_ALLOWED_LABELS` sets.
 
 ### 9.4 Embeddings
 
@@ -573,7 +577,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 ## 13. Key Design Decisions
 
 1. **World state in Neo4j** — entities, observations, relationships, and game time stored in Neo4j via local memory module
-2. **Tools statically defined** — all 10 tools (2 Chorus + 8 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
+2. **Tools statically defined** — all 11 tools (2 Chorus + 9 Neo4j-backed) registered in `generateTurn()`; no dynamic discovery
 3. **LLM text output silently discarded** — the system prompt instructs tool-only output; text deltas are ignored
 4. **No static dialogue** — all narrative is AI-generated
 5. **Shared event types** — `src/shared/events.ts` ensures backend/console event contracts match
@@ -585,7 +589,8 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 11. **`_` prefix = hidden property** — any Neo4j node/relationship property starting with `_` (e.g. `_embedding`) is internal and must never be exposed to the LLM. `stripHiddenProperties()` in `neo4j.ts` recursively strips `_`-prefixed keys. Applied at GM tool boundaries (`queryWorld`, `searchWorld`). Also auto-hides `_elementId`, `_labels`, `_type`, etc. injected by `unwrapRecord`.
 12. **Neo4j properties use snake_case** — all node/relationship property names in Neo4j use `snake_case` (`created_at`, `trigger_condition`, `npc_name`, `target_name`). TypeScript interfaces use camelCase (`createdAt`, `triggerCondition`, `npcName`, `targetName`) — parsers map between them.
 13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
-14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared in TOML `[[relationshipTypes]]` or auto-registered at runtime). Seed stories can define new relationship types without TypeScript changes.
+14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` tool or TOML `[[relationshipTypes]]`). Seed stories can define new relationship types without TypeScript changes.
+15. **NodeManager governs node labels** — a singleton registry (`nodeManager.ts`) mirrors `RelationshipManager` for node labels. Each node type stores a `name`, `description`, optional property schema, and `category`. INTERNAL types (`Conversation`, `GMTurnMessage`, `IdCounter`) are hidden from GM tools. `:NodeType` nodes in Neo4j let the GM discover available node types and their schemas via `queryWorld`. The `manageSchema` tool provides a structured interface for registering/unregistering GM-defined node and relationship types, replacing the previous regex-based auto-registration in `mutateWorld`.
 
 ---
 

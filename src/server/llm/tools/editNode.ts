@@ -22,6 +22,7 @@ import { v4 as uuidv4 } from "uuid";
 import { MemoryClient } from "@/server/memory/client";
 import { NodeManager } from "@/server/memory/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import { getObserver } from "@/server/llm/sceneObserver";
 import { TOOL_NAMES } from "@/shared/constants";
 
 const NODE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
@@ -220,6 +221,21 @@ Properties are validated against the registered schema — unknown property name
       `MATCH (n:\`${args.nodeLabel}\`) WHERE ${where} SET ${setters.join(", ")}`,
       setParams,
     );
+
+    // Reset scene observer for entities whose description/brief changed
+    if (
+      (args.properties.description !== undefined || args.properties.brief !== undefined)
+    ) {
+      const entityName =
+        (existing[0]?.n as Record<string, unknown> | undefined)?.name as string | undefined;
+      if (entityName) {
+        try {
+          getObserver().resetEntity(entityName);
+        } catch {
+          // Best-effort
+        }
+      }
+    }
 
     return `Node "${args.nodeLabel}" updated properties: ${Object.keys(args.properties).join(", ")}.`;
   }, TOOL_NAMES.EDIT_NODE),

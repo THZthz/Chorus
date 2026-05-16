@@ -40,9 +40,8 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │  streamText({                                                        │
 │    tools: {                                                          │
 │      queryWorld, mutateWorld, manageSchema, searchWorld,             │
-│      editNote, editPlot,                                             │
 │      editNode, editRelationship,                                     │
-│      ← llm/tools/ (11 GM tools)                                   │
+│      ← llm/tools/ (7 GM tools)                                    │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
 │      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
@@ -122,10 +121,8 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │       ├── queryWorld.ts            # Read-only Cypher queries (label-confined)
     │   │       ├── mutateWorld.ts           # Write Cypher queries (label+rel-confined)
     │   │       ├── searchWorld.ts          # Unified vector search (entities, messages, notes, plots)
-    │   │       ├── editNote.ts              # Create/update/delete GM notes
-    │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
     │   │       ├── manageSchema.ts          # Register/unregister node & relationship types
-    │   │       ├── editNode.ts              # Create/update/delete world nodes (generic, schema-validated)
+    │   │       ├── editNode.ts              # Create/update/delete any node (generic, schema-validated, auto-embedding)
     │   │       ├── editRelationship.ts      # Create/delete relationships between nodes (generic, schema-validated)
     │   │       └── shared.ts               # Helpers: checkText (character filter), wrapSafe
     │   ├── memory/
@@ -248,12 +245,10 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships                                  |
 | `manageSchema` | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
 | `searchWorld`  | Unified vector search across entities, messages, notes, and plots — select domains via `types` |
-| `editNote`     | Create/update/delete GM notes with vector embedding                                               |
-| `editPlot`     | Plot lifecycle management (beats, branches, flags)                                                |
-| `editNode`     | Create/update/delete world nodes using schema-registered types — validates properties against NodeManager |
+| `editNode`     | Create/update/delete any world node (entities, notes, plots, GM-defined types) — validates properties against NodeManager, auto-generates embeddings |
 | `editRelationship` | Create/delete relationships between nodes using schema-registered types — validates against RelationshipManager |
 
-All 11 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -542,9 +537,7 @@ generateTurn()
   │     ├─► queryWorld ──► CypherValidator.validateRead → Neo4j
   │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.*
   │     ├─► searchWorld ──► client.search / client.notes / client.plots
-  │     ├─► editNote ──► client.notes.*
-  │     ├─► editPlot ──► client.plots.*
-  │     ├─► editNode ──► NodeManager + Neo4j (generic node CRUD)
+  │     ├─► editNode ──► NodeManager + Embedder + Neo4j (generic node CRUD)
   │     ├─► editRelationship ──► RelationshipManager + Neo4j (generic relationship CRUD)
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)
   │     └─► generateDialogueStep ──► SSE + persist messages (supports isCorrection flag for targeted retries)

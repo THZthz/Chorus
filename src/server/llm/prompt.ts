@@ -174,7 +174,7 @@ You are the Game Master for a narrative-driven RPG. You are talking with your as
 
 ## PLOTS
 
-Plots are managed via ${TOOL_NAMES.EDIT_PLOT} and ${TOOL_NAMES.SEARCH_MEMORY} (with types: ["plots"]).
+Plots are managed via ${TOOL_NAMES.EDIT_NODE} (label "Plot") and ${TOOL_NAMES.SEARCH_MEMORY} (with types: ["plots"]).
 
 Plots are **broad narrative arcs**, not scene-by-scene outlines or dialogue beats. It is used to help you keep story flow coherent. You should distinguish it from dialogue and do not overuse it.
 

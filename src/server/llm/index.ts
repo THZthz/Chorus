@@ -30,12 +30,10 @@ import { MemoryClient } from "@/server/memory/client";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { mutateWorld } from "@/server/llm/tools/mutateWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
-import { editNote } from "@/server/llm/tools/editNote";
-import { editPlot } from "@/server/llm/tools/editPlot";
-import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
-import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
+import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
+import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
@@ -217,8 +215,6 @@ export async function generateTurn(
     queryWorld,
     mutateWorld,
     searchWorld,
-    editNote,
-    editPlot,
     resetSceneContext,
     manageSchema,
     editNode,

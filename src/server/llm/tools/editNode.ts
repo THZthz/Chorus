@@ -23,11 +23,12 @@ import { MemoryClient } from "@/server/memory/client";
 import { NodeManager } from "@/server/memory/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { getObserver } from "@/server/llm/sceneObserver";
+import { getEmbedder } from "@/server/memory/embedder";
 import { TOOL_NAMES } from "@/shared/constants";
 
 const NODE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 
-const SYSTEM_PROPS = new Set(["_id", "_created_at", "_updated_at"]);
+const SYSTEM_PROPS = new Set(["_id", "_created_at", "_updated_at", "_embedding"]);
 
 function visibleProps(
   node: Record<string, unknown> | undefined,
@@ -62,7 +63,7 @@ const inputSchema = z.object({
     .describe(
       "Key-value pairs to set on the node. Must match the property schema for this node type. " +
         "CREATE: sets initial properties. UPDATE: only include properties you want to change. " +
-        "System properties (_id, _created_at, _updated_at) are managed automatically.",
+        "System properties (_id, _created_at, _updated_at, _embedding) are managed automatically.",
     ),
 });
 
@@ -125,6 +126,24 @@ Properties are validated against the registered schema — unknown property name
       return null;
     }
 
+    const wantsEmbedding = nodeDef.properties.some((p) => p.name === "_embedding");
+
+    async function computeEmbedding(
+      props: Record<string, unknown>,
+    ): Promise<number[] | null> {
+      const name = String(props.name ?? "");
+      const text = String(props.description ?? props.content ?? "");
+      const embedText = name && text ? `${name}: ${text}` : name || text;
+      if (!embedText) return null;
+      try {
+        const embedder = getEmbedder();
+        return await embedder.embed(embedText);
+      } catch {
+        console.warn(`[editNode] embedding failed for "${args.nodeLabel}"`);
+        return null;
+      }
+    }
+
     function buildWhere(
       match: Record<string, string>,
       params: Record<string, unknown>,
@@ -173,6 +192,13 @@ Properties are validated against the registered schema — unknown property name
         setters.push(`n.\`${key}\` = $${pName}`);
       }
 
+      if (wantsEmbedding) {
+        const emb = await computeEmbedding(args.properties);
+        const embParam = `p__embedding`;
+        params[embParam] = emb ?? [];
+        setters.push(`n._embedding = $${embParam}`);
+      }
+
       const rows = await client.neo4j.executeWrite(
         `CREATE (n:\`${args.nodeLabel}\`) SET ${setters.join(", ")} RETURN n`,
         params,
@@ -215,6 +241,18 @@ Properties are validated against the registered schema — unknown property name
       const pName = `s_${key}`;
       setParams[pName] = value;
       setters.push(`n.\`${key}\` = $${pName}`);
+    }
+
+    if (wantsEmbedding) {
+      const embKeys = new Set(["name", "description", "content", "brief"]);
+      const textChanged = Object.keys(args.properties).some((k) => embKeys.has(k));
+      if (textChanged) {
+        const existingNode = existing[0]?.n as Record<string, unknown> | undefined;
+        const merged: Record<string, unknown> = { ...existingNode, ...args.properties };
+        const emb = await computeEmbedding(merged);
+        setters.push(`n._embedding = $s__embedding`);
+        setParams["s__embedding"] = emb ?? [];
+      }
     }
 
     await client.neo4j.executeWrite(

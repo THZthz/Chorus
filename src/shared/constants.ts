@@ -68,8 +68,6 @@ export const TOOL_NAMES = {
   GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
   SEARCH_MEMORY: "searchWorld",
-  EDIT_NOTE: "editNote",
-  EDIT_PLOT: "editPlot",
   RESET_SCENE_CONTEXT: "resetSceneContext",
   MANAGE_SCHEMA: "manageSchema",
   EDIT_NODE: "editNode",

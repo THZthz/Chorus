@@ -34,6 +34,8 @@ export interface SchemaRelationship {
   properties: {
     name: string;
   };
+  sourceLabels: string[];
+  targetLabels: string[];
 }
 
 export interface SchemaVisualization {
@@ -61,6 +63,14 @@ export async function getSchemaVisualization(db: Neo4jClient): Promise<SchemaVis
   const rawNodes = (row.nodes as Array<Record<string, unknown>>) || [];
   const rawRels = (row.relationships as Array<Record<string, unknown>>) || [];
 
+  // Build elementId → labels map for resolving relationship directions
+  const labelsByElementId = new Map<string, string[]>();
+  for (const n of rawNodes) {
+    const id = n._elementId as string | undefined;
+    const labels = (n._labels as string[]) || [];
+    if (id) labelsByElementId.set(id, labels);
+  }
+
   const nodes: SchemaNode[] = rawNodes
     .map((n) => {
       const labels = (n._labels as string[]) || [];
@@ -78,11 +88,15 @@ export async function getSchemaVisualization(db: Neo4jClient): Promise<SchemaVis
 
   const relationships: SchemaRelationship[] = rawRels.map((r) => {
     const props = r as Record<string, unknown>;
+    const startId = r._startNodeElementId as string | undefined;
+    const endId = r._endNodeElementId as string | undefined;
     return {
       type: (r._type as string) || (props.name as string) || "Unknown",
       properties: {
         name: (props.name as string) || (r._type as string) || "Unknown",
       },
+      sourceLabels: (startId && labelsByElementId.get(startId)) || [],
+      targetLabels: (endId && labelsByElementId.get(endId)) || [],
     };
   });
 
@@ -102,6 +116,40 @@ export async function getRelationshipTypeDescriptions(
     description: (r.description as string) || "",
     category: (r.category as string) || "PREDEFINED",
   }));
+}
+
+const PROPS_EXCLUDE = new Set([
+  "GMTurnMessage", "IdCounter", "Conversation",
+]);
+
+export async function getNodeProperties(
+  db: Neo4jClient,
+): Promise<Map<string, string[]>> {
+  const labelRows = await db.executeRead("CALL db.labels() YIELD label RETURN label");
+  const allLabels = labelRows.map((r) => r.label as string);
+  const visible = allLabels.filter((l) => !PROPS_EXCLUDE.has(l));
+
+  const results = await Promise.all(
+    visible.map(async (label) => {
+      try {
+        const rows = await db.executeRead(`MATCH (n:\`${label}\`) RETURN n LIMIT 1`);
+        if (rows.length > 0) {
+          const n = rows[0].n as Record<string, unknown>;
+          const props = Object.keys(n)
+            .filter((k) => k !== "_elementId" && k !== "_labels")
+            .sort();
+          return { label, props };
+        }
+      } catch { /* label may not support direct matching */ }
+      return { label, props: [] };
+    }),
+  );
+
+  const map = new Map<string, string[]>();
+  for (const { label, props } of results) {
+    map.set(label, props);
+  }
+  return map;
 }
 
 // ── Formatters ──

@@ -1,7 +1,7 @@
 import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
-import { getSchemaVisualization, getRelationshipTypeDescriptions, formatSchemaMarkdown } from "@/server/models/schema";
+import { getSchemaVisualization, getRelationshipTypeDescriptions, getNodeProperties, formatSchemaMarkdown } from "@/server/models/schema";
 
 const AUTO_LIMIT = 50;
 const MAX_FORMAT_ROWS = 25;
@@ -50,13 +50,16 @@ export async function buildCypherTranslatorSystemPrompt(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
   const db = client.neo4j;
 
-  const [schemaVis, relTypeDescs] = await Promise.all([
+  const [schemaVis, relTypeDescs, nodeProps] = await Promise.all([
     getSchemaVisualization(db),
     getRelationshipTypeDescriptions(db),
+    getNodeProperties(db),
   ]);
 
-  const schemaSection = formatSchemaMarkdown(schemaVis, relTypeDescs);
-  const dynamicRules = buildDynamicRules(schemaVis, relTypeDescs);
+  // Node labels + indexes from schema; relationship types handled by buildDynamicRules
+  const schemaSection = formatSchemaMarkdown(schemaVis, relTypeDescs)
+    .replace(/\n### Relationship Types\n[\s\S]*/, ""); // strip duplicate — buildDynamicRules has descriptions
+  const dynamicRules = buildDynamicRules(schemaVis, relTypeDescs, nodeProps);
 
   return `
 You are a precise Cypher query generator for a Neo4j-backed RPG engine.
@@ -75,6 +78,7 @@ Respond with ONLY the raw Cypher query. No code fences. No explanation. No markd
 function buildDynamicRules(
   schemaVis: import("@/server/models/schema").SchemaVisualization,
   relTypeDescs: import("@/server/models/schema").RelationshipTypeDescription[],
+  nodeProps: Map<string, string[]>,
 ): string {
   const parts: string[] = [];
 
@@ -87,12 +91,14 @@ function buildDynamicRules(
     if (seenTypes.has(rel.type)) continue;
     seenTypes.add(rel.type);
     const desc = descByName.get(rel.type);
+    const src = rel.sourceLabels?.join("/") || "?";
+    const tgt = rel.targetLabels?.join("/") || "?";
     if (rel.type.startsWith("_")) {
-      parts.push(`- **${rel.type}** (INTERNAL — never query)`);
+      parts.push(`- **${rel.type}** (${src})→(${tgt}) — INTERNAL, never query`);
     } else if (desc) {
-      parts.push(`- **${rel.type}** (${desc.category}): ${desc.description}`);
+      parts.push(`- **${rel.type}** (${src})→(${tgt}) (${desc.category}): ${desc.description}`);
     } else {
-      parts.push(`- **${rel.type}**`);
+      parts.push(`- **${rel.type}** (${src})→(${tgt})`);
     }
   }
   parts.push("");
@@ -106,12 +112,25 @@ function buildDynamicRules(
     .filter((l) => nodeLabels.has(l));
 
   // Node-specific notes
-  parts.push("## NODE NOTES");
-  if (entitySubs.length > 0) {
-    parts.push(`- Dynamic Entity sub-labels: ${entitySubs.sort().join(", ")}. Use \`:Entity\` as base.`);
+  parts.push("## NODE PROPERTIES");
+  const sortedLabels = [...nodeLabels].filter((l) =>
+    !l.startsWith("_") && l !== "IdCounter" && l !== "Conversation" && l !== "GMTurnMessage"
+  ).sort();
+  for (const label of sortedLabels) {
+    const props = nodeProps.get(label);
+    const propList = props?.length ? props.filter((p) => !p.startsWith("_")).join(", ") : "(none)";
+    const hidden = props?.filter((p) => p.startsWith("_")).join(", ") || "";
+    let line = `- **${label}**: ${propList}`;
+    if (hidden) line += ` (internal: ${hidden})`;
+    if (entitySubs.includes(label)) line += " — dynamic Entity sub-label, inherits all Entity properties above";
+    parts.push(line);
   }
   if (nodeLabels.has("NPCDisposition")) {
-    parts.push('- **NPCDisposition is a NODE**, not a relationship. Use `[:HAS_DISPOSITION]->(d:NPCDisposition {...})`. Match by `{target_name: "Player"}`.');
+    // Replace generic NPCDisposition line with more detailed note
+    const idx = parts.findIndex((l) => l.startsWith("- **NPCDisposition**"));
+    if (idx !== -1) {
+      parts[idx] += ' — **NODE, not a relationship**. Match dispositions with `(npc:Entity)-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"})`.';
+    }
   }
   parts.push('- The Player is `MATCH (p:Entity {name: "Player"})`.');
   parts.push("");

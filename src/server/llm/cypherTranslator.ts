@@ -111,30 +111,42 @@ NPCDisposition is a NODE, not a relationship. To get disposition: \`MATCH (npc:E
 - In WHERE NOT, don't bind variables: \`WHERE NOT (e)-[:REL]->()\` not \`WHERE NOT (e)-[r:REL]->()\`.
 - To query Message history: \`MATCH (m:Message) RETURN m.role, m.content, m.timestamp ORDER BY m.timestamp DESC LIMIT 10\`.
 
-## OUTPUT FORMAT
+## OUTPUT
 
-\`\`\`cypher
-<the Cypher query here>
-\`\`\`
-<1-sentence summary of what this queries>
+Respond with ONLY the raw Cypher query. No code fences. No explanation. No markdown. No prefix like "cypher". Just the query text, starting with MATCH.
 `.trim();
 }
 
 // ── LLM helpers ──
 
 function parseQueryResponse(raw: string): TranslateResult {
-  const cleaned = raw.trim();
+  let text = raw.trim();
 
-  const queryMatch = cleaned.match(/<<<QUERY>>>\s*([\s\S]*?)<<<EXPLANATION>>>/i);
-  const query = queryMatch?.[1]?.trim() || "";
+  // Strip code fences
+  text = text.replace(/^```(?:cypher|sql|graphql)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
 
-  const explanationIdx = cleaned.lastIndexOf("<<<EXPLANATION>>>");
-  let explanation = "";
-  if (explanationIdx !== -1) {
-    explanation = cleaned.slice(explanationIdx + "<<<EXPLANATION>>>".length).trim();
+  // Strip leading "cypher" / "cypher\n" prefix the model sometimes emits
+  text = text.replace(/^cypher\s*\n?/i, "").trim();
+
+  // If the text starts with MATCH, CALL, or EXPLAIN, it's likely the query
+  if (/^(MATCH|CALL|EXPLAIN|OPTIONAL|RETURN)\b/i.test(text)) {
+    const explanation = text.split("\n").slice(-1)[0]?.trim() || "Query executed.";
+    // Extract query: everything up to the last non-empty line that looks like Cypher
+    const lines = text.split("\n");
+    // Remove trailing explanation lines (those starting with lowercase, "This", "The", etc.)
+    while (lines.length > 0 && /^(This|The|A|An|It|Returns|Finds|Lists|Shows|Retrieves|Matches)\b/.test(lines[lines.length - 1].trim())) {
+      lines.pop();
+    }
+    return { query: lines.join("\n").trim(), explanation };
   }
 
-  return { query, explanation };
+  // Last resort: search for MATCH...RETURN pattern anywhere in the text
+  const match = text.match(/(MATCH\s+[\s\S]*?RETURN\s+[\s\S]*?)(?:\n\n|\n\w|$)/i);
+  if (match?.[1]) {
+    return { query: match[1].trim(), explanation: "Query extracted from response." };
+  }
+
+  return { query: "", explanation: "" };
 }
 
 async function llmChat(
@@ -185,8 +197,8 @@ async function translateIntent(
   const raw = await llmChat(llmUrl, systemPrompt, `Intent: ${intent}`);
   const result = parseQueryResponse(raw);
   if (!result.query) {
-    console.error("[cypherTranslator] parseQueryResponse failed, raw (first 500):", raw.slice(0, 500));
-    throw new Error("LLM did not return a parseable query. Ensure <<<QUERY>>> and <<<EXPLANATION>>> tags are present.");
+    console.error("[cypherTranslator] no query found in response, raw:", raw);
+    throw new Error(`LLM did not return a recognizable Cypher query. Raw output:\n${raw.slice(0, 300)}`);
   }
   return result;
 }

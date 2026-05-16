@@ -22,6 +22,11 @@ import type { Neo4jClient } from "@/server/memory/neo4j";
 
 const READ_ALLOWED_LABELS = new Set([
   "Entity",
+  "Character",
+  "Object",
+  "Location",
+  "Organization",
+  "Event",
   "Message",
   "NPCDisposition",
   "GameTime",

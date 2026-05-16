@@ -4,7 +4,8 @@ param(
   [switch]$Basic,
   [switch]$Complex,
   [switch]$Batch,
-  [switch]$Edge
+  [switch]$Edge,
+  [switch]$Failed
 )
 $base = "http://localhost:3000"
 $jq = '.results[] | "\n============================================================\nINTENT: \(.intent)\nQUERY: \(.result.query // "N/A")\nROWS: \(.result.rowCount // 0)\n============================================================\n\n\(.result.markdown // "ERROR: \(.error)")\n"'
@@ -58,9 +59,22 @@ $edgeIntents = @(
   "Show the conversation history between Player and Veyla, ordered by time"
 )
 
-$runAll = $All -or (-not ($Basic -or $Complex -or $Batch -or $Edge))
+# ── Previously-failed cases (targeted regression test) ──
+$failedIntents = @(
+  "List all NPCDisposition entries toward the Player",
+  "Show all active and in-progress plots with their status and trigger condition",
+  "Find all characters at the player location along with their disposition toward the player",
+  "Find all locations and list who and what is at each one, including objects carried by characters there",
+  "List all notes linked to the player character via ABOUT_ENTITY",
+  "Find locations that have no characters present at them",
+  "List all relationship types in use with example connections",
+  "Show the conversation history between Player and Veyla, ordered by time"
+)
+
+$runAll = $All -or (-not ($Basic -or $Complex -or $Batch -or $Edge -or $Failed))
 
 if ($runAll -or $Basic)   { Run-Intents "BASIC"   $basicIntents }
 if ($runAll -or $Complex) { Run-Intents "COMPLEX" $complexIntents }
 if ($runAll -or $Batch)   { Run-Intents "BATCH"   $batchIntents }
 if ($runAll -or $Edge)    { Run-Intents "EDGE"    $edgeIntents }
+if ($Failed)              { Run-Intents "REGRESSION" $failedIntents }

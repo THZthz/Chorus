@@ -98,6 +98,6 @@ export interface PlayerCondition {
 }
 
 export interface SearchResults {
-  messages: Array<MemoryMessage & { similarity: number }>;
-  entities: Array<MemoryEntity & { similarity: number }>;
+  messages: Array<MemoryMessage & { similarity: number; relevance?: number }>;
+  entities: Array<MemoryEntity & { similarity: number; relevance?: number }>;
 }

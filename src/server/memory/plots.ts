@@ -20,6 +20,7 @@ import { v4 as uuidv4 } from "uuid";
 import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
+import { getReranker, extractSearchTexts, applyRerank } from "@/server/memory/reranker";
 import type { MemoryPlot, PlotFlag, PlotStatus } from "@/server/memory/types";
 
 export class Plots {
@@ -234,22 +235,39 @@ export class Plots {
 
   async searchPlots(
     query: string,
-    options?: { limit?: number; threshold?: number },
-  ): Promise<Array<MemoryPlot & { similarity: number }>> {
-    const { limit = 10, threshold = 0.7 } = options || {};
+    options?: { limit?: number; threshold?: number; rerank?: boolean },
+  ): Promise<Array<MemoryPlot & { similarity: number; relevance?: number }>> {
+    const { limit = 10, threshold, rerank } = options || {};
+
+    const useRerank = rerank !== false && getReranker() !== null;
+    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
+    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+
     const queryEmbedding = await this.embedder.embed(query);
 
     const rows = await this.client.executeRead(
       `CALL db.index.vector.queryNodes('plot_embedding_idx', $limit, $embedding)
        YIELD node AS p, score WHERE score >= $threshold
        RETURN p, score ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit: int(limit), threshold },
+      { embedding: queryEmbedding, limit: int(fetchLimit), threshold: effectiveThreshold },
     );
 
-    return rows.map((r) => ({
+    const parsed = rows.map((r) => ({
       ...this.parsePlot(r.p as Record<string, unknown>),
       similarity: r.score as number,
     }));
+
+    if (useRerank && parsed.length > 0) {
+      const items = extractSearchTexts(parsed, "plot");
+      const reranked = await applyRerank(query, items, limit);
+      return reranked.map((r) => ({
+        ...r,
+        similarity: r.similarity as number,
+        relevance: r.relevance,
+      }));
+    }
+
+    return parsed;
   }
 
   // ── Time Relationships ──

@@ -132,6 +132,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   ├── neo4j.ts       # Neo4jClient — thin wrapper over neo4j-driver
     │   │   ├── schema.ts      # Index/constraint/vector index creation
     │   │   ├── embedder.ts    # Local embeddings (Xenova/ONNX) + OpenAI-compatible fallback
+    │   │   ├── reranker.ts    # Cross-encoder reranker for two-stage retrieval (optional, API-configured)
     │   │   ├── relationshipManager.ts  # RelationshipManager singleton — three-tier relationship type registry
     │   │   ├── nodeManager.ts  # NodeManager singleton — node label registry mirroring RelationshipManager
     │   │   ├── shortTerm.ts   # Conversation messages with sequential NEXT_MESSAGE linking
@@ -261,8 +262,11 @@ All 11 tools are defined as AI SDK `tool()` definitions and registered in `gener
 | `POST` | `/api/chat/stream`  | Primary AI turn (SSE streaming)                                              |
 | `GET`  | `/api/history`      | Full conversation history from ShortTermMemory                               |
 | `GET`  | `/api/game/current` | Current dialogue options from `:Conversation` node                           |
-| `GET`  | `/api/dump`         | Full world state (entities, plots, notes, dispositions, time, relationships) |
+| `GET`  | `/api/debug/dump`   | Full world state (entities, plots, notes, dispositions, time, relationships) |
 | `POST` | `/api/reset`        | Clear Neo4j and re-seed                                                      |
+| `GET`  | `/api/debug/search/world` | Vector search across messages + entities (params: `query`, `types`, `limit`, `threshold`) |
+| `GET`  | `/api/debug/search/plots` | Vector search across plots (params: `query`, `limit`, `threshold`)           |
+| `GET`  | `/api/debug/search/notes` | Vector search across notes (params: `query`, `limit`, `threshold`)           |
 
 ---
 
@@ -390,7 +394,29 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 **Strategy pattern + Factory**: `getEmbedder()` returns a singleton, preferring API if credentials are set, otherwise local ONNX. The embedder is used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.
 
-### 9.5 ShortTermMemory
+### 9.5 Reranker (Two-Stage Retrieval)
+
+`reranker.ts` provides optional post-processing for vector search results using a cross-encoder model. When configured, all search functions (`searchWorld`, `searchPlots`, `searchNotes`) automatically use two-stage retrieval:
+
+1. **Retrieve**: Vector search with relaxed threshold (0.4 instead of 0.7) fetches more candidates (3× limit, min 30)
+2. **Rerank**: Each (query, document) pair is scored by a cross-encoder, producing precise relevance scores
+3. **Filter**: Results sorted by relevance, trimmed to the requested limit
+
+**Configuration** (env vars):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `RERANK_API_URL` | Reranker API endpoint (e.g. `http://localhost:8080/v1/rerank`) | (disabled if unset) |
+| `RERANK_API_KEY` | Optional auth token | — |
+| `RERANK_MODEL` | Model name sent to the API | `qwen3-reranker-0.6b` |
+
+**API protocol**: The `HttpReranker` sends `{ model, query, documents, top_n }` and expects `{ results: [{ index, relevance_score }] }` — compatible with llama-server, Jina, and Cohere rerank endpoints.
+
+**Factory**: `getReranker()` returns a singleton or `null` if `RERANK_API_URL` is unset. When `null`, search behaves as before (single-stage vector similarity).
+
+The debug search endpoints accept `?rerank=true` to force reranking for testing. Without the flag, reranking is automatic when the reranker is configured.
+
+### 9.6 ShortTermMemory
 
 `shortTerm.ts`. Manages conversation history as an ordered linked list of `:Message` nodes under a singleton `:Conversation` node (keyed by `session_id: "chorus-game"`).
 
@@ -402,7 +428,7 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), create `(prev)-[:NEXT_MESSAGE]→(new)`. First message also gets `(conv)-[:FIRST_MESSAGE]→(msg)`.
 
-### 9.6 LongTermMemory
+### 9.7 LongTermMemory
 
 `longTerm.ts`. Persistent world state — manages entities, relationships, NPC dispositions, player conditions, and player stats.
 
@@ -422,7 +448,7 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 **Player stats:** `getPlayerStats(playerName?)` — reads `metadata.stats` from player entity (defaults to `"Player"`).
 
-### 9.7 Notes
+### 9.8 Notes
 
 `notes.ts`. GM note CRUD with vector embedding for semantic recall.
 
@@ -440,7 +466,7 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 | `getLinkedEntities(id)`         | Return entity names linked via `[:ABOUT_ENTITY]`            |
 | `getLinkedMessages(id)`         | Return message IDs linked via `[:ABOUT_MESSAGE]`            |
 
-### 9.8 Plots
+### 9.9 Plots
 
 `plots.ts`. Plot lifecycle management — beats, branches, and player flags.
 
@@ -459,7 +485,7 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 | `unbranch(parent, child)`     | Delete the `[:BRANCHES_TO]` relationship                  |
 | `getChildPlots(plotName)`     | Return plots connected via outbound `[:BRANCHES_TO]`      |
 
-### 9.9 CypherValidator
+### 9.10 CypherValidator
 
 `validation.ts`. Confines GM Cypher queries to allowed labels via hardcoded sets and validates relationship types through the `RelationshipManager` singleton.
 
@@ -479,7 +505,7 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 
 Additional validation rules: `validateWrite` requires DELETE/DETACH DELETE to be preceded by a qualified MATCH (with WHERE or property condition). Unbounded variable-length paths (`(*)`) are blocked. DDL statements (CREATE/DROP INDEX, ALTER, etc.) are blocked in both read and write validation.
 
-### 9.10 MemorySearch
+### 9.11 MemorySearch
 
 `search.ts`. Parallel hybrid search facade across memory layers.
 
@@ -491,7 +517,7 @@ search(query, { memoryTypes: ["messages", "entities"], limit: 10, threshold: 0.7
 
 All selected searches run in parallel via `Promise.all`. Returns `SearchResults` with `messages` and `entities` arrays, each item bearing a `similarity` score.
 
-### 9.11 Game State Persistence
+### 9.12 Game State Persistence
 
 `gameState.ts`. Save/resume support by persisting dialogue options as JSON on the `:Conversation` node.
 
@@ -500,7 +526,7 @@ All selected searches run in parallel via `Promise.all`. Returns `SearchResults`
 
 The Neo4j database is the authoritative world state — there is no separate session concept.
 
-### 9.12 Data Flow Summary
+### 9.13 Data Flow Summary
 
 ```
 User Input
@@ -591,6 +617,7 @@ A standalone Node.js REPL client (`src/console/main.ts`) that implements the ful
 13. **GM message history persisted** — AI SDK messages (user prompts, assistant tool calls, tool results) are stored as `:GMTurnMessage` Neo4j nodes and passed to subsequent `streamText()` calls, giving the GM full context of its previous actions. `:GMTurnMessage` is excluded from CypherValidator allowlists, so the GM cannot see these nodes via its own tools.
 14. **RelationshipManager governs relationship types** — a singleton registry (`relationshipManager.ts`) replaces the hardcoded `ALLOWED_RELATIONSHIPS` set. Types are categorized as `INTERNAL` (system bookkeeping, GM write-blocked), `PREDEFINED` (world-modeling, GM write-allowed), or `GM_DEFINED` (declared via `manageSchema` tool or TOML `[[relationshipTypes]]`). Seed stories can define new relationship types without TypeScript changes.
 15. **NodeManager governs node labels** — a singleton registry (`nodeManager.ts`) mirrors `RelationshipManager` for node labels. Each node type stores a `name`, `description`, optional property schema, and `category`. INTERNAL types (`Conversation`, `GMTurnMessage`, `IdCounter`) are hidden from GM tools. `:NodeType` nodes in Neo4j let the GM discover available node types and their schemas via `queryWorld`. The `manageSchema` tool provides a structured interface for registering/unregistering GM-defined node and relationship types, replacing the previous regex-based auto-registration in `mutateWorld`.
+16. **Two-stage retrieval with reranker** — vector similarity alone is a coarse signal. When `RERANK_API_URL` is configured, search functions use two-stage retrieval: relaxed vector search (threshold 0.4, 3× more candidates) followed by cross-encoder reranking. This improves precision significantly — the reranker reads query and document text together, catching semantic relationships that cosine similarity on compressed vectors misses. The reranker is optional; search degrades gracefully to single-stage when not configured.
 
 ---
 

@@ -23,6 +23,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
 import { buildFullSceneContext } from "@/server/llm/sceneContext";
+import { stripHiddenProperties } from "@/server/memory/neo4j";
 import type { Message } from "@/types/dialogue";
 
 const apiRouter = express.Router();
@@ -96,13 +97,76 @@ apiRouter.get("/game/current", async (_req, res) => {
 
 // ── Dump (developer debug: full world state) ──
 
-apiRouter.get("/dump", async (_req, res) => {
+apiRouter.get("/debug/dump", async (_req, res) => {
   try {
     const md = await buildFullSceneContext();
     res.set("Content-Type", "text/plain; charset=utf-8").send(md);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Dump fetch error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Debug search endpoints ──
+
+apiRouter.get("/debug/search/world", async (req, res) => {
+  try {
+    const query = (req.query.query as string) || "";
+    if (!query) {
+      res.status(400).json({ error: "Missing ?query parameter" });
+      return;
+    }
+    const types = (req.query.types as string)?.split(",").filter(Boolean) ?? ["entities", "messages"];
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const threshold = parseFloat(req.query.threshold as string) || undefined;
+    const rerank = req.query.rerank === "true";
+    const client = MemoryClient.getCachedInstance();
+    const results = await client.search.search(query, { memoryTypes: types, limit, threshold: threshold || undefined, rerank });
+    res.json(stripHiddenProperties(results));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Debug search/world error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+apiRouter.get("/debug/search/plots", async (req, res) => {
+  try {
+    const query = (req.query.query as string) || "";
+    if (!query) {
+      res.status(400).json({ error: "Missing ?query parameter" });
+      return;
+    }
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const threshold = parseFloat(req.query.threshold as string) || undefined;
+    const rerank = req.query.rerank === "true";
+    const client = MemoryClient.getCachedInstance();
+    const results = await client.plots.searchPlots(query, { limit, threshold: threshold || undefined, rerank });
+    res.json(stripHiddenProperties(results));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Debug search/plots error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+apiRouter.get("/debug/search/notes", async (req, res) => {
+  try {
+    const query = (req.query.query as string) || "";
+    if (!query) {
+      res.status(400).json({ error: "Missing ?query parameter" });
+      return;
+    }
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const threshold = parseFloat(req.query.threshold as string) || undefined;
+    const rerank = req.query.rerank === "true";
+    const client = MemoryClient.getCachedInstance();
+    const results = await client.notes.searchNotes(query, { limit, threshold: threshold || undefined, rerank });
+    res.json(stripHiddenProperties(results));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Debug search/notes error:", message);
     res.status(500).json({ error: message });
   }
 });

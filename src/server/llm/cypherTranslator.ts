@@ -103,6 +103,7 @@ NPCDisposition is a NODE LABEL, not a relationship type. NEVER write \`[d:NPCDis
 - Use ONLY labels, properties, relationships from the Schema and directions above.
 - Use \`COLLECT { }\` subqueries for lists. Use \`OPTIONAL MATCH\` only for single optional links. Never chain independent \`OPTIONAL MATCH\`s.
 - Never unbounded variable-length paths. Use a fixed upper bound like \`[*1..5]\`.
+- To find entities with NO relationships of any kind, list specific types: \`WHERE NOT (e)-[:LOCATED_AT]->() AND NOT (e)-[:CARRIES]->() AND NOT (e)-[:ALLIED_WITH]->() AND NOT (e)-[:HOSTILE_TOWARDS]->() AND NOT (e)-[:CONNECTED_TO]->() AND NOT (e)-[:HAS_DISPOSITION]->()\`. Never use \`[:*]\`.
 - \`_\`-prefixed properties are internal. Never SELECT or RETURN them.
 - Entity key is \`{name: "..."}\`, not \`{_id: "..."}\`.
 - The Player is \`MATCH (p:Entity {name: "Player"})\`, never \`(p:Player)\`.

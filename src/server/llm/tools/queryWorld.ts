@@ -22,6 +22,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
+import { resetEntityForQuery } from "@/server/llm/sceneObserver";
 import { TOOL_NAMES } from "@/shared/constants";
 
 const validator = new CypherValidator();
@@ -75,39 +76,85 @@ async function formatWithLocalLLM(instruction: string, queryResult: string): Pro
 export const queryWorld = tool({
   title: TOOL_NAMES.QUERY_WORLD,
   description: `
-Read the game world using Cypher queries.
-The query MUST be read-only (MATCH, RETURN, ORDER BY, LIMIT), otherwise it will be rejected by validator of the tool.
+Query the game world using Cypher. Use \`action\` to choose the mode:
+
+**READ** (default): Read-only queries (MATCH, RETURN, ORDER BY, LIMIT). Use for lookups.
 Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS.
 Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
 Browse time history via NEXT_TIMEPOINT.
 
-NOTE:
-The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) will be pre-loaded in the user prompt under section "SCENE CONTEXT".
-Do NOT query for scene information that is already present.
-Use ${TOOL_NAMES.QUERY_WORLD} only for specific lookups BEYOND the pre-loaded context, such as: entity searches by name, message history, timepoint browsing, or finding entities/relationships not shown in the scene.
-Some internal properties prefixed with "_" will not shown in the result JSON.
+**WRITE**: Modify the world (CREATE, MERGE, SET, DELETE). Use for mutations.
+Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove entities.
+Must include a WHERE clause when deleting.
+Before using a new node label or relationship type, register it via \`${TOOL_NAMES.MANAGE_SCHEMA}\`.
+Never set a 'description' property directly on relationship instances in your Cypher.
 
-When rawResult is set to false, the query result will be formatted by a local LLM according to the instruction.
-Use instruction to specify how the result should be presented (e.g. "Format as a markdown table", "Summarize into a paragraph", "List only the names").
+NOTE: The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) will be pre-loaded under "SCENE CONTEXT".
+Do NOT query for scene information that is already present.
+Use ${TOOL_NAMES.QUERY_WORLD} only for specific lookups or mutations BEYOND the pre-loaded context.
+Internal properties prefixed with "_" will not be shown in READ results.
+
+When \`rawResult\` is set to false (READ only), the query result will be formatted by a local LLM according to \`instruction\`.
+Use \`instruction\` to specify how the result should be presented (e.g. "Format as a markdown table", "Summarize into a paragraph", "List only the names").
 `.trim(),
   inputSchema: z.object({
-    query: z.string().describe("A read-only Cypher query (MATCH...RETURN)."),
+    action: z
+      .enum(["READ", "WRITE"])
+      .default("READ")
+      .describe("READ to query the world, WRITE to modify it."),
+    query: z
+      .string()
+      .describe(
+        "A Cypher query. READ: MATCH...RETURN. WRITE: CREATE, MERGE, SET, DELETE. Must include MATCH with WHERE for deletions.",
+      ),
     instruction: z
       .string()
       .nullable()
       .optional()
       .describe(
-        "Instruction for formatting the query result via a local LLM. Only used when rawResult is false.",
+        "READ only. Instruction for formatting the query result via a local LLM. Only used when rawResult is false.",
       ),
     rawResult: z
       .boolean()
       .nullable()
       .optional()
       .describe(
-        "When false, sends the query result to a local LLM with the instruction for formatting. Default true (return raw JSON).",
+        "READ only. When false, sends the query result to a local LLM with the instruction for formatting. Default true (return raw JSON).",
       ),
   }),
   execute: wrapSafe(async (args) => {
+    const client = MemoryClient.getCachedInstance();
+
+    if (args.action === "WRITE") {
+      const validation = validator.validateWrite(args.query);
+      if (!validation.valid) {
+        return `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`;
+      }
+
+      try {
+        try {
+          await client.neo4j.executeRead(`EXPLAIN ${args.query}`);
+        } catch (explainErr) {
+          const msg = explainErr instanceof Error ? explainErr.message : String(explainErr);
+          return `CYPHER SYNTAX ERROR:\n${msg}.\nFix your query and retry.`;
+        }
+
+        const rows = await client.neo4j.executeWrite(args.query);
+
+        try {
+          resetEntityForQuery(args.query);
+        } catch {
+          // Best-effort
+        }
+
+        return `Success. ${rows.length} row(s) affected.`;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `QUERY ERROR:\n${msg}.\nAdjust your query and retry.`;
+      }
+    }
+
+    // READ
     const validation = validator.validateRead(args.query);
     if (!validation.valid) {
       return `VALIDATION FAILED:\n${validation.errors.join("; ")}.\nRewrite your query and retry.`;
@@ -118,7 +165,6 @@ Use instruction to specify how the result should be presented (e.g. "Format as a
       query = `${query} LIMIT ${AUTO_LIMIT}`;
     }
 
-    const client = MemoryClient.getCachedInstance();
     try {
       try {
         await client.neo4j.executeRead(`EXPLAIN ${query}`);

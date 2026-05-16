@@ -28,7 +28,6 @@ import { getObserver } from "@/server/llm/sceneObserver";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
-import { mutateWorld } from "@/server/llm/tools/mutateWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
@@ -213,7 +212,6 @@ export async function generateTurn(
 
   const allTools = {
     queryWorld,
-    mutateWorld,
     searchWorld,
     resetSceneContext,
     manageSchema,

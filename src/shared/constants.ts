@@ -64,7 +64,6 @@ export const SEGMENT_HOURS: Record<number, string> = {
 
 export const TOOL_NAMES = {
   QUERY_WORLD: "queryWorld",
-  MUTATE_WORLD: "mutateWorld",
   GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
   SEARCH_MEMORY: "searchWorld",

@@ -39,9 +39,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │                                                                      │
 │  streamText({                                                        │
 │    tools: {                                                          │
-│      queryWorld, mutateWorld, manageSchema, searchWorld,             │
+│      queryWorld, manageSchema, searchWorld,                          │
 │      editNode, editRelationship,                                     │
-│      ← llm/tools/ (7 GM tools)                                    │
+│      ← llm/tools/ (6 GM tools)                                    │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
 │      advanceTime                        ← llm/tools/ (Chorus tool)   │
 │    }                                                                 │
@@ -118,8 +118,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │   └── tools/
     │   │       ├── advanceTime.ts           # Advance in-game clock by segments/days
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
-    │   │       ├── queryWorld.ts            # Read-only Cypher queries (label-confined)
-    │   │       ├── mutateWorld.ts           # Write Cypher queries (label+rel-confined)
+    │   │       ├── queryWorld.ts            # Cypher queries (READ/WRITE, validated, auto-limit, optional LLM formatting)
     │   │       ├── searchWorld.ts          # Unified vector search (entities, messages, notes, plots)
     │   │       ├── manageSchema.ts          # Register/unregister node & relationship types
     │   │       ├── editNode.ts              # Create/update/delete any node (generic, schema-validated, auto-embedding)
@@ -241,14 +240,13 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 | Tool           | Purpose                                                                                           |
 |----------------|---------------------------------------------------------------------------------------------------|
-| `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator. Supports `instruction` + `rawResult` for local LLM formatting of results via llama-server. |
-| `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships                                  |
+| `queryWorld`   | Cypher queries with `action` "READ" (default) or "WRITE". READ: auto-limits, supports `instruction` + `rawResult` for local LLM formatting. WRITE: creates/updates/deletes, auto-resets scene observer. Both validated via CypherValidator. |
 | `manageSchema` | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
 | `searchWorld`  | Unified vector search across entities, messages, notes, and plots — select domains via `types` |
 | `editNode`     | Create/update/delete any world node (entities, notes, plots, GM-defined types) — validates properties against NodeManager, auto-generates embeddings |
 | `editRelationship` | Create/delete relationships between nodes using schema-registered types — validates against RelationshipManager |
 
-All 9 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 8 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -367,7 +365,7 @@ Vector dimensions are passed from the llama-server embedder at startup (`embedde
 | `_FIRST_GM_MESSAGE` | `(Conversation)→(GMTurnMessage)`  | Head pointer for GM message list |
 | `_NEXT_GM_MESSAGE`  | `(GMTurnMessage)→(GMTurnMessage)` | Sequential GM message list       |
 
-Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `mutateWorld` via `longTerm.addRelationship()` with sanitized type names.
+Dynamic relationships (`LOCATED_AT`, `CARRIES`, `ALLIED_WITH`, `HOSTILE_TOWARDS`, `LOCATED_IN`) are created by `queryWorld` (WRITE action) via `longTerm.addRelationship()` with sanitized type names.
 
 **Centralized relationship creation:** `Neo4jClient` provides two helpers that all subsystems use to create relationships between existing nodes. Both set `_created_at` on the relationship:
 
@@ -534,8 +532,8 @@ generateTurn()
   ├─► shortTerm.addMessage("user", input)
   ├─► streamText({ tools }) ──► LLM
   │     │
-  │     ├─► queryWorld ──► CypherValidator.validateRead → Neo4j
-  │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.*
+  │     ├─► queryWorld (READ) ──► CypherValidator.validateRead → Neo4j
+  │     ├─► queryWorld (WRITE) ──► CypherValidator.validateWrite → Neo4j
   │     ├─► searchWorld ──► client.search / client.notes / client.plots
   │     ├─► editNode ──► NodeManager + Embedder + Neo4j (generic node CRUD)
   │     ├─► editRelationship ──► RelationshipManager + Neo4j (generic relationship CRUD)

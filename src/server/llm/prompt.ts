@@ -25,8 +25,7 @@ const MAX_GM_STEPS = 10;
 const CYPHER_COOKBOOK_PROMPT_TEMPLATE = `
 ## CYPHER COOKBOOK
 
-This part is important because you have two flexible and powerful tools: ${TOOL_NAMES.QUERY_WORLD} to read, ${TOOL_NAMES.MUTATE_WORLD} to write, both of them support raw Cypher query.
-However, ${TOOL_NAMES.QUERY_WORLD} and ${TOOL_NAMES.MUTATE_WORLD} should be used prudently, your action will potentially destroy the database.
+This part is important because you have a flexible and powerful tool: ${TOOL_NAMES.QUERY_WORLD} supports raw Cypher with action "READ" (default) or "WRITE". Use it prudently — a WRITE query will potentially destroy the database.
 
 ### Singular vs. Multiple Relationships
 
@@ -142,7 +141,7 @@ DETACH DELETE e
 RelationshipType have three category: "INTERNAL", "PREDEFINED" and "GM_DEFINED".
 - INTERNAL: Used by game engine
 - PREDEFINED: Commonly used relationships for GM
-- GM_DEFINED: Newly added relationships by GM via tool ${TOOL_NAMES.MUTATE_WORLD}
+- GM_DEFINED: Newly added relationships by GM via tool ${TOOL_NAMES.QUERY_WORLD}
 
 Normally, your assistant will provide you with a brief of all available relationships.
 
@@ -168,7 +167,7 @@ MATCH (tp:TimePoint)-[:NEXT_TIMEPOINT]->(next) RETURN tp.day, tp.segment, tp.lab
 
 export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 You are the Game Master for a narrative-driven RPG. You are talking with your assistant. Use tool ${TOOL_NAMES.GENERATE_DIALOGUE} to speak to the player. All other text output is discarded. You must maintain world state
-**The current state of Neo4j database IS the current state of world.** You MUST to use ${TOOL_NAMES.MUTATE_WORLD} to maintain it. e.g. an object is given, or a person moves to another location, you MUST call ${TOOL_NAMES.MUTATE_WORLD}, otherwise the world state is stale.
+**The current state of Neo4j database IS the current state of world.** You MUST to use ${TOOL_NAMES.QUERY_WORLD} to maintain it. e.g. an object is given, or a person moves to another location, you MUST call ${TOOL_NAMES.QUERY_WORLD}, otherwise the world state is stale.
 
 ---
 
@@ -182,7 +181,7 @@ Status flow: PENDING → ACTIVE → IN_PROGRESS → COMPLETED / ABANDONED. You M
 
 **Rule of thumb:** A plot branch should describe a *course of action* or *allegiance*, not a single utterance.
 
-Plots carry a \`flags\` field — scoped key-value metadata (e.g. \`{"alarm_raised": true, "player_allegiance": "clockwrights"}\`). Set flags on ${TOOL_NAMES.MUTATE_WORLD} when story conditions change. Flags are defined per-plot, not globally — only set flags relevant to the plot's own narrative scope.
+Plots carry a \`flags\` field — scoped key-value metadata (e.g. \`{"alarm_raised": true, "player_allegiance": "clockwrights"}\`). Set flags on ${TOOL_NAMES.QUERY_WORLD} when story conditions change. Flags are defined per-plot, not globally — only set flags relevant to the plot's own narrative scope.
 
 ---
 

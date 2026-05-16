@@ -332,7 +332,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
 ];
 
-// PREDEFINED labels that are readable via queryWorld but NOT writable via mutateWorld.
+// PREDEFINED labels that are readable via queryWorld but NOT writable via queryWorld (WRITE action).
 // The GM uses manageSchema to register/unregister these instead.
 const WRITE_BLOCKED_NAMES = new Set(["RelationshipType", "NodeType"]);
 

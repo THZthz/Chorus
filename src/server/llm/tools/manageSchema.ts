@@ -28,7 +28,7 @@ export const manageSchema = tool({
   title: TOOL_NAMES.MANAGE_SCHEMA,
   description: `
 Register or unregister node types and relationship types in the world schema.
-Use this BEFORE creating nodes with a new label or relationships with a new type in mutateWorld.
+Use this BEFORE creating nodes with a new label or relationships with a new type via queryWorld (WRITE action).
 
 **Node types**: When registering, provide a description of what the node type represents and a property schema (name, description, optional type for each property). The LLM can query :NodeType nodes via queryWorld to discover available node types and their schemas.
 
@@ -121,7 +121,7 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
           props.length > 0
             ? ` with ${props.length} property(s): ${props.map((p) => p.name).join(", ")}`
             : "";
-        return `Registered node type "${args.name}"${propSummary}. It is now available for use in mutateWorld.`;
+        return `Registered node type "${args.name}"${propSummary}. It is now available for use via queryWorld (WRITE action).`;
       }
 
       if (args.target === "relationship") {
@@ -158,7 +158,7 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
           srcLabels && tgtLabels
             ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})`
             : "";
-        return `Registered relationship type "${args.name}"${endpoints}. It is now available for use in mutateWorld.`;
+        return `Registered relationship type "${args.name}"${endpoints}. It is now available for use via queryWorld (WRITE action).`;
       }
     }
 

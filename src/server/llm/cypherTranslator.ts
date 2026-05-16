@@ -268,11 +268,16 @@ async function generateCypherWithRetries(
   let lastQuery = "";
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const retryHint = attempt > 0
-      ? `\n\nYour previous query failed:\n\`\`\`cypher\n${lastQuery}\n\`\`\`\nError: ${lastError}\nFix the query and try again.`
-      : "";
+    let retryGuidance = "";
+    if (attempt > 0) {
+      retryGuidance = `\n\nYour previous query failed:\n\`\`\`cypher\n${lastQuery}\n\`\`\`\nError: ${lastError}`;
+      if (/\[:\*\]/.test(lastQuery)) {
+        retryGuidance += `\n\n[:*] is invalid Cypher. To find nodes with no relationships, list types explicitly:\n\`\`\`cypher\nWHERE NOT (e)-[:LOCATED_AT]->() AND NOT (e)-[:CARRIES]->() AND NOT (e)-[:ALLIED_WITH]->() AND NOT (e)-[:HOSTILE_TOWARDS]->() AND NOT (e)-[:CONNECTED_TO]->() AND NOT (e)-[:HAS_DISPOSITION]->()\n\`\`\``;
+      }
+      retryGuidance += "\nFix the query and try again.";
+    }
 
-    const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent + retryHint);
+    const { query, explanation } = await translateIntent(llmUrl, systemPrompt, intent + retryGuidance);
     lastQuery = query;
 
     // Validate
@@ -299,6 +304,10 @@ async function generateCypherWithRetries(
       await client.neo4j.executeRead(`EXPLAIN ${finalQuery}`);
     } catch (explainErr) {
       lastError = explainErr instanceof Error ? explainErr.message : String(explainErr);
+      // Inject guidance for [: *] pattern
+      if (/\[:\*\]/.test(finalQuery)) {
+        lastError += "\n[:*] is invalid Cypher. List relationship types explicitly: WHERE NOT (e)-[:LOCATED_AT]->() AND NOT (e)-[:CARRIES]->() ...";
+      }
       if (attempt < maxRetries) {
         console.error(`[cypherTranslator] syntax error (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`, lastError);
         continue;

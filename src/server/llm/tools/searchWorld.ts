@@ -23,13 +23,25 @@ import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
+const SEARCH_TYPES = ["entities", "messages", "notes", "plots"] as const;
+
+type SearchResult = {
+  entities?: Record<string, unknown>[];
+  messages?: Record<string, unknown>[];
+  notes?: Record<string, unknown>[];
+  plots?: Record<string, unknown>[];
+};
+
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_MEMORY,
   description: `
-Search single world state (entities, messages) by meaning using vector similarity. The results will be reranked by a reranker LLM model.
-Entities are node with :Entity. Messages are generated messages by tool \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.
-Entities are embedded by "name (Type): description". Messages are embedded with the full message text.
-Use when you need to find something not in the current scene.`.trim(),
+Search world state by meaning using vector similarity. Results are reranked by a reranker LLM model.
+Use \`types\` to select which domains to search:
+- \`entities\`: :Entity nodes, embedded by "name (Type): description"
+- \`messages\`: Generated dialogue messages, embedded by full text
+- \`notes\`: GM notes (:Note), embedded by full content
+- \`plots\`: Story plots (:Plot), embedded by "name: description"
+Omit \`types\` to search all domains.`.trim(),
   inputSchema: z.object({
     query: z
       .string()
@@ -37,17 +49,84 @@ Use when you need to find something not in the current scene.`.trim(),
         "Natural language search query, should be a list of keywords, keep short and focused.",
       ),
     types: z
-      .array(z.enum(["entities", "messages"]))
-      .default(["entities", "messages"])
-      .describe("What to search."),
+      .array(z.enum(SEARCH_TYPES))
+      .default(["entities", "messages", "notes", "plots"])
+      .describe("What to search. Omit to search everything."),
     limit: z.number().default(10).describe("Max results per type."),
   }),
   execute: wrapSafe(async (args) => {
     const client = MemoryClient.getCachedInstance();
-    const results = await client.search.search(args.query, {
-      memoryTypes: args.types,
-      limit: args.limit,
-    });
-    return JSON.stringify(stripHiddenProperties(results), null, 2);
+    const result: SearchResult = {};
+
+    const tasks: Promise<void>[] = [];
+
+    // Entities + messages: use the combined MemorySearch
+    const worldTypes = args.types.filter((t) => t === "entities" || t === "messages");
+    if (worldTypes.length > 0) {
+      tasks.push(
+        (async () => {
+          const r = await client.search.search(args.query, {
+            memoryTypes: worldTypes,
+            limit: args.limit,
+          });
+          if (worldTypes.includes("entities")) {
+            result.entities = stripHiddenProperties(
+              r.entities.map((e) => ({ ...e })),
+            ) as Record<string, unknown>[];
+          }
+          if (worldTypes.includes("messages")) {
+            result.messages = stripHiddenProperties(
+              r.messages.map((m) => ({ ...m })),
+            ) as Record<string, unknown>[];
+          }
+        })(),
+      );
+    }
+
+    // Notes
+    if (args.types.includes("notes")) {
+      tasks.push(
+        (async () => {
+          const notes = await client.notes.searchNotes(args.query, { limit: args.limit });
+          result.notes = await Promise.all(
+            notes.map(async (n) => ({
+              name: n.name,
+              content: n.content,
+              similarity: n.similarity,
+              aboutEntities: await client.notes.getLinkedEntities(n.name),
+              aboutMessages: await client.notes.getLinkedMessages(n.name),
+            })),
+          );
+        })(),
+      );
+    }
+
+    // Plots
+    if (args.types.includes("plots")) {
+      tasks.push(
+        (async () => {
+          const plots = await client.plots.searchPlots(args.query, { limit: args.limit });
+          result.plots = await Promise.all(
+            plots.map(async (p) => {
+              const children = await client.plots.getChildPlots(p.name);
+              return {
+                name: p.name,
+                description: p.description,
+                status: p.status,
+                triggerCondition: p.triggerCondition,
+                flags: p.flags,
+                similarity: p.similarity,
+                childPlots: children.map((c) => ({ name: c.name, status: c.status })),
+              };
+            }),
+          );
+        })(),
+      );
+    }
+
+    // Run all selected searches in parallel
+    await Promise.all(tasks);
+
+    return JSON.stringify(result, null, 2);
   }, TOOL_NAMES.SEARCH_MEMORY),
 });

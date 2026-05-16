@@ -31,9 +31,7 @@ import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { mutateWorld } from "@/server/llm/tools/mutateWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNote } from "@/server/llm/tools/editNote";
-import { searchNotes } from "@/server/llm/tools/searchNotes";
 import { editPlot } from "@/server/llm/tools/editPlot";
-import { searchPlots } from "@/server/llm/tools/searchPlots";
 import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { editNode } from "@/server/llm/tools/editNode";
@@ -220,9 +218,7 @@ export async function generateTurn(
     mutateWorld,
     searchWorld,
     editNote,
-    searchNotes,
     editPlot,
-    searchPlots,
     resetSceneContext,
     manageSchema,
     editNode,

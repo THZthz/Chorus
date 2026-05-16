@@ -40,7 +40,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │  streamText({                                                        │
 │    tools: {                                                          │
 │      queryWorld, mutateWorld, manageSchema, searchWorld,             │
-│      editNote, searchNotes, editPlot, searchPlots,                   │
+│      editNote, editPlot,                                             │
 │      editNode, editRelationship,                                     │
 │      ← llm/tools/ (11 GM tools)                                   │
 │      generateDialogueStep,              ← llm/tools/ (Chorus tool)   │
@@ -121,11 +121,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
     │   │       ├── generateDialogueStep.ts  # Produce messages + options with validation
     │   │       ├── queryWorld.ts            # Read-only Cypher queries (label-confined)
     │   │       ├── mutateWorld.ts           # Write Cypher queries (label+rel-confined)
-    │   │       ├── searchWorld.ts          # Vector search across entities + messages
+    │   │       ├── searchWorld.ts          # Unified vector search (entities, messages, notes, plots)
     │   │       ├── editNote.ts              # Create/update/delete GM notes
-    │   │       ├── searchNotes.ts           # Vector search across notes
     │   │       ├── editPlot.ts              # Plot lifecycle management (beats, branches, flags)
-    │   │       ├── searchPlots.ts           # Vector search across plots
     │   │       ├── manageSchema.ts          # Register/unregister node & relationship types
     │   │       ├── editNode.ts              # Create/update/delete world nodes (generic, schema-validated)
     │   │       ├── editRelationship.ts      # Create/delete relationships between nodes (generic, schema-validated)
@@ -249,15 +247,13 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 | `queryWorld`   | Read-only Cypher queries, confined to allowed labels via CypherValidator. Supports `instruction` + `rawResult` for local LLM formatting of results via llama-server. |
 | `mutateWorld`  | Write Cypher queries, confined to allowed labels + relationships                                  |
 | `manageSchema` | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
-| `searchWorld`  | Vector search across entities and messages                                                        |
+| `searchWorld`  | Unified vector search across entities, messages, notes, and plots — select domains via `types` |
 | `editNote`     | Create/update/delete GM notes with vector embedding                                               |
-| `searchNotes`  | Vector search across notes                                                                        |
 | `editPlot`     | Plot lifecycle management (beats, branches, flags)                                                |
-| `searchPlots`  | Vector search across plots                                                                        |
 | `editNode`     | Create/update/delete world nodes using schema-registered types — validates properties against NodeManager |
 | `editRelationship` | Create/delete relationships between nodes using schema-registered types — validates against RelationshipManager |
 
-All 13 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
+All 11 tools are defined as AI SDK `tool()` definitions and registered in `generateTurn()` via the `allTools` object. `generateDialogueStep` supports an `isCorrection` flag that auto-merges corrections with previously stored valid content — the LLM only sends failing items with their index and the tool patches them into the stored base. Skill checks are resolved server-side (not a tool) — the result is injected into the GM's prompt.
 
 ---
 
@@ -406,7 +402,7 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 
 ### 9.5 Reranker (Two-Stage Retrieval)
 
-`reranker.ts` provides optional post-processing for vector search results using a cross-encoder model. When configured, all search functions (`searchWorld`, `searchPlots`, `searchNotes`) automatically use two-stage retrieval:
+`reranker.ts` provides optional post-processing for vector search results using a cross-encoder model. When configured, all search functions (`searchWorld` which covers entities, messages, notes, and plots) automatically use two-stage retrieval:
 
 1. **Retrieve**: Vector search with relaxed threshold (0.4 instead of 0.7) fetches more candidates (3× limit, min 30)
 2. **Rerank**: Each (query, document) pair is scored by a cross-encoder, producing precise relevance scores
@@ -545,9 +541,9 @@ generateTurn()
   │     │
   │     ├─► queryWorld ──► CypherValidator.validateRead → Neo4j
   │     ├─► mutateWorld ──► CypherValidator.validateWrite → longTerm.*
-  │     ├─► searchWorld ──► client.search.search()
-  │     ├─► editNote / searchNotes ──► client.notes.*
-  │     ├─► editPlot / searchPlots ──► client.plots.*
+  │     ├─► searchWorld ──► client.search / client.notes / client.plots
+  │     ├─► editNote ──► client.notes.*
+  │     ├─► editPlot ──► client.plots.*
   │     ├─► editNode ──► NodeManager + Neo4j (generic node CRUD)
   │     ├─► editRelationship ──► RelationshipManager + Neo4j (generic relationship CRUD)
   │     ├─► advanceTime ──► models/time.ts (Neo4j write)

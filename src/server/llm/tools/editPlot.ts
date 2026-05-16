@@ -64,7 +64,7 @@ CREATE, partial UPDATE, or DELETE a plot.
 Plots track story arcs.
 Use flags for indicating critical progress of story beats.
 Use branchTo/unbranch to connect child plots.
-Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_PLOTS} to find them.
+Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_MEMORY} with types: ["plots"] to find them.
 This tool supports partial overwrite when action is UPDATE.
 `.trim(),
   inputSchema,

@@ -24,7 +24,22 @@ import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
 import { buildFullSceneContext } from "@/server/llm/sceneContext";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
+import { queryWorld } from "@/server/llm/tools/queryWorld";
+import { searchWorld } from "@/server/llm/tools/searchWorld";
+import { editNode } from "@/server/llm/tools/editNode";
+import { editRelationship } from "@/server/llm/tools/editRelationship";
+import { manageSchema } from "@/server/llm/tools/manageSchema";
+import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import type { Message } from "@/types/dialogue";
+
+const debugToolRegistry: Record<string, { execute: (args: any) => Promise<string> }> = {
+  queryWorld: queryWorld as any,
+  searchWorld: searchWorld as any,
+  editNode: editNode as any,
+  editRelationship: editRelationship as any,
+  manageSchema: manageSchema as any,
+  resetSceneContext: resetSceneContext as any,
+};
 
 const apiRouter = express.Router();
 
@@ -117,12 +132,20 @@ apiRouter.get("/debug/search/world", async (req, res) => {
       res.status(400).json({ error: "Missing ?query parameter" });
       return;
     }
-    const types = (req.query.types as string)?.split(",").filter(Boolean) ?? ["entities", "messages"];
+    const types = (req.query.types as string)?.split(",").filter(Boolean) ?? [
+      "entities",
+      "messages",
+    ];
     const limit = parseInt(req.query.limit as string, 10) || 10;
     const threshold = parseFloat(req.query.threshold as string) || undefined;
     const rerank = req.query.rerank === "true";
     const client = MemoryClient.getCachedInstance();
-    const results = await client.search.search(query, { memoryTypes: types, limit, threshold: threshold || undefined, rerank });
+    const results = await client.search.search(query, {
+      memoryTypes: types,
+      limit,
+      threshold: threshold || undefined,
+      rerank,
+    });
     res.json(stripHiddenProperties(results));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -142,7 +165,11 @@ apiRouter.get("/debug/search/plots", async (req, res) => {
     const threshold = parseFloat(req.query.threshold as string) || undefined;
     const rerank = req.query.rerank === "true";
     const client = MemoryClient.getCachedInstance();
-    const results = await client.plots.searchPlots(query, { limit, threshold: threshold || undefined, rerank });
+    const results = await client.plots.searchPlots(query, {
+      limit,
+      threshold: threshold || undefined,
+      rerank,
+    });
     res.json(stripHiddenProperties(results));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -162,11 +189,32 @@ apiRouter.get("/debug/search/notes", async (req, res) => {
     const threshold = parseFloat(req.query.threshold as string) || undefined;
     const rerank = req.query.rerank === "true";
     const client = MemoryClient.getCachedInstance();
-    const results = await client.notes.searchNotes(query, { limit, threshold: threshold || undefined, rerank });
+    const results = await client.notes.searchNotes(query, {
+      limit,
+      threshold: threshold || undefined,
+      rerank,
+    });
     res.json(stripHiddenProperties(results));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Debug search/notes error:", message);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Debug tool invocation ──
+
+apiRouter.post("/debug/tools/:toolName", async (req, res) => {
+  const tool = debugToolRegistry[req.params.toolName];
+  if (!tool) {
+    res.status(404).json({ error: `Unknown tool: ${req.params.toolName}` });
+    return;
+  }
+  try {
+    const result = await tool.execute(req.body ?? {});
+    res.set("Content-Type", "text/plain; charset=utf-8").send(result);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: message });
   }
 });

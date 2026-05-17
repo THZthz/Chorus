@@ -26,7 +26,12 @@ export interface RelationshipDef {
   targetLabels?: string[];
 }
 
-const INTERNAL_TYPES: { name: string; description: string; sourceLabels?: string[]; targetLabels?: string[] }[] = [
+const INTERNAL_TYPES: {
+  name: string;
+  description: string;
+  sourceLabels?: string[];
+  targetLabels?: string[];
+}[] = [
   {
     name: "_HAS_GM_MESSAGE",
     description: "Links a Conversation node to its GMTurnMessage nodes.",
@@ -47,7 +52,12 @@ const INTERNAL_TYPES: { name: string; description: string; sourceLabels?: string
   },
 ];
 
-const PREDEFINED_TYPES: { name: string; description: string; sourceLabels?: string[]; targetLabels?: string[] }[] = [
+const PREDEFINED_TYPES: {
+  name: string;
+  description: string;
+  sourceLabels?: string[];
+  targetLabels?: string[];
+}[] = [
   {
     name: "HAS_MESSAGE",
     description: "Links a Conversation node to its Message nodes.",

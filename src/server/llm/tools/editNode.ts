@@ -30,9 +30,7 @@ const NODE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 
 const SYSTEM_PROPS = new Set(["_id", "_created_at", "_updated_at", "_embedding"]);
 
-function visibleProps(
-  node: Record<string, unknown> | undefined,
-): Record<string, unknown> {
+function visibleProps(node: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!node) return out;
   for (const [k, v] of Object.entries(node)) {
@@ -42,11 +40,13 @@ function visibleProps(
 }
 
 const inputSchema = z.object({
-  nodeLabel: z.string().describe(
-    "Node label to operate on (e.g. 'Entity', 'Character', 'Location', or a GM-defined label). " +
-    "Must be registered in the world schema and writable. " +
-    `Query :NodeType nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types and their property schemas.`,
-  ),
+  nodeLabel: z
+    .string()
+    .describe(
+      "Node label to operate on (e.g. 'Entity', 'Character', 'Location', or a GM-defined label). " +
+        "Must be registered in the world schema and writable. " +
+        `Query :NodeType nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types and their property schemas.`,
+    ),
   action: z.enum(NODE_ACTIONS).default("CREATE").describe("Action to perform."),
   match: z
     .record(z.string(), z.string())
@@ -129,14 +129,19 @@ Properties are validated against the registered schema — unknown property name
     // NodeManager discards properties for PREDEFINED types, so check the
     // known embeddable labels directly (all have Neo4j vector indexes).
     const EMBEDDABLE = new Set([
-      "Entity", "Character", "Object", "Location", "Organization", "Event",
-      "Note", "Plot", "Message",
+      "Entity",
+      "Character",
+      "Object",
+      "Location",
+      "Organization",
+      "Event",
+      "Note",
+      "Plot",
+      "Message",
     ]);
     const wantsEmbedding = EMBEDDABLE.has(args.nodeLabel);
 
-    async function computeEmbedding(
-      props: Record<string, unknown>,
-    ): Promise<number[] | null> {
+    async function computeEmbedding(props: Record<string, unknown>): Promise<number[] | null> {
       const name = String(props.name ?? "");
       const text = String(props.description ?? props.content ?? "");
       const embedText = name && text ? `${name}: ${text}` : name || text;
@@ -150,10 +155,7 @@ Properties are validated against the registered schema — unknown property name
       }
     }
 
-    function buildWhere(
-      match: Record<string, string>,
-      params: Record<string, unknown>,
-    ): string {
+    function buildWhere(match: Record<string, string>, params: Record<string, unknown>): string {
       const parts = Object.entries(match).map(([key, value], i) => {
         const pName = `mk${i}`;
         params[pName] = value;
@@ -211,8 +213,7 @@ Properties are validated against the registered schema — unknown property name
       );
       const created = rows[0]?.n as Record<string, unknown> | undefined;
       const v = visibleProps(created);
-      const propSummary =
-        Object.keys(v).length > 0 ? ` with properties: ${JSON.stringify(v)}` : "";
+      const propSummary = Object.keys(v).length > 0 ? ` with properties: ${JSON.stringify(v)}` : "";
       return `Node "${args.nodeLabel}" created${propSummary}.`;
     }
 
@@ -267,11 +268,10 @@ Properties are validated against the registered schema — unknown property name
     );
 
     // Reset scene observer for entities whose description/brief changed
-    if (
-      (args.properties.description !== undefined || args.properties.brief !== undefined)
-    ) {
-      const entityName =
-        (existing[0]?.n as Record<string, unknown> | undefined)?.name as string | undefined;
+    if (args.properties.description !== undefined || args.properties.brief !== undefined) {
+      const entityName = (existing[0]?.n as Record<string, unknown> | undefined)?.name as
+        | string
+        | undefined;
       if (entityName) {
         try {
           getObserver().resetEntity(entityName);

@@ -70,14 +70,16 @@ Omit \`types\` to search all domains.`.trim(),
             limit: args.limit,
           });
           if (worldTypes.includes("entities")) {
-            result.entities = stripHiddenProperties(
-              r.entities.map((e) => ({ ...e })),
-            ) as Record<string, unknown>[];
+            result.entities = stripHiddenProperties(r.entities.map((e) => ({ ...e }))) as Record<
+              string,
+              unknown
+            >[];
           }
           if (worldTypes.includes("messages")) {
-            result.messages = stripHiddenProperties(
-              r.messages.map((m) => ({ ...m })),
-            ) as Record<string, unknown>[];
+            result.messages = stripHiddenProperties(r.messages.map((m) => ({ ...m }))) as Record<
+              string,
+              unknown
+            >[];
           }
         })(),
       );

@@ -108,10 +108,18 @@ export async function getRelationshipTypeDescriptions(
     let sourceLabels: string[] | undefined;
     let targetLabels: string[] | undefined;
     if (typeof r.sourceLabels === "string") {
-      try { sourceLabels = JSON.parse(r.sourceLabels) as string[]; } catch { /* keep undefined */ }
+      try {
+        sourceLabels = JSON.parse(r.sourceLabels) as string[];
+      } catch {
+        /* keep undefined */
+      }
     }
     if (typeof r.targetLabels === "string") {
-      try { targetLabels = JSON.parse(r.targetLabels) as string[]; } catch { /* keep undefined */ }
+      try {
+        targetLabels = JSON.parse(r.targetLabels) as string[];
+      } catch {
+        /* keep undefined */
+      }
     }
     return {
       name: r.name as string,

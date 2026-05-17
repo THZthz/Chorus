@@ -18,10 +18,12 @@
 
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { wrapLanguageModel, type LanguageModel } from "ai";
 import { devToolsMiddleware } from "@ai-sdk/devtools";
 
 let googleModelInstance: LanguageModel | null = null;
+let openrouterModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
 
 function getGoogleModel(): LanguageModel | null {
@@ -39,6 +41,25 @@ function getGoogleModel(): LanguageModel | null {
     }
   }
   return googleModelInstance;
+}
+
+function getOpenRouterModel(): LanguageModel | null {
+  if (!openrouterModelInstance && process.env.OPENROUTER_API_KEY) {
+    try {
+      const modelName = process.env.OPENROUTER_MODEL || "openrouter/auto";
+      const raw = createOpenAI({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: "https://openrouter.ai/api/v1",
+      })(modelName);
+      openrouterModelInstance = wrapLanguageModel({
+        model: raw,
+        middleware: devToolsMiddleware(),
+      });
+    } catch (e) {
+      console.error("Failed to initialize OpenRouter model:", e);
+    }
+  }
+  return openrouterModelInstance;
 }
 
 function getDeepSeekModel(): LanguageModel | null {
@@ -61,7 +82,11 @@ function getDeepSeekModel(): LanguageModel | null {
 export function getModel(): { model: LanguageModel; name: string } {
   const google = getGoogleModel();
   if (google) return { model: google, name: "gemini-2.0-flash" };
+  const openrouter = getOpenRouterModel();
+  if (openrouter) return { model: openrouter, name: "openrouter/auto" };
   const deepseek = getDeepSeekModel();
   if (deepseek) return { model: deepseek, name: "deepseek-v4-flash" };
-  throw new Error("Missing API Key: Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in .env");
+  throw new Error(
+    "Missing API Key: Please set GEMINI_API_KEY, OPENROUTER_API_KEY, or DEEPSEEK_API_KEY in .env",
+  );
 }

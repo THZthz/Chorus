@@ -27,25 +27,23 @@ const REL_ACTIONS = ["CREATE", "DELETE"] as const;
 
 const inputSchema = z.object({
   action: z.enum(REL_ACTIONS).default("CREATE").describe("Action to perform."),
-  relationshipType: z.string().describe(
-    "The relationship type (e.g. 'LOCATED_AT', 'ALLIED_WITH', 'HOSTILE_TOWARDS', or GM-defined). " +
-    "Must be registered in the world schema and writable. " +
-    `Query :RelationshipType nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types.`,
-  ),
+  relationshipType: z
+    .string()
+    .describe(
+      "The relationship type (e.g. 'LOCATED_AT', 'ALLIED_WITH', 'HOSTILE_TOWARDS', or GM-defined). " +
+        "Must be registered in the world schema and writable. " +
+        `Query :RelationshipType nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types.`,
+    ),
   sourceLabel: z
     .string()
     .describe("Label of the source node (e.g. 'Entity', 'Character', 'Location')."),
   sourceMatch: z
     .record(z.string(), z.string())
-    .describe(
-      "Key-value pairs to locate the source node (e.g. { name: 'Tavern' } for an Entity).",
-    ),
+    .describe("Key-value pairs to locate the source node (e.g. { name: 'Tavern' } for an Entity)."),
   targetLabel: z.string().describe("Label of the target node."),
   targetMatch: z
     .record(z.string(), z.string())
-    .describe(
-      "Key-value pairs to locate the target node (e.g. { name: 'Town Square' }).",
-    ),
+    .describe("Key-value pairs to locate the target node (e.g. { name: 'Town Square' })."),
   properties: z
     .record(z.string(), z.unknown())
     .nullable()

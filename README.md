@@ -52,7 +52,6 @@ cp .env.example .env
 #   LLAMA_EMBED_URL=http://localhost:8080/v1/embeddings
 #   LLAMA_RERANK_URL=http://localhost:8081/v1/rerank
 #   LLAMA_FORMATTER_URL=http://localhost:8082/v1/chat/completions
-#   LLAMA_FORMATTER_MODEL=phi-4-mini-instruct
 #   EMBEDDING_DIMENSIONS=1024
 
 make install

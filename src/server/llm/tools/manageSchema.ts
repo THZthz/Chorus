@@ -155,9 +155,7 @@ Use this BEFORE creating nodes with a new label or relationships with a new type
         await manager.syncToNeo4j(client.neo4j);
 
         const endpoints =
-          srcLabels && tgtLabels
-            ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})`
-            : "";
+          srcLabels && tgtLabels ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})` : "";
         return `Registered relationship type "${args.name}"${endpoints}. It is now available for use via queryWorld (WRITE action).`;
       }
     }

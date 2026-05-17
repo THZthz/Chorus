@@ -43,9 +43,7 @@ class LlamaEmbedder implements Embedder {
     }
     const json = (await res.json()) as Record<string, unknown>;
     if (json.data && Array.isArray(json.data)) {
-      return (json.data as Array<{ embedding?: number[] }>).map(
-        (d) => d.embedding || [],
-      );
+      return (json.data as Array<{ embedding?: number[] }>).map((d) => d.embedding || []);
     }
     throw new Error(`Embedder unexpected response: ${JSON.stringify(json).slice(0, 300)}`);
   }

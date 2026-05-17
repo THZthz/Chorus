@@ -59,7 +59,8 @@ rerank-server:
 	llama-server -m data/models/Qwen3-Reranker-0.6B-Q8_0.gguf --port 8081 -c 32768 -ngl 99 --reranking
 
 formatter-server:
-	llama-server -m data/models/Phi-4-mini-instruct-Q4_K_M.gguf --port 8082 -c 32768 -ngl 99
+	llama-server -m data/models/Qwen3.5-9B-Q4_K_M.gguf --port 8082 -c 32768 -ngl 99 --jinja
+	# llama-server -m data/models/Qwen3.5-9B-Q4_K_M.gguf --port 8082 -c 32768 -ngl 99 --jinja --chat-template-kwargs '{"enable_thinking": false}'
 
 console:
 	$(NPM) run console

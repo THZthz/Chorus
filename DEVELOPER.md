@@ -388,7 +388,6 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 |---|---|---|
 | `LLAMA_EMBED_URL` | llama-server embeddings endpoint | `http://localhost:8080/v1/embeddings` |
 | `LLAMA_FORMATTER_URL` | llama-server chat completions endpoint (for `queryWorld` result formatting) | `http://localhost:8082/v1/chat/completions` |
-| `LLAMA_FORMATTER_MODEL` | Model name for formatter requests | `phi-4-mini-instruct` |
 | `EMBEDDING_DIMENSIONS` | Vector dimension | `1024` |
 
 **Factory**: `getEmbedder()` returns a singleton. Used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.

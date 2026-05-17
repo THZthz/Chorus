@@ -27,40 +27,40 @@ import { TOOL_NAMES } from "@/shared/constants";
 
 const validator = new CypherValidator();
 const AUTO_LIMIT = 50;
+const REASONING_BUDGET: Record<string, number> = { simple: 0, normal: 512, hard: 1024 };
 
 const LLAMA_FORMATTER_URL =
   process.env.LLAMA_FORMATTER_URL || "http://localhost:8082/v1/chat/completions";
-const LLAMA_FORMATTER_MODEL = process.env.LLAMA_FORMATTER_MODEL || "phi-4-mini-instruct";
 
-async function formatWithLocalLLM(instruction: string, queryResult: string): Promise<string> {
+async function formatWithLocalLLM(
+  instruction: string,
+  queryResult: string,
+  reasoningBudget?: number,
+): Promise<string> {
   const systemPrompt = [
-    "You are a data-formatting assistant for a cinematic RPG game engine.",
-    "Your task is to format raw Neo4j Cypher query results into readable Markdown for the Game Master.",
+    "Your only task is to restructure JSON into Markdown. Output result ONLY.",
     "",
-    "The data comes from a fantasy-steampunk game world. Nodes represent entities (characters,",
-    "locations, objects, organizations, events), messages, notes, plots, dispositions, and time points.",
-    "Properties use snake_case names. Internal properties prefixed with underscore are already stripped.",
+    "Rules:",
+    "- Present every row exactly as given. Never omit, merge, or rewrite data.",
+    "- NEVER add information not present in the input.",
+    "- If the input is empty, output 'No results.'",
     "",
-    "Guidelines:",
-    "- Present the data clearly using Markdown (tables, lists, headings as appropriate).",
-    "- Be concise. Do not add narrative flourishes or roleplay.",
-    "- Do not invent or assume data not present in the result.",
-    "- If the result is empty, state that clearly.",
-    "- If the instruction asks for a summary, distill the key points without losing critical detail.",
+    "The input is JSON with snake_case keys. Format it according to the user's instruction:",
     "",
-    `GM's formatting instruction: ${instruction}`,
+    instruction,
   ].join("\n");
 
   const res = await fetch(LLAMA_FORMATTER_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: LLAMA_FORMATTER_MODEL,
+      model: "model",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: queryResult },
       ],
       temperature: 0,
+      ...(reasoningBudget != null ? { reasoning_budget: reasoningBudget } : {}),
     }),
   });
   if (!res.ok) {
@@ -68,7 +68,8 @@ async function formatWithLocalLLM(instruction: string, queryResult: string): Pro
     throw new Error(`Local LLM returned ${res.status}: ${body.slice(0, 200)}`);
   }
   const json = (await res.json()) as Record<string, unknown>;
-  const content = (json.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content;
+  const content = (json.choices as Array<{ message?: { content?: string } }>)?.[0]?.message
+    ?.content;
   if (content) return content;
   throw new Error("Local LLM returned empty response");
 }
@@ -112,14 +113,22 @@ Use \`instruction\` to specify how the result should be presented (e.g. "Format 
       .nullable()
       .optional()
       .describe(
-        "READ only. Instruction for formatting the query result via a local LLM. Only used when rawResult is false.",
+        "READ action only. Formatting via a small local model (Qwen3.5-9B). Only used when rawResult is false.",
       ),
     rawResult: z
       .boolean()
       .nullable()
       .optional()
       .describe(
-        "READ only. When false, sends the query result to a local LLM with the instruction for formatting. Default true (return raw JSON).",
+        "READ action only. When false, sends the query result to a local LLM with the instruction for formatting. Default true (return raw JSON).",
+      ),
+    reasoning: z
+      .enum(["simple", "normal", "hard"])
+      .default("simple")
+      .nullable()
+      .optional()
+      .describe(
+        "READ action only. Reasoning budget for the local LLM formatter. Should increase based on the task size and complexity. simple = 0, normal = 512, hard = 1024.",
       ),
   }),
   execute: wrapSafe(async (args) => {
@@ -181,7 +190,8 @@ Use \`instruction\` to specify how the result should be presented (e.g. "Format 
       if (!rawResult && instruction) {
         try {
           const resultJson = JSON.stringify({ rowCount: safeRows.length, rows: safeRows });
-          const formatted = await formatWithLocalLLM(instruction, resultJson);
+          const budget = args.reasoning ? REASONING_BUDGET[args.reasoning] : undefined;
+          const formatted = await formatWithLocalLLM(instruction, resultJson, budget);
           return `Formatted result:\n${formatted}`;
         } catch (fmtErr) {
           const msg = fmtErr instanceof Error ? fmtErr.message : String(fmtErr);

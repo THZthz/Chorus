@@ -294,8 +294,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "RelationshipType",
-    description:
-      `Stores the description and category of each relationship type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
+    description: `Stores the description and category of each relationship type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
     properties: [
       {
         name: "name",
@@ -312,8 +311,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "NodeType",
-    description:
-      `Stores the description, property schema, and category of each node type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
+    description: `Stores the description, property schema, and category of each node type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
     properties: [
       { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", type: "string" },
       {

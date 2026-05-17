@@ -52,29 +52,45 @@ export class MemorySearch {
 
     if (types.includes("messages")) {
       tasks.push(
-        this.shortTerm.searchMessages(query, { limit: fetchLimit, threshold: effectiveThreshold }).then(async (msgs) => {
-          if (useRerank && msgs.length > 0) {
-            const items = extractSearchTexts(msgs, "message");
-            const reranked = await applyRerank(query, items, limit);
-            results.messages = reranked as unknown as (MemoryMessage & { similarity: number; relevance?: number })[];
-          } else {
-            results.messages = msgs as (MemoryMessage & { similarity: number; relevance?: number })[];
-          }
-        }),
+        this.shortTerm
+          .searchMessages(query, { limit: fetchLimit, threshold: effectiveThreshold })
+          .then(async (msgs) => {
+            if (useRerank && msgs.length > 0) {
+              const items = extractSearchTexts(msgs, "message");
+              const reranked = await applyRerank(query, items, limit);
+              results.messages = reranked as unknown as (MemoryMessage & {
+                similarity: number;
+                relevance?: number;
+              })[];
+            } else {
+              results.messages = msgs as (MemoryMessage & {
+                similarity: number;
+                relevance?: number;
+              })[];
+            }
+          }),
       );
     }
 
     if (types.includes("entities")) {
       tasks.push(
-        this.longTerm.searchEntities(query, { limit: fetchLimit, threshold: effectiveThreshold }).then(async (entities) => {
-          if (useRerank && entities.length > 0) {
-            const items = extractSearchTexts(entities, "entity");
-            const reranked = await applyRerank(query, items, limit);
-            results.entities = reranked as unknown as (MemoryEntity & { similarity: number; relevance?: number })[];
-          } else {
-            results.entities = entities as (MemoryEntity & { similarity: number; relevance?: number })[];
-          }
-        }),
+        this.longTerm
+          .searchEntities(query, { limit: fetchLimit, threshold: effectiveThreshold })
+          .then(async (entities) => {
+            if (useRerank && entities.length > 0) {
+              const items = extractSearchTexts(entities, "entity");
+              const reranked = await applyRerank(query, items, limit);
+              results.entities = reranked as unknown as (MemoryEntity & {
+                similarity: number;
+                relevance?: number;
+              })[];
+            } else {
+              results.entities = entities as (MemoryEntity & {
+                similarity: number;
+                relevance?: number;
+              })[];
+            }
+          }),
       );
     }
 

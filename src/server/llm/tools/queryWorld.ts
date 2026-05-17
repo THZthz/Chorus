@@ -27,52 +27,6 @@ import { TOOL_NAMES } from "@/shared/constants";
 
 const validator = new CypherValidator();
 const AUTO_LIMIT = 50;
-const REASONING_BUDGET: Record<string, number> = { simple: 0, normal: 512, hard: 1024 };
-
-const LLAMA_FORMATTER_URL =
-  process.env.LLAMA_FORMATTER_URL || "http://localhost:8082/v1/chat/completions";
-
-async function formatWithLocalLLM(
-  instruction: string,
-  queryResult: string,
-  reasoningBudget?: number,
-): Promise<string> {
-  const systemPrompt = [
-    "Your only task is to restructure JSON into Markdown. Output result ONLY.",
-    "",
-    "Rules:",
-    "- Present every row exactly as given. Never omit, merge, or rewrite data.",
-    "- NEVER add information not present in the input.",
-    "- If the input is empty, output 'No results.'",
-    "",
-    "The input is JSON with snake_case keys. Format it according to the user's instruction:",
-    "",
-    instruction,
-  ].join("\n");
-
-  const res = await fetch(LLAMA_FORMATTER_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "model",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: queryResult },
-      ],
-      temperature: 0,
-      ...(reasoningBudget != null ? { reasoning_budget: reasoningBudget } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Local LLM returned ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const json = (await res.json()) as Record<string, unknown>;
-  const content = (json.choices as Array<{ message?: { content?: string } }>)?.[0]?.message
-    ?.content;
-  if (content) return content;
-  throw new Error("Local LLM returned empty response");
-}
 
 export const queryWorld = tool({
   title: TOOL_NAMES.QUERY_WORLD,
@@ -95,8 +49,6 @@ Do NOT query for scene information that is already present.
 Use ${TOOL_NAMES.QUERY_WORLD} only for specific lookups or mutations BEYOND the pre-loaded context.
 Internal properties prefixed with "_" will not be shown in READ results.
 
-When \`rawResult\` is set to false (READ only), the query result will be formatted by a local LLM according to \`instruction\`.
-Use \`instruction\` to specify how the result should be presented (e.g. "Format as a markdown table", "Summarize into a paragraph", "List only the names").
 `.trim(),
   inputSchema: z.object({
     action: z
@@ -107,28 +59,6 @@ Use \`instruction\` to specify how the result should be presented (e.g. "Format 
       .string()
       .describe(
         "A Cypher query. READ: MATCH...RETURN. WRITE: CREATE, MERGE, SET, DELETE. Must include MATCH with WHERE for deletions.",
-      ),
-    instruction: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "READ action only. Formatting via a small local model (Qwen3.5-9B). Only used when rawResult is false.",
-      ),
-    rawResult: z
-      .boolean()
-      .nullable()
-      .optional()
-      .describe(
-        "READ action only. When false, sends the query result to a local LLM with the instruction for formatting. Default true (return raw JSON).",
-      ),
-    reasoning: z
-      .enum(["simple", "normal", "hard"])
-      .default("simple")
-      .nullable()
-      .optional()
-      .describe(
-        "READ action only. Reasoning budget for the local LLM formatter. Should increase based on the task size and complexity. simple = 0, normal = 512, hard = 1024.",
       ),
   }),
   execute: wrapSafe(async (args) => {
@@ -184,21 +114,6 @@ Use \`instruction\` to specify how the result should be presented (e.g. "Format 
 
       const rows = await client.neo4j.executeRead(query);
       const safeRows = stripHiddenProperties(rows);
-      const rawResult = args.rawResult ?? true;
-      const instruction = args.instruction;
-
-      if (!rawResult && instruction) {
-        try {
-          const resultJson = JSON.stringify({ rowCount: safeRows.length, rows: safeRows });
-          const budget = args.reasoning ? REASONING_BUDGET[args.reasoning] : undefined;
-          const formatted = await formatWithLocalLLM(instruction, resultJson, budget);
-          return `Formatted result:\n${formatted}`;
-        } catch (fmtErr) {
-          const msg = fmtErr instanceof Error ? fmtErr.message : String(fmtErr);
-          return `FORMATTER ERROR: ${msg}.\nRaw result:\n${JSON.stringify({ rowCount: safeRows.length, rows: safeRows }, null, 2)}`;
-        }
-      }
-
       return JSON.stringify({ rowCount: safeRows.length, rows: safeRows }, null, 2);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

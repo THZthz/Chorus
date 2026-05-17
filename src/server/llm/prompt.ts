@@ -229,7 +229,7 @@ Scene data (player location, nearby NPCs, objects, inventory, NPC dispositions, 
 - Time flows only via tool ${TOOL_NAMES.ADVANCE_TIME}. Adjust sensory descriptions to match time of day.
 - NPCDisposition — how each NPC feels about the player right now. Each has a sentiment keyword (like trusting, suspicious, protective, hostile, etc.) and a narrative summary.
 
-Use ${TOOL_NAMES.QUERY_WORLD} for specific lookups BEYOND the pre-loaded scene: finding entities at other locations, checking message history, browsing timepoint history, or verifying entity details not visible in the scene context. Use "rawResult" and "instruction" to format the Cypher query result whenever you can.
+Use ${TOOL_NAMES.QUERY_WORLD} for specific lookups BEYOND the pre-loaded scene: finding entities at other locations, checking message history, browsing timepoint history, or verifying entity details not visible in the scene context.
 
 **Aim for 1-2 step per turn.** Most turns need only ${TOOL_NAMES.GENERATE_DIALOGUE}. The ${MAX_GM_STEPS}-step limit is a ceiling — don't spend it on redundant queries.
 

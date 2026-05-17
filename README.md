@@ -51,7 +51,7 @@ cp .env.example .env
 #   # Llama-server endpoints (defaults work with default ports):
 #   LLAMA_EMBED_URL=http://localhost:8080/v1/embeddings
 #   LLAMA_RERANK_URL=http://localhost:8081/v1/rerank
-#   LLAMA_FORMATTER_URL=http://localhost:8082/v1/chat/completions
+
 #   EMBEDDING_DIMENSIONS=1024
 
 make install

@@ -240,7 +240,7 @@ Two layers of tools, all defined in `src/server/llm/tools/`:
 
 | Tool           | Purpose                                                                                           |
 |----------------|---------------------------------------------------------------------------------------------------|
-| `queryWorld`   | Cypher queries with `action` "READ" (default) or "WRITE". READ: auto-limits, supports `instruction` + `rawResult` for local LLM formatting. WRITE: creates/updates/deletes, auto-resets scene observer. Both validated via CypherValidator. |
+| `queryWorld`   | Cypher queries with `action` "READ" (default) or "WRITE". READ: auto-limits. WRITE: creates/updates/deletes, auto-resets scene observer. Both validated via CypherValidator. |
 | `manageSchema` | Register/unregister node types (with property schemas) and relationship types (with descriptions) |
 | `searchWorld`  | Unified vector search across entities, messages, notes, and plots — select domains via `types` |
 | `editNode`     | Create/update/delete any world node (entities, notes, plots, GM-defined types) — validates properties against NodeManager, auto-generates embeddings |
@@ -387,7 +387,6 @@ For relationships created inline with node creation (e.g. `HAS_MESSAGE` alongsid
 | Variable | Purpose | Default |
 |---|---|---|
 | `LLAMA_EMBED_URL` | llama-server embeddings endpoint | `http://localhost:8080/v1/embeddings` |
-| `LLAMA_FORMATTER_URL` | llama-server chat completions endpoint (for `queryWorld` result formatting) | `http://localhost:8082/v1/chat/completions` |
 | `EMBEDDING_DIMENSIONS` | Vector dimension | `1024` |
 
 **Factory**: `getEmbedder()` returns a singleton. Used by `ShortTermMemory`, `LongTermMemory`, `Notes`, and `Plots` for vector search indexing.

@@ -81,7 +81,6 @@ export class Plots {
 
     const node = (rows[0]?.p as Record<string, unknown>) || {};
     return {
-      id: (node._id as string) || id,
       name,
       description: (node.description as string) || description,
       brief: (node.brief as string) || brief || undefined,
@@ -89,8 +88,6 @@ export class Plots {
       triggerCondition: (node.trigger_condition as string) || (triggerCondition ?? undefined),
       flags,
       _embedding: embedding,
-      createdAt: new Date((node._created_at as string | number) || now),
-      updatedAt: new Date((node._updated_at as string | number) || now),
     };
   }
 
@@ -147,7 +144,6 @@ export class Plots {
       status: newStatus,
       triggerCondition: newTrigger ?? undefined,
       _embedding: embedding,
-      updatedAt: new Date(now),
     };
   }
 
@@ -175,7 +171,7 @@ export class Plots {
       { name: plotName, flags: JSON.stringify(flags), now },
     );
 
-    return { ...existing, flags, updatedAt: new Date(now) };
+    return { ...existing, flags };
   }
 
   async removeFlag(plotName: string, flagId: string): Promise<MemoryPlot | null> {
@@ -191,7 +187,7 @@ export class Plots {
       { name: plotName, flags: flags.length > 0 ? JSON.stringify(flags) : null, now },
     );
 
-    return { ...existing, flags, updatedAt: new Date(now) };
+    return { ...existing, flags };
   }
 
   async getFlags(plotName: string): Promise<PlotFlag[]> {
@@ -314,7 +310,6 @@ export class Plots {
       }
     }
     return {
-      id: data._id as string,
       name: data.name as string,
       description: (data.description as string) || "",
       brief: (data.brief as string) || undefined,
@@ -322,8 +317,6 @@ export class Plots {
       triggerCondition: (data.trigger_condition as string) || undefined,
       flags,
       _embedding: data._embedding as number[] | undefined,
-      createdAt: new Date((data._created_at as string | number) || Date.now()),
-      updatedAt: new Date((data._updated_at as string | number) || Date.now()),
     };
   }
 }

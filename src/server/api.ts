@@ -60,11 +60,11 @@ apiRouter.get("/history", async (_req, res) => {
   try {
     const client = MemoryClient.getCachedInstance();
     const messages = await client.shortTerm.getConversation();
-    const history: Message[] = messages.map((m) => {
+    const history: Message[] = messages.map((m, i) => {
       const meta = m.metadata || {};
       const isPlayer = m.role === "user";
       const msg: Message = {
-        id: m.id,
+        id: `msg_${i}`,
         speaker: isPlayer ? "YOU" : (meta.speaker as string) || "SYSTEM",
         type: isPlayer ? "YOU" : (meta.type as Message["type"]) || "SYSTEM",
         text: m.content || "",

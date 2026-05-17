@@ -93,12 +93,10 @@ export class ShortTermMemory {
     }
 
     return {
-      id: messageId,
       role,
       content,
       metadata: metadata || {},
       _embedding: embedding,
-      createdAt: new Date(now),
     };
   }
 
@@ -113,12 +111,10 @@ export class ShortTermMemory {
     return rows.reverse().map((r) => {
       const m = r.m as Record<string, unknown>;
       return {
-        id: m._id as string,
         role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
         metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
         _embedding: m._embedding as number[] | undefined,
-        createdAt: toDate(m.timestamp),
       };
     });
   }
@@ -147,12 +143,10 @@ export class ShortTermMemory {
     return rows.map((r) => {
       const m = r.m as Record<string, unknown>;
       return {
-        id: m._id as string,
         role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
         metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
         similarity: r.score as number,
-        createdAt: toDate(m.timestamp),
       };
     });
   }

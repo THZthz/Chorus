@@ -22,7 +22,6 @@ export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | 
 export type MessageRole = "user" | "assistant" | "system";
 
 export interface MemoryEntity {
-  id: string;
   name: string;
   type: EntityType;
   subtype?: string;
@@ -31,26 +30,21 @@ export interface MemoryEntity {
   aliases: string[];
   metadata: Record<string, unknown>;
   _embedding?: number[];
-  createdAt: Date;
   // True if the entity was newly created (MERGE semantics).
   isNew?: boolean;
 }
 
 export interface MemoryMessage {
-  id: string;
   role: MessageRole;
   content: string;
   metadata: Record<string, unknown>;
   _embedding?: number[];
-  createdAt: Date;
 }
 
 export interface MemoryNote {
   name: string;
   content: string;
   _embedding?: number[];
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export const PLOT_STATUSES = [
@@ -68,7 +62,6 @@ export interface PlotFlag {
 }
 
 export interface MemoryPlot {
-  id: string;
   name: string;
   description: string;
   brief?: string;
@@ -76,18 +69,13 @@ export interface MemoryPlot {
   triggerCondition?: string;
   flags: PlotFlag[];
   _embedding?: number[];
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface NPCDisposition {
-  id: string;
   npcName: string;
   targetName: string;
   sentiment: string;
   summary: string;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface PlayerCondition {

@@ -45,8 +45,6 @@ export class Notes {
       name: noteName,
       content,
       _embedding: embedding,
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
     };
   }
 
@@ -68,7 +66,7 @@ export class Notes {
       { name: noteName, content, embedding: embedding || null, now },
     );
 
-    return { ...existing, content, _embedding: embedding, updatedAt: new Date(now) };
+    return { ...existing, content, _embedding: embedding };
   }
 
   async deleteNote(noteName: string): Promise<boolean> {
@@ -190,8 +188,6 @@ export class Notes {
       name: data.name as string,
       content: data.content as string,
       _embedding: data._embedding as number[] | undefined,
-      createdAt: new Date((data._created_at as string | number) || Date.now()),
-      updatedAt: new Date((data._updated_at as string | number) || Date.now()),
     };
   }
 }

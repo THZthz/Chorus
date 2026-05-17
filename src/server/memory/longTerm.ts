@@ -142,14 +142,7 @@ export class LongTermMemory {
 
     const result = rows[0];
     const isNew = (result?.isNew as boolean) || false;
-    const persistedNode = result?.e as Record<string, unknown> | undefined;
-    const persistedId = (persistedNode?._id as string) || entityId;
-    const persistedCreatedAt = persistedNode?._created_at
-      ? new Date(persistedNode._created_at as string | number)
-      : new Date();
-
     return {
-      id: persistedId,
       name,
       type: finalType as EntityType,
       subtype: finalSubtype,
@@ -158,7 +151,6 @@ export class LongTermMemory {
       aliases: aliases || [],
       metadata: metadata || {},
       _embedding: embedding,
-      createdAt: persistedCreatedAt,
       isNew,
     };
   }
@@ -332,7 +324,6 @@ export class LongTermMemory {
     const aliases = (meta.aliases as string[]) || [];
     delete meta.aliases;
     return {
-      id: data._id as string,
       name: data.name as string,
       type: data.type as EntityType,
       subtype: (data.subtype as string) || undefined,
@@ -341,19 +332,15 @@ export class LongTermMemory {
       aliases,
       metadata: meta,
       _embedding: data._embedding as number[] | undefined,
-      createdAt: new Date((data._created_at as string | number) || Date.now()),
     };
   }
 
   private parseDisposition(data: Record<string, unknown>): NPCDisposition {
     return {
-      id: data._id as string,
       npcName: data.npc_name as string,
       targetName: data.target_name as string,
       sentiment: data.sentiment as string,
       summary: data.summary as string,
-      createdAt: new Date((data._created_at as string | number) || Date.now()),
-      updatedAt: new Date((data._updated_at as string | number) || Date.now()),
     };
   }
 }

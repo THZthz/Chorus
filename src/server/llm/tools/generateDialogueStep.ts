@@ -22,7 +22,7 @@ import { NOTIFICATION_TYPES, SPEAKER_TYPES, SpeakerType } from "@/types/dialogue
 import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
 import { checkText } from "@/server/llm/tools/shared";
 
-export const MAX_MESSAGE_TEXT_LENGTH = 500;
+export const MAX_MESSAGE_TEXT_LENGTH = 700;
 
 const messageSchema = z.object({
   index: z

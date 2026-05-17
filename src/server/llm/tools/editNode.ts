@@ -165,6 +165,15 @@ Requires exact match criteria. Verify you're targeting the right node.
       }
     }
 
+    // Serialize plain objects to JSON strings for Neo4j compatibility.
+    // Neo4j properties must be primitives or arrays of primitives — nested
+    // objects (e.g. flags, metadata) are rejected as Maps.
+    function toPropertyValue(v: unknown): unknown {
+      if (v === null || v === undefined) return v;
+      if (typeof v === "object" && !Array.isArray(v)) return JSON.stringify(v);
+      return v;
+    }
+
     function buildWhere(match: Record<string, string>, params: Record<string, unknown>): string {
       const parts = Object.entries(match).map(([key, value], i) => {
         const pName = `mk${i}`;
@@ -206,7 +215,7 @@ Requires exact match criteria. Verify you're targeting the right node.
       const setters = ["n._id = $id", "n._created_at = datetime()"];
       for (const [key, value] of Object.entries(args.properties)) {
         const pName = `p_${key}`;
-        params[pName] = value;
+        params[pName] = toPropertyValue(value);
         setters.push(`n.\`${key}\` = $${pName}`);
       }
 
@@ -252,11 +261,42 @@ Requires exact match criteria. Verify you're targeting the right node.
     const propErr = checkProps(args.properties);
     if (propErr) return `ERROR: ${propErr}`;
 
+    const existingNode = existing[0]?.n as Record<string, unknown> | undefined;
+
+    // WARNING: Plot flags are serialized as a single JSON property in Neo4j.
+    // The GM passes flags as an object map (e.g. {memory_professionally_removed: true}),
+    // and a plain SET would overwrite the entire property, silently dropping flags
+    // the GM didn't mention. For Plot nodes we read the existing flags and
+    // shallow-merge the incoming ones so partial updates don't clobber.
+    const propertiesToSet = { ...args.properties };
+    if (args.nodeLabel === "Plot" && args.properties.flags !== undefined) {
+      const incomingFlags = args.properties.flags as Record<string, unknown>;
+      const existingFlagsRaw = existingNode?.flags;
+      let existingFlags: Record<string, unknown> = {};
+      if (typeof existingFlagsRaw === "string") {
+        try {
+          const parsed = JSON.parse(existingFlagsRaw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            existingFlags = parsed;
+          }
+        } catch {
+          // unparseable — overwrite with incoming
+        }
+      } else if (
+        existingFlagsRaw &&
+        typeof existingFlagsRaw === "object" &&
+        !Array.isArray(existingFlagsRaw)
+      ) {
+        existingFlags = existingFlagsRaw as Record<string, unknown>;
+      }
+      propertiesToSet.flags = { ...existingFlags, ...incomingFlags };
+    }
+
     const setParams: Record<string, unknown> = { ...matchParams };
     const setters = ["n._updated_at = datetime()"];
-    for (const [key, value] of Object.entries(args.properties)) {
+    for (const [key, value] of Object.entries(propertiesToSet)) {
       const pName = `s_${key}`;
-      setParams[pName] = value;
+      setParams[pName] = toPropertyValue(value);
       setters.push(`n.\`${key}\` = $${pName}`);
     }
 
@@ -264,7 +304,6 @@ Requires exact match criteria. Verify you're targeting the right node.
       const embKeys = new Set(["name", "description", "content", "brief"]);
       const textChanged = Object.keys(args.properties).some((k) => embKeys.has(k));
       if (textChanged) {
-        const existingNode = existing[0]?.n as Record<string, unknown> | undefined;
         const merged: Record<string, unknown> = { ...existingNode, ...args.properties };
         const emb = await computeEmbedding(merged);
         setters.push(`n._embedding = $s__embedding`);
@@ -279,9 +318,7 @@ Requires exact match criteria. Verify you're targeting the right node.
 
     // Reset scene observer for entities whose description/brief changed
     if (args.properties.description !== undefined || args.properties.brief !== undefined) {
-      const entityName = (existing[0]?.n as Record<string, unknown> | undefined)?.name as
-        | string
-        | undefined;
+      const entityName = existingNode?.name as string | undefined;
       if (entityName) {
         try {
           getObserver().resetEntity(entityName);

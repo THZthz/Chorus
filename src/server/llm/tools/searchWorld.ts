@@ -33,7 +33,7 @@ type SearchResult = {
 };
 
 export const searchWorld = tool({
-  title: TOOL_NAMES.SEARCH_MEMORY,
+  title: TOOL_NAMES.SEARCH_WORLD,
   description: `
 Search the archive by MEANING (vector similarity + reranking).
 Use this when you don't know the exact name or Cypher pattern — searchWorld finds things by what they're ABOUT.
@@ -137,5 +137,5 @@ Use queryWorld (READ) when you need exact Cypher lookups or relationship travers
     await Promise.all(tasks);
 
     return JSON.stringify(result, null, 2);
-  }, TOOL_NAMES.SEARCH_MEMORY),
+  }, TOOL_NAMES.SEARCH_WORLD),
 });

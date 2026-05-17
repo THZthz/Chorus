@@ -126,7 +126,13 @@ Properties are validated against the registered schema — unknown property name
       return null;
     }
 
-    const wantsEmbedding = nodeDef.properties.some((p) => p.name === "_embedding");
+    // NodeManager discards properties for PREDEFINED types, so check the
+    // known embeddable labels directly (all have Neo4j vector indexes).
+    const EMBEDDABLE = new Set([
+      "Entity", "Character", "Object", "Location", "Organization", "Event",
+      "Note", "Plot", "Message",
+    ]);
+    const wantsEmbedding = EMBEDDABLE.has(args.nodeLabel);
 
     async function computeEmbedding(
       props: Record<string, unknown>,

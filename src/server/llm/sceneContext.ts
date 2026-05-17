@@ -22,19 +22,9 @@ import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { NodeManager } from "@/server/memory/nodeManager";
 import { getObserver } from "@/server/llm/sceneObserver";
 import type { EntityRef } from "@/server/models/entity";
-import {
-  formatEntityCompact,
-  formatEntityFull,
-  extractAliases,
-  extractConditions,
-} from "@/server/models/entity";
+import { formatEntityCompact, formatEntityFull } from "@/server/models/entity";
 import type { PlotRef } from "@/server/models/plot";
 import { buildPlotTree, parseFlags } from "@/server/models/plot";
-import {
-  getSchemaVisualization,
-  getRelationshipTypeDescriptions,
-  formatSchemaMarkdown,
-} from "@/server/models/schema";
 
 // ── Query result types ──
 
@@ -95,7 +85,7 @@ function formatDisposition(d: DispositionRow): string {
   return `- **${d.npcName}**: ${d.sentiment} — "${d.summary}"`;
 }
 
-// ── Main export ──
+// ── SCENE_CONTEXT ──
 
 export async function buildSceneContext(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
@@ -239,178 +229,170 @@ export async function buildSceneContext(): Promise<string> {
   return parts.join("\n");
 }
 
-// ── Full world state dump (developer debug) ──
+// ── CHARACTERS_BRIEF ──
 
-export async function buildFullSceneContext(): Promise<string> {
+const CHARACTERS_QUERY = `
+MATCH (c:Entity)
+WHERE c.type = "CHARACTER"
+OPTIONAL MATCH (c)-[:LOCATED_AT]->(loc:Entity)
+OPTIONAL MATCH (c)-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"})
+RETURN c.name AS name, c.brief AS brief, c.description AS description,
+       loc.name AS location, d.sentiment AS disposition
+ORDER BY name
+`;
+
+interface CharacterRow {
+  name: string;
+  brief: string | null;
+  description: string | null;
+  location: string | null;
+  disposition: string | null;
+}
+
+export async function buildCharactersBrief(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
-  const db = client.neo4j;
+  const rows = (await client.neo4j.executeRead(CHARACTERS_QUERY)) as unknown as CharacterRow[];
 
-  const logError = (label: string, err: unknown) => {
-    console.error(
-      `[fullSceneContext] ${label} failed:`,
-      err instanceof Error ? err.message : String(err),
-    );
-  };
+  if (rows.length === 0) return "## CHARACTERS\n\n(none)\n";
 
-  const [
-    entityRows,
-    plotRows,
-    noteRows,
-    dispRows,
-    time,
-    relRows,
-    timeChain,
-    schemaVis,
-    relTypeDescs,
-  ] = await Promise.all([
-    db.executeRead("MATCH (e:Entity) RETURN e ORDER BY e.name").catch((err) => {
-      logError("entities query", err);
-      return [] as Record<string, unknown>[];
-    }),
-    db.executeRead("MATCH (p:Plot) RETURN p ORDER BY p.name").catch((err) => {
-      logError("plots query", err);
-      return [] as Record<string, unknown>[];
-    }),
-    db.executeRead("MATCH (n:Note) RETURN n ORDER BY n.name").catch((err) => {
-      logError("notes query", err);
-      return [] as Record<string, unknown>[];
-    }),
-    db.executeRead("MATCH (d:NPCDisposition) RETURN d ORDER BY d.npc_name").catch((err) => {
-      logError("dispositions query", err);
-      return [] as Record<string, unknown>[];
-    }),
-    getGameTime().catch((err) => {
-      logError("getGameTime", err);
-      return { day: 1, segment: 2 };
-    }),
-    (() => {
-      const nodeManager = NodeManager.getCachedInstance();
-      const excluded = new Set(nodeManager.getByType("INTERNAL").map((n) => n.name));
-      // Also exclude labels shown in dedicated dump sections
-      for (const name of ["Message", "RelationshipType", "NodeType"]) {
-        excluded.add(name);
-      }
-      const aClauses = [...excluded].map((l) => `NOT a:${l}`).join(" AND ");
-      const bClauses = [...excluded].map((l) => `NOT b:${l}`).join(" AND ");
-      return db
-        .executeRead(
-          `MATCH (a)-[r]->(b)
-           WHERE ${aClauses} AND ${bClauses}
-           RETURN labels(a) AS sourceLabels,
-                  COALESCE(a.name, a._id) AS sourceName,
-                  type(r) AS type,
-                  labels(b) AS targetLabels,
-                  COALESCE(b.name, b._id) AS targetName`,
-        )
-        .catch((err) => {
-          logError("relationships query", err);
-          return [] as Record<string, unknown>[];
-        });
-    })(),
-    db
-      .executeRead(
-        `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(current:TimePoint)
-       OPTIONAL MATCH (current)-[:NEXT_TIMEPOINT*]->(future:TimePoint)
-       RETURN current, collect(DISTINCT future) AS future`,
-      )
-      .catch((err) => {
-        logError("time chain query", err);
-        return [] as Record<string, unknown>[];
-      }),
-    getSchemaVisualization(db).catch((err) => {
-      logError("schema visualization", err);
-      return { nodes: [], relationships: [] };
-    }),
-    getRelationshipTypeDescriptions(db).catch((err) => {
-      logError("relationship type descriptions", err);
-      return [] as { name: string; description: string; category: string }[];
-    }),
-  ]);
-
-  const parts: string[] = [];
-  parts.push("## World State");
-  parts.push(`**Time**: ${describeTime(time)}`);
-  parts.push("");
-
-  // Entities
-  parts.push("## Entities");
-  for (const row of entityRows) {
-    const e = row.e as Record<string, unknown>;
-    const name = e.name as string;
-    const type = e.type as string;
-    const desc = (e.description as string) || "";
-    const brief = (e.brief as string) || "";
-    const subtype = e.subtype ? `:${e.subtype}` : "";
-    const aliases = extractAliases(e.metadata);
-    const aliasStr = aliases.length > 0 ? ` (aka ${aliases.join(", ")})` : "";
-    const conditions = extractConditions(e.metadata);
-
-    parts.push(`### ${name} (${type}${subtype})${aliasStr}`);
-    if (brief) parts.push(`*${brief}*`);
-    if (desc && desc !== brief) parts.push(desc);
-    if (conditions.length > 0) {
-      for (const c of conditions) {
-        parts.push(`- Condition: ${c}`);
-      }
-    }
-    parts.push("");
+  const lines: string[] = ["## CHARACTERS", ""];
+  for (const c of rows) {
+    const brief = c.brief || (c.description || "").slice(0, 120) || "";
+    const loc = c.location ? ` (${c.location})` : "";
+    const disp = c.disposition ? ` [${c.disposition}]` : "";
+    lines.push(`- **${c.name}**${loc}: ${brief}${disp}`);
   }
+  lines.push("");
+  return lines.join("\n");
+}
 
-  // Plots
-  parts.push("## Plots");
-  for (const row of plotRows) {
-    const p = row.p as Record<string, unknown>;
+// ── LOCATIONS_BRIEF ──
+
+const LOCATIONS_QUERY = `
+MATCH (l:Entity)
+WHERE l.type = "LOCATION"
+RETURN l.name AS name, l.brief AS brief, l.description AS description
+ORDER BY name
+`;
+
+interface LocationRow {
+  name: string;
+  brief: string | null;
+  description: string | null;
+}
+
+export async function buildLocationsBrief(): Promise<string> {
+  const client = MemoryClient.getCachedInstance();
+  const rows = (await client.neo4j.executeRead(LOCATIONS_QUERY)) as unknown as LocationRow[];
+
+  if (rows.length === 0) return "## LOCATIONS\n\n(none)\n";
+
+  const lines: string[] = ["## LOCATIONS", ""];
+  for (const l of rows) {
+    const brief = l.brief || (l.description || "").slice(0, 120) || "";
+    lines.push(`- **${l.name}**: ${brief}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ── OBJECTS_BRIEF ──
+
+const OBJECTS_QUERY = `
+MATCH (o:Entity)
+WHERE o.type = "OBJECT"
+OPTIONAL MATCH (carrier:Entity)-[:CARRIES]->(o)
+OPTIONAL MATCH (o)-[:LOCATED_AT]->(loc:Entity)
+  WHERE carrier IS NULL
+RETURN o.name AS name, o.brief AS brief, o.description AS description,
+       carrier.name AS carrier, loc.name AS location
+ORDER BY name
+`;
+
+interface ObjectRow {
+  name: string;
+  brief: string | null;
+  description: string | null;
+  carrier: string | null;
+  location: string | null;
+}
+
+export async function buildObjectsBrief(): Promise<string> {
+  const client = MemoryClient.getCachedInstance();
+  const rows = (await client.neo4j.executeRead(OBJECTS_QUERY)) as unknown as ObjectRow[];
+
+  if (rows.length === 0) return "## OBJECTS\n\n(none)\n";
+
+  const lines: string[] = ["## OBJECTS", ""];
+  for (const o of rows) {
+    const context = o.carrier
+      ? `Carried by: ${o.carrier}`
+      : o.location
+        ? `Located at: ${o.location}`
+        : "location unknown";
+    lines.push(`- **${o.name}** — ${context}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ── PLOTS_BRIEF ──
+
+export async function buildPlotsBrief(): Promise<string> {
+  const client = MemoryClient.getCachedInstance();
+  const rows = (await client.neo4j.executeRead(
+    `MATCH (p:Plot) RETURN p ORDER BY p.name`,
+  )) as Array<{ p: Record<string, unknown> }>;
+
+  if (rows.length === 0) return "## PLOTS\n\n(none)\n";
+
+  const lines: string[] = ["## PLOTS", ""];
+  for (const row of rows) {
+    const p = row.p;
     const name = p.name as string;
     const status = p.status as string;
-    const desc = (p.description as string) || "";
-    const brief = (p.brief as string) || "";
-    const trigger = p.trigger_condition as string | undefined;
+    const brief = (p.brief as string) || ((p.description as string) || "").slice(0, 120);
     const flags = parseFlags(p.flags);
-
-    parts.push(`### ${name} (${status})`);
-    if (brief) parts.push(`*${brief}*`);
-    if (desc && desc !== brief) parts.push(desc);
-    if (trigger) parts.push(`Trigger: \`${trigger}\``);
-    if (flags.length > 0) {
-      parts.push(`Flags: ${flags.map((f) => `\`${f.flagId}\` — ${f.description}`).join(", ")}`);
-    }
-    parts.push("");
+    const flagStr =
+      flags.length > 0 ? `\n  Flags: ${flags.map((f) => f.flagId).join(", ")}` : "";
+    lines.push(`- **${name}** (${status}): ${brief}${flagStr}`);
   }
+  lines.push("");
+  return lines.join("\n");
+}
 
-  // Notes
-  parts.push("## Notes");
-  for (const row of noteRows) {
-    const n = row.n as Record<string, unknown>;
-    const name = n.name as string;
-    const content = (n.content as string) || "";
-    parts.push(`### ${name}`);
-    parts.push(content);
-    parts.push("");
+// ── RELATIONSHIP_DUMP ──
+
+export async function buildRelationshipDump(): Promise<string> {
+  const client = MemoryClient.getCachedInstance();
+  const manager = RelationshipManager.getCachedInstance();
+  const nodeManager = NodeManager.getCachedInstance();
+
+  const excluded = new Set(
+    nodeManager.getByType("INTERNAL").map((n) => n.name),
+  );
+  for (const name of ["Message", "RelationshipType", "NodeType"]) {
+    excluded.add(name);
   }
+  const aClauses = [...excluded].map((l) => `NOT a:\`${l}\``).join(" AND ");
+  const bClauses = [...excluded].map((l) => `NOT b:\`${l}\``).join(" AND ");
 
-  // NPCDispositions
-  parts.push("## NPCDispositions");
-  for (const row of dispRows) {
-    const d = row.d as Record<string, unknown>;
-    const npcName = d.npc_name as string;
-    const targetName = d.target_name as string;
-    const sentiment = d.sentiment as string;
-    const summary = d.summary as string;
-    parts.push(`- **${npcName}** → ${targetName}: ${sentiment} — "${summary}"`);
-  }
-  parts.push("");
-
-  // Relationships
-  parts.push("## Relationships");
-  const rels = relRows as Array<{
+  const relRows = (await client.neo4j.executeRead(
+    `MATCH (a)-[r]->(b)
+     WHERE ${aClauses} AND ${bClauses}
+     RETURN labels(a) AS sourceLabels,
+            COALESCE(a.name, a._id) AS sourceName,
+            type(r) AS type,
+            labels(b) AS targetLabels,
+            COALESCE(b.name, b._id) AS targetName`,
+  )) as Array<{
     sourceName: string;
     type: string;
     targetName: string;
   }>;
-  const manager = RelationshipManager.getCachedInstance();
-  // INTERNAL types (GM message bookkeeping) — always hidden
+
+  // Filter INTERNAL and dedicated-section types
   const internalTypeNames = new Set(manager.getByType("INTERNAL").map((r) => r.name));
-  // Types covered by dedicated dump sections (Dispositions, Time Chain, Plots)
   for (const name of [
     "HAS_DISPOSITION",
     "CURRENT_TIMEPOINT",
@@ -424,60 +406,41 @@ export async function buildFullSceneContext(): Promise<string> {
   ]) {
     internalTypeNames.add(name);
   }
-  const visible = rels.filter((r) => !internalTypeNames.has(r.type));
+  const visible = relRows.filter((r) => !internalTypeNames.has(r.type));
+
+  if (visible.length === 0) return "## RELATIONSHIPS\n\n(none)\n";
+
   const byType = new Map<string, typeof visible>();
   for (const r of visible) {
     const group = byType.get(r.type) || [];
     group.push(r);
     if (!byType.has(r.type)) byType.set(r.type, group);
   }
+
+  const lines: string[] = ["## RELATIONSHIPS", ""];
   const sortedTypes = [...byType.keys()].sort();
   for (const type of sortedTypes) {
     const group = byType.get(type)!;
-    parts.push(`### ${type}`);
-    const seen = new Set<string>();
-    for (const r of group) {
-      const src = r.sourceName;
-      const tgt = r.targetName;
-      if (type === "LOCATED_AT" || type === "LOCATED_IN") {
-        const key = tgt;
-        if (!seen.has(key)) {
-          seen.add(key);
+    lines.push(`### ${type}`);
+    if (type === "LOCATED_AT" || type === "LOCATED_IN") {
+      const seen = new Set<string>();
+      for (const r of group) {
+        const tgt = r.targetName;
+        if (!seen.has(tgt)) {
+          seen.add(tgt);
           const occupants = group
             .filter((o) => o.targetName === tgt)
             .map((o) => o.sourceName)
             .join(", ");
-          parts.push(`- **${tgt}**: ${occupants}`);
+          lines.push(`- **${tgt}**: ${occupants}`);
         }
-      } else {
-        parts.push(`- ${src} → ${tgt}`);
+      }
+    } else {
+      for (const r of group) {
+        lines.push(`- ${r.sourceName} → ${r.targetName}`);
       }
     }
-    parts.push("");
+    lines.push("");
   }
-  if (visible.length === 0) parts.push("(none)");
-
-  // Schema (from db.schema.visualization() + :RelationshipType descriptions)
-  parts.push("");
-  parts.push(formatSchemaMarkdown(schemaVis, relTypeDescs));
-
-  // Time Chain
-  parts.push("## Time Chain");
-  const nodes = timeChain.flatMap((r) => {
-    const current = r.current as Record<string, unknown>;
-    const future = (r.future as Record<string, unknown>[]) || [];
-    return [current, ...future];
-  });
-  for (const tp of nodes) {
-    if (!tp) continue;
-    const day = tp.day as number;
-    const segment = tp.segment as number;
-    const label = tp.label as string;
-    const created = tp._created_at as string;
-    parts.push(`- Day ${day}, Segment ${segment} (${label}) — ${created}`);
-  }
-  parts.push("");
-
-  parts.push("---");
-  return parts.join("\n");
+  return lines.join("\n");
 }

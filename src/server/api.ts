@@ -22,7 +22,19 @@ import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getCurrentOptions } from "@/server/memory/gameState";
-import { buildFullSceneContext } from "@/server/llm/sceneContext";
+import {
+  buildSceneContext,
+  buildCharactersBrief,
+  buildLocationsBrief,
+  buildObjectsBrief,
+  buildPlotsBrief,
+  buildRelationshipDump,
+} from "@/server/llm/sceneContext";
+import {
+  getSchemaVisualization,
+  getRelationshipTypeDescriptions,
+  formatSchemaMarkdown,
+} from "@/server/models/schema";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
@@ -114,7 +126,20 @@ apiRouter.get("/game/current", async (_req, res) => {
 
 apiRouter.get("/debug/dump", async (_req, res) => {
   try {
-    const md = await buildFullSceneContext();
+    const db = MemoryClient.getCachedInstance().neo4j;
+    const [scene, characters, locations, objects, plots, relationships, schemaVis, relTypeDescs] =
+      await Promise.all([
+        buildSceneContext(),
+        buildCharactersBrief(),
+        buildLocationsBrief(),
+        buildObjectsBrief(),
+        buildPlotsBrief(),
+        buildRelationshipDump(),
+        getSchemaVisualization(db),
+        getRelationshipTypeDescriptions(db),
+      ]);
+    const schema = formatSchemaMarkdown(schemaVis, relTypeDescs);
+    const md = [scene, characters, locations, objects, plots, relationships, schema].join("\n");
     res.set("Content-Type", "text/plain; charset=utf-8").send(md);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

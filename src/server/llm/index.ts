@@ -23,8 +23,6 @@ import type { Response } from "express";
 import type { Message, DialogueOption } from "@/types/dialogue";
 import { TurnEventEmitter } from "@/server/llm/events";
 import { buildSystemPrompt, MAX_GM_STEPS } from "@/server/llm/prompt";
-import { buildSceneContext, buildFullSceneContext } from "@/server/llm/sceneContext";
-import { getObserver } from "@/server/llm/sceneObserver";
 import { getModel } from "@/server/llm/model";
 import { MemoryClient } from "@/server/memory/client";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
@@ -32,6 +30,7 @@ import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
+import { getContext } from "@/server/llm/tools/getContext";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { saveCurrentOptions } from "@/server/memory/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
@@ -48,29 +47,6 @@ export async function generateTurn(
 ): Promise<void> {
   const systemPrompt = await buildSystemPrompt();
   const events = new TurnEventEmitter(res);
-
-  // Pre-fetch scene context so the GM doesn't need to query for it.
-  // First turn: full world dump. Subsequent turns: focused scene context.
-  let sceneContext = "";
-  try {
-    if (getObserver().isEmpty()) {
-      sceneContext = await buildFullSceneContext();
-      // Mark all entities/plots as seen so next turn uses compact scene context
-      const db = MemoryClient.getCachedInstance().neo4j;
-      const [entityRows, plotRows] = await Promise.all([
-        db.executeRead("MATCH (e:Entity) RETURN e.name AS name"),
-        db.executeRead("MATCH (p:Plot) RETURN p.name AS name"),
-      ]);
-      getObserver().markAllSeen(
-        entityRows.map((r) => r.name as string),
-        plotRows.map((r) => r.name as string),
-      );
-    } else {
-      sceneContext = await buildSceneContext();
-    }
-  } catch (err) {
-    console.error("[generateTurn] Failed to build scene context:", err);
-  }
 
   console.log(
     `[generateTurn] historyLen=${history.length} userInput="${String(userInput).slice(0, 80)}"`,
@@ -173,16 +149,10 @@ export async function generateTurn(
     }
   }
 
-  let contextParts: string[] = [];
-  if (sceneContext) {
-    contextParts.push(sceneContext, "", "---", "");
-  }
-
   const promptText = [
     ...historyParts,
     ...actionParts,
     ...skillCheckParts,
-    ...contextParts,
     "Generate the narrative response following the output format exactly.",
   ].join("\n");
 
@@ -217,6 +187,7 @@ export async function generateTurn(
     manageSchema,
     editNode,
     editRelationship,
+    getContext,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,
   };

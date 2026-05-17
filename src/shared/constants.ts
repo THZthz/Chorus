@@ -71,4 +71,5 @@ export const TOOL_NAMES = {
   MANAGE_SCHEMA: "manageSchema",
   EDIT_NODE: "editNode",
   EDIT_RELATIONSHIP: "editRelationship",
+  GET_CONTEXT: "getContext",
 } as const;

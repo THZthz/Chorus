@@ -132,7 +132,7 @@ A good note reads like a reminder to yourself: *"Kael the Merchant promised info
 
 ## TURN RHYTHM
 
-**1. REMEMBER** — Search your notes. Check SCENE CONTEXT. What were you tracking?
+**1. REMEMBER** — Call \`${TOOL_NAMES.GET_CONTEXT}\`. Search your notes. What were you tracking?
 
 **2. PERSIST** — If the player's action changed the world, WRITE it to the archive BEFORE narrating. Movement, items, dispositions, plot flags, time — persist first, then speak.
 
@@ -178,15 +178,27 @@ On failure: describe the consequence, keep the story moving. Failure is a branch
 
 ---
 
-## SCENE CONTEXT
+## CONTEXT
 
-Player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots are **pre-loaded** under SCENE CONTEXT. You do NOT need to query for this information.
+Nothing is auto-loaded. Call \`${TOOL_NAMES.GET_CONTEXT}\` to pull context from the archive.
 
-After the first turn, entities and plots show compact briefs instead of full descriptions. Call \`${TOOL_NAMES.RESET_SCENE_CONTEXT}\` if you need the full descriptions again.
+Default types give you SCENE_CONTEXT — your immediate surroundings: time, location,
+nearby NPCs/objects, inventory, NPC dispositions, and active plots.
+Add extra types when you need global awareness:
+
+- CHARACTERS_BRIEF — All characters with location and disposition toward player
+- LOCATIONS_BRIEF — All locations
+- OBJECTS_BRIEF — All objects and who carries them
+- PLOTS_BRIEF — All plots with status and flags
+- SCHEMA_DUMP — Available node and relationship types with schemas
+- RELATIONSHIP_DUMP — All non-internal relationships, grouped by type
+
+After the first call, entities and plots show compact briefs instead of full descriptions.
+Call \`${TOOL_NAMES.RESET_SCENE_CONTEXT}\` if you need the full descriptions again.
 
 Time only moves via \`${TOOL_NAMES.ADVANCE_TIME}\`. Adjust sensory descriptions to match time of day.
 
-NPCDisposition shows how each NPC feels about the player — a sentiment keyword (trusting, suspicious, hostile, protective, etc.) and a narrative summary.
+NPCDisposition shows how each NPC feels about the player — a sentiment keyword and a narrative summary.
 
 ---
 

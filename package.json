@@ -12,6 +12,7 @@
     "clean": "rm -rf dist",
     "format": "npx prettier --write \"src/**/*.{js,ts,tsx}\"",
     "format:check": "npx prettier --check \"src/**/*.{js,ts,tsx}\"",
+    "test:debug": "tsx scripts/test-debug-endpoints.ts",
     "knip": "knip"
   },
   "dependencies": {

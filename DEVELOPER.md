@@ -6,7 +6,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
 
 ## 1. Project Overview
 
-**Chorus** is a cinematic RPG-style dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
+**Chorus** is a cinematic dialogue engine with a vertical-scrolling "thought stream" aesthetic, branching dialogue paths, and probabilistic skill checks influenced by character attributes.
 
 - **Stack:** TypeScript, Node.js
 - **Backend:** Express + Neo4j (via local `src/server/memory/` module)

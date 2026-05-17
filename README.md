@@ -1,12 +1,8 @@
 # Chorus
 
-> WARNING: Very early in development stage. The story-telling experience is poor right now!
+> WARNING: Early in development stage.
 
-> NOTE: Current project status - focused on refining tools and prompts of GM.
-
-> NOTE: This README might be outdated. Check DEVELOPER for updated details.
-
-Cinematic RPG-style dialogue engine with a fantasy-steampunk setting. The AI Game Master generates branching narrative through tool-calling, streamed to a console client in real-time via SSE. Player choices are guided by twelve inner voices — each a distinct personality mapped to a character stat — with skill checks resolved through 2D6 dice rolls.
+Cinematic dialogue engine. The AI Game Master generates branching narrative through tool-calling, streamed to a console client in real-time via SSE. Player choices are guided by twelve inner voices — each a distinct personality mapped to a character stat — with skill checks resolved through 2D6 dice rolls.
 
 ## Tech Stack
 
@@ -51,7 +47,7 @@ cp .env.example .env
 #   # Llama-server endpoints (defaults work with default ports):
 #   LLAMA_EMBED_URL=http://localhost:8080/v1/embeddings
 #   LLAMA_RERANK_URL=http://localhost:8081/v1/rerank
-
+#
 #   EMBEDDING_DIMENSIONS=1024
 
 make install
@@ -63,7 +59,7 @@ make embedding-server
 make rerank-server
 
 # Terminal 3 — Neo4j container and Express server
-make neo4j-start neo4j-wait
+make neo4j-start
 make server
 
 # Terminal 4 — Play

@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join, extname } from 'path';
 
 const TS_HEADER = `/**
- * Chorus — cinematic RPG-style dialogue engine
+ * Chorus — cinematic dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ const TS_HEADER = `/**
 `;
 
 const CSS_HEADER = `/*!
- * Chorus — cinematic RPG-style dialogue engine
+ * Chorus — cinematic dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify

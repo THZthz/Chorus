@@ -72,6 +72,6 @@ The TODO is more like prompts.
 - [x] The NEXT_GM_MESSAGE is incorrect.
 - [ ] Markdown format display in the terminal is not working well.
 - [ ] Split large messages or messages with paragraphs automatically, only give warning when this occurs.
-- [ ] editPlot should let GM to decide the plot name, not generated. Also check how current codebase handle root plot.
+- [x] [[OUTDATED]] editPlot should let GM to decide the plot name, not generated. Also check how current codebase handle root plot.
 - [ ] Should add time advance notification to player.
-- [ ] RelationshipManager.
+- [x] RelationshipManager.

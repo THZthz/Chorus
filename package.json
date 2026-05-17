@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "chorus",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -17,7 +17,6 @@
     "test:unit": "vitest run tests/unit/",
     "test:integration": "vitest run tests/integration/",
     "test:scenarios": "vitest run tests/scenarios/",
-    "test:debug": "tsx scripts/test-debug-endpoints.ts",
     "knip": "knip"
   },
   "dependencies": {

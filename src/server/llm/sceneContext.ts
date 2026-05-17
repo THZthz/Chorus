@@ -1,5 +1,5 @@
 /**
- * Chorus — cinematic RPG-style dialogue engine
+ * Chorus — cinematic dialogue engine
  * Copyright (C) 2026  Amias
  *
  * This program is free software: you can redistribute it and/or modify
@@ -353,8 +353,7 @@ export async function buildPlotsBrief(): Promise<string> {
     const status = p.status as string;
     const brief = (p.brief as string) || ((p.description as string) || "").slice(0, 120);
     const flags = parseFlags(p.flags);
-    const flagStr =
-      flags.length > 0 ? `\n  Flags: ${flags.map((f) => f.flagId).join(", ")}` : "";
+    const flagStr = flags.length > 0 ? `\n  Flags: ${flags.map((f) => f.flagId).join(", ")}` : "";
     lines.push(`- **${name}** (${status}): ${brief}${flagStr}`);
   }
   lines.push("");
@@ -368,9 +367,7 @@ export async function buildRelationshipDump(): Promise<string> {
   const manager = RelationshipManager.getCachedInstance();
   const nodeManager = NodeManager.getCachedInstance();
 
-  const excluded = new Set(
-    nodeManager.getByType("INTERNAL").map((n) => n.name),
-  );
+  const excluded = new Set(nodeManager.getByType("INTERNAL").map((n) => n.name));
   for (const name of ["Message", "RelationshipType", "NodeType"]) {
     excluded.add(name);
   }

@@ -389,14 +389,21 @@ export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn
   const dialogueTool = tool({
     title: TOOL_NAMES.GENERATE_DIALOGUE,
     description: `
-Generate the narrative dialogue steps and final player choices.
-This is the ONLY way to communicate to the player.
-Options should align with the active plot's childPlots.
+SPEAK to the player. This is your ONLY output channel — all other text you produce is discarded.
+Every turn MUST end with a valid generateDialogueStep call.
 
-When a previous call fails validation, call again with isCorrection: true.
-Only include the messages/options that need fixing — set their "index" field to the index shown in the validation error.
-Valid items are preserved from the previous call automatically.
-You do NOT need to copy them.
+messages — The narrative for this step. 1-3 sentences each.
+  Speaker names: NARRATOR for environment, NPC names for characters, skill names
+  (LOGIC, EMPATHY, SORCERY, etc.) for inner voices. Never use "INNER_VOICE" as speaker.
+
+options — 2-5 choices for the player. 2-3 is standard, 4-5 for pivotal moments.
+  All options should be action-oriented (what the player DOES, not what they think).
+
+isCorrection — ONLY set to true when retrying after a validation error.
+  Send ONLY the failing items with their 'index' field from the error message.
+  Valid items are preserved automatically — do NOT copy or resend them.
+
+Persist world changes BEFORE speaking. The archive must reflect the state you narrate.
 `.trim(),
     inputSchema,
     execute: async (args: DialogueArgs) => {

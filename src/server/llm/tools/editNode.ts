@@ -70,8 +70,18 @@ const inputSchema = z.object({
 export const editNode = tool({
   title: TOOL_NAMES.EDIT_NODE,
   description: `
-CREATE, UPDATE, or DELETE a node in the world model using a ${TOOL_NAMES.MANAGE_SCHEMA}-registered node type.
-Properties are validated against the registered schema — unknown property names are rejected.
+CREATE, UPDATE, or DELETE a node in the world archive using a registered node type.
+
+CREATE — Add a new entity, note, plot, or custom node type. Properties are validated
+against the type's schema. WARNING: This tool does NOT check for duplicates — search first
+via searchWorld or queryWorld (READ) to verify the node doesn't already exist.
+Use label "Note" to create your own scratchpad notes.
+
+UPDATE — Change properties on an existing node. Only include fields you want to change.
+Use for: entity descriptions, plot statuses/flags, note contents, dispositions.
+
+DELETE — Remove a node and all its relationships (DETACH DELETE).
+Requires exact match criteria. Verify you're targeting the right node.
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {

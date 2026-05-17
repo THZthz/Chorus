@@ -31,24 +31,21 @@ const AUTO_LIMIT = 50;
 export const queryWorld = tool({
   title: TOOL_NAMES.QUERY_WORLD,
   description: `
-Query the game world using Cypher. Use \`action\` to choose the mode:
+READ or WRITE the world archive using Cypher.
 
-**READ** (default): Read-only queries (MATCH, RETURN, ORDER BY, LIMIT). Use for lookups.
-Use MATCH patterns to navigate relationships like LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS.
-Entity types: CHARACTER, OBJECT, LOCATION, ORGANIZATION. Current time: MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment, tp.label.
-Browse time history via NEXT_TIMEPOINT.
+READ — Look up facts. The current scene (player location, nearby NPCs, objects, inventory,
+NPC dispositions, and active plots) is already pre-loaded under SCENE CONTEXT.
+Do NOT re-query that information. Use READ for: entities at OTHER locations,
+message history, timepoint history, relationship types, node type schemas,
+or entity details not shown in the scene context.
 
-**WRITE**: Modify the world (CREATE, MERGE, SET, DELETE). Use for mutations.
-Use MERGE for upserts. Use SET to update properties. Use DETACH DELETE to remove entities.
-Must include a WHERE clause when deleting.
-Before using a new node label or relationship type, register it via \`${TOOL_NAMES.MANAGE_SCHEMA}\`.
+WRITE — Persist changes. The archive IS the world — if you don't WRITE it, it didn't happen.
+Every world mutation you narrate MUST be persisted. Use MERGE for upserts, SET for
+property updates, DETACH DELETE for removal. Must include a WHERE clause when deleting.
+Before creating nodes or relationships with new types, register them via \`${TOOL_NAMES.MANAGE_SCHEMA}\` first.
 Never set a 'description' property directly on relationship instances in your Cypher.
 
-NOTE: The current scene (player location, nearby NPCs, objects, inventory, NPC dispositions, and active plots) will be pre-loaded under "SCENE CONTEXT".
-Do NOT query for scene information that is already present.
-Use ${TOOL_NAMES.QUERY_WORLD} only for specific lookups or mutations BEYOND the pre-loaded context.
-Internal properties prefixed with "_" will not be shown in READ results.
-
+Internal properties prefixed with "_" are hidden from READ results.
 `.trim(),
   inputSchema: z.object({
     action: z

@@ -28,11 +28,19 @@ export const manageSchema = tool({
   title: TOOL_NAMES.MANAGE_SCHEMA,
   description: `
 Register or unregister node types and relationship types in the world schema.
-Use this BEFORE creating nodes with a new label or relationships with a new type via queryWorld (WRITE action).
 
-**Node types**: When registering, provide a description of what the node type represents and a property schema (name, description, optional type for each property). The LLM can query :NodeType nodes via queryWorld to discover available node types and their schemas.
+Use this BEFORE creating a node with a NEW label (e.g., 'Artifact', 'Faction') or a
+relationship with a NEW type (e.g., 'WORSHIPS', 'OWNS'). PREDEFINED types
+(Entity, Plot, Note, NPCDisposition, etc.) are already registered — you don't need
+to re-register them.
 
-**Relationship types**: When registering, provide a description of what the relationship type means. The LLM can query :RelationshipType nodes via queryWorld to discover available relationship types.
+Node types — provide a description and optional property schema (name, description, type).
+The schema is enforced: editNode will reject unknown property names for GM_DEFINED types.
+
+Relationship types — provide a description and optional sourceLabels/targetLabels
+to constrain which node types can sit at each endpoint.
+
+Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are permanent.
 `.trim(),
   inputSchema: z.object({
     target: z

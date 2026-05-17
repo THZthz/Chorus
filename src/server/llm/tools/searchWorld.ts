@@ -35,13 +35,20 @@ type SearchResult = {
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_MEMORY,
   description: `
-Search world state by meaning using vector similarity. Results are reranked by a reranker LLM model.
-Use \`types\` to select which domains to search:
-- \`entities\`: :Entity nodes, embedded by "name (Type): description"
-- \`messages\`: Generated dialogue messages, embedded by full text
-- \`notes\`: GM notes (:Note), embedded by full content
-- \`plots\`: Story plots (:Plot), embedded by "name: description"
-Omit \`types\` to search all domains.`.trim(),
+Search the archive by MEANING (vector similarity + reranking).
+Use this when you don't know the exact name or Cypher pattern — searchWorld finds things by what they're ABOUT.
+
+Domains (pick via 'types'):
+- entities  — Characters, objects, locations. "guard captain" finds relevant NPCs.
+- messages  — Past dialogue. "the threat" finds when it was last discussed.
+- notes     — YOUR OWN MEMORY. Search your scratchpad to recall what you were tracking.
+- plots     — Story arcs. "the hunter" finds plot branches about pursuit.
+Default: searches all four.
+
+Use searchWorld FIRST for: recalling what happened, finding by concept,
+checking if a plot already exists, or remembering what you were tracking.
+Use queryWorld (READ) when you need exact Cypher lookups or relationship traversal.
+`.trim(),
   inputSchema: z.object({
     query: z
       .string()

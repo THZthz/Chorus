@@ -57,9 +57,16 @@ const inputSchema = z.object({
 export const editRelationship = tool({
   title: TOOL_NAMES.EDIT_RELATIONSHIP,
   description: `
-CREATE or DELETE a relationship between two nodes in the world model.
-The relationship type must be registered via ${TOOL_NAMES.MANAGE_SCHEMA} or predefined in the world schema.
-Each endpoint node is identified by a label + match record.
+CREATE or DELETE a relationship between two nodes in the world archive.
+
+CREATE — Link two existing nodes. The relationship type must be registered (PREDEFINED or
+GM_DEFINED). Creating the same relationship twice is safe (MERGE semantics).
+Both endpoint nodes must already exist — if either is missing, the call fails.
+Use for: moving entities (delete old LOCATED_AT, create new), transferring items
+(delete old CARRIES, create new), setting alliances/hostilities, linking notes to entities.
+
+DELETE — Remove a relationship. Use when entities move, items transfer, or
+relationships change.
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {

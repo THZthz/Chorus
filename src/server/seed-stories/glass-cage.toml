@@ -1,0 +1,834 @@
+id = "glass-cage"
+
+settingDescription = """
+The Aethon Conveyor, an arcane transport running the imperial trunk line from the capital Valdris to Karavelle. Six levitating carriages pulled by an alchemical engine car, riding a stabilized ley-line current rather than rails — no stops, no escape, 36 hours to destination. The conveyor is luxury-class only: velvet curtains, alchemical lamplight, glass-domed observation cars. The murder happened at midnight somewhere over the Grey Flats, hundreds of miles of uninhabited marshland. Twelve passengers, five crew — and one killer who is still aboard. Elias Crowne, an information broker who knew the player's forgotten past, lies dead in his locked compartment. The player wakes with his blood on their hands and no memory of how it got there.\
+"""
+
+toneDescription = "Tense, claustrophobic, elegant menace. Silk curtains and bloodstains. Alchemical lamplight casting long shadows across mahogany and brass. Every conversation is a duel — every courtesy masks a threat. The world outside the windows is dark and empty, the conveyor humming with ley-line energy as it hurtles toward Karavelle. The amnesiac player navigates a web of secrets, unable to trust their own innocence or anyone else's."
+
+initialDay = 4
+initialSegment = 6
+initialLocationId = "player_compartment"
+
+# ── Characters ──────────────────────────────────────────────────
+
+[[entities]]
+id = "player"
+type = "CHARACTER"
+name = "Player"
+brief = "An amnesiac found beside a murdered information broker on the Aethon Conveyor, bound for Karavelle."
+description = """
+You woke to the sound of screaming. Not your own — someone else's, muffled through the polished mahogany wall of the compartment beside yours. The blood on your hands was still warm. Your head pounded with the familiar ache of a past you cannot reach — faces at the edge of memory, voices that dissolve when you turn toward them. On the floor, where it must have fallen from your grip, a compartment key with the number scratched away. You don't know who you are. You don't know why you're on this conveyor. But the man in the next compartment — Elias Crowne — he knew. And now he's dead, a thin blade wound under his ribs, his door locked from the inside, his ledger missing. The other passengers are watching you with fear, suspicion, or calculation. The conveyor doesn't stop for 30 more hours. Somewhere in this levitating cage of velvet and brass, a killer is waiting — and they may know more about you than you do.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.stats]
+logic = 3
+rhetoric = 2
+empathy = 4
+perception = 4
+volition = 3
+endurance = 3
+sorcery = 6
+suggestion = 5
+instinct = 3
+might = 2
+clockwork = 2
+alchemy = 2
+
+[entities.metadata.conditions]
+
+[entities.metadata.attributes]
+Amnesia = "Remembers nothing — not their name, not their destination, not how Crowne's blood got on their hands"
+"Unknown Past" = "Crowne knew the player before the amnesia. Was he a friend bringing a warning, or a broker coming to sell them out?"
+Status = "The prime suspect — but everyone on board has something to hide"
+
+[[entities]]
+id = "elias_crowne"
+type = "CHARACTER"
+name = "Elias Crowne"
+brief = "An information broker found murdered in his locked compartment — the man who knew the player's true identity."
+description = """
+Elias Crowne dealt in secrets the way other men dealt in grain futures. Based in Valdris with a network stretching to Karavelle and beyond, he bought and sold information with the practiced neutrality of a man who knew better than to take sides. He was in his early forties, unremarkable in appearance — thinning brown hair, a ready smile that never reached his eyes, clothes that were expensive but forgettable. His ledger, a ciphered journal containing the details of every transaction, every secret, every client, was his life's work. It is now missing.
+
+Hours before his death, he was seen arguing with the player in the observation car — a heated exchange that ended with the player storming out. At midnight, a thin blade slipped between his ribs in his own compartment. The door was locked from the inside. He knew the player from before the amnesia. Whether he was a friend bringing a warning or a broker selling them out died with him — but the truth is somewhere on this conveyor, and someone killed to keep it buried.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Occupation = "Information broker — bought and sold secrets across the imperial trunk line"
+Death = "Stabbed at midnight in his locked compartment. Ledger missing. Door locked from inside."
+
+[[entities]]
+id = "lord_aldric_vane"
+type = "CHARACTER"
+name = "Lord Aldric Vane"
+brief = "An aging merchant prince whose crumbling fortune made him Crowne's most desperate enemy."
+description = """
+Aldric Vane wears old money like a suit that no longer quite fits — the cut is impeccable, the fabric is twenty years out of fashion. His family made its fortune in alchemical textiles three generations ago, but bad investments and worse luck have hollowed out the vaults. He maintains the facade with desperate precision: polished boots, a silver-handled cane, a voice calibrated to remind you of his title. He was traveling to Karavelle to finalize a merger that would save his house from ruin. Crowne knew about the fraud that propped up the last three years of Vane's balance sheets — and had let Vane know, quietly, that his silence had a price. The night Crowne died, Vane was seen near the passenger cars well after midnight, claiming he couldn't sleep. He could not afford for Crowne to reach Karavelle alive.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Title = "Lord — old merchant nobility, House Vane"
+Fortune = "Crumbling — desperate to save his house from financial ruin"
+Motive = "Crowne was blackmailing him over fraudulent accounts"
+
+[[entities]]
+id = "magistra_iris_korr"
+type = "CHARACTER"
+name = "Magistra Iris Korr"
+brief = "A Magewarden investigator traveling on official business, watching the player with professional suspicion."
+description = """
+Iris Korr has been a Magewarden for fifteen years, and in that time she has learned that the most dangerous lies are the ones people tell themselves. Tall, angular, hair pulled back in a severe iron-grey knot, she moves with the economy of someone who has been in enough fights to know that wasted motion gets you killed. Her eyes are pale grey and preternaturally still — they settle on a person and do not blink. She carries a Magewarden's badge and a small, sealed dispatch case she never opens in public.
+
+She is traveling on official business she declines to discuss. The murder of Elias Crowne is technically outside her jurisdiction — Magewardens handle magical crimes, not ordinary homicides — but the strange nature of the locked compartment and the missing weapon has her attention. More than that, she is interested in the player: an amnesiac with blood on their hands who cannot explain where they came from. She has seen memory magic before, and what it leaves behind is rarely innocent. She is not convinced the player is guilty. She is not convinced they are not. She is waiting — and watching — for the slip that tells her which.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Occupation = "Magewarden Investigator"
+Jurisdiction = "Magic-related crimes — the locked-room nature of the murder has her attention"
+Suspicion = "Believes the player's amnesia may not be natural — watching for evidence"
+
+[[entities]]
+id = "silas"
+type = "CHARACTER"
+name = "Silas"
+brief = "A Harbor Rat operative traveling under an alias — Crowne was his informant, and his delivery never came."
+description = """
+'Silas' is not his real name. The Harbor Rats do not send their people across the continent with paper trails. He is built like a dockworker — broad shoulders, thick hands scarred across the knuckles, a jaw that has been broken at least once. He wears a merchant's coat that doesn't quite suit him, the collar too stiff, the fabric too clean. When he speaks, his accent drifts — upper-level polish one moment, Warrens gutter the next.
+
+He was Crowne's contact in Karavelle. Crowne fed him information from Valdris: shipping manifests, guild politics, blackmail material on nobles who did business in the lower city. In exchange, Silas provided protection and a cut of the profits. But Crowne's last message to him was different — urgent, almost panicked. He said he had something big, something that would change everything. He said he'd deliver it on the conveyor. Then he turned up dead, and whatever he was carrying is gone. Silas is stranded on a luxury transport full of the kind of people he's spent his life resenting, with no backup and a missing package that his superiors will expect him to produce. He does not care who killed Crowne, but he will find that package — and if the player knows where it is, he will find that out too.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Affiliation = "The Harbor Rats syndicate, Karavelle Warrens"
+Alias = "Traveling under a false identity — real name unknown"
+Objective = "Recover Crowne's missing delivery before reaching Karavelle"
+
+[[entities]]
+id = "lady_mireille_tessier"
+type = "CHARACTER"
+name = "Lady Mireille Tessier"
+brief = "A diplomat's widow whose delicate manner conceals a collector of secrets and a deft manipulator."
+description = """
+Mireille Tessier has buried two husbands, both diplomats, both considerably older than her, both considerably wealthier at their deaths than at their weddings. She is forty-seven and looks thirty-five — half-elven blood keeping the years at bay, softening the corners, keeping her dark hair lustrous and her cheekbones high. She dresses in grey silks and pearls, speaks in a voice barely above a whisper, and has the uncanny ability to be in exactly the right place to overhear exactly the wrong thing.
+
+She has been on the conveyor for twelve hours and already knows more about its passengers than they know about each other. She knows about Vane's debts. She knows Silas is not a merchant. She knows the player was arguing with Crowne hours before his death. She dispenses this information in small, elegant doses — a hint here, a confidence there — never asking for anything in return, never revealing her own interests. She claims to be returning to Karavelle to settle her late husband's estate. The truth is that Crowne had been feeding her information for years, and with him dead, she is the only one on this conveyor who knows exactly what was in his ledger — because half of it came from her.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "Half-elf"
+Background = "Twice-widowed diplomat's wife — wealthy, connected, watches everything"
+"Hidden Role" = "Crowne's secret source — fed him information from diplomatic circles for years"
+
+[[entities]]
+id = "doctor_cassian_vale"
+type = "CHARACTER"
+name = "Doctor Cassian Vale"
+brief = "A physician bound for Karavelle — the only person offering the player help, and the only one whose tools match the murder weapon."
+description = """
+Cassian Vale has the kind of face that makes people trust him immediately — open, attentive, with warm brown eyes and the faint lines of someone who smiles often. He is thirty-eight, a practicing physician trained at the Valdris Medical College, bound for a new post at a Karavelle hospital. His manner is gentle, unhurried, and deeply reassuring. When the player woke with blood on their hands, Vale was the one who checked their pupils, cleaned their hands, and told them — quietly — that he believed them.
+
+Which makes it all the more unfortunate that his medical bag contains a set of surgical blades, one of which exactly matches the wound that killed Elias Crowne. Vale claims the bag was in the dining car during the murder — he had been called to treat a passenger's minor complaint shortly before midnight. He cannot prove where the bag was at the exact moment of death. He is either the kindest person on this conveyor or the most dangerous — and the player has no way to know which without getting close enough to find out.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Occupation = "Physician — trained at Valdris Medical College, bound for Karavelle"
+Evidence = "His surgical kit contains blades matching Crowne's wound"
+"Alibi Gap" = "Claims his bag was in the dining car — cannot prove it"
+
+[[entities]]
+id = "crystal_vi_elaris"
+type = "CHARACTER"
+name = "Crystal vi Elaris"
+brief = "A half-elf singer drawn to the player by a pull she can't name — warmth in a carriage full of ice."
+description = """
+Crystal is twenty-four, with the kind of beauty that doesn't announce itself — you notice it slowly, the way you notice the sun coming out. Her hair is dark copper, pinned loosely at the nape of her neck; her eyes are hazel with flecks of gold that catch the alchemical lamplight. She is traveling to Karavelle to perform at the estate of a minor noble who heard her sing in Valdris and offered patronage. She carries a small travel lyre with silver strings — a gift from her mother, she says, nothing more.
+
+She was in the observation car when the player first stumbled in, still dazed, still flecked with Crowne's blood. While the other passengers recoiled or calculated, she crossed the room and sat beside them. She didn't ask if they did it. She asked if they were alright. Since then, she has been a quiet presence at the player's side — not demanding, not suspicious, just... there. There is something about the player that draws her: a resonance she feels in her chest when they're close, a warmth that spreads through her palms. She tells herself it's compassion. But silver strings hum in proximity to ley-line energy, and Crystal's lyre has been singing every time the player enters the room. She doesn't know what it means. She's not sure she wants to find out — or stop it.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.stats]
+
+[entities.metadata.opinions]
+Player = "I don't know who they are. I don't know what they've done. But when I'm near them, the world feels sharper — like waking from a long sleep. The lyre hums. My skin hums. I should be afraid, but all I feel is this terrible, wonderful pull. What if the person I can't stop thinking about is the person everyone else wants to hang?"
+
+[entities.metadata.attributes]
+Occupation = "Singer — traveling to a noble patron's estate in Karavelle"
+Race = "Half-elf"
+"Notable Possession" = "Silver-stringed travel lyre — hums near ley-line energy, or near the player"
+
+[[entities]]
+id = "dravos_thorn"
+type = "CHARACTER"
+name = "Dravos Thorn"
+brief = "A drow alchemist carrying a locked case he never opens — and secrets that hum in the dark."
+description = """
+Dravos Thorn is the only drow on the conveyor, and he wears his isolation like a cloak. Pale-haired, crimson-eyed, his dark grey skin marked with the faint silver tracery of old alchemical burns along his forearms and throat. He speaks rarely and softly, with the precise diction of someone who learned the surface tongue from books. He deals in rare alchemical components — stabilized ley-residue, crystallized aether, compounds that straddle the line between science and sorcery. His clients range from academic institutions to underground mages, and he does not discriminate.
+
+His locked case is an alchemical cold-box, chained to his wrist by a thin mithril alloy. He claims it contains samples for a client in Karavelle. Ysara va Keth, the ley-line scholar, has noted that the case hums at a frequency that interferes with the conveyor's stabilizers — something that shouldn't be possible for organic samples. Dravos was in the observation car at midnight, alone, watching the Grey Flats pass beneath the glass dome. He says he saw nothing. His eyes, adapted to the Underdark, see better in darkness than anyone else on board — which means if someone passed through the observation car that night, he is either the best witness on the conveyor or the most accomplished liar.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "Drow"
+Occupation = "Dealer in rare alchemical components"
+"Notable Possession" = "Locked alchemical cold-case — hums at ley-line frequencies, chained to his wrist"
+
+[[entities]]
+id = "ysara_va_keth"
+type = "CHARACTER"
+name = "Ysara va Keth"
+brief = "A high elf ley-line scholar who understands the conveyor's systems better than its crew."
+description = """
+Ysara va Keth has spent forty years studying the imperial ley-line network — the currents of arcane energy that crisscross the continent like invisible rivers. She is a senior scholar at the Valdris Academy, returning to her native Karavelle for the first time in a decade. She is tall even by elven standards, with silver-white hair worn in an intricate braid and the slightly distracted manner of someone whose attention is always half-elsewhere. She carries a field resonator — a brass instrument that measures ley-line harmonics — and has been taking readings throughout the journey, a habit of academic reflex.
+
+She understands the Aethon's engines better than Kest, the actual engineer. She noticed, three hours before the murder, that the ley-line stabilizers were oscillating at an unusual frequency — something on board was generating interference. She mentioned this to the conductor, who dismissed it. Since Crowne's death, the interference has grown stronger. Ysara believes someone is tampering with the conveyor's arcane systems — a diversion, a sabotage, or something worse. She also knows that the 'locked compartment' where Crowne died uses an arcane seal, not a physical lock, and that such seals can be circumvented by anyone who understands resonance frequencies. She can name exactly three people on board with that knowledge. She won't say who they are — not yet.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "High elf"
+Occupation = "Ley-line scholar, Valdris Academy"
+Expertise = "Understands the conveyor's arcane systems — including how the compartment lock could be bypassed"
+"Key Observation" = "Noticed ley-line interference before the murder — believes someone tampered with the systems"
+
+[[entities]]
+id = "brother_malachai"
+type = "CHARACTER"
+name = "Brother Malachai"
+brief = "A mendicant priest of the Star-Veil Order — the only passenger more concerned with souls than secrets."
+description = """
+Brother Malachai is sixty years old and has the face of someone who has made peace with everything he's lost. His Star-Veil robes are clean but threadbare, patched at the elbows, the deep blue fabric faded to grey at the hems. He travels on church charity — the Order paid for his ticket, a rare indulgence for an itinerant priest. He is quiet, unobtrusive, given to long silences and the occasional unexpected insight. He carries no weapon, no ledger, no locked case — only a worn book of prayers and a small silver pendulum he uses in his rites.
+
+He was the last person to speak with Crowne before his death. They were seen in the lounge car around eleven — Crowne, agitated and drinking; Malachai, listening with the practiced stillness of a man who has heard a thousand confessions. What Crowne said to him, Malachai will not reveal. The seal of the confessional, he says. The other passengers find this infuriating. Malachai finds their anger instructive. He has spent his life among sinners, politicians, and the dying, and he has learned that the truth comes out in its own time — and that the guilty often confess before anyone asks. He is watching. He is waiting. He has done this before.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Order = "Star-Veil Order — mendicant priest"
+"Last Contact" = "Spoke with Crowne an hour before his death — will not reveal what was said"
+Role = "Moral witness — holds Crowne's last confession in confidence"
+
+[[entities]]
+id = "garrick"
+type = "CHARACTER"
+name = "Garrick"
+brief = "A discharged half-orc legionnaire who shared drinks with Crowne hours before the murder — and isn't talking about it."
+description = """
+Garrick is used to people being afraid of him. Six and a half feet tall, grey-green skin, tusks that have been filed down to regulation length — he spent twelve years in the imperial legions before being discharged last month. The papers say 'medical reasons.' The scar that runs from his right temple to his jaw suggests something more complicated. He is heading to Karavelle because he heard there was work for men who know how to fight and don't ask questions. He doesn't know anyone in the city. He doesn't know anyone on the conveyor.
+
+Except, apparently, Elias Crowne. They were seen in the dining car hours before the murder, sharing a bottle of brandy. Witnesses describe the conversation as intense — not an argument, but close. When asked what they discussed, Garrick's answers are clipped and contradictory. First he says they were strangers making small talk. Then he admits Crowne bought him the drink. Then he says Crowne asked about his military service — specifically, about a posting at a remote fort in the northern provinces. The player's ears prick up at this. The northern provinces. Something about that feels familiar — a cold wind, a stone tower, a face in the snow. What did Crowne know about the northern provinces? And what does Garrick know that he's not saying?\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "Half-orc"
+Background = "Imperial legionnaire — twelve years, recently discharged"
+"Connection to Victim" = "Drank with Crowne hours before the murder — the conversation may connect to the player's past"
+
+# ── Crew ────────────────────────────────────────────────────────
+
+[[entities]]
+id = "aldreth_voss"
+type = "CHARACTER"
+name = "Aldreth Voss"
+brief = "Conductor of the Aethon — proud of his spotless record and more worried about the conveyor's reputation than justice."
+description = """
+Aldreth Voss has been the Aethon's conductor for eight years, and in that time he has never had a complaint filed, a schedule missed, or a passenger dissatisfied. He wears his uniform like a second skin — navy wool with silver buttons, polished to a mirror shine. His mustache is waxed into precise points. His voice is calibrated to soothe the anxieties of the wealthy, and he deploys it like a tool.
+
+The murder of Elias Crowne is, to Voss, a catastrophe of a very specific kind: a reputational one. He cannot fathom that one of his passengers could be a killer. He cannot accept that his conveyor — his spotless, prestigious conveyor — is now a crime scene. When Magistra Korr offered to conduct an investigation, Voss deferred — not because he has a better plan, but because he is hoping the problem will resolve itself quietly before they reach Karavelle. It will not. Every hour he delays, evidence degrades and the killer watches.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Role = "Conductor — runs the Aethon with iron courtesy"
+Priority = "Reputation — wants the matter resolved quietly, not investigated thoroughly"
+
+[[entities]]
+id = "kest_winder"
+type = "CHARACTER"
+name = "Kest Winder"
+brief = "A gnome engineer who maintains the arcane engine — understands harmonics, not people."
+description = """
+Kest Winder has spent more time inside the Aethon's engine than he has in conversation with another living being. He is a gnome of indeterminate age — somewhere between forty and a hundred — with goggles perpetually pushed up on his forehead, grease under his fingernails, and the slightly manic energy of someone whose mind is always running three steps ahead of his mouth. He lives in the engine car, emerging only when summoned or when something in the harmonics 'feels wrong.'
+
+The murder barely registers with him — not out of callousness, but because human violence is outside his frame of reference. Machines, he understands. Ley-line resonance, he understands. The strange interference pattern that started three hours before the murder and has been growing stronger? That, he understands — and it terrifies him. Someone on this conveyor knows enough about arcane engineering to sabotage the stabilizers. If the interference continues, the Aethon won't reach Karavelle.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "Gnome"
+Role = "Arcane Engineer — maintains the Aethon's ley-line drive"
+Observation = "Detected interference in the stabilizers — fears sabotage, not murder"
+
+[[entities]]
+id = "thea"
+type = "CHARACTER"
+name = "Thea"
+brief = "A half-elf lead attendant who grew up in the Warrens — sees everything, says nothing."
+description = """
+Thea is twenty-six, half-elven, and has the particular stillness of someone who learned as a child that being noticed was dangerous. She grew up in the Warrens, the daughter of a human dockworker and an elven mother who disappeared when Thea was seven. She worked the Sinking Dock tavern from age twelve, serving drinks to Harbor Rats and merchants and the occasional slaver — learning to read faces, to anticipate violence, to be invisible when invisibility was survival. The Aethon, with its silk curtains and wealthy passengers, is supposed to be her escape from all of that.
+
+She was on duty the night Crowne died, making her rounds through the passenger cars. She saw who was in the corridor near Crowne's compartment. She saw who wasn't in their own compartment when they claimed to be. She has not told anyone what she saw — not the conductor, not the Magistra, not the player. In the Warrens, you don't volunteer information to authorities. You wait. You watch. You survive. But the killer knows she was there, and her silence is a ticking clock.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "Half-elf"
+Role = "Lead Attendant, Aethon Conveyor"
+Background = "Grew up in the Warrens, Karavelle — learned to read people to survive"
+Secret = "Saw who was near Crowne's compartment at midnight — will not reveal it without trust or pressure"
+
+[[entities]]
+id = "oren_locke"
+type = "CHARACTER"
+name = "Oren Locke"
+brief = "The Aethon's purser — fastidious, officious, and in possession of every passenger's secrets."
+description = """
+Oren Locke has been a purser for twenty-three years, and he has never once lost a luggage manifest, mislogged a ticket, or failed to verify a passenger's identity. He is thin, balding, precise to the point of irritation — the kind of man who arranges his inkwells by size and knows exactly how many minutes late breakfast is. He keeps the passenger records in a leather-bound ledger that never leaves his person, and those records contain things the passengers would prefer stayed private. False names. Forged credentials. Tickets paid for by third parties who should not exist.
+
+Crowne visited Locke's office the afternoon before his death, requesting access to the passenger manifest. Locke refused. The next morning, someone had been through his records — nothing taken, but things moved, as if someone was looking for a specific entry. Locke suspects Crowne came back. He is now terrified that whatever Crowne found in those records is what got him killed — and that the killer may come for the manifest next.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Role = "Purser — manages tickets, luggage manifests, passenger records"
+Knowledge = "Knows which passengers are traveling under false identities"
+Incident = "Crowne tried to access the passenger manifest hours before his death"
+
+[[entities]]
+id = "bram_ironkettle"
+type = "CHARACTER"
+name = "Bram Ironkettle"
+brief = "The Aethon's dwarf steward — gruff, unflappable, and entirely unconcerned about the murder."
+description = """
+Bram Ironkettle has served meals on the Aethon for fifteen years. He is stout, bald, bearded, and possessed of the particular serenity that comes from having seen every possible variation of human folly play out over dinner service. He has watched nobles propose marriage and dissolve into divorce. He has seen business partners become mortal enemies between the soup and the fish course. One stabbing in a locked compartment is, to Bram, a moderately eventful Tuesday.
+
+His calm is not indifference — it is perspective. He knows, in the way that servants always know, more than he lets on. He knows which passengers drink too much and which ones never touch the brandy. He knows who looks at whom across the dining car. He knows that someone has been stealing small items from the galley — a paring knife, a length of wire, items that could, in the right hands, become tools for something darker. He assumed it was a passenger with peculiar appetites. He is now reconsidering that assumption.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Race = "Dwarf"
+Role = "Steward — serves meals, maintains passenger cars"
+Tenure = "15 years on the Aethon — seen everything, surprised by nothing"
+Observation = "Someone has been stealing small items from the galley"
+
+# ── Conveyor Cars (Locations) ───────────────────────────────────
+
+[[entities]]
+id = "engine_car"
+type = "LOCATION"
+name = "Engine Car"
+brief = "The Aethon's beating heart — arcane core, ley-line stabilizers, and Kest's domain."
+description = """
+The engine car is a cathedral of brass and crystal. The arcane core pulses at its center — a sphere of stabilized ley-energy suspended in a containment ring, humming at a frequency you feel in your teeth. Stabilizers line the walls in banks of copper and quartz, their needles trembling with the constant work of keeping six levitating carriages riding a current of raw magic. The air is thick with ozone and the faint sweetness of overheated aether. Access is restricted to crew — the door is sealed with an arcane lock that Kest resets every six hours. Passengers are not permitted. That hasn't stopped someone from trying: the lock shows faint scorch marks, recent, as if someone probed it with a resonator and backed off when the alarm glyphs flared.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Access = "Crew only — arcane-sealed door, reset every 6 hours"
+Contents = "Arcane core, ley-line stabilizers, engine control array"
+Status = "Someone attempted to breach the lock — scorch marks are recent"
+
+[[entities]]
+id = "crew_car"
+type = "LOCATION"
+name = "Crew Car"
+brief = "Crew quarters, conductor's office, and small galley — functional, unadorned, the conveyor's backstage."
+description = """
+The crew car is narrow and practical — a corridor of doors leading to cramped but comfortable quarters. The conductor's office is at the front: a small desk, a logbook, a speaking tube that connects to every car. The purser's cubby sits opposite, stuffed with ledgers and luggage manifests. A small galley at the rear supplies the dining car through a service hatch. The crew quarters are modest but private — each a narrow bunk, a washstand, a small lockbox for personal effects. The walls are thinner here than in the passenger cars, and crew members have learned to speak quietly. At night, you can hear the engine humming through the floor — a constant reminder that the Aethon is alive.\
+"""
+
+[entities.metadata]
+
+[[entities]]
+id = "observation_car"
+type = "LOCATION"
+name = "Observation Car"
+brief = "Glass-domed ceiling above upholstered chairs — where passengers gather and Crystal plays her lyre."
+description = """
+The observation car is the Aethon's crown jewel. A dome of reinforced crystal arches overhead, offering an unobstructed view of the night sky and the faint blue-green shimmer of the ley-line current passing beneath the conveyor. During the day, passengers gather here to read, converse, and watch the continent slide past. At night, with the gas-lamps dimmed, the stars reflect in the glass like scattered salt, and the car becomes a place of quiet confidences.
+
+This is where the player and Crowne were seen arguing, hours before his death — voices raised, the player storming out, Crowne standing alone beneath the dome with a drink in his hand and something unreadable on his face. Crystal often plays her lyre here in the evenings, the silver strings carrying through the carriage with an ethereal clarity that makes conversations falter and heads turn. The night of the murder, she played until midnight — then stopped abruptly, as if someone had laid a hand on her shoulder. No one saw who.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Feature = "Glass dome — views of the ley-line current and night sky"
+"Key Event" = "Player and Crowne argued here hours before the murder"
+Atmosphere = "Gathering place by day, intimate by night — Crystal plays her lyre here"
+
+[[entities]]
+id = "passenger_car_a"
+type = "LOCATION"
+name = "Passenger Car A"
+brief = "Six private compartments (1–6) — the player in compartment 3, the victim in compartment 4."
+description = """
+Passenger Car A is a narrow corridor of polished mahogany and brass fixtures, lined with six private compartments. Each compartment is small but luxurious: a fold-down bed, a writing desk, a wardrobe, and an alchemical lamp that dims with a touch. The doors lock from the inside with arcane seals — a simple resonance mechanism that only the occupant can engage. The corridor is carpeted in deep blue wool that muffles footsteps. Gas-lamps burn at intervals, casting pools of warm light between stretches of shadow.
+
+Compartment 3 belongs to the player. Compartment 4 belonged to Elias Crowne. The door to compartment 4 was locked from the inside when Crowne's body was discovered. The arcane seal was intact. The compartment has no windows — ventilation comes through a brass grille too small for anything larger than a rat. How the killer entered, and how they left, is the central question. The blood on the player's hands suggests they were in the room. The locked door suggests no one could have been.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Compartments = "1 through 6"
+"Key Occupants" = "Compartment 3 — Player. Compartment 4 — Elias Crowne (victim)"
+"Crime Scene" = "Compartment 4 — locked from inside, arcane seal intact, killer unknown"
+
+[[entities]]
+id = "dining_car"
+type = "LOCATION"
+name = "Dining Car"
+brief = "Communal table beneath an alchemical chandelier — the social hub where everyone must eventually appear."
+description = """
+The dining car is the Aethon's center of gravity. A long table of polished oak runs its length, set with linen, crystal, and silver — the kind of service that reminds passengers what they paid for. An alchemical chandelier overhead shifts through a slow spectrum of warm colors as the evening progresses, from amber at aperitif to deep rose at dessert. Bram Ironkettle presides over service from the galley hatch, appearing and disappearing with plates and bottles with the practiced invisibility of a career steward.
+
+At meal times, the car becomes the conveyor's crossroads — every passenger must eventually pass through. Breakfast is a quiet affair of coffee and pastries; dinner is the main event, a multi-course ritual where the seating arrangements are as revealing as the conversation. The night of the murder, Crowne dined here with Garrick, sharing a bottle of brandy long after the other passengers had retired. Several passengers later claimed to be in their compartments. The dining car's position between the two passenger cars means that anyone going from one to the other would be visible from the table — unless they waited until the steward had extinguished the chandelier for the night.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Position = "Between Passenger Car A and Passenger Car B — the crossroads"
+"Key Event" = "Crowne and Garrick drank here hours before the murder"
+Atmosphere = "Formal meals by evening, empty and dark after the chandelier is extinguished"
+
+[[entities]]
+id = "passenger_car_b"
+type = "LOCATION"
+name = "Passenger Car B"
+brief = "Six private compartments (7–12) — where half the passengers sleep, conspire, and hide."
+description = """
+Passenger Car B mirrors Car A in layout — six compartments along a carpeted corridor — but the atmosphere is different. Quieter. The passengers berthed here tend to keep to themselves. Lord Vane's compartment (8) has a connecting door to Lady Tessier's (9) — a courtesy for married couples that neither of them requested and both find useful. Dravos Thorn occupies compartment 12, the furthest aft, and the corridor near his door smells faintly of alchemical preservatives. He has placed his own additional lock on the door.
+
+The car's distance from the observation car and dining car means its occupants had further to travel the night of the murder. Several of them claim to have been asleep by midnight. The corridor is unmonitored — the crew passes through only on scheduled rounds. Anyone with a reason to be in Passenger Car A that night had to pass through the dining car, or walk the exterior maintenance gangway — a narrow catwalk open to the elements, 200 feet above the Grey Flats, in the dark.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Compartments = "7 through 12"
+"Notable Passengers" = "Lord Vane (8), Lady Tessier (9), Dravos Thorn (12)"
+"Access Routes" = "Through dining car, or via exterior maintenance gangway"
+
+[[entities]]
+id = "lounge_car"
+type = "LOCATION"
+name = "Lounge Car"
+brief = "Rear observation lounge — intimate seating, a bar cabinet, and conversations that lower voices."
+description = """
+The lounge car is smaller and more intimate than the observation car — a place for late-night conversations over brandy, private negotiations, and the kind of confidences that don't survive daylight. Deep leather chairs cluster around low tables. A bar cabinet stands against one wall, stocked with better spirits than are served at dinner — passengers help themselves, on the honor system. The rear wall is a single pane of crystal, looking back along the ley-line current, the shimmer fading into distance like a road disappearing into night.
+
+Crowne visited the lounge car an hour before his death, speaking with Brother Malachai in low, urgent tones. What was said remains between the priest and his god. Later, around the time of the murder, Lady Tessier was seen here — alone, she says, nursing a glass of wine and watching the stars. The lounge car is at the opposite end of the conveyor from the engine, the furthest point from Kest's domain. If the killer wanted to move between passenger cars without being seen, they would not pass through here. If they wanted privacy, they would.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Position = "Rear of the conveyor — farthest from the engine car"
+"Key Events" = "Crowne's last conversation (with Brother Malachai), Lady Tessier's midnight solitude"
+Atmosphere = "Intimate, quiet — brandy, leather, starlight"
+
+# ── Objects ─────────────────────────────────────────────────────
+
+[[entities]]
+id = "crownes_ledger"
+type = "OBJECT"
+name = "Crowne's Ledger"
+brief = "A ciphered journal containing Elias Crowne's information network — debts, secrets, identities. It is missing."
+description = """
+Crowne's ledger was his life's work, and it died with him — or vanished, which amounts to the same thing. Bound in black leather, slightly worn at the corners, filled with Crowne's own cipher: a dense script of symbols, numbers, and abbreviated references that only a handful of people in the world could read. The ledger contained records of every transaction, the details of every secret he had ever bought or sold, and the identities of every client who had ever trusted him with information they would kill to keep buried. It was not on his body when he was found. It is not in his compartment. Someone on this conveyor has it — or someone threw it into the Grey Flats, and the truth with it.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Status = "Missing — not on Crowne's body, not in his compartment"
+Contents = "Ciphered records of Crowne's entire information network"
+Significance = "The most likely motive for murder — half the passengers would kill for it"
+
+[[entities]]
+id = "murder_weapon"
+type = "OBJECT"
+name = "Murder Weapon"
+brief = "A thin alchemical blade — still missing, somewhere on the conveyor."
+description = """
+The wound that killed Elias Crowne was clean, precise, and shallow — a blade slipped between the ribs at an angle that suggests the killer knew exactly where to aim. The edge was thin, surgical in character. But the wound also shows traces of a paralytic toxin — alchemical in nature, fast-acting — that would have rendered Crowne immobile before he could cry out. No ordinary blade carries such a toxin. The weapon was either purpose-made or modified by someone with alchemical knowledge. It has not been found. It is still on the conveyor — hidden in a compartment, dropped down a service hatch, or carried by someone who smiles at the player across the dining car.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Characteristics = "Thin blade, surgical precision, traces of alchemical paralytic toxin"
+Status = "Missing — not found on board"
+Implication = "Killer has alchemical or medical knowledge"
+
+[[entities]]
+id = "players_key"
+type = "OBJECT"
+name = "Player's Key"
+brief = "A compartment key with the number scratched off — it doesn't match the player's assigned room."
+description = """
+The key was on the floor of the player's compartment when they woke — dropped, presumably, from their own hand. It is brass, standard Aethon issue, the kind issued to every passenger for their compartment door. Except the number stamped on the bow has been deliberately scratched away — scored with the edge of another key or a small blade, the metal gouged deep enough to obliterate the digits. It does not open the player's assigned compartment (number 3). It does not open Crowne's compartment (number 4). It opens something else — a luggage locker, a crew room, a compartment that belongs to someone who has not reported a missing key. The player has no memory of holding it, no memory of scratching away the number, no memory of what door it was meant to unlock. But someone on this conveyor knows what this key opens — and they know the player had it.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Description = "Brass compartment key, number deliberately scratched off"
+Discovery = "Found on the floor of the player's compartment — likely dropped from their hand"
+Mystery = "Does not open the player's compartment or Crowne's — what does it unlock?"
+
+[[entities]]
+id = "dravos_case"
+type = "OBJECT"
+name = "Dravos's Locked Case"
+brief = "An alchemical cold-case chained to Dravos Thorn's wrist — it hums at frequencies that shouldn't be possible."
+description = """
+The case is small — perhaps eighteen inches by twelve — made of a dark alloy that seems to absorb lamplight rather than reflect it. A thin mithril chain secures it to Dravos's left wrist, long enough to allow him to eat and sleep but never to set the case down out of reach. The lock is alchemical, keyed to his own biometric resonance — no one else can open it. Dravos claims it contains samples for a client in Karavelle: stabilized organic compounds, temperature-sensitive, commercially valuable but benign.
+
+Ysara va Keth's field resonator disagrees. The case emits a harmonic frequency that interferes with the conveyor's ley-line stabilizers — subtle, but measurable, and growing stronger as the journey progresses. Organic matter does not produce ley-line harmonics. Something inside that case is arcane in nature, and it has been active since before the murder. Whether it is evidence, motive, or something else entirely, only Dravos knows — and Dravos is not opening the case for anyone.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Owner = "Dravos Thorn"
+Description = "Alchemical cold-case, biometric lock, chained to owner's wrist"
+Anomaly = "Emits ley-line harmonic interference — the contents may not be organic as claimed"
+
+[[entities]]
+id = "crystals_lyre"
+type = "OBJECT"
+name = "Crystal's Lyre"
+brief = "A small travel lyre with silver strings — a gift from Crystal's mother that hums when the player is near."
+description = """
+The lyre is small and unassuming — a travel instrument, designed to be carried easily and played in intimate settings. The body is pale spruce, polished to a warm glow. The strings are silver, a luxury for a musician of Crystal's means, and she says they were a gift from her mother, who was herself a singer of some note in the southern isles. Crystal plays beautifully — not technically perfect, but with an emotional clarity that silences the observation car and draws passengers from their compartments to listen.
+
+Silver does not resonate with ley-line energy. Ysara va Keth confirmed this, politely, over dinner. And yet every time the player enters the room, the lyre hums — a soft, almost sub-audible vibration that Crystal feels through her fingertips. She has stopped playing it when the player is present, afraid of what the resonance might reveal. The strings are silver. They should not do this. Either the lyre is not what Crystal believes it to be, or the player is not what anyone believes — or both.\
+"""
+
+[entities.metadata]
+
+[entities.metadata.attributes]
+Owner = "Crystal vi Elaris"
+Material = "Spruce body, silver strings — a gift from her mother"
+Anomaly = "Silver should not resonate with ley-line energy, but the lyre hums when the player is near"
+
+# ── Relationships ───────────────────────────────────────────────
+
+# Character Locations (LOCATED_AT)
+[[relationships]]
+sourceName = "Player"
+targetName = "Passenger Car A"
+type = "LOCATED_AT"
+description = "The player is berthed in compartment 3 of Passenger Car A."
+
+[[relationships]]
+sourceName = "Elias Crowne"
+targetName = "Passenger Car A"
+type = "LOCATED_AT"
+description = "Crowne was berthed in compartment 4 of Passenger Car A — now a crime scene."
+
+[[relationships]]
+sourceName = "Lord Aldric Vane"
+targetName = "Passenger Car B"
+type = "LOCATED_AT"
+description = "Lord Vane occupies compartment 8 in Passenger Car B."
+
+[[relationships]]
+sourceName = "Magistra Iris Korr"
+targetName = "Passenger Car A"
+type = "LOCATED_AT"
+description = "Magistra Korr is berthed in compartment 5 of Passenger Car A — close enough to have heard something."
+
+[[relationships]]
+sourceName = "Silas"
+targetName = "Passenger Car A"
+type = "LOCATED_AT"
+description = "Silas occupies compartment 6 of Passenger Car A."
+
+[[relationships]]
+sourceName = "Lady Mireille Tessier"
+targetName = "Passenger Car B"
+type = "LOCATED_AT"
+description = "Lady Tessier occupies compartment 9 in Passenger Car B — connected to Lord Vane's compartment 8."
+
+[[relationships]]
+sourceName = "Doctor Cassian Vale"
+targetName = "Passenger Car A"
+type = "LOCATED_AT"
+description = "Doctor Vale is berthed in compartment 2 of Passenger Car A — two doors from the victim."
+
+[[relationships]]
+sourceName = "Crystal vi Elaris"
+targetName = "Passenger Car A"
+type = "LOCATED_AT"
+description = "Crystal occupies compartment 1 of Passenger Car A — the first compartment, nearest the observation car."
+
+[[relationships]]
+sourceName = "Dravos Thorn"
+targetName = "Passenger Car B"
+type = "LOCATED_AT"
+description = "Dravos Thorn occupies compartment 12 of Passenger Car B — the furthest aft, nearest the lounge car."
+
+[[relationships]]
+sourceName = "Ysara va Keth"
+targetName = "Passenger Car B"
+type = "LOCATED_AT"
+description = "Ysara is berthed in compartment 7 of Passenger Car B."
+
+[[relationships]]
+sourceName = "Brother Malachai"
+targetName = "Passenger Car B"
+type = "LOCATED_AT"
+description = "Brother Malachai occupies compartment 10 in Passenger Car B."
+
+[[relationships]]
+sourceName = "Garrick"
+targetName = "Passenger Car B"
+type = "LOCATED_AT"
+description = "Garrick is berthed in compartment 11 of Passenger Car B."
+
+[[relationships]]
+sourceName = "Aldreth Voss"
+targetName = "Crew Car"
+type = "LOCATED_AT"
+description = "Conductor Voss's office and quarters are in the crew car."
+
+[[relationships]]
+sourceName = "Kest Winder"
+targetName = "Engine Car"
+type = "LOCATED_AT"
+description = "Kest lives in the engine car, rarely leaving his post."
+
+[[relationships]]
+sourceName = "Thea"
+targetName = "Crew Car"
+type = "LOCATED_AT"
+description = "Thea's quarters are in the crew car, but she spends most of her shift moving through the passenger cars."
+
+[[relationships]]
+sourceName = "Oren Locke"
+targetName = "Crew Car"
+type = "LOCATED_AT"
+description = "The purser's office and quarters are in the crew car."
+
+[[relationships]]
+sourceName = "Bram Ironkettle"
+targetName = "Crew Car"
+type = "LOCATED_AT"
+description = "Bram's quarters are in the crew car; he works primarily in the dining car."
+
+# Object Possession (CARRIES)
+[[relationships]]
+sourceName = "Player"
+targetName = "Player's Key"
+type = "CARRIES"
+description = "The player woke with this key — number scratched off — on the floor beside them."
+
+[[relationships]]
+sourceName = "Dravos Thorn"
+targetName = "Dravos's Locked Case"
+type = "CARRIES"
+description = "The case is chained to Dravos's wrist and never leaves his person."
+
+[[relationships]]
+sourceName = "Crystal vi Elaris"
+targetName = "Crystal's Lyre"
+type = "CARRIES"
+description = "Crystal carries her lyre everywhere — it was her mother's gift and her livelihood."
+
+# ── Relationship Types ──────────────────────────────────────────
+
+[[relationshipTypes]]
+name = "CONNECTED_TO"
+description = "Sequential adjacency between two locations — cars of a train, floors of a tower, rooms along a corridor."
+
+# Car Connections (CONNECTED_TO) — front to rear
+[[relationships]]
+sourceName = "Engine Car"
+targetName = "Crew Car"
+type = "CONNECTED_TO"
+description = "The engine car connects directly to the crew car — Kest's domain feeds into the crew's quarters."
+
+[[relationships]]
+sourceName = "Crew Car"
+targetName = "Observation Car"
+type = "CONNECTED_TO"
+description = "The crew car connects to the observation car — crew emerge here to attend passengers under the glass dome."
+
+[[relationships]]
+sourceName = "Observation Car"
+targetName = "Passenger Car A"
+type = "CONNECTED_TO"
+description = "The observation car connects to Passenger Car A — social space gives way to private compartments."
+
+[[relationships]]
+sourceName = "Passenger Car A"
+targetName = "Dining Car"
+type = "CONNECTED_TO"
+description = "Passenger Car A connects to the dining car — the first block of compartments opens onto the social hub."
+
+[[relationships]]
+sourceName = "Dining Car"
+targetName = "Passenger Car B"
+type = "CONNECTED_TO"
+description = "The dining car connects to Passenger Car B — anyone moving between passenger blocks must cross here."
+
+[[relationships]]
+sourceName = "Passenger Car B"
+targetName = "Lounge Car"
+type = "CONNECTED_TO"
+description = "Passenger Car B connects to the lounge car — the rearmost compartments give way to leather chairs and brandy."
+
+# Character Relations (ALLIED_WITH, HOSTILE_TOWARDS)
+[[relationships]]
+sourceName = "Crystal vi Elaris"
+targetName = "Player"
+type = "ALLIED_WITH"
+description = "Crystal is drawn to the player — a magnetic pull she can't name. She is the one person treating them as more than a suspect."
+
+[[relationships]]
+sourceName = "Doctor Cassian Vale"
+targetName = "Player"
+type = "ALLIED_WITH"
+description = "Vale offers the player genuine medical help — but his surgical tools match Crowne's wounds, and his kindness may conceal darker motives."
+
+[[relationships]]
+sourceName = "Magistra Iris Korr"
+targetName = "Player"
+type = "HOSTILE_TOWARDS"
+description = "Korr suspects the player's amnesia is a lie — or the result of forbidden magic. She watches them with professional suspicion."
+
+[[relationships]]
+sourceName = "Lord Aldric Vane"
+targetName = "Elias Crowne"
+type = "HOSTILE_TOWARDS"
+description = "Crowne was blackmailing Vane over fraudulent accounts. Vane could not afford for Crowne to reach Karavelle alive."
+
+[[relationships]]
+sourceName = "Silas"
+targetName = "Elias Crowne"
+type = "ALLIED_WITH"
+description = "Crowne was Silas's informant in Valdris — Silas was expecting a delivery that never came."
+
+[[relationships]]
+sourceName = "Lady Mireille Tessier"
+targetName = "Elias Crowne"
+type = "ALLIED_WITH"
+description = "Tessier was Crowne's secret source in diplomatic circles — she fed him information for years."
+
+[[relationships]]
+sourceName = "Garrick"
+targetName = "Elias Crowne"
+type = "ALLIED_WITH"
+description = "Crowne bought Garrick a drink hours before his death and asked about his military service in the northern provinces."
+
+[[relationships]]
+sourceName = "Thea"
+targetName = "Player"
+type = "ALLIED_WITH"
+description = "Thea knows what she saw the night Crowne died. She is a Warrens survivor — she won't speak until she trusts the player, or is forced to."
+
+[[relationships]]
+sourceName = "Ysara va Keth"
+targetName = "Kest Winder"
+type = "ALLIED_WITH"
+description = "Ysara understands the Aethon's engines almost as well as Kest. Together, they might identify the source of the ley-line interference."
+
+# ── Plots ────────────────────────────────────────────────────────
+
+[[plots]]
+name = "The Glass Cage"
+description = """The player wakes in a private compartment on the Aethon Conveyor, bound for Karavelle. Elias Crowne — an information broker who knew the player's true identity — lies dead in the next compartment, a thin blade wound under his ribs. His ledger is missing. His door was locked from the inside. The player's hands are stained with his blood. Twelve passengers, five crew, one killer — and the conveyor doesn't stop for 30 more hours. The player has no memory of who they are, why they're here, or what Crowne meant to them. Every passenger has a motive. Every smile masks a lie. Somewhere in this cage of velvet and brass, a killer is waiting — and they may know more about the player than the player knows about themselves."""
+brief = "Root plot — player wakes with amnesia and blood on their hands beside a murdered information broker on a levitating conveyor bound for Karavelle."
+status = "IN_PROGRESS"
+branchesTo = ["The Hunter", "The Hunted", "The Web", "The Truth", "The Bond"]
+
+[[plots.flags]]
+flagId = "blood_on_hands"
+description = "The player was found next to Crowne's body — the blood is real"
+
+[[plots.flags]]
+flagId = "crowne_knew_player"
+description = "Elias Crowne knew the player before the amnesia — whether as friend or broker is unknown"
+
+[[plots.flags]]
+flagId = "ledger_missing"
+description = "Crowne's ciphered journal is not on his body — someone took it, and it's still on the conveyor"
+
+[[plots.flags]]
+flagId = "compartment_locked"
+description = "Crowne's door was locked from the inside with an arcane seal — the killer's method is unknown"
+
+[[plots.flags]]
+flagId = "crystal_drawn"
+description = "Crystal vi Elaris is pulled toward the player in ways she can't explain — her silver lyre hums when they draw near"
+
+[[plots.flags]]
+flagId = "conveyor_tampered"
+description = "Something is interfering with the ley-line stabilizers — accident or sabotage?"
+
+[[plots]]
+name = "The Hunter"
+description = """Player actively investigates the murder — interrogates passengers, examines evidence, reconstructs the night Crowne died."""
+brief = "Actively investigate the murder — interrogate passengers, examine evidence, reconstruct Crowne's final hours."
+status = "PENDING"
+triggerCondition = "Player chooses to investigate the murder and find the killer"
+
+[[plots]]
+name = "The Hunted"
+description = """The killer identifies the player as a threat — or a scapegoat. The player must survive as the net tightens around them."""
+brief = "The killer targets the player or someone close to them — survival becomes the priority."
+status = "PENDING"
+triggerCondition = "Player becomes a target — the killer strikes again or attempts to silence them"
+
+[[plots]]
+name = "The Web"
+description = """Player navigates the tangled politics of the passenger list — trading secrets, forging alliances, playing both sides against each other."""
+brief = "Navigate faction politics among passengers — trade secrets, forge alliances, play both sides."
+status = "PENDING"
+triggerCondition = "Player chooses to navigate the social web rather than directly investigate"
+
+[[plots]]
+name = "The Truth"
+description = """Player pursues their own identity — who were they, what was Crowne to them, and why can't they remember anything?"""
+brief = "Pursue the player's own identity — who were they, what was Crowne to them, and why can't they remember?"
+status = "PENDING"
+triggerCondition = "Player focuses on recovering their memories and understanding their connection to Crowne"
+
+[[plots]]
+name = "The Bond"
+description = """Player deepens their connection with Crystal — is her pull toward them genuine attraction, latent magic, or something more dangerous?"""
+brief = "Deepen the connection with Crystal — is her pull genuine, magical, or something more dangerous?"
+status = "PENDING"
+triggerCondition = "Player deepens their bond with Crystal and explores the nature of their connection"

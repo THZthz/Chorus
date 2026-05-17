@@ -1,0 +1,487 @@
+/**
+ * Chorus — cinematic dialogue engine
+ * Copyright (C) 2026  Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { tool } from "ai";
+import { z } from "zod";
+import { NOTIFICATION_TYPES, SPEAKER_TYPES, SpeakerType } from "@/types/dialogue";
+import { TOOL_NAMES, SKILL_NAMES } from "@/shared/constants";
+import { checkText } from "@/server/llm/tools/shared";
+
+export const MAX_MESSAGE_TEXT_LENGTH = 500;
+
+const messageSchema = z.object({
+  index: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      `
+When isCorrection is true: the 0-based index of the message to correct (shown in the validation error).
+Omit when generating fresh.`.trim(),
+    ),
+  speaker: z
+    .string()
+    .max(60)
+    .describe(
+      "Name of the speaker (no '_' between words, e.g. 'LOGIC', 'Orin Fell', 'NARRATOR', 'INSTINCT', 'SORCERY').",
+    ),
+  type: z.enum(SPEAKER_TYPES.filter((type) => type !== "YOU") as Exclude<SpeakerType, "YOU">[]),
+  text: z.string().max(MAX_MESSAGE_TEXT_LENGTH).describe("The dialogue text, supports markdown."),
+  metadata: z
+    .object({
+      notificationType: z.enum(NOTIFICATION_TYPES).optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
+// NB: .nullable() on optional fields prevents Zod rejection when the LLM
+// outputs "field": null for fields it intends to omit.
+const optionSchema = z.object({
+  index: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      `
+When isCorrection is true: the 0-based index of the option to correct (shown in the validation error).
+Omit when generating fresh.`.trim(),
+    ),
+  text: z
+    .string()
+    .max(200)
+    .describe("Short imperative button label (e.g. 'Try to convince the guard')."),
+  selectionMessage: z
+    .string()
+    .max(300)
+    .nullable()
+    .optional()
+    .describe(
+      `
+Optional sentence for the YOU message in dialogue history after the player selects this option.
+Write in past or present tense WITHOUT the pronoun 'I' — the system prefixes with 'You:' automatically
+(e.g. 'Tried to convince the guard to let us pass.' reads as 'You: Tried to convince...').
+Using 'I' would produce the awkward 'You: I tried...'.
+If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
+    ),
+  hintBefore: z
+    .string()
+    .max(50)
+    .nullable()
+    .optional()
+    .describe("Hint shown before the text, e.g. [Logic]. Do not overuse it."),
+  hintAfter: z
+    .string()
+    .max(50)
+    .nullable()
+    .optional()
+    .describe("Hint shown after the text, e.g. [Check]. Do not overuse it."),
+  check: z
+    .object({
+      skill: z.enum(SKILL_NAMES).describe("The skill to check (e.g. 'LOGIC')."),
+      difficulty: z.number().describe("Numerical difficulty (e.g. 10)."),
+      difficultyText: z.string().max(30).describe("Textual difficulty (e.g. 'Challenging')."),
+      diceCount: z.number().default(2),
+      conditions: z
+        .array(
+          z.object({
+            expression: z
+              .string()
+              .max(100)
+              .describe(
+                "JS expression e.g. 'success', 'total - statBonus > difficulty' or 'total < difficulty'.",
+              ),
+            label: z.string().max(100).optional(),
+            color: z.string().max(30).optional(),
+          }),
+        )
+        .describe("Outcome conditions."),
+    })
+    .nullable()
+    .optional(),
+});
+
+const inputSchema = z.object({
+  messages: z
+    .array(messageSchema)
+    .nullable()
+    .optional()
+    .describe(
+      `
+The sequence of messages in this dialogue step.
+Required for fresh calls; omit during corrections if only fixing options.
+If you fixing invalid messages, make sure your include "index" field to precisely repair the corresponding messages (only send the failing items, no need to copy).
+`.trim(),
+    ),
+  options: z
+    .array(optionSchema)
+    .nullable()
+    .optional()
+    .describe(
+      `
+The choices presented to the player.
+Required for fresh calls.
+Omit during corrections if only fixing options.
+If you fixing invalid options, make sure your include "index" field to precisely repair the corresponding options.`.trim(),
+    ),
+  isCorrection: z
+    .boolean()
+    .optional()
+    .describe(
+      `
+Set to true when correcting specific validation errors from a previous failed call.
+Only include the failing messages/options — set their "index" field to the index shown in the error.
+Valid items are preserved automatically.
+You can omit messages or options if only the other needs correction.`.trim(),
+    ),
+});
+
+export type DialogueMessage = z.infer<typeof messageSchema>;
+export type DialogueOpt = z.infer<typeof optionSchema>;
+export type DialogueArgs = z.infer<typeof inputSchema>;
+
+export interface ValidationResult {
+  errors: string[];
+}
+
+interface MergeResult {
+  mergedArgs: DialogueArgs;
+  allMessagesFresh: boolean;
+  allOptionsFresh: boolean;
+  replacedMessageIndices: Set<number>;
+}
+
+function mergeCorrection(
+  args: DialogueArgs,
+  lastMessages: DialogueMessage[],
+  lastOptions: DialogueOpt[],
+): MergeResult {
+  const allMessagesFresh = !!(
+    args.messages &&
+    args.messages.length > 0 &&
+    args.messages.every((m) => m.index === undefined)
+  );
+  const allOptionsFresh = !!(
+    args.options &&
+    args.options.length > 0 &&
+    args.options.every((o) => o.index === undefined)
+  );
+
+  const replacedMessageIndices = new Set<number>();
+
+  const mergedMessages = allMessagesFresh ? [] : [...lastMessages];
+  if (args.messages) {
+    for (const msg of args.messages) {
+      if (msg.index !== undefined && msg.index < mergedMessages.length) {
+        mergedMessages[msg.index] = msg;
+        replacedMessageIndices.add(msg.index);
+      } else {
+        mergedMessages.push(msg);
+      }
+    }
+  }
+
+  const mergedOptions = allOptionsFresh ? [] : [...lastOptions];
+  if (args.options) {
+    for (const opt of args.options) {
+      if (opt.index !== undefined && opt.index < mergedOptions.length) {
+        mergedOptions[opt.index] = opt;
+      } else {
+        mergedOptions.push(opt);
+      }
+    }
+  }
+
+  return {
+    mergedArgs: { ...args, messages: mergedMessages, options: mergedOptions },
+    allMessagesFresh,
+    allOptionsFresh,
+    replacedMessageIndices,
+  };
+}
+
+export function validateDialogueArgs(args: DialogueArgs): ValidationResult {
+  const errors: string[] = [];
+
+  const messages = args.messages ?? [];
+  const options = args.options ?? [];
+
+  if (messages.length === 0) {
+    errors.push(
+      "No messages — at least 1 message is required. Provide a NARRATOR message, an NPC line, or an inner voice observation.",
+    );
+  }
+
+  // Collect ALL INNER_VOICE errors in one pass (no break)
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.speaker === "INNER_VOICE") {
+      errors.push(
+        `A message uses speaker="INNER_VOICE" — INNER_VOICE is a type, not a speaker name. Use the specific skill name as the speaker (e.g. "LOGIC", "INSTINCT", "SORCERY").`,
+      );
+    }
+    if (msg.type === "INNER_VOICE" && !(SKILL_NAMES as readonly string[]).includes(msg.speaker)) {
+      errors.push(
+        `Message with type INNER_VOICE has speaker="${msg.speaker}" which is not a valid skill name. Valid skill names are: ${SKILL_NAMES.join(", ")}. Use the specific skill name as the speaker.`,
+      );
+    }
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const speakerError = checkText(
+      msg.speaker,
+      `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].speaker`,
+    );
+    if (speakerError) {
+      errors.push(speakerError);
+    }
+    const textError = checkText(msg.text, `${TOOL_NAMES.GENERATE_DIALOGUE} messages[${i}].text`);
+    if (textError) {
+      errors.push(textError);
+    }
+    if (msg.text.length > MAX_MESSAGE_TEXT_LENGTH) {
+      errors.push(
+        `Message ${i} ("${msg.speaker}") text is too long (${msg.text.length} chars, max ${MAX_MESSAGE_TEXT_LENGTH}). Shorten it to keep the UI readable.`,
+      );
+    }
+  }
+
+  if (options.length < 2) {
+    errors.push(
+      `Too few options — at least 2 options are required. Every ${TOOL_NAMES.GENERATE_DIALOGUE} call must include 2-5 choices for the player.`,
+    );
+  } else if (options.length > 5) {
+    errors.push(
+      `Too many options (${options.length}) — at most 5 options are allowed. Provide 2-5 focused choices that respond to the current scene.`,
+    );
+  }
+
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    if (opt.check && opt.hintBefore) {
+      errors.push(
+        `Option ${i} has both a skill check and hintBefore. The skill check already renders the skill name — omit hintBefore for this option.`,
+      );
+    }
+    const textError = checkText(opt.text, `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].text`);
+    if (textError) {
+      errors.push(textError);
+    }
+    if (opt.hintBefore) {
+      const hintError = checkText(
+        opt.hintBefore,
+        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintBefore`,
+      );
+      if (hintError) {
+        errors.push(hintError);
+      }
+    }
+    if (opt.hintAfter) {
+      const hintError = checkText(
+        opt.hintAfter,
+        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].hintAfter`,
+      );
+      if (hintError) {
+        errors.push(hintError);
+      }
+    }
+    if (opt.selectionMessage) {
+      const selMsgError = checkText(
+        opt.selectionMessage,
+        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
+      );
+      if (selMsgError) {
+        errors.push(selMsgError);
+      }
+    }
+  }
+
+  return { errors };
+}
+
+type PersistMessageFn = (msg: {
+  speaker: string;
+  type: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}) => Promise<void>;
+
+async function executeAndPersist(
+  args: DialogueArgs,
+  isCorrection: boolean,
+  persistMessage?: PersistMessageFn,
+  onValidChange?: (valid: boolean) => void,
+  skipPersistIndices?: Set<number>,
+): Promise<string> {
+  const result = validateDialogueArgs(args);
+
+  if (result.errors.length > 0) {
+    onValidChange?.(false);
+    return [
+      "VALIDATION FAILED",
+      ` (isCorrection: ${isCorrection})\n`,
+      result.errors.map((e) => "- " + e).join("\n"),
+      "\n\nCall generateDialogueStep again with isCorrection: true. ",
+      "Only send the failing items listed above — set each item's 'index' field to the index shown. ",
+      "Valid items are preserved from the previous call automatically (do NOT copy them).",
+    ].join("");
+  }
+
+  onValidChange?.(true);
+
+  if (persistMessage) {
+    const messages = args.messages ?? [];
+    let persisted = 0;
+    for (let i = 0; i < messages.length; i++) {
+      if (skipPersistIndices?.has(i)) continue;
+      const msg = messages[i];
+      try {
+        await persistMessage({
+          speaker: msg.speaker,
+          type: msg.type,
+          text: msg.text,
+          metadata: msg.metadata,
+        });
+        persisted++;
+      } catch (err) {
+        console.warn(
+          `[${TOOL_NAMES.GENERATE_DIALOGUE}] Failed to persist message from "${msg.speaker}":`,
+          err,
+        );
+      }
+    }
+    return (
+      (isCorrection ? `Correction applied — ` : `Dialogue successfully streamed — `) +
+      `${persisted} message(s) persisted, ${(args.options ?? []).length} option(s) received.`
+    );
+  }
+
+  return (
+    (isCorrection ? "Correction applied — " : "Dialogue successfully streamed — ") +
+    `${(args.messages ?? []).length} message(s) received, ${(args.options ?? []).length} option(s) received.`
+  );
+}
+
+export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn) {
+  let lastCallValid = false;
+  let lastCallMessages: DialogueMessage[] = [];
+  let lastCallOptions: DialogueOpt[] = [];
+  let lastPersistedCount = 0;
+
+  const dialogueTool = tool({
+    title: TOOL_NAMES.GENERATE_DIALOGUE,
+    description: `
+SPEAK to the player. This is your ONLY output channel — all other text you produce is discarded.
+Every turn MUST end with a valid generateDialogueStep call.
+
+messages — The narrative for this step. 1-3 sentences each.
+  Speaker names: NARRATOR for environment, NPC names for characters, skill names
+  (LOGIC, EMPATHY, SORCERY, etc.) for inner voices. Never use "INNER_VOICE" as speaker.
+
+options — 2-5 choices for the player. 2-3 is standard, 4-5 for pivotal moments.
+  All options should be action-oriented (what the player DOES, not what they think).
+
+isCorrection — ONLY set to true when retrying after a validation error.
+  Send ONLY the failing items with their 'index' field from the error message.
+  Valid items are preserved automatically — do NOT copy or resend them.
+
+Persist world changes BEFORE speaking. The archive must reflect the state you narrate.
+`.trim(),
+    inputSchema,
+    execute: async (args: DialogueArgs) => {
+      const isCorrection = args.isCorrection ?? false;
+
+      const baseEmpty = lastCallMessages.length === 0 && lastCallOptions.length === 0;
+
+      // When correcting but nothing was stored (previous call failed Zod), tell the GM
+      // to resend everything fresh — there's nothing to merge against.
+      if (isCorrection && baseEmpty) {
+        return [
+          "VALIDATION FAILED (isCorrection: true)\n",
+          "- No stored state to correct — the previous call was rejected before reaching validation.\n",
+          "Call generateDialogueStep again WITHOUT isCorrection. ",
+          "Send ALL messages and options fresh (do not use the 'index' field).",
+        ].join("");
+      }
+
+      // Auto-merge: when correcting, start from stored base and patch in the corrections.
+      // Items with index replace the existing item at that position; items without index
+      // are appended. If the correction sends items but NONE have index, treat as full
+      // replacement (the GM thinks the previous call was entirely rejected).
+      let allMessagesFresh = false;
+      let allOptionsFresh = false;
+      const replacedMessageIndices = new Set<number>();
+      if (isCorrection) {
+        const merged = mergeCorrection(args, lastCallMessages, lastCallOptions);
+        allMessagesFresh = merged.allMessagesFresh;
+        allOptionsFresh = merged.allOptionsFresh;
+        for (const i of merged.replacedMessageIndices) replacedMessageIndices.add(i);
+        args = merged.mergedArgs;
+      }
+
+      // Messages that were already persisted from a previous call and not
+      // replaced in this correction should be skipped.
+      // When doing a full replacement (allMessagesFresh), all old indices are
+      // invalidated so nothing is skipped.
+      const skipPersist = new Set<number>();
+      if (isCorrection && lastPersistedCount > 0 && !allMessagesFresh) {
+        for (let i = 0; i < lastPersistedCount; i++) {
+          if (!replacedMessageIndices.has(i)) skipPersist.add(i);
+        }
+      }
+
+      const result = await executeAndPersist(
+        args,
+        isCorrection,
+        persistMessage,
+        (valid) => {
+          lastCallValid = valid;
+        },
+        skipPersist.size > 0 ? skipPersist : undefined,
+      );
+
+      // Store this call's args for potential future correction within the same turn.
+      lastCallMessages = args.messages ?? [];
+      lastCallOptions = args.options ?? [];
+      lastPersistedCount = lastCallValid ? (args.messages ?? []).length : 0;
+
+      return result;
+    },
+  });
+
+  return {
+    tool: dialogueTool,
+    wasValid: () => lastCallValid,
+    mergeCorrection: (args: DialogueArgs): DialogueArgs | null => {
+      const isCorrection = args.isCorrection ?? false;
+      if (!isCorrection) return null;
+      const baseEmpty = lastCallMessages.length === 0 && lastCallOptions.length === 0;
+      if (baseEmpty) return null;
+      return mergeCorrection(args, lastCallMessages, lastCallOptions).mergedArgs;
+    },
+    resetForTurn: () => {
+      lastCallValid = false;
+      lastCallMessages = [];
+      lastCallOptions = [];
+      lastPersistedCount = 0;
+    },
+  };
+}

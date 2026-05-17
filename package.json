@@ -12,6 +12,11 @@
     "clean": "rm -rf dist",
     "format": "npx prettier --write \"src/**/*.{js,ts,tsx}\"",
     "format:check": "npx prettier --check \"src/**/*.{js,ts,tsx}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit/",
+    "test:integration": "vitest run tests/integration/",
+    "test:scenarios": "vitest run tests/scenarios/",
     "test:debug": "tsx scripts/test-debug-endpoints.ts",
     "knip": "knip"
   },
@@ -51,6 +56,8 @@
     "esbuild": "^0.28.0",
     "knip": "^6.13.1",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.6"
   }
 }

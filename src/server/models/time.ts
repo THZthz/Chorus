@@ -101,13 +101,14 @@ export async function advanceGameTime(
     await client.neo4j.executeWrite(
       `MATCH (a:TimeAnchor {_id: 'anchor'})
        MATCH (old:TimePoint {_id: $oldId})
+       MATCH (a)-[r_del:CURRENT_TIMEPOINT]->(old)
        CREATE (new:TimePoint {
          _id: $newId, day: $newDay, segment: $newSegment,
          label: $label, _created_at: datetime($now)
        })
        CREATE (old)-[r1:NEXT_TIMEPOINT]->(new)
        SET r1._created_at = datetime()
-       DELETE (a)-[:CURRENT_TIMEPOINT]->(old)
+       DELETE r_del
        CREATE (a)-[r2:CURRENT_TIMEPOINT]->(new)
        SET r2._created_at = datetime()`,
       {

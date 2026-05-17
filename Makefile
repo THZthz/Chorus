@@ -1,4 +1,4 @@
-.PHONY: install server console lint format \
+.PHONY: install server console lint format test-all \
         neo4j-start neo4j-stop neo4j-wait neo4j-status neo4j-logs neo4j-restart neo4j-clean \
         embedding-server rerank-server formatter-server \
         reset clean clean-all
@@ -72,6 +72,9 @@ lint:
 format:
 	$(NPM) run format
 	$(NPM) run add-license-header
+
+test-all:
+	$(NPM) test
 
 reset:
 	curl -X POST http://localhost:3000/api/reset

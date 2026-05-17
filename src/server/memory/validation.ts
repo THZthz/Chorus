@@ -24,7 +24,7 @@ import type { Neo4jClient } from "@/server/memory/neo4j";
 const BLOCKED_READ_CLAUSES = /\b(CREATE|MERGE|DELETE|SET|REMOVE|DETACH\s+DELETE|DROP)\b/i;
 const BLOCKED_DDL =
   /\b(CREATE\s+INDEX|CREATE\s+CONSTRAINT|DROP\s+(INDEX|CONSTRAINT|DATABASE|GRAPH)|ALTER|USING\s+PERIODIC\s+COMMIT)\b/i;
-const UNBOUNDED_PATH = /\[(\*|\\*)\.\.\]|\[\\*\]/;
+const UNBOUNDED_PATH = /\[(\*|\\*)(\.\.\d*)?\]/;
 
 export interface ValidationResult {
   valid: boolean;

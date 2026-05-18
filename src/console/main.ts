@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { clearLine, moveCursor } from "node:readline";
 import { select, input, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
 import logUpdate from "log-update";
@@ -71,10 +72,6 @@ function getSpeakerColor(speaker: string, type: string) {
   if (type === "ROLL") return chalk.hex("#a3c2a3");
   const [r, g, b] = hashNpcColor(speaker);
   return chalk.rgb(r, g, b);
-}
-
-function stripOptionText(text: string): string {
-  return text.replace(/^\[[^\]]*?:[^\]]*?\]\s*/, "");
 }
 
 // ── Rendering ──
@@ -147,7 +144,7 @@ function formatOptionLabel(opt: DialogueOption): string {
 
 function renderBanner() {
   console.log("");
-  console.log(chalk.bold("                  ELYSIAN DIALOGUE                  "));
+  console.log(chalk.bold("                     CHORUS                        "));
   console.log(chalk.dim("               A Narrative RPG Engine               "));
   console.log("");
 }
@@ -266,22 +263,27 @@ async function handleBegin() {
   await postChatStream("[SYSTEM MESSAGE: Begin the story. Set the scene.]", []);
 }
 
-async function handleOptionSelect(option: DialogueOption) {
-  const youText = option.selectionMessage ?? stripOptionText(option.text);
+function clearInquirerAnswer() {
+  moveCursor(process.stdout, 0, -1);
+  clearLine(process.stdout, 0);
+}
 
-  const youMessage: Message = {
+function emitYouMessage(text: string) {
+  const msg: Message = {
     id: `console-${messageIdCounter++}`,
     speaker: "YOU",
     type: "YOU",
-    text: youText,
+    text,
   };
-  history = [...history, youMessage];
-
-  process.stdout.write("\n");
-  process.stdout.write(formatMessage(youMessage));
+  history = [...history, msg];
+  process.stdout.write(formatMessage(msg));
   console.log("");
+}
 
-  await postChatStream(youText, history, option.check);
+async function handleOptionSelect(option: DialogueOption) {
+  clearInquirerAnswer();
+  emitYouMessage(option.text);
+  await postChatStream(option.text, history, option.check);
 }
 
 // ── Resume ──
@@ -425,18 +427,8 @@ async function main() {
         const customText = await input({ message: "What do you want to do or say?" });
         if (!customText.trim()) continue;
 
-        const youMessage: Message = {
-          id: `console-${messageIdCounter++}`,
-          speaker: "YOU",
-          type: "YOU",
-          text: customText.trim(),
-        };
-        history = [...history, youMessage];
-
-        process.stdout.write("\n");
-        process.stdout.write(formatMessage(youMessage));
-        console.log("");
-
+        clearInquirerAnswer();
+        emitYouMessage(customText.trim());
         await postChatStream(customText.trim(), history);
       } else if (choice === "reset") {
         const answer = await select({

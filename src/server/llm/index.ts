@@ -149,11 +149,22 @@ export async function generateTurn(
     }
   }
 
+  const mindsetParts: string[] = [];
+  if (turnNumber === 1) {
+    // TODO: This is removed for now.
+    // mindsetParts.push(
+    //   "## MINDSET REQUIREMENTS",
+    //   "",
+    // );
+  }
+
   const promptText = [
     ...historyParts,
     ...actionParts,
     ...skillCheckParts,
     "Generate the narrative response following the output format exactly.",
+    "",
+    ...mindsetParts,
   ].join("\n");
 
   const { model } = getModel();
@@ -341,7 +352,6 @@ export async function generateTurn(
               if (parsed.options && Array.isArray(parsed.options)) {
                 finalOptions = parsed.options.map((o: any) => ({
                   text: o.text || "",
-                  selectionMessage: o.selectionMessage,
                   hintBefore: o.hintBefore,
                   hintAfter: o.hintAfter,
                   check: o.check

@@ -129,7 +129,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
           props.length > 0
             ? ` with ${props.length} property(s): ${props.map((p) => p.name).join(", ")}`
             : "";
-        return `Registered node type "${args.name}"${propSummary}. It is now available for use via queryWorld (WRITE action).`;
+        return `Registered node type "${args.name}"${propSummary}. It is now available for use via ${TOOL_NAMES.QUERY_WORLD} (WRITE action).`;
       }
 
       if (args.target === "relationship") {
@@ -164,7 +164,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
 
         const endpoints =
           srcLabels && tgtLabels ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})` : "";
-        return `Registered relationship type "${args.name}"${endpoints}. It is now available for use via queryWorld (WRITE action).`;
+        return `Registered relationship type "${args.name}"${endpoints}. It is now available for use via ${TOOL_NAMES.QUERY_WORLD} (WRITE action).`;
       }
     }
 

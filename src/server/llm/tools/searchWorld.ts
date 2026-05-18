@@ -47,7 +47,7 @@ Default: searches all four.
 
 Use searchWorld FIRST for: recalling what happened, finding by concept,
 checking if a plot already exists, or remembering what you were tracking.
-Use queryWorld (READ) when you need exact Cypher lookups or relationship traversal.
+Use ${TOOL_NAMES.QUERY_WORLD} (READ) when you need exact Cypher lookups or relationship traversal.
 `.trim(),
   inputSchema: z.object({
     query: z

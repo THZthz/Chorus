@@ -50,7 +50,6 @@ export interface Message {
 
 export interface DialogueOption {
   text: string;
-  selectionMessage?: string;
   hintBefore?: string;
   hintAfter?: string;
   check?: {

@@ -74,7 +74,7 @@ CREATE, UPDATE, or DELETE a node in the world archive using a registered node ty
 
 CREATE — Add a new entity, note, plot, or custom node type. Properties are validated
 against the type's schema. WARNING: This tool does NOT check for duplicates — search first
-via searchWorld or queryWorld (READ) to verify the node doesn't already exist.
+via searchWorld or ${TOOL_NAMES.QUERY_WORLD} (READ) to verify the node doesn't already exist.
 Use label "Note" to create your own scratchpad notes.
 
 UPDATE — Change properties on an existing node. Only include fields you want to change.

@@ -106,7 +106,7 @@ export class CypherValidator {
       const manager = RelationshipManager.getCachedInstance();
       // Auto-register unknown types as GM_DEFINED
       if (!manager.get(relType)) {
-        manager.register(relType, "Created by GM via queryWorld", "GM_DEFINED");
+        manager.register(relType, "Created by GM via ${TOOL_NAMES.QUERY_WORLD}", "GM_DEFINED");
       }
       if (!manager.isAllowedForWrite(relType)) {
         const allowed = [

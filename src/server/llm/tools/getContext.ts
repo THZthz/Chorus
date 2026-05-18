@@ -80,6 +80,9 @@ Types:
 - RELATIONSHIP_DUMP — All non-internal relationships, grouped by type. LOCATED_AT and
   LOCATED_IN are grouped by location showing occupants.
 
+After the first call, entities and plots show compact briefs in SCENE_CONTEXT instead of full descriptions.
+Call \`${TOOL_NAMES.RESET_SCENE_CONTEXT}\` if you really need the full descriptions again.
+
 Default (no types specified): SCENE_CONTEXT only.
 Call with additional types when you need global awareness beyond your immediate scene.
 `.trim(),

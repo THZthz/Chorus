@@ -68,19 +68,6 @@ Omit when generating fresh.`.trim(),
     .string()
     .max(200)
     .describe("Short imperative button label (e.g. 'Try to convince the guard')."),
-  selectionMessage: z
-    .string()
-    .max(300)
-    .nullable()
-    .optional()
-    .describe(
-      `
-Optional sentence for the YOU message in dialogue history after the player selects this option.
-Write in past or present tense WITHOUT the pronoun 'I' — the system prefixes with 'You:' automatically
-(e.g. 'Tried to convince the guard to let us pass.' reads as 'You: Tried to convince...').
-Using 'I' would produce the awkward 'You: I tried...'.
-If omitted, the text field is used with any [SKILL] prefix removed.`.trim(),
-    ),
   hintBefore: z
     .string()
     .max(50)
@@ -301,15 +288,6 @@ export function validateDialogueArgs(args: DialogueArgs): ValidationResult {
       );
       if (hintError) {
         errors.push(hintError);
-      }
-    }
-    if (opt.selectionMessage) {
-      const selMsgError = checkText(
-        opt.selectionMessage,
-        `${TOOL_NAMES.GENERATE_DIALOGUE} options[${i}].selectionMessage`,
-      );
-      if (selMsgError) {
-        errors.push(selMsgError);
       }
     }
   }

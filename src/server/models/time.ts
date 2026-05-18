@@ -54,12 +54,33 @@ export async function getCurrentTimePoint(): Promise<TimePoint | null> {
 
 // ── Advance Time ──
 
+export async function setInitialTime(day: number, segment: number): Promise<void> {
+  const client = MemoryClient.getCachedInstance();
+  const existing = await getCurrentTimePoint();
+  if (existing) return; // already initialized
+
+  const label = describeSegment(segment);
+  const newId = uuidv4();
+  const now = new Date().toISOString();
+
+  await client.neo4j.executeWrite(
+    `MERGE (a:TimeAnchor {_id: 'anchor'})
+     CREATE (new:TimePoint {
+       _id: $newId, day: $day, segment: $segment,
+       label: $label, _created_at: datetime($now)
+     })
+     CREATE (a)-[r:CURRENT_TIMEPOINT]->(new)
+     SET r._created_at = datetime()`,
+    { newId, day, segment, label, now },
+  );
+}
+
 export async function advanceGameTime(
   segments: number,
 ): Promise<{ oldTime: GameTime; newTime: GameTime; totalSegments: number }> {
   const client = MemoryClient.getCachedInstance();
-  const oldTime = await getCurrentTimePoint();
   const oldTimePoint = await getCurrentTimePoint();
+  const oldTime: GameTime = oldTimePoint ?? { day: 1, segment: 2 };
 
   const totalSegments = oldTime.day * 12 + oldTime.segment + segments;
   const newDay = Math.floor(totalSegments / 12);

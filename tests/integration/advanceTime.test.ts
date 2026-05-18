@@ -54,7 +54,7 @@ describe("advanceTime", () => {
     expect(result).toContain("Time unchanged");
   });
 
-  it("includes the reason in output when provided", async () => {
+  it("still works when reason is provided (reason is logged but not shown in tool output)", async () => {
     const mockEvents = createMockEventEmitter();
     const advanceTime = createAdvanceTimeTool(mockEvents);
 
@@ -62,7 +62,9 @@ describe("advanceTime", () => {
       segments: 1,
       reason: "Walking to the next carriage",
     });
-    expect(result).toContain("Walking to the next carriage");
+    expect(result).toContain("Time advanced");
+    expect(result).toContain("1 segment(s)");
+    expect(result).not.toContain("Walking to the next carriage");
   });
 
   it("does not break when reason is omitted", async () => {

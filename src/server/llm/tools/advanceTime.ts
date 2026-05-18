@@ -53,6 +53,8 @@ export function createAdvanceTimeTool(events: EventEmitter) {
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
       const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
       const { oldTime, newTime } = await advanceGameTime(totalSegments);
+      // `reason` now will not appear in tool result message.
+      // TODO: Display time pass reason in console client.
       events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
       if (totalSegments === 0) {
         return `Time unchanged. It is still ${describeTime(newTime)}.`;

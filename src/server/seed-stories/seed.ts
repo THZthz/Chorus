@@ -20,6 +20,7 @@ import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { NodeManager } from "@/server/memory/nodeManager";
 import { CypherValidator } from "@/server/memory/validation";
+import { setInitialTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";
 
 function inferSentiment(text: string): string {
@@ -67,6 +68,8 @@ export async function seedDatabase(): Promise<void> {
     console.log(`[seedDatabase] database already has ${existing[0].count} entities, skipping`);
     return;
   }
+
+  await setInitialTime(story.initialDay, story.initialSegment);
 
   console.log(`[seedDatabase] seeding ${story.entities.length} entities from "${story.id}"`);
 

@@ -209,6 +209,8 @@ export async function generateTurn(
 
   dialogueStepTool.resetForTurn();
 
+  const nudgeMessages: string[] = [];
+
   const result = streamText({
     model,
     system: hasCachedSystem ? undefined : systemPrompt,
@@ -239,6 +241,11 @@ export async function generateTurn(
         if (dialogueCalled) {
           nudgeState.count = 0;
           nudgeState.timeReminded = false;
+          return undefined;
+        }
+
+        // Don't nudge until step 4 — let the GM work without interruption early on
+        if (steps.length < 3) {
           return undefined;
         }
 
@@ -277,6 +284,7 @@ export async function generateTurn(
           errorMsg += `Reminder: You can call ${TOOL_NAMES.ADVANCE_TIME}() if the player's action takes significant time. Skip if not needed.`;
         }
 
+        nudgeMessages.push(errorMsg);
         return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
       }
     )({ count: 0, timeReminded: false }),
@@ -441,7 +449,7 @@ export async function generateTurn(
   // Persist this turn's messages for multi-turn continuity
   try {
     const response = await result.response;
-    await saveGMMessages(response.messages as ModelMessage[], turnNumber, userInput);
+    await saveGMMessages(response.messages as ModelMessage[], turnNumber, promptText, nudgeMessages);
   } catch (err) {
     console.error("[generateTurn] Failed to save GM messages:", err);
   }

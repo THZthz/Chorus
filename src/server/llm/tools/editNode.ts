@@ -232,7 +232,7 @@ Requires exact match criteria. Verify you're targeting the right node.
       );
       const created = rows[0]?.n as Record<string, unknown> | undefined;
       const v = visibleProps(created);
-      const propSummary = Object.keys(v).length > 0 ? ` with properties: ${JSON.stringify(v)}` : "";
+      const propSummary = Object.keys(v).length > 0 ? ` with keys: ${Object.keys(v).join(", ")}` : "";
       return `Node "${args.nodeLabel}" created${propSummary}.`;
     }
 

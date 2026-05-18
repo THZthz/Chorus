@@ -53,7 +53,8 @@ export async function loadGMMessages(): Promise<ModelMessage[]> {
 export async function saveGMMessages(
   messages: ModelMessage[],
   turnNumber: number,
-  userInput?: string,
+  promptText: string,
+  nudgeMessages?: string[],
 ): Promise<void> {
   const client = MemoryClient.getCachedInstance();
   const now = new Date().toISOString();
@@ -67,11 +68,11 @@ export async function saveGMMessages(
 
   const filtered = messages.filter((m) => m.role !== "system");
   const toStore: Array<{ role: string; content: unknown; providerOptions?: unknown }> = [];
-  if (userInput) {
-    toStore.push({ role: "user", content: userInput });
+  toStore.push({ role: "user", content: promptText });
+  for (const nudgeMsg of nudgeMessages ?? []) {
+    toStore.push({ role: "user", content: nudgeMsg });
   }
   toStore.push(...filtered);
-  if (toStore.length === 0) return;
 
   const lastRows = await client.neo4j.executeRead(
     `MATCH (c:Conversation {_id: $convId})-[:_HAS_GM_MESSAGE]->(m:GMTurnMessage)

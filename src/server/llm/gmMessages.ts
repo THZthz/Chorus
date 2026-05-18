@@ -21,8 +21,7 @@
  *
  * Stores AI SDK ModelMessage[] as :GMTurnMessage Neo4j nodes linked to
  * the Conversation node. These nodes are NOT visible to GM tools because
- * the CypherValidator allowlist (Entity, Message, NPCDisposition, GameTime,
- * TimePoint, TimeAnchor) does not include GMTurnMessage.
+ * the CypherValidator allowlist does not include GMTurnMessage.
  */
 import { v4 as uuidv4 } from "uuid";
 import type { ModelMessage } from "ai";

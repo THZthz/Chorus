@@ -89,13 +89,12 @@ apiRouter.get("/history", async (_req, res) => {
     const messages = await client.shortTerm.getConversation();
     const history: Message[] = messages.map((m, i) => {
       const meta = m.metadata || {};
-      const isPlayer = m.role === "user";
       const msg: Message = {
         id: `msg_${i}`,
-        speaker: isPlayer ? "YOU" : (meta.speaker as string) || "SYSTEM",
-        type: isPlayer ? "YOU" : (meta.type as Message["type"]) || "SYSTEM",
+        speaker: (meta.speaker as string) || "SYSTEM",
+        type: (meta.type as Message["type"]) || "SYSTEM",
         text: m.content || "",
-        metadata: isPlayer ? undefined : (meta as Message["metadata"]),
+        metadata: meta as Message["metadata"],
       };
       if (meta.rollResult) {
         msg.rollResult = meta.rollResult as Message["rollResult"];

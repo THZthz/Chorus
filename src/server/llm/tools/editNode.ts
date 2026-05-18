@@ -20,15 +20,13 @@ import { tool } from "ai";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { MemoryClient } from "@/server/memory/client";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { NodeDef, NodeManager } from "@/server/memory/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { getObserver } from "@/server/llm/sceneObserver";
 import { getEmbedder } from "@/server/memory/embedder";
 import { TOOL_NAMES } from "@/shared/constants";
 
 const NODE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
-
-const SYSTEM_PROPS = new Set(["_id", "_created_at", "_updated_at", "_embedding"]);
 
 function visibleProps(node: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -40,30 +38,40 @@ function visibleProps(node: Record<string, unknown> | undefined): Record<string,
 }
 
 const inputSchema = z.object({
-  nodeLabel: z
-    .string()
-    .describe(
-      "Node label to operate on (e.g. 'Entity', 'Character', 'Location', or a GM-defined label). " +
-        "Must be registered in the world schema and writable. " +
-        `Query :NodeType nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types and their property schemas.`,
-    ),
+  nodeLabel: z.string().describe(
+    `
+Node label to operate on (e.g. \`Entity\`, \`Character\`, \`Location\`, or a GM-defined label).
+Must be registered in the world schema and writable.
+Query \`NodeType\` nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types and their property schemas.
+`
+      .replace(/[\r\n]+/g, " ")
+      .trim(), // TODO: Should use getContext.
+  ),
   action: z.enum(NODE_ACTIONS).default("CREATE").describe("Action to perform."),
   match: z
     .record(z.string(), z.string())
     .nullable()
     .optional()
     .describe(
-      "Key-value pairs to locate exactly one node. Required for UPDATE/DELETE. " +
-        "e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an NPCDisposition.",
+      `
+Key-value pairs to locate exactly one node. Required for UPDATE/DELETE.
+e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an NPCDisposition.
+`
+        .replace(/[\r\n]+/g, " ")
+        .trim(),
     ),
   properties: z
     .record(z.string(), z.unknown())
     .nullable()
     .optional()
     .describe(
-      "Key-value pairs to set on the node. Must match the property schema for this node type. " +
-        "CREATE: sets initial properties. UPDATE: only include properties you want to change. " +
-        "System properties (_id, _created_at, _updated_at, _embedding) are managed automatically.",
+      `
+Key-value pairs to set on the node. Must match the property schema for this node type.
+CREATE: sets initial properties. UPDATE: only include properties you want to change.
+System properties (_id, _created_at, _updated_at, _embedding) are managed automatically.
+`
+        .replace(/[\r\n]+/g, " ")
+        .trim(),
     ),
 });
 
@@ -74,21 +82,25 @@ CREATE, UPDATE, or DELETE a node in the world archive using a registered node ty
 
 CREATE — Add a new entity, note, plot, or custom node type. Properties are validated
 against the type's schema. WARNING: This tool does NOT check for duplicates — search first
-via searchWorld or ${TOOL_NAMES.QUERY_WORLD} (READ) to verify the node doesn't already exist.
-Use label "Note" to create your own scratchpad notes.
+via ${TOOL_NAMES.SEARCH_WORLD} or ${TOOL_NAMES.QUERY_WORLD} (READ) to verify the node doesn't
+already exist. Use label \`Note\` to create your own scratchpad notes. Use label \`Plot\` to
+create plot tree in advance of dialogue steps.
 
 UPDATE — Change properties on an existing node. Only include fields you want to change.
-Use for: entity descriptions, plot statuses/flags, note contents, dispositions.
+Use for: entity descriptions, plot statuses/flags, note contents, dispositions. This also supports
+partial JSON properties update although the property may actually stored as "string" in database
+(when creating schema by \`${TOOL_NAMES.MANAGE_SCHEMA}\`, the type of that property MUST be
+specified as "json").
 
-DELETE — Remove a node and all its relationships (DETACH DELETE).
-Requires exact match criteria. Verify you're targeting the right node.
+DELETE — Remove a node and all its relationships (DETACH DELETE). Requires exact match criteria.
+Verify you're targeting the right node.
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
     const client = MemoryClient.getCachedInstance();
     const nodeManager = NodeManager.getCachedInstance();
 
-    // Validate node label
+    // Validate node label ever registered
     const nodeDef = nodeManager.get(args.nodeLabel);
     if (!nodeDef) {
       const available = nodeManager
@@ -96,10 +108,11 @@ Requires exact match criteria. Verify you're targeting the right node.
         .filter((n) => n.type !== "INTERNAL")
         .map((n) => n.name)
         .join(", ");
-      return `ERROR: Node label "${args.nodeLabel}" is not registered. Available labels: ${available}`;
+      return `ERROR: Node label "${args.nodeLabel}" is not registered. Available labels: ${available}.`;
     }
     if (!nodeManager.isAllowedForWrite(args.nodeLabel)) {
-      return `ERROR: Node label "${args.nodeLabel}" is ${nodeDef.type} and cannot be written to via ${TOOL_NAMES.EDIT_NODE}.`;
+      // TODO: GM may try to use queryWorld, that should also block unauthorized writes.
+      return `ERROR: Node label "${args.nodeLabel}" is ${nodeDef.type} and cannot be written to.`;
     }
 
     // Build allowed property names from the schema.
@@ -107,54 +120,54 @@ Requires exact match criteria. Verify you're targeting the right node.
     // non-_-prefixed property except system-managed ones.  GM_DEFINED types
     // have explicit schemas and must be validated strictly.
     const schemaProps = new Set(
-      nodeDef.properties
-        .map((p) => p.name)
-        .filter((name) => !SYSTEM_PROPS.has(name) && !name.startsWith("_")),
+      nodeDef.properties.map((p) => p.name).filter((name) => !name.startsWith("_")),
     );
     const hasSchema = nodeDef.properties.length > 0;
 
-    function checkProps(props: Record<string, unknown>): string | null {
+    // Functions are defined inline to use cached variables.
+
+    function isPropsKeyExistAndNotInternal(props: Record<string, unknown>): string | null {
+      const internalKeys: string[] = [];
+      const unknownKeys: string[] = [];
       for (const key of Object.keys(props)) {
-        if (SYSTEM_PROPS.has(key)) {
-          return `Property "${key}" is system-managed and cannot be set directly.`;
-        }
         if (key.startsWith("_")) {
-          return `Property "${key}" is internal (prefixed with '_') and cannot be set.`;
+          internalKeys.push(key);
         }
         if (hasSchema && !schemaProps.has(key)) {
-          return `Unknown property "${key}" for node type "${args.nodeLabel}". Allowed: ${[...schemaProps].join(", ")}`;
+          unknownKeys.push(key);
         }
       }
-      return null;
+      const errorTextParts = [
+        internalKeys.length > 0
+          ? `Property "${internalKeys.join("/")}" is internal (prefixed with '_') and cannot be set (managed internally by the engine).`
+          : "",
+        unknownKeys.length > 0
+          ? `Unknown property "${unknownKeys.join("/")}" for node type "${args.nodeLabel}". Allowed: ${[...schemaProps].join(", ")}`
+          : "",
+      ];
+      return errorTextParts.length > 0 ? errorTextParts.join(" ") : null;
     }
 
-    function checkMatchKeys(match: Record<string, string>): string | null {
+    function isMatchKeysInternal(match: Record<string, string>): string | null {
+      const errorKeys: string[] = [];
       for (const key of Object.keys(match)) {
-        if (SYSTEM_PROPS.has(key)) return `Match key "${key}" is system-managed.`;
-        if (key.startsWith("_")) return `Match key "${key}" is internal.`;
+        if (key.startsWith("_")) errorKeys.push(key);
       }
-      return null;
+      return errorKeys.length > 0
+        ? `Parameter \`match\` contain invalid key "${errorKeys.join("/")}", which ${errorKeys.length > 1 ? "are" : "is"} internal and managed by the engine.`
+        : null;
     }
 
-    // NodeManager discards properties for PREDEFINED types, so check the
-    // known embeddable labels directly (all have Neo4j vector indexes).
-    const EMBEDDABLE = new Set([
-      "Entity",
-      "Character",
-      "Object",
-      "Location",
-      "Organization",
-      "Event",
-      "Note",
-      "Plot",
-      "Message",
-    ]);
-    const wantsEmbedding = EMBEDDABLE.has(args.nodeLabel);
-
-    async function computeEmbedding(props: Record<string, unknown>): Promise<number[] | null> {
-      const name = String(props.name ?? "");
-      const text = String(props.description ?? props.content ?? "");
-      const embedText = name && text ? `${name}: ${text}` : name || text;
+    async function computeEmbedding(
+      def: NodeDef,
+      props: Record<string, unknown>,
+    ): Promise<number[] | null> {
+      const propertiesNeedEmbed = def.properties
+        .filter((prop) => prop.tags.split(",").includes("embedded"))
+        .map((prop) => prop.name);
+      const embedText = propertiesNeedEmbed
+        .map((name) => (props[name] ? `## ${name}\n${props[name]}` : ""))
+        .join("\n");
       if (!embedText) return null;
       try {
         const embedder = getEmbedder();
@@ -186,9 +199,9 @@ Requires exact match criteria. Verify you're targeting the right node.
     // ── DELETE ──
     if (args.action === "DELETE") {
       if (!args.match || Object.keys(args.match).length === 0) {
-        return "ERROR: match is required for DELETE.";
+        return "ERROR: Parameter `match` is required for DELETE.";
       }
-      const matchErr = checkMatchKeys(args.match);
+      const matchErr = isMatchKeysInternal(args.match);
       if (matchErr) return `ERROR: ${matchErr}`;
 
       const params: Record<string, unknown> = {};
@@ -202,17 +215,22 @@ Requires exact match criteria. Verify you're targeting the right node.
         : `ERROR: No "${args.nodeLabel}" node found matching ${JSON.stringify(args.match)}.`;
     }
 
+    const wantsEmbedding = nodeDef.properties.some((p) => p.name === "_embedding") ?? false;
+    const allSchemaProps = new Set(nodeDef.properties.map((p) => p.name));
+
     // ── CREATE ──
     if (args.action === "CREATE") {
       if (!args.properties || Object.keys(args.properties).length === 0) {
-        return "ERROR: properties is required for CREATE and must not be empty.";
+        return "ERROR: Parameter `properties` is required for CREATE and must not be empty.";
       }
-      const propErr = checkProps(args.properties);
+      const propErr = isPropsKeyExistAndNotInternal(args.properties);
       if (propErr) return `ERROR: ${propErr}`;
 
       const id = uuidv4();
       const params: Record<string, unknown> = { id };
-      const setters = ["n._id = $id", "n._created_at = datetime()"];
+      const setters = [ "n._id = $id", ];
+      if ( allSchemaProps.has("_created_at")) setters.push("n._created_at = datetime()");
+      if ( allSchemaProps.has("_updated_at")) setters.push("n._updated_at = datetime()");
       for (const [key, value] of Object.entries(args.properties)) {
         const pName = `p_${key}`;
         params[pName] = toPropertyValue(value);
@@ -220,27 +238,29 @@ Requires exact match criteria. Verify you're targeting the right node.
       }
 
       if (wantsEmbedding) {
-        const emb = await computeEmbedding(args.properties);
-        const embParam = `p__embedding`;
-        params[embParam] = emb ?? [];
-        setters.push(`n._embedding = $${embParam}`);
+        const embedding = await computeEmbedding(nodeDef, args.properties);
+        const embeddingParam = `p__embedding`;
+        params[embeddingParam] = embedding ?? [];
+        setters.push(`n._embedding = $${embeddingParam}`);
       }
 
+      // TODO: NodeManager, specify unique property name to enable auto de-duplication.
       const rows = await client.neo4j.executeWrite(
         `CREATE (n:\`${args.nodeLabel}\`) SET ${setters.join(", ")} RETURN n`,
         params,
       );
       const created = rows[0]?.n as Record<string, unknown> | undefined;
       const v = visibleProps(created);
-      const propSummary = Object.keys(v).length > 0 ? ` with keys: ${Object.keys(v).join(", ")}` : "";
+      const propSummary =
+        Object.keys(v).length > 0 ? ` with keys: ${Object.keys(v).join(", ")}` : "";
       return `Node "${args.nodeLabel}" created${propSummary}.`;
     }
 
     // ── UPDATE ──
     if (!args.match || Object.keys(args.match).length === 0) {
-      return "ERROR: match is required for UPDATE.";
+      return "ERROR: Parameter `match` is required for UPDATE.";
     }
-    const matchErr = checkMatchKeys(args.match);
+    const matchErr = isMatchKeysInternal(args.match);
     if (matchErr) return `ERROR: ${matchErr}`;
 
     const matchParams: Record<string, unknown> = {};
@@ -255,15 +275,15 @@ Requires exact match criteria. Verify you're targeting the right node.
     }
 
     if (!args.properties || Object.keys(args.properties).length === 0) {
-      return "No properties to update.";
+      return "ERROR: No properties to update. Nothing is edited inside the database";
     }
 
-    const propErr = checkProps(args.properties);
+    const propErr = isPropsKeyExistAndNotInternal(args.properties);
     if (propErr) return `ERROR: ${propErr}`;
 
     const existingNode = existing[0]?.n as Record<string, unknown> | undefined;
 
-    // WARNING: Plot flags are serialized as a single JSON property in Neo4j.
+    // WARNING: Plot flags are serialized as a single JSON and stored as string property in Neo4j.
     // The GM passes flags as an object map (e.g. {memory_professionally_removed: true}),
     // and a plain SET would overwrite the entire property, silently dropping flags
     // the GM didn't mention. For Plot nodes we read the existing flags and
@@ -293,7 +313,8 @@ Requires exact match criteria. Verify you're targeting the right node.
     }
 
     const setParams: Record<string, unknown> = { ...matchParams };
-    const setters = ["n._updated_at = datetime()"];
+    const setters: string[] = [];
+    if (allSchemaProps.has("_updated_at")) setters.push("n._updated_at = datetime()");
     for (const [key, value] of Object.entries(propertiesToSet)) {
       const pName = `s_${key}`;
       setParams[pName] = toPropertyValue(value);
@@ -301,13 +322,13 @@ Requires exact match criteria. Verify you're targeting the right node.
     }
 
     if (wantsEmbedding) {
-      const embKeys = new Set(["name", "description", "content", "brief"]);
-      const textChanged = Object.keys(args.properties).some((k) => embKeys.has(k));
+      const embeddingKeys = new Set(["name", "description", "content", "brief"]);
+      const textChanged = Object.keys(args.properties).some((k) => embeddingKeys.has(k));
       if (textChanged) {
         const merged: Record<string, unknown> = { ...existingNode, ...args.properties };
-        const emb = await computeEmbedding(merged);
+        const embedding = await computeEmbedding(nodeDef, merged);
         setters.push(`n._embedding = $s__embedding`);
-        setParams["s__embedding"] = emb ?? [];
+        setParams["s__embedding"] = embedding ?? [];
       }
     }
 

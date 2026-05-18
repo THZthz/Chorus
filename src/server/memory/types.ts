@@ -19,8 +19,6 @@
 // Entity types similar to POLE+O model
 export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
 
-export type MessageRole = "user" | "assistant" | "system";
-
 export interface MemoryEntity {
   name: string;
   type: EntityType;
@@ -35,7 +33,6 @@ export interface MemoryEntity {
 }
 
 export interface MemoryMessage {
-  role: MessageRole;
   content: string;
   metadata: Record<string, unknown>;
   _embedding?: number[];

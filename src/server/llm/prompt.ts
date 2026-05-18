@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { describeTime, getGameTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";
 import { TOOL_NAMES } from "@/shared/constants";
 
@@ -36,9 +35,9 @@ Rule: \`OPTIONAL MATCH\` for 1-to-1 links only. \`CALL { MATCH ... COLLECT {} }\
 MATCH (e:Entity) WHERE e.name CONTAINS "guard"
 RETURN e.name, e.type, e.description LIMIT 10
 
-// Recent conversation
+// Recent messages
 MATCH (m:Message)
-RETURN m.role, m.content, m.timestamp
+RETURN m.metadata, m.content, m.timestamp
 ORDER BY m.timestamp DESC LIMIT 20
 
 // Current time
@@ -134,11 +133,13 @@ A good note reads like a reminder to yourself: *"Kael the Merchant promised info
 
 ## TURN RHYTHM
 
+**STRICTLY** follow the three steps for every turn:
+
 **1. REMEMBER** — Call \`${TOOL_NAMES.GET_CONTEXT}\`, \`${TOOL_NAMES.SEARCH_WORLD}\` or \`${TOOL_NAMES.QUERY_WORLD}\` (READ). What were you tracking?
 
-**2. PERSIST** — If the player's action changed the world, WRITE it to the archive BEFORE narrating. Movement, items, dispositions, plot flags, time — persist first by \`${TOOL_NAMES.MANAGE_SCHEMA}\`, \`${TOOL_NAMES.EDIT_NODE}\`, \`${TOOL_NAMES.EDIT_RELATIONSHIP}\` or \`${TOOL_NAMES.ADVANCE_TIME}\`, then speak.
+**2. PERSIST** — What changes will happen in the world in this turn of calling \`${TOOL_NAMES.GENERATE_DIALOGUE}\`? If player has written their own action out of your options, what will it affect? You should WRITE changes to the archive BEFORE narrating. Movement, items, dispositions, plot flags, time — persist first by \`${TOOL_NAMES.MANAGE_SCHEMA}\`, \`${TOOL_NAMES.EDIT_NODE}\`, \`${TOOL_NAMES.EDIT_RELATIONSHIP}\` or \`${TOOL_NAMES.ADVANCE_TIME}\`, then speak.
 
-**3. SPEAK** — Call \`${TOOL_NAMES.GENERATE_DIALOGUE}\`. Never end a turn without speaking to the player. Whenever this tool is called, your turn is over, you can act only after player has chosen an option. When ready to generate dialogue, your reasoning must starts with \`<|begin▁of▁thinking|>I need to use information gathered and analyze the current scenario together with character definitions\`, and ends with \`<|end▁of▁thinking|>\`.
+**3. SPEAK** — Call \`${TOOL_NAMES.GENERATE_DIALOGUE}\`. Never end a turn without speaking to the player. Whenever this tool is called, your turn is over, you can act only after player has chosen an option.
 
 Before story starts, explore data first, you need to have a good knowledge of the node schema and existing relationships from Neo4j. Calling \`${TOOL_NAMES.GET_CONTEXT}\` with all brief is a good starting point.
 

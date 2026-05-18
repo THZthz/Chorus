@@ -21,8 +21,6 @@ import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { NodeManager } from "@/server/memory/nodeManager";
 import { CypherValidator } from "@/server/memory/validation";
 import { getActiveSeedStory } from "@/server/seed-stories";
-import { migrateToTimePoints } from "@/server/models/time";
-
 function inferSentiment(text: string): string {
   const lower = text.toLowerCase();
   if (lower.includes("protect") || lower.includes("care") || lower.includes("save"))
@@ -129,9 +127,6 @@ export async function seedDatabase(): Promise<void> {
       }
     }
   }
-
-  // Initialize TimePoint system (idempotent migration)
-  await migrateToTimePoints(story.initialDay, story.initialSegment);
 
   console.log(
     `[seedDatabase] done — ${story.entities.length} entities, ${story.relationships.length} relationships, ${dispositionCount} dispositions`,

@@ -64,7 +64,7 @@ export async function generateTurn(
   // Persist player input so full conversation is available for resume
   {
     const client = MemoryClient.getCachedInstance();
-    await client.shortTerm.addMessage("user", userInput);
+    await client.shortTerm.addMessage(userInput);
   }
 
   // Load previous GM conversation messages for multi-turn continuity
@@ -123,7 +123,7 @@ export async function generateTurn(
         `Result: ${rollResult.success ? "SUCCESS" : "FAILURE"}`,
       ].join(" | ");
 
-      await MemoryClient.getCachedInstance().shortTerm.addMessage("system", rollText, {
+      await MemoryClient.getCachedInstance().shortTerm.addMessage(rollText, {
         speaker: check.skill,
         type: "ROLL",
         rollResult: {
@@ -180,8 +180,7 @@ export async function generateTurn(
     metadata?: Record<string, unknown>;
   }) => {
     const client = MemoryClient.getCachedInstance();
-    const role: "user" | "assistant" | "system" = msg.type === "CHARACTER" ? "assistant" : "system";
-    await client.shortTerm.addMessage(role, msg.text, {
+    await client.shortTerm.addMessage(msg.text, {
       speaker: msg.speaker,
       type: msg.type,
       ...msg.metadata,
@@ -459,7 +458,12 @@ export async function generateTurn(
   // Persist this turn's messages for multi-turn continuity
   try {
     const response = await result.response;
-    await saveGMMessages(response.messages as ModelMessage[], turnNumber, promptText, nudgeMessages);
+    await saveGMMessages(
+      response.messages as ModelMessage[],
+      turnNumber,
+      promptText,
+      nudgeMessages,
+    );
   } catch (err) {
     console.error("[generateTurn] Failed to save GM messages:", err);
   }

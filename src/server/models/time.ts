@@ -35,32 +35,7 @@ interface TimePoint extends GameTime {
 
 // ── Current Time ──
 
-export async function getGameTime(): Promise<GameTime> {
-  const client = MemoryClient.getCachedInstance();
-  const rows = await client.neo4j.executeRead(
-    `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
-     RETURN tp.day AS day, tp.segment AS segment`,
-  );
-  if (rows.length > 0) {
-    return {
-      day: Number(rows[0].day),
-      segment: Number(rows[0].segment),
-    };
-  }
-  // Fallback: old GameTime node (pre-migration)
-  const legacy = await client.neo4j.executeRead(
-    "MATCH (gt:GameTime {_id: 'current'}) RETURN gt.day AS day, gt.segment AS segment",
-  );
-  if (legacy.length > 0) {
-    return {
-      day: Number(legacy[0].day),
-      segment: Number(legacy[0].segment),
-    };
-  }
-  return { day: 1, segment: 2 };
-}
-
-async function getCurrentTimePoint(): Promise<TimePoint | null> {
+export async function getCurrentTimePoint(): Promise<TimePoint | null> {
   const client = MemoryClient.getCachedInstance();
   const rows = await client.neo4j.executeRead(
     `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
@@ -83,7 +58,7 @@ export async function advanceGameTime(
   segments: number,
 ): Promise<{ oldTime: GameTime; newTime: GameTime; totalSegments: number }> {
   const client = MemoryClient.getCachedInstance();
-  const oldTime = await getGameTime();
+  const oldTime = await getCurrentTimePoint();
   const oldTimePoint = await getCurrentTimePoint();
 
   const totalSegments = oldTime.day * 12 + oldTime.segment + segments;
@@ -148,44 +123,4 @@ export function describeTime(time: GameTime): string {
   const label = SEGMENT_LABELS[time.segment] ?? `Segment ${time.segment}`;
   const hours = SEGMENT_HOURS[time.segment] ?? "";
   return `Day ${time.day}, ${label}${hours ? ` (~${hours})` : ""}`;
-}
-
-// ── Migration ──
-
-export async function migrateToTimePoints(
-  defaultDay: number,
-  defaultSegment: number,
-): Promise<void> {
-  const client = MemoryClient.getCachedInstance();
-
-  const existing = await client.neo4j.executeRead(
-    "MATCH (a:TimeAnchor {_id: 'anchor'}) RETURN a LIMIT 1",
-  );
-  if (existing.length > 0) return;
-
-  let day = defaultDay;
-  let segment = defaultSegment;
-  const legacy = await client.neo4j.executeRead(
-    "MATCH (gt:GameTime {_id: 'current'}) RETURN gt.day AS day, gt.segment AS segment",
-  );
-  if (legacy.length > 0) {
-    day = Number(legacy[0].day);
-    segment = Number(legacy[0].segment);
-  }
-
-  const label = describeSegment(segment);
-  const now = new Date().toISOString();
-  const id = uuidv4();
-
-  await client.neo4j.executeWrite(
-    `CREATE (a:TimeAnchor {_id: 'anchor'})
-     CREATE (tp:TimePoint {_id: $id, day: $day, segment: $segment, label: $label, _created_at: datetime($now)})
-     CREATE (a)-[r:CURRENT_TIMEPOINT]->(tp)
-     SET r._created_at = datetime()`,
-    { id, day, segment, label, now },
-  );
-
-  await client.neo4j.executeWrite("MATCH (gt:GameTime {_id: 'current'}) DETACH DELETE gt");
-
-  console.log(`[time] migrated to TimePoint: Day ${day}, Segment ${segment} (${label})`);
 }

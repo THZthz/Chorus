@@ -80,12 +80,6 @@ export class MemoryClient {
     // Initialize NodeManager singleton (eager, idempotent)
     NodeManager.getCachedInstance();
 
-    // Run TimePoint migration if needed (idempotent before seed runs)
-    const { migrateToTimePoints } = await import("@/server/models/time");
-    const { getActiveSeedStory } = await import("@/server/seed-stories");
-    const story = getActiveSeedStory();
-    await migrateToTimePoints(story.initialDay, story.initialSegment);
-
     return MemoryClient.instance;
   }
 

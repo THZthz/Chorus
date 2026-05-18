@@ -34,7 +34,6 @@ export class ShortTermMemory {
   }
 
   async addMessage(
-    role: "user" | "assistant" | "system",
     content: string,
     metadata?: Record<string, unknown>,
     generateEmbedding: boolean = true,
@@ -50,10 +49,11 @@ export class ShortTermMemory {
     const messageId = await nextId(this.client);
     const now = new Date().toISOString();
 
+    const merged = { ...metadata };
     await this.client.executeWrite(
       `MATCH (c:Conversation {_id: $convId})
        CREATE (m:Message {
-         _id: $id, role: $role, content: $content,
+         _id: $id, content: $content,
          _embedding: $embedding, timestamp: datetime($now),
          metadata: $metadata
        })
@@ -62,11 +62,10 @@ export class ShortTermMemory {
       {
         convId,
         id: messageId,
-        role,
         content,
         embedding: embedding || null,
         now,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        metadata: JSON.stringify(merged),
       },
     );
 
@@ -93,7 +92,6 @@ export class ShortTermMemory {
     }
 
     return {
-      role,
       content,
       metadata: metadata || {},
       _embedding: embedding,
@@ -110,10 +108,10 @@ export class ShortTermMemory {
 
     return rows.reverse().map((r) => {
       const m = r.m as Record<string, unknown>;
+      const meta = m.metadata ? (JSON.parse(m.metadata as string) as Record<string, unknown>) : {};
       return {
-        role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
-        metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
+        metadata: meta,
         _embedding: m._embedding as number[] | undefined,
       };
     });
@@ -142,10 +140,10 @@ export class ShortTermMemory {
 
     return rows.map((r) => {
       const m = r.m as Record<string, unknown>;
+      const meta = m.metadata ? (JSON.parse(m.metadata as string) as Record<string, unknown>) : {};
       return {
-        role: m.role as "user" | "assistant" | "system",
         content: m.content as string,
-        metadata: m.metadata ? JSON.parse(m.metadata as string) : {},
+        metadata: meta,
         similarity: r.score as number,
       };
     });

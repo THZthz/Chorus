@@ -35,8 +35,8 @@ type SearchResult = {
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_WORLD,
   description: `
-Search the archive by MEANING (vector similarity + reranking).
-Use this when you don't know the exact name or Cypher pattern — searchWorld finds things by what they're ABOUT.
+Search the archive by semantic MEANING (vector similarity + reranking).
+Use this when you don't know the exact name or Cypher pattern — ${TOOL_NAMES.SEARCH_WORLD} finds things by what they're ABOUT.
 
 Domains (pick via 'types'):
 - entities  — Characters, objects, locations. "guard captain" finds relevant NPCs.
@@ -45,7 +45,7 @@ Domains (pick via 'types'):
 - plots     — Story arcs. "the hunter" finds plot branches about pursuit.
 Default: searches all four.
 
-Use searchWorld FIRST for: recalling what happened, finding by concept,
+Use ${TOOL_NAMES.SEARCH_WORLD} FIRST for: recalling what happened, finding by concept,
 checking if a plot already exists, or remembering what you were tracking.
 Use ${TOOL_NAMES.QUERY_WORLD} (READ) when you need exact Cypher lookups or relationship traversal.
 `.trim(),

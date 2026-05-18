@@ -24,7 +24,7 @@ export interface Embedder {
 
 class LlamaEmbedder implements Embedder {
   readonly dimensions: number;
-  private url: string;
+  private readonly url: string;
 
   constructor(url: string, dimensions: number) {
     this.url = url;

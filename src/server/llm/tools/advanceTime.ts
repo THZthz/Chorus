@@ -54,15 +54,13 @@ export function createAdvanceTimeTool(events: EventEmitter) {
       const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
       const { oldTime, newTime } = await advanceGameTime(totalSegments);
       events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
-      // TODO: Should be used to display to the player?
-      const reasonStr = args.reason ? ` Reason: ${args.reason}.` : "";
       if (totalSegments === 0) {
         return `Time unchanged. It is still ${describeTime(newTime)}.`;
       }
       const parts: string[] = [];
       if (args.days && args.days > 0) parts.push(`${args.days} day(s)`);
       if (args.segments && args.segments > 0) parts.push(`${args.segments} segment(s)`);
-      return `Time advanced by ${parts.join(", ")}.${reasonStr} It is now ${describeTime(newTime)} (was ${describeTime(oldTime)}).`;
+      return `Time advanced by ${parts.join(", ")}. It is now \`${describeTime(newTime)}\` (was \`${describeTime(oldTime)}\`).`;
     }, TOOL_NAMES.ADVANCE_TIME),
   });
 }

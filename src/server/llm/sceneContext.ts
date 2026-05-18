@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { getGameTime, describeTime } from "@/server/models/time";
+import { describeTime, getCurrentTimePoint } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { NodeManager } from "@/server/memory/nodeManager";
@@ -92,9 +92,9 @@ export async function buildSceneContext(): Promise<string> {
   const observer = getObserver();
 
   const [gameTime, sceneRows, dispositionRows, plotRows] = await Promise.all([
-    getGameTime().catch((err) => {
+    getCurrentTimePoint().catch((err) => {
       console.error(
-        "[sceneContext] getGameTime failed:",
+        "[sceneContext] getCurrentTimePoint failed:",
         err instanceof Error ? err.message : String(err),
       );
       return null;

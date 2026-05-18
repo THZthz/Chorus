@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -19,19 +19,42 @@
 import type { Neo4jClient } from "@/server/memory/neo4j";
 import { TOOL_NAMES } from "@/shared/constants";
 
+export const NODE_PROPERTY_TAGS = [
+  "string",
+  "number",
+  "number[]",
+  /**
+   * Saved as string in Neo4j, actually. When use editNode to partial update, will automatically
+   * unfold Neo4j string property to avoid whole string overwritten (which is unwanted in most cases).
+   */
+  "json",
+  /**
+   * Will be used to compute property `_embedding`.
+   */
+  "embedded",
+  /**
+   * Will create a unique constraint if specified. Should only appear once in a node type.
+   * `CREATE CONSTRAINT $name IF NOT EXISTS FOR (n:$label) REQUIRE n.$prop IS UNIQUE`
+   */
+  "unique",
+  /**
+   * Will create a regular index on specified property.
+   * `CREATE INDEX $name IF NOT EXISTS FOR (n:$label) ON (n.$prop)`
+   */
+  "index",
+  /**
+   * Will create composite index on all specified properties.
+   */
+  "composite_index_1", // Composite index group 1 for a node type.
+  "composite_index_2", // Composite index group 2 for a node type.
+  "composite_index_3", // Composite index group 3 for a node type.
+] as const;
+export type NodePropertyTag = (typeof NODE_PROPERTY_TAGS)[number];
+
 export interface NodePropertyDef {
   name: string;
   description: string;
-  /**
-   * Separated by ",".
-   * - embedded: Will be used to compute property `_embedding`.
-   * - string: Normal string.
-   * - number/number[]: Number or number array.
-   * - json: Saved as string in Neo4j, actually. When use editNode to partial update, will
-   *          automatically unfold Neo4j string property to avoid whole string overwritten
-   *          (which is unwanted in most cases).
-   */
-  tags: string;
+  tags: NodePropertyTag[];
 }
 
 export interface NodeDef {
@@ -47,42 +70,46 @@ const INTERNAL_PROPS: NodePropertyDef[] = [
   {
     name: "_id",
     description: "Internal unique identifier. Hidden from GM tools.",
-    tags: "string",
+    tags: ["string", "unique"],
   },
 ];
 
 const EMBEDDING_PROP: NodePropertyDef = {
   name: "_embedding",
   description: "Internal vector embedding for semantic search. Hidden from GM tools.",
-  tags: "number[]",
+  tags: ["number[]"],
 };
 
 const TIMESTAMP_PROPS: NodePropertyDef[] = [
-  { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: "string" },
-  { name: "_updated_at", description: "ISO 8601 timestamp of last update.", tags: "string" },
+  { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
+  { name: "_updated_at", description: "ISO 8601 timestamp of last update.", tags: ["string"] },
 ];
 
 const ENTITY_PROPS: NodePropertyDef[] = [
-  { name: "name", description: "Unique name of the entity.", tags: "string,embedded" },
+  { name: "name", description: "Unique name of the entity.", tags: ["string", "embedded", "index"] },
   {
     name: "type",
     description: "Entity type: CHARACTER, OBJECT, LOCATION, ORGANIZATION, or EVENT.",
-    tags: "string",
+    tags: ["string", "index"],
   },
   {
     name: "subtype",
     description: "Optional subtype refinement (e.g., 'Weapon' for an OBJECT).",
-    tags: "string",
+    tags: ["string"],
   },
-  { name: "description", description: "Full narrative description of the entity.", tags: "string" },
-  { name: "brief", description: "One-line summary for compact display.", tags: "string" },
+  {
+    name: "description",
+    description: "Full narrative description of the entity.",
+    tags: ["string"],
+  },
+  { name: "brief", description: "One-line summary for compact display.", tags: ["string"] },
   {
     name: "metadata",
     description:
       "JSON object: stats (skill→value), conditions, attributes (key→description), opinions (target→text), aliases (string[]).",
-    tags: "json",
+    tags: ["json"],
   },
-  { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: "string" },
+  { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
 ];
 
 const INTERNAL_TYPES: { name: string; description: string; properties: NodePropertyDef[] }[] = [
@@ -94,14 +121,14 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
       {
         name: "session_id",
         description: "Fixed game session key ('chorus-game').",
-        tags: "string",
+        tags: ["string", "unique"],
       },
-      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: "string" },
-      { name: "_updated_at", description: "ISO 8601 timestamp of last update.", tags: "string" },
+      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
+      { name: "_updated_at", description: "ISO 8601 timestamp of last update.", tags: ["string"] },
       {
         name: "options",
         description: "JSON array of current dialogue options for session resume.",
-        tags: "json",
+        tags: ["json"],
       },
       ...INTERNAL_PROPS,
     ],
@@ -111,18 +138,18 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
     description:
       "Stores AI SDK messages for multi-turn GM continuity. Internal bookkeeping — not visible to GM.",
     properties: [
-      { name: "turn", description: "Turn number for this message group.", tags: "number" },
+      { name: "turn", description: "Turn number for this message group.", tags: ["number"] },
       {
         name: "messages",
         description: "JSON array of serialized AI SDK ModelMessage objects.",
-        tags: "json",
+        tags: ["json"],
       },
       {
         name: "user_input",
         description: "The player input that triggered this turn.",
-        tags: "string",
+        tags: ["string"],
       },
-      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: "string" },
+      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
       ...INTERNAL_PROPS,
     ],
   },
@@ -130,8 +157,8 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
     name: "IdCounter",
     description: "Atomic counter for generating short message IDs. Internal bookkeeping.",
     properties: [
-      { name: "session_id", description: "Fixed session key for the counter.", tags: "string" },
-      { name: "counter", description: "Current counter value (Neo4j Integer).", tags: "number" },
+      { name: "session_id", description: "Fixed session key for the counter.", tags: ["string", "unique"] },
+      { name: "counter", description: "Current counter value (Neo4j Integer).", tags: ["number"] },
     ],
   },
 ];
@@ -159,28 +186,17 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     properties: [...ENTITY_PROPS, EMBEDDING_PROP, ...INTERNAL_PROPS],
   },
   {
-    name: "Organization",
-    description:
-      "Dynamic sub-label of Entity for ORGANIZATION type. Inherits all Entity properties.",
-    properties: [...ENTITY_PROPS, EMBEDDING_PROP, ...INTERNAL_PROPS],
-  },
-  {
-    name: "Event",
-    description: "Dynamic sub-label of Entity for EVENT type. Inherits all Entity properties.",
-    properties: [...ENTITY_PROPS, EMBEDDING_PROP, ...INTERNAL_PROPS],
-  },
-  {
     name: "Message",
     description:
       "A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE.",
     properties: [
-      { name: "content", description: "Message text content.", tags: "string" },
-      { name: "timestamp", description: "ISO 8601 timestamp of the message.", tags: "string" },
+      { name: "content", description: "Message text content.", tags: ["string"] },
+      { name: "timestamp", description: "ISO 8601 timestamp of the message.", tags: ["string"] },
       {
         name: "metadata",
         description:
           "JSON object including speaker (voice name), and type (CHARACTER/SYSTEM/ROLL/INNER_VOICE).",
-        tags: "json",
+        tags: ["json"],
       },
       EMBEDDING_PROP,
       ...INTERNAL_PROPS,
@@ -191,11 +207,11 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A GM note with vector embedding for semantic recall. Can link to Entities or Messages via ABOUT_ENTITY / ABOUT_MESSAGE.",
     properties: [
-      { name: "name", description: "Unique note name (used as lookup key).", tags: "string" },
+      { name: "name", description: "Unique note name (used as lookup key).", tags: ["string"] },
       {
         name: "content",
         description: "Full note content (embedded for vector search).",
-        tags: "string",
+        tags: ["string"],
       },
       ...TIMESTAMP_PROPS,
       EMBEDDING_PROP,
@@ -207,27 +223,31 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A narrative plot with status, beats, branches, and flags. Drives story progression.",
     properties: [
-      { name: "name", description: "Unique plot name (used as lookup key).", tags: "string" },
+      { name: "name", description: "Unique plot name (used as lookup key).", tags: ["string", "unique", "embedded", "index"] },
       {
         name: "description",
         description: "Full plot description (embedded for vector search).",
-        tags: "string",
+        tags: ["string"],
       },
-      { name: "brief", description: "One-line plot summary for compact display.", tags: "string" },
+      {
+        name: "brief",
+        description: "One-line plot summary for compact display.",
+        tags: ["string"],
+      },
       {
         name: "status",
         description: "Plot lifecycle: PENDING, ACTIVE, IN_PROGRESS, COMPLETED, or ABANDONED.",
-        tags: "string",
+        tags: ["string"],
       },
       {
         name: "trigger_condition",
         description: "JS expression evaluated to auto-activate the plot.",
-        tags: "string",
+        tags: ["string"],
       },
       {
         name: "flags",
         description: "JSON array of {flagId, description} tracking plot milestones.",
-        tags: "json",
+        tags: ["json"],
       },
       ...TIMESTAMP_PROPS,
       EMBEDDING_PROP,
@@ -242,23 +262,23 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       {
         name: "npc_name",
         description: "Name of the NPC entity who holds this disposition.",
-        tags: "string",
+        tags: ["string", "index", "composite_index_1"],
       },
       {
         name: "target_name",
         description: "Name of the target entity this disposition is about.",
-        tags: "string",
+        tags: ["string", "index", "composite_index_1"],
       },
       {
         name: "sentiment",
         description:
           "Sentiment label: protective, trusting, fearful, hostile, attracted, suspicious, resentful, grateful, or indifferent.",
-        tags: "string",
+        tags: ["string"],
       },
       {
         name: "summary",
         description: "Human-readable summary of the disposition and its context.",
-        tags: "string",
+        tags: ["string"],
       },
       ...TIMESTAMP_PROPS,
       ...INTERNAL_PROPS,
@@ -269,19 +289,19 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A point in game time with day, segment, and label. Linked sequentially via NEXT_TIMEPOINT.",
     properties: [
-      { name: "day", description: "In-game day number (starts at 1).", tags: "number" },
+      { name: "day", description: "In-game day number (starts at 1).", tags: ["number", "composite_index_1"] },
       {
         name: "segment",
         description: "Segment within the day (0–11, each = 2 hours).",
-        tags: "number",
+        tags: ["number", "composite_index_1"],
       },
       {
         name: "label",
         description:
           "Human-readable label: Midnight, Dawn, Morning, Noon, Afternoon, Dusk, Night, etc.",
-        tags: "string",
+        tags: ["string"],
       },
-      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: "string" },
+      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
       ...INTERNAL_PROPS,
     ],
   },
@@ -298,32 +318,32 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       {
         name: "name",
         description: "Relationship type name (e.g. 'LOCATED_AT', 'CONNECTED_TO').",
-        tags: "string",
+        tags: ["string"],
       },
       {
         name: "description",
         description: "Human-readable description of what the relationship means.",
-        tags: "string",
+        tags: ["string"],
       },
-      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: "string" },
+      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
     ],
   },
   {
     name: "NodeType",
     description: `Stores the description, property schema, and category of each node type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
     properties: [
-      { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", tags: "string" },
+      { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", tags: ["string"] },
       {
         name: "description",
         description: "Human-readable description of what the node type represents.",
-        tags: "string",
+        tags: ["string"],
       },
-      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: "string" },
+      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
       {
         name: "properties",
         description:
           "JSON array of {name, description, type} describing the node's property schema.",
-        tags: "json",
+        tags: ["json"],
       },
     ],
   },
@@ -340,14 +360,12 @@ export class NodeManager {
     for (const t of INTERNAL_TYPES) {
       this.registry.set(t.name, {
         ...t,
-        properties: [],
         type: "INTERNAL",
       });
     }
     for (const t of PREDEFINED_TYPES) {
       this.registry.set(t.name, {
         ...t,
-        properties: [],
         type: "PREDEFINED",
       });
     }
@@ -437,6 +455,61 @@ export class NodeManager {
           properties: def.properties.length > 0 ? JSON.stringify(def.properties) : null,
         },
       );
+
+      // Create unique constraint for properties with tag "string" and "unique".
+      const propsWithUniqueTag = def.properties.filter(prop => prop.tags.includes("unique") && prop.tags.includes("string")).map(prop => prop.name);
+      if (propsWithUniqueTag.length === 1) {
+        const propName = propsWithUniqueTag[0];
+        const constraintName = def.name.toLowerCase() + "_" + propName;
+        try {
+          await client.executeWrite(
+            `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (n:${def.name}) REQUIRE n.${propName} IS UNIQUE`,
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`);
+        }
+      } else {
+        console.error(`[syncToNeo4j] Cannot create unique constraint on :${def.name}, which have more than one properties has tag "unique": "${propsWithUniqueTag.join("/")}".`);
+      }
+
+      // Create regular index for properties with tag "string" and "index".
+      const propsWithIndexTag = def.properties.filter(prop => prop.tags.includes("index") && prop.tags.includes("string")).map(prop => prop.name);
+      for (const propName of propsWithIndexTag) {
+        const constraintName = def.name.toLowerCase() + "_" + propName + "_idx";
+        try {
+          await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:${def.name}) ON (n.${propName})`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[syncToNeo4j] Regular index on ${constraintName} not created: ${msg}`);
+        }
+      }
+
+      // Create composite index for all properties groups.
+      for (const index of ["composite_index_1", "composite_index_2", "composite_index_3"]) {
+        const props = def.properties.filter(prop => prop.tags.includes(index as NodePropertyTag) && prop.tags.includes("string")).map(prop => prop.name);
+        const constraintName = def.name.toLowerCase() + "_" + props.join("_") + "_idx" + index[-1];
+        try {
+          await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:${def.name}) ON (${props.map(name => "n." + name).join(", ")})`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[syncToNeo4j] Regular index on ${constraintName} not created: ${msg}`);
+        }
+      }
+
+      // Create vector indexes (require Neo4j 5.11+) for node type that has "_embedding" properties.
+      if (def.properties.some(prop => prop.name === "_embedding")) {
+        const vectorIndexName = def.name + "_embedding_idx";
+        const dimensions = process.env.EMBEDDING_DIMENSIONS || 1024;
+        try {
+          await client.executeWrite(
+            `CREATE VECTOR INDEX ${vectorIndexName} IF NOT EXISTS FOR (n:${def.name}) ON (n._embedding)
+         OPTIONS { indexConfig: { \`vector.dimensions\`: ${dimensions}, \`vector.similarity_function\`: 'COSINE' } }`,
+          );
+        } catch {
+          console.warn(`[syncToNeo4j] Vector index ${vectorIndexName} not created (Neo4j 5.11+ required).`);
+        }
+      }
     }
   }
 

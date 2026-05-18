@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -43,9 +43,7 @@ const inputSchema = z.object({
 Node label to operate on (e.g. \`Entity\`, \`Character\`, \`Location\`, or a GM-defined label).
 Must be registered in the world schema and writable.
 Query \`NodeType\` nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types and their property schemas.
-`
-      .replace(/[\r\n]+/g, " ")
-      .trim(), // TODO: Should use getContext.
+`.trim(), // TODO: Should use getContext.
   ),
   action: z.enum(NODE_ACTIONS).default("CREATE").describe("Action to perform."),
   match: z
@@ -56,9 +54,7 @@ Query \`NodeType\` nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available typ
       `
 Key-value pairs to locate exactly one node. Required for UPDATE/DELETE.
 e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an NPCDisposition.
-`
-        .replace(/[\r\n]+/g, " ")
-        .trim(),
+`.trim(),
     ),
   properties: z
     .record(z.string(), z.unknown())
@@ -69,16 +65,14 @@ e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Pla
 Key-value pairs to set on the node. Must match the property schema for this node type.
 CREATE: sets initial properties. UPDATE: only include properties you want to change.
 System properties (_id, _created_at, _updated_at, _embedding) are managed automatically.
-`
-        .replace(/[\r\n]+/g, " ")
-        .trim(),
+`.trim(),
     ),
 });
 
 export const editNode = tool({
   title: TOOL_NAMES.EDIT_NODE,
   description: `
-CREATE, UPDATE, or DELETE a node in the world archive using a registered node type.
+CREATE, UPDATE, or DELETE a **single** node in the world archive using a registered node type.
 
 CREATE — Add a new entity, note, plot, or custom node type. Properties are validated
 against the type's schema. WARNING: This tool does NOT check for duplicates — search first
@@ -116,13 +110,12 @@ Verify you're targeting the right node.
     }
 
     // Build allowed property names from the schema.
-    // Predefined types have empty schemas (by design) — for those, accept any
-    // non-_-prefixed property except system-managed ones.  GM_DEFINED types
-    // have explicit schemas and must be validated strictly.
+    // PREDEFINED and INTERNAL types accept any non-_-prefixed property.
+    // GM_DEFINED types have explicit schemas and must be validated strictly.
     const schemaProps = new Set(
       nodeDef.properties.map((p) => p.name).filter((name) => !name.startsWith("_")),
     );
-    const hasSchema = nodeDef.properties.length > 0;
+    const hasSchema = nodeDef.type === "GM_DEFINED";
 
     // Functions are defined inline to use cached variables.
 
@@ -137,14 +130,15 @@ Verify you're targeting the right node.
           unknownKeys.push(key);
         }
       }
-      const errorTextParts = [
-        internalKeys.length > 0
-          ? `Property "${internalKeys.join("/")}" is internal (prefixed with '_') and cannot be set (managed internally by the engine).`
-          : "",
-        unknownKeys.length > 0
-          ? `Unknown property "${unknownKeys.join("/")}" for node type "${args.nodeLabel}". Allowed: ${[...schemaProps].join(", ")}`
-          : "",
-      ];
+      const errorTextParts: string[] = [];
+      if (internalKeys.length > 0)
+        errorTextParts.push(
+          `Property "${internalKeys.join("/")}" is internal (prefixed with '_') and cannot be set (managed internally by the engine).`,
+        );
+      if (unknownKeys.length > 0)
+        errorTextParts.push(
+          `Unknown property "${unknownKeys.join("/")}" for node type "${args.nodeLabel}". Allowed: ${[...schemaProps].join(", ")}`,
+        );
       return errorTextParts.length > 0 ? errorTextParts.join(" ") : null;
     }
 
@@ -158,14 +152,13 @@ Verify you're targeting the right node.
         : null;
     }
 
-    async function computeEmbedding(
-      def: NodeDef,
-      props: Record<string, unknown>,
-    ): Promise<number[] | null> {
-      const propertiesNeedEmbed = def.properties
-        .filter((prop) => prop.tags.split(",").includes("embedded"))
-        .map((prop) => prop.name);
-      const embedText = propertiesNeedEmbed
+    const wantsEmbedding = nodeDef.properties.some((p) => p.name === "_embedding") ?? false;
+    const embeddingKeys = wantsEmbedding
+      ? nodeDef.properties.filter((prop) => prop.tags.includes("embedded")).map((prop) => prop.name)
+      : [];
+
+    async function computeEmbedding(props: Record<string, unknown>): Promise<number[] | null> {
+      const embedText = embeddingKeys
         .map((name) => (props[name] ? `## ${name}\n${props[name]}` : ""))
         .join("\n");
       if (!embedText) return null;
@@ -215,7 +208,6 @@ Verify you're targeting the right node.
         : `ERROR: No "${args.nodeLabel}" node found matching ${JSON.stringify(args.match)}.`;
     }
 
-    const wantsEmbedding = nodeDef.properties.some((p) => p.name === "_embedding") ?? false;
     const allSchemaProps = new Set(nodeDef.properties.map((p) => p.name));
 
     // ── CREATE ──
@@ -228,9 +220,9 @@ Verify you're targeting the right node.
 
       const id = uuidv4();
       const params: Record<string, unknown> = { id };
-      const setters = [ "n._id = $id", ];
-      if ( allSchemaProps.has("_created_at")) setters.push("n._created_at = datetime()");
-      if ( allSchemaProps.has("_updated_at")) setters.push("n._updated_at = datetime()");
+      const setters = ["n._id = $id"];
+      if (allSchemaProps.has("_created_at")) setters.push("n._created_at = datetime()");
+      if (allSchemaProps.has("_updated_at")) setters.push("n._updated_at = datetime()");
       for (const [key, value] of Object.entries(args.properties)) {
         const pName = `p_${key}`;
         params[pName] = toPropertyValue(value);
@@ -238,7 +230,7 @@ Verify you're targeting the right node.
       }
 
       if (wantsEmbedding) {
-        const embedding = await computeEmbedding(nodeDef, args.properties);
+        const embedding = await computeEmbedding(args.properties);
         const embeddingParam = `p__embedding`;
         params[embeddingParam] = embedding ?? [];
         setters.push(`n._embedding = $${embeddingParam}`);
@@ -257,7 +249,7 @@ Verify you're targeting the right node.
     }
 
     // ── UPDATE ──
-    if (!args.match || Object.keys(args.match).length === 0) {
+    if (args.action === "UPDATE" && (!args.match || Object.keys(args.match).length === 0)) {
       return "ERROR: Parameter `match` is required for UPDATE.";
     }
     const matchErr = isMatchKeysInternal(args.match);
@@ -273,6 +265,9 @@ Verify you're targeting the right node.
     if (existing.length === 0) {
       return `ERROR: No "${args.nodeLabel}" node found matching ${JSON.stringify(args.match)}.`;
     }
+    if (existing.length !== 1) {
+      return `ERROR: There are ${existing.length} matching results. The tool is designed to edit **single** node only.`;
+    }
 
     if (!args.properties || Object.keys(args.properties).length === 0) {
       return "ERROR: No properties to update. Nothing is edited inside the database";
@@ -283,33 +278,32 @@ Verify you're targeting the right node.
 
     const existingNode = existing[0]?.n as Record<string, unknown> | undefined;
 
-    // WARNING: Plot flags are serialized as a single JSON and stored as string property in Neo4j.
-    // The GM passes flags as an object map (e.g. {memory_professionally_removed: true}),
-    // and a plain SET would overwrite the entire property, silently dropping flags
-    // the GM didn't mention. For Plot nodes we read the existing flags and
-    // shallow-merge the incoming ones so partial updates don't clobber.
+    // Properties tagged "json" are stored as JSON strings in Neo4j.
+    // A plain SET would overwrite the entire property, silently dropping fields
+    // the GM didn't mention. Read the existing value and shallow-merge the
+    // incoming ones so partial updates don't clobber.
     const propertiesToSet = { ...args.properties };
-    if (args.nodeLabel === "Plot" && args.properties.flags !== undefined) {
-      const incomingFlags = args.properties.flags as Record<string, unknown>;
-      const existingFlagsRaw = existingNode?.flags;
-      let existingFlags: Record<string, unknown> = {};
-      if (typeof existingFlagsRaw === "string") {
+    const jsonPropNames = new Set(
+      nodeDef.properties.filter((p) => p.tags.includes("json")).map((p) => p.name),
+    );
+    for (const key of Object.keys(args.properties)) {
+      if (!jsonPropNames.has(key)) continue;
+      const incoming = args.properties[key] as Record<string, unknown>;
+      const existingRaw = existingNode?.[key];
+      let existing: Record<string, unknown> = {};
+      if (typeof existingRaw === "string") {
         try {
-          const parsed = JSON.parse(existingFlagsRaw);
+          const parsed = JSON.parse(existingRaw);
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            existingFlags = parsed;
+            existing = parsed;
           }
         } catch {
           // unparseable — overwrite with incoming
         }
-      } else if (
-        existingFlagsRaw &&
-        typeof existingFlagsRaw === "object" &&
-        !Array.isArray(existingFlagsRaw)
-      ) {
-        existingFlags = existingFlagsRaw as Record<string, unknown>;
+      } else if (existingRaw && typeof existingRaw === "object" && !Array.isArray(existingRaw)) {
+        existing = existingRaw as Record<string, unknown>;
       }
-      propertiesToSet.flags = { ...existingFlags, ...incomingFlags };
+      propertiesToSet[key] = { ...existing, ...incoming };
     }
 
     const setParams: Record<string, unknown> = { ...matchParams };
@@ -322,11 +316,10 @@ Verify you're targeting the right node.
     }
 
     if (wantsEmbedding) {
-      const embeddingKeys = new Set(["name", "description", "content", "brief"]);
-      const textChanged = Object.keys(args.properties).some((k) => embeddingKeys.has(k));
+      const textChanged = Object.keys(args.properties).some((k) => new Set(embeddingKeys).has(k));
       if (textChanged) {
         const merged: Record<string, unknown> = { ...existingNode, ...args.properties };
-        const embedding = await computeEmbedding(nodeDef, merged);
+        const embedding = await computeEmbedding(merged);
         setters.push(`n._embedding = $s__embedding`);
         setParams["s__embedding"] = embedding ?? [];
       }
@@ -338,6 +331,7 @@ Verify you're targeting the right node.
     );
 
     // Reset scene observer for entities whose description/brief changed
+    // TODO: This is fragile.
     if (args.properties.description !== undefined || args.properties.brief !== undefined) {
       const entityName = existingNode?.name as string | undefined;
       if (entityName) {

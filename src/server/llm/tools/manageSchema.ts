@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { NODE_PROPERTY_TAGS, NodeManager } from "@/server/memory/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
@@ -68,11 +68,11 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
         z.object({
           name: z.string().describe("Property name (snake_case, e.g. 'power_level')."),
           description: z.string().describe("What this property stores."),
-          type: z
-            .enum(["string", "number", "boolean", "json"])
-            .nullable()
-            .optional()
-            .describe("The property's data type. Omit if uncertain."),
+          tags: z
+            .array(z.enum(NODE_PROPERTY_TAGS))
+            .describe(
+              "Comma-separated tags describing the property. Common values: 'string', 'number', 'json' (stored as JSON string, partial updates auto-merge), 'embedded' (used for vector embedding computation).",
+            ),
         }),
       )
       .nullable()
@@ -101,7 +101,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
         const nodeManager = NodeManager.getCachedInstance();
         const existing = nodeManager.get(args.name);
         if (existing && existing.type !== "GM_DEFINED") {
-          return `Cannot register "${args.name}": it is a ${existing.type} type and cannot be modified.`;
+          return `ERROR: Cannot register "${args.name}": it is a ${existing.type} type and cannot be modified.`;
         }
 
         const props = (args.properties ?? []).filter((p) => !!p?.name);
@@ -112,7 +112,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
             description: args.description ?? undefined,
             properties: props.length > 0 ? props : undefined,
           });
-          if (!updated) return `Failed to update "${args.name}".`;
+          if (!updated) return `ERROR: Failed to update "${args.name}".`;
         } else {
           nodeManager.register(
             args.name,
@@ -123,6 +123,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
         }
 
         const client = MemoryClient.getCachedInstance();
+        // TODO: This function will sync everything by default, incremental in future?
         await nodeManager.syncToNeo4j(client.neo4j);
 
         const propSummary =

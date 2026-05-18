@@ -106,7 +106,7 @@ describe("editNode", () => {
       action: "CREATE",
       properties: {},
     });
-    expect(result).toContain("properties is required");
+    expect(result).toContain("ERROR: Parameter `properties` is required for CREATE and must not be empty.");
   });
 
   it("rejects system property _id", async () => {
@@ -115,7 +115,7 @@ describe("editNode", () => {
       action: "CREATE",
       properties: { name: "bad_note", content: "x", _id: "hack" },
     });
-    expect(result).toContain("system-managed");
+    expect(result).toContain(" is internal (prefixed with '_') and cannot be set (managed internally by the engine).");
   });
 
   it("rejects UPDATE on non-existent node", async () => {
@@ -143,5 +143,80 @@ describe("editNode", () => {
       properties: {},
     });
     expect(result).toContain("No properties to update");
+  });
+
+  describe("json partial update", () => {
+    const TEST_ENTITY = `test_json_entity_editNode`;
+
+    beforeAll(async () => {
+      // Create an Entity with initial metadata for JSON merge tests
+      await exec(editNode, {
+        nodeLabel: "Entity",
+        action: "CREATE",
+        properties: {
+          name: TEST_ENTITY,
+          type: "OBJECT",
+          description: "A test entity for JSON merge",
+          brief: "JSON merge test",
+          metadata: { stats: { power: 10 }, attributes: { Color: "red" } },
+        },
+      });
+    });
+
+    afterAll(async () => {
+      await exec(editNode, {
+        nodeLabel: "Entity",
+        action: "DELETE",
+        match: { name: TEST_ENTITY },
+      });
+    });
+
+    it("shallow-merges json-tagged property and preserves existing keys", async () => {
+      // Update only one top-level key inside metadata
+      const result = await exec(editNode, {
+        nodeLabel: "Entity",
+        action: "UPDATE",
+        match: { name: TEST_ENTITY },
+        properties: { metadata: { stats: { power: 99, speed: 5 } } },
+      });
+      expect(result).toContain("updated");
+
+      // Verify: metadata.stats should reflect the update,
+      // and metadata.attributes should still exist (not clobbered)
+      const verify = await exec(queryWorld, {
+        action: "READ",
+        query: `MATCH (n:Entity {name: '${TEST_ENTITY}'}) RETURN n.metadata`,
+      });
+      const data = parseToolOutput(verify);
+      const row = data.rows[0] as Record<string, unknown>;
+      const metadata = JSON.parse(row["n.metadata"] as string) as Record<string, unknown>;
+
+      expect(metadata.stats).toEqual({ power: 99, speed: 5 });
+      expect(metadata.attributes).toEqual({ Color: "red" });
+    });
+
+    it("shallow-merges a new top-level key into json-tagged property", async () => {
+      const result = await exec(editNode, {
+        nodeLabel: "Entity",
+        action: "UPDATE",
+        match: { name: TEST_ENTITY },
+        properties: { metadata: { conditions: { Broken: true } } },
+      });
+      expect(result).toContain("updated");
+
+      const verify = await exec(queryWorld, {
+        action: "READ",
+        query: `MATCH (n:Entity {name: '${TEST_ENTITY}'}) RETURN n.metadata`,
+      });
+      const data = parseToolOutput(verify);
+      const row = data.rows[0] as Record<string, unknown>;
+      const metadata = JSON.parse(row["n.metadata"] as string) as Record<string, unknown>;
+
+      // New key merged in
+      expect(metadata.conditions).toEqual({ Broken: true });
+      // Existing keys still present
+      expect(metadata.stats).toEqual({ power: 99, speed: 5 });
+      expect(metadata.attributes).toEqual({ Color: "red" });
+    });
   });
 });

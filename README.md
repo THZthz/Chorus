@@ -1,6 +1,6 @@
 # Chorus
 
-> WARNING: Early in development stage.
+> WARNING: Early in development stage. Development only happens on branch `v3`!
 
 Cinematic dialogue engine. The AI Game Master generates branching narrative through tool-calling, streamed to a console client in real-time via SSE. Player choices are guided by twelve inner voices — each a distinct personality mapped to a character stat — with skill checks resolved through 2D6 dice rolls.
 
@@ -81,7 +81,7 @@ All game state lives in Neo4j: characters, locations, objects, factions, plots, 
 
 ### Skill Checks
 
-White checks (repeatable) and red checks (one-time, high-stakes). Formula: `2d6 + Stat >= Difficulty`. Probability is displayed before rolling. Natural 2 and 12 have distinct outcomes.
+(outdated, under rework).
 
 ## Developer Documentation
 

@@ -15,8 +15,8 @@ describe("manageSchema", () => {
         name: "TestArtifact",
         description: "A test artifact node type",
         properties: [
-          { name: "power", description: "Power level", type: "number" },
-          { name: "origin", description: "Place of origin", type: "string" },
+          { name: "power", description: "Power level", tags: ["number"] },
+          { name: "origin", description: "Place of origin", tags: ["string"] },
         ],
       });
       expect(result).toContain("Registered node type");

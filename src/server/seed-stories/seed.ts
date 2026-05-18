@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -21,6 +21,7 @@ import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { NodeManager } from "@/server/memory/nodeManager";
 import { CypherValidator } from "@/server/memory/validation";
 import { getActiveSeedStory } from "@/server/seed-stories";
+
 function inferSentiment(text: string): string {
   const lower = text.toLowerCase();
   if (lower.includes("protect") || lower.includes("care") || lower.includes("save"))

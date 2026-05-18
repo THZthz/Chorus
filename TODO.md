@@ -2,3 +2,5 @@
 - [ ] Split large messages or messages with paragraphs automatically, only give warning when this occurs.
 - [ ] Should add time advance notification to player.
 - [ ] No safe procedure of a turn, if GM accidentally breaks the database, no ways to rollback.
+- [ ] Dice roll skill check should rework, prompt should also get rewritten.
+- [ ] [[MAIN_FOCUS]] Make tools more robust

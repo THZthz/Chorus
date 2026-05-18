@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -105,6 +105,7 @@ Call with additional types when you need global awareness beyond your immediate 
       RELATIONSHIP_DUMP: buildRelationshipDump,
     };
 
+    // TODO: Rewrite in Promise.all?
     const results: string[] = [];
     for (const type of sections) {
       try {

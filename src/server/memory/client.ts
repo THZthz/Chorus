@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -17,7 +17,6 @@
  */
 
 import { Neo4jClient } from "@/server/memory/neo4j";
-import { setupSchema } from "@/server/memory/schema";
 import { getEmbedder } from "@/server/memory/embedder";
 import { ShortTermMemory } from "@/server/memory/shortTerm";
 import { LongTermMemory } from "@/server/memory/longTerm";
@@ -69,9 +68,7 @@ export class MemoryClient {
     const client = new Neo4jClient(options?.neo4jUri, options?.neo4jUser, options?.neo4jPassword);
 
     await client.verifyConnectivity();
-    const embedder = getEmbedder();
-    await setupSchema(client, embedder.dimensions);
-
+    const _embedder = getEmbedder();
     MemoryClient.instance = new MemoryClient(client);
 
     // Initialize RelationshipManager singleton (eager, idempotent)

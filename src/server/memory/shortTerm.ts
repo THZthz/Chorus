@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026  Amias
+ * Copyright (C) 2026 Amias 1289941679@qq.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -25,7 +25,7 @@ import { nextId } from "@/server/memory/idGenerator";
 import type { MemoryMessage } from "@/server/memory/types";
 
 export class ShortTermMemory {
-  private client: Neo4jClient;
+  private readonly client: Neo4jClient;
   private embedder: Embedder;
 
   constructor(client: Neo4jClient) {

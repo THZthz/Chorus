@@ -19,7 +19,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { RelationshipManager, RELATIONSHIP_PROPERTY_TAGS } from "@/server/memory/relationshipManager";
+import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
 import { NODE_PROPERTY_TAGS, NodeManager } from "@/server/memory/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
@@ -71,14 +72,14 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
           tags: z
             .array(z.enum(NODE_PROPERTY_TAGS))
             .describe(
-              "Comma-separated tags describing the property. Common values: 'string', 'number', 'json' (stored as JSON string, partial updates auto-merge), 'embedded' (used for vector embedding computation).",
+              "Comma-separated tags describing the property. For nodes: 'string', 'number', 'json', 'embedded', 'unique', 'index', etc. For relationships: 'string', 'number', 'number[]', 'json' only.",
             ),
         }),
       )
       .nullable()
       .optional()
       .describe(
-        "For target=node, action=register: the property schema for the new node type. For target=relationship: not needed.",
+        "For action=register: the property schema for the new type (nodes or relationships).",
       ),
     sourceLabels: z
       .array(z.string())
@@ -142,12 +143,22 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
 
         const srcLabels = args.sourceLabels ?? undefined;
         const tgtLabels = args.targetLabels ?? undefined;
+        const relProps: RelationshipPropertyDef[] = (args.properties ?? [])
+          .filter((p) => !!p?.name)
+          .map((p) => ({
+            name: p.name,
+            description: p.description,
+            tags: p.tags.filter((t) =>
+              (RELATIONSHIP_PROPERTY_TAGS as readonly string[]).includes(t),
+            ) as RelationshipPropertyDef["tags"],
+          }));
 
         if (existing) {
           const updated = manager.updateDefinition(args.name, {
             description: args.description ?? undefined,
             sourceLabels: srcLabels,
             targetLabels: tgtLabels,
+            properties: relProps.length > 0 ? relProps : undefined,
           });
           if (!updated) return `Failed to update "${args.name}".`;
         } else {
@@ -157,6 +168,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
             "GM_DEFINED",
             srcLabels,
             tgtLabels,
+            relProps,
           );
         }
 
@@ -165,7 +177,11 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
 
         const endpoints =
           srcLabels && tgtLabels ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})` : "";
-        return `Registered relationship type "${args.name}"${endpoints}. It is now available for use via ${TOOL_NAMES.QUERY_WORLD} (WRITE action).`;
+        const propSummary =
+          relProps.length > 0
+            ? ` with ${relProps.length} property(s): ${relProps.map((p) => p.name).join(", ")}`
+            : "";
+        return `Registered relationship type "${args.name}"${endpoints}${propSummary}. It is now available for use via ${TOOL_NAMES.QUERY_WORLD} (WRITE action).`;
       }
     }
 

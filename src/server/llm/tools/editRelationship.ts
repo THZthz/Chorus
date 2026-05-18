@@ -20,10 +20,11 @@ import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
+import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
-const REL_ACTIONS = ["CREATE", "DELETE"] as const;
+const REL_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 
 const inputSchema = z.object({
   action: z.enum(REL_ACTIONS).default("CREATE").describe("Action to perform."),
@@ -49,21 +50,24 @@ const inputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Properties to set on the relationship (CREATE only). _created_at is auto-managed. " +
-        "No _-prefixed keys allowed.",
+      "Properties to set on the relationship (CREATE or UPDATE). _created_at is auto-managed. " +
+        "No _-prefixed keys allowed. For GM_DEFINED relationship types, property names must match the registered schema.",
     ),
 });
 
 export const editRelationship = tool({
   title: TOOL_NAMES.EDIT_RELATIONSHIP,
   description: `
-CREATE or DELETE a relationship between two nodes in the world archive.
+CREATE, UPDATE, or DELETE a relationship between two nodes in the world archive.
 
 CREATE — Link two existing nodes. The relationship type must be registered (PREDEFINED or
 GM_DEFINED). Creating the same relationship twice is safe (MERGE semantics).
 Both endpoint nodes must already exist — if either is missing, the call fails.
 Use for: moving entities (delete old LOCATED_AT, create new), transferring items
 (delete old CARRIES, create new), setting alliances/hostilities, linking notes to entities.
+
+UPDATE — Change properties on an existing relationship. Only include properties you want
+to change. Properties tagged "json" receive partial merge (like editNode UPDATE).
 
 DELETE — Remove a relationship. Use when entities move, items transfer, or
 relationships change.
@@ -92,25 +96,64 @@ relationships change.
     if (srcEntries.length === 0) return "ERROR: sourceMatch must not be empty.";
     if (tgtEntries.length === 0) return "ERROR: targetMatch must not be empty.";
 
-    // Extract first key-value pair for the neo4j layer (covers common single-key lookups)
+    // Extract first key-value pair for the neo4j layer
     const [srcKey, srcVal] = srcEntries[0];
     const [tgtKey, tgtVal] = tgtEntries[0];
 
-    // ── CREATE ──
-    if (args.action === "CREATE") {
-      if (args.properties) {
-        for (const key of Object.keys(args.properties)) {
-          if (key.startsWith("_")) {
-            return `ERROR: Property "${key}" is system-managed and cannot be set directly.`;
-          }
+    const safeType = args.relationshipType.replace(/[^A-Za-z0-9_]/g, "_");
+
+    // Block _-prefixed match keys on endpoints (all actions)
+    for (const key of Object.keys(args.sourceMatch)) {
+      if (key.startsWith("_")) return `ERROR: sourceMatch key "${key}" is internal.`;
+    }
+    for (const key of Object.keys(args.targetMatch)) {
+      if (key.startsWith("_")) return `ERROR: targetMatch key "${key}" is internal.`;
+    }
+
+    // Property validation helpers
+    const schemaProps = new Set(
+      relDef.properties.map((p) => p.name).filter((name) => !name.startsWith("_")),
+    );
+    const hasSchema = relDef.type === "GM_DEFINED" && relDef.properties.length > 0;
+
+    function validateProps(props: Record<string, unknown>): string | null {
+      const internalKeys: string[] = [];
+      const unknownKeys: string[] = [];
+      for (const key of Object.keys(props)) {
+        if (key.startsWith("_")) {
+          internalKeys.push(key);
+        }
+        if (hasSchema && !schemaProps.has(key)) {
+          unknownKeys.push(key);
         }
       }
-      // Block _-prefixed match keys on endpoints
-      for (const key of Object.keys(args.sourceMatch)) {
-        if (key.startsWith("_")) return `ERROR: sourceMatch key "${key}" is internal.`;
-      }
-      for (const key of Object.keys(args.targetMatch)) {
-        if (key.startsWith("_")) return `ERROR: targetMatch key "${key}" is internal.`;
+      const parts: string[] = [];
+      if (internalKeys.length > 0)
+        parts.push(
+          `Property "${internalKeys.join("/")}" is internal (prefixed with '_') and cannot be set.`,
+        );
+      if (unknownKeys.length > 0)
+        parts.push(
+          `Unknown property "${unknownKeys.join("/")}" for relationship type "${args.relationshipType}". Allowed: ${[...schemaProps].join(", ")}`,
+        );
+      return parts.length > 0 ? parts.join(" ") : null;
+    }
+
+    function serializeValue(v: unknown): unknown {
+      if (v === null || v === undefined) return v;
+      if (typeof v === "object" && !Array.isArray(v)) return JSON.stringify(v);
+      return v;
+    }
+
+    // ── CREATE ──
+    if (args.action === "CREATE") {
+      let createProps: Record<string, unknown> = {};
+      if (args.properties) {
+        const propErr = validateProps(args.properties);
+        if (propErr) return `ERROR: ${propErr}`;
+        for (const [key, value] of Object.entries(args.properties)) {
+          createProps[key] = serializeValue(value);
+        }
       }
 
       const rows = await client.neo4j.mergeRelationship(
@@ -120,8 +163,8 @@ relationships change.
         args.targetLabel,
         tgtKey,
         tgtVal,
-        args.relationshipType,
-        { onCreateProps: (args.properties ?? {}) as Record<string, unknown> },
+        safeType,
+        { onCreateProps: createProps },
       );
 
       if (rows.length === 0) {
@@ -135,6 +178,72 @@ relationships change.
       return `Relationship (:\`${args.sourceLabel}\`)-[:${args.relationshipType}]->(:\`${args.targetLabel}\`) created successfully.`;
     }
 
+    // ── UPDATE ──
+    if (args.action === "UPDATE") {
+      if (!args.properties || Object.keys(args.properties).length === 0) {
+        return "ERROR: No properties to update.";
+      }
+
+      const propErr = validateProps(args.properties);
+      if (propErr) return `ERROR: ${propErr}`;
+
+      // Find the existing relationship
+      const matchParams: Record<string, unknown> = {
+        srcVal: srcVal,
+        tgtVal: tgtVal,
+      };
+      const existing = await client.neo4j.executeRead(
+        `MATCH (src:\`${args.sourceLabel}\` {${srcKey}: $srcVal})-[r:${safeType}]->(tgt:\`${args.targetLabel}\` {${tgtKey}: $tgtVal}) RETURN r`,
+        matchParams,
+      );
+      if (existing.length === 0) {
+        return `ERROR: Relationship not found — (:\`${args.sourceLabel}\` ${JSON.stringify(args.sourceMatch)})-[:${args.relationshipType}]->(:\`${args.targetLabel}\` ${JSON.stringify(args.targetMatch)}).`;
+      }
+      if (existing.length > 1) {
+        return `ERROR: Multiple (${existing.length}) matching relationships found. Use more specific match criteria.`;
+      }
+
+      const existingRel = existing[0]?.r as Record<string, unknown> | undefined;
+
+      // JSON partial merge: read existing JSON props and shallow-merge incoming keys
+      const jsonPropNames = new Set(
+        relDef.properties.filter((p) => p.tags.includes("json")).map((p) => p.name),
+      );
+      const propertiesToSet: Record<string, unknown> = { ...args.properties };
+      for (const key of Object.keys(args.properties)) {
+        if (!jsonPropNames.has(key)) continue;
+        const incoming = args.properties[key] as Record<string, unknown>;
+        const existingRaw = existingRel?.[key];
+        let parsed: Record<string, unknown> = {};
+        if (typeof existingRaw === "string") {
+          try {
+            const p = JSON.parse(existingRaw);
+            if (p && typeof p === "object" && !Array.isArray(p)) {
+              parsed = p;
+            }
+          } catch { /* unparseable — overwrite */ }
+        } else if (existingRaw && typeof existingRaw === "object" && !Array.isArray(existingRaw)) {
+          parsed = existingRaw as Record<string, unknown>;
+        }
+        propertiesToSet[key] = { ...parsed, ...incoming };
+      }
+
+      const setParams: Record<string, unknown> = { srcVal: srcVal, tgtVal: tgtVal };
+      const setters: string[] = [];
+      for (const [key, value] of Object.entries(propertiesToSet)) {
+        const pName = `s_${key}`;
+        setParams[pName] = serializeValue(value);
+        setters.push(`r.\`${key}\` = $${pName}`);
+      }
+
+      await client.neo4j.executeWrite(
+        `MATCH (src:\`${args.sourceLabel}\` {${srcKey}: $srcVal})-[r:${safeType}]->(tgt:\`${args.targetLabel}\` {${tgtKey}: $tgtVal}) SET ${setters.join(", ")}`,
+        setParams,
+      );
+
+      return `Relationship (:\`${args.sourceLabel}\`)-[:${args.relationshipType}]->(:\`${args.targetLabel}\`) updated properties: ${Object.keys(args.properties).join(", ")}.`;
+    }
+
     // ── DELETE ──
     const deleted = await client.neo4j.deleteRelationship(
       args.sourceLabel,
@@ -143,7 +252,7 @@ relationships change.
       args.targetLabel,
       tgtKey,
       tgtVal,
-      args.relationshipType,
+      safeType,
     );
 
     return deleted

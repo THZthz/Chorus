@@ -18,12 +18,22 @@
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
 
+export const RELATIONSHIP_PROPERTY_TAGS = ["string", "number", "number[]", "json"] as const;
+export type RelationshipPropertyTag = (typeof RELATIONSHIP_PROPERTY_TAGS)[number];
+
+export interface RelationshipPropertyDef {
+  name: string;
+  description: string;
+  tags: RelationshipPropertyTag[];
+}
+
 export interface RelationshipDef {
   name: string;
   description: string;
   type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED";
   sourceLabels?: string[];
   targetLabels?: string[];
+  properties: RelationshipPropertyDef[];
 }
 
 const INTERNAL_TYPES: {
@@ -173,10 +183,10 @@ export class RelationshipManager {
 
   private constructor() {
     for (const t of INTERNAL_TYPES) {
-      this.registry.set(t.name, { ...t, type: "INTERNAL" });
+      this.registry.set(t.name, { ...t, type: "INTERNAL", properties: [] });
     }
     for (const t of PREDEFINED_TYPES) {
-      this.registry.set(t.name, { ...t, type: "PREDEFINED" });
+      this.registry.set(t.name, { ...t, type: "PREDEFINED", properties: [] });
     }
   }
 
@@ -186,6 +196,7 @@ export class RelationshipManager {
     type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED",
     sourceLabels?: string[],
     targetLabels?: string[],
+    properties?: RelationshipPropertyDef[],
   ): void {
     const existing = this.registry.get(name);
     if (existing) {
@@ -196,7 +207,7 @@ export class RelationshipManager {
       }
       return;
     }
-    this.registry.set(name, { name, description, type, sourceLabels, targetLabels });
+    this.registry.set(name, { name, description, type, sourceLabels, targetLabels, properties: properties ?? [] });
   }
 
   get(name: string): RelationshipDef | undefined {
@@ -233,13 +244,14 @@ export class RelationshipManager {
   // Update definition fields of a GM_DEFINED relationship type.
   updateDefinition(
     name: string,
-    updates: { description?: string; sourceLabels?: string[]; targetLabels?: string[] },
+    updates: { description?: string; sourceLabels?: string[]; targetLabels?: string[]; properties?: RelationshipPropertyDef[] },
   ): boolean {
     const def = this.registry.get(name);
     if (!def || def.type !== "GM_DEFINED") return false;
     if (updates.description !== undefined) def.description = updates.description;
     if (updates.sourceLabels !== undefined) def.sourceLabels = updates.sourceLabels;
     if (updates.targetLabels !== undefined) def.targetLabels = updates.targetLabels;
+    if (updates.properties !== undefined) def.properties = updates.properties;
     return true;
   }
 
@@ -271,13 +283,15 @@ export class RelationshipManager {
          SET rt.description = $description,
              rt.category = $category,
              rt.source_labels = $sourceLabels,
-             rt.target_labels = $targetLabels`,
+             rt.target_labels = $targetLabels,
+             rt.properties = $properties`,
         {
           name: def.name,
           description: def.description,
           category: def.type,
           sourceLabels: def.sourceLabels?.length ? JSON.stringify(def.sourceLabels) : null,
           targetLabels: def.targetLabels?.length ? JSON.stringify(def.targetLabels) : null,
+          properties: def.properties.length > 0 ? JSON.stringify(def.properties) : null,
         },
       );
     }

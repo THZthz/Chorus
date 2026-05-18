@@ -33,7 +33,7 @@ export const NODE_PROPERTY_TAGS = [
    */
   "embedded",
   /**
-   * Will create a unique constraint if specified. Should only appear once in a node type.
+   * Will create a unique constraint if specified.
    * `CREATE CONSTRAINT $name IF NOT EXISTS FOR (n:$label) REQUIRE n.$prop IS UNIQUE`
    */
   "unique",
@@ -223,7 +223,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A narrative plot with status, beats, branches, and flags. Drives story progression.",
     properties: [
-      { name: "name", description: "Unique plot name (used as lookup key).", tags: ["string", "unique", "embedded", "index"] },
+      { name: "name", description: "Unique plot name (used as lookup key).", tags: ["string", "unique", "embedded"] },
       {
         name: "description",
         description: "Full plot description (embedded for vector search).",
@@ -456,44 +456,50 @@ export class NodeManager {
         },
       );
 
-      // Create unique constraint for properties with tag "string" and "unique".
-      const propsWithUniqueTag = def.properties.filter(prop => prop.tags.includes("unique") && prop.tags.includes("string")).map(prop => prop.name);
-      if (propsWithUniqueTag.length === 1) {
-        const propName = propsWithUniqueTag[0];
+      // Create unique constraint for properties with tag "unique".
+      const uniquePropNames = new Set(
+        def.properties.filter(prop => prop.tags.includes("unique")).map(prop => prop.name),
+      );
+      for (const propName of uniquePropNames) {
         const constraintName = def.name.toLowerCase() + "_" + propName;
         try {
           await client.executeWrite(
-            `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (n:${def.name}) REQUIRE n.${propName} IS UNIQUE`,
+            `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) REQUIRE n.\`${propName}\` IS UNIQUE`,
           );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`);
+          console.error(`[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`);
         }
-      } else {
-        console.error(`[syncToNeo4j] Cannot create unique constraint on :${def.name}, which have more than one properties has tag "unique": "${propsWithUniqueTag.join("/")}".`);
       }
 
-      // Create regular index for properties with tag "string" and "index".
-      const propsWithIndexTag = def.properties.filter(prop => prop.tags.includes("index") && prop.tags.includes("string")).map(prop => prop.name);
+      // Create regular index for properties with tag "index" that do NOT also have "unique".
+      // A unique constraint already provides an implicit index — creating a second index
+      // on the same property would fail with IndexAlreadyExists.
+      const propsWithIndexTag = def.properties
+        .filter(prop => prop.tags.includes("index") && !uniquePropNames.has(prop.name))
+        .map(prop => prop.name);
       for (const propName of propsWithIndexTag) {
         const constraintName = def.name.toLowerCase() + "_" + propName + "_idx";
         try {
-          await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:${def.name}) ON (n.${propName})`);
+          await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) ON (n.\`${propName}\`)`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`[syncToNeo4j] Regular index on ${constraintName} not created: ${msg}`);
+          console.error(`[syncToNeo4j] Regular index on ${constraintName} not created: ${msg}`);
         }
       }
 
       // Create composite index for all properties groups.
       for (const index of ["composite_index_1", "composite_index_2", "composite_index_3"]) {
-        const props = def.properties.filter(prop => prop.tags.includes(index as NodePropertyTag) && prop.tags.includes("string")).map(prop => prop.name);
-        const constraintName = def.name.toLowerCase() + "_" + props.join("_") + "_idx" + index[-1];
+        const props = def.properties
+          .filter(prop => prop.tags.includes(index as NodePropertyTag))
+          .map(prop => prop.name);
+        if (props.length < 2) continue;
+        const constraintName = `${def.name.toLowerCase()}_${props.join("_")}_idx${index.at(-1)}`;
         try {
           await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:${def.name}) ON (${props.map(name => "n." + name).join(", ")})`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`[syncToNeo4j] Regular index on ${constraintName} not created: ${msg}`);
+          console.error(`[syncToNeo4j] Composite index on ${constraintName} not created: ${msg}`);
         }
       }
 
@@ -504,10 +510,10 @@ export class NodeManager {
         try {
           await client.executeWrite(
             `CREATE VECTOR INDEX ${vectorIndexName} IF NOT EXISTS FOR (n:${def.name}) ON (n._embedding)
-         OPTIONS { indexConfig: { \`vector.dimensions\`: ${dimensions}, \`vector.similarity_function\`: 'COSINE' } }`,
+            OPTIONS { indexConfig: { \`vector.dimensions\`: ${dimensions}, \`vector.similarity_function\`: 'COSINE' } }`,
           );
         } catch {
-          console.warn(`[syncToNeo4j] Vector index ${vectorIndexName} not created (Neo4j 5.11+ required).`);
+          console.error(`[syncToNeo4j] Vector index ${vectorIndexName} not created (Neo4j 5.11+ required).`);
         }
       }
     }

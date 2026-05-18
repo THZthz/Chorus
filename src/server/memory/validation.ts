@@ -157,14 +157,14 @@ export class CypherValidator {
           { name: relType },
         );
         if (nodes.length === 0) {
-          console.warn(
+          console.error(
             `[CypherValidator] relationship type ":${relType}" exists in graph but has no :RelationshipType node`,
           );
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[CypherValidator] auditRelationshipDescriptions failed: ${msg}`);
+      console.error(`[CypherValidator] auditRelationshipDescriptions failed: ${msg}`);
     }
   }
 }

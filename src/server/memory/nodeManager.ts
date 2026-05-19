@@ -468,7 +468,29 @@ export class NodeManager {
           );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`);
+          // If a standalone index already exists on this property, Neo4j refuses to
+          // create the constraint. Look up and drop the index, then retry.
+          if (msg.includes("IndexAlreadyExists") || msg.includes("already exists an index")) {
+            try {
+              const rows = await client.executeRead(`SHOW INDEXES YIELD name, labelsOrTypes, properties RETURN name, labelsOrTypes, properties`);
+              for (const row of rows) {
+                const labels: string[] = row.labelsOrTypes as string[];
+                const props: string[] = row.properties as string[];
+                if (labels?.includes(def.name) && props?.includes(propName)) {
+                  await client.executeWrite(`DROP INDEX \`${row.name}\``);
+                }
+              }
+              await client.executeWrite(
+                `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) REQUIRE n.\`${propName}\` IS UNIQUE`,
+              );
+              console.log(`[syncToNeo4j] Dropped existing index on (:${def.name} {${propName}}), created unique constraint ${constraintName}`);
+            } catch (retryErr) {
+              const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+              console.error(`[syncToNeo4j] Unique constraint on ${constraintName} not created after dropping index: ${retryMsg}`);
+            }
+          } else {
+            console.error(`[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`);
+          }
         }
       }
 

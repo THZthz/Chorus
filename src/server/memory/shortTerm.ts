@@ -55,7 +55,7 @@ export class ShortTermMemory {
     await this.client.executeWrite(
       `MATCH (c:Conversation {_id: $convId})
        CREATE (m:Message {
-         _id: $id, content: $content,
+         id: $id, content: $content,
          _embedding: $embedding, timestamp: datetime($now),
          metadata: $metadata
        })
@@ -79,7 +79,7 @@ export class ShortTermMemory {
       try {
         await this.client.executeWrite(
           `MATCH (a:TimeAnchor {_id: 'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
-           MATCH (m:Message {_id: $msgId})
+           MATCH (m:Message {id: $msgId})
            MERGE (m)-[r:AT_TIME]->(tp)
            ON CREATE SET r._created_at = datetime()`,
           { msgId: messageId },
@@ -94,6 +94,7 @@ export class ShortTermMemory {
     }
 
     return {
+      id: messageId,
       content,
       metadata: metadata || {},
       _embedding: embedding,
@@ -112,6 +113,7 @@ export class ShortTermMemory {
       const m = r.m as Record<string, unknown>;
       const meta = m.metadata ? (JSON.parse(m.metadata as string) as Record<string, unknown>) : {};
       return {
+        id: m.id as string,
         content: m.content as string,
         metadata: meta,
         _embedding: m._embedding as number[] | undefined,
@@ -143,8 +145,8 @@ export class ShortTermMemory {
   private async getLastMessageId(convId: string, excludeId: string): Promise<string | null> {
     const rows = await this.client.executeRead(
       `MATCH (c:Conversation {_id: $convId})-[:HAS_MESSAGE]->(m:Message)
-       WHERE m._id <> $excludeId AND NOT (m)-[:NEXT_MESSAGE]->(:Message)
-       RETURN m._id AS id ORDER BY m.timestamp DESC LIMIT 1`,
+       WHERE m.id <> $excludeId AND NOT (m)-[:NEXT_MESSAGE]->(:Message)
+       RETURN m.id AS id ORDER BY m.timestamp DESC LIMIT 1`,
       { convId, excludeId },
     );
     return rows.length > 0 ? (rows[0].id as string) : null;
@@ -161,10 +163,10 @@ export class ShortTermMemory {
     if (previousLastId && messageIds.length > 0) {
       await this.client.createRelationship(
         "Message",
-        "_id",
+        "id",
         previousLastId,
         "Message",
-        "_id",
+        "id",
         messageIds[0],
         "NEXT_MESSAGE",
       );
@@ -173,10 +175,10 @@ export class ShortTermMemory {
     for (let i = 0; i < messageIds.length - 1; i++) {
       await this.client.createRelationship(
         "Message",
-        "_id",
+        "id",
         messageIds[i],
         "Message",
-        "_id",
+        "id",
         messageIds[i + 1],
         "NEXT_MESSAGE",
       );
@@ -188,7 +190,7 @@ export class ShortTermMemory {
         "_id",
         convId,
         "Message",
-        "_id",
+        "id",
         messageIds[0],
         "FIRST_MESSAGE",
       );

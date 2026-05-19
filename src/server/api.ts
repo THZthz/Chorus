@@ -39,6 +39,8 @@ import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
+import { editNote } from "@/server/llm/tools/editNote";
+import { editPlot } from "@/server/llm/tools/editPlot";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import type { Message } from "@/types/dialogue";
 import { getContext } from "@/server/llm/tools/getContext";
@@ -49,6 +51,8 @@ const debugToolRegistry: Record<string, { execute: (args: any) => Promise<string
   editNode: editNode as any,
   editRelationship: editRelationship as any,
   manageSchema: manageSchema as any,
+  editNote: editNote as any,
+  editPlot: editPlot as any,
   getContext: getContext as any,
 };
 

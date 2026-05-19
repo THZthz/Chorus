@@ -14,6 +14,7 @@ Architecture, core systems, and data structures of the **Chorus** application.
 - **SSE:** Server-Sent Events for real-time streaming of LLM output
 - **Console client:** Standalone Node.js REPL with chalk rendering
 - **Deployment:** Local-only — runs on localhost, no authentication required
+- 
 
 ---
 
@@ -40,8 +41,8 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │  streamText({                                                        │
 │    tools: {                                                          │
 │      queryWorld, manageSchema, searchWorld,                          │
-│      editNode, editRelationship, getContext, resetSceneContext,      │
-│      generateDialogueStep, advanceTime                               │
+│      editNode, editRelationship, editNote, editPlot,                 │
+│      getContext, generateDialogueStep, advanceTime                   │
 │    }                                                                 │
 │  })                                                                  │
 │                                                                      │
@@ -115,8 +116,9 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 | `manageSchema`      | Register/unregister node types (with `properties` schema using `tags` field) and relationship types (with required `sourceLabel`/`targetLabel`).                                        |
 | `editNode`          | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings.                                                                              |
 | `editRelationship`  | CREATE/UPDATE/DELETE relationships. Validates endpoint labels and properties against RelationshipManager schema. Auto-generates embeddings.                                             |
+| `editNote`          | CREATE/UPDATE/DELETE a GM scratchpad note. Links to entities and messages. Partial overwrite on UPDATE.                                                                                 |
+| `editPlot`          | CREATE/UPDATE/DELETE a plot. Manages status transitions, flags, and branching — all in one tool.                                                                                        |
 | `getContext`        | Fetch scene context, character/location/object briefs, plot tree, schema dump, relationship dump.                                                                                       |
-| `resetSceneContext` | Reset the scene observer.                                                                                                                                                               |
 
 ### Chorus tools
 
@@ -165,7 +167,7 @@ POST /api/chat/stream
         ▼
 ┌──────────────────────────────────────────────────────┐
 │  generateTurn()                                      │
-│  streamText({ tools: { ...9 tools } })               │
+│  streamText({ tools: { ...10 tools } })              │
 │    stopWhen: generates once + passes validation      │
 │    prepareStep: nudges if GM forgets dialogue        │
 │                                                      │
@@ -304,3 +306,110 @@ Relationship types declared via `[[relationshipTypes]]` with `name`, `descriptio
 `scripts/inspect-devtools.sh` renders LLM interactions from `.devtools/generations.json`. Supports `--run`, `--step`, `--tool-result`, `--full` flags.
 
 `scripts/debug-endpoints.sh` provides curl examples for each GM tool endpoint.
+
+---
+
+## 15. Files Overview
+
+```
+src/
+├── console/                              — REPL client
+│   ├── main.ts                           — Entry point, SSE listener, chalk rendering, REPL loop
+│   ├── SseClient.ts                      — SSE stream parser for server events
+│   └── markdown.ts                       — Terminal markdown rendering
+│
+├── server/
+│   ├── main.ts                           — Express server entry point (port 3000)
+│   ├── api.ts                            — Routes: /api/chat/stream, /api/history, /api/reset, /api/debug/*
+│   ├── nodeManager.ts                    — Node label registry: schemas, embedding text, Neo4j sync
+│   ├── relationshipManager.ts            — Rel type registry: composite key (name, sourceLabel, targetLabel)
+│   ├── gameState.ts                      — Persists dialogue options on :Conversation node
+│   ├── idGenerator.ts                    — Monotonic integer ID generator for Neo4j
+│   ├── validation.ts                     — Zod schemas for API request validation
+│   │
+│   ├── llm/                              — Game Master AI
+│   │   ├── index.ts                      — generateTurn(): streamText orchestration, stopWhen, prepareStep
+│   │   ├── prompt.ts                     — System prompt: toolbox, turn rhythm, memory, plots, dialogue rules
+│   │   ├── model.ts                      — LLM provider/model selection via env vars
+│   │   ├── events.ts                     — TurnEventEmitter — SSE event emission
+│   │   ├── gmMessages.ts                 — Persists/loads GM turn messages for multi-turn continuity
+│   │   ├── sceneContext.ts               — Builds scene context, entity briefs, plot trees, relationship dumps
+│   │   ├── sceneObserver.ts              — Tracks entities/locations mentioned for context window management
+│   │   ├── conditionEvaluator.ts         — Evaluates skill-check conditional expressions
+│   │   ├── rollSkillCheck.ts             — performSkillCheck(): dice roll + stat bonus resolution
+│   │   │
+│   │   └── tools/                        — LLM tool implementations
+│   │       ├── queryWorld.ts             — Cypher READ/WRITE with schema-aware validation
+│   │       ├── searchWorld.ts            — Dynamic vector search across node/relationship types
+│   │       ├── editNode.ts               — CREATE/UPDATE/DELETE any node
+│   │       ├── editRelationship.ts       — CREATE/UPDATE/DELETE any relationship
+│   │       ├── editNote.ts               — CREATE/UPDATE/DELETE GM scratchpad notes; entity/message linking
+│   │       ├── editPlot.ts               — CREATE/UPDATE/DELETE plots; flags, branching, status transitions
+│   │       ├── manageSchema.ts           — Register/unregister node types and relationship types
+│   │       ├── getContext.ts             — Fetch scene context, briefs, schema/relationship dumps
+│   │       ├── generateDialogueStep.ts   — Structured narrative output + player options
+│   │       ├── advanceTime.ts            — Advance in-game clock
+│   │       └── shared.ts                 — wrapSafe error wrapper, extractInternalAndUnknownKeys
+│   │
+│   ├── memory/                           — Neo4j persistence layer
+│   │   ├── client.ts                     — MemoryClient singleton facade composing all subsystems
+│   │   ├── neo4j.ts                      — Neo4j driver wrapper with value normalization
+│   │   ├── shortTerm.ts                  — Conversation + :Message nodes as ordered linked list
+│   │   ├── longTerm.ts                   — Entities, relationships, NPC dispositions, player conditions
+│   │   ├── notes.ts                      — :Note CRUD with embedding, entity/message linking
+│   │   ├── plots.ts                      — :Plot lifecycle: beats, branches, flags, time relationships
+│   │   ├── search.ts                     — Vector search by label/rel-type with optional reranking
+│   │   ├── embedder.ts                   — llama-server embedding (default: localhost:8080)
+│   │   ├── reranker.ts                   — Cross-encoder reranking (optional, via LLAMA_RERANK_URL)
+│   │   ├── validation.ts                 — CypherValidator: schema-aware Cypher validation
+│   │   ├── reset.ts                      — clearNeo4jDatabase(): DETACH DELETE all nodes
+│   │   └── types.ts                      — Shared types: MemoryEntity, MemoryNote, MemoryPlot, PlotFlag, etc.
+│   │
+│   ├── seed-stories/                     — World seeding
+│   │   ├── index.ts                      — Active seed story selection, getActiveSeedStory()
+│   │   ├── seed.ts                       — seedDatabase(): idempotent entity/relationship/plot seeding
+│   │   ├── types.ts                      — TOML story format types
+│   │   ├── glass-cage.toml               — Default seed story (29 entities, 35 relationships)
+│   │   └── magic-awakening.toml          — Alternate seed story
+│   │
+│   └── models/                           — Domain models
+│       ├── entity.ts                     — Entity CRUD helpers
+│       ├── plot.ts                       — Plot CRUD helpers
+│       ├── schema.ts                     — Schema visualization, relationship type descriptions
+│       └── time.ts                       — Game time model: 12 segments/day, advanceGameTime()
+│
+├── shared/                               — Shared constants & types
+│   ├── constants.ts                      — TOOL_NAMES, SKILL_NAMES, SEGMENT_LABELS, SEGMENT_HOURS
+│   ├── events.ts                         — SSE event type definitions
+│   ├── sse.ts                            — SSE formatting helpers
+│   └── colors.ts                         — Chalk color wrappers for console output
+│
+└── types/                                — Frontend types
+    └── dialogue.ts                       — Message, DialogueOption interfaces
+
+tests/
+├── setup.ts                              — Global test setup: init MemoryClient + seed
+├── helpers.ts                            — resetDb(), exec(), parseToolOutput()
+├── integration/                          — Integration tests (Neo4j-backed)
+│   ├── editNode.test.ts                  — editNode CRUD + validation
+│   ├── editNote.test.ts                  — editNote CRUD + entity/message linking
+│   ├── editPlot.test.ts                  — editPlot CRUD + flags, branching, status transitions
+│   ├── editRelationship.test.ts          — editRelationship CRUD
+│   ├── queryWorld.test.ts                — queryWorld Cypher execution
+│   ├── searchWorld.test.ts               — searchWorld vector search
+│   ├── manageSchema.test.ts              — manageSchema node/rel-type registration
+│   ├── getContext.test.ts                — getContext scene context fetch
+│   └── advanceTime.test.ts               — advanceTime clock progression
+├── scenarios/                            — End-to-end scenario tests
+│   ├── correction-workflow.test.ts       — generateDialogueStep correction workflow
+│   ├── entity-lifecycle.test.ts          — Entity creation → update → linking → deletion
+│   └── gameplay-murder-mystery.test.ts   — Full gameplay scenario
+└── unit/                                 — Unit tests (no Neo4j)
+    ├── generateDialogueStep.test.ts      — generateDialogueStep validation rules
+    └── shared.test.ts                    — Shared utility tests
+
+scripts/
+├── debug-endpoints.sh                    — curl examples for each GM tool debug endpoint
+├── inspect-devtools.sh                   — LLM interaction viewer from .devtools/generations.json
+└── add-license-header.mjs                — License header injection for source files
+```

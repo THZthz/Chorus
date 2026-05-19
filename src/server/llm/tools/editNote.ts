@@ -91,17 +91,17 @@ This tool supports partial overwrite when action is UPDATE.
       flags |= 0x1;
       await client.notes.updateNote(args.noteName, { content: args.content });
     }
-    if (args.aboutEntities !== undefined && args.aboutEntities) {
+    if (args.aboutEntities != null) {
       flags |= 0x2;
       await client.notes.clearLinks(args.noteName, "ENTITY");
       for (const name of args.aboutEntities) await client.notes.linkToEntity(args.noteName, name);
     }
-    if (args.aboutMessages !== undefined && args.aboutMessages) {
+    if (args.aboutMessages != null) {
       flags |= 0x4;
       await client.notes.clearLinks(args.noteName, "MESSAGE");
       for (const id of args.aboutMessages) await client.notes.linkToMessage(args.noteName, id);
     }
 
-    return `Note "${args.noteName} is successfully updated (${[flags & 0x1 ? "content" : "", flags & 0x2 ? "all entities links" : "", flags & 0x4 ? "all messages links" : ""].join(", ")} is overwritten).`;
+    return `Note "${args.noteName}" is successfully updated (${[flags & 0x1 ? "content" : "", flags & 0x2 ? "all entities links" : "", flags & 0x4 ? "all messages links" : ""].join(", ")} is overwritten).`;
   }, TOOL_NAMES.EDIT_NOTE),
 });

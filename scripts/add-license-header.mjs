@@ -62,7 +62,7 @@ const files = [...walk("src"), ...walk("tests")].filter(f => {
 let updated = 0;
 for (const file of files) {
   const content = readFileSync(file, 'utf-8');
-  if (content.includes(file.endsWith('.css') ? CSS_HEADER : TS_HEADER)) {
+  if (content.includes("Copyright (C) 2026 Amias")) {
     console.log(`SKIP (already has header): ${file}`);
     continue;
   }

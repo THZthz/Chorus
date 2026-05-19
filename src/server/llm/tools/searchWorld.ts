@@ -22,13 +22,21 @@ import { MemoryClient } from "@/server/memory/client";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
-import { NodeManager } from "@/server/memory/nodeManager";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { NodeDef, NodeManager } from "@/server/nodeManager";
+import { RelationshipDef, RelationshipManager } from "@/server/relationshipManager";
 
-function getSearchableLabels(): string[] {
-  const all = NodeManager.getCachedInstance()
+function getVectorSearchable(type: "relationship" | "label") {
+  const all: RelationshipDef[] | NodeDef[] = (
+    type === "relationship"
+      ? RelationshipManager.getCachedInstance()
+      : NodeManager.getCachedInstance()
+  )
     .getAll()
-    .filter((def) => def.properties.some((p) => p.name === "_embedding"));
+    .filter(
+      (def) =>
+        def.properties.some((p) => p.name === "_embedding") &&
+        def.properties.some((p) => p.tags.includes("embedded")),
+    );
 
   // Filter out subtype labels: labels whose property definitions (names + tags)
   // are identical to another label's — they share the same vector index.
@@ -49,35 +57,12 @@ function getSearchableLabels(): string[] {
   return primary;
 }
 
-function getSearchableRelationshipTypes(): string[] {
-  const all = RelationshipManager.getCachedInstance()
-    .getAll()
-    .filter((def) => def.properties.some((p) => p.name === "_embedding"));
-
-  // Deduplicate by property fingerprint (same approach as nodes).
-  const seen = new Map<string, string>();
-  const primary: string[] = [];
-  for (const def of all) {
-    const fingerprint = def.properties
-      .map((p) => `${p.name}:${[...p.tags].sort().join(",")}`)
-      .sort()
-      .join("|");
-    const existing = seen.get(fingerprint);
-    if (existing === undefined) {
-      seen.set(fingerprint, def.name);
-      primary.push(def.name);
-    }
-  }
-  return primary;
-}
-
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_WORLD,
   description: `
 Search the archive by semantic MEANING (vector similarity + reranking).
-Use this when you don't know the exact name or Cypher pattern — ${
-    TOOL_NAMES.SEARCH_WORLD
-  } finds things by what they're ABOUT.
+Use this when you don't know the exact name or Cypher pattern — ${TOOL_NAMES.SEARCH_WORLD}
+finds things by what they're ABOUT.
 
 Pass one or more domains (node labels or relationship types) via 'domains' to choose
 which to search (e.g. ["Entity", "Message", "ALLIED_WITH"]). Omit to search all
@@ -96,7 +81,9 @@ searchable types. Use 'target' to restrict to only nodes or only relationships.
     domains: z
       .array(z.string())
       .optional()
-      .describe("Node labels or relationship types to search. Omit to search all searchable types."),
+      .describe(
+        "Node labels or relationship types to search. Omit to search all searchable types.",
+      ),
     limit: z.number().default(10).describe("Max results per domain."),
   }),
   execute: wrapSafe(async (args) => {
@@ -104,8 +91,12 @@ searchable types. Use 'target' to restrict to only nodes or only relationships.
     const searchNodes = target.includes("node");
     const searchRels = target.includes("relationship");
 
-    const searchableLabels = searchNodes ? new Set(getSearchableLabels()) : new Set<string>();
-    const searchableRelTypes = searchRels ? new Set(getSearchableRelationshipTypes()) : new Set<string>();
+    const searchableLabels = searchNodes
+      ? new Set(getVectorSearchable("label"))
+      : new Set<string>();
+    const searchableRelTypes = searchRels
+      ? new Set(getVectorSearchable("relationship"))
+      : new Set<string>();
 
     // Resolve domains: filter user-provided values to what's searchable.
     // If none provided, use all searchable node labels and relationship types.
@@ -124,6 +115,7 @@ searchable types. Use 'target' to restrict to only nodes or only relationships.
         if (isRel && searchRels) relDomains.push(d);
       }
     } else {
+      // Search all labels and relationships.
       if (searchNodes) nodeDomains.push(...searchableLabels);
       if (searchRels) relDomains.push(...searchableRelTypes);
     }
@@ -143,9 +135,11 @@ searchable types. Use 'target' to restrict to only nodes or only relationships.
 
     for (const type of relDomains) {
       tasks.push(
-        client.search.searchByRelationshipType(type, args.query, { limit: args.limit }).then((rows) => {
-          result[type] = stripHiddenProperties(rows) as Record<string, unknown>[];
-        }),
+        client.search
+          .searchByRelationshipType(type, args.query, { limit: args.limit })
+          .then((rows) => {
+            result[type] = stripHiddenProperties(rows) as Record<string, unknown>[];
+          }),
       );
     }
 

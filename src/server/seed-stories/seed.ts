@@ -17,8 +17,8 @@
  */
 
 import { MemoryClient } from "@/server/memory/client";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager } from "@/server/relationshipManager";
+import { NodeManager } from "@/server/nodeManager";
 import { CypherValidator } from "@/server/memory/validation";
 import { setInitialTime } from "@/server/models/time";
 import { getActiveSeedStory } from "@/server/seed-stories";

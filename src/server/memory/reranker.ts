@@ -73,7 +73,7 @@ export function getReranker(): Reranker | null {
 
 // ── Shared post-processing helper ──
 
-import { NodeManager } from "@/server/memory/nodeManager";
+import { NodeManager } from "@/server/nodeManager";
 
 export function extractSearchTexts<T>(items: T[], kind: string): Array<T & { text: string }> {
   const nodeManager = NodeManager.getCachedInstance();

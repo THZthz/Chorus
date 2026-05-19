@@ -17,7 +17,7 @@
  */
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { NodeManager } from "@/server/nodeManager";
 
 // ── Types ──
 

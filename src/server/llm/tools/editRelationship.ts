@@ -19,8 +19,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
-import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
+import { RelationshipManager } from "@/server/relationshipManager";
+import type { RelationshipPropertyDef } from "@/server/relationshipManager";
 import { getEmbedder } from "@/server/memory/embedder";
 import { extractInternalAndUnknownKeys, wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
@@ -118,7 +118,11 @@ relationships change.
     const hasSchema = relDef.type === "GM_DEFINED" && relDef.properties.length > 0;
 
     function validateProps(props: Record<string, unknown>): string | null {
-      const {internalKeys, unknownKeys} = extractInternalAndUnknownKeys(schemaProps, hasSchema, props);
+      const { internalKeys, unknownKeys } = extractInternalAndUnknownKeys(
+        schemaProps,
+        hasSchema,
+        props,
+      );
       const parts: string[] = [];
       if (internalKeys.length > 0)
         parts.push(
@@ -264,7 +268,9 @@ relationships change.
               setParams["s__embedding"] = await getEmbedder().embed(embedText);
               setters.push("r._embedding = $s__embedding");
             } catch {
-              console.warn(`[editRelationship] embedding update failed for "${args.relationshipType}"`);
+              console.warn(
+                `[editRelationship] embedding update failed for "${args.relationshipType}"`,
+              );
             }
           }
         }

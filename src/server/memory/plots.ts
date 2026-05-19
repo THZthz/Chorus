@@ -48,7 +48,7 @@ export class Plots {
     const status = options?.status ?? "PENDING";
     const triggerCondition = options?.triggerCondition ?? null;
     const flags = options?.flags ?? [];
-    const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+    const { NodeManager: NM } = await import("@/server/nodeManager");
     const embedText = NM.getCachedInstance().getEmbeddingText("Plot", {
       name,
       description,

@@ -26,7 +26,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { ModelMessage } from "ai";
 import { MemoryClient } from "@/server/memory/client";
-import { GAME_ID } from "@/server/memory/gameState";
+import { GAME_ID } from "@/server/gameState";
 
 export async function loadGMMessages(): Promise<ModelMessage[]> {
   const client = MemoryClient.getCachedInstance();

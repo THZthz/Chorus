@@ -170,10 +170,26 @@ describe("manageSchema", () => {
         sourceLabel: "Entity",
         targetLabel: "Entity",
         properties: [
-          { name: "summary", description: "Summary text for embedding", tags: ["string", "embedded"] },
-          { name: "weight", description: "Relationship weight for indexing", tags: ["number", "index"] },
-          { name: "group_key", description: "First composite key", tags: ["string", "composite_index_1"] },
-          { name: "sub_key", description: "Second composite key", tags: ["string", "composite_index_1"] },
+          {
+            name: "summary",
+            description: "Summary text for embedding",
+            tags: ["string", "embedded"],
+          },
+          {
+            name: "weight",
+            description: "Relationship weight for indexing",
+            tags: ["number", "index"],
+          },
+          {
+            name: "group_key",
+            description: "First composite key",
+            tags: ["string", "composite_index_1"],
+          },
+          {
+            name: "sub_key",
+            description: "Second composite key",
+            tags: ["string", "composite_index_1"],
+          },
         ],
       });
       expect(result).toContain("Registered relationship type");

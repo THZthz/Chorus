@@ -33,7 +33,7 @@ export class Notes {
   }
 
   async createNote(noteName: string, content: string): Promise<MemoryNote> {
-    const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+    const { NodeManager: NM } = await import("@/server/nodeManager");
     const embedText = NM.getCachedInstance().getEmbeddingText("Note", { name: noteName, content });
     const embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     const now = new Date().toISOString();
@@ -57,7 +57,7 @@ export class Notes {
     const content = options.content ?? existing.content;
     let embedding = existing._embedding;
     if (options.content) {
-      const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+      const { NodeManager: NM } = await import("@/server/nodeManager");
       const embedText = NM.getCachedInstance().getEmbeddingText("Note", {
         name: noteName,
         content: options.content,

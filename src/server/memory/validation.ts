@@ -17,8 +17,8 @@
  */
 
 import { TOOL_NAMES } from "@/shared/constants";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager } from "@/server/relationshipManager";
+import { NodeManager } from "@/server/nodeManager";
 import type { Neo4jClient } from "@/server/memory/neo4j";
 
 const BLOCKED_READ_CLAUSES = /\b(CREATE|MERGE|DELETE|SET|REMOVE|DETACH\s+DELETE|DROP)\b/i;

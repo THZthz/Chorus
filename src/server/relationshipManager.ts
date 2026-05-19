@@ -353,8 +353,7 @@ export class RelationshipManager {
       // Create regular index for properties with tag "index".
       for (const propName of def.properties
         .filter((p) => p.tags.includes("index"))
-        .map((p) => p.name))
-      {
+        .map((p) => p.name)) {
         const indexName = `rel_${def.name.toLowerCase()}_${propName}_idx`;
         try {
           await client.executeWrite(
@@ -379,7 +378,9 @@ export class RelationshipManager {
           );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[RelationshipManager] Composite index on ${indexName} not created: ${msg}`);
+          console.error(
+            `[RelationshipManager] Composite index on ${indexName} not created: ${msg}`,
+          );
         }
       }
 

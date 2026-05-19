@@ -102,9 +102,7 @@ export class LongTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      const nodeManager = (
-        await import("@/server/memory/nodeManager")
-      ).NodeManager.getCachedInstance();
+      const nodeManager = (await import("@/server/nodeManager")).NodeManager.getCachedInstance();
       const embedText = nodeManager.getEmbeddingText("Entity", {
         name,
         type: finalType,

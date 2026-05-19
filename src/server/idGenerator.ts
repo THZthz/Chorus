@@ -17,7 +17,7 @@
  */
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
-import { GAME_ID } from "@/server/memory/gameState";
+import { GAME_ID } from "@/server/gameState";
 
 const CHARS = "1fER78GIDVbh95ngu6adzmkjZy2sSQoJTL0vXrx3MCtcPeKYUBWAiFpl4HqOwN";
 

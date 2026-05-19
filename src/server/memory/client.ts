@@ -23,8 +23,8 @@ import { LongTermMemory } from "@/server/memory/longTerm";
 import { MemorySearch } from "@/server/memory/search";
 import { Notes } from "@/server/memory/notes";
 import { Plots } from "@/server/memory/plots";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager } from "@/server/relationshipManager";
+import { NodeManager } from "@/server/nodeManager";
 
 export { ShortTermMemory } from "@/server/memory/shortTerm";
 export { LongTermMemory } from "@/server/memory/longTerm";
@@ -45,7 +45,7 @@ export class MemoryClient {
     this.neo4j = neo4j;
     this.shortTerm = new ShortTermMemory(neo4j);
     this.longTerm = new LongTermMemory(neo4j);
-    this.search = new MemorySearch();
+    this.search = new MemorySearch(neo4j);
     this.notes = new Notes(neo4j);
     this.plots = new Plots(neo4j);
   }

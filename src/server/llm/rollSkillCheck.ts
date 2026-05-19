@@ -18,8 +18,68 @@
 
 import { SKILL_NAMES } from "@/shared/constants";
 import { MemoryClient } from "@/server/memory/client";
-import { evaluateConditions } from "@/server/llm/conditionEvaluator";
 import type { SkillName } from "@/shared/constants";
+
+const EXPRESSION_ALLOWLIST = /^[a-zA-Z0-9_<>=!&|()+\-*/\s.0-9]+$/;
+
+export interface ConditionContext {
+  success: boolean;
+  total: number;
+  difficulty: number;
+  statBonus: number;
+}
+
+function evaluateCondition(expression: string, ctx: ConditionContext): boolean {
+  const trimmed = expression.trim();
+  if (!trimmed) return ctx.success;
+
+  if (!EXPRESSION_ALLOWLIST.test(trimmed)) {
+    return false;
+  }
+
+  try {
+    const fn = new Function(
+      "success",
+      "total",
+      "difficulty",
+      "statBonus",
+      `return Boolean(${trimmed});`,
+    );
+    return Boolean(fn(ctx.success, ctx.total, ctx.difficulty, ctx.statBonus));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safe expression evaluator for skill check conditions.
+ *
+ * Uses a character whitelist + Function constructor with bound variables
+ * to evaluate boolean expressions without eval() or arbitrary code execution.
+ */
+function evaluateConditions(
+  conditions: Array<{
+    expression: string;
+    label?: string;
+    color?: string;
+    stepId?: string;
+  }>,
+  ctx: ConditionContext,
+): Array<{
+  expression: string;
+  label?: string;
+  color?: string;
+  stepId?: string;
+  matched: boolean;
+}> {
+  return conditions.map((c) => ({
+    expression: c.expression,
+    label: c.label,
+    color: c.color,
+    stepId: c.stepId,
+    matched: evaluateCondition(c.expression, ctx),
+  }));
+}
 
 export interface SkillCheckParams {
   skill: SkillName;

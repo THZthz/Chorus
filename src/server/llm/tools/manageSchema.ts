@@ -19,12 +19,9 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
-import {
-  RelationshipManager,
-  RELATIONSHIP_PROPERTY_TAGS,
-} from "@/server/memory/relationshipManager";
-import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
-import { NODE_PROPERTY_TAGS, NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager, RELATIONSHIP_PROPERTY_TAGS } from "@/server/relationshipManager";
+import type { RelationshipPropertyDef } from "@/server/relationshipManager";
+import { NODE_PROPERTY_TAGS, NodeManager } from "@/server/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
@@ -76,8 +73,8 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
             .array(z.enum(NODE_PROPERTY_TAGS))
             .describe(
               "Comma-separated tags describing the property. " +
-              "For nodes: 'string', 'number', 'json', 'embedded', 'unique', 'index', 'composite_index_1', 'composite_index_2', 'composite_index_3'. " +
-              "For relationships: same tags except 'unique' (not supported by Neo4j for relationship properties).",
+                "For nodes: 'string', 'number', 'json', 'embedded', 'unique', 'index', 'composite_index_1', 'composite_index_2', 'composite_index_3'. " +
+                "For relationships: same tags except 'unique' (not supported by Neo4j for relationship properties).",
             ),
         }),
       )

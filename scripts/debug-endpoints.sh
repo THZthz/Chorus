@@ -17,7 +17,7 @@ curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-T
 curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-Type: application/json" -d '{"action":"WRITE","query":"MERGE (e:Entity {name: \"Test_NPC\"}) SET e.type = \"CHARACTER\", e.brief = \"A debug test entity\" RETURN e"}'
 
 # searchWorld
-curl -s -X POST "http://localhost:3000/api/debug/tools/searchWorld" -H "Content-Type: application/json" -d '{"query":"weapon","labels":["Entity","Plot"],"limit":3}' | jq .
+curl -s -X POST "http://localhost:3000/api/debug/tools/searchWorld" -H "Content-Type: application/json" -d '{"query":"weapon","target":"node","domains":["Entity","Plot"],"limit":3}' | jq .
 
 # editNode — CREATE
 curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Note","action":"CREATE","properties":{"name":"debug_note","content":"A test note from the debug endpoint"}}'

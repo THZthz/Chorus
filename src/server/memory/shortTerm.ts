@@ -20,8 +20,8 @@ import { v4 as uuidv4 } from "uuid";
 import { int } from "neo4j-driver";
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { Embedder, getEmbedder } from "@/server/memory/embedder";
-import { GAME_ID } from "@/server/memory/gameState";
-import { nextId } from "@/server/memory/idGenerator";
+import { GAME_ID } from "@/server/gameState";
+import { nextId } from "@/server/idGenerator";
 import type { MemoryMessage } from "@/server/memory/types";
 
 export class ShortTermMemory {
@@ -43,7 +43,7 @@ export class ShortTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+      const { NodeManager: NM } = await import("@/server/nodeManager");
       const embedText = NM.getCachedInstance().getEmbeddingText("Message", { content });
       embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     }

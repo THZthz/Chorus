@@ -59,7 +59,11 @@ export function wrapSafe<T>(
  * @param hasSchema
  * @param props
  */
-export function extractInternalAndUnknownKeys(schemaProps: Set<string>, hasSchema: boolean, props: Record<string, unknown>): Record<string, string[]> {
+export function extractInternalAndUnknownKeys(
+  schemaProps: Set<string>,
+  hasSchema: boolean,
+  props: Record<string, unknown>,
+): Record<string, string[]> {
   const internalKeys: string[] = [];
   const unknownKeys: string[] = [];
   for (const key of Object.keys(props)) {
@@ -70,5 +74,5 @@ export function extractInternalAndUnknownKeys(schemaProps: Set<string>, hasSchem
       unknownKeys.push(key);
     }
   }
-  return {internalKeys, unknownKeys};
+  return { internalKeys, unknownKeys };
 }

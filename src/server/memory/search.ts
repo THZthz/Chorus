@@ -17,17 +17,28 @@
  */
 
 import { int } from "neo4j-driver";
-import type { ShortTermMemory } from "@/server/memory/shortTerm";
-import type { LongTermMemory } from "@/server/memory/longTerm";
-import type { SearchResults, MemoryMessage, MemoryEntity } from "@/server/memory/types";
 import { getEmbedder } from "@/server/memory/embedder";
-import { MemoryClient } from "@/server/memory/client";
-import { NodeManager } from "@/server/memory/nodeManager";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
+import { NodeManager } from "@/server/nodeManager";
+import { RelationshipManager } from "@/server/relationshipManager";
 import { getReranker, extractSearchTexts, applyRerank } from "@/server/memory/reranker";
+import { Neo4jClient } from "@/server/memory/neo4j";
 
 export class MemorySearch {
-  constructor() {}
+  private readonly client: Neo4jClient;
+
+  constructor(client: Neo4jClient) {
+    this.client = client;
+  }
+
+  getParams(options?: { limit?: number; threshold?: number; rerank?: boolean }) {
+    const { limit = 10, threshold, rerank } = options || {};
+
+    const useRerank = rerank !== false && getReranker() !== null;
+    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
+    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+
+    return { useRerank, effectiveThreshold, limit, fetchLimit };
+  }
 
   async searchByLabel(
     label: string,
@@ -38,18 +49,13 @@ export class MemorySearch {
       rerank?: boolean;
     },
   ): Promise<Array<Record<string, unknown> & { similarity: number; relevance?: number }>> {
-    const { limit = 10, threshold, rerank } = options || {};
-
-    const useRerank = rerank !== false && getReranker() !== null;
-    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
-    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+    const { useRerank, effectiveThreshold, limit, fetchLimit } = this.getParams(options);
 
     const embedder = getEmbedder();
     const queryEmbedding = await embedder.embed(query);
 
-    const client = MemoryClient.getCachedInstance().neo4j;
     const indexName = `${label.toLowerCase()}_embedding_idx`;
-    const rows = await client.executeRead(
+    const rows = await this.client.executeRead(
       `CALL db.index.vector.queryNodes('${indexName}', $limit, $embedding)
        YIELD node, score WHERE score >= $threshold
        RETURN node, score ORDER BY score DESC`,
@@ -90,18 +96,13 @@ export class MemorySearch {
       rerank?: boolean;
     },
   ): Promise<Array<Record<string, unknown> & { similarity: number; relevance?: number }>> {
-    const { limit = 10, threshold, rerank } = options || {};
-
-    const useRerank = rerank !== false && getReranker() !== null;
-    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
-    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+    const { useRerank, effectiveThreshold, limit, fetchLimit } = this.getParams(options);
 
     const embedder = getEmbedder();
     const queryEmbedding = await embedder.embed(query);
 
-    const client = MemoryClient.getCachedInstance().neo4j;
     const indexName = `rel_${type.toLowerCase()}_embedding_idx`;
-    const rows = await client.executeRead(
+    const rows = await this.client.executeRead(
       `CALL db.index.vector.queryRelationships('${indexName}', $limit, $embedding)
        YIELD relationship, score WHERE score >= $threshold
        RETURN relationship, score ORDER BY score DESC`,

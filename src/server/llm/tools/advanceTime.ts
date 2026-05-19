@@ -47,8 +47,7 @@ const inputSchema = z.object({
 export function createAdvanceTimeTool(events: EventEmitter) {
   return tool({
     title: TOOL_NAMES.ADVANCE_TIME,
-    description:
-      `
+    description: `
 Advance the in-game clock. Time only moves when YOU advance it — narrating that time passed without
 calling advanceTime means time stood still in the archive. Use segments (0-11, each = 2 hours) for
 short advances within a day, or days (0+) for multi-day travel. Total advancement =

@@ -18,8 +18,8 @@
 
 import { describeTime, getCurrentTimePoint } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
-import { NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager } from "@/server/relationshipManager";
+import { NodeManager } from "@/server/nodeManager";
 import { getObserver } from "@/server/llm/sceneObserver";
 import type { EntityRef } from "@/server/models/entity";
 import { formatEntityCompact, formatEntityFull } from "@/server/models/entity";

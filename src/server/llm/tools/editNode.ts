@@ -20,7 +20,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { MemoryClient } from "@/server/memory/client";
-import { NodeDef, NodeManager } from "@/server/memory/nodeManager";
+import { NodeDef, NodeManager } from "@/server/nodeManager";
 import { extractInternalAndUnknownKeys, wrapSafe } from "@/server/llm/tools/shared";
 import { getObserver } from "@/server/llm/sceneObserver";
 import { getEmbedder } from "@/server/memory/embedder";
@@ -120,7 +120,11 @@ Verify you're targeting the right node.
     // Functions are defined inline to use cached variables.
 
     function isPropsKeyExistAndNotInternal(props: Record<string, unknown>): string | null {
-      const {internalKeys, unknownKeys} = extractInternalAndUnknownKeys(schemaProps, hasSchema, props);
+      const { internalKeys, unknownKeys } = extractInternalAndUnknownKeys(
+        schemaProps,
+        hasSchema,
+        props,
+      );
       const errorTextParts: string[] = [];
       if (internalKeys.length > 0)
         errorTextParts.push(

@@ -3,7 +3,7 @@ import { join, extname } from 'path';
 
 const TS_HEADER = `/**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026 Amias 1289941679@qq.com
+ * Copyright (C) 2026 Amias
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -23,7 +23,7 @@ const TS_HEADER = `/**
 
 const CSS_HEADER = `/*!
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026 Amias 1289941679@qq.com
+ * Copyright (C) 2026 Amias
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by

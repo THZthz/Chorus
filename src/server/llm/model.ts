@@ -1,6 +1,6 @@
 /**
  * Chorus — cinematic dialogue engine
- * Copyright (C) 2026 Amias 1289941679@qq.com
+ * Copyright (C) 2026 Amias
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
@@ -26,12 +26,16 @@ let googleModelInstance: LanguageModel | null = null;
 let openrouterModelInstance: LanguageModel | null = null;
 let deepseekModelInstance: LanguageModel | null = null;
 
+const googleModel = process.env.GOOGLE_MODEL || "gemini-3.1-pro-preview";
+const openrouterModel = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4.6";
+const deepseekModel = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+
 function getGoogleModel(): LanguageModel | null {
   if (!googleModelInstance && process.env.GEMINI_API_KEY) {
     try {
       const raw = createGoogleGenerativeAI({
         apiKey: process.env.GEMINI_API_KEY,
-      })("gemini-2.0-flash-lite-preview-02-05");
+      })(googleModel);
       googleModelInstance = wrapLanguageModel({
         model: raw,
         middleware: devToolsMiddleware(),
@@ -46,11 +50,10 @@ function getGoogleModel(): LanguageModel | null {
 function getOpenRouterModel(): LanguageModel | null {
   if (!openrouterModelInstance && process.env.OPENROUTER_API_KEY) {
     try {
-      const modelName = process.env.OPENROUTER_MODEL || "openrouter/auto";
       const raw = createOpenAI({
         apiKey: process.env.OPENROUTER_API_KEY,
         baseURL: "https://openrouter.ai/api/v1",
-      })(modelName);
+      })(openrouterModel);
       openrouterModelInstance = wrapLanguageModel({
         model: raw,
         middleware: devToolsMiddleware(),
@@ -67,7 +70,7 @@ function getDeepSeekModel(): LanguageModel | null {
     try {
       const raw = createDeepSeek({
         apiKey: process.env.DEEPSEEK_API_KEY,
-      })("deepseek-v4-flash");
+      })(deepseekModel);
       deepseekModelInstance = wrapLanguageModel({
         model: raw,
         middleware: devToolsMiddleware(),
@@ -80,13 +83,13 @@ function getDeepSeekModel(): LanguageModel | null {
 }
 
 export function getModel(): { model: LanguageModel; name: string } {
-  const google = getGoogleModel();
-  if (google) return { model: google, name: "gemini-2.0-flash" };
-  const openrouter = getOpenRouterModel();
-  if (openrouter) return { model: openrouter, name: "openrouter/auto" };
   const deepseek = getDeepSeekModel();
-  if (deepseek) return { model: deepseek, name: "deepseek-v4-flash" };
+  if (deepseek) return { model: deepseek, name: deepseekModel };
+  const google = getGoogleModel();
+  if (google) return { model: google, name: googleModel };
+  const openrouter = getOpenRouterModel();
+  if (openrouter) return { model: openrouter, name: openrouterModel };
   throw new Error(
-    "Missing API Key: Please set GEMINI_API_KEY, OPENROUTER_API_KEY, or DEEPSEEK_API_KEY in .env",
+    "Missing API Key: Please set GEMINI_API_KEY, OPENROUTER_API_KEY, or DEEPSEEK_API_KEY in file `.env`.",
   );
 }

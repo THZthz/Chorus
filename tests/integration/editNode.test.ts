@@ -60,11 +60,12 @@ describe("editNode", () => {
     // Verify
     const verify = await exec(queryWorld, {
       action: "READ",
-      query: `MATCH (n:Note {name: '${TEST_NOTE}'}) RETURN n.content`,
+      query: `MATCH (n:Note {name: '${TEST_NOTE}'}) RETURN n.name, n.content`,
     });
     const data = parseToolOutput(verify);
     const row = data.rows[0] as Record<string, unknown>;
     expect(row["n.content"]).toBe("Updated content");
+    expect(row["n.name"]).toBe(TEST_NOTE);
   });
 
   it("DELETEs a Note", async () => {

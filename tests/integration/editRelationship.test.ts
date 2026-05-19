@@ -148,7 +148,7 @@ describe("editRelationship", () => {
     });
 
     it("UPDATEs properties on a relationship", async () => {
-      // Create relationship with an initial property
+      // Create relationship with two properties to verify partial update preservation
       await exec(editRelationship, {
         action: "CREATE",
         relationshipType: "ABOUT_ENTITY",
@@ -156,7 +156,7 @@ describe("editRelationship", () => {
         sourceMatch: { name: NOTE_A },
         targetLabel: "Entity",
         targetMatch: { name: "Player" },
-        properties: { confidence: 0.8 },
+        properties: { confidence: 0.8, reason: "initial reason" },
       });
 
       const result = await exec(editRelationship, {
@@ -170,13 +170,15 @@ describe("editRelationship", () => {
       });
       expect(result).toContain("updated properties");
 
-      // Verify via queryWorld
+      // Verify: confidence updated, reason preserved
       const verify = await exec(queryWorld, {
         action: "READ",
-        query: `MATCH (n:Note {name: '${NOTE_A}'})-[r:ABOUT_ENTITY]->(e:Entity {name: 'Player'}) RETURN r.confidence`,
+        query: `MATCH (n:Note {name: '${NOTE_A}'})-[r:ABOUT_ENTITY]->(e:Entity {name: 'Player'}) RETURN r.confidence, r.reason`,
       });
       const data = parseToolOutput(verify);
-      expect(data.rows[0]).toBeDefined();
+      const row = data.rows[0] as Record<string, unknown>;
+      expect(row["r.confidence"]).toBe(0.9);
+      expect(row["r.reason"]).toBe("initial reason");
     });
 
     it("reports error when UPDATE relationship not found", async () => {
@@ -336,7 +338,7 @@ describe("editRelationship", () => {
     });
 
     it("shallow-merges json-tagged property on relationship", async () => {
-      // Register a GM_DEFINED type with a json property
+      // Register a GM_DEFINED type with a JSON property
       await exec(manageSchema, {
         target: "relationship",
         action: "register",

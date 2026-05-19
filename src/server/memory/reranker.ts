@@ -75,20 +75,14 @@ export function getReranker(): Reranker | null {
 
 import { NodeManager } from "@/server/memory/nodeManager";
 
-export function extractSearchTexts<T>(
-  items: T[],
-  kind: string,
-): Array<T & { text: string }> {
+export function extractSearchTexts<T>(items: T[], kind: string): Array<T & { text: string }> {
   const nodeManager = NodeManager.getCachedInstance();
   return items.map((item) => {
     const obj = item as Record<string, unknown>;
     const text = nodeManager.getEmbeddingText(kind, obj);
     if (!text) {
       const fallback =
-        (obj.content as string) ||
-        (obj.description as string) ||
-        (obj.name as string) ||
-        "";
+        (obj.content as string) || (obj.description as string) || (obj.name as string) || "";
       return { ...item, text: fallback };
     }
     return { ...item, text };

@@ -119,38 +119,6 @@ export class ShortTermMemory {
     });
   }
 
-  async searchMessages(
-    query: string,
-    options?: {
-      limit?: number;
-      threshold?: number;
-    },
-  ): Promise<Array<MemoryMessage & { similarity: number }>> {
-    const { limit = 10, threshold = 0.7 } = options || {};
-    const queryEmbedding = await this.embedder.embed(query);
-
-    const rows = await this.client.executeRead(
-      `CALL db.index.vector.queryNodes('message_embedding_idx', $limit, $embedding)
-       YIELD node AS m, score
-       WHERE score >= $threshold
-       OPTIONAL MATCH (c:Conversation)-[:HAS_MESSAGE]->(m)
-       WHERE c.session_id = $gameId
-       RETURN m, score
-       ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit: int(limit), threshold, gameId: GAME_ID },
-    );
-
-    return rows.map((r) => {
-      const m = r.m as Record<string, unknown>;
-      const meta = m.metadata ? (JSON.parse(m.metadata as string) as Record<string, unknown>) : {};
-      return {
-        content: m.content as string,
-        metadata: meta,
-        similarity: r.score as number,
-      };
-    });
-  }
-
   // ── Private helpers ──
 
   private async ensureConversation(): Promise<string> {

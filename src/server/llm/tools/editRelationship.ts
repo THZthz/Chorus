@@ -221,7 +221,9 @@ relationships change.
             if (p && typeof p === "object" && !Array.isArray(p)) {
               parsed = p;
             }
-          } catch { /* unparseable — overwrite */ }
+          } catch {
+            /* unparseable — overwrite */
+          }
         } else if (existingRaw && typeof existingRaw === "object" && !Array.isArray(existingRaw)) {
           parsed = existingRaw as Record<string, unknown>;
         }

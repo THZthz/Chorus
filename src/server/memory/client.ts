@@ -45,7 +45,7 @@ export class MemoryClient {
     this.neo4j = neo4j;
     this.shortTerm = new ShortTermMemory(neo4j);
     this.longTerm = new LongTermMemory(neo4j);
-    this.search = new MemorySearch(this.shortTerm, this.longTerm);
+    this.search = new MemorySearch();
     this.notes = new Notes(neo4j);
     this.plots = new Plots(neo4j);
   }

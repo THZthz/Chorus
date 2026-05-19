@@ -107,7 +107,13 @@ export class CypherValidator {
       // Auto-register unknown types as GM_DEFINED with unconstrained endpoints
       // (empty string sentinel = "any label allowed")
       if (manager.getByName(relType).length === 0) {
-        manager.register(relType, "Created by GM via ${TOOL_NAMES.QUERY_WORLD}", "GM_DEFINED", "", "");
+        manager.register(
+          relType,
+          "Created by GM via ${TOOL_NAMES.QUERY_WORLD}",
+          "GM_DEFINED",
+          "",
+          "",
+        );
       }
       if (!manager.isAllowedForWrite(relType, "", "")) {
         const allowed = [

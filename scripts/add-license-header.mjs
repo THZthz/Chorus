@@ -54,8 +54,7 @@ function walk(dir) {
   return files;
 }
 
-const srcDir = 'src';
-const files = walk(srcDir).filter(f => {
+const files = [...walk("src"), ...walk("tests")].filter(f => {
   const ext = extname(f);
   return ['.ts', '.tsx', '.css', '.d.ts'].includes(ext) || f.endsWith('.d.ts');
 });

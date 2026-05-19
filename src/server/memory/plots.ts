@@ -49,7 +49,11 @@ export class Plots {
     const triggerCondition = options?.triggerCondition ?? null;
     const flags = options?.flags ?? [];
     const { NodeManager: NM } = await import("@/server/memory/nodeManager");
-    const embedText = NM.getCachedInstance().getEmbeddingText("Plot", { name, description, brief: brief ?? "" });
+    const embedText = NM.getCachedInstance().getEmbeddingText("Plot", {
+      name,
+      description,
+      brief: brief ?? "",
+    });
     const embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     const now = new Date().toISOString();
 
@@ -227,45 +231,6 @@ export class Plots {
       { name: plotName },
     );
     return rows.map((r) => this.parsePlot(r.child as Record<string, unknown>));
-  }
-
-  // ── Search ──
-
-  async searchPlots(
-    query: string,
-    options?: { limit?: number; threshold?: number; rerank?: boolean },
-  ): Promise<Array<MemoryPlot & { similarity: number; relevance?: number }>> {
-    const { limit = 10, threshold, rerank } = options || {};
-
-    const useRerank = rerank !== false && getReranker() !== null;
-    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
-    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
-
-    const queryEmbedding = await this.embedder.embed(query);
-
-    const rows = await this.client.executeRead(
-      `CALL db.index.vector.queryNodes('plot_embedding_idx', $limit, $embedding)
-       YIELD node AS p, score WHERE score >= $threshold
-       RETURN p, score ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit: int(fetchLimit), threshold: effectiveThreshold },
-    );
-
-    const parsed = rows.map((r) => ({
-      ...this.parsePlot(r.p as Record<string, unknown>),
-      similarity: r.score as number,
-    }));
-
-    if (useRerank && parsed.length > 0) {
-      const items = extractSearchTexts(parsed, "Plot");
-      const reranked = await applyRerank(query, items, limit);
-      return reranked.map((r) => ({
-        ...r,
-        similarity: r.similarity as number,
-        relevance: r.relevance,
-      }));
-    }
-
-    return parsed;
   }
 
   // ── Time Relationships ──

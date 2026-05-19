@@ -1,3 +1,21 @@
+/**
+ * Chorus — cinematic dialogue engine
+ * Copyright (C) 2026 Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { editNode } from "@/server/llm/tools/editNode";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { exec, parseToolOutput, resetDb } from "../helpers";
@@ -106,7 +124,9 @@ describe("editNode", () => {
       action: "CREATE",
       properties: {},
     });
-    expect(result).toContain("ERROR: Parameter `properties` is required for CREATE and must not be empty.");
+    expect(result).toContain(
+      "ERROR: Parameter `properties` is required for CREATE and must not be empty.",
+    );
   });
 
   it("rejects system property _id", async () => {
@@ -115,7 +135,9 @@ describe("editNode", () => {
       action: "CREATE",
       properties: { name: "bad_note", content: "x", _id: "hack" },
     });
-    expect(result).toContain(" is internal (prefixed with '_') and cannot be set (managed internally by the engine).");
+    expect(result).toContain(
+      " is internal (prefixed with '_') and cannot be set (managed internally by the engine).",
+    );
   });
 
   it("rejects UPDATE on non-existent node", async () => {

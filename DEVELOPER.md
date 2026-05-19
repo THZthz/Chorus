@@ -259,9 +259,6 @@ All 8 tools are defined as AI SDK `tool()` definitions and registered in `genera
 | `GET`  | `/api/game/current` | Current dialogue options from `:Conversation` node                           |
 | `GET`  | `/api/debug/dump`   | Full world state (entities, plots, notes, dispositions, time, relationships) |
 | `POST` | `/api/reset`        | Clear Neo4j and re-seed                                                      |
-| `GET`  | `/api/debug/search/world` | Vector search across messages + entities (params: `query`, `types`, `limit`, `threshold`) |
-| `GET`  | `/api/debug/search/plots` | Vector search across plots (params: `query`, `limit`, `threshold`)           |
-| `GET`  | `/api/debug/search/notes` | Vector search across notes (params: `query`, `limit`, `threshold`)           |
 
 ---
 
@@ -417,7 +414,6 @@ The debug search endpoints accept `?rerank=true` to force reranking for testing.
 |--------------------------|---------------------------------------------------------------------------------------------------|
 | `addMessage()`           | Creates `:Message`, links via `HAS_MESSAGE` + `NEXT_MESSAGE` + `FIRST_MESSAGE`, optionally embeds |
 | `getConversation(limit)` | Returns messages ordered oldest-first (reverse of timestamp sort)                                 |
-| `searchMessages(query)`  | Vector similarity search on `message_embedding_idx`                                               |
 
 Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), create `(prev)-[:NEXT_MESSAGE]→(new)`. First message also gets `(conv)-[:FIRST_MESSAGE]→(msg)`.
 
@@ -428,7 +424,6 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 **Entity operations (COLE+O — CHARACTER replaces PERSON):**
 - `addEntity(name, type, options?)` — MERGE on name, supports `"TYPE:SUBTYPE"` syntax. Applies dynamic Neo4j labels via PascalCase (`:Entity:Character`). Stores aliases inside metadata JSON. Returns `MemoryEntity` with `isNew` flag.
 - `getEntity(name, type?)` — lookup by name with optional type filter
-- `searchEntities(query, options?)` — vector search on `entity_embedding_idx` with configurable `entityTypes` filter, `limit`, and `threshold`
 
 **Relationships:** `addRelationship(sourceName, targetName, type, options?)` — MERGE dynamic relationship `(a)-[r:${safeType}]→(b)`. Type name is sanitized to `[A-Za-z0-9_]`. Returns `{ created: boolean }`.
 
@@ -451,7 +446,6 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 | `getNote(noteName)`             | Read a single note by name, returns `null` if not found     |
 | `updateNote(id, opts)`          | MATCH by name, SET content + re-embed if changed            |
 | `deleteNote(noteName)`          | MATCH by name, DETACH DELETE                                |
-| `searchNotes(query, opts)`      | Vector similarity search on `note_embedding_idx`            |
 | `getAllNotes()`                 | Return all `:Note` nodes ordered by updatedAt               |
 | `linkToEntity(id, name)`        | Create `[:ABOUT_ENTITY]` relationship from Note to Entity   |
 | `linkToMessage(id, msgId)`      | Create `[:ABOUT_MESSAGE]` relationship from Note to Message |
@@ -469,7 +463,6 @@ Message linking algorithm: find the last message (no outgoing `NEXT_MESSAGE`), c
 | `getPlot(name)`               | Read a single plot by name, returns `null` if not found   |
 | `updatePlot(name, opts)`      | Update description, status, or trigger condition          |
 | `deletePlot(name)`            | MATCH by name, DETACH DELETE                              |
-| `searchPlots(query, opts)`    | Vector similarity search on `plot_embedding_idx`          |
 | `getAllPlots()`               | Return all `:Plot` nodes ordered by updatedAt             |
 | `setFlag(plot, flagId, desc)` | Add or update a flag (by flagId) in the plot's flags JSON |
 | `removeFlag(plot, flagId)`    | Remove a flag by flagId                                   |
@@ -501,12 +494,6 @@ Additional validation rules: `validateWrite` requires DELETE/DETACH DELETE to be
 ### 9.11 MemorySearch
 
 `search.ts`. Parallel hybrid search facade across memory layers.
-
-```
-search(query, { memoryTypes: ["messages", "entities"], limit: 10, threshold: 0.7 })
-  ├── shortTerm.searchMessages(query)     → vector similarity (if "messages" in types)
-  └── longTerm.searchEntities(query)       → vector similarity (if "entities" in types)
-```
 
 All selected searches run in parallel via `Promise.all`. Returns `SearchResults` with `messages` and `entities` arrays, each item bearing a `similarity` score.
 

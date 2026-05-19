@@ -267,7 +267,12 @@ export class RelationshipManager {
     return this.get(name, sourceLabel, targetLabel) !== undefined;
   }
 
-  updateDescription(name: string, sourceLabel: string, targetLabel: string, description: string): boolean {
+  updateDescription(
+    name: string,
+    sourceLabel: string,
+    targetLabel: string,
+    description: string,
+  ): boolean {
     const def = this.registry.get(makeKey(name, sourceLabel, targetLabel));
     if (!def || def.type !== "GM_DEFINED") return false;
     def.description = description;

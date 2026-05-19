@@ -25,7 +25,8 @@ import { TOOL_NAMES } from "@/shared/constants";
 import { NodeManager } from "@/server/memory/nodeManager";
 
 function getSearchableLabels(): string[] {
-  const all = NodeManager.getCachedInstance().getAll()
+  const all = NodeManager.getCachedInstance()
+    .getAll()
     .filter((def) => def.properties.some((p) => p.name === "_embedding"));
 
   // Filter out subtype labels: labels whose property definitions (names + tags)

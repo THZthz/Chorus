@@ -1,3 +1,21 @@
+/**
+ * Chorus — cinematic dialogue engine
+ * Copyright (C) 2026 Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { editNode } from "@/server/llm/tools/editNode";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
@@ -386,9 +404,7 @@ describe("editRelationship", () => {
         action: "register",
         name: "HAS_METADATA",
         description: "Relationship with JSON metadata",
-        properties: [
-          { name: "meta", description: "JSON metadata blob", tags: ["json"] },
-        ],
+        properties: [{ name: "meta", description: "JSON metadata blob", tags: ["json"] }],
         sourceLabel: "Note",
         targetLabel: "Entity",
       });

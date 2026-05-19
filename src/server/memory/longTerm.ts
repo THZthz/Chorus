@@ -102,7 +102,9 @@ export class LongTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      const nodeManager = (await import("@/server/memory/nodeManager")).NodeManager.getCachedInstance();
+      const nodeManager = (
+        await import("@/server/memory/nodeManager")
+      ).NodeManager.getCachedInstance();
       const embedText = nodeManager.getEmbeddingText("Entity", {
         name,
         type: finalType,
@@ -174,37 +176,6 @@ export class LongTermMemory {
     const rows = await this.client.executeRead(query, params);
     if (rows.length === 0) return null;
     return this.parseEntity(rows[0].e as Record<string, unknown>);
-  }
-
-  async searchEntities(
-    query: string,
-    options?: {
-      entityTypes?: string[];
-      limit?: number;
-      threshold?: number;
-    },
-  ): Promise<Array<MemoryEntity & { similarity: number }>> {
-    const { entityTypes, limit = 10, threshold = 0.7 } = options || {};
-
-    const queryEmbedding = await this.embedder.embed(query);
-
-    const rows = await this.client.executeRead(
-      `CALL db.index.vector.queryNodes('entity_embedding_idx', $limit, $embedding)
-       YIELD node AS e, score WHERE score >= $threshold
-       RETURN e, score ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit: int(limit * 2), threshold },
-    );
-
-    const filterTypes = entityTypes ? new Set(entityTypes.map((t) => t.toUpperCase())) : null;
-
-    const results: Array<MemoryEntity & { similarity: number }> = [];
-    for (const row of rows) {
-      const entity = this.parseEntity(row.e as Record<string, unknown>);
-      if (filterTypes && !filterTypes.has(entity.type)) continue;
-      if (results.length >= limit) break;
-      results.push({ ...entity, similarity: row.score as number });
-    }
-    return results;
   }
 
   // ═══════════════════════════════════════════════════════════════

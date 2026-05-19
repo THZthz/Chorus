@@ -1,3 +1,21 @@
+/**
+ * Chorus — cinematic dialogue engine
+ * Copyright (C) 2026 Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import {
   validateDialogueArgs,
   createGenerateDialogueStepTool,
@@ -59,8 +77,12 @@ describe("generateDialogueStep validation", () => {
     const result = validateDialogueArgs({
       messages: [{ speaker: "NARRATOR", type: "SYSTEM", text: "Scene description." }],
       options: [
-        { text: "1" }, { text: "2" }, { text: "3" },
-        { text: "4" }, { text: "5" }, { text: "6" },
+        { text: "1" },
+        { text: "2" },
+        { text: "3" },
+        { text: "4" },
+        { text: "5" },
+        { text: "6" },
       ],
     });
     expect(result.errors.some((e) => e.includes("Too many options"))).toBe(true);
@@ -72,15 +94,19 @@ describe("generateDialogueStep validation", () => {
       options: [
         {
           text: "Try to persuade",
-          check: { skill: "RHETORIC", difficulty: 10, difficultyText: "Hard", diceCount: 2, conditions: [] },
+          check: {
+            skill: "RHETORIC",
+            difficulty: 10,
+            difficultyText: "Hard",
+            diceCount: 2,
+            conditions: [],
+          },
           hintBefore: "[Rhetoric]",
         },
         { text: "Walk away" },
       ],
     });
-    expect(
-      result.errors.some((e) => e.includes("check") && e.includes("hintBefore")),
-    ).toBe(true);
+    expect(result.errors.some((e) => e.includes("check") && e.includes("hintBefore"))).toBe(true);
   });
 
   it("validates message text length", () => {
@@ -119,9 +145,7 @@ describe("generateDialogueStep validation", () => {
             difficulty: 12,
             difficultyText: "Challenging",
             diceCount: 2,
-            conditions: [
-              { expression: "success", label: "You sense the ward", color: "green" },
-            ],
+            conditions: [{ expression: "success", label: "You sense the ward", color: "green" }],
           },
         },
         { text: "Find another way around" },
@@ -132,9 +156,7 @@ describe("generateDialogueStep validation", () => {
 
   it("accumulates multiple validation errors", () => {
     const result = validateDialogueArgs({
-      messages: [
-        { speaker: "INNER_VOICE", type: "INNER_VOICE", text: "Bad speaker name" },
-      ],
+      messages: [{ speaker: "INNER_VOICE", type: "INNER_VOICE", text: "Bad speaker name" }],
       options: [{ text: "Only option" }],
     });
     expect(result.errors.length).toBeGreaterThanOrEqual(2);

@@ -58,7 +58,10 @@ export class Notes {
     let embedding = existing._embedding;
     if (options.content) {
       const { NodeManager: NM } = await import("@/server/memory/nodeManager");
-      const embedText = NM.getCachedInstance().getEmbeddingText("Note", { name: noteName, content: options.content });
+      const embedText = NM.getCachedInstance().getEmbeddingText("Note", {
+        name: noteName,
+        content: options.content,
+      });
       embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     }
     const now = new Date().toISOString();
@@ -87,43 +90,6 @@ export class Notes {
     });
     if (rows.length === 0) return null;
     return this.parseNote(rows[0].n as Record<string, unknown>);
-  }
-
-  async searchNotes(
-    query: string,
-    options?: { limit?: number; threshold?: number; rerank?: boolean },
-  ): Promise<Array<MemoryNote & { similarity: number; relevance?: number }>> {
-    const { limit = 10, threshold, rerank } = options || {};
-
-    const useRerank = rerank !== false && getReranker() !== null;
-    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
-    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
-
-    const queryEmbedding = await this.embedder.embed(query);
-
-    const rows = await this.client.executeRead(
-      `CALL db.index.vector.queryNodes('note_embedding_idx', $limit, $embedding)
-       YIELD node AS n, score WHERE score >= $threshold
-       RETURN n, score ORDER BY score DESC`,
-      { embedding: queryEmbedding, limit: int(fetchLimit), threshold: effectiveThreshold },
-    );
-
-    const parsed = rows.map((r) => ({
-      ...this.parseNote(r.n as Record<string, unknown>),
-      similarity: r.score as number,
-    }));
-
-    if (useRerank && parsed.length > 0) {
-      const items = extractSearchTexts(parsed, "Note");
-      const reranked = await applyRerank(query, items, limit);
-      return reranked.map((r) => ({
-        ...r,
-        similarity: r.similarity as number,
-        relevance: r.relevance,
-      }));
-    }
-
-    return parsed;
   }
 
   async linkToEntity(noteName: string, entityName: string): Promise<void> {

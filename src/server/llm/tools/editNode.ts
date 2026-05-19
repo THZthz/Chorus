@@ -313,7 +313,9 @@ Verify you're targeting the right node.
     }
 
     if (wantsEmbedding) {
-      const embeddedNames = new Set(nodeDef.properties.filter((p) => p.tags.includes("embedded")).map((p) => p.name));
+      const embeddedNames = new Set(
+        nodeDef.properties.filter((p) => p.tags.includes("embedded")).map((p) => p.name),
+      );
       const textChanged = Object.keys(args.properties).some((k) => embeddedNames.has(k));
       if (textChanged) {
         const merged: Record<string, unknown> = { ...existingNode, ...args.properties };

@@ -86,7 +86,11 @@ const TIMESTAMP_PROPS: NodePropertyDef[] = [
 ];
 
 const ENTITY_PROPS: NodePropertyDef[] = [
-  { name: "name", description: "Unique name of the entity.", tags: ["string", "embedded", "index"] },
+  {
+    name: "name",
+    description: "Unique name of the entity.",
+    tags: ["string", "embedded", "index"],
+  },
   {
     name: "type",
     description: "Entity type: CHARACTER, OBJECT, LOCATION, ORGANIZATION, or EVENT.",
@@ -102,7 +106,11 @@ const ENTITY_PROPS: NodePropertyDef[] = [
     description: "Full narrative description of the entity.",
     tags: ["string", "embedded"],
   },
-  { name: "brief", description: "One-line summary for compact display.", tags: ["string", "embedded"] },
+  {
+    name: "brief",
+    description: "One-line summary for compact display.",
+    tags: ["string", "embedded"],
+  },
   {
     name: "metadata",
     description:
@@ -157,7 +165,11 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
     name: "IdCounter",
     description: "Atomic counter for generating short message IDs. Internal bookkeeping.",
     properties: [
-      { name: "session_id", description: "Fixed session key for the counter.", tags: ["string", "unique"] },
+      {
+        name: "session_id",
+        description: "Fixed session key for the counter.",
+        tags: ["string", "unique"],
+      },
       { name: "counter", description: "Current counter value (Neo4j Integer).", tags: ["number"] },
     ],
   },
@@ -223,7 +235,11 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A narrative plot with status, beats, branches, and flags. Drives story progression.",
     properties: [
-      { name: "name", description: "Unique plot name (used as lookup key).", tags: ["string", "unique", "embedded"] },
+      {
+        name: "name",
+        description: "Unique plot name (used as lookup key).",
+        tags: ["string", "unique", "embedded"],
+      },
       {
         name: "description",
         description: "Full plot description (embedded for vector search).",
@@ -289,7 +305,11 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A point in game time with day, segment, and label. Linked sequentially via NEXT_TIMEPOINT.",
     properties: [
-      { name: "day", description: "In-game day number (starts at 1).", tags: ["number", "composite_index_1"] },
+      {
+        name: "day",
+        description: "In-game day number (starts at 1).",
+        tags: ["number", "composite_index_1"],
+      },
       {
         name: "segment",
         description: "Segment within the day (0–11, each = 2 hours).",
@@ -472,7 +492,7 @@ export class NodeManager {
 
       // Create unique constraint for properties with tag "unique".
       const uniquePropNames = new Set(
-        def.properties.filter(prop => prop.tags.includes("unique")).map(prop => prop.name),
+        def.properties.filter((prop) => prop.tags.includes("unique")).map((prop) => prop.name),
       );
       for (const propName of uniquePropNames) {
         const constraintName = def.name.toLowerCase() + "_" + propName;
@@ -486,7 +506,9 @@ export class NodeManager {
           // create the constraint. Look up and drop the index, then retry.
           if (msg.includes("IndexAlreadyExists") || msg.includes("already exists an index")) {
             try {
-              const rows = await client.executeRead(`SHOW INDEXES YIELD name, labelsOrTypes, properties RETURN name, labelsOrTypes, properties`);
+              const rows = await client.executeRead(
+                `SHOW INDEXES YIELD name, labelsOrTypes, properties RETURN name, labelsOrTypes, properties`,
+              );
               for (const row of rows) {
                 const labels: string[] = row.labelsOrTypes as string[];
                 const props: string[] = row.properties as string[];
@@ -497,13 +519,19 @@ export class NodeManager {
               await client.executeWrite(
                 `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) REQUIRE n.\`${propName}\` IS UNIQUE`,
               );
-              console.log(`[syncToNeo4j] Dropped existing index on (:${def.name} {${propName}}), created unique constraint ${constraintName}`);
+              console.log(
+                `[syncToNeo4j] Dropped existing index on (:${def.name} {${propName}}), created unique constraint ${constraintName}`,
+              );
             } catch (retryErr) {
               const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-              console.error(`[syncToNeo4j] Unique constraint on ${constraintName} not created after dropping index: ${retryMsg}`);
+              console.error(
+                `[syncToNeo4j] Unique constraint on ${constraintName} not created after dropping index: ${retryMsg}`,
+              );
             }
           } else {
-            console.error(`[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`);
+            console.error(
+              `[syncToNeo4j] Unique constraint on ${constraintName} not created: ${msg}`,
+            );
           }
         }
       }
@@ -512,12 +540,14 @@ export class NodeManager {
       // A unique constraint already provides an implicit index — creating a second index
       // on the same property would fail with IndexAlreadyExists.
       const propsWithIndexTag = def.properties
-        .filter(prop => prop.tags.includes("index") && !uniquePropNames.has(prop.name))
-        .map(prop => prop.name);
+        .filter((prop) => prop.tags.includes("index") && !uniquePropNames.has(prop.name))
+        .map((prop) => prop.name);
       for (const propName of propsWithIndexTag) {
         const constraintName = def.name.toLowerCase() + "_" + propName + "_idx";
         try {
-          await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) ON (n.\`${propName}\`)`);
+          await client.executeWrite(
+            `CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) ON (n.\`${propName}\`)`,
+          );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[syncToNeo4j] Regular index on ${constraintName} not created: ${msg}`);
@@ -527,12 +557,14 @@ export class NodeManager {
       // Create composite index for all properties groups.
       for (const index of ["composite_index_1", "composite_index_2", "composite_index_3"]) {
         const props = def.properties
-          .filter(prop => prop.tags.includes(index as NodePropertyTag))
-          .map(prop => prop.name);
+          .filter((prop) => prop.tags.includes(index as NodePropertyTag))
+          .map((prop) => prop.name);
         if (props.length < 2) continue;
         const constraintName = `${def.name.toLowerCase()}_${props.join("_")}_idx${index.at(-1)}`;
         try {
-          await client.executeWrite(`CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:${def.name}) ON (${props.map(name => "n." + name).join(", ")})`);
+          await client.executeWrite(
+            `CREATE INDEX ${constraintName} IF NOT EXISTS FOR (n:${def.name}) ON (${props.map((name) => "n." + name).join(", ")})`,
+          );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[syncToNeo4j] Composite index on ${constraintName} not created: ${msg}`);
@@ -540,7 +572,7 @@ export class NodeManager {
       }
 
       // Create vector indexes (require Neo4j 5.11+) for node type that has "_embedding" properties.
-      if (def.properties.some(prop => prop.name === "_embedding")) {
+      if (def.properties.some((prop) => prop.name === "_embedding")) {
         const vectorIndexName = def.name + "_embedding_idx";
         const dimensions = process.env.EMBEDDING_DIMENSIONS || 1024;
         try {
@@ -549,7 +581,9 @@ export class NodeManager {
             OPTIONS { indexConfig: { \`vector.dimensions\`: ${dimensions}, \`vector.similarity_function\`: 'COSINE' } }`,
           );
         } catch {
-          console.error(`[syncToNeo4j] Vector index ${vectorIndexName} not created (Neo4j 5.11+ required).`);
+          console.error(
+            `[syncToNeo4j] Vector index ${vectorIndexName} not created (Neo4j 5.11+ required).`,
+          );
         }
       }
     }

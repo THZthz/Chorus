@@ -1,3 +1,21 @@
+/**
+ * Chorus — cinematic dialogue engine
+ * Copyright (C) 2026 Amias
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/seed-stories/seed";
 import { clearNeo4jDatabase } from "@/server/memory/reset";
@@ -24,7 +42,7 @@ export function parseToolOutput(output: string): Record<string, unknown> {
 export async function isEmbedderAvailable(): Promise<boolean> {
   try {
     const client = MemoryClient.getCachedInstance();
-    await client.search.search("test", { memoryTypes: ["entities"], limit: 1 });
+    await client.search.searchByLabel("Entity", "test", { limit: 1 });
     return true;
   } catch {
     return false;

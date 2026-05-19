@@ -19,7 +19,10 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
-import { RelationshipManager, RELATIONSHIP_PROPERTY_TAGS } from "@/server/memory/relationshipManager";
+import {
+  RelationshipManager,
+  RELATIONSHIP_PROPERTY_TAGS,
+} from "@/server/memory/relationshipManager";
 import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
 import { NODE_PROPERTY_TAGS, NodeManager } from "@/server/memory/nodeManager";
 import { wrapSafe } from "@/server/llm/tools/shared";

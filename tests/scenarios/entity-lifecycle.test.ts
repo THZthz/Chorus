@@ -1,10 +1,9 @@
 import { editNode } from "@/server/llm/tools/editNode";
-import { exec } from "../helpers";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { getContext } from "@/server/llm/tools/getContext";
-import { parseToolOutput, resetDb } from "../helpers";
+import { exec, parseToolOutput, resetDb } from "../helpers";
 
 describe("Entity Lifecycle Scenario", () => {
   beforeAll(async () => {
@@ -22,9 +21,9 @@ describe("Entity Lifecycle Scenario", () => {
       name: CLUE_TYPE,
       description: "An investigation clue",
       properties: [
-        { name: "name", description: "The clue's name", type: "string" },
-        { name: "found_by", description: "Who found it", type: "string" },
-        { name: "location_found", description: "Where it was found", type: "string" },
+        { name: "name", description: "The clue's name", tags: ["string"] },
+        { name: "found_by", description: "Who found it", tags: ["string"] },
+        { name: "location_found", description: "Where it was found", tags: ["string"] },
       ],
     });
     expect(regResult).toContain("Registered node type");
@@ -69,7 +68,17 @@ describe("Entity Lifecycle Scenario", () => {
     expect(row["c.found_by"]).toBe("Elias Crowne");
     expect(row["c.location_found"]).toBe("Engine Car");
 
-    // 6. Create a relationship: locate clue at Engine Car
+    // 6. Register a relationship type for TestClue→Entity
+    await exec(manageSchema, {
+      target: "relationship",
+      action: "register",
+      name: "LOCATED_AT",
+      description: "A test clue is located at an entity",
+      sourceLabel: CLUE_TYPE,
+      targetLabel: "Entity",
+    });
+
+    // 7. Create a relationship: locate clue at Engine Car
     const relResult = await exec(editRelationship, {
       action: "CREATE",
       relationshipType: "LOCATED_AT",
@@ -80,7 +89,7 @@ describe("Entity Lifecycle Scenario", () => {
     });
     expect(relResult).toContain("created successfully");
 
-    // 7. Verify relationship exists
+    // 8. Verify relationship exists
     const read3 = await exec(queryWorld, {
       action: "READ",
       query: `MATCH (c:${CLUE_TYPE} {name: '${CLUE_NAME}'})-[r:LOCATED_AT]->(e:Entity) RETURN e.name`,
@@ -88,7 +97,7 @@ describe("Entity Lifecycle Scenario", () => {
     const data3 = parseToolOutput(read3);
     expect(data3.rowCount).toBe(1);
 
-    // 8. Delete the clue
+    // 9. Delete the clue
     const deleteResult = await exec(editNode, {
       nodeLabel: CLUE_TYPE,
       action: "DELETE",
@@ -96,7 +105,7 @@ describe("Entity Lifecycle Scenario", () => {
     });
     expect(deleteResult).toContain("deleted");
 
-    // 9. Verify deletion
+    // 10. Verify deletion
     const read4 = await exec(queryWorld, {
       action: "READ",
       query: `MATCH (c:${CLUE_TYPE} {name: '${CLUE_NAME}'}) RETURN c`,
@@ -104,7 +113,16 @@ describe("Entity Lifecycle Scenario", () => {
     const data4 = parseToolOutput(read4);
     expect(data4.rowCount).toBe(0);
 
-    // 10. Unregister the type
+    // 11. Unregister the relationship type
+    await exec(manageSchema, {
+      target: "relationship",
+      action: "unregister",
+      name: "LOCATED_AT",
+      sourceLabel: CLUE_TYPE,
+      targetLabel: "Entity",
+    });
+
+    // 12. Unregister the node type
     const unregResult = await exec(manageSchema, {
       target: "node",
       action: "unregister",

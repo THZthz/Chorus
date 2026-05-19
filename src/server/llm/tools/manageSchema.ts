@@ -38,7 +38,7 @@ to re-register them.
 Node types — provide a description and optional property schema (name, description, type).
 The schema is enforced: editNode will reject unknown property names for GM_DEFINED types.
 
-Relationship types — provide a description and optional sourceLabels/targetLabels
+Relationship types — provide a description and required sourceLabel/targetLabel
 to constrain which node types can sit at each endpoint.
 
 Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are permanent.
@@ -81,19 +81,17 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
       .describe(
         "For action=register: the property schema for the new type (nodes or relationships).",
       ),
-    sourceLabels: z
-      .array(z.string())
-      .nullable()
+    sourceLabel: z
+      .string()
       .optional()
       .describe(
-        "For target=relationship, action=register: which node labels can be the source (tail) of this relationship. E.g. ['Entity', 'Character'].",
+        "The node label that sits at the source (tail) of this relationship. E.g. 'Entity'. Required for relationship registration.",
       ),
-    targetLabels: z
-      .array(z.string())
-      .nullable()
+    targetLabel: z
+      .string()
       .optional()
       .describe(
-        "For target=relationship, action=register: which node labels can be the target (head) of this relationship. E.g. ['Location'].",
+        "The node label that sits at the target (head) of this relationship. E.g. 'Location'. Required for relationship registration.",
       ),
   }),
   execute: wrapSafe(async (args) => {
@@ -136,13 +134,17 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
 
       if (args.target === "relationship") {
         const manager = RelationshipManager.getCachedInstance();
-        const existing = manager.get(args.name);
-        if (existing && existing.type !== "GM_DEFINED") {
-          return `Cannot register "${args.name}": it is a ${existing.type} type and cannot be modified.`;
+        const srcLabel = args.sourceLabel;
+        const tgtLabel = args.targetLabel;
+        if (!srcLabel || !tgtLabel) {
+          return `ERROR: sourceLabel and targetLabel are required for relationship registration.`;
         }
 
-        const srcLabels = args.sourceLabels ?? undefined;
-        const tgtLabels = args.targetLabels ?? undefined;
+        const existing = manager.get(args.name, srcLabel, tgtLabel);
+        if (existing && existing.type !== "GM_DEFINED") {
+          return `Cannot register "${args.name}" (${srcLabel}→${tgtLabel}): it is a ${existing.type} type and cannot be modified.`;
+        }
+
         const relProps: RelationshipPropertyDef[] = (args.properties ?? [])
           .filter((p) => !!p?.name)
           .map((p) => ({
@@ -154,10 +156,8 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
           }));
 
         if (existing) {
-          const updated = manager.updateDefinition(args.name, {
+          const updated = manager.updateDefinition(args.name, srcLabel, tgtLabel, {
             description: args.description ?? undefined,
-            sourceLabels: srcLabels,
-            targetLabels: tgtLabels,
             properties: relProps.length > 0 ? relProps : undefined,
           });
           if (!updated) return `Failed to update "${args.name}".`;
@@ -166,8 +166,8 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
             args.name,
             args.description ?? "No description provided.",
             "GM_DEFINED",
-            srcLabels,
-            tgtLabels,
+            srcLabel,
+            tgtLabel,
             relProps,
           );
         }
@@ -175,8 +175,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
         const client = MemoryClient.getCachedInstance();
         await manager.syncToNeo4j(client.neo4j);
 
-        const endpoints =
-          srcLabels && tgtLabels ? ` (${srcLabels.join("|")})→(${tgtLabels.join("|")})` : "";
+        const endpoints = `(${srcLabel})→(${tgtLabel})`;
         const propSummary =
           relProps.length > 0
             ? ` with ${relProps.length} property(s): ${relProps.map((p) => p.name).join(", ")}`
@@ -202,17 +201,22 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
 
       if (args.target === "relationship") {
         const manager = RelationshipManager.getCachedInstance();
-        const removed = manager.unregister(args.name);
+        const srcLabel = args.sourceLabel;
+        const tgtLabel = args.targetLabel;
+        if (!srcLabel || !tgtLabel) {
+          return `ERROR: sourceLabel and targetLabel are required for relationship unregistration.`;
+        }
+        const removed = manager.unregister(args.name, srcLabel, tgtLabel);
         if (!removed) {
-          return `Cannot unregister "${args.name}": it is not a GM_DEFINED type.`;
+          return `Cannot unregister "${args.name}" (${srcLabel}→${tgtLabel}): it is not a GM_DEFINED type.`;
         }
         const client = MemoryClient.getCachedInstance();
         // Remove the corresponding :RelationshipType node from Neo4j
         await client.neo4j.executeWrite(
-          `MATCH (rt:RelationshipType {name: $name}) DETACH DELETE rt`,
-          { name: args.name },
+          `MATCH (rt:RelationshipType {name: $name, source_label: $srcLabel, target_label: $tgtLabel}) DETACH DELETE rt`,
+          { name: args.name, srcLabel, tgtLabel },
         );
-        return `Unregistered relationship type "${args.name}".`;
+        return `Unregistered relationship type "${args.name}" (${srcLabel}→${tgtLabel}).`;
       }
     }
 

@@ -1,6 +1,6 @@
 import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
-import { exec } from "../helpers";
 import { getObserver } from "@/server/llm/sceneObserver";
+import { exec } from "../helpers";
 
 describe("resetSceneContext", () => {
   beforeEach(() => {

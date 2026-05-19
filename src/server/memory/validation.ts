@@ -104,11 +104,12 @@ export class CypherValidator {
 
     for (const relType of this.extractRelationshipTypes(query)) {
       const manager = RelationshipManager.getCachedInstance();
-      // Auto-register unknown types as GM_DEFINED
-      if (!manager.get(relType)) {
-        manager.register(relType, "Created by GM via ${TOOL_NAMES.QUERY_WORLD}", "GM_DEFINED");
+      // Auto-register unknown types as GM_DEFINED with unconstrained endpoints
+      // (empty string sentinel = "any label allowed")
+      if (manager.getByName(relType).length === 0) {
+        manager.register(relType, "Created by GM via ${TOOL_NAMES.QUERY_WORLD}", "GM_DEFINED", "", "");
       }
-      if (!manager.isAllowedForWrite(relType)) {
+      if (!manager.isAllowedForWrite(relType, "", "")) {
         const allowed = [
           ...manager.getByType("PREDEFINED").map((r) => r.name),
           ...manager.getByType("GM_DEFINED").map((r) => r.name),

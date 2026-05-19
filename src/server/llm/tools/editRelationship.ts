@@ -78,17 +78,17 @@ relationships change.
     const relManager = RelationshipManager.getCachedInstance();
 
     // Validate relationship type
-    const relDef = relManager.get(args.relationshipType);
+    const relDef = relManager.get(args.relationshipType, args.sourceLabel, args.targetLabel);
     if (!relDef) {
       const available = relManager
         .getAll()
         .filter((r) => r.type !== "INTERNAL")
-        .map((r) => r.name)
+        .map((r) => `${r.name} (${r.sourceLabel || "?"}→${r.targetLabel || "?"})`)
         .join(", ");
-      return `ERROR: Relationship type "${args.relationshipType}" is not registered. Available types: ${available}`;
+      return `ERROR: Relationship type "${args.relationshipType}" with endpoints (:${args.sourceLabel})→(:${args.targetLabel}) is not registered. Available: ${available}`;
     }
-    if (!relManager.isAllowedForWrite(args.relationshipType)) {
-      return `ERROR: Relationship type "${args.relationshipType}" is ${relDef.type} and cannot be written to.`;
+    if (!relManager.isAllowedForWrite(args.relationshipType, args.sourceLabel, args.targetLabel)) {
+      return `ERROR: Relationship type "${args.relationshipType}" (${relDef.sourceLabel}→${relDef.targetLabel}) is ${relDef.type} and cannot be written to.`;
     }
 
     const srcEntries = Object.entries(args.sourceMatch);

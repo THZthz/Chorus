@@ -1,8 +1,8 @@
-import { exec } from "../helpers";
 import {
   validateDialogueArgs,
   createGenerateDialogueStepTool,
 } from "@/server/llm/tools/generateDialogueStep";
+import { exec } from "../helpers";
 
 describe("generateDialogueStep validation", () => {
   it("rejects empty messages", () => {
@@ -84,7 +84,7 @@ describe("generateDialogueStep validation", () => {
   });
 
   it("validates message text length", () => {
-    const longText = "A".repeat(501);
+    const longText = "A".repeat(701);
     const result = validateDialogueArgs({
       messages: [{ speaker: "NARRATOR", type: "SYSTEM", text: longText }],
       options: [{ text: "A" }, { text: "B" }],

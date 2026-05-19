@@ -1,6 +1,5 @@
 import { searchWorld } from "@/server/llm/tools/searchWorld";
-import { exec } from "../helpers";
-import { parseToolOutput, isEmbedderAvailable, resetDb } from "../helpers";
+import { exec, parseToolOutput, isEmbedderAvailable, resetDb } from "../helpers";
 
 describe("searchWorld", () => {
   let embedderAvailable = false;

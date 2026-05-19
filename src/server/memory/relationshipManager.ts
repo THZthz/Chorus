@@ -31,150 +31,154 @@ export interface RelationshipDef {
   name: string;
   description: string;
   type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED";
-  sourceLabels?: string[];
-  targetLabels?: string[];
+  sourceLabel: string;
+  targetLabel: string;
   properties: RelationshipPropertyDef[];
+}
+
+function makeKey(name: string, sourceLabel: string, targetLabel: string): string {
+  return `${name}||${sourceLabel}||${targetLabel}`;
 }
 
 const INTERNAL_TYPES: {
   name: string;
   description: string;
-  sourceLabels?: string[];
-  targetLabels?: string[];
+  sourceLabel: string;
+  targetLabel: string;
 }[] = [
   {
     name: "_HAS_GM_MESSAGE",
     description: "Links a Conversation node to its GMTurnMessage nodes.",
-    sourceLabels: ["Conversation"],
-    targetLabels: ["GMTurnMessage"],
+    sourceLabel: "Conversation",
+    targetLabel: "GMTurnMessage",
   },
   {
     name: "_FIRST_GM_MESSAGE",
     description: "Points to the first GMTurnMessage in a Conversation's ordered linked list.",
-    sourceLabels: ["Conversation"],
-    targetLabels: ["GMTurnMessage"],
+    sourceLabel: "Conversation",
+    targetLabel: "GMTurnMessage",
   },
   {
     name: "_NEXT_GM_MESSAGE",
     description: "Sequentially links GMTurnMessage nodes in conversation order.",
-    sourceLabels: ["GMTurnMessage"],
-    targetLabels: ["GMTurnMessage"],
+    sourceLabel: "GMTurnMessage",
+    targetLabel: "GMTurnMessage",
   },
 ];
 
 const PREDEFINED_TYPES: {
   name: string;
   description: string;
-  sourceLabels?: string[];
-  targetLabels?: string[];
+  sourceLabel: string;
+  targetLabel: string;
 }[] = [
   {
     name: "HAS_MESSAGE",
     description: "Links a Conversation node to its Message nodes.",
-    sourceLabels: ["Conversation"],
-    targetLabels: ["Message"],
+    sourceLabel: "Conversation",
+    targetLabel: "Message",
   },
   {
     name: "FIRST_MESSAGE",
     description: "Points to the first Message in a Conversation's ordered linked list.",
-    sourceLabels: ["Conversation"],
-    targetLabels: ["Message"],
+    sourceLabel: "Conversation",
+    targetLabel: "Message",
   },
   {
     name: "NEXT_MESSAGE",
     description: "Sequentially links Message nodes in conversation order.",
-    sourceLabels: ["Message"],
-    targetLabels: ["Message"],
+    sourceLabel: "Message",
+    targetLabel: "Message",
   },
   {
     name: "NEXT_TIMEPOINT",
     description: "Links TimePoint nodes in chronological sequence.",
-    sourceLabels: ["TimePoint"],
-    targetLabels: ["TimePoint"],
+    sourceLabel: "TimePoint",
+    targetLabel: "TimePoint",
   },
   {
     name: "CURRENT_TIMEPOINT",
     description: "Points to the current TimePoint from a TimeAnchor node.",
-    sourceLabels: ["TimeAnchor"],
-    targetLabels: ["TimePoint"],
+    sourceLabel: "TimeAnchor",
+    targetLabel: "TimePoint",
   },
   {
     name: "AT_TIME",
     description: "Links a Message to the TimePoint when it was created.",
-    sourceLabels: ["Message"],
-    targetLabels: ["TimePoint"],
+    sourceLabel: "Message",
+    targetLabel: "TimePoint",
   },
   {
     name: "STARTED_AT",
     description: "Marks the TimePoint when a Plot started.",
-    sourceLabels: ["Plot"],
-    targetLabels: ["TimePoint"],
+    sourceLabel: "Plot",
+    targetLabel: "TimePoint",
   },
   {
     name: "ACTIVE_AT",
     description: "Marks the TimePoint when a Plot became active.",
-    sourceLabels: ["Plot"],
-    targetLabels: ["TimePoint"],
+    sourceLabel: "Plot",
+    targetLabel: "TimePoint",
   },
   {
     name: "COMPLETED_AT",
     description: "Marks the TimePoint when a Plot completed.",
-    sourceLabels: ["Plot"],
-    targetLabels: ["TimePoint"],
+    sourceLabel: "Plot",
+    targetLabel: "TimePoint",
   },
   {
     name: "LOCATED_AT",
     description: "An entity is physically present at a location.",
-    sourceLabels: ["Entity"],
-    targetLabels: ["Location"],
+    sourceLabel: "Entity",
+    targetLabel: "Location",
   },
   {
     name: "CARRIES",
     description: "An entity is carrying or in possession of an object.",
-    sourceLabels: ["Entity"],
-    targetLabels: ["Object"],
+    sourceLabel: "Entity",
+    targetLabel: "Object",
   },
   {
     name: "ALLIED_WITH",
     description: "An entity is allied with or friendly toward another entity.",
-    sourceLabels: ["Entity"],
-    targetLabels: ["Entity"],
+    sourceLabel: "Entity",
+    targetLabel: "Entity",
   },
   {
     name: "HOSTILE_TOWARDS",
     description: "An entity is hostile toward or in conflict with another entity.",
-    sourceLabels: ["Entity"],
-    targetLabels: ["Entity"],
+    sourceLabel: "Entity",
+    targetLabel: "Entity",
   },
   {
     name: "LOCATED_IN",
     description: "A location or entity is contained within a larger location.",
-    sourceLabels: ["Entity"],
-    targetLabels: ["Location"],
+    sourceLabel: "Entity",
+    targetLabel: "Location",
   },
   {
     name: "HAS_DISPOSITION",
     description: "Links an Entity (NPC) to its NPCDisposition node.",
-    sourceLabels: ["Entity"],
-    targetLabels: ["NPCDisposition"],
+    sourceLabel: "Entity",
+    targetLabel: "NPCDisposition",
   },
   {
     name: "ABOUT_ENTITY",
     description: "A Note is about or references an Entity.",
-    sourceLabels: ["Note"],
-    targetLabels: ["Entity"],
+    sourceLabel: "Note",
+    targetLabel: "Entity",
   },
   {
     name: "ABOUT_MESSAGE",
     description: "A Note is about or references a specific Message.",
-    sourceLabels: ["Note"],
-    targetLabels: ["Message"],
+    sourceLabel: "Note",
+    targetLabel: "Message",
   },
   {
     name: "BRANCHES_TO",
     description: "A parent Plot branches to a child sub-plot.",
-    sourceLabels: ["Plot"],
-    targetLabels: ["Plot"],
+    sourceLabel: "Plot",
+    targetLabel: "Plot",
   },
 ];
 
@@ -183,10 +187,18 @@ export class RelationshipManager {
 
   private constructor() {
     for (const t of INTERNAL_TYPES) {
-      this.registry.set(t.name, { ...t, type: "INTERNAL", properties: [] });
+      this.registry.set(makeKey(t.name, t.sourceLabel, t.targetLabel), {
+        ...t,
+        type: "INTERNAL",
+        properties: [],
+      });
     }
     for (const t of PREDEFINED_TYPES) {
-      this.registry.set(t.name, { ...t, type: "PREDEFINED", properties: [] });
+      this.registry.set(makeKey(t.name, t.sourceLabel, t.targetLabel), {
+        ...t,
+        type: "PREDEFINED",
+        properties: [],
+      });
     }
   }
 
@@ -194,24 +206,47 @@ export class RelationshipManager {
     name: string,
     description: string,
     type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED",
-    sourceLabels?: string[],
-    targetLabels?: string[],
+    sourceLabel: string,
+    targetLabel: string,
     properties?: RelationshipPropertyDef[],
   ): void {
-    const existing = this.registry.get(name);
+    const key = makeKey(name, sourceLabel, targetLabel);
+    const existing = this.registry.get(key);
     if (existing) {
       if (existing.type !== type) {
         console.warn(
-          `[RelationshipManager] "${name}" already registered as ${existing.type}, ignoring re-registration as ${type}`,
+          `[RelationshipManager] "${key}" already registered as ${existing.type}, ignoring re-registration as ${type}`,
         );
       }
       return;
     }
-    this.registry.set(name, { name, description, type, sourceLabels, targetLabels, properties: properties ?? [] });
+    this.registry.set(key, {
+      name,
+      description,
+      type,
+      sourceLabel,
+      targetLabel,
+      properties: properties ?? [],
+    });
   }
 
-  get(name: string): RelationshipDef | undefined {
-    return this.registry.get(name);
+  get(name: string, sourceLabel: string, targetLabel: string): RelationshipDef | undefined {
+    // Exact match first, then try wildcard ("" sentinel)
+    const exact = this.registry.get(makeKey(name, sourceLabel, targetLabel));
+    if (exact) return exact;
+    // Fall back to wildcard entry if one exists
+    return this.registry.get(makeKey(name, "", ""));
+  }
+
+  getByName(name: string): RelationshipDef[] {
+    const prefix = `${name}||`;
+    const results: RelationshipDef[] = [];
+    for (const [key, def] of this.registry) {
+      if (key.startsWith(prefix)) {
+        results.push(def);
+      }
+    }
+    return results;
   }
 
   getAll(): RelationshipDef[] {
@@ -222,75 +257,65 @@ export class RelationshipManager {
     return [...this.registry.values()].filter((r) => r.type === type);
   }
 
-  isAllowedForWrite(name: string): boolean {
-    const def = this.registry.get(name);
+  isAllowedForWrite(name: string, sourceLabel: string, targetLabel: string): boolean {
+    const def = this.get(name, sourceLabel, targetLabel);
     if (!def) return false;
     return def.type === "PREDEFINED" || def.type === "GM_DEFINED";
   }
 
-  isAllowedForRead(name: string): boolean {
-    return this.registry.has(name);
+  isAllowedForRead(name: string, sourceLabel: string, targetLabel: string): boolean {
+    return this.get(name, sourceLabel, targetLabel) !== undefined;
   }
 
-  // Update the description of a GM_DEFINED relationship type.
-  // Returns true if updated, false if type not found or wrong category.
-  updateDescription(name: string, description: string): boolean {
-    const def = this.registry.get(name);
+  updateDescription(name: string, sourceLabel: string, targetLabel: string, description: string): boolean {
+    const def = this.registry.get(makeKey(name, sourceLabel, targetLabel));
     if (!def || def.type !== "GM_DEFINED") return false;
     def.description = description;
     return true;
   }
 
-  // Update definition fields of a GM_DEFINED relationship type.
   updateDefinition(
     name: string,
-    updates: { description?: string; sourceLabels?: string[]; targetLabels?: string[]; properties?: RelationshipPropertyDef[] },
+    sourceLabel: string,
+    targetLabel: string,
+    updates: { description?: string; properties?: RelationshipPropertyDef[] },
   ): boolean {
-    const def = this.registry.get(name);
+    const def = this.registry.get(makeKey(name, sourceLabel, targetLabel));
     if (!def || def.type !== "GM_DEFINED") return false;
     if (updates.description !== undefined) def.description = updates.description;
-    if (updates.sourceLabels !== undefined) def.sourceLabels = updates.sourceLabels;
-    if (updates.targetLabels !== undefined) def.targetLabels = updates.targetLabels;
     if (updates.properties !== undefined) def.properties = updates.properties;
     return true;
   }
 
-  // Remove a GM_DEFINED relationship type from the registry.
-  // Returns true if removed, false if type not found or wrong category.
-  unregister(name: string): boolean {
-    const def = this.registry.get(name);
+  unregister(name: string, sourceLabel: string, targetLabel: string): boolean {
+    const key = makeKey(name, sourceLabel, targetLabel);
+    const def = this.registry.get(key);
     if (!def || def.type !== "GM_DEFINED") return false;
-    this.registry.delete(name);
+    this.registry.delete(key);
     return true;
   }
 
-  // Clear all GM_DEFINED types from the registry (keeps INTERNAL + PREDEFINED).
-  // Called on /api/reset.
   reset(): void {
-    for (const [name, def] of this.registry) {
+    for (const [key, def] of this.registry) {
       if (def.type === "GM_DEFINED") {
-        this.registry.delete(name);
+        this.registry.delete(key);
       }
     }
   }
 
-  // Sync all registered relationship types to Neo4j as :RelationshipType nodes.
-  // Idempotent — safe to call multiple times.
   async syncToNeo4j(client: Neo4jClient): Promise<void> {
     for (const def of this.registry.values()) {
       await client.executeWrite(
-        `MERGE (rt:RelationshipType {name: $name})
+        `MERGE (rt:RelationshipType {name: $name, source_label: $sourceLabel, target_label: $targetLabel})
          SET rt.description = $description,
              rt.category = $category,
-             rt.source_labels = $sourceLabels,
-             rt.target_labels = $targetLabels,
              rt.properties = $properties`,
         {
           name: def.name,
           description: def.description,
           category: def.type,
-          sourceLabels: def.sourceLabels?.length ? JSON.stringify(def.sourceLabels) : null,
-          targetLabels: def.targetLabels?.length ? JSON.stringify(def.targetLabels) : null,
+          sourceLabel: def.sourceLabel,
+          targetLabel: def.targetLabel,
           properties: def.properties.length > 0 ? JSON.stringify(def.properties) : null,
         },
       );

@@ -87,7 +87,7 @@ export async function seedDatabase(): Promise<void> {
   if (story.relationshipTypes) {
     const manager = RelationshipManager.getCachedInstance();
     for (const rt of story.relationshipTypes) {
-      manager.register(rt.name, rt.description, "GM_DEFINED");
+      manager.register(rt.name, rt.description, "GM_DEFINED", rt.sourceLabel, rt.targetLabel);
     }
     console.log(
       `[seedDatabase] registered ${story.relationshipTypes.length} relationship types from "${story.id}"`,

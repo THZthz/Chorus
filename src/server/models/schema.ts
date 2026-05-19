@@ -46,8 +46,8 @@ export interface RelationshipTypeDescription {
   name: string;
   description: string;
   category: string;
-  sourceLabels?: string[];
-  targetLabels?: string[];
+  sourceLabel?: string;
+  targetLabel?: string;
 }
 
 // ── Queries ──
@@ -101,32 +101,16 @@ export async function getRelationshipTypeDescriptions(
   const rows = await db.executeRead(
     `MATCH (rt:RelationshipType)
      RETURN rt.name AS name, rt.description AS description, rt.category AS category,
-            rt.source_labels AS sourceLabels, rt.target_labels AS targetLabels
+            rt.source_label AS sourceLabel, rt.target_label AS targetLabel
      ORDER BY rt.name`,
   );
   return rows.map((r) => {
-    let sourceLabels: string[] | undefined;
-    let targetLabels: string[] | undefined;
-    if (typeof r.sourceLabels === "string") {
-      try {
-        sourceLabels = JSON.parse(r.sourceLabels) as string[];
-      } catch {
-        /* keep undefined */
-      }
-    }
-    if (typeof r.targetLabels === "string") {
-      try {
-        targetLabels = JSON.parse(r.targetLabels) as string[];
-      } catch {
-        /* keep undefined */
-      }
-    }
     return {
       name: r.name as string,
       description: (r.description as string) || "",
       category: (r.category as string) || "PREDEFINED",
-      sourceLabels,
-      targetLabels,
+      sourceLabel: (r.sourceLabel as string) ?? undefined,
+      targetLabel: (r.targetLabel as string) ?? undefined,
     };
   });
 }
@@ -172,8 +156,8 @@ export function formatSchemaMarkdown(
     seenTypes.add(rel.type);
     const desc = descMap.get(rel.type);
     if (desc) {
-      const src = desc.sourceLabels?.length ? desc.sourceLabels.join("|") : "?";
-      const tgt = desc.targetLabels?.length ? desc.targetLabels.join("|") : "?";
+      const src = desc.sourceLabel || "?";
+      const tgt = desc.targetLabel || "?";
       const endpoints = `(${src})→(${tgt})`;
       const category = desc.category !== "PREDEFINED" ? ` — ${desc.category}` : "";
       parts.push(`- **${rel.type}** ${endpoints}${category}: ${desc.description}`);

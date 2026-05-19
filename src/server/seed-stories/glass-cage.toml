@@ -672,6 +672,8 @@ description = "Crystal carries her lyre everywhere — it was her mother's gift 
 [[relationshipTypes]]
 name = "CONNECTED_TO"
 description = "Sequential adjacency between two locations — cars of a train, floors of a tower, rooms along a corridor."
+sourceLabel = "Location"
+targetLabel = "Location"
 
 # Car Connections (CONNECTED_TO) — front to rear
 [[relationships]]

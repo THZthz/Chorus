@@ -55,5 +55,5 @@ export interface SeedStory {
   initialDay: number;
   initialSegment: number;
   initialLocationId: string;
-  relationshipTypes?: { name: string; description: string }[];
+  relationshipTypes?: { name: string; description: string; sourceLabel: string; targetLabel: string }[];
 }

@@ -1,9 +1,8 @@
 import { editRelationship } from "@/server/llm/tools/editRelationship";
-import { exec, resetDb } from "../helpers";
 import { editNode } from "@/server/llm/tools/editNode";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
-import { parseToolOutput } from "../helpers";
+import { exec, resetDb, parseToolOutput } from "../helpers";
 
 describe("editRelationship", () => {
   const NOTE_A = "test_rel_note_a";
@@ -142,6 +141,49 @@ describe("editRelationship", () => {
     expect(result).toContain("targetMatch must not be empty");
   });
 
+  it("rejects CREATE when endpoint labels don't match the registered definition", async () => {
+    // Register TEST_STRICT_REL with (Entity→Entity)
+    await exec(manageSchema, {
+      target: "relationship",
+      action: "register",
+      name: "TEST_STRICT_REL",
+      description: "Strict endpoint relationship",
+      sourceLabel: "Entity",
+      targetLabel: "Entity",
+    });
+
+    await createTestNotes();
+    const result = await exec(editRelationship, {
+      action: "CREATE",
+      relationshipType: "TEST_STRICT_REL",
+      sourceLabel: "Note",
+      sourceMatch: { name: NOTE_A },
+      targetLabel: "Entity",
+      targetMatch: { name: "Player" },
+    });
+    expect(result).toContain("not registered");
+
+    // But it should work with the correct labels
+    const ok = await exec(editRelationship, {
+      action: "CREATE",
+      relationshipType: "TEST_STRICT_REL",
+      sourceLabel: "Entity",
+      sourceMatch: { name: "Player" },
+      targetLabel: "Entity",
+      targetMatch: { name: "Player" },
+    });
+    expect(ok).toContain("created successfully");
+
+    // Cleanup
+    await exec(manageSchema, {
+      target: "relationship",
+      action: "unregister",
+      name: "TEST_STRICT_REL",
+      sourceLabel: "Entity",
+      targetLabel: "Entity",
+    });
+  });
+
   describe("UPDATE", () => {
     beforeAll(async () => {
       await createTestNotes();
@@ -237,8 +279,8 @@ describe("editRelationship", () => {
           { name: "confidence", description: "Trust confidence (0-1)", tags: ["number"] },
           { name: "reason", description: "Why this trust exists", tags: ["string"] },
         ],
-        sourceLabels: ["Entity"],
-        targetLabels: ["Entity"],
+        sourceLabel: "Entity",
+        targetLabel: "Entity",
       });
 
       // Create two test entities
@@ -347,8 +389,8 @@ describe("editRelationship", () => {
         properties: [
           { name: "meta", description: "JSON metadata blob", tags: ["json"] },
         ],
-        sourceLabels: ["Note"],
-        targetLabels: ["Entity"],
+        sourceLabel: "Note",
+        targetLabel: "Entity",
       });
 
       // Create with initial JSON

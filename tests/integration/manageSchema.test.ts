@@ -1,6 +1,5 @@
 import { manageSchema } from "@/server/llm/tools/manageSchema";
-import { exec } from "../helpers";
-import { resetDb } from "../helpers";
+import { exec, resetDb } from "../helpers";
 
 describe("manageSchema", () => {
   beforeEach(async () => {
@@ -60,21 +59,22 @@ describe("manageSchema", () => {
         action: "register",
         name: "TEST_CONNECTS_TO",
         description: "Test connection between entities",
-        sourceLabels: ["Entity", "Character"],
-        targetLabels: ["Entity", "Location"],
+        sourceLabel: "Entity",
+        targetLabel: "Location",
       });
       expect(result).toContain("Registered relationship type");
       expect(result).toContain("TEST_CONNECTS_TO");
+      expect(result).toContain("(Entity)→(Location)");
     });
 
-    it("registers a relationship type without endpoint constraints", async () => {
+    it("rejects registration without sourceLabel and targetLabel", async () => {
       const result = await exec(manageSchema, {
         target: "relationship",
         action: "register",
         name: "TEST_GENERIC",
         description: "A generic test relationship",
       });
-      expect(result).toContain("Registered relationship type");
+      expect(result).toContain("ERROR");
     });
 
     it("unregisters a GM_DEFINED relationship type", async () => {
@@ -84,14 +84,50 @@ describe("manageSchema", () => {
         action: "register",
         name: "TEST_TEMP_REL",
         description: "Temporary",
+        sourceLabel: "Entity",
+        targetLabel: "Entity",
       });
 
       const result = await exec(manageSchema, {
         target: "relationship",
         action: "unregister",
         name: "TEST_TEMP_REL",
+        sourceLabel: "Entity",
+        targetLabel: "Entity",
       });
       expect(result).toContain("Unregistered relationship type");
+    });
+
+    it("allows registering same name with different sourceLabel", async () => {
+      const r1 = await exec(manageSchema, {
+        target: "relationship",
+        action: "register",
+        name: "TEST_DUAL",
+        description: "First variant",
+        sourceLabel: "Entity",
+        targetLabel: "Entity",
+      });
+      expect(r1).toContain("Registered relationship type");
+
+      const r2 = await exec(manageSchema, {
+        target: "relationship",
+        action: "register",
+        name: "TEST_DUAL",
+        description: "Second variant",
+        sourceLabel: "Entity",
+        targetLabel: "Location",
+      });
+      expect(r2).toContain("Registered relationship type");
+      expect(r2).toContain("(Entity)→(Location)");
+    });
+
+    it("rejects unregister without sourceLabel/targetLabel", async () => {
+      const result = await exec(manageSchema, {
+        target: "relationship",
+        action: "unregister",
+        name: "SOME_TYPE",
+      });
+      expect(result).toContain("ERROR");
     });
 
     it("rejects unregister of PREDEFINED relationship type", async () => {
@@ -99,6 +135,8 @@ describe("manageSchema", () => {
         target: "relationship",
         action: "unregister",
         name: "LOCATED_AT",
+        sourceLabel: "Entity",
+        targetLabel: "Location",
       });
       expect(result).toContain("Cannot unregister");
     });

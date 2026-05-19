@@ -20,10 +20,10 @@ curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-T
 curl -s -X POST "http://localhost:3000/api/debug/tools/searchWorld" -H "Content-Type: application/json" -d '{"query":"weapon","target":"node","domains":["Entity","Plot"],"limit":3}' | jq .
 
 # editNode — CREATE
-curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Note","action":"CREATE","properties":{"name":"debug_note","content":"A test note from the debug endpoint"}}'
+curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Entity","action":"CREATE","properties":{"name":"debug_entity","type":"CHARACTER","brief":"A debug test entity"}}'
 
 # editNode — UPDATE
-curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Note","action":"UPDATE","match":{"name":"debug_note"},"properties":{"content":"Updated via debug endpoint"}}'
+curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Entity","action":"UPDATE","match":{"name":"debug_entity"},"properties":{"brief":"Updated via debug endpoint"}}'
 
 # editNode — DELETE
 curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Entity","action":"DELETE","match":{"name":"Test_NPC"}}'
@@ -34,8 +34,23 @@ curl -s -X POST "http://localhost:3000/api/debug/tools/editRelationship" -H "Con
 # manageSchema — register node type
 curl -s -X POST "http://localhost:3000/api/debug/tools/manageSchema" -H "Content-Type: application/json" -d '{"target":"node","action":"register","name":"Artifact","description":"A magical or mechanical artifact","properties":[{"name":"power_level","description":"Numeric power rating","tags":["number"]},{"name":"origin","description":"Where it came from","tags":["string"]}]}'
 
-# resetSceneContext
-curl -s -X POST "http://localhost:3000/api/debug/tools/resetSceneContext" -H "Content-Type: application/json" -d '{}'
+# editNote — CREATE
+curl -s -X POST "http://localhost:3000/api/debug/tools/editNote" -H "Content-Type: application/json" -d '{"noteName":"debug_note","action":"CREATE","content":"A GM scratchpad note from the debug endpoint"}'
+
+# editNote — UPDATE
+curl -s -X POST "http://localhost:3000/api/debug/tools/editNote" -H "Content-Type: application/json" -d '{"noteName":"debug_note","action":"UPDATE","content":"Updated note content"}'
+
+# editNote — DELETE
+curl -s -X POST "http://localhost:3000/api/debug/tools/editNote" -H "Content-Type: application/json" -d '{"noteName":"debug_note","action":"DELETE"}'
+
+# editPlot — CREATE
+curl -s -X POST "http://localhost:3000/api/debug/tools/editPlot" -H "Content-Type: application/json" -d '{"plotName":"debug_plot","action":"CREATE","description":"A test plot from the debug endpoint"}'
+
+# editPlot — UPDATE with status change
+curl -s -X POST "http://localhost:3000/api/debug/tools/editPlot" -H "Content-Type: application/json" -d '{"plotName":"debug_plot","action":"UPDATE","status":"COMPLETED"}'
+
+# editPlot — DELETE
+curl -s -X POST "http://localhost:3000/api/debug/tools/editPlot" -H "Content-Type: application/json" -d '{"plotName":"debug_plot","action":"DELETE"}'
 
 # getContext
 curl -s -X POST "http://localhost:3000/api/debug/tools/getContext" -H "Content-Type: application/json" -d '{"types":["SCENE_CONTEXT","CHARACTERS_BRIEF","LOCATIONS_BRIEF","OBJECTS_BRIEF","PLOTS_BRIEF","SCHEMA_DUMP","RELATIONSHIP_DUMP"]}' | jq .

@@ -99,8 +99,13 @@ This tool supports partial overwrite when action is UPDATE.
     const oldStatus = existing.status;
     const newStatus = (args.status ?? oldStatus) as typeof oldStatus;
 
+    const changes: string[] = [];
+    if (args.description != null) changes.push("description");
+    if (args.brief != null) changes.push("brief");
+    if (args.status != null) changes.push(`status (${oldStatus} → ${newStatus})`);
+    if (args.triggerCondition != null) changes.push("trigger condition");
+
     const updates: Record<string, unknown> = {};
-    // != null catches both null and undefined (LLM may output null for omitted fields)
     if (args.description != null) updates.description = args.description;
     if (args.brief != null) updates.brief = args.brief;
     if (args.status != null) updates.status = args.status;
@@ -110,7 +115,6 @@ This tool supports partial overwrite when action is UPDATE.
       await client.plots.updatePlot(args.plotName, updates as any);
     }
 
-    // TODO: How the error occurred in the following code handled?
     // Auto-wire time relationships on status transition
     if (newStatus !== oldStatus) {
       if (oldStatus === "PENDING" && (newStatus === "ACTIVE" || newStatus === "IN_PROGRESS")) {
@@ -128,18 +132,23 @@ This tool supports partial overwrite when action is UPDATE.
     }
 
     if (args.setFlag) {
+      changes.push(`flag "${args.setFlag.flagId}"`);
       await client.plots.setFlag(args.plotName, args.setFlag.flagId, args.setFlag.description);
     }
     if (args.removeFlag) {
+      changes.push(`flag "${args.removeFlag}" removed`);
       await client.plots.removeFlag(args.plotName, args.removeFlag);
     }
     if (args.branchTo) {
+      changes.push(`branched to "${args.branchTo}"`);
       await client.plots.branchTo(args.plotName, args.branchTo);
     }
     if (args.unbranch) {
+      changes.push(`unbranched "${args.unbranch}"`);
       await client.plots.unbranch(args.plotName, args.unbranch);
     }
 
-    return `Plot "${args.plotName}" is successfully updated.`;
+    const summary = changes.length > 0 ? ` (${changes.join(", ")})` : "";
+    return `Plot "${args.plotName}" is successfully updated${summary}.`;
   }, TOOL_NAMES.EDIT_PLOT),
 });

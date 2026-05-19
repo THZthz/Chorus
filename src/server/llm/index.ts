@@ -29,6 +29,8 @@ import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
+import { editNote } from "@/server/llm/tools/editNote";
+import { editPlot } from "@/server/llm/tools/editPlot";
 import { getContext } from "@/server/llm/tools/getContext";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { saveCurrentOptions } from "@/server/gameState";
@@ -195,6 +197,8 @@ export async function generateTurn(
     manageSchema,
     editNode,
     editRelationship,
+    editNote,
+    editPlot,
     getContext,
     generateDialogueStep: dialogueStepTool.tool,
     advanceTime: advanceTimeTool,

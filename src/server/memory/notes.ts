@@ -118,7 +118,7 @@ export class Notes {
         "name",
         noteName,
         "Message",
-        "_id",
+        "id",
         messageId,
         "ABOUT_MESSAGE",
       );
@@ -147,7 +147,7 @@ export class Notes {
 
   async getLinkedMessages(noteName: string): Promise<string[]> {
     const rows = await this.client.executeRead(
-      `MATCH (n:Note {name: $noteName})-[:ABOUT_MESSAGE]->(m:Message) RETURN m._id AS id`,
+      `MATCH (n:Note {name: $noteName})-[:ABOUT_MESSAGE]->(m:Message) RETURN m.id AS id`,
       { noteName },
     );
     return rows.map((r) => r.id as string);

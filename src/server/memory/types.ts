@@ -33,6 +33,7 @@ export interface MemoryEntity {
 }
 
 export interface MemoryMessage {
+  id: string;
   content: string;
   metadata: Record<string, unknown>;
   _embedding?: number[];

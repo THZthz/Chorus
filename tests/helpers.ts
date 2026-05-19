@@ -20,10 +20,26 @@ import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/seed-stories/seed";
 import { clearNeo4jDatabase } from "@/server/memory/reset";
 import { getObserver } from "@/server/llm/sceneObserver";
+import { RelationshipManager } from "@/server/relationshipManager";
 
 export async function resetDb() {
   await clearNeo4jDatabase();
+
+  // Reset in-memory GM_DEFINED types so stale registrations from previous
+  // tests don't interfere with the fresh seed.
+  const relManager = RelationshipManager.getCachedInstance();
+  relManager.reset();
+  const { NodeManager: NM } = await import("@/server/nodeManager");
+  const nodeManager = NM.getCachedInstance();
+  nodeManager.reset();
+
   await seedDatabase();
+
+  // Sync INTERNAL + PREDEFINED types back to Neo4j after seed
+  const client = MemoryClient.getCachedInstance();
+  await relManager.syncToNeo4j(client.neo4j);
+  await nodeManager.syncToNeo4j(client.neo4j);
+
   getObserver().reset();
 }
 

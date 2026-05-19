@@ -67,7 +67,6 @@ export const TOOL_NAMES = {
   GENERATE_DIALOGUE: "generateDialogueStep",
   ADVANCE_TIME: "advanceTime",
   SEARCH_WORLD: "searchWorld",
-  RESET_SCENE_CONTEXT: "resetSceneContext",
   MANAGE_SCHEMA: "manageSchema",
   EDIT_NODE: "editNode",
   EDIT_RELATIONSHIP: "editRelationship",

@@ -50,31 +50,43 @@ Architecture, core systems, and data structures of the **Chorus** application.
 └──────────────────────────────┬───────────────────────────────────────┘
                                │ tool calls read/write Neo4j
                                ▼
-┌───────────────────────────────────────────────────────────────────────┐
-│                     MEMORY LAYER (Neo4j-backed)                       │
-│  src/server/memory/client.ts  ── MemoryClient singleton               │
-│                                                                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
-│  │ ShortTerm   │  │  LongTerm   │  │   Notes     │  │   Plots     │   │
-│  ├─────────────┤  ├─────────────┤  ├─────────────┤  ├─────────────┤   │
-│  │ messages    │  │ entities    │  │ GM notes    │  │ beats       │   │
-│  │ conversation│  │ facts       │  │ embeddings  │  │ branches    │   │
-│  │             │  │ preferences │  │ CRUD        │  │ flags       │   │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘   │
-│         └────────────────┴───────┬────────┴────────────────┘          │
-│                                  ▼                                    │
-│                           ┌─────────────┐                             │
-│                           │  Search     │                             │
-│                           ├─────────────┤                             │
-│                           │  parallel   │                             │
-│                           │  vector     │                             │
-│                           └─────────────┘                             │
-│                                                                       │
-│  embedder.ts ── llama-server embeddings (LLAMA_EMBED_URL)             │
-│  neo4j.ts    ── driver wrapper with value normalization               │
-│  nodeManager.ts ── node label registry + getEmbeddingText helper      │
-│  relationshipManager.ts ── relationship type registry (composite key) │
-└──────────────────────────────┬────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│                     MEMORY LAYER (Neo4j-backed)                           │
+│  src/server/memory/client.ts  ── MemoryClient singleton                   │
+│                                                                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
+│  │ ShortTerm   │  │  LongTerm   │  │   Notes     │  │   Plots     │       │
+│  ├─────────────┤  ├─────────────┤  ├─────────────┤  ├─────────────┤       │
+│  │ messages    │  │ entities    │  │ GM notes    │  │ beats       │       │
+│  │ conversation│  │ facts       │  │ CRUD        │  │ branches    │       │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │
+│         └────────────────┴───────┬────────┴────────────────┘              │
+│                                  ▼                                        │
+│                      ┌───────────────────────────┐                        │
+│                      │           Search          │                        │
+│                      │  searchWorld              │                        │
+│                      │  searchByLabel            │                        │
+│                      │  searchByRelationshipType │                        │
+│                      └──────┬──────────────┬─────┘                        │
+│                             │              │                              │
+│                  ┌──────────┘              └──────────┐                   │
+│                  ▼                                    ▼                   │
+│        ┌───────────────────┐                ┌───────────────────┐         │
+│        │    embedder.ts    │                │   reranker.ts     │         │
+│        │ llama-server      │                │ llama-server      │         │
+│        │ LLAMA_EMBED_URL   │                │ LLAMA_RERANK_URL  │         │
+│        │ (query→vector)    │                │ (cross-encoder)   │         │
+│        └────────┬──────────┘                └────────┬──────────┘         │
+│                 │                                    │                    │
+│                 └─────────────────┬──────────────────┘                    │
+│                                   ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐      │
+│  │  neo4j.ts ── driver wrapper with value normalization            │      │
+│  │  nodeManager.ts ── node label registry + getEmbeddingText       │      │
+│  │  relationshipManager.ts ── rel type registry + getEmbeddingText │      │
+│  │  validation.ts ── CypherValidator (schema-aware)                │      │
+│  └─────────────────────────────────────────────────────────────────┘      │
+└──────────────────────────────┬────────────────────────────────────────────┘
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -82,6 +94,9 @@ Architecture, core systems, and data structures of the **Chorus** application.
 │  Node labels: Conversation, Message, Entity (+ subtype labels),      │
 │  NPCDisposition, Note, Plot, TimeAnchor, TimePoint, GMTurnMessage,   │
 │  RelationshipType, NodeType, IdCounter                               │
+│                                                                      │
+│  Indexes: node property indexes, rel property indexes, composite,    │
+│  vector indexes (node & relationship)                                │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -93,15 +108,15 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 
 ### GM tools (Neo4j-backed)
 
-| Tool                | Purpose                                                                                                                                          |
-|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| `queryWorld`        | Cypher READ/WRITE validated via CypherValidator. Auto-registers unknown relationship types on WRITE.                                             |
-| `searchWorld`       | Dynamic vector search across any node type with `_embedding`. Pass `labels` (e.g. `["Entity","Plot"]`) to filter domains; omit to search all.    |
-| `manageSchema`      | Register/unregister node types (with `properties` schema using `tags` field) and relationship types (with required `sourceLabel`/`targetLabel`). |
-| `editNode`          | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings.                                       |
-| `editRelationship`  | CREATE/UPDATE/DELETE relationships. Validates endpoint labels (`sourceLabel`/`targetLabel`) against RelationshipManager's registered definition. |
-| `getContext`        | Fetch scene context, character/location/object briefs, plot tree, schema dump, relationship dump.                                                |
-| `resetSceneContext` | Reset the scene observer, forcing the GM to re-discover the scene.                                                                               |
+| Tool                | Purpose                                                                                                                                                                                 |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `queryWorld`        | Cypher READ/WRITE validated via CypherValidator. Auto-registers unknown relationship types on WRITE.                                                                                    |
+| `searchWorld`       | Dynamic vector search across any node type or relationship type with `_embedding`. Pass `domains` (labels/types) and optional `target` (`"node"`/`"relationship"`); omit to search all. |
+| `manageSchema`      | Register/unregister node types (with `properties` schema using `tags` field) and relationship types (with required `sourceLabel`/`targetLabel`).                                        |
+| `editNode`          | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings.                                                                              |
+| `editRelationship`  | CREATE/UPDATE/DELETE relationships. Validates endpoint labels and properties against RelationshipManager schema. Auto-generates embeddings.                                             |
+| `getContext`        | Fetch scene context, character/location/object briefs, plot tree, schema dump, relationship dump.                                                                                       |
+| `resetSceneContext` | Reset the scene observer.                                                                                                                                                               |
 
 ### Chorus tools
 
@@ -207,18 +222,18 @@ Defined in `src/shared/events.ts`:
 
 ### Subsystems
 
-| Module                   | Responsibility                                                                                                                                                          |
-|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `shortTerm.ts`           | Conversation + `:Message` nodes as ordered linked list (NEXT_MESSAGE). Searches via `searchMessages`.                                                                   |
-| `longTerm.ts`            | `:Entity` nodes (COLE+O: CHARACTER, OBJECT, LOCATION, ORGANIZATION, EVENT). Relationships, NPC dispositions, player conditions/stats. Searches via `searchEntities`.    |
-| `notes.ts`               | `:Note` CRUD with vector embedding. Links to entities/messages via ABOUT_ENTITY/ABOUT_MESSAGE.                                                                          |
-| `plots.ts`               | `:Plot` lifecycle: beats, branches, flags. Searches via `searchPlots`.                                                                                                  |
-| `search.ts`              | `MemorySearch`: parallel vector search via `search()` (entities+messages) and `searchByLabel(label, query)` (generic, any label).                                       |
-| `reranker.ts`            | Optional cross-encoder reranking (LLAMA_RERANK_URL). `extractSearchTexts` uses `NodeManager.getEmbeddingText` for generic text extraction.                              |
-| `validation.ts`          | `CypherValidator`: validates Cypher queries against `NodeManager`/`RelationshipManager`. Auto-registers unknown relationship types with empty-string wildcard sentinel. |
-| `nodeManager.ts`         | Node label registry. `syncToNeo4j` creates constraints, indexes, and vector indexes dynamically.                                                                        |
-| `relationshipManager.ts` | Relationship type registry with composite `(name, sourceLabel, targetLabel)` key.                                                                                       |
-| `gameState.ts`           | Persists dialogue options as JSON on `:Conversation` node.                                                                                                              |
+| Module                   | Responsibility                                                                                                                                                                                                      |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `shortTerm.ts`           | Conversation + `:Message` nodes as ordered linked list (NEXT_MESSAGE).                                                                                                                                              |
+| `longTerm.ts`            | `:Entity` nodes (COLE+O: CHARACTER, OBJECT, LOCATION, ORGANIZATION, EVENT). Relationships, NPC dispositions, player conditions/stats.                                                                               |
+| `notes.ts`               | `:Note` CRUD with vector embedding. Links to entities/messages via ABOUT_ENTITY/ABOUT_MESSAGE. Uses `extractSearchTexts` for rerank text.                                                                           |
+| `plots.ts`               | `:Plot` lifecycle: beats, branches, flags. Uses `extractSearchTexts` for rerank text.                                                                                                                               |
+| `search.ts`              | `MemorySearch`: `searchByLabel(label, query)` for nodes, `searchByRelationshipType(type, query)` for relationships. Both support optional reranking.                                                                |
+| `reranker.ts`            | Optional cross-encoder reranking (LLAMA_RERANK_URL). `extractSearchTexts` uses `NodeManager.getEmbeddingText` for node text extraction.                                                                             |
+| `validation.ts`          | `CypherValidator`: validates Cypher queries against `NodeManager`/`RelationshipManager`. Auto-registers unknown relationship types with empty-string wildcard sentinel.                                             |
+| `nodeManager.ts`         | Node label registry. `syncToNeo4j` creates constraints, indexes, and vector indexes dynamically. Has `getEmbeddingText()` for nodes.                                                                                |
+| `relationshipManager.ts` | Relationship type registry with composite `(name, sourceLabel, targetLabel)` key. `syncToNeo4j` creates property, composite, and vector indexes for relationship types. Has `getEmbeddingText()` for relationships. |
+| `gameState.ts`           | Persists dialogue options as JSON on `:Conversation` node.                                                                                                                                                          |
 
 ### Neo4j Schema
 
@@ -226,11 +241,11 @@ Defined in `src/shared/events.ts`:
 
 **Indexes**: Regular indexes on Entity.type, Entity.name, Message.timestamp, Plot.status. Composite indexes on NPCDisposition(npc_name, target_name) and TimePoint(day, segment). All created dynamically by `syncToNeo4j`.
 
-**Vector indexes**: One per node type with `_embedding` (Entity, Message, Note, Plot). Naming: `{label_lower}_embedding_idx`.
+**Vector indexes**: One per node type with `_embedding` (Entity, Message, Note, Plot). Naming: `{label_lower}_embedding_idx`. Also created for relationship types with `_embedding`, named `rel_{type_lower}_embedding_idx`.
 
 ### Embeddings
 
-`embedder.ts` — llama-server via `LLAMA_EMBED_URL` (default `http://localhost:8080/v1/embeddings`). Default dimensions: 1024. All embedding text is built by `NodeManager.getEmbeddingText()` from `"embedded"`-tagged properties.
+`embedder.ts` — llama-server via `LLAMA_EMBED_URL` (default `http://localhost:8080/v1/embeddings`). Default dimensions: 1024. Embedding text is built by `NodeManager.getEmbeddingText()` (for nodes) and `RelationshipManager.getEmbeddingText()` (for relationships) from `"embedded"`-tagged properties.
 
 ---
 
@@ -275,8 +290,8 @@ Relationship types declared via `[[relationshipTypes]]` with `name`, `descriptio
 4. **`_` prefix = hidden** — `stripHiddenProperties()` strips `_`-prefixed keys at tool boundaries.
 5. **Properties use snake_case in Neo4j** — `_created_at`, `trigger_condition`, `npc_name`.
 6. **Composite key for relationship types** — `(name, sourceLabel, targetLabel)` uniquely identifies a `RelationshipDef`.
-7. **Dynamic vector search** — `searchWorld` queries `NodeManager` at runtime, not a hardcoded enum.
-8. **Embedding text from schema** — `getEmbeddingText()` reads `"embedded"`-tagged properties from NodeManager.
+7. **Dynamic vector search** — `searchWorld` queries `NodeManager` and `RelationshipManager` at runtime for node labels and relationship types with `_embedding`, not a hardcoded enum.
+8. **Embedding text from schema** — `getEmbeddingText()` reads `"embedded"`-tagged properties from `NodeManager` (nodes) and `RelationshipManager` (relationships).
 9. **Two-stage retrieval** — when `LLAMA_RERANK_URL` is set: relaxed vector search + cross-encoder rerank.
 10. **GM message history persisted** — `:GMTurnMessage` nodes for multi-turn continuity.
 11. **COLE+O entity model** — CHARACTER, OBJECT, LOCATION, ORGANIZATION, EVENT with dynamic Neo4j sub-labels.

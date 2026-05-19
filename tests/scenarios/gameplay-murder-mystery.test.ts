@@ -21,7 +21,6 @@ import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
-import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 import { exec, parseToolOutput, createMockEventEmitter, resetDb, resetObserver } from "../helpers";
 
@@ -107,10 +106,6 @@ describe("Gameplay: Murder Mystery Investigation", () => {
     });
     const timeData = parseToolOutput(timeQuery);
     const timeRow = timeData.rows[0] as Record<string, unknown>;
-
-    // 10. Reset scene context for next turn
-    const resetResult = await exec(resetSceneContext, {});
-    expect(resetResult).toContain("reset");
 
     // Clean up: delete the investigation note (breaks the ABOUT_ENTITY link automatically)
     await exec(editNode, {

@@ -20,8 +20,8 @@ import express from "express";
 import { generateTurn } from "@/server/llm";
 import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
-import { RelationshipManager } from "@/server/memory/relationshipManager";
-import { getCurrentOptions } from "@/server/memory/gameState";
+import { RelationshipManager } from "@/server/relationshipManager";
+import { getCurrentOptions } from "@/server/gameState";
 import {
   buildSceneContext,
   buildCharactersBrief,
@@ -35,13 +35,11 @@ import {
   getRelationshipTypeDescriptions,
   formatSchemaMarkdown,
 } from "@/server/models/schema";
-import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
-import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import type { Message } from "@/types/dialogue";
 import { getContext } from "@/server/llm/tools/getContext";
 
@@ -52,7 +50,6 @@ const debugToolRegistry: Record<string, { execute: (args: any) => Promise<string
   editRelationship: editRelationship as any,
   manageSchema: manageSchema as any,
   getContext: getContext as any,
-  resetSceneContext: resetSceneContext as any,
 };
 
 const apiRouter = express.Router();
@@ -180,7 +177,7 @@ apiRouter.post("/reset", async (_req, res) => {
     const relManager = RelationshipManager.getCachedInstance();
     relManager.reset();
     const nodeManager = (
-      await import("@/server/memory/nodeManager")
+      await import("@/server/nodeManager")
     ).NodeManager.getCachedInstance();
     nodeManager.reset();
     const client = await MemoryClient.getInstance();

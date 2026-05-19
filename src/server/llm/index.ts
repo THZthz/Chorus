@@ -29,10 +29,9 @@ import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
 import { editRelationship } from "@/server/llm/tools/editRelationship";
-import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import { getContext } from "@/server/llm/tools/getContext";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
-import { saveCurrentOptions } from "@/server/memory/gameState";
+import { saveCurrentOptions } from "@/server/gameState";
 import { loadGMMessages, saveGMMessages, getNextTurnNumber } from "@/server/llm/gmMessages";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
@@ -193,7 +192,6 @@ export async function generateTurn(
   const allTools = {
     queryWorld,
     searchWorld,
-    resetSceneContext,
     manageSchema,
     editNode,
     editRelationship,

@@ -48,7 +48,9 @@ export class Plots {
     const status = options?.status ?? "PENDING";
     const triggerCondition = options?.triggerCondition ?? null;
     const flags = options?.flags ?? [];
-    const embedding = await this.embedder.embed(`${name}: ${description}`);
+    const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+    const embedText = NM.getCachedInstance().getEmbeddingText("Plot", { name, description, brief: brief ?? "" });
+    const embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     const now = new Date().toISOString();
 
     const rows = await this.client.executeWrite(
@@ -254,7 +256,7 @@ export class Plots {
     }));
 
     if (useRerank && parsed.length > 0) {
-      const items = extractSearchTexts(parsed, "plot");
+      const items = extractSearchTexts(parsed, "Plot");
       const reranked = await applyRerank(query, items, limit);
       return reranked.map((r) => ({
         ...r,

@@ -16,9 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { int } from "neo4j-driver";
 import type { ShortTermMemory } from "@/server/memory/shortTerm";
 import type { LongTermMemory } from "@/server/memory/longTerm";
 import type { SearchResults, MemoryMessage, MemoryEntity } from "@/server/memory/types";
+import { getEmbedder } from "@/server/memory/embedder";
+import { MemoryClient } from "@/server/memory/client";
+import { NodeManager } from "@/server/memory/nodeManager";
 import { getReranker, extractSearchTexts, applyRerank } from "@/server/memory/reranker";
 
 export class MemorySearch {
@@ -56,7 +60,7 @@ export class MemorySearch {
           .searchMessages(query, { limit: fetchLimit, threshold: effectiveThreshold })
           .then(async (msgs) => {
             if (useRerank && msgs.length > 0) {
-              const items = extractSearchTexts(msgs, "message");
+              const items = extractSearchTexts(msgs, "Message");
               const reranked = await applyRerank(query, items, limit);
               results.messages = reranked as unknown as (MemoryMessage & {
                 similarity: number;
@@ -78,7 +82,7 @@ export class MemorySearch {
           .searchEntities(query, { limit: fetchLimit, threshold: effectiveThreshold })
           .then(async (entities) => {
             if (useRerank && entities.length > 0) {
-              const items = extractSearchTexts(entities, "entity");
+              const items = extractSearchTexts(entities, "Entity");
               const reranked = await applyRerank(query, items, limit);
               results.entities = reranked as unknown as (MemoryEntity & {
                 similarity: number;
@@ -95,6 +99,58 @@ export class MemorySearch {
     }
 
     await Promise.all(tasks);
+    return results;
+  }
+
+  async searchByLabel(
+    label: string,
+    query: string,
+    options?: {
+      limit?: number;
+      threshold?: number;
+      rerank?: boolean;
+    },
+  ): Promise<Array<Record<string, unknown> & { similarity: number; relevance?: number }>> {
+    const { limit = 10, threshold, rerank } = options || {};
+
+    const useRerank = rerank !== false && getReranker() !== null;
+    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
+    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+
+    const embedder = getEmbedder();
+    const queryEmbedding = await embedder.embed(query);
+
+    const client = MemoryClient.getCachedInstance().neo4j;
+    const indexName = `${label.toLowerCase()}_embedding_idx`;
+    const rows = await client.executeRead(
+      `CALL db.index.vector.queryNodes('${indexName}', $limit, $embedding)
+       YIELD node, score WHERE score >= $threshold
+       RETURN node, score ORDER BY score DESC`,
+      { embedding: queryEmbedding, limit: int(fetchLimit), threshold: effectiveThreshold },
+    );
+
+    const results = rows.map((r) => {
+      const node = r.node as Record<string, unknown>;
+      const clean: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(node)) {
+        if (!k.startsWith("_")) clean[k] = v;
+      }
+      return { ...clean, similarity: r.score as number };
+    });
+
+    if (useRerank && results.length > 0) {
+      const nodeManager = NodeManager.getCachedInstance();
+      const items = results.map((r) => ({
+        ...r,
+        text: nodeManager.getEmbeddingText(label, r),
+      }));
+      const reranked = await applyRerank(query, items, limit);
+      return reranked.map((r) => {
+        const { text: _, ...rest } = r as Record<string, unknown>;
+        return rest as Record<string, unknown> & { similarity: number; relevance?: number };
+      });
+    }
+
     return results;
   }
 }

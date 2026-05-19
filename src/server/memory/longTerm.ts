@@ -102,9 +102,14 @@ export class LongTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      const desc = description || brief || "";
-      const embedText = desc ? `${name} (${finalType}): ${desc}` : `${name} (${finalType})`;
-      embedding = await this.embedder.embed(embedText);
+      const nodeManager = (await import("@/server/memory/nodeManager")).NodeManager.getCachedInstance();
+      const embedText = nodeManager.getEmbeddingText("Entity", {
+        name,
+        type: finalType,
+        description: description ?? "",
+        brief: brief ?? "",
+      });
+      embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     }
 
     // Store aliases inside metadata (Python convention)

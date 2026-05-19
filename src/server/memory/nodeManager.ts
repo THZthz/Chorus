@@ -100,9 +100,9 @@ const ENTITY_PROPS: NodePropertyDef[] = [
   {
     name: "description",
     description: "Full narrative description of the entity.",
-    tags: ["string"],
+    tags: ["string", "embedded"],
   },
-  { name: "brief", description: "One-line summary for compact display.", tags: ["string"] },
+  { name: "brief", description: "One-line summary for compact display.", tags: ["string", "embedded"] },
   {
     name: "metadata",
     description:
@@ -190,7 +190,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE.",
     properties: [
-      { name: "content", description: "Message text content.", tags: ["string"] },
+      { name: "content", description: "Message text content.", tags: ["string", "embedded"] },
       { name: "timestamp", description: "ISO 8601 timestamp of the message.", tags: ["string"] },
       {
         name: "metadata",
@@ -211,7 +211,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       {
         name: "content",
         description: "Full note content (embedded for vector search).",
-        tags: ["string"],
+        tags: ["string", "embedded"],
       },
       ...TIMESTAMP_PROPS,
       EMBEDDING_PROP,
@@ -227,12 +227,12 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       {
         name: "description",
         description: "Full plot description (embedded for vector search).",
-        tags: ["string"],
+        tags: ["string", "embedded"],
       },
       {
         name: "brief",
         description: "One-line plot summary for compact display.",
-        tags: ["string"],
+        tags: ["string", "embedded"],
       },
       {
         name: "status",
@@ -406,6 +406,20 @@ export class NodeManager {
 
   getByType(type: "INTERNAL" | "PREDEFINED" | "GM_DEFINED"): NodeDef[] {
     return [...this.registry.values()].filter((r) => r.type === type);
+  }
+
+  /** Build embedding text by concatenating all "embedded"-tagged property values. */
+  getEmbeddingText(label: string, props: Record<string, unknown>): string {
+    const def = this.registry.get(label);
+    if (!def) return "";
+    const embeddedProps = def.properties.filter((p) => p.tags.includes("embedded"));
+    return embeddedProps
+      .map((p) => {
+        const val = props[p.name];
+        return val ? `## ${p.name}\n${val}` : "";
+      })
+      .filter((v) => v.length > 0)
+      .join("\n");
   }
 
   isAllowedForRead(name: string): boolean {

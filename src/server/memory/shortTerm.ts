@@ -43,7 +43,9 @@ export class ShortTermMemory {
 
     let embedding: number[] | undefined;
     if (generateEmbedding) {
-      embedding = await this.embedder.embed(content);
+      const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+      const embedText = NM.getCachedInstance().getEmbeddingText("Message", { content });
+      embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     }
 
     const messageId = await nextId(this.client);

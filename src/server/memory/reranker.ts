@@ -73,30 +73,23 @@ export function getReranker(): Reranker | null {
 
 // ── Shared post-processing helper ──
 
+import { NodeManager } from "@/server/memory/nodeManager";
+
 export function extractSearchTexts<T>(
   items: T[],
-  kind: "message" | "entity" | "note" | "plot",
+  kind: string,
 ): Array<T & { text: string }> {
+  const nodeManager = NodeManager.getCachedInstance();
   return items.map((item) => {
     const obj = item as Record<string, unknown>;
-    let text = "";
-    switch (kind) {
-      case "message":
-        text = (obj.content as string) || "";
-        break;
-      case "entity": {
-        const name = (obj.name as string) || "";
-        const type = (obj.type as string) || "";
-        const desc = (obj.description as string) || (obj.brief as string) || "";
-        text = `${name} (${type}): ${desc}`;
-        break;
-      }
-      case "note":
-        text = `${(obj.name as string) || ""}: ${(obj.content as string) || ""}`;
-        break;
-      case "plot":
-        text = `${(obj.name as string) || ""}: ${(obj.description as string) || ""}`;
-        break;
+    const text = nodeManager.getEmbeddingText(kind, obj);
+    if (!text) {
+      const fallback =
+        (obj.content as string) ||
+        (obj.description as string) ||
+        (obj.name as string) ||
+        "";
+      return { ...item, text: fallback };
     }
     return { ...item, text };
   });

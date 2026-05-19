@@ -33,7 +33,9 @@ export class Notes {
   }
 
   async createNote(noteName: string, content: string): Promise<MemoryNote> {
-    const embedding = await this.embedder.embed(content);
+    const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+    const embedText = NM.getCachedInstance().getEmbeddingText("Note", { name: noteName, content });
+    const embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     const now = new Date().toISOString();
 
     await this.client.executeWrite(
@@ -55,7 +57,9 @@ export class Notes {
     const content = options.content ?? existing.content;
     let embedding = existing._embedding;
     if (options.content) {
-      embedding = await this.embedder.embed(options.content);
+      const { NodeManager: NM } = await import("@/server/memory/nodeManager");
+      const embedText = NM.getCachedInstance().getEmbeddingText("Note", { name: noteName, content: options.content });
+      embedding = embedText ? await this.embedder.embed(embedText) : undefined;
     }
     const now = new Date().toISOString();
 
@@ -110,7 +114,7 @@ export class Notes {
     }));
 
     if (useRerank && parsed.length > 0) {
-      const items = extractSearchTexts(parsed, "note");
+      const items = extractSearchTexts(parsed, "Note");
       const reranked = await applyRerank(query, items, limit);
       return reranked.map((r) => ({
         ...r,

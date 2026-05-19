@@ -34,11 +34,11 @@ describe("Gameplay: Murder Mystery Investigation", () => {
     // 4. Search for clues related to the ledger
     const searchResult = await exec(searchWorld, {
       query: "ledger",
-      types: ["entities", "notes"],
+      labels: ["Entity", "Note"],
       limit: 5,
     });
     const searchData = parseToolOutput(searchResult);
-    expect(Array.isArray(searchData.entities)).toBe(true);
+    expect(Array.isArray(searchData.Entity)).toBe(true);
 
     // 5. Find all entities in Passenger Car A (6 characters located here in seed data)
     const locQuery = await exec(queryWorld, {

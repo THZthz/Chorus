@@ -153,14 +153,11 @@ Verify you're targeting the right node.
     }
 
     const wantsEmbedding = nodeDef.properties.some((p) => p.name === "_embedding") ?? false;
-    const embeddingKeys = wantsEmbedding
-      ? nodeDef.properties.filter((prop) => prop.tags.includes("embedded")).map((prop) => prop.name)
-      : [];
 
     async function computeEmbedding(props: Record<string, unknown>): Promise<number[] | null> {
-      const embedText = embeddingKeys
-        .map((name) => (props[name] ? `## ${name}\n${props[name]}` : ""))
-        .join("\n");
+      if (!wantsEmbedding) return null;
+      const nodeManager = NodeManager.getCachedInstance();
+      const embedText = nodeManager.getEmbeddingText(args.nodeLabel, props);
       if (!embedText) return null;
       try {
         const embedder = getEmbedder();
@@ -316,7 +313,8 @@ Verify you're targeting the right node.
     }
 
     if (wantsEmbedding) {
-      const textChanged = Object.keys(args.properties).some((k) => new Set(embeddingKeys).has(k));
+      const embeddedNames = new Set(nodeDef.properties.filter((p) => p.tags.includes("embedded")).map((p) => p.name));
+      const textChanged = Object.keys(args.properties).some((k) => embeddedNames.has(k));
       if (textChanged) {
         const merged: Record<string, unknown> = { ...existingNode, ...args.properties };
         const embedding = await computeEmbedding(merged);

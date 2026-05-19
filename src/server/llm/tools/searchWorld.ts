@@ -22,32 +22,41 @@ import { MemoryClient } from "@/server/memory/client";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
+import { NodeManager } from "@/server/memory/nodeManager";
 
-const SEARCH_TYPES = ["entities", "messages", "notes", "plots"] as const;
+function getSearchableLabels(): string[] {
+  const all = NodeManager.getCachedInstance().getAll()
+    .filter((def) => def.properties.some((p) => p.name === "_embedding"));
 
-type SearchResult = {
-  entities?: Record<string, unknown>[];
-  messages?: Record<string, unknown>[];
-  notes?: Record<string, unknown>[];
-  plots?: Record<string, unknown>[];
-};
+  // Filter out subtype labels: labels whose property definitions (names + tags)
+  // are identical to another label's — they share the same vector index.
+  const seen = new Map<string, string>(); // property-fingerprint → first label name
+  const primary: string[] = [];
+  for (const def of all) {
+    const fingerprint = def.properties
+      .map((p) => `${p.name}:${[...p.tags].sort().join(",")}`)
+      .sort()
+      .join("|");
+    const existing = seen.get(fingerprint);
+    if (existing === undefined) {
+      seen.set(fingerprint, def.name);
+      primary.push(def.name);
+    }
+    // else: def.name is a subtype of existing — shares the same vector index
+  }
+  return primary;
+}
 
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_WORLD,
   description: `
 Search the archive by semantic MEANING (vector similarity + reranking).
-Use this when you don't know the exact name or Cypher pattern — ${TOOL_NAMES.SEARCH_WORLD} finds things by what they're ABOUT.
+Use this when you don't know the exact name or Cypher pattern — ${
+    TOOL_NAMES.SEARCH_WORLD
+  } finds things by what they're ABOUT.
 
-Domains (pick via 'types'):
-- entities  — Characters, objects, locations. "guard captain" finds relevant NPCs.
-- messages  — Past dialogue. "the threat" finds when it was last discussed.
-- notes     — YOUR OWN MEMORY. Search your scratchpad to recall what you were tracking.
-- plots     — Story arcs. "the hunter" finds plot branches about pursuit.
-Default: searches all four.
-
-Use ${TOOL_NAMES.SEARCH_WORLD} FIRST for: recalling what happened, finding by concept,
-checking if a plot already exists, or remembering what you were tracking.
-Use ${TOOL_NAMES.QUERY_WORLD} (READ) when you need exact Cypher lookups or relationship traversal.
+Pass one or more node labels as 'labels' to choose which domain to search
+(e.g. ["Entity", "Message", "Note", "Plot"]). Omit to search all searchable types.
 `.trim(),
   inputSchema: z.object({
     query: z
@@ -55,85 +64,32 @@ Use ${TOOL_NAMES.QUERY_WORLD} (READ) when you need exact Cypher lookups or relat
       .describe(
         "Natural language search query, should be a list of keywords, keep short and focused.",
       ),
-    types: z
-      .array(z.enum(SEARCH_TYPES))
-      .default(["entities", "messages", "notes", "plots"])
-      .describe("What to search. Omit to search everything."),
-    limit: z.number().default(10).describe("Max results per type."),
+    labels: z
+      .array(z.string())
+      .default(getSearchableLabels())
+      .describe("Node labels to search. Omit to search all searchable types."),
+    limit: z.number().default(10).describe("Max results per label."),
   }),
   execute: wrapSafe(async (args) => {
+    const searchableLabels = new Set(getSearchableLabels());
+    const labels = args.labels && args.labels.length > 0 ? args.labels : getSearchableLabels();
+
+    for (const label of labels) {
+      if (!searchableLabels.has(label)) {
+        const available = [...searchableLabels].join(", ");
+        return `ERROR: "${label}" is not a searchable node label. Available: ${available}`;
+      }
+    }
+
     const client = MemoryClient.getCachedInstance();
-    const result: SearchResult = {};
+    const result: Record<string, Record<string, unknown>[]> = {};
 
-    const tasks: Promise<void>[] = [];
-
-    // Entities + messages: use the combined MemorySearch
-    const worldTypes = args.types.filter((t) => t === "entities" || t === "messages");
-    if (worldTypes.length > 0) {
-      tasks.push(
-        (async () => {
-          const r = await client.search.search(args.query, {
-            memoryTypes: worldTypes,
-            limit: args.limit,
-          });
-          if (worldTypes.includes("entities")) {
-            result.entities = stripHiddenProperties(r.entities.map((e) => ({ ...e }))) as Record<
-              string,
-              unknown
-            >[];
-          }
-          if (worldTypes.includes("messages")) {
-            result.messages = stripHiddenProperties(r.messages.map((m) => ({ ...m }))) as Record<
-              string,
-              unknown
-            >[];
-          }
-        })(),
-      );
-    }
-
-    // Notes
-    if (args.types.includes("notes")) {
-      tasks.push(
-        (async () => {
-          const notes = await client.notes.searchNotes(args.query, { limit: args.limit });
-          result.notes = await Promise.all(
-            notes.map(async (n) => ({
-              name: n.name,
-              content: n.content,
-              similarity: n.similarity,
-              aboutEntities: await client.notes.getLinkedEntities(n.name),
-              aboutMessages: await client.notes.getLinkedMessages(n.name),
-            })),
-          );
-        })(),
-      );
-    }
-
-    // Plots
-    if (args.types.includes("plots")) {
-      tasks.push(
-        (async () => {
-          const plots = await client.plots.searchPlots(args.query, { limit: args.limit });
-          result.plots = await Promise.all(
-            plots.map(async (p) => {
-              const children = await client.plots.getChildPlots(p.name);
-              return {
-                name: p.name,
-                description: p.description,
-                status: p.status,
-                triggerCondition: p.triggerCondition,
-                flags: p.flags,
-                similarity: p.similarity,
-                childPlots: children.map((c) => ({ name: c.name, status: c.status })),
-              };
-            }),
-          );
-        })(),
-      );
-    }
-
-    // Run all selected searches in parallel
+    const tasks = labels.map(async (label) => {
+      const rows = await client.search.searchByLabel(label, args.query, {
+        limit: args.limit,
+      });
+      result[label] = stripHiddenProperties(rows) as Record<string, unknown>[];
+    });
     await Promise.all(tasks);
 
     return JSON.stringify(result, null, 2);

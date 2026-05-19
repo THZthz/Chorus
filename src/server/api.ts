@@ -43,6 +43,7 @@ import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { resetSceneContext } from "@/server/llm/tools/resetSceneContext";
 import type { Message } from "@/types/dialogue";
+import { getContext } from "@/server/llm/tools/getContext";
 
 const debugToolRegistry: Record<string, { execute: (args: any) => Promise<string> }> = {
   queryWorld: queryWorld as any,
@@ -50,6 +51,7 @@ const debugToolRegistry: Record<string, { execute: (args: any) => Promise<string
   editNode: editNode as any,
   editRelationship: editRelationship as any,
   manageSchema: manageSchema as any,
+  getContext: getContext as any,
   resetSceneContext: resetSceneContext as any,
 };
 

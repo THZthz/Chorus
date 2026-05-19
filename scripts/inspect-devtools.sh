@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Inspect devtools generations.json — readable LLM interaction
 # Usage:
-#   ./scripts/inspect-devtools.sh                                # latest run, all steps
-#   ./scripts/inspect-devtools.sh --show-runs-summary            # summary of all runs
-#   ./scripts/inspect-devtools.sh --run N                        # specific run, all steps
-#   ./scripts/inspect-devtools.sh --run N --step M               # specific step
+#   ./scripts/inspect-devtools.sh                                # Latest run, all steps (default)
+#   ./scripts/inspect-devtools.sh --show-runs-summary            # Summary of all runs (time, step count, token usage)
+#   ./scripts/inspect-devtools.sh --run N                        # Specific run by index (0-based, negative from end; N=-1, the latest run)
+#   ./scripts/inspect-devtools.sh --run N --step M               # Specific step
+#   ./scripts/inspect-devtools.sh --run N --step M --tool-result # Show tool call results (from the next step's input)
+#
 #   N: 0-based index (sorted by start time), negative counts from end (-1=latest)
 #   N: can also be a run_id prefix (e.g. "20260513")
 #   M: step_number (1-based, as stored in JSON)
+#
+# Use `--full` without `--tool-result` show full content of LLM's reasoning/text output, and tool input.
+# Use `--full` with `--tool-result` show full content of tool-call result.
+
+
 set -euo pipefail
 
 FILE=".devtools/generations.json"

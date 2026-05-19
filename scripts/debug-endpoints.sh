@@ -4,18 +4,6 @@
 # Dump — full world state (markdown)
 curl -s "http://localhost:3000/api/debug/dump" | head -80
 
-# Search world — entities + messages
-curl -s "http://localhost:3000/api/debug/search/world?query=murder+weapon&types=entities,messages&limit=5&threshold=0.5" | jq .
-
-# Search world with reranker (requires LLAMA_RERANK_URL configured)
-curl -s "http://localhost:3000/api/debug/search/world?query=murder+weapon&types=entities,messages&limit=5&rerank=true" | jq .
-
-# Search plots
-curl -s "http://localhost:3000/api/debug/search/plots?query=Crowne+murder&limit=5&threshold=0.4" | jq .
-
-# Search notes
-curl -s "http://localhost:3000/api/debug/search/notes?query=ley+line&limit=5&threshold=0.4" | jq .
-
 # queryWorld — READ (raw JSON)
 curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-Type: application/json" -d '{"action":"READ","query":"MATCH (e:Entity) RETURN e.name, e.type LIMIT 5"}'
 
@@ -29,7 +17,7 @@ curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-T
 curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-Type: application/json" -d '{"action":"WRITE","query":"MERGE (e:Entity {name: \"Test_NPC\"}) SET e.type = \"CHARACTER\", e.brief = \"A debug test entity\" RETURN e"}'
 
 # searchWorld
-curl -s -X POST "http://localhost:3000/api/debug/tools/searchWorld" -H "Content-Type: application/json" -d '{"query":"weapon","types":["entities","plots"],"limit":3}' | jq .
+curl -s -X POST "http://localhost:3000/api/debug/tools/searchWorld" -H "Content-Type: application/json" -d '{"query":"weapon","labels":["Entity","Plot"],"limit":3}' | jq .
 
 # editNode — CREATE
 curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Type: application/json" -d '{"nodeLabel":"Note","action":"CREATE","properties":{"name":"debug_note","content":"A test note from the debug endpoint"}}'
@@ -44,7 +32,10 @@ curl -s -X POST "http://localhost:3000/api/debug/tools/editNode" -H "Content-Typ
 curl -s -X POST "http://localhost:3000/api/debug/tools/editRelationship" -H "Content-Type: application/json" -d '{"action":"CREATE","relationshipType":"LOCATED_AT","sourceLabel":"Entity","sourceMatch":{"name":"Player"},"targetLabel":"Location","targetMatch":{"name":"Engine Room"}}'
 
 # manageSchema — register node type
-curl -s -X POST "http://localhost:3000/api/debug/tools/manageSchema" -H "Content-Type: application/json" -d '{"target":"node","action":"register","name":"Artifact","description":"A magical or mechanical artifact","properties":[{"name":"power_level","description":"Numeric power rating","type":"number"},{"name":"origin","description":"Where it came from","type":"string"}]}'
+curl -s -X POST "http://localhost:3000/api/debug/tools/manageSchema" -H "Content-Type: application/json" -d '{"target":"node","action":"register","name":"Artifact","description":"A magical or mechanical artifact","properties":[{"name":"power_level","description":"Numeric power rating","tags":["number"]},{"name":"origin","description":"Where it came from","tags":["string"]}]}'
 
 # resetSceneContext
 curl -s -X POST "http://localhost:3000/api/debug/tools/resetSceneContext" -H "Content-Type: application/json" -d '{}'
+
+# getContext
+curl -s -X POST "http://localhost:3000/api/debug/tools/getContext" -H "Content-Type: application/json" -d '{"types":["SCENE_CONTEXT","CHARACTERS_BRIEF","LOCATIONS_BRIEF","OBJECTS_BRIEF","PLOTS_BRIEF","SCHEMA_DUMP","RELATIONSHIP_DUMP"]}' | jq .

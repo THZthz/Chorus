@@ -21,7 +21,7 @@ import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
-import { wrapSafe } from "@/server/llm/tools/shared";
+import { extractInternalAndUnknownKeys, wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
 const REL_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
@@ -117,16 +117,7 @@ relationships change.
     const hasSchema = relDef.type === "GM_DEFINED" && relDef.properties.length > 0;
 
     function validateProps(props: Record<string, unknown>): string | null {
-      const internalKeys: string[] = [];
-      const unknownKeys: string[] = [];
-      for (const key of Object.keys(props)) {
-        if (key.startsWith("_")) {
-          internalKeys.push(key);
-        }
-        if (hasSchema && !schemaProps.has(key)) {
-          unknownKeys.push(key);
-        }
-      }
+      const {internalKeys, unknownKeys} = extractInternalAndUnknownKeys(schemaProps, hasSchema, props);
       const parts: string[] = [];
       if (internalKeys.length > 0)
         parts.push(

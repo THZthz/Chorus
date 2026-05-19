@@ -48,7 +48,12 @@ export function createAdvanceTimeTool(events: EventEmitter) {
   return tool({
     title: TOOL_NAMES.ADVANCE_TIME,
     description:
-      "Advance the in-game clock. Time only moves when YOU advance it — narrating that time passed without calling advanceTime means time stood still in the archive. Use segments (0-11, each = 2 hours) for short advances within a day, or days (0+) for multi-day travel. Total advancement = days * 12 + segments. Include a brief 'reason' so your future self knows why time moved.",
+      `
+Advance the in-game clock. Time only moves when YOU advance it — narrating that time passed without
+calling advanceTime means time stood still in the archive. Use segments (0-11, each = 2 hours) for
+short advances within a day, or days (0+) for multi-day travel. Total advancement =
+days * 12 + segments. Include a brief 'reason' so your future self knows why time moved.
+`.trim(),
     inputSchema,
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
       const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);

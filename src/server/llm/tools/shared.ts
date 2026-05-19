@@ -52,3 +52,23 @@ export function wrapSafe<T>(
     }
   };
 }
+
+/**
+ * Especially used in editNode and editRelationship.
+ * @param schemaProps
+ * @param hasSchema
+ * @param props
+ */
+export function extractInternalAndUnknownKeys(schemaProps: Set<string>, hasSchema: boolean, props: Record<string, unknown>): Record<string, string[]> {
+  const internalKeys: string[] = [];
+  const unknownKeys: string[] = [];
+  for (const key of Object.keys(props)) {
+    if (key.startsWith("_")) {
+      internalKeys.push(key);
+    }
+    if (hasSchema && !schemaProps.has(key)) {
+      unknownKeys.push(key);
+    }
+  }
+  return {internalKeys, unknownKeys};
+}

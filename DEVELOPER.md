@@ -117,9 +117,10 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 `relationshipManager.ts` — singleton registry. Keyed by composite `(name, sourceLabel, targetLabel)`. Same name with different endpoint labels creates separate entries.
 
 - **Categories**: `INTERNAL` (system, write-blocked), `PREDEFINED` (world-modeling, write-allowed), `GM_DEFINED` (user-declared).
-- **Key methods**: `register(name, desc, type, sourceLabel, targetLabel, props)`, `get(name, sourceLabel, targetLabel)`, `getByName(name)`, `isAllowedForWrite(name, sourceLabel, targetLabel)`, `updateDefinition(...)`, `unregister(...)`.
+- **Key methods**: `register(name, desc, type, sourceLabel, targetLabel, props)`, `get(name, sourceLabel, targetLabel)`, `getByName(name)`, `isAllowedForWrite(name, sourceLabel, targetLabel)`, `updateDefinition(...)`, `unregister(...)`, `getEmbeddingText(name, props)`.
 - **Wildcard sentinel**: empty string `""` means unconstrained endpoint — used by `validation.ts` for auto-registered types.
-- **Neo4j sync**: stored as `:RelationshipType` nodes with `source_label`/`target_label` (singular scalars).
+- **Neo4j sync**: stored as `:RelationshipType` nodes with `source_label`/`target_label` (singular scalars). Also creates property indexes, composite indexes, and vector indexes for relationship types that have `_embedding`.
+- **Property tags**: `string`, `number`, `number[]`, `json`, `embedded`, `index`, `composite_index_1`, `composite_index_2`, `composite_index_3`. (`unique` is excluded — Neo4j does not support uniqueness constraints on relationship properties.)
 
 ## 5. Node Type Registry
 
@@ -133,9 +134,11 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 
 ## 6. Dynamic Vector Search
 
-`searchWorld` discovers searchable node types at runtime via `NodeManager`. Labels with `_embedding` are searchable. Subtype labels (Character, Location, Object, etc.) that share a parent's identical property schema are filtered out via fingerprint comparison, since they share the same vector index.
+`searchWorld` discovers searchable node types and relationship types at runtime via `NodeManager` and `RelationshipManager`. Types with `_embedding` property are searchable. Subtype labels (Character, Location, Object, etc.) that share a parent's identical property schema are filtered out via fingerprint comparison, since they share the same vector index.
 
-`MemorySearch.searchByLabel(label, query)` provides generic single-label vector search against `${label.toLowerCase()}_embedding_idx`, replacing the old 4 separate code paths.
+**Parameters**: `target` (array of `"node"`/`"relationship"`, defaults to both), `domains` (optional list of node labels or relationship types to search), `query`, `limit`.
+
+`MemorySearch.searchByLabel(label, query)` and `MemorySearch.searchByRelationshipType(type, query)` provide generic single-type vector search. Node vector indexes are named `${label.toLowerCase()}_embedding_idx`; relationship vector indexes are named `rel_${type.toLowerCase()}_embedding_idx`.
 
 ---
 

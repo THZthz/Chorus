@@ -21,6 +21,7 @@ import { z } from "zod";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/memory/relationshipManager";
 import type { RelationshipPropertyDef } from "@/server/memory/relationshipManager";
+import { getEmbedder } from "@/server/memory/embedder";
 import { extractInternalAndUnknownKeys, wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 
@@ -147,6 +148,22 @@ relationships change.
         }
       }
 
+      // Compute embedding if the relationship type supports it.
+      const wantsEmbedding = relDef.properties.some((p) => p.name === "_embedding");
+      if (wantsEmbedding) {
+        const embedText = RelationshipManager.getCachedInstance().getEmbeddingText(
+          args.relationshipType,
+          createProps,
+        );
+        if (embedText) {
+          try {
+            createProps["_embedding"] = await getEmbedder().embed(embedText);
+          } catch {
+            console.warn(`[editRelationship] embedding failed for "${args.relationshipType}"`);
+          }
+        }
+      }
+
       const rows = await client.neo4j.mergeRelationship(
         args.sourceLabel,
         srcKey,
@@ -227,6 +244,30 @@ relationships change.
         const pName = `s_${key}`;
         setParams[pName] = serializeValue(value);
         setters.push(`r.\`${key}\` = $${pName}`);
+      }
+
+      // Recompute embedding if any embedded-tagged property changed.
+      const wantsEmbedding = relDef.properties.some((p) => p.name === "_embedding");
+      if (wantsEmbedding) {
+        const embeddedNames = new Set(
+          relDef.properties.filter((p) => p.tags.includes("embedded")).map((p) => p.name),
+        );
+        const textChanged = Object.keys(args.properties).some((k) => embeddedNames.has(k));
+        if (textChanged) {
+          const merged = { ...existingRel, ...args.properties };
+          const embedText = RelationshipManager.getCachedInstance().getEmbeddingText(
+            args.relationshipType,
+            merged,
+          );
+          if (embedText) {
+            try {
+              setParams["s__embedding"] = await getEmbedder().embed(embedText);
+              setters.push("r._embedding = $s__embedding");
+            } catch {
+              console.warn(`[editRelationship] embedding update failed for "${args.relationshipType}"`);
+            }
+          }
+        }
       }
 
       await client.neo4j.executeWrite(

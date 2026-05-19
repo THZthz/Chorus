@@ -23,6 +23,7 @@ import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
 import { TOOL_NAMES } from "@/shared/constants";
 import { NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager } from "@/server/memory/relationshipManager";
 
 function getSearchableLabels(): string[] {
   const all = NodeManager.getCachedInstance()
@@ -48,6 +49,28 @@ function getSearchableLabels(): string[] {
   return primary;
 }
 
+function getSearchableRelationshipTypes(): string[] {
+  const all = RelationshipManager.getCachedInstance()
+    .getAll()
+    .filter((def) => def.properties.some((p) => p.name === "_embedding"));
+
+  // Deduplicate by property fingerprint (same approach as nodes).
+  const seen = new Map<string, string>();
+  const primary: string[] = [];
+  for (const def of all) {
+    const fingerprint = def.properties
+      .map((p) => `${p.name}:${[...p.tags].sort().join(",")}`)
+      .sort()
+      .join("|");
+    const existing = seen.get(fingerprint);
+    if (existing === undefined) {
+      seen.set(fingerprint, def.name);
+      primary.push(def.name);
+    }
+  }
+  return primary;
+}
+
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_WORLD,
   description: `
@@ -56,8 +79,9 @@ Use this when you don't know the exact name or Cypher pattern — ${
     TOOL_NAMES.SEARCH_WORLD
   } finds things by what they're ABOUT.
 
-Pass one or more node labels as 'labels' to choose which domain to search
-(e.g. ["Entity", "Message", "Note", "Plot"]). Omit to search all searchable types.
+Pass one or more domains (node labels or relationship types) via 'domains' to choose
+which to search (e.g. ["Entity", "Message", "ALLIED_WITH"]). Omit to search all
+searchable types. Use 'target' to restrict to only nodes or only relationships.
 `.trim(),
   inputSchema: z.object({
     query: z
@@ -65,32 +89,66 @@ Pass one or more node labels as 'labels' to choose which domain to search
       .describe(
         "Natural language search query, should be a list of keywords, keep short and focused.",
       ),
-    labels: z
+    target: z
+      .array(z.enum(["node", "relationship"]))
+      .default(["node", "relationship"])
+      .describe("What to search: 'node', 'relationship', or both. Defaults to both."),
+    domains: z
       .array(z.string())
-      .default(getSearchableLabels())
-      .describe("Node labels to search. Omit to search all searchable types."),
-    limit: z.number().default(10).describe("Max results per label."),
+      .optional()
+      .describe("Node labels or relationship types to search. Omit to search all searchable types."),
+    limit: z.number().default(10).describe("Max results per domain."),
   }),
   execute: wrapSafe(async (args) => {
-    const searchableLabels = new Set(getSearchableLabels());
-    const labels = args.labels && args.labels.length > 0 ? args.labels : getSearchableLabels();
+    const target = args.target ?? ["node", "relationship"];
+    const searchNodes = target.includes("node");
+    const searchRels = target.includes("relationship");
 
-    for (const label of labels) {
-      if (!searchableLabels.has(label)) {
-        const available = [...searchableLabels].join(", ");
-        return `ERROR: "${label}" is not a searchable node label. Available: ${available}`;
+    const searchableLabels = searchNodes ? new Set(getSearchableLabels()) : new Set<string>();
+    const searchableRelTypes = searchRels ? new Set(getSearchableRelationshipTypes()) : new Set<string>();
+
+    // Resolve domains: filter user-provided values to what's searchable.
+    // If none provided, use all searchable node labels and relationship types.
+    const nodeDomains: string[] = [];
+    const relDomains: string[] = [];
+
+    if (args.domains && args.domains.length > 0) {
+      for (const d of args.domains) {
+        const isNode = searchableLabels.has(d);
+        const isRel = searchableRelTypes.has(d);
+        if (!isNode && !isRel) {
+          const available = [...searchableLabels, ...searchableRelTypes].join(", ");
+          return `ERROR: "${d}" is not a searchable node label or relationship type. Available: ${available}`;
+        }
+        if (isNode && searchNodes) nodeDomains.push(d);
+        if (isRel && searchRels) relDomains.push(d);
       }
+    } else {
+      if (searchNodes) nodeDomains.push(...searchableLabels);
+      if (searchRels) relDomains.push(...searchableRelTypes);
     }
 
     const client = MemoryClient.getCachedInstance();
     const result: Record<string, Record<string, unknown>[]> = {};
 
-    const tasks = labels.map(async (label) => {
-      const rows = await client.search.searchByLabel(label, args.query, {
-        limit: args.limit,
-      });
-      result[label] = stripHiddenProperties(rows) as Record<string, unknown>[];
-    });
+    const tasks: Promise<void>[] = [];
+
+    for (const label of nodeDomains) {
+      tasks.push(
+        client.search.searchByLabel(label, args.query, { limit: args.limit }).then((rows) => {
+          result[label] = stripHiddenProperties(rows) as Record<string, unknown>[];
+        }),
+      );
+    }
+
+    for (const type of relDomains) {
+      tasks.push(
+        client.search.searchByRelationshipType(type, args.query, { limit: args.limit }).then((rows) => {
+          result[type] = stripHiddenProperties(rows) as Record<string, unknown>[];
+        }),
+      );
+    }
+
     await Promise.all(tasks);
 
     return JSON.stringify(result, null, 2);

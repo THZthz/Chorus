@@ -1,9 +1,11 @@
-IMPORTANT: **Read DEVELOPER.md BEFORE DOING ANYTHING ELSE**. DEVELOPER.md may contain outdated information, so check the exact source files. You should update it after you have modified the codebase, keep concise.
+## PRINCIPLES
 
-If user's intention is ambiguous, be sure to ask first.
+- If user's intention is ambiguous, be sure to ask first.
+- Focus on **MODULARITY** and **EXTENSIBILITY**. Avoid type redefinition and magic strings. Do not let one file grows too big (>700 lines).
+- No need to add license header for new files, user will add it manually.
 
-Focus on **MODULARITY** and **EXTENSIBILITY**. Avoid type redefinition and magic strings. Do not let one file grows too big (>700 lines).
+## IMPORTANT: Your workflow
 
-Do not start multiple `Explore` sub-agents unless you have read DEVELOPER.md and deem it necessary.
-
-No need to add license header for new files, user will run `npm run add-license-header` manually.
+1. **Read DEVELOPER.md BEFORE DOING ANYTHING ELSE**. DEVELOPER.md may contain outdated information, so it should only act as a reference. Check the exact source files before you act. 
+2. Explore the codebase, making plans, modify codebase, etc.
+3. Update DEVELOPER.md after you have modified the codebase, keep concise.

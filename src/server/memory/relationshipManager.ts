@@ -18,7 +18,17 @@
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
 
-export const RELATIONSHIP_PROPERTY_TAGS = ["string", "number", "number[]", "json"] as const;
+export const RELATIONSHIP_PROPERTY_TAGS = [
+  "string",
+  "number",
+  "number[]",
+  "json",
+  "embedded",
+  "index",
+  "composite_index_1",
+  "composite_index_2",
+  "composite_index_3",
+] as const;
 export type RelationshipPropertyTag = (typeof RELATIONSHIP_PROPERTY_TAGS)[number];
 
 export interface RelationshipPropertyDef {
@@ -267,6 +277,21 @@ export class RelationshipManager {
     return this.get(name, sourceLabel, targetLabel) !== undefined;
   }
 
+  /** Build embedding text by concatenating all "embedded"-tagged properties from the first matching definition. */
+  getEmbeddingText(name: string, props: Record<string, unknown>): string {
+    const defs = this.getByName(name);
+    const def = defs[0];
+    if (!def) return "";
+    const embeddedProps = def.properties.filter((p) => p.tags.includes("embedded"));
+    return embeddedProps
+      .map((p) => {
+        const val = props[p.name];
+        return val ? `## ${p.name}\n${val}` : "";
+      })
+      .filter((v) => v.length > 0)
+      .join("\n");
+  }
+
   updateDescription(
     name: string,
     sourceLabel: string,
@@ -324,6 +349,55 @@ export class RelationshipManager {
           properties: def.properties.length > 0 ? JSON.stringify(def.properties) : null,
         },
       );
+
+      // Create regular index for properties with tag "index".
+      for (const propName of def.properties
+        .filter((p) => p.tags.includes("index"))
+        .map((p) => p.name))
+      {
+        const indexName = `rel_${def.name.toLowerCase()}_${propName}_idx`;
+        try {
+          await client.executeWrite(
+            `CREATE INDEX ${indexName} IF NOT EXISTS FOR ()-[r:\`${def.name}\`]-() ON (r.\`${propName}\`)`,
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[RelationshipManager] Index on ${indexName} not created: ${msg}`);
+        }
+      }
+
+      // Create composite index for each composite_index group.
+      for (const index of ["composite_index_1", "composite_index_2", "composite_index_3"]) {
+        const props = def.properties
+          .filter((p) => p.tags.includes(index as RelationshipPropertyTag))
+          .map((p) => p.name);
+        if (props.length < 2) continue;
+        const indexName = `rel_${def.name.toLowerCase()}_${props.join("_")}_idx${index.at(-1)}`;
+        try {
+          await client.executeWrite(
+            `CREATE INDEX ${indexName} IF NOT EXISTS FOR ()-[r:\`${def.name}\`]-() ON (${props.map((name) => `r.\`${name}\``).join(", ")})`,
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[RelationshipManager] Composite index on ${indexName} not created: ${msg}`);
+        }
+      }
+
+      // Create vector index for types that have _embedding property.
+      if (def.properties.some((p) => p.name === "_embedding")) {
+        const vectorIndexName = `rel_${def.name.toLowerCase()}_embedding_idx`;
+        const dimensions = process.env.EMBEDDING_DIMENSIONS || 1024;
+        try {
+          await client.executeWrite(
+            `CREATE VECTOR INDEX ${vectorIndexName} IF NOT EXISTS FOR ()-[r:\`${def.name}\`]-() ON (r._embedding)
+            OPTIONS { indexConfig: { \`vector.dimensions\`: ${dimensions}, \`vector.similarity_function\`: 'COSINE' } }`,
+          );
+        } catch {
+          console.error(
+            `[RelationshipManager] Vector index ${vectorIndexName} not created (Neo4j 5.11+ required).`,
+          );
+        }
+      }
     }
   }
 

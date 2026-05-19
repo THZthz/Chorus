@@ -23,6 +23,7 @@ import type { SearchResults, MemoryMessage, MemoryEntity } from "@/server/memory
 import { getEmbedder } from "@/server/memory/embedder";
 import { MemoryClient } from "@/server/memory/client";
 import { NodeManager } from "@/server/memory/nodeManager";
+import { RelationshipManager } from "@/server/memory/relationshipManager";
 import { getReranker, extractSearchTexts, applyRerank } from "@/server/memory/reranker";
 
 export class MemorySearch {
@@ -69,6 +70,58 @@ export class MemorySearch {
       const items = results.map((r) => ({
         ...r,
         text: nodeManager.getEmbeddingText(label, r),
+      }));
+      const reranked = await applyRerank(query, items, limit);
+      return reranked.map((r) => {
+        const { text: _, ...rest } = r as Record<string, unknown>;
+        return rest as Record<string, unknown> & { similarity: number; relevance?: number };
+      });
+    }
+
+    return results;
+  }
+
+  async searchByRelationshipType(
+    type: string,
+    query: string,
+    options?: {
+      limit?: number;
+      threshold?: number;
+      rerank?: boolean;
+    },
+  ): Promise<Array<Record<string, unknown> & { similarity: number; relevance?: number }>> {
+    const { limit = 10, threshold, rerank } = options || {};
+
+    const useRerank = rerank !== false && getReranker() !== null;
+    const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
+    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+
+    const embedder = getEmbedder();
+    const queryEmbedding = await embedder.embed(query);
+
+    const client = MemoryClient.getCachedInstance().neo4j;
+    const indexName = `rel_${type.toLowerCase()}_embedding_idx`;
+    const rows = await client.executeRead(
+      `CALL db.index.vector.queryRelationships('${indexName}', $limit, $embedding)
+       YIELD relationship, score WHERE score >= $threshold
+       RETURN relationship, score ORDER BY score DESC`,
+      { embedding: queryEmbedding, limit: int(fetchLimit), threshold: effectiveThreshold },
+    );
+
+    const results = rows.map((r) => {
+      const rel = r.relationship as Record<string, unknown>;
+      const clean: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(rel)) {
+        if (!k.startsWith("_")) clean[k] = v;
+      }
+      return { ...clean, similarity: r.score as number };
+    });
+
+    if (useRerank && results.length > 0) {
+      const relManager = RelationshipManager.getCachedInstance();
+      const items = results.map((r) => ({
+        ...r,
+        text: relManager.getEmbeddingText(type, r),
       }));
       const reranked = await applyRerank(query, items, limit);
       return reranked.map((r) => {

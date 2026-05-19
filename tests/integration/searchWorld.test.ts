@@ -31,7 +31,7 @@ describe("searchWorld", () => {
     if (!embedderAvailable) return;
     const result = await exec(searchWorld, {
       query: "player amnesia identity",
-      labels: ["Entity"],
+      domains: ["Entity"],
       limit: 5,
     });
     const data = parseToolOutput(result);
@@ -42,7 +42,7 @@ describe("searchWorld", () => {
     if (!embedderAvailable) return;
     const result = await exec(searchWorld, {
       query: "murder investigation",
-      labels: ["Entity", "Plot"],
+      domains: ["Entity", "Plot"],
       limit: 5,
     });
     const data = parseToolOutput(result);
@@ -54,14 +54,16 @@ describe("searchWorld", () => {
     if (!embedderAvailable) return;
     const result = await exec(searchWorld, {
       query: "zzxyznonexistentword98765",
-      labels: ["Entity"],
+      domains: ["Entity"],
       limit: 2,
     });
     const data = parseToolOutput(result);
     expect(Array.isArray(data.Entity)).toBe(true);
   });
 
-  it("returns results for all searchable labels by default", async () => {
+  // Default target is now ["node", "relationship"] — both are searched unless
+  // no relationship types have _embedding, in which case only nodes appear.
+  it("returns results for all searchable domains by default", async () => {
     if (!embedderAvailable) return;
     const result = await exec(searchWorld, {
       query: "glass cage murder",
@@ -75,7 +77,7 @@ describe("searchWorld", () => {
   it("succeeds without embedder (returns empty or minimal results)", async () => {
     const result = await exec(searchWorld, {
       query: "test query",
-      labels: ["Entity"],
+      domains: ["Entity"],
       limit: 2,
     });
     const data = parseToolOutput(result);

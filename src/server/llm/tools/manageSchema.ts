@@ -75,7 +75,9 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
           tags: z
             .array(z.enum(NODE_PROPERTY_TAGS))
             .describe(
-              "Comma-separated tags describing the property. For nodes: 'string', 'number', 'json', 'embedded', 'unique', 'index', etc. For relationships: 'string', 'number', 'number[]', 'json' only.",
+              "Comma-separated tags describing the property. " +
+              "For nodes: 'string', 'number', 'json', 'embedded', 'unique', 'index', 'composite_index_1', 'composite_index_2', 'composite_index_3'. " +
+              "For relationships: same tags except 'unique' (not supported by Neo4j for relationship properties).",
             ),
         }),
       )

@@ -158,5 +158,37 @@ describe("manageSchema", () => {
       });
       expect(result).toContain("Cannot unregister");
     });
+
+    it("registers a relationship type with embedded, index, and composite_index tags", async () => {
+      // Relationships now support the same property tags as nodes except
+      // 'unique' — Neo4j has no uniqueness constraint for relationship properties.
+      const result = await exec(manageSchema, {
+        target: "relationship",
+        action: "register",
+        name: "TEST_TAGGED_REL",
+        description: "Relationship with full property tags",
+        sourceLabel: "Entity",
+        targetLabel: "Entity",
+        properties: [
+          { name: "summary", description: "Summary text for embedding", tags: ["string", "embedded"] },
+          { name: "weight", description: "Relationship weight for indexing", tags: ["number", "index"] },
+          { name: "group_key", description: "First composite key", tags: ["string", "composite_index_1"] },
+          { name: "sub_key", description: "Second composite key", tags: ["string", "composite_index_1"] },
+        ],
+      });
+      expect(result).toContain("Registered relationship type");
+      expect(result).toContain("TEST_TAGGED_REL");
+      expect(result).toContain("summary");
+      expect(result).toContain("weight");
+
+      // Cleanup
+      await exec(manageSchema, {
+        target: "relationship",
+        action: "unregister",
+        name: "TEST_TAGGED_REL",
+        sourceLabel: "Entity",
+        targetLabel: "Entity",
+      });
+    });
   });
 });

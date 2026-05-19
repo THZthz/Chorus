@@ -20,7 +20,8 @@ import { editRelationship } from "@/server/llm/tools/editRelationship";
 import { editNode } from "@/server/llm/tools/editNode";
 import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
-import { exec, resetDb, parseToolOutput } from "../helpers";
+import { MemoryClient } from "@/server/memory/client";
+import { exec, resetDb, parseToolOutput, isEmbedderAvailable } from "../helpers";
 
 describe("editRelationship", () => {
   const NOTE_A = "test_rel_note_a";
@@ -441,6 +442,117 @@ describe("editRelationship", () => {
       const row = data.rows[0] as Record<string, unknown>;
       const meta = JSON.parse((row as Record<string, string>)["r.meta"]);
       expect(meta).toEqual({ x: 1, y: 99 });
+    });
+  });
+
+  describe("embedding generation", () => {
+    const EMBED_REL = "TEST_EMBED_REL";
+
+    // The top-level afterEach deletes NOTE_A/NOTE_B after every test, so
+    // each test here creates its own note via ensureNote() before acting.
+    // _embedding is verified via MemoryClient.neo4j.executeRead directly
+    // because queryWorld strips _-prefixed keys via stripHiddenProperties.
+
+    beforeAll(async () => {
+      await exec(manageSchema, {
+        target: "relationship",
+        action: "register",
+        name: EMBED_REL,
+        description: "Relationship with embedded properties",
+        properties: [
+          { name: "summary", description: "Summary for embedding", tags: ["string", "embedded"] },
+          { name: "detail", description: "Detail for embedding", tags: ["string", "embedded"] },
+          { name: "_embedding", description: "Vector embedding", tags: ["number[]"] },
+        ],
+        sourceLabel: "Note",
+        targetLabel: "Entity",
+      });
+    });
+
+    afterAll(async () => {
+      await exec(manageSchema, {
+        target: "relationship",
+        action: "unregister",
+        name: EMBED_REL,
+        sourceLabel: "Note",
+        targetLabel: "Entity",
+      });
+    });
+
+    async function ensureNote(name: string) {
+      await exec(editNode, {
+        nodeLabel: "Note",
+        action: "CREATE",
+        properties: { name, content: `${name} content` },
+      });
+    }
+
+    it("generates _embedding on CREATE when type has embedded properties", async () => {
+      if (!(await isEmbedderAvailable())) return;
+      await ensureNote(NOTE_A);
+
+      const result = await exec(editRelationship, {
+        action: "CREATE",
+        relationshipType: EMBED_REL,
+        sourceLabel: "Note",
+        sourceMatch: { name: NOTE_A },
+        targetLabel: "Entity",
+        targetMatch: { name: "Player" },
+        properties: { summary: "Test summary for embedding", detail: "Test detail" },
+      });
+      expect(result).toContain("created successfully");
+
+      const client = MemoryClient.getCachedInstance();
+      const rows = await client.neo4j.executeRead(
+        `MATCH (n:Note {name: '${NOTE_A}'})-[r:${EMBED_REL}]->(:Entity {name: 'Player'}) RETURN r._embedding AS embedding`,
+      );
+      const embedding = rows[0]?.embedding as number[] | undefined;
+      expect(embedding).toBeTruthy();
+      expect(Array.isArray(embedding)).toBe(true);
+      expect(embedding!.length).toBeGreaterThan(0);
+    });
+
+    it("recomputes _embedding on UPDATE when embedded property changes", async () => {
+      if (!(await isEmbedderAvailable())) return;
+      await ensureNote(NOTE_A);
+
+      // Create first
+      await exec(editRelationship, {
+        action: "CREATE",
+        relationshipType: EMBED_REL,
+        sourceLabel: "Note",
+        sourceMatch: { name: NOTE_A },
+        targetLabel: "Entity",
+        targetMatch: { name: "Player" },
+        properties: { summary: "Original summary", detail: "Original detail" },
+      });
+
+      const client = MemoryClient.getCachedInstance();
+      const beforeRows = await client.neo4j.executeRead(
+        `MATCH (n:Note {name: '${NOTE_A}'})-[r:${EMBED_REL}]->(:Entity {name: 'Player'}) RETURN r._embedding AS embedding`,
+      );
+      const beforeEmbedding = beforeRows[0]?.embedding as number[] | undefined;
+
+      // Update an embedded property
+      const updateResult = await exec(editRelationship, {
+        action: "UPDATE",
+        relationshipType: EMBED_REL,
+        sourceLabel: "Note",
+        sourceMatch: { name: NOTE_A },
+        targetLabel: "Entity",
+        targetMatch: { name: "Player" },
+        properties: { summary: "Changed summary" },
+      });
+      expect(updateResult).toContain("updated properties");
+
+      const afterRows = await client.neo4j.executeRead(
+        `MATCH (n:Note {name: '${NOTE_A}'})-[r:${EMBED_REL}]->(:Entity {name: 'Player'}) RETURN r._embedding AS embedding`,
+      );
+      const afterEmbedding = afterRows[0]?.embedding as number[] | undefined;
+
+      expect(afterEmbedding).toBeTruthy();
+      expect(beforeEmbedding).toBeTruthy();
+      expect(afterEmbedding).not.toEqual(beforeEmbedding);
     });
   });
 });

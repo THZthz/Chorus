@@ -19,7 +19,8 @@
 // NOTE: sourceName/targetName must be entity names (the `name` field stored in Neo4j),
 // NOT database IDs. agent-memory's memory_create_relationship looks up entities by name.
 export interface SeedEntity {
-  id: string;
+  // Only used to identify which character is player! ID of player should be "#player#".
+  id?: string;
   type: "CHARACTER" | "OBJECT" | "LOCATION";
   subtype?: string;
   name: string;
@@ -43,6 +44,13 @@ export interface SeedPlot {
   triggerCondition?: string;
   flags?: Array<{ flagId: string; description: string }>;
   branchesTo?: string[];
+}
+
+export interface SeedNote {
+  name: string;
+  content: string;
+  aboutEntities?: string[]; // A list of entities' name
+  aboutPlots?: string[]; // Alist of plots' name
 }
 
 export interface SeedStory {

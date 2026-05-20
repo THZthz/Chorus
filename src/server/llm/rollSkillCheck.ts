@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { MemoryClient } from "@/server/memory/client";
+import { EntityType, MemoryClient, type MemoryEntity } from "@/server/memory/client";
 import type { SkillName } from "@/shared/constants";
 
 const EXPRESSION_ALLOWLIST = /^[a-zA-Z0-9_<>=!&|()+\-*/\s.0-9]+$/;
@@ -110,14 +110,41 @@ export interface SkillCheckResult {
   narrativeSummary: string;
 }
 
-export async function performSkillCheck(args: SkillCheckParams): Promise<SkillCheckResult> {
-  const client = MemoryClient.getCachedInstance();
+function parseEntity(data: Record<string, unknown>): MemoryEntity {
+  const meta =
+    typeof data.metadata === "string" ? (JSON.parse(data.metadata) as Record<string, unknown>) : {};
+  const aliases = (meta.aliases as string[]) || [];
+  delete meta.aliases;
+  return {
+    name: data.name as string,
+    type: data.type as EntityType,
+    subtype: (data.subtype as string) || undefined,
+    brief: (data.brief as string) || undefined,
+    description: (data.description as string) || undefined,
+    aliases,
+    metadata: meta,
+    _embedding: data._embedding as number[] | undefined,
+  };
+}
 
+async function getPlayerStats(): Promise<Record<string, number> | null> {
+  const client = MemoryClient.getCachedInstance();
+  const rows = await client.neo4j.executeRead('MATCH (e:Entity {id: "#player#"}) RETURN e LIMIT 1');
+  if (rows.length === 0) return null;
+  const entity = parseEntity(rows[0].e as Record<string, unknown>);
+
+  if (!entity?.metadata.stats) return null;
+  return entity.metadata.stats as Record<string, number>;
+}
+
+export async function performSkillCheck(args: SkillCheckParams): Promise<SkillCheckResult> {
   const statKey = args.skill.toLowerCase();
   let statBonus = 0;
-  const playerStats = await client.longTerm.getPlayerStats("Player");
+  const playerStats = await getPlayerStats();
   if (playerStats && typeof playerStats[statKey] === "number") {
     statBonus = playerStats[statKey];
+  } else {
+    console.error("[performSkillCheck] Invalid player stats.");
   }
 
   const dice = Array.from({ length: args.diceCount }, () => Math.floor(Math.random() * 6 + 1));

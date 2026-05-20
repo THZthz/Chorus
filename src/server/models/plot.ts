@@ -36,9 +36,7 @@ export function parseFlags(flags: unknown): Array<{ flagId: string; description:
   return (flags as Array<{ flagId: string; description: string }>) || [];
 }
 
-export function buildPlotTree(
-  plots: PlotRef[],
-): { tree: string } {
+export function buildPlotTree(plots: PlotRef[]): { tree: string } {
   const activeNames = new Set(plots.map((p) => p.name));
   const childNames = new Set<string>();
   for (const p of plots) {

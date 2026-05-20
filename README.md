@@ -66,7 +66,7 @@ npm run server # Or: npm run server:dev
 npm run console
 ```
 
-On first run, Neo4j is seeded with a default world, see `src/server/seed-stories/`.
+On first run, Neo4j is seeded with a default world, see `src/server/stories/`.
 
 Other operations:
 

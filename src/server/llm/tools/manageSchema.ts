@@ -34,15 +34,24 @@ Must be called BEFORE creating a node with a new label or a relationship with a 
 PREDEFINED types (Entity, Plot, Note, NPCDisposition, etc.) are already registered —
 you don't need to re-register them.
 
-Node types — provide name (PascalCase) + optional property schema with tags:
-'string', 'number', 'number[]', 'json', 'embedded', 'unique', 'index',
-'composite_unique_1/2/3', 'composite_index_1/2/3'.
+Node types — provide name (PascalCase) + optional property schema with tags.
 
 Relationship types — provide name (UPPER_SNAKE) + required sourceLabel/targetLabel to
 constrain which node types can sit at each endpoint. Tags: same as node tags except
 'unique' and 'composite_unique_X' (not supported by Neo4j for relationship properties).
 
 Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are permanent.
+
+Tags dictionary:
+- \`string\`: normal string
+- \`number\`: normal number
+- \`number[]\`: list of numbers
+- \`json\`: Saved as string in Neo4j. But when used in tools supporting partial update, will automatically unfold Neo4j string property to avoid whole string overwritten
+- \`embedded\`: will be used to compute property \`_embedding\` when the content of this property is changed
+- \`unique\`: will create a unique constraint on this property
+- \`composite_unique_X\`: will create a composite unique constraint for all specified properties
+- \`index\`: will create a regular index on this property
+- \`composite_index_X\`: will create composite index on all specified properties
 `.trim(),
   inputSchema: z.object({
     target: z

@@ -48,7 +48,7 @@ src/
 │   │       ├── searchWorld.ts            # Dynamic vector search across node/relationship types
 │   │       ├── editNode.ts               # CREATE/UPDATE/DELETE any node
 │   │       ├── editRelationship.ts       # CREATE/UPDATE/DELETE any relationship
-│   │       ├── editNote.ts               # CREATE/UPDATE/DELETE GM scratchpad notes; entity/message linking
+│   │       ├── editNote.ts               # CREATE/UPDATE/DELETE GM scratchpad notes; entity/message/plot linking
 │   │       ├── editPlot.ts               # CREATE/UPDATE/DELETE plots; flags, branching, status transitions
 │   │       ├── manageSchema.ts           # Register/unregister node types and relationship types
 │   │       ├── getContext.ts             # Fetch scene context, briefs, schema/relationship dumps
@@ -60,7 +60,6 @@ src/
 │   │   ├── client.ts                     # MemoryClient singleton facade composing all subsystems
 │   │   ├── neo4j.ts                      # Neo4j driver wrapper with value normalization
 │   │   ├── shortTerm.ts                  # Conversation + :Message nodes as ordered linked list
-│   │   ├── longTerm.ts                   # Entities, relationships, NPC dispositions, player conditions
 │   │   ├── notes.ts                      # :Note CRUD with embedding, entity/message linking
 │   │   ├── plots.ts                      # :Plot lifecycle: beats, branches, flags, time relationships
 │   │   ├── search.ts                     # Vector search by label/rel-type with optional reranking
@@ -70,7 +69,7 @@ src/
 │   │   ├── reset.ts                      # clearNeo4jDatabase(): DETACH DELETE all nodes
 │   │   └── types.ts                      # Shared types: MemoryEntity, MemoryNote, MemoryPlot, PlotFlag, etc.
 │   │
-│   ├── seed-stories/                     # World seeding
+│   ├── stories/                          # World seeding
 │   │   ├── index.ts                      # Active seed story selection, getActiveSeedStory()
 │   │   ├── seed.ts                       # seedDatabase(): idempotent entity/relationship/plot seeding
 │   │   ├── types.ts                      # TOML story format types
@@ -233,7 +232,7 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 
 | Tool                | Purpose                                                                                                                                                |
 |---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `editNote`          | CREATE/UPDATE/DELETE a GM scratchpad note. Links to entities and messages for cross-referencing to world state and timeline. Partial overwrite on UPDATE. |
+| `editNote`          | CREATE/UPDATE/DELETE a GM scratchpad note. Links to entities, messages, and plots for cross-referencing to world state, timeline, and story arcs. Partial overwrite on UPDATE. |
 | `editPlot`          | CREATE/UPDATE/DELETE a plot. Manages status transitions (PENDING→ACTIVE→IN_PROGRESS→COMPLETED/ABANDONED), flags, and branching. Auto-wires time relationships on status change. |
 
 ### GM tools — SPEAK (player output)
@@ -334,15 +333,14 @@ Defined in `src/shared/events.ts`:
 
 ## 10. Memory Architecture
 
-`MemoryClient` (`client.ts`) is the singleton facade composing all subsystems: `neo4j`, `shortTerm`, `longTerm`, `search`, `notes`, `plots`.
+`MemoryClient` (`client.ts`) is the singleton facade composing all subsystems: `neo4j`, `shortTerm`, `search`, `notes`, `plots`.
 
 ### Subsystems
 
 | Module                   | Responsibility                                                                                                                                                                                                      |
 |--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `shortTerm.ts`           | Conversation + `:Message` nodes as ordered linked list (NEXT_MESSAGE).                                                                                                                                              |
-| `longTerm.ts`            | `:Entity` nodes (COLE+O: CHARACTER, OBJECT, LOCATION, ORGANIZATION, EVENT). Relationships, NPC dispositions, player conditions/stats.                                                                               |
-| `notes.ts`               | `:Note` CRUD with vector embedding. Links to entities/messages via ABOUT_ENTITY/ABOUT_MESSAGE. Uses `extractSearchTexts` for rerank text.                                                                           |
+| `notes.ts`               | `:Note` CRUD with vector embedding. Links to entities/messages/plots via ABOUT_ENTITY/ABOUT_MESSAGE/ABOUT_PLOT. Uses `extractSearchTexts` for rerank text.                                                                           |
 | `plots.ts`               | `:Plot` lifecycle: beats, branches, flags. Uses `extractSearchTexts` for rerank text.                                                                                                                               |
 | `search.ts`              | `MemorySearch`: `searchByLabel(label, query)` for nodes, `searchByRelationshipType(type, query)` for relationships. Both support optional reranking.                                                                |
 | `reranker.ts`            | Optional cross-encoder reranking (LLAMA_RERANK_URL). `extractSearchTexts` uses `NodeManager.getEmbeddingText` for node text extraction.                                                                             |
@@ -377,7 +375,7 @@ Minimum unit: 30 minutes (0.5 hours). Day is integer, hour is 0–23.5 in 0.5 in
 
 ## 12. Seed Story System
 
-Stories under `src/server/seed-stories/` (TOML format, `types.ts` interface). Active story set via `ACTIVE_SEED_STORY` in `index.ts`.
+Stories under `src/server/stories/` (TOML format, `types.ts` interface). Active story set via `ACTIVE_SEED_STORY` in `index.ts`.
 
 `seedDatabase()` checks for existing `:Entity` nodes before seeding (idempotent on restart). On `/api/reset`, Neo4j is cleared then re-seeded.
 

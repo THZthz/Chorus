@@ -135,7 +135,7 @@ apiRouter.post("/reset", async (_req, res) => {
     // Clear Neo4j and re-seed
     const { clearNeo4jDatabase } = await import("@/server/memory/reset");
     await clearNeo4jDatabase();
-    const { seedDatabase } = await import("@/server/seed-stories/seed");
+    const { seedDatabase } = await import("@/server/stories/seed");
     await seedDatabase();
 
     // Reset in-memory GM_DEFINED types, then sync INTERNAL + PREDEFINED back to Neo4j

@@ -17,6 +17,7 @@
  */
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
+import { TOOL_NAMES } from "@/shared/constants.ts";
 
 /** The meaning of those tags is basically the same with NODE_PROPERTY_TAGS. */
 export const RELATIONSHIP_PROPERTY_TAGS = [
@@ -86,25 +87,26 @@ const PREDEFINED_TYPES: {
 }[] = [
   {
     name: "HAS_MESSAGE",
-    description: "Links a Conversation node to its Message nodes.",
+    description: `Links a Conversation node to its Message nodes. Automatically written by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     sourceLabel: "Conversation",
     targetLabel: "Message",
   },
   {
     name: "FIRST_MESSAGE",
-    description: "Points to the first Message in a Conversation's ordered linked list.",
+    description: `Points to the first Message in a Conversation's ordered linked list. Automatically written by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     sourceLabel: "Conversation",
     targetLabel: "Message",
   },
   {
     name: "NEXT_MESSAGE",
-    description: "Sequentially links Message nodes in conversation order.",
+    description: `Sequentially links Message nodes in conversation order. Automatically written by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     sourceLabel: "Message",
     targetLabel: "Message",
   },
   {
     name: "NEXT_TIMEPOINT",
-    description: "Links TimePoint nodes in chronological sequence. Records the reason for the time advance.",
+    description:
+      `Links TimePoint nodes in chronological sequence. Records the reason for the time advance. Automatically written by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     sourceLabel: "TimePoint",
     targetLabel: "TimePoint",
     properties: [
@@ -117,43 +119,45 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "CURRENT_TIMEPOINT",
-    description: "Points to the current TimePoint from a TimeAnchor node.",
+    description: `Points to the current TimePoint from a TimeAnchor node. Automatically written by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     sourceLabel: "TimeAnchor",
     targetLabel: "TimePoint",
   },
   {
     name: "AT_TIME",
-    description: "Links a Message to the TimePoint when it was created.",
+    description: `Links a Message to the TimePoint when it was created. Automatically written by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     sourceLabel: "Message",
     targetLabel: "TimePoint",
   },
   {
     name: "STARTED_AT",
-    description: "Marks the TimePoint when a Plot started.",
+    description: `Marks the TimePoint when a Plot started. Automatically written by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
     sourceLabel: "Plot",
     targetLabel: "TimePoint",
   },
   {
     name: "ACTIVE_AT",
-    description: "Marks the TimePoint when a Plot became active.",
+    description: `Marks the TimePoint when a Plot became active. Automatically written by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
     sourceLabel: "Plot",
     targetLabel: "TimePoint",
   },
   {
     name: "COMPLETED_AT",
-    description: "Marks the TimePoint when a Plot completed.",
+    description: `Marks the TimePoint when a Plot completed. Automatically written by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
     sourceLabel: "Plot",
     targetLabel: "TimePoint",
   },
   {
     name: "LOCATED_AT",
-    description: "An entity is physically present at a location. Use for characters and objects at a specific spot.",
+    description:
+      "An entity is physically present at a location. Use for characters and objects at a specific spot.",
     sourceLabel: "Entity",
     targetLabel: "Location",
     properties: [
       {
-        name: "description",
-        description: "Spatial position detail — how/where exactly the entity is located (e.g., 'hiding behind crates', 'slumped at the bar').",
+        name: "brief",
+        description:
+          "Spatial position detail — how/where exactly the entity is located (e.g., 'hiding behind crates', 'slumped at the bar').",
         tags: ["string", "embedded"],
       },
       {
@@ -170,7 +174,7 @@ const PREDEFINED_TYPES: {
     targetLabel: "Object",
     properties: [
       {
-        name: "description",
+        name: "brief",
         description: "How the item is carried (e.g., 'concealed in a boot', 'worn openly on hip').",
         tags: ["string", "embedded"],
       },
@@ -188,8 +192,9 @@ const PREDEFINED_TYPES: {
     targetLabel: "Entity",
     properties: [
       {
-        name: "description",
-        description: "Reason or motive for the alliance (e.g., 'shared hatred of the Magistrate', 'family loyalty').",
+        name: "brief",
+        description:
+          "Reason or motive for the alliance (e.g., 'shared hatred of the Magistrate', 'family loyalty').",
         tags: ["string", "embedded"],
       },
       {
@@ -206,8 +211,9 @@ const PREDEFINED_TYPES: {
     targetLabel: "Entity",
     properties: [
       {
-        name: "description",
-        description: "Reason or motive for the hostility (e.g., 'unpaid debt of 200 coins', 'territorial dispute').",
+        name: "brief",
+        description:
+          "Reason or motive for the hostility (e.g., 'unpaid debt of 200 coins', 'territorial dispute').",
         tags: ["string", "embedded"],
       },
       {
@@ -219,13 +225,15 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "LOCATED_IN",
-    description: "A location or entity is contained within a larger location. Use for sub-locations nested within a larger location (e.g., a basement inside a tavern).",
+    description:
+      "A location or entity is contained within a larger location. Use for sub-locations nested within a larger location (e.g., a basement inside a tavern).",
     sourceLabel: "Entity",
     targetLabel: "Location",
     properties: [
       {
-        name: "description",
-        description: "Access or containment detail (e.g., 'accessed through a trapdoor behind the bar').",
+        name: "brief",
+        description:
+          "Access or containment detail (e.g., 'accessed through a trapdoor behind the bar').",
         tags: ["string", "embedded"],
       },
       {
@@ -243,19 +251,25 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "ABOUT_ENTITY",
-    description: "A Note is about or references an Entity.",
+    description: `A Note is about or references an Entity. Automatically written by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
     sourceLabel: "Note",
     targetLabel: "Entity",
   },
   {
     name: "ABOUT_MESSAGE",
-    description: "A Note is about or references a specific Message.",
+    description: `A Note is about or references a specific Message. Automatically written by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
     sourceLabel: "Note",
     targetLabel: "Message",
   },
   {
+    name: "ABOUT_PLOT",
+    description: `A Note is about or references a specific Plot. Automatically written by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
+    sourceLabel: "Note",
+    targetLabel: "Plot",
+  },
+  {
     name: "BRANCHES_TO",
-    description: "A parent Plot branches to a child sub-plot.",
+    description: `A parent Plot branches to a child sub-plot. Automatically written by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
     sourceLabel: "Plot",
     targetLabel: "Plot",
   },

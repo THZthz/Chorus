@@ -20,7 +20,7 @@ import "dotenv/config";
 import express from "express";
 import apiRouter from "@/server/api";
 import { MemoryClient } from "@/server/memory/client";
-import { seedDatabase } from "@/server/seed-stories/seed";
+import { seedDatabase } from "@/server/stories/seed";
 
 async function start() {
   try {

@@ -37,7 +37,11 @@ const inputSchema = z.object({
       "Plot description. CREATE: required. UPDATE: optional (set to overwrite — should be rare). DELETE: omit.",
     ),
   brief: z.string().nullable().optional().describe("Short one-line summary of the plot."),
-  status: z.enum(PLOT_STATUSES).nullable().optional().describe("Plot status: PENDING, ACTIVE, IN_PROGRESS, COMPLETED, or ABANDONED."),
+  status: z
+    .enum(PLOT_STATUSES)
+    .nullable()
+    .optional()
+    .describe("Plot status: PENDING, ACTIVE, IN_PROGRESS, COMPLETED, or ABANDONED."),
   triggerCondition: z
     .string()
     .nullable()
@@ -54,7 +58,11 @@ const inputSchema = z.object({
     .nullable()
     .optional()
     .describe("Child plot name to connect via BRANCHES_TO."),
-  unbranch: z.string().nullable().optional().describe("Child plot name to disconnect from this plot."),
+  unbranch: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Child plot name to disconnect from this plot."),
 });
 
 export const editPlot = tool({
@@ -65,7 +73,6 @@ Manage narrative arcs — CREATE, UPDATE (partial overwrite), or DELETE a plot.
 Status flow: PENDING → ACTIVE → IN_PROGRESS → COMPLETED / ABANDONED.
 Status transitions auto-wire time relationships (STARTED_AT, ACTIVE_AT, COMPLETED_AT)
 to the current TimePoint — just set the new status.
-
 
 Use setFlag/removeFlag to track story milestones within a plot.
 Use branchTo/unbranch to connect or disconnect child plots. A branch describes a course

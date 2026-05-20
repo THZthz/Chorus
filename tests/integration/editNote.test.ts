@@ -17,6 +17,7 @@
  */
 
 import { editNote } from "@/server/llm/tools/editNote";
+import { editPlot } from "@/server/llm/tools/editPlot";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { exec, parseToolOutput, resetDb } from "../helpers";
 import { MemoryClient } from "@/server/memory/client";
@@ -139,6 +140,41 @@ describe("editNote", () => {
       expect(data.rowCount).toBe(1);
     } finally {
       await exec(editNote, { noteName, action: "DELETE" }).catch(() => {});
+    }
+  });
+
+  it("UPDATEs with aboutPlots linking", async () => {
+    const noteName = "test_note_plots";
+    const plotName = "test_plot_for_note";
+    try {
+      await exec(editPlot, {
+        plotName,
+        action: "CREATE",
+        description: "A test plot for note linking",
+      });
+      await exec(editNote, {
+        noteName,
+        action: "CREATE",
+        content: "Note about plots",
+      });
+
+      const result = await exec(editNote, {
+        noteName,
+        action: "UPDATE",
+        aboutPlots: [plotName],
+      });
+      expect(result).toContain("updated");
+      expect(result).toContain("all plots links");
+
+      const verify = await exec(queryWorld, {
+        action: "READ",
+        query: `MATCH (n:Note {name: '${noteName}'})-[:ABOUT_PLOT]->(p:Plot) RETURN p.name`,
+      });
+      const data = parseToolOutput(verify);
+      expect(data.rowCount).toBe(1);
+    } finally {
+      await exec(editNote, { noteName, action: "DELETE" }).catch(() => {});
+      await exec(editPlot, { plotName, action: "DELETE" }).catch(() => {});
     }
   });
 

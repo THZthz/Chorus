@@ -18,7 +18,7 @@
 
 import "dotenv/config";
 import { MemoryClient } from "@/server/memory/client";
-import { seedDatabase } from "@/server/seed-stories/seed";
+import { seedDatabase } from "@/server/stories/seed";
 
 export async function setup() {
   await MemoryClient.getInstance();

@@ -47,14 +47,7 @@ const inputSchema = z.object({
 export function createAdvanceTimeTool(events: EventEmitter) {
   return tool({
     title: TOOL_NAMES.ADVANCE_TIME,
-    description: `
-Advance the in-game clock. Time only moves when YOU call this — narrating that time passed
-without advanceTime means time stood still in the archive. Use hours (0–48, in 0.5
-increments = 30 minutes) for sub-day advances, or days (0+) for multi-day travel. Total
-advancement = days * 24 + hours. Always include a brief 'reason' so your future self knows
-why time moved. Time anchor: (TimeAnchor)-[:CURRENT_TIMEPOINT]->(TimePoint). New TimePoints
-link to the old via NEXT_TIMEPOINT with the reason stored on the relationship.
-`.trim(),
+    description: `Advance the in-game clock. Time only moves when this tool is called — narrating that time passed without ${TOOL_NAMES.ADVANCE_TIME} means time stood still in the archive. Use hours for sub-day advances, or days (0+) for multi-day travel. Total advancement = days * 24 + hours. Always include a brief \`reason\` so your future self knows why time moved. When ${TOOL_NAMES.ADVANCE_TIME} is called, a new TimePoint will be created first, then TimeAnchor will point to the new TimePoint: (TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(TimePoint), finally the new TimePoint will link to the old via NEXT_TIMEPOINT with the \`reason\` stored on the relationship.`,
     inputSchema,
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
       const totalHalfHours = (args.days ?? 0) * 48 + (args.hours ?? 0) * 2;
@@ -71,7 +64,7 @@ link to the old via NEXT_TIMEPOINT with the reason stored on the relationship.
         const h = args.hours;
         parts.push(Number.isInteger(h) ? `${h} hour(s)` : `${h} hours`);
       }
-      return `${(args.reason && args.reason.length > 0) ? "Time change reason successfully recorded. " : ""}Time advanced by ${parts.join(", ")}. It is now \`${describeTime(newTime)}\` (was \`${describeTime(oldTime)}\`).`;
+      return `${args.reason && args.reason.length > 0 ? "Time change reason successfully recorded. " : ""}Time advanced by ${parts.join(", ")}. It is now \`${describeTime(newTime)}\` (was \`${describeTime(oldTime)}\`).`;
     }, TOOL_NAMES.ADVANCE_TIME),
   });
 }

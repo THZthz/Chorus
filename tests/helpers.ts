@@ -17,7 +17,7 @@
  */
 
 import { MemoryClient } from "@/server/memory/client";
-import { seedDatabase } from "@/server/seed-stories/seed";
+import { seedDatabase } from "@/server/stories/seed";
 import { clearNeo4jDatabase } from "@/server/memory/reset";
 import { RelationshipManager } from "@/server/relationshipManager";
 

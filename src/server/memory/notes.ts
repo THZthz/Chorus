@@ -130,9 +130,32 @@ export class Notes {
     }
   }
 
-  async clearLinks(noteName: string, type: "ENTITY" | "MESSAGE" | "ALL"): Promise<void> {
+  async linkToPlot(noteName: string, plotName: string): Promise<void> {
+    try {
+      await this.client.mergeRelationship(
+        "Note",
+        "name",
+        noteName,
+        "Plot",
+        "name",
+        plotName,
+        "ABOUT_PLOT",
+      );
+    } catch (err) {
+      console.warn(
+        `[notes] linkToPlot(${noteName}, ${plotName}) failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  async clearLinks(noteName: string, type: "ENTITY" | "MESSAGE" | "PLOT" | "ALL"): Promise<void> {
+    const relPattern =
+      type === "ALL"
+        ? "ABOUT_ENTITY|ABOUT_MESSAGE|ABOUT_PLOT"
+        : `ABOUT_${type}`;
     await this.client.executeWrite(
-      `MATCH (n:Note {name: $noteName})-[r:ABOUT_ENTITY|ABOUT_MESSAGE]->() DELETE r`,
+      `MATCH (n:Note {name: $noteName})-[r:${relPattern}]->() DELETE r`,
       { noteName },
     );
   }
@@ -151,6 +174,14 @@ export class Notes {
       { noteName },
     );
     return rows.map((r) => r.id as string);
+  }
+
+  async getLinkedPlots(noteName: string): Promise<string[]> {
+    const rows = await this.client.executeRead(
+      `MATCH (n:Note {name: $noteName})-[:ABOUT_PLOT]->(p:Plot) RETURN p.name AS name`,
+      { noteName },
+    );
+    return rows.map((r) => r.name as string);
   }
 
   private parseNote(data: Record<string, unknown>): MemoryNote {

@@ -51,7 +51,7 @@ describe("advanceTime", () => {
     expect(result).toContain("Time advanced");
     expect(result).toContain("0.5 hours");
 
-    const timeEvent = mockEvents.events.find((e: { event: string; }) => e.event === "time_update");
+    const timeEvent = mockEvents.events.find((e: { event: string }) => e.event === "time_update");
     expect(timeEvent).toBeDefined();
     expect((timeEvent!.data as { hoursAdvanced: number }).hoursAdvanced).toBe(0.5);
   });
@@ -67,7 +67,7 @@ describe("advanceTime", () => {
     expect(result).toContain("2 day(s)");
     expect(result).toContain("Time advanced");
 
-    const timeEvent = mockEvents.events.find((e: { event: string; }) => e.event === "time_update");
+    const timeEvent = mockEvents.events.find((e: { event: string }) => e.event === "time_update");
     expect(timeEvent).toBeDefined();
     expect((timeEvent!.data as { hoursAdvanced: number }).hoursAdvanced).toBe(48); // 2 days * 24 hours
   });

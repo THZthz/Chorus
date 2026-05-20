@@ -13,7 +13,7 @@ initialLocationId = "player_compartment"
 # ── Characters ──────────────────────────────────────────────────
 
 [[entities]]
-id = "player"
+id = "#player#"
 type = "CHARACTER"
 name = "Player"
 brief = "An amnesiac found beside a murdered information broker on the Aethon Conveyor, bound for Karavelle."
@@ -45,7 +45,6 @@ Amnesia = "Remembers nothing — not their name, not their destination, not how 
 Status = "The prime suspect — but everyone on board has something to hide"
 
 [[entities]]
-id = "elias_crowne"
 type = "CHARACTER"
 name = "Elias Crowne"
 brief = "An information broker found murdered in his locked compartment — the man who knew the player's true identity."
@@ -62,7 +61,6 @@ Occupation = "Information broker — bought and sold secrets across the imperial
 Death = "Stabbed at midnight in his locked compartment. Ledger missing. Door locked from inside."
 
 [[entities]]
-id = "lord_aldric_vane"
 type = "CHARACTER"
 name = "Lord Aldric Vane"
 brief = "An aging merchant prince whose crumbling fortune made him Crowne's most desperate enemy."
@@ -78,7 +76,6 @@ Fortune = "Crumbling — desperate to save his house from financial ruin"
 Motive = "Crowne was blackmailing him over fraudulent accounts"
 
 [[entities]]
-id = "magistra_iris_korr"
 type = "CHARACTER"
 name = "Magistra Iris Korr"
 brief = "A Magewarden investigator traveling on official business, watching the player with professional suspicion."
@@ -96,7 +93,6 @@ Jurisdiction = "Magic-related crimes — the locked-room nature of the murder ha
 Suspicion = "Believes the player's amnesia may not be natural — watching for evidence"
 
 [[entities]]
-id = "silas"
 type = "CHARACTER"
 name = "Silas"
 brief = "A Harbor Rat operative traveling under an alias — Crowne was his informant, and his delivery never came."
@@ -114,7 +110,6 @@ Alias = "Traveling under a false identity — real name unknown"
 Objective = "Recover Crowne's missing delivery before reaching Karavelle"
 
 [[entities]]
-id = "lady_mireille_tessier"
 type = "CHARACTER"
 name = "Lady Mireille Tessier"
 brief = "A diplomat's widow whose delicate manner conceals a collector of secrets and a deft manipulator."
@@ -132,7 +127,6 @@ Background = "Twice-widowed diplomat's wife — wealthy, connected, watches ever
 "Hidden Role" = "Crowne's secret source — fed him information from diplomatic circles for years"
 
 [[entities]]
-id = "doctor_cassian_vale"
 type = "CHARACTER"
 name = "Doctor Cassian Vale"
 brief = "A physician bound for Karavelle — the only person offering the player help, and the only one whose tools match the murder weapon."
@@ -150,7 +144,6 @@ Evidence = "His surgical kit contains blades matching Crowne's wound"
 "Alibi Gap" = "Claims his bag was in the dining car — cannot prove it"
 
 [[entities]]
-id = "crystal_vi_elaris"
 type = "CHARACTER"
 name = "Crystal vi Elaris"
 brief = "A half-elf singer drawn to the player by a pull she can't name — warmth in a carriage full of ice."
@@ -173,7 +166,6 @@ Race = "Half-elf"
 "Notable Possession" = "Silver-stringed travel lyre — hums near ley-line energy, or near the player"
 
 [[entities]]
-id = "dravos_thorn"
 type = "CHARACTER"
 name = "Dravos Thorn"
 brief = "A drow alchemist carrying a locked case he never opens — and secrets that hum in the dark."
@@ -191,7 +183,6 @@ Occupation = "Dealer in rare alchemical components"
 "Notable Possession" = "Locked alchemical cold-case — hums at ley-line frequencies, chained to his wrist"
 
 [[entities]]
-id = "ysara_va_keth"
 type = "CHARACTER"
 name = "Ysara va Keth"
 brief = "A high elf ley-line scholar who understands the conveyor's systems better than its crew."
@@ -210,7 +201,6 @@ Expertise = "Understands the conveyor's arcane systems — including how the com
 "Key Observation" = "Noticed ley-line interference before the murder — believes someone tampered with the systems"
 
 [[entities]]
-id = "brother_malachai"
 type = "CHARACTER"
 name = "Brother Malachai"
 brief = "A mendicant priest of the Star-Veil Order — the only passenger more concerned with souls than secrets."
@@ -228,7 +218,6 @@ Order = "Star-Veil Order — mendicant priest"
 Role = "Moral witness — holds Crowne's last confession in confidence"
 
 [[entities]]
-id = "garrick"
 type = "CHARACTER"
 name = "Garrick"
 brief = "A discharged half-orc legionnaire who shared drinks with Crowne hours before the murder — and isn't talking about it."
@@ -248,7 +237,6 @@ Background = "Imperial legionnaire — twelve years, recently discharged"
 # ── Crew ────────────────────────────────────────────────────────
 
 [[entities]]
-id = "aldreth_voss"
 type = "CHARACTER"
 name = "Aldreth Voss"
 brief = "Conductor of the Aethon — proud of his spotless record and more worried about the conveyor's reputation than justice."
@@ -265,7 +253,6 @@ Role = "Conductor — runs the Aethon with iron courtesy"
 Priority = "Reputation — wants the matter resolved quietly, not investigated thoroughly"
 
 [[entities]]
-id = "kest_winder"
 type = "CHARACTER"
 name = "Kest Winder"
 brief = "A gnome engineer who maintains the arcane engine — understands harmonics, not people."
@@ -283,7 +270,6 @@ Role = "Arcane Engineer — maintains the Aethon's ley-line drive"
 Observation = "Detected interference in the stabilizers — fears sabotage, not murder"
 
 [[entities]]
-id = "thea"
 type = "CHARACTER"
 name = "Thea"
 brief = "A half-elf lead attendant who grew up in the Warrens — sees everything, says nothing."
@@ -302,7 +288,6 @@ Background = "Grew up in the Warrens, Karavelle — learned to read people to su
 Secret = "Saw who was near Crowne's compartment at midnight — will not reveal it without trust or pressure"
 
 [[entities]]
-id = "oren_locke"
 type = "CHARACTER"
 name = "Oren Locke"
 brief = "The Aethon's purser — fastidious, officious, and in possession of every passenger's secrets."
@@ -320,7 +305,6 @@ Knowledge = "Knows which passengers are traveling under false identities"
 Incident = "Crowne tried to access the passenger manifest hours before his death"
 
 [[entities]]
-id = "bram_ironkettle"
 type = "CHARACTER"
 name = "Bram Ironkettle"
 brief = "The Aethon's dwarf steward — gruff, unflappable, and entirely unconcerned about the murder."
@@ -341,7 +325,6 @@ Observation = "Someone has been stealing small items from the galley"
 # ── Conveyor Cars (Locations) ───────────────────────────────────
 
 [[entities]]
-id = "engine_car"
 type = "LOCATION"
 name = "Engine Car"
 brief = "The Aethon's beating heart — arcane core, ley-line stabilizers, and Kest's domain."
@@ -357,7 +340,6 @@ Contents = "Arcane core, ley-line stabilizers, engine control array"
 Status = "Someone attempted to breach the lock — scorch marks are recent"
 
 [[entities]]
-id = "crew_car"
 type = "LOCATION"
 name = "Crew Car"
 brief = "Crew quarters, conductor's office, and small galley — functional, unadorned, the conveyor's backstage."
@@ -368,7 +350,6 @@ The crew car is narrow and practical — a corridor of doors leading to cramped 
 [entities.metadata]
 
 [[entities]]
-id = "observation_car"
 type = "LOCATION"
 name = "Observation Car"
 brief = "Glass-domed ceiling above upholstered chairs — where passengers gather and Crystal plays her lyre."
@@ -386,7 +367,6 @@ Feature = "Glass dome — views of the ley-line current and night sky"
 Atmosphere = "Gathering place by day, intimate by night — Crystal plays her lyre here"
 
 [[entities]]
-id = "passenger_car_a"
 type = "LOCATION"
 name = "Passenger Car A"
 brief = "Six private compartments (1–6) — the player in compartment 3, the victim in compartment 4."
@@ -404,7 +384,6 @@ Compartments = "1 through 6"
 "Crime Scene" = "Compartment 4 — locked from inside, arcane seal intact, killer unknown"
 
 [[entities]]
-id = "dining_car"
 type = "LOCATION"
 name = "Dining Car"
 brief = "Communal table beneath an alchemical chandelier — the social hub where everyone must eventually appear."
@@ -422,7 +401,6 @@ Position = "Between Passenger Car A and Passenger Car B — the crossroads"
 Atmosphere = "Formal meals by evening, empty and dark after the chandelier is extinguished"
 
 [[entities]]
-id = "passenger_car_b"
 type = "LOCATION"
 name = "Passenger Car B"
 brief = "Six private compartments (7–12) — where half the passengers sleep, conspire, and hide."
@@ -440,7 +418,6 @@ Compartments = "7 through 12"
 "Access Routes" = "Through dining car, or via exterior maintenance gangway"
 
 [[entities]]
-id = "lounge_car"
 type = "LOCATION"
 name = "Lounge Car"
 brief = "Rear observation lounge — intimate seating, a bar cabinet, and conversations that lower voices."
@@ -460,7 +437,6 @@ Atmosphere = "Intimate, quiet — brandy, leather, starlight"
 # ── Objects ─────────────────────────────────────────────────────
 
 [[entities]]
-id = "crownes_ledger"
 type = "OBJECT"
 name = "Crowne's Ledger"
 brief = "A ciphered journal containing Elias Crowne's information network — debts, secrets, identities. It is missing."
@@ -476,7 +452,6 @@ Contents = "Ciphered records of Crowne's entire information network"
 Significance = "The most likely motive for murder — half the passengers would kill for it"
 
 [[entities]]
-id = "murder_weapon"
 type = "OBJECT"
 name = "Murder Weapon"
 brief = "A thin alchemical blade — still missing, somewhere on the conveyor."
@@ -492,7 +467,6 @@ Status = "Missing — not found on board"
 Implication = "Killer has alchemical or medical knowledge"
 
 [[entities]]
-id = "players_key"
 type = "OBJECT"
 name = "Player's Key"
 brief = "A compartment key with the number scratched off — it doesn't match the player's assigned room."
@@ -508,7 +482,6 @@ Discovery = "Found on the floor of the player's compartment — likely dropped f
 Mystery = "Does not open the player's compartment or Crowne's — what does it unlock?"
 
 [[entities]]
-id = "dravos_case"
 type = "OBJECT"
 name = "Dravos's Locked Case"
 brief = "An alchemical cold-case chained to Dravos Thorn's wrist — it hums at frequencies that shouldn't be possible."
@@ -526,7 +499,6 @@ Description = "Alchemical cold-case, biometric lock, chained to owner's wrist"
 Anomaly = "Emits ley-line harmonic interference — the contents may not be organic as claimed"
 
 [[entities]]
-id = "crystals_lyre"
 type = "OBJECT"
 name = "Crystal's Lyre"
 brief = "A small travel lyre with silver strings — a gift from Crystal's mother that hums when the player is near."
@@ -550,122 +522,122 @@ Anomaly = "Silver should not resonate with ley-line energy, but the lyre hums wh
 sourceName = "Player"
 targetName = "Passenger Car A"
 type = "LOCATED_AT"
-description = "The player is berthed in compartment 3 of Passenger Car A."
+brief = "The player is berthed in compartment 3 of Passenger Car A."
 
 [[relationships]]
 sourceName = "Elias Crowne"
 targetName = "Passenger Car A"
 type = "LOCATED_AT"
-description = "Crowne was berthed in compartment 4 of Passenger Car A — now a crime scene."
+brief = "Crowne was berthed in compartment 4 of Passenger Car A — now a crime scene."
 
 [[relationships]]
 sourceName = "Lord Aldric Vane"
 targetName = "Passenger Car B"
 type = "LOCATED_AT"
-description = "Lord Vane occupies compartment 8 in Passenger Car B."
+brief = "Lord Vane occupies compartment 8 in Passenger Car B."
 
 [[relationships]]
 sourceName = "Magistra Iris Korr"
 targetName = "Passenger Car A"
 type = "LOCATED_AT"
-description = "Magistra Korr is berthed in compartment 5 of Passenger Car A — close enough to have heard something."
+brief = "Magistra Korr is berthed in compartment 5 of Passenger Car A — close enough to have heard something."
 
 [[relationships]]
 sourceName = "Silas"
 targetName = "Passenger Car A"
 type = "LOCATED_AT"
-description = "Silas occupies compartment 6 of Passenger Car A."
+brief = "Silas occupies compartment 6 of Passenger Car A."
 
 [[relationships]]
 sourceName = "Lady Mireille Tessier"
 targetName = "Passenger Car B"
 type = "LOCATED_AT"
-description = "Lady Tessier occupies compartment 9 in Passenger Car B — connected to Lord Vane's compartment 8."
+brief = "Lady Tessier occupies compartment 9 in Passenger Car B — connected to Lord Vane's compartment 8."
 
 [[relationships]]
 sourceName = "Doctor Cassian Vale"
 targetName = "Passenger Car A"
 type = "LOCATED_AT"
-description = "Doctor Vale is berthed in compartment 2 of Passenger Car A — two doors from the victim."
+brief = "Doctor Vale is berthed in compartment 2 of Passenger Car A — two doors from the victim."
 
 [[relationships]]
 sourceName = "Crystal vi Elaris"
 targetName = "Passenger Car A"
 type = "LOCATED_AT"
-description = "Crystal occupies compartment 1 of Passenger Car A — the first compartment, nearest the observation car."
+brief = "Crystal occupies compartment 1 of Passenger Car A — the first compartment, nearest the observation car."
 
 [[relationships]]
 sourceName = "Dravos Thorn"
 targetName = "Passenger Car B"
 type = "LOCATED_AT"
-description = "Dravos Thorn occupies compartment 12 of Passenger Car B — the furthest aft, nearest the lounge car."
+brief = "Dravos Thorn occupies compartment 12 of Passenger Car B — the furthest aft, nearest the lounge car."
 
 [[relationships]]
 sourceName = "Ysara va Keth"
 targetName = "Passenger Car B"
 type = "LOCATED_AT"
-description = "Ysara is berthed in compartment 7 of Passenger Car B."
+brief = "Ysara is berthed in compartment 7 of Passenger Car B."
 
 [[relationships]]
 sourceName = "Brother Malachai"
 targetName = "Passenger Car B"
 type = "LOCATED_AT"
-description = "Brother Malachai occupies compartment 10 in Passenger Car B."
+brief = "Brother Malachai occupies compartment 10 in Passenger Car B."
 
 [[relationships]]
 sourceName = "Garrick"
 targetName = "Passenger Car B"
 type = "LOCATED_AT"
-description = "Garrick is berthed in compartment 11 of Passenger Car B."
+brief = "Garrick is berthed in compartment 11 of Passenger Car B."
 
 [[relationships]]
 sourceName = "Aldreth Voss"
 targetName = "Crew Car"
 type = "LOCATED_AT"
-description = "Conductor Voss's office and quarters are in the crew car."
+brief = "Conductor Voss's office and quarters are in the crew car."
 
 [[relationships]]
 sourceName = "Kest Winder"
 targetName = "Engine Car"
 type = "LOCATED_AT"
-description = "Kest lives in the engine car, rarely leaving his post."
+brief = "Kest lives in the engine car, rarely leaving his post."
 
 [[relationships]]
 sourceName = "Thea"
 targetName = "Crew Car"
 type = "LOCATED_AT"
-description = "Thea's quarters are in the crew car, but she spends most of her shift moving through the passenger cars."
+brief = "Thea's quarters are in the crew car, but she spends most of her shift moving through the passenger cars."
 
 [[relationships]]
 sourceName = "Oren Locke"
 targetName = "Crew Car"
 type = "LOCATED_AT"
-description = "The purser's office and quarters are in the crew car."
+brief = "The purser's office and quarters are in the crew car."
 
 [[relationships]]
 sourceName = "Bram Ironkettle"
 targetName = "Crew Car"
 type = "LOCATED_AT"
-description = "Bram's quarters are in the crew car; he works primarily in the dining car."
+brief = "Bram's quarters are in the crew car; he works primarily in the dining car."
 
 # Object Possession (CARRIES)
 [[relationships]]
 sourceName = "Player"
 targetName = "Player's Key"
 type = "CARRIES"
-description = "The player woke with this key — number scratched off — on the floor beside them."
+brief = "The player woke with this key — number scratched off — on the floor beside them."
 
 [[relationships]]
 sourceName = "Dravos Thorn"
 targetName = "Dravos's Locked Case"
 type = "CARRIES"
-description = "The case is chained to Dravos's wrist and never leaves his person."
+brief = "The case is chained to Dravos's wrist and never leaves his person."
 
 [[relationships]]
 sourceName = "Crystal vi Elaris"
 targetName = "Crystal's Lyre"
 type = "CARRIES"
-description = "Crystal carries her lyre everywhere — it was her mother's gift and her livelihood."
+brief = "Crystal carries her lyre everywhere — it was her mother's gift and her livelihood."
 
 # ── Relationship Types ──────────────────────────────────────────
 
@@ -680,92 +652,92 @@ targetLabel = "Location"
 sourceName = "Engine Car"
 targetName = "Crew Car"
 type = "CONNECTED_TO"
-description = "The engine car connects directly to the crew car — Kest's domain feeds into the crew's quarters."
+brief = "The engine car connects directly to the crew car — Kest's domain feeds into the crew's quarters."
 
 [[relationships]]
 sourceName = "Crew Car"
 targetName = "Observation Car"
 type = "CONNECTED_TO"
-description = "The crew car connects to the observation car — crew emerge here to attend passengers under the glass dome."
+brief = "The crew car connects to the observation car — crew emerge here to attend passengers under the glass dome."
 
 [[relationships]]
 sourceName = "Observation Car"
 targetName = "Passenger Car A"
 type = "CONNECTED_TO"
-description = "The observation car connects to Passenger Car A — social space gives way to private compartments."
+brief = "The observation car connects to Passenger Car A — social space gives way to private compartments."
 
 [[relationships]]
 sourceName = "Passenger Car A"
 targetName = "Dining Car"
 type = "CONNECTED_TO"
-description = "Passenger Car A connects to the dining car — the first block of compartments opens onto the social hub."
+brief = "Passenger Car A connects to the dining car — the first block of compartments opens onto the social hub."
 
 [[relationships]]
 sourceName = "Dining Car"
 targetName = "Passenger Car B"
 type = "CONNECTED_TO"
-description = "The dining car connects to Passenger Car B — anyone moving between passenger blocks must cross here."
+brief = "The dining car connects to Passenger Car B — anyone moving between passenger blocks must cross here."
 
 [[relationships]]
 sourceName = "Passenger Car B"
 targetName = "Lounge Car"
 type = "CONNECTED_TO"
-description = "Passenger Car B connects to the lounge car — the rearmost compartments give way to leather chairs and brandy."
+brief = "Passenger Car B connects to the lounge car — the rearmost compartments give way to leather chairs and brandy."
 
 # Character Relations (ALLIED_WITH, HOSTILE_TOWARDS)
 [[relationships]]
 sourceName = "Crystal vi Elaris"
 targetName = "Player"
 type = "ALLIED_WITH"
-description = "Crystal is drawn to the player — a magnetic pull she can't name. She is the one person treating them as more than a suspect."
+brief = "Crystal is drawn to the player — a magnetic pull she can't name. She is the one person treating them as more than a suspect."
 
 [[relationships]]
 sourceName = "Doctor Cassian Vale"
 targetName = "Player"
 type = "ALLIED_WITH"
-description = "Vale offers the player genuine medical help — but his surgical tools match Crowne's wounds, and his kindness may conceal darker motives."
+brief = "Vale offers the player genuine medical help — but his surgical tools match Crowne's wounds, and his kindness may conceal darker motives."
 
 [[relationships]]
 sourceName = "Magistra Iris Korr"
 targetName = "Player"
 type = "HOSTILE_TOWARDS"
-description = "Korr suspects the player's amnesia is a lie — or the result of forbidden magic. She watches them with professional suspicion."
+brief = "Korr suspects the player's amnesia is a lie — or the result of forbidden magic. She watches them with professional suspicion."
 
 [[relationships]]
 sourceName = "Lord Aldric Vane"
 targetName = "Elias Crowne"
 type = "HOSTILE_TOWARDS"
-description = "Crowne was blackmailing Vane over fraudulent accounts. Vane could not afford for Crowne to reach Karavelle alive."
+brief = "Crowne was blackmailing Vane over fraudulent accounts. Vane could not afford for Crowne to reach Karavelle alive."
 
 [[relationships]]
 sourceName = "Silas"
 targetName = "Elias Crowne"
 type = "ALLIED_WITH"
-description = "Crowne was Silas's informant in Valdris — Silas was expecting a delivery that never came."
+brief = "Crowne was Silas's informant in Valdris — Silas was expecting a delivery that never came."
 
 [[relationships]]
 sourceName = "Lady Mireille Tessier"
 targetName = "Elias Crowne"
 type = "ALLIED_WITH"
-description = "Tessier was Crowne's secret source in diplomatic circles — she fed him information for years."
+brief = "Tessier was Crowne's secret source in diplomatic circles — she fed him information for years."
 
 [[relationships]]
 sourceName = "Garrick"
 targetName = "Elias Crowne"
 type = "ALLIED_WITH"
-description = "Crowne bought Garrick a drink hours before his death and asked about his military service in the northern provinces."
+brief = "Crowne bought Garrick a drink hours before his death and asked about his military service in the northern provinces."
 
 [[relationships]]
 sourceName = "Thea"
 targetName = "Player"
 type = "ALLIED_WITH"
-description = "Thea knows what she saw the night Crowne died. She is a Warrens survivor — she won't speak until she trusts the player, or is forced to."
+brief = "Thea knows what she saw the night Crowne died. She is a Warrens survivor — she won't speak until she trusts the player, or is forced to."
 
 [[relationships]]
 sourceName = "Ysara va Keth"
 targetName = "Kest Winder"
 type = "ALLIED_WITH"
-description = "Ysara understands the Aethon's engines almost as well as Kest. Together, they might identify the source of the ley-line interference."
+brief = "Ysara understands the Aethon's engines almost as well as Kest. Together, they might identify the source of the ley-line interference."
 
 # ── Plots ────────────────────────────────────────────────────────
 

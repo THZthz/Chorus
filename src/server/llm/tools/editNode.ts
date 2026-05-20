@@ -44,14 +44,17 @@ Must be registered in the world schema and writable.
 Discover available types and their property schemas via getContext SCHEMA_DUMP.
 `.trim(),
   ),
-  action: z.enum(NODE_ACTIONS).default("CREATE").describe("Action to perform."),
+  action: z
+    .enum(NODE_ACTIONS)
+    .default("CREATE")
+    .describe("Action to perform. UPDATE is actually **partial** update."),
   match: z
     .record(z.string(), z.string())
     .nullable()
     .optional()
     .describe(
       `
-Key-value pairs to locate exactly one node. Required for UPDATE/DELETE.
+Key-value pairs to locate exactly one node, used by "WHERE" clause of Cypher query. Required for UPDATE/DELETE.
 e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an NPCDisposition.
 `.trim(),
     ),

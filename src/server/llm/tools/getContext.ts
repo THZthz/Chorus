@@ -50,6 +50,8 @@ async function buildSchemaDump(): Promise<string> {
   const lines: string[] = [];
   lines.push("## Schema (from in-memory registry)");
   lines.push("");
+  lines.push("A list of nodes/relationships, with their list of properties, tags of the property is displayed before its name.");
+  lines.push("");
 
   // ── Node types ──
   lines.push("### Node Types");
@@ -64,9 +66,8 @@ async function buildSchemaDump(): Promise<string> {
     if (node.properties.length > 0) {
       const visible = node.properties.filter((p) => !p.name.startsWith("_"));
       for (const prop of visible) {
-        const tags = prop.tags.filter((t) => t !== "string" && t !== "number" && t !== "number[]");
-        const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
-        lines.push(`  - \`${prop.name}\`: ${prop.description}${tagStr}`);
+        const tagStr = prop.tags.length > 0 ? ` (${prop.tags.join(", ")})` : "";
+        lines.push(`  -${tagStr} \`${prop.name}\`: ${prop.description}`);
       }
     }
     lines.push("");
@@ -87,9 +88,8 @@ async function buildSchemaDump(): Promise<string> {
     if (rel.properties.length > 0) {
       const visible = rel.properties.filter((p) => !p.name.startsWith("_"));
       for (const prop of visible) {
-        const tags = prop.tags.filter((t) => t !== "string" && t !== "number" && t !== "number[]");
-        const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
-        lines.push(`  - \`${prop.name}\`: ${prop.description}${tagStr}`);
+        const tagStr = prop.tags.length > 0 ? ` (${prop.tags.join(", ")})` : "";
+        lines.push(`  -${tagStr} \`${prop.name}\`: ${prop.description}`);
       }
     }
     lines.push("");

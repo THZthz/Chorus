@@ -374,6 +374,7 @@ export async function buildRelationshipDump(): Promise<string> {
     "BRANCHES_TO",
     "ABOUT_ENTITY",
     "ABOUT_MESSAGE",
+    "ABOUT_PLOT",
   ]) {
     internalTypeNames.add(name);
   }

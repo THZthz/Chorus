@@ -70,10 +70,10 @@ to change. Properties tagged "json" receive partial merge (like editNode UPDATE)
 DELETE — Remove a relationship. Use when entities move, items transfer, or relationships change.
 
 Relationship properties for spatial/tactical context:
-- LOCATED_AT.description — spatial position detail (e.g. "hiding behind crates")
-- LOCATED_IN.description — access/containment detail (e.g. "accessed through a trapdoor behind the bar")
-- CARRIES.description — how an item is carried (e.g. "concealed in a boot")
-- ALLIED_WITH.description / HOSTILE_TOWARDS.description — motive or reason
+- LOCATED_AT.brief — spatial position detail (e.g. "hiding behind crates")
+- LOCATED_IN.brief — access/containment detail (e.g. "accessed through a trapdoor behind the bar")
+- CARRIES.brief — how an item is carried (e.g. "concealed in a boot")
+- ALLIED_WITH.brief / HOSTILE_TOWARDS.brief — motive or reason
 
 Convention: use LOCATED_AT for characters/objects at a specific spot. Use LOCATED_IN for
 sub-locations nested within a larger location (e.g., a basement inside a tavern).

@@ -40,9 +40,7 @@ Note text. CREATE: required. UPDATE: optional (set to overwrite). DELETE: omit.`
     .array(z.string())
     .nullable()
     .optional()
-    .describe(
-      "Entity names to link this note to. Replaces existing links — pass [] to clear all.",
-    ),
+    .describe("Entity names to link this note to. Replaces existing links — pass [] to clear all."),
   aboutMessages: z
     .array(z.string())
     .nullable()
@@ -50,14 +48,19 @@ Note text. CREATE: required. UPDATE: optional (set to overwrite). DELETE: omit.`
     .describe(
       "Message IDs to link this note to. Replaces existing links — pass [] to clear all. Link to messages to anchor notes to TimePoints via :Message AT_TIME → :TimePoint.",
     ),
+  aboutPlots: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe("Plot names to link this note to. Replaces existing links — pass [] to clear all."),
 });
 
 export const editNote = tool({
   title: TOOL_NAMES.EDIT_NOTE,
   description: `
 Your scratchpad — CREATE, UPDATE (partial overwrite), or DELETE a note. Notes can be
-linked to entities (aboutEntities) and messages (aboutMessages) for cross-referencing to
-the world and timeline.
+linked to entities (aboutEntities), messages (aboutMessages), and plots (aboutPlots)
+for cross-referencing to the world, timeline, and story arcs.
 
 Write a note when: tracking a suspicion or theory, an NPC made a promise/plan/threat,
 a clue appeared but its meaning is unresolved, a player choice deserves future consequence.
@@ -86,7 +89,10 @@ Search your notes via searchWorld at the start of every turn to recall what you 
       if (args.aboutMessages) {
         for (const id of args.aboutMessages) await client.notes.linkToMessage(note.name, id);
       }
-      return `Note "${note.name}" is successfully created (${note.content.length} chars, ${args.aboutEntities?.length ?? 0} entities linked, ${args.aboutMessages?.length ?? 0} messages linked).`;
+      if (args.aboutPlots) {
+        for (const name of args.aboutPlots) await client.notes.linkToPlot(note.name, name);
+      }
+      return `Note "${note.name}" is successfully created (${note.content.length} chars, ${args.aboutEntities?.length ?? 0} entities linked, ${args.aboutMessages?.length ?? 0} messages linked, ${args.aboutPlots?.length ?? 0} plots linked).`;
     }
 
     const existing = await client.notes.getNote(args.noteName);
@@ -108,7 +114,12 @@ Search your notes via searchWorld at the start of every turn to recall what you 
       await client.notes.clearLinks(args.noteName, "MESSAGE");
       for (const id of args.aboutMessages) await client.notes.linkToMessage(args.noteName, id);
     }
+    if (args.aboutPlots != null) {
+      flags |= 0x8;
+      await client.notes.clearLinks(args.noteName, "PLOT");
+      for (const name of args.aboutPlots) await client.notes.linkToPlot(args.noteName, name);
+    }
 
-    return `Note "${args.noteName}" is successfully updated (${[flags & 0x1 ? "content" : "", flags & 0x2 ? "all entities links" : "", flags & 0x4 ? "all messages links" : ""].join(", ")} is overwritten).`;
+    return `Note "${args.noteName}" is successfully updated (${[flags & 0x1 ? "content" : "", flags & 0x2 ? "all entities links" : "", flags & 0x4 ? "all messages links" : "", flags & 0x8 ? "all plots links" : ""].join(", ")} is overwritten).`;
   }, TOOL_NAMES.EDIT_NOTE),
 });

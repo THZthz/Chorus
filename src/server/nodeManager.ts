@@ -95,7 +95,7 @@ const ENTITY_PROPS: NodePropertyDef[] = [
   {
     name: "name",
     description: "Unique name of the entity.",
-    tags: ["string", "embedded", "index"],
+    tags: ["string", "embedded", "unique"],
   },
   {
     name: "type",
@@ -179,6 +179,42 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
       { name: "counter", description: "Current counter value (Neo4j Integer).", tags: ["number"] },
     ],
   },
+  {
+    name: "RelationshipType",
+    description: `Stores the description and category of each relationship type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
+    properties: [
+      {
+        name: "name",
+        description: "Relationship type name (e.g. 'LOCATED_AT', 'CONNECTED_TO').",
+        tags: ["string"],
+      },
+      {
+        name: "description",
+        description: "Human-readable description of what the relationship means.",
+        tags: ["string"],
+      },
+      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
+    ],
+  },
+  {
+    name: "NodeType",
+    description: `Stores the description, property schema, and category of each node type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
+    properties: [
+      { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", tags: ["string"] },
+      {
+        name: "description",
+        description: "Human-readable description of what the node type represents.",
+        tags: ["string"],
+      },
+      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
+      {
+        name: "properties",
+        description:
+          "JSON array of {name, description, type} describing the node's property schema.",
+        tags: ["json"],
+      },
+    ],
+  },
 ];
 
 const PREDEFINED_TYPES: { name: string; description: string; properties: NodePropertyDef[] }[] = [
@@ -206,7 +242,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "Message",
     description:
-      "A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE.",
+      `A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE. Automatically managed by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     properties: [
       { name: "id", description: "Message id.", tags: ["string", "unique"] },
       { name: "content", description: "Message text content.", tags: ["string", "embedded"] },
@@ -223,7 +259,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "Note",
     description:
-      "A GM note with vector embedding for semantic recall. Can link to Entities or Messages via ABOUT_ENTITY / ABOUT_MESSAGE.",
+      `A GM note with vector embedding for semantic recall. Can link to Entities, Messages, or Plots via ABOUT_ENTITY / ABOUT_MESSAGE / ABOUT_PLOT. Automatically managed by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
     properties: [
       { name: "name", description: "Unique note name (used as lookup key).", tags: ["string"] },
       {
@@ -239,7 +275,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "Plot",
     description:
-      "A narrative plot with status, beats, branches, and flags. Drives story progression.",
+      `A narrative plot with status, beats, branches, and flags. Drives story progression. Automatically managed by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
     properties: [
       {
         name: "name",
@@ -309,7 +345,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "TimePoint",
     description:
-      "A point in game time with day, hour, and label. Linked sequentially via NEXT_TIMEPOINT.",
+      `A point in game time with day, hour, and label. Linked sequentially via NEXT_TIMEPOINT. Automatically created by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     properties: [
       {
         name: "day",
@@ -333,50 +369,10 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "TimeAnchor",
     description:
-      "Singleton anchor pointing to the current TimePoint via CURRENT_TIMEPOINT. Use MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) to get current time.",
+      `Singleton anchor pointing to the current TimePoint via CURRENT_TIMEPOINT. Automatically created by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     properties: [...INTERNAL_PROPS],
   },
-  {
-    name: "RelationshipType",
-    description: `Stores the description and category of each relationship type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
-    properties: [
-      {
-        name: "name",
-        description: "Relationship type name (e.g. 'LOCATED_AT', 'CONNECTED_TO').",
-        tags: ["string"],
-      },
-      {
-        name: "description",
-        description: "Human-readable description of what the relationship means.",
-        tags: ["string"],
-      },
-      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
-    ],
-  },
-  {
-    name: "NodeType",
-    description: `Stores the description, property schema, and category of each node type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
-    properties: [
-      { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", tags: ["string"] },
-      {
-        name: "description",
-        description: "Human-readable description of what the node type represents.",
-        tags: ["string"],
-      },
-      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
-      {
-        name: "properties",
-        description:
-          "JSON array of {name, description, type} describing the node's property schema.",
-        tags: ["json"],
-      },
-    ],
-  },
 ];
-
-// PREDEFINED labels that are readable via queryWorld but NOT writable via queryWorld (WRITE action).
-// The GM uses manageSchema to register/unregister these instead.
-const WRITE_BLOCKED_NAMES = new Set(["RelationshipType", "NodeType"]);
 
 export class NodeManager {
   private registry = new Map<string, NodeDef>();
@@ -454,7 +450,6 @@ export class NodeManager {
   isAllowedForWrite(name: string): boolean {
     const def = this.registry.get(name);
     if (!def) return false;
-    if (WRITE_BLOCKED_NAMES.has(name)) return false;
     return def.type === "PREDEFINED" || def.type === "GM_DEFINED";
   }
 

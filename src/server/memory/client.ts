@@ -19,7 +19,6 @@
 import { Neo4jClient } from "@/server/memory/neo4j";
 import { getEmbedder } from "@/server/memory/embedder";
 import { ShortTermMemory } from "@/server/memory/shortTerm";
-import { LongTermMemory } from "@/server/memory/longTerm";
 import { MemorySearch } from "@/server/memory/search";
 import { Notes } from "@/server/memory/notes";
 import { Plots } from "@/server/memory/plots";
@@ -27,7 +26,6 @@ import { RelationshipManager } from "@/server/relationshipManager";
 import { NodeManager } from "@/server/nodeManager";
 
 export { ShortTermMemory } from "@/server/memory/shortTerm";
-export { LongTermMemory } from "@/server/memory/longTerm";
 export { MemorySearch } from "@/server/memory/search";
 export { Notes } from "@/server/memory/notes";
 export { Plots } from "@/server/memory/plots";
@@ -36,7 +34,6 @@ export * from "@/server/memory/types";
 export class MemoryClient {
   readonly neo4j: Neo4jClient;
   readonly shortTerm: ShortTermMemory;
-  readonly longTerm: LongTermMemory;
   readonly search: MemorySearch;
   readonly notes: Notes;
   readonly plots: Plots;
@@ -44,7 +41,6 @@ export class MemoryClient {
   private constructor(neo4j: Neo4jClient) {
     this.neo4j = neo4j;
     this.shortTerm = new ShortTermMemory(neo4j);
-    this.longTerm = new LongTermMemory(neo4j);
     this.search = new MemorySearch(neo4j);
     this.notes = new Notes(neo4j);
     this.plots = new Plots(neo4j);

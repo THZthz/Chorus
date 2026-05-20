@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "smol-toml";
-import type { SeedStory } from "@/server/seed-stories/types";
+import type { SeedStory } from "@/server/stories/types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

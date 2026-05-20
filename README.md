@@ -50,23 +50,36 @@ cp .env.example .env
 #
 #   EMBEDDING_DIMENSIONS=1024
 
-make install
+npm install
 
 # Terminal 1 — Embedding server
-make embedding-server
+llama-server -m data/models/Qwen3-Embedding-0.6B-Q8_0.gguf --port 8080 -c 32768 -ngl 99 --embeddings
 
 # Terminal 2 — Reranker server (optional; improves search precision)
-make rerank-server
+llama-server -m data/models/Qwen3-Reranker-0.6B-Q8_0.gguf --port 8081 -c 32768 -ngl 99 --reranking
 
 # Terminal 3 — Neo4j container and Express server
-make neo4j-start
-make server
+docker compose -f docker-compose.yml up -d # Will take some time to start
+npm run server # Or: npm run server:dev
 
 # Terminal 4 — Play
-make console
+npm run console
 ```
 
 On first run, Neo4j is seeded with a default world, see `src/server/seed-stories/`.
+
+Other operations:
+
+```bash
+# Check all tests passed
+npm run test
+
+# Stop Neo4j container
+docker compose -f docker-compose.yml down # Or with `-v` parameter
+
+# Notify server to clear data
+curl -X POST http://localhost:3000/api/reset
+```
 
 ## How It Works
 

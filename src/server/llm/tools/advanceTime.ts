@@ -26,14 +26,14 @@ import { TOOL_NAMES } from "@/shared/constants";
 // NB: .nullable() on optional fields prevents Zod rejection when the LLM
 // outputs "field": null for fields it intends to omit.
 const inputSchema = z.object({
-  segments: z
+  hours: z
     .number()
-    .int()
     .min(0)
-    .max(11)
+    .max(48)
+    .multipleOf(0.5)
     .nullable()
     .optional()
-    .describe("Number of 2-hour segments to advance (0-11)."),
+    .describe("Number of hours to advance within a day (0–48, in 0.5 increments = 30 minutes)."),
   days: z
     .number()
     .int()
@@ -49,23 +49,25 @@ export function createAdvanceTimeTool(events: EventEmitter) {
     title: TOOL_NAMES.ADVANCE_TIME,
     description: `
 Advance the in-game clock. Time only moves when YOU advance it — narrating that time passed without
-calling advanceTime means time stood still in the archive. Use segments (0-11, each = 2 hours) for
-short advances within a day, or days (0+) for multi-day travel. Total advancement =
-days * 12 + segments. Include a brief 'reason' so your future self knows why time moved.
+calling ${TOOL_NAMES.ADVANCE_TIME} means time stood still in the archive. Use hours (0–48, in 0.5
+increments = 30 minutes) for sub-day advances, or days (0+) for multi-day travel. Total advancement =
+days * 48 + hours * 2 half-hours. Include a brief 'reason' so your future self knows why time moved.
 `.trim(),
     inputSchema,
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
-      const totalSegments = (args.days ?? 0) * 12 + (args.segments ?? 0);
-      const { oldTime, newTime } = await advanceGameTime(totalSegments);
-      // `reason` now will not appear in tool result message.
-      // TODO: Display time pass reason in console client.
-      events.emitTimeUpdate(newTime.day, newTime.segment, totalSegments);
-      if (totalSegments === 0) {
+      const totalHalfHours = (args.days ?? 0) * 48 + (args.hours ?? 0) * 2;
+      const { oldTime, newTime } = await advanceGameTime(totalHalfHours, args.reason);
+      const totalHours = totalHalfHours / 2;
+      events.emitTimeUpdate(newTime.day, newTime.hour, totalHours);
+      if (totalHalfHours === 0) {
         return `Time unchanged. It is still ${describeTime(newTime)}.`;
       }
       const parts: string[] = [];
       if (args.days && args.days > 0) parts.push(`${args.days} day(s)`);
-      if (args.segments && args.segments > 0) parts.push(`${args.segments} segment(s)`);
+      if (args.hours && args.hours > 0) {
+        const h = args.hours;
+        parts.push(Number.isInteger(h) ? `${h} hour(s)` : `${h} hours`);
+      }
       return `Time advanced by ${parts.join(", ")}. It is now \`${describeTime(newTime)}\` (was \`${describeTime(oldTime)}\`).`;
     }, TOOL_NAMES.ADVANCE_TIME),
   });

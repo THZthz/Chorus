@@ -42,7 +42,7 @@ ORDER BY m.timestamp DESC LIMIT 20
 
 // Current time
 MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint)
-RETURN tp.day, tp.segment, tp.label
+RETURN tp.day, tp.hour, tp.label
 
 // Available relationship types
 MATCH (rt:RelationshipType) WHERE rt.category <> "INTERNAL"

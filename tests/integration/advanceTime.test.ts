@@ -24,20 +24,36 @@ describe("advanceTime", () => {
     await resetDb();
   });
 
-  it("advances by segments and emits time update event", async () => {
+  it("advances by hours and emits time update event", async () => {
     const mockEvents = createMockEventEmitter();
     const advanceTime = createAdvanceTimeTool(mockEvents);
 
     const result = await exec(advanceTime, {
-      segments: 3,
+      hours: 6,
       reason: "Short rest",
     });
     expect(result).toContain("Time advanced");
-    expect(result).toContain("3 segment(s)");
+    expect(result).toContain("6 hour(s)");
 
     const timeEvent = mockEvents.events.find((e) => e.event === "time_update");
     expect(timeEvent).toBeDefined();
-    expect((timeEvent!.data as { segmentsAdvanced: number }).segmentsAdvanced).toBe(3);
+    expect((timeEvent!.data as { hoursAdvanced: number }).hoursAdvanced).toBe(6);
+  });
+
+  it("advances by fractional hours (30 minutes)", async () => {
+    const mockEvents = createMockEventEmitter();
+    const advanceTime = createAdvanceTimeTool(mockEvents);
+
+    const result = await exec(advanceTime, {
+      hours: 0.5,
+      reason: "Brief pause",
+    });
+    expect(result).toContain("Time advanced");
+    expect(result).toContain("0.5 hours");
+
+    const timeEvent = mockEvents.events.find((e) => e.event === "time_update");
+    expect(timeEvent).toBeDefined();
+    expect((timeEvent!.data as { hoursAdvanced: number }).hoursAdvanced).toBe(0.5);
   });
 
   it("advances by days", async () => {
@@ -53,30 +69,66 @@ describe("advanceTime", () => {
 
     const timeEvent = mockEvents.events.find((e) => e.event === "time_update");
     expect(timeEvent).toBeDefined();
-    expect((timeEvent!.data as { segmentsAdvanced: number }).segmentsAdvanced).toBe(24); // 2 days * 12 segments
+    expect((timeEvent!.data as { hoursAdvanced: number }).hoursAdvanced).toBe(48); // 2 days * 24 hours
   });
 
-  it("reports no change when both days and segments are zero or absent", async () => {
+  it("combines days and hours", async () => {
     const mockEvents = createMockEventEmitter();
     const advanceTime = createAdvanceTimeTool(mockEvents);
 
     const result = await exec(advanceTime, {
-      segments: 0,
+      days: 1,
+      hours: 2.5,
+      reason: "Travel + short rest",
+    });
+    expect(result).toContain("1 day(s)");
+    expect(result).toContain("2.5 hours");
+
+    const timeEvent = mockEvents.events.find((e) => e.event === "time_update");
+    expect(timeEvent).toBeDefined();
+    expect((timeEvent!.data as { hoursAdvanced: number }).hoursAdvanced).toBe(26.5); // 24 + 2.5
+  });
+
+  it("reports no change when both days and hours are zero or absent", async () => {
+    const mockEvents = createMockEventEmitter();
+    const advanceTime = createAdvanceTimeTool(mockEvents);
+
+    const result = await exec(advanceTime, {
+      hours: 0,
       reason: "Checking time",
     });
     expect(result).toContain("Time unchanged");
   });
 
-  it("still works when reason is provided (reason is logged but not shown in tool output)", async () => {
+  it("stores reason on NEXT_TIMEPOINT relationship", async () => {
+    const mockEvents = createMockEventEmitter();
+    const advanceTime = createAdvanceTimeTool(mockEvents);
+
+    await exec(advanceTime, {
+      hours: 1,
+      reason: "Walking to the next carriage",
+    });
+
+    // Verify reason is stored on the NEXT_TIMEPOINT relationship
+    const { MemoryClient } = await import("@/server/memory/client");
+    const client = MemoryClient.getCachedInstance();
+    const rows = await client.neo4j.executeRead(
+      `MATCH (:TimePoint)-[r:NEXT_TIMEPOINT]->(:TimePoint) RETURN r.reason AS reason`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].reason).toBe("Walking to the next carriage");
+  });
+
+  it("still works when reason is provided (reason stored but not shown in tool output)", async () => {
     const mockEvents = createMockEventEmitter();
     const advanceTime = createAdvanceTimeTool(mockEvents);
 
     const result = await exec(advanceTime, {
-      segments: 1,
+      hours: 1,
       reason: "Walking to the next carriage",
     });
     expect(result).toContain("Time advanced");
-    expect(result).toContain("1 segment(s)");
+    expect(result).toContain("1 hour(s)");
     expect(result).not.toContain("Walking to the next carriage");
   });
 
@@ -84,7 +136,7 @@ describe("advanceTime", () => {
     const mockEvents = createMockEventEmitter();
     const advanceTime = createAdvanceTimeTool(mockEvents);
 
-    const result = await exec(advanceTime, { segments: 1 });
+    const result = await exec(advanceTime, { hours: 1 });
     expect(result).toContain("Time advanced");
   });
 });

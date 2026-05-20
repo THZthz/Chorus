@@ -18,13 +18,12 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { MemoryClient } from "@/server/memory/client";
-import { SEGMENT_LABELS, SEGMENT_HOURS } from "@/shared/constants";
 
 // ── Types ──
 
 export interface GameTime {
   day: number;
-  segment: number;
+  hour: number;
 }
 
 interface TimePoint extends GameTime {
@@ -32,6 +31,10 @@ interface TimePoint extends GameTime {
   label: string;
   _created_at: string;
 }
+
+// ── Constants ──
+
+const HALF_HOURS_PER_DAY = 48; // 24 hours × 2 half-hours
 
 // ── Current Time ──
 
@@ -46,7 +49,7 @@ export async function getCurrentTimePoint(): Promise<TimePoint | null> {
   return {
     id: tp._id as string,
     day: Number(tp.day),
-    segment: Number(tp.segment),
+    hour: Number(tp.hour),
     label: tp.label as string,
     _created_at: tp._created_at as string,
   };
@@ -54,38 +57,40 @@ export async function getCurrentTimePoint(): Promise<TimePoint | null> {
 
 // ── Advance Time ──
 
-export async function setInitialTime(day: number, segment: number): Promise<void> {
+export async function setInitialTime(day: number, hour: number): Promise<void> {
   const client = MemoryClient.getCachedInstance();
   const existing = await getCurrentTimePoint();
   if (existing) return; // already initialized
 
-  const label = describeSegment(segment);
+  const label = formatHour(hour);
   const newId = uuidv4();
   const now = new Date().toISOString();
 
   await client.neo4j.executeWrite(
     `MERGE (a:TimeAnchor {_id: 'anchor'})
      CREATE (new:TimePoint {
-       _id: $newId, day: $day, segment: $segment,
+       _id: $newId, day: $day, hour: $hour,
        label: $label, _created_at: datetime($now)
      })
      CREATE (a)-[r:CURRENT_TIMEPOINT]->(new)
      SET r._created_at = datetime()`,
-    { newId, day, segment, label, now },
+    { newId, day, hour, label, now },
   );
 }
 
 export async function advanceGameTime(
-  segments: number,
-): Promise<{ oldTime: GameTime; newTime: GameTime; totalSegments: number }> {
+  halfHours: number,
+  reason?: string | null,
+): Promise<{ oldTime: GameTime; newTime: GameTime; totalHalfHours: number }> {
   const client = MemoryClient.getCachedInstance();
   const oldTimePoint = await getCurrentTimePoint();
-  const oldTime: GameTime = oldTimePoint ?? { day: 1, segment: 2 };
+  const oldTime: GameTime = oldTimePoint ?? { day: 1, hour: 8 };
 
-  const totalSegments = oldTime.day * 12 + oldTime.segment + segments;
-  const newDay = Math.floor(totalSegments / 12);
-  const newSegment = totalSegments % 12;
-  const label = describeSegment(newSegment);
+  const oldTotal = oldTime.day * HALF_HOURS_PER_DAY + oldTime.hour * 2;
+  const newTotal = oldTotal + halfHours;
+  const newDay = Math.floor(newTotal / HALF_HOURS_PER_DAY);
+  const newHour = (newTotal % HALF_HOURS_PER_DAY) / 2;
+  const label = formatHour(newHour);
 
   const newId = uuidv4();
   const now = new Date().toISOString();
@@ -99,11 +104,12 @@ export async function advanceGameTime(
        MATCH (old:TimePoint {_id: $oldId})
        MATCH (a)-[r_del:CURRENT_TIMEPOINT]->(old)
        CREATE (new:TimePoint {
-         _id: $newId, day: $newDay, segment: $newSegment,
+         _id: $newId, day: $newDay, hour: $newHour,
          label: $label, _created_at: datetime($now)
        })
        CREATE (old)-[r1:NEXT_TIMEPOINT]->(new)
        SET r1._created_at = datetime()
+       SET r1.reason = $reason
        DELETE r_del
        CREATE (a)-[r2:CURRENT_TIMEPOINT]->(new)
        SET r2._created_at = datetime()`,
@@ -111,9 +117,10 @@ export async function advanceGameTime(
         oldId: oldTimePoint.id,
         newId,
         newDay,
-        newSegment,
+        newHour,
         label,
         now,
+        reason: reason ?? null,
       },
     );
   } else {
@@ -121,27 +128,31 @@ export async function advanceGameTime(
     await client.neo4j.executeWrite(
       `MATCH (a:TimeAnchor {_id: 'anchor'})
        CREATE (new:TimePoint {
-         _id: $newId, day: $newDay, segment: $newSegment,
+         _id: $newId, day: $newDay, hour: $newHour,
          label: $label, _created_at: datetime($now)
        })
        CREATE (a)-[r:CURRENT_TIMEPOINT]->(new)
        SET r._created_at = datetime()`,
-      { newId, newDay, newSegment, label, now },
+      { newId, newDay, newHour, label, now },
     );
   }
 
-  const newTime: GameTime = { day: newDay, segment: newSegment };
-  return { oldTime, newTime, totalSegments: segments };
+  const newTime: GameTime = { day: newDay, hour: newHour };
+  return { oldTime, newTime, totalHalfHours: halfHours };
 }
 
 // ── Helpers ──
 
-function describeSegment(segment: number): string {
-  return SEGMENT_LABELS[segment] ?? `Segment ${segment}`;
+/** Format a fractional hour (0–23.5) as a clock time string, e.g. 13.5 → "1:30 PM". */
+function formatHour(hour: number): string {
+  const h = Math.floor(hour);
+  const m = hour % 1 === 0.5 ? 30 : 0;
+  const period = h < 12 ? "AM" : "PM";
+  const displayH = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  const mm = m === 0 ? "00" : "30";
+  return `${displayH}:${mm} ${period}`;
 }
 
 export function describeTime(time: GameTime): string {
-  const label = SEGMENT_LABELS[time.segment] ?? `Segment ${time.segment}`;
-  const hours = SEGMENT_HOURS[time.segment] ?? "";
-  return `Day ${time.day}, ${label}${hours ? ` (~${hours})` : ""}`;
+  return `Day ${time.day}, ${formatHour(time.hour)}`;
 }

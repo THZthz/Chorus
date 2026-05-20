@@ -69,8 +69,8 @@ export function createMockEventEmitter(): any {
   const events: Array<{ event: string; data: unknown }> = [];
   return {
     events,
-    emitTimeUpdate(day: number, segment: number, segmentsAdvanced: number) {
-      events.push({ event: "time_update", data: { day, segment, segmentsAdvanced } });
+    emitTimeUpdate(day: number, hour: number, hoursAdvanced: number) {
+      events.push({ event: "time_update", data: { day, hour, hoursAdvanced } });
     },
     startStep: () => {},
     finish: () => {},

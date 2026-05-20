@@ -309,7 +309,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "TimePoint",
     description:
-      "A point in game time with day, segment, and label. Linked sequentially via NEXT_TIMEPOINT.",
+      "A point in game time with day, hour, and label. Linked sequentially via NEXT_TIMEPOINT.",
     properties: [
       {
         name: "day",
@@ -317,14 +317,13 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
         tags: ["number", "composite_index_1"],
       },
       {
-        name: "segment",
-        description: "Segment within the day (0–11, each = 2 hours).",
+        name: "hour",
+        description: "Hour within the day (0–23.5, in 0.5 increments = 30 minutes).",
         tags: ["number", "composite_index_1"],
       },
       {
         name: "label",
-        description:
-          "Human-readable label: Midnight, Dawn, Morning, Noon, Afternoon, Dusk, Night, etc.",
+        description: "Human-readable clock time label (e.g. '12:00 AM', '1:30 PM').",
         tags: ["string"],
       },
       { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },

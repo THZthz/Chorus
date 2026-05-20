@@ -82,6 +82,7 @@ const PREDEFINED_TYPES: {
   description: string;
   sourceLabel: string;
   targetLabel: string;
+  properties?: RelationshipPropertyDef[];
 }[] = [
   {
     name: "HAS_MESSAGE",
@@ -103,9 +104,16 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "NEXT_TIMEPOINT",
-    description: "Links TimePoint nodes in chronological sequence.",
+    description: "Links TimePoint nodes in chronological sequence. Records the reason for the time advance.",
     sourceLabel: "TimePoint",
     targetLabel: "TimePoint",
+    properties: [
+      {
+        name: "reason",
+        description: "Narrative reason for advancing time from the previous TimePoint to this one.",
+        tags: ["string"],
+      },
+    ],
   },
   {
     name: "CURRENT_TIMEPOINT",

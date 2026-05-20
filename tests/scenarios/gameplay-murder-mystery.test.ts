@@ -89,11 +89,11 @@ describe("Gameplay: Murder Mystery Investigation", () => {
     });
     expect(linkResult).toContain("created successfully");
 
-    // 8. Advance time by 2 segments (from Late Afternoon to Dusk)
+    // 8. Advance time by 4 hours
     const mockEvents = createMockEventEmitter();
     const advanceTime = createAdvanceTimeTool(mockEvents);
     const timeResult = await exec(advanceTime, {
-      segments: 2,
+      hours: 4,
       reason: "Thorough investigation takes time",
     });
     expect(timeResult).toContain("Time advanced");
@@ -102,7 +102,7 @@ describe("Gameplay: Murder Mystery Investigation", () => {
     const timeQuery = await exec(queryWorld, {
       action: "READ",
       query:
-        "MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.segment",
+        "MATCH (a:TimeAnchor {_id:'anchor'})-[:CURRENT_TIMEPOINT]->(tp:TimePoint) RETURN tp.day, tp.hour",
     });
     const timeData = parseToolOutput(timeQuery);
     const timeRow = timeData.rows[0] as Record<string, unknown>;

@@ -360,11 +360,11 @@ Defined in `src/shared/events.ts`:
 
 ## 11. Game Time
 
-Each day: 12 segments of 2 hours (segment 0 = midnight, segment 11 = 10pm–midnight). Only advances via `advanceTime`.
+Minimum unit: 30 minutes (0.5 hours). Day is integer, hour is 0–23.5 in 0.5 increments. Only advances via `advanceTime`.
 
-**Storage**: `:TimeAnchor {_id: "anchor"}` → `:CURRENT_TIMEPOINT` → `:TimePoint` chain via `NEXT_TIMEPOINT`. Each TimePoint stores `day`, `segment`, `label`.
+**Storage**: `:TimeAnchor {_id: "anchor"}` → `:CURRENT_TIMEPOINT` → `:TimePoint` chain via `NEXT_TIMEPOINT`. Each TimePoint stores `day`, `hour`, `label`. NEXT_TIMEPOINT relationship stores `reason`.
 
-**Model** (`src/server/models/time.ts`): `getGameTime()`, `advanceGameTime(segments)`, `describeTime()`, `migrateToTimePoints()`, `SEGMENT_LABELS`.
+**Model** (`src/server/models/time.ts`): `getCurrentTimePoint()`, `advanceGameTime(halfHours, reason?)`, `describeTime()`, `formatHour()`.
 
 ---
 

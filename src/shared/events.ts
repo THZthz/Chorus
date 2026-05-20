@@ -53,8 +53,8 @@ export interface DoneEvent {}
 
 export interface TimeUpdateEvent {
   day: number;
-  segment: number;
-  segmentsAdvanced: number;
+  hour: number;
+  hoursAdvanced: number;
 }
 
 export interface RollResultEvent {

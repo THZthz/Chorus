@@ -22,7 +22,6 @@ import { v4 as uuidv4 } from "uuid";
 import { MemoryClient } from "@/server/memory/client";
 import { NodeDef, NodeManager } from "@/server/nodeManager";
 import { extractInternalAndUnknownKeys, wrapSafe } from "@/server/llm/tools/shared";
-import { getObserver } from "@/server/llm/sceneObserver";
 import { getEmbedder } from "@/server/memory/embedder";
 import { TOOL_NAMES } from "@/shared/constants";
 
@@ -42,8 +41,8 @@ const inputSchema = z.object({
     `
 Node label to operate on (e.g. \`Entity\`, \`Character\`, \`Location\`, or a GM-defined label).
 Must be registered in the world schema and writable.
-Query \`NodeType\` nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types and their property schemas.
-`.trim(), // TODO: Should use getContext.
+Discover available types and their property schemas via getContext SCHEMA_DUMP.
+`.trim(),
   ),
   action: z.enum(NODE_ACTIONS).default("CREATE").describe("Action to perform."),
   match: z
@@ -72,22 +71,28 @@ System properties (_id, _created_at, _updated_at, _embedding) are managed automa
 export const editNode = tool({
   title: TOOL_NAMES.EDIT_NODE,
   description: `
-CREATE, UPDATE, or DELETE a **single** node in the world archive using a registered node type.
+CREATE, UPDATE, or DELETE a single node in the world archive using a registered node type.
 
 CREATE — Add a new entity, note, plot, or custom node type. Properties are validated
 against the type's schema. WARNING: This tool does NOT check for duplicates — search first
-via ${TOOL_NAMES.SEARCH_WORLD} or ${TOOL_NAMES.QUERY_WORLD} (READ) to verify the node doesn't
-already exist. Use label \`Note\` to create your own scratchpad notes. Use label \`Plot\` to
-create plot tree in advance of dialogue steps.
+via searchWorld or queryWorld (READ) to verify the node doesn't already exist.
 
 UPDATE — Change properties on an existing node. Only include fields you want to change.
-Use for: entity descriptions, plot statuses/flags, note contents, dispositions. This also supports
-partial JSON properties update although the property may actually stored as "string" in database
-(when creating schema by \`${TOOL_NAMES.MANAGE_SCHEMA}\`, the type of that property MUST be
-specified as "json").
+Supports partial JSON property updates for properties tagged "json" in their type schema.
 
 DELETE — Remove a node and all its relationships (DETACH DELETE). Requires exact match criteria.
-Verify you're targeting the right node.
+
+Use for Entity (CHARACTER, OBJECT, LOCATION) and NPCDisposition nodes. Do NOT use for
+notes (use editNote) or plots (use editPlot).
+
+Entity metadata property (json): stores stats (skill→value pairs), conditions,
+attributes (key→description), opinions (target→text), aliases (string[]). Use metadata
+for structured character data rather than free-text in description.
+
+NPCDisposition: stored as a NODE (not a relationship), linked via
+(npc:Entity)-[:HAS_DISPOSITION]->(d:NPCDisposition). Sentiment keywords: protective,
+trusting, fearful, hostile, attracted, suspicious, resentful, grateful, indifferent.
+Set or update disposition when an NPC's feelings shift due to player actions.
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
@@ -324,19 +329,6 @@ Verify you're targeting the right node.
       `MATCH (n:\`${args.nodeLabel}\`) WHERE ${where} SET ${setters.join(", ")}`,
       setParams,
     );
-
-    // Reset scene observer for entities whose description/brief changed
-    // TODO: This is fragile.
-    if (args.properties.description !== undefined || args.properties.brief !== undefined) {
-      const entityName = existingNode?.name as string | undefined;
-      if (entityName) {
-        try {
-          getObserver().resetEntity(entityName);
-        } catch {
-          // Best-effort
-        }
-      }
-    }
 
     return `Node "${args.nodeLabel}" updated properties: ${Object.keys(args.properties).join(", ")}.`;
   }, TOOL_NAMES.EDIT_NODE),

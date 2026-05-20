@@ -22,7 +22,6 @@ import { MemoryClient } from "@/server/memory/client";
 import { CypherValidator } from "@/server/memory/validation";
 import { stripHiddenProperties } from "@/server/memory/neo4j";
 import { wrapSafe } from "@/server/llm/tools/shared";
-import { resetEntityForQuery } from "@/server/llm/sceneObserver";
 import { TOOL_NAMES } from "@/shared/constants";
 
 const validator = new CypherValidator();
@@ -33,17 +32,15 @@ export const queryWorld = tool({
   description: `
 READ or WRITE the world archive using Cypher.
 
-READ — Look up facts. The current scene (player location, nearby NPCs, objects, inventory,
-NPC dispositions, and active plots) is already pre-loaded under SCENE CONTEXT.
-Do NOT re-query that information. Use READ for: entities at OTHER locations,
-message history, timepoint history, relationship types, node type schemas,
-or entity details not shown in the scene context.
+READ — MATCH...RETURN. The current scene is pre-loaded in SCENE_CONTEXT — don't
+re-query that information. Use READ for: entities at other locations, message history,
+TimePoint chain, or entity details not shown in the scene context. Auto-limited to 50 rows.
 
-WRITE — Persist changes. The archive IS the world — if you don't WRITE it, it didn't happen.
-Every world mutation you narrate MUST be persisted. Use MERGE for upserts, SET for
-property updates, DETACH DELETE for removal. Must include a WHERE clause when deleting.
-Before creating nodes or relationships with new types, register them via \`${TOOL_NAMES.MANAGE_SCHEMA}\` first.
-Never set a 'description' property directly on relationship instances in your Cypher.
+WRITE — CREATE, MERGE, SET, DELETE. The archive IS the world — if you don't WRITE it,
+it didn't happen. Every world mutation you narrate MUST be persisted. Use MERGE for
+upserts, SET for property updates, DETACH DELETE for removal. Must include WHERE when
+deleting. Register new types via manageSchema before creating nodes/relationships with
+new types in your Cypher.
 
 Internal properties prefixed with "_" are hidden from READ results.
 `.trim(),
@@ -76,12 +73,6 @@ Internal properties prefixed with "_" are hidden from READ results.
         }
 
         const rows = await client.neo4j.executeWrite(args.query);
-
-        try {
-          resetEntityForQuery(args.query);
-        } catch {
-          // Best-effort
-        }
 
         return `Success. ${rows.length} row(s) affected.`;
       } catch (err) {

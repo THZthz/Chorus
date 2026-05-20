@@ -1,9 +1,6 @@
 # Debug endpoint examples — paste-n-run each line separately.
 # Assumes server running on localhost:3000.
 
-# Dump — full world state (markdown)
-curl -s "http://localhost:3000/api/debug/dump" | head -80
-
 # queryWorld — READ (raw JSON)
 curl -s -X POST "http://localhost:3000/api/debug/tools/queryWorld" -H "Content-Type: application/json" -d '{"action":"READ","query":"MATCH (e:Entity) RETURN e.name, e.type LIMIT 5"}'
 
@@ -53,4 +50,4 @@ curl -s -X POST "http://localhost:3000/api/debug/tools/editPlot" -H "Content-Typ
 curl -s -X POST "http://localhost:3000/api/debug/tools/editPlot" -H "Content-Type: application/json" -d '{"plotName":"debug_plot","action":"DELETE"}'
 
 # getContext
-curl -s -X POST "http://localhost:3000/api/debug/tools/getContext" -H "Content-Type: application/json" -d '{"types":["SCENE_CONTEXT","CHARACTERS_BRIEF","LOCATIONS_BRIEF","OBJECTS_BRIEF","PLOTS_BRIEF","SCHEMA_DUMP","RELATIONSHIP_DUMP"]}' | jq .
+curl -s -X POST "http://localhost:3000/api/debug/tools/getContext" -H "Content-Type: application/json" -d '{"types":["SCENE_CONTEXT","CHARACTERS_BRIEF","LOCATIONS_BRIEF","OBJECTS_BRIEF","PLOTS_BRIEF","SCHEMA_DUMP","RELATIONSHIP_DUMP"]}'

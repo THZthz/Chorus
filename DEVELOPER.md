@@ -26,7 +26,7 @@ src/
 │
 ├── server/
 │   ├── main.ts                           # Express server entry point (port 3000)
-│   ├── api.ts                            # Routes: /api/chat/stream, /api/history, /api/reset, /api/debug/*
+│   ├── api.ts                            # Routes: /api/chat/stream, /api/history, /api/reset, /api/debug/tools/*
 │   ├── nodeManager.ts                    # Node label registry: schemas, embedding text, Neo4j sync
 │   ├── relationshipManager.ts            # Rel type registry: composite key (name, sourceLabel, targetLabel)
 │   ├── gameState.ts                      # Persists dialogue options on :Conversation node
@@ -40,7 +40,6 @@ src/
 │   │   ├── events.ts                     # TurnEventEmitter — SSE event emission
 │   │   ├── gmMessages.ts                 # Persists/loads GM turn messages for multi-turn continuity
 │   │   ├── sceneContext.ts               # Builds scene context, entity briefs, plot trees, relationship dumps
-│   │   ├── sceneObserver.ts              # Tracks entities/locations mentioned for context window management
 │   │   ├── conditionEvaluator.ts         # Evaluates skill-check conditional expressions
 │   │   ├── rollSkillCheck.ts             # performSkillCheck(): dice roll + stat bonus resolution
 │   │   │
@@ -81,7 +80,6 @@ src/
 │   └── models/                           # Domain models
 │       ├── entity.ts                     # Entity CRUD helpers
 │       ├── plot.ts                       # Plot CRUD helpers
-│       ├── schema.ts                     # Schema visualization, relationship type descriptions
 │       └── time.ts                       # Game time model: 12 segments/day, advanceGameTime()
 │
 ├── shared/                               # Shared constants & types
@@ -214,25 +212,35 @@ scripts/
 
 All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 
-### GM tools (Neo4j-backed)
+### GM tools — SENSE (understanding the world)
 
 | Tool                | Purpose                                                                                                                                                                                 |
 |---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `queryWorld`        | Cypher READ/WRITE validated via CypherValidator. Auto-registers unknown relationship types on WRITE.                                                                                    |
+| `getContext`        | Fetch scene context, character/location/object briefs, plot tree, schema dump, relationship dump. Schema dump now served from in-memory NodeManager/RelationshipManager (no Neo4j query). |
 | `searchWorld`       | Dynamic vector search across any node type or relationship type with `_embedding`. Pass `domains` (labels/types) and optional `target` (`"node"`/`"relationship"`); omit to search all. |
-| `manageSchema`      | Register/unregister node types (with `properties` schema using `tags` field) and relationship types (with required `sourceLabel`/`targetLabel`).                                        |
-| `editNode`          | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings.                                                                              |
-| `editRelationship`  | CREATE/UPDATE/DELETE relationships. Validates endpoint labels and properties against RelationshipManager schema. Auto-generates embeddings.                                             |
-| `editNote`          | CREATE/UPDATE/DELETE a GM scratchpad note. Links to entities and messages. Partial overwrite on UPDATE.                                                                                 |
-| `editPlot`          | CREATE/UPDATE/DELETE a plot. Manages status transitions, flags, and branching — all in one tool.                                                                                        |
-| `getContext`        | Fetch scene context, character/location/object briefs, plot tree, schema dump, relationship dump.                                                                                       |
+| `queryWorld`        | Cypher READ/WRITE validated via CypherValidator. READ auto-limited to 50 rows. WRITE with MERGE/SET/DELETE.                                                                             |
 
-### Chorus tools
+### GM tools — ACT (changing the world)
+
+| Tool                   | Purpose                                                                                                                                                             |
+|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `editNode`             | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings. Use for Entity and NPCDisposition; not for Note or Plot. |
+| `editRelationship`     | CREATE/UPDATE/DELETE relationships. LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, LOCATED_IN now have `description` (string, embedded) property for narrative context. |
+| `manageSchema`         | Register/unregister node types and relationship types. Must be called before creating instances of new types.                                                       |
+| `advanceTime`          | Advance in-game clock by hours/days. Always include reason. Stored on NEXT_TIMEPOINT.reason.                                                                        |
+
+### GM tools — TRACK (memory & plans)
+
+| Tool                | Purpose                                                                                                                                                |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `editNote`          | CREATE/UPDATE/DELETE a GM scratchpad note. Links to entities and messages for cross-referencing to world state and timeline. Partial overwrite on UPDATE. |
+| `editPlot`          | CREATE/UPDATE/DELETE a plot. Manages status transitions (PENDING→ACTIVE→IN_PROGRESS→COMPLETED/ABANDONED), flags, and branching. Auto-wires time relationships on status change. |
+
+### GM tools — SPEAK (player output)
 
 | Tool                   | Purpose                                                                                        | SSE Event                                 |
 |------------------------|------------------------------------------------------------------------------------------------|-------------------------------------------|
 | `generateDialogueStep` | Produce narrative messages + player options; supports `isCorrection` flag for targeted retries | `streaming_messages`, `options`, `parsed` |
-| `advanceTime`          | Advance in-game clock by N segments                                                            | `time_update`                             |
 
 ---
 
@@ -319,7 +327,6 @@ Defined in `src/shared/events.ts`:
 | `POST` | `/api/chat/stream`           | Primary AI turn (SSE streaming)    |
 | `GET`  | `/api/history`               | Full conversation history          |
 | `GET`  | `/api/game/current`          | Current dialogue options           |
-| `GET`  | `/api/debug/dump`            | Full world state (markdown)        |
 | `POST` | `/api/debug/tools/:toolName` | Debug: invoke any GM tool directly |
 | `POST` | `/api/reset`                 | Clear Neo4j and re-seed            |
 
@@ -405,6 +412,9 @@ Relationship types declared via `[[relationshipTypes]]` with `name`, `descriptio
 10. **GM message history persisted** — `:GMTurnMessage` nodes for multi-turn continuity.
 11. **COLE+O entity model** — CHARACTER, OBJECT, LOCATION, ORGANIZATION, EVENT with dynamic Neo4j sub-labels.
 12. **Skill checks resolved server-side** — dice rolls computed automatically, result injected into prompt.
+13. **Compact 4-layer GM prompt** — SENSE (getContext/searchWorld/queryWorld READ) → ACT (editNode/editRelationship/manageSchema/queryWorld WRITE/advanceTime) → TRACK (editNote/editPlot) → SPEAK (generateDialogueStep). Tool descriptions carry operational detail; prompt carries the mental model.
+14. **Relationship description properties** — LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, and LOCATED_IN have `description` (string, embedded) for narrative context. Vector-indexed for semantic search via searchWorld.
+15. **Schema dump from memory** — `getContext SCHEMA_DUMP` reads type definitions directly from `NodeManager`/`RelationshipManager` registries (no Neo4j round-trip), presenting full property schemas with tags and descriptions.
 
 ---
 

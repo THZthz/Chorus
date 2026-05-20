@@ -25,7 +25,7 @@ import { TOOL_NAMES } from "@/shared/constants";
 const NOTE_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 
 const inputSchema = z.object({
-  noteName: z.string().describe("The name of target note."),
+  noteName: z.string().describe("The name of the note (used as lookup key)."),
   action: z.enum(NOTE_ACTIONS).default("CREATE").describe("Action taken for the note."),
   // .nullable() is needed because LLMs often output null for omitted optional fields
   content: z
@@ -34,30 +34,37 @@ const inputSchema = z.object({
     .optional()
     .describe(
       `
-Note text. CREATE: required; UPDATE: optional, set to overwrite old content; DELETE: omit.`.trim(),
+Note text. CREATE: required. UPDATE: optional (set to overwrite). DELETE: omit.`.trim(),
     ),
   aboutEntities: z
     .array(z.string())
     .nullable()
     .optional()
     .describe(
-      "Entity names to link this note to (replaces existing links, if an empty array [] is passed, all ABOUT_ENTITY is cleared).",
+      "Entity names to link this note to. Replaces existing links — pass [] to clear all.",
     ),
   aboutMessages: z
     .array(z.string())
     .nullable()
     .optional()
     .describe(
-      "Message IDs to link this note to (replaces existing links, if an empty array [] is passed, all ABOUT_MESSAGE is cleared).",
+      "Message IDs to link this note to. Replaces existing links — pass [] to clear all. Link to messages to anchor notes to TimePoints via :Message AT_TIME → :TimePoint.",
     ),
 });
 
 export const editNote = tool({
   title: TOOL_NAMES.EDIT_NOTE,
   description: `
-CREATE, partial UPDATE, or DELETE a scratchpad note.
-Notes can be linked to entities and messages.
-This tool supports partial overwrite when action is UPDATE.
+Your scratchpad — CREATE, UPDATE (partial overwrite), or DELETE a note. Notes can be
+linked to entities (aboutEntities) and messages (aboutMessages) for cross-referencing to
+the world and timeline.
+
+Write a note when: tracking a suspicion or theory, an NPC made a promise/plan/threat,
+a clue appeared but its meaning is unresolved, a player choice deserves future consequence.
+A good note reads like a reminder to yourself: "Kael promised info about the glass cage.
+Player paid 50 coins. Should reappear in 2-3 turns."
+
+Search your notes via searchWorld at the start of every turn to recall what you were tracking.
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {

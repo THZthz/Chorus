@@ -367,21 +367,42 @@ export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn
   const dialogueTool = tool({
     title: TOOL_NAMES.GENERATE_DIALOGUE,
     description: `
-SPEAK to the player. This is your ONLY output channel — all other text you produce is discarded.
-Every turn MUST end with a valid generateDialogueStep call.
+SPEAK to the player. This is your ONLY output channel — all other text you produce is
+discarded. Every turn MUST end with a valid call here.
 
-messages — The narrative for this step. 1-3 sentences each.
+During correction (isCorrection: true), you may call this multiple times until
+validation passes — the turn continues. Your turn is complete only when a valid
+(non-correction) call returns success.
+
+Messages — The narrative for this step. 1-3 sentences each.
   Speaker names: NARRATOR for environment, NPC names for characters, skill names
   (LOGIC, EMPATHY, SORCERY, etc.) for inner voices. Never use "INNER_VOICE" as speaker.
+  Types: CHARACTER, SYSTEM, INNER_VOICE, NARRATION.
 
-options — 2-5 choices for the player. 2-3 is standard, 4-5 for pivotal moments.
-  All options should be action-oriented (what the player DOES, not what they think).
+Options — 2-5 choices for the player (2-3 standard, 4-5 for pivotal moments).
+  All options should be action-oriented (what the player DOES).
+
+Skill checks — Use sparingly, only when failure is interesting. Dice roll automatically —
+narrate the outcome naturally. Omit hintBefore on checked options (the skill name already
+renders). Failure should be interesting, not a dead end.
 
 isCorrection — ONLY set to true when retrying after a validation error.
   Send ONLY the failing items with their 'index' field from the error message.
   Valid items are preserved automatically — do NOT copy or resend them.
 
-Persist world changes BEFORE speaking. The archive must reflect the state you narrate.
+Inner voice personalities:
+  LOGIC — cold, deductive, spots inconsistencies in arguments and mechanisms
+  RHETORIC — political, reads ideologies, loyalties, and agendas
+  EMPATHY — senses emotions, suffering; detects lies through feeling
+  PERCEPTION — notices environmental details; sees, hears, smells
+  VOLITION — willpower, sanity, moral compass; holds psyche together
+  ENDURANCE — physical stamina, pain tolerance; the body's last word
+  SORCERY — arcane intuition; senses magic, ley-lines, supernatural presences
+  SUGGESTION — charm, persuasion; knows what people want to hear
+  INSTINCT — primal survival sense; detects threats, urges fight-or-flight
+  MIGHT — raw strength, intimidation, brute force
+  CLOCKWORK — mechanical intuition; understands gears, steam-pressure, alchemical engines
+  ALCHEMY — appetite for transmutation; craves alchemical substances, vice, transformation
 `.trim(),
     inputSchema,
     execute: async (args: DialogueArgs) => {

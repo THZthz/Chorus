@@ -30,16 +30,17 @@ export const manageSchema = tool({
   description: `
 Register or unregister node types and relationship types in the world schema.
 
-Use this BEFORE creating a node with a NEW label (e.g., 'Artifact', 'Faction') or a
-relationship with a NEW type (e.g., 'WORSHIPS', 'OWNS'). PREDEFINED types
-(Entity, Plot, Note, NPCDisposition, etc.) are already registered — you don't need
-to re-register them.
+Must be called BEFORE creating a node with a new label or a relationship with a new type.
+PREDEFINED types (Entity, Plot, Note, NPCDisposition, etc.) are already registered —
+you don't need to re-register them.
 
-Node types — provide a description and optional property schema (name, description, type).
-The schema is enforced: editNode will reject unknown property names for GM_DEFINED types.
+Node types — provide name (PascalCase) + optional property schema with tags:
+'string', 'number', 'number[]', 'json', 'embedded', 'unique', 'index',
+'composite_unique_1/2/3', 'composite_index_1/2/3'.
 
-Relationship types — provide a description and required sourceLabel/targetLabel
-to constrain which node types can sit at each endpoint.
+Relationship types — provide name (UPPER_SNAKE) + required sourceLabel/targetLabel to
+constrain which node types can sit at each endpoint. Tags: same as node tags except
+'unique' and 'composite_unique_X' (not supported by Neo4j for relationship properties).
 
 Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are permanent.
 `.trim(),

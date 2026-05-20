@@ -20,9 +20,8 @@ import { describeTime, getCurrentTimePoint } from "@/server/models/time";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/relationshipManager";
 import { NodeManager } from "@/server/nodeManager";
-import { getObserver } from "@/server/llm/sceneObserver";
 import type { EntityRef } from "@/server/models/entity";
-import { formatEntityCompact, formatEntityFull } from "@/server/models/entity";
+import { formatEntityCompact } from "@/server/models/entity";
 import type { PlotRef } from "@/server/models/plot";
 import { buildPlotTree, parseFlags } from "@/server/models/plot";
 
@@ -89,7 +88,6 @@ function formatDisposition(d: DispositionRow): string {
 
 export async function buildSceneContext(): Promise<string> {
   const client = MemoryClient.getCachedInstance();
-  const observer = getObserver();
 
   const [gameTime, sceneRows, dispositionRows, plotRows] = await Promise.all([
     getCurrentTimePoint().catch((err) => {
@@ -138,8 +136,6 @@ export async function buildSceneContext(): Promise<string> {
   }
 
   const compactLines: string[] = [];
-  const fullSections: string[] = [];
-  const allEntities: EntityRef[] = [];
 
   // Location
   const loc = scene.loc as Record<string, unknown> | null;
@@ -151,7 +147,6 @@ export async function buildSceneContext(): Promise<string> {
       brief: (loc.brief as string) || null,
     };
     compactLines.push(`**Location**: ${formatEntityCompact(locRef)}`);
-    allEntities.push(locRef);
   }
 
   // Inventory — names only
@@ -164,7 +159,6 @@ export async function buildSceneContext(): Promise<string> {
     compactLines.push("**Nearby NPCs**:");
     for (const npc of scene.npcs) {
       compactLines.push(formatEntityCompact(npc));
-      allEntities.push(npc);
     }
   }
 
@@ -173,7 +167,6 @@ export async function buildSceneContext(): Promise<string> {
     compactLines.push("**Nearby Objects**:");
     for (const obj of scene.objects) {
       compactLines.push(formatEntityCompact(obj));
-      allEntities.push(obj);
     }
   }
 
@@ -195,34 +188,13 @@ export async function buildSceneContext(): Promise<string> {
       triggerCondition: p.triggerCondition,
       children: (p.children || []).filter((c: any) => c && c.name),
     }));
-    const { tree, unseenDescriptions } = buildPlotTree(plotRefs, observer);
+    const { tree } = buildPlotTree(plotRefs);
     compactLines.push("**Active Plots**:");
     compactLines.push(tree);
-    if (unseenDescriptions) {
-      fullSections.push(unseenDescriptions);
-    }
   }
 
   // Build compact section
   parts.push(compactLines.join("\n"));
-
-  // Build ### full descriptions for unseen entities
-  for (const ref of allEntities) {
-    if (!observer.wasSeen("entity", ref.name)) {
-      const full = formatEntityFull(ref);
-      if (full) {
-        fullSections.push(full);
-      }
-      observer.markSeen("entity", ref.name);
-    }
-  }
-
-  // Append full descriptions section
-  if (fullSections.length > 0) {
-    parts.push("");
-    parts.push(fullSections.join("\n\n"));
-  }
-
   parts.push("");
   parts.push("---");
 
@@ -381,11 +353,13 @@ export async function buildRelationshipDump(): Promise<string> {
             COALESCE(a.name, a._id) AS sourceName,
             type(r) AS type,
             labels(b) AS targetLabels,
-            COALESCE(b.name, b._id) AS targetName`,
+            COALESCE(b.name, b._id) AS targetName,
+	            properties(r) AS props`,
   )) as Array<{
     sourceName: string;
     type: string;
     targetName: string;
+    props: Record<string, unknown>;
   }>;
 
   // Filter INTERNAL and dedicated-section types
@@ -429,12 +403,15 @@ export async function buildRelationshipDump(): Promise<string> {
             .filter((o) => o.targetName === tgt)
             .map((o) => o.sourceName)
             .join(", ");
-          lines.push(`- **${tgt}**: ${occupants}`);
+          const desc = group.find((o) => o.props.description)?.props.description;
+          const descSuffix = desc ? ` — "${desc}"` : "";
+          lines.push(`- **${tgt}**: ${occupants}${descSuffix}`);
         }
       }
     } else {
       for (const r of group) {
-        lines.push(`- ${r.sourceName} → ${r.targetName}`);
+        const desc = r.props?.description ? ` — "${r.props.description}"` : "";
+        lines.push(`- ${r.sourceName} → ${r.targetName}${desc}`);
       }
     }
     lines.push("");

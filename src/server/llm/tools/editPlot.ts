@@ -27,45 +27,51 @@ const PLOT_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
 // NB: .nullable() on optional fields prevents Zod rejection when the LLM
 // outputs "field": null for fields it intends to omit.
 const inputSchema = z.object({
-  plotName: z.string().describe("Plot name."),
+  plotName: z.string().describe("Plot name (used as lookup key)."),
   action: z.enum(PLOT_ACTIONS).default("CREATE").describe("Action taken for the plot."),
   description: z
     .string()
     .nullable()
     .optional()
     .describe(
-      "Plot description. CREATE: required; UPDATE: optional, if set, description will be updated, this situation should be rare; DELETE: omit.",
+      "Plot description. CREATE: required. UPDATE: optional (set to overwrite — should be rare). DELETE: omit.",
     ),
   brief: z.string().nullable().optional().describe("Short one-line summary of the plot."),
-  status: z.enum(PLOT_STATUSES).nullable().optional().describe("Plot status."),
+  status: z.enum(PLOT_STATUSES).nullable().optional().describe("Plot status: PENDING, ACTIVE, IN_PROGRESS, COMPLETED, or ABANDONED."),
   triggerCondition: z
     .string()
     .nullable()
     .optional()
-    .describe("Condition that activates this plot."),
+    .describe("JS expression evaluated to auto-activate this plot."),
   setFlag: z
     .object({ flagId: z.string(), description: z.string() })
     .nullable()
     .optional()
     .describe("Add or update a flag on this plot."),
-  removeFlag: z.string().nullable().optional().describe("Flag ID to remove."),
+  removeFlag: z.string().nullable().optional().describe("Flag ID to remove from this plot."),
   branchTo: z
     .string()
     .nullable()
     .optional()
     .describe("Child plot name to connect via BRANCHES_TO."),
-  unbranch: z.string().nullable().optional().describe("Child plot name to disconnect."),
+  unbranch: z.string().nullable().optional().describe("Child plot name to disconnect from this plot."),
 });
 
 export const editPlot = tool({
   title: TOOL_NAMES.EDIT_PLOT,
   description: `
-CREATE, partial UPDATE, or DELETE a plot.
-Plots track story arcs.
-Use flags for indicating critical progress of story beats.
-Use branchTo/unbranch to connect child plots.
-Plots are separate from world entities — use ${TOOL_NAMES.SEARCH_WORLD} to find them.
-This tool supports partial overwrite when action is UPDATE.
+Manage narrative arcs — CREATE, UPDATE (partial overwrite), or DELETE a plot.
+
+Status flow: PENDING → ACTIVE → IN_PROGRESS → COMPLETED / ABANDONED.
+Status transitions auto-wire time relationships (STARTED_AT, ACTIVE_AT, COMPLETED_AT)
+to the current TimePoint — just set the new status.
+
+
+Use setFlag/removeFlag to track story milestones within a plot.
+Use branchTo/unbranch to connect or disconnect child plots. A branch describes a course
+of action or allegiance, not a single line of dialogue.
+Create plots in advance — don't wait for the moment to arrive.
+Find existing plots via searchWorld.
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {

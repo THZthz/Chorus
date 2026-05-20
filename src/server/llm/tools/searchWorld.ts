@@ -60,31 +60,32 @@ function getVectorSearchable(type: "relationship" | "label") {
 export const searchWorld = tool({
   title: TOOL_NAMES.SEARCH_WORLD,
   description: `
-Search the archive by semantic MEANING (vector similarity + reranking).
-Use this when you don't know the exact name or Cypher pattern — ${TOOL_NAMES.SEARCH_WORLD}
-finds things by what they're ABOUT.
+Search the archive by semantic MEANING (vector similarity search with optional reranking).
 
-Pass one or more domains (node labels or relationship types) via 'domains' to choose
-which to search (e.g. ["Entity", "Message", "ALLIED_WITH"]). Omit to search all
-searchable types. Use 'target' to restrict to only nodes or only relationships.
+Find things by what they're ABOUT, not by exact name or Cypher pattern. Pass one or
+more domains (node labels or relationship types) via 'domains' to scope the search
+(e.g. ["Entity", "Message"]). Omit to search all searchable types. Use 'target' to
+restrict to only nodes or only relationships.
+
+Search your notes at the start of every turn with domains: ["Note"].
 `.trim(),
   inputSchema: z.object({
     query: z
       .string()
       .describe(
-        "Natural language search query, should be a list of keywords, keep short and focused.",
+        "Natural language search query. Keep short and focused — a few keywords is enough.",
       ),
     target: z
       .array(z.enum(["node", "relationship"]))
       .default(["node", "relationship"])
-      .describe("What to search: 'node', 'relationship', or both. Defaults to both."),
+      .describe("Search nodes, relationships, or both. Defaults to both."),
     domains: z
       .array(z.string())
       .optional()
       .describe(
-        "Node labels or relationship types to search. Omit to search all searchable types.",
+        "Node labels or relationship types to search (e.g. ['Entity', 'Message', 'ALLIED_WITH']). Omit to search all searchable types.",
       ),
-    limit: z.number().default(10).describe("Max results per domain."),
+    limit: z.number().default(10).describe("Max results per domain. Default: 10."),
   }),
   execute: wrapSafe(async (args) => {
     const target = args.target ?? ["node", "relationship"];

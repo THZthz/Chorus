@@ -147,33 +147,93 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "LOCATED_AT",
-    description: "An entity is physically present at a location.",
+    description: "An entity is physically present at a location. Use for characters and objects at a specific spot.",
     sourceLabel: "Entity",
     targetLabel: "Location",
+    properties: [
+      {
+        name: "description",
+        description: "Spatial position detail — how/where exactly the entity is located (e.g., 'hiding behind crates', 'slumped at the bar').",
+        tags: ["string", "embedded"],
+      },
+      {
+        name: "_embedding",
+        description: "Internal vector embedding for semantic search.",
+        tags: ["number[]"],
+      },
+    ],
   },
   {
     name: "CARRIES",
     description: "An entity is carrying or in possession of an object.",
     sourceLabel: "Entity",
     targetLabel: "Object",
+    properties: [
+      {
+        name: "description",
+        description: "How the item is carried (e.g., 'concealed in a boot', 'worn openly on hip').",
+        tags: ["string", "embedded"],
+      },
+      {
+        name: "_embedding",
+        description: "Internal vector embedding for semantic search.",
+        tags: ["number[]"],
+      },
+    ],
   },
   {
     name: "ALLIED_WITH",
     description: "An entity is allied with or friendly toward another entity.",
     sourceLabel: "Entity",
     targetLabel: "Entity",
+    properties: [
+      {
+        name: "description",
+        description: "Reason or motive for the alliance (e.g., 'shared hatred of the Magistrate', 'family loyalty').",
+        tags: ["string", "embedded"],
+      },
+      {
+        name: "_embedding",
+        description: "Internal vector embedding for semantic search.",
+        tags: ["number[]"],
+      },
+    ],
   },
   {
     name: "HOSTILE_TOWARDS",
     description: "An entity is hostile toward or in conflict with another entity.",
     sourceLabel: "Entity",
     targetLabel: "Entity",
+    properties: [
+      {
+        name: "description",
+        description: "Reason or motive for the hostility (e.g., 'unpaid debt of 200 coins', 'territorial dispute').",
+        tags: ["string", "embedded"],
+      },
+      {
+        name: "_embedding",
+        description: "Internal vector embedding for semantic search.",
+        tags: ["number[]"],
+      },
+    ],
   },
   {
     name: "LOCATED_IN",
-    description: "A location or entity is contained within a larger location.",
+    description: "A location or entity is contained within a larger location. Use for sub-locations nested within a larger location (e.g., a basement inside a tavern).",
     sourceLabel: "Entity",
     targetLabel: "Location",
+    properties: [
+      {
+        name: "description",
+        description: "Access or containment detail (e.g., 'accessed through a trapdoor behind the bar').",
+        tags: ["string", "embedded"],
+      },
+      {
+        name: "_embedding",
+        description: "Internal vector embedding for semantic search.",
+        tags: ["number[]"],
+      },
+    ],
   },
   {
     name: "HAS_DISPOSITION",
@@ -216,7 +276,7 @@ export class RelationshipManager {
       this.registry.set(makeKey(t.name, t.sourceLabel, t.targetLabel), {
         ...t,
         type: "PREDEFINED",
-        properties: [],
+        properties: t.properties ?? [],
       });
     }
   }

@@ -16,13 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { SKILL_NAMES } from "@/shared/constants";
 import { MemoryClient } from "@/server/memory/client";
 import type { SkillName } from "@/shared/constants";
 
 const EXPRESSION_ALLOWLIST = /^[a-zA-Z0-9_<>=!&|()+\-*/\s.0-9]+$/;
 
-export interface ConditionContext {
+interface ConditionContext {
   success: boolean;
   total: number;
   difficulty: number;

@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SceneObserver } from "@/server/llm/sceneObserver";
-
 export interface PlotRef {
   name: string;
   description: string;
@@ -40,8 +38,7 @@ export function parseFlags(flags: unknown): Array<{ flagId: string; description:
 
 export function buildPlotTree(
   plots: PlotRef[],
-  observer?: SceneObserver,
-): { tree: string; unseenDescriptions: string } {
+): { tree: string } {
   const activeNames = new Set(plots.map((p) => p.name));
   const childNames = new Set<string>();
   for (const p of plots) {
@@ -53,7 +50,6 @@ export function buildPlotTree(
 
   const visited = new Set<string>();
   const treeLines: string[] = [];
-  const fullDescs: string[] = [];
 
   function renderNode(plot: PlotRef, prefix: string, isLast: boolean, connector: string) {
     if (visited.has(plot.name)) return;
@@ -61,11 +57,6 @@ export function buildPlotTree(
 
     const brief = plot.brief || (plot.description || "").slice(0, 120);
     treeLines.push(`${prefix}${connector} ${plot.name} (${plot.status}): ${brief}`);
-
-    if (observer && !observer.wasSeen("plot", plot.name)) {
-      fullDescs.push(`### ${plot.name}\n${plot.description}`);
-      observer.markSeen("plot", plot.name);
-    }
 
     const kids = (plot.children || []).filter((c) => c.name && !visited.has(c.name));
     const childPrefix = prefix + (isLast ? "    " : "│   ");
@@ -80,6 +71,5 @@ export function buildPlotTree(
 
   return {
     tree: treeLines.join("\n"),
-    unseenDescriptions: fullDescs.join("\n\n"),
   };
 }

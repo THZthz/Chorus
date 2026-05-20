@@ -28,12 +28,8 @@ import {
   buildPlotsBrief,
   buildRelationshipDump,
 } from "@/server/llm/sceneContext";
-import {
-  getSchemaVisualization,
-  getRelationshipTypeDescriptions,
-  formatSchemaMarkdown,
-} from "@/server/models/schema";
-import { MemoryClient } from "@/server/memory/client";
+import { NodeManager } from "@/server/nodeManager";
+import { RelationshipManager } from "@/server/relationshipManager";
 
 const CONTEXT_TYPES = [
   "SCENE_CONTEXT",
@@ -48,42 +44,75 @@ const CONTEXT_TYPES = [
 type ContextType = (typeof CONTEXT_TYPES)[number];
 
 async function buildSchemaDump(): Promise<string> {
-  const db = MemoryClient.getCachedInstance().neo4j;
-  const [schemaVis, relTypeDescs] = await Promise.all([
-    getSchemaVisualization(db).catch((err) => {
-      console.error("[getContext] schema visualization failed:", err);
-      return { nodes: [], relationships: [] };
-    }),
-    getRelationshipTypeDescriptions(db).catch((err) => {
-      console.error("[getContext] relationship type descriptions failed:", err);
-      return [] as { name: string; description: string; category: string }[];
-    }),
-  ]);
-  return formatSchemaMarkdown(schemaVis, relTypeDescs);
+  const nodeManager = NodeManager.getCachedInstance();
+  const relManager = RelationshipManager.getCachedInstance();
+
+  const lines: string[] = [];
+  lines.push("## Schema (from in-memory registry)");
+  lines.push("");
+
+  // ── Node types ──
+  lines.push("### Node Types");
+  lines.push("");
+  const nodes = nodeManager
+    .getAll()
+    .filter((n) => n.type !== "INTERNAL")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const node of nodes) {
+    const category = node.type === "GM_DEFINED" ? " [GM_DEFINED]" : "";
+    lines.push(`- **${node.name}**${category}: ${node.description}`);
+    if (node.properties.length > 0) {
+      const visible = node.properties.filter((p) => !p.name.startsWith("_"));
+      for (const prop of visible) {
+        const tags = prop.tags.filter((t) => t !== "string" && t !== "number" && t !== "number[]");
+        const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
+        lines.push(`  - \`${prop.name}\`: ${prop.description}${tagStr}`);
+      }
+    }
+    lines.push("");
+  }
+
+  // ── Relationship types ──
+  lines.push("### Relationship Types");
+  lines.push("");
+  const rels = relManager
+    .getAll()
+    .filter((r) => r.type !== "INTERNAL")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const rel of rels) {
+    const src = rel.sourceLabel || "?";
+    const tgt = rel.targetLabel || "?";
+    const category = rel.type === "GM_DEFINED" ? " [GM_DEFINED]" : "";
+    lines.push(`- **${rel.name}** (${src}→${tgt})${category}: ${rel.description}`);
+    if (rel.properties.length > 0) {
+      const visible = rel.properties.filter((p) => !p.name.startsWith("_"));
+      for (const prop of visible) {
+        const tags = prop.tags.filter((t) => t !== "string" && t !== "number" && t !== "number[]");
+        const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
+        lines.push(`  - \`${prop.name}\`: ${prop.description}${tagStr}`);
+      }
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }
 
 export const getContext = tool({
   title: TOOL_NAMES.GET_CONTEXT,
   description: `
-Pull context from the world archive on demand. Nothing is auto-loaded — you decide what you need.
+Pull pre-built context from the world. Nothing is auto-loaded — you choose what you need.
 
 Types:
-- SCENE_CONTEXT — Your immediate surroundings: time, location, nearby NPCs/objects,
-  inventory, NPC dispositions, active plots. Shows full descriptions for unseen entities/plots;
-  compact briefs thereafter.
-- CHARACTERS_BRIEF — All characters with current location and disposition toward player.
+- SCENE_CONTEXT — Time, your location, nearby NPCs/objects, inventory, NPC dispositions, active plots. Full descriptions on first encounter, compact briefs after.
+- CHARACTERS_BRIEF — All characters with location and disposition toward player.
 - LOCATIONS_BRIEF — All locations with brief descriptions.
-- OBJECTS_BRIEF — All objects with who carries them or where they are.
+- OBJECTS_BRIEF — All objects with carrier or location.
 - PLOTS_BRIEF — All plots with status, brief, and flags.
-- SCHEMA_DUMP — Available node types (with property schemas) and relationship types
-  (with endpoint constraints).
-- RELATIONSHIP_DUMP — All non-internal relationships, grouped by type. LOCATED_AT and
-  LOCATED_IN are grouped by location showing occupants.
-
-After the first call, entities and plots show compact briefs in SCENE_CONTEXT instead of full descriptions.
+- SCHEMA_DUMP — All registered node types (with full property schemas: names, tags, descriptions) and relationship types (with endpoint constraints and property schemas). Served directly from the in-memory type registry — no database round-trip.
+- RELATIONSHIP_DUMP — All active relationships grouped by type. LOCATED_AT/LOCATED_IN are grouped by location showing occupants and access details.
 
 Default (no types specified): SCENE_CONTEXT only.
-Call with additional types when you need global awareness beyond your immediate scene.
 `.trim(),
   inputSchema: z.object({
     types: z

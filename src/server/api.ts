@@ -22,19 +22,6 @@ import { chatStreamSchema } from "@/server/validation";
 import { MemoryClient } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/relationshipManager";
 import { getCurrentOptions } from "@/server/gameState";
-import {
-  buildSceneContext,
-  buildCharactersBrief,
-  buildLocationsBrief,
-  buildObjectsBrief,
-  buildPlotsBrief,
-  buildRelationshipDump,
-} from "@/server/llm/sceneContext";
-import {
-  getSchemaVisualization,
-  getRelationshipTypeDescriptions,
-  formatSchemaMarkdown,
-} from "@/server/models/schema";
 import { queryWorld } from "@/server/llm/tools/queryWorld";
 import { searchWorld } from "@/server/llm/tools/searchWorld";
 import { editNode } from "@/server/llm/tools/editNode";
@@ -121,32 +108,6 @@ apiRouter.get("/game/current", async (_req, res) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Session state fetch error:", message);
     res.json(null);
-  }
-});
-
-// ── Dump (developer debug: full world state) ──
-
-apiRouter.get("/debug/dump", async (_req, res) => {
-  try {
-    const db = MemoryClient.getCachedInstance().neo4j;
-    const [scene, characters, locations, objects, plots, relationships, schemaVis, relTypeDescs] =
-      await Promise.all([
-        buildSceneContext(),
-        buildCharactersBrief(),
-        buildLocationsBrief(),
-        buildObjectsBrief(),
-        buildPlotsBrief(),
-        buildRelationshipDump(),
-        getSchemaVisualization(db),
-        getRelationshipTypeDescriptions(db),
-      ]);
-    const schema = formatSchemaMarkdown(schemaVis, relTypeDescs);
-    const md = [scene, characters, locations, objects, plots, relationships, schema].join("\n");
-    res.set("Content-Type", "text/plain; charset=utf-8").send(md);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("Dump fetch error:", message);
-    res.status(500).json({ error: message });
   }
 });
 

@@ -33,7 +33,7 @@ const inputSchema = z.object({
     .multipleOf(0.5)
     .nullable()
     .optional()
-    .describe("Number of hours to advance within a day (0–48, in 0.5 increments = 30 minutes)."),
+    .describe("Number of hours to advance (0–48, in 0.5 increments = 30 minutes)."),
   days: z
     .number()
     .int()
@@ -48,16 +48,19 @@ export function createAdvanceTimeTool(events: EventEmitter) {
   return tool({
     title: TOOL_NAMES.ADVANCE_TIME,
     description: `
-Advance the in-game clock. Time only moves when YOU advance it — narrating that time passed without
-calling ${TOOL_NAMES.ADVANCE_TIME} means time stood still in the archive. Use hours (0–48, in 0.5
-increments = 30 minutes) for sub-day advances, or days (0+) for multi-day travel. Total advancement =
-days * 48 + hours * 2 half-hours. Include a brief 'reason' so your future self knows why time moved.
+Advance the in-game clock. Time only moves when YOU call this — narrating that time passed
+without advanceTime means time stood still in the archive. Use hours (0–48, in 0.5
+increments = 30 minutes) for sub-day advances, or days (0+) for multi-day travel. Total
+advancement = days * 24 + hours. Always include a brief 'reason' so your future self knows
+why time moved. Time anchor: (TimeAnchor)-[:CURRENT_TIMEPOINT]->(TimePoint). New TimePoints
+link to the old via NEXT_TIMEPOINT with the reason stored on the relationship.
 `.trim(),
     inputSchema,
     execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {
       const totalHalfHours = (args.days ?? 0) * 48 + (args.hours ?? 0) * 2;
       const { oldTime, newTime } = await advanceGameTime(totalHalfHours, args.reason);
       const totalHours = totalHalfHours / 2;
+      // TODO: We may need to display time changes in console client.
       events.emitTimeUpdate(newTime.day, newTime.hour, totalHours);
       if (totalHalfHours === 0) {
         return `Time unchanged. It is still ${describeTime(newTime)}.`;
@@ -68,7 +71,7 @@ days * 48 + hours * 2 half-hours. Include a brief 'reason' so your future self k
         const h = args.hours;
         parts.push(Number.isInteger(h) ? `${h} hour(s)` : `${h} hours`);
       }
-      return `Time advanced by ${parts.join(", ")}. It is now \`${describeTime(newTime)}\` (was \`${describeTime(oldTime)}\`).`;
+      return `${(args.reason && args.reason.length > 0) ? "Time change reason successfully recorded. " : ""}Time advanced by ${parts.join(", ")}. It is now \`${describeTime(newTime)}\` (was \`${describeTime(oldTime)}\`).`;
     }, TOOL_NAMES.ADVANCE_TIME),
   });
 }

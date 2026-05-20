@@ -19,7 +19,6 @@
 import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/seed-stories/seed";
 import { clearNeo4jDatabase } from "@/server/memory/reset";
-import { getObserver } from "@/server/llm/sceneObserver";
 import { RelationshipManager } from "@/server/relationshipManager";
 
 export async function resetDb() {
@@ -39,12 +38,10 @@ export async function resetDb() {
   const client = MemoryClient.getCachedInstance();
   await relManager.syncToNeo4j(client.neo4j);
   await nodeManager.syncToNeo4j(client.neo4j);
-
-  getObserver().reset();
 }
 
 export function resetObserver() {
-  getObserver().reset();
+  // SceneObserver removed — no-op.
 }
 
 export function parseToolOutput(output: string): Record<string, unknown> {

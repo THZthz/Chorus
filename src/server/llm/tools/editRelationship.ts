@@ -32,9 +32,7 @@ const inputSchema = z.object({
   relationshipType: z
     .string()
     .describe(
-      "The relationship type (e.g. 'LOCATED_AT', 'ALLIED_WITH', 'HOSTILE_TOWARDS', or GM-defined). " +
-        "Must be registered in the world schema and writable. " +
-        `Query :RelationshipType nodes via ${TOOL_NAMES.QUERY_WORLD} to discover available types.`,
+      "The relationship type (e.g. 'LOCATED_AT', 'ALLIED_WITH', 'HOSTILE_TOWARDS', or GM-defined). Must be registered in the world schema and writable. Discover available types via getContext SCHEMA_DUMP.",
     ),
   sourceLabel: z
     .string()
@@ -51,8 +49,7 @@ const inputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Properties to set on the relationship (CREATE or UPDATE). _created_at is auto-managed. " +
-        "No _-prefixed keys allowed. For GM_DEFINED relationship types, property names must match the registered schema.",
+      "Properties to set on the relationship (CREATE or UPDATE). _created_at is auto-managed. No _-prefixed keys allowed.",
     ),
 });
 
@@ -62,16 +59,24 @@ export const editRelationship = tool({
 CREATE, UPDATE, or DELETE a relationship between two nodes in the world archive.
 
 CREATE — Link two existing nodes. The relationship type must be registered (PREDEFINED or
-GM_DEFINED). Creating the same relationship twice is safe (MERGE semantics).
-Both endpoint nodes must already exist — if either is missing, the call fails.
-Use for: moving entities (delete old LOCATED_AT, create new), transferring items
-(delete old CARRIES, create new), setting alliances/hostilities, linking notes to entities.
+GM_DEFINED). Uses MERGE semantics — safe to call twice. Both endpoint nodes must already
+exist. Use for: moving entities (delete old LOCATED_AT, create new), transferring items
+(delete old CARRIES, create new), setting alliances/hostilities, linking notes to entities
+or messages.
 
 UPDATE — Change properties on an existing relationship. Only include properties you want
 to change. Properties tagged "json" receive partial merge (like editNode UPDATE).
 
-DELETE — Remove a relationship. Use when entities move, items transfer, or
-relationships change.
+DELETE — Remove a relationship. Use when entities move, items transfer, or relationships change.
+
+Relationship properties for spatial/tactical context:
+- LOCATED_AT.description — spatial position detail (e.g. "hiding behind crates")
+- LOCATED_IN.description — access/containment detail (e.g. "accessed through a trapdoor behind the bar")
+- CARRIES.description — how an item is carried (e.g. "concealed in a boot")
+- ALLIED_WITH.description / HOSTILE_TOWARDS.description — motive or reason
+
+Convention: use LOCATED_AT for characters/objects at a specific spot. Use LOCATED_IN for
+sub-locations nested within a larger location (e.g., a basement inside a tavern).
 `.trim(),
   inputSchema,
   execute: wrapSafe(async (args: z.infer<typeof inputSchema>) => {

@@ -50,7 +50,9 @@ async function buildSchemaDump(): Promise<string> {
   const lines: string[] = [];
   lines.push("## Schema (from in-memory registry)");
   lines.push("");
-  lines.push("A list of nodes/relationships, with their list of properties, tags of the property is displayed before its name.");
+  lines.push(
+    "A list of nodes/relationships, with their list of properties, tags of the property is displayed before its name.",
+  );
   lines.push("");
 
   // ── Node types ──
@@ -109,7 +111,7 @@ Types:
 - LOCATIONS_BRIEF — All locations with brief descriptions.
 - OBJECTS_BRIEF — All objects with carrier or location.
 - PLOTS_BRIEF — All plots with status, brief, and flags.
-- SCHEMA_DUMP — All registered node types (with full property schemas: names, tags, descriptions) and relationship types (with endpoint constraints and property schemas). Served directly from the in-memory type registry — no database round-trip.
+- SCHEMA_DUMP — All registered node types (with full property schemas: names, tags, descriptions) and relationship types (with endpoint constraints and property schemas) in Neo4j.
 - RELATIONSHIP_DUMP — All active relationships grouped by type. LOCATED_AT/LOCATED_IN are grouped by location showing occupants and access details.
 
 Default (no types specified): SCENE_CONTEXT only.

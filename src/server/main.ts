@@ -22,6 +22,26 @@ import apiRouter from "@/server/api";
 import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/stories/seed";
 
+const NEO4J_RETRY_MS = 3000;
+
+async function initMemory(): Promise<void> {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      console.log("[memory] connecting to Neo4j...");
+      await MemoryClient.getInstance();
+      console.log("[memory] connected.");
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[memory] Neo4j unavailable (${msg}), retrying in ${NEO4J_RETRY_MS / 1000}s...`,
+      );
+      await new Promise((r) => setTimeout(r, NEO4J_RETRY_MS));
+    }
+  }
+}
+
 async function start() {
   try {
     const app = express();
@@ -30,9 +50,8 @@ async function start() {
     app.use(express.json());
     app.use("/api", apiRouter);
 
-    // Initialize MemoryClient (stays alive for server lifetime)
-    console.log("[memory] initializing local memory layer...");
-    await MemoryClient.getInstance();
+    // Initialize MemoryClient (retries until Neo4j is available)
+    await initMemory();
 
     // Seed Neo4j with initial world data
     await seedDatabase();

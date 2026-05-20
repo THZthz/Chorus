@@ -20,7 +20,7 @@ import {
   type EntityType,
   MemoryClient,
   type MemoryEntity,
-  type NPCDisposition,
+  type Disposition,
 } from "@/server/memory/client";
 import { RelationshipManager } from "@/server/relationshipManager";
 import { NodeManager } from "@/server/nodeManager";
@@ -181,7 +181,7 @@ async function addEntity(
   };
 }
 
-function parseDisposition(data: Record<string, unknown>): NPCDisposition {
+function parseDisposition(data: Record<string, unknown>): Disposition {
   return {
     npcName: data.npc_name as string,
     targetName: data.target_name as string,
@@ -195,13 +195,13 @@ async function setDisposition(
   targetName: string,
   sentiment: string,
   summary: string,
-): Promise<NPCDisposition> {
+): Promise<Disposition> {
   const neo4j = MemoryClient.getCachedInstance().neo4j;
   const id = uuidv4();
   const now = new Date().toISOString();
   const rows = await neo4j.executeWrite(
     `MATCH (npc:Entity {name: $npcName})
-       MERGE (npc)-[r:HAS_DISPOSITION]->(d:NPCDisposition {npc_name: $npcName, target_name: $targetName})
+       MERGE (npc)-[r:HAS_DISPOSITION]->(d:Disposition {npc_name: $npcName, target_name: $targetName})
        ON CREATE SET d._id = $id, d._created_at = datetime($now), r._created_at = datetime()
        SET d.sentiment = $sentiment, d.summary = $summary, d._updated_at = datetime($now)
        RETURN d, d._id = $id AS isNew`,
@@ -307,7 +307,24 @@ export async function seedDatabase(): Promise<void> {
     }
   }
 
+  // Seed notes
+  let noteCount = 0;
+  for (const note of story.notes || []) {
+    await client.notes.createNote(note.name, note.content);
+    if (note.aboutEntities) {
+      for (const entityName of note.aboutEntities) {
+        await client.notes.linkToEntity(note.name, entityName);
+      }
+    }
+    if (note.aboutPlots) {
+      for (const plotName of note.aboutPlots) {
+        await client.notes.linkToPlot(note.name, plotName);
+      }
+    }
+    noteCount++;
+  }
+
   console.log(
-    `[seedDatabase] done — ${story.entities.length} entities, ${story.relationships.length} relationships, ${dispositionCount} dispositions`,
+    `[seedDatabase] done — ${story.entities.length} entities, ${story.relationships.length} relationships, ${dispositionCount} dispositions, ${noteCount} notes`,
   );
 }

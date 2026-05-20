@@ -60,9 +60,7 @@ const optionSchema = z.object({
     .min(0)
     .optional()
     .describe(
-      `
-When isCorrection is true: the 0-based index of the option to correct (shown in the validation error).
-Omit when generating fresh.`.trim(),
+      `When isCorrection is true: the 0-based index of the option to correct (shown in the validation error). Omit when generating fresh.`,
     ),
   text: z
     .string()
@@ -73,7 +71,9 @@ Omit when generating fresh.`.trim(),
     .max(50)
     .nullable()
     .optional()
-    .describe("Hint shown before the text, e.g. [Logic]. Do not overuse it."),
+    .describe(
+      "Hint shown before the text, e.g. [Logic]. Should not use this when a skill check is active. Do not overuse it.",
+    ),
   hintAfter: z
     .string()
     .max(50)
@@ -102,7 +102,10 @@ Omit when generating fresh.`.trim(),
         .describe("Outcome conditions."),
     })
     .nullable()
-    .optional(),
+    .optional()
+    .describe(
+      "Add a skill check when player choose this option, should not add \`hintBefore\` when \`check\` is present.",
+    ),
 });
 
 const inputSchema = z.object({
@@ -112,8 +115,7 @@ const inputSchema = z.object({
     .optional()
     .describe(
       `
-The sequence of messages in this dialogue step.
-Required for fresh calls; omit during corrections if only fixing options.
+The sequence of messages in this dialogue step, message should not break into paragraphs (no '\n'). Required for fresh calls; omit during corrections if only fixing options.
 If you fixing invalid messages, make sure your include "index" field to precisely repair the corresponding messages (only send the failing items, no need to copy).
 `.trim(),
     ),
@@ -367,17 +369,16 @@ export function createGenerateDialogueStepTool(persistMessage?: PersistMessageFn
   const dialogueTool = tool({
     title: TOOL_NAMES.GENERATE_DIALOGUE,
     description: `
-SPEAK to the player. This is your ONLY output channel — all other text you produce is
-discarded. Every turn MUST end with a valid call here.
+SPEAK to the player. Each turn must include a valid call here.
+After speaking, persist world state changes, then reply with brief text to end your turn.
 
 During correction (isCorrection: true), you may call this multiple times until
-validation passes — the turn continues. Your turn is complete only when a valid
-(non-correction) call returns success.
+validation passes — the turn continues.
 
 Messages — The narrative for this step. 1-3 sentences each.
-  Speaker names: NARRATOR for environment, NPC names for characters, skill names
-  (LOGIC, EMPATHY, SORCERY, etc.) for inner voices. Never use "INNER_VOICE" as speaker.
-  Types: CHARACTER, SYSTEM, INNER_VOICE, NARRATION.
+  Speaker names: NARRATOR for narration (use type: SYSTEM), NPC names for dialogue
+  (type: CHARACTER), skill names like LOGIC/EMPATHY for inner voices (type: INNER_VOICE).
+  Available types: SYSTEM, CHARACTER, INNER_VOICE, ROLL, NOTIFICATION.
 
 Options — 2-5 choices for the player (2-3 standard, 4-5 for pivotal moments).
   All options should be action-oriented (what the player DOES).

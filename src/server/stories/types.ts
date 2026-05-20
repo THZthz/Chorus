@@ -60,6 +60,7 @@ export interface SeedStory {
   entities: SeedEntity[];
   relationships: SeedRelationship[];
   plots?: SeedPlot[];
+  notes?: SeedNote[];
   initialDay: number;
   initialSegment: number;
   initialLocationId: string;

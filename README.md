@@ -21,7 +21,7 @@ Cinematic dialogue engine. The AI Game Master generates branching narrative thro
 - Node.js 20+
 - Docker (for Neo4j)
 - [llama-server](https://github.com/ggml-org/llama.cpp) (for embeddings and reranking)
-- A Gemini or DeepSeek API key
+- A DeepSeek API key, this engine is designed especially for `deepseek-v4-flash`. You can use other models as you wish.
 
 ### Model Setup
 

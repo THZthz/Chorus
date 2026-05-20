@@ -1,10 +1,6 @@
 id = "glass-cage"
 
-settingDescription = """
-The Aethon Conveyor, an arcane transport running the imperial trunk line from the capital Valdris to Karavelle. Six levitating carriages pulled by an alchemical engine car, riding a stabilized ley-line current rather than rails — no stops, no escape, 36 hours to destination. The conveyor is luxury-class only: velvet curtains, alchemical lamplight, glass-domed observation cars. The murder happened at midnight somewhere over the Grey Flats, hundreds of miles of uninhabited marshland. Twelve passengers, five crew — and one killer who is still aboard. Elias Crowne, an information broker who knew the player's forgotten past, lies dead in his locked compartment. The player wakes with his blood on their hands and no memory of how it got there.\
-"""
-
-toneDescription = "Tense, claustrophobic, elegant menace. Silk curtains and bloodstains. Alchemical lamplight casting long shadows across mahogany and brass. Every conversation is a duel — every courtesy masks a threat. The world outside the windows is dark and empty, the conveyor humming with ley-line energy as it hurtles toward Karavelle. The amnesiac player navigates a web of secrets, unable to trust their own innocence or anyone else's."
+toneDescription = "Tense, claustrophobic, elegant menace. The amnesiac player navigates a web of secrets, unable to trust their own innocence or anyone else's."
 
 initialDay = 4
 initialSegment = 6
@@ -806,3 +802,93 @@ description = """Player deepens their connection with Crystal — is her pull to
 brief = "Deepen the connection with Crystal — is her pull genuine, magical, or something more dangerous?"
 status = "PENDING"
 triggerCondition = "Player deepens their bond with Crystal and explores the nature of their connection"
+
+# ── Notes ────────────────────────────────────────────────────────
+
+[[notes]]
+name = "Opening Scene"
+content = """
+The player regains consciousness to the sound of distant screaming. They are in Compartment 3 of Passenger Car A on the Aethon Conveyor, a luxury ley-line transport hurtling over the uninhabited Grey Flats. Elias Crowne, an information broker who knew the player's forgotten identity, lies dead in the adjacent Compartment 4 — stabbed with a thin alchemical blade, his door locked from the inside, his ciphered ledger missing. The player's hands are wet with still-warm blood, and a brass key with its number scratched away lies on the floor where it must have fallen. The player remembers nothing: not their name, not their destination, not how the blood came to be there. The conveyor is 36 hours from Karavelle with no stops. Twelve passengers and five crew remain aboard — one of them a killer. The others watch with fear, calculation, or something harder to name. The immediate priorities are to clean the blood, account for the key, and navigate the first wave of suspicion from conductor Aldreth Voss and Magistra Iris Korr. Crystal vi Elaris, a half-elf singer, seems inexplicably drawn to the player; her silver lyre hummed when they entered the observation car. Doctor Cassian Vale offers medical aid, but his surgical kit matches the wound. The investigation has not yet begun, but every conversation is already a duel.
+"""
+aboutEntities = ["Player", "Elias Crowne", "Player's Key", "Crystal vi Elaris", "Doctor Cassian Vale", "Magistra Iris Korr", "Aldreth Voss"]
+aboutPlots = ["The Glass Cage", "The Truth", "The Bond"]
+
+[[notes]]
+name = "The Locked Room Paradox"
+content = """
+Compartment 4 was sealed with an arcane lock from the inside. The seal was intact when the body was discovered. According to Ysara va Keth, arcane seals operate on resonance frequencies keyed to the occupant's personal harmonic signature — but they can be bypassed by someone who understands resonance theory. Ysara claims exactly three people aboard possess that knowledge; she refuses to name them yet. Meanwhile, Kest Winder detected ley-line interference beginning three hours before the murder, and the scorch marks on the engine car door suggest someone attempted to breach the stabilizer controls. The murder method and the sabotage may be connected: if the killer destabilized the ley-line current, they might have created a momentary fluctuation that allowed the compartment seal to be circumvented. The question remains: was the interference a tool for murder, or a side effect of something else entirely?
+"""
+aboutEntities = ["Ysara va Keth", "Kest Winder", "Elias Crowne"]
+aboutPlots = ["The Glass Cage", "The Hunter"]
+
+[[notes]]
+name = "The Missing Ledger"
+content = """
+Elias Crowne's ciphered ledger contained every secret he ever bought or sold. It was not found on his body or in his compartment. Lady Mireille Tessier, who admits to being one of Crowne's informants, may know its contents better than anyone — but she claims ignorance of its current whereabouts. Silas, the Harbor Rats operative, was expecting a delivery from Crowne that never came; he's searching for 'a package,' which may well be the ledger itself. Lord Aldric Vane had the most immediate motive to destroy it, as it contained evidence of his financial fraud. Whoever holds the ledger holds the lives of half the passengers in their hands. If it was thrown into the Grey Flats, the truth dies with it. If it remains on the conveyor, its possessor is almost certainly the killer — or the next victim.
+"""
+aboutEntities = ["Elias Crowne", "Lady Mireille Tessier", "Silas", "Lord Aldric Vane"]
+aboutPlots = ["The Glass Cage", "The Web"]
+
+[[notes]]
+name = "The Singing Silver"
+content = """
+Crystal vi Elaris carries a travel lyre strung with silver — a gift from her mother. Silver does not resonate with ley-line energy. Yet every time the player enters a room, the lyre hums audibly enough for Crystal to feel it through her fingers. Ysara va Keth confirmed the physical properties of silver over dinner and is quietly baffled. The phenomenon implies one of three possibilities: the strings are not truly silver, but an alloy or alchemical composite attuned to something within the player; the player themselves emit an unconventional ley-line signature that even Ysara's field resonator has not identified; or the bond between Crystal and the player predates the amnesia and is manifesting through the lyre as a sympathetic magical resonance. Crystal has stopped playing in the player's presence. She is afraid of what the music might reveal — or summon.
+"""
+aboutEntities = ["Crystal vi Elaris", "Crystal's Lyre", "Ysara va Keth", "Player"]
+aboutPlots = ["The Bond", "The Truth"]
+
+[[notes]]
+name = "The Alchemical Blade"
+content = """
+The weapon that killed Elias Crowne was thin, surgical, and coated with an alchemical paralytic. Doctor Cassian Vale owns a surgical kit containing blades that match the wound profile — and his medical bag was unaccounted for around midnight. He claims he was called to treat a passenger shortly before the murder but cannot prove where his bag was at the exact moment of death. However, Dravos Thorn, a dealer in rare alchemical compounds, also possesses the expertise to prepare such a toxin. His locked case contains samples he refuses to show anyone; Ysara's resonator indicates the case emits an organic ley-line harmonic that shouldn't exist. The blade itself is still missing, hidden somewhere on the conveyor. Until it is found, both Vale's kindness and Dravos's isolation remain weapons in waiting.
+"""
+aboutEntities = ["Doctor Cassian Vale", "Dravos Thorn", "Dravos's Locked Case", "Murder Weapon"]
+aboutPlots = ["The Hunter", "The Hunted"]
+
+[[notes]]
+name = "The Player's Key"
+content = """
+The brass key found beside the player's unconscious body has its compartment number deliberately scratched off. It opens neither the player's assigned compartment (number 3) nor Crowne's (number 4). The purser, Oren Locke, keeps meticulous records of every lock on the conveyor. Possible uses for the key include: a luggage locker in the crew car, a private storage case belonging to another passenger, or one of the sealed maintenance hatches along the exterior gangway. Crowne visited Locke's office hours before his death, seeking access to the passenger manifest — perhaps he was looking for whoever held the matching lock. The key may also unlock a compartment registered under a false name, one that Locke has been reluctant to discuss.
+"""
+aboutEntities = ["Player", "Player's Key", "Oren Locke", "Elias Crowne"]
+aboutPlots = ["The Glass Cage", "The Truth"]
+
+[[notes]]
+name = "The Attendant's Silence"
+content = """
+Thea, the half-elven lead attendant, was making her rounds near Passenger Car A at midnight. She saw something — or someone — but has refused to speak. Raised in the Karavelle Warrens, she learned early that silence is survival and that authorities protect their own before they protect the powerless. She trusts no one aboard, least of all the conductor, Aldreth Voss, whose primary concern is the conveyor's reputation. Thea will only confide in someone who proves they are either from the Warrens themselves or willing to risk their own safety for hers. Her testimony likely identifies the killer's movements — or confirms who was definitively not in the corridor at the time of the murder.
+"""
+aboutEntities = ["Thea", "Aldreth Voss", "Elias Crowne"]
+aboutPlots = ["The Hunted", "The Web"]
+
+[[notes]]
+name = "The Legionnaire's Secret"
+content = """
+Garrick, the discharged half-orc legionnaire, shared a bottle of brandy with Crowne hours before the death. His story has shifted: first they were strangers, then Crowne bought him the drink, then Crowne questioned him about his military posting in the northern provinces. The player feels an unexplained chill at the mention of the northern provinces — a stone tower, snow, a face half-remembered. Crowne clearly knew something about the player's past, and he was using Garrick to confirm it. Whether Garrick is protecting the player, protecting himself, or simply unwilling to admit what he told Crowne, his full testimony could bridge the gap between the player's amnesia and Crowne's murder.
+"""
+aboutEntities = ["Garrick", "Elias Crowne", "Player"]
+aboutPlots = ["The Truth", "The Glass Cage"]
+
+[[notes]]
+name = "The Star-Veil Confession"
+content = """
+Brother Malachai was the last person to speak with Elias Crowne. They conversed in the lounge car an hour before the murder — Crowne agitated, drinking heavily; Malachai listening with the stillness of a man who has heard a thousand deathbed secrets. By the laws of the Star-Veil Order, the seal of confession is absolute; Malachai will not break it under any secular pressure. Yet his presence on the conveyor — a rare luxury ticket paid for by church charity — may not be coincidental. He watches the passengers not with suspicion but with something closer to sorrow, as if he knows a truth that makes the investigation almost irrelevant. If the player can earn his trust without demanding he break his vows, Malachai may offer guidance — or at least a warning.
+"""
+aboutEntities = ["Brother Malachai", "Elias Crowne", "Player"]
+aboutPlots = ["The Glass Cage", "The Bond"]
+
+[[notes]]
+name = "The Conductor's Priorities"
+content = """
+Conductor Aldreth Voss runs the Aethon with iron courtesy and a desperate pride in his spotless record. He has deferred Magistra Korr's investigation at every turn, hoping the matter will resolve quietly before Karavelle. He has also forbidden passengers from accessing the crew car or engine car, citing protocol. But protocol did not stop someone from attempting to breach the engine room lock — the scorch marks are recent. Voss either knows more than he admits about the sabotage, or his refusal to investigate is creating the very scandal he fears. In a crisis, he will protect the conveyor first and the passengers second.
+"""
+aboutEntities = ["Aldreth Voss", "Magistra Iris Korr", "Kest Winder"]
+aboutPlots = ["The Hunted"]
+
+[[notes]]
+name = "Ley-Line Interference: Accident or Attack?"
+content = """
+Ysara va Keth's field resonator has tracked a growing instability in the Aethon's ley-line stabilizers since before the murder. Kest Winder confirms the readings and suspects deliberate tampering — someone introduced a harmonic dissonance into the system. Dravos's locked case is a candidate, as its emissions match the interference pattern, but Ysara notes that the interference increased sharply at midnight, precisely when Crowne was killed. If the interference was a byproduct of the murder method (e.g., using an arcane pulse to bypass the compartment seal), the killer may have inadvertently endangered the entire conveyor. If it continues unchecked, the Aethon may not reach Karavelle at all. The killer might not care — or might be counting on it.
+"""
+aboutEntities = ["Ysara va Keth", "Kest Winder", "Dravos Thorn", "Dravos's Locked Case"]
+aboutPlots = ["The Glass Cage", "The Hunter"]

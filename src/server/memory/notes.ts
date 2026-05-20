@@ -150,10 +150,7 @@ export class Notes {
   }
 
   async clearLinks(noteName: string, type: "ENTITY" | "MESSAGE" | "PLOT" | "ALL"): Promise<void> {
-    const relPattern =
-      type === "ALL"
-        ? "ABOUT_ENTITY|ABOUT_MESSAGE|ABOUT_PLOT"
-        : `ABOUT_${type}`;
+    const relPattern = type === "ALL" ? "ABOUT_ENTITY|ABOUT_MESSAGE|ABOUT_PLOT" : `ABOUT_${type}`;
     await this.client.executeWrite(
       `MATCH (n:Note {name: $noteName})-[r:${relPattern}]->() DELETE r`,
       { noteName },

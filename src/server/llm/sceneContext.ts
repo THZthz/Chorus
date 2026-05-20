@@ -61,7 +61,7 @@ RETURN player, loc,
 `;
 
 const DISPOSITIONS_QUERY = `
-MATCH (d:NPCDisposition {target_name: "Player"})
+MATCH (d:Disposition {target_name: "Player"})
 RETURN d.npc_name AS npcName, d.sentiment AS sentiment, d.summary AS summary
 ORDER BY d._updated_at DESC
 `;
@@ -196,7 +196,6 @@ export async function buildSceneContext(): Promise<string> {
   // Build compact section
   parts.push(compactLines.join("\n"));
   parts.push("");
-  parts.push("---");
 
   return parts.join("\n");
 }
@@ -207,7 +206,7 @@ const CHARACTERS_QUERY = `
 MATCH (c:Entity)
 WHERE c.type = "CHARACTER"
 OPTIONAL MATCH (c)-[:LOCATED_AT]->(loc:Entity)
-OPTIONAL MATCH (c)-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: "Player"})
+OPTIONAL MATCH (c)-[:HAS_DISPOSITION]->(d:Disposition {target_name: "Player"})
 RETURN c.name AS name, c.brief AS brief, c.description AS description,
        loc.name AS location, d.sentiment AS disposition
 ORDER BY name

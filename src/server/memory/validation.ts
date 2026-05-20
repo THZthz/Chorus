@@ -85,6 +85,7 @@ export class CypherValidator {
 
     const nodeManager = NodeManager.getCachedInstance();
     for (const label of this.extractNodeLabels(query)) {
+      // TODO: Should disallow writes on Note and Plot.
       if (!nodeManager.isAllowedForWrite(label)) {
         if (!nodeManager.get(label)) {
           errors.push(

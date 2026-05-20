@@ -68,10 +68,10 @@ export interface MemoryPlot {
   _embedding?: number[];
 }
 
-export interface NPCDisposition {
+export interface Disposition {
   npcName: string;
   targetName: string;
-  sentiment: string;
+  sentiment: string; // TODO: Delete this useless property.
   summary: string;
 }
 

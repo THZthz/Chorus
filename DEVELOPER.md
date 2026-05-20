@@ -197,7 +197,7 @@ scripts/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         NEO4J DATABASE                               │
 │  Node labels: Conversation, Message, Entity (+ subtype labels),      │
-│  NPCDisposition, Note, Plot, TimeAnchor, TimePoint, GMTurnMessage,   │
+│  Disposition, Note, Plot, TimeAnchor, TimePoint, GMTurnMessage,   │
 │  RelationshipType, NodeType, IdCounter                               │
 │                                                                      │
 │  Indexes: node property indexes, rel property indexes, composite,    │
@@ -223,7 +223,7 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 
 | Tool                   | Purpose                                                                                                                                                             |
 |------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `editNode`             | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings. Use for Entity and NPCDisposition; not for Note or Plot. |
+| `editNode`             | CREATE/UPDATE/DELETE any node. Validates properties against NodeManager schema. Auto-generates embeddings. Use for Entity and Disposition; not for Note or Plot. |
 | `editRelationship`     | CREATE/UPDATE/DELETE relationships. LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, LOCATED_IN now have `description` (string, embedded) property for narrative context. |
 | `manageSchema`         | Register/unregister node types and relationship types. Must be called before creating instances of new types.                                                       |
 | `advanceTime`          | Advance in-game clock by hours/days. Always include reason. Stored on NEXT_TIMEPOINT.reason.                                                                        |
@@ -257,7 +257,7 @@ All defined in `src/server/llm/tools/`. Registered in `generateTurn()`.
 
 `nodeManager.ts` — singleton registry mirroring RelationshipManager for node labels.
 
-- **Categories**: `INTERNAL` (Conversation, GMTurnMessage, IdCounter — hidden), `PREDEFINED` (Entity, Message, Note, Plot, NPCDisposition, etc.), `GM_DEFINED`.
+- **Categories**: `INTERNAL` (Conversation, GMTurnMessage, IdCounter — hidden), `PREDEFINED` (Entity, Message, Note, Plot, Disposition, etc.), `GM_DEFINED`.
 - **Properties**: `NodePropertyDef` with `name`, `description`, `tags` (array of tags: `string`, `number`, `number[]`, `json`, `embedded`, `unique`, `index`, `composite_unique_1/2/3`, `composite_index_1/2/3`).
 - **`getEmbeddingText(label, props)`**: builds embedding text by concatenating all `"embedded"`-tagged property values. Used by `addEntity`, `addMessage`, `createNote`, `createPlot`, `editNode`, and the reranker.
 - **Vector indexes**: created dynamically in `syncToNeo4j` for any type with `_embedding` property.
@@ -353,7 +353,7 @@ Defined in `src/shared/events.ts`:
 
 **Constraints**: Unique `_id` on Conversation, Message, Entity, Note, Plot, TimePoint. Unique `name` on Plot.
 
-**Indexes**: Regular indexes on Entity.type, Entity.name, Message.timestamp, Plot.status. Composite indexes on NPCDisposition(npc_name, target_name) and TimePoint(day, segment). Composite unique constraints supported via `composite_unique_1/2/3` tags. All created dynamically by `syncToNeo4j`.
+**Indexes**: Regular indexes on Entity.type, Entity.name, Message.timestamp, Plot.status. Composite indexes on Disposition(npc_name, target_name) and TimePoint(day, segment). Composite unique constraints supported via `composite_unique_1/2/3` tags. All created dynamically by `syncToNeo4j`.
 
 **Vector indexes**: One per node type with `_embedding` (Entity, Message, Note, Plot). Naming: `{label_lower}_embedding_idx`. Also created for relationship types with `_embedding`, named `rel_{type_lower}_embedding_idx`.
 

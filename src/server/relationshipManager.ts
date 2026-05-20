@@ -105,8 +105,7 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "NEXT_TIMEPOINT",
-    description:
-      `Links TimePoint nodes in chronological sequence. Records the reason for the time advance. Automatically written by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
+    description: `Links TimePoint nodes in chronological sequence. Records the reason for the time advance. Automatically written by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     sourceLabel: "TimePoint",
     targetLabel: "TimePoint",
     properties: [
@@ -245,9 +244,9 @@ const PREDEFINED_TYPES: {
   },
   {
     name: "HAS_DISPOSITION",
-    description: "Links an Entity (NPC) to its NPCDisposition node.",
+    description: "Links an Entity (NPC) to its Disposition node.",
     sourceLabel: "Entity",
-    targetLabel: "NPCDisposition",
+    targetLabel: "Disposition",
   },
   {
     name: "ABOUT_ENTITY",

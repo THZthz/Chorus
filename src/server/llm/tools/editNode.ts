@@ -55,7 +55,7 @@ Discover available types and their property schemas via getContext SCHEMA_DUMP.
     .describe(
       `
 Key-value pairs to locate exactly one node, used by "WHERE" clause of Cypher query. Required for UPDATE/DELETE.
-e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an NPCDisposition.
+e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an Disposition.
 `.trim(),
     ),
   properties: z
@@ -85,15 +85,15 @@ Supports partial JSON property updates for properties tagged "json" in their typ
 
 DELETE — Remove a node and all its relationships (DETACH DELETE). Requires exact match criteria.
 
-Use for Entity (CHARACTER, OBJECT, LOCATION) and NPCDisposition nodes. Do NOT use for
+Use for Entity (CHARACTER, OBJECT, LOCATION) and Disposition nodes. Do NOT use for
 notes (use editNote) or plots (use editPlot).
 
 Entity metadata property (json): stores stats (skill→value pairs), conditions,
 attributes (key→description), opinions (target→text), aliases (string[]). Use metadata
 for structured character data rather than free-text in description.
 
-NPCDisposition: stored as a NODE (not a relationship), linked via
-(npc:Entity)-[:HAS_DISPOSITION]->(d:NPCDisposition). Sentiment keywords: protective,
+Disposition: stored as a NODE (not a relationship), linked via
+(npc:Entity)-[:HAS_DISPOSITION]->(d:Disposition). Sentiment keywords: protective,
 trusting, fearful, hostile, attracted, suspicious, resentful, grateful, indifferent.
 Set or update disposition when an NPC's feelings shift due to player actions.
 `.trim(),

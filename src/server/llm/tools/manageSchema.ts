@@ -31,7 +31,7 @@ export const manageSchema = tool({
 Register or unregister node types and relationship types in the world schema.
 
 Must be called BEFORE creating a node with a new label or a relationship with a new type.
-PREDEFINED types (Entity, Plot, Note, NPCDisposition, etc.) are already registered —
+PREDEFINED types (Entity, Plot, Note, Disposition, etc.) are already registered —
 you don't need to re-register them.
 
 Node types — provide name (PascalCase) + optional property schema with tags.

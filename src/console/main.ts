@@ -144,7 +144,7 @@ function formatOptionLabel(opt: DialogueOption): string {
 
 function renderBanner() {
   console.log("");
-  console.log(chalk.bold("                     CHORUS                        "));
+  console.log(chalk.bold("                      CHORUS                       "));
   console.log(chalk.dim("               A Narrative RPG Engine               "));
   console.log("");
 }

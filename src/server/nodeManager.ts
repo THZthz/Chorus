@@ -241,8 +241,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "Message",
-    description:
-      `A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE. Automatically managed by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
+    description: `A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE. Automatically managed by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     properties: [
       { name: "id", description: "Message id.", tags: ["string", "unique"] },
       { name: "content", description: "Message text content.", tags: ["string", "embedded"] },
@@ -258,8 +257,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "Note",
-    description:
-      `A GM note with vector embedding for semantic recall. Can link to Entities, Messages, or Plots via ABOUT_ENTITY / ABOUT_MESSAGE / ABOUT_PLOT. Automatically managed by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
+    description: `A GM note with vector embedding for semantic recall. Can link to Entities, Messages, or Plots via ABOUT_ENTITY / ABOUT_MESSAGE / ABOUT_PLOT. Automatically managed by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
     properties: [
       { name: "name", description: "Unique note name (used as lookup key).", tags: ["string"] },
       {
@@ -274,8 +272,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "Plot",
-    description:
-      `A narrative plot with status, beats, branches, and flags. Drives story progression. Automatically managed by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
+    description: `A narrative plot with status, beats, branches, and flags. Drives story progression. Automatically managed by \`${TOOL_NAMES.EDIT_PLOT}\`.`,
     properties: [
       {
         name: "name",
@@ -313,9 +310,9 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     ],
   },
   {
-    name: "NPCDisposition",
+    name: "Disposition",
     description:
-      "An NPC's sentiment and summary toward a target entity. Stored as a NODE (not a relationship). Match via (npc:Entity)-[:HAS_DISPOSITION]->(d:NPCDisposition {target_name: '...'}).",
+      "An NPC's sentiment and summary toward a target entity. Stored as a NODE (not a relationship). Match via (npc:Entity)-[:HAS_DISPOSITION]->(d:Disposition {target_name: '...'}).",
     properties: [
       {
         name: "npc_name",
@@ -344,8 +341,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "TimePoint",
-    description:
-      `A point in game time with day, hour, and label. Linked sequentially via NEXT_TIMEPOINT. Automatically created by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
+    description: `A point in game time with day, hour, and label. Linked sequentially via NEXT_TIMEPOINT. Automatically created by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     properties: [
       {
         name: "day",
@@ -368,8 +364,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   },
   {
     name: "TimeAnchor",
-    description:
-      `Singleton anchor pointing to the current TimePoint via CURRENT_TIMEPOINT. Automatically created by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
+    description: `Singleton anchor pointing to the current TimePoint via CURRENT_TIMEPOINT. Automatically created by \`${TOOL_NAMES.ADVANCE_TIME}\`.`,
     properties: [...INTERNAL_PROPS],
   },
 ];
@@ -592,7 +587,7 @@ export class NodeManager {
 
       // Create vector indexes (require Neo4j 5.11+) for node type that has "_embedding" properties.
       if (def.properties.some((prop) => prop.name === "_embedding")) {
-        const vectorIndexName = def.name + "_embedding_idx";
+        const vectorIndexName = def.name.toLowerCase() + "_embedding_idx";
         const dimensions = process.env.EMBEDDING_DIMENSIONS || 1024;
         try {
           await client.executeWrite(

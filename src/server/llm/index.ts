@@ -150,22 +150,28 @@ export async function generateTurn(
     }
   }
 
-  const mindsetParts: string[] = [];
+  const firstTurnHelperParts: string[] = [];
   if (turnNumber === 1) {
-    // TODO: This is removed for now.
-    // mindsetParts.push(
-    //   "## MINDSET REQUIREMENTS",
-    //   "",
-    // );
+    firstTurnHelperParts.push(
+      "## BEGIN FIRST TURN",
+      `This is first turn, you should call \`${TOOL_NAMES.GET_CONTEXT}\` with ["SCHEMA_DUMP", "SCENE_CONTEXT", "CHARACTERS_BRIEF", "LOCATIONS_BRIEF", "OBJECTS_BRIEF", "PLOTS_BRIEF", "RELATIONSHIP_DUMP"] to help you better understand the data in Neo4j database.`,
+      "",
+      `You should explore more with \`${TOOL_NAMES.QUERY_WORLD}\`, since \`${TOOL_NAMES.GET_CONTEXT}\` only return property "brief" of nodes and relationships, not long and detailed "description".`,
+      "",
+      `Also, do not forget to check any notes or plots by \`${TOOL_NAMES.SEARCH_WORLD}\`.`,
+      "",
+      "---",
+      "",
+    );
   }
 
   const promptText = [
     ...historyParts,
     ...actionParts,
     ...skillCheckParts,
+    ...firstTurnHelperParts,
     "Generate the narrative response following the output format exactly.",
     "",
-    ...mindsetParts,
   ].join("\n");
 
   const { model } = getModel();
@@ -228,42 +234,60 @@ export async function generateTurn(
     system: hasCachedSystem ? undefined : systemPrompt,
     messages: [...previousMessages, { role: "user" as const, content: promptText }],
     tools: allTools,
-    stopWhen: [
-      (state) => {
-        const called = state.steps.some((s) =>
-          s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
-        );
-        const valid = dialogueStepTool.wasValid();
-        console.log(
-          `[stopWhen] steps=${state.steps.length} called=${called} valid=${valid} stepToolNames=${JSON.stringify(state.steps.map((s) => s.toolCalls?.map((tc) => tc.toolName)))}`,
-        );
-        return called && valid;
-      },
-      stepCountIs(MAX_GM_STEPS),
-    ],
+    stopWhen: [stepCountIs(MAX_GM_STEPS)],
     prepareStep: (
-      (nudgeState: { count: number; timeReminded: boolean }) =>
+      (nudgeState: { count: number; dialogueDone: boolean; postDialogueCount: number }) =>
       ({ steps, messages }) => {
         const dialogueCalled = steps.some((s) =>
           s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.GENERATE_DIALOGUE),
         );
+        const dialogueValid = dialogueStepTool.wasValid();
         console.log(
-          `[prepareStep] stepNumber=${steps.length} nudgeStateCount=${nudgeState.count} dialogueCalled=${dialogueCalled} stepToolNames=${JSON.stringify(steps.map((s) => s.toolCalls?.map((tc) => tc.toolName)))}`,
+          `[prepareStep] stepNumber=${steps.length} nudgeStateCount=${nudgeState.count} dialogueCalled=${dialogueCalled} dialogueValid=${dialogueValid} postDialogueCount=${nudgeState.postDialogueCount} stepToolNames=${JSON.stringify(steps.map((s) => s.toolCalls?.map((tc) => tc.toolName)))}`,
         );
+
+        // ── Phase 2: dialogue was valid — guide toward persistence & completion ──
+        if (dialogueValid) {
+          nudgeState.dialogueDone = true;
+          nudgeState.postDialogueCount++;
+
+          // Let the GM work for 1 step after dialogue without interruption
+          if (nudgeState.postDialogueCount <= 1) {
+            return undefined;
+          }
+
+          // Gentle nudge: persist world state
+          if (nudgeState.postDialogueCount === 2) {
+            const msg =
+              `You've spoken to the player via ${TOOL_NAMES.GENERATE_DIALOGUE}. ` +
+              "Now persist any world state changes (movement, items, dispositions, plot flags, time). " +
+              "When done, reply with a brief text (no tool call) to end your turn.";
+            nudgeMessages.push(msg);
+            return { messages: [...messages, { role: "user" as const, content: msg }] };
+          }
+
+          // Stronger nudge: finish up
+          if (nudgeState.postDialogueCount >= 3) {
+            const msg =
+              "If you've finished persisting world state, reply with a brief text (no tool call) to end your turn. The player is waiting.";
+            nudgeMessages.push(msg);
+            return { messages: [...messages, { role: "user" as const, content: msg }] };
+          }
+
+          return undefined;
+        }
+
+        // ── Correction in progress: dialogue called but not yet valid ──
         if (dialogueCalled) {
           nudgeState.count = 0;
-          nudgeState.timeReminded = false;
           return undefined;
         }
 
+        // ── Phase 1: pre-dialogue — nudge to call generateDialogueStep ──
         // Don't nudge until step 4 — let the GM work without interruption early on
-        if (steps.length < 3) {
+        if (steps.length < 4) {
           return undefined;
         }
-
-        const timeCalled = steps.some((s) =>
-          s.toolCalls?.some((tc) => tc.toolName === TOOL_NAMES.ADVANCE_TIME),
-        );
 
         // Collect tool names preserving order
         const allToolsUsed: string[] = [];
@@ -288,18 +312,12 @@ export async function generateTurn(
         nudgeState.count++;
         const prefix = nudgeState.count === 1 ? "Reminder:" : "ERROR:";
         const toolList = grouped.length > 0 ? ` You called [${grouped.join(", ")}] but` : " You";
-        let errorMsg = `${prefix}${toolList} have not yet called ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`;
-
-        // Soft one-time reminder for advanceTime on step 3+
-        if (!timeCalled && !nudgeState.timeReminded && steps.length >= 3) {
-          nudgeState.timeReminded = true;
-          errorMsg += `Reminder: You can call ${TOOL_NAMES.ADVANCE_TIME}() if the player's action takes significant time. Skip if not needed.`;
-        }
+        const errorMsg = `${prefix}${toolList} have not yet called ${TOOL_NAMES.GENERATE_DIALOGUE}. The player cannot see any response. You MUST call ${TOOL_NAMES.GENERATE_DIALOGUE} now.`;
 
         nudgeMessages.push(errorMsg);
         return { messages: [...messages, { role: "user" as const, content: errorMsg }] };
       }
-    )({ count: 0, timeReminded: false }),
+    )({ count: 0, dialogueDone: false, postDialogueCount: 0 }),
     experimental_repairToolCall: async ({ toolCall, error }) => {
       if (NoSuchToolError.isInstance(error)) {
         return null;

@@ -38,6 +38,12 @@ export const NODE_PROPERTY_TAGS = [
    */
   "unique",
   /**
+   * Will create a composite unique constraint for all specified properties.
+   */
+  "composite_unique_1", // Composite unique constraint group 1 for a node type.
+  "composite_unique_2", // Composite unique constraint group 2 for a node type.
+  "composite_unique_3", // Composite unique constraint group 3 for a node type.
+  /**
    * Will create a regular index on specified property.
    * `CREATE INDEX $name IF NOT EXISTS FOR (n:$label) ON (n.$prop)`
    */
@@ -93,7 +99,7 @@ const ENTITY_PROPS: NodePropertyDef[] = [
   },
   {
     name: "type",
-    description: "Entity type: CHARACTER, OBJECT, LOCATION, ORGANIZATION, or EVENT.",
+    description: "Entity type: CHARACTER, OBJECT, LOCATION.",
     tags: ["string", "index"],
   },
   {
@@ -179,7 +185,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "Entity",
     description:
-      "A world entity (CHARACTER, OBJECT, LOCATION, ORGANIZATION, or EVENT). Core building block of the world model.",
+      "A world entity (CHARACTER, OBJECT, LOCATION). Core building block of the world model.",
     properties: [...ENTITY_PROPS, EMBEDDING_PROP, ...INTERNAL_PROPS],
   },
   {
@@ -202,6 +208,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     description:
       "A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE.",
     properties: [
+      { name: "id", description: "Message id.", tags: ["string", "unique"] },
       { name: "content", description: "Message text content.", tags: ["string", "embedded"] },
       { name: "timestamp", description: "ISO 8601 timestamp of the message.", tags: ["string"] },
       {
@@ -211,7 +218,6 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
         tags: ["json"],
       },
       EMBEDDING_PROP,
-      ...INTERNAL_PROPS,
     ],
   },
   {
@@ -568,6 +574,25 @@ export class NodeManager {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[syncToNeo4j] Composite index on ${constraintName} not created: ${msg}`);
+        }
+      }
+
+      // Create composite unique constraint for all properties groups.
+      for (const index of ["composite_unique_1", "composite_unique_2", "composite_unique_3"]) {
+        const props = def.properties
+          .filter((prop) => prop.tags.includes(index as NodePropertyTag))
+          .map((prop) => prop.name);
+        if (props.length < 2) continue;
+        const constraintName = `${def.name.toLowerCase()}_${props.join("_")}_unique${index.at(-1)}`;
+        try {
+          await client.executeWrite(
+            `CREATE CONSTRAINT ${constraintName} IF NOT EXISTS FOR (n:\`${def.name}\`) REQUIRE (${props.map((name) => `n.\`${name}\``).join(", ")}) IS UNIQUE`,
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[syncToNeo4j] Composite unique constraint on ${constraintName} not created: ${msg}`,
+          );
         }
       }
 

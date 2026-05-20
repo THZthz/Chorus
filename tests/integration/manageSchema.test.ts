@@ -27,8 +27,8 @@ describe("manageSchema", () => {
   describe("node types", () => {
     it("registers a new node type with property schema", async () => {
       const result = await exec(manageSchema, {
-        target: "node",
-        action: "register",
+        target: "NODE",
+        action: "REGISTER",
         name: "TestArtifact",
         description: "A test artifact node type",
         properties: [
@@ -42,18 +42,58 @@ describe("manageSchema", () => {
       expect(result).toContain("origin");
     });
 
+    it("registers a node type with composite_unique tags", async () => {
+      const result = await exec(manageSchema, {
+        target: "NODE",
+        action: "REGISTER",
+        name: "UniqueCompositeType",
+        description: "Test node type with composite unique constraint",
+        properties: [
+          {
+            name: "group_id",
+            description: "First part of composite unique key",
+            tags: ["string", "composite_unique_1"],
+          },
+          {
+            name: "item_id",
+            description: "Second part of composite unique key",
+            tags: ["string", "composite_unique_1"],
+          },
+          {
+            name: "region",
+            description: "First part of second composite unique key",
+            tags: ["string", "composite_unique_2"],
+          },
+          {
+            name: "zone",
+            description: "Second part of second composite unique key",
+            tags: ["string", "composite_unique_2"],
+          },
+        ],
+      });
+      expect(result).toContain("Registered node type");
+      expect(result).toContain("UniqueCompositeType");
+
+      // Cleanup
+      await exec(manageSchema, {
+        target: "NODE",
+        action: "UNREGISTER",
+        name: "UniqueCompositeType",
+      });
+    });
+
     it("unregisters a GM_DEFINED node type", async () => {
       // Register first
       await exec(manageSchema, {
-        target: "node",
-        action: "register",
+        target: "NODE",
+        action: "REGISTER",
         name: "TempType",
         description: "Temporary test type",
       });
 
       const result = await exec(manageSchema, {
-        target: "node",
-        action: "unregister",
+        target: "NODE",
+        action: "UNREGISTER",
         name: "TempType",
       });
       expect(result).toContain("Unregistered node type");
@@ -62,8 +102,8 @@ describe("manageSchema", () => {
 
     it("rejects unregister of PREDEFINED type", async () => {
       const result = await exec(manageSchema, {
-        target: "node",
-        action: "unregister",
+        target: "NODE",
+        action: "UNREGISTER",
         name: "Entity",
       });
       expect(result).toContain("Cannot unregister");
@@ -73,8 +113,8 @@ describe("manageSchema", () => {
   describe("relationship types", () => {
     it("registers a new relationship type with endpoint constraints", async () => {
       const result = await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "TEST_CONNECTS_TO",
         description: "Test connection between entities",
         sourceLabel: "Entity",
@@ -87,8 +127,8 @@ describe("manageSchema", () => {
 
     it("rejects registration without sourceLabel and targetLabel", async () => {
       const result = await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "TEST_GENERIC",
         description: "A generic test relationship",
       });
@@ -98,8 +138,8 @@ describe("manageSchema", () => {
     it("unregisters a GM_DEFINED relationship type", async () => {
       // Register first
       await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "TEST_TEMP_REL",
         description: "Temporary",
         sourceLabel: "Entity",
@@ -107,8 +147,8 @@ describe("manageSchema", () => {
       });
 
       const result = await exec(manageSchema, {
-        target: "relationship",
-        action: "unregister",
+        target: "RELATIONSHIP",
+        action: "UNREGISTER",
         name: "TEST_TEMP_REL",
         sourceLabel: "Entity",
         targetLabel: "Entity",
@@ -118,8 +158,8 @@ describe("manageSchema", () => {
 
     it("allows registering same name with different sourceLabel", async () => {
       const r1 = await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "TEST_DUAL",
         description: "First variant",
         sourceLabel: "Entity",
@@ -128,8 +168,8 @@ describe("manageSchema", () => {
       expect(r1).toContain("Registered relationship type");
 
       const r2 = await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "TEST_DUAL",
         description: "Second variant",
         sourceLabel: "Entity",
@@ -141,8 +181,8 @@ describe("manageSchema", () => {
 
     it("rejects unregister without sourceLabel/targetLabel", async () => {
       const result = await exec(manageSchema, {
-        target: "relationship",
-        action: "unregister",
+        target: "RELATIONSHIP",
+        action: "UNREGISTER",
         name: "SOME_TYPE",
       });
       expect(result).toContain("ERROR");
@@ -150,8 +190,8 @@ describe("manageSchema", () => {
 
     it("rejects unregister of PREDEFINED relationship type", async () => {
       const result = await exec(manageSchema, {
-        target: "relationship",
-        action: "unregister",
+        target: "RELATIONSHIP",
+        action: "UNREGISTER",
         name: "LOCATED_AT",
         sourceLabel: "Entity",
         targetLabel: "Location",
@@ -163,8 +203,8 @@ describe("manageSchema", () => {
       // Relationships now support the same property tags as nodes except
       // 'unique' — Neo4j has no uniqueness constraint for relationship properties.
       const result = await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "TEST_TAGGED_REL",
         description: "Relationship with full property tags",
         sourceLabel: "Entity",
@@ -199,8 +239,8 @@ describe("manageSchema", () => {
 
       // Cleanup
       await exec(manageSchema, {
-        target: "relationship",
-        action: "unregister",
+        target: "RELATIONSHIP",
+        action: "UNREGISTER",
         name: "TEST_TAGGED_REL",
         sourceLabel: "Entity",
         targetLabel: "Entity",

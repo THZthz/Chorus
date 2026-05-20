@@ -45,10 +45,10 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
 `.trim(),
   inputSchema: z.object({
     target: z
-      .enum(["node", "relationship"])
+      .enum(["NODE", "RELATIONSHIP"])
       .describe("Whether to register a node type (label) or a relationship type."),
     action: z
-      .enum(["register", "unregister"])
+      .enum(["REGISTER", "UNREGISTER"])
       .describe(
         "Register a new type or remove an existing one. Only GM-defined types can be unregistered.",
       ),
@@ -73,8 +73,8 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
             .array(z.enum(NODE_PROPERTY_TAGS))
             .describe(
               "Comma-separated tags describing the property. " +
-                "For nodes: 'string', 'number', 'json', 'embedded', 'unique', 'index', 'composite_index_1', 'composite_index_2', 'composite_index_3'. " +
-                "For relationships: same tags except 'unique' (not supported by Neo4j for relationship properties).",
+                "For nodes: 'string', 'number', 'number[]', 'json', 'embedded', 'unique', 'index', 'composite_unique_1', 'composite_unique_2', 'composite_unique_3', 'composite_index_1', 'composite_index_2', 'composite_index_3'. " +
+                "For relationships: same tags except 'unique' and 'composite_unique_X' (not supported by Neo4j for relationship properties).",
             ),
         }),
       )
@@ -97,8 +97,8 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
       ),
   }),
   execute: wrapSafe(async (args) => {
-    if (args.action === "register") {
-      if (args.target === "node") {
+    if (args.action === "REGISTER") {
+      if (args.target === "NODE") {
         const nodeManager = NodeManager.getCachedInstance();
         const existing = nodeManager.get(args.name);
         if (existing && existing.type !== "GM_DEFINED") {
@@ -134,7 +134,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
         return `Registered node type "${args.name}"${propSummary}. It is now available for use via ${TOOL_NAMES.QUERY_WORLD} (WRITE action).`;
       }
 
-      if (args.target === "relationship") {
+      if (args.target === "RELATIONSHIP") {
         const manager = RelationshipManager.getCachedInstance();
         const srcLabel = args.sourceLabel;
         const tgtLabel = args.targetLabel;
@@ -186,8 +186,8 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
       }
     }
 
-    if (args.action === "unregister") {
-      if (args.target === "node") {
+    if (args.action === "UNREGISTER") {
+      if (args.target === "NODE") {
         const nodeManager = NodeManager.getCachedInstance();
         const removed = nodeManager.unregister(args.name);
         if (!removed) {
@@ -201,7 +201,7 @@ Only GM_DEFINED types can be unregistered. PREDEFINED and INTERNAL types are per
         return `Unregistered node type "${args.name}".`;
       }
 
-      if (args.target === "relationship") {
+      if (args.target === "RELATIONSHIP") {
         const manager = RelationshipManager.getCachedInstance();
         const srcLabel = args.sourceLabel;
         const tgtLabel = args.targetLabel;

@@ -31,7 +31,6 @@ function loadSeedStory(filename: string): SeedStory {
 }
 
 const STORIES: Record<string, SeedStory> = {
-  "magic-awakening": loadSeedStory("magic-awakening.toml"),
   "glass-cage": loadSeedStory("glass-cage.toml"),
 };
 

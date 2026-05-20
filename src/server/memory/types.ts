@@ -16,8 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Entity types similar to POLE+O model
-export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
+export type EntityType = "CHARACTER" | "OBJECT" | "LOCATION";
 
 export interface MemoryEntity {
   name: string;

@@ -34,8 +34,8 @@ describe("Entity Lifecycle Scenario", () => {
   it("full lifecycle: register type -> create -> update -> relate -> query -> delete -> unregister", async () => {
     // 1. Register a new node type
     const regResult = await exec(manageSchema, {
-      target: "node",
-      action: "register",
+      target: "NODE",
+      action: "REGISTER",
       name: CLUE_TYPE,
       description: "An investigation clue",
       properties: [
@@ -88,8 +88,8 @@ describe("Entity Lifecycle Scenario", () => {
 
     // 6. Register a relationship type for TestClue→Entity
     await exec(manageSchema, {
-      target: "relationship",
-      action: "register",
+      target: "RELATIONSHIP",
+      action: "REGISTER",
       name: "LOCATED_AT",
       description: "A test clue is located at an entity",
       sourceLabel: CLUE_TYPE,
@@ -133,8 +133,8 @@ describe("Entity Lifecycle Scenario", () => {
 
     // 11. Unregister the relationship type
     await exec(manageSchema, {
-      target: "relationship",
-      action: "unregister",
+      target: "RELATIONSHIP",
+      action: "UNREGISTER",
       name: "LOCATED_AT",
       sourceLabel: CLUE_TYPE,
       targetLabel: "Entity",
@@ -142,8 +142,8 @@ describe("Entity Lifecycle Scenario", () => {
 
     // 12. Unregister the node type
     const unregResult = await exec(manageSchema, {
-      target: "node",
-      action: "unregister",
+      target: "NODE",
+      action: "UNREGISTER",
       name: CLUE_TYPE,
     });
     expect(unregResult).toContain("Unregistered node type");

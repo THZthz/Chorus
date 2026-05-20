@@ -90,7 +90,7 @@ curl -X POST http://localhost:3000/api/reset
 
 ### World Memory
 
-All game state lives in Neo4j: characters, locations, objects, factions, plots, relationships, facts, and conversation history. The GM accesses it through 16 locally-defined AI SDK tools in `src/server/memory/tools.ts` — semantic search, graph traversal, entity CRUD, relationship management, and Cypher queries. Embeddings and reranking are served via llama-server (Qwen3-Embedding + Qwen3-Reranker).
+All game states live in Neo4j: characters, locations, objects, factions, plots, relationships, facts, and conversation history. The GM accesses it through locally-defined AI SDK tools — semantic search, graph traversal, entity CRUD, relationship management, and Cypher queries. Embeddings and reranking are served via llama-server.
 
 ### Skill Checks
 

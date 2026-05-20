@@ -163,8 +163,8 @@ describe("editRelationship", () => {
   it("rejects CREATE when endpoint labels don't match the registered definition", async () => {
     // Register TEST_STRICT_REL with (Entity→Entity)
     await exec(manageSchema, {
-      target: "relationship",
-      action: "register",
+      target: "RELATIONSHIP",
+      action: "REGISTER",
       name: "TEST_STRICT_REL",
       description: "Strict endpoint relationship",
       sourceLabel: "Entity",
@@ -195,8 +195,8 @@ describe("editRelationship", () => {
 
     // Cleanup
     await exec(manageSchema, {
-      target: "relationship",
-      action: "unregister",
+      target: "RELATIONSHIP",
+      action: "UNREGISTER",
       name: "TEST_STRICT_REL",
       sourceLabel: "Entity",
       targetLabel: "Entity",
@@ -290,8 +290,8 @@ describe("editRelationship", () => {
     beforeAll(async () => {
       // Register a GM_DEFINED relationship type with a property schema
       await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: GM_REL,
         description: "Test trust relationship with confidence level",
         properties: [
@@ -347,8 +347,8 @@ describe("editRelationship", () => {
         });
       }
       await exec(manageSchema, {
-        target: "relationship",
-        action: "unregister",
+        target: "RELATIONSHIP",
+        action: "UNREGISTER",
         name: GM_REL,
       });
     });
@@ -401,8 +401,8 @@ describe("editRelationship", () => {
     it("shallow-merges json-tagged property on relationship", async () => {
       // Register a GM_DEFINED type with a JSON property
       await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: "HAS_METADATA",
         description: "Relationship with JSON metadata",
         properties: [{ name: "meta", description: "JSON metadata blob", tags: ["json"] }],
@@ -455,8 +455,8 @@ describe("editRelationship", () => {
 
     beforeAll(async () => {
       await exec(manageSchema, {
-        target: "relationship",
-        action: "register",
+        target: "RELATIONSHIP",
+        action: "REGISTER",
         name: EMBED_REL,
         description: "Relationship with embedded properties",
         properties: [
@@ -471,8 +471,8 @@ describe("editRelationship", () => {
 
     afterAll(async () => {
       await exec(manageSchema, {
-        target: "relationship",
-        action: "unregister",
+        target: "RELATIONSHIP",
+        action: "UNREGISTER",
         name: EMBED_REL,
         sourceLabel: "Note",
         targetLabel: "Entity",

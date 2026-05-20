@@ -18,6 +18,7 @@
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
 
+/** The meaning of those tags is basically the same with NODE_PROPERTY_TAGS. */
 export const RELATIONSHIP_PROPERTY_TAGS = [
   "string",
   "number",

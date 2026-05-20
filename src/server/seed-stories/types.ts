@@ -20,7 +20,7 @@
 // NOT database IDs. agent-memory's memory_create_relationship looks up entities by name.
 export interface SeedEntity {
   id: string;
-  type: "CHARACTER" | "OBJECT" | "LOCATION" | "ORGANIZATION" | "EVENT";
+  type: "CHARACTER" | "OBJECT" | "LOCATION";
   subtype?: string;
   name: string;
   description: string;

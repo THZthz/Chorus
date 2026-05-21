@@ -7,6 +7,7 @@
     "server": "tsx src/server/main.ts",
     "server:dev": "tsx --watch src/server/main.ts",
     "console": "tsx src/console/main.ts",
+    "mcp": "tsx src/server/mcp.ts",
     "lint": "tsc --noEmit",
     "add-license": "node scripts/add-license-header.mjs",
     "clean": "rm -rf dist",
@@ -20,11 +21,12 @@
     "knip": "knip"
   },
   "dependencies": {
-    "@ai-sdk/deepseek": "^2.0.3",
+    "@ai-sdk/deepseek": "^2.0.35",
     "@ai-sdk/google": "^3.0.3",
     "@ai-sdk/openai": "^3.0.4",
     "@inquirer/prompts": "^8.4.2",
-    "ai": "^6.0.11",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^6.0.188",
     "chalk": "^5.6.2",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",

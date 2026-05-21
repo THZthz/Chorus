@@ -26,6 +26,7 @@ src/
 │
 ├── server/
 │   ├── main.ts                           # Express server entry point (port 3000)
+│   ├── mcp.ts                            # MCP server entry point — exposes GM tools via stdio
 │   ├── api.ts                            # Routes: /api/chat/stream, /api/history, /api/reset, /api/debug/tools/*
 │   ├── nodeManager.ts                    # Node label registry: schemas, embedding text, Neo4j sync
 │   ├── relationshipManager.ts            # Rel type registry: composite key (name, sourceLabel, targetLabel)
@@ -328,6 +329,7 @@ Defined in `src/shared/events.ts`:
 | `GET`  | `/api/game/current`          | Current dialogue options           |
 | `POST` | `/api/debug/tools/:toolName` | Debug: invoke any GM tool directly |
 | `POST` | `/api/reset`                 | Clear Neo4j and re-seed            |
+| `MCP`  | `src/server/mcp.ts`          | Stdio MCP server — all 10 GM tools |
 
 ---
 
@@ -353,7 +355,7 @@ Defined in `src/shared/events.ts`:
 
 **Constraints**: Unique `_id` on Conversation, Message, Entity, Note, Plot, TimePoint. Unique `name` on Plot.
 
-**Indexes**: Regular indexes on Entity.type, Entity.name, Message.timestamp, Plot.status. Composite indexes on Disposition(npc_name, target_name) and TimePoint(day, segment). Composite unique constraints supported via `composite_unique_1/2/3` tags. All created dynamically by `syncToNeo4j`.
+**Indexes**: Regular indexes on Entity.type, Entity.name, Message.timestamp, Plot.status. Composite indexes on Disposition(source_name, target_name) and TimePoint(day, segment). Composite unique constraints supported via `composite_unique_1/2/3` tags. All created dynamically by `syncToNeo4j`.
 
 **Vector indexes**: One per node type with `_embedding` (Entity, Message, Note, Plot). Naming: `{label_lower}_embedding_idx`. Also created for relationship types with `_embedding`, named `rel_{type_lower}_embedding_idx`.
 
@@ -402,7 +404,7 @@ Relationship types declared via `[[relationshipTypes]]` with `name`, `descriptio
 2. **Singleton memory layer** — `MemoryClient`, `RelationshipManager`, `NodeManager`.
 3. **LLM text output silently discarded** — tool-only output; text deltas ignored.
 4. **`_` prefix = hidden** — `stripHiddenProperties()` strips `_`-prefixed keys at tool boundaries.
-5. **Properties use snake_case in Neo4j** — `_created_at`, `trigger_condition`, `npc_name`.
+5. **Properties use snake_case in Neo4j** — `_created_at`, `trigger_condition`, `source_name`.
 6. **Composite key for relationship types** — `(name, sourceLabel, targetLabel)` uniquely identifies a `RelationshipDef`.
 7. **Dynamic vector search** — `searchWorld` queries `NodeManager` and `RelationshipManager` at runtime for node labels and relationship types with `_embedding`, not a hardcoded enum.
 8. **Embedding text from schema** — `getEmbeddingText()` reads `"embedded"`-tagged properties from `NodeManager` (nodes) and `RelationshipManager` (relationships).
@@ -413,6 +415,7 @@ Relationship types declared via `[[relationshipTypes]]` with `name`, `descriptio
 13. **Compact 4-layer GM prompt** — SENSE (getContext/searchWorld/queryWorld READ) → ACT (editNode/editRelationship/manageSchema/queryWorld WRITE/advanceTime) → TRACK (editNote/editPlot) → SPEAK (generateDialogueStep). Tool descriptions carry operational detail; prompt carries the mental model.
 14. **Relationship description properties** — LOCATED_AT, CARRIES, ALLIED_WITH, HOSTILE_TOWARDS, and LOCATED_IN have `description` (string, embedded) for narrative context. Vector-indexed for semantic search via searchWorld.
 15. **Schema dump from memory** — `getContext SCHEMA_DUMP` reads type definitions directly from `NodeManager`/`RelationshipManager` registries (no Neo4j round-trip), presenting full property schemas with tags and descriptions.
+16. **MCP server** — `src/server/mcp.ts` exposes all 10 GM tools over stdio via `@modelcontextprotocol/sdk`. Wraps each tool's `execute(args) => Promise<string>` into MCP's `{ content: [{ type: "text", text }] }`. Two factory-based tools (`generateDialogueStep`, `advanceTime`) are instantiated with MCP-appropriate options.
 
 ---
 

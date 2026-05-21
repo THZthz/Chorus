@@ -35,7 +35,7 @@ export class MemorySearch {
 
     const useRerank = rerank !== false && getReranker() !== null;
     const effectiveThreshold = threshold ?? (useRerank ? 0.4 : 0.7);
-    const fetchLimit = useRerank ? Math.max(limit * 3, 30) : limit;
+    const fetchLimit = useRerank ? Math.max(limit * 4, 40) : limit;
 
     return { useRerank, effectiveThreshold, limit, fetchLimit };
   }

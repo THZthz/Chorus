@@ -39,6 +39,7 @@ import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialo
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 import { performSkillCheck } from "@/server/llm/rollSkillCheck";
 import { type SkillName, TOOL_NAMES } from "@/shared/constants";
+import { DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
 
 export async function generateTurn(
   userInput: string,
@@ -154,11 +155,11 @@ export async function generateTurn(
   if (turnNumber === 1) {
     firstTurnHelperParts.push(
       "## BEGIN FIRST TURN",
-      `This is first turn, you should call \`${TOOL_NAMES.GET_CONTEXT}\` with ["SCHEMA_DUMP", "SCENE_CONTEXT", "CHARACTERS_BRIEF", "LOCATIONS_BRIEF", "OBJECTS_BRIEF", "PLOTS_BRIEF", "RELATIONSHIP_DUMP"] to help you better understand the data in Neo4j database.`,
+      `This is first turn (no need to check, this section will only appear once), you should call \`${TOOL_NAMES.GET_CONTEXT}\` with ["SCHEMA_DUMP", "SCENE_CONTEXT", "CHARACTERS_BRIEF", "LOCATIONS_BRIEF", "OBJECTS_BRIEF", "PLOTS_BRIEF", "RELATIONSHIP_DUMP"] to help you better understand the data in Neo4j database.`,
       "",
       `You should explore more with \`${TOOL_NAMES.QUERY_WORLD}\`, since \`${TOOL_NAMES.GET_CONTEXT}\` only return property "brief" of nodes and relationships, not long and detailed "description".`,
       "",
-      `Also, do not forget to check any notes or plots by \`${TOOL_NAMES.SEARCH_WORLD}\`.`,
+      `Also, do not forget to check any notes or plots by \`${TOOL_NAMES.SEARCH_WORLD}\`. Note is linked to Entity and Plot, you can use this.`,
       "",
       "---",
       "",
@@ -170,7 +171,7 @@ export async function generateTurn(
     ...actionParts,
     ...skillCheckParts,
     ...firstTurnHelperParts,
-    "Generate the narrative response following the output format exactly.",
+    "Generate the narrative response following the output format.",
     "",
   ].join("\n");
 
@@ -234,6 +235,12 @@ export async function generateTurn(
     system: hasCachedSystem ? undefined : systemPrompt,
     messages: [...previousMessages, { role: "user" as const, content: promptText }],
     tools: allTools,
+    providerOptions: {
+      deepseek: {
+        thinking: { type: "enabled" },
+        reasoningEffort: "xhigh"
+      } satisfies DeepSeekLanguageModelOptions,
+    },
     stopWhen: [stepCountIs(MAX_GM_STEPS)],
     prepareStep: (
       (nudgeState: { count: number; dialogueDone: boolean; postDialogueCount: number }) =>

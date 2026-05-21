@@ -46,11 +46,18 @@ export interface SeedPlot {
   branchesTo?: string[];
 }
 
+export interface SeedDisposition {
+  sourceName: string;
+  targetName: string;
+  sentiment: string;
+  summary: string;
+}
+
 export interface SeedNote {
   name: string;
   content: string;
   aboutEntities?: string[]; // A list of entities' name
-  aboutPlots?: string[]; // Alist of plots' name
+  aboutPlots?: string[]; // A list of plots' name
 }
 
 export interface SeedStory {
@@ -64,6 +71,7 @@ export interface SeedStory {
   initialDay: number;
   initialSegment: number;
   initialLocationId: string;
+  dispositions?: SeedDisposition[];
   relationshipTypes?: {
     name: string;
     description: string;

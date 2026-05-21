@@ -47,31 +47,6 @@ function pascalCase(str: string): string {
     .join("");
 }
 
-function inferSentiment(text: string): string {
-  const lower = text.toLowerCase();
-  if (lower.includes("protect") || lower.includes("care") || lower.includes("save"))
-    return "protective";
-  if (lower.includes("trust") || lower.includes("believe")) return "trusting";
-  if (lower.includes("fear") || lower.includes("dangerous") || lower.includes("risk"))
-    return "fearful";
-  if (lower.includes("hate") || lower.includes("hostile") || lower.includes("kill"))
-    return "hostile";
-  if (
-    lower.includes("attract") ||
-    lower.includes("desire") ||
-    lower.includes("hunger") ||
-    lower.includes("want")
-  )
-    return "attracted";
-  if (lower.includes("suspicious") || lower.includes("suspect") || lower.includes("hiding"))
-    return "suspicious";
-  if (lower.includes("resent") || lower.includes("bitter") || lower.includes("angry"))
-    return "resentful";
-  if (lower.includes("grateful") || lower.includes("thank") || lower.includes("owe"))
-    return "grateful";
-  return "indifferent";
-}
-
 /**
  * Parse an entity type string that may include a subtype.
  * Matches Python's parse_entity_type: "TYPE:SUBTYPE" -> ("TYPE", "SUBTYPE")
@@ -183,7 +158,7 @@ async function addEntity(
 
 function parseDisposition(data: Record<string, unknown>): Disposition {
   return {
-    npcName: data.npc_name as string,
+    npcName: data.source_name as string,
     targetName: data.target_name as string,
     sentiment: data.sentiment as string,
     summary: data.summary as string,
@@ -201,7 +176,7 @@ async function setDisposition(
   const now = new Date().toISOString();
   const rows = await neo4j.executeWrite(
     `MATCH (npc:Entity {name: $npcName})
-       MERGE (npc)-[r:HAS_DISPOSITION]->(d:Disposition {npc_name: $npcName, target_name: $targetName})
+       MERGE (npc)-[r:HAS_DISPOSITION]->(d:Disposition {source_name: $npcName, target_name: $targetName})
        ON CREATE SET d._id = $id, d._created_at = datetime($now), r._created_at = datetime()
        SET d.sentiment = $sentiment, d.summary = $summary, d._updated_at = datetime($now)
        RETURN d, d._id = $id AS isNew`,
@@ -275,16 +250,11 @@ export async function seedDatabase(): Promise<void> {
     );
   }
 
-  // Seed initial NPC dispositions from entity metadata opinions
+  // Seed initial NPC dispositions from story configuration
   let dispositionCount = 0;
-  for (const entity of story.entities) {
-    const opinions = entity.metadata?.opinions as Record<string, string> | undefined;
-    if (!opinions) continue;
-    for (const [targetName, opinionText] of Object.entries(opinions)) {
-      const sentiment = inferSentiment(opinionText);
-      await setDisposition(entity.name, targetName, sentiment, opinionText);
-      dispositionCount++;
-    }
+  for (const disp of story.dispositions || []) {
+    await setDisposition(disp.sourceName, disp.targetName, disp.sentiment, disp.summary);
+    dispositionCount++;
   }
 
   // Seed plots from story

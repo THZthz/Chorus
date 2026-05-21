@@ -404,6 +404,13 @@ Inner voice personalities:
   MIGHT — raw strength, intimidation, brute force
   CLOCKWORK — mechanical intuition; understands gears, steam-pressure, alchemical engines
   ALCHEMY — appetite for transmutation; craves alchemical substances, vice, transformation
+
+Message Formatting:
+- Narration
+- "Dialogue"
+- *Thoughts*
+- \`Text messages\`
+- **Emphasis**
 `.trim(),
     inputSchema,
     execute: async (args: DialogueArgs) => {

@@ -19,6 +19,9 @@
 import { EntityType, MemoryClient, type MemoryEntity } from "@/server/memory/client";
 import type { SkillName } from "@/shared/constants";
 
+// TODO: This skill check system should be reworked since current skill check will always succeed.
+// TODO: Make it a extension for the current engine? So users can customize experience further? That is a huge work.
+
 const EXPRESSION_ALLOWLIST = /^[a-zA-Z0-9_<>=!&|()+\-*/\s.0-9]+$/;
 
 interface ConditionContext {

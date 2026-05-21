@@ -22,7 +22,7 @@ import apiRouter from "@/server/api";
 import { MemoryClient } from "@/server/memory/client";
 import { seedDatabase } from "@/server/stories/seed";
 
-const NEO4J_RETRY_MS = 3000;
+const NEO4J_RETRY_MS = 10000;
 
 async function initMemory(): Promise<void> {
   // eslint-disable-next-line no-constant-condition

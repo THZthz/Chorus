@@ -31,6 +31,8 @@ import { manageSchema } from "@/server/llm/tools/manageSchema";
 import { createGenerateDialogueStepTool } from "@/server/llm/tools/generateDialogueStep";
 import { createAdvanceTimeTool } from "@/server/llm/tools/advanceTime";
 import { createMockEventEmitter, resetDb } from "../helpers";
+import { setupServer } from "@/server/mcp.ts";
+import { TOOL_NAMES } from "@/shared/constants.ts";
 
 function buildServer(): McpServer {
   const dialogueStepTool = createGenerateDialogueStepTool();
@@ -38,24 +40,7 @@ function buildServer(): McpServer {
 
   const server = new McpServer({ name: "chorus-gm-test", version: "1.0.0" });
 
-  function reg(name: string, desc: string, schema: unknown, execute: (args: any) => Promise<string>) {
-    server.registerTool(
-      name,
-      { description: desc, inputSchema: schema as any },
-      async (args: any) => ({ content: [{ type: "text" as const, text: await execute(args) }] }),
-    );
-  }
-
-  reg("queryWorld", queryWorld.description!, queryWorld.inputSchema, queryWorld.execute as any);
-  reg("searchWorld", searchWorld.description!, searchWorld.inputSchema, searchWorld.execute as any);
-  reg("manageSchema", manageSchema.description!, manageSchema.inputSchema, manageSchema.execute as any);
-  reg("editNode", editNode.description!, editNode.inputSchema, editNode.execute as any);
-  reg("editRelationship", editRelationship.description!, editRelationship.inputSchema, editRelationship.execute as any);
-  reg("editNote", editNote.description!, editNote.inputSchema, editNote.execute as any);
-  reg("editPlot", editPlot.description!, editPlot.inputSchema, editPlot.execute as any);
-  reg("getContext", getContext.description!, getContext.inputSchema, getContext.execute as any);
-  reg("generateDialogueStep", dialogueStepTool.tool.description!, dialogueStepTool.tool.inputSchema, dialogueStepTool.tool.execute as any);
-  reg("advanceTime", advanceTimeTool.description!, advanceTimeTool.inputSchema, advanceTimeTool.execute as any);
+  setupServer(server, dialogueStepTool, advanceTimeTool);
 
   return server;
 }
@@ -93,16 +78,16 @@ describe("MCP Server", () => {
       const names = tools.map((t: any) => t.name).sort();
 
       expect(names).toEqual([
-        "advanceTime",
-        "editNode",
-        "editNote",
-        "editPlot",
-        "editRelationship",
-        "generateDialogueStep",
-        "getContext",
-        "manageSchema",
-        "queryWorld",
-        "searchWorld",
+        TOOL_NAMES.ADVANCE_TIME,
+        TOOL_NAMES.EDIT_NODE,
+        TOOL_NAMES.EDIT_NOTE,
+        TOOL_NAMES.EDIT_PLOT,
+        TOOL_NAMES.EDIT_RELATIONSHIP,
+        TOOL_NAMES.GENERATE_DIALOGUE,
+        TOOL_NAMES.GET_CONTEXT,
+        TOOL_NAMES.MANAGE_SCHEMA,
+        TOOL_NAMES.QUERY_WORLD,
+        TOOL_NAMES.SEARCH_WORLD,
       ]);
     });
 

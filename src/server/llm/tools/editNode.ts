@@ -40,8 +40,8 @@ const inputSchema = z.object({
   nodeLabel: z.string().describe(
     `
 Node label to operate on (e.g. \`Entity\`, \`Character\`, \`Location\`, or a GM-defined label).
-Must be registered in the world schema and writable.
-Discover available types and their property schemas via getContext SCHEMA_DUMP.
+Must be registered in the world schema and writable. Discover available types and their property
+schemas via \`${TOOL_NAMES.GET_CONTEXT}\` (SCHEMA_DUMP).
 `.trim(),
   ),
   action: z
@@ -55,7 +55,7 @@ Discover available types and their property schemas via getContext SCHEMA_DUMP.
     .describe(
       `
 Key-value pairs to locate exactly one node, used by "WHERE" clause of Cypher query. Required for UPDATE/DELETE.
-e.g. { name: 'Tavern' } for an Entity, or { npc_name: 'Guard', target_name: 'Player' } for an Disposition.
+e.g. { name: 'Tavern' } for an Entity, or { source_name: 'Guard', target_name: 'Player' } for an Disposition.
 `.trim(),
     ),
   properties: z
@@ -74,21 +74,21 @@ System properties (_id, _created_at, _updated_at, _embedding) are managed automa
 export const editNode = tool({
   title: TOOL_NAMES.EDIT_NODE,
   description: `
-CREATE, UPDATE, or DELETE a single node in the world archive using a registered node type.
+CREATE, UPDATE, or DELETE a single node in the Neo4j database using an node type already registered
+by \`${TOOL_NAMES.MANAGE_SCHEMA}\`.
 
 CREATE — Add a new entity, note, plot, or custom node type. Properties are validated
-against the type's schema. WARNING: This tool does NOT check for duplicates — search first
-via searchWorld or queryWorld (READ) to verify the node doesn't already exist.
+against the type's schema.
 
 UPDATE — Change properties on an existing node. Only include fields you want to change.
 Supports partial JSON property updates for properties tagged "json" in their type schema.
 
 DELETE — Remove a node and all its relationships (DETACH DELETE). Requires exact match criteria.
 
-Use for Entity (CHARACTER, OBJECT, LOCATION) and Disposition nodes. Do NOT use for
-notes (use editNote) or plots (use editPlot).
+Can be used for Entity (Character, Object, Location) and Disposition nodes. Do NOT use for
+notes (use \`${TOOL_NAMES.EDIT_NOTE}\` instead) or plots (use \`${TOOL_NAMES.EDIT_PLOT}\` instead).
 
-Entity metadata property (json): stores stats (skill→value pairs), conditions,
+Entity metadata property (json): stores stats (skill→value pairs, for player only), conditions,
 attributes (key→description), opinions (target→text), aliases (string[]). Use metadata
 for structured character data rather than free-text in description.
 

@@ -62,7 +62,7 @@ RETURN player, loc,
 
 const DISPOSITIONS_QUERY = `
 MATCH (d:Disposition {target_name: "Player"})
-RETURN d.npc_name AS npcName, d.sentiment AS sentiment, d.summary AS summary
+RETURN d.source_name AS npcName, d.sentiment AS sentiment, d.summary AS summary
 ORDER BY d._updated_at DESC
 `;
 

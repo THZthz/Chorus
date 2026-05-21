@@ -18,6 +18,7 @@
 
 import type { Neo4jClient } from "@/server/memory/neo4j";
 import { TOOL_NAMES } from "@/shared/constants";
+import { GAME_ID } from "@/server/gameState";
 
 export const NODE_PROPERTY_TAGS = [
   "string",
@@ -98,12 +99,12 @@ const ENTITY_PROPS: NodePropertyDef[] = [
     tags: ["string", "embedded", "unique"],
   },
   {
-    name: "type",
+    name: "type", // TODO: Should be removed.
     description: "Entity type: CHARACTER, OBJECT, LOCATION.",
     tags: ["string", "index"],
   },
   {
-    name: "subtype",
+    name: "subtype", // TODO: Should be removed.
     description: "Optional subtype refinement (e.g., 'Weapon' for an OBJECT).",
     tags: ["string"],
   },
@@ -120,10 +121,9 @@ const ENTITY_PROPS: NodePropertyDef[] = [
   {
     name: "metadata",
     description:
-      "JSON object: stats (skill→value), conditions, attributes (key→description), opinions (target→text), aliases (string[]).",
+      "JSON object: stats (skill→value, only for player), conditions, attributes (key→description), opinions (target→text), aliases (string[]).",
     tags: ["json"],
   },
-  { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
 ];
 
 const INTERNAL_TYPES: { name: string; description: string; properties: NodePropertyDef[] }[] = [
@@ -134,17 +134,16 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
     properties: [
       {
         name: "session_id",
-        description: "Fixed game session key ('chorus-game').",
+        description: `Fixed game session key ('${GAME_ID}').`,
         tags: ["string", "unique"],
       },
-      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
-      { name: "_updated_at", description: "ISO 8601 timestamp of last update.", tags: ["string"] },
       {
         name: "options",
         description: "JSON array of current dialogue options for session resume.",
         tags: ["json"],
       },
       ...INTERNAL_PROPS,
+      ...TIMESTAMP_PROPS,
     ],
   },
   {
@@ -163,8 +162,8 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
         description: "The player input that triggered this turn.",
         tags: ["string"],
       },
-      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
       ...INTERNAL_PROPS,
+      ...TIMESTAMP_PROPS,
     ],
   },
   {
@@ -186,7 +185,17 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
       {
         name: "name",
         description: "Relationship type name (e.g. 'LOCATED_AT', 'CONNECTED_TO').",
-        tags: ["string"],
+        tags: ["string", "composite_unique_1"],
+      },
+      {
+        name: "source_label",
+        description: "Source label name.",
+        tags: ["string", "composite_unique_1"],
+      },
+      {
+        name: "target_label",
+        description: "Target label name.",
+        tags: ["string", "composite_unique_1"],
       },
       {
         name: "description",
@@ -194,25 +203,27 @@ const INTERNAL_TYPES: { name: string; description: string; properties: NodePrope
         tags: ["string"],
       },
       { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
+      ...TIMESTAMP_PROPS,
     ],
   },
   {
     name: "NodeType",
     description: `Stores the description, property schema, and category of each node type in the schema. Use ${TOOL_NAMES.MANAGE_SCHEMA} to register new types.`,
     properties: [
-      { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", tags: ["string"] },
+      { name: "name", description: "Node label (e.g. 'Entity', 'Artifact').", tags: ["string", "unique"] },
       {
         name: "description",
         description: "Human-readable description of what the node type represents.",
         tags: ["string"],
       },
-      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
       {
         name: "properties",
         description:
           "JSON array of {name, description, type} describing the node's property schema.",
         tags: ["json"],
       },
+      { name: "category", description: "INTERNAL, PREDEFINED, or GM_DEFINED.", tags: ["string"] },
+      ...TIMESTAMP_PROPS,
     ],
   },
 ];
@@ -243,8 +254,9 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     name: "Message",
     description: `A conversation message between player and GM. Linked in sequence via NEXT_MESSAGE. Automatically managed by \`${TOOL_NAMES.GENERATE_DIALOGUE}\`.`,
     properties: [
-      { name: "id", description: "Message id.", tags: ["string", "unique"] },
+      { name: "id", description: "Message id composed of 4 characters.", tags: ["string", "unique"] },
       { name: "content", description: "Message text content.", tags: ["string", "embedded"] },
+      // TODO: Replace it by TIMESTAMP_PROPS.
       { name: "timestamp", description: "ISO 8601 timestamp of the message.", tags: ["string"] },
       {
         name: "metadata",
@@ -259,7 +271,7 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
     name: "Note",
     description: `A GM note with vector embedding for semantic recall. Can link to Entities, Messages, or Plots via ABOUT_ENTITY / ABOUT_MESSAGE / ABOUT_PLOT. Automatically managed by \`${TOOL_NAMES.EDIT_NOTE}\`.`,
     properties: [
-      { name: "name", description: "Unique note name (used as lookup key).", tags: ["string"] },
+      { name: "name", description: "Unique note name (used as lookup key).", tags: ["string", "unique"] },
       {
         name: "content",
         description: "Full note content (embedded for vector search).",
@@ -280,13 +292,13 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
         tags: ["string", "unique", "embedded"],
       },
       {
-        name: "description",
-        description: "Full plot description (embedded for vector search).",
+        name: "brief",
+        description: "One-line plot summary for compact display.",
         tags: ["string", "embedded"],
       },
       {
-        name: "brief",
-        description: "One-line plot summary for compact display.",
+        name: "description",
+        description: "Full plot description (embedded for vector search).",
         tags: ["string", "embedded"],
       },
       {
@@ -296,12 +308,12 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       },
       {
         name: "trigger_condition",
-        description: "JS expression evaluated to auto-activate the plot.",
+        description: "JS expression evaluated to auto-activate the plot. Available variables: success, total, difficulty, statBonus.",
         tags: ["string"],
       },
       {
         name: "flags",
-        description: "JSON array of {flagId, description} tracking plot milestones.",
+        description: "Track plot milestones.",
         tags: ["json"],
       },
       ...TIMESTAMP_PROPS,
@@ -312,11 +324,11 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
   {
     name: "Disposition",
     description:
-      "An NPC's sentiment and summary toward a target entity. Stored as a NODE (not a relationship). Match via (npc:Entity)-[:HAS_DISPOSITION]->(d:Disposition {target_name: '...'}).",
+      "A Character's sentiment and summary toward a target entity. Stored as a NODE (not a relationship). Match via (npc:Entity)-[:HAS_DISPOSITION]->(d:Disposition {target_name: '...'}). Can have multiple nodes for a single (source_name, target_name) pair.",
     properties: [
       {
-        name: "npc_name",
-        description: "Name of the NPC entity who holds this disposition.",
+        name: "source_name",
+        description: "Name of the source entity who holds this disposition.",
         tags: ["string", "index", "composite_index_1"],
       },
       {
@@ -355,10 +367,10 @@ const PREDEFINED_TYPES: { name: string; description: string; properties: NodePro
       },
       {
         name: "label",
-        description: "Human-readable clock time label (e.g. '12:00 AM', '1:30 PM').",
+        description: "Human-readable clock time label (e.g. '12:00 AM', '1:30 PM'). This is created automatically.",
         tags: ["string"],
       },
-      { name: "_created_at", description: "ISO 8601 timestamp of creation.", tags: ["string"] },
+      ...TIMESTAMP_PROPS,
       ...INTERNAL_PROPS,
     ],
   },

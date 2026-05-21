@@ -21,7 +21,10 @@ import type { DialogueOption } from "@/types/dialogue";
 
 export const GAME_ID = "chorus-game";
 
-// Store current dialogue options on the one Conversation node for resume.
+/**
+ * Store current dialogue options on the one Conversation node for resume.
+ * @param options
+ */
 export async function saveCurrentOptions(options: DialogueOption[]): Promise<void> {
   const client = MemoryClient.getCachedInstance();
   await client.neo4j.executeWrite(
@@ -31,7 +34,9 @@ export async function saveCurrentOptions(options: DialogueOption[]): Promise<voi
   );
 }
 
-// Retrieve current dialogue options from the Conversation node.
+/**
+ * Retrieve current dialogue options from the Conversation node.
+ */
 export async function getCurrentOptions(): Promise<{
   id: string;
   options: DialogueOption[];

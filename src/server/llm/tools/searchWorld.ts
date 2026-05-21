@@ -85,7 +85,7 @@ Search your notes at the start of every turn with domains: ["Note"].
       .describe(
         "Node labels or relationship types to search (e.g. ['Entity', 'Message', 'ALLIED_WITH']). Omit to search all searchable types.",
       ),
-    limit: z.number().default(10).describe("Max results per domain. Default: 10."),
+    limit: z.number().default(3).describe("Max results per domain."),
   }),
   execute: wrapSafe(async (args) => {
     const target = args.target ?? ["node", "relationship"];

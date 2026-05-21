@@ -76,6 +76,7 @@ export class MemoryClient {
     return MemoryClient.instance;
   }
 
+  // TODO: Should be "getMemoryClient" just like "getEmbedder" or "getReranker".
   static getCachedInstance(): MemoryClient {
     if (!MemoryClient.instance) {
       throw new Error("MemoryClient not initialized. Call getInstance() first.");
@@ -83,6 +84,8 @@ export class MemoryClient {
     return MemoryClient.instance;
   }
 
+  // TODO: We should have a global event emitter to broadcast events like "server_start" or "server_close" to handle this automatically.
+  //  But where should the event get registered?
   static async closeInstance(): Promise<void> {
     if (MemoryClient.instance) {
       await MemoryClient.instance.close();

@@ -81,21 +81,25 @@ game content; the *mechanism* is engine.
 A verb's lexeme may embed its preposition (matching your `LOCATE_AT` style).
 Each verb declares which roles it needs:
 
-Roles: `ACTOR` (subject) · `OBJECT` (direct) · `WITH` (instruments) ·
-`AT` (where) · `TO` (recipient/destination).
+Roles: `ACTORS` (subject) · `OBJECT` (direct) · `WITH` (instruments) ·
+`AT` (where) · `TO` (recipient/destination) · `ABOUT` (topic).
+
+**ACTORS is an unordered set** — one or more characters. `A, B TALK …` and
+`B, A TALK …` are the *same* action. The engine composes refs in canonical
+(sorted) order and the log stores them sorted, so equality is structural.
 
 | Verb        | Signature                             | Purpose                        |
 |-------------|---------------------------------------|--------------------------------|
-| `READ`      | ACTOR READ OBJECT [AT place]          | study a text → ideas           |
-| `WORK`      | ACTOR WORK [AT place] [WITH item]     | labor → resources              |
-| `TALK_WITH` | ACTOR TALK_WITH character [AT place]  | social outcomes                |
-| `EXPLORE`   | ACTOR EXPLORE place                   | discover contents of a place   |
-| `TRAVEL_TO` | ACTOR TRAVEL_TO place                 | deliberate movement            |
-| `LOCATE_AT` | ACTOR LOCATE_AT place                 | set/dump position (utility)    |
-| `DREAM`     | ACTOR DREAM [WITH idea]               | visions, rest                  |
-| `USE_ON`    | ACTOR USE_ON item OBJECT              | craft, rites, keys, tools      |
-| `ACQUIRE`   | ACTOR ACQUIRE item                    | buy/gain via cost              |
-| `WAIT`      | ACTOR WAIT duration                   | let time pass                  |
+| `READ`      | ACTORS READ OBJECT [AT place]         | study a text → ideas           |
+| `WORK`      | ACTORS WORK [AT place] [WITH item]    | labor → resources              |
+| `TALK`      | ACTORS TALK [AT place] [ABOUT idea]   | social outcomes, group actions |
+| `EXPLORE`   | ACTORS EXPLORE place                  | discover contents of a place   |
+| `TRAVEL_TO` | ACTORS TRAVEL_TO place                | deliberate movement            |
+| `LOCATE_AT` | ACTORS LOCATE_AT place                | set/dump position (utility)    |
+| `DREAM`     | ACTORS DREAM [WITH idea]              | visions, rest                  |
+| `USE_ON`    | ACTORS USE_ON item OBJECT             | craft, rites, keys, tools      |
+| `ACQUIRE`   | ACTORS ACQUIRE item                   | buy/gain via cost              |
+| `WAIT`      | ACTORS WAIT                           | pass time (via ADVANCE outcome)|
 
 Custom verbs are declarable with the same shape — the core set is a default,
 not a closed wall.
@@ -134,21 +138,27 @@ kind:text  aspect:secret>=3  state:!sealed  -aspect:winter
 
 ```ebnf
 log        = { sentence } ;
-sentence   = [ timestamp "@" ] ( action | event ) ;
-action     = clause { "," clause } [ "->" outcomes ] ;
-event      = "EVENT" trigger { "," clause } [ "->" outcomes ] ;
-clause     = subject verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "AT" ref ] ;
-subject    = ref ;                       (* role: ACTOR *)
-objects    = ref { "," ref } ;           (* role: OBJECT *)
-reflist    = ref { "," ref } ;           (* role: WITH *)
+sentence   = [ clock "@" ] ( action | event ) ;
+clock      = day ":" hour ;                  (* day starts at 0: "0:14" *)
+action     = clause { ";" clause } [ "->" outcomes ] ;
+event      = "EVENT" trigger { ";" clause } [ "->" outcomes ] ;
+clause     = actors verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ]
+             [ "AT" ref ] [ "ABOUT" ref ] ;
+actors     = ref { "," ref } ;               (* ACTORS, 1..n, order-free *)
+objects    = ref { "," ref } ;               (* role: OBJECT *)
+reflist    = ref { "," ref } ;               (* role: WITH *)
 outcomes   = outcome { "," outcome } ;
 outcome    = operator "(" args ")" | ref ;   (* bare ref = SPAWN into hand *)
 ref        = "#" id | kind ":" name | name ; (* "#c7f3" · "text:THE_PALE_LADY" · "ANA" *)
 name       = token | """ string """ ;
 ```
 
-- A comma-separated action is **one player step** compiled from several atomic
-  verbs (e.g. walk somewhere, then act there) and committed as one log entry.
+- `;` separates **clauses** within one player step (several atomic verbs
+  committed as one log entry, e.g. walk somewhere, then act there). `,` is
+  reserved for ref lists — this is what keeps multi-actor subjects unambiguous.
+- **ACTORS is an unordered set**: `A, B TALK AT DINNING_HALL ABOUT PLAN` and
+  `B, A TALK AT DINNING_HALL ABOUT PLAN` are the same action. The log stores
+  the actor list sorted, so the two forms are byte-identical when recorded.
 - `EVENT` sentences are outcomes of the clock (time fires recipes), not
   initiated by the player.
 
@@ -158,26 +168,36 @@ Your example, canonicalized (`LOCATE_AT` becomes the context phrase `AT` —
 location is *where*, not a second verb):
 
 ```
-2026-04-05T14:00 @ ANA AT HOUSE READ text:THE_FORGETTING -> CLUE_SECRET_HIDEOUT
+0:14 @ ANA AT HOUSE READ text:THE_FORGETTING -> CLUE_SECRET_HIDEOUT
+```
+
+Two characters, order-free — both lines record identically:
+
+```
+2:19 @ ANA, BERTHA TALK AT DINNING_HALL ABOUT CLUE_SECRET_HIDEOUT
+    -> SPAWN idea:PLAN_INFILTRATION, ADVANCE(1h)
+
+2:19 @ BERTHA, ANA TALK AT DINNING_HALL ABOUT CLUE_SECRET_HIDEOUT
+    -> SPAWN idea:PLAN_INFILTRATION, ADVANCE(1h)
 ```
 
 One step, two atomic verbs (travel then act), one log entry:
 
 ```
-2026-04-05T14:00 @ ANA TRAVEL_TO VILLA, ANA AT STUDY READ text:THE_PALE_LADY
+0:14 @ ANA TRAVEL_TO VILLA; ANA AT STUDY READ text:THE_PALE_LADY
     -> CLUE_SECRET_HIDEOUT, ADVANCE(2h)
 ```
 
 Time fires an event:
 
 ```
-2026-04-05T16:00 @ EVENT dusk_falls -> SPAWN state:DREAD, NARRATE "The lamps come on."
+0:16 @ EVENT dusk_falls -> SPAWN state:DREAD, NARRATE "The lamps come on."
 ```
 
 Rite via `USE_ON` with instruments:
 
 ```
-2026-04-06T23:00 @ ANA USE_ON rite:RITE_OF_ASCENSION MY_FOLLOWER WITH item:CHALICE AT HOUSE
+1:23 @ ANA USE_ON rite:RITE_OF_ASCENSION MY_FOLLOWER WITH item:CHALICE AT HOUSE
     -> DESTROY(item:CHALICE), SPAWN idea:MARK_OF_ASCENSION INTO place:HOUSE
 ```
 
@@ -186,10 +206,13 @@ Rite via `USE_ON` with instruments:
 Each verb owns a template:
 
 ```
-READ: "{actor} reads {object} at {place}."
+READ: "{actors} read {object} at {place}."
+TALK: "{actors} talk about {topic} at {place}."
 ```
 
 → *"Ana reads The Pale Lady at the Study — she finds a clue to the hideout."*
+Actor sets join in prose as *"Ana and Bertha"*, following the canonical
+(sorted) order.
 
 The database stores the canonical sentence; prose is generated on demand
 (and localizable).
@@ -203,21 +226,23 @@ A verb definition (game data, not code):
 ```
 verb READ:
   slots:
-    actor:  kind:character
+    actors: kind:character          # a set; every member must satisfy the query
     object: kind:text  state:sealed!
   at:       optional, aspect:study      # some places read better
   duration: 1h
   recipes:
     - when:   object.aspect.secret >= 3
-      out:    SPAWN idea:CLUE(secret-2 level), NARRATE "{actor} teases out a hidden thread."
+      out:    SPAWN idea:CLUE(secret-2 level), NARRATE "{actors} tease out a hidden thread."
     - when:   at.aspect.study >= 1
-      out:    NARRATE "{actor} studies {object} carefully."
+      out:    NARRATE "{actors} study {object} carefully."
     - default:
-      out:    NARRATE "{actor} skims {object} without result."
+      out:    NARRATE "{actors} skim {object} without result."
 ```
 
 Execution model (CS-shaped):
-1. Player fills a verb's slots with cards (queries validate).
+1. Player fills a verb's slots with cards (queries validate). The ACTORS slot
+   holds a set; recipes may pin cardinality (`actors: 2` for a séance) and
+   every member must satisfy the slot query.
 2. Engine picks the first matching recipe.
 3. Recipe consumes the verb's duration, applies outcomes in order, and the
    whole step is appended to the log as canonical sentences.
@@ -242,13 +267,14 @@ CREATE TABLE entity (
 
 CREATE TABLE action (
   id          INTEGER PRIMARY KEY,
-  t_game      TEXT NOT NULL,          -- in-game timestamp, ISO-8601
+  t_game      TEXT NOT NULL,          -- in-game clock "day:hour", day 0-based
   t_real      TEXT,                   -- wall clock (optional, debugging)
-  actor       JSON,                   -- refs
+  actors      JSON,                   -- refs, stored sorted (order is not semantic)
   verb        TEXT NOT NULL,
   objects     JSON,
   instruments JSON,
   at          TEXT,                   -- place ref
+  about       TEXT,                   -- topic ref (TALK etc.)
   outcomes    JSON,
   sentence    TEXT NOT NULL           -- canonical form, lossless
 );
@@ -275,7 +301,7 @@ Card (every field is from the dictionary — nothing ad hoc):
 Verb station:
 
 ```
-▶ READ   [ actor: ______ ]  [ object: ______ ]   (takes 1h)
+▶ READ   [ actors: ______ ]  [ object: ______ ]   (takes 1h)
 ```
 
 Journal: canonical sentences, or the prose templates — same data, two views.
@@ -294,11 +320,15 @@ Journal: canonical sentences, or the prose templates — same data, two views.
    Consequence: the recipe-matching engine (§6) is the core interpreter to build.
 4. **Prose layer**: afterthought. Canonical sentences are the deliverable;
    templates get filled in per verb later.
+5. **Timestamps**: recorded as `day:hour`, day starts at 0 (`0:14` = noon of
+   the first day). Durations spill into the next day.
+6. **Multiple actors**: the subject is an unordered set (`A, B TALK …` ≡
+   `B, A TALK …`); clauses are separated by `;` so `,` stays free for lists.
+   Actors are stored sorted — equality between actions is structural.
 
 ## 10. Remaining open questions
 
-1. **Subjects**: only `character` may be ACTOR (assumed), or can any card be a
-   subject ("THE_PALE_LADY WHISPERS_TO ANA") for flavor events?
-2. Timestamps: ISO in-game datetime (assumed) vs integer ticks?
-3. The player's container: a CS-like "table" where loose cards live — one bag,
+1. **Non-character subjects**: can any card be a subject for flavor events
+   ("THE_PALE_LADY WHISPERS_TO ANA"), or only `character` kinds?
+2. The player's container: a CS-like "table" where loose cards live — one bag,
    or pockets/locations?

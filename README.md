@@ -16,10 +16,69 @@ the log — replay, provenance, and undo come free.
 - `src/dict.ts` — L1 dictionary: verbs, reserved words, outcome operators, relation types
 - `src/sentence.ts` `lexer.ts` `parse.ts` `format.ts` — L2 grammar, canonical form
 - `src/query.ts` `predicate.ts` — slot queries (§4.5) and recipe conditions (§6.3)
-- `src/content.ts` `seed.ts` — verbs/slots/recipes/prototypes/triggers as data; the sample world
+- `src/content.ts` — verbs/slots/recipes/prototypes/triggers as data
+- `src/script.ts` — the script compiler: a text file becomes world + logic (§ "sentences + small blocks")
+- `src/lenient.ts` — lenient English-ish player input → canonical steps
 - `src/engine.ts` — slots → recipes → outcomes → time → events; step-atomic REFUSE
 - `src/fold.ts` `store.ts` — replay from the log; JSONL persistence
+- `src/play.ts` — the game loop and terminal REPL
+- `src/seed.ts` — the same sample world in TypeScript (tests)
 - `src/render.ts` — journal / prose / text cards (L3 projections)
+- `scripts/the-forgotten-house.txt` — a whole game as one text file
+
+## Play
+
+```sh
+npm run play                    # plays scripts/the-forgotten-house.txt
+npm run play -- my-game.txt     # any script
+```
+
+```
+── The Forgotten House ──  (type /help)
+» read the forgetting
+ANA read THE_FORGETTING at HOUSE. ANA tease out a hidden thread.
+» ana, bertha read fairy tales
+ANA and BERTHA read FAIRY_TALES at HOUSE. …the child sleeps wiser.
+» wait
+» /story
+```
+
+The player types English-ish text (`read the pale lady`, `use on rite of
+ascension with chalice at house`); the engine assigns the clock, resolves
+names fuzzily (case, articles, underscores), and suggests corrections. Strict
+canonical sentences (`0:20 @ ANA WAIT`) pass through unchanged. Slash
+commands: `/look`, `/cards`, `/journal`, `/story`, `/undo`, `/quit`.
+
+## Script format
+
+A game is one text file — world and logic together:
+
+```
+script: The Forgotten House
+player: ANA
+start: 0:14
+
+entities:
+  HOUSE is place
+  ANA is character with occult:2, lantern:1 at HOUSE
+  STUDY is place in HOUSE with study:1
+  ANA is parent_child of BERTHA
+
+prototypes:
+  CLUE is idea deriving name from object, secret from object.secret-2
+
+triggers:
+  dusk_falls at hour 16 -> SPAWN DREAD, NARRATE "The lamps come on."
+
+verbs:
+  READ:
+    actors: 1..2 kind:character
+    object: 1 kind:text
+    duration: 1h
+    recipes:
+      read.magick_gate hidden when object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2) -> REFUSE("The letters swim like minnows.")
+      default -> NARRATE "{actors} read {object}."
+```
 
 ## Run
 

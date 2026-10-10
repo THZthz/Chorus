@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "play": "tsx examples/play.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

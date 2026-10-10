@@ -5,6 +5,9 @@ export const CORE_VERBS = [
   'LOCATE_AT', 'DREAM', 'USE_ON', 'ACQUIRE', 'WAIT',
 ] as const
 
+/** noun classes — spec §4.1 */
+export const KINDS = ['character', 'place', 'item', 'text', 'idea', 'state', 'rite', 'resource'] as const
+
 export const RESERVED_WORDS = [
   'EVENT', 'TO', 'WITH', 'AT', 'ABOUT', 'INTO', 'AS', 'AND', 'OR', 'NOT',
   ...CORE_VERBS,

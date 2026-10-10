@@ -56,8 +56,7 @@ interface Prepared {
   clause: Clause
   verb: CompiledVerb
   refs: Record<Role, Ref[]>
-  bindings: RoleBindings      // resolved against the INPUT state (validation)
-  draftBindings: RoleBindings // resolved against the DRAFT (application)
+  bindings: RoleBindings      // resolved against the INPUT state (validation & selection)
   recipe: CompiledRecipe
 }
 
@@ -130,6 +129,11 @@ export function executeStep(
   step: Step,
   opts: ExecOptions,
 ): ExecResult {
+  // monotonic mechanics time (§9.5): a step may never rewind the clock
+  if (absMin(step.clock) < stateIn.now) {
+    return rejected(`clock ${formatClock(step.clock)} is before state.now (${clockFromAbsMin(stateIn.now).day}:${clockFromAbsMin(stateIn.now).hour})`, stateIn)
+  }
+
   // 1+2. validation & selection — nothing applies unless every clause clears
   const prepared: Prepared[] = []
   for (const clause of step.clauses) {
@@ -140,44 +144,46 @@ export function executeStep(
     if ('error' in slots) return rejected(`${clause.verb}: ${slots.error}`, stateIn)
     const recipe = selectRecipe(verb, slots.bindings, stateIn)
     if ('error' in recipe) return rejected(recipe.error, stateIn)
-    prepared.push({ clause, verb, refs, bindings: slots.bindings, draftBindings: {}, recipe })
+    prepared.push({ clause, verb, refs, bindings: slots.bindings, recipe })
   }
 
   // 3. application into a draft — REFUSE discards the whole draft (§6.5)
   const draft = cloneState(stateIn)
-  // re-bind roles against the draft so outcome mutations hit the clones,
-  // never the caller's state (bindings from validation point at stateIn)
-  for (const p of prepared) {
-    const rebound: RoleBindings = {}
-    for (const role of ROLES) {
-      rebound[role] = p.refs[role]
-        .map(ref => resolveRef(draft, ref))
-        .filter((e): e is Entity => e !== null)
-    }
-    p.draftBindings = rebound
-  }
   const startMin = absMin(step.clock)
-  const collected: Outcome[] = []
-  const recipeIds: string[] = []
+  let mint = 0
   const ctx: ApplyCtx = {
     state: draft, dict, content,
-    bindings: prepared[0]?.draftBindings ?? ({} as RoleBindings),
+    bindings: {} as RoleBindings,
     now: startMin,
     recordId: opts.firstRecordId,
-    idGen: opts.idGen ?? defaultIdGen,
+    idGen: opts.idGen ?? (() => `e${opts.firstRecordId}_${++mint}`), // deterministic default (§9.3)
     extraAdvanceMin: 0,
   }
 
   let refused = false
-  outer:
-  for (const p of prepared) {
-    ctx.bindings = p.draftBindings
-    recipeIds.push(p.recipe.id)
-    for (const outcome of p.recipe.out) {
-      const res = applyOutcome(outcome, ctx)
-      collected.push(res.concrete)
-      if (res.refused) { refused = true; break outer }
+  const collected: Outcome[] = []
+  const recipeIds: string[] = []
+  try {
+    outer:
+    for (const p of prepared) {
+      // re-resolve this clause's roles against the draft right before applying,
+      // so entities an earlier clause destroyed can't be used stale (§6.6)
+      const rebound: RoleBindings = {}
+      for (const role of ROLES) {
+        rebound[role] = p.refs[role]
+          .map(ref => resolveRef(draft, ref))
+          .filter((e): e is Entity => e !== null)
+      }
+      ctx.bindings = rebound
+      recipeIds.push(p.recipe.id)
+      for (const outcome of p.recipe.out) {
+        const res = applyOutcome(outcome, ctx)
+        collected.push(res.concrete)
+        if (res.refused) { refused = true; break outer }
+      }
     }
+  } catch (err) {
+    return rejected(err instanceof Error ? err.message : String(err), stateIn)
   }
 
   const advancedMin = refused ? 0 : prepared.reduce((s, p) => s + p.verb.duration, 0) + ctx.extraAdvanceMin
@@ -226,8 +232,21 @@ function rejected(reason: string, state: State): ExecResult {
   return { records: [], state, rejected: reason }
 }
 
-function defaultIdGen(): string {
-  return 'e' + Math.random().toString(36).slice(2, 8)
+/** role args → concrete id refs captured from the draft bindings (§9.15: the log never contains sugar) */
+function concretize(args: Arg[], ctx: ApplyCtx): Arg[] {
+  const out: Arg[] = []
+  for (const a of args) {
+    if (a.t === 'role') {
+      for (const e of ctx.bindings[a.role] ?? []) out.push({ t: 'ref', ref: idRef(e.id) })
+    } else {
+      out.push(a)
+    }
+  }
+  return out
+}
+
+function idOrSelf(e: Entity | undefined, fallback: Ref | { role: Role }): Ref | { role: Role } {
+  return e ? idRef(e.id) : fallback
 }
 
 // ---------- outcome application (§4.4) ----------
@@ -303,30 +322,48 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       return { concrete: { op: 'SPAWN', args: concrete }, refused: false }
     }
     case 'DESTROY': {
-      for (const e of expand(args, ctx)) e.deadAction = ctx.recordId
-      return { concrete: o, refused: false }
+      const concrete = concretize(args, ctx)
+      for (const e of expand(concrete, ctx)) {
+        e.deadAction = ctx.recordId
+        // names are unique among the LIVING (§9.14): release the name on death
+        if (ctx.state.byName.get(e.name) === e.id) ctx.state.byName.delete(e.name)
+      }
+      return { concrete: { op: o.op, args: concrete }, refused: false }
     }
     case 'SET': {
-      const key = args.find((a): a is Extract<Arg, { t: 'str' }> => a.t === 'str')
-      const val = args.find((a): a is Extract<Arg, { t: 'int' | 'str' | 'bool' }> => a.t === 'int' || a.t === 'str' || a.t === 'bool')
-      if (!key || !val) throw new Error('SET needs (ref, key, value)')
-      for (const e of expand(args, ctx)) {
-        e.attrs[key.v] = val.v
-        if (key.v === 'expires') e.attrs['expiresAt'] = ctx.now + toMinutes(val.v)
+      // §4.4 arity: SET(ref, key, value) — positional
+      const refArg = args[0]
+      const keyArg = args[1]
+      const valArg = args[2]
+      if (!refArg || !keyArg || !valArg) throw new Error('SET needs (ref, key, value)')
+      const key = keyArg.t === 'str' ? keyArg.v : keyArg.t === 'ref' && keyArg.ref.form === 'name' ? keyArg.ref.name : null
+      if (!key) throw new Error('SET key must be a name or string')
+      let value: string | number | boolean
+      if (valArg.t === 'int' || valArg.t === 'str' || valArg.t === 'bool' || valArg.t === 'dur') value = valArg.v
+      else throw new Error('SET value must be a string, number, boolean or duration')
+      for (const e of expand([refArg], ctx)) {
+        e.attrs[key] = value
+        if (key === 'expires') e.attrs['expiresAt'] = ctx.now + toMinutes(value)
       }
       return { concrete: o, refused: false }
     }
     case 'MOVE': {
       const into = args.find((a): a is Extract<Arg, { t: 'into' }> => a.t === 'into')
       if (!into) throw new Error('MOVE needs INTO')
-      const dest = 'role' in into.ref ? ctx.bindings[into.ref.role]?.[0]?.id : resolveRef(ctx.state, into.ref)?.id
-      if (!dest) throw new Error('MOVE: unresolvable destination')
-      for (const e of expand(args, ctx)) e.attrs['container'] = dest
-      return { concrete: o, refused: false }
+      const intoConcrete: Arg = 'role' in into.ref
+        ? { t: 'into', ref: idOrSelf(ctx.bindings[into.ref.role]?.[0], into.ref) }
+        : into
+      const dest = 'role' in intoConcrete.ref
+        ? undefined
+        : resolveRef(ctx.state, intoConcrete.ref)?.id
+      if (!dest || typeof dest !== 'string') throw new Error('MOVE: unresolvable destination')
+      for (const e of expand(concretize(args.filter(a => a.t !== 'into'), ctx), ctx)) e.attrs['container'] = dest
+      return { concrete: { op: o.op, args: [...concretize(args.filter(a => a.t !== 'into'), ctx), intoConcrete] }, refused: false }
     }
     case 'REVEAL': {
-      for (const e of expand(args, ctx)) e.attrs['state.hidden'] = false
-      return { concrete: o, refused: false }
+      const concrete = concretize(args, ctx)
+      for (const e of expand(concrete, ctx)) e.attrs['state.hidden'] = false
+      return { concrete: { op: o.op, args: concrete }, refused: false }
     }
     case 'ADVANCE': {
       const d = args[0]
@@ -360,7 +397,8 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       const type = refs[2].ref.form === 'name' ? refs[2].ref.name : null
       if (a && b && type) {
         const def = ctx.dict.relationDef(type)
-        ctx.state.relations.delete(relationKey(a.id, b.id, type, def.symmetric))
+        const rel = ctx.state.relations.get(relationKey(a.id, b.id, type, def.symmetric))
+        if (rel) rel.deadAction = ctx.recordId // §7: stamp, don't erase — undo re-folds
       }
       return { concrete: o, refused: false }
     }
@@ -410,15 +448,17 @@ function cloneAspects(a: Aspects): Aspects {
  */
 export function applyRecord(record: ActionRecord, state: State, dict: Dictionary, content: CompiledContent): void {
   if (record.outcomes.some(o => o.op === 'REFUSE')) return // refused: state no-op, clock untouched (§6.5)
-  state.now = absMin(parseClock(record.tGame))
+  // events don't own the clock — only action records advance/rebase it (§7)
+  if (record.kind === 'action') state.now = absMin(parseClock(record.tGame))
+  const startMin = absMin(parseClock(record.tGame))
   // rebuild role bindings from the record itself so role-ref outcomes
-  // (MOVE ACTORS INTO OBJECT …) replay without the original step context
+  // replay without the original step context (concrete outcomes make this rare)
   const one = (ref: Ref | null): Entity[] => {
     if (!ref) return []
     const e = resolveRef(state, ref)
     return e ? [e] : []
   }
-  const idCounter = { n: 0 }
+  let n = 0
   const ctx: ApplyCtx = {
     state, dict, content,
     bindings: {
@@ -429,13 +469,13 @@ export function applyRecord(record: ActionRecord, state: State, dict: Dictionary
       about: one(record.about),
       to: [],
     },
-    now: absMin(parseClock(record.tGame)),
+    now: startMin,
     recordId: record.id,
-    idGen: () => `r${record.id}s${idCounter.n++}`, // deterministic fallback for AS-less SPAWNs
+    idGen: () => `r${record.id}s${++n}`, // deterministic fallback for AS-less SPAWNs
     extraAdvanceMin: 0,
   }
   for (const o of record.outcomes) applyOutcome(o, ctx)
-  state.now += record.advancedMin
+  if (record.kind === 'action') state.now = startMin + record.advancedMin
 }
 
 // ---------- events: triggers & expiries (§6.6, §9.16) ----------
@@ -450,6 +490,11 @@ function fireCrossingEvents(
   idGen: () => string,
 ): ActionRecord[] {
   const records: ActionRecord[] = []
+  // snapshot expiries before the pass — §6.6: no cascades within one advance;
+  // expiries created by this pass's outcomes resolve at the NEXT advance
+  const expiring = [...state.entities.values()]
+    .filter(e => e.deadAction === null && typeof e.attrs['expiresAt'] === 'number')
+    .map(e => ({ id: e.id, name: e.name, at: e.attrs['expiresAt'] as number }))
   for (const absHour of crossedHours(fromMin, toMin)) {
     // authored triggers first, then expiries — deterministic order (§9.16)
     for (const trig of content.triggers) {
@@ -459,10 +504,10 @@ function fireCrossingEvents(
       for (const o of trig.out) outcomes.push(applyOutcome(o, ctx).concrete)
       records.push(makeEventRecord(firstEventId + records.length, trig.id, absHour, outcomes, dict))
     }
-    for (const e of [...state.entities.values()]) {
-      if (e.deadAction !== null) continue
-      const expAt = e.attrs['expiresAt']
-      if (typeof expAt !== 'number' || expAt > absHour * 60) continue
+    for (const exp of expiring) {
+      if (exp.at > absHour * 60) continue
+      const e = state.entities.get(exp.id)
+      if (!e || e.deadAction !== null) continue
       const ctx = makeEventCtx(state, dict, content, absHour, firstEventId + records.length, idGen)
       const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: nameRef(e.name) }] }
       const outcomes = [applyOutcome(destroy, ctx).concrete]

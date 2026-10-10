@@ -2,7 +2,7 @@
 // time ownership (§9.12), events (§9.16), fold determinism (§7).
 import { describe, expect, test } from 'vitest'
 import { compileContent } from '../src/content.js'
-import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
+import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { fold, foldUpTo } from '../src/fold.js'
 import { parseSentence } from '../src/parse.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
@@ -183,11 +183,11 @@ describe('fold — state = fold(log), determinism, undo (§7)', () => {
     const log = new Log(seedState())
     const steps = [
       '0:14 @ ANA READ THE_FORGETTING',
-      '0:16 @ ANA, BERTHA READ FAIRY_TALES',
-      '0:18 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT',
-      '0:20 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ MAGICK_BOOK',
-      '0:22 @ ANA WAIT',
-      '0:23 @ ANA WAIT', // crosses 16 → dusk event
+      '0:15 @ ANA, BERTHA READ FAIRY_TALES', // ends 0:16 → dusk event row
+      '0:16 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT',
+      '0:17 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ MAGICK_BOOK',
+      '0:20 @ ANA WAIT',
+      '0:21 @ ANA WAIT',
     ]
     let id = 1
     for (const step of steps) {
@@ -236,11 +236,130 @@ describe('fold — state = fold(log), determinism, undo (§7)', () => {
 })
 
 describe('dictionary is the law (§9.14)', () => {
-  test('SPAWN cannot mint a duplicate name among the living', () => {
+  test('SPAWN cannot mint a duplicate name among the living (§9.14)', () => {
     const { state } = setup()
     const r = run(state, '0:14 @ ANA, BERTHA READ FAIRY_TALES') // mints BONDING_MEMORY
     expect(r.rejected).toBeNull()
-    expect(() => run(r.state, '0:16 @ ANA, BERTHA READ FAIRY_TALES')).toThrow(/already in use/)
+    const r2 = run(r.state, '0:16 @ ANA, BERTHA READ FAIRY_TALES')
+    expect(r2.rejected).toMatch(/already in use/)
+    expect(r2.records).toHaveLength(0)
+  })
+
+  test('names of dead entities are reusable (§9.14: unique among the LIVING)', () => {
+    const { state } = setup()
+    const r = run(state, '0:14 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('chalice')!.deadAction).not.toBeNull()
+    expect(r.state.byName.has('CHALICE')).toBe(false)
+    // a new CHALICE can be minted after the old one died
+    const rec = {
+      id: 99, kind: 'action' as const, trigger: null, tGame: '0:20', tReal: null, advancedMin: 0,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+      outcomes: [{ op: 'SPAWN', args: [{ t: 'ref', ref: { form: 'name', kind: 'item', name: 'CHALICE' } }, { t: 'asId', id: 'new_chalice' }] }],
+      recipes: [], sentence: '',
+    }
+    applyRecord(rec as ActionRecord, r.state, dict, content)
+    expect(r.state.byName.get('CHALICE')).toBe('new_chalice')
+  })
+})
+
+describe('review regressions', () => {
+  test('SET stores the given value positionally (ref, key, value)', () => {
+    const { state } = setup()
+    const rec = {
+      id: 1, kind: 'action' as const, trigger: null, tGame: '0:14', tReal: null, advancedMin: 0,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+      outcomes: [{
+        op: 'SET',
+        args: [
+          { t: 'ref', ref: { form: 'name', name: 'CHALICE' } },
+          { t: 'str', v: 'state.sealed' },
+          { t: 'bool', v: true },
+        ],
+      }],
+      recipes: [], sentence: '',
+    }
+    applyRecord(rec as ActionRecord, state, dict, content)
+    expect(state.entities.get('chalice')!.attrs['state.sealed']).toBe(true)
+  })
+
+  test('SET expires materializes expiresAt from the record clock', () => {
+    const { state } = setup()
+    const rec = {
+      id: 1, kind: 'action' as const, trigger: null, tGame: '0:14', tReal: null, advancedMin: 0,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+      outcomes: [{
+        op: 'SET',
+        args: [
+          { t: 'ref', ref: { form: 'name', name: 'CHALICE' } },
+          { t: 'str', v: 'expires' },
+          { t: 'dur', v: 120 },
+        ],
+      }],
+      recipes: [], sentence: '',
+    }
+    applyRecord(rec as ActionRecord, state, dict, content)
+    expect(state.entities.get('chalice')!.attrs['expiresAt']).toBe(14 * 60 + 120)
+  })
+
+  test('relationKey: symmetric edges share one canonical key; directed keep order', () => {
+    const { state } = setup()
+    const relate = (outcomeSrc: string, id: number) => {
+      const s = parseSentence(`0:0 @ ANA WAIT -> ${outcomeSrc}`, dict)
+      applyRecord({
+        id, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+        actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+        outcomes: s.outcomes, recipes: [], sentence: '',
+      }, state, dict, content)
+    }
+    relate('RELATE(BERTHA, ANA, parent_child)', 1)
+    relate('RELATE(BERTHA, ANA, parent_of)', 2)
+    const keys = [...state.relations.keys()]
+    expect(keys.filter(k => k.includes('parent_child'))).toEqual(['ana|bertha|parent_child']) // one canonical edge
+    expect(keys.filter(k => k.includes('parent_of'))).toEqual(['bertha|ana|parent_of'])      // directed, as stored
+    relate('UNRELATE(ANA, BERTHA, parent_child)', 3)
+    expect([...state.relations.values()].find(r => r.type === 'parent_child')!.deadAction).toBe(3)
+  })
+
+  test('fold clock: a log ending past an event keeps the action end time (§7)', () => {
+    const { state } = setup()
+    state.entities.get('chalice')!.attrs['expiresAt'] = 15 * 60
+    const r = run(state, '0:14 @ ANA WAIT; ANA WAIT; ANA WAIT') // 14→17, events at 15/16
+    expect(r.records.filter(x => x.kind === 'event').length).toBeGreaterThanOrEqual(2)
+    const replayed = fold(r.records, seedState(), dict, content)
+    expect(replayed.now).toBe(r.state.now) // events must not drag the clock back
+    expect(replayed.now).toBe(17 * 60)
+  })
+
+  test('role sugar is concretized in the log (§9.15): replay matches play exactly', () => {
+    const { state } = setup()
+    const r = run(state, '0:14 @ ANA, BERTHA TRAVEL_TO VILLA; MY_FOLLOWER WAIT')
+    expect(r.rejected).toBeNull()
+    // the recorded MOVE must name ANA and BERTHA, not ACTORS
+    const move = r.records[0].outcomes.find(o => o.op === 'MOVE')!
+    const refs = move.args.filter((a): a is Extract<import('../src/sentence.js').Arg, { t: 'ref' }> => a.t === 'ref')
+    expect(refs.map(a => a.ref.form === 'id' && a.ref.id).sort()).toEqual(['ana', 'bertha'])
+    const replayed = fold(r.records, seedState(), dict, content)
+    expect(replayed.entities.get('follower')!.attrs['container']).toBe('house') // not dragged along
+    expect(replayed.entities.get('ana')!.attrs['container']).toBe('villa')
+  })
+
+  test('steps cannot rewind the clock (§9.5)', () => {
+    const { state } = setup()
+    state.now = 10 * 60
+    const r = run(state, '0:3 @ ANA WAIT')
+    expect(r.rejected).toMatch(/before state\.now/)
+    expect(r.records).toHaveLength(0)
+  })
+
+  test('application failures become rejections, not throws (§6.6)', () => {
+    const { state } = setup()
+    const r = run(state, '0:14 @ ANA, BERTHA READ FAIRY_TALES')
+    expect(r.rejected).toBeNull()
+    const r2 = run(r.state, '0:16 @ ANA, BERTHA READ FAIRY_TALES') // duplicate mint name
+    expect(r2.rejected).toMatch(/already in use/)
+    expect(r2.records).toHaveLength(0)
+    expect(r2.state).toBe(r.state)
   })
 })
 

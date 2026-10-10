@@ -94,7 +94,9 @@ export function attrGet(e: Entity, key: string): AttrValue | undefined {
 }
 
 export function relationKey(a: string, b: string, type: string, symmetric: boolean): string {
-  if (!symmetric && a > b) [a, b] = [b, a]
+  // symmetric edges get one canonical key (sorted); directed edges keep the
+  // stored direction — swapping directed endpoints loses the direction
+  if (symmetric && a > b) [a, b] = [b, a]
   return `${a}|${b}|${type}`
 }
 

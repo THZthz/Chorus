@@ -142,6 +142,7 @@ class Parser {
       this.next()
       const n = this.next()
       if (n.t !== 'name') throw new Error(`expected name after kind ':', got '${show(n)}'`)
+      if (this.dict.reserved.has(n.v)) throw new Error(`'${n.v}' is reserved and cannot be a name (quote it)`)
       return { form: 'name', kind: t.v, name: n.v }
     }
     return { form: 'name', name: t.v }
@@ -250,6 +251,12 @@ class Parser {
         this.next(); this.next()
         return { t: 'pair', k: t.v, v: this.valueToken() }
       }
+      // dotted names in arg position are string keys: SET(x, state.sealed, true)
+      if (this.atPunct('.') && this.peek(1)?.t === 'name') {
+        let key = t.v
+        while (this.atPunct('.')) { this.next(); const part = this.next(); if (part.t !== 'name') throw new Error(`bad dotted key '${key}.'`); key += '.' + part.v }
+        return { t: 'str', v: key }
+      }
       return { t: 'ref', ref: this.ref() }
     }
     throw new Error(`unexpected token in outcome args: '${show(t)}'`)
@@ -268,6 +275,7 @@ class Parser {
   private valueToken(): string | number | boolean {
     const t = this.next()
     if (t.t === 'int') return t.v
+    if (t.t === 'dur') return t.v // minutes
     if (t.t === 'str') return t.v
     if (t.t === 'name') {
       if (t.v === 'true') return true

@@ -148,7 +148,7 @@ kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:wi
 - `-` prefix — negation
 
 Slot queries test **one card at a time**. Anything about a *group* (size,
-relations between members, pooled power) is a recipe condition (§6.3) — that
+relations between members, pooled power) is a recipe condition (§6.4) — that
 is deliberate: the UI can grey-out invalid drops from slots alone, while
 group logic stays narrative.
 
@@ -245,17 +245,20 @@ The database stores the canonical sentence; prose is generated on demand
 
 ### 6.1 Slot cardinality: how many cards a role takes
 
-A slot declares a **count** and a query every member must satisfy:
+A slot declares a **count**, an optional visibility flag, and a query every
+member must satisfy:
 
 ```
-slot  := role ":" count ["," query]
+slot  := role ":" count ["," ("shown"|"hidden")] ["," query]
 count := "1" | "2" | "1..2" | "2.." | "0..1"      (default: exactly 1)
+flag  := "shown" (default) | "hidden"
 ```
 
 ```
 verb READ:   slots: actors: 1..2, kind:character     # one or two readers
 verb DREAM:  slots: actors: 1, kind:character        # strictly solo
-verb USE_ON: slots: actors: 1..5, kind:character     # a coven may be needed
+verb USE_ON: slots: actors: 1..5, kind:character,    # a coven may be needed
+                    object: 1, kind:rite, with: 0..2, kind:item
 ```
 
 Cardinality is the **general** rule only. Exceptions ("two may read *unless*
@@ -263,7 +266,27 @@ the book is magick") are recipes, not slots — a rule the UI can apply without
 understanding content (grey-out) and a narrative the engine can speak when the
 exception bites (REFUSE, below).
 
-### 6.2 Condition predicates (recipe `when`)
+### 6.2 Requirement visibility (`shown` / `hidden`)
+
+Requirements surface in three places, each independently controllable:
+
+| Surface            | Controlled by            | Default | Hidden means…                             |
+|--------------------|--------------------------|---------|-------------------------------------------|
+| Slot badge         | slot `shown`/`hidden`    | shown   | no badge; slot still rejects bad drops    |
+| Drop pre-warning   | gate recipe `shown:`     | hidden  | no warning; discovered by doing           |
+| Refuse narration   | — always spoken          | —       | committed attempts always narrate         |
+
+Rules:
+
+- A **slot** marked `hidden` accepts and rejects silently — the player pokes
+  at it to learn its taste.
+- A **gate recipe** marked `shown: true` (with a `hint:` line, §6.4) lets the
+  UI *warn before committing* ("Ana lacks occult:2"). Warning ≠ blocking — the
+  player may still insist, and the engine, not the UI, has the final word.
+- Visibility is **display-only**: it never changes matching, outcomes, or the
+  log. The canonical sentence is identical either way.
+
+### 6.3 Condition predicates (recipe `when`)
 
 ```
 role refs    actors · objects · with · object · at      (set roles vs single)
@@ -277,7 +300,14 @@ aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
 logic        AND · OR · NOT (uppercase)
 ```
 
-### 6.3 Recipes: first match wins, most specific first
+### 6.4 Recipes: first match wins, most specific first
+
+A recipe is `when` (or `default`), `out`, and optional `shown`/`hint`:
+
+```
+recipe := ("- when:" cond | "- default") "out:" outcomes
+          ["shown:" true|false]  ["hint:" "text"]     (default: shown: false)
+```
 
 Your three cases, end to end:
 
@@ -289,8 +319,10 @@ verb READ:
   at:       optional, aspect:study
   duration: 1h
   recipes:
-    # 3) hard gate — nobody present knows enough; costs NO time
+    # 3) hard gate — nobody present knows enough; costs NO time.
+    #    Hidden: the player discovers it by opening the book.
     - when:   object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2)
+      shown:  false
       out:    REFUSE("The letters swim like minnows.")
 
     # 2) two readers who are parent & child → different outcome
@@ -310,7 +342,8 @@ verb READ:
       out:    NARRATE "{actors} read {object}."
 ```
 
-And the "capacity is conditional" case — a rite that needs *enough* people:
+And the "capacity is conditional" case — a rite that needs *enough* people,
+with its requirement **posted openly**:
 
 ```
 verb USE_ON:
@@ -321,20 +354,24 @@ verb USE_ON:
   duration: 3h
   recipes:
     - when:   total(actors, aspect:lantern) < object.aspect.demand
+      shown:  true
+      hint:   "The rite wants pooled lantern — it will starve."
       out:    REFUSE("The rite starves for light.")
     - default:
       out:    ...continue...
 ```
 
-### 6.4 REFUSE semantics
+### 6.5 REFUSE semantics
 
 - Aborts the remaining outcomes: **no state change, no time passes**.
 - The attempt **is still appended to the log** (with the REFUSE outcome) — the
   journal tells the story of failure too: *"Ana opens the magick book; the
   letters swim like minnows."*
+- `shown` gates warn at drop time; `hidden` gates speak only on commit.
+  Same log entry either way — only the UI differs.
 - This is what makes knowledge gates feel like the fiction instead of a padlock.
 
-### 6.5 Execution model (CS-shaped)
+### 6.6 Execution model (CS-shaped)
 
 1. Player fills a verb's slots with cards. Slot queries + cardinality validate
    immediately (invalid drops are rejected by the UI).
@@ -405,10 +442,15 @@ Card (every field is from the dictionary — nothing ad hoc):
 └──────────────────────────────┘
 ```
 
-Verb station:
+Verb station (requirement badges per §6.2 — shown gates print their hint,
+hidden gates print nothing):
 
 ```
-▶ READ   [ actors: ______ ]  [ object: ______ ]   (takes 1h)
+▶ USE_ON  [ actors: 1..5 characters ]  [ object: a rite ]  [ with: 0..2 items ]
+    ⚠ The rite wants pooled lantern — it will starve.        (shown gate)
+
+▶ READ    [ actors: 1..2 characters ]  [ object: a text ]   (takes 1h)
+                                                          (magick gate: hidden)
 ```
 
 Journal: canonical sentences, or the prose templates — same data, two views.
@@ -438,6 +480,10 @@ Journal: canonical sentences, or the prose templates — same data, two views.
 8. **Cardinality vs exceptions**: slots declare the general count rule
    (validated by the UI); *conditional* exceptions are REFUSE recipes.
    Refused attempts cost no time but are logged — failure is part of the story.
+9. **Requirement visibility**: `shown`/`hidden` on slots and gate recipes,
+   **display-only** (never affects matching or the log). Defaults: slots
+   shown, gates hidden — explicit requirements inform the player up front;
+   hidden ones are discovered through the REFUSE fiction.
 
 ## 10. Remaining open questions
 

@@ -64,17 +64,28 @@ projection of that data, never the source of truth.
 | `rite`      | A procedure-as-card the player owns       | a summoning rite                 |
 | `resource`  | Abstract player stats as cards            | vitality, passion, reason        |
 
-### 4.2 ASPECTS (tags, the matching currency)
+### 4.2 Entity properties (what a card carries)
 
-Two sorts:
+| Property  | Shape                               | Examples                        |
+|-----------|-------------------------------------|---------------------------------|
+| aspects   | weighted tags, optional dot sub-key | `lantern:2`, `language.latin:2` |
+| attrs     | scalars                             | `age:34`, `mood:restless`       |
+| relations | typed edges to *other* cards        | `(BERTHA, parent_child)`        |
+
+Aspects come in two sorts:
 
 - **Structural** — the engine knows their meaning:
   `portable`, `locked`, `sealed`, `perishable`, `unique`, `hidden`.
-- **Principles** — game-defined, weighted (`aspect:level`):
-  e.g. `lantern:2`, `winter:1`, `language:latin`, `secret:4`.
+- **Principles** — game-defined, weighted: `lantern:2`, `winter:1`, `secret:4`.
 
-Aspects are how slots and recipes match cards (§7). The *set* of principles is
-game content; the *mechanism* is engine.
+**Knowledge is aspects on a character** (`occult:3`, `language.latin:2`) —
+there is no separate skill system. Aspects are how slots and recipes match
+cards (§6). The *set* of principles is game content; the *mechanism* is engine.
+
+**Relations** are facts *between* two cards (the social graph): typed edges
+declared in the dictionary as `symmetric` (`parent_child`) or `directed`
+(`parent_of`). They change only via `RELATE`/`UNRELATE` outcomes and live in
+their own table (§7). Condition predicates read them: `rel(parent_child, actors)`.
 
 ### 4.3 VERBS (v1 core set)
 
@@ -115,6 +126,12 @@ not a closed wall.
 | `REVEAL` | ref                         | unlock hidden text / mark discovered|
 | `ADVANCE`| duration                    | move the in-game clock              |
 | `NARRATE`| "text"                      | a journal line only; no state change|
+| `RELATE` | a, b, type [, value]        | create a relation edge between two cards |
+| `UNRELATE`| a, b, type                 | remove a relation edge              |
+| `REFUSE` | "text"                      | abort the step: no state change, no time cost; the attempt is still logged |
+
+Outcomes apply in order; `REFUSE` ends them (useful mid-list for "pay, then
+find it impossible").
 
 Shorthand: a bare ref in an outcome list means `SPAWN` that ref into the
 player's hand — so `-> CLUE_SECRET_HIDEOUT` works exactly as in your example.
@@ -122,13 +139,18 @@ player's hand — so `-> CLUE_SECRET_HIDEOUT` works exactly as in your example.
 ### 4.5 Query mini-language (used by slots & recipes)
 
 ```
-kind:text  aspect:secret>=3  state:!sealed  -aspect:winter
+kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:winter
 ```
 
 - `kind:` — exactly one kind
-- `aspect:name[>=|<=|=]level` — principle match (bare `aspect:x` = level ≥ 1)
+- `aspect:name[.sub][>=|<=|=]level` — principle match (bare `aspect:x` = level ≥ 1)
 - `state:key[=|!]value` — attribute match
 - `-` prefix — negation
+
+Slot queries test **one card at a time**. Anything about a *group* (size,
+relations between members, pooled power) is a recipe condition (§6.3) — that
+is deliberate: the UI can grey-out invalid drops from slots alone, while
+group logic stays narrative.
 
 ---
 
@@ -219,33 +241,108 @@ The database stores the canonical sentence; prose is generated on demand
 
 ---
 
-## 6. Engine layer — verbs, slots, recipes (content model)
+## 6. Engine layer — properties, slots, recipes (content model)
 
-A verb definition (game data, not code):
+### 6.1 Slot cardinality: how many cards a role takes
+
+A slot declares a **count** and a query every member must satisfy:
+
+```
+slot  := role ":" count ["," query]
+count := "1" | "2" | "1..2" | "2.." | "0..1"      (default: exactly 1)
+```
+
+```
+verb READ:   slots: actors: 1..2, kind:character     # one or two readers
+verb DREAM:  slots: actors: 1, kind:character        # strictly solo
+verb USE_ON: slots: actors: 1..5, kind:character     # a coven may be needed
+```
+
+Cardinality is the **general** rule only. Exceptions ("two may read *unless*
+the book is magick") are recipes, not slots — a rule the UI can apply without
+understanding content (grey-out) and a narrative the engine can speak when the
+exception bites (REFUSE, below).
+
+### 6.2 Condition predicates (recipe `when`)
+
+```
+role refs    actors · objects · with · object · at      (set roles vs single)
+scalar       object.aspect.secret >= 3
+             object.aspect.language.latin >= 2
+             actors.attr.morale = high          # set roles: only via predicates below
+cardinality  count(actors) = 2
+quantifiers  every(actors, aspect:occult >= 2) · any(actors, aspect:child)
+pairwise     rel(parent_child, actors)          # ∃ a pair of actors with this relation
+aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
+logic        AND · OR · NOT (uppercase)
+```
+
+### 6.3 Recipes: first match wins, most specific first
+
+Your three cases, end to end:
 
 ```
 verb READ:
   slots:
-    actors: kind:character          # a set; every member must satisfy the query
-    object: kind:text  state:sealed!
-  at:       optional, aspect:study      # some places read better
+    actors: 1..2, kind:character
+    object: 1, kind:text
+  at:       optional, aspect:study
   duration: 1h
   recipes:
+    # 3) hard gate — nobody present knows enough; costs NO time
+    - when:   object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2)
+      out:    REFUSE("The letters swim like minnows.")
+
+    # 2) two readers who are parent & child → different outcome
+    - when:   count(actors) = 2 AND rel(parent_child, actors)
+      out:    SPAWN idea:BONDING_MEMORY,
+              NARRATE "{actors} read aloud; the child falls asleep wiser."
+
+    # 2b) two readers, unrelated → allowed but poorer
+    - when:   count(actors) = 2
+      out:    NARRATE "{actors} trade the book back and forth and lose the thread."
+
+    # solo study of a secret text
     - when:   object.aspect.secret >= 3
       out:    SPAWN idea:CLUE(secret-2 level), NARRATE "{actors} tease out a hidden thread."
-    - when:   at.aspect.study >= 1
-      out:    NARRATE "{actors} study {object} carefully."
+
     - default:
-      out:    NARRATE "{actors} skim {object} without result."
+      out:    NARRATE "{actors} read {object}."
 ```
 
-Execution model (CS-shaped):
-1. Player fills a verb's slots with cards (queries validate). The ACTORS slot
-   holds a set; recipes may pin cardinality (`actors: 2` for a séance) and
-   every member must satisfy the slot query.
-2. Engine picks the first matching recipe.
-3. Recipe consumes the verb's duration, applies outcomes in order, and the
-   whole step is appended to the log as canonical sentences.
+And the "capacity is conditional" case — a rite that needs *enough* people:
+
+```
+verb USE_ON:
+  slots:
+    actors: 1..5, kind:character
+    object: 1, kind:rite
+    with:    0..2, kind:item
+  duration: 3h
+  recipes:
+    - when:   total(actors, aspect:lantern) < object.aspect.demand
+      out:    REFUSE("The rite starves for light.")
+    - default:
+      out:    ...continue...
+```
+
+### 6.4 REFUSE semantics
+
+- Aborts the remaining outcomes: **no state change, no time passes**.
+- The attempt **is still appended to the log** (with the REFUSE outcome) — the
+  journal tells the story of failure too: *"Ana opens the magick book; the
+  letters swim like minnows."*
+- This is what makes knowledge gates feel like the fiction instead of a padlock.
+
+### 6.5 Execution model (CS-shaped)
+
+1. Player fills a verb's slots with cards. Slot queries + cardinality validate
+   immediately (invalid drops are rejected by the UI).
+2. Engine picks the **first** recipe whose `when` holds — content authors keep
+   specific recipes above general ones.
+3. Recipe applies outcomes in order; unless a REFUSE aborts, the step consumes
+   its duration and is appended to the log as canonical sentences, tagged with
+   the fired recipe id (provenance).
 
 Perishables/decay v0.1: an entity may carry `expires: +24h`; when `ADVANCE`
 crosses it, the engine emits an `EVENT` whose outcomes destroy/mutate it.
@@ -265,6 +362,15 @@ CREATE TABLE entity (
   dead_action  INTEGER                -- action id that destroyed it (NULL = alive)
 );
 
+CREATE TABLE relation (
+  a           TEXT NOT NULL,          -- entity id (sorted a <= b when symmetric)
+  b           TEXT NOT NULL,
+  type        TEXT NOT NULL,          -- dictionary relation type
+  value       INTEGER DEFAULT 1,      -- strength, optional
+  born_action INTEGER,
+  dead_action INTEGER
+);
+
 CREATE TABLE action (
   id          INTEGER PRIMARY KEY,
   t_game      TEXT NOT NULL,          -- in-game clock "day:hour", day 0-based
@@ -276,6 +382,7 @@ CREATE TABLE action (
   at          TEXT,                   -- place ref
   about       TEXT,                   -- topic ref (TALK etc.)
   outcomes    JSON,
+  recipe      TEXT,                   -- which recipe fired (provenance/debug)
   sentence    TEXT NOT NULL           -- canonical form, lossless
 );
 ```
@@ -325,6 +432,12 @@ Journal: canonical sentences, or the prose templates — same data, two views.
 6. **Multiple actors**: the subject is an unordered set (`A, B TALK …` ≡
    `B, A TALK …`); clauses are separated by `;` so `,` stays free for lists.
    Actors are stored sorted — equality between actions is structural.
+7. **Entity properties** = aspects (weighted, optional dot sub-keys) + attrs +
+   relations. Knowledge is just aspects (`occult:3`); relations are typed
+   edges, mutated only by `RELATE`/`UNRELATE`.
+8. **Cardinality vs exceptions**: slots declare the general count rule
+   (validated by the UI); *conditional* exceptions are REFUSE recipes.
+   Refused attempts cost no time but are logged — failure is part of the story.
 
 ## 10. Remaining open questions
 

@@ -84,8 +84,10 @@ recipes. **Knowledge is aspects on a character** (`occult:3`,
 
 **Structural properties are attrs**, not aspects. Engine-known attr keys:
 `container` (where the card sits), `expires` (`+24h` style; the engine
-materializes `expiresAt` = current clock + duration at set time), boolean
-flags `state.sealed`, `state.locked`, `portable`, `unique`, `hidden`.
+materializes `expiresAt` = current clock + duration at set time), and the
+boolean flag namespace `state.*`: `state.sealed`, `state.locked`,
+`state.hidden`, `state.portable`, `state.unique`. Queries read them via
+`state:sealed` / `state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
 
 **Relations** are facts *between* two cards (the social graph): typed edges
 declared in the dictionary as `symmetric` (`parent_child`) or `directed`
@@ -147,7 +149,7 @@ kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:wi
 
 - `kind:` — exactly one kind
 - `aspect:name[.sub][>=|<=|=]level` — principle match (bare `aspect:x` = level ≥ 1)
-- `state:key[=|!]value` — attr match (structural flags live here)
+- `state:key[=|!]value` — attr match against the `state.*` namespace (`state:!sealed` → `attrs['state.sealed']`)
 - `-` prefix — negation
 
 Slot queries test **one card at a time**. Anything about a *group* (size,
@@ -335,7 +337,7 @@ verb READ:
   slots:
     actors: 1..2, kind:character
     object: 1, kind:text
-  at:       0..1, aspect:study
+  at:       0..1, kind:place
   duration: 1h
   recipes:
     # hard gate — nobody present knows enough; costs NO time.

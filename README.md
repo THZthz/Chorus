@@ -13,6 +13,11 @@ minutes; durations may be authored in `halfhour` units — `1halfhour` = 30
 minutes). Game state is a fold of the log — replay, provenance, and undo
 come free.
 
+**No backward compatibility, by design.** Formats and APIs may break between
+any two commits (v0.2.3 re-scaled the clock and invalidated every earlier
+log). There are no migration shims — re-author or migrate old logs and
+scripts by hand.
+
 ## Layout
 
 - `src/dict.ts` — L1 dictionary: verbs, reserved words, outcome operators, relation types

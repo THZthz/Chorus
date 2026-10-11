@@ -34,6 +34,12 @@ projection of that data, never the source of truth.
 > `halfhour` duration unit (§5.1), triggers fire per halfhour crossing
 > (`at hour N` remains as an alias for slot 2N, §10), and quantization/
 > dead-air semantics re-anchor on the halfhour tick (§9.28).
+>
+> **Compatibility: none, by design.** Nothing in this document is a
+> stability guarantee — the grammar, the log and script formats, and the
+> API may break at any version boundary (v0.2.2 changed event semantics;
+> v0.2.3 re-scaled the clock). Old logs are not replay contracts: re-author
+> or migrate them yourself; the engine ships no migration path (§9.30).
 
 ---
 
@@ -636,6 +642,9 @@ CREATE TABLE action (
   action records alone (`t_game` + `advanced_min`, §6.6). A once-trigger's
   fired-ness is likewise a projection: the fold marks it from each EVENT
   row's `trigger` (§9.29).
+- **The log is a working file, not a stable contract** (§9.30): it replays
+  under *this* spec version only. When a change breaks old logs, re-author
+  or migrate them by hand.
 - **Journal view** = the `sentence` column in order — the game *is* a book.
 - The shipped store is JSONL — one record per line (`saveLog`/`loadLog`); the
   SQL shape above is the queryable target when one is wanted.
@@ -783,6 +792,15 @@ Journal: canonical sentences, or the prose templates — same data, two views
     of their halfhour-of-day unless authored `once`; a once-trigger fires on
     its first crossing only. Fired-ness lives in the state as a projection
     rebuilt from EVENT rows at fold — event-sourced, undo-safe.
+
+### Implementation rulings (v0.2.3, the halfhour clock)
+
+30. **No backward compatibility, deliberately** (also the header note):
+    grammar, log and script formats, and API carry no stability guarantee
+    across versions — v0.2.3 alone broke every pre-existing log by
+    re-scaling `day:hour` to `day:halfhour`. The engine ships no migration
+    shims and no version detection; when a change breaks old files,
+    re-author or migrate them by hand.
 
 ## 10. The script format — a game as one text file
 

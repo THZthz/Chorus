@@ -243,6 +243,7 @@ const WIN_PATH = [
   'read the solicitor letter',
   'explore the firebox',
   'read the vane ledger',
+  'talk with the spiritualist', // meet Seraphine — the name is learned by talking
   'seraphine read the wax cylinder',
   'seraphine read the telegram',
   'use on the inquest with the embezzlement the stolen voice the vienna warning',
@@ -390,15 +391,16 @@ describe('nightjar explorer — typed surface', () => {
     for (const line of cases) {
       let kind: string | undefined
       expect(() => { kind = game.handleLine(line).kind }).not.toThrow()
-      expect(['info', 'error', 'action', 'quit']).toContain(kind)
+      expect(['info', 'error', 'action']).toContain(kind)
     }
     expect(game.handleLine('0:0 @ EVENT body_found').kind).toBe('error')
 
-    for (const cmd of ['/help', '/look', '/cards', '/journal', '/story', '/bogus']) {
-      expect(() => game.handleLine(cmd)).not.toThrow()
-    }
-    expect(game.handleLine('/undo').kind).toBe('info')
-    expect(game.handleLine('/quit').kind).toBe('quit')
+    expect(game.look().length).toBeGreaterThan(0)
+    expect(game.cards().length).toBeGreaterThan(0)
+    expect(game.journal().length).toBeGreaterThan(0)
+    expect(game.story().length).toBeGreaterThan(0)
+    expect(game.handleLine('bogus').kind).toBe('error')
+    expect(game.undo().kind).toBe('info')
   })
 
   test('the guard: a player-typed EVENT sentence is rejected, nothing logged', () => {

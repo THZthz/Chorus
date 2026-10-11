@@ -25,6 +25,7 @@ const WIN_PATH = [
   'read the solicitor letter',     // 0:00  — border stop; the telegram lands
   'explore the firebox',           // 1:00  — the wax cylinder
   'read the vane ledger',          // 2:00  — read in the same hour it burns
+  'talk with the spiritualist',    // meet Seraphine (the name is learned by talking)
   'seraphine read the wax cylinder',
   'seraphine read the telegram',
   'use on the inquest with the embezzlement the stolen voice the vienna warning',
@@ -33,25 +34,47 @@ const WIN_PATH = [
 describe('the nightjar flyer', () => {
   test("lenient 'talk with X' maps onto TALK's to-slot", () => {
     const game = fresh()
-    const r = parsePlayerInput('talk with quill', {
+    const r = parsePlayerInput('talk with the guard', {
       dict, content: game.content, state: game.state, player: 'MARCH',
     })
     expect(r.ok).toBe(true)
     if (r.ok) {
       const c = r.step.clauses[0]
       expect(c.verb).toBe('TALK')
-      expect(c.to).toMatchObject({ form: 'name', name: 'QUILL' })
+      expect(c.to).toMatchObject({ form: 'name', name: 'THE_GUARD' })
       expect(c.with).toEqual([])
     }
   })
 
-  test('compiles: world, suspects, and the five-verb toolkit', () => {
+  test('compiles: the train, the masked suspects, and the six-verb toolkit', () => {
     const game = fresh()
     expect(game.title).toBe('Murder on the Nightjar Flyer')
-    for (const name of ['MARCH', 'LORD_VANE', 'VERITY', 'QUILL', 'COLE', 'SERAPHINE', 'BRACK', 'THE_INQUEST']) {
+    for (const name of ['MARCH', 'THE_PATENTEE', 'THE_WIDOW', 'THE_SECRETARY', 'THE_STOKER', 'THE_SPIRITUALIST', 'THE_GUARD', 'THE_INQUEST', 'THE_MANIFEST']) {
       expect(game.state.byName.has(name)).toBe(true)
     }
-    expect([...game.content.verbs.keys()].sort()).toEqual(['EXPLORE', 'READ', 'TALK', 'USE_ON', 'WAIT'])
+    // real names mint into being only through the talk.meet_* reveals
+    for (const name of ['LORD_VANE', 'VERITY', 'QUILL', 'COLE', 'SERAPHINE', 'BRACK']) {
+      expect(game.state.byName.has(name)).toBe(false)
+    }
+    expect([...game.content.verbs.keys()].sort()).toEqual(['EXPLORE', 'READ', 'TALK', 'TRAVEL_TO', 'USE_ON', 'WAIT'])
+  })
+
+  test('the train is a zone, not a card; her cars carry it as an attribute', () => {
+    const game = fresh()
+    expect(game.state.byName.has('NIGHTJAR_FLYER')).toBe(false)
+    expect(game.state.entities.get('s_guard_van')!.attrs['zone']).toBe('NIGHTJAR_FLYER')
+  })
+
+  test('travel follows the corridor — adjacent cars only', () => {
+    const game = fresh()
+    const refused = game.handleLine('travel to the dining car')
+    expect(refused.kind).toBe('action')
+    expect(refused.lines.join('\n')).toContain('does not bend')
+    const march = game.state.byName.get('MARCH')!
+    expect(game.state.entities.get(march)!.attrs['container']).toBe('s_guard_van')
+    const ok = game.handleLine('travel to the luggage van')
+    expect(ok.kind).toBe('action')
+    expect(game.state.entities.get(march)!.attrs['container']).toBe('s_luggage_van')
   })
 
   test('the timetable discovers the body at 22:00', () => {
@@ -134,14 +157,13 @@ describe('the nightjar flyer', () => {
 
   test('halfhour actions land back on the ticks and the timetable fires as the night passes', () => {
     const game = fresh()
-    expect(game.handleLine('talk to cole').kind).toBe('action')     // 21:00 → 21:30 (1halfhour)
-    // interrogations are slot-aligned now; the 22:00 crossing arrives with the
-    // next step's window — the body is found
-    expect(game.handleLine('talk to brack').kind).toBe('action')    // 21:30 → 22:00
+    expect(game.handleLine('talk to the stoker').kind).toBe('action')      // 21:00 → 21:30 — meet Cole
+    expect(game.state.byName.has('COLE')).toBe(true)
+    expect(game.handleLine('talk to the guard').kind).toBe('action')       // 21:30 → 22:00 — meet Brack; the body is found
     expect(game.log.records.some(r => r.trigger === 'body_found')).toBe(true)
     expect(game.state.byName.has('THE_LATE_LORD')).toBe(true)
-    expect(game.handleLine('talk to seraphine').kind).toBe('action') // 22:00 → 22:30
-    expect(game.handleLine('wait').kind).toBe('action')              // 22:30 → 23:30
+    expect(game.handleLine('talk to the spiritualist').kind).toBe('action') // 22:00 → 22:30 — meet Seraphine
+    expect(game.handleLine('wait').kind).toBe('action')                     // 22:30 → 23:30
     expect(game.log.records.some(r => r.trigger === 'night_porter')).toBe(true)
   })
 
@@ -166,11 +188,11 @@ describe('the nightjar flyer', () => {
 
   test('interrogation exercises the to role end to end', () => {
     const game = fresh()
-    game.handleLine('wait')
+    play(game, ['wait', 'talk to the stoker']) // the seal idea spawns; meet Cole
     const turn = game.handleLine('talk to cole about the aether seal')
     expect(turn.kind).toBe('action')
     expect(turn.lines.join('\n')).toContain('rake the firebox hot at midnight')
-    const rec = game.log.records.find(r => r.verb === 'TALK')!
+    const rec = game.log.records.filter(r => r.verb === 'TALK')[1]!
     expect(rec.to).toMatchObject({ form: 'name', name: 'COLE' })
     expect(rec.sentence).toContain('MARCH TALK TO COLE ABOUT THE_AETHER_SEAL')
   })

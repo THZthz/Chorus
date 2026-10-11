@@ -6,10 +6,25 @@ import type { Ref } from './ref.js'
 import { parseSentence } from './parse.js'
 import { formatDuration } from './clock.js'
 import type { Dictionary } from './dict.js'
-import type { Entity } from './types.js'
+import type { Aspects, Entity } from './types.js'
 
 export function journal(records: ActionRecord[]): string {
   return records.map(r => r.sentence).join('\n')
+}
+
+/** display form of an authored name: THE_FORGETTING → THE FORGETTING */
+export function pretty(name: string): string {
+  return name.replace(/_/g, ' ')
+}
+
+/** nested aspects as flat "path level" strings: tome.cylinder 1 */
+export function flattenAspects(a: Aspects, prefix = ''): string[] {
+  const out: string[] = []
+  for (const [k, v] of Object.entries(a)) {
+    if (typeof v === 'number') out.push(`${prefix}${k} ${v}`)
+    else out.push(...flattenAspects(v as Aspects, `${prefix}${k}.`))
+  }
+  return out
 }
 
 /** Prose rendering: one template line per clause, the processing ticks (§6.7)

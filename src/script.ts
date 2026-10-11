@@ -3,6 +3,7 @@
 //
 //   script: The Forgotten House
 //   player: ANA
+//   goal:   what the player is trying to do, shown up front
 //   start: 0:14
 //
 //   entities:
@@ -41,6 +42,7 @@ type Section = 'entities' | 'prototypes' | 'triggers' | 'verbs' | 'templates'
 export interface ScriptMeta {
   title?: string
   player?: string
+  goal?: string
   start?: Clock
 }
 
@@ -87,10 +89,11 @@ export function parseScript(text: string, dict: Dictionary): Script {
 
     // meta lines (indent 0, outside sections)
     if (indent === 0 && section === null) {
-      const m = /^(script|player|start):\s*(.+)$/.exec(t)
+      const m = /^(script|player|goal|start):\s*(.+)$/.exec(t)
       if (m) {
         if (m[1] === 'script') meta.title = m[2].trim()
         else if (m[1] === 'player') meta.player = m[2].trim()
+        else if (m[1] === 'goal') meta.goal = m[2].trim()
         else meta.start = parseClock(m[2].trim())
         continue
       }
@@ -298,8 +301,10 @@ export function compileScript(text: string, dict: Dictionary): { content: Compil
   for (const e of script.entities) {
     if (e.containerName) {
       const container = state.entities.get(idOf(e.containerName))
-      if (!container) throw new Error(`entity ${e.name}: unknown container '${e.containerName}'`)
-      state.entities.get(idOf(e.name))!.attrs['container'] = container.id
+      const self = state.entities.get(idOf(e.name))!
+      if (container) self.attrs['container'] = container.id
+      else if (e.kind === 'place') self.attrs['zone'] = e.containerName // a zone: a grouping with no card (§10)
+      else throw new Error(`entity ${e.name}: unknown container '${e.containerName}'`)
     }
   }
   for (const rel of script.relations) {

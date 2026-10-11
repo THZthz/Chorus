@@ -177,7 +177,7 @@ function resolveGroup(raw: string[], names: Map<string, NameEntry>): { refs: Ref
     let hit: NameEntry | undefined
     let used = 0
     for (let len = Math.min(4, toks.length - j); len >= 1; len--) {
-      const key = toks.slice(j, j + len).join(' ')
+      const key = toks.slice(j, j + len).join(' ').toLowerCase()
       const e = names.get(key)
       if (e) { hit = e; used = len; break }
     }

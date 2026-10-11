@@ -39,27 +39,43 @@ scripts by hand.
 ## Play
 
 ```sh
-npm run play                    # plays scripts/the-forgotten-house.txt
-npm run play -- scripts/the-nightjar-flyer.txt   # the murder-mystery story
+npm run play                    # pick a script interactively (falls back to the first bundled script when piped)
+npm run play -- scripts/the-nightjar-flyer.txt   # or name one directly
 npm run play -- my-game.txt     # any script
 ```
 
 ```
-── The Forgotten House ──  (type /help)
-» read the forgetting
-ANA read THE_FORGETTING at HOUSE. ANA tease out a hidden thread.
-» ana, bertha read fairy tales
-ANA and BERTHA read FAIRY_TALES at HOUSE. …the child sleeps wiser.
-» wait
-» /story
+◈ Murder on the Nightjar Flyer
+you are MARCH · at GUARD VAN · day 0:42 · 9 cards
+here: THE GUARD · THE INQUEST
+try: read THE MANIFEST · talk with THE GUARD · explore DINING CAR
+verbs: explore · read · talk to · travel to · use on · wait
+[1 look] [2 cards] [3 story] [4 journal] [5 undo] [6 quit]  ← number + enter
+──────────────────────────────────────────────────────────
+§ unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna
+» read the manifest
+MARCH read THE_MANIFEST. The passenger manifest, first class: the lord Vane…
+» talk with the guard
+MARCH question THE_GUARD. "Brack. Railway security," he says…
+» inspect the wax cylinder
+THE_WAX_CYLINDER  [text]
+  aether 2 · secret 2 · tome.cylinder 1
+  at: FIREBOX
 ```
 
-The player types English-ish text (`read the pale lady`, `use on rite of
-ascension with chalice at house`, `talk to cole about the aether seal`); the
-engine assigns the clock, resolves names fuzzily (case, articles,
-underscores), and suggests corrections. Strict canonical sentences
-(`0:20 @ ANA WAIT`) pass through unchanged. Slash commands: `/look`,
-`/cards`, `/journal`, `/story`, `/undo`, `/quit`.
+The session opens with the script's `goal:` and a `try:` row of concrete
+executable actions (`Game.suggestions()` — state-driven, refreshed every
+turn). The player types English-ish text (`read the pale lady`, `explore the
+firebox`, `talk with the guard`); the engine assigns the clock, resolves
+names fuzzily (case, articles, underscores), and suggests corrections.
+Strict canonical sentences (`0:20 @ MARCH WAIT`) pass through unchanged.
+Characters you have not talked to appear as archetypes (`THE GUARD`) — the
+name is learned by meeting them — and the corridor has directions: places
+sit on a table laid out by `north`/`south`/`east`/`west` links, and a travel
+verb only reaches the next car. Everything the player can do is visible in
+the live area — the verb vocabulary, the cards sharing the player's
+location, and number buttons for the meta views (look, cards, story,
+journal, undo, quit); tab completes verbs and card names.
 
 Committed actions **process** over their verb's duration — the verb and its
 placed cards are locked for that window, authored `PROGRESS` ticks describe

@@ -119,10 +119,15 @@ namespace `state.*`: `state.sealed`, `state.locked`, `state.hidden`,
 `state.portable`, `state.unique`. Queries read them via `state:sealed` /
 `state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
 
-**Relations** are facts *between* two cards (the social graph): typed edges
-declared in the dictionary as `symmetric` (`parent_child`) or `directed`
-(`parent_of`). They change only via `RELATE`/`UNRELATE` outcomes and live in
-their own table (§7). Condition predicates read them: `rel(parent_child, actors)`.
+**Relations** are facts *between* two cards (the social graph — and the
+corridor graph: the four directed types `north`/`south`/`east`/`west` place
+cards on the table, `A is south of B` reads naturally and stores the authored
+direction, so a layout can be read back from the relations table; a travel
+verb gates on `rel(south, actors.container, object) OR …` — see §4.5).
+Typed edges are declared in the dictionary as `symmetric` (`parent_child`,
+`neighbor`) or `directed` (`parent_of`, the four directions). They change
+only via `RELATE`/`UNRELATE` outcomes and live in their own table (§7).
+Condition predicates read them: `rel(parent_child, actors)`.
 
 ### 4.3 VERBS (v1 core set)
 
@@ -401,7 +406,10 @@ scalar       object.aspect.secret >= 3
              object.aspect.language.latin >= 2
 cardinality  count(actors) = 2
 quantifiers  every(actors, aspect:occult >= 2) · any(actors, aspect:child)
-pairwise     rel(parent_child, actors)          # ∃ a pair of actors with this relation
+pairwise     rel(parent_child, actors)                    # ∃ a pair of actors with this relation
+cross-role   rel(neighbor, actors.container, object)      # ∃ an edge across two roles;
+                                                          # a `X.container` role stands for
+                                                          # where the cards of role X sit
 aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
 paths        total(actors, aspect:lantern) < object.aspect.demand   # value vs value
              count(actors) > object.attr.seats                      # attr paths too
@@ -684,8 +692,8 @@ batched at completion is the UI's choice:
 ```
 
 Journal: canonical sentences, or the prose templates — same data, two views
-(`/journal` and `/story` in the player interface, §11). `/cards` lists the
-table, `/look` shows the player's container and its contents.
+(the journal and story views in the player interface, §11). The cards view
+lists the table, the look view shows the player's container and contents.
 
 ---
 
@@ -810,15 +818,19 @@ sentence-like declarations. `#` starts a comment; blank lines are ignored.
 (unknown kind, unregistered verb or relation type, bad grammar).
 
 ```
-script: The Forgotten House        # title
-player: ANA                        # default actor for lenient input (§11)
-start: 0:14                        # initial clock
+script: Murder on the Nightjar Flyer   # title
+player: MARCH                          # default actor for lenient input (§11)
+goal: unmask Lord Vane's killer …      # shown up front in the player interface
+start: 0:42                            # initial clock
 
 entities:
-  HOUSE is place
-  STUDY is place in HOUSE with study:1            # container + aspects
-  ANA is character with occult:2, lantern:1 at HOUSE
-  ANA is parent_child of BERTHA                   # relation line (type must be registered)
+  GUARD_VAN is place in NIGHTJAR_FLYER with site.guard:1
+  # `in X` names the parent place card when one is declared (containment);
+  # with no card X it tags a zone — a grouping (the train) with no card.
+  MARCH is character at GUARD_VAN
+  THE_MANIFEST is text with manifest:1 at MARCH   # a card carried by a character
+  GUARD_VAN is south of LUGGAGE_VAN               # direction: places sit on a
+  DINING_CAR is south of LUGGAGE_VAN              # table, laid out by N/S/E/W (§4.2)
 
 prototypes:
   CLUE is idea deriving name from object, secret from object.secret-2
@@ -889,9 +901,32 @@ sentence is what gets logged (§9.1). Rules:
   they have room and X fits the slot query; anything else stays in `with`
   and the engine rejects the phrasing as typed.
 
-**Slash commands**: `/look` (player's container + contents), `/cards`
-(every living card), `/journal` (canonical), `/story` (prose), `/undo`,
-`/quit`.
+**The player interface shows its options outright**: the goal declared by
+the script's `goal:` meta line opens the session, a `try:` row suggests
+concrete executable actions (`Game.suggestions()` — verb × card bindings
+that fit the slots and light up a non-default non-REFUSE recipe, validated
+through the lenient parser), the verb vocabulary and the cards sharing the
+player's location stay visible, and the meta views are number buttons — look
+(player's container + contents), cards (the visible table), inspect (a
+card's face: kind, aspects, whereabouts, provenance), journal
+(canonical), story (prose), undo, quit — backed by
+`Game.look/cards/inspect/journal/story/undo`. Input completes verbs and card names
+with tab.
+
+**The table is a projection, not the world** (`Game.visible()`): places, the
+player, cards sharing the player's location, cards the player carries, and
+anything the log has named — through a role or a spawn/destroy outcome — are
+on the table; everything else is out of sight until the player goes and
+looks. The projection is computed per render, never stored: undo and replay
+re-derive it for free (§7).
+
+**Unknown characters are authored, not special-cased**: a suspect boards as a
+masked twin (`THE_GUARD is character with duty:2, unmet:1 at GUARD_VAN`) and a
+first-talk recipe swaps the mask for the named prototype
+(`talk.meet_guard when to.aspect.unmet >= 1 AND to.aspect.duty >= 1 ->
+DESTROY THE_GUARD, SPAWN BRACK INTO GUARD_VAN, NARRATE "\"Brack. Railway
+security…\""`). Until that exchange the player sees the archetype, not the
+name — engine state untouched, everything in the log (§9.30).
 
 **Undo** = drop the trailing EVENT rows and the last action row, then
 re-fold from the base state (§7). Rejections and parse errors log nothing,

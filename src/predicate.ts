@@ -19,7 +19,7 @@ export type Pred =
   | { t: 'or'; a: Pred; b: Pred }
   | { t: 'not'; a: Pred }
   | { t: 'cmp'; l: ValExpr; op: CmpOp; r: ValExpr }
-  | { t: 'rel'; rtype: string; role: string }
+  | { t: 'rel'; rtype: string; role: string; role2?: string }
   | { t: 'every'; role: string; cond: ScalarCond }
   | { t: 'any'; role: string; cond: ScalarCond }
 
@@ -91,9 +91,14 @@ class PredParser {
       this.expect('(')
       const rtype = this.dottedName()
       this.expect(',')
-      const role = this.next()
+      const role = this.dottedName()
+      let role2: string | undefined
+      if (this.peek() === ',') {
+        this.next()
+        role2 = this.dottedName()
+      }
       this.expect(')')
-      return { t: 'rel', rtype, role }
+      return { t: 'rel', rtype, role, role2 }
     }
     return this.cmpFromExpr()
   }
@@ -183,10 +188,21 @@ export function evalPred(p: Pred, ctx: PredCtx): boolean {
     case 'or': return evalPred(p.a, ctx) || evalPred(p.b, ctx)
     case 'not': return !evalPred(p.a, ctx)
     case 'rel': {
-      const role = ctx.b[p.role] ?? []
-      for (let i = 0; i < role.length; i++) {
-        for (let j = i + 1; j < role.length; j++) {
-          if (relationAlive(ctx.state, role[i].id, role[j].id, p.rtype)) return true
+      // rel(type, role) pairs cards within one role; rel(type, a, b) crosses
+      // two roles — e.g. rel(neighbor, actors.container, object) checks the
+      // first actor's location against each object card (adjacency gates)
+      const cardsOf = (role: string): Entity[] => {
+        const base = role.endsWith('.container') ? role.slice(0, -'.container'.length) : role
+        const cards = ctx.b[base] ?? []
+        if (!role.endsWith('.container')) return cards
+        return cards.map(e => ctx.state.entities.get(String(e.attrs['container'] ?? '')) ?? e)
+      }
+      const a = cardsOf(p.role)
+      const b = cardsOf(p.role2 ?? p.role)
+      for (let i = 0; i < a.length; i++) {
+        for (let j = p.role2 ? 0 : i + 1; j < b.length; j++) {
+          if (!p.role2 && a[i]!.id === b[j]!.id) continue
+          if (relationAlive(ctx.state, a[i]!.id, b[j]!.id, p.rtype)) return true
         }
       }
       return false

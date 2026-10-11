@@ -69,5 +69,12 @@ export function coreDictionary(): Dictionary {
   for (const v of CORE_VERBS) d.registerVerb(v)
   d.registerRelation('parent_child', { symmetric: true })
   d.registerRelation('parent_of', { symmetric: false })
+  d.registerRelation('neighbor', { symmetric: true })
+  // the four directions of the table: `A is south of B` — stored edges keep
+  // their authored direction, so a layout can be read back from the log
+  d.registerRelation('north', { symmetric: false })
+  d.registerRelation('south', { symmetric: false })
+  d.registerRelation('east', { symmetric: false })
+  d.registerRelation('west', { symmetric: false })
   return d
 }

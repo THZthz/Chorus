@@ -3,6 +3,7 @@
 import { compileContent } from '../src/content.js'
 import { executeStep } from '../src/engine.js'
 import { fold } from '../src/fold.js'
+import { clockFromAbsMin } from '../src/clock.js'
 import { parseSentence } from '../src/parse.js'
 import { journal, prose } from '../src/render.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
@@ -12,12 +13,12 @@ const dict = seedDictionary()
 const content = compileContent(seedContent(), dict)
 
 const steps = [
-  '0:14 @ ANA AT HOUSE READ THE_FORGETTING',
-  '0:15 @ ANA, BERTHA READ FAIRY_TALES', // ends 0:16 → dusk_falls fires
-  '0:16 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT',
-  '0:17 @ BERTHA READ MAGICK_BOOK', // refused — nobody who knows is present
-  '0:17 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ MAGICK_BOOK',
-  '0:20 @ ANA WAIT',
+  '0:28 @ ANA AT HOUSE READ THE_FORGETTING',        // 14:00
+  '0:30 @ ANA, BERTHA READ FAIRY_TALES',            // 15:00 — ends 16:00 → dusk_falls fires
+  '0:32 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT',
+  '0:34 @ BERTHA READ MAGICK_BOOK',                 // refused — nobody who knows is present
+  '0:34 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ MAGICK_BOOK',
+  '0:40 @ ANA WAIT',
 ]
 
 const log = new Log(seedState())
@@ -47,4 +48,5 @@ console.log()
 console.log('── state = fold(log): verify replay ' + '─'.repeat(25))
 const replayed = fold(log.records, seedState(), dict, content)
 console.log(`entities alive: ${replayed.entities.size === state.entities.size ? 'match' : 'MISMATCH'}`)
-console.log(`clock now: day ${Math.floor(replayed.now / 60 / 24)}, hour ${Math.floor(replayed.now / 60) % 24}`)
+const clock = clockFromAbsMin(replayed.now)
+console.log(`clock now: day ${clock.day}, halfhour ${clock.halfhour}`)

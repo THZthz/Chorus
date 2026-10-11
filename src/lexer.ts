@@ -10,7 +10,7 @@ export type Tok =
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*/
 const NUM_RE = /^[0-9]+/
-const DUR_RE = /^[0-9]+(h|m|d)/
+const DUR_RE = /^([0-9]+)(halfhour|h|m|d)/
 const PUNCT = new Set([',', ';', ':', '(', ')', '@', '=', '!', '>', '<'])
 
 export function lex(src: string): Tok[] {
@@ -40,7 +40,9 @@ export function lex(src: string): Tok[] {
     if (/[0-9]/.test(c)) {
       const rest = src.slice(i)
       const dur = DUR_RE.exec(rest)
-      if (dur && NUM_RE.exec(rest)![0] === dur[0].slice(0, dur[0].length - 1)) {
+      // a duration only when the whole number is the duration's digits
+      // ('1halfhour' is one token; '12' alone stays an int)
+      if (dur && NUM_RE.exec(rest)![0] === dur[1]) {
         toks.push({ t: 'dur', v: durToMinutes(dur[0]) })
         i += dur[0].length
         continue
@@ -61,7 +63,13 @@ export function lex(src: string): Tok[] {
 }
 
 function durToMinutes(s: string): number {
-  const n = Number(s.slice(0, -1))
-  const unit = s[s.length - 1]
-  return unit === 'h' ? n * 60 : unit === 'd' ? n * 24 * 60 : n
+  const m = /^([0-9]+)(halfhour|h|m|d)$/.exec(s)
+  if (!m) throw new Error(`bad duration token '${s}'`)
+  const n = Number(m[1])
+  switch (m[2]) {
+    case 'halfhour': return n * 30
+    case 'h': return n * 60
+    case 'd': return n * 24 * 60
+    default: return n
+  }
 }

@@ -239,10 +239,12 @@ function parsePrototypeLine(t: string, ln: number, dict: Dictionary): [string, P
 // ---------- trigger lines ----------
 
 function parseTriggerLine(t: string, ln: number, dict: Dictionary): TriggerDef {
-  const m = /^(\S+)(\s+once)?\s+at\s+hour\s+(\d+)\s*->\s*(.+)$/.exec(t)
-  if (!m) throw new Error(`line ${ln}: triggers expect  ID [once] at hour N -> OUTCOMES`)
-  if (Number(m[3]) < 0 || Number(m[3]) > 23) throw new Error(`line ${ln}: trigger hour must be 0..23`)
-  return { id: m[1], hour: Number(m[3]), once: m[2] !== undefined, out: [m[4]] }
+  const m = /^(\S+)(\s+once)?\s+at\s+(hour|halfhour)\s+(\d+)\s*->\s*(.+)$/.exec(t)
+  if (!m) throw new Error(`line ${ln}: triggers expect  ID [once] at (hour|halfhour) N -> OUTCOMES`)
+  const n = Number(m[4])
+  if (m[3] === 'hour' && n > 23) throw new Error(`line ${ln}: trigger hour must be 0..23`)
+  if (m[3] === 'halfhour' && n > 47) throw new Error(`line ${ln}: trigger halfhour must be 0..47`)
+  return { id: m[1], slot: m[3] === 'hour' ? n * 2 : n, once: m[2] !== undefined, out: [m[5]] }
 }
 
 // ---------- slots & recipes ----------

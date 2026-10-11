@@ -8,8 +8,10 @@ Spec: [`docs/spec/text-engine-v0.2.md`](docs/spec/text-engine-v0.2.md).
 ```
 
 Actions are sentences (`SUBJECTS VERB [OBJECTS] -> OUTCOMES`), recorded in an
-append-only log with a `day:hour` clock (day 0-based). Game state is a fold of
-the log — replay, provenance, and undo come free.
+append-only log with a `day:halfhour` clock (day 0-based, 48 halfhours of 30
+minutes; durations may be authored in `halfhour` units — `1halfhour` = 30
+minutes). Game state is a fold of the log — replay, provenance, and undo
+come free.
 
 ## Layout
 

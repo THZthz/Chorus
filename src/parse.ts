@@ -56,9 +56,9 @@ class Parser {
       const dayTok = this.next()
       if (dayTok.t !== 'int') throw new Error('bad clock')
       this.expectPunct(':')
-      const hourTok = this.next()
-      if (hourTok.t !== 'int' || hourTok.v < 0 || hourTok.v > 23) throw new Error('bad hour (0..23)')
-      clock = { day: dayTok.v, hour: hourTok.v }
+      const halfhourTok = this.next()
+      if (halfhourTok.t !== 'int' || halfhourTok.v < 0 || halfhourTok.v > 47) throw new Error('bad halfhour (0..47)')
+      clock = { day: dayTok.v, halfhour: halfhourTok.v }
       this.expectPunct('@')
     }
 

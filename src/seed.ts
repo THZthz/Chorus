@@ -109,7 +109,7 @@ export function seedContent(): ContentRaw {
       },
     },
     triggers: [
-      { id: 'dusk_falls', hour: 16, out: ['SPAWN DREAD', 'NARRATE("The lamps come on.")'] },
+      { id: 'dusk_falls', slot: 32, out: ['SPAWN DREAD', 'NARRATE("The lamps come on.")'] }, // 16:00
     ],
     prototypes: {
       CLUE_SECRET_HIDEOUT: { kind: 'idea', aspects: { secret: 1 } },

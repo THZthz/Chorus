@@ -2,7 +2,8 @@
 
 export interface Clock {
   day: number
-  hour: number
+  /** halfhours since day start (0..47); one halfhour = 30 minutes */
+  halfhour: number
 }
 
 /** Weighted principle tags with optional one-level dot sub-keys: {secret:4, language:{latin:2}} */
@@ -36,7 +37,7 @@ export interface State {
   byName: Map<string, string>
   /** key: `${a}|${b}|${type}` with a<=b for symmetric types */
   relations: Map<string, Relation>
-  /** engine clock, absolute minutes since day 0 hour 0 */
+  /** engine clock, absolute minutes since day 0, tick 0 */
   now: number
   /** once-triggers that have fired (spec §9.29); rebuilt by fold from EVENT rows */
   fired: Set<string>

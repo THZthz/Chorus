@@ -3,7 +3,7 @@
 
 script: The Forgotten House
 player: ANA
-start: 0:14
+start: 0:28
 
 # ── the world ────────────────────────────────────────────────────────────
 entities:

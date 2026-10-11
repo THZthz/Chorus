@@ -56,10 +56,10 @@ describe('the nightjar flyer', () => {
     const turn = game.handleLine('explore the first cabin')
     expect(turn.kind).toBe('action')
     const joined = turn.lines.join('\n')
-    expect(joined).toContain('(+30m)')          // live tick line
+    expect(joined).toContain('(+1halfhour)')     // live tick line
     expect(joined).toContain("solicitor's letter")
     const canonical = turn.lines[turn.lines.length - 1]
-    expect(canonical).toContain('PROGRESS(30m,') // the tick is in the record
+    expect(canonical).toContain('PROGRESS(1halfhour,') // the tick is in the record
     expect(canonical).toContain('SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin')
   })
 
@@ -117,15 +117,16 @@ describe('the nightjar flyer', () => {
     expect(empty.lines.join('\n')).toContain('empty hands')
   })
 
-  test('the hour hand waits: play continues after a half-hour talk, and dead-air crossings fire (§9.28)', () => {
+  test('halfhour actions land back on the ticks and the timetable fires as the night passes', () => {
     const game = fresh()
-    expect(game.handleLine('talk to cole').kind).toBe('action')     // 21:00 → 21:30
-    // the next step resumes on the whole hour (22:00); hour 22 crosses in the
-    // quantized gap, so the body is found even though no action spans it
-    expect(game.handleLine('talk to brack').kind).toBe('action')
+    expect(game.handleLine('talk to cole').kind).toBe('action')     // 21:00 → 21:30 (1halfhour)
+    // interrogations are slot-aligned now; the 22:00 crossing arrives with the
+    // next step's window — the body is found
+    expect(game.handleLine('talk to brack').kind).toBe('action')    // 21:30 → 22:00
     expect(game.log.records.some(r => r.trigger === 'body_found')).toBe(true)
     expect(game.state.byName.has('THE_LATE_LORD')).toBe(true)
-    expect(game.handleLine('talk to seraphine').kind).toBe('action') // 23:00 — porter
+    expect(game.handleLine('talk to seraphine').kind).toBe('action') // 22:00 → 22:30
+    expect(game.handleLine('wait').kind).toBe('action')              // 22:30 → 23:30
     expect(game.log.records.some(r => r.trigger === 'night_porter')).toBe(true)
   })
 
@@ -134,7 +135,7 @@ describe('the nightjar flyer', () => {
     play(game, ['wait']) // day 0, hour 22 — body_found fires
     expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1)
     // jump to day 1, hour 22: the once-trigger must neither re-fire nor reject the step
-    const jump = game.handleLine('1:21 @ MARCH WAIT')
+    const jump = game.handleLine('1:42 @ MARCH WAIT')
     expect(jump.kind).toBe('action')
     expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1)
     expect(game.state.byName.has('THE_LATE_LORD')).toBe(true)

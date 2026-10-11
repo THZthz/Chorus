@@ -9,7 +9,7 @@ import type { Dictionary } from './dict.js'
 import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb } from './content.js'
 import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
 import { matchQuery } from './query.js'
-import { absMin, clockFromAbsMin, crossedHours, formatClock, parseClock, type Clock } from './clock.js'
+import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, type Clock } from './clock.js'
 import {
   addEntity, aspectGet, cloneState, getAlive, relationKey,
   type Aspects, type Entity, type State,
@@ -25,7 +25,7 @@ export interface ActionRecord {
   id: number
   kind: 'action' | 'event'
   trigger: string | null
-  tGame: string          // start clock "day:hour"
+  tGame: string          // start clock "day:halfhour"
   tReal: string | null
   advancedMin: number    // minutes this record advanced the clock (0 for refused/events)
   actors: Ref[]          // sorted union across clauses
@@ -135,7 +135,8 @@ export function executeStep(
 ): ExecResult {
   // monotonic mechanics time (§9.5): a step may never rewind the clock
   if (absMin(step.clock) < stateIn.now) {
-    return rejected(`clock ${formatClock(step.clock)} is before state.now (${clockFromAbsMin(stateIn.now).day}:${clockFromAbsMin(stateIn.now).hour})`, stateIn)
+    const now = clockFromAbsMin(stateIn.now)
+    return rejected(`clock ${formatClock(step.clock)} is before state.now (${now.day}:${now.halfhour})`, stateIn)
   }
   // events are fired by the clock (§5.1); a player-typed step needs a clause
   if (step.clauses.length === 0) {
@@ -228,7 +229,7 @@ export function executeStep(
 
   // 4+6. time & events — the engine owns the clock (§9.12), events get own rows (§9.16).
   // Events span the whole elapsed span (§9.28): from the state's previous clock,
-  // so hour-quantized dead air before the step cannot swallow a crossing.
+  // so quantized dead air before the step cannot swallow a crossing.
   const state = draft
   state.now = startMin + advancedMin
   const records: ActionRecord[] = [record]
@@ -518,43 +519,43 @@ function fireCrossingEvents(
   const expiring = [...state.entities.values()]
     .filter(e => e.deadAction === null && typeof e.attrs['expiresAt'] === 'number')
     .map(e => ({ id: e.id, name: e.name, at: e.attrs['expiresAt'] as number }))
-  for (const absHour of crossedHours(fromMin, toMin)) {
+  for (const absSlot of crossedSlots(fromMin, toMin)) {
     // authored triggers first, then expiries — deterministic order (§9.16)
     for (const trig of content.triggers) {
-      if (trig.hour !== absHour % 24) continue
+      if (trig.slot !== absSlot % 48) continue
       if (trig.once && state.fired.has(trig.id)) continue // §9.29: once means once
-      const ctx = makeEventCtx(state, dict, content, absHour, firstEventId + records.length, idGen)
+      const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
       const outcomes: Outcome[] = []
       for (const o of trig.out) outcomes.push(applyOutcome(o, ctx).concrete)
       state.fired.add(trig.id) // on the draft: a later rejection discards it
-      records.push(makeEventRecord(firstEventId + records.length, trig.id, absHour, outcomes, dict))
+      records.push(makeEventRecord(firstEventId + records.length, trig.id, absSlot, outcomes, dict))
     }
     for (const exp of expiring) {
-      if (exp.at > absHour * 60) continue
+      if (exp.at > absSlot * 30) continue
       const e = state.entities.get(exp.id)
       if (!e || e.deadAction !== null) continue
-      const ctx = makeEventCtx(state, dict, content, absHour, firstEventId + records.length, idGen)
+      const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
       const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: nameRef(e.name) }] }
       const outcomes = [applyOutcome(destroy, ctx).concrete]
-      records.push(makeEventRecord(firstEventId + records.length, `expire:${e.name}`, absHour, outcomes, dict))
+      records.push(makeEventRecord(firstEventId + records.length, `expire:${e.name}`, absSlot, outcomes, dict))
     }
   }
   return records
 }
 
-function makeEventCtx(state: State, dict: Dictionary, content: CompiledContent, absHour: number, recordId: number, idGen: () => string): ApplyCtx {
+function makeEventCtx(state: State, dict: Dictionary, content: CompiledContent, absSlot: number, recordId: number, idGen: () => string): ApplyCtx {
   return {
     state, dict, content,
     bindings: {} as RoleBindings,
-    now: absHour * 60,
+    now: absSlot * 30,
     recordId,
     idGen,
     extraAdvanceMin: 0,
   }
 }
 
-function makeEventRecord(id: number, trigger: string, absHour: number, outcomes: Outcome[], dict: Dictionary): ActionRecord {
-  const clock = clockFromAbsMin(absHour * 60)
+function makeEventRecord(id: number, trigger: string, absSlot: number, outcomes: Outcome[], dict: Dictionary): ActionRecord {
+  const clock = clockFromAbsMin(absSlot * 30)
   const rec: ActionRecord = {
     id, kind: 'event', trigger,
     tGame: formatClock(clock), tReal: null, advancedMin: 0,

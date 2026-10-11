@@ -28,6 +28,12 @@ projection of that data, never the source of truth.
 > (§9.29), hour-quantized step clocks with dead-air event crossings (§9.28),
 > first story content exercising it (`scripts/the-nightjar-flyer.txt`), and
 > an exploratory story test (test/nightjar-explorer.test.ts).
+>
+> v0.2.3 = the halfhour clock. The clock tick shrinks from the hour to the
+> **halfhour** (30 minutes): `day:halfhour` with halfhour 0..47, the
+> `halfhour` duration unit (§5.1), triggers fire per halfhour crossing
+> (`at hour N` remains as an alias for slot 2N, §10), and quantization/
+> dead-air semantics re-anchor on the halfhour tick (§9.28).
 
 ---
 
@@ -194,7 +200,7 @@ group logic stays narrative.
 ```ebnf
 log        = { sentence } ;
 sentence   = [ clock "@" ] ( action | event ) ;
-clock      = int ":" int ;                       (* "day:hour", day 0-based, hour 0..23 *)
+clock      = int ":" int ;                       (* "day:halfhour", day 0-based, halfhour 0..47; 1 halfhour = 30 min *)
 action     = clause { ";" clause } [ "->" outcomes ] ;
 event      = "EVENT" name [ "->" outcomes ] ;
 clause     = actors [ "AT" ref ] verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "ABOUT" ref ] [ "AT" ref ] ;
@@ -217,7 +223,8 @@ arg        = ref | role | int | string | bool | duration
 target     = ref | role ;
 role       = "ACTORS" | "OBJECT" | "WITH" | "AT" | "ABOUT" | "TO" ;  (* case-insensitive *)
 dottedName = name { "." name } ;                 (* SET(x, state.sealed, true) *)
-duration   = int ( "h" | "m" | "d" ) ;
+duration   = int ( "halfhour" | "h" | "m" | "d" ) ;
+                                                 (* 1halfhour = 30 minutes *)
 ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name *)
 ```
 
@@ -270,7 +277,7 @@ is the step's **start** clock:
     -> CLUE_SECRET_HIDEOUT
 ```
 
-Time fires an event (own log row, at the crossing hour):
+Time fires an event (own log row, at the crossing tick):
 
 ```
 0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE "The lamps come on."
@@ -518,12 +525,13 @@ contains sugar.
    clause order) and the canonical sentence.
 6. **Events**: after the clock advances, the engine resolves, in
    chronological order, across the **whole elapsed span** — from the state's
-   previous clock to the step's end, so hour-quantized dead air (§9.28)
-   cannot swallow a crossing: authored time triggers (content: id + hour
-   [+ `once`], firing on every crossing of that hour, or on the first
-   crossing only when `once`, §9.29) and entity expiries (`expiresAt`
-   crossed — trigger id `expire:<NAME>`, one engine-written `DESTROY`).
-   Within one crossed hour, authored triggers fire before expiries. Each
+   previous clock to the step's end, so quantized dead air (§9.28)
+   cannot swallow a crossing: authored time triggers (content: id + slot,
+   the `hour`/`halfhour` syntax of §10 [+ `once`], firing on every crossing
+   of that halfhour-of-day, or on the first crossing only when `once`,
+   §9.29) and entity expiries (`expiresAt` crossed — trigger id
+   `expire:<NAME>`, one engine-written `DESTROY`).
+   Within one crossed halfhour, authored triggers fire before expiries. Each
    fires its own EVENT log row with its outcomes applied. One pass — events
    never cascade within the same advance (v0.2 simplification; new expiries
    resolve at the next advance). **The fold trusts logged EVENT rows** — it
@@ -606,7 +614,7 @@ CREATE TABLE action (
   id           INTEGER PRIMARY KEY,
   kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'event'
   trigger      TEXT,                            -- event trigger id (events only; 'expire:<NAME>' for expiries)
-  t_game       TEXT NOT NULL,                   -- start clock "day:hour", day 0-based
+  t_game       TEXT NOT NULL,                   -- start clock "day:halfhour", day 0-based
   t_real       TEXT,
   advanced_min INTEGER NOT NULL DEFAULT 0,      -- minutes this record advanced the clock (0 for refused/events)
   actors       JSON,                            -- refs: sorted, de-duplicated union across clauses (order not semantic)
@@ -685,7 +693,8 @@ Journal: canonical sentences, or the prose templates — same data, two views
 2. **Time model**: **discrete, per-action.** No background ticking.
 3. **Outcomes**: **hand-authored recipes only.** Deterministic and testable.
 4. **Prose layer**: afterthought. Canonical sentences are the deliverable.
-5. **Timestamps**: recorded as `day:hour`, day starts at 0. `(day, hour)` is
+5. **Timestamps**: recorded as `day:halfhour` (48 halfhours per day, one
+   halfhour = 30 minutes), day starts at 0. `(day, halfhour)` is
    raw monotonic mechanics time — human-time framing is L3's business.
 6. **Multiple actors**: the subject is an unordered set (`A, B TALK …` ≡
    `B, A TALK …`); clauses are separated by `;` so `,` stays free for lists.
@@ -717,7 +726,7 @@ Journal: canonical sentences, or the prose templates — same data, two views
     log, so the log replays exactly. Canonical output is paren-less for
     `SPAWN` and `NARRATE` only; input additionally accepts paren-less
     `DESTROY`/`REVEAL`/`MOVE`.
-16. **EVENTs**: trigger registry lives in content (id + hour) alongside
+16. **EVENTs**: trigger registry lives in content (id + halfhour slot) alongside
     expiry; events get their own log rows; the fold trusts logged events and
     never re-derives them; no cascading within one advance.
 17. **Structural flags are attrs, aspects are principles only** — one home
@@ -762,16 +771,17 @@ Journal: canonical sentences, or the prose templates — same data, two views
     prose gains `{to}` and `{with}` tokens (§5.3). First content use is the
     Nightjar Flyer's interrogations (`MARCH TALK TO COLE ABOUT
     THE_AETHER_SEAL`); ruling 24 still holds for the *core* verb set.
-28. **Step clocks are hour-quantized; the world is not** (found by the
+28. **Step clocks are halfhour-quantized; the world is not** (found by the
     exploratory test): a step may never start before `state.now` (§9.5), and
-    a sub-hour action (e.g. a 30m talk) leaves `now` mid-hour, so the next
-    step resumes on the **next whole hour** — the lenient interface (§11)
-    assigns exactly that. The dead air is real time: event resolution spans
-    the whole elapsed interval (§6.6), so a 22:00 trigger fires even when no
-    action window covers 22:00.
-29. **`once` triggers** (§6.6, §10): hour triggers repeat on every crossing
-    of their hour-of-day unless authored `once`; a once-trigger fires on its
-    first crossing only. Fired-ness lives in the state as a projection
+    a sub-halfhour action (e.g. a 20m wait) leaves `now` mid-tick, so the
+    next step resumes on the **next halfhour tick** — the lenient interface
+    (§11) assigns exactly that. The dead air is real time: event resolution
+    spans the whole elapsed interval (§6.6), so a tick's trigger fires even
+    when no action window covers that instant. (v0.2.3: the tick shrank from
+    the hour to the halfhour.)
+29. **`once` triggers** (§6.6, §10): slot triggers repeat on every crossing
+    of their halfhour-of-day unless authored `once`; a once-trigger fires on
+    its first crossing only. Fired-ness lives in the state as a projection
     rebuilt from EVENT rows at fold — event-sourced, undo-safe.
 
 ## 10. The script format — a game as one text file
@@ -828,9 +838,9 @@ Rules:
   declaration.
 - **Recipe lines**: §6.4's script form (`[id] [hidden|shown [hint "…"]]
   [when COND] -> OUTCOMES` or `default -> OUTCOMES`).
-- **Trigger line**: `ID [once] at hour N -> OUTCOMES`, `N` = hour-of-day
-  0..23, firing on every crossing — or on the first crossing only with
-  `once` (§9.29).
+- **Trigger line**: `ID [once] at (hour|halfhour) N -> OUTCOMES` — `hour` N
+  is 0..23 (slot 2N), `halfhour` N is 0..47. Fires on every crossing of that
+  halfhour-of-day — or on the first crossing only with `once` (§9.29).
 
 ## 11. The play interface — lenient input, REPL, undo
 
@@ -845,8 +855,8 @@ sentence is what gets logged (§9.1). Rules:
 - **Canonical passthrough**: input starting `d:h @` or containing `->`
   goes through the strict parser unchanged (clock defaults to the world
   clock when absent).
-- Otherwise: optional leading `d:h` clock (default: the **next whole hour**
-  at or after the world clock, §9.28); the
+- Otherwise: optional leading `d:h` clock (default: the **next halfhour
+  tick** at or after the world clock, §9.28); the
   first dictionary verb token ends the actor list — two-token preposition
   forms like `use on` are recognized; tokens before the verb are actors,
   defaulting to the `player:` character.

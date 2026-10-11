@@ -7,7 +7,7 @@ import type { Dictionary } from './dict.js'
 import type { CompiledContent } from './content.js'
 import type { Clause, Role } from './sentence.js'
 import { parseSentence } from './parse.js'
-import { clockFromAbsMin, nextStepClock, parseClock, type Clock } from './clock.js'
+import { nextStepClock, parseClock, type Clock } from './clock.js'
 import { nameRef, type Ref } from './ref.js'
 import type { Entity, State } from './types.js'
 import type { Step } from './engine.js'
@@ -48,7 +48,7 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
 
   const names = aliveNames(ctx.state)
 
-  // optional leading clock token; default: the next whole hour (§9.28)
+  // optional leading clock token; default: the next halfhour tick (§9.28)
   let i = 0
   let clock: Clock = nextStepClock(ctx.state.now)
   if (/^\d+:\d+$/.test(tokens[0])) {

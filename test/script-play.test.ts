@@ -14,8 +14,8 @@ describe('script compiler', () => {
   const game = compileScript(scriptText, dict)
 
   test('meta lines set title, player, and the starting clock', () => {
-    expect(game.meta).toEqual({ title: 'The Forgotten House', player: 'ANA', start: { day: 0, hour: 14 } })
-    expect(game.state.now).toBe(14 * 60)
+    expect(game.meta).toEqual({ title: 'The Forgotten House', player: 'ANA', start: { day: 0, halfhour: 28 } })
+    expect(game.state.now).toBe(28 * 30)
   })
 
   test('entities carry kinds, aspects, and containers', () => {
@@ -51,7 +51,7 @@ describe('script compiler', () => {
   })
 
   test('triggers and prototypes compile', () => {
-    expect(game.content.triggers).toEqual([{ id: 'dusk_falls', hour: 16, once: false, out: expect.any(Array) }])
+    expect(game.content.triggers).toEqual([{ id: 'dusk_falls', slot: 32, once: false, out: expect.any(Array) }])
     const clue = game.content.prototypes.get('CLUE')!
     expect(clue.derive).toEqual({ nameFrom: 'object', aspects: { secret: { fromObjectAspect: 'secret', minus: 2 } } })
   })
@@ -76,7 +76,7 @@ describe('lenient player input', () => {
     const r = parsePlayerInput('read the forgetting', ctx)
     expect(r.ok).toBe(true)
     if (r.ok) {
-      expect(r.step.clock).toEqual({ day: 0, hour: 14 })
+      expect(r.step.clock).toEqual({ day: 0, halfhour: 28 })
       expect(r.step.clauses[0]).toMatchObject({ verb: 'READ', actors: [{ form: 'name', name: 'ANA' }], objects: [{ form: 'name', name: 'THE_FORGETTING' }] })
     }
   })
@@ -106,9 +106,9 @@ describe('lenient player input', () => {
   })
 
   test('canonical passthrough still works', () => {
-    const r = parsePlayerInput('0:20 @ ANA WAIT', ctx)
+    const r = parsePlayerInput('0:40 @ ANA WAIT', ctx)
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.step.clock).toEqual({ day: 0, hour: 20 })
+    if (r.ok) expect(r.step.clock).toEqual({ day: 0, halfhour: 40 })
   })
 
   test('unknown words get suggestions', () => {

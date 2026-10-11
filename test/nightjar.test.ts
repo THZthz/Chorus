@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { Game, type Turn } from '../src/play.js'
+import { parsePlayerInput } from '../src/lenient.js'
 import { fold } from '../src/fold.js'
 import { seedDictionary } from '../src/seed.js'
 
@@ -30,6 +31,20 @@ const WIN_PATH = [
 ]
 
 describe('the nightjar flyer', () => {
+  test("lenient 'talk with X' maps onto TALK's to-slot", () => {
+    const game = fresh()
+    const r = parsePlayerInput('talk with quill', {
+      dict, content: game.content, state: game.state, player: 'MARCH',
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      const c = r.step.clauses[0]
+      expect(c.verb).toBe('TALK')
+      expect(c.to).toMatchObject({ form: 'name', name: 'QUILL' })
+      expect(c.with).toEqual([])
+    }
+  })
+
   test('compiles: world, suspects, and the five-verb toolkit', () => {
     const game = fresh()
     expect(game.title).toBe('Murder on the Nightjar Flyer')

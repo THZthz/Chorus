@@ -684,8 +684,8 @@ batched at completion is the UI's choice:
 ```
 
 Journal: canonical sentences, or the prose templates — same data, two views
-(`/journal` and `/story` in the REPL, §11). `/cards` lists the table,
-`/look` shows the player's container and its contents.
+(`/journal` and `/story` in the player interface, §11). `/cards` lists the
+table, `/look` shows the player's container and its contents.
 
 ---
 
@@ -860,11 +860,12 @@ Rules:
   is 0..23 (slot 2N), `halfhour` N is 0..47. Fires on every crossing of that
   halfhour-of-day — or on the first crossing only with `once` (§9.29).
 
-## 11. The play interface — lenient input, REPL, undo
+## 11. The play interface — lenient input, the terminal UI, undo
 
 A `Game` is script-compiled content + base state + the append-only log
 (`Game.fromScript`). `handleLine` is one turn — pure enough to drive from
-tests; `runRepl` wraps it in a terminal prompt.
+tests; `runTui` wraps it in an Ink terminal UI (a plain readline loop when
+stdin or stdout is not a TTY).
 
 **Lenient input** (`read the forgetting`) is a *front door*, not NLU (§2):
 it maps onto the canonical grammar, and the engine-composed canonical
@@ -883,6 +884,10 @@ sentence is what gets logged (§9.1). Rules:
 - Names resolve case-insensitively, underscores as spaces, articles
   dropped, longest match first (up to 4 tokens) among **alive** entities;
   unknown words fail with suggestions (prefix match, then edit distance ≤ 2).
+- A `with X` phrase whose verb has no `with` slot routes X to the verb's
+  real companion slot — `to` when defined and free, else the actors while
+  they have room and X fits the slot query; anything else stays in `with`
+  and the engine rejects the phrasing as typed.
 
 **Slash commands**: `/look` (player's container + contents), `/cards`
 (every living card), `/journal` (canonical), `/story` (prose), `/undo`,

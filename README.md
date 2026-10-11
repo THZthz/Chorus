@@ -28,7 +28,8 @@ scripts by hand.
 - `src/lenient.ts` — lenient English-ish player input → canonical steps
 - `src/engine.ts` — slots → recipes → outcomes → time → events; step-atomic REFUSE
 - `src/fold.ts` `store.ts` — replay from the log; JSONL persistence
-- `src/play.ts` — the game loop and terminal REPL
+- `src/play.ts` — the game loop (script + log; one turn = handleLine)
+- `src/tui.tsx` — the terminal UI (Ink); readline fallback when stdin or stdout is not a TTY
 - `src/seed.ts` — the same sample world in TypeScript (tests)
 - `src/render.ts` — journal / prose / text cards (L3 projections)
 - `scripts/the-forgotten-house.txt` — a whole game as one text file

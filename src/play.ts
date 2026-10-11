@@ -1,8 +1,6 @@
 // Play interface — a text script becomes a playable game.
 // Game = script + log; handleLine is the whole turn loop (testable without a TTY);
-// runRepl wraps it in readline for the terminal.
-import { createInterface } from 'node:readline/promises'
-import { stdin, stdout } from 'node:process'
+// src/tui.tsx renders it in the terminal (Ink, with a readline fallback).
 import type { Dictionary } from './dict.js'
 import type { CompiledContent } from './content.js'
 import { compileScript, type ScriptMeta } from './script.js'
@@ -113,18 +111,4 @@ export class Game {
     this.state = fold(this.log.records, cloneState(this.base), this.dict, this.content)
     return { kind: 'info', lines: ['undone.'] }
   }
-}
-
-/** terminal REPL around a Game */
-export async function runRepl(game: Game): Promise<void> {
-  console.log(`── ${game.title} ──  (type /help)`)
-  const rl = createInterface({ input: stdin, output: stdout, prompt: '» ' })
-  rl.prompt()
-  for await (const line of rl) {
-    const turn = game.handleLine(line)
-    for (const l of turn.lines) console.log(l)
-    if (turn.kind === 'quit') break
-    rl.prompt()
-  }
-  rl.close()
 }

@@ -122,6 +122,24 @@ describe('lenient player input', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.suggestions).toContain('read')
   })
+
+  test('verb suggestions match multi-word verbs on their first word', () => {
+    const r = parsePlayerInput('tavel to the hall', ctx)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.suggestions).toContain('travel to')
+  })
+
+  test("'with X' folds into the verb's real slot — a second actor for TALK here", () => {
+    const r = parsePlayerInput('talk with bertha about clue secret hideout', ctx)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      const c = r.step.clauses[0]
+      expect(c.verb).toBe('TALK')
+      expect(c.with).toEqual([])
+      expect(c.actors.map((a: import('../src/ref.js').Ref) => a.form === 'name' && a.name).sort()).toEqual(['ANA', 'BERTHA'])
+      expect(c.about).toMatchObject({ name: 'CLUE_SECRET_HIDEOUT' })
+    }
+  })
 })
 
 describe('the game loop', () => {

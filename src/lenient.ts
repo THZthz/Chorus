@@ -9,6 +9,7 @@ import type { Clause, Role } from './sentence.js'
 import { parseSentence } from './parse.js'
 import { nextStepClock, parseClock, type Clock } from './clock.js'
 import { nameRef, type Ref } from './ref.js'
+import { matchQuery } from './query.js'
 import type { Entity, State } from './types.js'
 import type { Step } from './engine.js'
 
@@ -67,10 +68,11 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
     if (ctx.dict.isVerb(joined)) { verbIndex = j; verbLen = 2; break }
   }
   if (verbIndex === -1) {
+    const verbs = [...ctx.dict.verbs].map(v => v.toLowerCase())
     return {
       ok: false,
-      error: `no verb found — try one of: ${[...ctx.dict.verbs].map(v => v.toLowerCase().replace(/_/g, ' ')).join(', ')}`,
-      suggestions: suggest(tokens[i], [...ctx.dict.verbs].map(v => v.toLowerCase())),
+      error: `no verb found — try one of: ${verbs.map(v => v.replace(/_/g, ' ')).join(', ')}`,
+      suggestions: suggestVerb(tokens[i], verbs),
     }
   }
   const verb = tokens.slice(verbIndex, verbIndex + verbLen).join('_').toUpperCase()
@@ -96,6 +98,7 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
   const objects = resolve(groups.object)
   const at = resolveGroup(groups.at, names)
   const about = resolveGroup(groups.about, names)
+  const toRefs = resolve(groups.to)
   const withRefs = resolve(groups.with)
   unknown.push(...at.failed, ...about.failed) // about/at fail loudly too (§11)
 
@@ -105,13 +108,42 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
     return { ok: false, error: `I don't know '${word}'`, suggestions: suggest(word, pool) }
   }
 
+  // English prefers "talk with quill"; slots say `to` (nightjar) or a second
+  // actor (forgotten-house) — route 'with' content to the verb's real slot,
+  // but only where the entity fits (§6 slot queries); anything that does not
+  // fit stays in `with` so the engine rejects the phrasing the player typed
+  let actors = actorRefs
+  let to = toRefs[0] ?? null
+  let withRole = withRefs
+  const verbDef = ctx.content.verbs.get(verb)
+  if (verbDef && withRole.length > 0 && !verbDef.slotByRole.has('with')) {
+    const fits = (ref: Ref, role: 'to' | 'actors'): boolean => {
+      const slot = verbDef.slotByRole.get(role)
+      if (!slot) return false
+      const id = ref.form === 'name' ? ctx.state.byName.get(ref.name) : undefined
+      const e = id !== undefined ? ctx.state.entities.get(id) : undefined
+      return e !== undefined && (!slot.query || matchQuery(e, slot.query))
+    }
+    if (to === null && withRole.length > 0 && fits(withRole[0]!, 'to')) {
+      to = withRole[0]!
+      withRole = withRole.slice(1)
+    } else if (verbDef.slotByRole.has('actors')) {
+      const actorsSlot = verbDef.slotByRole.get('actors')!
+      const fitting = withRole.filter(r => fits(r, 'actors'))
+      if (fitting.length > 0 && actors.length + fitting.length <= actorsSlot.max) {
+        actors = [...actors, ...fitting]
+        withRole = withRole.filter(r => !fitting.includes(r))
+      }
+    }
+  }
+
   const clause: Clause = {
-    actors: actorRefs,
+    actors,
     at: at.refs[0] ?? null,
     verb,
-    to: resolve(groups.to)[0] ?? null,
+    to,
     objects,
-    with: withRefs,
+    with: withRole,
     about: about.refs[0] ?? null,
   }
   return { ok: true, step: { clock, clauses: [clause] }, canonical: '' }
@@ -171,6 +203,19 @@ function suggest(word: string, pool: string[], limit = 3): string[] {
   if (starts.length > 0) return starts.slice(0, limit).map(x => x.p)
   const near = normed.filter(x => levenshtein(x.n, w) <= 2)
   return near.slice(0, limit).map(x => x.p)
+}
+
+/** like suggest(), but multi-word verbs ('travel to') also match on their
+ *  first word, so 'tavel' still lands on 'travel to'; display form uses spaces */
+function suggestVerb(word: string, verbs: string[], limit = 3): string[] {
+  const w = norm(word)
+  if (!w) return []
+  const normed = verbs.map(v => ({ v, whole: norm(v), first: norm(v.split(/[\s_]/)[0] ?? '') }))
+  const show = (v: string) => v.replace(/_/g, ' ')
+  const starts = normed.filter(x => x.whole.startsWith(w) || x.first.startsWith(w))
+  if (starts.length > 0) return starts.slice(0, limit).map(x => show(x.v))
+  const near = normed.filter(x => levenshtein(x.first, w) <= 2 || levenshtein(x.whole, w) <= 2)
+  return near.slice(0, limit).map(x => show(x.v))
 }
 
 function levenshtein(a: string, b: string): number {

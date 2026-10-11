@@ -25,11 +25,14 @@ the log — replay, provenance, and undo come free.
 - `src/seed.ts` — the same sample world in TypeScript (tests)
 - `src/render.ts` — journal / prose / text cards (L3 projections)
 - `scripts/the-forgotten-house.txt` — a whole game as one text file
+- `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
+  (five verbs, a timetable that fights back; winnable in ~8 commands)
 
 ## Play
 
 ```sh
 npm run play                    # plays scripts/the-forgotten-house.txt
+npm run play -- scripts/the-nightjar-flyer.txt   # the murder-mystery story
 npm run play -- my-game.txt     # any script
 ```
 
@@ -44,10 +47,24 @@ ANA and BERTHA read FAIRY_TALES at HOUSE. …the child sleeps wiser.
 ```
 
 The player types English-ish text (`read the pale lady`, `use on rite of
-ascension with chalice at house`); the engine assigns the clock, resolves
-names fuzzily (case, articles, underscores), and suggests corrections. Strict
-canonical sentences (`0:20 @ ANA WAIT`) pass through unchanged. Slash
-commands: `/look`, `/cards`, `/journal`, `/story`, `/undo`, `/quit`.
+ascension with chalice at house`, `talk to cole about the aether seal`); the
+engine assigns the clock, resolves names fuzzily (case, articles,
+underscores), and suggests corrections. Strict canonical sentences
+(`0:20 @ ANA WAIT`) pass through unchanged. Slash commands: `/look`,
+`/cards`, `/journal`, `/story`, `/undo`, `/quit`.
+
+Committed actions **process** over their verb's duration — the verb and its
+placed cards are locked for that window, authored `PROGRESS` ticks describe
+what is happening inside it, and outcomes (consume / mutate / mint) land
+when the bar completes:
+
+```
+» seraphine read the wax cylinder
+SERAPHINE read THE_WAX_CYLINDER.
+  (+20m) You wind the cylinder onto the phonomotor; the stylus trembles and finds its groove.
+  (+50m) A voice assembles out of the hiss — the lord's own, speaking the words that open his seal.
+Someone owns the lord's voice.
+```
 
 ## Script format
 

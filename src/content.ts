@@ -36,6 +36,7 @@ export interface VerbContent {
 export interface TriggerDef {
   id: string
   hour: number           // hour of day at which the trigger fires on crossing
+  once?: boolean         // fires on its first crossing only (§9.29)
   out: string[]
 }
 
@@ -84,7 +85,7 @@ export interface CompiledVerb {
 
 export interface CompiledContent {
   verbs: Map<string, CompiledVerb>
-  triggers: { id: string; hour: number; out: Outcome[] }[]
+  triggers: { id: string; hour: number; once: boolean; out: Outcome[] }[]
   prototypes: Map<string, PrototypeDef>
   templates: Map<string, string>
 }
@@ -109,7 +110,12 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     }))
     verbs.set(name, { name, slots, slotByRole, duration: v.duration, recipes })
   }
-  const triggers = (raw.triggers ?? []).map(t => ({ id: t.id, hour: t.hour, out: t.out.flatMap(o => parseOutcomeString(o, dict)) }))
+  const triggers = (raw.triggers ?? []).map(t => {
+    const out = t.out.flatMap(o => parseOutcomeString(o, dict))
+    // §6.7: PROGRESS narrates a processing window; events have none
+    if (out.some(o => o.op === 'PROGRESS')) throw new Error(`trigger ${t.id}: PROGRESS belongs to verb recipes, not events`)
+    return { id: t.id, hour: t.hour, once: t.once ?? false, out }
+  })
   const prototypes = new Map(Object.entries(raw.prototypes ?? {}))
   const templates = new Map(Object.entries(raw.templates ?? {}))
   return { verbs, triggers, prototypes, templates }

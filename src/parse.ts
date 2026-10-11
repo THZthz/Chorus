@@ -175,6 +175,11 @@ class Parser {
           while (this.atPunct(',')) { this.next(); args.push(this.arg()) }
         }
         this.expectPunct(')')
+        // NARRATE's canonical form is a single string (§4.4); extra args would
+        // be dropped by the formatter, so refuse them at the door (§9.6)
+        if (op === 'NARRATE' && (args.length !== 1 || args[0].t !== 'str')) {
+          throw new Error('NARRATE takes exactly one string')
+        }
         return { op, args }
       }
       if (op === 'SPAWN') return { op, args: this.spawnArgs() }

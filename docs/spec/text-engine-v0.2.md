@@ -11,6 +11,23 @@ projection of that data, never the source of truth.
 > words), USE_ON signature fixed, single time model (auto duration + ADVANCE
 > as authored extra), step-atomic REFUSE, recipe ids, EVENT representation,
 > aspects/attrs split, name-uniqueness rules.
+>
+> v0.2.1 = spec–implementation alignment review. Changes: reserved word `AS`,
+> name lexeme allows leading `_`, canonical paren-less outcome forms (`SPAWN`,
+> `NARRATE`), role refs as outcome args, concrete SPAWN materialization pairs,
+> prototype `derive` (replaces the `CLUE(secret-2)` sugar), recipe auto-ids,
+> monotonic clock, fold clock ownership, `advancedMin` on the record, slot
+> `shown`/`hidden` data-model-only, script format (§10) and play interface
+> (§11) documented.
+>
+> v0.2.2 = the processing cycle. Changes: `PROGRESS` outcome (authored
+> read-bar ticks, §6.7), the processing cycle formalized (commit → lock →
+> ticks → outcomes → unlock; locks guaranteed by serialized discrete time),
+> prose renders progress and gains `{to}`/`{with}` tokens (§5.3), the `to`
+> role reaches the record (§7), distinct cards per slot, `once` triggers
+> (§9.29), hour-quantized step clocks with dead-air event crossings (§9.28),
+> first story content exercising it (`scripts/the-nightjar-flyer.txt`), and
+> an exploratory story test (test/nightjar-explorer.test.ts).
 
 ---
 
@@ -83,11 +100,12 @@ recipes. **Knowledge is aspects on a character** (`occult:3`,
 `language.latin:2`) — there is no separate skill system.
 
 **Structural properties are attrs**, not aspects. Engine-known attr keys:
-`container` (where the card sits), `expires` (`+24h` style; the engine
-materializes `expiresAt` = current clock + duration at set time), and the
-boolean flag namespace `state.*`: `state.sealed`, `state.locked`,
-`state.hidden`, `state.portable`, `state.unique`. Queries read them via
-`state:sealed` / `state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
+`container` (where the card sits — the container's entity id), `expires`
+(`2h`/`90m`/`1d` style; the engine materializes `expiresAt` = current clock +
+duration at set time, stored as **absolute minutes**) and the boolean flag
+namespace `state.*`: `state.sealed`, `state.locked`, `state.hidden`,
+`state.portable`, `state.unique`. Queries read them via `state:sealed` /
+`state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
 
 **Relations** are facts *between* two cards (the social graph): typed edges
 declared in the dictionary as `symmetric` (`parent_child`) or `directed`
@@ -109,30 +127,34 @@ Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 | Verb        | Signature                              | Purpose                        |
 |-------------|----------------------------------------|--------------------------------|
 | `READ`      | ACTORS READ object [AT place]          | study a text → ideas           |
-| `WORK`      | ACTORS WORK [AT place] [WITH item]     | labor → resources              |
+| `WORK`      | ACTORS WORK [AT place]                 | labor → resources              |
 | `TALK`      | ACTORS TALK [AT place] [ABOUT idea]    | social outcomes, group actions |
 | `EXPLORE`   | ACTORS EXPLORE place                   | discover contents of a place   |
 | `TRAVEL_TO` | ACTORS TRAVEL_TO place                 | deliberate movement            |
 | `LOCATE_AT` | ACTORS LOCATE_AT place                 | set/dump position (utility)    |
 | `DREAM`     | ACTORS DREAM [WITH idea]               | visions, rest                  |
-| `USE_ON`    | ACTORS USE_ON target [WITH item]       | craft, rites, keys, tools      |
-| `ACQUIRE`   | ACTORS ACQUIRE item                    | buy/gain via cost              |
+| `USE_ON`    | ACTORS USE_ON target [AT place] [WITH item] | craft, rites, keys, tools |
+| `ACQUIRE`   | ACTORS ACQUIRE object                  | buy/gain via cost              |
 | `WAIT`      | ACTORS WAIT                            | pass time (auto duration)      |
 
-Custom verbs are declarable with the same shape — the core set is a default,
-not a closed wall.
+Signatures say which roles a verb may take; cardinalities and queries are
+content (§6.1). The seed content narrows some of these (e.g. seed `ACQUIRE`
+takes an object of any kind; seed `WORK` declares no `with` slot). Custom
+verbs are declarable with the same shape via `Dictionary.registerVerb` — the
+core set is a default, not a closed wall.
 
 ### 4.4 OUTCOME operators (fixed vocabulary, **normative arities**)
 
 | Operator  | Args (normative)                | Effect                                        |
 |-----------|---------------------------------|-----------------------------------------------|
-| `SPAWN`   | ref [, INTO ref] [, AS #id]     | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly |
+| `SPAWN`   | ref [, INTO ref] [, AS #id] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.18) |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
-| `SET`     | ref, key, value                 | mutate attr (`state.sealed`, `container`, `expires`…) |
+| `SET`     | ref, key, value                 | mutate attr (`state.sealed`, `container`, `expires`…); `SET x, expires, 2h` also materializes `expiresAt` |
 | `MOVE`    | ref, INTO ref                   | relocate (place→actor, actor→place)           |
 | `REVEAL`  | ref                             | unlock hidden text / mark discovered          |
 | `ADVANCE` | duration (`2h`, `90m`, `1d`)    | authored extra time shift (§9.12)             |
 | `NARRATE` | string                          | journal line only; raw template stored, interpolated at render |
+| `PROGRESS`| duration, string                | a read-bar tick: authored progress text at `duration` into the processing window (§6.7); journal-only, no state or time effect |
 | `RELATE`  | ref, ref, type [, int]          | create a relation edge between two cards      |
 | `UNRELATE`| ref, ref, type                  | remove a relation edge                        |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
@@ -140,6 +162,12 @@ not a closed wall.
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
 from its prototype if defined, into the step's `at` place or the first actor's
 `container`). Moving an *existing* card is `MOVE`. Outcomes apply in order.
+
+**Role refs are valid outcome args**: any ref position may name a role —
+`ACTORS`, `OBJECT`, `WITH`, `AT`, `ABOUT`, `TO` (case-insensitive; rendered
+uppercase) — and expands to that role's bound cards (`DESTROY WITH`,
+`MOVE ACTORS INTO OBJECT`, `SPAWN MARK INTO at`). Role refs are concretized to
+`#id`s in the logged outcome (§9.15, §9.18).
 
 ### 4.5 Query mini-language (slot queries — one card at a time)
 
@@ -169,23 +197,34 @@ sentence   = [ clock "@" ] ( action | event ) ;
 clock      = int ":" int ;                       (* "day:hour", day 0-based, hour 0..23 *)
 action     = clause { ";" clause } [ "->" outcomes ] ;
 event      = "EVENT" name [ "->" outcomes ] ;
-clause     = actors [ "AT" ref ] verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "ABOUT" ref ] ;
+clause     = actors [ "AT" ref ] verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "ABOUT" ref ] [ "AT" ref ] ;
+(*          the trailing "AT" is input sugar only (§9.10); canonical output is pre-verbal *)
 actors     = ref { "," ref } ;                   (* 1..n, order-free; canonical = sorted *)
 objects    = ref { "," ref } ;
 reflist    = ref { "," ref } ;
 verbo      = VERB ;                              (* must be a verb registered in the dictionary *)
 outcomes   = outcome { "," outcome } ;           (* commas inside ( ) belong to args *)
-outcome    = OPERATOR "(" [ args ] ")" | ref ;   (* bare ref = SPAWN ref, engine adds AS #id *)
+outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/ADVANCE/PROGRESS: parens required *)
+           | "SPAWN" ref [ "INTO" target ] [ "AS" "#" id ] { key "=" value }
+           | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
+           | "NARRATE" string
+           | ref ;                               (* bare ref = SPAWN ref, engine adds AS #id *)
+(*          canonical OUTPUT: SPAWN and NARRATE paren-less, every other op paren'd
+            — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) *)
 args       = arg { "," arg } ;                   (* arg shapes validated per §4.4 arity *)
-arg        = ref | int | string | duration | "INTO" ref | "AS" "#" id | key "=" value ;
+arg        = ref | role | int | string | bool | duration
+           | "INTO" target | "AS" "#" id | key "=" value | dottedName ;
+target     = ref | role ;
+role       = "ACTORS" | "OBJECT" | "WITH" | "AT" | "ABOUT" | "TO" ;  (* case-insensitive *)
+dottedName = name { "." name } ;                 (* SET(x, state.sealed, true) *)
 duration   = int ( "h" | "m" | "d" ) ;
 ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name *)
 ```
 
 Lexical rules:
 
-- `name` = `[A-Za-z][A-Za-z0-9_]*`. **Reserved words** (`EVENT TO WITH AT
-  ABOUT INTO AND OR NOT` + every registered verb lexeme) cannot be used as
+- `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT TO WITH AT
+  ABOUT INTO AS AND OR NOT` + every registered verb lexeme) cannot be used as
   names; content needing them uses the quoted-string ref form (`"PLAN B"`).
 - **Entity names are unique among alive entities** (enforced at SPAWN /
   registration). Canonical ref output is the bare name; `kind:NAME` and `#id`
@@ -244,19 +283,48 @@ Rite via `USE_ON` with instruments (actors operate the rite together):
     -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE
 ```
 
+These examples show the **parse-level canonical form** (sugar resolved: bare
+ref → `SPAWN`, pre-verbal `AT`, sorted actors). When the engine *executes* a
+step it materializes further and the recorded sentence is longer — minted ids,
+role refs concretized to `#id`s, SPAWN's engine-written `INTO`/`aspects=`/
+`attrs=` pairs (§9.15, §9.18; the pairs are space-separated inside the SPAWN).
+The same rite, executed, logs:
+
+```
+1:23 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(#rite), DESTROY(#chalice), SPAWN MARK_OF_ASCENSION INTO #house AS #e2_1 attrs="{\"container\":\"house\"}"
+```
+
 ### 5.3 Prose rendering (L3 template, not stored truth)
 
-Each verb owns a template using **role names**:
+Each verb owns a template using **role names** (`{actors} {object} {at}
+{about} {to} {with}`):
 
 ```
 READ: "{actors} read {object} at {at}."
-TALK: "{actors} talk about {about} at {at}."
+TALK: "{actors} question {to}."
 ```
 
 → *"Ana reads The Pale Lady at the Study — she finds a clue to the hideout."*
 Actor sets join in prose as *"Ana and Bertha"*, following the canonical
-(sorted) order. `NARRATE` outcomes store raw templates; interpolation happens
-only here.
+(sorted) order. `NARRATE`/`PROGRESS` outcomes store raw templates;
+interpolation happens only here. A record renders as the **processing cycle
+read aloud** (§6.7): one verb-template line per clause, then the outcomes in
+emission order — `PROGRESS` ticks indented under the template with their
+offsets, `NARRATE` lines unindented, and a `REFUSE` spoken as its own line
+(§6.2):
+
+```
+MARCH read THE_VANE_LEDGER.
+  (+30m) Two hands wrote this ledger, and in the margins they argue.
+Quill's neat corrections hide a steady drain on the aether royalties. The lord had found it. Quill knew he had.
+```
+
+Verb templates render **per clause**; `NARRATE`/`PROGRESS` templates render
+**per record**, so their tokens resolve against the record's first-clause
+roles (§7) — keep record-level templates role-agnostic or place them in
+single-clause steps. Whether a live UI shows each tick as it comes due or
+prints the whole read-bar at completion is a pure display choice; the
+canonical record is identical either way.
 
 ---
 
@@ -265,21 +333,27 @@ only here.
 ### 6.1 Slot cardinality: how many cards a role takes
 
 A slot declares a **count**, an optional visibility flag, and a query every
-member must satisfy. One slot per line:
+member must satisfy. One slot per line (script syntax, §10):
 
 ```
-slot  := role ":" count ["," ("shown"|"hidden")] ["," query]
+slot  := role ":" count [ query ]
 count := int [ ".." [ int ] ]                    (* "1", "2", "1..2", "2..", "0..1" *)
-flag  := "shown" (default) | "hidden"
 ```
 
 ```
-verb READ:   slots: actors: 1..2, kind:character     # one or two readers
-verb DREAM:  slots: actors: 1, kind:character        # strictly solo
-verb USE_ON: slots: actors: 1..5, kind:character     # a coven may be needed
-                    object: 1, kind:rite
-                    with:    0..2, kind:item
+verb READ:
+  actors: 1..2 kind:character     # one or two readers
+  object: 1 kind:text
+
+verb USE_ON:
+  actors: 1..5 kind:character     # a coven may be needed
+  object: 1 kind:rite
+  with:    0..2 kind:item
 ```
+
+The per-slot `shown`/`hidden` flag (§6.2) exists in the data model
+(`SlotDef.shown`, default `shown`); the script line grammar does not carry it
+in v0.2 — hidden slots are declared in TS content only.
 
 Cardinality is the **general** rule only. Exceptions ("two may read *unless*
 the book is magick") are recipes, not slots — a rule the UI can apply without
@@ -317,17 +391,26 @@ quantifiers  every(actors, aspect:occult >= 2) · any(actors, aspect:child)
 pairwise     rel(parent_child, actors)          # ∃ a pair of actors with this relation
 aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
 paths        total(actors, aspect:lantern) < object.aspect.demand   # value vs value
+             count(actors) > object.attr.seats                      # attr paths too
 logic        AND · OR · NOT (uppercase; NOT binds tightest)
+comparisons  >= · <= · > · < · = · !=
 ```
+
+v0.2 limits: path operands read `role.aspect.key` and `role.attr.key`
+(numeric attrs); the scalar conditions inside `every`/`any` read **aspects
+only** (`aspect:key >= n`).
 
 ### 6.4 Recipes: first match wins, most specific first, **stable ids**
 
-A recipe is an optional stable `id` (used for log provenance), `when` (or
-`default`), `out`, and optional `shown`/`hint`:
+A recipe is an optional stable `id` (used for log provenance; when omitted the
+compiler mints `<verb>.recipe<n>` / `<verb>.default`), `when` (or `default`),
+`out`, and optional `shown`/`hint`. Data-model shape and script line (§10):
 
 ```
-recipe := ["id:" name] ("- when:" cond | "- default") "out:" outcomes
-          ["shown:" true|false]  ["hint:" "text"]     (default: shown: false)
+recipe      := [id] ["when:" cond | "default"] "out:" outcomes
+               ["shown:" true|false] ["hint:" "text"]      (default: shown: false)
+script line := [id] ["hidden" | "shown" ["hint" «"text"»]] ["when" cond] "->" outcomes
+             | "default" "->" outcomes
 ```
 
 The flagship ladder:
@@ -360,7 +443,8 @@ verb READ:
     # solo study of a secret text
     - id:    read.secret
       when:  object.aspect.secret >= 3
-      out:   SPAWN CLUE(secret-2), NARRATE "{actors} tease out a hidden thread."
+      out:   PROGRESS(30m, "The margins argue with themselves."),
+             SPAWN CLUE, NARRATE "{actors} tease out a hidden thread."
 
     - default:
       out:   NARRATE "{actors} read {object}."
@@ -386,10 +470,14 @@ verb USE_ON:
       out:   ...continue...
 ```
 
-`SPAWN CLUE(secret-2)` is content sugar for a prototype-parameterized spawn:
-the prototype `CLUE` is minted with `secret = object.aspect.secret - 2`. The
-engine resolves it at execution and writes the concrete outcome (`SPAWN
-CLUE_HIDEOUT AS #c1`) into the log — the log never contains sugar.
+Parameterized spawns are **prototype derive rules**, not call-site sugar. The
+prototype `CLUE` is declared `kind: idea, deriving name from object, secret
+from object.secret-2`; a recipe that says `SPAWN CLUE` mints
+`<PROTO>_<OBJECTNAME>` (e.g. `CLUE_THE_FORGETTING`) with `secret =
+object.aspect.secret − 2`. The engine resolves everything at execution and
+writes the concrete outcome — name, `INTO`, `AS #id`, materialized
+`aspects=`/`attrs=` pairs — into the log (§9.15, §9.18): the log never
+contains sugar.
 
 ### 6.5 REFUSE semantics (step-atomic)
 
@@ -408,26 +496,84 @@ CLUE_HIDEOUT AS #c1`) into the log — the log never contains sugar.
 
 1. **Validation**: every clause's slots are checked (roles declared by the
    verb, counts in range, members match queries, no undeclared roles).
-   Invalid → rejected at the UI, nothing logged.
+   Invalid → rejected at the UI, nothing logged. A step whose start clock is
+   before the state's current clock is also rejected outright — mechanics
+   time is monotonic (§9.5, §9.20).
 2. **Selection**: for each clause in order, the verb's first recipe whose
    `when` holds fires (or `default`). No recipe → rejection, nothing logged.
-3. **Application**: outcomes apply in order into a draft; REFUSE discards the
-   draft (§6.5). Otherwise the draft becomes the new state.
+3. **Application**: outcomes apply in clause order into a draft; role refs
+   re-resolve against the draft before each clause applies, so cards an
+   earlier clause destroyed are never applied stale. A `REFUSE` discards the
+   whole draft (§6.5); an outcome that *cannot* apply (unresolvable ref,
+   name collision) rejects the whole step with nothing logged — distinct
+   from `REFUSE`, which always logs its attempt (§9.19). Otherwise the draft
+   becomes the new state.
 4. **Time**: the engine advances the clock by the **sum of executed clauses'
-   verb durations**. `t_game` on the record is the start clock. `ADVANCE`
-   outcomes are authored *extra* shifts (WAIT recipes, night-skipping rites).
+   verb durations** plus authored `ADVANCE` extras (WAIT recipes,
+   night-skipping rites) and records the total as the record's
+   `advancedMin`. `t_game` on the record is the start clock. On replay
+   (fold, §7) only action records move the clock — `t_game` + `advancedMin`;
+   EVENT rows never advance or rebase it (§9.21).
 5. **Provenance**: the record stores the fired recipe ids (one per clause,
    clause order) and the canonical sentence.
 6. **Events**: after the clock advances, the engine resolves, in
-   chronological order: authored time triggers (dictionary content: id +
-   hour) and entity expiries (`expiresAt` crossed). Each fires its own EVENT
-   log row with its outcomes applied. One pass — events never cascade within
-   the same advance (v0.2 simplification; new expiries resolve at the next
-   advance). **The fold trusts logged EVENT rows** — it never re-derives them.
+   chronological order, across the **whole elapsed span** — from the state's
+   previous clock to the step's end, so hour-quantized dead air (§9.28)
+   cannot swallow a crossing: authored time triggers (content: id + hour
+   [+ `once`], firing on every crossing of that hour, or on the first
+   crossing only when `once`, §9.29) and entity expiries (`expiresAt`
+   crossed — trigger id `expire:<NAME>`, one engine-written `DESTROY`).
+   Within one crossed hour, authored triggers fire before expiries. Each
+   fires its own EVENT log row with its outcomes applied. One pass — events
+   never cascade within the same advance (v0.2 simplification; new expiries
+   resolve at the next advance). **The fold trusts logged EVENT rows** — it
+   never re-derives them; a once-trigger's fired-ness is a projection
+   rebuilt from those rows.
 
 Perishables/decay v0.2: an entity may carry `expires:+24h`; the engine
 materializes `expiresAt` when the attr is set; the crossing fires an expiry
 EVENT whose outcomes destroy/mutate it.
+
+### 6.7 The processing cycle (commit → lock → ticks → outcomes → unlock)
+
+Committing cards to a verb station is not the whole action: the action
+*processes* over the verb's duration, and the engine narrates that
+processing.
+
+1. **Commit & lock.** The step validates and a recipe fires per clause
+   (§6.6). For the step's whole processing window — `t_game` to
+   `t_game + advancedMin` — the verb station and every role-bound card are
+   **locked**: nothing else may act on them, or with them, meanwhile. (A role
+   takes **distinct cards**; the same card cannot fill one role twice.)
+2. **Ticks.** The fired recipes may schedule `PROGRESS` outcomes — authored
+   event descriptions at offsets inside the window (the "read bar"). An
+   offset counts from the record's start clock `t_game`; the display plots
+   ticks on the window. The log stores them in emission order, so a replay
+   re-derives exactly what the player saw and when.
+3. **Outcomes & unlock.** At the window's close the recipe's remaining
+   outcomes apply: `DESTROY`/`SET`/`SPAWN` consume, mutate, or mint cards
+   (the event's type decides which), `NARRATE` closes the scene, and the
+   surviving cards unlock back to the table.
+
+The window is **narrated, not simulated**: all outcomes still apply
+atomically at commit (§6.6), and effects anchored to the clock (such as
+`SET x, expires, …`) use the record's start clock. A `REFUSE` collapses the
+cycle before any of it: no window elapses, no tick is due, and the attempt
+is logged as in §6.5. `PROGRESS` belongs to verb recipes only — the script
+compiler rejects it in trigger outcomes (events have no window).
+
+**Why the engine has no lock machinery**: time is discrete per action
+(§9.2) — committing a step advances the clock across its entire window, so
+no other step can even begin inside it. The lock is the processing window
+projected by the UI, guaranteed by serialized time rather than enforced by
+flags. Concurrent verb stations (several windows in flight at once) remain
+an open question (§12).
+
+`PROGRESS(duration, string)` is journal-only, like `NARRATE`: no state
+effect, no time effect, raw template stored and interpolated at render
+(§5.3). Offsets are authored discipline — a tick past the window is harmless
+but meaningless. A cadence ("every hour") is simply several authored ticks;
+a real-time UI may schedule their display however it likes.
 
 ---
 
@@ -438,11 +584,11 @@ fold (§6.6); a SQL shape is given for when a queryable store is wanted.
 
 ```sql
 CREATE TABLE entity (
-  id           TEXT PRIMARY KEY,      -- "#c7f3"
+  id           TEXT PRIMARY KEY,      -- "s_ana", "e1_1"
   kind         TEXT NOT NULL,         -- dictionary KIND
   name         TEXT NOT NULL,         -- unique among alive entities
   aspects      JSON,                  -- {"secret":4,"language":{"latin":2}}
-  attrs        JSON,                  -- {"container":"#study","state.sealed":true,"expiresAt":"3:14"}
+  attrs        JSON,                  -- {"container":"house","state.sealed":true,"expiresAt":790}
   born_action  INTEGER,
   dead_action  INTEGER
 );
@@ -457,43 +603,51 @@ CREATE TABLE relation (
 );
 
 CREATE TABLE action (
-  id          INTEGER PRIMARY KEY,
-  kind        TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'event'
-  trigger     TEXT,                            -- event trigger id (events only)
-  t_game      TEXT NOT NULL,                   -- start clock "day:hour", day 0-based
-  t_real      TEXT,
-  actors      JSON,                            -- refs, stored sorted (order not semantic)
-  verb        TEXT NOT NULL,                   -- verb lexeme ('' for event rows; kind column discriminates)
-  objects     JSON,
-  instruments JSON,
-  at          TEXT,
-  about       TEXT,
-  outcomes    JSON,                            -- concrete outcomes (ids minted, sugar resolved)
-  recipes     JSON,                            -- fired recipe ids, clause order
-  sentence    TEXT NOT NULL                    -- canonical form, lossless
+  id           INTEGER PRIMARY KEY,
+  kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'event'
+  trigger      TEXT,                            -- event trigger id (events only; 'expire:<NAME>' for expiries)
+  t_game       TEXT NOT NULL,                   -- start clock "day:hour", day 0-based
+  t_real       TEXT,
+  advanced_min INTEGER NOT NULL DEFAULT 0,      -- minutes this record advanced the clock (0 for refused/events)
+  actors       JSON,                            -- refs: sorted, de-duplicated union across clauses (order not semantic)
+  verb         TEXT NOT NULL,                   -- FIRST clause's verb lexeme ('' for event rows; kind column discriminates)
+  objects      JSON,                            -- FIRST clause's object/with/at/about roles (multi-clause steps
+  instruments  JSON,                            --   keep per-clause detail in `sentence` — it is lossless)
+  at           TEXT,
+  about        TEXT,
+  to           TEXT,                            -- FIRST clause's `to` role (empty for event rows)
+  outcomes     JSON,                            -- concrete outcomes (ids minted, sugar resolved, roles concretized)
+  recipes      JSON,                            -- fired recipe ids, clause order
+  sentence     TEXT NOT NULL                    -- canonical form, lossless
 );
 ```
 
 - **State = fold(log)** → free replay, free provenance (`born_action`),
-  potential undo (re-fold without the tail).
+  potential undo (re-fold without the tail). The fold replays each record's
+  concrete outcomes; refused records are state no-ops; the clock is owned by
+  action records alone (`t_game` + `advanced_min`, §6.6). A once-trigger's
+  fired-ness is likewise a projection: the fold marks it from each EVENT
+  row's `trigger` (§9.29).
 - **Journal view** = the `sentence` column in order — the game *is* a book.
+- The shipped store is JSONL — one record per line (`saveLog`/`loadLog`); the
+  SQL shape above is the queryable target when one is wanted.
 
 ---
 
 ## 8. Rendering sketches (text now, drawable later)
 
-Card (every field is from the dictionary — nothing ad hoc):
+Card (every field is from the dictionary — nothing ad hoc). Shipped shape:
 
 ```
-┌──────────────────────────────┐
-│ THE PALE LADY          [text]│
-│ secret:3 · language.latin:2  │
-│ "The first page is missing…" │
-└──────────────────────────────┘
+┌────────────────────────────────────┐
+│ THE_PALE_LADY                      │
+│ text · secret:3 · language.latin:2 │
+└────────────────────────────────────┘
 ```
 
 Verb station (requirement badges per §6.2 — shown gates print their hint,
-hidden gates print nothing):
+hidden gates print nothing). Still a sketch: nothing renders stations in
+v0.2.
 
 ```
 ▶ USE_ON  [ actors: 1..5 characters ]  [ object: a rite ]  [ with: 0..2 items ]
@@ -503,7 +657,18 @@ hidden gates print nothing):
                                                           (magick gate: hidden)
 ```
 
-Journal: canonical sentences, or the prose templates — same data, two views.
+Processing (§6.7) — a committed action shows its window and ticks; live or
+batched at completion is the UI's choice:
+
+```
+▶ USE_ON  ▰▰▰▱▱  1h10m of 2h   [ MARCH · THE_INQUEST · 3 ideas ]
+    (+30m) Brack convenes the van; the company seal goes on the door.
+    (+1h)  Motive, means, opportunity: three cards on the tally-board.
+```
+
+Journal: canonical sentences, or the prose templates — same data, two views
+(`/journal` and `/story` in the REPL, §11). `/cards` lists the table,
+`/look` shows the player's container and its contents.
 
 ---
 
@@ -513,7 +678,10 @@ Journal: canonical sentences, or the prose templates — same data, two views.
 
 1. **Player input**: UI slots — the player places cards into verb slots
    (Cultist Simulator style); the **engine composes the canonical sentence**
-   and appends it to the log. No natural-language parsing.
+   and appends it to the log. No natural-language parsing. (v0.2 reality:
+   there is no UI yet — the lenient play interface of §11 stands in for the
+   slot UI, under the same invariant: it is a front door that maps onto the
+   grammar; the logged sentence is always the canonical one.)
 2. **Time model**: **discrete, per-action.** No background ticking.
 3. **Outcomes**: **hand-authored recipes only.** Deterministic and testable.
 4. **Prose layer**: afterthought. Canonical sentences are the deliverable.
@@ -546,16 +714,164 @@ Journal: canonical sentences, or the prose templates — same data, two views.
     `kind:name`/`#id` accepted as input sugar; reserved words must be quoted.
 15. **Outcome arities are normative** (§4.4); commas inside parens belong to
     args. The engine writes minted ids (`AS #id`) and resolved sugar into the
-    log, so the log replays exactly.
+    log, so the log replays exactly. Canonical output is paren-less for
+    `SPAWN` and `NARRATE` only; input additionally accepts paren-less
+    `DESTROY`/`REVEAL`/`MOVE`.
 16. **EVENTs**: trigger registry lives in content (id + hour) alongside
     expiry; events get their own log rows; the fold trusts logged events and
     never re-derives them; no cascading within one advance.
 17. **Structural flags are attrs, aspects are principles only** — one home
     each; `state:` queries read attrs.
 
-## 10. Remaining open questions
+### Implementation rulings (v0.2.1, spec–implementation alignment)
+
+18. **Concrete outcomes are fully materialized**: role refs are concretized
+    to `#id`s, and `SPAWN` gains its engine-written `INTO`, `AS #id`, and
+    `aspects=`/`attrs=` JSON pairs — the fold replays from the record alone,
+    never the step context (§5.2, §9.15).
+19. **Application failures reject the whole step**: an outcome that cannot
+    apply (unresolvable ref, duplicate name among the living, bad op args)
+    rejects with nothing logged — unlike `REFUSE`, which always logs its
+    attempt (§6.5).
+20. **The clock is monotonic**: a step whose start clock is before
+    `state.now` is rejected, nothing logged — §9.5 enforced by the engine.
+21. **The fold clock is action-owned**: replaying a log sets the clock from
+    action records only (`t_game` + `advancedMin`); EVENT rows never advance
+    or rebase it, so a log ending past an event keeps the action's end time.
+22. **Recipe ids default** to `<verb>.recipe<n>` / `<verb>.default` when a
+    recipe omits its stable id (§6.4).
+23. **Parameterized spawns are prototype derive rules** (`name from object`,
+    `aspects from object.aspect-N`), not call-site sugar — minted names look
+    like `CLUE_THE_FORGETTING` (§6.4).
+24. **The `to` role is grammar-complete but content-free** in v0.2: the
+    clause grammar and role refs accept it; no core verb declares a `to`
+    slot yet (§12 open question).
+
+### Implementation rulings (v0.2.2, the processing cycle)
+
+25. **`PROGRESS` is journal-only** (§4.4, §6.7): canonical paren'd form
+    `PROGRESS(30m, "…")`, recorded in emission order, arity `(duration,
+    string)` enforced at application (§9.19); ticks never touch state and
+    never advance the clock. Offsets count from the record's start clock;
+    `PROGRESS` in trigger outcomes is a load-time error.
+26. **The processing cycle needs no engine locks** (§6.7): serialized
+    discrete time (§9.2) guarantees the verb station and its role cards are
+    untouchable for the window; what happens at unlock is ordinary outcomes
+    (destroyed / mutated / minted / returned).
+27. **The `to` role reaches the record**: `ActionRecord` gains `to` (§7) and
+    prose gains `{to}` and `{with}` tokens (§5.3). First content use is the
+    Nightjar Flyer's interrogations (`MARCH TALK TO COLE ABOUT
+    THE_AETHER_SEAL`); ruling 24 still holds for the *core* verb set.
+28. **Step clocks are hour-quantized; the world is not** (found by the
+    exploratory test): a step may never start before `state.now` (§9.5), and
+    a sub-hour action (e.g. a 30m talk) leaves `now` mid-hour, so the next
+    step resumes on the **next whole hour** — the lenient interface (§11)
+    assigns exactly that. The dead air is real time: event resolution spans
+    the whole elapsed interval (§6.6), so a 22:00 trigger fires even when no
+    action window covers 22:00.
+29. **`once` triggers** (§6.6, §10): hour triggers repeat on every crossing
+    of their hour-of-day unless authored `once`; a once-trigger fires on its
+    first crossing only. Fired-ness lives in the state as a projection
+    rebuilt from EVENT rows at fold — event-sourced, undo-safe.
+
+## 10. The script format — a game as one text file
+
+A whole game is one text file: meta lines, then section blocks of
+sentence-like declarations. `#` starts a comment; blank lines are ignored.
+`compileScript` parses and compiles it once, failing loudly at load time
+(unknown kind, unregistered verb or relation type, bad grammar).
+
+```
+script: The Forgotten House        # title
+player: ANA                        # default actor for lenient input (§11)
+start: 0:14                        # initial clock
+
+entities:
+  HOUSE is place
+  STUDY is place in HOUSE with study:1            # container + aspects
+  ANA is character with occult:2, lantern:1 at HOUSE
+  ANA is parent_child of BERTHA                   # relation line (type must be registered)
+
+prototypes:
+  CLUE is idea deriving name from object, secret from object.secret-2
+
+triggers:
+  dusk_falls at hour 16 -> SPAWN DREAD, NARRATE "The lamps come on."
+  body_found once at hour 22 -> DESTROY LORD_VANE, NARRATE "A cry from the first cabin."
+
+verbs:
+  READ:
+    actors: 1..2 kind:character
+    object: 1 kind:text
+    at: 0..1 kind:place
+    duration: 1h
+    recipes:
+      read.magick_gate hidden when object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2) -> REFUSE("The letters swim like minnows.")
+      default -> NARRATE "{actors} read {object}."
+
+templates:
+  READ says "{actors} read {object} at {at}."
+```
+
+Rules:
+
+- **Entity line**: `NAME is KIND [with aspect:level, …] [at|in PLACE]`
+  (trailing `with`/`at`/`in` clauses in either order). Script ids are
+  `s_<name>`; containers resolve by name after all entities are read.
+  Names must be unique among the living (§9.14) and are written as-is —
+  prefer `UPPER_SNAKE`.
+- **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
+  dictionary; symmetric/directed storage follows its definition (§4.2).
+- **Verb lexemes are fixed by the dictionary**: a `verbs:` block configures
+  slots, duration, and recipes for a *registered* verb (§4.3, §6.1); new
+  verb lexemes are a code-level `Dictionary.registerVerb`, not a script
+  declaration.
+- **Recipe lines**: §6.4's script form (`[id] [hidden|shown [hint "…"]]
+  [when COND] -> OUTCOMES` or `default -> OUTCOMES`).
+- **Trigger line**: `ID [once] at hour N -> OUTCOMES`, `N` = hour-of-day
+  0..23, firing on every crossing — or on the first crossing only with
+  `once` (§9.29).
+
+## 11. The play interface — lenient input, REPL, undo
+
+A `Game` is script-compiled content + base state + the append-only log
+(`Game.fromScript`). `handleLine` is one turn — pure enough to drive from
+tests; `runRepl` wraps it in a terminal prompt.
+
+**Lenient input** (`read the forgetting`) is a *front door*, not NLU (§2):
+it maps onto the canonical grammar, and the engine-composed canonical
+sentence is what gets logged (§9.1). Rules:
+
+- **Canonical passthrough**: input starting `d:h @` or containing `->`
+  goes through the strict parser unchanged (clock defaults to the world
+  clock when absent).
+- Otherwise: optional leading `d:h` clock (default: the **next whole hour**
+  at or after the world clock, §9.28); the
+  first dictionary verb token ends the actor list — two-token preposition
+  forms like `use on` are recognized; tokens before the verb are actors,
+  defaulting to the `player:` character.
+- Role keywords `at | with | about | to` start role phrases; bare names
+  before one are objects.
+- Names resolve case-insensitively, underscores as spaces, articles
+  dropped, longest match first (up to 4 tokens) among **alive** entities;
+  unknown words fail with suggestions (prefix match, then edit distance ≤ 2).
+
+**Slash commands**: `/look` (player's container + contents), `/cards`
+(every living card), `/journal` (canonical), `/story` (prose), `/undo`,
+`/quit`.
+
+**Undo** = drop the trailing EVENT rows and the last action row, then
+re-fold from the base state (§7). Rejections and parse errors log nothing,
+so there is nothing to undo after them.
+
+## 12. Remaining open questions
 
 1. **Non-character subjects**: can any card be a subject for flavor events
    ("THE_PALE_LADY WHISPERS_TO ANA"), or only `character` kinds?
 2. The player's container: a CS-like "table" where loose cards live — one bag,
    or pockets/locations?
+3. The `to` role has its first content use (the Nightjar Flyer's
+   interrogations, §9.27) but no core verb declares it yet (§9.24):
+   recipient semantics (gifts, summons, threats) still await a core verb.
+4. Script-level verb declaration: new verb lexemes currently require
+   `Dictionary.registerVerb` in code (§10); should scripts declare them?

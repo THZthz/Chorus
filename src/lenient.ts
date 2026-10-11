@@ -7,7 +7,7 @@ import type { Dictionary } from './dict.js'
 import type { CompiledContent } from './content.js'
 import type { Clause, Role } from './sentence.js'
 import { parseSentence } from './parse.js'
-import { clockFromAbsMin, parseClock, type Clock } from './clock.js'
+import { clockFromAbsMin, nextStepClock, parseClock, type Clock } from './clock.js'
 import { nameRef, type Ref } from './ref.js'
 import type { Entity, State } from './types.js'
 import type { Step } from './engine.js'
@@ -36,7 +36,7 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
   if (/^\d+:\d+\s*@/.test(trimmed) || trimmed.includes('->')) {
     try {
       const s = parseSentence(trimmed, ctx.dict)
-      const clock: Clock = s.clock ?? clockFromAbsMin(ctx.state.now)
+      const clock: Clock = s.clock ?? nextStepClock(ctx.state.now) // §9.28
       return { ok: true, step: { clock, clauses: s.clauses }, canonical: trimmed }
     } catch (err) {
       return { ok: false, error: (err as Error).message, suggestions: [] }
@@ -48,9 +48,9 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
 
   const names = aliveNames(ctx.state)
 
-  // optional leading clock token
+  // optional leading clock token; default: the next whole hour (§9.28)
   let i = 0
-  let clock: Clock = clockFromAbsMin(ctx.state.now)
+  let clock: Clock = nextStepClock(ctx.state.now)
   if (/^\d+:\d+$/.test(tokens[0])) {
     try { clock = parseClock(tokens[0]) } catch { return { ok: false, error: `bad clock '${tokens[0]}'`, suggestions: [] } }
     i = 1
@@ -97,6 +97,7 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
   const at = resolveGroup(groups.at, names)
   const about = resolveGroup(groups.about, names)
   const withRefs = resolve(groups.with)
+  unknown.push(...at.failed, ...about.failed) // about/at fail loudly too (§11)
 
   if (unknown.length > 0) {
     const word = unknown[0]

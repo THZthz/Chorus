@@ -51,7 +51,7 @@ describe('script compiler', () => {
   })
 
   test('triggers and prototypes compile', () => {
-    expect(game.content.triggers).toEqual([{ id: 'dusk_falls', hour: 16, out: expect.any(Array) }])
+    expect(game.content.triggers).toEqual([{ id: 'dusk_falls', hour: 16, once: false, out: expect.any(Array) }])
     const clue = game.content.prototypes.get('CLUE')!
     expect(clue.derive).toEqual({ nameFrom: 'object', aspects: { secret: { fromObjectAspect: 'secret', minus: 2 } } })
   })

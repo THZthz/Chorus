@@ -9,7 +9,7 @@ import { compileScript, type ScriptMeta } from './script.js'
 import { executeStep } from './engine.js'
 import { fold } from './fold.js'
 import { parsePlayerInput } from './lenient.js'
-import { journal, prose } from './render.js'
+import { journal, proseLines } from './render.js'
 import { cloneState, type State } from './types.js'
 import { Log } from './store.js'
 import { seedDictionary } from './seed.js'
@@ -64,7 +64,7 @@ export class Game {
     }
     if (t === '/journal') return { kind: 'info', lines: [journal(this.log.records) || '(the journal is empty)'] }
     if (t === '/story') {
-      const lines = this.log.records.map(r => '· ' + prose(r, this.content, this.dict))
+      const lines = this.log.records.map(r => '· ' + proseLines(r, this.content, this.dict).join('\n  '))
       return { kind: 'info', lines: lines.length > 0 ? lines : ['(nothing has happened yet)'] }
     }
     if (t === '/cards') {
@@ -86,7 +86,7 @@ export class Game {
     if (result.rejected) return { kind: 'error', lines: [result.rejected] }
     this.log.appendAll(result.records)
     this.state = result.state
-    const lines = result.records.map(r => prose(r, this.content, this.dict))
+    const lines = result.records.flatMap(r => proseLines(r, this.content, this.dict))
     return { kind: 'action', lines: [...lines, '', `« ${result.records.map(r => r.sentence).join(' | ')} »`] }
   }
 

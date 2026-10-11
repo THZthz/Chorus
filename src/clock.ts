@@ -11,6 +11,14 @@ export const clockFromAbsMin = (m: number): Clock => {
   return { day: Math.floor(total / 24), hour: total % 24 }
 }
 
+/** the earliest startable step clock at or after absolute minute m (§9.28):
+ *  step clocks are hour-quantized, so a sub-hour action leaves the rest of
+ *  the hour as dead air and play resumes on the next whole hour */
+export const nextStepClock = (m: number): Clock => {
+  const rem = m % 60
+  return clockFromAbsMin(rem === 0 ? m : m + 60 - rem)
+}
+
 export const formatClock = (c: Clock): string => `${c.day}:${c.hour}`
 
 export function parseClock(s: string): Clock {
@@ -35,6 +43,7 @@ export function parseDuration(s: string): number {
 }
 
 export function formatDuration(minutes: number): string {
+  if (minutes === 0) return '0m'
   if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`
   if (minutes % 60 === 0) return `${minutes / 60}h`
   return `${minutes}m`

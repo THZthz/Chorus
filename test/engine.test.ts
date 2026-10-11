@@ -3,6 +3,7 @@
 import { describe, expect, test } from 'vitest'
 import { compileContent } from '../src/content.js'
 import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
+import { formatDuration } from '../src/clock.js'
 import { fold, foldUpTo } from '../src/fold.js'
 import { parseSentence } from '../src/parse.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
@@ -103,6 +104,13 @@ describe('slot discipline (§6.1)', () => {
     const { state } = setup()
     const r = run(state, '0:14 @ ANA READ FAIRY_TALES WITH CHALICE')
     expect(r.rejected).toMatch(/does not accept 'with'/)
+    expect(r.records).toHaveLength(0)
+  })
+
+  test('slot discipline: one card cannot fill a role twice (§6.7 lock discipline)', () => {
+    const { state } = setup()
+    const r = run(state, '0:14 @ ANA, ANA READ FAIRY_TALES')
+    expect(r.rejected).toMatch(/already placed in 'actors'/)
     expect(r.records).toHaveLength(0)
   })
 })
@@ -254,7 +262,7 @@ describe('dictionary is the law (§9.14)', () => {
     // a new CHALICE can be minted after the old one died
     const rec = {
       id: 99, kind: 'action' as const, trigger: null, tGame: '0:20', tReal: null, advancedMin: 0,
-      actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'SPAWN', args: [{ t: 'ref', ref: { form: 'name', kind: 'item', name: 'CHALICE' } }, { t: 'asId', id: 'new_chalice' }] }],
       recipes: [], sentence: '',
     }
@@ -268,7 +276,7 @@ describe('review regressions', () => {
     const { state } = setup()
     const rec = {
       id: 1, kind: 'action' as const, trigger: null, tGame: '0:14', tReal: null, advancedMin: 0,
-      actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{
         op: 'SET',
         args: [
@@ -287,7 +295,7 @@ describe('review regressions', () => {
     const { state } = setup()
     const rec = {
       id: 1, kind: 'action' as const, trigger: null, tGame: '0:14', tReal: null, advancedMin: 0,
-      actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{
         op: 'SET',
         args: [
@@ -308,7 +316,7 @@ describe('review regressions', () => {
       const s = parseSentence(`0:0 @ ANA WAIT -> ${outcomeSrc}`, dict)
       applyRecord({
         id, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
-        actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+        actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
         outcomes: s.outcomes, recipes: [], sentence: '',
       }, state, dict, content)
     }
@@ -363,12 +371,45 @@ describe('review regressions', () => {
   })
 })
 
+describe('progress ticks — the processing read-bar (§6.7)', () => {
+  test('ticks record in emission order, touch no state, cost no extra time', () => {
+    const { state } = setup()
+    const r = run(state, '0:14 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE')
+    expect(r.rejected).toBeNull()
+    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['PROGRESS', 'PROGRESS', 'DESTROY', 'DESTROY', 'SPAWN'])
+    expect(r.records[0].advancedMin).toBe(180) // the verb's duration only
+    expect(r.records[0].sentence).toContain('PROGRESS(1h, "The circle begins to hum against your palms.")')
+    // the log alone reproduces the played state exactly (ticks are journal-only at fold)
+    const replayed = fold(r.records, seedState(), dict, content)
+    expect(snap(replayed)).toBe(snap(r.state))
+  })
+
+  test('malformed PROGRESS arity is an application failure, not a silent no-op (§9.19)', () => {
+    const { state } = setup()
+    const rec = {
+      id: 1, kind: 'action' as const, trigger: null, tGame: '0:14', tReal: null, advancedMin: 0,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
+      outcomes: [{ op: 'PROGRESS', args: [{ t: 'str', v: 'no duration' }] }],
+      recipes: [], sentence: '',
+    }
+    expect(() => applyRecord(rec as ActionRecord, state, dict, content)).toThrow(/PROGRESS needs/)
+  })
+
+  test('NARRATE keeps exactly one string; extras are refused at parse (§9.6 losslessness)', () => {
+    expect(() => parseSentence('0:0 @ ANA WAIT -> NARRATE("one", "two")', dict)).toThrow(/exactly one string/)
+  })
+})
+
 describe('clock & duration literals', () => {
   test('durations spill into the next day', () => {
     const { state } = setup()
     const r = run(state, '0:22 @ ANA WORK AT HOUSE') // 2h → day 1, 0:00
     expect(r.state.now).toBe(22 * 60 + 120)
     expect(r.records[0].tGame).toBe('0:22')
+  })
+
+  test('formatDuration renders zero as 0m', () => {
+    expect(formatDuration(0)).toBe('0m')
   })
 })
 

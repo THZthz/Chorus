@@ -34,6 +34,7 @@ export interface ActionRecord {
   instruments: Ref[]
   at: Ref | null
   about: Ref | null
+  to: Ref | null
   outcomes: Outcome[]    // concrete: ids minted, sugar resolved (§9.15)
   recipes: string[]      // fired recipe ids, clause order
   sentence: string       // canonical, lossless
@@ -82,9 +83,12 @@ function validateSlots(verb: CompiledVerb, refs: Record<Role, Ref[]>, state: Sta
       return { error: `${verb.name}: '${role}' takes ${range}, got ${provided.length}` }
     }
     const entities: Entity[] = []
+    const placed = new Set<string>()
     for (const ref of provided) {
       const e = resolveRef(state, ref)
       if (!e) return { error: `unresolvable ref ${show(ref)}` }
+      if (placed.has(e.id)) return { error: `${show(ref)} is already placed in '${role}'` }
+      placed.add(e.id)
       if (slot.query && !matchQuery(e, slot.query)) {
         return { error: `${show(ref)} does not fit slot '${role}' of ${verb.name}` }
       }
@@ -132,6 +136,10 @@ export function executeStep(
   // monotonic mechanics time (§9.5): a step may never rewind the clock
   if (absMin(step.clock) < stateIn.now) {
     return rejected(`clock ${formatClock(step.clock)} is before state.now (${clockFromAbsMin(stateIn.now).day}:${clockFromAbsMin(stateIn.now).hour})`, stateIn)
+  }
+  // events are fired by the clock (§5.1); a player-typed step needs a clause
+  if (step.clauses.length === 0) {
+    return rejected('a step needs at least one clause', stateIn)
   }
 
   // 1+2. validation & selection — nothing applies unless every clause clears
@@ -185,7 +193,6 @@ export function executeStep(
   } catch (err) {
     return rejected(err instanceof Error ? err.message : String(err), stateIn)
   }
-
   const advancedMin = refused ? 0 : prepared.reduce((s, p) => s + p.verb.duration, 0) + ctx.extraAdvanceMin
   const first = prepared[0]
   const seen = new Set<string>()
@@ -207,6 +214,7 @@ export function executeStep(
     instruments: first?.clause.with ?? [],
     at: first?.clause.at ?? null,
     about: first?.clause.about ?? null,
+    to: first?.clause.to ?? null,
     outcomes: collected,
     recipes: recipeIds,
     sentence: '',
@@ -218,12 +226,19 @@ export function executeStep(
     return { records: [record], state: stateIn, rejected: null } // draft discarded; attempt logged
   }
 
-  // 4+6. time & events — the engine owns the clock (§9.12), events get own rows (§9.16)
+  // 4+6. time & events — the engine owns the clock (§9.12), events get own rows (§9.16).
+  // Events span the whole elapsed span (§9.28): from the state's previous clock,
+  // so hour-quantized dead air before the step cannot swallow a crossing.
   const state = draft
   state.now = startMin + advancedMin
   const records: ActionRecord[] = [record]
-  const eventRecords = fireCrossingEvents(content, dict, state, startMin, state.now, opts.firstRecordId + 1, ctx.idGen)
-  records.push(...eventRecords)
+  try {
+    const eventRecords = fireCrossingEvents(content, dict, state, stateIn.now, state.now, opts.firstRecordId + 1, ctx.idGen)
+    records.push(...eventRecords)
+  } catch (err) {
+    // §9.19: an event that cannot apply rejects the whole step — nothing logged
+    return rejected(err instanceof Error ? err.message : String(err), stateIn)
+  }
 
   return { records, state, rejected: null }
 }
@@ -373,6 +388,13 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
     }
     case 'NARRATE':
       return { concrete: o, refused: false }
+    case 'PROGRESS': {
+      // §6.7: a read-bar tick — journal-only, no state effect, no time effect
+      const d = args[0]
+      const s = args[1]
+      if (!d || d.t !== 'dur' || !s || s.t !== 'str') throw new Error('PROGRESS needs (duration, string)')
+      return { concrete: o, refused: false }
+    }
     case 'RELATE': {
       const refs = args.filter((a): a is Extract<Arg, { t: 'ref' }> => a.t === 'ref')
       const valueArg = args.find((a): a is Extract<Arg, { t: 'int' }> => a.t === 'int')
@@ -449,6 +471,7 @@ function cloneAspects(a: Aspects): Aspects {
 export function applyRecord(record: ActionRecord, state: State, dict: Dictionary, content: CompiledContent): void {
   if (record.outcomes.some(o => o.op === 'REFUSE')) return // refused: state no-op, clock untouched (§6.5)
   // events don't own the clock — only action records advance/rebase it (§7)
+  if (record.kind === 'event') state.fired.add(record.trigger ?? '') // once-triggers replay as fired (§9.29)
   if (record.kind === 'action') state.now = absMin(parseClock(record.tGame))
   const startMin = absMin(parseClock(record.tGame))
   // rebuild role bindings from the record itself so role-ref outcomes
@@ -467,7 +490,7 @@ export function applyRecord(record: ActionRecord, state: State, dict: Dictionary
       with: record.instruments.flatMap(a => one(a)),
       at: one(record.at),
       about: one(record.about),
-      to: [],
+      to: one(record.to),
     },
     now: startMin,
     recordId: record.id,
@@ -499,9 +522,11 @@ function fireCrossingEvents(
     // authored triggers first, then expiries — deterministic order (§9.16)
     for (const trig of content.triggers) {
       if (trig.hour !== absHour % 24) continue
+      if (trig.once && state.fired.has(trig.id)) continue // §9.29: once means once
       const ctx = makeEventCtx(state, dict, content, absHour, firstEventId + records.length, idGen)
       const outcomes: Outcome[] = []
       for (const o of trig.out) outcomes.push(applyOutcome(o, ctx).concrete)
+      state.fired.add(trig.id) // on the draft: a later rejection discards it
       records.push(makeEventRecord(firstEventId + records.length, trig.id, absHour, outcomes, dict))
     }
     for (const exp of expiring) {
@@ -533,7 +558,7 @@ function makeEventRecord(id: number, trigger: string, absHour: number, outcomes:
   const rec: ActionRecord = {
     id, kind: 'event', trigger,
     tGame: formatClock(clock), tReal: null, advancedMin: 0,
-    actors: [], verb: '', objects: [], instruments: [], at: null, about: null,
+    actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
     outcomes, recipes: [],
     sentence: '',
   }

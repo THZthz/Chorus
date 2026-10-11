@@ -55,7 +55,11 @@ export function seedContent(): ContentRaw {
         duration: 180,
         recipes: [
           { id: 'rite.lantern_gate', when: 'total(actors, aspect:lantern) < object.aspect.demand', shown: true, hint: 'The rite wants pooled lantern — it will starve.', out: ['REFUSE("The rite starves for light.")'] },
-          { out: ['DESTROY OBJECT', 'DESTROY WITH', 'SPAWN MARK_OF_ASCENSION INTO at'] },
+          { out: [
+            'PROGRESS(1h, "The circle begins to hum against your palms.")',
+            'PROGRESS(2h, "Light leaks between the chalk lines.")',
+            'DESTROY OBJECT', 'DESTROY WITH', 'SPAWN MARK_OF_ASCENSION INTO at',
+          ] },
         ],
       },
       WAIT: {

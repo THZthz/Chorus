@@ -38,10 +38,12 @@ export interface State {
   relations: Map<string, Relation>
   /** engine clock, absolute minutes since day 0 hour 0 */
   now: number
+  /** once-triggers that have fired (spec §9.29); rebuilt by fold from EVENT rows */
+  fired: Set<string>
 }
 
 export function newState(now = 0): State {
-  return { entities: new Map(), byName: new Map(), relations: new Map(), now }
+  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set() }
 }
 
 export function cloneState(s: State): State {
@@ -51,7 +53,7 @@ export function cloneState(s: State): State {
   }
   const relations = new Map<string, Relation>()
   for (const [k, r] of s.relations) relations.set(k, { ...r })
-  return { entities, byName: new Map(s.byName), relations, now: s.now }
+  return { entities, byName: new Map(s.byName), relations, now: s.now, fired: new Set(s.fired) }
 }
 
 function cloneAspects(a: Aspects): Aspects {

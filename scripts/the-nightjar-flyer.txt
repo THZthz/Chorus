@@ -1,0 +1,135 @@
+# Murder on the Nightjar Flyer — a story script for the Chorus text engine.
+#
+# An overnight express pulled by an aether-locomotive, somewhere between
+# London and Vienna, in an empire where every lamp hums and every door can
+# be sealed with a voice. Lord Vane boarded with three trunks, a secretary,
+# a wife, and a patent worth more than the train. He will not reach Vienna.
+#
+# The player is Inspector MARCH. Five verbs carry the whole case:
+#   READ     — study what the dead left behind (minds its languages)
+#   TALK     — question the living            (talk to <who> about <idea>)
+#   EXPLORE  — search the cars               (hidden things, once each)
+#   USE_ON   — convene the inquest           (accuse with evidence in hand)
+#   WAIT     — let the timetable speak       (the train acts on the clock)
+#
+# The timetable is the culprit's alibi: evidence burns at 2:00, the telegram
+# only lands at the border at midnight, and Vienna scatters everyone at 4:00.
+
+script: Murder on the Nightjar Flyer
+player: MARCH
+start: 0:21
+
+# ── the train ────────────────────────────────────────────────────────────
+entities:
+  NIGHTJAR_FLYER is place
+  GUARD_VAN is place in NIGHTJAR_FLYER with site.guard:1
+  DINING_CAR is place in NIGHTJAR_FLYER with site.dining:1
+  FIRST_CABIN is place in NIGHTJAR_FLYER with site.first:1
+  LUGGAGE_VAN is place in NIGHTJAR_FLYER with site.luggage:1
+  FIREBOX is place in NIGHTJAR_FLYER with site.firebox:1
+
+  MARCH is character at GUARD_VAN
+  LORD_VANE is character with patron:1, aether:1 at FIRST_CABIN
+  VERITY is character with grief:1, aether:1 at DINING_CAR
+  QUILL is character with secret:2 at DINING_CAR
+  COLE is character with steam:2 at FIREBOX
+  SERAPHINE is character with aether:2, language.french:2 at DINING_CAR
+  BRACK is character with duty:2 at GUARD_VAN
+
+  THE_VANE_LEDGER is text with tome.ledger:1, secret:3 at FIRST_CABIN
+  THE_INQUEST is rite at GUARD_VAN
+
+# ── cards that can come into being ───────────────────────────────────────
+prototypes:
+  THE_LATE_LORD is item with aether:1
+  THE_AETHER_SEAL is idea with secret:1, case.seal:1
+  THE_SOLICITOR_LETTER is text with tome.letter:1, secret:2
+  THE_WAX_CYLINDER is text with tome.cylinder:1, aether:2, secret:2
+  THE_TELEGRAM is text with tome.telegram:1, secret:2, language.french:2
+  THE_DISINHERITANCE is idea with secret:2, case.will:1
+  THE_EMBEZZLEMENT is idea with secret:2, case.motive:1, proof:1
+  THE_STOLEN_VOICE is idea with secret:2, case.means:1, proof:1
+  THE_VIENNA_WARNING is idea with secret:2, case.chance:1, proof:1
+  THE_TONIC_GLASS is item with aether:1
+  THE_STOPPED_WATCH is item
+  CONFESSION_OF_QUILL is idea with secret:3
+
+# ── the timetable speaks (once — this is a one-night story) ─────────────
+triggers:
+  body_found once at hour 22 -> DESTROY LORD_VANE, SPAWN THE_LATE_LORD INTO FIRST_CABIN, SPAWN THE_AETHER_SEAL INTO FIRST_CABIN, SET(FIRST_CABIN, unsealed, 1), NARRATE "A cry from the first cabin. Lord Vane lies behind his own aether-seal, unrobbed, unwounded, and entirely dead."
+  night_porter once at hour 23 -> NARRATE "The corridor lamps dim to embers. The porter walks the train from end to end, counting doors under his breath."
+  border_stop once at hour 0 -> SPAWN THE_TELEGRAM INTO GUARD_VAN, NARRATE "The Flyer hisses down at the border. A telegraph boy sprints the platform and puts a French telegram into Brack's white glove."
+  the_long_tunnel once at hour 1 -> NARRATE "The train enters the Vendahl tunnel. For an hour the lamps burn blue and every mirror fogs over."
+  the_furnace_takes_it once at hour 2 -> DESTROY THE_VANE_LEDGER, NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox, and a ledger cover stamped VANE is curling in the flames."
+  vienna_arrival once at hour 4 -> NARRATE "Vienna lights slide along the glass. By morning the passengers scatter — if no name is on the tally-board tonight, the case scatters with them."
+
+# ── what can be done ─────────────────────────────────────────────────────
+verbs:
+  READ:
+    actors: 1..2 kind:character
+    object: 1 kind:text
+    duration: 1h
+    recipes:
+      read.french_gate hidden when object.aspect.language.french >= 1 AND NOT any(actors, aspect:language.french >= 1) -> REFUSE("The words are French to you, and your French died at school.")
+      read.cylinder when object.aspect.tome.cylinder >= 1 -> PROGRESS(20m, "You wind the cylinder onto the phonomotor; the stylus trembles and finds its groove."), PROGRESS(50m, "A voice assembles out of the hiss — the lord's own, speaking the words that open his seal."), SPAWN THE_STOLEN_VOICE, DESTROY OBJECT, NARRATE "{actors} play the cylinder to its end. Someone owns the lord's voice."
+      read.telegram when object.aspect.tome.telegram >= 1 -> PROGRESS(30m, "Seraphine's lips move; the French unbraids itself line by line."), SPAWN THE_VIENNA_WARNING, DESTROY OBJECT, NARRATE "\"Tell Q he signs nothing after Vienna — not the patents, not the funeral arrangements.\" The partner knew. Did Q?"
+      read.ledger when object.aspect.tome.ledger >= 1 -> PROGRESS(30m, "Two hands wrote this ledger, and in the margins they argue."), SPAWN THE_EMBEZZLEMENT, DESTROY OBJECT, NARRATE "Quill's neat corrections hide a steady drain on the aether royalties. The lord had found it. Quill knew he had."
+      read.letter when object.aspect.tome.letter >= 1 -> SPAWN THE_DISINHERITANCE, DESTROY OBJECT, NARRATE "The solicitor begs the lord to come home at once and rewrite his will before the Vienna signing. Whoever marries grief gets nothing; whoever holds the pen gets everything."
+      default -> NARRATE "{actors} read {object}."
+
+  TALK:
+    actors: 1 kind:character
+    to: 1 kind:character
+    about: 0..1 kind:idea
+    duration: 30m
+    recipes:
+      talk.seraphine_seal when to.aspect.aether >= 2 AND about.aspect.case.seal >= 1 -> NARRATE "\"An aether-seal answers one voice only,\" Seraphine says. \"If the lord did not open it himself, then somebody carried his voice in their pocket.\""
+      talk.seraphine_default when to.aspect.aether >= 2 -> NARRATE "Seraphine turns a card, glances at it, and lays it face down. \"The dead speak through steam and cards alike,\" she says. \"It is the living who mumble.\""
+      talk.cole_seal when to.aspect.steam >= 2 AND about.aspect.case.seal >= 1 -> NARRATE "Cole wipes his hands on a rag that is dirtier than they are. \"Someone paid me to rake the firebox hot at midnight,\" he mutters. \"I kept the ash, though. Ash keeps secrets.\""
+      talk.cole_default when to.aspect.steam >= 2 -> NARRATE "Cole explains boiler pressures until you can politely escape."
+      talk.verity_will when to.aspect.grief >= 1 AND about.aspect.case.will >= 1 -> NARRATE "\"He meant to change it. Yes.\" Verity's mourning jet is buttoned to the throat. \"You would grieve differently, Inspector, if your marriage were a clause.\""
+      talk.verity_default when to.aspect.grief >= 1 -> NARRATE "Verity weeps with flawless technique and answers nothing at all."
+      talk.brack_telegram when to.aspect.duty >= 2 AND about.aspect.case.chance >= 1 -> NARRATE "\"A man in uniform holds what he is handed until it is claimed,\" Brack says, and the silence after it is the longest sentence he has ever spoken."
+      talk.brack_default when to.aspect.duty >= 2 -> NARRATE "Brack recites the company regulations concerning death aboard, verbatim, twice."
+      talk.quill_motive when to.aspect.secret >= 2 AND about.aspect.case.motive >= 1 -> NARRATE "\"The lord was careless with figures,\" Quill says. His cufflinks catch the light. His voice does not."
+      talk.quill_default when to.aspect.secret >= 2 -> NARRATE "Quill apologizes for everything except his alibi, which he presents in triplicate."
+      talk.vane_default when to.aspect.patron >= 1 -> NARRATE "The lord talks patents and port. Behind him the seal on his cabin door breathes like a sleeping animal."
+      default -> NARRATE "{actors} exchange words with {to}."
+
+  EXPLORE:
+    actors: 1 kind:character
+    object: 1 kind:place
+    duration: 1h
+    recipes:
+      explore.cabin when object.aspect.site.first >= 1 AND object.attr.unsealed >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "The seal parts for your warrant with a sound like a struck match."), SPAWN THE_SOLICITOR_LETTER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "The cabin is orderly the way a stage set is orderly. Behind the writing case: a solicitor's letter — and the Vane household ledger, far from its shelf."
+      explore.firebox when object.aspect.site.firebox >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "You sift warm ash while Cole watches the shovel a shade too carefully."), SPAWN THE_WAX_CYLINDER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "Half-melted but intact: a wax phonomotor cylinder, the lord's monogram on the brass case."
+      explore.dining when object.aspect.site.dining >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "Under the Mahrajah's table, among the broken biscuits."), SPAWN THE_TONIC_GLASS INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "The lord's table still stands. His tonic glass smells wrong — aether where the laudanum should be."
+      explore.luggage when object.aspect.site.luggage >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "Trunk after trunk, manifest after manifest."), SPAWN THE_STOPPED_WATCH INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "Between the trunks: a gentleman's pocket watch, stopped at 11:50, still warm."
+      explore.guard when object.aspect.site.guard >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "Brake-dust, ledger-oil, and Brack's spine straightening by the inch."), SET(OBJECT, searched, 1), NARRATE "Brack's tally-board is spotless. Nothing on a night train is spotless."
+      explore.searched when object.attr.searched >= 1 -> NARRATE "{actors} turn the place over again and find nothing new."
+      explore.cabin_sealed when object.aspect.site.first >= 1 -> NARRATE "The aether-seal breathes cold against your warrant. The door does not open for a piece of paper."
+      default -> NARRATE "There is nothing here to search."
+
+  USE_ON:
+    actors: 1 kind:character
+    object: 1 kind:rite
+    with: 0..3 kind:idea
+    duration: 2h
+    recipes:
+      inquest.win when total(with, aspect:proof) >= 3 -> PROGRESS(30m, "Brack convenes the van; the company seal goes on the door and the words go on the record."), PROGRESS(1h, "Motive, means, opportunity: three cards on the tally-board, and every one of them points the same way down the corridor."), NARRATE "Embezzled royalties, a stolen voice for the seal, a telegram that never reached its addressee — the cuffs unpin Quill where the constable cannot. He confesses before Vienna.", SPAWN CONFESSION_OF_QUILL
+      inquest.thin when count(with) >= 1 -> REFUSE("The van hears you out and finds the case wobbles. Nobody is held on a hunch.")
+      default -> REFUSE("You would convene an inquest with empty hands. Brack pretends not to hear.")
+
+  WAIT:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      default -> NARRATE "{actors} watch the night fields run past."
+
+# ── how it reads aloud ───────────────────────────────────────────────────
+templates:
+  READ says "{actors} read {object}."
+  TALK says "{actors} question {to}."
+  EXPLORE says "{actors} search {object}."
+  USE_ON says "{actors} convene {object}."
+  WAIT says "{actors} wait."

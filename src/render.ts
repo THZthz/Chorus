@@ -1,8 +1,10 @@
-// L3 projection — spec §5.3, §8. Pure functions over records/state.
+// L3 projection — spec §5.3, §6.7, §8. Pure functions over records/state.
 import type { ActionRecord } from './engine.js'
 import type { CompiledContent } from './content.js'
 import type { Clause } from './sentence.js'
+import type { Ref } from './ref.js'
 import { parseSentence } from './parse.js'
+import { formatDuration } from './clock.js'
 import type { Dictionary } from './dict.js'
 import type { Entity } from './types.js'
 
@@ -10,8 +12,9 @@ export function journal(records: ActionRecord[]): string {
   return records.map(r => r.sentence).join('\n')
 }
 
-/** Prose rendering: one template line per clause + NARRATE lines. */
-export function prose(record: ActionRecord, content: CompiledContent, dict: Dictionary): string {
+/** Prose rendering: one template line per clause, the processing ticks (§6.7)
+ *  indented under them, then NARRATE lines. */
+export function proseLines(record: ActionRecord, content: CompiledContent, dict: Dictionary): string[] {
   const lines: string[] = []
   if (record.kind === 'action') {
     const s = parseSentence(record.sentence, dict)
@@ -22,30 +25,45 @@ export function prose(record: ActionRecord, content: CompiledContent, dict: Dict
   }
   for (const o of record.outcomes) {
     const narr = o.args.find(a => a.t === 'str')
-    if (o.op === 'NARRATE' && narr && narr.t === 'str') {
+    if (!narr || narr.t !== 'str') continue
+    if (o.op === 'PROGRESS') {
+      const d = o.args.find(a => a.t === 'dur')
+      const off = d && d.t === 'dur' ? formatDuration(d.v) : '0m'
+      lines.push(`  (+${off}) ${interpolateRecord(narr.v, record)}`)
+    } else if (o.op === 'NARRATE') {
       lines.push(interpolateRecord(narr.v, record))
+    } else if (o.op === 'REFUSE') {
+      lines.push(narr.v) // §6.2: refusal is always spoken
     }
   }
-  return lines.join(' ')
+  return lines
 }
+
+export function prose(record: ActionRecord, content: CompiledContent, dict: Dictionary): string {
+  return proseLines(record, content, dict).join('\n')
+}
+
+const refName = (r: Ref | null): string => (r && r.form === 'name' ? r.name : r ? `#${r.id}` : '—')
+const refNames = (rs: Ref[]): string[] => rs.map(r => (r.form === 'name' ? r.name : `#${r.id}`))
 
 function interpolateClause(template: string, clause: Clause): string {
   return template
-    .replace(/\{actors\}/g, joinAnd(clause.actors.map(r => r.form === 'name' ? r.name : `#${r.id}`)))
-    .replace(/\{object\}/g, clause.objects[0]?.form === 'name' ? clause.objects[0].name : '—')
-    .replace(/\{at\}/g, clause.at?.form === 'name' ? clause.at.name : '—')
-    .replace(/\{about\}/g, clause.about?.form === 'name' ? clause.about.name : '—')
-}
-
-function interpolateNames(template: string, actors: ActionRecord['actors']): string {
-  return template.replace(/\{actors\}/g, joinAnd(actors.map(r => r.form === 'name' ? r.name : `#${r.id}`)))
+    .replace(/\{actors\}/g, joinAnd(refNames(clause.actors)))
+    .replace(/\{object\}/g, refNames(clause.objects)[0] ?? '—')
+    .replace(/\{at\}/g, refName(clause.at))
+    .replace(/\{about\}/g, refName(clause.about))
+    .replace(/\{to\}/g, refName(clause.to))
+    .replace(/\{with\}/g, joinAnd(refNames(clause.with)))
 }
 
 function interpolateRecord(template: string, record: ActionRecord): string {
-  return interpolateNames(template, record.actors)
-    .replace(/\{object\}/g, record.objects[0]?.form === 'name' ? record.objects[0].name : '—')
-    .replace(/\{at\}/g, record.at?.form === 'name' ? record.at.name : '—')
-    .replace(/\{about\}/g, record.about?.form === 'name' ? record.about.name : '—')
+  return template
+    .replace(/\{actors\}/g, joinAnd(refNames(record.actors)))
+    .replace(/\{object\}/g, refNames(record.objects)[0] ?? '—')
+    .replace(/\{at\}/g, refName(record.at))
+    .replace(/\{about\}/g, refName(record.about))
+    .replace(/\{to\}/g, refName(record.to))
+    .replace(/\{with\}/g, joinAnd(refNames(record.instruments)))
 }
 
 function joinAnd(names: string[]): string {

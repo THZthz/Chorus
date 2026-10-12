@@ -9,7 +9,7 @@
 //   entities:
 //     HOUSE is place
 //     ANA is character with occult:2, lantern:1 at HOUSE
-//     STUDY is place in HOUSE with study:1
+//     THE_STUDY is place in HOUSE with study:1
 //     ANA is parent_child of BERTHA
 //
 //   prototypes:

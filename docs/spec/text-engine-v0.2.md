@@ -1,4 +1,4 @@
-# Chorus Text Engine — Spec v0.2
+# Chorus Text Engine — Spec v0.3
 
 A text-only prototype of a Cultist Simulator / Book of Hours-like card game.
 Everything the game *is* — cards, actions, history — is expressed as structured
@@ -66,6 +66,16 @@ projection of that data, never the source of truth.
 > despair-death shape), and undo reopens the game because `state.ended`
 > derives from the fold like everything else.
 >
+> v0.3 = the additive roll-up since v0.2.4, collected under one number because
+> every change below it is additive. Since v0.2.4: SET signed deltas and
+> `aspect:` keys (v0.2.5, §9.31), authorable expiry triggers + the REPLACE
+> outcome + trigger guards with play/fold `state.fired` agreement (v0.2.6,
+> §9.32–§9.34), the ENDING outcome + the `endings:` table + game-over
+> (v0.2.7, §9.35), and in v0.3 itself: `SET x, expires, …` accepts every
+> §5.1 duration form in the quoted-string path too (§4.2, §9.36), and the
+> core verb set grows from ten to twelve — `STUDY` (READ's signature) and
+> `MANSUS` (EXPLORE's signature) (§4.3, §9.37).
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -123,7 +133,7 @@ projection of that data, never the source of truth.
 | KIND        | Meaning                                   | Examples                         |
 |-------------|-------------------------------------------|----------------------------------|
 | `character` | Anything that can be an acting subject    | the player, followers, hunters   |
-| `place`     | Locations, nestable (VILLA ⊃ STUDY)       | HOUSE, GREENHOUSE, STREET        |
+| `place`     | Locations, nestable (VILLA ⊃ THE_STUDY)   | HOUSE, GREENHOUSE, STREET        |
 | `item`      | Portable physical things                  | candle, key, funds, tincture     |
 | `text`      | Readable artifacts                        | book, letter, codex              |
 | `idea`      | Intangibles produced by thought           | lore fragment, clue, memory      |
@@ -145,7 +155,8 @@ recipes. **Knowledge is aspects on a character** (`occult:3`,
 
 **Structural properties are attrs**, not aspects. Engine-known attr keys:
 `container` (where the card sits — the container's entity id), `expires`
-(`2h`/`90m`/`1d` style; the engine materializes `expiresAt` = current clock +
+(any §5.1 duration form — `2h`, `90m`, `1d`, `2halfhour` — quoted or bare;
+the engine materializes `expiresAt` = current clock +
 duration at set time, stored as **absolute minutes**) and the boolean flag
 namespace `state.*`: `state.sealed`, `state.locked`, `state.hidden`,
 `state.portable`, `state.unique`. Queries read them via `state:sealed` /
@@ -176,9 +187,11 @@ Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 | Verb        | Signature                              | Purpose                        |
 |-------------|----------------------------------------|--------------------------------|
 | `READ`      | ACTORS READ object [AT place]          | study a text → ideas           |
+| `STUDY`     | ACTORS STUDY object [AT place]         | the CS study station (READ's signature, v0.3) |
 | `WORK`      | ACTORS WORK [AT place]                 | labor → resources              |
 | `TALK`      | ACTORS TALK [AT place] [ABOUT idea]    | social outcomes, group actions |
 | `EXPLORE`   | ACTORS EXPLORE place                   | discover contents of a place   |
+| `MANSUS`    | ACTORS MANSUS place                    | enter a place — the Mansus crossing (EXPLORE's signature, v0.3) |
 | `TRAVEL_TO` | ACTORS TRAVEL_TO place                 | deliberate movement            |
 | `LOCATE_AT` | ACTORS LOCATE_AT place                 | set/dump position (utility)    |
 | `DREAM`     | ACTORS DREAM [WITH idea]               | visions, rest                  |
@@ -322,7 +335,7 @@ automatically by the sum of clause durations (§9.12). This record's `t_game`
 is the step's **start** clock:
 
 ```
-0:14 @ ANA TRAVEL_TO VILLA; ANA AT STUDY READ THE_PALE_LADY
+0:14 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY
     -> CLUE_SECRET_HIDEOUT
 ```
 
@@ -1041,6 +1054,36 @@ Two invariants keep the mapping safe:
       `endings:` table (§10) is a load-time error, in recipes and in both
       trigger forms — unlike expiry-target names (§9.32), ending ids are
       content structure, not runtime entities.
+
+### Implementation rulings (v0.3, expiry units and the twelve core verbs)
+
+36. **`SET x, expires, …` accepts every §5.1 duration form** (§4.2): the
+    quoted-string path goes through the same single duration parser as the
+    lexer, so `SET(x, expires, "2halfhour")` materializes `expiresAt` =
+    set-time clock + 30 exactly as the bare literal always did — bare
+    duration literals were never broken, because the lexer pre-converts them
+    to minutes before SET sees them (§5.1), and quoted and bare forms of the
+    same literal materialize the same `expiresAt` — the authored `expires`
+    attr keeps its authored form (minutes for bare, the string for quoted,
+    §9.15), so only that attr and the logged sentence differ. Before v0.3
+    the quoted path accepted only `h`/`m`/`d` and rejected the `halfhour`
+    form. A value that parses as no duration (`"2fortnights"`) is an
+    application failure: the whole step is rejected with nothing logged
+    (§9.19). A zero duration (`"0m"`) materializes `expiresAt` = the set-time
+    clock and so fires at the first halfhour boundary at or after that minute
+    that the clock actually crosses (§6.6) — during the setting step itself
+    when it crosses one, otherwise during the next advance's span; unchanged
+    from how `"0h"` always behaved.
+37. **The core verb set is twelve** (§4.3): `STUDY` (READ's signature —
+    `ACTORS STUDY object [AT place]`) and `MANSUS` (EXPLORE's signature —
+    `ACTORS MANSUS place`) join the dictionary, so a story authors them with
+    an ordinary `verbs:` block (§10) and lenient input recognizes the
+    lexemes (§11). Registration changes only the vocabulary — cardinalities,
+    queries, duration, recipes, and prose templates remain content (§6.1,
+    §5.3); a verb with no template contributes no template line, and its
+    recipe `NARRATE`s still speak. Verb lexemes are reserved words (§9.14):
+    the seed world's study room is `THE_STUDY` since v0.3 for exactly this
+    reason.
 
 ## 10. The script format — a game as one text file
 

@@ -17,7 +17,7 @@ const steps = [
   '0:30 @ ANA, BERTHA READ FAIRY_TALES',            // 15:00 — ends 16:00 → dusk_falls fires
   '0:32 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT',
   '0:34 @ BERTHA READ MAGICK_BOOK',                 // refused — nobody who knows is present
-  '0:34 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ MAGICK_BOOK',
+  '0:34 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ MAGICK_BOOK',
   '0:40 @ ANA WAIT',
 ]
 

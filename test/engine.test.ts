@@ -7,6 +7,7 @@ import { formatDuration } from '../src/clock.js'
 import { fold, foldUpTo } from '../src/fold.js'
 import { formatSentence } from '../src/format.js'
 import { parseSentence } from '../src/parse.js'
+import { prose } from '../src/render.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog, Log } from '../src/store.js'
 import { addEntity, newState, type State } from '../src/types.js'
@@ -134,7 +135,7 @@ describe('TALK with ABOUT (§4.3)', () => {
 describe('multi-clause steps and time ownership (§9.12)', () => {
   test('travel then read: durations sum, recipes listed in clause order', () => {
     const { state } = setup()
-    const r = run(state, '0:28 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ THE_FORGETTING')
+    const r = run(state, '0:28 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ THE_FORGETTING')
     expect(r.records[0].recipes).toEqual(['travel_to.default', 'read.secret'])
     expect(r.records[0].advancedMin).toBe(120)
     expect(r.state.entities.get('ana')!.attrs['container']).toBe('study')
@@ -200,7 +201,7 @@ describe('fold — state = fold(log), determinism, undo (§7)', () => {
       '0:28 @ ANA READ THE_FORGETTING',
       '0:30 @ ANA, BERTHA READ FAIRY_TALES', // ends 0:32 → dusk event row
       '0:32 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT',
-      '0:34 @ ANA TRAVEL_TO STUDY; ANA AT STUDY READ MAGICK_BOOK',
+      '0:34 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ MAGICK_BOOK',
       '0:40 @ ANA WAIT',
       '0:42 @ ANA WAIT',
     ]
@@ -977,5 +978,213 @@ describe('trigger outcome guards (§6.7, §9.34)', () => {
   test('REFUSE is a load-time error in both trigger forms — events have no step to refuse (§9.34)', () => {
     expect(() => compileContent({ verbs: {}, triggers: [{ id: 't', slot: 1, out: ['REFUSE("no")'] }] }, dict)).toThrow(/REFUSE belongs/)
     expect(() => compileContent({ verbs: {}, triggers: [{ id: 't', onExpireOf: 'X', out: ['REFUSE("no")'] }] }, dict)).toThrow(/REFUSE belongs/)
+  })
+})
+
+// ---------- v0.3: `expires` accepts every §5.1 duration form (§4.2, §9.36) ----------
+
+describe('SET expires — every §5.1 duration form materializes expiresAt (§4.2, §9.36)', () => {
+  const tuneDict = seedDictionary()
+  tuneDict.registerVerb('TUNE') // not a core verb — the rig from the §9.31 describes
+  const tuneContent = (out: string): CompiledContent => compileContent({
+    verbs: {
+      TUNE: {
+        slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+        duration: 0,
+        recipes: [{ out: [out] }],
+      },
+    },
+  }, tuneDict)
+  const runTune = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
+    const s = parseSentence(src, tuneDict)
+    let n = 0
+    return executeStep(theContent, tuneDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
+      firstRecordId,
+      idGen: () => `x${firstRecordId}_${++n}`,
+    })
+  }
+  const at = (minutes: number): number => 20 * 30 + minutes // 0:20 = absolute minute 600
+
+  test('quoted durations materialize expiresAt: "2halfhour", "90m", "2h", "1d", "0m"', () => {
+    for (const [lit, minutes] of [['"2halfhour"', 60], ['"90m"', 90], ['"2h"', 120], ['"1d"', 1440], ['"0m"', 0]] as const) {
+      const { state } = setup()
+      const r = runTune(tuneContent(`SET(CHALICE, expires, ${lit})`), state, '0:20 @ ANA TUNE')
+      expect(r.rejected).toBeNull()
+      expect(r.state.entities.get('chalice')!.attrs['expiresAt']).toBe(at(minutes))
+      // the log keeps the authored quoted string and round-trips (§9.15)
+      expect(r.records[0].sentence).toContain(`-> SET(CHALICE, expires, ${lit})`)
+    }
+  })
+
+  test('bare duration literals are unchanged — the lexer pre-converts them (§5.1 regression)', () => {
+    const { state } = setup()
+    const r = runTune(tuneContent('SET(CHALICE, expires, 2halfhour)'), state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('chalice')!.attrs['expiresAt']).toBe(at(60))
+    // the log stores the pre-converted minutes; canonical output prefers the shorter unit (§5.1)
+    expect(r.records[0].sentence).toContain('-> SET(CHALICE, expires, 1h)')
+    // quoted and bare materialize the same engine fact — identical expiresAt.
+    // The authored `expires` attr itself keeps its authored form (§4.2: the
+    // engine materializes expiresAt *from* it): minutes for bare, the string
+    // for quoted — so only the logged sentence and that one attr differ (§9.15)
+    const { state: quotedState } = setup()
+    const rq = runTune(tuneContent('SET(CHALICE, expires, "2halfhour")'), quotedState, '0:20 @ ANA TUNE')
+    expect(rq.rejected).toBeNull()
+    expect(rq.state.entities.get('chalice')!.attrs['expiresAt']).toBe(r.state.entities.get('chalice')!.attrs['expiresAt'])
+    expect(rq.state.entities.get('chalice')!.attrs['expires']).toBe('2halfhour')
+    expect(r.state.entities.get('chalice')!.attrs['expires']).toBe(60)
+  })
+
+  test('a bad unit rejects the whole step — nothing logged (§9.19)', () => {
+    const { state } = setup()
+    const before = snap(state)
+    const r = runTune(tuneContent('SET(CHALICE, expires, "2fortnights")'), state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toMatch(/bad duration '2fortnights'/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(state)
+    expect(snap(r.state)).toBe(before)
+  })
+
+  test('end-to-end: a quoted expiry fires its authored `on expire` trigger at the next crossing (§9.32)', () => {
+    const c = compileContent({
+      verbs: {
+        TUNE: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 0,
+          recipes: [{ out: ['SET(CHALICE, expires, "2halfhour")'] }],
+        },
+        WAIT: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 60,
+          recipes: [{ out: ['NARRATE("{actors} wait.")'] }],
+        },
+      },
+      triggers: [{ id: 'melt_chalice', onExpireOf: 'CHALICE', out: ['REPLACE CHALICE WITH RUSTY_CHALICE'] }],
+      prototypes: { RUSTY_CHALICE: { kind: 'item' } },
+    }, tuneDict)
+    const { state } = setup()
+    const r1 = runTune(c, state, '0:28 @ ANA TUNE') // expiresAt = 28*30 + 60 = 0:30
+    expect(r1.rejected).toBeNull()
+    expect(r1.records).toHaveLength(1) // set this pass: resolves at the NEXT advance (§6.6 snapshot)
+    const r2 = runWith(c, r1.state, '0:30 @ ANA WAIT', 2) // crosses slot 31 (0:31)
+    expect(r2.rejected).toBeNull()
+    expect(r2.records.map(x => x.kind)).toEqual(['action', 'event'])
+    expect(r2.records[1].trigger).toBe('melt_chalice')
+    expect(r2.records[1].sentence).toContain('EVENT melt_chalice')
+    expect(r2.state.entities.get('chalice')!.deadAction).toBe(3)
+    expect(r2.state.entities.get(r2.state.byName.get('RUSTY_CHALICE')!)!.attrs['container']).toBe('house')
+    // play and fold agree through the quoted path too (§9.34)
+    expect(snap(fold([...r1.records, ...r2.records], seedState(), tuneDict, c))).toBe(snap(r2.state))
+  })
+})
+
+// ---------- v0.3: the core verb set is twelve (§4.3, §9.37) ----------
+
+describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
+  // the mirroring the spec declares: STUDY copies READ's slots, MANSUS copies
+  // EXPLORE's — cardinalities and queries stay content (§6.1)
+  const verbDict = seedDictionary() // STUDY/MANSUS are core since v0.3
+  const verbsContent = compileContent({
+    verbs: {
+      STUDY: {
+        slots: [
+          { role: 'actors', min: 1, max: 2, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1, query: 'kind:text' },
+          { role: 'at', min: 0, max: 1, query: 'kind:place' },
+        ],
+        duration: 60,
+        recipes: [
+          { id: 'study.secret', when: 'object.aspect.secret >= 3', out: ['SPAWN CLUE', 'NARRATE("{actors} tease out a hidden thread.")'] },
+          { out: ['NARRATE("{actors} study {object}.")'] },
+        ],
+      },
+      MANSUS: {
+        slots: [
+          { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1, query: 'kind:place' },
+        ],
+        duration: 60,
+        recipes: [{ out: ['NARRATE("{actors} walk the Mansus to {object}.")'] }],
+      },
+    },
+    prototypes: {
+      CLUE: { kind: 'idea', derive: { nameFrom: 'object', aspects: { secret: { fromObjectAspect: 'secret', minus: 2 } } } },
+    },
+  }, verbDict)
+  const world = (): State => {
+    const s = seedState()
+    addEntity(s, { id: 'manifest', kind: 'text', name: 'THE_MANIFEST', aspects: { secret: 4 }, attrs: { container: 'house' }, bornAction: null, deadAction: null })
+    return s
+  }
+  const runVerb = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
+    const s = parseSentence(src, verbDict)
+    let n = 0
+    return executeStep(theContent, verbDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
+      firstRecordId,
+      idGen: () => `x${firstRecordId}_${++n}`,
+    })
+  }
+
+  test('a canonical STUDY sentence parses, selects, and executes (§6.4)', () => {
+    const r = runVerb(verbsContent, world(), '0:14 @ ANA STUDY THE_MANIFEST')
+    expect(r.rejected).toBeNull()
+    expect(r.records[0].recipes).toEqual(['study.secret'])
+    expect(r.records[0].advancedMin).toBe(60)
+    const minted = r.state.byName.get('CLUE_THE_MANIFEST')!
+    expect(r.state.entities.get(minted)!.aspects['secret']).toBe(2) // 4 − 2 (§9.23)
+    // the recorded sentence round-trips
+    expect(formatSentence(parseSentence(r.records[0].sentence, verbDict), verbDict)).toBe(r.records[0].sentence)
+  })
+
+  test('the mirrored grammar bites: MANSUS takes a place, not a text', () => {
+    const r = runVerb(verbsContent, world(), '0:14 @ ANA MANSUS THE_MANIFEST')
+    expect(r.rejected).toMatch(/does not fit slot 'object'/)
+    expect(r.records).toHaveLength(0)
+    const r2 = runVerb(verbsContent, world(), '0:14 @ ANA MANSUS HOUSE')
+    expect(r2.rejected).toBeNull()
+    expect(r2.records[0].recipes).toEqual(['mansus.default'])
+    expect(r2.records[0].sentence).toContain('ANA MANSUS HOUSE')
+  })
+
+  test('untemplated content renders acceptably: recipe NARRATEs speak, no template line (§5.3)', () => {
+    const bare = compileContent({
+      verbs: {
+        MANSUS: {
+          slots: [
+            { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+            { role: 'object', min: 1, max: 1, query: 'kind:place' },
+          ],
+          duration: 60,
+          recipes: [{ out: ['NARRATE("{actors} walk the Mansus to {object}.")'] }],
+        },
+      },
+      // no `templates:` section at all
+    }, verbDict)
+    const r = runVerb(bare, world(), '0:14 @ ANA MANSUS HOUSE')
+    expect(r.rejected).toBeNull()
+    expect(prose(r.records[0], bare, verbDict)).toBe('ANA walk the Mansus to HOUSE.')
+  })
+
+  test('the seed verbs pin the mirror in code: STUDY ≡ READ, MANSUS ≡ EXPLORE (§4.3)', () => {
+    // the mirroring the spec declares, asserted against the seed content —
+    // not prose: slots are the grammar, cardinalities and queries included
+    expect(content.verbs.get('STUDY')!.slots).toEqual(content.verbs.get('READ')!.slots)
+    expect(content.verbs.get('MANSUS')!.slots).toEqual(content.verbs.get('EXPLORE')!.slots)
+  })
+
+  test('a story that does not author the verbs rejects at the content gate (§6.6)', () => {
+    // registration puts STUDY/MANSUS in the dictionary (they parse, they are
+    // reserved); content that never declares them refuses cleanly — no crash
+    const unauthored = compileContent({ verbs: {} }, verbDict)
+    const s1 = world()
+    const r = runVerb(unauthored, s1, '0:14 @ ANA STUDY THE_MANIFEST')
+    expect(r.rejected).toMatch(/STUDY is not a content verb/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(s1) // same object, untouched
+    const s2 = world()
+    const r2 = runVerb(unauthored, s2, '0:14 @ ANA MANSUS HOUSE')
+    expect(r2.rejected).toMatch(/MANSUS is not a content verb/)
+    expect(r2.records).toHaveLength(0)
+    expect(r2.state).toBe(s2)
   })
 })

@@ -7,7 +7,8 @@ import { compileContent } from '../src/content.js'
 import { parsePlayerInput } from '../src/lenient.js'
 import { Game } from '../src/play.js'
 import { fold } from '../src/fold.js'
-import { seedDictionary } from '../src/seed.js'
+import { seedDictionary, seedState } from '../src/seed.js'
+import { addEntity } from '../src/types.js'
 
 const dict = seedDictionary()
 const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
@@ -179,6 +180,62 @@ describe('lenient player input', () => {
   test('names resolve case-insensitively (spec §11)', () => {
     const r = parsePlayerInput('read THE VANE LEDGER', ctx)
     expect(r.ok).toBe(true)
+  })
+})
+
+describe('lenient input routes the new core verbs (v0.3)', () => {
+  // registration is the gate: before v0.3 this compileContent threw 'not registered'
+  const verbsDict = seedDictionary()
+  const verbsContent = compileContent({
+    verbs: {
+      STUDY: { // READ's grammar (§4.3)
+        slots: [
+          { role: 'actors', min: 1, max: 2, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1, query: 'kind:text' },
+          { role: 'at', min: 0, max: 1, query: 'kind:place' },
+        ],
+        duration: 60,
+        recipes: [{ out: ['NARRATE("{actors} study {object}.")'] }],
+      },
+      MANSUS: { // EXPLORE's grammar (§4.3)
+        slots: [
+          { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1, query: 'kind:place' },
+        ],
+        duration: 60,
+        recipes: [{ out: ['NARRATE("{actors} walk the Mansus to {object}.")'] }],
+      },
+    },
+  }, verbsDict)
+  const ctx = () => {
+    const state = seedState()
+    addEntity(state, { id: 'manifest', kind: 'text', name: 'THE_MANIFEST', aspects: {}, attrs: { container: 'house' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'white_door', kind: 'place', name: 'THE_WHITE_DOOR', aspects: {}, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    return { dict: verbsDict, content: verbsContent, state, player: 'ANA' }
+  }
+
+  test('study + bare name routes to the object role, like read', () => {
+    const r = parsePlayerInput('study the manifest', ctx())
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.step.clauses[0]).toMatchObject({
+        verb: 'STUDY',
+        actors: [{ form: 'name', name: 'ANA' }],
+        objects: [{ form: 'name', name: 'THE_MANIFEST' }],
+      })
+    }
+  })
+
+  test('mansus + place routes to the object role, like explore', () => {
+    const r = parsePlayerInput('mansus the white door', ctx())
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.step.clauses[0]).toMatchObject({
+        verb: 'MANSUS',
+        actors: [{ form: 'name', name: 'ANA' }],
+        objects: [{ form: 'name', name: 'THE_WHITE_DOOR' }],
+      })
+    }
   })
 })
 

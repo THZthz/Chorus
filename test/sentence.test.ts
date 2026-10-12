@@ -30,8 +30,8 @@ describe('spec §5.2 worked examples', () => {
   })
 
   test('two-clause step', () => {
-    expect(canonical('0:14 @ ANA TRAVEL_TO VILLA; ANA AT STUDY READ THE_PALE_LADY -> CLUE_SECRET_HIDEOUT'))
-      .toBe('0:14 @ ANA TRAVEL_TO VILLA; ANA AT STUDY READ THE_PALE_LADY -> SPAWN CLUE_SECRET_HIDEOUT')
+    expect(canonical('0:14 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY -> CLUE_SECRET_HIDEOUT'))
+      .toBe('0:14 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY -> SPAWN CLUE_SECRET_HIDEOUT')
   })
 
   test('event sentence', () => {
@@ -51,13 +51,13 @@ describe('spec §5.2 worked examples', () => {
 
 describe('canonicalization', () => {
   test('typed ref sugar (kind:NAME) drops the kind in canonical form', () => {
-    expect(canonical('ANA READ text:THE_PALE_LADY AT STUDY'))
-      .toBe('ANA AT STUDY READ THE_PALE_LADY')
+    expect(canonical('ANA READ text:THE_PALE_LADY AT THE_STUDY'))
+      .toBe('ANA AT THE_STUDY READ THE_PALE_LADY')
   })
 
   test('post-verbal AT moves pre-verbal (§9.10)', () => {
-    expect(canonical('ANA READ THE_PALE_LADY AT STUDY'))
-      .toBe('ANA AT STUDY READ THE_PALE_LADY')
+    expect(canonical('ANA READ THE_PALE_LADY AT THE_STUDY'))
+      .toBe('ANA AT THE_STUDY READ THE_PALE_LADY')
   })
 
   test('id refs and quoted names round-trip', () => {
@@ -108,5 +108,25 @@ describe('lexical discipline (§9.14)', () => {
   test('names colliding with verbs must be quoted', () => {
     expect(() => parseSentence('0:0 @ READ TALK ABOUT X', dict)).toThrow(/reserved/)
     expect(canonical('0:0 @ "READ" TALK ABOUT X')).toBe('0:0 @ "READ" TALK ABOUT X')
+  })
+})
+
+describe('the core verb set is twelve (§4.3, v0.3)', () => {
+  test('STUDY and MANSUS register — and are reserved like every verb lexeme', () => {
+    expect([...dict.verbs].sort()).toEqual([
+      'ACQUIRE', 'DREAM', 'EXPLORE', 'LOCATE_AT', 'MANSUS', 'READ',
+      'STUDY', 'TALK', 'TRAVEL_TO', 'USE_ON', 'WAIT', 'WORK',
+    ])
+    expect(dict.isVerb('STUDY')).toBe(true)
+    expect(dict.isVerb('MANSUS')).toBe(true)
+    expect(() => parseSentence('0:0 @ STUDY READ X', dict)).toThrow(/reserved/)
+    expect(() => parseSentence('0:0 @ ANA WAIT -> SPAWN MANSUS', dict)).toThrow(/reserved/)
+  })
+
+  test('the new verbs round-trip like the old ones (§5.1)', () => {
+    expect(canonical('0:14 @ ANA STUDY THE_MANIFEST')).toBe('0:14 @ ANA STUDY THE_MANIFEST')
+    // post-verbal AT canonicalizes pre-verbal for the new verbs too (§9.10)
+    expect(canonical('0:14 @ ANA STUDY THE_MANIFEST AT HOUSE')).toBe('0:14 @ ANA AT HOUSE STUDY THE_MANIFEST')
+    expect(canonical('0:14 @ ANA MANSUS THE_WHITE_DOOR')).toBe('0:14 @ ANA MANSUS THE_WHITE_DOOR')
   })
 })

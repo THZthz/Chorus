@@ -25,6 +25,17 @@ export function seedContent(): ContentRaw {
           { out: ['NARRATE("{actors} read {object}.")'] },
         ],
       },
+      STUDY: {
+        // v0.3: mirrors READ's role grammar exactly (§4.3) — cardinalities and
+        // queries stay content; the CS study station is authored on top
+        slots: [
+          { role: 'actors', min: 1, max: 2, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1, query: 'kind:text' },
+          { role: 'at', min: 0, max: 1, query: 'kind:place' },
+        ],
+        duration: 60,
+        recipes: [{ out: ['NARRATE("{actors} study {object}.")'] }],
+      },
       TALK: {
         slots: [
           { role: 'actors', min: 1, max: 3, query: 'kind:character' },
@@ -83,6 +94,15 @@ export function seedContent(): ContentRaw {
         duration: 60,
         recipes: [{ out: ['NARRATE("{actors} explore {object}.")'] }],
       },
+      MANSUS: {
+        // v0.3: mirrors EXPLORE's role grammar (§4.3) — the enter-a-place shape
+        slots: [
+          { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1, query: 'kind:place' },
+        ],
+        duration: 60,
+        recipes: [{ out: ['NARRATE("{actors} walk the Mansus to {object}.")'] }],
+      },
       DREAM: {
         slots: [
           { role: 'actors', min: 1, max: 1, query: 'kind:character' },
@@ -124,12 +144,14 @@ export function seedContent(): ContentRaw {
     },
     templates: {
       READ: '{actors} read {object} at {at}.',
+      STUDY: '{actors} study {object} at {at}.',
       TALK: '{actors} talk about {about} at {at}.',
       TRAVEL_TO: '{actors} travel to {object}.',
       USE_ON: '{actors} use {object} at {at}.',
       WAIT: '{actors} wait.',
       WORK: '{actors} work at {at}.',
       EXPLORE: '{actors} explore {object}.',
+      MANSUS: '{actors} walk the Mansus to {object}.',
       DREAM: '{actors} dream.',
       LOCATE_AT: '{actors} are at {object}.',
       ACQUIRE: '{actors} acquire {object}.',
@@ -143,7 +165,7 @@ export function seedState(): State {
     addEntity(s, { id, kind: 'place', name, aspects: {}, attrs: container ? { container } : {}, bornAction: null, deadAction: null })
 
   place('house', 'HOUSE')
-  place('study', 'STUDY', 'house')
+  place('study', 'THE_STUDY', 'house') // v0.3: not 'STUDY' — the verb lexeme is reserved (§9.14)
   s.entities.get('study')!.aspects['study'] = 1
   place('dining', 'DINING_HALL', 'house')
   place('villa', 'VILLA')

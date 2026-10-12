@@ -1,7 +1,7 @@
 // L1 Dictionary — spec §4, §9.14 (reserved words), §4.4 (normative outcome arities)
 
 export const CORE_VERBS = [
-  'READ', 'WORK', 'TALK', 'EXPLORE', 'TRAVEL_TO',
+  'READ', 'STUDY', 'WORK', 'TALK', 'EXPLORE', 'MANSUS', 'TRAVEL_TO',
   'LOCATE_AT', 'DREAM', 'USE_ON', 'ACQUIRE', 'WAIT',
 ] as const
 

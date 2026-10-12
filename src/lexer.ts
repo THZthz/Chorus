@@ -1,5 +1,7 @@
 // Tokenizer for the sentence grammar — spec §5.1.
 // Quote-aware and paren-aware: strings and outcome args carry commas/brackets.
+import { parseDuration } from './clock.js'
+
 export type Tok =
   | { t: 'name'; v: string }
   | { t: 'int'; v: number }
@@ -66,13 +68,7 @@ export function lex(src: string): Tok[] {
 }
 
 function durToMinutes(s: string): number {
-  const m = /^([0-9]+)(halfhour|h|m|d)$/.exec(s)
-  if (!m) throw new Error(`bad duration token '${s}'`)
-  const n = Number(m[1])
-  switch (m[2]) {
-    case 'halfhour': return n * 30
-    case 'h': return n * 60
-    case 'd': return n * 24 * 60
-    default: return n
-  }
+  // one duration grammar (§5.1): the unit table lives in clock.ts's
+  // parseDuration, shared with the quoted-string expires path (§4.2)
+  return parseDuration(s)
 }

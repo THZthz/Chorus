@@ -9,7 +9,7 @@ import type { Dictionary } from './dict.js'
 import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb } from './content.js'
 import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
 import { matchQuery } from './query.js'
-import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, type Clock } from './clock.js'
+import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, parseDuration, type Clock } from './clock.js'
 import {
   addEntity, aspectEntry, aspectGet, aspectSet, cloneState, getAlive, relationKey,
   type Aspects, type Entity, type State,
@@ -544,13 +544,14 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
   }
 }
 
+/** `expires` materialization (§4.2): numbers are already minutes — the lexer
+ *  pre-converts bare duration literals (§5.1) before SET sees them; quoted
+ *  strings go through the one duration parser, so every §5.1 form
+ *  (`2halfhour`, `2h`, `90m`, `1d`) materializes `expiresAt`. */
 function toMinutes(v: string | number | boolean): number {
   if (typeof v === 'number') return v
   if (typeof v !== 'string') throw new Error(`bad duration '${v}'`)
-  const m = /^(\d+)(h|m|d)$/.exec(v)
-  if (!m) throw new Error(`bad duration '${v}'`)
-  const n = Number(m[1])
-  return m[2] === 'h' ? n * 60 : m[2] === 'd' ? n * 24 * 60 : n
+  return parseDuration(v)
 }
 
 /** resolve ref/role args to entities (role refs expand across the binding) */

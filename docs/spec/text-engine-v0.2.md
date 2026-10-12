@@ -48,6 +48,15 @@ projection of that data, never the source of truth.
 > the fold replays literals and never redoes arithmetic. Dotted arg keys
 > (`state.sealed`) now lex as written in §5.1.
 >
+> v0.2.6 = authorable decay (§9.32–§9.34). Triggers gain a second form —
+> `ID on expire of NAME -> OUTCOMES` — so an expiry can REPLACE the card or
+> apply arbitrary outcomes instead of the built-in destroy; the REPLACE
+> outcome (`REPLACE ref WITH prototype`, paren-less) mints the successor into
+> the dying card's current location (container or zone, §10) and concretizes
+> to plain SPAWN+DESTROY; REFUSE
+> becomes a load-time error in all trigger outcomes; play and fold now agree
+> exactly on `state.fired` for every EVENT row.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -180,6 +189,7 @@ core set is a default, not a closed wall.
 |-----------|---------------------------------|-----------------------------------------------|
 | `SPAWN`   | ref [, INTO ref] [, AS #id] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.18) |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
+| `REPLACE` | ref `WITH` prototype            | decay a card into its successor (§9.33): mint from the prototype into the dying card's **current location** — its `container` (place-contained or character-carried) or, for a zone-tagged card, its `zone` (§10: the grouping has no card, so the tag passes to the successor) — then soft-destroy it — spawn first, then destroy, so the old name is released as usual. Paren-less authored form `REPLACE X WITH Y`; the engine logs the concrete `SPAWN … AS #id` + `DESTROY #id` pair, so there is no REPLACE in the log (§9.33). Prototype derivation (`name from object`) is unavailable — REPLACE has no clause. A name collision with any living entity — the dying card itself included, still alive at spawn time — rejects the whole step (§9.19) |
 | `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`, §9.31); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute (§9.31); `SET x, expires, 2h` also materializes `expiresAt` |
 | `MOVE`    | ref, INTO ref                   | relocate (place→actor, actor→place)           |
 | `REVEAL`  | ref                             | unlock hidden text / mark discovered          |
@@ -238,9 +248,10 @@ outcomes   = outcome { "," outcome } ;           (* commas inside ( ) belong to 
 outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/ADVANCE/PROGRESS: parens required *)
            | "SPAWN" ref [ "INTO" target ] [ "AS" "#" id ] { key "=" value }
            | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
+           | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
            | ref ;                               (* bare ref = SPAWN ref, engine adds AS #id *)
-(*          canonical OUTPUT: SPAWN and NARRATE paren-less, every other op paren'd
+(*          canonical OUTPUT: SPAWN, NARRATE and REPLACE paren-less, every other op paren'd
             — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) *)
 args       = arg { "," arg } ;                   (* arg shapes validated per §4.4 arity *)
 arg        = ref | role | int | signedInt | string | bool | duration
@@ -605,8 +616,10 @@ contains sugar.
    cannot swallow a crossing: authored time triggers (content: id + slot,
    the `hour`/`halfhour` syntax of §10 [+ `once`], firing on every crossing
    of that halfhour-of-day, or on the first crossing only when `once`,
-   §9.29) and entity expiries (`expiresAt` crossed — trigger id
-   `expire:<NAME>`, one engine-written `DESTROY`).
+   §9.29) and entity expiries (`expiresAt` crossed — authored `on expire of
+   NAME` triggers fire instead when one names the expiring entity, §9.32;
+   with no match, trigger id `expire:<NAME>` and one engine-written
+   `DESTROY`).
    Within one crossed halfhour, authored triggers fire before expiries. Each
    fires its own EVENT log row with its outcomes applied. One pass — events
    never cascade within the same advance (v0.2 simplification; new expiries
@@ -616,7 +629,9 @@ contains sugar.
 
 Perishables/decay v0.2: an entity may carry `expires:+24h`; the engine
 materializes `expiresAt` when the attr is set; the crossing fires an expiry
-EVENT whose outcomes destroy/mutate it.
+EVENT — the authored `on expire of NAME` trigger's outcomes if one matches
+(decay chains: influence → weaker influence, health → fatigue, summons →
+defunct, usually via `REPLACE`), else the built-in destroy.
 
 ### 6.7 The processing cycle (commit → lock → ticks → outcomes → unlock)
 
@@ -643,8 +658,11 @@ The window is **narrated, not simulated**: all outcomes still apply
 atomically at commit (§6.6), and effects anchored to the clock (such as
 `SET x, expires, …`) use the record's start clock. A `REFUSE` collapses the
 cycle before any of it: no window elapses, no tick is due, and the attempt
-is logged as in §6.5. `PROGRESS` belongs to verb recipes only — the script
-compiler rejects it in trigger outcomes (events have no window).
+is logged as in §6.5. `PROGRESS` belongs to verb recipes only — the script compiler rejects it in
+trigger outcomes (events have no window). `REFUSE` belongs to verb recipes
+too, for the same reason sharpened: a refusal aborts a *step* (§6.5), and an
+event has no step to refuse — so `REFUSE` in any trigger outcome (both
+forms) is a load-time error (§9.34).
 
 **Why the engine has no lock machinery**: time is discrete per action
 (§9.2) — committing a step advances the clock across its entire window, so
@@ -689,7 +707,7 @@ CREATE TABLE relation (
 CREATE TABLE action (
   id           INTEGER PRIMARY KEY,
   kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' | 'event'
-  trigger      TEXT,                            -- event trigger id (events only; 'expire:<NAME>' for expiries)
+  trigger      TEXT,                            -- event trigger id (events only; an authored `on expire` trigger's id, else 'expire:<NAME>')
   t_game       TEXT NOT NULL,                   -- start clock "day:halfhour", day 0-based
   t_real       TEXT,
   advanced_min INTEGER NOT NULL DEFAULT 0,      -- minutes this record advanced the clock (0 for refused/events)
@@ -926,6 +944,50 @@ Two invariants keep the mapping safe:
     to the draft, so a later REFUSE in the same step discards them whole
     (§6.5); absolute values behave exactly as before.
 
+### Implementation rulings (v0.2.6, authorable decay)
+
+32. **Expiry triggers are authorable** (§6.6, §10): a trigger line
+    `ID on expire of NAME -> OUTCOMES` fires when an entity named NAME
+    expires, and its outcomes become the EVENT row's outcomes with
+    `record.trigger = ID` — instead of the built-in `expire:<NAME>` destroy.
+    The authored outcomes replace the built-in destroy *entirely*: if they
+    leave the entity alive, it re-fires on every later crossing (expire
+    deliberately, e.g. with `DESTROY NAME`, or give it a fresh `expires`).
+    First matching trigger in declaration order wins. There is **no
+    compile-time existence check** on NAME: decay targets are often spawned
+    at runtime, so a wrong name surfaces as an inert trigger, not a load
+    error. The expiry loop still works from the pre-pass expiry snapshot, so
+    ordering is unchanged (authored time triggers first, then expiries;
+    snapshot; no cascades within one advance) and an expiry outcome that
+    cannot apply rejects the whole step per §9.19.
+33. **REPLACE concretizes to plain SPAWN + DESTROY** (§4.4): the engine
+    mints from the prototype into the dying card's current location — its
+    `container` (place-contained or character-carried) or, for a zone-tagged
+    card, its `zone` (§10) — the CS decayTo inheritance; *then* stamps the
+    dying card's `deadAction` and releases its name, and
+    writes the existing concrete forms — `SPAWN name [INTO #container] AS #id
+    [aspects=…] [attrs=…]`, `DESTROY #id` — into the log. Zero new
+    log-format surface; the fold replays the pair exactly (REPLACE always
+    writes the `attrs=` pair, even empty — the pair is the authoritative
+    materialization (§9.18), so the fold cannot grow a location the mint
+    never had). The mint is by
+    **plain prototype** (or a plain `kind:NAME` ref — everything SPAWN
+    accepts without a clause): REPLACE has no clause, so prototype
+    derivation (`name from object`, §9.23) is unavailable. Because spawn
+    precedes destroy, `REPLACE X WITH X` — or any collision with a living
+    entity — rejects the whole step with nothing logged (§9.19). (A replaced
+    place's children keep pointing at the dead place id; re-parenting them is
+    the author's job.)
+34. **Trigger outcome guards and fired-set agreement**: `REFUSE` in any
+    trigger outcome (both forms) is a load-time error — a refusal aborts a
+    step and logs the attempt (§6.5), but an event has no step; the previous
+    silent behavior was worse than undefined, it *diverged*: play applied
+    the outcomes before the REFUSE and logged the row, while the fold's
+    §6.5 no-op rule replayed nothing. And `state.fired` is now written by
+    exactly one rule in both paths — one entry per EVENT row's `trigger`
+    (authored id or `expire:<NAME>`) — fixing a pre-existing play/fold
+    divergence where expiry rows were marked at fold but not at play.
+
 ## 10. The script format — a game as one text file
 
 A whole game is one text file: meta lines, then section blocks of
@@ -984,9 +1046,15 @@ Rules:
   declaration.
 - **Recipe lines**: §6.4's script form (`[id] [hidden|shown [hint "…"]]
   [when COND] -> OUTCOMES` or `default -> OUTCOMES`).
-- **Trigger line**: `ID [once] at (hour|halfhour) N -> OUTCOMES` — `hour` N
-  is 0..23 (slot 2N), `halfhour` N is 0..47. Fires on every crossing of that
-  halfhour-of-day — or on the first crossing only with `once` (§9.29).
+- **Trigger lines** — two forms:
+  - `ID [once] at (hour|halfhour) N -> OUTCOMES` — `hour` N is 0..23
+    (slot 2N), `halfhour` N is 0..47. Fires on every crossing of that
+    halfhour-of-day — or on the first crossing only with `once` (§9.29).
+  - `ID on expire of NAME -> OUTCOMES` — fires when the entity named NAME
+    expires (§9.32); NAME gets no compile-time existence check (the entity
+    may be spawned at runtime), and its outcomes may reference NAME directly
+    (names are unique among the living). With no such trigger, expiry
+    destroys the card (§6.6).
 
 ## 11. The play interface — lenient input, the terminal UI, undo
 

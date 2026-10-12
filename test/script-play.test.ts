@@ -3,6 +3,7 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { compileScript, parseScript } from '../src/script.js'
+import { compileContent } from '../src/content.js'
 import { parsePlayerInput } from '../src/lenient.js'
 import { Game } from '../src/play.js'
 import { fold } from '../src/fold.js'
@@ -66,7 +67,9 @@ describe('script compiler', () => {
   })
 
   test('triggers and prototypes compile', () => {
-    expect(game.content.triggers.map(t => [t.id, t.slot, t.once])).toEqual([
+    // the flyer's timetable is all clock triggers; an expiry trigger would
+    // narrow as [id, onExpireOf] instead (§9.32)
+    expect(game.content.triggers.map(t => 'slot' in t ? [t.id, t.slot, t.once] : [t.id, t.onExpireOf])).toEqual([
       ['body_found', 44, true],
       ['night_porter', 46, true],
       ['border_stop', 0, true],
@@ -83,6 +86,33 @@ describe('script compiler', () => {
   test('templates compile', () => {
     expect(game.content.templates.get('READ')).toBe('{actors} read {object}.')
     expect(game.content.templates.get('TALK')).toBe('{actors} question {to}.')
+  })
+
+  test('expiry triggers parse into their own trigger form (§9.32)', () => {
+    const script = parseScript('triggers:\n  decay_moth on expire of INFLUENCE_MOTH_G -> REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E\n', dict)
+    expect(script.content.triggers).toEqual([
+      { id: 'decay_moth', onExpireOf: 'INFLUENCE_MOTH_G', out: ['REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E'] },
+    ])
+    // compiled: the expire variant with parsed outcomes; no existence check on the name
+    const compiled = compileContent(script.content, dict)
+    expect(compiled.triggers).toEqual([
+      {
+        id: 'decay_moth', onExpireOf: 'INFLUENCE_MOTH_G',
+        out: [{
+          op: 'REPLACE',
+          args: [
+            { t: 'ref', ref: { form: 'name', name: 'INFLUENCE_MOTH_G' } },
+            { t: 'ref', ref: { form: 'name', name: 'INFLUENCE_MOTH_E' } },
+          ],
+        }],
+      },
+    ])
+  })
+
+  test('bad expiry-trigger grammar fails loudly', () => {
+    expect(() => parseScript('triggers:\n  decay_moth on expire -> SPAWN DREAD\n', dict)).toThrow(/triggers expect/)
+    expect(() => parseScript('triggers:\n  decay_moth expire of MOTH -> SPAWN DREAD\n', dict)).toThrow(/triggers expect/)
+    expect(() => parseScript('triggers:\n  decay_moth on expire of MOTH\n', dict)).toThrow(/triggers expect/)
   })
 
   test('bad scripts fail loudly', () => {

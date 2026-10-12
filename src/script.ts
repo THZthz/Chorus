@@ -242,8 +242,11 @@ function parsePrototypeLine(t: string, ln: number, dict: Dictionary): [string, P
 // ---------- trigger lines ----------
 
 function parseTriggerLine(t: string, ln: number, dict: Dictionary): TriggerDef {
+  // expiry form: ID on expire of NAME -> OUTCOMES (§6.6, §9.32)
+  const exp = /^(\S+)\s+on\s+expire\s+of\s+(\S+)\s*->\s*(.+)$/.exec(t)
+  if (exp) return { id: exp[1], onExpireOf: exp[2], out: [exp[3]] }
   const m = /^(\S+)(\s+once)?\s+at\s+(hour|halfhour)\s+(\d+)\s*->\s*(.+)$/.exec(t)
-  if (!m) throw new Error(`line ${ln}: triggers expect  ID [once] at (hour|halfhour) N -> OUTCOMES`)
+  if (!m) throw new Error(`line ${ln}: triggers expect  ID [once] at (hour|halfhour) N -> OUTCOMES  or  ID on expire of NAME -> OUTCOMES`)
   const n = Number(m[4])
   if (m[3] === 'hour' && n > 23) throw new Error(`line ${ln}: trigger hour must be 0..23`)
   if (m[3] === 'halfhour' && n > 47) throw new Error(`line ${ln}: trigger halfhour must be 0..47`)

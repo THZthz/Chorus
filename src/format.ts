@@ -41,6 +41,12 @@ function formatOutcome(o: Outcome, dict?: SafeDict): string {
     const s = o.args[0]
     return `NARRATE ${s && s.t === 'str' ? quote(s.v) : formatArgs(o.args, dict)}`
   }
+  if (o.op === 'REPLACE') {
+    // canonical paren-less authored form: REPLACE ref WITH prototype (§4.4)
+    const target = o.args[0]
+    const proto = o.args[1]
+    return `REPLACE ${target ? formatArg(target, dict) : '?'} WITH ${proto ? formatArg(proto, dict) : '?'}`
+  }
   return `${o.op}(${o.args.map(a => formatArg(a, dict)).join(', ')})`
 }
 

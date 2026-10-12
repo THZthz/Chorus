@@ -319,14 +319,19 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       }
       if (container) attrs['container'] = container
       // fold-time reconstruction: a recorded SPAWN (asId present) may carry
-      // materialized aspects/attrs as JSON pairs — prefer them over derive
+      // materialized aspects/attrs as JSON pairs — prefer them over derive.
+      // An explicit attrs= pair is authoritative (§9.18): it already carries
+      // the mint's location (container and/or zone), so a mint with no
+      // location must not grow one from the replay bindings.
       const aspectsArg = args.find(a => a.t === 'pair' && a.k === 'aspects')
       const attrsArg = args.find(a => a.t === 'pair' && a.k === 'attrs')
       if (aspectsArg && aspectsArg.t === 'pair' && typeof aspectsArg.v === 'string') {
         aspects = JSON.parse(aspectsArg.v) as Aspects
       }
       if (attrsArg && attrsArg.t === 'pair' && typeof attrsArg.v === 'string') {
-        Object.assign(attrs, JSON.parse(attrsArg.v) as Record<string, string | number | boolean>)
+        const materialized = JSON.parse(attrsArg.v) as Record<string, string | number | boolean>
+        Object.assign(attrs, materialized)
+        if (!('container' in materialized)) delete attrs['container']
       }
       addEntity(ctx.state, { id, kind, name, aspects, attrs, bornAction: ctx.recordId, deadAction: null })
       // concrete outcome: everything a fold needs, nothing from the step context
@@ -345,6 +350,54 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         if (ctx.state.byName.get(e.name) === e.id) ctx.state.byName.delete(e.name)
       }
       return { concrete: [{ op: o.op, args: concrete }], refused: false }
+    }
+    case 'REPLACE': {
+      // §4.4: REPLACE ref WITH prototype — mint from the prototype into the
+      // dying card's CURRENT container, then soft-destroy it. The log carries
+      // the concrete SPAWN+DESTROY pair, so the fold replays it exactly (§9.33).
+      const targetArg = args[0]
+      const protoArg = args[1]
+      if (!protoArg || protoArg.t !== 'ref' || protoArg.ref.form !== 'name') {
+        throw new Error('REPLACE needs (ref|ROLE) WITH a prototype or kind:NAME ref')
+      }
+      const protoName = protoArg.ref.name
+      // plain prototype mint — REPLACE has no clause, so prototype derivation
+      // (`name from object`, §6.4) is unavailable here (§9.33)
+      const proto = ctx.content.prototypes.get(protoName)
+      const kind = protoArg.ref.kind ?? proto?.kind
+      if (!kind) throw new Error(`REPLACE ${protoName}: no kind (prototype or kind:NAME required)`)
+      const aspects: Aspects = proto?.aspects ? cloneAspects(proto.aspects) : {}
+      const targets = expand([targetArg], ctx)
+      if (targets.length === 0) throw new Error(`REPLACE: unresolvable ref (nothing to replace)`)
+      const concrete: Outcome[] = []
+      for (const dying of targets) {
+        // spawn happens while the dying card is still alive, so replacing a
+        // card with its own name collides — whole-step rejection (§9.33)
+        if (ctx.state.byName.has(protoName)) throw new Error(`REPLACE: name '${protoName}' already in use`)
+        const id = ctx.idGen()
+        const attrs: Record<string, string | number | boolean> = { ...(proto?.attrs ?? {}) }
+        const container = typeof dying.attrs['container'] === 'string' ? dying.attrs['container'] : undefined
+        // zone-tagged (§10): the grouping has no card, so the tag passes on —
+        // as a plain attr pair, NOT as INTO (the fold's SPAWN replay would
+        // materialize a container the mint never had)
+        const zone = !container && typeof dying.attrs['zone'] === 'string' ? dying.attrs['zone'] : undefined
+        if (container) attrs['container'] = container
+        if (zone) attrs['zone'] = zone
+        addEntity(ctx.state, { id, kind, name: protoName, aspects: cloneAspects(aspects), attrs, bornAction: ctx.recordId, deadAction: null })
+        dying.deadAction = ctx.recordId
+        if (ctx.state.byName.get(dying.name) === dying.id) ctx.state.byName.delete(dying.name)
+        const spawnArgs: Arg[] = [{ t: 'ref', ref: nameRef(protoName, kind) }]
+        if (container) spawnArgs.push({ t: 'into', ref: idRef(container) })
+        spawnArgs.push({ t: 'asId', id })
+        if (Object.keys(aspects).length > 0) spawnArgs.push({ t: 'pair', k: 'aspects', v: JSON.stringify(aspects) })
+        // always materialize attrs, even when empty (§9.18): the pair pins the
+        // mint's location — with no pair the fold would re-add the bound
+        // actor's container to a location-less successor
+        spawnArgs.push({ t: 'pair', k: 'attrs', v: JSON.stringify(attrs) })
+        concrete.push({ op: 'SPAWN', args: spawnArgs })
+        concrete.push({ op: 'DESTROY', args: [{ t: 'ref', ref: idRef(dying.id) }] })
+      }
+      return { concrete, refused: false }
     }
     case 'SET': {
       // §4.4 arity: SET(ref, key, value) — positional
@@ -557,8 +610,9 @@ function fireCrossingEvents(
     .filter(e => e.deadAction === null && typeof e.attrs['expiresAt'] === 'number')
     .map(e => ({ id: e.id, name: e.name, at: e.attrs['expiresAt'] as number }))
   for (const absSlot of crossedSlots(fromMin, toMin)) {
-    // authored triggers first, then expiries — deterministic order (§9.16)
+    // authored time triggers first, then expiries — deterministic order (§9.16)
     for (const trig of content.triggers) {
+      if (!('slot' in trig)) continue // expiry triggers ride the expiry path below
       if (trig.slot !== absSlot % 48) continue
       if (trig.once && state.fired.has(trig.id)) continue // §9.29: once means once
       const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
@@ -572,9 +626,26 @@ function fireCrossingEvents(
       const e = state.entities.get(exp.id)
       if (!e || e.deadAction !== null) continue
       const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
-      const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: nameRef(e.name) }] }
-      const outcomes = [...applyOutcome(destroy, ctx).concrete]
-      records.push(makeEventRecord(firstEventId + records.length, `expire:${e.name}`, absSlot, outcomes, dict))
+      // an authored `on expire of NAME` trigger (§9.32) replaces the built-in
+      // destroy; first match in declaration order wins. Its outcomes ARE the
+      // event record's outcomes (record.trigger = the authored id). An outcome
+      // that cannot apply throws — the whole step is rejected (§9.19).
+      const authored = content.triggers.find(t => 'onExpireOf' in t && t.onExpireOf === e.name)
+      let triggerId: string
+      let outcomes: Outcome[]
+      if (authored) {
+        triggerId = authored.id
+        outcomes = []
+        for (const o of authored.out) outcomes.push(...applyOutcome(o, ctx).concrete)
+      } else {
+        triggerId = `expire:${e.name}`
+        const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: nameRef(e.name) }] }
+        outcomes = [...applyOutcome(destroy, ctx).concrete]
+      }
+      // play marks fired exactly as the fold's applyRecord does — one entry per
+      // EVENT row's trigger (§9.34); on the draft, so a rejection discards it
+      state.fired.add(triggerId)
+      records.push(makeEventRecord(firstEventId + records.length, triggerId, absSlot, outcomes, dict))
     }
   }
   return records

@@ -33,14 +33,27 @@ export interface VerbContent {
   recipes: RecipeDef[]   // first match wins; a `when`-less recipe is the default
 }
 
-export interface TriggerDef {
+/** A clock trigger: fires on every crossing of its halfhour-of-day slot
+ *  (0..47; `at hour N` in the script is slot 2N), or on the first crossing
+ *  only when `once` (§9.29). */
+export interface SlotTriggerDef {
   id: string
-  /** halfhour-of-day at which the trigger fires on crossing (0..47);
-   *  `at hour N` in the script is slot 2N (§10) */
   slot: number
-  once?: boolean         // fires on its first crossing only (§9.29)
+  once?: boolean
   out: string[]
 }
+
+/** An expiry trigger (`on expire of NAME`, §6.6): fires when an entity with
+ *  this NAME expires (its `expiresAt` crosses), replacing the built-in
+ *  destroy. No compile-time existence check — the entity may be spawned at
+ *  runtime; names are unique among the living (§9.14). */
+export interface ExpireTriggerDef {
+  id: string
+  onExpireOf: string
+  out: string[]
+}
+
+export type TriggerDef = SlotTriggerDef | ExpireTriggerDef
 
 /** Prototype-parameterized spawn, e.g. CLUE(secret-2) — resolved at execution
  *  into a concrete SPAWN ... AS #id (§6.4, §9.15). The registry key is the name. */
@@ -87,7 +100,10 @@ export interface CompiledVerb {
 
 export interface CompiledContent {
   verbs: Map<string, CompiledVerb>
-  triggers: { id: string; slot: number; once: boolean; out: Outcome[] }[]
+  triggers: (
+    | { id: string; slot: number; once: boolean; out: Outcome[] }
+    | { id: string; onExpireOf: string; out: Outcome[] }
+  )[]
   prototypes: Map<string, PrototypeDef>
   templates: Map<string, string>
 }
@@ -116,6 +132,10 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     const out = t.out.flatMap(o => parseOutcomeString(o, dict))
     // §6.7: PROGRESS narrates a processing window; events have none
     if (out.some(o => o.op === 'PROGRESS')) throw new Error(`trigger ${t.id}: PROGRESS belongs to verb recipes, not events`)
+    // §9.34: REFUSE aborts a step (§6.5); events have no step to refuse — and
+    // the old silent behavior diverged play from fold
+    if (out.some(o => o.op === 'REFUSE')) throw new Error(`trigger ${t.id}: REFUSE belongs to verb recipes — events have no step to refuse`)
+    if ('onExpireOf' in t) return { id: t.id, onExpireOf: t.onExpireOf, out }
     return { id: t.id, slot: t.slot, once: t.once ?? false, out }
   })
   const prototypes = new Map(Object.entries(raw.prototypes ?? {}))

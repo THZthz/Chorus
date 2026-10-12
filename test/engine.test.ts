@@ -1,7 +1,7 @@
 // Engine acceptance tests — the spec §6.4 READ ladder, REFUSE semantics (§6.5),
 // time ownership (§9.12), events (§9.16), fold determinism (§7).
 import { describe, expect, test } from 'vitest'
-import { compileContent, type CompiledContent, type ContentRaw } from '../src/content.js'
+import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content.js'
 import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { formatDuration } from '../src/clock.js'
 import { fold, foldUpTo } from '../src/fold.js'
@@ -39,6 +39,7 @@ const snap = (s: State): string => JSON.stringify({
   rels: [...s.relations.entries()].sort(([a], [b]) => a < b ? -1 : 1),
   byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1),
   now: s.now,
+  fired: [...s.fired].sort(), // §9.34: play and fold must agree on fired too
 })
 
 describe('READ ladder — first match wins, most specific first (§6.4)', () => {
@@ -698,5 +699,282 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     expect(r.records[0].sentence).toContain('SET(#ana, "about", 5)')
     // the record must round-trip: unquoted it would re-parse as the about ROLE
     expect(formatSentence(parseSentence(r.records[0].sentence, tuneDict), tuneDict)).toBe(r.records[0].sentence)
+  })
+})
+
+// ---------- authorable decay: REPLACE + `on expire of` (§9.32–§9.34) ----------
+
+describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
+  const decayDict = seedDictionary()
+  decayDict.registerVerb('DECAY')
+  const decayContent = (out: string, prototypes: ContentRaw['prototypes'] = {}) => compileContent({
+    verbs: {
+      DECAY: {
+        slots: [
+          { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+          { role: 'object', min: 1, max: 1 },
+        ],
+        duration: 0,
+        recipes: [{ out: [out] }],
+      },
+    },
+    prototypes,
+  }, decayDict)
+  const runDecay = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
+    const s = parseSentence(src, decayDict)
+    let n = 0
+    return executeStep(theContent, decayDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
+      firstRecordId,
+      idGen: () => `x${firstRecordId}_${++n}`,
+    })
+  }
+
+  test('a place-contained card decays into the prototype, in the same place', () => {
+    const { state } = setup() // CHALICE sits in HOUSE
+    const c = decayContent('REPLACE OBJECT WITH ASHES', { ASHES: { kind: 'item', aspects: { spent: 1 } } })
+    const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
+    expect(r.rejected).toBeNull()
+    // zero new log surface: the record carries the concrete SPAWN+DESTROY pair (§9.33)
+    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY'])
+    expect(r.records[0].sentence).toContain('-> SPAWN ASHES INTO #house AS #x1_1 ')
+    expect(r.records[0].sentence).toContain('DESTROY(#chalice)')
+    const ash = r.state.entities.get(r.state.byName.get('ASHES')!)!
+    expect(ash.kind).toBe('item')
+    expect(ash.aspects).toEqual({ spent: 1 })
+    expect(ash.attrs['container']).toBe('house') // inherits the dying card's place
+    expect(ash.bornAction).toBe(1)
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(1)
+    expect(r.state.byName.has('CHALICE')).toBe(false)
+    // the fold replays the pair exactly
+    expect(snap(fold(r.records, seedState(), decayDict, c))).toBe(snap(r.state))
+  })
+
+  test('a carried card stays carried by the same character', () => {
+    const { state } = setup()
+    state.entities.get('chalice')!.attrs['container'] = 'ana' // now carried, not shelved
+    const c = decayContent('REPLACE OBJECT WITH ASHES', { ASHES: { kind: 'item' } })
+    const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get(r.state.byName.get('ASHES')!)!.attrs['container']).toBe('ana')
+  })
+
+  test('a zone-tagged card passes its zone to the successor — no container card (§10)', () => {
+    const base = seedState()
+    delete base.entities.get('chalice')!.attrs['container']
+    base.entities.get('chalice')!.attrs['zone'] = 'NIGHTJAR_FLYER'
+    const c = decayContent('REPLACE OBJECT WITH ASHES', { ASHES: { kind: 'item' } })
+    const r = runDecay(c, base, '0:20 @ ANA DECAY CHALICE')
+    expect(r.rejected).toBeNull()
+    const ash = r.state.entities.get(r.state.byName.get('ASHES')!)!
+    expect(ash.attrs['zone']).toBe('NIGHTJAR_FLYER') // the grouping has no card: the tag passes on
+    expect(ash.attrs['container']).toBeUndefined()
+    // the zone rides the concrete attrs pair, so the fold replays it (§9.33)
+    expect(snap(fold(r.records, base, decayDict, c))).toBe(snap(r.state))
+  })
+
+  test('REPLACE of an unbound role ref rejects the step — nothing logged (§9.19)', () => {
+    const c = compileContent({
+      verbs: {
+        DECAY: {
+          slots: [
+            { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+            { role: 'object', min: 0, max: 1 }, // optional, and left unbound
+          ],
+          duration: 0,
+          recipes: [{ out: ['REPLACE OBJECT WITH ASHES'] }],
+        },
+      },
+      prototypes: { ASHES: { kind: 'item' } },
+    }, decayDict)
+    const { state } = setup()
+    const before = snap(state)
+    const r = runDecay(c, state, '0:20 @ ANA DECAY')
+    expect(r.rejected).toMatch(/unresolvable ref/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(state)
+    expect(snap(r.state)).toBe(before)
+  })
+
+  test('the old card soft-destroys: its name is released and reusable (§9.14)', () => {
+    const { state } = setup()
+    const c = decayContent('REPLACE OBJECT WITH ASHES', { ASHES: { kind: 'item' } })
+    const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('chalice')!.deadAction).not.toBeNull()
+    expect(r.state.byName.has('CHALICE')).toBe(false)
+    const rec = {
+      id: 99, kind: 'action' as const, trigger: null, tGame: '0:20', tReal: null, advancedMin: 0,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
+      outcomes: [{ op: 'SPAWN', args: [{ t: 'ref', ref: { form: 'name', kind: 'item', name: 'CHALICE' } }, { t: 'asId', id: 'new_chalice' }] }],
+      recipes: [], sentence: '',
+    }
+    applyRecord(rec as ActionRecord, r.state, decayDict, c)
+    expect(r.state.byName.get('CHALICE')).toBe('new_chalice')
+  })
+
+  test('a plain kind:NAME ref mints without a prototype — everything clause-less SPAWN accepts', () => {
+    const { state } = setup()
+    const c = decayContent('REPLACE OBJECT WITH item:CRUMBS')
+    const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
+    expect(r.rejected).toBeNull()
+    const crumbs = r.state.entities.get(r.state.byName.get('CRUMBS')!)!
+    expect(crumbs.kind).toBe('item')
+    expect(crumbs.attrs['container']).toBe('house')
+  })
+
+  test('collision with a living entity — the dying card included — rejects the whole step (§9.33)', () => {
+    const { state } = setup()
+    const before = snap(state)
+    const c = decayContent('REPLACE OBJECT WITH CHALICE', { CHALICE: { kind: 'item' } })
+    const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE') // CHALICE is still alive at spawn time
+    expect(r.rejected).toMatch(/already in use/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(state)
+    expect(snap(r.state)).toBe(before)
+  })
+
+  test('authored REPLACE round-trips; the paren-less form is the only form', () => {
+    const nameForm = parseSentence('0:0 @ ANA DECAY CHALICE -> REPLACE CHALICE WITH ASHES', decayDict)
+    expect(formatSentence(nameForm, decayDict)).toBe('0:0 @ ANA DECAY CHALICE -> REPLACE CHALICE WITH ASHES')
+    const roleForm = parseSentence('0:0 @ ANA DECAY CHALICE -> REPLACE OBJECT WITH ASHES', decayDict)
+    expect(formatSentence(roleForm, decayDict)).toBe('0:0 @ ANA DECAY CHALICE -> REPLACE OBJECT WITH ASHES')
+    expect(() => parseSentence('0:0 @ ANA WAIT -> REPLACE(CHALICE, ASHES)', decayDict)).toThrow(/paren-less/)
+    expect(() => parseSentence('0:0 @ ANA WAIT -> REPLACE CHALICE', decayDict)).toThrow(/REPLACE expects WITH/)
+  })
+})
+
+describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
+  const mothDict = seedDictionary()
+  const waitVerb: VerbContent = {
+    slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+    duration: 60,
+    recipes: [{ out: ['NARRATE("{actors} wait.")'] }],
+  }
+  // influence decay: G → E → C → (no trigger: built-in destroy)
+  const mothContent = () => compileContent({
+    verbs: { WAIT: waitVerb },
+    triggers: [
+      { id: 'decay_moth_g', onExpireOf: 'INFLUENCE_MOTH_G', out: ['REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E', 'SET(INFLUENCE_MOTH_E, expires, 1h)'] },
+      { id: 'decay_moth_e', onExpireOf: 'INFLUENCE_MOTH_E', out: ['REPLACE INFLUENCE_MOTH_E WITH INFLUENCE_MOTH_C', 'SET(INFLUENCE_MOTH_C, expires, 1h)'] },
+    ],
+    prototypes: {
+      INFLUENCE_MOTH_E: { kind: 'idea', aspects: { influence: 2 } },
+      INFLUENCE_MOTH_C: { kind: 'idea', aspects: { influence: 1 } },
+    },
+  }, mothDict)
+  const mothBase = () => {
+    const s = seedState()
+    addEntity(s, { id: 'moth_g', kind: 'idea', name: 'INFLUENCE_MOTH_G', aspects: { influence: 3 }, attrs: { container: 'house', expiresAt: 16 * 60 }, bornAction: null, deadAction: null })
+    return s
+  }
+  const runMoth = (state: State, src: string, firstRecordId: number): ExecResult => {
+    const s = parseSentence(src, mothDict)
+    let n = 0
+    return executeStep(mothContent(), mothDict, state, { clock: s.clock!, clauses: s.clauses }, {
+      firstRecordId,
+      idGen: () => `x${firstRecordId}_${++n}`,
+    })
+  }
+
+  test('a decay chain runs across successive waits, then default-destroys (§9.32)', () => {
+    let state = mothBase()
+    const triggers: (string | null)[] = []
+    let id = 1
+    let eId: string | undefined
+    let cId: string | undefined
+    for (const step of ['0:30 @ ANA WAIT', '0:32 @ ANA WAIT', '0:34 @ ANA WAIT']) {
+      const r = runMoth(state, step, id)
+      expect(r.rejected).toBeNull()
+      triggers.push(...r.records.filter(x => x.kind === 'event').map(x => x.trigger))
+      state = r.state
+      eId = eId ?? state.byName.get('INFLUENCE_MOTH_E')
+      cId = cId ?? state.byName.get('INFLUENCE_MOTH_C')
+      id += r.records.length
+    }
+    // G decayed into E, E into C, then C expired with no trigger → built-in destroy
+    expect(triggers).toEqual(['decay_moth_g', 'decay_moth_e', 'expire:INFLUENCE_MOTH_C'])
+    expect(state.entities.get('moth_g')!.deadAction).toBe(2)
+    const e = state.entities.get(eId!)!
+    expect(e.aspects).toEqual({ influence: 2 })        // plain prototype mint (no derive)
+    expect(e.attrs['container']).toBe('house')         // inherited container
+    expect(e.deadAction).toBe(4)
+    expect(state.entities.get(cId!)!.deadAction).toBe(6)
+    expect(state.byName.has('INFLUENCE_MOTH_G')).toBe(false)
+    expect(state.byName.has('INFLUENCE_MOTH_E')).toBe(false)
+    expect(state.byName.has('INFLUENCE_MOTH_C')).toBe(false) // destroyed: name released, no successor
+  })
+
+  test('an authored time trigger and an authored expiry fire in the same advance — triggers first (§6.6)', () => {
+    const c = compileContent({
+      verbs: { WAIT: waitVerb },
+      triggers: [
+        { id: 'dusk_falls', slot: 32, out: ['SPAWN DREAD'] },
+        { id: 'decay_chalice', onExpireOf: 'CHALICE', out: ['REPLACE CHALICE WITH RUSTY_CHALICE'] },
+      ],
+      prototypes: { DREAD: { kind: 'state' }, RUSTY_CHALICE: { kind: 'item' } },
+    }, dict)
+    const { state } = setup()
+    state.entities.get('chalice')!.attrs['expiresAt'] = 16 * 60 // same crossing as dusk (slot 32)
+    const r = runWith(c, state, '0:28 @ ANA WAIT; ANA WAIT; ANA WAIT')
+    expect(r.rejected).toBeNull()
+    expect(r.records.map(x => x.kind)).toEqual(['action', 'event', 'event'])
+    expect(r.records[1].trigger).toBe('dusk_falls')     // authored time trigger first
+    expect(r.records[2].trigger).toBe('decay_chalice')  // …then the expiry
+    expect(r.records[2].sentence).toContain('EVENT decay_chalice')
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(3)
+    expect(r.state.entities.get(r.state.byName.get('RUSTY_CHALICE')!)!.attrs['container']).toBe('house')
+    expect(r.state.byName.has('DREAD')).toBe(true)
+  })
+
+  test('a colliding authored expiry rejects the whole step — nothing logged (§9.19, §9.33)', () => {
+    const c = compileContent({
+      verbs: { WAIT: waitVerb },
+      triggers: [{ id: 'decay_chalice', onExpireOf: 'CHALICE', out: ['REPLACE CHALICE WITH CHALICE'] }],
+      prototypes: { CHALICE: { kind: 'item' } },
+    }, dict)
+    const { state } = setup()
+    state.entities.get('chalice')!.attrs['expiresAt'] = 15 * 60
+    const before = snap(state)
+    const r = runWith(c, state, '0:28 @ ANA WAIT; ANA WAIT')
+    expect(r.rejected).toMatch(/already in use/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(state)
+    expect(snap(r.state)).toBe(before)
+  })
+
+  test('play and fold agree on fired for every EVENT row — full-state fold equality incl. JSONL (§9.34)', () => {
+    let state = mothBase()
+    const all: ActionRecord[] = []
+    let id = 1
+    for (const step of ['0:30 @ ANA WAIT', '0:32 @ ANA WAIT', '0:34 @ ANA WAIT']) {
+      const r = runMoth(state, step, id)
+      expect(r.rejected).toBeNull()
+      all.push(...r.records)
+      state = r.state
+      id += r.records.length
+    }
+    const dir = mkdtempSync(join(tmpdir(), 'chorus-log-'))
+    const path = join(dir, 'log.jsonl')
+    try {
+      saveLog(path, all)
+      const replayed = fold(loadLog(path), mothBase(), mothDict, mothContent())
+      expect(snap(replayed)).toBe(snap(state)) // snap includes fired (§9.34)
+      // one fired entry per EVENT row's trigger — authored ids and expire:<NAME> alike
+      expect([...replayed.fired].sort()).toEqual(['decay_moth_e', 'decay_moth_g', 'expire:INFLUENCE_MOTH_C'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('trigger outcome guards (§6.7, §9.34)', () => {
+  test('PROGRESS is a load-time error in both trigger forms', () => {
+    expect(() => compileContent({ verbs: {}, triggers: [{ id: 't', slot: 1, out: ['PROGRESS(30m, "tick")'] }] }, dict)).toThrow(/PROGRESS belongs/)
+    expect(() => compileContent({ verbs: {}, triggers: [{ id: 't', onExpireOf: 'X', out: ['PROGRESS(30m, "tick")'] }] }, dict)).toThrow(/PROGRESS belongs/)
+  })
+
+  test('REFUSE is a load-time error in both trigger forms — events have no step to refuse (§9.34)', () => {
+    expect(() => compileContent({ verbs: {}, triggers: [{ id: 't', slot: 1, out: ['REFUSE("no")'] }] }, dict)).toThrow(/REFUSE belongs/)
+    expect(() => compileContent({ verbs: {}, triggers: [{ id: 't', onExpireOf: 'X', out: ['REFUSE("no")'] }] }, dict)).toThrow(/REFUSE belongs/)
   })
 })

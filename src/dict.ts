@@ -14,11 +14,11 @@ export const RESERVED_WORDS = [
 ]
 
 export type OutcomeOp =
-  | 'SPAWN' | 'DESTROY' | 'SET' | 'MOVE' | 'REVEAL'
+  | 'SPAWN' | 'DESTROY' | 'REPLACE' | 'SET' | 'MOVE' | 'REVEAL'
   | 'ADVANCE' | 'NARRATE' | 'PROGRESS' | 'RELATE' | 'UNRELATE' | 'REFUSE'
 
 export const OUTCOME_OPS: OutcomeOp[] = [
-  'SPAWN', 'DESTROY', 'SET', 'MOVE', 'REVEAL',
+  'SPAWN', 'DESTROY', 'REPLACE', 'SET', 'MOVE', 'REVEAL',
   'ADVANCE', 'NARRATE', 'PROGRESS', 'RELATE', 'UNRELATE', 'REFUSE',
 ]
 

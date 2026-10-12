@@ -160,13 +160,19 @@ class Parser {
   }
 
   /** outcome = OPERATOR "(" args ")" | ref  (bare ref = SPAWN, §4.4).
-   *  Self-delimiting ops (SPAWN/NARRATE/MOVE/DESTROY/REVEAL) also accept a
-   *  canonical paren-less form; SET/RELATE/UNRELATE/REFUSE/ADVANCE require parens. */
+   *  Self-delimiting ops (SPAWN/NARRATE/MOVE/DESTROY/REVEAL/REPLACE) also
+   *  accept a canonical paren-less form; SET/RELATE/UNRELATE/REFUSE/ADVANCE
+   *  require parens. */
   outcome(): Outcome {
     const t = this.peek()
     if (t?.t === 'name' && this.dict.isOp(t.v)) {
       this.next()
       const op = t.v
+      // REPLACE is paren-less only: its WITH keyword would mis-parse as the
+      // `with` role ref inside a generic arg list (§4.4)
+      if (op === 'REPLACE' && this.atPunct('(')) {
+        throw new Error('REPLACE takes the paren-less form: REPLACE ref WITH prototype')
+      }
       if (this.atPunct('(')) {
         this.next()
         const args: Arg[] = []
@@ -189,6 +195,13 @@ class Parser {
         return { op, args: [{ t: 'str', v: s.v }] }
       }
       if (op === 'DESTROY' || op === 'REVEAL') return { op, args: [this.roleOrRefArg()] }
+      if (op === 'REPLACE') {
+        // REPLACE ref WITH prototype (§4.4): target may be a role ref
+        const target = this.roleOrRefArg()
+        if (!this.atKeyword('WITH')) throw new Error('REPLACE expects WITH')
+        this.next()
+        return { op, args: [target, { t: 'ref', ref: this.ref() }] }
+      }
       if (op === 'MOVE') {
         const args: Arg[] = [this.roleOrRefArg()]
         if (!this.atKeyword('INTO')) throw new Error('MOVE expects INTO')

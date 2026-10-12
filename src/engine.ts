@@ -292,6 +292,8 @@ interface ApplyCtx {
   recordId: number
   idGen: () => string
   extraAdvanceMin: number
+  // F4 will add the per-clause `roll` binding here — last ROLL of the outcome
+  // list wins, reset per clause, dies with the draft on REFUSE (never State).
 }
 
 interface ApplyResult {
@@ -302,6 +304,8 @@ interface ApplyResult {
 function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
   const args = o.args
   switch (o.op) {
+    case 'IF':
+      return applyIf(o, ctx)
     case 'SPAWN': {
       const refArg = args.find((a): a is Extract<Arg, { t: 'ref' }> => a.t === 'ref')
       if (!refArg || refArg.ref.form !== 'name') throw new Error('SPAWN needs a name ref (prototype or kind:NAME)')
@@ -574,6 +578,39 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
     default:
       throw new Error(`unknown outcome op '${o.op}'`)
   }
+}
+
+/**
+ * §9.39 — IF / ELSE IF / ELSE in an outcome list. Arms evaluate in order
+ * against the DRAFT (this list's earlier outcomes — SET, SPAWN, DESTROY —
+ * are visible to later IFs, unlike recipe selection which reads the input
+ * state); the first true condition wins; ELSE is the default; no true arm
+ * and no ELSE applies nothing, without error. Concretization follows the
+ * SET-delta precedent (§9.31): the log records ONLY the taken branch's
+ * outcomes, flattened in position — the record never contains an IF op, and
+ * the untaken branches are authored discipline the log cannot recover.
+ * Conditions evaluate STRICTLY (§9.19): an operand that cannot resolve —
+ * a path over a role with no bound card, F4's unbound `roll` — rejects the
+ * whole step, where a `when:` predicate would have read false.
+ */
+function applyIf(o: Outcome, ctx: ApplyCtx): ApplyResult {
+  const pctx: PredCtx = { b: ctx.bindings, state: ctx.state, strict: true }
+  for (const arm of o.arms ?? []) {
+    if (evalPred(arm.when, pctx)) return applyAll(arm.then, ctx)
+  }
+  return o.fallback && o.fallback.length > 0 ? applyAll(o.fallback, ctx) : { concrete: [], refused: false }
+}
+
+/** apply a branch body in order; a REFUSE inside a taken branch refuses the
+ *  whole step as usual (§6.5 — draft discarded, attempt logged) */
+function applyAll(outcomes: Outcome[], ctx: ApplyCtx): ApplyResult {
+  const concrete: Outcome[] = []
+  for (const sub of outcomes) {
+    const res = applyOutcome(sub, ctx)
+    concrete.push(...res.concrete)
+    if (res.refused) return { concrete, refused: true }
+  }
+  return { concrete, refused: false }
 }
 
 /** `expires` materialization (§4.2): numbers are already minutes — the lexer

@@ -4,16 +4,27 @@
 //   exists(aspect:hunter>=1) AND NOT exists(THE_SEALED_DOOR)   # world-existential
 // Path operands use dots (object.aspect.demand); scalar conditions inside
 // every/any use the query colon form (aspect:occult >= 2).
+// The SAME grammar serves the IF conditions of outcome lists (§9.39):
+// `parsePredicate` string-parses `when:` lines; `parsePredicateToks` parses
+// an IF condition out of the SENTENCE token stream. One grammar, two
+// front-ends — no duplicated semantics.
 import type { Entity, State } from './types.js'
 import { aspectGet, relationAlive } from './types.js'
 import { matchQuery, parseQuery, type CmpOp, type Query } from './query.js'
 import { ROLES } from './sentence.js'
+import type { Tok } from './lexer.js'
 
 export type RoleBindings = Record<string, Entity[]>
 
 export interface PredCtx {
   b: RoleBindings
   state: State
+  /** §9.39 asymmetric failure discipline: IF conditions evaluate STRICTLY —
+   *  a path operand whose role has no bound card cannot resolve and REJECTS
+   *  the step (§9.19), where a `when:` predicate would silently read false.
+   *  Missing aspects, counts over anything and world forms still read
+   *  false/0 — they are legitimate branch selection, not failures. */
+  strict?: boolean
 }
 
 export type Pred =
@@ -33,6 +44,9 @@ export type ValExpr =
   | { t: 'countQuery'; query: Query }    // §9.38: count over the whole living world (any §4.5 query)
   | { t: 'total'; role: string; path: string }
   | { t: 'path'; role: string; field: 'aspect' | 'attr'; key: string }
+// F4 will add `{ t: 'roll' }` here — the seeded die result, evaluated from the
+// APPLY context's per-clause `roll` binding (never from State: the binding
+// dies with the draft on REFUSE). This evaluator is the extension point.
 
 export interface ScalarCond {
   path: { field: 'aspect' | 'attr'; key: string }
@@ -44,8 +58,78 @@ export interface ScalarCond {
 
 const CMP_OPS = ['>=', '<=', '!=', '=', '>', '<']
 
+/** a pre-lexed predicate: lexemes + source spans + the source the spans index.
+ *  The string front-end builds it from the regex tokenizer below; the Tok
+ *  front-end (parsePredicateToks) re-serializes sentence Toks into the same
+ *  shape, so every grammar rule — including the exists()/count() inner-query
+ *  reconstruction, which reads source offsets — behaves identically. */
+interface PredView {
+  src: string
+  toks: string[]
+  spans: { start: number; end: number }[]
+}
+
 export function parsePredicate(src: string): Pred {
   return new PredParser(src).parse()
+}
+
+/**
+ * Parse one IF condition out of the SENTENCE token stream (§9.39) and report
+ * where it ended. The condition is consumed as a balanced unit up to the
+ * depth-0 `->` — predicates carry commas inside rel()/every() parens, so a
+ * comma is never a split point; a depth-0 `,`/`;`/ELSE means the required
+ * `-> ( outcomes )` is missing. Returns `end` = the number of Toks consumed,
+ * i.e. the index of the `->` arrow in the given slice.
+ */
+export function parsePredicateToks(toks: Tok[]): { pred: Pred; end: number } {
+  let depth = 0
+  let end = -1
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i]!
+    if (t.t === 'punct') {
+      if (t.v === '(') depth++
+      else if (t.v === ')') {
+        depth--
+        if (depth < 0) throw new Error(`unbalanced ')' in IF condition`)
+      } else if (depth === 0 && t.v === '->') { end = i; break }
+      else if (depth === 0 && (t.v === ',' || t.v === ';')) {
+        throw new Error(`an IF condition needs '-> ( outcomes )'`)
+      }
+    } else if (depth === 0 && t.t === 'name' && t.v === 'ELSE') {
+      throw new Error(`an IF needs '-> ( outcomes )' before 'ELSE'`)
+    }
+  }
+  if (end === -1) throw new Error(`an IF condition needs '-> ( outcomes )'`)
+  const slice = toks.slice(0, end)
+  if (slice.length === 0) throw new Error(`an IF needs a condition before '->'`)
+  const view = predViewFromToks(slice)
+  return { pred: new PredParser(view.src, view).parse(), end }
+}
+
+/** sentence Toks → this parser's own token alphabet (§9.39). Word-adjacent
+ *  lexemes are space-separated so they cannot merge; everything else glues
+ *  exactly as the string grammar expects (`aspect:hunter>=1`,
+ *  `state:!sealed`, dotted paths, `-aspect:winter`). */
+function predViewFromToks(toks: Tok[]): PredView {
+  let src = ''
+  const ptoks: string[] = []
+  const spans: { start: number; end: number }[] = []
+  for (const t of toks) {
+    let text: string
+    switch (t.t) {
+      case 'name': text = t.v; break
+      case 'int': text = String(t.v); break
+      case 'punct': text = t.v; break
+      case 'str': throw new Error(`an IF condition cannot contain a string literal`)
+      case 'dur': throw new Error(`an IF condition cannot contain a duration literal`)
+      case 'idref': throw new Error(`an IF condition cannot contain a #id literal`)
+    }
+    if (spans.length > 0 && /[A-Za-z0-9_]$/.test(src) && /^[A-Za-z0-9_]/.test(text)) src += ' '
+    spans.push({ start: src.length, end: src.length + text.length })
+    src += text
+    ptoks.push(text)
+  }
+  return { src, toks: ptoks, spans }
 }
 
 class PredParser {
@@ -53,8 +137,9 @@ class PredParser {
   private spans: { start: number; end: number }[] = [] // source offsets per token
   private pos = 0
   private readonly src: string
-  constructor(src: string) {
+  constructor(src: string, pre?: PredView) {
     this.src = src
+    if (pre) { this.toks = pre.toks; this.spans = pre.spans; return }
     // `-` is a token only so exists(...) query terms can negate (`-aspect:winter`)
     const re = /[A-Za-z_][A-Za-z0-9_.]*|\d+|>=|<=|!=|=|>|<|\(|\)|,|:|-/g
     let m: RegExpExecArray | null
@@ -242,6 +327,7 @@ class PredParser {
     if (field !== 'aspect' && field !== 'attr') {
       throw new Error(`expected aspect|attr after '${t}.', got '${field}'`)
     }
+    this.expect('.') // the second dot of role.field.key (split-token shape, §9.39)
     const key = this.dottedName()
     return { t: 'path', role: t, field, key }
   }
@@ -255,6 +341,15 @@ class PredParser {
 
 // ---------- evaluation ----------
 
+/** a role's bound cards, ALIVE only (§9.39 draft reads). `when:` selection
+ *  never sees a dead card (slots resolve against the living), so this filter
+ *  only ever matters mid-list, after a DESTROY/REPLACE earlier in the same
+ *  outcome list: a dead-stamped entity reads as absent — `DESTROY OBJECT`
+ *  then `IF object.aspect.x` is a silent false, never a resolution failure. */
+function roleCards(ctx: PredCtx, role: string): Entity[] {
+  return (ctx.b[role] ?? []).filter(e => e.deadAction === null)
+}
+
 export function evalPred(p: Pred, ctx: PredCtx): boolean {
   switch (p.t) {
     case 'and': return evalPred(p.a, ctx) && evalPred(p.b, ctx)
@@ -266,7 +361,7 @@ export function evalPred(p: Pred, ctx: PredCtx): boolean {
       // first actor's location against each object card (adjacency gates)
       const cardsOf = (role: string): Entity[] => {
         const base = role.endsWith('.container') ? role.slice(0, -'.container'.length) : role
-        const cards = ctx.b[base] ?? []
+        const cards = roleCards(ctx, base)
         if (!role.endsWith('.container')) return cards
         return cards.map(e => ctx.state.entities.get(String(e.attrs['container'] ?? '')) ?? e)
       }
@@ -281,11 +376,11 @@ export function evalPred(p: Pred, ctx: PredCtx): boolean {
       return false
     }
     case 'every': {
-      const role = ctx.b[p.role] ?? []
+      const role = roleCards(ctx, p.role)
       return role.every(e => scalarOk(e, p.cond))
     }
     case 'any': {
-      const role = ctx.b[p.role] ?? []
+      const role = roleCards(ctx, p.role)
       return role.some(e => scalarOk(e, p.cond))
     }
     case 'exists': {
@@ -324,7 +419,7 @@ function numberAttr(e: Entity, key: string): number | undefined {
 function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
   switch (x.t) {
     case 'int': return x.v
-    case 'count': return (ctx.b[x.role] ?? []).length
+    case 'count': return roleCards(ctx, x.role).length
     case 'countQuery': {
       // world scope, like existsQuery (§6.3): every ALIVE card matching the query
       let n = 0
@@ -334,10 +429,23 @@ function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
       return n
     }
     case 'total':
-      return (ctx.b[x.role] ?? []).reduce((sum, e) => sum + (aspectGet(e, x.path) ?? 0), 0)
+      return roleCards(ctx, x.role).reduce((sum, e) => sum + (aspectGet(e, x.path) ?? 0), 0)
     case 'path': {
-      const e = (ctx.b[x.role] ?? [])[0]
-      if (!e) return undefined
+      const bound = ctx.b[x.role] ?? []
+      const e = bound.find(c => c.deadAction === null) // the oldest ALIVE bound card
+      if (!e) {
+        // §9.39: an IF condition names a CARD that is not there — that is an
+        // unresolvable ref, a step rejection (§9.19). All-dead bindings fell
+        // through roleCards above only in spirit: the card EXISTS, it died
+        // mid-list — reads false silently (the documented dead-stamp rule).
+        if (ctx.strict && bound.length === 0) {
+          throw new Error(
+            `IF condition: operand '${x.role}.${x.field}.${x.key}' cannot resolve — ` +
+            `role '${x.role}' has no bound card`,
+          )
+        }
+        return undefined
+      }
       return x.field === 'aspect' ? aspectGet(e, x.key) : numberAttr(e, x.key)
     }
   }
@@ -382,6 +490,63 @@ function lintValExpr(where: string, x: ValExpr): void {
       `${where}: total() first argument '${x.role}' is not a declared role (${ROLE_LIST}) ` +
       `— total pools a role's aspects; use count(name:x) to count a pool by name`,
     )
+  }
+}
+
+/** §9.39: trigger (slot + expiry) outcome lists have EMPTY event bindings, so
+ *  any role-dependent operand in an IF condition there would silently read
+ *  false/0 — the same philosophy as the §9.34 trigger guards, at load time.
+ *  Called from content compile for every IF condition authored in a trigger;
+ *  the world forms (exists, exists(<query>), count(<query>)) are the trigger
+ *  vocabulary. Recipes are unaffected: their steps carry real bindings. */
+export function lintTriggerPred(where: string, p: Pred): void {
+  switch (p.t) {
+    case 'and':
+    case 'or':
+      lintTriggerPred(where, p.a)
+      lintTriggerPred(where, p.b)
+      return
+    case 'not':
+      lintTriggerPred(where, p.a)
+      return
+    case 'cmp':
+      lintTriggerValExpr(where, p.l)
+      lintTriggerValExpr(where, p.r)
+      return
+    case 'rel':
+      throw new Error(
+        `${where}: IF operand rel(${p.rtype}, ${p.role}${p.role2 ? `, ${p.role2}` : ''}) reads a step role — ` +
+        `trigger bindings are empty, it would always be false; use world forms (exists(…), count(name:…))`,
+      )
+    case 'every':
+    case 'any':
+      throw new Error(
+        `${where}: IF operand ${p.t}(${p.role}, …) reads a step role — ` +
+        `trigger bindings are empty, it would always be ${p.t === 'every' ? 'true' : 'false'}; ` +
+        `use world forms (exists(…), count(name:…))`,
+      )
+  }
+}
+
+function lintTriggerValExpr(where: string, x: ValExpr): void {
+  switch (x.t) {
+    case 'count':
+      throw new Error(
+        `${where}: IF operand count(${x.role}) reads a step role — trigger bindings are empty, ` +
+        `it would always be 0; use count(<query>) (e.g. count(name:${x.role}))`,
+      )
+    case 'total':
+      throw new Error(
+        `${where}: IF operand total(${x.role}, aspect:${x.path}) reads a step role — ` +
+        `trigger bindings are empty, it would always be 0`,
+      )
+    case 'path':
+      throw new Error(
+        `${where}: IF operand ${x.role}.${x.field}.${x.key} reads a step role — ` +
+        `trigger bindings are empty, it would always be false; use world forms (exists(…), count(name:…))`,
+      )
+    default:
+      return // int / countQuery are world forms — the trigger vocabulary
   }
 }
 

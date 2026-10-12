@@ -1,6 +1,7 @@
 // Sentence AST — mirrors spec §5.1 exactly.
 import type { Clock } from './types.js'
 import type { Ref } from './ref.js'
+import type { Pred } from './predicate.js'
 
 export type Role = 'actors' | 'object' | 'with' | 'at' | 'about' | 'to'
 
@@ -29,9 +30,23 @@ export type Arg =
   | { t: 'asId'; id: string }
   | { t: 'pair'; k: string; v: string | number | boolean }
 
+/** one IF/ELSE IF arm (§9.39): a condition and its paren'd outcome body */
+export interface IfArm {
+  when: Pred
+  then: Outcome[]
+}
+
 export interface Outcome {
   op: string
   args: Arg[]
+  /** op 'IF' only (§9.39): the arms in source order, ELSE IF chain consumed
+   *  greedily INSIDE the node (the `,`-loop must not strand an ELSE; a nested
+   *  ELSE binds to the nearest IF). Authored form only — evaluation flattens
+   *  the TAKEN branch's outcomes into the record position; the log never
+   *  contains an IF op. */
+  arms?: IfArm[]
+  /** the ELSE body, or null when authored without one (no true arm → nothing) */
+  fallback?: Outcome[] | null
 }
 
 export interface Sentence {

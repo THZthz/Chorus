@@ -10,6 +10,7 @@ export const KINDS = ['character', 'place', 'item', 'text', 'idea', 'state', 'ri
 
 export const RESERVED_WORDS = [
   'EVENT', 'TO', 'WITH', 'AT', 'ABOUT', 'INTO', 'AS', 'AND', 'OR', 'NOT',
+  'IF', 'ELSE', // §9.39: conditional outcome lists (v0.3.2)
   ...CORE_VERBS,
 ]
 

@@ -88,6 +88,19 @@ projection of that data, never the source of truth.
 > declarations that mint several same-named cards over a run are the primary
 > users; §9.33's REPLACE self-collision note is revised for stackables.
 >
+> v0.3.2 = conditionals (§4.4, §5.1, §6.8, §9.39). Outcome lists gain
+> IF / ELSE IF / ELSE branching: `IF cond -> ( outcomes )` with a greedy
+> ELSE IF chain and an optional ELSE, branch bodies in parens. Conditions use
+> the full §6.3 grammar, parsed from the sentence token stream (§9.39);
+> selection runs against the DRAFT, so earlier outcomes in the same list are
+> visible to later IFs; the log records ONLY the taken branch's outcomes,
+> flattened in position — the record never contains an IF op. Asymmetric
+> failure discipline: a condition operand that cannot resolve rejects the
+> step (§9.19) where a `when:` predicate would read false. The trigger
+> guards and the endings check recurse into branch bodies, and
+> role-dependent operands in trigger IF conditions are a load-time error.
+> `IF` and `ELSE` join the reserved words (§5.1).
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -233,6 +246,7 @@ core set is a default, not a closed wall.
 | `RELATE`  | ref, ref, type [, int]          | create a relation edge between two cards      |
 | `UNRELATE`| ref, ref, type                  | remove a relation edge                        |
 | `ENDING`  | id                              | end the story (§9.35): sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — outcomes apply and the clock advances, the ending rides along |
+| `IF`      | cond `->` `(` outcomes `)` { `ELSE IF` cond `->` `(` outcomes `)` } [ `ELSE` `->` `(` outcomes `)` ] | branching (§6.8, §9.39): arms evaluate in order against the draft, first true condition wins, `ELSE` is the default, no true arm and no `ELSE` applies nothing; the log records only the TAKEN branch's outcomes, flattened in position — no IF ever appears in the log |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -289,6 +303,9 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
            | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
            | "ENDING" ref                        (* paren-less only; names an `endings:` entry (§9.35) — a name ref, quoted ids round-trip; existence is a load-time check *)
+           | "IF" cond "->" "(" outcomes ")"
+             { "ELSE IF" cond "->" "(" outcomes ")" }
+             [ "ELSE" "->" "(" outcomes ")" ]    (* §6.8, §9.39: bodies REQUIRE parens; the ELSE chain is consumed greedily by the IF — a nested ELSE binds to the nearest IF; cond is the §6.3 grammar, read from the token stream up to the depth-0 "->" *)
            | ref ;                               (* bare ref = SPAWN ref, engine adds AS #id *)
 (*          canonical OUTPUT: SPAWN, NARRATE, REPLACE and ENDING paren-less, every other op paren'd
             — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) *)
@@ -308,8 +325,9 @@ ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name
 Lexical rules:
 
 - `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT TO WITH AT
-  ABOUT INTO AS AND OR NOT` + every registered verb lexeme) cannot be used as
-  names; content needing them uses the quoted-string ref form (`"PLAN B"`).
+  ABOUT INTO AS AND OR NOT IF ELSE` + every registered verb lexeme) cannot be
+  used as names; content needing them uses the quoted-string ref form
+  (`"PLAN B"`).
 - **Entity names are unique among alive entities** (enforced at SPAWN /
   registration) — except cards minted from a `stackable` declaration, which
   pool under one name (§9.38). Canonical ref output is the bare name;
@@ -548,6 +566,10 @@ exists anywhere in play) and the sealed door still stands:
   out:   PROGRESS(30m, "The door holds; the street is empty."), SPAWN ...
 ```
 
+The same grammar also serves the IF conditions of outcome lists (§6.8) —
+one predicate language, two disciplines (§9.39): a `when:` reads an
+unresolvable operand as false, an IF condition rejects the step.
+
 ### 6.4 Recipes: first match wins, most specific first, **stable ids**
 
 A recipe is an optional stable `id` (used for log provenance; when omitted the
@@ -730,6 +752,66 @@ effect, no time effect, raw template stored and interpolated at render
 (§5.3). Offsets are authored discipline — a tick past the window is harmless
 but meaningless. A cadence ("every hour") is simply several authored ticks;
 a real-time UI may schedule their display however it likes.
+
+### 6.8 Conditionals in outcome lists (IF / ELSE IF / ELSE)
+
+An outcome list may branch:
+
+```
+-> PROGRESS(30m, "You work the crowd."),
+   IF count(name:SUSPICION) >= 3 -> (NARRATE "Too many eyes.", SPAWN PARANOIA)
+   ELSE IF exists(THE_BRAZEN_COP) -> (NARRATE "The cop watches.")
+   ELSE -> (NARRATE "Nobody notices.")
+```
+
+Grammar (§5.1): `IF cond -> ( outcomes )` followed by zero or more
+`ELSE IF` arms and at most one terminal `ELSE -> ( outcomes )`. Branch
+bodies **require parens**. The ELSE chain is consumed **greedily by the
+nearest IF**, so `IF a -> ( IF b -> (X) ) ELSE -> (Y)` gives the ELSE to the
+outer IF, while an ELSE inside the parens belongs to the inner one. A bare
+`ELSE` with no IF, a dangling `ELSE IF`, a condition without its
+`-> ( … )`, and unparenthesized bodies are parse errors. `IF` and `ELSE`
+are reserved words (§5.1); quoting is the escape hatch for names.
+
+**Conditions** use the full §6.3 grammar — role operands, `count`/`total`,
+quantifiers, `rel`, the world existentials, AND/OR/NOT. They are parsed from
+the sentence token stream as a balanced unit up to the depth-0 `->`
+(predicates carry commas inside `rel()`/`every()`, so a comma never splits
+the chain) — the same grammar functions as the string-parsed `when:`
+(§9.39).
+
+**Evaluation — in order, against the DRAFT.** Arms test in source order;
+the first true condition wins; with no true arm, `ELSE` applies; with no
+true arm and no `ELSE`, nothing applies and the step proceeds — no error.
+Unlike recipe selection, which reads the input state (§6.4), IF conditions
+read the draft as it stands at the IF's turn, so earlier outcomes in the
+same list are visible to later IFs. Normative:
+
+- A recipe selected by `when count(name:S) < 3` fires with the pool at two,
+  and its own `SPAWN SUSPICION, IF count(name:SUSPICION) >= 3 -> (ENDING
+  ARRESTED)` sees the spawn it just made — the same step that spawned the
+  third copy arrests (§9.39).
+- An IF after `DESTROY OBJECT` in the same list reads a dead-stamped entity:
+  the card reads as absent, so a comparison over it is false — silently
+  (draft reads death; see §9.39 for the exact boundary vs. the rejection
+  rule).
+
+**Concretization — the taken branch only.** The log records the taken
+branch's outcomes, flattened into the IF's position (the SET-delta
+precedent, §9.31: the engine computes once at execution and logs the
+result). The record never contains an IF op; the untaken branches are
+authored discipline the log cannot recover (the §5.3 journal-loss
+corollary). A `REFUSE` inside a taken branch refuses the whole step as
+usual (§6.5).
+
+**Triggers.** Both trigger forms (§10) may author IF, with the WORLD forms
+of §6.3 — `exists(...)`, `exists(<query>)`, `count(<query>)` — since event
+bindings are empty. A role-dependent operand in a trigger IF condition
+(`count(role)`, `total(role,…)`, `role.aspect.x`, `role.attr.x`,
+`rel(…role…)`, `every`/`any(role, …)`) is a **load-time error**: it would
+silently read false/0 there (§9.39). The trigger PROGRESS/REFUSE guards
+(§6.7, §9.34) and the endings existence check (§9.35) recurse into branch
+bodies — nothing escapes by nesting.
 
 ---
 
@@ -1199,6 +1281,75 @@ Two invariants keep the mapping safe:
       load-time lint fences the arg: `count()`/`total()` arguments must be a
       declared role or a query-starter, so `count(DREAD) >= 3` — the most
       tempting typo — is a load error naming the valid forms, not a silent 0.
+
+### Implementation rulings (v0.3.2, conditionals)
+
+39. **IF / ELSE IF / ELSE in outcome lists** (§4.4, §5.1, §6.8). One
+    predicate grammar, three rulings:
+    - **Concretization logs the taken branch only.** The IF node is authored
+      form: at execution the arms test in order against the DRAFT, and the
+      log receives only the taken branch's outcomes, flattened in position —
+      the same computation-once/log-the-result shape as SET deltas (§9.31)
+      and recipe-id recording. An alternative design — log the IF and
+      re-decide at fold — was rejected: the fold would re-run conditions
+      against a replaying state (divergence risk) and log formats must carry
+      results, not choices. The corollary is accepted: untaken branches are
+      invisible to the journal (like §5.3 templates, authored text is not
+      log truth). A REFUSE inside a taken branch refuses the whole step
+      (§6.5); the recorded attempt carries the branch's outcomes collected
+      up to the REFUSE.
+    - **The asymmetric failure discipline is deliberate.** The same
+      predicate grammar returns false in `when:` positions when an operand
+      cannot resolve (recipe selection reads the input state, where roles
+      may legitimately be empty), but REJECTS the step (§9.19) when an IF
+      condition operand cannot resolve: a `role.aspect.x`/`role.attr.x` path
+      over a role with NO bound card is an unresolvable ref, not a
+      selection. The boundary, precisely: counts over anything read 0,
+      aggregates 0, world existentials false (these are branch selection,
+      not failures), a missing aspect on a bound card reads false, and a
+      card-reading operand over an empty role rejects. A role whose cards
+      all died mid-list reads as absent — silent false (the §6.8 dead-stamp
+      case): the card existed at the clause's re-resolution, so nothing
+      failed to resolve; it died since. Quantifiers over an empty role keep
+      their §6.3 truth in BOTH disciplines — `every` vacuously true, `any`
+      false — so a quantifier over an optional role wants the same guard.
+      Authors who branch on an OPTIONAL
+      role guard it first (`IF count(object) >= 1 AND object.aspect.x …`).
+      F4 slots its unbound-`roll` rejection into the same channel.
+    - **Conditions parse from the sentence token stream, one grammar.**
+      `when:` predicates arrive as strings and self-tokenize; IF conditions
+      arrive inside the outcome list, so they are consumed as a balanced
+      unit up to the depth-0 `->` (predicates carry commas inside
+      `rel()`/`every()` — naive comma-splits are wrong; a depth-0 `,` or
+      bare `ELSE` where the arrow belongs is a parse error). Both front-ends
+      share the same grammar functions — the Tok stream is re-serialized
+      into the predicate parser's own token alphabet (word-adjacent lexemes
+      space-separated, everything else glued exactly as the string tokenizer
+      would see it: `aspect:hunter>=1`, `state:!sealed`, dotted paths), so
+      the `exists()`/`count()` inner-query reconstruction and every rule
+      behave identically. This exposed a latent dead branch: the
+      split-token shape of path operands (`object` `.` `aspect` `.` `duty`
+      as separate tokens) now really parses.
+    - **The load-time guards recurse.** The trigger PROGRESS/REFUSE guards
+      (§9.34) and the ENDING existence check (§9.35) were shallow top-level
+      scans; nested IF branches would have hidden PROGRESS, REFUSE, or an
+      unknown ending from all three. They now walk branch bodies recursively
+      through one shared entry point — the walk F3's function expansion
+      feeds (expansion happens BEFORE the guards, so expanded bodies are
+      checked like literal ones).
+    - **Role operands in trigger IF conditions are a load error** (the
+      §9.34 philosophy extended to conditions): slot/expiry event bindings
+      are empty, so `IF count(actors) >= 1` or `IF object.aspect.duty >= 1`
+      in a trigger would silently read 0/false and never fire. The error
+      names the operand; the world forms (`exists`, `exists(<query>)`,
+      `count(<query>)`) are the trigger vocabulary. Recipes keep full role
+      access — their steps carry real bindings.
+    - **ELSE binds greedy.** The chain is consumed inside the IF node (the
+      `,`-loop of the outcome list must not strand an ELSE), so a nested
+      ELSE belongs to the nearest IF and an ELSE after an IF's closed body
+      belongs to the outer one — the classic dangling-else resolution, now
+      grammatical. `IF`/`ELSE` join the reserved words (§5.1); no existing
+      content collided.
 
 ## 10. The script format — a game as one text file
 

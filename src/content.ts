@@ -3,7 +3,7 @@
 // parses them once and fails loudly at load time.
 import type { Outcome } from './sentence.js'
 import type { Pred } from './predicate.js'
-import { lintPred, parsePredicate } from './predicate.js'
+import { lintPred, lintTriggerPred, parsePredicate } from './predicate.js'
 import { parseQuery, type Query } from './query.js'
 import { parseOutcomes } from './parse.js'
 import type { Dictionary } from './dict.js'
@@ -165,17 +165,31 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
       hint: r.hint,
       out: r.out.flatMap(o => parseOutcomeString(o, dict)),
     }))
-    // §9.38 load-time lint: count()/total() args must be declared roles or queries
-    for (const r of recipes) if (r.when) lintPred(`recipe ${r.id}`, r.when)
+    // §9.38 load-time lint: count()/total() args must be declared roles or queries —
+    // over every `when` AND over every IF condition authored in the recipe bodies
+    for (const r of recipes) {
+      if (r.when) lintPred(`recipe ${r.id}`, r.when)
+      forEachIfCondition(r.out, w => lintPred(`recipe ${r.id}`, w))
+    }
     verbs.set(name, { name, slots, slotByRole, duration: v.duration, recipes })
   }
   const triggers = (raw.triggers ?? []).map(t => {
     const out = t.out.flatMap(o => parseOutcomeString(o, dict))
-    // §6.7: PROGRESS narrates a processing window; events have none
-    if (out.some(o => o.op === 'PROGRESS')) throw new Error(`trigger ${t.id}: PROGRESS belongs to verb recipes, not events`)
-    // §9.34: REFUSE aborts a step (§6.5); events have no step to refuse — and
-    // the old silent behavior diverged play from fold
-    if (out.some(o => o.op === 'REFUSE')) throw new Error(`trigger ${t.id}: REFUSE belongs to verb recipes — events have no step to refuse`)
+    // §6.7/§9.34 guards — recursive over IF branch bodies (§9.39), so nothing
+    // escapes by nesting. F3's function expansion runs BEFORE these guards.
+    forEachAuthoredOutcome(out, o => {
+      // §6.7: PROGRESS narrates a processing window; events have none
+      if (o.op === 'PROGRESS') throw new Error(`trigger ${t.id}: PROGRESS belongs to verb recipes, not events`)
+      // §9.34: REFUSE aborts a step (§6.5); events have no step to refuse — and
+      // the old silent behavior diverged play from fold
+      if (o.op === 'REFUSE') throw new Error(`trigger ${t.id}: REFUSE belongs to verb recipes — events have no step to refuse`)
+    })
+    // §9.39: event bindings are empty, so a role-dependent operand in a trigger
+    // IF condition would silently read false/0 — load-time error naming it
+    forEachIfCondition(out, w => {
+      lintPred(`trigger ${t.id}`, w) // the count(DREAD)-typo lint applies here too
+      lintTriggerPred(`trigger ${t.id}`, w)
+    })
     if ('onExpireOf' in t) return { id: t.id, onExpireOf: t.onExpireOf, out }
     return { id: t.id, slot: t.slot, once: t.once ?? false, out }
   })
@@ -190,13 +204,39 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
   return { verbs, triggers, prototypes, templates, endings, stackableNames, stackableKinds }
 }
 
-function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, CompiledEnding>): void {
+/**
+ * Visit every outcome in an authored list, RECURSING into IF branch bodies
+ * (§9.39) — the single entry point for the load-time guards (trigger
+ * PROGRESS/REFUSE, checkEndingRefs, the IF-condition lints), so nothing
+ * escapes by nesting. Ordering with F3: function expansion happens BEFORE
+ * these guards run, so expanded bodies walk like literal ones.
+ */
+export function forEachAuthoredOutcome(out: Outcome[], visit: (o: Outcome) => void): void {
   for (const o of out) {
-    if (o.op !== 'ENDING') continue
+    visit(o)
+    if (o.op === 'IF') {
+      for (const arm of o.arms ?? []) forEachAuthoredOutcome(arm.then, visit)
+      if (o.fallback) forEachAuthoredOutcome(o.fallback, visit)
+    }
+  }
+}
+
+/** visit every IF condition in an authored list (branch bodies included) */
+function forEachIfCondition(out: Outcome[], visit: (when: Pred) => void): void {
+  forEachAuthoredOutcome(out, o => {
+    if (o.op === 'IF') for (const arm of o.arms ?? []) visit(arm.when)
+  })
+}
+
+function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, CompiledEnding>): void {
+  // §9.39: recurses into IF branch bodies — an unknown ending hidden in an
+  // untaken branch is still a load error
+  forEachAuthoredOutcome(out, o => {
+    if (o.op !== 'ENDING') return
     const a = o.args[0]
     const id = a && a.t === 'ref' && a.ref.form === 'name' ? a.ref.name : null
     if (!id || !endings.has(id)) throw new Error(`${where}: ENDING '${id ?? '?'}' is not in the endings table`)
-  }
+  })
 }
 
 function parseOutcomeString(src: string, dict: Dictionary): Outcome[] {

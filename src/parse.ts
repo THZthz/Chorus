@@ -3,8 +3,9 @@
 // begins. That needs the verb registry (both are uppercase tokens), so the
 // parser consults the Dictionary (spec §9.14).
 import { lex, type Tok } from './lexer.js'
-import type { Arg, Clause, Outcome, Role, Sentence } from './sentence.js'
+import type { Arg, Clause, IfArm, Outcome, Role, Sentence } from './sentence.js'
 import { ROLES } from './sentence.js'
+import { parsePredicateToks } from './predicate.js'
 import type { Ref } from './ref.js'
 import type { Dictionary } from './dict.js'
 import type { Clock } from './clock.js'
@@ -21,9 +22,16 @@ export function parseSentence(src: string, dict: Dictionary): Sentence {
   return new Parser(lex(src), dict).sentence()
 }
 
-/** Parse an outcome list — used to compile recipe `out` strings at content load. */
+/** Parse an outcome list — used to compile recipe `out` strings at content load.
+ *  Unlike the lenient in-play sentence input, authored outcome strings must
+ *  parse COMPLETELY (§5.1): trailing tokens after the last outcome — a double
+ *  ELSE, a typo'd op, an `IF` keyword forgotten off a `cond -> (…)` — would
+ *  otherwise vanish silently at load and surface as wrong behavior in play. */
 export function parseOutcomes(src: string, dict: Dictionary): Outcome[] {
-  return new Parser(lex(src), dict).outcomeListOrEmpty()
+  const p = new Parser(lex(src), dict)
+  const out = p.outcomeListOrEmpty()
+  p.expectEnd()
+  return out
 }
 
 class Parser {
@@ -80,7 +88,7 @@ class Parser {
     return { kind: 'action', clock, trigger: null, clauses, outcomes }
   }
 
-  private expectEnd(): void {
+  expectEnd(): void {
     const t = this.peek()
     if (t) throw new Error(`unexpected trailing token '${show(t)}'`)
   }
@@ -162,9 +170,10 @@ class Parser {
   /** outcome = OPERATOR "(" args ")" | ref  (bare ref = SPAWN, §4.4).
    *  Self-delimiting ops (SPAWN/NARRATE/MOVE/DESTROY/REVEAL/REPLACE/ENDING) also
    *  accept a canonical paren-less form; SET/RELATE/UNRELATE/REFUSE/ADVANCE
-   *  require parens. */
+   *  require parens. IF (§9.39) is intercepted before op dispatch. */
   outcome(): Outcome {
     const t = this.peek()
+    if (t?.t === 'name' && t.v === 'IF') return this.ifOutcome()
     if (t?.t === 'name' && this.dict.isOp(t.v)) {
       this.next()
       const op = t.v
@@ -220,6 +229,46 @@ class Parser {
       throw new Error(`${op} requires parentheses`)
     }
     return { op: 'SPAWN', args: [{ t: 'ref', ref: this.ref() }] }
+  }
+
+  /** IF pred -> ( outcomes ) { ELSE IF pred -> ( outcomes ) } [ELSE -> ( outcomes )]
+   *  (§9.39). Branch bodies REQUIRE parens. The ELSE chain is consumed
+   *  greedily INSIDE this node — the `,`-loop of outcomeList must not strand
+   *  an ELSE — so a nested ELSE binds to the nearest IF, and an ELSE after an
+   *  IF's closed body belongs to the outer one. */
+  private ifOutcome(): Outcome {
+    this.next() // IF
+    const arms: IfArm[] = [this.ifArm()]
+    let fallback: Outcome[] | null = null
+    while (this.atKeyword('ELSE')) {
+      this.next()
+      if (this.atKeyword('IF')) {
+        this.next()
+        arms.push(this.ifArm())
+      } else {
+        this.expectPunct('->')
+        fallback = this.branchBody()
+        break // ELSE is terminal
+      }
+    }
+    return { op: 'IF', args: [], arms, fallback }
+  }
+
+  private ifArm(): IfArm {
+    // the condition is parsed from the SENTENCE token stream as a balanced
+    // unit up to the depth-0 `->` (predicates contain commas via rel()/every()
+    // — never comma-split); parsePredicateToks reports where it ended
+    const { pred, end } = parsePredicateToks(this.toks.slice(this.pos))
+    this.pos += end
+    this.expectPunct('->')
+    return { when: pred, then: this.branchBody() }
+  }
+
+  private branchBody(): Outcome[] {
+    this.expectPunct('(')
+    const out = this.outcomeList()
+    this.expectPunct(')')
+    return out
   }
 
   private roleOrRefArg(): Arg {

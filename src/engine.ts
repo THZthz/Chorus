@@ -101,6 +101,9 @@ function validateSlots(verb: CompiledVerb, refs: Record<Role, Ref[]>, state: Sta
 
 export function resolveRef(state: State, ref: Ref): Entity | null {
   if (ref.form === 'id') return getAlive(state, ref.id) ?? null
+  // §9.40: expansion removes every parameter before content compiles — a
+  // param ref here means an expansion bug, not a resolution failure
+  if (ref.form === 'param') throw new Error('internal: a function parameter ref survived expansion')
   // §9.38 pool addressing: a name held by N > 1 living copies addresses the
   // OLDEST copy — the HEAD of the byName pool (insertion order, never id sort)
   const e = oldestNamed(state, ref.name)

@@ -5,7 +5,7 @@ import type { Outcome } from './sentence.js'
 import type { Pred } from './predicate.js'
 import { lintPred, lintTriggerPred, parsePredicate } from './predicate.js'
 import { parseQuery, type Query } from './query.js'
-import { parseOutcomes } from './parse.js'
+import { MAX_FN_DEPTH, collectFnCalls, expandFnCalls, parseFunctionBody, parseOutcomes, type FnTable } from './parse.js'
 import type { Dictionary } from './dict.js'
 import type { Aspects, Attrs } from './types.js'
 
@@ -78,12 +78,23 @@ export interface EndingDef {
   flavour?: string
 }
 
+/** A function declaration (§9.40, §10): `NAME(params…) -> OUTCOMES` in the
+ *  `functions:` section — a parametric outcome MACRO. Compiled to a template
+ *  before verbs and triggers parse; call sites expand at load time, so the
+ *  function table itself never reaches CompiledContent. */
+export interface FunctionDef {
+  name: string
+  params: string[]     // [] for a parameterless function
+  body: string         // raw outcome-list source after `->`
+}
+
 export interface ContentRaw {
   verbs: Record<string, VerbContent>
   triggers?: TriggerDef[]
   prototypes?: Record<string, PrototypeDef>
   templates?: Record<string, string>  // prose templates per verb (§5.3)
   endings?: Record<string, EndingDef> // the ending table (§9.35)
+  functions?: FunctionDef[]           // parametric outcome macros (§9.40) — declaration order matters for error reports only
 }
 
 export interface CompiledRecipe {
@@ -133,6 +144,11 @@ export interface CompiledContent {
 }
 
 export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledContent {
+  // §9.40 FIRST, before any verb/trigger body parses: build the function
+  // table (declaration checks, body templates, recursion/depth validation) —
+  // call sites in verb and trigger bodies dispatch against it and expand
+  // immediately after their parse, so the guards below walk expanded lists.
+  const fns = buildFnTable(raw.functions ?? [], dict)
   // §9.38: two derived sets every mint site reads — declared stackable names,
   // and the kinds of the stackable declarations (kind-qualified spawns)
   const stackableNames = new Set<string>()
@@ -163,7 +179,7 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
       when: r.when ? parsePredicate(r.when) : null,
       shown: r.shown ?? false,
       hint: r.hint,
-      out: r.out.flatMap(o => parseOutcomeString(o, dict)),
+      out: r.out.flatMap(o => parseOutcomeString(o, dict, fns)),
     }))
     // §9.38 load-time lint: count()/total() args must be declared roles or queries —
     // over every `when` AND over every IF condition authored in the recipe bodies
@@ -174,7 +190,9 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     verbs.set(name, { name, slots, slotByRole, duration: v.duration, recipes })
   }
   const triggers = (raw.triggers ?? []).map(t => {
-    const out = t.out.flatMap(o => parseOutcomeString(o, dict))
+    // §9.40: expansion (inside parseOutcomeString) has already run — these
+    // guards therefore see function-expanded bodies exactly like literal ones
+    const out = t.out.flatMap(o => parseOutcomeString(o, dict, fns))
     // §6.7/§9.34 guards — recursive over IF branch bodies (§9.39), so nothing
     // escapes by nesting. F3's function expansion runs BEFORE these guards.
     forEachAuthoredOutcome(out, o => {
@@ -239,7 +257,117 @@ function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, Com
   })
 }
 
-function parseOutcomeString(src: string, dict: Dictionary): Outcome[] {
-  // allow several outcomes in one string; usually one per array element
-  return parseOutcomes(src, dict)
+function parseOutcomeString(src: string, dict: Dictionary, fns: FnTable): Outcome[] {
+  // allow several outcomes in one string; usually one per array element.
+  // §9.40: with a function table, parse dispatches NAME( calls and the
+  // expansion pass runs in the same step — verb/trigger bodies are compiled
+  // fully expanded, so every guard below (and the engine) sees plain outcomes.
+  const out = parseOutcomes(src, dict, fns)
+  return fns.byName.size > 0 ? expandFnCalls(out, fns) : out
+}
+
+// ---------- functions: the compile-time macro table (§9.40) ----------
+
+const FN_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/ // function names and parameters
+
+/**
+ * Build the function table — functions parse BEFORE any verb/trigger body
+ * (§9.40), in three ordered passes:
+ *  1. declarations: name/param shape, op-name collisions (`dict.isOp` — a
+ *     function and an outcome op share the caller's vocabulary, so a
+ *     collision is a load error), IF/ELSE (undispatchable at the top of
+ *     `outcome()`), duplicates. No entity/verb name constraint: calls only
+ *     ever parse in outcome position, so a function may share a name with an
+ *     entity or a verb.
+ *  2. bodies: each body parses to a TEMPLATE against the table's names —
+ *     nested calls become FN nodes (forward references fine), bare params
+ *     become placeholders. Arity of every call is checked here, a load error.
+ *  3. the call graph: colored DFS rejects recursion naming the cycle; the
+ *     same graph's depth (1 + deepest callee chain) rejects nesting beyond
+ *     MAX_FN_DEPTH. Both are load errors even for never-called functions.
+ */
+function buildFnTable(defs: FunctionDef[], dict: Dictionary): FnTable {
+  const table: FnTable = { byName: new Map() }
+  // pass 1 — declarations
+  for (const def of defs) {
+    if (!FN_IDENT.test(def.name)) {
+      throw new Error(`function name '${def.name}' must be an identifier (letters, digits, _)`)
+    }
+    if (dict.isOp(def.name)) {
+      throw new Error(
+        `function '${def.name}' collides with an outcome op — functions and ops share one ` +
+        `caller vocabulary; rename the function`,
+      )
+    }
+    if (def.name === 'IF' || def.name === 'ELSE') {
+      throw new Error(`function '${def.name}' cannot be named a conditional keyword — IF/ELSE dispatch before functions in outcome position`)
+    }
+    if (table.byName.has(def.name)) throw new Error(`duplicate function '${def.name}'`)
+    for (const p of def.params) {
+      if (!FN_IDENT.test(p)) throw new Error(`function '${def.name}': parameter '${p}' must be an identifier`)
+    }
+    const dups = def.params.filter((p, i) => def.params.indexOf(p) !== i)
+    if (dups.length > 0) throw new Error(`function '${def.name}': duplicate parameter(s) ${[...new Set(dups)].join(', ')}`)
+    table.byName.set(def.name, { name: def.name, params: def.params, body: [] })
+  }
+  // pass 2 — bodies (nested-call arity checks against the declared params)
+  for (const def of defs) {
+    const tpl = table.byName.get(def.name)!
+    try {
+      tpl.body = parseFunctionBody(def.body, dict, table, def.params)
+    } catch (err) {
+      throw new Error(`function '${def.name}': ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  // pass 3 — the call graph: recursion cycles, then the depth cap
+  const callsOf = new Map<string, Set<string>>()
+  for (const tpl of table.byName.values()) {
+    const calls = new Set<string>()
+    collectFnCalls(tpl.body, calls)
+    for (const c of calls) {
+      if (!table.byName.has(c)) throw new Error(`function '${tpl.name}': call to undeclared function '${c}'`)
+    }
+    callsOf.set(tpl.name, calls)
+  }
+  const WHITE = 0, GRAY = 1, BLACK = 2
+  const color = new Map<string, number>()
+  const stack: string[] = []
+  const visit = (name: string): void => {
+    color.set(name, GRAY)
+    stack.push(name)
+    for (const c of callsOf.get(name)!) {
+      const col = color.get(c) ?? WHITE
+      if (col === GRAY) {
+        const cycle = [...stack.slice(stack.indexOf(c)), c]
+        throw new Error(
+          `functions recurse: ${cycle.join(' -> ')} — calls expand at load time, ` +
+          `so a recursion cycle never terminates; rewrite without the cycle`,
+        )
+      }
+      if (col === WHITE) visit(c)
+    }
+    stack.pop()
+    color.set(name, BLACK)
+  }
+  for (const name of table.byName.keys()) {
+    if ((color.get(name) ?? WHITE) === WHITE) visit(name)
+  }
+  const depth = new Map<string, number>()
+  const depthOf = (name: string): number => {
+    const memo = depth.get(name)
+    if (memo !== undefined) return memo
+    depth.set(name, 1) // safe: the graph is acyclic after the cycle check
+    let deepest = 0
+    for (const c of callsOf.get(name)!) deepest = Math.max(deepest, depthOf(c))
+    const v = 1 + deepest
+    depth.set(name, v)
+    return v
+  }
+  for (const name of table.byName.keys()) {
+    const d = depthOf(name)
+    if (d > MAX_FN_DEPTH) {
+      throw new Error(`function '${name}' sits ${d} calls deep — the nesting cap is ${MAX_FN_DEPTH}`)
+    }
+  }
+  return table
 }

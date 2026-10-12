@@ -32,6 +32,7 @@ function formatClause(c: Clause, dict?: SafeDict): string {
 
 function formatOutcome(o: Outcome, dict?: SafeDict): string {
   if (o.op === 'IF') throw new Error('an IF outcome is authored form only — the log records the taken branch (§9.39)')
+  if (o.op === 'FN') throw new Error('a function call is authored form only — calls expand at load (§9.40)')
   if (o.op === 'SPAWN') {
     // pretty form: SPAWN X [INTO Y] [AS #id]
     const parts = ['SPAWN']
@@ -73,6 +74,7 @@ function formatArg(a: Arg, dict?: SafeDict): string {
     case 'into': return 'INTO ' + ('role' in a.ref ? a.ref.role.toUpperCase() : formatRef(a.ref, dict))
     case 'asId': return `AS #${a.id}`
     case 'pair': return `${a.k}=${typeof a.v === 'string' ? quote(a.v) : String(a.v)}`
+    case 'param': throw new Error('a function parameter is authored form only — calls expand at load (§9.40)')
   }
 }
 

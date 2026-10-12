@@ -29,6 +29,10 @@ export type Arg =
   | { t: 'into'; ref: Ref | { role: Role } }
   | { t: 'asId'; id: string }
   | { t: 'pair'; k: string; v: string | number | boolean }
+  | { t: 'param'; name: string; sign?: 1 | -1 }  // F3 authored-only: a function parameter standing in
+                                                 // an arg position (§9.40); `sign` carries the +/- of a
+                                                 // delta position (`+n`). Calls expand at load — the engine
+                                                 // and the log never see one.
 
 /** one IF/ELSE IF arm (§9.39): a condition and its paren'd outcome body */
 export interface IfArm {
@@ -47,6 +51,10 @@ export interface Outcome {
   arms?: IfArm[]
   /** the ELSE body, or null when authored without one (no true arm → nothing) */
   fallback?: Outcome[] | null
+  /** op 'FN' only (§9.40, F3): the name of the declared function this authored
+   *  call invokes. Authored form only — calls expand at load time, before the
+   *  trigger guards run; a leaking FN hits the engine's unknown-op throw. */
+  call?: string
 }
 
 export interface Sentence {

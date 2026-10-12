@@ -154,7 +154,11 @@ describe('IF / ELSE IF / ELSE grammar (§5.1, §9.39)', () => {
     expect(() => parseOutcomes(`IF exists(X) -> (NARRATE "a") ELSE -> (NARRATE "b") ELSE -> (NARRATE "c")`, dict))
       .toThrow(/trailing token 'ELSE'/)
     expect(() => parseOutcomes(`IF exists(X) -> (NARRATE "a") GARBAGE`, dict)).toThrow(/trailing token 'GARBAGE'/)
-    expect(() => parseOutcomes(`exists(X) -> (NARRATE "a")`, dict)).toThrow(/trailing token '\('/) // the IF keyword is not optional
+    // v0.3.3: a name followed by '(' in outcome position is now a function-call
+    // dispatch — an undeclared one is a compile error listing the vocabulary,
+    // with a forgotten-IF hint for the predicate helpers (§9.40)
+    expect(() => parseOutcomes(`exists(X) -> (NARRATE "a")`, dict))
+      .toThrow(/unknown 'exists\(\.\.\.\)' in outcome position.*IF keyword/s) // the IF keyword is not optional
     expect(() => parseOutcomes(`SPAWN X ELSE -> (NARRATE "y")`, dict)).toThrow(/trailing token 'ELSE'/)
     expect(parseOutcomes(`IF exists(X) -> (NARRATE "a") ELSE -> (NARRATE "b")`, dict)).toHaveLength(1) // a complete chain still parses
   })

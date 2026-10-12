@@ -101,6 +101,16 @@ projection of that data, never the source of truth.
 > role-dependent operands in trigger IF conditions are a load-time error.
 > `IF` and `ELSE` join the reserved words (§5.1).
 >
+> v0.3.3 = functions (§9.40, §10). The `functions:` script section declares
+> parametric outcome macros — `NAME(params…) -> OUTCOMES` — and any outcome
+> position may call them: `sus(THE_GUARD)`, `watch(3)`. Calls are COMPILE-TIME:
+> every call expands to the function's body at load, with two parameter
+> substitution mechanisms (AST-level splicing and string interpolation),
+> before the trigger guards and the endings check run. The engine never sees
+> a call, and therefore neither does the log — canonical equals expansion.
+> Recursion cycles and call chains deeper than eight are load errors, as are
+> arity mismatches and undeclared `{token}` interpolation.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -258,6 +268,11 @@ from its prototype if defined, into the step's `at` place or the first actor's
 uppercase) — and expands to that role's bound cards (`DESTROY WITH`,
 `MOVE ACTORS INTO OBJECT`, `SPAWN MARK INTO at`). Role refs are concretized to
 `#id`s in the logged outcome (§9.15, §9.18).
+
+**Declared functions may head an outcome position**: `NAME(arg, …)` dispatches
+to a `functions:` declaration and expands to its body AT LOAD — one vocabulary,
+two namespaces of convenience: functions are not ops (§4.4's table is closed),
+declaring one named like an op is a load error (§9.40, §10).
 
 ### 4.5 Query mini-language (slot queries — one card at a time)
 
@@ -1351,6 +1366,96 @@ Two invariants keep the mapping safe:
       grammatical. `IF`/`ELSE` join the reserved words (§5.1); no existing
       content collided.
 
+### Implementation rulings (v0.3.3, functions)
+
+40. **Functions are compile-time macros; the engine never sees a call**
+    (§4.4, §10). The `functions:` section declares `NAME(params…) ->
+    OUTCOMES`; every outcome position may call `NAME(arg, …)`. Content
+    compile builds the function table FIRST — before any verb or trigger
+    body parses — and threads it explicitly into the outcome parser (never
+    Dictionary state): known function names win before op parsing at the
+    top of `outcome()`, via a name-then-`(` lookahead. Because every call
+    expands to its body during that same load pass, the engine, the log,
+    and every downstream consumer see plain outcomes only — a call site IS
+    its expanded body, byte for byte (**canonical equals expansion**). This
+    deviation from "the log never contains sugar" is safe by inspection:
+    script-sourced outcome strings are never formatted (§0 law 2 rounds
+    trip engine-written rows only), and the trigger guards run AFTER
+    expansion, so a body's PROGRESS/REFUSE or an undeclared ENDING id is a
+    load error exactly as if authored at the call site. Ordering:
+    parse → expand → guard.
+    - **Calls parse only in outcome position.** A function may share its
+      name with an entity or a verb without ambiguity — clause positions,
+      ref positions inside another outcome's args, and lenient input never
+      dispatch calls. Only an op-named function (the `dict.isOp` check —
+      functions and ops share the caller's vocabulary) and an IF/ELSE-named
+      one (undispatchable: conditionals intercept first) are load errors.
+      An UNKNOWN `NAME(` in outcome position is a compile error listing the
+      whole vocabulary — ops, then declared functions — with a forgotten-IF
+      hint when the name is a predicate helper (`exists(...) -> (…)` without
+      `IF` used to fail as a bare ref with a trailing `(`; it now says so).
+    - **Two substitution mechanisms** (a call site's parameters must reach
+      both the AST and the prose):
+      - *AST-level*: a parameter may stand anywhere a ref or value literal
+        is expected — whole-ref positions (`SPAWN X`, `DESTROY X`),
+        role-ref positions, generic arg positions (int, delta sign — `+n`
+        carries its authored sign into the fold —, string, bool, dur, key,
+        INTO, pair key or value), NARRATE's string slot, and IF-condition
+        cmp operands. The body parses ONCE into a template holding param
+        placeholders; expansion splices the call-site arg into each
+        placeholder, in position. A kind mismatch the AST can represent (a
+        string bound where a ref belongs) splices through and surfaces as
+        the usual runtime step rejection — same-as-authored semantics; one
+        it cannot represent (a non-ref/role in an INTO slot, a non-number
+        in a condition) is a load error naming the parameter. Parameters do
+        NOT reach `kind:`-qualified names (a load error — bind the whole
+        ref), query terms or scalar conditions inside predicates (the
+        grammar rejects them), or `when:` lines (functions are
+        outcome-position only).
+      - *String interpolation*: `{param}` inside a quoted string in a
+        function body is rewritten AT EXPANSION to the call-site arg's
+        canonical spelling — `sus(THE_GUARD)` renders "…linger on
+        THE_GUARD."; ints/durations/signs spell as they author. The
+        reserved tokens `{actors}` `{object}` `{with}` `{at}` `{about}`
+        `{to}` and `{roll}` (§5.3 prose + F4's die) are NEVER
+        param-substituted and pass through untouched. An UNDECLARED
+        `{token}` in a body string is a **load-time error** — the chosen
+        behavior over a warning, deliberately: this compiler has no warning
+        channel (compileContent throws or succeeds), and the alternative —
+        silent pass-through — bakes a typo'd parameter name into every
+        call's player-facing journal prose forever. The error names the
+        token, the function, and the reserved set.
+    - **Recursion, depth, arity — all load errors.** A recursion cycle is
+      rejected by a colored DFS over the static call graph extracted from
+      the templates (branch bodies included), and the error NAMES the cycle
+      (`functions recurse: a -> b -> a`) — even for never-called functions,
+      since expansion would not terminate. The same graph's depth (1 + the
+      deepest callee chain) is capped at 8 for legitimate chains; a chain
+      of 9 is a load error. Arity is checked at every call site's parse,
+      nested calls included.
+    - **Parameters shadow.** Inside a body, a bare token matching a
+      parameter resolves to the parameter — before entity names and before
+      role names — so `f(GUARD) -> DESTROY GUARD` destroys the BOUND card,
+      never an entity that happens to be named GUARD. The same rule makes a
+      param named like a role (`object`) take over that position inside the
+      body; quote or rename to reach the name underneath.
+    - **Role refs in bodies resolve per call site** — fine in recipes,
+      where steps bind real cards; in slot/expiry triggers the event
+      bindings are empty, so a trigger-called body's role-dependent
+      outcome behaves exactly like the same role ref authored in the
+      trigger: ops that need their target reject the step at runtime
+      (`MOVE ACTORS INTO OBJECT` → "unresolvable destination", §9.19),
+      iteration-style ops (`DESTROY OBJECT`, SET by role) apply to nothing.
+      World-form conditions (`exists`, `count(name:…)`) and literal
+      outcomes are the trigger vocabulary, unchanged by expansion.
+    - **Bodies are ordinary outcome lists otherwise**: nesting (a body
+      calling functions) expands recursively — forward references included,
+      since all bodies parse before any call site expands — and IF/ELSE in
+      a body works end to end, its conditions carrying parameter operands.
+      ROLL and DRAW are legal in bodies by the same generality: the
+      expander is op-agnostic, so v0.4's dice and decks slot in without
+      grammar changes.
+
 ## 10. The script format — a game as one text file
 
 A whole game is one text file: meta lines, then section blocks of
@@ -1380,7 +1485,12 @@ triggers:
   dusk_falls at hour 16 -> SPAWN DREAD, NARRATE "The lamps come on."
   body_found once at hour 22 -> DESTROY LORD_VANE, NARRATE "A cry from the first cabin."
 
+functions:
+  sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
+  watch(n) -> IF count(name:SUSPICION) >= n -> (ENDING ARRESTED)
+
 endings:
+  ARRESTED: "Taken by the constabulary"
   DESPAIR_DEATH: "No More" (melancholy)
   LANTERN_VICTORY: "The Light in the Ruins" (grand)
 
@@ -1424,6 +1534,14 @@ Rules:
     Under a pool, a crossing of ANY copy fires the trigger, and its
     name-addressed outcomes hit the OLDEST copy — the §9.38 asymmetry. With
     no such trigger, expiry destroys the crossing card by id (§6.6, §9.38).
+- **Function lines** (§9.40): `NAME(params…) -> OUTCOMES` — parametric
+  outcome macros. Params are comma-separated identifiers in parens, bare
+  space-separated identifiers without them, or absent (an empty `()` is the
+  same as none). A body may call other functions, use `IF`, and interpolate
+  `{param}` in its strings; the call sites — in recipes or triggers — write
+  `NAME(arg, …)` and expand at load time (§9.40). Functions may share names
+  with entities and verbs (calls only ever parse in outcome position); an
+  op-named or IF/ELSE-named function is a load error.
 - **Ending lines**: `ID: "Title" [(flavour)]` — the ending table (§9.35).
   The id is UPPER_SNAKE and unique; the title is a quoted string; the
   flavour is a display word (any lowercase term) defaulting to

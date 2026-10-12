@@ -80,8 +80,8 @@ export function prose(record: ActionRecord, content: CompiledContent, dict: Dict
   return proseLines(record, content, dict).join('\n')
 }
 
-const refName = (r: Ref | null): string => (r && r.form === 'name' ? r.name : r ? `#${r.id}` : '—')
-const refNames = (rs: Ref[]): string[] => rs.map(r => (r.form === 'name' ? r.name : `#${r.id}`))
+const refName = (r: Ref | null): string => (r && r.form === 'name' ? r.name : r && r.form === 'id' ? `#${r.id}` : '—')
+const refNames = (rs: Ref[]): string[] => rs.map(r => (r.form === 'name' ? r.name : r.form === 'id' ? `#${r.id}` : r.name))
 
 function interpolateClause(template: string, clause: Clause): string {
   return template

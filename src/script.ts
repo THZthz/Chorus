@@ -34,14 +34,14 @@
 //     READ says "{actors} read {object} at {at}."
 import type { Dictionary } from './dict.js'
 import { KINDS } from './dict.js'
-import type { ContentRaw, EndingDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
+import type { ContentRaw, EndingDef, FunctionDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
 import { compileContent, type CompiledContent } from './content.js'
 import { parseClock, absMin, parseDuration, type Clock } from './clock.js'
 import { parseOutcomes } from './parse.js'
 import { aspectsFromPairs } from './query.js'
 import { addEntity, relationKey, newState, type Aspects, type State } from './types.js'
 
-type Section = 'entities' | 'prototypes' | 'triggers' | 'endings' | 'verbs' | 'templates'
+type Section = 'entities' | 'prototypes' | 'triggers' | 'endings' | 'verbs' | 'templates' | 'functions'
 
 export interface ScriptMeta {
   title?: string
@@ -86,6 +86,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
   let section: Section | null = null
   let verbName: string | null = null
   let inRecipes = false
+  const functions: FunctionDef[] = []
 
   for (let ln = 0; ln < lines.length; ln++) {
     const rawLine = lines[ln]
@@ -106,8 +107,9 @@ export function parseScript(text: string, dict: Dictionary): Script {
       }
     }
 
-    // section headers (indent 0)
-    if (indent === 0 && /^(entities|prototypes|triggers|endings|verbs|templates):$/.test(t)) {
+    // section headers (indent 0); free-form order — compileContent fixes the
+    // compile order (functions first), so `functions:` may sit anywhere
+    if (indent === 0 && /^(entities|prototypes|triggers|endings|verbs|templates|functions):$/.test(t)) {
       section = t.slice(0, -1) as Section
       verbName = null
       inRecipes = false
@@ -122,6 +124,8 @@ export function parseScript(text: string, dict: Dictionary): Script {
       prototypes[key] = proto
     } else if (section === 'triggers') {
       triggers.push(parseTriggerLine(t, ln + 1, dict))
+    } else if (section === 'functions') {
+      functions.push(parseFunctionLine(t, ln + 1))
     } else if (section === 'endings') {
       const [id, ending] = parseEndingLine(t, ln + 1)
       if (endings[id]) throw new Error(`line ${ln + 1}: duplicate ending id '${id}'`)
@@ -155,7 +159,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
     }
   }
 
-  return { meta, content: { verbs, triggers, prototypes, templates, endings }, entities, relations }
+  return { meta, content: { verbs, triggers, prototypes, templates, endings, functions }, entities, relations }
 }
 
 // ---------- entity lines ----------
@@ -269,6 +273,23 @@ function parseTriggerLine(t: string, ln: number, dict: Dictionary): TriggerDef {
   if (m[3] === 'hour' && n > 23) throw new Error(`line ${ln}: trigger hour must be 0..23`)
   if (m[3] === 'halfhour' && n > 47) throw new Error(`line ${ln}: trigger halfhour must be 0..47`)
   return { id: m[1], slot: m[3] === 'hour' ? n * 2 : n, once: m[2] !== undefined, out: [m[5]] }
+}
+
+// ---------- function lines (§9.40, §10) ----------
+
+/** functions:  NAME(param, …) -> OUTCOMES  (or the bare form NAME param …,
+ *  or NAME with none — the plan's flagship uses both spellings). Grammar only:
+ *  name/param shape, op collisions and duplicates are compileContent's. */
+function parseFunctionLine(t: string, ln: number): FunctionDef {
+  let m = /^(\S+)\s*\(([^)]*)\)\s*->\s*(.+)$/.exec(t) // paren'd, comma-separated params
+  if (m) {
+    return { name: m[1], params: m[2].trim() === '' ? [] : m[2].split(',').map(s => s.trim()), body: m[3].trim() }
+  }
+  m = /^(\S+)\s*->\s*(.+)$/.exec(t) // no params, no parens
+  if (m) return { name: m[1], params: [], body: m[2].trim() }
+  m = /^(\S+)\s+(\S.*?)\s*->\s*(.+)$/.exec(t) // bare, space-separated params
+  if (m) return { name: m[1], params: m[2].split(/\s+/), body: m[3].trim() }
+  throw new Error(`line ${ln}: functions expect  NAME(param, …) -> OUTCOMES  or  NAME param … -> OUTCOMES`)
 }
 
 // ---------- ending lines (§9.35, §10) ----------

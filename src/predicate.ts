@@ -44,6 +44,9 @@ export type ValExpr =
   | { t: 'countQuery'; query: Query }    // §9.38: count over the whole living world (any §4.5 query)
   | { t: 'total'; role: string; path: string }
   | { t: 'path'; role: string; field: 'aspect' | 'attr'; key: string }
+  | { t: 'param'; name: string }         // F3 authored-only: a function parameter standing in a cmp
+                                         // operand (§9.40); expansion replaces it with the call's
+                                         // number — it never reaches evaluation
 // F4 will add `{ t: 'roll' }` here — the seeded die result, evaluated from the
 // APPLY context's per-clause `roll` binding (never from State: the binding
 // dies with the draft on REFUSE). This evaluator is the extension point.
@@ -79,9 +82,11 @@ export function parsePredicate(src: string): Pred {
  * depth-0 `->` — predicates carry commas inside rel()/every() parens, so a
  * comma is never a split point; a depth-0 `,`/`;`/ELSE means the required
  * `-> ( outcomes )` is missing. Returns `end` = the number of Toks consumed,
- * i.e. the index of the `->` arrow in the given slice.
+ * i.e. the index of the `->` arrow in the given slice. `params` (F3, §9.40)
+ * names the enclosing function's parameters: a bare operand token matching a
+ * parameter parses as a param ValExpr, expanded to the call's number at load.
  */
-export function parsePredicateToks(toks: Tok[]): { pred: Pred; end: number } {
+export function parsePredicateToks(toks: Tok[], params?: ReadonlySet<string>): { pred: Pred; end: number } {
   let depth = 0
   let end = -1
   for (let i = 0; i < toks.length; i++) {
@@ -103,7 +108,7 @@ export function parsePredicateToks(toks: Tok[]): { pred: Pred; end: number } {
   const slice = toks.slice(0, end)
   if (slice.length === 0) throw new Error(`an IF needs a condition before '->'`)
   const view = predViewFromToks(slice)
-  return { pred: new PredParser(view.src, view).parse(), end }
+  return { pred: new PredParser(view.src, view, params).parse(), end }
 }
 
 /** sentence Toks → this parser's own token alphabet (§9.39). Word-adjacent
@@ -137,7 +142,7 @@ class PredParser {
   private spans: { start: number; end: number }[] = [] // source offsets per token
   private pos = 0
   private readonly src: string
-  constructor(src: string, pre?: PredView) {
+  constructor(src: string, pre?: PredView, private params?: ReadonlySet<string>) {
     this.src = src
     if (pre) { this.toks = pre.toks; this.spans = pre.spans; return }
     // `-` is a token only so exists(...) query terms can negate (`-aspect:winter`)
@@ -270,6 +275,10 @@ class PredParser {
 
   private valExpr(): ValExpr {
     const t = this.next()
+    // F3 (§9.40): a bare parameter name is a param operand — expansion binds
+    // it to the call's number. Parameters only ever stand where a numeric
+    // literal is expected; query terms and scalar conditions take none.
+    if (this.params?.has(t)) return { t: 'param', name: t }
     if (/^\d+$/.test(t)) return { t: 'int', v: Number(t) }
     if (t === 'count') {
       this.expect('(')
@@ -448,6 +457,10 @@ function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
       }
       return x.field === 'aspect' ? aspectGet(e, x.key) : numberAttr(e, x.key)
     }
+    case 'param':
+      // expansion (§9.40) replaces every param before compile finishes; this
+      // is a defensive tripwire, never a gameplay path
+      throw new Error(`internal: unresolved function parameter '${x.name}' was evaluated`)
   }
 }
 

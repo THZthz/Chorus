@@ -4,6 +4,9 @@
 export type Ref =
   | { form: 'name'; kind?: string; name: string }
   | { form: 'id'; id: string }
+  | { form: 'param'; name: string }  // F3 authored-only: a function parameter standing in a whole-ref
+                                     // position (§9.40); calls expand at load, so this never formats,
+                                     // resolves, or round-trips
 
 /** minimal dictionary surface the formatter needs (avoids a circular import) */
 export interface SafeDict {
@@ -27,6 +30,7 @@ export function formatRef(r: Ref, dict?: SafeDict): string {
       const safe = SAFE_NAME.test(r.name) && !(dict && dict.reserved.has(r.name))
       return safe ? r.name : `"${r.name.replace(/"/g, '\\"')}"`
     }
+    case 'param': throw new Error('a function parameter is authored form only — calls expand at load (§9.40)')
   }
 }
 

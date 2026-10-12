@@ -35,6 +35,13 @@ projection of that data, never the source of truth.
 > (`at hour N` remains as an alias for slot 2N, §10), and quantization/
 > dead-air semantics re-anchor on the halfhour tick (§9.28).
 >
+> v0.2.4 = the card mapping (§8.1). The operation-level correspondence between
+> text-engine operations and card operations, written down: entity → card,
+> slots → roles, dropping → role binding, commit → the canonical sentence,
+> the processing window → the locked station, outcomes → the cards' fates.
+> Documentation of existing semantics — no grammar, log, script, or API
+> change.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -54,7 +61,8 @@ projection of that data, never the source of truth.
 4. **Expressive enough** for the CS/BoH loop: verbs with slots, slot
    requirements, recipes (condition → outcome), time cost, decay, containers.
 5. **Drawable later.** Each element has fixed, labeled fields, so a UI can
-   render cards without changing the data model.
+   render cards without changing the data model. The operation-level mapping
+   onto card operations is §8.1.
 
 ## 2. Non-goals (v0.2)
 
@@ -695,6 +703,42 @@ Journal: canonical sentences, or the prose templates — same data, two views
 (the journal and story views in the player interface, §11). The cards view
 lists the table, the look view shows the player's container and contents.
 
+### 8.1 The card mapping (every engine operation is a card operation)
+
+The text engine is not a stopgap *instead of* cards; it is the card game with
+the cards drawn as text. The mapping is total and runs operation by operation:
+nothing a card UI does lacks a sentence, and nothing in the grammar lacks a
+card reading. A drawn UI (§1.5) would be a new renderer over the same
+machinery, not a new rulebook.
+
+| Text engine operation | Card operation |
+|-----------------------|----------------|
+| an entity (§7) | a card; its face is name · kind · aspects · `state.*` flags (the card sketch in §8) |
+| a verb with its slot declarations (§6.1) | a verb station; each slot is one clause role (§4.3); cardinality = how many cards fit |
+| a slot query (§4.5) | the grey-out rule: a card that does not match cannot drop — decidable from slots alone |
+| filling a clause's roles (§5.1) | dropping cards into the station's slots — distinct cards per role; `actors` is one slot that takes several (§4.3) |
+| committing a step: the engine composes and logs the canonical sentence (§9.1) | pressing play on a filled station — placing the cards *is* writing the sentence; several clauses are several stations committed as one step (`;`, §5.2) |
+| slot `shown`/`hidden`, gate `shown:` + `hint:` (§6.2) | badge visibility and the drop pre-warning — display-only, never touches matching or the log |
+| the processing window (§6.7; authored `ADVANCE` stretches it) | the station and its committed cards lock while "working"; `PROGRESS` ticks are the read bar |
+| the outcomes at unlock (§4.4 — applied at commit, narrated at the window's close, §6.7) | the cards' fates: `DESTROY` consumed · `SPAWN` minted onto the table (`INTO` = which tray) · `MOVE` slides to another container · `SET` repaints the face · `REVEAL` turns a hidden card face-up · `RELATE`/`UNRELATE` re-lay the table (§4.2) · `NARRATE`/`PROGRESS` touch no card |
+| `REFUSE` (§6.5) | the committed cards bounce back, no time passes, and the attempt is still journaled |
+| a step rejected before logging — bad slots, no matching recipe, unresolvable outcome, clock rewind (§6.6, §9.19, §9.20) | the station refuses the drop outright: the table is untouched and nothing is journaled — distinct from `REFUSE`, which journals the attempt |
+| an EVENT row (§5.1, §6.6) — clock-fired, no station | cards arriving and leaving on their own: an expiry consumes a card, a trigger's outcomes mint, mutate, or consume cards — journaled like any other record |
+| the table projection (`Game.visible()`, §11) | what the player actually sees on the table: `container` = which tray/pile a card sits in, zones = groupings with no card (§10), N/S/E/W relations = where place cards sit (§4.2) |
+| undo (§11) | a take-back: drop the trailing EVENT rows and the last action row, then re-fold — every card returns exactly where it was (§7) |
+| `born_action` (§7) | a card's provenance — "entered play at action N" |
+
+Two invariants keep the mapping safe:
+
+- **Cards never mutate anything.** The card layer is L3, a projection over
+  (state, log) (§3, §7): a drop event would call the same `executeStep`
+  `handleLine` (§11) calls, and the canonical sentence — not the drop — is
+  what is stored. There is no second, card-level rulebook to keep in sync.
+- **The mapping is display-independent.** Text cards, drawn cards, or both at
+  once are projections of the one log; the requirement-visibility (§6.2) and
+  table-projection (§11) rules are display-only and change no matching,
+  outcome, or record. The journal is the whole table session, replayable (§7).
+
 ---
 
 ## 9. Decisions
@@ -706,7 +750,8 @@ lists the table, the look view shows the player's container and contents.
    and appends it to the log. No natural-language parsing. (v0.2 reality:
    there is no UI yet — the lenient play interface of §11 stands in for the
    slot UI, under the same invariant: it is a front door that maps onto the
-   grammar; the logged sentence is always the canonical one.)
+   grammar; the logged sentence is always the canonical one.) §8.1 is the
+   operation-level card mapping.
 2. **Time model**: **discrete, per-action.** No background ticking.
 3. **Outcomes**: **hand-authored recipes only.** Deterministic and testable.
 4. **Prose layer**: afterthought. Canonical sentences are the deliverable.

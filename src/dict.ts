@@ -16,10 +16,12 @@ export const RESERVED_WORDS = [
 export type OutcomeOp =
   | 'SPAWN' | 'DESTROY' | 'REPLACE' | 'SET' | 'MOVE' | 'REVEAL'
   | 'ADVANCE' | 'NARRATE' | 'PROGRESS' | 'RELATE' | 'UNRELATE' | 'REFUSE'
+  | 'ENDING'
 
 export const OUTCOME_OPS: OutcomeOp[] = [
   'SPAWN', 'DESTROY', 'REPLACE', 'SET', 'MOVE', 'REVEAL',
   'ADVANCE', 'NARRATE', 'PROGRESS', 'RELATE', 'UNRELATE', 'REFUSE',
+  'ENDING',
 ]
 
 export interface RelationTypeDef {

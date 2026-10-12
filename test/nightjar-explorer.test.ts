@@ -53,6 +53,7 @@ function snap(s: State): string {
     byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1),
     now: s.now,
     fired: [...s.fired].sort(),
+    ended: s.ended, // §9.35: fold equality covers the story's ending too
   })
 }
 

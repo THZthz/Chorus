@@ -7,7 +7,7 @@ import { compileScript, type ScriptMeta } from './script.js'
 import { executeStep } from './engine.js'
 import { fold } from './fold.js'
 import { parsePlayerInput } from './lenient.js'
-import { journal, flattenAspects, pretty, proseLines } from './render.js'
+import { journal, flattenAspects, pretty, proseLines, endingNotice } from './render.js'
 import { matchQuery } from './query.js'
 import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
 import type { Ref } from './ref.js'
@@ -50,6 +50,8 @@ export class Game {
   handleLine(line: string): Turn {
     const t = line.trim()
     if (!t) return { kind: 'info', lines: [] }
+    // game-over (§9.35): the notice instead of execution; undo still reopens
+    if (this.state.ended) return { kind: 'info', lines: [endingNotice(this.state.ended)] }
     const parsed = parsePlayerInput(t, { dict: this.dict, content: this.content, state: this.state, player: this.meta.player })
     if (!parsed.ok) {
       const lines = [parsed.error]
@@ -161,6 +163,7 @@ export class Game {
    *  that fit the slots, those lighting up a non-default recipe first —
    *  every suggestion is lenient-parseable, so typing it just works */
   suggestions(limit = 3): string[] {
+    if (this.state.ended) return [] // §9.35: nothing left to suggest after the ending
     const alive = this.visible()
     const me = this.meta.player ? alive.find(e => e.name === this.meta.player) : undefined
     if (!me) return []

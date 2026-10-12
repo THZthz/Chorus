@@ -160,7 +160,7 @@ class Parser {
   }
 
   /** outcome = OPERATOR "(" args ")" | ref  (bare ref = SPAWN, §4.4).
-   *  Self-delimiting ops (SPAWN/NARRATE/MOVE/DESTROY/REVEAL/REPLACE) also
+   *  Self-delimiting ops (SPAWN/NARRATE/MOVE/DESTROY/REVEAL/REPLACE/ENDING) also
    *  accept a canonical paren-less form; SET/RELATE/UNRELATE/REFUSE/ADVANCE
    *  require parens. */
   outcome(): Outcome {
@@ -172,6 +172,10 @@ class Parser {
       // `with` role ref inside a generic arg list (§4.4)
       if (op === 'REPLACE' && this.atPunct('(')) {
         throw new Error('REPLACE takes the paren-less form: REPLACE ref WITH prototype')
+      }
+      // ENDING is paren-less only: its id is a plain name, never an arg list (§9.35)
+      if (op === 'ENDING' && this.atPunct('(')) {
+        throw new Error('ENDING takes the paren-less form: ENDING ENDING_ID')
       }
       if (this.atPunct('(')) {
         this.next()
@@ -195,6 +199,10 @@ class Parser {
         return { op, args: [{ t: 'str', v: s.v }] }
       }
       if (op === 'DESTROY' || op === 'REVEAL') return { op, args: [this.roleOrRefArg()] }
+      if (op === 'ENDING') {
+        // ENDING id (§9.35): a plain ref-form id, so quoted ids round-trip too
+        return { op, args: [{ t: 'ref', ref: this.ref() }] }
+      }
       if (op === 'REPLACE') {
         // REPLACE ref WITH prototype (§4.4): target may be a role ref
         const target = this.roleOrRefArg()

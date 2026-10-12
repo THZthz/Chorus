@@ -133,6 +133,12 @@ export function executeStep(
   step: Step,
   opts: ExecOptions,
 ): ExecResult {
+  // game-over (§9.35): once the story has ended nothing further executes, and
+  // nothing is logged — undo past the ending record reopens the game (it
+  // derives from the fold, so no special-case is needed)
+  if (stateIn.ended) {
+    return rejected(`the story has ended — ${stateIn.ended.title}`, stateIn)
+  }
   // monotonic mechanics time (§9.5): a step may never rewind the clock
   if (absMin(step.clock) < stateIn.now) {
     const now = clockFromAbsMin(stateIn.now)
@@ -513,6 +519,21 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         const rel = ctx.state.relations.get(relationKey(a.id, b.id, type, def.symmetric))
         if (rel) rel.deadAction = ctx.recordId // §7: stamp, don't erase — undo re-folds
       }
+      return { concrete: [o], refused: false }
+    }
+    case 'ENDING': {
+      // §9.35: the story's ending. First ENDING to apply in a step wins —
+      // later ones are logged no-ops. The step itself completes normally
+      // (outcomes apply, the clock advances; the ending rides along), and a
+      // REFUSE later in the same step discards the ending with the whole
+      // draft. The concrete log form is `ENDING <id>`; title/flavour resolve
+      // here from content — the one code path both play and fold share.
+      const a = args[0]
+      const id = a && a.t === 'ref' && a.ref.form === 'name' ? a.ref.name : null
+      if (!id) throw new Error('ENDING needs an id: ENDING ENDING_ID')
+      const ending = ctx.content.endings.get(id)
+      if (!ending) throw new Error(`ENDING '${id}' is not in the endings table`)
+      if (!ctx.state.ended) ctx.state.ended = { id, title: ending.title, flavour: ending.flavour }
       return { concrete: [o], refused: false }
     }
     case 'REFUSE': {

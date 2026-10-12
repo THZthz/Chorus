@@ -47,6 +47,11 @@ function formatOutcome(o: Outcome, dict?: SafeDict): string {
     const proto = o.args[1]
     return `REPLACE ${target ? formatArg(target, dict) : '?'} WITH ${proto ? formatArg(proto, dict) : '?'}`
   }
+  if (o.op === 'ENDING') {
+    // canonical paren-less form: ENDING id (§9.35) — the id round-trips as a name ref
+    const id = o.args[0]
+    return `ENDING ${id ? formatArg(id, dict) : '?'}`
+  }
   return `${o.op}(${o.args.map(a => formatArg(a, dict)).join(', ')})`
 }
 

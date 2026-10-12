@@ -10,7 +10,7 @@ import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import type { Game } from './play.js'
 import { clockFromAbsMin, formatClock } from './clock.js'
-import { pretty } from './render.js'
+import { pretty, endingBanner } from './render.js'
 
 type EntryKind = 'action' | 'info' | 'error'
 
@@ -390,6 +390,11 @@ function App({ game, requestExit }: { game: Game; requestExit: () => void }) {
       {exiting ? null : (
         <Box flexDirection="column">
           <Text bold color="cyan">◈ {game.title}</Text>
+          {game.state.ended ? (
+            // §9.35: the story is over — the banner takes the status area;
+            // the views and buttons below keep working (undo reopens, quit quits)
+            <Text bold color="magenta">{endingBanner(game.state.ended)}</Text>
+          ) : null}
           <Text dimColor>{statusOf(game)}</Text>
           {here ? <Text dimColor>{truncate(here, width)}</Text> : null}
           {suggestions.length > 0 ? (

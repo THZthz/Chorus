@@ -40,6 +40,7 @@ const snap = (s: State): string => JSON.stringify({
   byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1),
   now: s.now,
   fired: [...s.fired].sort(), // §9.34: play and fold must agree on fired too
+  ended: s.ended, // §9.35: …and on the story's ending
 })
 
 describe('READ ladder — first match wins, most specific first (§6.4)', () => {

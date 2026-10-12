@@ -57,6 +57,15 @@ projection of that data, never the source of truth.
 > becomes a load-time error in all trigger outcomes; play and fold now agree
 > exactly on `state.fired` for every EVENT row.
 >
+> v0.2.7 = endings (§4.4, §9.35, §10). The `ENDING` outcome (paren-less,
+> `ENDING ID`) ends the story: the `endings:` script section declares the
+> table (UPPER_SNAKE id, quoted title, optional flavour — default
+> `melancholy`), the first ENDING to apply in a step wins and the step itself
+> completes normally, steps on an ended state are rejected with nothing
+> logged, time triggers and authored expiries may ENDING (the CS
+> despair-death shape), and undo reopens the game because `state.ended`
+> derives from the fold like everything else.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -198,6 +207,7 @@ core set is a default, not a closed wall.
 | `PROGRESS`| duration, string                | a read-bar tick: authored progress text at `duration` into the processing window (§6.7); journal-only, no state or time effect |
 | `RELATE`  | ref, ref, type [, int]          | create a relation edge between two cards      |
 | `UNRELATE`| ref, ref, type                  | remove a relation edge                        |
+| `ENDING`  | id                              | end the story (§9.35): sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — outcomes apply and the clock advances, the ending rides along |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -250,8 +260,9 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
            | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
            | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
+           | "ENDING" ref                        (* paren-less only; names an `endings:` entry (§9.35) — a name ref, quoted ids round-trip; existence is a load-time check *)
            | ref ;                               (* bare ref = SPAWN ref, engine adds AS #id *)
-(*          canonical OUTPUT: SPAWN, NARRATE and REPLACE paren-less, every other op paren'd
+(*          canonical OUTPUT: SPAWN, NARRATE, REPLACE and ENDING paren-less, every other op paren'd
             — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) *)
 args       = arg { "," arg } ;                   (* arg shapes validated per §4.4 arity *)
 arg        = ref | role | int | signedInt | string | bool | duration
@@ -988,6 +999,49 @@ Two invariants keep the mapping safe:
     (authored id or `expire:<NAME>`) — fixing a pre-existing play/fold
     divergence where expiry rows were marked at fold but not at play.
 
+### Implementation rulings (v0.2.7, endings)
+
+35. **Game-over discipline**: the `ENDING` outcome ends the story, and the
+    story stays ended — until undone. Precisely:
+    - **First wins.** The first ENDING to *apply* in a step sets
+      `state.ended = {id, title, flavour}`; later ENDINGs in the same step
+      (other clauses' recipes, or events crossing in the same advance) are
+      logged no-ops. The action's outcomes apply before its events, so an
+      action ENDING outranks an event ENDING within one advance.
+    - **The ending rides along.** The step itself completes normally:
+      remaining outcomes apply, the clock advances by the verb's duration
+      (plus authored `ADVANCE`), and events crossing the elapsed span still
+      fire — one atomic step, as ever (§6.6). A `REFUSE` later in the same
+      step discards the ending with the whole draft (§6.5): no ending, no
+      state change, attempt logged.
+    - **Post-ending steps are rejected, nothing logged.** `executeStep` on a
+      state whose `ended` is set rejects before validation — the message
+      names the ending's title — distinct from `REFUSE` (which logs) and
+      from §9.19 rejections (which cannot happen *after* a logged ending,
+      since nothing further is ever logged). `Game.handleLine` returns the
+      same notice without executing, `Game.suggestions()` returns empty, and
+      the TUI shows the banner (`— NO MORE · melancholy —`) while the views
+      and buttons keep working.
+    - **Events may end the game.** Both trigger forms (§10) may carry
+      ENDING — a season/time-trigger chain ending in despair, or an authored
+      `on expire` trigger that consumes the card and ends the story (the
+      authored outcomes replace the built-in destroy entirely, §9.32, so the
+      author destroys the dying card explicitly or it re-fires on every
+      later crossing). The event row is an ordinary record; its ENDING is
+      the first one applied if the action did not already end the story.
+    - **Undo is not special-cased.** `ended` derives from the fold like
+      everything else (§7): undo drops the ending record (and its trailing
+      events), re-folds, and the game is open again. The concrete log form
+      is `ENDING <id>` — it round-trips — and title/flavour resolve from
+      content inside `applyOutcome`, the one code path play and fold share,
+      so the two agree byte-for-byte. The fold itself never enforces
+      game-over (it trusts logged rows, §6.6); the rejection lives in
+      `executeStep` only.
+    - **Load-time existence check.** An ENDING whose id is not in the
+      `endings:` table (§10) is a load-time error, in recipes and in both
+      trigger forms — unlike expiry-target names (§9.32), ending ids are
+      content structure, not runtime entities.
+
 ## 10. The script format — a game as one text file
 
 A whole game is one text file: meta lines, then section blocks of
@@ -1016,6 +1070,10 @@ prototypes:
 triggers:
   dusk_falls at hour 16 -> SPAWN DREAD, NARRATE "The lamps come on."
   body_found once at hour 22 -> DESTROY LORD_VANE, NARRATE "A cry from the first cabin."
+
+endings:
+  DESPAIR_DEATH: "No More" (melancholy)
+  LANTERN_VICTORY: "The Light in the Ruins" (grand)
 
 verbs:
   READ:
@@ -1055,6 +1113,12 @@ Rules:
     may be spawned at runtime), and its outcomes may reference NAME directly
     (names are unique among the living). With no such trigger, expiry
     destroys the card (§6.6).
+- **Ending lines**: `ID: "Title" [(flavour)]` — the ending table (§9.35).
+  The id is UPPER_SNAKE and unique; the title is a quoted string; the
+  flavour is a display word (any lowercase term) defaulting to
+  `melancholy`. The table is what the `ENDING` outcome (§4.4) must name: an
+  ENDING with an undeclared id — in a recipe or in either trigger form — is
+  a load-time error.
 
 ## 11. The play interface — lenient input, the terminal UI, undo
 
@@ -1114,7 +1178,10 @@ name — engine state untouched, everything in the log (§9.30).
 
 **Undo** = drop the trailing EVENT rows and the last action row, then
 re-fold from the base state (§7). Rejections and parse errors log nothing,
-so there is nothing to undo after them.
+so there is nothing to undo after them. Once the story has ended (§9.35)
+the interface wears its banner, input returns the ending notice, and the
+suggestions row empties — while the views and buttons keep working, because
+undo past the ending record reopens the book.
 
 ## 12. Remaining open questions
 

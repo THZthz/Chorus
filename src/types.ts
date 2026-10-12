@@ -31,6 +31,16 @@ export interface Relation {
   deadAction: number | null
 }
 
+/** a story's ending (§9.35): set by the first ENDING outcome to apply. The
+ *  resolved title/flavour ride in the state so renderers need no content
+ *  lookup; the log itself carries only the concrete `ENDING <id>` op, and
+ *  both play and fold resolve through the same applyOutcome code path. */
+export interface Ending {
+  id: string
+  title: string
+  flavour: string
+}
+
 export interface State {
   entities: Map<string, Entity>
   /** name -> id, alive entities only (names are unique among the living, spec §9.14) */
@@ -41,10 +51,13 @@ export interface State {
   now: number
   /** once-triggers that have fired (spec §9.29); rebuilt by fold from EVENT rows */
   fired: Set<string>
+  /** the ending once told (spec §9.35); null until an ENDING outcome applies,
+   *  cleared naturally when the fold no longer reaches its record (undo) */
+  ended: Ending | null
 }
 
 export function newState(now = 0): State {
-  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set() }
+  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null }
 }
 
 export function cloneState(s: State): State {
@@ -54,7 +67,7 @@ export function cloneState(s: State): State {
   }
   const relations = new Map<string, Relation>()
   for (const [k, r] of s.relations) relations.set(k, { ...r })
-  return { entities, byName: new Map(s.byName), relations, now: s.now, fired: new Set(s.fired) }
+  return { entities, byName: new Map(s.byName), relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null }
 }
 
 function cloneAspects(a: Aspects): Aspects {

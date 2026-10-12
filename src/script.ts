@@ -18,6 +18,10 @@
 //   triggers:
 //     dusk_falls at hour 16 -> SPAWN DREAD, NARRATE "The lamps come on."
 //
+//   endings:
+//     DESPAIR_DEATH: "No More" (melancholy)   # flavour optional, default melancholy
+//     LANTERN_VICTORY: "The Light in the Ruins" (grand)
+//
 //   verbs:
 //     READ:
 //       actors: 1..2 kind:character
@@ -30,14 +34,14 @@
 //     READ says "{actors} read {object} at {at}."
 import type { Dictionary } from './dict.js'
 import { KINDS } from './dict.js'
-import type { ContentRaw, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
+import type { ContentRaw, EndingDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
 import { compileContent, type CompiledContent } from './content.js'
 import { parseClock, absMin, parseDuration, type Clock } from './clock.js'
 import { parseOutcomes } from './parse.js'
 import { aspectsFromPairs } from './query.js'
 import { addEntity, relationKey, newState, type Aspects, type State } from './types.js'
 
-type Section = 'entities' | 'prototypes' | 'triggers' | 'verbs' | 'templates'
+type Section = 'entities' | 'prototypes' | 'triggers' | 'endings' | 'verbs' | 'templates'
 
 export interface ScriptMeta {
   title?: string
@@ -73,6 +77,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
   const prototypes: Record<string, PrototypeDef> = {}
   const triggers: TriggerDef[] = []
   const templates: Record<string, string> = {}
+  const endings: Record<string, EndingDef> = {}
   const verbs: Record<string, VerbContent> = {}
 
   const lines = text.split('\n')
@@ -100,7 +105,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
     }
 
     // section headers (indent 0)
-    if (indent === 0 && /^(entities|prototypes|triggers|verbs|templates):$/.test(t)) {
+    if (indent === 0 && /^(entities|prototypes|triggers|endings|verbs|templates):$/.test(t)) {
       section = t.slice(0, -1) as Section
       verbName = null
       inRecipes = false
@@ -115,6 +120,10 @@ export function parseScript(text: string, dict: Dictionary): Script {
       prototypes[key] = proto
     } else if (section === 'triggers') {
       triggers.push(parseTriggerLine(t, ln + 1, dict))
+    } else if (section === 'endings') {
+      const [id, ending] = parseEndingLine(t, ln + 1)
+      if (endings[id]) throw new Error(`line ${ln + 1}: duplicate ending id '${id}'`)
+      endings[id] = ending
     } else if (section === 'templates') {
       const m = /^([A-Z_]+) says "(.*)"$/.exec(t)
       if (!m) throw new Error(`line ${ln + 1}: templates expect  VERB says "..."`)
@@ -144,7 +153,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
     }
   }
 
-  return { meta, content: { verbs, triggers, prototypes, templates }, entities, relations }
+  return { meta, content: { verbs, triggers, prototypes, templates, endings }, entities, relations }
 }
 
 // ---------- entity lines ----------
@@ -251,6 +260,17 @@ function parseTriggerLine(t: string, ln: number, dict: Dictionary): TriggerDef {
   if (m[3] === 'hour' && n > 23) throw new Error(`line ${ln}: trigger hour must be 0..23`)
   if (m[3] === 'halfhour' && n > 47) throw new Error(`line ${ln}: trigger halfhour must be 0..47`)
   return { id: m[1], slot: m[3] === 'hour' ? n * 2 : n, once: m[2] !== undefined, out: [m[5]] }
+}
+
+// ---------- ending lines (§9.35, §10) ----------
+
+function parseEndingLine(t: string, ln: number): [string, EndingDef] {
+  // ID: "Title" (flavour) — flavour optional, default melancholy (resolved at compile)
+  const m = /^([A-Z][A-Z0-9_]*):\s*"(.+)"(?:\s+\(([a-z]+)\))?$/.exec(t)
+  if (!m) {
+    throw new Error(`line ${ln}: endings expect  ID: "Title" (flavour)  — flavour optional, default melancholy`)
+  }
+  return [m[1], { title: m[2], flavour: m[3] }]
 }
 
 // ---------- slots & recipes ----------

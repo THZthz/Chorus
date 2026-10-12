@@ -1,4 +1,4 @@
-// L3 projection — spec §5.3, §6.7, §8. Pure functions over records/state.
+// L3 projection — spec §5.3, §6.7, §8, §9.35. Pure functions over records/state.
 import type { ActionRecord } from './engine.js'
 import type { CompiledContent } from './content.js'
 import type { Clause } from './sentence.js'
@@ -6,10 +6,20 @@ import type { Ref } from './ref.js'
 import { parseSentence } from './parse.js'
 import { formatDuration } from './clock.js'
 import type { Dictionary } from './dict.js'
-import type { Aspects, Entity } from './types.js'
+import type { Aspects, Ending, Entity } from './types.js'
 
 export function journal(records: ActionRecord[]): string {
   return records.map(r => r.sentence).join('\n')
+}
+
+/** the status-area banner once the story has ended: — NO MORE · melancholy — */
+export function endingBanner(e: Ending): string {
+  return `— ${e.title.toUpperCase()} · ${e.flavour} —`
+}
+
+/** the notice shown when the player acts after the ending */
+export function endingNotice(e: Ending): string {
+  return `the story has ended — ${e.title} (${e.flavour}).`
 }
 
 /** display form of an authored name: THE_FORGETTING → THE FORGETTING */
@@ -50,6 +60,18 @@ export function proseLines(record: ActionRecord, content: CompiledContent, dict:
     } else if (o.op === 'REFUSE') {
       lines.push(narr.v) // §6.2: refusal is always spoken
     }
+  }
+  // §9.35: a step that ends the story closes with its ending line — first
+  // ENDING wins, mirroring the state rule; the journal stays canonical (the
+  // `ENDING <id>` outcome is already visible there). A REFUSED step's ending
+  // was discarded with the whole draft (§6.5), so it never gets the line.
+  const refused = record.outcomes.some(o => o.op === 'REFUSE')
+  const ending = refused ? undefined : record.outcomes.find(o => o.op === 'ENDING')
+  if (ending) {
+    const a = ending.args[0]
+    const id = a && a.t === 'ref' && a.ref.form === 'name' ? a.ref.name : undefined
+    const def = id !== undefined ? content.endings.get(id) : undefined
+    lines.push(`— ${def?.title ?? id ?? 'the end'} —`)
   }
   return lines
 }

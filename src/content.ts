@@ -67,11 +67,21 @@ export interface PrototypeDef {
   }
 }
 
+/** A story ending (§9.35, §10): authored in the `endings:` section as
+ *  `ID: "Title" (flavour)`. The flavour is a display word ('melancholy'
+ *  default, 'grand' the other canonical value); it is open vocabulary —
+ *  any lowercase word — so authors are not fenced. */
+export interface EndingDef {
+  title: string
+  flavour?: string
+}
+
 export interface ContentRaw {
   verbs: Record<string, VerbContent>
   triggers?: TriggerDef[]
   prototypes?: Record<string, PrototypeDef>
   templates?: Record<string, string>  // prose templates per verb (§5.3)
+  endings?: Record<string, EndingDef> // the ending table (§9.35)
 }
 
 export interface CompiledRecipe {
@@ -98,6 +108,11 @@ export interface CompiledVerb {
   recipes: CompiledRecipe[]
 }
 
+export interface CompiledEnding {
+  title: string
+  flavour: string       // resolved: defaults to 'melancholy' (§10)
+}
+
 export interface CompiledContent {
   verbs: Map<string, CompiledVerb>
   triggers: (
@@ -106,9 +121,18 @@ export interface CompiledContent {
   )[]
   prototypes: Map<string, PrototypeDef>
   templates: Map<string, string>
+  endings: Map<string, CompiledEnding>
 }
 
 export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledContent {
+  const endings = new Map<string, CompiledEnding>()
+  for (const [id, e] of Object.entries(raw.endings ?? {})) {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(id)) throw new Error(`ending '${id}' must be UPPER_SNAKE`)
+    if (!e.title || !e.title.trim()) throw new Error(`ending ${id}: needs a title`)
+    const flavour = e.flavour ?? 'melancholy'
+    if (!/^[a-z]+$/.test(flavour)) throw new Error(`ending ${id}: flavour must be a lowercase word, got '${flavour}'`)
+    endings.set(id, { title: e.title, flavour })
+  }
   const verbs = new Map<string, CompiledVerb>()
   for (const [name, v] of Object.entries(raw.verbs)) {
     if (!dict.isVerb(name)) throw new Error(`verb '${name}' is not registered in the dictionary`)
@@ -140,7 +164,22 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
   })
   const prototypes = new Map(Object.entries(raw.prototypes ?? {}))
   const templates = new Map(Object.entries(raw.templates ?? {}))
-  return { verbs, triggers, prototypes, templates }
+  // §9.35: an ENDING outcome must name a declared ending — recipe or trigger,
+  // checked once at load so a typo cannot wait for playtime
+  for (const v of verbs.values()) {
+    for (const r of v.recipes) checkEndingRefs(`recipe ${r.id}`, r.out, endings)
+  }
+  for (const t of triggers) checkEndingRefs(`trigger ${t.id}`, t.out, endings)
+  return { verbs, triggers, prototypes, templates, endings }
+}
+
+function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, CompiledEnding>): void {
+  for (const o of out) {
+    if (o.op !== 'ENDING') continue
+    const a = o.args[0]
+    const id = a && a.t === 'ref' && a.ref.form === 'name' ? a.ref.name : null
+    if (!id || !endings.has(id)) throw new Error(`${where}: ENDING '${id ?? '?'}' is not in the endings table`)
+  }
 }
 
 function parseOutcomeString(src: string, dict: Dictionary): Outcome[] {

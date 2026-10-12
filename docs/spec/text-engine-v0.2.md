@@ -111,6 +111,19 @@ projection of that data, never the source of truth.
 > Recursion cycles and call chains deeper than eight are load errors, as are
 > arity mismatches and undeclared `{token}` interpolation.
 >
+> v0.3.4 = seeded dice (§4.4, §5.1, §9.41, §10). The `ROLL(count, sides[,
+> bonus])` outcome is the engine's ONLY randomness: a counter-based pure
+> function of the script's `seed:` meta line (default 0) and a state counter,
+> sampled with splitmix64 computed BigInt end-to-end (no float64 ever sees a
+> die). A roll consumes exactly its dice in counters; the log records the
+> engine-written `ROLLED(<total>, <ctrAfter>)` — authored ROLLED is a load
+> error — and the fold lands the counter from the row without re-deriving
+> anything, so undo reconstructs dice state from the folded log. The list's
+> last ROLL binds `roll` for IF conditions and rewrites `{roll}` in NARRATE
+> prose at execution (PROGRESS/REFUSE `{roll}` is a load error); `ROLL` and
+> `ROLLED` join the reserved words. The v0.4 number itself arrives with the
+> showcase commit.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -257,6 +270,8 @@ core set is a default, not a closed wall.
 | `UNRELATE`| ref, ref, type                  | remove a relation edge                        |
 | `ENDING`  | id                              | end the story (§9.35): sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — outcomes apply and the clock advances, the ending rides along |
 | `IF`      | cond `->` `(` outcomes `)` { `ELSE IF` cond `->` `(` outcomes `)` } [ `ELSE` `->` `(` outcomes `)` ] | branching (§6.8, §9.39): arms evaluate in order against the draft, first true condition wins, `ELSE` is the default, no true arm and no `ELSE` applies nothing; the log records only the TAKEN branch's outcomes, flattened in position — no IF ever appears in the log |
+| `ROLL`    | count, sides [, bonus]          | roll dice (§9.41): paren-only; each argument is a §6.3 value expression (`3`, `total(actors, aspect:nerve)`, `count(name:X)`, `object.aspect.dc`, …). Rolls `count` dice of `sides` faces plus `bonus`, consuming exactly `count` rng counters; binds `roll` for the rest of the outcome list. The log records the engine-written `ROLLED(<total>, <ctrAfter>)` — no ROLL ever appears in the log. `sides` < 2 or `count` < 0 reject the whole step (§9.19); `count` = 0 is legal (total = bonus, counter unmoved) |
+| `ROLLED`  | total, ctrAfter                 | **engine-written only** (§9.41): the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -321,9 +336,12 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
            | "IF" cond "->" "(" outcomes ")"
              { "ELSE IF" cond "->" "(" outcomes ")" }
              [ "ELSE" "->" "(" outcomes ")" ]    (* §6.8, §9.39: bodies REQUIRE parens; the ELSE chain is consumed greedily by the IF — a nested ELSE binds to the nearest IF; cond is the §6.3 grammar, read from the token stream up to the depth-0 "->" *)
+           | "ROLL" "(" valexpr "," valexpr [ "," valexpr ] ")"
+                                                 (* §9.41: paren-only; each argument is a §6.3 cmp-operand value expression (int, count(role), count(<query>), total(role, aspect:path), role.aspect.x, role.attr.x — a body parameter inside a function template), split on depth-0 commas so nested parens survive; arity 2..3 *)
+           | "ROLLED" "(" int "," int ")"        (* §9.41: ENGINE-WRITTEN only — the recorded roll; authoring one is a load error *)
            | ref ;                               (* bare ref = SPAWN ref, engine adds AS #id *)
 (*          canonical OUTPUT: SPAWN, NARRATE, REPLACE and ENDING paren-less, every other op paren'd
-            — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) *)
+            — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) · ROLLED(14, 3) *)
 args       = arg { "," arg } ;                   (* arg shapes validated per §4.4 arity *)
 arg        = ref | role | int | signedInt | string | bool | duration
            | "INTO" target | "AS" "#" id | key "=" value | dottedName | aspectKey ;
@@ -340,9 +358,9 @@ ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name
 Lexical rules:
 
 - `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT TO WITH AT
-  ABOUT INTO AS AND OR NOT IF ELSE` + every registered verb lexeme) cannot be
-  used as names; content needing them uses the quoted-string ref form
-  (`"PLAN B"`).
+  ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED` + every registered verb
+  lexeme) cannot be used as names; content needing them uses the quoted-string
+  ref form (`"PLAN B"`).
 - **Entity names are unique among alive entities** (enforced at SPAWN /
   registration) — except cards minted from a `stackable` declaration, which
   pool under one name (§9.38). Canonical ref output is the bare name;
@@ -1456,18 +1474,100 @@ Two invariants keep the mapping safe:
       expander is op-agnostic, so v0.4's dice and decks slot in without
       grammar changes.
 
+### Implementation rulings (v0.3.4, seeded dice)
+
+41. **The dice are a seeded counter, and the counter is state** (§4.4, §9.30).
+    The engine's ONLY randomness (law 5) is `State.rng` — an integer counter
+    of how many die values the whole history has consumed — sampled by a pure
+    function of two integers: die `i` of a roll at counter `c` is
+
+        1 + floor( sides * splitmix64(seed XOR (c+i)) / 2^64 )
+
+    with `seed` the script's `seed:` meta line (§10, default 0, stored in
+    compiled content) and splitmix64's constants and shifts computed on
+    BigInt END-TO-END (the ES2022 target has them; a float64 cannot hold
+    `sides * u64` and would quantize the low bits away — the test suite pins
+    a python-computed vector table plus a 2^53−1 seed to keep it that way).
+    A roll of m dice consumes exactly m counters (`c .. c+m-1`). Consequences:
+    - **Concretization**: ROLL logs `ROLLED(<total>, <ctrAfter>)` — the total
+      AND the counter after. Play consumes the counters on the DRAFT; the
+      fold's ROLLED apply sets `state.rng = ctrAfter` and derives nothing
+      else (law 3: replay never re-rolls). ROLLED needs real parse+format
+      entries (two plain ints; the generic paren'd path formats and re-parses
+      it), because a fallback that emitted anything unparseable would break
+      round-trip for every recorded roll.
+    - **Undo/replay**: since the counter is state reconstructed by fold, undo
+      past a roll lands the counter exactly where the folded history left it
+      (roll, undo, act differently, save — `fold(loadLog(log)) === played
+      state`, dice included). No dice bookkeeping outside the log exists.
+    - **Refused rolls**: a REFUSE after a ROLL discards the draft — the real
+      counter never moved, and the fold skips the refused record entirely, so
+      it never moves there either (play/fold agreement is asserted). The
+      refused attempt's journal prose may still show its `{roll}` number, and
+      a re-attempt throws the SAME dice (same counters) — deterministic,
+      documented, accepted.
+    - **Seed drift (§9.30 asymmetry)**: changing `seed` shifts every FUTURE
+      die but never past rows — the fold replays recorded ROLLED totals and
+      counters verbatim, whatever the content's seed now says.
+    - **Authoring ROLLED is a load error** (the paren-form-error precedent):
+      the parse entry exists so concrete rows re-parse; the compile lint is
+      what keeps scripts from forging dice history.
+    - **Validation**: `sides` < 2 or `count` < 0 reject the whole step
+      (§9.19 — nothing logged, clock unmoved); `count` = 0 is legal (total =
+      bonus, counter unmoved). The same strict discipline as IF conditions
+      applies to the operands themselves: a count/sides/bonus expression that
+      cannot resolve (a missing aspect over its bound role) rejects the step
+      rather than silently rolling nothing.
+    - **Triggers may roll**: slot and expiry outcome lists may ROLL and tier
+      on `roll`; the EVENT record carries the concrete outcomes incl. the
+      ROLLED row and replays exactly. Trigger ROLL arguments must be
+      ROLE-FREE (the §9.39 trigger lint extended to the dice expressions —
+      `ROLL(count(actors), 6)` is a load error naming the argument), while
+      world forms (`count(name:X)`) are the trigger vocabulary.
+42. **The `roll` binding lives on the apply context, one slot per clause**
+    (§6.3, §5.3). The last ROLL of an outcome list binds `roll` (last-wins;
+    a second ROLL rebinds); the slot is reset at each `;` clause of a
+    multi-clause step, survives function expansion (expansion is compile-time
+    — an expanded body reads its call site's list), and is NOT state: a
+    REFUSE discards it with the draft. It is readable in:
+    - **IF conditions** — the `{t:'roll'}` ValExpr, parsed only by the Tok
+      front-end. A `when:` line using `roll` is a LOAD error (selection
+      provably runs before any outcome could have rolled); the runtime
+      rejects a TAKEN branch reading an unbound `roll` (§9.19), which is the
+      enforcement backstop for the lint's false negatives.
+    - **NARRATE strings** — `{roll}` is rewritten AT EXECUTION, so the
+      concrete row carries the number (the journal never re-derives dice).
+      The rewrite applies to NARRATE args after the list's ROLL; a NARRATE
+      before it keeps the literal token. `{roll}` in PROGRESS or REFUSE
+      strings is a LOAD error — that prose is stored raw and rendered
+      without an execution pass, so the token would bake in as literal text.
+      Function bodies treat `{roll}` as reserved (never param-substituted,
+      §9.40) precisely so it survives expansion to here.
+    - **Compile-time may-bind lint (best-effort)**: a `roll` reference with
+      no ROLL anywhere before it on any path of its list is a load error
+      (every play would reject); a ROLL hidden inside an earlier IF's
+      branches makes later references lint-clean (no false positives — that
+      branch might be the taken one). False NEGATIVES are allowed and the
+      runtime rejection covers them.
+    - `ROLL` and `ROLLED` join the reserved words (§5.1), and a function
+      named ROLL collides with the op (§9.40's isOp rule) as usual.
+
 ## 10. The script format — a game as one text file
 
 A whole game is one text file: meta lines, then section blocks of
 sentence-like declarations. `#` starts a comment; blank lines are ignored.
 `compileScript` parses and compiles it once, failing loudly at load time
-(unknown kind, unregistered verb or relation type, bad grammar).
+(unknown kind, unregistered verb or relation type, bad grammar). Meta lines:
+`script:` (title), `player:` (default actor), `goal:` (shown up front),
+`start: d:h` (initial clock), and `seed: N` — the §9.41 dice seed, an
+integer, default 0.
 
 ```
 script: Murder on the Nightjar Flyer   # title
 player: MARCH                          # default actor for lenient input (§11)
 goal: unmask Lord Vane's killer …      # shown up front in the player interface
 start: 0:42                            # initial clock
+seed: 7                                # dice seed (§9.41, default 0)
 
 entities:
   GUARD_VAN is place in NIGHTJAR_FLYER with site.guard:1

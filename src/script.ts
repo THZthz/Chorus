@@ -5,6 +5,7 @@
 //   player: ANA
 //   goal:   what the player is trying to do, shown up front
 //   start: 0:14
+//   seed:   7                                # dice seed (§9.41, default 0)
 //
 //   entities:
 //     HOUSE is place
@@ -48,6 +49,9 @@ export interface ScriptMeta {
   player?: string
   goal?: string
   start?: Clock
+  /** §9.41: the dice seed (default 0) — the run's whole dice sequence is a
+   *  pure function of (seed, rng counter) */
+  seed?: number
 }
 
 export interface EntitySpec {
@@ -97,11 +101,16 @@ export function parseScript(text: string, dict: Dictionary): Script {
 
     // meta lines (indent 0, outside sections)
     if (indent === 0 && section === null) {
-      const m = /^(script|player|goal|start):\s*(.+)$/.exec(t)
+      const m = /^(script|player|goal|start|seed):\s*(.+)$/.exec(t)
       if (m) {
         if (m[1] === 'script') meta.title = m[2].trim()
         else if (m[1] === 'player') meta.player = m[2].trim()
         else if (m[1] === 'goal') meta.goal = m[2].trim()
+        else if (m[1] === 'seed') {
+          // §9.41: integer seed, XORed with the rng counter as a 64-bit value
+          if (!/^-?\d+$/.test(m[2].trim())) throw new Error(`line ${ln + 1}: seed must be an integer, got '${m[2].trim()}'`)
+          meta.seed = Number(m[2].trim())
+        }
         else meta.start = parseClock(m[2].trim())
         continue
       }
@@ -341,7 +350,9 @@ function parseRecipeLine(t: string, ln: number, dict: Dictionary): RecipeDef {
 
 export function compileScript(text: string, dict: Dictionary): { content: CompiledContent; state: State; meta: ScriptMeta } {
   const script = parseScript(text, dict)
-  const content = compileContent(script.content, dict)
+  // §9.41: the meta `seed:` rides into the compiled content — every die is a
+  // pure function of (seed, counter), so the sequence is fixed at load
+  const content = compileContent({ ...script.content, seed: script.meta.seed }, dict)
   // §9.38: stackable entity-line declarations join the prototype-derived sets,
   // so SPAWN of such a name (and kind-qualified mints of its kind) stack
   for (const e of script.entities) {

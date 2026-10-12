@@ -33,6 +33,11 @@ function formatClause(c: Clause, dict?: SafeDict): string {
 function formatOutcome(o: Outcome, dict?: SafeDict): string {
   if (o.op === 'IF') throw new Error('an IF outcome is authored form only — the log records the taken branch (§9.39)')
   if (o.op === 'FN') throw new Error('a function call is authored form only — calls expand at load (§9.40)')
+  if (o.op === 'ROLL') throw new Error('a ROLL is authored form only — the log records the engine-written ROLLED result (§9.41)')
+  // ROLLED (§9.41) rides the generic paren'd fallback on purpose: its args are
+  // two plain ints, so `ROLLED(14, 3)` formats AND re-parses — the round-trip
+  // the fold's counter row needs (a fallback that emitted anything else would
+  // make every recorded roll unparseable)
   if (o.op === 'SPAWN') {
     // pretty form: SPAWN X [INTO Y] [AS #id]
     const parts = ['SPAWN']
@@ -74,6 +79,7 @@ function formatArg(a: Arg, dict?: SafeDict): string {
     case 'into': return 'INTO ' + ('role' in a.ref ? a.ref.role.toUpperCase() : formatRef(a.ref, dict))
     case 'asId': return `AS #${a.id}`
     case 'pair': return `${a.k}=${typeof a.v === 'string' ? quote(a.v) : String(a.v)}`
+    case 'vexpr': throw new Error('a ROLL value expression is authored form only — the log records the computed ROLLED ints (§9.41)')
     case 'param': throw new Error('a function parameter is authored form only — calls expand at load (§9.40)')
   }
 }

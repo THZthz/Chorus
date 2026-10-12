@@ -7,7 +7,8 @@ import { idRef, nameRef, sortRefs } from './ref.js'
 import { formatSentence } from './format.js'
 import type { Dictionary } from './dict.js'
 import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb } from './content.js'
-import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
+import { evalPred, evalExpr, type PredCtx, type RoleBindings } from './predicate.js'
+import { rollDie } from './dice.js'
 import { matchQuery } from './query.js'
 import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, parseDuration, type Clock } from './clock.js'
 import {
@@ -184,6 +185,9 @@ export function executeStep(
   try {
     outer:
     for (const p of prepared) {
+      // §9.41: the dice binding is PER CLAUSE — a roll in clause one is not
+      // visible to clause two's conditions
+      ctx.roll = undefined
       // re-resolve this clause's roles against the draft right before applying,
       // so entities an earlier clause destroyed can't be used stale (§6.6)
       const rebound: RoleBindings = {}
@@ -295,13 +299,37 @@ interface ApplyCtx {
   recordId: number
   idGen: () => string
   extraAdvanceMin: number
-  // F4 will add the per-clause `roll` binding here — last ROLL of the outcome
-  // list wins, reset per clause, dies with the draft on REFUSE (never State).
+  /** §9.41: the per-clause dice binding — the last ROLL of THIS clause's
+   *  outcome list (last-wins, rebinds on a second ROLL). Lives on the apply
+   *  context, never on State: a REFUSE discards the draft along with it, so
+   *  a refused step's dice never moved the real counter. Reset per clause of
+   *  a multi-clause step; a fresh event context starts unbound. Function
+   *  expansion is compile-time, so expanded bodies read the caller's list
+   *  binding naturally. */
+  roll?: number
 }
 
 interface ApplyResult {
   concrete: Outcome[]    // what the log stores: ids minted, sugar resolved, deltas computed (§9.15, §9.31)
   refused: boolean
+}
+
+/**
+ * §9.41 {roll} interpolation: a NARRATE string's `{roll}` token is rewritten
+ * AT EXECUTION, so the concrete row carries the number — the journal never
+ * re-derives dice. Runs inside applyOutcome, which places it exactly "after a
+ * ROLL, for subsequent NARRATE args in the same list": the binding is
+ * undefined until this list's ROLL applies, and last-wins on a second ROLL.
+ * A NARRATE before the list's (only) ROLL keeps the literal token — nothing
+ * has been rolled yet; a NARRATE in a REFUSED step is journal-visible with
+ * its number even though the counter never moved (the draft died — the
+ * documented, deterministic re-roll oddity). At fold the concrete rows no
+ * longer contain `{roll}`, so the rewrite is a no-op there.
+ */
+function rewriteRollProse(o: Outcome, ctx: ApplyCtx): Outcome {
+  const s = o.args[0]
+  if (!s || s.t !== 'str' || ctx.roll === undefined || !s.v.includes('{roll}')) return o
+  return { op: o.op, args: [{ t: 'str', v: s.v.replaceAll('{roll}', String(ctx.roll)) }] }
 }
 
 function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
@@ -523,7 +551,7 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       return { concrete: [o], refused: false }
     }
     case 'NARRATE':
-      return { concrete: [o], refused: false }
+      return { concrete: [rewriteRollProse(o, ctx)], refused: false }
     case 'PROGRESS': {
       // §6.7: a read-bar tick — journal-only, no state effect, no time effect
       const d = args[0]
@@ -578,6 +606,57 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
     case 'REFUSE': {
       return { concrete: [o], refused: true }
     }
+    case 'ROLL': {
+      // §9.41 — the engine's ONLY randomness. The args are §6.3 value
+      // expressions evaluated against this clause's bindings and the DRAFT
+      // (strictly: a path over an unbound role rejects the step, like an IF
+      // condition). A roll of m dice consumes exactly m counter values
+      // c .. c+m-1; the concrete row carries the total AND the counter after,
+      // so the fold lands the counter without deriving anything (law 3).
+      // count = 0 is legal (total = bonus, counter unmoved); sides < 2 or
+      // count < 0 reject the step (§9.19 — nothing logged, clock unmoved).
+      const countV = args[0]
+      const sidesV = args[1]
+      const bonusV = args[2]
+      if (!countV || countV.t !== 'vexpr' || !sidesV || sidesV.t !== 'vexpr' || (bonusV !== undefined && bonusV.t !== 'vexpr')) {
+        throw new Error('internal: ROLL arguments must be value expressions')
+      }
+      const pctx: PredCtx = { b: ctx.bindings, state: ctx.state, strict: true, roll: ctx.roll }
+      const count = evalExpr(countV.v, pctx)
+      const sides = evalExpr(sidesV.v, pctx)
+      const bonus = bonusV !== undefined ? evalExpr(bonusV.v, pctx) : 0
+      // one strict discipline for all three operands (§9.39's rule, applied to
+      // dice): an operand that cannot resolve — a missing aspect/attr over its
+      // role — rejects the step, never a silent 0-dice roll
+      if (count === undefined || !Number.isInteger(count) || count < 0) {
+        throw new Error(`ROLL: dice count must be an integer >= 0, got ${count ?? 'nothing'}`)
+      }
+      if (sides === undefined || !Number.isInteger(sides) || sides < 2) {
+        throw new Error(`ROLL: sides must be an integer >= 2, got ${sides ?? 'nothing'}`)
+      }
+      if (bonus === undefined || !Number.isInteger(bonus)) {
+        throw new Error(`ROLL: bonus must be an integer, got ${bonus === undefined ? 'nothing' : bonus}`)
+      }
+      const c = ctx.state.rng
+      let total = bonus
+      for (let i = 0; i < count; i++) total += rollDie(ctx.content.seed, c + i, sides)
+      ctx.roll = total // the per-clause binding: `roll` and {roll} read this
+      ctx.state.rng = c + count // consume the counters ON THE DRAFT — the fold lands the same spot via the ROLLED row (law 1)
+      return {
+        concrete: [{ op: 'ROLLED', args: [{ t: 'int', v: total }, { t: 'int', v: c + count }] }],
+        refused: false,
+      }
+    }
+    case 'ROLLED': {
+      // §9.41, fold side: the recorded roll — set the counter, nothing else
+      // (the total is journal data; replay never re-derives a die, law 3).
+      // Play never applies this op: authored ROLLED is a load error, so the
+      // only path here is applyRecord over a logged row.
+      const ctrAfter = args[1]
+      if (!ctrAfter || ctrAfter.t !== 'int') throw new Error('ROLLED needs (total, ctrAfter)')
+      ctx.state.rng = ctrAfter.v
+      return { concrete: [o], refused: false }
+    }
     default:
       throw new Error(`unknown outcome op '${o.op}'`)
   }
@@ -597,7 +676,7 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
  * whole step, where a `when:` predicate would have read false.
  */
 function applyIf(o: Outcome, ctx: ApplyCtx): ApplyResult {
-  const pctx: PredCtx = { b: ctx.bindings, state: ctx.state, strict: true }
+  const pctx: PredCtx = { b: ctx.bindings, state: ctx.state, strict: true, roll: ctx.roll }
   for (const arm of o.arms ?? []) {
     if (evalPred(arm.when, pctx)) return applyAll(arm.then, ctx)
   }

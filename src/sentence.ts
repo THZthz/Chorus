@@ -1,7 +1,7 @@
 // Sentence AST — mirrors spec §5.1 exactly.
 import type { Clock } from './types.js'
 import type { Ref } from './ref.js'
-import type { Pred } from './predicate.js'
+import type { Pred, ValExpr } from './predicate.js'
 
 export type Role = 'actors' | 'object' | 'with' | 'at' | 'about' | 'to'
 
@@ -29,6 +29,10 @@ export type Arg =
   | { t: 'into'; ref: Ref | { role: Role } }
   | { t: 'asId'; id: string }
   | { t: 'pair'; k: string; v: string | number | boolean }
+  | { t: 'vexpr'; v: ValExpr }              // ROLL argument (§9.41): a §6.3 value expression
+                                            // (int, count(…), total(…), role.aspect.x, roll — a
+                                            // body param parses inside the ValExpr). Authored form
+                                            // only: the log records the computed ROLLED ints.
   | { t: 'param'; name: string; sign?: 1 | -1 }  // F3 authored-only: a function parameter standing in
                                                  // an arg position (§9.40); `sign` carries the +/- of a
                                                  // delta position (`+n`). Calls expand at load — the engine

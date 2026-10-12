@@ -3,7 +3,7 @@
 // parses them once and fails loudly at load time.
 import type { Outcome } from './sentence.js'
 import type { Pred } from './predicate.js'
-import { lintPred, lintTriggerPred, parsePredicate } from './predicate.js'
+import { lintPred, lintRollMayBind, lintTriggerPred, lintTriggerValExpr, lintValExpr, parsePredicate } from './predicate.js'
 import { parseQuery, type Query } from './query.js'
 import { MAX_FN_DEPTH, collectFnCalls, expandFnCalls, parseFunctionBody, parseOutcomes, type FnTable } from './parse.js'
 import type { Dictionary } from './dict.js'
@@ -89,6 +89,9 @@ export interface FunctionDef {
 }
 
 export interface ContentRaw {
+  /** §9.41: the dice seed — the whole script's random sequence is a pure
+   *  function of (seed, counter); default 0. Meta line `seed: N` (§10). */
+  seed?: number
   verbs: Record<string, VerbContent>
   triggers?: TriggerDef[]
   prototypes?: Record<string, PrototypeDef>
@@ -127,6 +130,9 @@ export interface CompiledEnding {
 }
 
 export interface CompiledContent {
+  /** §9.41: the dice seed — every die is `f(seed, counter)`; the run's dice
+   *  sequence is fixed at load and replay is counter-based (no re-derivation) */
+  seed: number
   verbs: Map<string, CompiledVerb>
   triggers: (
     | { id: string; slot: number; once: boolean; out: Outcome[] }
@@ -186,6 +192,7 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     for (const r of recipes) {
       if (r.when) lintPred(`recipe ${r.id}`, r.when)
       forEachIfCondition(r.out, w => lintPred(`recipe ${r.id}`, w))
+      lintDice(`recipe ${r.id}`, r.out)
     }
     verbs.set(name, { name, slots, slotByRole, duration: v.duration, recipes })
   }
@@ -208,6 +215,14 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
       lintPred(`trigger ${t.id}`, w) // the count(DREAD)-typo lint applies here too
       lintTriggerPred(`trigger ${t.id}`, w)
     })
+    // §9.41: trigger ROLL arguments must be role-FREE — same empty-bindings
+    // argument as the IF lint, applied to the dice expression itself
+    forEachAuthoredOutcome(out, o => {
+      if (o.op === 'ROLL') {
+        for (const a of o.args) if (a.t === 'vexpr') lintTriggerValExpr(`trigger ${t.id}`, a.v, 'ROLL argument')
+      }
+    })
+    lintDice(`trigger ${t.id}`, out)
     if ('onExpireOf' in t) return { id: t.id, onExpireOf: t.onExpireOf, out }
     return { id: t.id, slot: t.slot, once: t.once ?? false, out }
   })
@@ -219,7 +234,7 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     for (const r of v.recipes) checkEndingRefs(`recipe ${r.id}`, r.out, endings)
   }
   for (const t of triggers) checkEndingRefs(`trigger ${t.id}`, t.out, endings)
-  return { verbs, triggers, prototypes, templates, endings, stackableNames, stackableKinds }
+  return { seed: raw.seed ?? 0, verbs, triggers, prototypes, templates, endings, stackableNames, stackableKinds }
 }
 
 /**
@@ -244,6 +259,41 @@ function forEachIfCondition(out: Outcome[], visit: (when: Pred) => void): void {
   forEachAuthoredOutcome(out, o => {
     if (o.op === 'IF') for (const arm of o.arms ?? []) visit(arm.when)
   })
+}
+
+/**
+ * §9.41 dice lints, shared by recipe and trigger outcome lists — all run
+ * AFTER function expansion, like every load guard (expanded bodies are
+ * guarded exactly like literal ones):
+ *  - `ROLLED` is engine-written; an authored one forges dice history
+ *    (paren-form-error precedent: the parse entry exists so concrete rows
+ *    re-parse, and this lint is what keeps it out of scripts).
+ *  - `{roll}` in PROGRESS/REFUSE strings is a load error: those strings are
+ *    stored raw and rendered without an execution pass, so the token would
+ *    bake into the journal as literal text. NARRATE is the one legal home —
+ *    the engine rewrites it at execution.
+ *  - ROLL arguments get the recipe-context role lint (count(DREAD)-style
+ *    typos would silently roll 0 dice); the trigger-context role-FREE lint
+ *    is the caller's (it needs the trigger's stricter rule).
+ *  - the `roll` may-bind analysis over the whole list (best-effort,
+ *    false negatives allowed — the runtime rejects whatever it misses).
+ */
+function lintDice(where: string, out: Outcome[]): void {
+  forEachAuthoredOutcome(out, o => {
+    if (o.op === 'ROLLED') {
+      throw new Error(`${where}: ROLLED is engine-written — author ROLL and the log records the concrete result (§9.41)`)
+    }
+    if (o.op === 'PROGRESS' || o.op === 'REFUSE') {
+      const s = o.args.find(a => a.t === 'str') // PROGRESS carries (dur, string); REFUSE (string)
+      if (s && s.t === 'str' && s.v.includes('{roll}')) {
+        throw new Error(`${where}: {roll} is only available in NARRATE strings — ${o.op} prose is load-fixed (§9.41)`)
+      }
+    }
+    if (o.op === 'ROLL') {
+      for (const a of o.args) if (a.t === 'vexpr') lintValExpr(`${where}`, a.v)
+    }
+  })
+  lintRollMayBind(where, out)
 }
 
 function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, CompiledEnding>): void {

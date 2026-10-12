@@ -6,7 +6,7 @@ import { lex, type Tok } from './lexer.js'
 import type { Arg, Clause, IfArm, Outcome, Role, Sentence } from './sentence.js'
 import { ROLES } from './sentence.js'
 import { OUTCOME_OPS, type Dictionary } from './dict.js'
-import { parsePredicateToks, type Pred, type ValExpr } from './predicate.js'
+import { parsePredicateToks, parseValueExprToks, type Pred, type ValExpr } from './predicate.js'
 import type { Ref } from './ref.js'
 import { formatDuration, type Clock } from './clock.js'
 
@@ -253,6 +253,14 @@ class Parser {
       if (op === 'ENDING' && this.atPunct('(')) {
         throw new Error('ENDING takes the paren-less form: ENDING ENDING_ID')
       }
+      // ROLL is paren-only, and its args are NOT the generic arg grammar:
+      // they are §6.3 value expressions (`ROLL(total(actors, aspect:nerve), 6)`
+      // carries a comma inside nested parens the generic splitter cannot
+      // handle, §9.41) — parsed below by a depth-aware Tok scan
+      if (op === 'ROLL') {
+        if (!this.atPunct('(')) throw new Error('ROLL takes the paren form: ROLL(<count-expr>, <sides-expr>[, <bonus-expr>])')
+        return this.rollOutcome()
+      }
       if (this.atPunct('(')) {
         this.next()
         const args: Arg[] = []
@@ -261,6 +269,13 @@ class Parser {
           while (this.atPunct(',')) { this.next(); args.push(this.arg()) }
         }
         this.expectPunct(')')
+        // ROLLED is the engine-written record of a ROLL (§9.41): the parse
+        // entry exists so concrete rows re-parse (journal round-trip, prose
+        // rendering), with the arity pinned — authoring one is caught at
+        // content compile (paren-form-error precedent)
+        if (op === 'ROLLED' && (args.length !== 2 || args[0].t !== 'int' || args[1].t !== 'int')) {
+          throw new Error('ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)')
+        }
         // NARRATE's canonical form is a single string (§4.4); extra args would
         // be dropped by the formatter, so refuse them at the door (§9.6).
         // §9.40: a parameter standing in the string position is allowed — it
@@ -368,6 +383,55 @@ class Parser {
     const out = this.outcomeList()
     this.expectPunct(')')
     return out
+  }
+
+  /**
+   * ROLL(<count-expr>, <sides-expr>[, <bonus-expr>]) — §9.41. The generic
+   * paren'd-arg machinery cannot parse these: `total(actors, aspect:nerve)`
+   * carries a comma inside nested parens and the generic splitter has no
+   * depth tracking. Each argument is instead consumed as a BALANCED Tok unit
+   * up to the depth-0 `,` (or the closing `)`), then parsed with the SAME
+   * §6.3 value-expression grammar the IF cmp operands use
+   * (`parseValueExprToks` — ints, count(role), count(<query>),
+   * total(role, aspect:path), role.aspect.x, role.attr.x, the §9.41 `roll`
+   * operand, and — inside a function body — bare parameters, so a template's
+   * `ROLL(n, 6)` parses and expansion binds the call's number). The exprs
+   * ride as `{t:'vexpr'}` args; arity is pinned here, a load error.
+   */
+  private rollOutcome(): Outcome {
+    this.next() // '('
+    const args: Arg[] = []
+    if (!this.atPunct(')')) {
+      for (;;) {
+        args.push({ t: 'vexpr', v: this.rollArgExpr() })
+        if (this.atPunct(',')) { this.next(); continue }
+        break
+      }
+    }
+    this.expectPunct(')')
+    if (args.length < 2 || args.length > 3) {
+      throw new Error(`ROLL takes (count-expr, sides-expr[, bonus-expr]), got ${args.length} argument(s)`)
+    }
+    return { op: 'ROLL', args }
+  }
+
+  /** one balanced ROLL argument: Toks up to the depth-0 ',' or ')' */
+  private rollArgExpr(): ValExpr {
+    const start = this.pos
+    let depth = 0
+    for (;;) {
+      const t = this.peek()
+      if (!t) throw new Error(`unexpected end of ROLL arguments — ROLL takes (count-expr, sides-expr[, bonus-expr])`)
+      if (t.t === 'punct') {
+        if (t.v === '(') depth++
+        else if (t.v === ')') { if (depth === 0) break; depth-- }
+        else if (t.v === ',' && depth === 0) break
+      }
+      this.next()
+    }
+    const slice = this.toks.slice(start, this.pos)
+    if (slice.length === 0) throw new Error('ROLL arguments cannot be empty')
+    return parseValueExprToks(slice, this.params)
   }
 
   private roleOrRefArg(): Arg {
@@ -598,6 +662,12 @@ function substArg(a: Arg, fn: string | null, bind: Map<string, Arg>): Arg {
       return bound
     }
     return bound
+  }
+  if (a.t === 'vexpr') {
+    // §9.41: a ROLL argument is a value expression; a body template may carry
+    // a param operand inside it (`ROLL(n, 6)`), substituted by the same rule
+    // as IF-condition cmp operands
+    return { t: 'vexpr', v: substExpr(a.v, fn ?? '?', bind) }
   }
   if (a.t === 'ref' && a.ref.form === 'param') {
     // whole-ref position: the bound arg splices in as-is — a ref or a role

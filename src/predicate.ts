@@ -12,6 +12,7 @@ import type { Entity, State } from './types.js'
 import { aspectGet, relationAlive } from './types.js'
 import { matchQuery, parseQuery, type CmpOp, type Query } from './query.js'
 import { ROLES } from './sentence.js'
+import type { Outcome } from './sentence.js'
 import type { Tok } from './lexer.js'
 
 export type RoleBindings = Record<string, Entity[]>
@@ -25,6 +26,12 @@ export interface PredCtx {
    *  Missing aspects, counts over anything and world forms still read
    *  false/0 — they are legitimate branch selection, not failures. */
   strict?: boolean
+  /** §9.41: the apply context's per-clause dice binding — the last ROLL of
+   *  this outcome list, last-wins. Absent during recipe `when:` selection
+   *  (which cannot even parse a `roll` operand) and at fold (concrete rows
+   *  carry results, so nothing re-derives a die). Reading it unbound inside
+   *  a taken branch is a step rejection (§9.19). */
+  roll?: number
 }
 
 export type Pred =
@@ -47,9 +54,11 @@ export type ValExpr =
   | { t: 'param'; name: string }         // F3 authored-only: a function parameter standing in a cmp
                                          // operand (§9.40); expansion replaces it with the call's
                                          // number — it never reaches evaluation
-// F4 will add `{ t: 'roll' }` here — the seeded die result, evaluated from the
-// APPLY context's per-clause `roll` binding (never from State: the binding
-// dies with the draft on REFUSE). This evaluator is the extension point.
+  | { t: 'roll' }                        // §9.41: the per-clause dice binding from the APPLY context
+                                         // (never State — it dies with the draft on REFUSE). Parses
+                                         // only in the Tok front-end (IF conditions, ROLL args); a
+                                         // `when:` line using it is a load error, since selection
+                                         // always runs before any outcome could have rolled.
 
 export interface ScalarCond {
   path: { field: 'aspect' | 'attr'; key: string }
@@ -108,7 +117,21 @@ export function parsePredicateToks(toks: Tok[], params?: ReadonlySet<string>): {
   const slice = toks.slice(0, end)
   if (slice.length === 0) throw new Error(`an IF needs a condition before '->'`)
   const view = predViewFromToks(slice)
-  return { pred: new PredParser(view.src, view, params).parse(), end }
+  // allowRoll: `roll` (§9.41) is an outcome-list operand — an IF condition may
+  // read the list's dice; a `when:` line (the string front-end) may not
+  return { pred: new PredParser(view.src, view, params, true).parse(), end }
+}
+
+/**
+ * Parse ONE standalone value expression (§9.41): the ROLL argument grammar,
+ * which is exactly the §6.3 cmp-operand grammar — ints, count(role),
+ * count(<query>), total(role, aspect:path), role.aspect.x, role.attr.x, the
+ * §9.41 `roll` operand, and (inside a function body, §9.40) bare parameters.
+ * The Tok front-end for ROLL's paren'd args: one grammar, three front-ends.
+ */
+export function parseValueExprToks(toks: Tok[], params?: ReadonlySet<string>): ValExpr {
+  const view = predViewFromToks(toks)
+  return new PredParser(view.src, view, params, true).parseValueExpr()
 }
 
 /** sentence Toks → this parser's own token alphabet (§9.39). Word-adjacent
@@ -142,7 +165,7 @@ class PredParser {
   private spans: { start: number; end: number }[] = [] // source offsets per token
   private pos = 0
   private readonly src: string
-  constructor(src: string, pre?: PredView, private params?: ReadonlySet<string>) {
+  constructor(src: string, pre?: PredView, private params?: ReadonlySet<string>, private allowRoll = false) {
     this.src = src
     if (pre) { this.toks = pre.toks; this.spans = pre.spans; return }
     // `-` is a token only so exists(...) query terms can negate (`-aspect:winter`)
@@ -170,6 +193,14 @@ class PredParser {
     const p = this.or()
     if (this.pos !== this.toks.length) throw new Error(`trailing tokens in predicate at '${this.peek()}'`)
     return p
+  }
+
+  /** one full value expression (§9.41 ROLL args): the §6.3 operand grammar,
+   *  all tokens consumed */
+  parseValueExpr(): ValExpr {
+    const v = this.valExpr()
+    if (this.pos !== this.toks.length) throw new Error(`trailing tokens in ROLL argument at '${this.peek()}'`)
+    return v
   }
 
   private or(): Pred {
@@ -279,6 +310,16 @@ class PredParser {
     // it to the call's number. Parameters only ever stand where a numeric
     // literal is expected; query terms and scalar conditions take none.
     if (this.params?.has(t)) return { t: 'param', name: t }
+    // §9.41: the dice operand — Tok front-ends only (IF conditions, ROLL
+    // args). A `when:` line parses through the string front-end, where
+    // selection provably runs before any outcome could have rolled, so the
+    // operand is a load error there rather than an always-false read.
+    if (t === 'roll') {
+      if (!this.allowRoll) {
+        throw new Error(`'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§9.41)`)
+      }
+      return { t: 'roll' }
+    }
     if (/^\d+$/.test(t)) return { t: 'int', v: Number(t) }
     if (t === 'count') {
       this.expect('(')
@@ -425,9 +466,17 @@ function numberAttr(e: Entity, key: string): number | undefined {
   return typeof v === 'number' ? v : undefined
 }
 
-function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
+export function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
   switch (x.t) {
     case 'int': return x.v
+    case 'roll':
+      // §9.41: the per-clause dice binding. Unbound in a taken branch (or in a
+      // ROLL argument) is a step rejection (§9.19) — never a silent false or
+      // an implicit 0: the author asked for dice that cannot have happened.
+      if (ctx.roll === undefined) {
+        throw new Error(`'roll' is unbound — no ROLL has run in this outcome list before this point`)
+      }
+      return ctx.roll
     case 'count': return roleCards(ctx, x.role).length
     case 'countQuery': {
       // world scope, like existsQuery (§6.3): every ALIVE card matching the query
@@ -491,7 +540,7 @@ export function lintPred(where: string, p: Pred): void {
   }
 }
 
-function lintValExpr(where: string, x: ValExpr): void {
+export function lintValExpr(where: string, x: ValExpr): void {
   if (x.t === 'count' && !(ROLES as readonly string[]).includes(x.role)) {
     throw new Error(
       `${where}: count() argument '${x.role}' is neither a role (${ROLE_LIST}) nor a query ` +
@@ -541,25 +590,25 @@ export function lintTriggerPred(where: string, p: Pred): void {
   }
 }
 
-function lintTriggerValExpr(where: string, x: ValExpr): void {
+export function lintTriggerValExpr(where: string, x: ValExpr, what = 'IF operand'): void {
   switch (x.t) {
     case 'count':
       throw new Error(
-        `${where}: IF operand count(${x.role}) reads a step role — trigger bindings are empty, ` +
+        `${where}: ${what} count(${x.role}) reads a step role — trigger bindings are empty, ` +
         `it would always be 0; use count(<query>) (e.g. count(name:${x.role}))`,
       )
     case 'total':
       throw new Error(
-        `${where}: IF operand total(${x.role}, aspect:${x.path}) reads a step role — ` +
+        `${where}: ${what} total(${x.role}, aspect:${x.path}) reads a step role — ` +
         `trigger bindings are empty, it would always be 0`,
       )
     case 'path':
       throw new Error(
-        `${where}: IF operand ${x.role}.${x.field}.${x.key} reads a step role — ` +
+        `${where}: ${what} ${x.role}.${x.field}.${x.key} reads a step role — ` +
         `trigger bindings are empty, it would always be false; use world forms (exists(…), count(name:…))`,
       )
     default:
-      return // int / countQuery are world forms — the trigger vocabulary
+      return // int / countQuery are world forms; `roll` (§9.41) reads the list's own dice, not a role
   }
 }
 
@@ -572,4 +621,58 @@ function numCmp(a: number, op: CmpOp, b: number): boolean {
     case '=': return a === b
     case '!=': return a !== b
   }
+}
+
+// ---------- §9.41 compile-time may-bind lint for the `roll` operand ----------
+
+/** does this predicate read the `roll` operand anywhere? */
+function predUsesRoll(p: Pred): boolean {
+  switch (p.t) {
+    case 'and':
+    case 'or': return predUsesRoll(p.a) || predUsesRoll(p.b)
+    case 'not': return predUsesRoll(p.a)
+    case 'cmp': return p.l.t === 'roll' || p.r.t === 'roll'
+    default: return false
+  }
+}
+
+/**
+ * Best-effort may-bind analysis (§9.41, false NEGATIVES allowed): a `roll`
+ * operand is only legal where a ROLL could have run earlier in the same
+ * outcome list. The scan walks each list linearly, descending into IF branch
+ * bodies; a ROLL seen anywhere earlier — including inside an EARLIER IF's
+ * branches, any of which might be the taken one — makes later references
+ * lint-clean (no false positives for branch-hidden rolls). What the scan CAN
+ * prove — no ROLL anywhere before the reference on any path — is a load
+ * error: every play of that step would reject at runtime (§9.19). Whether a
+ * runtime branch actually binds is left to the runtime rejection.
+ * Called from content compile over every expanded recipe/trigger list.
+ */
+export function lintRollMayBind(where: string, out: Outcome[]): void {
+  walkRollMayBind(where, out, false)
+}
+
+/** walk one list; returns whether it could possibly bind `roll` (contain a ROLL) */
+function walkRollMayBind(where: string, list: Outcome[], bound: boolean): boolean {
+  let mayBind = bound
+  for (const o of list) {
+    if (o.op === 'ROLL') mayBind = true
+    else if (o.op === 'IF') {
+      for (const arm of o.arms ?? []) {
+        if (predUsesRoll(arm.when) && !mayBind) {
+          throw new Error(
+            `${where}: 'roll' is read but no ROLL can have run before it in this outcome list — ` +
+            `author a ROLL earlier in the list (the dice binding is per list/clause, §9.41)`,
+          )
+        }
+      }
+      // branch bodies may bind: ANY branch containing a possible ROLL makes
+      // everything after this IF lint-clean (false negatives allowed)
+      let branchBinds = false
+      for (const arm of o.arms ?? []) if (walkRollMayBind(where, arm.then, mayBind)) branchBinds = true
+      if (o.fallback && walkRollMayBind(where, o.fallback, mayBind)) branchBinds = true
+      if (branchBinds) mayBind = true
+    }
+  }
+  return mayBind
 }

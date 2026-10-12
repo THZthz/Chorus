@@ -59,10 +59,16 @@ export interface State {
   /** the ending once told (spec §9.35); null until an ENDING outcome applies,
    *  cleared naturally when the fold no longer reaches its record (undo) */
   ended: Ending | null
+  /** §9.41: the seeded-RNG counter — how many die values the whole history has
+   *  consumed. Play consumes counters ON THE DRAFT inside the ROLL outcome;
+   *  the fold lands the same spot from the concrete `ROLLED(<total>, <ctrAfter>)`
+   *  row — replay never re-derives a die (law 3), and undo reconstructs the
+   *  counter from the folded log. */
+  rng: number
 }
 
 export function newState(now = 0): State {
-  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null }
+  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null, rng: 0 }
 }
 
 export function cloneState(s: State): State {
@@ -76,7 +82,7 @@ export function cloneState(s: State): State {
   // share arrays, so a discarded draft's pool destroy would mutate real state
   const byName = new Map<string, string[]>()
   for (const [k, v] of s.byName) byName.set(k, [...v])
-  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null }
+  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null, rng: s.rng }
 }
 
 function cloneAspects(a: Aspects): Aspects {

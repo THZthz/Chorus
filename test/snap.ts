@@ -10,6 +10,7 @@ export function snap(s: State): string {
     rels: [...s.relations.entries()].sort(([a], [b]) => a < b ? -1 : 1),
     byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1), // pools included (§9.38)
     now: s.now,
+    rng: s.rng, // §9.41: the dice counter — play and fold must land it identically
     fired: [...s.fired].sort(), // §9.34: play and fold must agree on fired too
     ended: s.ended, // §9.35: …and on the story's ending
   })

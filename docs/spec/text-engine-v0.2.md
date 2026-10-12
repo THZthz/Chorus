@@ -441,6 +441,9 @@ pairwise     rel(parent_child, actors)                    # ∃ a pair of actors
 cross-role   rel(neighbor, actors.container, object)      # ∃ an edge across two roles;
                                                           # a `X.container` role stands for
                                                           # where the cards of role X sit
+world        exists(HUNTER)                               # ∃ an ALIVE card with this exact name
+             exists(aspect:hunter>=1)                     # ∃ an alive card matching a §4.5 query
+             exists(kind:rite aspect:ritual>=1) · exists(-aspect:winter)
 aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
 paths        total(actors, aspect:lantern) < object.aspect.demand   # value vs value
              count(actors) > object.attr.seats                      # attr paths too
@@ -451,6 +454,34 @@ comparisons  >= · <= · > · < · = · !=
 v0.2 limits: path operands read `role.aspect.key` and `role.attr.key`
 (numeric attrs); the scalar conditions inside `every`/`any` read **aspects
 only** (`aspect:key >= n`).
+
+**`exists(...)` — the world-existential check** (Chorus's answer to Cultist
+Simulator's `extantreqs`/`tablereqs`, docs/reverse/cultist-simulator.md):
+true iff at least one **alive** card anywhere in the state matches — every
+alive entity in the world, not just the cards bound into this step's roles,
+and regardless of where they sit. It reads the same input state as every
+other condition (recipe-selection time, §6.4) and is an ordinary primary
+condition: `NOT exists(...)`, `exists(...) AND ...`, `OR` chains all compose.
+
+- `exists(NAME)` — an alive entity bears exactly this name (names are case
+  exact and unique among the living, §9.14; a destroyed card stamps
+  `deadAction`, releases its name, and stops existing).
+- `exists(<query>)` — an alive entity matches the §4.5 slot query: a
+  conjunction of `kind:` / `aspect:` / `state:` terms with `-` negation.
+- Disambiguation: if the first token inside the parens is a query-term
+  starter (`kind:` / `aspect:` / `state:` / a leading `-`), the contents
+  parse as a §4.5 query; otherwise they parse as a single NAME. Spaces around
+  a comparison inside a query are glue: `aspect:hunter >= 1` reads as
+  `aspect:hunter>=1` (§4.5 terms are whitespace-separated).
+
+Idiom — a rite that only burns while the coast is clear (no HUNTER card
+exists anywhere in play) and the sealed door still stands:
+
+```
+- id:    rite.unwatched
+  when:  NOT exists(aspect:hunter>=1) AND exists(THE_SEALED_DOOR)
+  out:   PROGRESS(30m, "The door holds; the street is empty."), SPAWN ...
+```
 
 ### 6.4 Recipes: first match wins, most specific first, **stable ids**
 

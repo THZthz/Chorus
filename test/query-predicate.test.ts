@@ -81,3 +81,97 @@ describe('condition predicates (§6.3)', () => {
     expect(evalPred(p, ctx({ actors: [A, B], object: [magick] }))).toBe(false) // ANA knows
   })
 })
+
+describe('exists(...) — world-existential conditions (§6.3, CS extantreqs)', () => {
+  const world = (): State => {
+    const s = newState()
+    // the hunter prowls the villa; nothing else in play has hunter/secret
+    addEntity(s, ent({ id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 2 }, attrs: { container: 'villa' } }))
+    addEntity(s, ent({ id: 'rite', kind: 'rite', name: 'RITE_OF_DAWN', aspects: { ritual: 1 }, attrs: { container: 'house' } }))
+    return s
+  }
+  const ctxIn = (s: State) => (b: PredCtx['b']): PredCtx => ({ b, state: s })
+
+  test('name form: true while the named card is alive, false after DESTROY', () => {
+    const s = world()
+    const p = parsePredicate('exists(HUNTER)')
+    expect(evalPred(p, ctxIn(s)({}))).toBe(true) // no roles bound at all
+    s.entities.get('hunter')!.deadAction = 1 // DESTROY stamps deadAction…
+    s.byName.delete('HUNTER')                // …and releases the name (§9.14)
+    expect(evalPred(p, ctxIn(s)({}))).toBe(false)
+    expect(evalPred(parsePredicate('NOT exists(HUNTER)'), ctxIn(s)({}))).toBe(true)
+  })
+
+  test('name form is exact and never matches the dead or the absent', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(hunter)'), ctxIn(s)({}))).toBe(false) // case-exact, like byName
+    expect(evalPred(parsePredicate('exists(THE_SEALED_DOOR)'), ctxIn(s)({}))).toBe(false)
+    const dead = ent({ id: 'ghost', kind: 'idea', name: 'GHOST' })
+    dead.deadAction = 3
+    addEntity(s, dead) // a dead entity never enters byName
+    expect(evalPred(parsePredicate('exists(GHOST)'), ctxIn(s)({}))).toBe(false)
+  })
+
+  test('query form: aspect threshold', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(aspect:hunter>=1)'), ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('exists(aspect:hunter >= 3)'), ctxIn(s)({}))).toBe(false) // spaces tighten to >=3
+    expect(evalPred(parsePredicate('exists(aspect:secret)'), ctxIn(s)({}))).toBe(false) // bare term = level >= 1
+  })
+
+  test('query form: kind+aspect conjunction', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(kind:rite aspect:ritual>=1)'), ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('exists(kind:rite aspect:ritual>=2)'), ctxIn(s)({}))).toBe(false)
+    expect(evalPred(parsePredicate('exists(kind:character aspect:ritual>=1)'), ctxIn(s)({}))).toBe(false)
+  })
+
+  test('query form: negation term', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(kind:rite -aspect:ritual)'), ctxIn(s)({}))).toBe(false) // the only rite has ritual
+    expect(evalPred(parsePredicate('exists(-aspect:ritual)'), ctxIn(s)({}))).toBe(true) // the hunter lacks it
+  })
+
+  test('query form: state: terms read the state.* attr namespace', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(state:sealed)'), ctxIn(s)({}))).toBe(false)
+    expect(evalPred(parsePredicate('exists(-state:sealed)'), ctxIn(s)({}))).toBe(true) // nobody is sealed
+    s.entities.get('rite')!.attrs['state.sealed'] = true
+    expect(evalPred(parsePredicate('exists(state:sealed)'), ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('exists(kind:rite state:sealed)'), ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('exists(kind:character state:sealed)'), ctxIn(s)({}))).toBe(false) // hunter unsealed
+    expect(evalPred(parsePredicate('exists(-state:sealed)'), ctxIn(s)({}))).toBe(true) // …but still matches the negation
+  })
+
+  test('NOT binds tighter than AND around exists (§6.3 precedence)', () => {
+    const s = world()
+    // HUNTER is alive and nothing has ritual>=5: the spec grouping
+    // (NOT exists(HUNTER)) AND exists(aspect:ritual>=5) is false —
+    // the wrong reading NOT (exists AND exists) would be true here
+    expect(evalPred(parsePredicate('NOT exists(HUNTER) AND exists(aspect:ritual>=5)'), ctxIn(s)({}))).toBe(false)
+    // flip an operand and it turns true, proving both sides are read as written
+    expect(evalPred(parsePredicate('NOT exists(GHOST) AND exists(aspect:ritual>=1)'), ctxIn(s)({}))).toBe(true)
+  })
+
+  test('scope: finds a card bound to no role, sitting in another place than the actors', () => {
+    const s = world()
+    // actors = the rite at the house; the hunter is in the villa and in no role
+    const p = parsePredicate('exists(aspect:hunter>=1) OR exists(HUNTER)')
+    expect(evalPred(p, ctxIn(s)({ actors: [s.entities.get('rite')!] }))).toBe(true)
+  })
+
+  test('disambiguation: a starter word without a colon is a NAME, not a query', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(state)'), ctxIn(s)({}))).toBe(false) // no card named 'state'
+    expect(evalPred(parsePredicate('exists(kind)'), ctxIn(s)({}))).toBe(false)
+  })
+
+  test('composability and parse errors', () => {
+    const s = world()
+    const yes = parsePredicate('exists(HUNTER) AND NOT exists(aspect:ritual>=5)')
+    expect(evalPred(yes, ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('NOT exists(HUNTER) OR exists(aspect:ritual>=5)'), ctxIn(s)({}))).toBe(false)
+    expect(() => parsePredicate('exists()')).toThrow(/needs a name or a slot query/)
+    expect(() => parsePredicate('exists(TWO WORDS)')).toThrow(/takes one name/)
+  })
+})

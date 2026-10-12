@@ -1,11 +1,12 @@
 // Condition predicates for recipe `when` — spec §6.3.
 //   count(actors) = 2 AND rel(parent_child, actors) AND NOT any(actors, aspect:occult >= 2)
 //   total(actors, aspect:lantern) < object.aspect.demand
+//   exists(aspect:hunter>=1) AND NOT exists(THE_SEALED_DOOR)   # world-existential
 // Path operands use dots (object.aspect.demand); scalar conditions inside
 // every/any use the query colon form (aspect:occult >= 2).
 import type { Entity, State } from './types.js'
 import { aspectGet, relationAlive } from './types.js'
-import type { CmpOp } from './query.js'
+import { matchQuery, parseQuery, type CmpOp, type Query } from './query.js'
 
 export type RoleBindings = Record<string, Entity[]>
 
@@ -22,6 +23,8 @@ export type Pred =
   | { t: 'rel'; rtype: string; role: string; role2?: string }
   | { t: 'every'; role: string; cond: ScalarCond }
   | { t: 'any'; role: string; cond: ScalarCond }
+  | { t: 'exists'; name: string }        // ∃ an ALIVE entity bearing this exact name
+  | { t: 'existsQuery'; query: Query }   // ∃ an alive entity matching a §4.5 slot query
 
 export type ValExpr =
   | { t: 'int'; v: number }
@@ -44,10 +47,19 @@ export function parsePredicate(src: string): Pred {
 }
 
 class PredParser {
-  private toks: string[]
+  private toks: string[] = []
+  private spans: { start: number; end: number }[] = [] // source offsets per token
   private pos = 0
+  private readonly src: string
   constructor(src: string) {
-    this.toks = src.match(/[A-Za-z_][A-Za-z0-9_.]*|\d+|>=|<=|!=|=|>|<|\(|\)|,|:/g) ?? []
+    this.src = src
+    // `-` is a token only so exists(...) query terms can negate (`-aspect:winter`)
+    const re = /[A-Za-z_][A-Za-z0-9_.]*|\d+|>=|<=|!=|=|>|<|\(|\)|,|:|-/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(src)) !== null) {
+      this.toks.push(m[0])
+      this.spans.push({ start: m.index, end: m.index + m[0].length })
+    }
     if (this.toks.length === 0) throw new Error(`empty predicate '${src}'`)
   }
   private peek(): string | undefined { return this.toks[this.pos] }
@@ -86,6 +98,7 @@ class PredParser {
     if (this.peek() === '(') { this.next(); const p = this.or(); this.expect(')'); return p }
     const t = this.peek()
     if (t === 'every' || t === 'any') return this.quantified()
+    if (t === 'exists') return this.existsPred()
     if (t === 'rel') {
       this.next()
       this.expect('(')
@@ -111,6 +124,35 @@ class PredParser {
     const cond = this.scalarCond()
     this.expect(')')
     return { t: kind, role, cond }
+  }
+
+  // exists(NAME) — an ALIVE entity bears the name; exists(<query>) — an alive
+  // entity matches the §4.5 slot query. The first token inside the parens
+  // decides: a query-term starter (kind:/aspect:/state: or a leading -) means
+  // query form, anything else is a single NAME.
+  private existsPred(): Pred {
+    this.next() // 'exists'
+    this.expect('(')
+    const first = this.pos
+    let depth = 1
+    while (depth > 0) {
+      const tk = this.next()
+      if (tk === '(') depth++
+      else if (tk === ')') depth--
+    }
+    const close = this.pos - 1 // token index of the matching ')'
+    if (close === first) throw new Error('exists() needs a name or a slot query')
+    const head = this.toks[first]
+    const isQuery = head === '-' ||
+      ((head === 'kind' || head === 'aspect' || head === 'state') && this.toks[first + 1] === ':')
+    const inner = (): string => this.src.substring(this.spans[first].start, this.spans[close].start)
+    if (isQuery) {
+      // §4.5 splits terms on whitespace, so tighten `aspect:hunter >= 1` to
+      // `aspect:hunter>=1` — spaces around a comparison are glue, not structure
+      return { t: 'existsQuery', query: parseQuery(inner().replace(/\s*(>=|<=|!=|=|>|<)\s*/g, '$1')) }
+    }
+    if (close - first > 1) throw new Error(`exists() takes one name or a kind:/aspect:/state: query, got '${inner().trim()}'`)
+    return { t: 'exists', name: head }
   }
 
   private scalarCond(): ScalarCond {
@@ -214,6 +256,20 @@ export function evalPred(p: Pred, ctx: PredCtx): boolean {
     case 'any': {
       const role = ctx.b[p.role] ?? []
       return role.some(e => scalarOk(e, p.cond))
+    }
+    case 'exists': {
+      // byName holds ALIVE entities only (§9.14); the deadAction re-check is
+      // the same belt-and-braces resolveRef wears
+      const id = ctx.state.byName.get(p.name)
+      return id !== undefined && ctx.state.entities.get(id)?.deadAction === null
+    }
+    case 'existsQuery': {
+      // the WHOLE world, not the step's bound roles — CS extantreqs ("anywhere
+      // in play"); same input state every other condition reads (§6.4)
+      for (const e of ctx.state.entities.values()) {
+        if (e.deadAction === null && matchQuery(e, p.query)) return true
+      }
+      return false
     }
     case 'cmp': {
       const l = evalExpr(p.l, ctx), r = evalExpr(p.r, ctx)

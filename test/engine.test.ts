@@ -9,7 +9,7 @@ import { formatSentence } from '../src/format.js'
 import { parseSentence } from '../src/parse.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog, Log } from '../src/store.js'
-import { newState, type State } from '../src/types.js'
+import { addEntity, newState, type State } from '../src/types.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -373,6 +373,85 @@ describe('review regressions', () => {
     expect(r2.rejected).toMatch(/already in use/)
     expect(r2.records).toHaveLength(0)
     expect(r2.state).toBe(r.state)
+  })
+})
+
+describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)', () => {
+  const probeDict = seedDictionary()
+  probeDict.registerVerb('PROBE')
+  const probeContent = (recipes: ContentRaw['verbs'][string]['recipes']): CompiledContent => compileContent({
+    verbs: {
+      PROBE: {
+        slots: [{ role: 'actors', min: 1, max: 2, query: 'kind:character' }],
+        duration: 30,
+        recipes,
+      },
+    },
+  }, probeDict)
+  const runProbe = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
+    const s = parseSentence(src, probeDict)
+    let n = 0
+    return executeStep(theContent, probeDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
+      firstRecordId,
+      idGen: () => `x${firstRecordId}_${++n}`,
+    })
+  }
+  // two recipes, order-dependent: the gate branch needs a hunter in the world
+  // AND no ward anywhere; the default is the calm world
+  const gate = (): CompiledContent => probeContent([
+    { id: 'probe.hunted', when: 'exists(kind:character aspect:hunter>=1) AND NOT exists(kind:item aspect:ward>=1)', out: ['NARRATE("A hunter walks the world.")'] },
+    { out: ['NARRATE("The world is calm.")'] },
+  ])
+
+  test('scope proof: an unbound hunter in a far place selects the exists AND NOT exists branch', () => {
+    const { state } = setup()
+    // prowls the villa: bound to no role of this step and in another place
+    // than ANA at the house — world scope is the whole point
+    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
+    expect(r.rejected).toBeNull()
+    expect(r.records[0].recipes).toEqual(['probe.hunted'])
+    expect(r.records[0].sentence).toContain('A hunter walks the world.')
+  })
+
+  test('a ward anywhere in the world flips the branch — NOT exists(kind:item aspect:ward>=1) fails', () => {
+    const { state } = setup()
+    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'ward', kind: 'item', name: 'IRON_WARD', aspects: { ward: 2 }, attrs: { container: 'greenhouse' }, bornAction: null, deadAction: null })
+    const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
+    expect(r.records[0].recipes).toEqual(['probe.default'])
+  })
+
+  test('destroyed cards stop existing: the gate un-latches after the hunter dies', () => {
+    const { state } = setup()
+    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    state.entities.get('hunter')!.deadAction = 99 // DESTROY shape: stamp + release the name (§9.14)
+    state.byName.delete('HUNTER')
+    const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
+    expect(r.records[0].recipes).toEqual(['probe.default'])
+  })
+
+  test('name form: exists(THE_SEALED_DOOR) sees a named card across the map', () => {
+    const { state } = setup()
+    addEntity(state, { id: 'sealed_door', kind: 'place', name: 'THE_SEALED_DOOR', aspects: {}, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    const c = probeContent([
+      { id: 'probe.door', when: 'exists(THE_SEALED_DOOR)', out: ['NARRATE("The door still stands.")'] },
+      { out: ['NARRATE("No door.")'] },
+    ])
+    const r = runProbe(c, state, '0:28 @ ANA PROBE')
+    expect(r.records[0].recipes).toEqual(['probe.door'])
+  })
+
+  test('relations are untouched by exists evaluation: rel gates still select as before', () => {
+    const { state } = setup()
+    const c = probeContent([
+      { id: 'probe.bonded', when: 'exists(aspect:lantern>=1) AND rel(parent_child, actors)', out: ['NARRATE("Kin in a haunted world.")'] },
+      { out: ['NARRATE("No kinship.")'] },
+    ])
+    const r = runProbe(c, state, '0:28 @ ANA, BERTHA PROBE') // ANA is BERTHA's parent (seed edge)
+    expect(r.records[0].recipes).toEqual(['probe.bonded'])
+    const r2 = runProbe(c, state, '0:30 @ ANA, MY_FOLLOWER PROBE', 2) // no parent_child edge
+    expect(r2.records[0].recipes).toEqual(['probe.default'])
   })
 })
 

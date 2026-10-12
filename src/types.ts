@@ -80,16 +80,34 @@ export function getAlive(s: State, id: string): Entity | undefined {
   return e && e.deadAction === null ? e : undefined
 }
 
-/** aspect lookup by dotted path: 'secret' | 'language.latin' (missing → undefined) */
-export function aspectGet(e: Entity, path: string): number | undefined {
+/** raw aspect entry by dotted path: 'secret' | 'language.latin' (missing → undefined).
+ *  Unlike aspectGet this surfaces sub-maps, so a delta can refuse instead of
+ *  silently clobbering one (§9.31). */
+export function aspectEntry(e: Entity, path: string): number | Aspects | undefined {
   const dot = path.indexOf('.')
-  if (dot === -1) {
-    const v = e.aspects[path]
-    return typeof v === 'number' ? v : undefined
-  }
+  if (dot === -1) return e.aspects[path]
   const sub = e.aspects[path.slice(0, dot)]
   if (typeof sub === 'number') return undefined
   return sub?.[path.slice(dot + 1)]
+}
+
+/** aspect lookup by dotted path: 'secret' | 'language.latin' (missing → undefined) */
+export function aspectGet(e: Entity, path: string): number | undefined {
+  const v = aspectEntry(e, path)
+  return typeof v === 'number' ? v : undefined
+}
+
+/** aspect write by dotted path — creates the sub-object when missing (mirrors aspectGet) */
+export function aspectSet(e: Entity, path: string, v: number): void {
+  const dot = path.indexOf('.')
+  if (dot === -1) {
+    e.aspects[path] = v
+    return
+  }
+  const head = path.slice(0, dot)
+  const sub = e.aspects[head]
+  const obj = typeof sub === 'object' ? sub : (e.aspects[head] = {})
+  obj[path.slice(dot + 1)] = v
 }
 
 export function attrGet(e: Entity, key: string): AttrValue | undefined {

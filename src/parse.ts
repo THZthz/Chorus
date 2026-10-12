@@ -233,6 +233,14 @@ class Parser {
   arg(): Arg {
     const t = this.peek()
     if (!t) throw new Error('unexpected end of outcome args')
+    // signed SET value (§9.31): '+'/'-' int is a delta on the entry's current value
+    if (t.t === 'punct' && (t.v === '+' || t.v === '-')) {
+      this.next()
+      const n = this.next()
+      if (n.t === 'dur') throw new Error('deltas are integers only (no duration deltas)')
+      if (n.t !== 'int') throw new Error(`expected an integer after '${t.v}', got '${show(n)}'`)
+      return { t: 'delta', v: t.v === '-' ? -n.v : n.v }
+    }
     if (t.t === 'str') { this.next(); return { t: 'str', v: t.v } }
     if (t.t === 'dur') { this.next(); return { t: 'dur', v: t.v } }
     if (t.t === 'int') { this.next(); return { t: 'int', v: t.v } }
@@ -256,11 +264,21 @@ class Parser {
         this.next(); this.next()
         return { t: 'pair', k: t.v, v: this.valueToken() }
       }
-      // dotted names in arg position are string keys: SET(x, state.sealed, true)
-      if (this.atPunct('.') && this.peek(1)?.t === 'name') {
+      // `aspect:` names the aspects map in SET keys (§9.31): aspect:secret,
+      // aspect:language.latin — one key token, like the query form (§4.5)
+      if (t.v === 'aspect' && this.atPunct(':', 1) && this.peek(2)?.t === 'name') {
+        this.next(); this.next()
+        const n = this.next()
+        let key = 'aspect:' + n.v
+        while (this.atPunct('.') && this.peek(1)?.t === 'name') { this.next(); key += '.' + this.next().v }
+        return { t: 'key', v: key }
+      }
+      // dotted names in arg position are SET keys: SET(x, state.sealed, true)
+      if (this.atPunct('.', 1) && this.peek(2)?.t === 'name') {
         let key = t.v
-        while (this.atPunct('.')) { this.next(); const part = this.next(); if (part.t !== 'name') throw new Error(`bad dotted key '${key}.'`); key += '.' + part.v }
-        return { t: 'str', v: key }
+        this.next() // the leading name
+        while (this.atPunct('.') && this.peek(1)?.t === 'name') { this.next(); key += '.' + this.next().v }
+        return { t: 'key', v: key }
       }
       return { t: 'ref', ref: this.ref() }
     }

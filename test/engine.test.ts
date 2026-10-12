@@ -1,10 +1,11 @@
 // Engine acceptance tests — the spec §6.4 READ ladder, REFUSE semantics (§6.5),
 // time ownership (§9.12), events (§9.16), fold determinism (§7).
 import { describe, expect, test } from 'vitest'
-import { compileContent } from '../src/content.js'
+import { compileContent, type CompiledContent, type ContentRaw } from '../src/content.js'
 import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { formatDuration } from '../src/clock.js'
 import { fold, foldUpTo } from '../src/fold.js'
+import { formatSentence } from '../src/format.js'
 import { parseSentence } from '../src/parse.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog, Log } from '../src/store.js'
@@ -458,5 +459,165 @@ describe('empty base state fold (fresh world, no content spawns)', () => {
   test('fold of an empty log returns the base state', () => {
     const base = newState()
     expect(fold([], base, dict, content).entities.size).toBe(0)
+  })
+})
+
+describe('SET deltas and aspect keys (§9.31)', () => {
+  const tuneDict = seedDictionary()
+  tuneDict.registerVerb('TUNE')
+  const counterContent = (recipes: ContentRaw['verbs'][string]['recipes']): CompiledContent => compileContent({
+    verbs: {
+      TUNE: {
+        slots: [{ role: 'actors', min: 1, max: 2, query: 'kind:character' }],
+        duration: 30,
+        recipes,
+      },
+    },
+  }, tuneDict)
+  const runTune = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
+    const s = parseSentence(src, tuneDict)
+    let n = 0
+    return executeStep(theContent, tuneDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
+      firstRecordId,
+      idGen: () => `x${firstRecordId}_${++n}`,
+    })
+  }
+
+  test('a signed value adds to the attr (missing = 0) and the log carries the absolute', () => {
+    const { state } = setup()
+    const c = counterContent([{ out: ['SET(ANA, funds, +2)'] }])
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('ana')!.attrs['funds']).toBe(2) // missing entry counted as 0
+    const set = r.records[0].outcomes[0]
+    expect(set.op).toBe('SET')
+    expect(set.args[2]).toEqual({ t: 'int', v: 2 }) // the record holds the concrete absolute, not the delta
+    expect(r.records[0].sentence).toContain('-> SET(ANA, funds, 2)') // name ref kept, value absolutized
+    // the concrete sentence round-trips
+    expect(formatSentence(parseSentence(r.records[0].sentence, tuneDict), tuneDict)).toBe(r.records[0].sentence)
+    // the next delta applies to the new value
+    const r2 = runTune(c, r.state, '0:21 @ ANA TUNE', 2)
+    expect(r2.state.entities.get('ana')!.attrs['funds']).toBe(4)
+  })
+
+  test('decrements may go negative — no clamping (§9.31)', () => {
+    const { state } = setup()
+    const c = counterContent([{ out: ['SET(ACTORS, funds, -3)'] }])
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('ana')!.attrs['funds']).toBe(-3)
+    expect(r.records[0].sentence).toContain('SET(#ana, funds, -3)')
+  })
+
+  test('aspect: + delta increments the aspects map; an absolute aspect set writes it too', () => {
+    const { state } = setup()
+    const c = counterContent([{ out: ['SET(ACTORS, aspect:dread, +1)'] }])
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('ana')!.aspects['dread']).toBe(1)
+    expect(r.records[0].sentence).toContain('SET(#ana, aspect:dread, 1)')
+    // absolute form through the fold path (concrete outcomes replay as-is)
+    const s = parseSentence('0:0 @ ANA WAIT -> SET(#ana, aspect:language.latin, 2)', dict)
+    applyRecord({
+      id: 2, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+      actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
+      outcomes: s.outcomes, recipes: [], sentence: '',
+    }, r.state, dict, content)
+    expect(r.state.entities.get('ana')!.aspects['language']).toEqual({ latin: 2 })
+  })
+
+  test('absolute values stay absolute — repeated casts write the same literal', () => {
+    const { state } = setup()
+    const c = counterContent([{ out: ['SET(ACTORS, funds, 5)'] }])
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.state.entities.get('ana')!.attrs['funds']).toBe(5)
+    const r2 = runTune(c, r.state, '0:21 @ ANA TUNE', 2)
+    expect(r2.state.entities.get('ana')!.attrs['funds']).toBe(5) // not 5+5
+    expect(r2.records[0].sentence).toContain('SET(ACTORS, funds, 5)')
+  })
+
+  test('a delta over a role ref logs one concrete SET per card, each with its own result', () => {
+    const { state } = setup()
+    state.entities.get('ana')!.aspects['dread'] = 2 // the two bases differ
+    const c = counterContent([{ id: 'tune.gain', when: 'count(actors) = 2', out: ['SET(ACTORS, aspect:dread, +1)'] }])
+    const r = runTune(c, state, '0:20 @ ANA, BERTHA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.records[0].outcomes.filter(o => o.op === 'SET')).toHaveLength(2)
+    expect(r.records[0].sentence).toContain('SET(#ana, aspect:dread, 3), SET(#bertha, aspect:dread, 1)')
+    expect(r.state.entities.get('ana')!.aspects['dread']).toBe(3)
+    expect(r.state.entities.get('bertha')!.aspects['dread']).toBe(1)
+  })
+
+  test('fold of a JSONL-saved delta log reproduces the played state (§7)', () => {
+    const c = counterContent([{ out: ['SET(ACTORS, funds, +2)', 'SET(ACTORS, aspect:dread, +1)'] }])
+    let state = setup().state
+    state.entities.get('bertha')!.attrs['funds'] = 10 // the cards carry different bases
+    state.entities.get('bertha')!.aspects['dread'] = 7
+    let id = 1
+    const all: ActionRecord[] = []
+    for (const step of ['0:20 @ ANA, BERTHA TUNE', '0:21 @ ANA TUNE', '0:22 @ BERTHA TUNE']) {
+      const r = runTune(c, state, step, id)
+      expect(r.rejected).toBeNull()
+      all.push(...r.records)
+      state = r.state
+      id += r.records.length
+    }
+    expect(state.entities.get('ana')!.attrs['funds']).toBe(4)
+    expect(state.entities.get('ana')!.aspects['dread']).toBe(2)
+    expect(state.entities.get('bertha')!.attrs['funds']).toBe(14)
+    expect(state.entities.get('bertha')!.aspects['dread']).toBe(9)
+    const dir = mkdtempSync(join(tmpdir(), 'chorus-log-'))
+    const path = join(dir, 'log.jsonl')
+    try {
+      saveLog(path, all)
+      const replayed = fold(loadLog(path), seedState(), tuneDict, c)
+      expect(snap(replayed)).toBe(snap(state))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('REFUSE after a delta SET in the same step: state untouched, no time, attempt logged (§6.5)', () => {
+    const { state } = setup()
+    const before = snap(state)
+    const c = counterContent([{ out: ['SET(ACTORS, aspect:dread, +1)', 'SET(ACTORS, funds, +2)', 'REFUSE("too costly")'] }])
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SET', 'SET', 'REFUSE'])
+    expect(r.records[0].advancedMin).toBe(0)
+    expect(r.state).toBe(state) // same object, untouched — the deltas ran on the discarded draft
+    expect(snap(r.state)).toBe(before)
+    expect(snap(fold(r.records, seedState(), tuneDict, c))).toBe(before) // refused record folds as a no-op
+  })
+
+  test('a delta on a non-numeric entry rejects the whole step — nothing logged (§9.19)', () => {
+    const { state } = setup()
+    const c = counterContent([{ out: ['SET(ACTORS, container, +1)'] }]) // container is a string attr
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toMatch(/non-numeric/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(state)
+  })
+
+  test('a delta on an aspect sub-map rejects the step — the map survives (§9.31)', () => {
+    const { state } = setup()
+    state.entities.get('ana')!.aspects['language'] = { french: 2 } // a sub-map, not a number
+    const c = counterContent([{ out: ['SET(ACTORS, aspect:language, +1)'] }])
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toMatch(/non-numeric/)
+    expect(r.records).toHaveLength(0)
+    expect(r.state).toBe(state)
+    expect(r.state.entities.get('ana')!.aspects['language']).toEqual({ french: 2 })
+  })
+
+  test('a quoted key stays quoted in the concrete record (§9.15)', () => {
+    const { state } = setup()
+    const c = counterContent([{ out: ['SET(ACTORS, "about", +5)'] }]) // 'about' is a reserved role word
+    const r = runTune(c, state, '0:20 @ ANA TUNE')
+    expect(r.rejected).toBeNull()
+    expect(r.state.entities.get('ana')!.attrs['about']).toBe(5)
+    expect(r.records[0].sentence).toContain('SET(#ana, "about", 5)')
+    // the record must round-trip: unquoted it would re-parse as the about ROLE
+    expect(formatSentence(parseSentence(r.records[0].sentence, tuneDict), tuneDict)).toBe(r.records[0].sentence)
   })
 })

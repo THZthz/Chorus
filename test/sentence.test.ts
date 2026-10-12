@@ -71,6 +71,29 @@ describe('canonicalization', () => {
   })
 })
 
+describe('SET deltas and aspect keys (§9.31)', () => {
+  test('signed values parse as deltas and print with their sign', () => {
+    expect(canonical('0:0 @ ANA WAIT -> SET(ANA, level, +1)'))
+      .toBe('0:0 @ ANA WAIT -> SET(ANA, level, +1)')
+    expect(canonical('0:0 @ ANA WAIT -> SET(ANA, level, -2)'))
+      .toBe('0:0 @ ANA WAIT -> SET(ANA, level, -2)')
+  })
+
+  test('aspect: keys keep their prefix; dotted attr keys print bare (§5.1 dottedName)', () => {
+    expect(canonical('0:0 @ ANA WAIT -> SET(ANA, aspect:dread, -1)'))
+      .toBe('0:0 @ ANA WAIT -> SET(ANA, aspect:dread, -1)')
+    expect(canonical('0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)'))
+      .toBe('0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)')
+    expect(canonical('0:0 @ ANA WAIT -> SET(ANA, state.sealed, true)'))
+      .toBe('0:0 @ ANA WAIT -> SET(ANA, state.sealed, true)')
+  })
+
+  test('deltas are integers only — a duration after a sign is a parse error (§9.31)', () => {
+    expect(() => parseSentence('0:0 @ ANA WAIT -> SET(ANA, funds, +2h)', dict)).toThrow(/integers only/)
+    expect(() => parseSentence('0:0 @ ANA WAIT -> SET(ANA, funds, +)', dict)).toThrow(/expected an integer/)
+  })
+})
+
 describe('lexical discipline (§9.14)', () => {
   test('reserved words cannot be names', () => {
     expect(() => parseSentence('0:0 @ ABOUT READ X', dict)).toThrow(/reserved/)

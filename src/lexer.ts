@@ -11,7 +11,10 @@ export type Tok =
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*/
 const NUM_RE = /^[0-9]+/
 const DUR_RE = /^([0-9]+)(halfhour|h|m|d)/
-const PUNCT = new Set([',', ';', ':', '(', ')', '@', '=', '!', '>', '<'])
+// '+'/'-' are punct so a signed SET value (+1/-2, §9.31) lexes as sign + int
+// ('->' is matched before the punct set, so the minus is unambiguous); '.' is
+// punct for dotted SET keys (§5.1 dottedName: state.sealed, aspect:language.latin)
+const PUNCT = new Set([',', ';', ':', '(', ')', '@', '=', '!', '>', '<', '+', '-', '.'])
 
 export function lex(src: string): Tok[] {
   const toks: Tok[] = []

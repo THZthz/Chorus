@@ -11,7 +11,7 @@ import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
 import { matchQuery } from './query.js'
 import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, type Clock } from './clock.js'
 import {
-  addEntity, aspectGet, cloneState, getAlive, relationKey,
+  addEntity, aspectEntry, aspectGet, aspectSet, cloneState, getAlive, relationKey,
   type Aspects, type Entity, type State,
 } from './types.js'
 
@@ -187,7 +187,7 @@ export function executeStep(
       recipeIds.push(p.recipe.id)
       for (const outcome of p.recipe.out) {
         const res = applyOutcome(outcome, ctx)
-        collected.push(res.concrete)
+        collected.push(...res.concrete)
         if (res.refused) { refused = true; break outer }
       }
     }
@@ -279,7 +279,7 @@ interface ApplyCtx {
 }
 
 interface ApplyResult {
-  concrete: Outcome
+  concrete: Outcome[]    // what the log stores: ids minted, sugar resolved, deltas computed (§9.15, §9.31)
   refused: boolean
 }
 
@@ -335,7 +335,7 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       concrete.push({ t: 'asId', id })
       if (Object.keys(aspects).length > 0) concrete.push({ t: 'pair', k: 'aspects', v: JSON.stringify(aspects) })
       if (Object.keys(attrs).length > 0) concrete.push({ t: 'pair', k: 'attrs', v: JSON.stringify(attrs) })
-      return { concrete: { op: 'SPAWN', args: concrete }, refused: false }
+      return { concrete: [{ op: 'SPAWN', args: concrete }], refused: false }
     }
     case 'DESTROY': {
       const concrete = concretize(args, ctx)
@@ -344,7 +344,7 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         // names are unique among the LIVING (§9.14): release the name on death
         if (ctx.state.byName.get(e.name) === e.id) ctx.state.byName.delete(e.name)
       }
-      return { concrete: { op: o.op, args: concrete }, refused: false }
+      return { concrete: [{ op: o.op, args: concrete }], refused: false }
     }
     case 'SET': {
       // §4.4 arity: SET(ref, key, value) — positional
@@ -352,16 +352,52 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       const keyArg = args[1]
       const valArg = args[2]
       if (!refArg || !keyArg || !valArg) throw new Error('SET needs (ref, key, value)')
-      const key = keyArg.t === 'str' ? keyArg.v : keyArg.t === 'ref' && keyArg.ref.form === 'name' ? keyArg.ref.name : null
-      if (!key) throw new Error('SET key must be a name or string')
+      const rawKey = keyArg.t === 'key' || keyArg.t === 'str'
+        ? keyArg.v
+        : keyArg.t === 'ref' && keyArg.ref.form === 'name' ? keyArg.ref.name : null
+      if (!rawKey) throw new Error('SET key must be a name or string')
+      // an `aspect:` prefix names the aspects map (§4.2); every other key is an attr (§9.31)
+      const aspectPath = rawKey.startsWith('aspect:') ? rawKey.slice('aspect:'.length) : null
+      const key = aspectPath ?? rawKey
+      // the concrete key keeps its authored form: a quoted key must stay quoted
+      // or the record stops round-tripping (§9.15)
+      const keyConcrete: Arg = keyArg.t === 'str' || (keyArg.t === 'ref' && !aspectPath)
+        ? keyArg
+        : { t: 'key', v: rawKey }
+      const write = (e: Entity, value: string | number | boolean): void => {
+        if (aspectPath) {
+          if (typeof value !== 'number') throw new Error(`SET: aspect '${rawKey}' needs a number`)
+          aspectSet(e, aspectPath, value)
+        } else {
+          e.attrs[key] = value
+          if (key === 'expires') e.attrs['expiresAt'] = ctx.now + toMinutes(value)
+        }
+      }
+      if (valArg.t === 'delta') {
+        // signed value (§9.31): add to the entry's current number (missing = 0,
+        // negative results allowed) and log the CONCRETE ABSOLUTE result — the
+        // fold replays literals and never redoes arithmetic
+        const targets = expand([refArg], ctx)
+        return {
+          refused: false,
+          concrete: targets.map(e => {
+            // raw entry, not aspectGet: a sub-map must REFUSE the delta, not
+            // count as missing and be clobbered (§9.31 non-numeric rule)
+            const cur = aspectPath ? aspectEntry(e, aspectPath) : e.attrs[key]
+            if (cur !== undefined && typeof cur !== 'number') throw new Error(`SET: cannot add to non-numeric '${rawKey}'`)
+            const next = (cur ?? 0) + valArg.v
+            write(e, next)
+            // one concrete SET per card, so replay needs no step context (§9.15)
+            const refConcrete: Arg = targets.length === 1 && refArg.t !== 'role' ? refArg : { t: 'ref', ref: idRef(e.id) }
+            return { op: 'SET', args: [refConcrete, keyConcrete, { t: 'int', v: next }] }
+          }),
+        }
+      }
       let value: string | number | boolean
       if (valArg.t === 'int' || valArg.t === 'str' || valArg.t === 'bool' || valArg.t === 'dur') value = valArg.v
       else throw new Error('SET value must be a string, number, boolean or duration')
-      for (const e of expand([refArg], ctx)) {
-        e.attrs[key] = value
-        if (key === 'expires') e.attrs['expiresAt'] = ctx.now + toMinutes(value)
-      }
-      return { concrete: o, refused: false }
+      for (const e of expand([refArg], ctx)) write(e, value)
+      return { concrete: [{ op: 'SET', args: [refArg, keyConcrete, valArg] }], refused: false }
     }
     case 'MOVE': {
       const into = args.find((a): a is Extract<Arg, { t: 'into' }> => a.t === 'into')
@@ -373,28 +409,29 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         ? undefined
         : resolveRef(ctx.state, intoConcrete.ref)?.id
       if (!dest || typeof dest !== 'string') throw new Error('MOVE: unresolvable destination')
-      for (const e of expand(concretize(args.filter(a => a.t !== 'into'), ctx), ctx)) e.attrs['container'] = dest
-      return { concrete: { op: o.op, args: [...concretize(args.filter(a => a.t !== 'into'), ctx), intoConcrete] }, refused: false }
+      const refs = concretize(args.filter(a => a.t !== 'into'), ctx)
+      for (const e of expand(refs, ctx)) e.attrs['container'] = dest
+      return { concrete: [{ op: o.op, args: [...refs, intoConcrete] }], refused: false }
     }
     case 'REVEAL': {
       const concrete = concretize(args, ctx)
       for (const e of expand(concrete, ctx)) e.attrs['state.hidden'] = false
-      return { concrete: { op: o.op, args: concrete }, refused: false }
+      return { concrete: [{ op: o.op, args: concrete }], refused: false }
     }
     case 'ADVANCE': {
       const d = args[0]
       if (!d || d.t !== 'dur') throw new Error('ADVANCE needs a duration')
       ctx.extraAdvanceMin += d.v
-      return { concrete: o, refused: false }
+      return { concrete: [o], refused: false }
     }
     case 'NARRATE':
-      return { concrete: o, refused: false }
+      return { concrete: [o], refused: false }
     case 'PROGRESS': {
       // §6.7: a read-bar tick — journal-only, no state effect, no time effect
       const d = args[0]
       const s = args[1]
       if (!d || d.t !== 'dur' || !s || s.t !== 'str') throw new Error('PROGRESS needs (duration, string)')
-      return { concrete: o, refused: false }
+      return { concrete: [o], refused: false }
     }
     case 'RELATE': {
       const refs = args.filter((a): a is Extract<Arg, { t: 'ref' }> => a.t === 'ref')
@@ -411,7 +448,7 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         bornAction: ctx.recordId, deadAction: null,
       }
       ctx.state.relations.set(relationKey(a.id, b.id, type, def.symmetric), rel)
-      return { concrete: o, refused: false }
+      return { concrete: [o], refused: false }
     }
     case 'UNRELATE': {
       const refs = args.filter((a): a is Extract<Arg, { t: 'ref' }> => a.t === 'ref')
@@ -423,10 +460,10 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         const rel = ctx.state.relations.get(relationKey(a.id, b.id, type, def.symmetric))
         if (rel) rel.deadAction = ctx.recordId // §7: stamp, don't erase — undo re-folds
       }
-      return { concrete: o, refused: false }
+      return { concrete: [o], refused: false }
     }
     case 'REFUSE': {
-      return { concrete: o, refused: true }
+      return { concrete: [o], refused: true }
     }
     default:
       throw new Error(`unknown outcome op '${o.op}'`)
@@ -526,7 +563,7 @@ function fireCrossingEvents(
       if (trig.once && state.fired.has(trig.id)) continue // §9.29: once means once
       const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
       const outcomes: Outcome[] = []
-      for (const o of trig.out) outcomes.push(applyOutcome(o, ctx).concrete)
+      for (const o of trig.out) outcomes.push(...applyOutcome(o, ctx).concrete)
       state.fired.add(trig.id) // on the draft: a later rejection discards it
       records.push(makeEventRecord(firstEventId + records.length, trig.id, absSlot, outcomes, dict))
     }
@@ -536,7 +573,7 @@ function fireCrossingEvents(
       if (!e || e.deadAction !== null) continue
       const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
       const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: nameRef(e.name) }] }
-      const outcomes = [applyOutcome(destroy, ctx).concrete]
+      const outcomes = [...applyOutcome(destroy, ctx).concrete]
       records.push(makeEventRecord(firstEventId + records.length, `expire:${e.name}`, absSlot, outcomes, dict))
     }
   }

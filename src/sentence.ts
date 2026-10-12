@@ -20,9 +20,11 @@ export type Arg =
   | { t: 'ref'; ref: Ref }
   | { t: 'role'; role: Role }               // outcome-arg role ref: ACTORS, OBJECT…
   | { t: 'int'; v: number }
+  | { t: 'delta'; v: number }               // signed SET value (+1/-2): applied to the current entry (§9.31)
   | { t: 'str'; v: string }
   | { t: 'bool'; v: boolean }
   | { t: 'dur'; v: number }                 // minutes
+  | { t: 'key'; v: string }                 // SET key: 'level', 'state.sealed', 'aspect:dread' (§9.31)
   | { t: 'into'; ref: Ref | { role: Role } }
   | { t: 'asId'; id: string }
   | { t: 'pair'; k: string; v: string | number | boolean }

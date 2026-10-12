@@ -42,6 +42,12 @@ projection of that data, never the source of truth.
 > Documentation of existing semantics — no grammar, log, script, or API
 > change.
 >
+> v0.2.5 = SET arithmetic (§9.31). The SET outcome gains signed delta values
+> (`+1`, `-2`) and `aspect:` keys: `SET(x, aspect:level, +1)` adds to the
+> entry's current value and the engine logs the computed absolute form, so
+> the fold replays literals and never redoes arithmetic. Dotted arg keys
+> (`state.sealed`) now lex as written in §5.1.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -174,7 +180,7 @@ core set is a default, not a closed wall.
 |-----------|---------------------------------|-----------------------------------------------|
 | `SPAWN`   | ref [, INTO ref] [, AS #id] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.18) |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
-| `SET`     | ref, key, value                 | mutate attr (`state.sealed`, `container`, `expires`…); `SET x, expires, 2h` also materializes `expiresAt` |
+| `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`, §9.31); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute (§9.31); `SET x, expires, 2h` also materializes `expiresAt` |
 | `MOVE`    | ref, INTO ref                   | relocate (place→actor, actor→place)           |
 | `REVEAL`  | ref                             | unlock hidden text / mark discovered          |
 | `ADVANCE` | duration (`2h`, `90m`, `1d`)    | authored extra time shift (§9.12)             |
@@ -237,8 +243,10 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
 (*          canonical OUTPUT: SPAWN and NARRATE paren-less, every other op paren'd
             — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) *)
 args       = arg { "," arg } ;                   (* arg shapes validated per §4.4 arity *)
-arg        = ref | role | int | string | bool | duration
-           | "INTO" target | "AS" "#" id | key "=" value | dottedName ;
+arg        = ref | role | int | signedInt | string | bool | duration
+           | "INTO" target | "AS" "#" id | key "=" value | dottedName | aspectKey ;
+signedInt  = ( "+" | "-" ) int ;                 (* SET delta value only (§9.31) *)
+aspectKey  = "aspect:" name { "." name } ;       (* SET key into the aspects map (§9.31) *)
 target     = ref | role ;
 role       = "ACTORS" | "OBJECT" | "WITH" | "AT" | "ABOUT" | "TO" ;  (* case-insensitive *)
 dottedName = name { "." name } ;                 (* SET(x, state.sealed, true) *)
@@ -307,6 +315,21 @@ Rite via `USE_ON` with instruments (actors operate the rite together):
 ```
 1:23 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE
     -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE
+```
+
+Counter idioms — a signed value is a **delta** on the entry's current value,
+and an `aspect:` key writes the aspects map (§9.31):
+
+```
+3:2 @ ANA AT HOUSE READ THE_FORGETTING -> SET(DREAD, aspect:level, +1), SET(ANA, funds, +2)
+```
+
+Executed, the engine computes and logs the **concrete absolute** form (DREAD
+carried `aspect:level` 2; ANA had no `funds` yet) — the record replays
+without arithmetic:
+
+```
+3:2 @ ANA AT HOUSE READ THE_FORGETTING -> SET(DREAD, aspect:level, 3), SET(ANA, funds, 2)
 ```
 
 These examples show the **parse-level canonical form** (sugar resolved: bare
@@ -854,6 +877,23 @@ Two invariants keep the mapping safe:
     re-scaling `day:hour` to `day:halfhour`. The engine ships no migration
     shims and no version detection; when a change breaks old files,
     re-author or migrate them by hand.
+
+### Implementation rulings (v0.2.5, SET arithmetic)
+
+31. **SET deltas are logged as absolutes** (§4.4, §5.2): a signed integer
+    value (`+1`, `-2`) is a delta on the entry's current value — an attr by
+    default, the aspects map under an `aspect:`-prefixed key (`aspect:secret`,
+    `aspect:language.latin`). A missing entry counts as 0; results may go
+    negative (no clamping — a counter may read below zero); deltas are
+    integers only (no duration deltas, no floats). The engine computes at
+    execution time and writes the concrete absolute form into the log —
+    `SET(DREAD, aspect:level, +1)` at level 2 logs `SET(DREAD, aspect:level, 3)`
+    — so the fold replays literals and never redoes arithmetic (§9.15). A
+    delta over a role ref applies per bound card and logs one concrete SET
+    per card (`#id`s, each with its own result). Adding to a non-numeric
+    entry is an application failure, not a silent no-op (§9.19). Deltas apply
+    to the draft, so a later REFUSE in the same step discards them whole
+    (§6.5); absolute values behave exactly as before.
 
 ## 10. The script format — a game as one text file
 

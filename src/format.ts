@@ -53,9 +53,11 @@ function formatArg(a: Arg, dict?: SafeDict): string {
     case 'ref': return formatRef(a.ref, dict)
     case 'role': return a.role.toUpperCase()
     case 'int': return String(a.v)
+    case 'delta': return a.v < 0 ? String(a.v) : `+${a.v}` // signed args print with their sign (§9.31)
     case 'str': return quote(a.v)
     case 'bool': return String(a.v)
     case 'dur': return formatDuration(a.v)
+    case 'key': return a.v // plain, dotted and aspect:-prefixed keys print bare (§9.31)
     case 'into': return 'INTO ' + ('role' in a.ref ? a.ref.role.toUpperCase() : formatRef(a.ref, dict))
     case 'asId': return `AS #${a.id}`
     case 'pair': return `${a.k}=${typeof a.v === 'string' ? quote(a.v) : String(a.v)}`

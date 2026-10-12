@@ -11,7 +11,7 @@ import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
 import { matchQuery } from './query.js'
 import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, parseDuration, type Clock } from './clock.js'
 import {
-  addEntity, aspectEntry, aspectGet, aspectSet, cloneState, getAlive, relationKey,
+  addEntity, aspectEntry, aspectGet, aspectSet, cloneState, getAlive, oldestNamed, relationKey, releaseName,
   type Aspects, type Entity, type State,
 } from './types.js'
 
@@ -101,9 +101,9 @@ function validateSlots(verb: CompiledVerb, refs: Record<Role, Ref[]>, state: Sta
 
 export function resolveRef(state: State, ref: Ref): Entity | null {
   if (ref.form === 'id') return getAlive(state, ref.id) ?? null
-  const id = state.byName.get(ref.name)
-  if (!id) return null
-  const e = getAlive(state, id)
+  // §9.38 pool addressing: a name held by N > 1 living copies addresses the
+  // OLDEST copy — the HEAD of the byName pool (insertion order, never id sort)
+  const e = oldestNamed(state, ref.name)
   if (!e) return null
   if (ref.kind && e.kind !== ref.kind) return null
   return e
@@ -267,6 +267,16 @@ function concretize(args: Arg[], ctx: ApplyCtx): Arg[] {
   return out
 }
 
+/** §9.38: the mint's stackability from its RESOLVED name+kind — a NAME declared
+ *  stackable, or a KIND carrying a stackable declaration. Concrete SPAWN rows
+ *  always carry the resolved `kind:K`, so the fold recomputes from the same
+ *  (name, kind) pair: play must decide from the resolved kind too, or a plain
+ *  spawn of a non-stackable prototype in a stackable KIND would mint
+ *  non-stackable at play but stackable at fold (snap would diverge). */
+function mintIsStackable(content: CompiledContent, ref: { kind?: string; name: string }): boolean {
+  return content.stackableNames.has(ref.name) || (ref.kind !== undefined && content.stackableKinds.has(ref.kind))
+}
+
 function idOrSelf(e: Entity | undefined, fallback: Ref | { role: Role }): Ref | { role: Role } {
   return e ? idRef(e.id) : fallback
 }
@@ -313,7 +323,19 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
           }
         }
       }
-      if (ctx.state.byName.has(name)) throw new Error(`SPAWN: name '${name}' already in use`)
+      // §9.38: the flag comes from the mint's RESOLVED name+kind declaration
+      // (not the authored ref's form — the concrete row always carries the
+      // resolved kind, and the fold must recompute the same flag) and applies
+      // to whatever name the mint ends up carrying (derived names stack when
+      // the prototype is declared stackable)
+      const isStack = mintIsStackable(ctx.content, { name: protoName, kind })
+      // §9.14 + §9.38: a non-stackable mint demands a free name; a stackable
+      // mint stacks with its own kind of pool but may not collide with a
+      // distinct NON-stackable living name (shared namespace)
+      const pool = ctx.state.byName.get(name)
+      if (pool && pool.length > 0 && (!isStack || !pool.every(pid => ctx.state.entities.get(pid)?.stackable === true))) {
+        throw new Error(`SPAWN: name '${name}' already in use`)
+      }
       const asId = args.find((a): a is Extract<Arg, { t: 'asId' }> => a.t === 'asId')
       const id = asId ? asId.id : ctx.idGen()
       const into = args.find((a): a is Extract<Arg, { t: 'into' }> => a.t === 'into')
@@ -339,7 +361,7 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         Object.assign(attrs, materialized)
         if (!('container' in materialized)) delete attrs['container']
       }
-      addEntity(ctx.state, { id, kind, name, aspects, attrs, bornAction: ctx.recordId, deadAction: null })
+      addEntity(ctx.state, { id, kind, name, aspects, attrs, bornAction: ctx.recordId, deadAction: null, stackable: isStack })
       // concrete outcome: everything a fold needs, nothing from the step context
       const concrete: Arg[] = [{ t: 'ref', ref: nameRef(name, kind) }]
       if (container) concrete.push({ t: 'into', ref: idRef(container) })
@@ -352,8 +374,9 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       const concrete = concretize(args, ctx)
       for (const e of expand(concrete, ctx)) {
         e.deadAction = ctx.recordId
-        // names are unique among the LIVING (§9.14): release the name on death
-        if (ctx.state.byName.get(e.name) === e.id) ctx.state.byName.delete(e.name)
+        // names are unique among the LIVING (§9.14): the name frees only when
+        // the LAST pool copy dies (§9.38 array removal)
+        releaseName(ctx.state, e)
       }
       return { concrete: [{ op: o.op, args: concrete }], refused: false }
     }
@@ -373,13 +396,22 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       const kind = protoArg.ref.kind ?? proto?.kind
       if (!kind) throw new Error(`REPLACE ${protoName}: no kind (prototype or kind:NAME required)`)
       const aspects: Aspects = proto?.aspects ? cloneAspects(proto.aspects) : {}
+      // §9.38: same computation as SPAWN — the RESOLVED name+kind, so the
+      // fold's recompute from the concrete SPAWN row agrees (a stackable
+      // successor may share the dying card's name: REPLACE X WITH X succeeds —
+      // spawn appends, destroy pops)
+      const isStack = mintIsStackable(ctx.content, { name: protoName, kind })
       const targets = expand([targetArg], ctx)
       if (targets.length === 0) throw new Error(`REPLACE: unresolvable ref (nothing to replace)`)
       const concrete: Outcome[] = []
       for (const dying of targets) {
-        // spawn happens while the dying card is still alive, so replacing a
-        // card with its own name collides — whole-step rejection (§9.33)
-        if (ctx.state.byName.has(protoName)) throw new Error(`REPLACE: name '${protoName}' already in use`)
+        // spawn happens while the dying card is still alive, so a non-stackable
+        // successor's name collides with any living holder — whole-step
+        // rejection (§9.33); a stackable successor may share a stackable pool
+        const pool = ctx.state.byName.get(protoName)
+        if (pool && pool.length > 0 && (!isStack || !pool.every(pid => ctx.state.entities.get(pid)?.stackable === true))) {
+          throw new Error(`REPLACE: name '${protoName}' already in use`)
+        }
         const id = ctx.idGen()
         const attrs: Record<string, string | number | boolean> = { ...(proto?.attrs ?? {}) }
         const container = typeof dying.attrs['container'] === 'string' ? dying.attrs['container'] : undefined
@@ -389,9 +421,9 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
         const zone = !container && typeof dying.attrs['zone'] === 'string' ? dying.attrs['zone'] : undefined
         if (container) attrs['container'] = container
         if (zone) attrs['zone'] = zone
-        addEntity(ctx.state, { id, kind, name: protoName, aspects: cloneAspects(aspects), attrs, bornAction: ctx.recordId, deadAction: null })
+        addEntity(ctx.state, { id, kind, name: protoName, aspects: cloneAspects(aspects), attrs, bornAction: ctx.recordId, deadAction: null, stackable: isStack })
         dying.deadAction = ctx.recordId
-        if (ctx.state.byName.get(dying.name) === dying.id) ctx.state.byName.delete(dying.name)
+        releaseName(ctx.state, dying)
         const spawnArgs: Arg[] = [{ t: 'ref', ref: nameRef(protoName, kind) }]
         if (container) spawnArgs.push({ t: 'into', ref: idRef(container) })
         spawnArgs.push({ t: 'asId', id })
@@ -652,6 +684,11 @@ function fireCrossingEvents(
       // destroy; first match in declaration order wins. Its outcomes ARE the
       // event record's outcomes (record.trigger = the authored id). An outcome
       // that cannot apply throws — the whole step is rejected (§9.19).
+      // §9.38 pool asymmetry (documented ruling): the trigger matches by NAME,
+      // so a crossing fires it no matter WHICH copy carries the expires — but
+      // its name-addressed outcomes resolve per the pool rule (the OLDEST
+      // copy), which under a pool may not be the crossing card. The built-in
+      // path below has no such ambiguity: it addresses by id.
       const authored = content.triggers.find(t => 'onExpireOf' in t && t.onExpireOf === e.name)
       let triggerId: string
       let outcomes: Outcome[]
@@ -661,7 +698,10 @@ function fireCrossingEvents(
         for (const o of authored.out) outcomes.push(...applyOutcome(o, ctx).concrete)
       } else {
         triggerId = `expire:${e.name}`
-        const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: nameRef(e.name) }] }
+        // §9.38: engine-written destroys are keyed to the EXPIRING entity and
+        // concretize to DESTROY #id — under a pool a name-addressed destroy
+        // would kill the oldest copy while the real expiring card re-fires
+        const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: idRef(exp.id) }] }
         outcomes = [...applyOutcome(destroy, ctx).concrete]
       }
       // play marks fired exactly as the fold's applyRecord does — one entry per

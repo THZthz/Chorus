@@ -11,6 +11,7 @@ import { prose } from '../src/render.js'
 import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog, Log } from '../src/store.js'
 import { addEntity, newState, type State } from '../src/types.js'
+import { snap } from './snap.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -34,15 +35,6 @@ function runWith(theContent: typeof content, state: State, src: string, firstRec
     idGen: () => `x${firstRecordId}_${++n}`, // unique across steps: keyed by record id
   })
 }
-
-const snap = (s: State): string => JSON.stringify({
-  ents: [...s.entities.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-  rels: [...s.relations.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-  byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-  now: s.now,
-  fired: [...s.fired].sort(), // §9.34: play and fold must agree on fired too
-  ended: s.ended, // §9.35: …and on the story's ending
-})
 
 describe('READ ladder — first match wins, most specific first (§6.4)', () => {
   test('solo reader with knowledge passes the gate; default narrates', () => {
@@ -94,7 +86,7 @@ describe('READ ladder — first match wins, most specific first (§6.4)', () => 
     expect(nameArg && nameArg.t === 'ref' && nameArg.ref.form === 'name' && nameArg.ref.name).toBe('CLUE_THE_FORGETTING')
     const asId = spawn.args.find(a => a.t === 'asId')
     expect(asId).toBeDefined()
-    const minted = r.state.byName.get('CLUE_THE_FORGETTING')!
+    const minted = r.state.byName.get('CLUE_THE_FORGETTING')![0]
     expect(r.state.entities.get(minted)!.aspects['secret']).toBe(2) // 4 - 2
     expect(r.state.entities.get(minted)!.bornAction).toBe(1)
   })
@@ -160,7 +152,7 @@ describe('USE_ON rite — aggregate gate, shown hint (§6.4)', () => {
     expect(r.rejected).toBeNull()
     expect(r.state.entities.get('rite')!.deadAction).toBe(1)
     expect(r.state.entities.get('chalice')!.deadAction).toBe(1)
-    const mark = r.state.byName.get('MARK_OF_ASCENSION')!
+    const mark = r.state.byName.get('MARK_OF_ASCENSION')![0]
     expect(r.state.entities.get(mark)!.attrs['container']).toBe('house')
     expect(r.records[0].advancedMin).toBe(180)
   })
@@ -275,7 +267,7 @@ describe('dictionary is the law (§9.14)', () => {
       recipes: [], sentence: '',
     }
     applyRecord(rec as ActionRecord, r.state, dict, content)
-    expect(r.state.byName.get('CHALICE')).toBe('new_chalice')
+    expect(r.state.byName.get('CHALICE')![0]).toBe('new_chalice')
   })
 })
 
@@ -410,7 +402,7 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
     const { state } = setup()
     // prowls the villa: bound to no role of this step and in another place
     // than ANA at the house — world scope is the whole point
-    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
     const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
     expect(r.rejected).toBeNull()
     expect(r.records[0].recipes).toEqual(['probe.hunted'])
@@ -419,15 +411,15 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
 
   test('a ward anywhere in the world flips the branch — NOT exists(kind:item aspect:ward>=1) fails', () => {
     const { state } = setup()
-    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
-    addEntity(state, { id: 'ward', kind: 'item', name: 'IRON_WARD', aspects: { ward: 2 }, attrs: { container: 'greenhouse' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
+    addEntity(state, { id: 'ward', kind: 'item', name: 'IRON_WARD', aspects: { ward: 2 }, attrs: { container: 'greenhouse' }, bornAction: null, deadAction: null, stackable: false })
     const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
     expect(r.records[0].recipes).toEqual(['probe.default'])
   })
 
   test('destroyed cards stop existing: the gate un-latches after the hunter dies', () => {
     const { state } = setup()
-    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
     state.entities.get('hunter')!.deadAction = 99 // DESTROY shape: stamp + release the name (§9.14)
     state.byName.delete('HUNTER')
     const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
@@ -436,7 +428,7 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
 
   test('name form: exists(THE_SEALED_DOOR) sees a named card across the map', () => {
     const { state } = setup()
-    addEntity(state, { id: 'sealed_door', kind: 'place', name: 'THE_SEALED_DOOR', aspects: {}, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'sealed_door', kind: 'place', name: 'THE_SEALED_DOOR', aspects: {}, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
     const c = probeContent([
       { id: 'probe.door', when: 'exists(THE_SEALED_DOOR)', out: ['NARRATE("The door still stands.")'] },
       { out: ['NARRATE("No door.")'] },
@@ -740,7 +732,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY'])
     expect(r.records[0].sentence).toContain('-> SPAWN ASHES INTO #house AS #x1_1 ')
     expect(r.records[0].sentence).toContain('DESTROY(#chalice)')
-    const ash = r.state.entities.get(r.state.byName.get('ASHES')!)!
+    const ash = r.state.entities.get(r.state.byName.get('ASHES')![0])!
     expect(ash.kind).toBe('item')
     expect(ash.aspects).toEqual({ spent: 1 })
     expect(ash.attrs['container']).toBe('house') // inherits the dying card's place
@@ -757,7 +749,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     const c = decayContent('REPLACE OBJECT WITH ASHES', { ASHES: { kind: 'item' } })
     const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
     expect(r.rejected).toBeNull()
-    expect(r.state.entities.get(r.state.byName.get('ASHES')!)!.attrs['container']).toBe('ana')
+    expect(r.state.entities.get(r.state.byName.get('ASHES')![0])!.attrs['container']).toBe('ana')
   })
 
   test('a zone-tagged card passes its zone to the successor — no container card (§10)', () => {
@@ -767,7 +759,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     const c = decayContent('REPLACE OBJECT WITH ASHES', { ASHES: { kind: 'item' } })
     const r = runDecay(c, base, '0:20 @ ANA DECAY CHALICE')
     expect(r.rejected).toBeNull()
-    const ash = r.state.entities.get(r.state.byName.get('ASHES')!)!
+    const ash = r.state.entities.get(r.state.byName.get('ASHES')![0])!
     expect(ash.attrs['zone']).toBe('NIGHTJAR_FLYER') // the grouping has no card: the tag passes on
     expect(ash.attrs['container']).toBeUndefined()
     // the zone rides the concrete attrs pair, so the fold replays it (§9.33)
@@ -811,7 +803,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
       recipes: [], sentence: '',
     }
     applyRecord(rec as ActionRecord, r.state, decayDict, c)
-    expect(r.state.byName.get('CHALICE')).toBe('new_chalice')
+    expect(r.state.byName.get('CHALICE')![0]).toBe('new_chalice')
   })
 
   test('a plain kind:NAME ref mints without a prototype — everything clause-less SPAWN accepts', () => {
@@ -819,7 +811,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     const c = decayContent('REPLACE OBJECT WITH item:CRUMBS')
     const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
     expect(r.rejected).toBeNull()
-    const crumbs = r.state.entities.get(r.state.byName.get('CRUMBS')!)!
+    const crumbs = r.state.entities.get(r.state.byName.get('CRUMBS')![0])!
     expect(crumbs.kind).toBe('item')
     expect(crumbs.attrs['container']).toBe('house')
   })
@@ -866,7 +858,7 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
   }, mothDict)
   const mothBase = () => {
     const s = seedState()
-    addEntity(s, { id: 'moth_g', kind: 'idea', name: 'INFLUENCE_MOTH_G', aspects: { influence: 3 }, attrs: { container: 'house', expiresAt: 16 * 60 }, bornAction: null, deadAction: null })
+    addEntity(s, { id: 'moth_g', kind: 'idea', name: 'INFLUENCE_MOTH_G', aspects: { influence: 3 }, attrs: { container: 'house', expiresAt: 16 * 60 }, bornAction: null, deadAction: null, stackable: false })
     return s
   }
   const runMoth = (state: State, src: string, firstRecordId: number): ExecResult => {
@@ -889,8 +881,8 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
       expect(r.rejected).toBeNull()
       triggers.push(...r.records.filter(x => x.kind === 'event').map(x => x.trigger))
       state = r.state
-      eId = eId ?? state.byName.get('INFLUENCE_MOTH_E')
-      cId = cId ?? state.byName.get('INFLUENCE_MOTH_C')
+      eId = eId ?? state.byName.get('INFLUENCE_MOTH_E')?.[0]
+      cId = cId ?? state.byName.get('INFLUENCE_MOTH_C')?.[0]
       id += r.records.length
     }
     // G decayed into E, E into C, then C expired with no trigger → built-in destroy
@@ -924,7 +916,7 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
     expect(r.records[2].trigger).toBe('decay_chalice')  // …then the expiry
     expect(r.records[2].sentence).toContain('EVENT decay_chalice')
     expect(r.state.entities.get('chalice')!.deadAction).toBe(3)
-    expect(r.state.entities.get(r.state.byName.get('RUSTY_CHALICE')!)!.attrs['container']).toBe('house')
+    expect(r.state.entities.get(r.state.byName.get('RUSTY_CHALICE')![0])!.attrs['container']).toBe('house')
     expect(r.state.byName.has('DREAD')).toBe(true)
   })
 
@@ -1072,7 +1064,7 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
     expect(r2.records[1].trigger).toBe('melt_chalice')
     expect(r2.records[1].sentence).toContain('EVENT melt_chalice')
     expect(r2.state.entities.get('chalice')!.deadAction).toBe(3)
-    expect(r2.state.entities.get(r2.state.byName.get('RUSTY_CHALICE')!)!.attrs['container']).toBe('house')
+    expect(r2.state.entities.get(r2.state.byName.get('RUSTY_CHALICE')![0])!.attrs['container']).toBe('house')
     // play and fold agree through the quoted path too (§9.34)
     expect(snap(fold([...r1.records, ...r2.records], seedState(), tuneDict, c))).toBe(snap(r2.state))
   })
@@ -1113,7 +1105,7 @@ describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
   }, verbDict)
   const world = (): State => {
     const s = seedState()
-    addEntity(s, { id: 'manifest', kind: 'text', name: 'THE_MANIFEST', aspects: { secret: 4 }, attrs: { container: 'house' }, bornAction: null, deadAction: null })
+    addEntity(s, { id: 'manifest', kind: 'text', name: 'THE_MANIFEST', aspects: { secret: 4 }, attrs: { container: 'house' }, bornAction: null, deadAction: null, stackable: false })
     return s
   }
   const runVerb = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
@@ -1130,7 +1122,7 @@ describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
     expect(r.rejected).toBeNull()
     expect(r.records[0].recipes).toEqual(['study.secret'])
     expect(r.records[0].advancedMin).toBe(60)
-    const minted = r.state.byName.get('CLUE_THE_MANIFEST')!
+    const minted = r.state.byName.get('CLUE_THE_MANIFEST')![0]
     expect(r.state.entities.get(minted)!.aspects['secret']).toBe(2) // 4 − 2 (§9.23)
     // the recorded sentence round-trips
     expect(formatSentence(parseSentence(r.records[0].sentence, verbDict), verbDict)).toBe(r.records[0].sentence)

@@ -70,7 +70,7 @@ describe('the nightjar flyer', () => {
     const refused = game.handleLine('travel to the dining car')
     expect(refused.kind).toBe('action')
     expect(refused.lines.join('\n')).toContain('does not bend')
-    const march = game.state.byName.get('MARCH')!
+    const march = game.state.byName.get('MARCH')![0]
     expect(game.state.entities.get(march)!.attrs['container']).toBe('s_guard_van')
     const ok = game.handleLine('travel to the luggage van')
     expect(ok.kind).toBe('action')

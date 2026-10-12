@@ -3,7 +3,7 @@
 // parses them once and fails loudly at load time.
 import type { Outcome } from './sentence.js'
 import type { Pred } from './predicate.js'
-import { parsePredicate } from './predicate.js'
+import { lintPred, parsePredicate } from './predicate.js'
 import { parseQuery, type Query } from './query.js'
 import { parseOutcomes } from './parse.js'
 import type { Dictionary } from './dict.js'
@@ -59,6 +59,8 @@ export type TriggerDef = SlotTriggerDef | ExpireTriggerDef
  *  into a concrete SPAWN ... AS #id (§6.4, §9.15). The registry key is the name. */
 export interface PrototypeDef {
   kind: string
+  /** §9.38: mints from this prototype may share their name with living copies */
+  stackable?: boolean
   aspects?: Aspects
   attrs?: Attrs
   derive?: {
@@ -122,9 +124,22 @@ export interface CompiledContent {
   prototypes: Map<string, PrototypeDef>
   templates: Map<string, string>
   endings: Map<string, CompiledEnding>
+  /** §9.38 stackability, derived from `stackable` declarations at load:
+   *  stackableNames = declared stackable prototype/entity names;
+   *  stackableKinds = the KINDS of those declarations (a `kind:K` mint is
+   *  stackable when its kind carries a stackable declaration). */
+  stackableNames: Set<string>
+  stackableKinds: Set<string>
 }
 
 export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledContent {
+  // §9.38: two derived sets every mint site reads — declared stackable names,
+  // and the kinds of the stackable declarations (kind-qualified spawns)
+  const stackableNames = new Set<string>()
+  const stackableKinds = new Set<string>()
+  for (const [name, p] of Object.entries(raw.prototypes ?? {})) {
+    if (p.stackable) { stackableNames.add(name); stackableKinds.add(p.kind) }
+  }
   const endings = new Map<string, CompiledEnding>()
   for (const [id, e] of Object.entries(raw.endings ?? {})) {
     if (!/^[A-Z][A-Z0-9_]*$/.test(id)) throw new Error(`ending '${id}' must be UPPER_SNAKE`)
@@ -150,6 +165,8 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
       hint: r.hint,
       out: r.out.flatMap(o => parseOutcomeString(o, dict)),
     }))
+    // §9.38 load-time lint: count()/total() args must be declared roles or queries
+    for (const r of recipes) if (r.when) lintPred(`recipe ${r.id}`, r.when)
     verbs.set(name, { name, slots, slotByRole, duration: v.duration, recipes })
   }
   const triggers = (raw.triggers ?? []).map(t => {
@@ -170,7 +187,7 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     for (const r of v.recipes) checkEndingRefs(`recipe ${r.id}`, r.out, endings)
   }
   for (const t of triggers) checkEndingRefs(`trigger ${t.id}`, t.out, endings)
-  return { verbs, triggers, prototypes, templates, endings }
+  return { verbs, triggers, prototypes, templates, endings, stackableNames, stackableKinds }
 }
 
 function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, CompiledEnding>): void {

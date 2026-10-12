@@ -5,7 +5,7 @@ import { parsePredicate, evalPred, type PredCtx } from '../src/predicate.js'
 import { newState, addEntity, type Entity, type State } from '../src/types.js'
 
 function ent(partial: Partial<Entity> & { id: string; kind: string; name: string }): Entity {
-  return { aspects: {}, attrs: {}, bornAction: null, deadAction: null, ...partial }
+  return { aspects: {}, attrs: {}, bornAction: null, deadAction: null, stackable: false, ...partial }
 }
 
 describe('slot queries (§4.5)', () => {
@@ -173,5 +173,66 @@ describe('exists(...) — world-existential conditions (§6.3, CS extantreqs)', 
     expect(evalPred(parsePredicate('NOT exists(HUNTER) OR exists(aspect:ritual>=5)'), ctxIn(s)({}))).toBe(false)
     expect(() => parsePredicate('exists()')).toThrow(/needs a name or a slot query/)
     expect(() => parsePredicate('exists(TWO WORDS)')).toThrow(/takes one name/)
+  })
+})
+
+describe('the name: query term and count(<query>) (§9.38)', () => {
+  const world = (): State => {
+    const s = newState()
+    // a two-copy SUSPICION pool plus an unrelated card
+    addEntity(s, ent({ id: 'sus1', kind: 'state', name: 'SUSPICION', aspects: { weight: 1 }, stackable: true }))
+    addEntity(s, ent({ id: 'sus2', kind: 'state', name: 'SUSPICION', aspects: { weight: 1 }, attrs: { container: 'sus1' }, stackable: true }))
+    addEntity(s, ent({ id: 'rite', kind: 'rite', name: 'RITE', aspects: { ritual: 1 } }))
+    return s
+  }
+  const ctxIn = (s: State) => (b: PredCtx['b']): PredCtx => ({ b, state: s })
+
+  test('name: matches exactly (case-exact, like exists)', () => {
+    const s = world()
+    expect(matchQuery(s.entities.get('sus1')!, parseQuery('name:SUSPICION'))).toBe(true)
+    expect(matchQuery(s.entities.get('rite')!, parseQuery('name:SUSPICION'))).toBe(false)
+    expect(matchQuery(s.entities.get('sus1')!, parseQuery('name:suspicion'))).toBe(false) // case-exact
+    expect(matchQuery(s.entities.get('rite')!, parseQuery('-name:SUSPICION'))).toBe(true) // negation
+  })
+
+  test('name: composes with other terms and negation composes at the term level', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('exists(kind:state name:SUSPICION)'), ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('exists(kind:rite name:SUSPICION)'), ctxIn(s)({}))).toBe(false)
+    expect(evalPred(parsePredicate('exists(-name:SUSPICION)'), ctxIn(s)({}))).toBe(true) // the rite
+    expect(evalPred(parsePredicate('exists(kind:state -name:SUSPICION)'), ctxIn(s)({}))).toBe(false) // both copies match
+  })
+
+  test('count(name:x) counts every living copy; count(-name:x) counts the rest of the world', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('count(name:SUSPICION) = 2'), ctxIn(s)({}))).toBe(true)
+    expect(evalPred(parsePredicate('count(name:SUSPICION) >= 3'), ctxIn(s)({}))).toBe(false)
+    expect(evalPred(parsePredicate('count(-name:SUSPICION) = 1'), ctxIn(s)({}))).toBe(true) // the rite only
+    expect(evalPred(parsePredicate('count(name:RITE) = 1'), ctxIn(s)({}))).toBe(true)
+  })
+
+  test('count(<query>) composes full slot queries; count(role) is unchanged', () => {
+    const s = world()
+    expect(evalPred(parsePredicate('count(kind:state aspect:weight>=1) = 2'), ctxIn(s)({}))).toBe(true)
+    const A = s.entities.get('sus1')!
+    expect(evalPred(parsePredicate('count(actors) = 1'), ctxIn(s)({ actors: [A] }))).toBe(true) // role form untouched
+  })
+
+  test('count() with a non-role non-query argument is a parse-shaped role — the lint fences it at load', () => {
+    const s = world()
+    // parseable (it looks like a role), evaluates to 0 — which is why
+    // compileContent rejects it (see test/stackable.test.ts lint tests)
+    expect(evalPred(parsePredicate('count(DREAD) = 0'), ctxIn(s)({}))).toBe(true)
+  })
+
+  test('a comparison inside a name: term is a load error — it would silently bake the NAME (§9.38)', () => {
+    // the exists()/count() glue-tightening turns 'SUSPICION >= 1' into the
+    // single token 'SUSPICION>=1'; as a name that matches nothing (silent 0)
+    expect(() => parseQuery('name:SUSPICION>=1')).toThrow(/bad name term/)
+    expect(() => parsePredicate('count(name:SUSPICION >= 1) >= 1')).toThrow(/bad name term/)
+    expect(() => parsePredicate('exists(name:SUSPICION >= 1)')).toThrow(/bad name term/)
+    // total() never accepted the query form — now it says so instead of
+    // failing with a cryptic `expected ','`
+    expect(() => parsePredicate('total(name:SUSPICION, aspect:weight) >= 1')).toThrow(/total\(\) pools a bound role/)
   })
 })

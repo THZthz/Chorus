@@ -20,6 +20,10 @@ export interface Entity {
   attrs: Attrs
   bornAction: number | null
   deadAction: number | null
+  /** minted from a `stackable` declaration (§9.38): the name may be held by
+   *  several living copies. Every mint site computes it from the compiled
+   *  stackable sets; the fold recomputes it identically from the logged ref. */
+  stackable: boolean
 }
 
 export interface Relation {
@@ -43,8 +47,9 @@ export interface Ending {
 
 export interface State {
   entities: Map<string, Entity>
-  /** name -> id, alive entities only (names are unique among the living, spec §9.14) */
-  byName: Map<string, string>
+  /** name -> living ids in birth order (head = OLDEST copy, §9.38 pool
+   *  addressing); unique-name law for non-stackable names still holds (§9.14) */
+  byName: Map<string, string[]>
   /** key: `${a}|${b}|${type}` with a<=b for symmetric types */
   relations: Map<string, Relation>
   /** engine clock, absolute minutes since day 0, tick 0 */
@@ -67,7 +72,11 @@ export function cloneState(s: State): State {
   }
   const relations = new Map<string, Relation>()
   for (const [k, r] of s.relations) relations.set(k, { ...r })
-  return { entities, byName: new Map(s.byName), relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null }
+  // law 6 (§9.38): the pool ARRAYS are deep-copied — a shallow `new Map` would
+  // share arrays, so a discarded draft's pool destroy would mutate real state
+  const byName = new Map<string, string[]>()
+  for (const [k, v] of s.byName) byName.set(k, [...v])
+  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null }
 }
 
 function cloneAspects(a: Aspects): Aspects {
@@ -76,12 +85,44 @@ function cloneAspects(a: Aspects): Aspects {
   return out
 }
 
+/** §9.14 + §9.38: names are unique among the living — except stackable mints,
+ *  which append to the pool. A stackable mint may not collide with a DISTINCT
+ *  non-stackable living name (shared namespace): under the mint rules a mixed
+ *  pool is impossible (a non-stackable mint demands an empty pool), so checking
+ *  the existing members for stackability is exact. */
 export function addEntity(s: State, e: Entity): void {
   if (e.deadAction === null) {
-    if (s.byName.has(e.name)) throw new Error(`duplicate name '${e.name}' among alive entities`)
-    s.byName.set(e.name, e.id)
+    const pool = s.byName.get(e.name)
+    if (pool && pool.length > 0) {
+      const existingStackable = pool.every(id => s.entities.get(id)?.stackable === true)
+      if (!e.stackable || !existingStackable) {
+        throw new Error(`duplicate name '${e.name}' among alive entities`)
+      }
+    }
+    if (pool) pool.push(e.id)
+    else s.byName.set(e.name, [e.id])
   }
   s.entities.set(e.id, e)
+}
+
+/** §9.14/§9.38 name release on death: remove the id from the name's pool;
+ *  the name only frees when the LAST copy dies. */
+export function releaseName(s: State, e: Entity): void {
+  const pool = s.byName.get(e.name)
+  if (!pool) return
+  const i = pool.indexOf(e.id)
+  if (i !== -1) pool.splice(i, 1)
+  if (pool.length === 0) s.byName.delete(e.name)
+}
+
+/** oldest living copy bearing a name (§9.38 pool addressing: a name ref with
+ *  N > 1 living copies addresses the HEAD of its pool — never id-string order) */
+export function oldestNamed(s: State, name: string): Entity | undefined {
+  for (const id of s.byName.get(name) ?? []) {
+    const e = s.entities.get(id)
+    if (e && e.deadAction === null) return e
+  }
+  return undefined
 }
 
 export function getEntity(s: State, id: string): Entity | undefined {

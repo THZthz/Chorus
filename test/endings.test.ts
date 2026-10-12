@@ -15,22 +15,12 @@ import { loadLog, saveLog } from '../src/store.js'
 import { Game } from '../src/play.js'
 import { compileScript, parseScript } from '../src/script.js'
 import { cloneState, type State } from '../src/types.js'
+import { snap } from './snap.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const dict = seedDictionary()
-
-function snap(s: State): string {
-  return JSON.stringify({
-    ents: [...s.entities.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-    rels: [...s.relations.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-    byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-    now: s.now,
-    fired: [...s.fired].sort(),
-    ended: s.ended, // §9.35: fold equality includes the story's ending
-  })
-}
 
 const waitContent = (out: string[], extra: Partial<ContentRaw> = {}): CompiledContent =>
   compileContent({

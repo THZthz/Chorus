@@ -53,6 +53,8 @@ export interface ScriptMeta {
 export interface EntitySpec {
   name: string
   kind: string
+  /** §9.38: `NAME is KIND stackable …` — this line's card may share its name */
+  stackable?: boolean
   aspects: Aspects
   containerName?: string
 }
@@ -173,6 +175,10 @@ function parseEntityLine(t: string, ln: number, dict: Dictionary, entities: Enti
     throw new Error(`line ${ln}: unknown kind '${second}' (expected one of ${KINDS.join(', ')})`)
   }
   let rest = rest0
+  // §9.38: the `stackable` keyword sits before `with`/`at`/`in` clauses
+  let stackable = false
+  const stackM = /^stackable\b\s*/.exec(rest)
+  if (stackM) { stackable = true; rest = rest.slice(stackM[0].length) }
   // trailing clauses, in either order: "with specs" and "at/in PLACE" — strip whichever matches last
   let containerName: string | undefined
   let aspects: Aspects = {}
@@ -198,17 +204,20 @@ function parseEntityLine(t: string, ln: number, dict: Dictionary, entities: Enti
     break
   }
   if (rest.trim() !== '') throw new Error(`line ${ln}: could not parse entity line '${t}'`)
-  entities.push({ name, kind: second, aspects, containerName })
+  entities.push({ name, kind: second, stackable, aspects, containerName })
 }
 
 // ---------- prototype lines ----------
 
 function parsePrototypeLine(t: string, ln: number, dict: Dictionary): [string, PrototypeDef] {
   const m = /^(\S+)\s+is\s+([a-z]+)\b\s*(.*)$/.exec(t)
-  if (!m) throw new Error(`line ${ln}: prototypes expect  NAME is KIND [deriving ...] [with ...]`)
+  if (!m) throw new Error(`line ${ln}: prototypes expect  NAME is KIND [stackable] [deriving ...] [with ...]`)
   const proto: PrototypeDef = { kind: m[2] }
   if (!(KINDS as readonly string[]).includes(m[2])) throw new Error(`line ${ln}: unknown kind '${m[2]}'`)
   let rest = m[3]
+  // §9.38: the `stackable` keyword sits before `deriving`/`with` clauses
+  const stackM = /^stackable\b\s*/.exec(rest)
+  if (stackM) { proto.stackable = true; rest = rest.slice(stackM[0].length) }
   let aspectsDone = false
   let deriveDone = false
   for (;;) {
@@ -312,6 +321,11 @@ function parseRecipeLine(t: string, ln: number, dict: Dictionary): RecipeDef {
 export function compileScript(text: string, dict: Dictionary): { content: CompiledContent; state: State; meta: ScriptMeta } {
   const script = parseScript(text, dict)
   const content = compileContent(script.content, dict)
+  // §9.38: stackable entity-line declarations join the prototype-derived sets,
+  // so SPAWN of such a name (and kind-qualified mints of its kind) stack
+  for (const e of script.entities) {
+    if (e.stackable) { content.stackableNames.add(e.name); content.stackableKinds.add(e.kind) }
+  }
   const state = newState(script.meta.start ? absMin(script.meta.start) : 0)
 
   const idOf = (name: string): string => `s_${name.toLowerCase()}`
@@ -319,6 +333,7 @@ export function compileScript(text: string, dict: Dictionary): { content: Compil
     addEntity(state, {
       id: idOf(e.name), kind: e.kind, name: e.name,
       aspects: e.aspects, attrs: {}, bornAction: 0, deadAction: null,
+      stackable: e.stackable ?? false,
     })
   }
   for (const e of script.entities) {

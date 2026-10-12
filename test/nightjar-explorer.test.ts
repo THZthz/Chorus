@@ -38,6 +38,7 @@ import { emptyClause, ROLES, type Clause, type Role } from '../src/sentence.js'
 import type { CompiledContent, CompiledSlot } from '../src/content.js'
 import type { Dictionary } from '../src/dict.js'
 import { Game } from '../src/play.js'
+import { snap } from './snap.js'
 
 const dict = seedDictionary()
 const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
@@ -46,24 +47,13 @@ const PLAYER = meta.player ?? 'MARCH'
 
 // ---------- shared invariants ----------
 
-function snap(s: State): string {
-  return JSON.stringify({
-    ents: [...s.entities.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-    rels: [...s.relations.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-    byName: [...s.byName.entries()].sort(([a], [b]) => a < b ? -1 : 1),
-    now: s.now,
-    fired: [...s.fired].sort(),
-    ended: s.ended, // §9.35: fold equality covers the story's ending too
-  })
-}
-
 function checkStateShape(s: State): void {
   const seen = new Set<string>()
   for (const e of s.entities.values()) {
     if (e.deadAction !== null) continue
     expect(seen.has(e.name), `duplicate living name ${e.name}`).toBe(false)
     seen.add(e.name)
-    expect(s.byName.get(e.name)).toBe(e.id)
+    expect(s.byName.get(e.name)).toContain(e.id) // §9.38: the id is in the name's pool
     const container = e.attrs['container']
     if (typeof container === 'string') expect(s.entities.has(container), `${e.name} sits nowhere`).toBe(true)
   }

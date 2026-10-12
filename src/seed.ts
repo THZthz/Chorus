@@ -162,7 +162,7 @@ export function seedContent(): ContentRaw {
 export function seedState(): State {
   const s = newState()
   const place = (id: string, name: string, container?: string) =>
-    addEntity(s, { id, kind: 'place', name, aspects: {}, attrs: container ? { container } : {}, bornAction: null, deadAction: null })
+    addEntity(s, { id, kind: 'place', name, aspects: {}, attrs: container ? { container } : {}, bornAction: null, deadAction: null, stackable: false })
 
   place('house', 'HOUSE')
   place('study', 'THE_STUDY', 'house') // v0.3: not 'STUDY' — the verb lexeme is reserved (§9.14)
@@ -172,23 +172,23 @@ export function seedState(): State {
   place('greenhouse', 'GREENHOUSE', 'villa')
 
   const character = (id: string, name: string, aspects: Record<string, number>, container: string) =>
-    addEntity(s, { id, kind: 'character', name, aspects, attrs: { container }, bornAction: null, deadAction: null })
+    addEntity(s, { id, kind: 'character', name, aspects, attrs: { container }, bornAction: null, deadAction: null, stackable: false })
   character('ana', 'ANA', { occult: 2, lantern: 1 }, 'house')
   character('bertha', 'BERTHA', {}, 'house')
   character('follower', 'MY_FOLLOWER', { lantern: 2 }, 'house')
 
   const text = (id: string, name: string, aspects: Record<string, number | Record<string, number>>, container: string) =>
-    addEntity(s, { id, kind: 'text', name, aspects, attrs: { container }, bornAction: null, deadAction: null })
+    addEntity(s, { id, kind: 'text', name, aspects, attrs: { container }, bornAction: null, deadAction: null, stackable: false })
   text('forgetting', 'THE_FORGETTING', { secret: 4 }, 'house')
   text('pale', 'THE_PALE_LADY', { secret: 3, language: { latin: 2 } }, 'study')
   text('fairy', 'FAIRY_TALES', { tender: 1 }, 'house')
   text('magick', 'MAGICK_BOOK', { magick: 1 }, 'study')
 
-  addEntity(s, { id: 'rite', kind: 'rite', name: 'RITE_OF_ASCENSION', aspects: { demand: 3 }, attrs: { container: 'house' }, bornAction: null, deadAction: null })
-  addEntity(s, { id: 'chalice', kind: 'item', name: 'CHALICE', aspects: {}, attrs: { container: 'house' }, bornAction: null, deadAction: null })
+  addEntity(s, { id: 'rite', kind: 'rite', name: 'RITE_OF_ASCENSION', aspects: { demand: 3 }, attrs: { container: 'house' }, bornAction: null, deadAction: null, stackable: false })
+  addEntity(s, { id: 'chalice', kind: 'item', name: 'CHALICE', aspects: {}, attrs: { container: 'house' }, bornAction: null, deadAction: null, stackable: false })
 
   // a clue already in play — the TALK ABOUT topic
-  addEntity(s, { id: 'clue_hideout', kind: 'idea', name: 'CLUE_SECRET_HIDEOUT', aspects: { secret: 1 }, attrs: { container: 'house' }, bornAction: null, deadAction: null })
+  addEntity(s, { id: 'clue_hideout', kind: 'idea', name: 'CLUE_SECRET_HIDEOUT', aspects: { secret: 1 }, attrs: { container: 'house' }, bornAction: null, deadAction: null, stackable: false })
 
   // ANA is BERTHA's parent — the seed world's one social edge
   s.relations.set(relationKey('ana', 'bertha', 'parent_child', true), {

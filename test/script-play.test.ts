@@ -27,7 +27,7 @@ describe('script compiler', () => {
   })
 
   test('entities carry kinds, aspects, and containers', () => {
-    const march = game.state.byName.get('MARCH')!
+    const march = game.state.byName.get('MARCH')![0]
     expect(game.state.entities.get(march)!.kind).toBe('character')
     expect(game.state.entities.get(march)!.attrs['container']).toBe('s_guard_van')
     const guard = game.state.entities.get('s_the_guard')!
@@ -209,8 +209,8 @@ describe('lenient input routes the new core verbs (v0.3)', () => {
   }, verbsDict)
   const ctx = () => {
     const state = seedState()
-    addEntity(state, { id: 'manifest', kind: 'text', name: 'THE_MANIFEST', aspects: {}, attrs: { container: 'house' }, bornAction: null, deadAction: null })
-    addEntity(state, { id: 'white_door', kind: 'place', name: 'THE_WHITE_DOOR', aspects: {}, attrs: { container: 'villa' }, bornAction: null, deadAction: null })
+    addEntity(state, { id: 'manifest', kind: 'text', name: 'THE_MANIFEST', aspects: {}, attrs: { container: 'house' }, bornAction: null, deadAction: null, stackable: false })
+    addEntity(state, { id: 'white_door', kind: 'place', name: 'THE_WHITE_DOOR', aspects: {}, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
     return { dict: verbsDict, content: verbsContent, state, player: 'ANA' }
   }
 

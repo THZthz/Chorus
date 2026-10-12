@@ -7,6 +7,7 @@
 import type { Entity, State } from './types.js'
 import { aspectGet, relationAlive } from './types.js'
 import { matchQuery, parseQuery, type CmpOp, type Query } from './query.js'
+import { ROLES } from './sentence.js'
 
 export type RoleBindings = Record<string, Entity[]>
 
@@ -29,6 +30,7 @@ export type Pred =
 export type ValExpr =
   | { t: 'int'; v: number }
   | { t: 'count'; role: string }
+  | { t: 'countQuery'; query: Query }    // §9.38: count over the whole living world (any §4.5 query)
   | { t: 'total'; role: string; path: string }
   | { t: 'path'; role: string; field: 'aspect' | 'attr'; key: string }
 
@@ -128,8 +130,8 @@ class PredParser {
 
   // exists(NAME) — an ALIVE entity bears the name; exists(<query>) — an alive
   // entity matches the §4.5 slot query. The first token inside the parens
-  // decides: a query-term starter (kind:/aspect:/state: or a leading -) means
-  // query form, anything else is a single NAME.
+  // decides: a query-term starter (kind:/aspect:/state:/name: or a leading -)
+  // means query form, anything else is a single NAME.
   private existsPred(): Pred {
     this.next() // 'exists'
     this.expect('(')
@@ -143,16 +145,21 @@ class PredParser {
     const close = this.pos - 1 // token index of the matching ')'
     if (close === first) throw new Error('exists() needs a name or a slot query')
     const head = this.toks[first]
-    const isQuery = head === '-' ||
-      ((head === 'kind' || head === 'aspect' || head === 'state') && this.toks[first + 1] === ':')
     const inner = (): string => this.src.substring(this.spans[first].start, this.spans[close].start)
-    if (isQuery) {
+    if (this.queryStarterAt(first)) {
       // §4.5 splits terms on whitespace, so tighten `aspect:hunter >= 1` to
       // `aspect:hunter>=1` — spaces around a comparison are glue, not structure
       return { t: 'existsQuery', query: parseQuery(inner().replace(/\s*(>=|<=|!=|=|>|<)\s*/g, '$1')) }
     }
-    if (close - first > 1) throw new Error(`exists() takes one name or a kind:/aspect:/state: query, got '${inner().trim()}'`)
+    if (close - first > 1) throw new Error(`exists() takes one name or a kind:/aspect:/state:/name: query, got '${inner().trim()}'`)
     return { t: 'exists', name: head }
+  }
+
+  /** a query-term starter at token i: kind:/aspect:/state:/name: or a leading `-` (§4.5, §9.38) */
+  private queryStarterAt(i: number): boolean {
+    const head = this.toks[i]
+    return head === '-' ||
+      ((head === 'kind' || head === 'aspect' || head === 'state' || head === 'name') && this.toks[i + 1] === ':')
   }
 
   private scalarCond(): ScalarCond {
@@ -181,12 +188,36 @@ class PredParser {
     if (/^\d+$/.test(t)) return { t: 'int', v: Number(t) }
     if (t === 'count') {
       this.expect('(')
+      // §9.38: count(role) vs count(<query>) — a query-term starter decides,
+      // mirroring exists(); the paren'd arg can carry commas inside nested
+      // parens (none in the §4.5 grammar, but consume balanced regardless)
+      if (this.queryStarterAt(this.pos)) {
+        const first = this.pos
+        let depth = 1
+        while (depth > 0) {
+          const tk = this.next()
+          if (tk === '(') depth++
+          else if (tk === ')') depth--
+        }
+        const close = this.pos - 1
+        if (close === first) throw new Error('count() needs a role or a slot query')
+        const inner = this.src.substring(this.spans[first].start, this.spans[close].start)
+        return { t: 'countQuery', query: parseQuery(inner.replace(/\s*(>=|<=|!=|=|>|<)\s*/g, '$1')) }
+      }
       const role = this.next()
       this.expect(')')
       return { t: 'count', role }
     }
     if (t === 'total') {
       this.expect('(')
+      // total pools a bound ROLE's aspects — the query form is deliberately not
+      // offered (§9.38): fail with the rule, not a cryptic `expected ','`
+      if (this.queryStarterAt(this.pos)) {
+        throw new Error(
+          `total() pools a bound role's aspects — total(<query>, …) is not offered; ` +
+          `use count(<query>) to count a pool by name (e.g. count(name:X))`,
+        )
+      }
       const role = this.next()
       this.expect(',')
       this.expect('aspect')
@@ -259,9 +290,10 @@ export function evalPred(p: Pred, ctx: PredCtx): boolean {
     }
     case 'exists': {
       // byName holds ALIVE entities only (§9.14); the deadAction re-check is
-      // the same belt-and-braces resolveRef wears
-      const id = ctx.state.byName.get(p.name)
-      return id !== undefined && ctx.state.entities.get(id)?.deadAction === null
+      // the same belt-and-braces resolveRef wears. Under pools (§9.38) the
+      // existential is ANY living copy of the name.
+      const pool = ctx.state.byName.get(p.name)
+      return pool !== undefined && pool.some(id => ctx.state.entities.get(id)?.deadAction === null)
     }
     case 'existsQuery': {
       // the WHOLE world, not the step's bound roles — CS extantreqs ("anywhere
@@ -293,6 +325,14 @@ function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
   switch (x.t) {
     case 'int': return x.v
     case 'count': return (ctx.b[x.role] ?? []).length
+    case 'countQuery': {
+      // world scope, like existsQuery (§6.3): every ALIVE card matching the query
+      let n = 0
+      for (const e of ctx.state.entities.values()) {
+        if (e.deadAction === null && matchQuery(e, x.query)) n++
+      }
+      return n
+    }
     case 'total':
       return (ctx.b[x.role] ?? []).reduce((sum, e) => sum + (aspectGet(e, x.path) ?? 0), 0)
     case 'path': {
@@ -300,6 +340,48 @@ function evalExpr(x: ValExpr, ctx: PredCtx): number | undefined {
       if (!e) return undefined
       return x.field === 'aspect' ? aspectGet(e, x.key) : numberAttr(e, x.key)
     }
+  }
+}
+
+// ---------- load-time argument lint (§9.38) ----------
+
+const ROLE_LIST = ROLES.join(', ')
+
+/** count()/total() arguments must be a DECLARED ROLE or a query-term starter —
+ *  `count(DREAD) >= 3` (the most tempting typo: a name where a role belongs)
+ *  would otherwise silently evaluate to 0 at runtime. Called at content
+ *  compile for every recipe `when`; the runtime path is unaffected. */
+export function lintPred(where: string, p: Pred): void {
+  switch (p.t) {
+    case 'and':
+    case 'or':
+      lintPred(where, p.a)
+      lintPred(where, p.b)
+      return
+    case 'not':
+      lintPred(where, p.a)
+      return
+    case 'cmp':
+      lintValExpr(where, p.l)
+      lintValExpr(where, p.r)
+      return
+    default:
+      return // rel/every/any/exists/existsQuery carry no count/total args
+  }
+}
+
+function lintValExpr(where: string, x: ValExpr): void {
+  if (x.t === 'count' && !(ROLES as readonly string[]).includes(x.role)) {
+    throw new Error(
+      `${where}: count() argument '${x.role}' is neither a role (${ROLE_LIST}) nor a query ` +
+      `(name:x, kind:k, aspect:a>=1, state:s, -term) — did you mean count(name:${x.role})?`,
+    )
+  }
+  if (x.t === 'total' && !(ROLES as readonly string[]).includes(x.role)) {
+    throw new Error(
+      `${where}: total() first argument '${x.role}' is not a declared role (${ROLE_LIST}) ` +
+      `— total pools a role's aspects; use count(name:x) to count a pool by name`,
+    )
   }
 }
 

@@ -76,6 +76,18 @@ projection of that data, never the source of truth.
 > core verb set grows from ten to twelve — `STUDY` (READ's signature) and
 > `MANSUS` (EXPLORE's signature) (§4.3, §9.37).
 >
+> v0.3.1 = stackable cards (§9.38). An entity or prototype declaration may
+> carry `stackable`, so a name may be held by SEVERAL living copies — Dread
+> and Funds are pools of identical cards, not unique cards. The engine keeps
+> each name as an ordered pool (oldest first, §9.38): every name reference
+> resolves to the OLDEST copy, engine-written expiry destroys are keyed by
+> `#id` so the expiring copy dies (not the pool head), authored destroys stay
+> name-addressed, the slot query language gains a `name:` term (§4.5), and
+> `count(...)` accepts any §4.5 query — `count(name:SUSPICION) >= 3` — with a
+> load-time lint fencing the `count(DREAD)` role-typo (§6.3). Prototype
+> declarations that mint several same-named cards over a run are the primary
+> users; §9.33's REPLACE self-collision note is revised for stackables.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -237,11 +249,14 @@ uppercase) — and expands to that role's bound cards (`DESTROY WITH`,
 
 ```
 kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:winter
+name:SUSPICION  -name:SUSPICION        (§9.38: exact-case, like name refs and exists)
 ```
 
 - `kind:` — exactly one kind
 - `aspect:name[.sub][>=|<=|=]level` — principle match (bare `aspect:x` = level ≥ 1)
 - `state:key[=|!]value` — attr match against the `state.*` namespace (`state:!sealed` → `attrs['state.sealed']`)
+- `name:NAME` — exact-case name match (§9.38); composes with the other terms,
+  and `-name:x` negates like any term
 - `-` prefix — negation
 
 Slot queries test **one card at a time**. Anything about a *group* (size,
@@ -296,8 +311,11 @@ Lexical rules:
   ABOUT INTO AS AND OR NOT` + every registered verb lexeme) cannot be used as
   names; content needing them uses the quoted-string ref form (`"PLAN B"`).
 - **Entity names are unique among alive entities** (enforced at SPAWN /
-  registration). Canonical ref output is the bare name; `kind:NAME` and `#id`
-  are accepted input forms (sugar; typed refs are kind-checked at resolution).
+  registration) — except cards minted from a `stackable` declaration, which
+  pool under one name (§9.38). Canonical ref output is the bare name;
+  `kind:NAME` and `#id` are accepted input forms (sugar; typed refs are
+  kind-checked at resolution). A name ref under a pool addresses the OLDEST
+  copy (§9.38).
 - Post-verbal `AT` (`ANA READ X AT HOUSE`) is accepted as input sugar and
   canonicalized to the pre-verbal position — the canonical sentence is
   `ANA AT HOUSE READ X`.
@@ -479,7 +497,9 @@ cross-role   rel(neighbor, actors.container, object)      # ∃ an edge across t
 world        exists(HUNTER)                               # ∃ an ALIVE card with this exact name
              exists(aspect:hunter>=1)                     # ∃ an alive card matching a §4.5 query
              exists(kind:rite aspect:ritual>=1) · exists(-aspect:winter)
+             exists(name:SUSPICION)                       # ∃ a living copy of the name (§9.38)
 aggregate    total(actors, aspect:lantern) >= 3 # pooled power of the set
+             count(name:SUSPICION) >= 3         # the whole living pool, not a role (§9.38)
 paths        total(actors, aspect:lantern) < object.aspect.demand   # value vs value
              count(actors) > object.attr.seats                      # attr paths too
 logic        AND · OR · NOT (uppercase; NOT binds tightest)
@@ -499,15 +519,25 @@ other condition (recipe-selection time, §6.4) and is an ordinary primary
 condition: `NOT exists(...)`, `exists(...) AND ...`, `OR` chains all compose.
 
 - `exists(NAME)` — an alive entity bears exactly this name (names are case
-  exact and unique among the living, §9.14; a destroyed card stamps
-  `deadAction`, releases its name, and stops existing).
+  exact, §9.14; a destroyed card stamps `deadAction`, releases its name, and
+  stops existing).
 - `exists(<query>)` — an alive entity matches the §4.5 slot query: a
-  conjunction of `kind:` / `aspect:` / `state:` terms with `-` negation.
+  conjunction of `kind:` / `aspect:` / `state:` / `name:` terms with `-`
+  negation.
 - Disambiguation: if the first token inside the parens is a query-term
-  starter (`kind:` / `aspect:` / `state:` / a leading `-`), the contents
-  parse as a §4.5 query; otherwise they parse as a single NAME. Spaces around
-  a comparison inside a query are glue: `aspect:hunter >= 1` reads as
-  `aspect:hunter>=1` (§4.5 terms are whitespace-separated).
+  starter (`kind:` / `aspect:` / `state:` / `name:` / a leading `-`), the
+  contents parse as a §4.5 query; otherwise they parse as a single NAME.
+  Spaces around a comparison inside a query are glue: `aspect:hunter >= 1`
+  reads as `aspect:hunter>=1` (§4.5 terms are whitespace-separated).
+
+**`count(...)` is overloaded the same way** (§9.38): `count(role)` counts the
+cards bound into a role; `count(<query>)` counts every ALIVE card in the
+world matching a §4.5 query — `count(name:SUSPICION) >= 3` is the pool-size
+check. The first token decides, exactly as in `exists(...)`. **Load-time arg
+lint**: a `count()`/`total()` argument must be a declared role or a
+query-starter — `count(DREAD) >= 3` (the most tempting typo: a NAME where a
+role belongs; it would silently count 0) is a load error naming the valid
+forms. `total(<query>, …)` is not offered: pooled aspects read a bound role.
 
 Idiom — a rite that only burns while the coast is clear (no HUNTER card
 exists anywhere in play) and the sealed door still stands:
@@ -999,7 +1029,9 @@ Two invariants keep the mapping safe:
     accepts without a clause): REPLACE has no clause, so prototype
     derivation (`name from object`, §9.23) is unavailable. Because spawn
     precedes destroy, `REPLACE X WITH X` — or any collision with a living
-    entity — rejects the whole step with nothing logged (§9.19). (A replaced
+    entity — rejects the whole step with nothing logged (§9.19). (Revised by
+    §9.38: a stackable successor may share a stackable pool — `REPLACE X WITH
+    X` then succeeds, append-then-pop.) (A replaced
     place's children keep pointing at the dead place id; re-parenting them is
     the author's job.)
 34. **Trigger outcome guards and fired-set agreement**: `REFUSE` in any
@@ -1085,6 +1117,89 @@ Two invariants keep the mapping safe:
     the seed world's study room is `THE_STUDY` since v0.3 for exactly this
     reason.
 
+### Implementation rulings (v0.3.1, stackable cards)
+
+38. **Names may pool: stackable cards** (§4.5, §5.1, §6.3, §10). Dread,
+    Funds, and Suspicion are pools of identical cards, not unique cards. An
+    entity line or prototype line may carry the `stackable` keyword (before
+    `with`/`deriving`); it lands in compiled content as two derived sets —
+    `stackableNames` (the declared names) and `stackableKinds` (the KINDS of
+    those declarations). Every mint site (SPAWN, REPLACE; DRAW from v0.4)
+    computes its `stackable` flag from the mint's RESOLVED name and kind: a
+    mint is stackable iff its name is declared stackable — which declares its
+    kind too — or its KIND carries a stackable declaration. The rule is
+    kind-level, not form-level: a `kind:K` mint of a stackable kind is the
+    explicit spelling, but a plain `SPAWN PROTO` whose prototype's kind
+    carries any stackable declaration mints stackable as well. The flag rides
+    on the card; the fold recomputes the same rule from the logged ref —
+    concrete SPAWN rows always carry the resolved `kind:K`, so play and fold
+    decide from the identical (name, kind) pair without new log surface.
+    Concretely:
+    - **The uniqueness law, revised.** Non-stackable mints are unchanged
+      (§9.14, §9.19: a duplicate living name rejects the whole step). A
+      stackable mint never collides with its own pool, but MAY NOT collide
+      with a distinct NON-stackable living name — one shared namespace: a
+      non-stackable holder blocks stackable mints of the same name, and a
+      mixed pool is therefore impossible (a non-stackable mint demands an
+      empty pool). The name frees only when the LAST copy dies.
+    - **Pool addressing = oldest copy.** `state.byName` maps a name to its
+      living ids in BIRTH order (insertion order — never id-string order,
+      which sorts `e10_1` before `e2_1`). A name ref with N > 1 living copies
+      addresses the HEAD of that array — the OLDEST copy — everywhere name
+      refs resolve: DESTROY, SET, MOVE, REPLACE, ref positions in every
+      outcome, slot resolution, lenient input, `exists(NAME)` (any copy), and
+      the play surface (the card listing shows every copy; `inspect` reads
+      the oldest).
+    - **Authored destroys stay name-addressed.** `DESTROY <poolname>` (and
+      any authored name ref) resolves per the pool rule and LOGS THE NAME
+      ref, so destroying the oldest, then the next-oldest, is repeatable
+      authoring; the fold replays the same resolution deterministically.
+    - **Engine-written destroys address by id.** The built-in expiry path
+      keys its destroy to the EXPIRING entity — it concretizes to
+      `DESTROY #id` — because under a pool a name-addressed destroy would
+      kill the oldest copy while the card whose `expiresAt` actually crossed
+      survived and re-fired forever. (Replaces the v0.2.6 name-form row.)
+    - **The authored-expiry asymmetry (deliberate, documented).** An
+      `on expire of NAME` trigger (§9.32) matches by NAME: a crossing of ANY
+      copy fires it, once per crossing, even within one advance (each
+      crossed halfhour slot re-checks the snapshot). But its outcomes are
+      plain authored text: anything referencing NAME addresses the OLDEST
+      copy, which under a pool may not be the copy whose expires crossed.
+      The crossing copy is therefore not consumed by its own crossing; being
+      past its `expires` it re-fires on every later crossing (§9.32), and
+      once it becomes the pool's head, the trigger's destroy takes it.
+      Authors who need exactly-the-crossing-copy dead use the built-in path
+      (no authored trigger) or keep per-copy expires exclusive. The engine
+      does NOT silently inject a by-id destroy into authored outcomes —
+      §9.32's "authored outcomes replace the built-in destroy entirely"
+      contract is preserved.
+    - **REPLACE X WITH X succeeds for stackables** (§9.33 revised): the
+      spawn appends while the dying card is still alive, then the destroy
+      pops it — the pool never dips, and the next pool op addresses the
+      next-oldest (now head). A NON-stackable successor colliding with any
+      living holder still rejects the whole step (§9.19). Concrete rows
+      already carry `AS #id`, so the fold replays the pair exactly.
+    - **[doc] Lenient input addresses the oldest copy only** — typed prose
+      has no `#id` form of its own; the canonical sentence may name `#id`
+      explicitly as the escape hatch. Journal prose renders two pool copies
+      bound into one role as "SUSPICION and SUSPICION". `SET <poolname>, …`
+      touches only the oldest copy — pool-wide writes need role bindings
+      (each bound card gets its own concrete SET, §9.31).
+    - **Draft discipline covers the pools** (law 6): `cloneState` DEEP-COPIES
+      the `byName` arrays, so a discarded draft's pool destroy (an array
+      splice) can never mutate the real state's pool. The fold/JSONL equality
+      test snapshot includes the multimap, and the three test-local `snap()`
+      helpers are consolidated into one shared helper (test/snap.ts) so this
+      cannot drift again.
+    - **Companion: counting the pool.** The §4.5 query language gains
+      `name:x` (exact-case, negatable), and `count(...)` is overloaded in the
+      shared value-expression evaluator to accept any §4.5 query —
+      `count(name:SUSPICION) >= 3` — world-scoped like `exists(...)`, so
+      F4's `ROLL(count(name:X), 6)` will parse without new grammar. A
+      load-time lint fences the arg: `count()`/`total()` arguments must be a
+      declared role or a query-starter, so `count(DREAD) >= 3` — the most
+      tempting typo — is a load error naming the valid forms, not a silent 0.
+
 ## 10. The script format — a game as one text file
 
 A whole game is one text file: meta lines, then section blocks of
@@ -1134,11 +1249,12 @@ templates:
 
 Rules:
 
-- **Entity line**: `NAME is KIND [with aspect:level, …] [at|in PLACE]`
-  (trailing `with`/`at`/`in` clauses in either order). Script ids are
-  `s_<name>`; containers resolve by name after all entities are read.
-  Names must be unique among the living (§9.14) and are written as-is —
-  prefer `UPPER_SNAKE`.
+- **Entity line**: `NAME is KIND [stackable] [with aspect:level, …]
+  [at|in PLACE]` (trailing `with`/`at`/`in` clauses in either order; the
+  `stackable` keyword sits before them, §9.38). Script ids are `s_<name>`;
+  containers resolve by name after all entities are read. Names must be
+  unique among the living (§9.14) — except a `stackable` entity line, whose
+  name is a pool (§9.38) — and are written as-is — prefer `UPPER_SNAKE`.
 - **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
   dictionary; symmetric/directed storage follows its definition (§4.2).
 - **Verb lexemes are fixed by the dictionary**: a `verbs:` block configures
@@ -1151,11 +1267,12 @@ Rules:
   - `ID [once] at (hour|halfhour) N -> OUTCOMES` — `hour` N is 0..23
     (slot 2N), `halfhour` N is 0..47. Fires on every crossing of that
     halfhour-of-day — or on the first crossing only with `once` (§9.29).
-  - `ID on expire of NAME -> OUTCOMES` — fires when the entity named NAME
+  - `ID on expire of NAME -> OUTCOMES` — fires when an entity named NAME
     expires (§9.32); NAME gets no compile-time existence check (the entity
-    may be spawned at runtime), and its outcomes may reference NAME directly
-    (names are unique among the living). With no such trigger, expiry
-    destroys the card (§6.6).
+    may be spawned at runtime), and its outcomes may reference NAME directly.
+    Under a pool, a crossing of ANY copy fires the trigger, and its
+    name-addressed outcomes hit the OLDEST copy — the §9.38 asymmetry. With
+    no such trigger, expiry destroys the crossing card by id (§6.6, §9.38).
 - **Ending lines**: `ID: "Title" [(flavour)]` — the ending table (§9.35).
   The id is UPPER_SNAKE and unique; the title is a quoted string; the
   flavour is a display word (any lowercase term) defaulting to

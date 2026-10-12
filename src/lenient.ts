@@ -120,7 +120,8 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
     const fits = (ref: Ref, role: 'to' | 'actors'): boolean => {
       const slot = verbDef.slotByRole.get(role)
       if (!slot) return false
-      const id = ref.form === 'name' ? ctx.state.byName.get(ref.name) : undefined
+      // byName pools hold living ids with the oldest first (§9.38)
+      const id = ref.form === 'name' ? ctx.state.byName.get(ref.name)?.[0] : undefined
       const e = id !== undefined ? ctx.state.entities.get(id) : undefined
       return e !== undefined && (!slot.query || matchQuery(e, slot.query))
     }
@@ -154,10 +155,15 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
 interface NameEntry { entity: Entity; norm: string }
 
 function aliveNames(state: State): Map<string, NameEntry> {
+  // §9.38: one entry per distinct name — the OLDEST living copy (the head of
+  // the byName pool; entities iterate in birth order). Lenient input has no
+  // #id form of its own, so a pool name typed in prose addresses the oldest;
+  // the engine's resolveRef enforces the same rule on the composed sentence.
   const map = new Map<string, NameEntry>()
   for (const e of state.entities.values()) {
     if (e.deadAction !== null) continue
-    map.set(norm(e.name), { entity: e, norm: norm(e.name) })
+    const key = norm(e.name)
+    if (!map.has(key)) map.set(key, { entity: e, norm: key })
   }
   return map
 }

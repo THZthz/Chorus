@@ -34,10 +34,13 @@ function formatOutcome(o: Outcome, dict?: SafeDict): string {
   if (o.op === 'IF') throw new Error('an IF outcome is authored form only — the log records the taken branch (§9.39)')
   if (o.op === 'FN') throw new Error('a function call is authored form only — calls expand at load (§9.40)')
   if (o.op === 'ROLL') throw new Error('a ROLL is authored form only — the log records the engine-written ROLLED result (§9.41)')
-  // ROLLED (§9.41) rides the generic paren'd fallback on purpose: its args are
-  // two plain ints, so `ROLLED(14, 3)` formats AND re-parses — the round-trip
-  // the fold's counter row needs (a fallback that emitted anything else would
-  // make every recorded roll unparseable)
+  if (o.op === 'DRAW') throw new Error('a DRAW is authored form only — the log records the engine-written DRAWN+SPAWN rows (§9.42)')
+  // ROLLED (§9.41) and DRAWN (§9.42) ride the generic paren'd fallback on
+  // purpose: their args format and re-parse — `ROLLED(14, 3)` is two plain
+  // ints, `DRAWN(RUMOURS, HEARSAY)` two plain name refs (unsafe spellings
+  // re-quote through formatRef/parse) — the round-trip the fold's counter and
+  // cursor rows need (a fallback that emitted anything else would make every
+  // recorded roll or draw unparseable)
   if (o.op === 'SPAWN') {
     // pretty form: SPAWN X [INTO Y] [AS #id]
     const parts = ['SPAWN']

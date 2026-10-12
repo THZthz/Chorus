@@ -124,6 +124,20 @@ projection of that data, never the source of truth.
 > `ROLLED` join the reserved words. The v0.4 number itself arrives with the
 > showcase commit.
 >
+> v0.3.5 = decks (§4.4, §5.1, §9.42, §10). The `decks:` script section
+> declares a deck as an ordered multiset of prototype/entity names —
+> `RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset` —
+> and the `DRAW <DECK> [INTO target]` outcome serves the deck's next card.
+> The draw order is a seed-fixed PERMUTATION OVER POSITIONS of the spec
+> (repeats weight the draw), derived at load purely from (seed, deck id) with
+> the §9.41 mixer — deterministic, identical at play and fold, and consuming
+> NO rng counter. The log records the engine-written `DRAWN(<DECK>, <name>)`
+> followed by the concrete SPAWN; the fold advances the deck cursor from the
+> DRAWN row, asserting the recorded name against the compiled permutation so
+> content drift fails loud. Authored DRAWN is a load error; `DRAW` and
+> `DRAWN` join the reserved words. (The v0.4 number itself stays with the
+> showcase commit.)
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -272,6 +286,8 @@ core set is a default, not a closed wall.
 | `IF`      | cond `->` `(` outcomes `)` { `ELSE IF` cond `->` `(` outcomes `)` } [ `ELSE` `->` `(` outcomes `)` ] | branching (§6.8, §9.39): arms evaluate in order against the draft, first true condition wins, `ELSE` is the default, no true arm and no `ELSE` applies nothing; the log records only the TAKEN branch's outcomes, flattened in position — no IF ever appears in the log |
 | `ROLL`    | count, sides [, bonus]          | roll dice (§9.41): paren-only; each argument is a §6.3 value expression (`3`, `total(actors, aspect:nerve)`, `count(name:X)`, `object.aspect.dc`, …). Rolls `count` dice of `sides` faces plus `bonus`, consuming exactly `count` rng counters; binds `roll` for the rest of the outcome list. The log records the engine-written `ROLLED(<total>, <ctrAfter>)` — no ROLL ever appears in the log. `sides` < 2 or `count` < 0 reject the whole step (§9.19); `count` = 0 is legal (total = bonus, counter unmoved) |
 | `ROLLED`  | total, ctrAfter                 | **engine-written only** (§9.41): the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
+| `DRAW`    | deck [, INTO target]            | draw the next card of a `decks:` declaration (§9.42): paren-less, the deck id is a plain name (a declared-deck check runs at load, over recipes and triggers, IF branches included); INTO is the SPAWN target grammar, and must RESOLVE — a role over empty event bindings or a dead ref rejects the step rather than materializing the card nowhere. With no INTO the mint reuses SPAWN's default (the step's `at` card, else the first actor's `container`; in triggers, where bindings are empty, the card is minted containerless unless an explicit INTO is authored). The deck entry may name a prototype or a declared entity; repeats in the spec weight the draw. The log records the engine-written `DRAWN(<DECK>, <name>)` + the concrete `SPAWN … AS #id` pair — no DRAW ever appears in the log |
+| `DRAWN`   | deck, name                      | **engine-written only** (§9.42): the record of one DRAW — the fold advances that deck's cursor, asserting `name` is exactly what the compiled permutation serves at the cursor (content drift between play and fold fails loud). Authoring one is a load error |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -339,9 +355,11 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
            | "ROLL" "(" valexpr "," valexpr [ "," valexpr ] ")"
                                                  (* §9.41: paren-only; each argument is a §6.3 cmp-operand value expression (int, count(role), count(<query>), total(role, aspect:path), role.aspect.x, role.attr.x — a body parameter inside a function template), split on depth-0 commas so nested parens survive; arity 2..3 *)
            | "ROLLED" "(" int "," int ")"        (* §9.41: ENGINE-WRITTEN only — the recorded roll; authoring one is a load error *)
+           | "DRAW" name [ "INTO" target ]       (* §9.42: paren-less only — the deck id is a plain name ref (declared decks are pinned at load); INTO is the SPAWN target grammar and must resolve *)
+           | "DRAWN" "(" name "," name ")"       (* §9.42: ENGINE-WRITTEN only — the recorded draw, `DRAWN(<DECK>, <name>)`; an unsafe name formats re-quoted and re-parses (ref's string form); authoring one is a load error *)
            | ref ;                               (* bare ref = SPAWN ref, engine adds AS #id *)
 (*          canonical OUTPUT: SPAWN, NARRATE, REPLACE and ENDING paren-less, every other op paren'd
-            — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) · ROLLED(14, 3) *)
+            — e.g. SPAWN X INTO #house AS #c1 · NARRATE "…" · MOVE(#ana, INTO #study) · ROLLED(14, 3) · DRAWN(RUMOURS, HEARSAY) *)
 args       = arg { "," arg } ;                   (* arg shapes validated per §4.4 arity *)
 arg        = ref | role | int | signedInt | string | bool | duration
            | "INTO" target | "AS" "#" id | key "=" value | dottedName | aspectKey ;
@@ -358,8 +376,8 @@ ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name
 Lexical rules:
 
 - `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT TO WITH AT
-  ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED` + every registered verb
-  lexeme) cannot be used as names; content needing them uses the quoted-string
+  ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED DRAW DRAWN` + every registered
+  verb lexeme) cannot be used as names; content needing them uses the quoted-string
   ref form (`"PLAN B"`).
 - **Entity names are unique among alive entities** (enforced at SPAWN /
   registration) — except cards minted from a `stackable` declaration, which
@@ -1552,6 +1570,85 @@ Two invariants keep the mapping safe:
     - `ROLL` and `ROLLED` join the reserved words (§5.1), and a function
       named ROLL collides with the op (§9.40's isOp rule) as usual.
 
+### Implementation rulings (v0.3.5, decks)
+
+43. **A deck is a seed-fixed permutation over POSITIONS of its spec**
+    (§4.4, §9.30, §10). The `decks:` section declares `ID spec NAME, …
+    [defaultcard NAME] [reset]`; entries are prototype/entity NAMES only
+    (no kinds — the mint's kind resolves at load from the prototype or the
+    declared entity line), resolved once at load by a check modeled on the
+    §9.35 endings check (load error naming the deck and the unknown entry;
+    `defaultcard` resolves the same way; an empty spec is a load error).
+    Repeats are legal and weight the draw.
+    - **The permutation, not the spec order, is the draw sequence**: the
+      fixed order is a Fisher–Yates shuffle over the POSITIONS `0..n-1` of
+      the spec, where position `i` draws its shuffle value from
+      `splitmix64(seed XOR hash(deckId) XOR i)` — the §9.41 mixer with an
+      FNV-1a-64 hash of the deck id standing in for the dice counter. Pure
+      in (seed, deck id): fixed at load, identical at play and fold, and
+      consuming NO rng counter (law 5 — deck streams and the dice stream are
+      independent key spaces of the same mixer, so drawing never shifts a
+      die). Shuffling POSITIONS (not names) preserves the multiset: `A, A,
+      B` keeps its 2:1 weighting in every period. The permutation lives on
+      compiled content, never on State; `State.decks` holds one cursor per
+      deck, cloned like every state field (law 6).
+    - **Serving and exhaustion**: a draw serves `order[cursor]` and advances
+      the cursor ON THE DRAFT (a rejection or REFUSE discards it — law 4).
+      Past the period, `reset` wraps (the sequence is periodic with period
+      `len(spec)` — there are no mid-run reshuffles); without `reset`,
+      `defaultcard` serves forever; with neither, the draw FAILS — a §9.19
+      step rejection (nothing logged, cursor unmoved). Play and fold share
+      one serving function, so the two can never drift.
+    - **Concretization**: DRAW logs `DRAWN(<DECK>, <name>)` followed by the
+      standard concrete `SPAWN … [INTO #c] AS #id [aspects=…] [attrs=…]` —
+      the SPAWN half owns every mint rule (prototype aspects and `derive`,
+      §9.38 stackability, §9.18 materialization), so deck cards are ordinary
+      entities once drawn and a stackable deck entry pools naturally. The
+      DRAWN row carries the SPEC entry name (not a derived mint name) so its
+      assertion reads the permutation. DRAWN needs real parse+format entries
+      (two name refs — an unsafe spelling formats re-quoted and re-parses as
+      ref's quoted-string form, via the generic paren'd path)
+      because a fallback that emitted anything unparseable would break
+      round-trip for every recorded draw. Authoring DRAWN is a load error,
+      exactly like ROLLED; `DRAW` and `DRAWN` join the reserved words (§5.1),
+      and a function named DRAW or DRAWN collides with the op (§9.40).
+    - **Seed drift (§9.30 asymmetry, with a deck-specific edge)**: changing
+      `seed` shifts every FUTURE draw (and every die) but never rewrites
+      past rows. The dice replay past rolls from the log alone; a deck's
+      cursor row must RE-DERIVE its expectation (cursor + permutation), so a
+      seed or spec change under an old log makes the DRAWN assertion FAIL
+      LOUD instead of silently diverging — re-fold such logs against the
+      content that played them, or accept the error as the drift detector
+      it is.
+    - **DRAW's INTO must resolve** (stricter than SPAWN's lenient default):
+      a role with no bound card — every event binding, for one — or an
+      unresolvable ref rejects the step rather than materializing the card
+      nowhere. **Triggers have EMPTY bindings** (§9.39's rule): a no-INTO
+      DRAW in a trigger mints containerless (the documented default — the
+      same shape as a trigger SPAWN), so a trigger that wants a drawn card
+      to LAND authors an explicit `INTO <place-or-character>`. The deck id
+      itself IS load-checked (a `DRAW 'NOSUCH'` cannot even load), in
+      recipes and triggers, IF branches included (§9.35's walk); INTO
+      targets stay runtime-resolved like every ref position — expansion
+      before guards means a function body's param-INTO binds per call site.
+    - **Legal homes**: DRAW is legal in recipes, triggers, IF branches
+      (an untaken branch consumes no draw — the cursor rides the draft),
+      and function bodies (`deckeffects`-style multi-draw is just multiple
+      DRAWs in v0.4 — no sugar). A `when:`-selected recipe that never runs
+      never draws.
+44. **The livelock rule — deck entries should be stackable, or be consumed
+    or renamed on the same step** (§9.38 x §9.42). A deck entry minted
+    NON-stackable whose previous copy still lives makes the SPAWN half of
+    its next serve reject (`SPAWN: name 'X' already in use`); the rejection
+    discards the draft, the cursor never advances, and every subsequent
+    serve of that entry fails IDENTICALLY — the deck is pinned shut with no
+    error beyond the per-step rejection. That is the documented authoring
+    rule, not engine machinery: declare pool entries `stackable` (gossip,
+    dread, funds), or have the same step consume/rename the previous copy,
+    and the deck cycles forever as intended. A test pins the stuck state
+    (the message, the frozen cursor, the unchanged snap) so a future engine
+    change cannot silently "fix" it by skipping or auto-consuming.
+
 ## 10. The script format — a game as one text file
 
 A whole game is one text file: meta lines, then section blocks of
@@ -1588,6 +1685,9 @@ triggers:
 functions:
   sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
   watch(n) -> IF count(name:SUSPICION) >= n -> (ENDING ARRESTED)
+
+decks:
+  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset
 
 endings:
   ARRESTED: "Taken by the constabulary"
@@ -1642,6 +1742,15 @@ Rules:
   `NAME(arg, …)` and expand at load time (§9.40). Functions may share names
   with entities and verbs (calls only ever parse in outcome position); an
   op-named or IF/ELSE-named function is a load error.
+- **Deck lines** (§9.42): `ID spec NAME[, NAME…] [defaultcard NAME] [reset]`
+  (the trailing clauses in either order). The id is UPPER_SNAKE, unreserved,
+  and unique. Spec entries are prototype/entity NAMES only — repeats weight
+  the draw — and must resolve at load (naming the deck and the entry
+  otherwise), as must `defaultcard`. The fixed draw order is the seed-fixed
+  position permutation of §9.42; `reset` wraps when exhausted, `defaultcard`
+  serves forever, neither makes every past-the-period draw a §9.19 rejection.
+  Deck entries should be stackable, or consumed/renamed on the same step —
+  the §9.42 livelock rule.
 - **Ending lines**: `ID: "Title" [(flavour)]` — the ending table (§9.35).
   The id is UPPER_SNAKE and unique; the title is a quoted string; the
   flavour is a display word (any lowercase term) defaulting to

@@ -35,14 +35,14 @@
 //     READ says "{actors} read {object} at {at}."
 import type { Dictionary } from './dict.js'
 import { KINDS } from './dict.js'
-import type { ContentRaw, EndingDef, FunctionDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
+import type { ContentRaw, DeckRaw, EndingDef, FunctionDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
 import { compileContent, type CompiledContent } from './content.js'
 import { parseClock, absMin, parseDuration, type Clock } from './clock.js'
 import { parseOutcomes } from './parse.js'
 import { aspectsFromPairs } from './query.js'
 import { addEntity, relationKey, newState, type Aspects, type State } from './types.js'
 
-type Section = 'entities' | 'prototypes' | 'triggers' | 'endings' | 'verbs' | 'templates' | 'functions'
+type Section = 'entities' | 'prototypes' | 'triggers' | 'endings' | 'verbs' | 'templates' | 'functions' | 'decks'
 
 export interface ScriptMeta {
   title?: string
@@ -85,6 +85,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
   const templates: Record<string, string> = {}
   const endings: Record<string, EndingDef> = {}
   const verbs: Record<string, VerbContent> = {}
+  const decks: DeckRaw[] = []
 
   const lines = text.split('\n')
   let section: Section | null = null
@@ -118,7 +119,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
 
     // section headers (indent 0); free-form order — compileContent fixes the
     // compile order (functions first), so `functions:` may sit anywhere
-    if (indent === 0 && /^(entities|prototypes|triggers|endings|verbs|templates|functions):$/.test(t)) {
+    if (indent === 0 && /^(entities|prototypes|triggers|endings|verbs|templates|functions|decks):$/.test(t)) {
       section = t.slice(0, -1) as Section
       verbName = null
       inRecipes = false
@@ -131,6 +132,8 @@ export function parseScript(text: string, dict: Dictionary): Script {
     } else if (section === 'prototypes') {
       const [key, proto] = parsePrototypeLine(t, ln + 1, dict)
       prototypes[key] = proto
+    } else if (section === 'decks') {
+      decks.push(parseDeckLine(t, ln + 1))
     } else if (section === 'triggers') {
       triggers.push(parseTriggerLine(t, ln + 1, dict))
     } else if (section === 'functions') {
@@ -168,7 +171,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
     }
   }
 
-  return { meta, content: { verbs, triggers, prototypes, templates, endings, functions }, entities, relations }
+  return { meta, content: { verbs, triggers, prototypes, templates, endings, functions, decks }, entities, relations }
 }
 
 // ---------- entity lines ----------
@@ -301,6 +304,40 @@ function parseFunctionLine(t: string, ln: number): FunctionDef {
   throw new Error(`line ${ln}: functions expect  NAME(param, …) -> OUTCOMES  or  NAME param … -> OUTCOMES`)
 }
 
+// ---------- deck lines (§9.42, §10) ----------
+
+/** decks:  ID spec NAME[, NAME…] [defaultcard NAME] [reset]. Grammar only:
+ *  entry/defaultcard resolution against prototypes + entities, duplicate ids
+ *  and the permutation are compileContent's (§9.42). The trailing clauses may
+ *  sit in either order (stripped from the end until neither matches);
+ *  `defaultcard`/`reset` are keywords, not spec entries. */
+function parseDeckLine(t: string, ln: number): DeckRaw {
+  const m = /^(\S+)\s+spec\b\s*(.*)$/.exec(t)
+  if (!m) throw new Error(`line ${ln}: decks expect  ID spec NAME, … [defaultcard NAME] [reset]`)
+  const id = m[1]!
+  let rest = m[2]!.trim()
+  let defaultcard: string | undefined
+  let reset = false
+  for (;;) {
+    const dcM = /(?:^|\s)defaultcard\s+(\S+)\s*$/.exec(rest)
+    if (dcM) {
+      defaultcard = dcM[1]
+      rest = rest.slice(0, dcM.index).trim()
+      continue
+    }
+    const resetM = /(?:^|\s)reset\s*$/.exec(rest)
+    if (resetM) {
+      reset = true
+      rest = rest.slice(0, resetM.index).trim()
+      continue
+    }
+    break
+  }
+  const spec = rest.split(',').map(s => s.trim()).filter(Boolean)
+  if (spec.length === 0) throw new Error(`line ${ln}: deck ${id}: the spec is empty`)
+  return { id, spec, defaultcard, reset }
+}
+
 // ---------- ending lines (§9.35, §10) ----------
 
 function parseEndingLine(t: string, ln: number): [string, EndingDef] {
@@ -351,8 +388,10 @@ function parseRecipeLine(t: string, ln: number, dict: Dictionary): RecipeDef {
 export function compileScript(text: string, dict: Dictionary): { content: CompiledContent; state: State; meta: ScriptMeta } {
   const script = parseScript(text, dict)
   // §9.41: the meta `seed:` rides into the compiled content — every die is a
-  // pure function of (seed, counter), so the sequence is fixed at load
-  const content = compileContent({ ...script.content, seed: script.meta.seed }, dict)
+  // pure function of (seed, counter), so the sequence is fixed at load. The
+  // deck permutations (§9.42) are keyed on the same seed. Declared entities
+  // ride along so deck spec entries may name plain entity lines too.
+  const content = compileContent({ ...script.content, seed: script.meta.seed }, dict, script.entities)
   // §9.38: stackable entity-line declarations join the prototype-derived sets,
   // so SPAWN of such a name (and kind-qualified mints of its kind) stack
   for (const e of script.entities) {

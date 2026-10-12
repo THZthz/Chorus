@@ -261,6 +261,16 @@ class Parser {
         if (!this.atPunct('(')) throw new Error('ROLL takes the paren form: ROLL(<count-expr>, <sides-expr>[, <bonus-expr>])')
         return this.rollOutcome()
       }
+      // DRAW is paren-less only (§9.42): DRAW <DECK> [INTO target] — the deck
+      // id is a plain ref (declared decks are pinned at content compile); the
+      // INTO target is the SPAWN grammar (ref, role, or a body parameter)
+      if (op === 'DRAW') {
+        if (this.atPunct('(')) throw new Error('DRAW takes the paren-less form: DRAW <DECK> [INTO target]')
+        if (!this.peek()) throw new Error('DRAW needs a deck id: DRAW <DECK> [INTO target]')
+        const drawArgs: Arg[] = [{ t: 'ref', ref: this.ref() }]
+        if (this.atKeyword('INTO')) { this.next(); drawArgs.push({ t: 'into', ref: this.refTarget() }) }
+        return { op, args: drawArgs }
+      }
       if (this.atPunct('(')) {
         this.next()
         const args: Arg[] = []
@@ -275,6 +285,21 @@ class Parser {
         // content compile (paren-form-error precedent)
         if (op === 'ROLLED' && (args.length !== 2 || args[0].t !== 'int' || args[1].t !== 'int')) {
           throw new Error('ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)')
+        }
+        // DRAWN is the engine-written record of a DRAW (§9.42): same story —
+        // the parse entry re-parses concrete rows, the shape is pinned, and
+        // authoring one is caught at content compile. An unsafe spelling
+        // formats re-quoted (`DRAWN(PAIR, "X-Y")`) — a quoted string IS a
+        // name ref (ref()'s rule), so coerce before the shape check or the
+        // recorded row would not re-parse (law 2).
+        if (op === 'DRAWN') {
+          for (let i = 0; i < args.length; i++) {
+            const a = args[i]!
+            if (a.t === 'str') args[i] = { t: 'ref', ref: { form: 'name', name: a.v } }
+          }
+          if (args.length !== 2 || args[0].t !== 'ref' || args[0].ref.form !== 'name' || args[1].t !== 'ref' || args[1].ref.form !== 'name') {
+            throw new Error('DRAWN takes exactly two name refs: DRAWN(<DECK>, <name>)')
+          }
         }
         // NARRATE's canonical form is a single string (§4.4); extra args would
         // be dropped by the formatter, so refuse them at the door (§9.6).

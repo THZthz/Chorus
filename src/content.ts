@@ -1,4 +1,4 @@
-// Content model — verbs, slots, recipes, prototypes, triggers (spec §6).
+// Content model — verbs, slots, recipes, prototypes, triggers, decks (spec §6).
 // Authored as plain data with string queries/predicates/outcomes; `compileContent`
 // parses them once and fails loudly at load time.
 import type { Outcome } from './sentence.js'
@@ -6,6 +6,7 @@ import type { Pred } from './predicate.js'
 import { lintPred, lintRollMayBind, lintTriggerPred, lintTriggerValExpr, lintValExpr, parsePredicate } from './predicate.js'
 import { parseQuery, type Query } from './query.js'
 import { MAX_FN_DEPTH, collectFnCalls, expandFnCalls, parseFunctionBody, parseOutcomes, type FnTable } from './parse.js'
+import { splitmix64 } from './dice.js'
 import type { Dictionary } from './dict.js'
 import type { Aspects, Attrs } from './types.js'
 
@@ -88,6 +89,23 @@ export interface FunctionDef {
   body: string         // raw outcome-list source after `->`
 }
 
+/** A deck declaration (§9.42, §10): `ID spec NAME, … [defaultcard NAME]
+ *  [reset]` in the `decks:` section. Spec entries are prototype/entity NAMES
+ *  only (no kinds — resolved at load); repeats weight the draw. */
+export interface DeckRaw {
+  id: string
+  spec: string[]           // entries, spec order; repeats are legal (weighting)
+  defaultcard?: string     // served forever once the spec is exhausted (no `reset`)
+  reset?: boolean          // wrap the permutation when exhausted
+}
+
+/** one resolvable deck entry: the card NAME and the kind its mint carries
+ *  (prototype kind, or the declared entity line's kind) */
+export interface DeckCard {
+  name: string
+  kind: string
+}
+
 export interface ContentRaw {
   /** §9.41: the dice seed — the whole script's random sequence is a pure
    *  function of (seed, counter); default 0. Meta line `seed: N` (§10). */
@@ -98,6 +116,7 @@ export interface ContentRaw {
   templates?: Record<string, string>  // prose templates per verb (§5.3)
   endings?: Record<string, EndingDef> // the ending table (§9.35)
   functions?: FunctionDef[]           // parametric outcome macros (§9.40) — declaration order matters for error reports only
+  decks?: DeckRaw[]                   // deck declarations (§9.42) — order matters for error reports only
 }
 
 export interface CompiledRecipe {
@@ -129,6 +148,21 @@ export interface CompiledEnding {
   flavour: string       // resolved: defaults to 'melancholy' (§10)
 }
 
+/** A compiled deck (§9.42): the fixed draw order is a PERMUTATION OVER
+ *  POSITIONS of the spec (multiset preserved — `A, A, B` keeps its 2:1
+ *  weighting), derived purely from (seed, deck id) at load. It lives on
+ *  compiled content, never on State: identical at play and fold, consuming
+ *  NO rng counter (law 5 — the deck streams and the dice stream are
+ *  independent key spaces of the same mixer). */
+export interface CompiledDeck {
+  id: string
+  /** the draw order: spec positions shuffled, entries resolved to (name, kind) */
+  order: DeckCard[]
+  /** served forever once the order is exhausted and `reset` is absent */
+  defaultcard: DeckCard | null
+  reset: boolean
+}
+
 export interface CompiledContent {
   /** §9.41: the dice seed — every die is `f(seed, counter)`; the run's dice
    *  sequence is fixed at load and replay is counter-based (no re-derivation) */
@@ -147,9 +181,17 @@ export interface CompiledContent {
    *  stackable when its kind carries a stackable declaration). */
   stackableNames: Set<string>
   stackableKinds: Set<string>
+  /** §9.42 the deck table: id → compiled deck (permutation + exhaustion rule) */
+  decks: Map<string, CompiledDeck>
 }
 
-export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledContent {
+/**
+ * Compile raw content. `entities` (optional) contributes the script's
+ * declared entity lines so deck spec entries (§9.42) may name plain entities
+ * as well as prototypes — compileScript passes them; direct compileContent
+ * callers without entities validate deck entries against prototypes only.
+ */
+export function compileContent(raw: ContentRaw, dict: Dictionary, entities: Iterable<{ name: string; kind: string }> = []): CompiledContent {
   // §9.40 FIRST, before any verb/trigger body parses: build the function
   // table (declaration checks, body templates, recursion/depth validation) —
   // call sites in verb and trigger bodies dispatch against it and expand
@@ -170,6 +212,9 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
     if (!/^[a-z]+$/.test(flavour)) throw new Error(`ending ${id}: flavour must be a lowercase word, got '${flavour}'`)
     endings.set(id, { title: e.title, flavour })
   }
+  // §9.42: the deck table — spec entries resolve against prototypes + declared
+  // entities, then the seed-fixed permutation is derived (pure in seed+id)
+  const decks = compileDecks(raw.decks ?? [], raw.seed ?? 0, dict, raw.prototypes ?? {}, entities)
   const verbs = new Map<string, CompiledVerb>()
   for (const [name, v] of Object.entries(raw.verbs)) {
     if (!dict.isVerb(name)) throw new Error(`verb '${name}' is not registered in the dictionary`)
@@ -229,12 +274,19 @@ export function compileContent(raw: ContentRaw, dict: Dictionary): CompiledConte
   const prototypes = new Map(Object.entries(raw.prototypes ?? {}))
   const templates = new Map(Object.entries(raw.templates ?? {}))
   // §9.35: an ENDING outcome must name a declared ending — recipe or trigger,
-  // checked once at load so a typo cannot wait for playtime
+  // checked once at load so a typo cannot wait for playtime. §9.42: the same
+  // walk pins DRAW to a declared deck.
   for (const v of verbs.values()) {
-    for (const r of v.recipes) checkEndingRefs(`recipe ${r.id}`, r.out, endings)
+    for (const r of v.recipes) {
+      checkEndingRefs(`recipe ${r.id}`, r.out, endings)
+      checkDeckRefs(`recipe ${r.id}`, r.out, decks)
+    }
   }
-  for (const t of triggers) checkEndingRefs(`trigger ${t.id}`, t.out, endings)
-  return { seed: raw.seed ?? 0, verbs, triggers, prototypes, templates, endings, stackableNames, stackableKinds }
+  for (const t of triggers) {
+    checkEndingRefs(`trigger ${t.id}`, t.out, endings)
+    checkDeckRefs(`trigger ${t.id}`, t.out, decks)
+  }
+  return { seed: raw.seed ?? 0, verbs, triggers, prototypes, templates, endings, stackableNames, stackableKinds, decks }
 }
 
 /**
@@ -262,12 +314,12 @@ function forEachIfCondition(out: Outcome[], visit: (when: Pred) => void): void {
 }
 
 /**
- * §9.41 dice lints, shared by recipe and trigger outcome lists — all run
+ * §9.41/§9.42 load lints, shared by recipe and trigger outcome lists — all run
  * AFTER function expansion, like every load guard (expanded bodies are
  * guarded exactly like literal ones):
- *  - `ROLLED` is engine-written; an authored one forges dice history
- *    (paren-form-error precedent: the parse entry exists so concrete rows
- *    re-parse, and this lint is what keeps it out of scripts).
+ *  - `ROLLED`/`DRAWN` are engine-written; an authored one forges engine
+ *    history (paren-form-error precedent: the parse entries exist so concrete
+ *    rows re-parse, and this lint is what keeps them out of scripts).
  *  - `{roll}` in PROGRESS/REFUSE strings is a load error: those strings are
  *    stored raw and rendered without an execution pass, so the token would
  *    bake into the journal as literal text. NARRATE is the one legal home —
@@ -282,6 +334,9 @@ function lintDice(where: string, out: Outcome[]): void {
   forEachAuthoredOutcome(out, o => {
     if (o.op === 'ROLLED') {
       throw new Error(`${where}: ROLLED is engine-written — author ROLL and the log records the concrete result (§9.41)`)
+    }
+    if (o.op === 'DRAWN') {
+      throw new Error(`${where}: DRAWN is engine-written — author DRAW and the log records the concrete DRAWN+SPAWN rows (§9.42)`)
     }
     if (o.op === 'PROGRESS' || o.op === 'REFUSE') {
       const s = o.args.find(a => a.t === 'str') // PROGRESS carries (dur, string); REFUSE (string)
@@ -305,6 +360,116 @@ function checkEndingRefs(where: string, out: Outcome[], endings: Map<string, Com
     const id = a && a.t === 'ref' && a.ref.form === 'name' ? a.ref.name : null
     if (!id || !endings.has(id)) throw new Error(`${where}: ENDING '${id ?? '?'}' is not in the endings table`)
   })
+}
+
+function checkDeckRefs(where: string, out: Outcome[], decks: Map<string, CompiledDeck>): void {
+  // §9.42: a DRAW must name a declared deck — same load-time discipline as
+  // checkEndingRefs (and recursing into IF branch bodies like it). An INTO
+  // target needs no check here: roles/refs are the SPAWN target grammar and
+  // resolve at runtime like every ref position.
+  forEachAuthoredOutcome(out, o => {
+    if (o.op !== 'DRAW') return
+    const a = o.args[0]
+    const id = a && a.t === 'ref' && a.ref.form === 'name' ? a.ref.name : null
+    if (!id || !decks.has(id)) throw new Error(`${where}: DRAW '${id ?? '?'}' is not a declared deck (decks:)`)
+  })
+}
+
+// ---------- decks (§9.42): seed-fixed permutations ----------
+
+/**
+ * Compile the deck table. Each spec entry must name a declared prototype or
+ * entity (load error naming the deck and the entry otherwise); repeats are
+ * legal and weight the draw. The fixed draw order is derived per deck from
+ * (seed, deck id) ALONE — a permutation over POSITIONS of the spec, so the
+ * multiset is preserved whatever order the shuffle picks.
+ */
+function compileDecks(
+  raws: DeckRaw[],
+  seed: number,
+  dict: Dictionary,
+  prototypes: Record<string, PrototypeDef>,
+  entities: Iterable<{ name: string; kind: string }>,
+): Map<string, CompiledDeck> {
+  const entityKinds = new Map<string, string>()
+  for (const e of entities) entityKinds.set(e.name, e.kind)
+  // entries resolve prototype-first, then entity lines — the same name in both
+  // is unambiguous (the prototype is what SPAWN would mint)
+  const resolve = (deck: string, what: string, name: string): DeckCard => {
+    const proto = prototypes[name]
+    if (proto) return { name, kind: proto.kind }
+    const kind = entityKinds.get(name)
+    if (kind) return { name, kind }
+    throw new Error(`deck ${deck}: ${what} '${name}' is neither a declared prototype nor an entity`)
+  }
+  const decks = new Map<string, CompiledDeck>()
+  for (const d of raws) {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(d.id)) throw new Error(`deck '${d.id}' must be UPPER_SNAKE`)
+    if (dict.reserved.has(d.id)) throw new Error(`'${d.id}' is reserved and cannot be a deck id`)
+    if (decks.has(d.id)) throw new Error(`duplicate deck '${d.id}'`)
+    if (d.spec.length === 0) throw new Error(`deck ${d.id}: the spec is empty`)
+    const entries = d.spec.map(name => resolve(d.id, 'spec entry', name))
+    const defaultcard = d.defaultcard !== undefined ? resolve(d.id, 'defaultcard', d.defaultcard) : null
+    decks.set(d.id, {
+      id: d.id,
+      order: permutePositions(entries.length, seed, d.id).map(p => entries[p]!),
+      defaultcard,
+      reset: d.reset ?? false,
+    })
+  }
+  return decks
+}
+
+/** FNV-1a 64 over the deck id — folds the id into one 64-bit key part so the
+ *  permutation key has full width whatever the id's length (BigInt, like every
+ *  64-bit mix in this engine) */
+function hashDeckId(id: string): bigint {
+  let h = 0xcbf29ce484222325n
+  for (const b of new TextEncoder().encode(id)) {
+    h ^= BigInt(b)
+    h = (h * 0x100000001b3n) & ((1n << 64n) - 1n)
+  }
+  return h
+}
+
+/**
+ * §9.42 — the permutation: a Fisher–Yates shuffle over POSITIONS
+ * `0..n-1`, where position i draws its shuffle value from
+ *
+ *     splitmix64( seed XOR hash(deckId) XOR i )
+ *
+ * dice.ts's mixer with the id hash standing in for the dice counter — the same
+ * construction as a die, so it inherits the same BigInt discipline, and the
+ * deck streams never interact with the dice stream (different keys, no rng
+ * counter consumed; law 5). Uniform up to the negligible `u64 mod (i+1)`
+ * modulo bias (relative error below 2^-63 for any deck size in play); pure in
+ * (seed, deck id): identical at play and fold, fixed at load, never stored on
+ * State.
+ */
+export function permutePositions(n: number, seed: number, deckId: string): number[] {
+  const pos = Array.from({ length: n }, (_, i) => i)
+  for (let i = n - 1; i >= 1; i--) {
+    const key = BigInt.asUintN(64, BigInt.asUintN(64, BigInt(seed)) ^ hashDeckId(deckId) ^ BigInt.asUintN(64, BigInt(i)))
+    const j = Number(splitmix64(key) % BigInt(i + 1))
+    const t = pos[i]!; pos[i] = pos[j]!; pos[j] = t
+  }
+  return pos
+}
+
+/**
+ * §9.42 — serve the card at `cursor`, shared by play (the DRAW op) and fold
+ * (the DRAWN row's assertion) so the two can never drift: below the period it
+ * is `order[cursor]`; past it, `reset` wraps (the sequence is periodic with
+ * period len(order)) and otherwise `defaultcard` serves forever; with neither,
+ * the draw FAILS — a §9.19 step rejection at play (nothing logged, cursor
+ * unmoved) and a loud fold error there (the content drifted under a logged
+ * draw). Requires a non-empty order (compileDecks rejects an empty spec).
+ */
+export function drawFrom(deck: CompiledDeck, cursor: number): DeckCard {
+  if (cursor < deck.order.length) return deck.order[cursor]!
+  if (deck.reset) return deck.order[cursor % deck.order.length]!
+  if (deck.defaultcard) return deck.defaultcard
+  throw new Error(`deck '${deck.id}' is exhausted — no 'reset' and no 'defaultcard' (§9.42)`)
 }
 
 function parseOutcomeString(src: string, dict: Dictionary, fns: FnTable): Outcome[] {

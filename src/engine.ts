@@ -6,7 +6,8 @@ import type { Ref } from './ref.js'
 import { idRef, nameRef, sortRefs } from './ref.js'
 import { formatSentence } from './format.js'
 import type { Dictionary } from './dict.js'
-import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb } from './content.js'
+import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb, CompiledDeck, DeckCard } from './content.js'
+import { drawFrom } from './content.js'
 import { evalPred, evalExpr, type PredCtx, type RoleBindings } from './predicate.js'
 import { rollDie } from './dice.js'
 import { matchQuery } from './query.js'
@@ -655,6 +656,86 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       const ctrAfter = args[1]
       if (!ctrAfter || ctrAfter.t !== 'int') throw new Error('ROLLED needs (total, ctrAfter)')
       ctx.state.rng = ctrAfter.v
+      return { concrete: [o], refused: false }
+    }
+    case 'DRAW': {
+      // §9.42 — draw the deck's next card. The deck table lives on compiled
+      // content (the permutation is pure in seed+id, law 5); the cursor lives
+      // on State and advances ON THE DRAFT here — a later failure or REFUSE
+      // discards it with the whole draft (law 4). Concretizes to TWO rows:
+      // the engine-written `DRAWN(<deck>, <name>)` (the fold's cursor row,
+      // carrying the SPEC entry name so its assertion reads the permutation)
+      // followed by the standard concrete SPAWN — which owns every mint rule
+      // (prototype aspects/derive, §9.38 stackability, materialization
+      // pairs), so DRAW adds none of its own. Authored DRAW never reaches
+      // the log, like ROLL and IF.
+      const deckArg = args[0]
+      if (!deckArg || deckArg.t !== 'ref' || deckArg.ref.form !== 'name') {
+        throw new Error('DRAW needs a deck id: DRAW <DECK> [INTO target]')
+      }
+      const deckId = deckArg.ref.name
+      const deck = ctx.content.decks.get(deckId)
+      if (!deck) throw new Error(`DRAW: unknown deck '${deckId}'`)
+      const into = args.find((a): a is Extract<Arg, { t: 'into' }> => a.t === 'into')
+      // §9.42: DRAW's INTO must RESOLVE — a role over empty event bindings or
+      // an unresolvable ref would otherwise materialize the card nowhere,
+      // silently. (SPAWN's own INTO stays lenient; a trigger that wants a
+      // DRAWN card lands it with an explicit INTO — event bindings are
+      // empty, so the no-INTO default below reads nothing in events either.)
+      let intoConcrete: Arg | undefined
+      if (into) {
+        const dest = 'role' in into.ref ? (ctx.bindings[into.ref.role]?.[0] ?? null) : resolveRef(ctx.state, into.ref)
+        if (!dest) throw new Error(`DRAW: INTO target of '${deckId}' cannot resolve`)
+        intoConcrete = { t: 'into', ref: idRef(dest.id) }
+      }
+      // serve + advance the cursor; drawFrom throws on an exhausted deck with
+      // neither `reset` nor `defaultcard` — §9.19 (nothing logged, cursor
+      // unmoved: the mutation below happens on the draft only after it returns)
+      const drawn: DeckCard = drawFrom(deck, ctx.state.decks.get(deckId) ?? 0)
+      ctx.state.decks.set(deckId, (ctx.state.decks.get(deckId) ?? 0) + 1)
+      const spawn: Outcome = {
+        op: 'SPAWN',
+        args: [
+          { t: 'ref', ref: nameRef(drawn.name, drawn.kind) },
+          ...(intoConcrete ? [intoConcrete] : []),
+          { t: 'asId', id: ctx.idGen() },
+        ],
+      }
+      const spawnConcrete = applyOutcome(spawn, ctx).concrete
+      return {
+        concrete: [
+          { op: 'DRAWN', args: [{ t: 'ref', ref: nameRef(deckId) }, { t: 'ref', ref: nameRef(drawn.name) }] },
+          ...spawnConcrete,
+        ],
+        refused: false,
+      }
+    }
+    case 'DRAWN': {
+      // §9.42, fold side: advance the deck cursor, ASSERTING the recorded
+      // name is exactly what the compiled permutation serves at that cursor
+      // (play and fold share drawFrom, so only content drift can disagree).
+      // A seed/spec change between play and fold shifts future draws — and
+      // this assertion is what turns the drifted PAST into a loud error
+      // instead of a silent divergence (the dice's ROLLED rows never
+      // re-derive; a deck's cursor row must, so drift is visible). Play never
+      // applies this op: authored DRAWN is a load error, so the only path
+      // here is applyRecord over a logged row.
+      const deckArg = args[0]
+      const nameArg = args[1]
+      if (!deckArg || deckArg.t !== 'ref' || deckArg.ref.form !== 'name' || !nameArg || nameArg.t !== 'ref' || nameArg.ref.form !== 'name') {
+        throw new Error('DRAWN needs (deck, name)')
+      }
+      const deck = ctx.content.decks.get(deckArg.ref.name)
+      if (!deck) throw new Error(`DRAWN: deck '${deckArg.ref.name}' is not in the compiled decks — content drift between play and fold (§9.42)`)
+      const cursor = ctx.state.decks.get(deck.id) ?? 0
+      const expected = drawFrom(deck, cursor) // throws loud on a drifted-away exhaustion rule
+      if (expected.name !== nameArg.ref.name) {
+        throw new Error(
+          `DRAWN: deck '${deck.id}' draw #${cursor} recorded '${nameArg.ref.name}' ` +
+          `but the compiled deck serves '${expected.name}' — content drift between play and fold (§9.42)`,
+        )
+      }
+      ctx.state.decks.set(deck.id, cursor + 1)
       return { concrete: [o], refused: false }
     }
     default:

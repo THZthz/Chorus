@@ -65,10 +65,18 @@ export interface State {
    *  row — replay never re-derives a die (law 3), and undo reconstructs the
    *  counter from the folded log. */
   rng: number
+  /** §9.42: deck cursors — for each deck id, how many cards it has served.
+   *  Play advances the cursor ON THE DRAFT inside the DRAW outcome; the fold
+   *  lands the same spot from the concrete `DRAWN(<deck>, <name>)` row, which
+   *  also asserts the name against the compiled permutation (content drift
+   *  fails loud). The permutation itself is pure in (seed, deck id) and lives
+   *  on CompiledContent — never here (law 3: replay re-derives only through
+   *  the recorded row, and the row is what makes drift visible). */
+  decks: Map<string, number>
 }
 
 export function newState(now = 0): State {
-  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null, rng: 0 }
+  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null, rng: 0, decks: new Map() }
 }
 
 export function cloneState(s: State): State {
@@ -82,7 +90,10 @@ export function cloneState(s: State): State {
   // share arrays, so a discarded draft's pool destroy would mutate real state
   const byName = new Map<string, string[]>()
   for (const [k, v] of s.byName) byName.set(k, [...v])
-  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null, rng: s.rng }
+  // law 6 (§9.42): cursors are copied — a discarded draft's draws must not
+  // move the real deck (values are numbers, so a fresh Map is a deep copy)
+  const decks = new Map(s.decks)
+  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null, rng: s.rng, decks }
 }
 
 function cloneAspects(a: Aspects): Aspects {

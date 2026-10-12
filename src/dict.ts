@@ -12,6 +12,7 @@ export const RESERVED_WORDS = [
   'EVENT', 'TO', 'WITH', 'AT', 'ABOUT', 'INTO', 'AS', 'AND', 'OR', 'NOT',
   'IF', 'ELSE', // §9.39: conditional outcome lists (v0.3.2)
   'ROLL', 'ROLLED', // §9.41: the dice op, and the engine-written record of one (v0.3.4)
+  'DRAW', 'DRAWN', // §9.42: the deck-draw op, and the engine-written record of one (v0.3.5)
   ...CORE_VERBS,
 ]
 
@@ -21,12 +22,15 @@ export type OutcomeOp =
   | 'ENDING'
   | 'ROLL'      // authored: ROLL(count, sides[, bonus]) — concretizes to ROLLED (§9.41)
   | 'ROLLED'    // engine-written ONLY: ROLLED(total, ctrAfter) — the fold's counter row (§9.41)
+  | 'DRAW'      // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§9.42)
+  | 'DRAWN'     // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§9.42)
 
 export const OUTCOME_OPS: OutcomeOp[] = [
   'SPAWN', 'DESTROY', 'REPLACE', 'SET', 'MOVE', 'REVEAL',
   'ADVANCE', 'NARRATE', 'PROGRESS', 'RELATE', 'UNRELATE', 'REFUSE',
   'ENDING',
   'ROLL', 'ROLLED',
+  'DRAW', 'DRAWN',
 ]
 
 export interface RelationTypeDef {

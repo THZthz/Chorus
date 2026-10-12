@@ -1,4 +1,4 @@
-# Chorus Text Engine — Spec v0.3
+# Chorus Text Engine — Spec v0.4
 
 A text-only prototype of a Cultist Simulator / Book of Hours-like card game.
 Everything the game *is* — cards, actions, history — is expressed as structured
@@ -121,8 +121,7 @@ projection of that data, never the source of truth.
 > anything, so undo reconstructs dice state from the folded log. The list's
 > last ROLL binds `roll` for IF conditions and rewrites `{roll}` in NARRATE
 > prose at execution (PROGRESS/REFUSE `{roll}` is a load error); `ROLL` and
-> `ROLLED` join the reserved words. The v0.4 number itself arrives with the
-> showcase commit.
+> `ROLLED` join the reserved words.
 >
 > v0.3.5 = decks (§4.4, §5.1, §9.42, §10). The `decks:` script section
 > declares a deck as an ordered multiset of prototype/entity names —
@@ -135,8 +134,21 @@ projection of that data, never the source of truth.
 > followed by the concrete SPAWN; the fold advances the deck cursor from the
 > DRAWN row, asserting the recorded name against the compiled permutation so
 > content drift fails loud. Authored DRAWN is a load error; `DRAW` and
-> `DRAWN` join the reserved words. (The v0.4 number itself stays with the
-> showcase commit.)
+> `DRAWN` join the reserved words.
+>
+> v0.4 = the Cultist-complete roll-up. The engine vocabulary the v0.4 plan
+> set out is now all here — same-name pools (v0.3.1, §9.38), conditionals
+> (v0.3.2, §9.39), functions (v0.3.3, §9.40), seeded dice (v0.3.4, §9.41),
+> decks (v0.3.5, §9.42) — and this number belongs to the showcase that plays
+> all of it in one bundled story. `scripts/the-nightjar-flyer.txt` now
+> gathers a stackable SUSPICION pool through careless searches and the
+> conductor's rounds (the story's one recurring, non-`once` trigger, whose
+> `patrol_check` function rolls against a `count(name:SUSPICION) >= 3`
+> escalation ending), rolls its rude searches against nerve pools with
+> `{roll}` prose, draws gossip from the RUMOURS deck in a talk recipe and in
+> the patrol trigger, and branches a talk recipe on `exists(...)`. The
+> story's `seed:` is chosen and documented so the scripted win path
+> exercises every mechanic without tripping the ending.
 >
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the

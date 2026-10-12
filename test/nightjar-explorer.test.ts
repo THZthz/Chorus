@@ -10,8 +10,11 @@
 //                   periodic undo), asserting after every step that the log
 //                   alone reproduces the state (state = fold(log), §7),
 //                   sentences round-trip losslessly, and the world keeps
-//                   its shape (unique living names, resolvable containers,
-//                   living relations). Ends with a JSONL round-trip.
+//                   its shape (duplicate living names only where the content
+//                   declares them stackable, resolvable containers, living
+//                   relations; ending-aware — the patrol's escalation is
+//                   undone through when it fires). Ends with a JSONL
+//                   round-trip.
 //   C. surface    — the typed front door: slash commands, garbage, and the
 //                   player-typed EVENT guard.
 //
@@ -47,11 +50,18 @@ const PLAYER = meta.player ?? 'MARCH'
 
 // ---------- shared invariants ----------
 
-function checkStateShape(s: State): void {
+function checkStateShape(s: State, content: CompiledContent): void {
   const seen = new Set<string>()
   for (const e of s.entities.values()) {
     if (e.deadAction !== null) continue
-    expect(seen.has(e.name), `duplicate living name ${e.name}`).toBe(false)
+    // §9.38: a name the content declares stackable is a pool — duplicate
+    // living copies (SUSPICION, the RUMOURS deck's gossip) are legal; the
+    // card's own flag must agree with the declaration, or the mint lied
+    const declared = content.stackableNames.has(e.name) || content.stackableKinds.has(e.kind)
+    expect(e.stackable, `${e.name}: stackable flag disagrees with the declaration`).toBe(declared)
+    if (!declared) {
+      expect(seen.has(e.name), `duplicate living name ${e.name}`).toBe(false)
+    }
     seen.add(e.name)
     expect(s.byName.get(e.name)).toContain(e.id) // §9.38: the id is in the name's pool
     const container = e.attrs['container']
@@ -109,7 +119,7 @@ function checkStep(pre: State, r: ExecResult, step: Step): 'refused' | 'applied'
   expect(r.state.now).toBe(absMin(step.clock) + first.advancedMin)
   // state = fold(log): the records alone reproduce the played state (§7)
   expect(snap(fold(r.records, cloneState(pre), dict, content))).toBe(snap(r.state))
-  checkStateShape(r.state)
+  checkStateShape(r.state, content)
   return 'applied'
 }
 
@@ -294,7 +304,7 @@ describe('nightjar explorer — sweep', () => {
         if (outcome === 'refused') refused++
         else applied++
       }
-      checkStateShape(state)
+      checkStateShape(state, content)
     }
     // coverage floors: the sweep must actually be sweeping
     expect(states.length).toBe(WIN_PATH.length + 1)
@@ -319,7 +329,9 @@ describe('nightjar explorer — random walk', () => {
     let id = 1
     let executed = 0
     let walkRejects = 0
+    let endings = 0
     const snapshots = new Map<number, string>()
+    snapshots.set(0, snap(state)) // the walk may need to undo back to the start
 
     for (let i = 0; i < 300; i++) {
       const cands = candidatesFor(content, state, PLAYER)
@@ -339,6 +351,20 @@ describe('nightjar explorer — random walk', () => {
       if (i % 10 === 9) {
         expect(snap(fold(records, cloneState(base), dict, content))).toBe(snap(state))
       }
+      // §9.35 ending-awareness: a careless walk stacks SUSPICION, and the
+      // conductor's rounds end the story when the pool reaches three. Undo
+      // through the ending step (it derives from the fold) so the walk keeps
+      // exercising real play and `executed` stays meaningful.
+      if (state.ended) {
+        endings++
+        while (records.length > 0 && records[records.length - 1].kind === 'event') records.pop()
+        records.pop()
+        state = fold(records, cloneState(base), dict, content)
+        const expected = snapshots.get(records.length)
+        expect(expected, `undo through the ending left no snapshot at length ${records.length}`).toBeDefined()
+        expect(snap(state)).toBe(expected)
+        continue
+      }
       // §7 undo: drop trailing events + the last action, re-fold, compare
       if (i % 37 === 36 && records.length > 1) {
         while (records.length > 0 && records[records.length - 1].kind === 'event') records.pop()
@@ -351,6 +377,7 @@ describe('nightjar explorer — random walk', () => {
     }
     expect(executed).toBeGreaterThan(150)
     expect(walkRejects).toBeGreaterThan(0)
+    expect(endings).toBeGreaterThan(0) // the escalation really fires on a careless walk
 
     // the whole walked log survives a JSONL round-trip (§7)
     const dir = mkdtempSync(join(tmpdir(), 'chorus-explorer-'))

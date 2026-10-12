@@ -16,11 +16,26 @@
 # only lands at the border at midnight, and Vienna scatters everyone at 4:00.
 # The clock ticks in halfhours — 0:42 is 21:00 — and durations may be
 # authored in halfhours (1halfhour = 30 minutes).
+#
+# Suspicion rides the night with you. SUSPICION is a pool, not a card: every
+# careless search spawns a copy, and the conductor's rounds (22:30, every
+# night he works) spawn more when his roll goes against you. His rounds are
+# the only thing on this train that happens more than once — three copies in
+# his book and he puts the case, and you, off at the border (patrol_check's
+# escalation ending). The passengers trade gossip from the RUMOURS deck, and
+# the rude searches are rolled against the searcher's nerve.
+#
+# seed: 1899 — calibrated for the scripted win path (the WIN_PATH in
+# test/nightjar.test.ts): the cabin search's patrol and the 22:30 rounds both
+# land the conductor's middle tier, so two SUSPICION gather in his book — the
+# pool exists, the escalation never trips — and the firebox ash gives a clean
+# find. Change it and the night plays differently.
 
 script: Murder on the Nightjar Flyer
 player: MARCH
 goal: unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna
 start: 0:42
+seed: 1899
 
 # ── the train ────────────────────────────────────────────────────────────
 # The Nightjar Flyer herself is a zone, not a card: `in NIGHTJAR_FLYER`
@@ -33,7 +48,7 @@ entities:
   FIRST_CABIN is place in NIGHTJAR_FLYER with site.first:1
   FIREBOX is place in NIGHTJAR_FLYER with site.firebox:1
 
-  MARCH is character at GUARD_VAN
+  MARCH is character with nerve:3 at GUARD_VAN
   THE_MANIFEST is text with manifest:1 at MARCH
   THE_PATENTEE is character with patron:1, aether:1, unmet:1 at FIRST_CABIN
   THE_WIDOW is character with grief:1, aether:1, unmet:1 at DINING_CAR
@@ -54,12 +69,12 @@ entities:
 
 # ── cards that can come into being ───────────────────────────────────────
 prototypes:
-  BRACK is character with duty:2
-  VERITY is character with grief:1, aether:1
-  QUILL is character with secret:2
-  COLE is character with steam:2
-  SERAPHINE is character with aether:2, language.french:2
-  LORD_VANE is character with patron:1, aether:1
+  BRACK is character with duty:2, nerve:2
+  VERITY is character with grief:1, aether:1, nerve:1
+  QUILL is character with secret:2, nerve:1
+  COLE is character with steam:2, nerve:2
+  SERAPHINE is character with aether:2, language.french:2, nerve:1
+  LORD_VANE is character with patron:1, aether:1, nerve:1
   THE_LATE_LORD is item with aether:1
   THE_AETHER_SEAL is idea with secret:1, case.seal:1
   THE_SOLICITOR_LETTER is text with tome.letter:1, secret:2
@@ -72,15 +87,38 @@ prototypes:
   THE_TONIC_GLASS is item with aether:1
   THE_STOPPED_WATCH is item
   CONFESSION_OF_QUILL is idea with secret:3
+  # pools: suspicion gathers, gossip circulates — same-name copies are legal
+  SUSPICION is state stackable
+  RUMOUR is idea stackable
+  HEARSAY is idea stackable
+  SCANDAL is idea stackable
 
 # ── the timetable speaks (once — this is a one-night story) ─────────────
 triggers:
   body_found once at halfhour 44 -> DESTROY THE_PATENTEE, SPAWN THE_LATE_LORD INTO FIRST_CABIN, SPAWN THE_AETHER_SEAL INTO FIRST_CABIN, SET(FIRST_CABIN, unsealed, 1), NARRATE "A cry from the first cabin. Lord Vane lies behind his own aether-seal, unrobbed, unwounded, and entirely dead."
   night_porter once at halfhour 46 -> NARRATE "The corridor lamps dim to embers. The porter walks the train from end to end, counting doors under his breath."
+  conductor_rounds at halfhour 45 -> DRAW RUMOURS INTO GUARD_VAN, patrol_check(0)
   border_stop once at halfhour 0 -> SPAWN THE_TELEGRAM INTO GUARD_VAN, NARRATE "The Flyer hisses down at the border. A telegraph boy sprints the platform and puts a French telegram into Brack's white glove."
   the_long_tunnel once at halfhour 2 -> NARRATE "The train enters the Vendahl tunnel. For an hour the lamps burn blue and every mirror fogs over."
   the_furnace_takes_it once at halfhour 4 -> DESTROY THE_VANE_LEDGER, NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox, and a ledger cover stamped VANE is curling in the flames."
   vienna_arrival once at halfhour 8 -> NARRATE "Vienna lights slide along the glass. By morning the passengers scatter — if no name is on the tally-board tonight, the case scatters with them."
+
+# ── the company's book on the inspector ──────────────────────────────────
+# sus spawns one SUSPICION onto the named card and tells the corridor about
+# it; patrol_check is the conductor's rounds: a roll against his mood, the
+# escalation first — three copies in his book and the case leaves the train.
+functions:
+  sus who -> SPAWN SUSPICION INTO who, NARRATE "A steward will remember {who} asking after things that are none of an inspector's business."
+  patrol_check(dc) -> ROLL(2, 6, dc), IF count(name:SUSPICION) >= 3 -> (ENDING OFF_THE_FLYER) ELSE IF roll >= 8 -> (NARRATE "The conductor's rounds take {roll} minutes and pass you by — two taps on the door, a bored hum on the downslope.") ELSE IF roll >= 5 -> (sus(MARCH)) ELSE -> (NARRATE "He walks the corridor half-asleep, {roll} minutes of boots on carpet, and the night stays quiet.")
+
+# ── what the corridor gossips about ──────────────────────────────────────
+# the draw order is the seed-fixed permutation of the spec (2:1:1 weighting)
+decks:
+  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset
+
+# ── how it can all end ───────────────────────────────────────────────────
+endings:
+  OFF_THE_FLYER: "Off the Flyer at Speed" (melancholy)
 
 # ── what can be done ─────────────────────────────────────────────────────
 verbs:
@@ -107,7 +145,7 @@ verbs:
       talk.meet_widow when to.aspect.unmet >= 1 AND to.aspect.grief >= 1 -> DESTROY THE_WIDOW, SPAWN VERITY INTO DINING_CAR, NARRATE "\"Verity Vane,\" she says, mourning jet buttoned to the throat. \"You knew the name before I said it. Everyone on this train knows everything by now.\""
       talk.meet_secretary when to.aspect.unmet >= 1 AND to.aspect.secret >= 1 -> DESTROY THE_SECRETARY, SPAWN QUILL INTO DINING_CAR, NARRATE "\"Quill — the lord's secretary,\" he says, and presents his alibi in triplicate. \"I was in the dining car the whole evening. Ask anyone. Please.\""
       talk.meet_stoker when to.aspect.unmet >= 1 AND to.aspect.steam >= 1 -> DESTROY THE_STOKER, SPAWN COLE INTO FIREBOX, NARRATE "\"Cole. I drive the firebox, and the firebox drives me,\" the stoker says. \"You want the timetable, inspector. The timetable is the only witness that never lies.\""
-      talk.meet_spiritualist when to.aspect.unmet >= 1 AND to.aspect.language.french >= 1 -> DESTROY THE_SPIRITUALIST, SPAWN SERAPHINE INTO DINING_CAR, NARRATE "\"Seraphine reads the aether for the first-class trade,\" she says, turning a card face down. \"Mind — I read what is written, not what is guilty.\""
+      talk.meet_spiritualist when to.aspect.unmet >= 1 AND to.aspect.language.french >= 1 -> DESTROY THE_SPIRITUALIST, SPAWN SERAPHINE INTO DINING_CAR, DRAW RUMOURS INTO DINING_CAR, IF exists(THE_AETHER_SEAL) -> (NARRATE "\"Seraphine reads the aether for the first-class trade,\" she says, turning a card face down. \"Mind — I read what is written, not what is guilty. Though tonight we all read the same card: the lord is dead.\"") ELSE -> (NARRATE "\"Seraphine reads the aether for the first-class trade,\" she says, turning a card face down. \"Mind — I read what is written, not what is guilty.\"")
       talk.meet_lord when to.aspect.unmet >= 1 AND to.aspect.patron >= 1 -> DESTROY THE_PATENTEE, SPAWN LORD_VANE INTO FIRST_CABIN, NARRATE "\"Vane — patents, port, and the Vienna signing,\" the lord says, sealing his own cabin door behind him. \"A man in my position trusts nothing he cannot own.\""
       talk.seraphine_seal when to.aspect.aether >= 2 AND about.aspect.case.seal >= 1 -> NARRATE "\"An aether-seal answers one voice only,\" Seraphine says. \"If the lord did not open it himself, then somebody carried his voice in their pocket.\""
       talk.seraphine_default when to.aspect.aether >= 2 -> NARRATE "Seraphine turns a card, glances at it, and lays it face down. \"The dead speak through steam and cards alike,\" she says. \"It is the living who mumble.\""
@@ -127,12 +165,12 @@ verbs:
     object: 1 kind:place
     duration: 1h
     recipes:
-      explore.cabin when object.aspect.site.first >= 1 AND object.attr.unsealed >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "The seal parts for your warrant with a sound like a struck match."), SPAWN THE_SOLICITOR_LETTER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "The cabin is orderly the way a stage set is orderly. Behind the writing case: a solicitor's letter — and the Vane household ledger, far from its shelf."
-      explore.firebox when object.aspect.site.firebox >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "You sift warm ash while Cole watches the shovel a shade too carefully."), SPAWN THE_WAX_CYLINDER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "Half-melted but intact: a wax phonomotor cylinder, the lord's monogram on the brass case."
+      explore.cabin when object.aspect.site.first >= 1 AND object.attr.unsealed >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "The seal parts for your warrant with a sound like a struck match."), SPAWN THE_SOLICITOR_LETTER INTO OBJECT, SET(OBJECT, searched, 1), patrol_check(1), NARRATE "The cabin is orderly the way a stage set is orderly. Behind the writing case: a solicitor's letter — and the Vane household ledger, far from its shelf."
+      explore.firebox when object.aspect.site.firebox >= 1 AND NOT object.attr.searched >= 1 -> ROLL(total(actors, aspect:nerve), 6), IF roll >= 5 -> (PROGRESS(1halfhour, "You sift warm ash while Cole watches the shovel a shade too carefully."), SPAWN THE_WAX_CYLINDER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "{roll} minutes of sifting, well spent: a wax phonomotor cylinder, half-melted but intact, the lord's monogram on the brass case.") ELSE IF roll >= 4 -> (SET(OBJECT, searched, 1), NARRATE "Ash, clinker, and {roll} minutes of your night gone. The firebox keeps what it keeps.") ELSE -> (SET(OBJECT, searched, 1), sus(MARCH), NARRATE "You rummage loudly enough that Cole forgets the shovel. {roll} minutes, nothing to show.")
       explore.dining when object.aspect.site.dining >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "Under the Mahrajah's table, among the broken biscuits."), SPAWN THE_TONIC_GLASS INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "The lord's table still stands. His tonic glass smells wrong — aether where the laudanum should be."
-      explore.luggage when object.aspect.site.luggage >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "Trunk after trunk, manifest after manifest."), SPAWN THE_STOPPED_WATCH INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "Between the trunks: a gentleman's pocket watch, stopped at 11:50, still warm."
+      explore.luggage when object.aspect.site.luggage >= 1 AND NOT object.attr.searched >= 1 -> ROLL(total(actors, aspect:nerve), 6), IF roll >= 9 -> (PROGRESS(1halfhour, "Trunk after trunk, manifest after manifest."), SPAWN THE_STOPPED_WATCH INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "{roll} minutes of careful work, and there it is between the trunks: a gentleman's pocket watch, stopped at 11:50, still warm.") ELSE IF roll >= 6 -> (SET(OBJECT, searched, 1), NARRATE "{roll} minutes among other people's luggage, and nothing opens quietly for you tonight.") ELSE -> (SET(OBJECT, searched, 1), sus(MARCH), NARRATE "You pry a trunk that is not yours — {roll} minutes of noise, and the luggage van remembers.")
       explore.guard when object.aspect.site.guard >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "Brake-dust, ledger-oil, and Brack's spine straightening by the inch."), SET(OBJECT, searched, 1), NARRATE "Brack's tally-board is spotless. Nothing on a night train is spotless."
-      explore.searched when object.attr.searched >= 1 -> NARRATE "{actors} turn the place over again and find nothing new."
+      explore.searched when object.attr.searched >= 1 -> sus(MARCH), NARRATE "{actors} turn the place over again and find nothing new — only an audience."
       explore.cabin_sealed when object.aspect.site.first >= 1 -> NARRATE "The aether-seal breathes cold against your warrant. The door does not open for a piece of paper."
       default -> NARRATE "There is nothing here to search."
 

@@ -57,6 +57,11 @@ verbs: explore · read · talk to · travel to · use on · wait
 MARCH read THE_MANIFEST. The passenger manifest, first class: the lord Vane…
 » talk with the guard
 MARCH question THE_GUARD. "Brack. Railway security," he says…
+» explore the first cabin
+MARCH search FIRST_CABIN.
+  (+1halfhour) The seal parts for your warrant with a sound like a struck match.
+A steward will remember MARCH asking after things that are none of an inspector's business.
+The cabin is orderly the way a stage set is orderly. Behind the writing case…
 » inspect the wax cylinder
 THE_WAX_CYLINDER  [text]
   aether 2 · secret 2 · tome.cylinder 1
@@ -68,6 +73,9 @@ executable actions (`Game.suggestions()` — state-driven, refreshed every
 turn). The player types English-ish text (`read the pale lady`, `explore the
 firebox`, `talk with the guard`); the engine assigns the clock, resolves
 names fuzzily (case, articles, underscores), and suggests corrections.
+The night keeps score, as the steward's line above hints: careless searches
+and the conductor's rounds stack SUSPICION — a pool, not a card — and three
+copies make the case leave the train.
 Strict canonical sentences (`0:20 @ MARCH WAIT`) pass through unchanged.
 Characters you have not talked to appear as archetypes (`THE GUARD`) — the
 name is learned by meeting them — and the corridor has directions: places

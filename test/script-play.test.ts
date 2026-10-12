@@ -16,12 +16,13 @@ const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', imp
 describe('script compiler', () => {
   const game = compileScript(scriptText, dict)
 
-  test('meta lines set title, player, goal, and the starting clock', () => {
+  test('meta lines set title, player, goal, the starting clock, and the dice seed', () => {
     expect(game.meta).toEqual({
       title: 'Murder on the Nightjar Flyer',
       player: 'MARCH',
       goal: "unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna",
       start: { day: 0, halfhour: 42 },
+      seed: 1899,
     })
     expect(game.state.now).toBe(42 * 30)
   })
@@ -68,11 +69,13 @@ describe('script compiler', () => {
   })
 
   test('triggers and prototypes compile', () => {
-    // the flyer's timetable is all clock triggers; an expiry trigger would
+    // the flyer's timetable is mostly clock triggers; conductor_rounds is
+    // the story's one recurring patrol (no `once`); an expiry trigger would
     // narrow as [id, onExpireOf] instead (§9.32)
     expect(game.content.triggers.map(t => 'slot' in t ? [t.id, t.slot, t.once] : [t.id, t.onExpireOf])).toEqual([
       ['body_found', 44, true],
       ['night_porter', 46, true],
+      ['conductor_rounds', 45, false],
       ['border_stop', 0, true],
       ['the_long_tunnel', 2, true],
       ['the_furnace_takes_it', 4, true],
@@ -82,6 +85,39 @@ describe('script compiler', () => {
     expect(lateLord).toMatchObject({ kind: 'item', aspects: { aether: 1 } })
     const brack = game.content.prototypes.get('BRACK')!
     expect(brack).toMatchObject({ kind: 'character', aspects: { duty: 2 } })
+  })
+
+  test('the v0.4 sections compile: pools, deck, endings, and expanded functions', () => {
+    expect(game.content.seed).toBe(1899) // the header's documented, calibrated seed
+    // pools: SUSPICION and the gossip cards are declared stackable
+    for (const name of ['SUSPICION', 'RUMOUR', 'HEARSAY', 'SCANDAL']) {
+      expect(game.content.stackableNames.has(name)).toBe(true)
+    }
+    // the deck: resolved entries, the seed-fixed permutation of the 2:1:1
+    // spec, and its exhaustion rule
+    const deck = game.content.decks.get('RUMOURS')!
+    expect(deck.order.map(c => c.name)).toEqual(['SCANDAL', 'RUMOUR', 'RUMOUR', 'HEARSAY']) // permutation at seed 1899
+    expect(deck.order.map(c => c.kind)).toEqual(['idea', 'idea', 'idea', 'idea'])
+    expect(deck.defaultcard).toMatchObject({ name: 'RUMOUR', kind: 'idea' })
+    expect(deck.reset).toBe(true)
+    // the escalation ending is declared (patrol_check's ENDING resolves at load)
+    expect(game.content.endings.get('OFF_THE_FLYER')).toMatchObject({ title: 'Off the Flyer at Speed', flavour: 'melancholy' })
+    // functions expand away at load (there is no runtime function table):
+    // the compiled bodies carry the call sites' splices
+    const explore = game.content.verbs.get('EXPLORE')!
+    // patrol_check expanded into the cabin recipe — its ROLL is there
+    expect(explore.recipes.find(r => r.id === 'explore.cabin')!.out.some(o => o.op === 'ROLL')).toBe(true)
+    // sus expanded with the {who} interpolation baked at the call site
+    const steward = explore.recipes.find(r => r.id === 'explore.searched')!.out.find(o => o.op === 'NARRATE')?.args[0]
+    expect(steward && steward.t === 'str' ? steward.v : '').toContain('A steward will remember MARCH')
+    // the nerve pool feeds the rude searches' dice
+    const luggage = explore.recipes.find(r => r.id === 'explore.luggage')!.out
+    expect(luggage.some(o => o.op === 'ROLL')).toBe(true)
+    expect(luggage.some(o => o.op === 'IF')).toBe(true)
+    // the patrol trigger carries its expanded DRAW + patrol_check roll
+    const rounds = game.content.triggers.find(t => 'slot' in t && t.id === 'conductor_rounds')!
+    expect('slot' in rounds && rounds.out.some(o => o.op === 'DRAW')).toBe(true)
+    expect('slot' in rounds && rounds.out.some(o => o.op === 'ROLL')).toBe(true)
   })
 
   test('templates compile', () => {

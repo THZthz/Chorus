@@ -1,6 +1,10 @@
 // The Nightjar Flyer — story acceptance: the mystery compiles, plays, and
 // is winnable; the timetable (triggers) is a real adversary; PROGRESS ticks
-// (§6.7) render as the action's read-bar.
+// (§6.7) render as the action's read-bar. Since v0.4 it is also the
+// showcase: the scripted win path must fire every new mechanic (the
+// SUSPICION pool, patrol_check's roll and tiers, the RUMOURS deck, the
+// exists() branch in the talk recipe) without ever tripping the patrol's
+// escalation ending — seed 1899 is calibrated for exactly that.
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { Game, type Turn } from '../src/play.js'
@@ -113,6 +117,71 @@ describe('the nightjar flyer', () => {
     expect(inquest.recipes).toEqual(['inquest.win'])
     expect(game.log.records.some(r => r.trigger === 'border_stop')).toBe(true)
     expect(game.log.records.some(r => r.trigger === 'the_furnace_takes_it')).toBe(true)
+  })
+
+  test('every v0.4 mechanic fires on the scripted path, and none of them ends it', () => {
+    const game = fresh()
+    play(game, WIN_PATH)
+    const ints = (o: { op: string; args: { t: string; v?: unknown }[] }): [number, number] | null => {
+      const [a, b] = o.args
+      return a?.t === 'int' && b?.t === 'int' ? [a.v as number, b.v as number] : null
+    }
+    // F1 — the SUSPICION pool exists: the cabin search's patrol_check and the
+    // 22:30 rounds both landed the middle tier under seed 1899 (never 3)
+    expect(game.state.byName.get('SUSPICION')).toHaveLength(2)
+    // F4 — three ROLLED rows (cabin patrol, conductor's rounds, firebox
+    // find), the counter landing exactly where play left it
+    const rolled = game.log.records.flatMap(r =>
+      r.outcomes.filter(o => o.op === 'ROLLED').map(o => ints(o)),
+    )
+    expect(rolled).toEqual([[6, 2], [7, 4], [14, 7]]) // calibrated against seed 1899
+    expect(game.state.rng).toBe(7)
+    // F5 — the RUMOURS deck drew twice: once from the patrol trigger (into
+    // the guard van), once from the talk recipe (into the dining car)
+    const drawn = game.log.records.flatMap(r =>
+      r.outcomes.filter(o => o.op === 'DRAWN').map(o => {
+        const n = o.args[1]
+        return n && n.t === 'ref' && n.ref.form === 'name' ? n.ref.name : '(?)'
+      }),
+    )
+    expect(drawn).toEqual(['SCANDAL', 'RUMOUR']) // the seed-fixed permutation, in order
+    expect(game.state.byName.has('RUMOUR')).toBe(true)
+    expect(game.state.byName.has('SCANDAL')).toBe(true)
+    // F3 — the conductor's rounds: the story's only non-`once` trigger, and
+    // its event row carries the expanded patrol_check outcomes (ROLLED row)
+    const rounds = game.log.records.filter(r => r.trigger === 'conductor_rounds')
+    expect(rounds).toHaveLength(1)
+    expect(rounds[0]!.outcomes.some(o => o.op === 'ROLLED')).toBe(true)
+    // F2 — the talk recipe's exists() branch took the evidence arm (the seal
+    // idea is on the table by 2:00)
+    const meet = game.log.records.find(r => r.recipes.includes('talk.meet_spiritualist'))!
+    const narrate = meet.outcomes.find(o => o.op === 'NARRATE')
+    const said = narrate?.args[0]
+    expect(said && said.t === 'str' && said.v.includes('we all read the same card: the lord is dead')).toBe(true)
+    // the escalation never tripped: the case ends at the inquest, not the border
+    expect(game.state.ended).toBeNull()
+  })
+
+  test('a careless search spawns SUSPICION — the pool is real, not flavor (F1)', () => {
+    const game = fresh()
+    play(game, ['wait', 'explore the first cabin'])
+    const before = (game.state.byName.get('SUSPICION') ?? []).length
+    const turn = game.handleLine('explore the first cabin') // rummaging again
+    expect(turn.kind).toBe('action')
+    expect((game.state.byName.get('SUSPICION') ?? []).length).toBe(before + 1)
+    expect(turn.lines.join('\n')).toContain('A steward will remember MARCH')
+  })
+
+  test('three careless searches and the conductor ends the case at his rounds (escalation)', () => {
+    const game = fresh()
+    play(game, ['wait', 'explore the first cabin', 'explore the first cabin', 'explore the first cabin'])
+    expect((game.state.byName.get('SUSPICION') ?? []).length).toBeGreaterThanOrEqual(3)
+    let guard = 0
+    while (!game.state.ended && guard++ < 40) game.handleLine('wait') // to the next 22:30
+    expect(game.state.ended).toMatchObject({ id: 'OFF_THE_FLYER', flavour: 'melancholy' })
+    // undo reopens the story — `ended` derives from the fold (§9.35)
+    expect(game.undo().kind).toBe('info')
+    expect(game.state.ended).toBeNull()
   })
 
   test('the french gate refuses an anglophone reader, and speaks in prose (§6.2)', () => {

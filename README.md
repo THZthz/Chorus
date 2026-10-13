@@ -34,7 +34,8 @@ scripts by hand.
 - `src/render.ts` — journal / prose / text cards (L3 projections)
 - `scripts/the-forgotten-house.txt` — a whole game as one text file
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
-  (five verbs, a timetable that fights back; winnable in ~8 commands)
+  (the engine's whole twelve-verb core set, a timetable that fights back;
+  winnable in 9 commands)
 
 ## Play
 
@@ -49,7 +50,7 @@ npm run play -- my-game.txt     # any script
 you are MARCH · at GUARD VAN · day 0:42 · 9 cards
 here: THE GUARD · THE INQUEST
 try: read THE MANIFEST · talk with THE GUARD · explore DINING CAR
-verbs: explore · read · talk to · travel to · use on · wait
+verbs: read · talk · explore · use on · travel to · wait · study · work · mansus · locate at · dream · acquire
 [1 look] [2 cards] [3 story] [4 journal] [5 undo] [6 quit]  ← number + enter
 ──────────────────────────────────────────────────────────
 § unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna
@@ -95,7 +96,7 @@ when the bar completes:
 SERAPHINE read THE_WAX_CYLINDER.
   (+20m) You wind the cylinder onto the phonomotor; the stylus trembles and finds its groove.
   (+50m) A voice assembles out of the hiss — the lord's own, speaking the words that open his seal.
-Someone owns the lord's voice.
+Someone owns the lord's voice, and the seal answers it.
 ```
 
 ## Script format

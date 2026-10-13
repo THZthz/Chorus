@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { compileScript, parseScript } from '../src/script.js'
-import { compileContent } from '../src/content.js'
+import { compileContent, forEachAuthoredOutcome } from '../src/content.js'
 import { parsePlayerInput } from '../src/lenient.js'
 import { Game } from '../src/play.js'
 import { fold } from '../src/fold.js'
@@ -61,17 +61,18 @@ describe('script compiler', () => {
     expect(read.duration).toBe(60)
     expect(read.slotByRole.get('object')).toMatchObject({ min: 1, max: 1 })
     expect(read.recipes.map(r => r.id)).toEqual([
-      'read.manifest', 'read.french_gate', 'read.cylinder', 'read.telegram', 'read.ledger', 'read.letter', 'read.default',
+      'read.manifest', 'read.french_gate', 'read.cylinder', 'read.telegram', 'read.ledger', 'read.letter', 'read.companions', 'read.default',
     ])
     expect(read.recipes[1]!.shown).toBe(false)  // hidden gate
     expect(read.recipes[0]!.when).not.toBeNull()
-    expect(read.recipes[6]!.when).toBeNull()    // default
+    expect(read.recipes[7]!.when).toBeNull()    // default
   })
 
   test('triggers and prototypes compile', () => {
-    // the flyer's timetable is mostly clock triggers; conductor_rounds is
-    // the story's one recurring patrol (no `once`); an expiry trigger would
-    // narrow as [id, onExpireOf] instead (§9.32)
+    // the flyer's timetable is mostly clock triggers: conductor_rounds and
+    // dawn_watch recur (no `once`), the_long_tunnel shows the `at hour N`
+    // alias form (hour 1 = slot 2), and lord_tended is an expiry trigger
+    // (§9.32), which narrows as [id, onExpireOf] instead
     expect(game.content.triggers.map(t => 'slot' in t ? [t.id, t.slot, t.once] : [t.id, t.onExpireOf])).toEqual([
       ['body_found', 44, true],
       ['night_porter', 46, true],
@@ -79,7 +80,9 @@ describe('script compiler', () => {
       ['border_stop', 0, true],
       ['the_long_tunnel', 2, true],
       ['the_furnace_takes_it', 4, true],
-      ['vienna_arrival', 8, true],
+      ['dawn_watch', 8, false],
+      ['lord_tended', 'THE_LATE_LORD'],
+      ['vienna_arrival', 12, true],
     ])
     const lateLord = game.content.prototypes.get('THE_LATE_LORD')!
     expect(lateLord).toMatchObject({ kind: 'item', aspects: { aether: 1 } })
@@ -120,9 +123,73 @@ describe('script compiler', () => {
     expect('slot' in rounds && rounds.out.some(o => o.op === 'ROLL')).toBe(true)
   })
 
+  test('the showcase compiles the full script grammar (§4–§10)', () => {
+    // entity lines: stackable (§9.38) on the resource kind (§4.1), plus a
+    // symmetric relation (§4.2) and a derive prototype (§6.4, §9.23)
+    const funds = game.state.entities.get('s_funds')!
+    expect(funds).toMatchObject({ kind: 'resource', stackable: true })
+    expect(game.content.stackableNames.has('FUNDS')).toBe(true)
+    expect(game.state.relations.get('s_firebox|s_guard_van|neighbor')).toMatchObject({ type: 'neighbor', value: 1 })
+    const hunch = game.content.prototypes.get('HUNCH')!
+    expect(hunch.derive).toEqual({
+      nameFrom: 'object',
+      aspects: { hunch: { fromObjectAspect: 'secret', minus: 1 } },
+    })
+    expect(hunch.aspects).toEqual({ aether: 1 })
+    // the bare deck line: no defaultcard, no reset (§9.42)
+    const dreams = game.content.decks.get('DREAMS')!
+    expect(dreams.order.map(c => c.name)).toEqual(['VOID', 'PORTENT', 'PORTENT']) // permutation at seed 1899
+    expect(dreams.defaultcard).toBeNull()
+    expect(dreams.reset).toBe(false)
+    // the ending table: explicit flavour, grand flavour, and the default (§9.35)
+    expect(game.content.endings.get('QUIET_NIGHT')).toEqual({ title: 'The Flyer Reaches Vienna', flavour: 'melancholy' })
+    expect(game.content.endings.get('CASE_CLOSED')).toMatchObject({ flavour: 'grand' })
+    // slot-count vocabulary (§6.1): exact 2, open-ended 2.. and 0..
+    expect(game.content.verbs.get('MANSUS')!.slotByRole.get('actors')).toMatchObject({ min: 2, max: 2 })
+    expect(game.content.verbs.get('WORK')!.slotByRole.get('actors')).toMatchObject({ min: 2, max: Infinity })
+    expect(game.content.verbs.get('DREAM')!.slotByRole.get('with')).toMatchObject({ min: 0, max: Infinity })
+    // slot queries (§4.5): aspect level, negated aspect, and the state flag
+    const workAt = game.content.verbs.get('WORK')!.slotByRole.get('at')!.query!
+    expect(workAt).toHaveLength(2)
+    expect(game.content.verbs.get('DREAM')!.slotByRole.get('with')!.query).toHaveLength(3)
+    // compound durations (§9.45): 1h30m in a verb config and a PROGRESS tick
+    expect(game.content.verbs.get('STUDY')!.duration).toBe(90)
+    // the id-less recipe mints a stable id; the shown gate carries its hint (§6.2)
+    const studyGate = game.content.verbs.get('STUDY')!.recipes[0]!
+    expect(studyGate.id).toBe('study.recipe0')
+    expect(studyGate.shown).toBe(true)
+    expect(studyGate.hint).toBe('Whoever studies must read the tongue.')
+    const inquestGate = game.content.verbs.get('USE_ON')!.recipes.find(r => r.id === 'inquest.short')!
+    expect(inquestGate!.shown).toBe(true)
+    expect(inquestGate!.hint).toContain('three proofs')
+    // outcome ops new to the showcase, where the story authors them
+    const out = (verb: string, id: string) => game.content.verbs.get(verb)!.recipes.find(r => r.id === id)!.out
+    expect(out('USE_ON', 'inquest.win').map(o => o.op)).toEqual(
+      ['PROGRESS', 'PROGRESS', 'NARRATE', 'SPAWN', 'REPLACE', 'ENDING']) // the win ends the story (§9.35)
+    expect(out('ACQUIRE', 'acquire.claim').map(o => o.op)).toEqual(['SET', 'MOVE', 'SET', 'NARRATE'])
+    expect(out('DREAM', 'dream.seal').map(o => o.op)).toEqual(['DRAW', 'ADVANCE', 'NARRATE'])
+    // REVEAL rides inside the luggage find's taken-branch IF (§9.39): walk arms
+    const ops: string[] = []
+    forEachAuthoredOutcome(out('EXPLORE', 'explore.luggage'), o => { ops.push(o.op) })
+    expect(ops).toContain('REVEAL')
+    expect(out('EXPLORE', 'explore.searched').some(o => o.op === 'IF')).toBe(true) // the SPAWN-then-count escalation (§6.8)
+    expect(out('WAIT', 'wait.till_dawn').some(o => o.op === 'ADVANCE')).toBe(true)
+    const meetGuard = game.content.verbs.get('TALK')!.recipes.find(r => r.id === 'talk.meet_guard')!.out
+    expect(meetGuard.some(o => o.op === 'RELATE')).toBe(true)
+    // triggers: RELATE/UNRELATE corridor closures and the expiry REPLACE
+    const tunnel = game.content.triggers.find(t => 'slot' in t && t.id === 'the_long_tunnel')!
+    expect('slot' in tunnel && tunnel.out.some(o => o.op === 'UNRELATE')).toBe(true)
+    const dawn = game.content.triggers.find(t => 'slot' in t && t.id === 'dawn_watch')!
+    expect('slot' in dawn && dawn.out.some(o => o.op === 'RELATE')).toBe(true)
+    const tended = game.content.triggers.find(t => 'onExpireOf' in t && t.id === 'lord_tended')!
+    expect('onExpireOf' in tended && tended.out.some(o => o.op === 'REPLACE')).toBe(true)
+  })
+
   test('templates compile', () => {
     expect(game.content.templates.get('READ')).toBe('{actors} read {object}.')
     expect(game.content.templates.get('TALK')).toBe('{actors} question {to}.')
+    // all twelve core verbs carry a prose template
+    expect(game.content.templates.size).toBe(12)
   })
 
   test('expiry triggers parse into their own trigger form (§9.32)', () => {

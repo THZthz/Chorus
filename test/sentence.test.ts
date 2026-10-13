@@ -43,6 +43,15 @@ describe('spec §5.2 worked examples', () => {
       .toBe('0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE "The lamps come on."')
   })
 
+  test('engine-written expiry trigger ids round-trip (§6.6)', () => {
+    // the built-in expiry path writes `expire:<NAME>` into the row
+    expect(canonical('1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)'))
+      .toBe('1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)')
+    // a segment that cannot lex as a name prints quoted — and reassembles
+    expect(canonical('1:20 @ EVENT expire:"TONIC-GLASS" -> DESTROY(#e1_1)'))
+      .toBe('1:20 @ EVENT expire:"TONIC-GLASS" -> DESTROY(#e1_1)')
+  })
+
   test('rite with instruments and INTO', () => {
     expect(canonical('1:23 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE'))
       .toBe('1:23 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE')

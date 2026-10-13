@@ -142,9 +142,10 @@ projection of that data, never the source of truth.
 > decks (v0.3.5, §9.42) — and this number belongs to the showcase that plays
 > all of it in one bundled story. `scripts/the-nightjar-flyer.txt` now
 > gathers a stackable SUSPICION pool through careless searches and the
-> conductor's rounds (the story's one recurring, non-`once` trigger, whose
-> `patrol_check` function rolls against a `count(name:SUSPICION) >= 3`
-> escalation ending), rolls its rude searches against nerve pools with
+> conductor's rounds (the story's recurring triggers, alongside the dawn
+> watch: his `patrol_check` function rolls and calls the `watch(n)`
+> escalation — `count(name:SUSPICION) >= n` — whose ending puts the case
+> off the Flyer), rolls its rude searches against nerve pools with
 > `{roll}` prose, draws gossip from the RUMOURS deck in a talk recipe and in
 > the patrol trigger, and branches a talk recipe on `exists(...)`. The
 > story's `seed:` is chosen and documented so the scripted win path
@@ -356,7 +357,10 @@ log        = { sentence } ;
 sentence   = [ clock "@" ] ( action | event ) ;
 clock      = int ":" int ;                       (* "day:halfhour", day 0-based, halfhour 0..47; 1 halfhour = 30 min *)
 action     = clause { ";" clause } [ "->" outcomes ] ;
-event      = "EVENT" name [ "->" outcomes ] ;
+event      = "EVENT" trigger-id [ "->" outcomes ] ;
+trigger-id = name { ":" name }                    (* segments reassembled — the
+                                                     built-in expiry id is `expire:<NAME>`
+                                                     (§6.6); an unsafe segment prints quoted *)
 clause     = actors [ "AT" ref ] verbo [ "TO" ref ] [ objects ] [ "WITH" reflist ] [ "ABOUT" ref ] [ "AT" ref ] ;
 (*          the trailing "AT" is input sugar only (§9.10); canonical output is pre-verbal *)
 actors     = ref { "," ref } ;                   (* 1..n, order-free; canonical = sorted *)

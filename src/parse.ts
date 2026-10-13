@@ -126,9 +126,24 @@ class Parser {
 
     if (this.atKeyword('EVENT')) {
       this.next()
+      // the trigger id: a name, or a quoted string for an unsafe spelling.
+      // Colon-joined ids reassemble segment by segment — the built-in expiry
+      // path writes `expire:<NAME>` (§6.6) — so every logged event row
+      // round-trips losslessly (§1, §7)
       const trig = this.next()
-      if (trig.t !== 'name') throw new Error('expected event trigger name')
-      const s: Sentence = { kind: 'event', clock, trigger: trig.v, clauses: [], outcomes: [] }
+      if (trig.t !== 'name' && trig.t !== 'str') throw new Error('expected event trigger name')
+      let trigger = trig.v
+      for (;;) {
+        if (!this.atPunct(':')) break
+        this.next()
+        const seg = this.peek()
+        if (!seg || (seg.t !== 'name' && seg.t !== 'str')) {
+          throw new Error('expected a name after \':\' in an event trigger id')
+        }
+        this.next()
+        trigger += ':' + seg.v
+      }
+      const s: Sentence = { kind: 'event', clock, trigger, clauses: [], outcomes: [] }
       if (this.atPunct('->')) { this.next(); s.outcomes = this.outcomeList() }
       this.expectEnd()
       return s

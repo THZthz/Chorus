@@ -50,7 +50,7 @@ describe('the nightjar flyer', () => {
     }
   })
 
-  test('compiles: the train, the masked suspects, and the six-verb toolkit', () => {
+  test('compiles: the train, the masked suspects, and the twelve-verb core set', () => {
     const game = fresh()
     expect(game.title).toBe('Murder on the Nightjar Flyer')
     for (const name of ['MARCH', 'THE_PATENTEE', 'THE_WIDOW', 'THE_SECRETARY', 'THE_STOKER', 'THE_SPIRITUALIST', 'THE_GUARD', 'THE_INQUEST', 'THE_MANIFEST']) {
@@ -60,7 +60,10 @@ describe('the nightjar flyer', () => {
     for (const name of ['LORD_VANE', 'VERITY', 'QUILL', 'COLE', 'SERAPHINE', 'BRACK']) {
       expect(game.state.byName.has(name)).toBe(false)
     }
-    expect([...game.content.verbs.keys()].sort()).toEqual(['EXPLORE', 'READ', 'TALK', 'TRAVEL_TO', 'USE_ON', 'WAIT'])
+    expect([...game.content.verbs.keys()].sort()).toEqual([
+      'ACQUIRE', 'DREAM', 'EXPLORE', 'LOCATE_AT', 'MANSUS', 'READ',
+      'STUDY', 'TALK', 'TRAVEL_TO', 'USE_ON', 'WAIT', 'WORK',
+    ])
   })
 
   test('the train is a zone, not a card; her cars carry it as an attribute', () => {
@@ -147,7 +150,8 @@ describe('the nightjar flyer', () => {
     expect(drawn).toEqual(['SCANDAL', 'RUMOUR']) // the seed-fixed permutation, in order
     expect(game.state.byName.has('RUMOUR')).toBe(true)
     expect(game.state.byName.has('SCANDAL')).toBe(true)
-    // F3 — the conductor's rounds: the story's only non-`once` trigger, and
+    // F3 — the conductor's rounds: the story's recurring patrol (the dawn
+    // watch is the other recurring slot trigger, off-screen tonight), and
     // its event row carries the expanded patrol_check outcomes (ROLLED row)
     const rounds = game.log.records.filter(r => r.trigger === 'conductor_rounds')
     expect(rounds).toHaveLength(1)
@@ -158,8 +162,9 @@ describe('the nightjar flyer', () => {
     const narrate = meet.outcomes.find(o => o.op === 'NARRATE')
     const said = narrate?.args[0]
     expect(said && said.t === 'str' && said.v.includes('we all read the same card: the lord is dead')).toBe(true)
-    // the escalation never tripped: the case ends at the inquest, not the border
-    expect(game.state.ended).toBeNull()
+    // the escalation never tripped — the case ends at the inquest (the win
+    // recipe's grand ending), not at the border
+    expect(game.state.ended).toMatchObject({ id: 'CASE_CLOSED', flavour: 'grand' })
   })
 
   test('a careless search spawns SUSPICION — the pool is real, not flavor (F1)', () => {
@@ -172,13 +177,21 @@ describe('the nightjar flyer', () => {
     expect(turn.lines.join('\n')).toContain('A steward will remember MARCH')
   })
 
-  test('three careless searches and the conductor ends the case at his rounds (escalation)', () => {
+  test('three careless searches and watch ends the case on the spot (escalation)', () => {
     const game = fresh()
-    play(game, ['wait', 'explore the first cabin', 'explore the first cabin', 'explore the first cabin'])
-    expect((game.state.byName.get('SUSPICION') ?? []).length).toBeGreaterThanOrEqual(3)
-    let guard = 0
-    while (!game.state.ended && guard++ < 40) game.handleLine('wait') // to the next 22:30
+    play(game, ['wait', 'explore the first cabin'])
+    // the cabin patrol and the 22:30 rounds have both fed the pool…
+    expect(game.state.byName.get('SUSPICION')).toHaveLength(2)
+    expect(game.state.ended).toBeNull()
+    // …so the third careless search itself carries the third copy, and
+    // watch(3) — expanded into explore.searched — ends the story mid-step
+    const turn = game.handleLine('explore the first cabin')
+    expect(turn.kind).toBe('action')
     expect(game.state.ended).toMatchObject({ id: 'OFF_THE_FLYER', flavour: 'melancholy' })
+    const actions = game.log.records.filter(r => r.kind === 'action')
+    const last = actions[actions.length - 1]!
+    expect(last.recipes).toContain('explore.searched')
+    expect(last.outcomes.some(o => o.op === 'ENDING')).toBe(true)
     // undo reopens the story — `ended` derives from the fold (§9.35)
     expect(game.undo().kind).toBe('info')
     expect(game.state.ended).toBeNull()
@@ -236,15 +249,19 @@ describe('the nightjar flyer', () => {
     expect(game.log.records.some(r => r.trigger === 'night_porter')).toBe(true)
   })
 
-  test('once-triggers fire exactly once — day two does not re-murder the lord (§9.29)', () => {
+  test('once-triggers fire exactly once, and the lord expires into his successor (§9.29, §9.32)', () => {
     const game = fresh()
     play(game, ['wait']) // day 0, hour 22 — body_found fires
     expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1)
-    // jump to day 1, hour 22: the once-trigger must neither re-fire nor reject the step
+    // jump a day ahead: the once-trigger must neither re-fire nor reject the
+    // step — and the lord's 1-day `expires` crosses on the way, so the
+    // authored `on expire` trigger replaces him (REPLACE, §9.32–§9.33)
     const jump = game.handleLine('1:42 @ MARCH WAIT')
     expect(jump.kind).toBe('action')
     expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1)
-    expect(game.state.byName.has('THE_LATE_LORD')).toBe(true)
+    expect(game.log.records.filter(r => r.trigger === 'lord_tended')).toHaveLength(1)
+    expect(game.state.byName.has('THE_LATE_LORD')).toBe(false)
+    expect(game.state.byName.has('THE_TENDED_LORD')).toBe(true)
   })
 
   test('the ledger burns at 2:00 — the timetable is the culprit too', () => {
@@ -264,6 +281,47 @@ describe('the nightjar flyer', () => {
     const rec = game.log.records.filter(r => r.verb === 'TALK')[1]!
     expect(rec.to).toMatchObject({ form: 'name', name: 'COLE' })
     expect(rec.sentence).toContain('MARCH TALK TO COLE ABOUT THE_AETHER_SEAL')
+  })
+
+  test('the showcase verbs play: wages, the tunnel closure, and a ticket with one price', () => {
+    const game = fresh()
+    expect(game.handleLine('talk to the guard').kind).toBe('action') // meet Brack — RELATE(MARCH, BRACK, neighbor)
+    expect(game.handleLine('march, brack work at the firebox').kind).toBe('action')
+    expect(game.state.byName.get('FUNDS')).toHaveLength(2)           // the load copy + the shift's wage
+    const marchId = game.state.byName.get('MARCH')![0]
+    expect(game.state.entities.get(marchId)!.attrs['coin']).toBe(2)
+    expect(game.handleLine('locate_at the firebox').kind).toBe('action')
+    game.handleLine('wait') // to 1:00 — the tunnel severs the crew door
+    expect(game.state.relations.get('s_firebox|s_guard_van|south')!.deadAction).not.toBeNull()
+    const blocked = game.handleLine('travel to the guard van')
+    expect(blocked.kind).toBe('action')
+    expect(blocked.lines.join('\n')).toContain('does not bend')
+    game.handleLine('wait')
+    game.handleLine('wait')
+    game.handleLine('wait') // to 4:30 — dawn_watch relinks the corridor
+    expect(game.state.relations.get('s_firebox|s_guard_van|south')!.deadAction).toBeNull()
+    expect(game.handleLine('travel to the guard van').kind).toBe('action')
+    // ACQUIRE: a cost that can go below zero — exactly once per ticket (§9.31)
+    expect(game.handleLine('acquire the claim ticket').kind).toBe('action')
+    expect(game.state.entities.get(marchId)!.attrs['coin']).toBe(1)
+    const again = game.handleLine('acquire the claim ticket')
+    expect(again.kind).toBe('action')
+    expect(again.lines.join('\n')).toContain('Nobody aboard is selling')
+  })
+
+  test('dreaming draws the DREAMS deck until it runs dry (§9.42, §9.23)', () => {
+    const game = fresh()
+    play(game, ['wait', 'explore the firebox', 'read the wax cylinder', 'read the vane ledger'])
+    expect(game.state.byName.has('HUNCH_THE_VANE_LEDGER')).toBe(true) // the derive prototype minted
+    // playing the cylinder unsealed the seal idea, so it fits the dream slot
+    expect(game.handleLine('dream with the aether seal').kind).toBe('action')
+    expect(game.handleLine('dream with the aether seal').kind).toBe('action')
+    expect(game.handleLine('dream with the aether seal').kind).toBe('action')
+    // the seed-fixed permutation served VOID, PORTENT, PORTENT — stackable pools
+    expect(game.state.byName.get('PORTENT')).toHaveLength(2)
+    expect(game.state.byName.get('VOID')).toHaveLength(1)
+    const dry = game.handleLine('dream with the aether seal')
+    expect(dry.kind).toBe('error') // no defaultcard, no reset — a loud failure
   })
 
   test('the whole night replays from the log (state = fold(log))', () => {

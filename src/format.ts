@@ -2,14 +2,14 @@
 // Format(parse(x)) is the canonical form: actors sorted, pre-verbal AT,
 // bare-name refs (re-quoted when unsafe/reserved), concrete outcomes.
 import type { Arg, Clause, Outcome, Sentence } from './sentence.js'
-import { formatRef, sortRefs, type SafeDict } from './ref.js'
+import { formatRef, isSafeName, sortRefs, type SafeDict } from './ref.js'
 import { formatClock, formatDuration } from './clock.js'
 
 export function formatSentence(s: Sentence, dict?: SafeDict): string {
   const parts: string[] = []
   if (s.clock) parts.push(`${formatClock(s.clock)} @`)
   if (s.kind === 'event') {
-    parts.push('EVENT', s.trigger ?? '?')
+    parts.push('EVENT', formatTriggerId(s.trigger ?? '?'))
   } else {
     parts.push(s.clauses.map(c => formatClause(c, dict)).join('; '))
   }
@@ -89,4 +89,12 @@ function formatArg(a: Arg, dict?: SafeDict): string {
 
 function quote(s: string): string {
   return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+}
+
+/** colon-joined trigger ids (`expire:<NAME>`, §6.6; authored ids may carry
+ *  colons too): each segment prints bare when it re-parses as a name token
+ *  and quoted when it does not, so every logged event row stays lossless
+ *  (§1, §7) whatever the expiring entity was named */
+function formatTriggerId(id: string): string {
+  return id.split(':').map(seg => (isSafeName(seg) ? seg : quote(seg))).join(':')
 }

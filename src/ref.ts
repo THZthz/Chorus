@@ -15,6 +15,12 @@ export interface SafeDict {
 
 const SAFE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
+/** a segment that re-parses as a bare name token (used by the sentence
+ *  formatter to decide between bare and quoted spellings) */
+export function isSafeName(name: string): boolean {
+  return SAFE_NAME.test(name)
+}
+
 export function nameRef(name: string, kind?: string): Ref {
   return kind ? { form: 'name', kind, name } : { form: 'name', name }
 }

@@ -351,10 +351,12 @@ describe('nightjar explorer — random walk', () => {
       if (i % 10 === 9) {
         expect(snap(fold(records, cloneState(base), dict, content))).toBe(snap(state))
       }
-      // §9.35 ending-awareness: a careless walk stacks SUSPICION, and the
-      // conductor's rounds end the story when the pool reaches three. Undo
-      // through the ending step (it derives from the fold) so the walk keeps
-      // exercising real play and `executed` stays meaningful.
+      // §9.35 ending-awareness: a careless walk stacks SUSPICION, and
+      // watch(3) — the escalation the conductor's rounds and the
+      // searched-again recipe both call — ends the story when the pool
+      // reaches three. Undo through the ending step (it derives from the
+      // fold) so the walk keeps exercising real play and `executed` stays
+      // meaningful.
       if (state.ended) {
         endings++
         while (records.length > 0 && records[records.length - 1].kind === 'event') records.pop()

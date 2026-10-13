@@ -272,7 +272,11 @@ export function compileContent(raw: ContentRaw, dict: Dictionary, entities: Iter
     return { id: t.id, slot: t.slot, once: t.once ?? false, out }
   })
   const prototypes = new Map(Object.entries(raw.prototypes ?? {}))
-  const templates = new Map(Object.entries(raw.templates ?? {}))
+  const templates = new Map<string, string>()
+  for (const [name, tpl] of Object.entries(raw.templates ?? {})) {
+    if (!dict.isVerb(name)) throw new Error(`template '${name}' is not a registered verb — templates configure verbs, same as the verbs: section`)
+    templates.set(name, tpl)
+  }
   // §9.35: an ENDING outcome must name a declared ending — recipe or trigger,
   // checked once at load so a typo cannot wait for playtime. §9.42: the same
   // walk pins DRAW to a declared deck.

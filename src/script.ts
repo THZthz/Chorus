@@ -92,6 +92,7 @@ export function parseScript(text: string, dict: Dictionary): Script {
   let verbName: string | null = null
   let inRecipes = false
   const functions: FunctionDef[] = []
+  const entityNames = new Set<string>()
 
   for (let ln = 0; ln < lines.length; ln++) {
     const rawLine = lines[ln]
@@ -128,7 +129,15 @@ export function parseScript(text: string, dict: Dictionary): Script {
     if (section === null) throw new Error(`line ${ln + 1}: expected a section header, got '${t}'`)
 
     if (section === 'entities') {
+      const declared = entities.length
       parseEntityLine(t, ln + 1, dict, entities, relations)
+      // duplicate entity declarations share one s_<name> id and would
+      // silently overwrite — a load error, not a last-write-wins (§9.14)
+      if (entities.length > declared) {
+        const name = entities[entities.length - 1]!.name
+        if (entityNames.has(name)) throw new Error(`line ${ln + 1}: duplicate entity declaration '${name}'`)
+        entityNames.add(name)
+      }
     } else if (section === 'prototypes') {
       const [key, proto] = parsePrototypeLine(t, ln + 1, dict)
       prototypes[key] = proto
@@ -171,10 +180,26 @@ export function parseScript(text: string, dict: Dictionary): Script {
     }
   }
 
+  // §9.14: a name is one card — declared both ways, every SPAWN of the
+  // prototype would collide with the living entity (§9.19); fail at load
+  for (const name of Object.keys(prototypes)) {
+    if (entityNames.has(name)) throw new Error(`'${name}' is declared both as an entity and a prototype — spawns of it could never mint`)
+  }
+
   return { meta, content: { verbs, triggers, prototypes, templates, endings, functions, decks }, entities, relations }
 }
 
 // ---------- entity lines ----------
+
+/** §5.1: reserved words cannot be names — as a declaration they would make
+ *  every unquoted ref in clauses parse as the keyword, so fail at load.
+ *  (Non-lexeme names like `X-Y` are legal but quota every ref — linted, not
+ *  errored: §9.42's unsafe-name corner depends on them.) */
+function checkName(name: string, ln: number, dict: Dictionary, what: string): void {
+  if (dict.reserved.has(name)) {
+    throw new Error(`line ${ln}: ${what} '${name}' is a reserved word — rename it (§5.1)`)
+  }
+}
 
 function parseEntityLine(t: string, ln: number, dict: Dictionary, entities: EntitySpec[], relations: RelationSpec[]): void {
   const m = /^(\S+)\s+is\s+([A-Za-z_.]+)\b\s*(.*)$/.exec(t)
@@ -184,9 +209,12 @@ function parseEntityLine(t: string, ln: number, dict: Dictionary, entities: Enti
   if (dict.relationTypes.has(second)) {
     const rel = /^of\s+(\S+)$/.exec(rest0)
     if (!rel) throw new Error(`line ${ln}: relations expect  A is TYPE of B`)
+    checkName(name, ln, dict, 'relation endpoint')
+    checkName(rel[1], ln, dict, 'relation endpoint')
     relations.push({ a: name, type: second, b: rel[1] })
     return
   }
+  checkName(name, ln, dict, 'entity name')
   if (!(KINDS as readonly string[]).includes(second)) {
     throw new Error(`line ${ln}: unknown kind '${second}' (expected one of ${KINDS.join(', ')})`)
   }
@@ -228,6 +256,7 @@ function parseEntityLine(t: string, ln: number, dict: Dictionary, entities: Enti
 function parsePrototypeLine(t: string, ln: number, dict: Dictionary): [string, PrototypeDef] {
   const m = /^(\S+)\s+is\s+([a-z]+)\b\s*(.*)$/.exec(t)
   if (!m) throw new Error(`line ${ln}: prototypes expect  NAME is KIND [stackable] [deriving ...] [with ...]`)
+  checkName(m[1], ln, dict, 'prototype name')
   const proto: PrototypeDef = { kind: m[2] }
   if (!(KINDS as readonly string[]).includes(m[2])) throw new Error(`line ${ln}: unknown kind '${m[2]}'`)
   let rest = m[3]
@@ -424,5 +453,168 @@ export function compileScript(text: string, dict: Dictionary): { content: Compil
       a: a.id, b: b.id, type: rel.type, value: 1, bornAction: 0, deadAction: null,
     })
   }
+  // §11: the front door defaults actors to `player:` — resolve it against the
+  // declared world here, at load, instead of at the first typed line
+  const meta = script.meta
+  if (meta.player) {
+    const pool = state.byName.get(meta.player)
+    const p = pool?.length ? state.entities.get(pool[0]!) : undefined
+    if (!p) throw new Error(`player '${meta.player}' is not a declared entity`)
+    if (p.kind !== 'character') throw new Error(`player '${meta.player}' must be a character (got ${p.kind})`)
+  }
   return { content, state, meta: script.meta }
+}
+
+// ---------- load-time lint (§10's "fail loudly", warn-loudly sibling) ----------
+
+const ROLE_NAMES = ['actors', 'object', 'with', 'at', 'about', 'to'] as const
+
+/**
+ * Warnings for content that compiles but is probably not what the author
+ * meant. `compileScript` still owns errors; this never throws — it parses,
+ * compiles (a broken script throws there, as always), and returns one
+ * human-readable string per finding. Empty for a clean script.
+ */
+export function lintScript(text: string, dict: Dictionary): string[] {
+  const script = parseScript(text, dict)
+  compileScript(text, dict) // lints run on scripts that already compile
+  const warnings: string[] = []
+  const verbs = script.content.verbs
+  // raw default recipes carry no id — mirror compileContent's minting
+  const recipeId = (verb: string, r: RecipeDef, i: number): string =>
+    r.id ?? (r.when ? `${verb.toLowerCase()}.recipe${i + 1}` : `${verb.toLowerCase()}.default`)
+
+  // a configured verb nobody can ever succeed with
+  for (const [name, verb] of Object.entries(verbs)) {
+    if (verb.slots.length > 0 && verb.recipes.length === 0) {
+      warnings.push(`verb ${name}: declares slots but no recipes — every action rejects at selection (§6.6)`)
+    }
+  }
+
+  // dead recipes: after a catch-all, shadowed by an identical when, or a
+  // count(role) bound the slot's cardinality can never satisfy
+  for (const [name, verb] of Object.entries(verbs)) {
+    const slotOf = new Map(verb.slots.map(s => [s.role as string, s]))
+    let catchAll: string | null = null
+    const whens = new Map<string, string>()
+    verb.recipes.forEach((r, i) => {
+      const id = recipeId(name, r, i)
+      if (catchAll) warnings.push(`recipe ${id} (${name}): unreachable — ${catchAll} already matches everything (first match wins, §6.4)`)
+      if (!r.when) { catchAll = catchAll ?? id; return }
+      const norm = r.when.replace(/\s+/g, ' ').trim()
+      const prior = whens.get(norm)
+      if (prior) warnings.push(`recipe ${id} (${name}): shadowed by ${prior} — identical when, it can never fire (§6.4)`)
+      else whens.set(norm, id)
+      for (const m of r.when.matchAll(/count\((actors|object|with|at|about|to)\)\s*(>=|<=|>|<|=|!=)\s*(\d+)/g)) {
+        const slot = slotOf.get(m[1]!)
+        if (!slot) continue
+        const k = Number(m[3])
+        const dead = (m[2] === '=' && (k < slot.min || k > slot.max))
+          || (m[2] === '>' && k >= slot.max)
+          || (m[2] === '>=' && k > slot.max)
+          || (m[2] === '<' && k <= slot.min)
+          || (m[2] === '<=' && k < slot.min)
+        if (dead) {
+          const range = slot.max === Infinity ? `${slot.min}..∞` : `${slot.min}..${slot.max}`
+          warnings.push(`recipe ${id} (${name}): count(${m[1]}) ${m[2]} ${k} can never hold — the slot takes ${range} (§6.1)`)
+        }
+      }
+    })
+  }
+
+  // template tokens: {actors} {object} {with} {at} {about} {to} {roll} — a
+  // typo renders literally at render time (§5.3); function bodies also
+  // interpolate their params (§9.40)
+  const known = new Set<string>([...ROLE_NAMES, 'roll'])
+  const scanTokens = (where: string, s: string, extra: readonly string[] = []): void => {
+    for (const m of s.matchAll(/\{([a-z_][a-z0-9_]*)\}/g)) {
+      if (!known.has(m[1]!) && !extra.includes(m[1]!)) {
+        warnings.push(`${where}: unknown template token {${m[1]}} — roles are {actors} {object} {with} {at} {about} {to}, plus {roll} (§5.3)`)
+      }
+    }
+  }
+  for (const [name, verb] of Object.entries(verbs)) {
+    verb.recipes.forEach((r, i) => scanTokens(`recipe ${recipeId(name, r, i)}`, r.out[0] ?? ''))
+  }
+  for (const t of script.content.triggers ?? []) scanTokens(`trigger ${t.id}`, t.out[0] ?? '')
+  for (const f of script.content.functions ?? []) scanTokens(`function ${f.name}`, f.body, f.params)
+
+  // the §10 livelock rule: deck entries should be stackable (or consumed and
+  // renamed on the same step) — served twice while a copy lives, the second
+  // spawn name-collides and rejects the step (§9.19)
+  const stackableNames = new Set<string>()
+  const stackableKinds = new Set<string>()
+  for (const e of script.entities) {
+    if (e.stackable) { stackableNames.add(e.name); stackableKinds.add(e.kind) }
+  }
+  for (const [pname, p] of Object.entries(script.content.prototypes ?? {})) {
+    if (p.stackable) { stackableNames.add(pname); stackableKinds.add(p.kind) }
+  }
+  for (const d of script.content.decks ?? []) {
+    for (const entry of [...d.spec, ...(d.defaultcard ? [d.defaultcard] : [])]) {
+      const kind = script.content.prototypes?.[entry]?.kind
+        ?? script.entities.find(e => e.name === entry)?.kind
+      if (!stackableNames.has(entry) && !(kind !== undefined && stackableKinds.has(kind))) {
+        warnings.push(`deck ${d.id}: entry ${entry} is not stackable — served again while a copy lives, the spawn collides (§10 livelock rule)`)
+      }
+    }
+  }
+
+  // aspect reads with no writer anywhere — a typo'd aspect silently never
+  // matches (aspects are an open vocabulary, so this is a warning, not an error)
+  const reads = new Set<string>()
+  const writes = new Set<string>()
+  const addWrite = (path: string): void => {
+    writes.add(path)
+    for (let dot = path.indexOf('.'); dot !== -1; dot = path.indexOf('.', dot + 1)) {
+      writes.add(path.slice(0, dot))
+    }
+  }
+  const walkAspects = (a: Aspects, prefix: string): void => {
+    for (const [k, v] of Object.entries(a)) {
+      const path = prefix ? `${prefix}.${k}` : k
+      addWrite(path)
+      if (typeof v !== 'number') walkAspects(v as Aspects, path)
+    }
+  }
+  for (const e of script.entities) walkAspects(e.aspects, '')
+  for (const p of Object.values(script.content.prototypes ?? {})) {
+    if (p.aspects) walkAspects(p.aspects, '')
+    // derive writes the declared field and reads the object's aspect (§6.4)
+    for (const [dKey, d] of Object.entries(p.derive?.aspects ?? {})) {
+      addWrite(dKey)
+      reads.add(d.fromObjectAspect)
+    }
+  }
+  const readSetAspect = /aspect:([a-z_][a-z0-9_.]*)/g
+  const scanReads = (s: string): void => {
+    // two syntaxes read aspects: query terms (`aspect:secret`) and predicate
+    // paths (`object.aspect.secret >= 3`) — §4.5 vs §6.3
+    for (const m of s.matchAll(readSetAspect)) reads.add(m[1]!)
+    for (const m of s.matchAll(/\baspect\.([a-z_][a-z0-9_.]*)/g)) reads.add(m[1]!)
+  }
+  const scanWrites = (s: string): void => {
+    for (const m of s.matchAll(/SET\(\s*[^,()]+,\s*aspect:([a-z_][a-z0-9_.]*)/g)) addWrite(m[1]!)
+  }
+  for (const verb of Object.values(verbs)) {
+    for (const slot of verb.slots) if (slot.query) scanReads(slot.query)
+    for (const r of verb.recipes) { if (r.when) scanReads(r.when); scanWrites(r.out[0] ?? '') }
+  }
+  for (const t of script.content.triggers ?? []) scanWrites(t.out[0] ?? '')
+  for (const f of script.content.functions ?? []) scanWrites(f.body)
+  for (const r of reads) {
+    if (!writes.has(r)) {
+      warnings.push(`aspect '${r}' is queried but never declared on any entity or prototype — check the spelling`)
+    }
+  }
+
+  // non-lexeme names are legal (§9.42's unsafe-name corner) but every ref to
+  // them must be quoted — say so at load
+  for (const e of script.entities) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(e.name)) {
+      warnings.push(`entity '${e.name}': not a name lexeme — every ref to it must be quoted (§5.1, §9.42)`)
+    }
+  }
+
+  return warnings
 }

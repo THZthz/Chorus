@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "play": "tsx examples/play.ts"
+    "play": "tsx examples/play.ts",
+    "lint:scripts": "tsx src/lint-cli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

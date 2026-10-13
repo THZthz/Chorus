@@ -12,7 +12,7 @@ export type Tok =
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*/
 const NUM_RE = /^[0-9]+/
-const DUR_RE = /^([0-9]+)(halfhour|h|m|d)/
+const DUR_RE = /^([0-9]+)(halfhour|h|m|d)(?:[0-9]+(?:halfhour|h|m|d))*/
 // '+'/'-' are punct so a signed SET value (+1/-2, §9.31) lexes as sign + int
 // ('->' is matched before the punct set, so the minus is unambiguous); '.' is
 // punct for dotted SET keys (§5.1 dottedName: state.sealed, aspect:language.latin)
@@ -46,7 +46,8 @@ export function lex(src: string): Tok[] {
       const rest = src.slice(i)
       const dur = DUR_RE.exec(rest)
       // a duration only when the whole number is the duration's digits
-      // ('1halfhour' is one token; '12' alone stays an int)
+      // ('1halfhour' and compound '1h30m' (§9.45) are one token; '12' alone
+      // stays an int)
       if (dur && NUM_RE.exec(rest)![0] === dur[1]) {
         toks.push({ t: 'dur', v: durToMinutes(dur[0]) })
         i += dur[0].length

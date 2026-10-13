@@ -33,32 +33,44 @@ export function parseClock(s: string): Clock {
   if (!m) throw new Error(`bad clock '${s}' (expected "day:halfhour")`)
   const halfhour = Number(m[2])
   if (halfhour < 0 || halfhour > 47) throw new Error(`bad halfhour '${s}' (0..47)`)
+  // day needs no check: `\d+` cannot lex a sign, so day >= 0 always holds
   return { day: Number(m[1]), halfhour }
 }
 
-/** Duration literal grammar: int ( "halfhour" | "h" | "m" | "d" ) — spec §5.1.
- *  1 halfhour = 30 minutes. */
-export function parseDuration(s: string): number {
-  const m = /^(\d+)(halfhour|h|m|d)$/.exec(s)
-  if (!m) throw new Error(`bad duration '${s}' (expected e.g. 1halfhour, 2h, 90m, 1d)`)
-  const n = Number(m[1])
-  switch (m[2]) {
-    case 'halfhour': return n * MIN_PER_HALFHOUR
-    case 'h': return n * 60
-    case 'm': return n
-    case 'd': return n * 24 * 60
-  }
-  throw new Error('unreachable')
+/** minutes per §5.1 duration unit */
+const UNIT_MINUTES: Record<string, number> = {
+  halfhour: MIN_PER_HALFHOUR,
+  h: 60,
+  m: 1,
+  d: 24 * 60,
 }
 
-/** canonical duration rendering: prefers the shorter unit — d, then h, then
- *  halfhour, then raw minutes */
+/** Duration literal grammar: one or more `int ( "halfhour" | "h" | "m" | "d" )`
+ *  pairs — spec §5.1. 1 halfhour = 30 minutes; compounds like `1h30m` sum
+ *  their pairs (§9.45). */
+export function parseDuration(s: string): number {
+  const pairs = [...s.matchAll(/(\d+)(halfhour|h|m|d)/g)]
+  if (pairs.length === 0 || pairs.map(p => p[0]).join('') !== s)
+    throw new Error(`bad duration '${s}' (expected e.g. 1halfhour, 2h, 90m, 1d, 1h30m)`)
+  return pairs.reduce((min, p) => min + Number(p[1]) * UNIT_MINUTES[p[2]], 0)
+}
+
+/** canonical duration rendering: prefers the shorter exact single unit —
+ *  d, then h, then halfhour, then raw minutes; compound decomposition
+ *  (`1h40m`, `1d2h1m`) only when no single unit fits, so every rendering
+ *  re-parses (§5.2 round-trip) and exact-fit output is unchanged */
 export function formatDuration(minutes: number): string {
+  if (minutes < 0) throw new Error(`negative duration ${minutes}`)
   if (minutes === 0) return '0m'
   if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`
   if (minutes % 60 === 0) return `${minutes / 60}h`
   if (minutes % MIN_PER_HALFHOUR === 0) return `${minutes / MIN_PER_HALFHOUR}halfhour`
-  return `${minutes}m`
+  // no exact single unit: decompose — the remainder after d/h is never a
+  // 30-multiple here (exact halfhour fits returned above), so minutes finish it
+  const d = Math.floor(minutes / (24 * 60))
+  const h = Math.floor((minutes % (24 * 60)) / 60)
+  const m = minutes % 60
+  return `${d > 0 ? `${d}d` : ''}${h > 0 ? `${h}h` : ''}${m > 0 ? `${m}m` : ''}`
 }
 
 /** halfhour ticks strictly crossed when advancing from `from` to `to`

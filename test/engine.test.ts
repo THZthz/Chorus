@@ -997,8 +997,8 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
   }
   const at = (minutes: number): number => 20 * 30 + minutes // 0:20 = absolute minute 600
 
-  test('quoted durations materialize expiresAt: "2halfhour", "90m", "2h", "1d", "0m"', () => {
-    for (const [lit, minutes] of [['"2halfhour"', 60], ['"90m"', 90], ['"2h"', 120], ['"1d"', 1440], ['"0m"', 0]] as const) {
+  test('quoted durations materialize expiresAt: "2halfhour", "90m", "1h30m", "2h", "1d", "0m"', () => {
+    for (const [lit, minutes] of [['"2halfhour"', 60], ['"90m"', 90], ['"1h30m"', 90], ['"2h"', 120], ['"1d"', 1440], ['"0m"', 0]] as const) {
       const { state } = setup()
       const r = runTune(tuneContent(`SET(CHALICE, expires, ${lit})`), state, '0:20 @ ANA TUNE')
       expect(r.rejected).toBeNull()

@@ -150,6 +150,14 @@ projection of that data, never the source of truth.
 > story's `seed:` is chosen and documented so the scripted win path
 > exercises every mechanic without tripping the ending.
 >
+> v0.4.1 = compound duration literals (§5.1, §9.45). A duration may stack
+> §5.1 units — `1h30m`, `1d2h30m` — summing to minutes; bare literals lex
+> as one token in outcome args, and quoted-string `expires` (§9.36) and
+> script `duration:` entries share the same parser. Canonical rendering
+> keeps the single exact unit when one fits and decomposes (`1h40m`) only
+> otherwise — byte-identical wherever an exact unit fits, with minutes that
+> fit no unit (`61m` → `1h1m`) the one visible rendering change.
+>
 > **Compatibility: none, by design.** Nothing in this document is a
 > stability guarantee — the grammar, the log and script formats, and the
 > API may break at any version boundary (v0.2.2 changed event semantics;
@@ -229,7 +237,8 @@ recipes. **Knowledge is aspects on a character** (`occult:3`,
 
 **Structural properties are attrs**, not aspects. Engine-known attr keys:
 `container` (where the card sits — the container's entity id), `expires`
-(any §5.1 duration form — `2h`, `90m`, `1d`, `2halfhour` — quoted or bare;
+(any §5.1 duration form — `2h`, `90m`, `1d`, `2halfhour`, compound `1h30m`
+(§9.45) — quoted or bare;
 the engine materializes `expiresAt` = current clock +
 duration at set time, stored as **absolute minutes**) and the boolean flag
 namespace `state.*`: `state.sealed`, `state.locked`, `state.hidden`,
@@ -380,8 +389,9 @@ aspectKey  = "aspect:" name { "." name } ;       (* SET key into the aspects map
 target     = ref | role ;
 role       = "ACTORS" | "OBJECT" | "WITH" | "AT" | "ABOUT" | "TO" ;  (* case-insensitive *)
 dottedName = name { "." name } ;                 (* SET(x, state.sealed, true) *)
-duration   = int ( "halfhour" | "h" | "m" | "d" ) ;
-                                                 (* 1halfhour = 30 minutes *)
+duration   = int ( "halfhour" | "h" | "m" | "d" ) { int ( "halfhour" | "h" | "m" | "d" ) } ;
+                                                 (* 1halfhour = 30 minutes; compound
+                                                    literals like `1h30m` sum their pairs (§9.45) *)
 ref        = name | kind ":" name | "#" id | string ;  (* canonical output: name *)
 ```
 
@@ -1660,6 +1670,18 @@ Two invariants keep the mapping safe:
     and the deck cycles forever as intended. A test pins the stuck state
     (the message, the frozen cursor, the unchanged snap) so a future engine
     change cannot silently "fix" it by skipping or auto-consuming.
+45. **Duration literals may combine units** (§5.1, §4.2). A duration is one
+    or more `int (halfhour|h|m|d)` pairs summing to minutes (`1h30m` = 90,
+    `1d2h30m` = 1590). Bare literals lex as ONE token in outcome args; the
+    quoted-string `expires` path (§9.36) and the script `duration:` entries
+    run through the same single parser — every path accepts compounds.
+    Canonical rendering still prefers a single exact unit (d, then h, then
+    halfhour, then raw minutes — `90m` renders `3halfhour`, never `1h30m`)
+    and decomposes into compound form only when no single unit fits
+    (`100m` → `1h40m`, `1441m` → `1d1m`), so every canonical form re-parses
+    (the §5.2 round-trip). Output is byte-identical wherever a single exact
+    unit fits; minutes that fit no unit (`61m`, `100m`) now render compound
+    instead of raw — the one visible rendering change.
 
 ## 10. The script format — a game as one text file
 

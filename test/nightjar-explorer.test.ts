@@ -1,9 +1,14 @@
 // Exploratory story test — plays Murder on the Nightjar Flyer the way no
 // human would. Three passes, all deterministic:
 //
-//   A. sweep      — at every state of the win path, execute EVERY verb
-//                   × reachable-card combination (plus deliberately
-//                   malformed fills) and check the engine invariants on
+//   A. sweep      — at every state of the win path (plus states harvested
+//                   from a deterministic sampled walk: pools grown, decks
+//                   drawn, events crossed), execute the EXHAUSTIVE verb ×
+//                   role-fill space — every k-subset within each slot's
+//                   declared cardinality, every mismatching card, cardinality
+//                   and distinct-card boundary probes, small verbs' full
+//                   cartesian products, multi-clause pairs, and adaptive
+//                   refuser pairings — and check the engine invariants on
 //                   each outcome: accepted / refused / rejected all behave
 //                   per spec (§6.5, §6.6, §6.7).
 //   B. walk       — a seeded random walk of hundreds of steps (with
@@ -21,32 +26,26 @@
 // Anything here failing means an engine bug, not a content bug: the checks
 // are invariants, not plot.
 import { describe, expect, test } from 'vitest'
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { compileScript } from '../src/script.js'
 import { executeStep, type ActionRecord, type ExecResult, type Step } from '../src/engine.js'
 import { fold } from '../src/fold.js'
-import { absMin, clockFromAbsMin, formatClock, nextStepClock } from '../src/clock.js'
+import { absMin, formatClock, nextStepClock } from '../src/clock.js'
 import { parseSentence } from '../src/parse.js'
 import { formatSentence } from '../src/format.js'
-import { matchQuery } from '../src/query.js'
-import { parsePlayerInput } from '../src/lenient.js'
 import { proseLines } from '../src/render.js'
 import { saveLog, loadLog } from '../src/store.js'
-import { seedDictionary } from '../src/seed.js'
-import { sortRefs, nameRef, type Ref } from '../src/ref.js'
+import { sortRefs } from '../src/ref.js'
 import { cloneState, type State } from '../src/types.js'
-import { emptyClause, ROLES, type Clause, type Role } from '../src/sentence.js'
-import type { CompiledContent, CompiledSlot } from '../src/content.js'
-import type { Dictionary } from '../src/dict.js'
+import type { Clause } from '../src/sentence.js'
+import type { CompiledContent } from '../src/content.js'
 import { Game } from '../src/play.js'
 import { snap } from './snap.js'
-
-const dict = seedDictionary()
-const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
-const { content, state: base, meta } = compileScript(scriptText, dict)
-const PLAYER = meta.player ?? 'MARCH'
+import {
+  candidatesFor, dict, scriptText, content, base, PLAYER,
+  winPathStates, sampledWalkStates, WIN_PATH,
+} from './explorer-lib.js'
 
 // ---------- shared invariants ----------
 
@@ -123,168 +122,22 @@ function checkStep(pre: State, r: ExecResult, step: Step): 'refused' | 'applied'
   return 'applied'
 }
 
-// ---------- candidate generation ----------
-
-interface Cand {
-  tag: string
-  step: Step
-}
-
-const roleRefs = (c: Clause, role: Role): Ref[] | Ref | null =>
-  role === 'actors' ? c.actors
-  : role === 'object' ? c.objects
-  : role === 'with' ? c.with
-  : role === 'at' ? c.at
-  : role === 'about' ? c.about
-  : c.to
-
-const clauseKey = (c: Clause): string =>
-  [c.verb, ...ROLES.map(r => JSON.stringify(roleRefs(c, r)))].join('|')
-
-function candidatesFor(content: CompiledContent, state: State, player: string): Cand[] {
-  const clock = nextStepClock(state.now) // the front door's rule (§9.28)
-  const alive = [...state.entities.values()].filter(e => e.deadAction === null)
-  const chars = alive.filter(e => e.kind === 'character')
-  const pool = (slot: CompiledSlot): typeof alive =>
-    slot.query ? alive.filter(e => matchQuery(e, slot.query!)) : alive
-
-  const out = new Map<string, Cand>()
-  const push = (tag: string, clauses: Clause[]): void => {
-    const key = clauses.map(clauseKey).join(';')
-    if (!out.has(key)) out.set(key, { tag, step: { clock, clauses } })
-  }
-
-  for (const verb of content.verbs.values()) {
-    // options per declared role: empty (when allowed), singles, and shaped extras
-    const fills = new Map<Role, Ref[][]>()
-    for (const slot of verb.slots) {
-      const opts: Ref[][] = []
-      if (slot.min === 0) opts.push([])
-      const candidates = slot.role === 'actors' && chars.length > 0 ? chars : pool(slot)
-      for (const e of candidates.slice(0, 4)) opts.push([nameRef(e.name)])
-      const actorsSlot = verb.slotByRole.get('actors')
-      if (slot.role === 'actors' && actorsSlot && actorsSlot.max >= 2 && chars.length >= 2) {
-        opts.push(chars.slice(0, 2).map(e => nameRef(e.name)))
-      }
-      if (slot.role === 'with' && candidates.length >= 2) {
-        opts.push(candidates.slice(0, Math.min(3, candidates.length)).map(e => nameRef(e.name)))
-      }
-      fills.set(slot.role, opts)
-    }
-    // baseline valid fill: the first option covering each slot's minimum
-    const minFill = new Map<Role, Ref[]>()
-    let viable = true
-    for (const role of ROLES) {
-      const slot = verb.slotByRole.get(role)
-      if (!slot) { minFill.set(role, []); continue }
-      const cover = (fills.get(role) ?? []).filter(o => o.length >= slot.min)
-      if (cover.length === 0) { viable = false; break }
-      minFill.set(role, cover[0])
-    }
-    if (!viable) continue
-    const mk = (over: Map<Role, Ref[]>, tag: string): void => {
-      const c = emptyClause([])
-      c.verb = verb.name
-      c.actors = over.get('actors') ?? []
-      c.objects = over.get('object') ?? []
-      c.with = over.get('with') ?? []
-      c.at = (over.get('at') ?? [])[0] ?? null
-      c.about = (over.get('about') ?? [])[0] ?? null
-      c.to = (over.get('to') ?? [])[0] ?? null
-      push(tag, [c])
-    }
-    mk(minFill, `${verb.name} min-fill`)
-    for (const role of ROLES) {
-      const slot = verb.slotByRole.get(role)
-      if (!slot) continue
-      for (const opt of fills.get(role) ?? []) {
-        const over = new Map(minFill)
-        over.set(role, opt)
-        mk(over, `${verb.name} ${role}=${opt.length}`)
-      }
-      // deliberate slot-mismatch probe: a card that must not fit
-      if (slot.query) {
-        const wrong = alive.find(e => !matchQuery(e, slot.query!))
-        if (wrong) {
-          const over = new Map(minFill)
-          over.set(role, [nameRef(wrong.name)])
-          mk(over, `${verb.name} ${role}=wrong-kind`)
-        }
-      }
-    }
-    // witness × topic matrix for verbs that interrogate (to × about)
-    const toOpts = fills.get('to') ?? []
-    const aboutOpts = fills.get('about') ?? []
-    if (toOpts.length > 0 && aboutOpts.length > 0) {
-      for (const t of toOpts.slice(0, 4)) {
-        for (const a of aboutOpts.slice(0, 4)) {
-          const over = new Map(minFill)
-          over.set('to', t)
-          over.set('about', a)
-          mk(over, `${verb.name} to×about`)
-        }
-      }
-    }
-  }
-
-  // multi-clause and clock-discipline probes
-  push('multi-clause', parseSentence(`${formatClock(clock)} @ ${PLAYER} WAIT; ${PLAYER} WAIT`, dict).clauses)
-  if (state.now >= 60) {
-    const past = clockFromAbsMin(absMin(clock) - 60)
-    push('clock rewind', parseSentence(`${formatClock(past)} @ ${PLAYER} WAIT`, dict).clauses)
-  }
-  return [...out.values()]
-}
-
-// ---------- the win path, as sweep states ----------
-
-const WIN_PATH = [
-  'wait',
-  'explore the first cabin',
-  'read the solicitor letter',
-  'explore the firebox',
-  'read the vane ledger',
-  'talk with the spiritualist', // meet Seraphine — the name is learned by talking
-  'seraphine read the wax cylinder',
-  'seraphine read the telegram',
-  'use on the inquest with the embezzlement the stolen voice the vienna warning',
-]
-
-function parsePlayerish(line: string, state: State): Step {
-  const parsed = parsePlayerInput(line, { dict, content, state, player: PLAYER })
-  if (!parsed.ok) throw new Error(`win path line not parseable: '${line}': ${parsed.error}`)
-  return parsed.step
-}
-
-/** play the win path on primitives, snapshotting a fresh clone after each step */
-function winPathStates(): { states: { label: string; state: State }[]; records: ActionRecord[] } {
-  let state = cloneState(base)
-  const states = [{ label: 'start', state: cloneState(state) }]
-  const records: ActionRecord[] = []
-  let id = 1
-  for (const line of WIN_PATH) {
-    const r = executeStep(content, dict, state, parsePlayerish(line, state), { firstRecordId: id })
-    if (r.rejected) throw new Error(`win path broke at '${line}': ${r.rejected}`)
-    records.push(...r.records)
-    id += r.records.length
-    state = r.state
-    states.push({ label: `after ${line}`, state: cloneState(state) })
-  }
-  return { states, records }
-}
-
 // ---------- pass A: exhaustive sweep ----------
 
 describe('nightjar explorer — sweep', () => {
-  test('every verb × card combination at every win-path state keeps the invariants', () => {
-    const { states } = winPathStates()
+  test('the exhaustive verb × fill space at every sweep state keeps the invariants', () => {
+    const states = [...winPathStates().states, ...sampledWalkStates()]
     let total = 0
     let applied = 0
     let refused = 0
     let rejected = 0
+    let atomicityProbes = 0
     const verbsSeen = new Set<string>()
     for (const { label, state } of states) {
-      for (const cand of candidatesFor(content, state, PLAYER)) {
+      // phase 1: everything the generator can name
+      const refusers = new Map<string, Clause>()
+      const appliers = new Map<string, Clause>()
+      for (const cand of candidatesFor(content, state, PLAYER, 'full')) {
         total++
         const verbName = cand.tag.split(' ')[0]
         if (content.verbs.has(verbName)) verbsSeen.add(verbName)
@@ -301,17 +154,53 @@ describe('nightjar explorer — sweep', () => {
           continue
         }
         const outcome = checkStep(state, r, cand.step)
-        if (outcome === 'refused') refused++
-        else applied++
+        if (outcome === 'refused') {
+          refused++
+          // remember one refuser and one applier per verb for phase 2
+          if (cand.step.clauses.length === 1) {
+            const c = cand.step.clauses[0]
+            if (c && !refusers.has(c.verb)) refusers.set(c.verb, c)
+          }
+        } else {
+          applied++
+          if (cand.step.clauses.length === 1) {
+            const c = cand.step.clauses[0]
+            if (c && !appliers.has(c.verb)) appliers.set(c.verb, c)
+          }
+        }
+      }
+      // phase 2: step-atomicity probes (§6.5, §6.6) — pair each refusing
+      // clause with WAIT and with a clause that applies, both orders; the
+      // REFUSE must collapse the WHOLE step: no time, no effects from the
+      // clause that would have succeeded
+      const waitClause = parseSentence(`${formatClock(nextStepClock(state.now))} @ ${PLAYER} WAIT`, dict).clauses[0]
+      if (!waitClause) continue
+      const anyApplier = appliers.values().next().value
+      for (const refuser of [...refusers.values()].slice(0, 4)) {
+        const partners = [waitClause, appliers.get(refuser.verb) ?? anyApplier]
+        for (const partner of partners) {
+          if (!partner) continue
+          for (const clauses of [[refuser, partner], [partner, refuser]]) {
+            total++
+            atomicityProbes++
+            const step: Step = { clock: nextStepClock(state.now), clauses }
+            const r = executeStep(content, dict, state, step, { firstRecordId: 1 })
+            expect(r.rejected, `${label}: atomicity probe rejected: ${r.rejected}`).toBeNull()
+            const outcome = checkStep(state, r, step)
+            if (outcome === 'refused') refused++
+            else applied++
+          }
+        }
       }
       checkStateShape(state, content)
     }
     // coverage floors: the sweep must actually be sweeping
-    expect(states.length).toBe(WIN_PATH.length + 1)
-    expect(total).toBeGreaterThan(400)
-    expect(applied).toBeGreaterThan(100)
-    expect(refused).toBeGreaterThan(5)
-    expect(rejected).toBeGreaterThan(50)
+    expect(states.length).toBeGreaterThanOrEqual(WIN_PATH.length + 1 + 4)
+    expect(total).toBeGreaterThan(30000)
+    expect(applied).toBeGreaterThan(12000)
+    expect(refused).toBeGreaterThan(2000)
+    expect(rejected).toBeGreaterThan(8000)
+    expect(atomicityProbes).toBeGreaterThan(100)
     expect(verbsSeen.size).toBe(content.verbs.size)
   })
 })

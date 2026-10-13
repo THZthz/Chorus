@@ -523,7 +523,19 @@ function applyOutcome(o: Outcome, ctx: ApplyCtx): ApplyResult {
       let value: string | number | boolean
       if (valArg.t === 'int' || valArg.t === 'str' || valArg.t === 'bool' || valArg.t === 'dur') value = valArg.v
       else throw new Error('SET value must be a string, number, boolean or duration')
-      for (const e of expand([refArg], ctx)) write(e, value)
+      const targets = expand([refArg], ctx)
+      for (const e of targets) write(e, value)
+      // §9.15: the log never contains sugar — a ROLE arg must not reach the
+      // record (the fold rebuilds whole-record bindings, so over a
+      // multi-clause step it would attribute the role to the wrong clause).
+      // One concrete SET per card, exactly like the delta path above; name
+      // and kind refs replay fine and stay as written.
+      if (refArg.t === 'role') {
+        return {
+          refused: false,
+          concrete: targets.map(e => ({ op: 'SET', args: [{ t: 'ref', ref: idRef(e.id) }, keyConcrete, valArg] })),
+        }
+      }
       return { concrete: [{ op: 'SET', args: [refArg, keyConcrete, valArg] }], refused: false }
     }
     case 'MOVE': {

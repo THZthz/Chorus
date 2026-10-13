@@ -607,7 +607,34 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     expect(r.state.entities.get('ana')!.attrs['funds']).toBe(5)
     const r2 = runTune(c, r.state, '0:21 @ ANA TUNE', 2)
     expect(r2.state.entities.get('ana')!.attrs['funds']).toBe(5) // not 5+5
-    expect(r2.records[0].sentence).toContain('SET(ACTORS, funds, 5)')
+    expect(r2.records[0].sentence).toContain('SET(#ana, funds, 5)') // role concretized (§9.15), value literal
+  })
+
+  test('a role-arg absolute SET in a multi-clause step logs one concrete row per card and replays exactly (§9.15, §7)', () => {
+    const { state } = setup()
+    const c = compileContent({
+      verbs: {
+        TUNE: {
+          slots: [
+            { role: 'actors', min: 1, max: 2, query: 'kind:character' },
+            { role: 'object', min: 1, max: 1, query: 'kind:text' },
+          ],
+          duration: 30,
+          recipes: [{ out: ['SET(OBJECT, searched, 1)'] }],
+        },
+      },
+    }, tuneDict)
+    const r = runTune(c, state, '0:20 @ ANA TUNE THE_FORGETTING; BERTHA TUNE FAIRY_TALES')
+    expect(r.rejected).toBeNull()
+    // each clause's OBJECT becomes its own id row — the role itself never
+    // reaches the log, so the fold needs no per-clause attribution
+    expect(r.records[0].sentence).toContain('SET(#forgetting, searched, 1), SET(#fairy, searched, 1)')
+    // §7: the records alone reproduce the played state. (Pre-fix, the fold
+    // resolved OBJECT against the whole-record binding — the first clause's
+    // card — and the second card never got searched.)
+    expect(snap(fold(r.records, seedState(), tuneDict, c))).toBe(snap(r.state))
+    expect(r.state.entities.get('forgetting')!.attrs['searched']).toBe(1)
+    expect(r.state.entities.get('fairy')!.attrs['searched']).toBe(1)
   })
 
   test('a delta over a role ref logs one concrete SET per card, each with its own result', () => {

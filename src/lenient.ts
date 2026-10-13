@@ -7,7 +7,7 @@ import type { Dictionary } from './dict.js'
 import type { CompiledContent } from './content.js'
 import type { Clause, Role } from './sentence.js'
 import { parseSentence } from './parse.js'
-import { nextStepClock, parseClock, type Clock } from './clock.js'
+import { absMin, parseClock, type Clock } from './clock.js'
 import { nameRef, type Ref } from './ref.js'
 import { matchQuery } from './query.js'
 import type { Entity, State } from './types.js'
@@ -37,8 +37,11 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
   if (/^\d+:\d+\s*@/.test(trimmed) || trimmed.includes('->')) {
     try {
       const s = parseSentence(trimmed, ctx.dict)
-      const clock: Clock = s.clock ?? nextStepClock(ctx.state.now) // §9.28
-      return { ok: true, step: { clock, clauses: s.clauses }, canonical: trimmed }
+      // v0.5: the begin minute — an explicit clock starts there; without one
+      // the action begins NOW (parallel stations made the quantized round-up
+      // of §9.28 an overlap device no longer needed)
+      const startMin = s.clock ? absMin(s.clock) : ctx.state.now
+      return { ok: true, step: { startMin, clock: s.clock, clauses: s.clauses }, canonical: trimmed }
     } catch (err) {
       return { ok: false, error: (err as Error).message, suggestions: [] }
     }
@@ -49,12 +52,17 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
 
   const names = aliveNames(ctx.state)
 
-  // optional leading clock token; default: the next halfhour tick (§9.28)
+  // optional leading clock token; default: begin now (v0.5)
   let i = 0
-  let clock: Clock = nextStepClock(ctx.state.now)
+  let clock: Clock | null = null
+  let startMin = ctx.state.now
   if (/^\d+:\d+$/.test(tokens[0])) {
-    try { clock = parseClock(tokens[0]) } catch { return { ok: false, error: `bad clock '${tokens[0]}'`, suggestions: [] } }
+    try { clock = parseClock(tokens[0]); startMin = absMin(clock) } catch { return { ok: false, error: `bad clock '${tokens[0]}'`, suggestions: [] } }
     i = 1
+    // a lone clock is a pure advance — let time pass, resolving every window
+    // due by that minute (v0.5). Before this branch existed the input fell
+    // into the verb search and crashed on `suggestVerb(undefined)`.
+    if (i >= tokens.length) return { ok: true, step: { startMin, clock, clauses: [] }, canonical: trimmed }
   }
 
   // find the verb: single token ('READ') or two-token preposition form ('use on' → USE_ON)
@@ -147,7 +155,7 @@ export function parsePlayerInput(line: string, ctx: LenientCtx): ParsedInput {
     with: withRole,
     about: about.refs[0] ?? null,
   }
-  return { ok: true, step: { clock, clauses: [clause] }, canonical: '' }
+  return { ok: true, step: { startMin, clock, clauses: [clause] }, canonical: '' }
 }
 
 // ---------- name resolution ----------

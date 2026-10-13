@@ -26,7 +26,7 @@ scripts by hand.
 - `src/content.ts` — verbs/slots/recipes/prototypes/triggers as data
 - `src/script.ts` — the script compiler: a text file becomes world + logic (§ "sentences + small blocks")
 - `src/lenient.ts` — lenient English-ish player input → canonical steps
-- `src/engine.ts` — slots → recipes → outcomes → time → events; step-atomic REFUSE
+- `src/engine.ts` — slots → recipes → outcomes → time → events; BEGIN/COMPLETE/WAIT rows, advance passes, station locks; step-atomic REFUSE
 - `src/fold.ts` `store.ts` — replay from the log; JSONL persistence
 - `src/play.ts` — the game loop (script + log; one turn = handleLine)
 - `src/tui.tsx` — the terminal UI (Ink); readline fallback when stdin or stdout is not a TTY
@@ -51,7 +51,7 @@ you are MARCH · at GUARD VAN · day 0:42 · 9 cards
 here: THE GUARD · THE INQUEST
 try: read THE MANIFEST · talk with THE GUARD · explore DINING CAR
 verbs: read · talk · explore · use on · travel to · wait · study · work · mansus · locate at · dream · acquire
-[1 look] [2 cards] [3 story] [4 journal] [5 undo] [6 quit]  ← number + enter
+[1 look] [2 cards] [3 story] [4 journal] [5 undo] [6 wait] [7 quit]  ← number + enter
 ──────────────────────────────────────────────────────────
 § unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna
 » read the manifest
@@ -86,10 +86,14 @@ the live area — the verb vocabulary, the cards sharing the player's
 location, and number buttons for the meta views (look, cards, story,
 journal, undo, quit); tab completes verbs and card names.
 
-Committed actions **process** over their verb's duration — the verb and its
-placed cards are locked for that window, authored `PROGRESS` ticks describe
-what is happening inside it, and outcomes (consume / mutate / mint) land
-when the bar completes:
+Committed actions **process** over their verb's duration as *parallel
+stations*: committing an action opens a processing window — the verb and
+its placed cards are locked until it closes, authored `PROGRESS` ticks
+describe what is happening inside it, and outcomes (consume / mutate /
+mint) land when the window completes. Several stations run at once; time
+passes only when you advance it (type a clock like `1:30`, or press
+wait), which resolves due completions and the timetable in one
+deterministic pass:
 
 ```
 » seraphine read the wax cylinder

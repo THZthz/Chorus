@@ -14,6 +14,7 @@ import { saveLog, loadLog } from '../src/store.js'
 import { addEntity, newState, type State } from '../src/types.js'
 import { parsePredicate, evalPred } from '../src/predicate.js'
 import { snap } from './snap.js'
+import { settleStep, act, done, refusal } from './settle.js'
 import { Game } from '../src/play.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -65,6 +66,12 @@ verbs:
     duration: 1h
     recipes:
       default -> NARRATE "{actors} wait."
+  ACQUIRE:
+    actors: 1 kind:character
+    object: 0..1
+    duration: 0m
+    recipes:
+      default -> NARRATE "{actors} acquires."
 
 templates:
   STEW says "{actors} stews."
@@ -80,10 +87,7 @@ function rig() {
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, poolDict)
   let n = 0
-  return executeStep(content, poolDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`,
-  })
+  return settleStep(content, poolDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
 }
 
 function stew(content: CompiledContent, times: number, state: State): State {
@@ -154,19 +158,24 @@ describe('spawn pools and oldest-copy addressing (§9.38)', () => {
     const r3state = stew(content, 3, state)
     const pool = r3state.byName.get('SUSPICION')!
     expect(pool).toHaveLength(3)
-    expect(pool.map(id => r3state.entities.get(id)!.bornAction)).toEqual([1, 2, 3]) // insertion order = birth order
+    // insertion order = birth order; v0.5 mints stamp the completion rows
+    const borns = pool.map(id => r3state.entities.get(id)!.bornAction!)
+    expect(borns[0]!).toBeLessThan(borns[1]!)
+    expect(borns[1]!).toBeLessThan(borns[2]!)
     expect(evalPred(parsePredicate('exists(SUSPICION)'), { b: {}, state: r3state })).toBe(true)
   })
 
   test('the player surface lists every copy; inspect reads the OLDEST (entered play first)', () => {
     const game = Game.fromScript(poolScript, poolDict)
-    game.handleLine('stew')
-    game.handleLine('stew')
-    game.handleLine('stew')
+    for (let i = 0; i < 3; i++) {
+      game.handleLine('stew')
+      game.wait() // v0.5: the spawn lands at the completion
+    }
     expect(game.cards().filter(l => l.startsWith('SUSPICION'))).toHaveLength(3) // cosmetic duplicates OK
     const face = game.inspect('suspicion')
     expect(face[0]).toBe('SUSPICION  [state]')
-    expect(face.join('\n')).toContain('entered play at action 1') // first-visible = oldest
+    const oldestBorn = game.state.entities.get(game.state.byName.get('SUSPICION')![0])!.bornAction
+    expect(face.join('\n')).toContain(`entered play at action ${oldestBorn}`) // first-visible = oldest
   })
 
   test('DESTROY by name takes the oldest, then the next-oldest; the last release frees the name', () => {
@@ -177,7 +186,7 @@ describe('spawn pools and oldest-copy addressing (§9.38)', () => {
       const r = run(content, cur, '0:0 @ ANA CALM', id)
       expect(r.rejected).toBeNull()
       // the authored name-addressed destroy LOGS THE NAME (oldest resolved at apply)
-      expect(r.records[0].outcomes[0].args[0]).toEqual({ t: 'ref', ref: { form: 'name', name: 'SUSPICION' } })
+      expect(done(r).outcomes[0].args[0]).toEqual({ t: 'ref', ref: { form: 'name', name: 'SUSPICION' } })
       expect(r.state.byName.get('SUSPICION') ?? []).toHaveLength(expected) // undefined once the name frees
       cur = r.state
       id += r.records.length
@@ -199,10 +208,9 @@ describe('spawn pools and oldest-copy addressing (§9.38)', () => {
     const state = seedState()
     const before = snap(state)
     const r = run(poke, state, '0:0 @ ANA ACQUIRE')
-    expect(r.rejected).toMatch(/already in use/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
-    expect(snap(r.state)).toBe(before)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/already in use/)
+    expect(snap(state)).toBe(before)
     // once the non-stackable holder dies the name accepts the stackable mint
     state.entities.get('chalice')!.deadAction = 99
     state.byName.delete('CHALICE')
@@ -218,9 +226,9 @@ describe('spawn pools and oldest-copy addressing (§9.38)', () => {
     }, dict)
     const before = snap(pooled)
     const r = run(plain, pooled, '0:0 @ ANA ACQUIRE')
-    expect(r.rejected).toMatch(/already in use/)
-    expect(r.records).toHaveLength(0)
-    expect(snap(r.state)).toBe(before)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/already in use/)
+    expect(r.state.entities.get(pooled.byName.get('SUSPICION')![0])!.deadAction).toBeNull() // nothing applied
   })
 
   test('addEntity enforces the law itself: non-stackable duplicates throw, stackables append', () => {
@@ -311,30 +319,33 @@ describe('spawn pools and oldest-copy addressing (§9.38)', () => {
 describe('slot bindings hold same-named copies individually (§9.38)', () => {
   test('two copies bind by #id; SET(OBJECT)/DESTROY OBJECT address each bound card', () => {
     const { content, state } = rig()
-    const pooled = stew(content, 2, state) // ids x1_1, x2_1
-    const r = run(content, pooled, '0:0 @ ANA PROBE #x1_1, #x2_1', 3)
+    const pooled = stew(content, 2, state)
+    const [elder, younger] = pooled.byName.get('SUSPICION')!
+    const r = run(content, pooled, `0:0 @ ANA PROBE #${elder}, #${younger}`, 3)
     expect(r.rejected).toBeNull()
-    expect(r.records[0].recipes).toEqual(['probe.clear'])
+    expect(act(r).recipes).toEqual(['probe.clear'])
     // one concrete SET per bound card, then the destroy carries both ids
-    expect(r.records[0].sentence).toContain(
-      '-> SET(#x1_1, aspect:noted, 1), SET(#x2_1, aspect:noted, 1), DESTROY(#x1_1, #x2_1)',
+    expect(done(r).sentence).toContain(
+      `-> SET(#${elder}, aspect:noted, 1), SET(#${younger}, aspect:noted, 1), DESTROY(#${elder}, #${younger})`,
     )
-    expect(r.state.entities.get('x1_1')!.aspects['noted']).toBe(1)
-    expect(r.state.entities.get('x2_1')!.aspects['noted']).toBe(1)
-    expect(r.state.entities.get('x1_1')!.deadAction).not.toBeNull()
-    expect(r.state.entities.get('x2_1')!.deadAction).not.toBeNull()
+    expect(r.state.entities.get(elder)!.aspects['noted']).toBe(1)
+    expect(r.state.entities.get(younger)!.aspects['noted']).toBe(1)
+    expect(r.state.entities.get(elder)!.deadAction).not.toBeNull()
+    expect(r.state.entities.get(younger)!.deadAction).not.toBeNull()
     expect(r.state.byName.has('SUSPICION')).toBe(false) // the last copy died: name freed
   })
 
   test('lenient input resolves a pool name to its OLDEST copy', () => {
     const game = Game.fromScript(poolScript, poolDict)
     game.handleLine('stew')
+    game.wait() // v0.5: the STEW window must complete for SUSPICION to mint
     game.handleLine('stew')
+    game.wait()
     const [eldest, younger] = game.state.byName.get('SUSPICION')!
     const parsed = parsePlayerInput('probe the suspicion', { dict: poolDict, content: game.content, state: game.state, player: 'ANA' })
     expect(parsed.ok).toBe(true)
     if (parsed.ok) {
-      const r = executeStep(game.content, poolDict, game.state, parsed.step, { firstRecordId: game.log.nextRecordId })
+      const r = settleStep(game.content, poolDict, game.state, parsed.step, game.log.nextRecordId)
       expect(r.rejected).toBeNull()
       expect(r.state.entities.get(eldest)!.deadAction).not.toBeNull() // the oldest went
       expect(r.state.byName.get('SUSPICION')).toEqual([younger])
@@ -408,25 +419,26 @@ describe('expiry under a pool (§9.38)', () => {
       prototypes: { SUSPICION: { kind: 'state', stackable: true } },
     }, poolDict)
     const { state } = rig()
-    const pooled = stew(asym, 2, state) // elder x1_1, younger x2_1
+    const pooled = stew(asym, 2, state)
+    const [elder, younger] = pooled.byName.get('SUSPICION')!
     // the YOUNGER carries the expires. The stews cost no time, so the wait's
     // event span reaches back to 0:0 (§9.28 dead air): expiresAt 60 (slot 2)
     // crosses exactly once during the 0:1 wait
-    pooled.entities.get('x2_1')!.attrs['expiresAt'] = 60
+    pooled.entities.get(younger)!.attrs['expiresAt'] = 60
     const r = run(asym, pooled, '0:1 @ ANA WAIT', 3)
     expect(r.rejected).toBeNull()
     const events = r.records.filter(x => x.kind === 'event')
     expect(events.map(e => e.trigger)).toEqual(['sus_burns'])
     // …but its name-addressed DESTROY resolved to the OLDEST copy — the asymmetry:
     // the card that died is the ELDER, not the copy whose expires crossed
-    expect(r.state.entities.get('x1_1')!.deadAction).not.toBeNull()
-    expect(r.state.entities.get('x2_1')!.deadAction).toBeNull() // the crossing copy still stands
-    expect(r.state.byName.get('SUSPICION')).toEqual(['x2_1'])
+    expect(r.state.entities.get(elder)!.deadAction).not.toBeNull()
+    expect(r.state.entities.get(younger)!.deadAction).toBeNull() // the crossing copy still stands
+    expect(r.state.byName.get('SUSPICION')).toEqual([younger])
     // the crossing copy is past its expires: it re-fires (§9.32) on the next
     // crossing — and being now the pool's head, the second DESTROY takes IT
     const r2 = run(asym, r.state, '0:2 @ ANA WAIT', r.records.length + 3)
     expect(r2.records.filter(x => x.kind === 'event').map(e => e.trigger)).toEqual(['sus_burns'])
-    expect(r2.state.entities.get('x2_1')!.deadAction).not.toBeNull()
+    expect(r2.state.entities.get(younger)!.deadAction).not.toBeNull()
     expect(r2.state.byName.has('SUSPICION')).toBe(false)
   })
 })
@@ -451,14 +463,15 @@ describe('REPLACE X WITH X succeeds for stackables (§9.38)', () => {
   test('spawn appends while the dying card lives, then the destroy pops it', () => {
     const c = decay()
     const { content, state } = rig()
-    const pooled = stew(content, 1, state) // x1_1 alive, container s_house
-    const r = run(c, pooled, '0:0 @ ANA DECAY #x1_1', 2)
+    const pooled = stew(content, 1, state) // one copy alive, container s_house
+    const elder = pooled.byName.get('SUSPICION')![0]
+    const r = run(c, pooled, `0:0 @ ANA DECAY #${elder}`, 2)
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY'])
     const successor = r.state.byName.get('SUSPICION')!
     expect(successor).toHaveLength(1)
-    expect(successor[0]).not.toBe('x1_1')
-    expect(r.state.entities.get('x1_1')!.deadAction).not.toBeNull()
+    expect(successor[0]).not.toBe(elder)
+    expect(r.state.entities.get(elder)!.deadAction).not.toBeNull()
     expect(r.state.entities.get(successor[0])!.attrs['container']).toBe('s_house') // place inherited
     expect(r.state.entities.get(successor[0])!.stackable).toBe(true)
     // the fold replays the concrete SPAWN+DESTROY pair exactly (§9.33)
@@ -485,11 +498,12 @@ describe('REPLACE X WITH X succeeds for stackables (§9.38)', () => {
     }, poolDict)
     const { content, state } = rig()
     const pooled = stew(content, 2, state)
+    const elder = pooled.byName.get('SUSPICION')![0]
     const before = snap(pooled)
-    const r = run(c, pooled, '0:0 @ ANA DECAY #x1_1', 3) // the successor's name collides with the pool
-    expect(r.rejected).toMatch(/already in use/)
-    expect(r.records).toHaveLength(0)
-    expect(snap(r.state)).toBe(before)
+    const r = run(c, pooled, `0:0 @ ANA DECAY #${elder}`, 3) // the successor's name collides with the pool
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/already in use/)
+    expect(r.state.entities.get(elder)!.deadAction).toBeNull() // nothing applied
   })
 })
 
@@ -513,8 +527,8 @@ describe('REFUSE after a pool destroy leaves the real pool untouched (§6.5, law
     const [eldest, younger] = pooled.byName.get('SUSPICION')!
     const r = run(refuse, pooled, '0:0 @ ANA CALM', 3)
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['DESTROY', 'REFUSE'])
-    expect(r.records[0].advancedMin).toBe(0)
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['DESTROY', 'REFUSE'])
+    expect(act(r).advancedMin).toBe(0)
     expect(r.state).toBe(pooled) // same object, untouched — the destroy ran on the discarded draft
     expect(snap(r.state)).toBe(before)
     // a shallow cloneState would have shared the array: the draft's splice
@@ -547,20 +561,34 @@ describe('fold and JSONL equality with pools (§7)', () => {
     let cur = state
     let id = 1
     const all: ActionRecord[] = []
-    for (const [verb, step] of [
-      ['STEW', '0:0 @ ANA STEW'],        // x1_1
-      ['STEW', '0:0 @ ANA STEW'],        // x2_1
-      ['STEW', '0:0 @ ANA STEW'],        // x3_1
-      ['EXPIRE', '0:0 @ ANA ACQUIRE #x3_1'], // logs SET(#x3_1, expires, 30m) → expiresAt 30
-      ['STEW', '0:0 @ ANA WAIT'],        // crosses slot 1: expire:SUSPICION DESTROY #x3_1 (by id)
-      ['STEW', '0:2 @ ANA CALM'],        // authored destroy of the then-oldest x1_1 (by name)
-      ['STEW', '0:2 @ ANA PROBE #x2_1'], // slot-bound SET+DESTROY of the last copy
-    ] as const) {
-      const r = run(verb === 'STEW' ? content : expireSet, cur, step, id)
+    const mints: string[] = [] // the pool copies in birth order, ids from the log
+    const mintOf = (r: { records: ActionRecord[] }): string => {
+      const sp = r.records.find(x => x.kind === 'complete')?.outcomes.find(o => o.op === 'SPAWN')
+      const as = sp?.args.find(a => a.t === 'asId')
+      if (!as || as.t !== 'asId') throw new Error('no mint in the completion')
+      return as.id
+    }
+    const steps: [string, string][] = [
+      ['STEW', '0:0 @ ANA STEW'],        // mint 1
+      ['STEW', '0:0 @ ANA STEW'],        // mint 2
+      ['STEW', '0:0 @ ANA STEW'],        // mint 3
+      ['EXPIRE', ''],                    // logs SET(#third, expires, 30m) → expiresAt 30
+      ['STEW', '0:0 @ ANA WAIT'],        // crosses slot 1: expire:SUSPICION DESTROY the third (by id)
+      ['STEW', '0:2 @ ANA CALM'],        // authored destroy of the then-oldest (by name)
+      ['STEW', '0:2 @ ANA PROBE'],       // slot-bound SET+DESTROY of the last copy
+    ]
+    for (const [verb, step] of steps) {
+      const src = verb === 'EXPIRE'
+        ? `0:0 @ ANA ACQUIRE #${mints[2]}`
+        : verb === 'STEW' && step.includes('PROBE')
+          ? `0:2 @ ANA PROBE #${mints[1]}`
+          : step
+      const r = run(verb === 'STEW' ? content : expireSet, cur, src, id)
       expect(r.rejected).toBeNull()
       all.push(...r.records)
       id += r.records.length
       cur = r.state
+      if (verb === 'STEW' && src.includes('STEW')) mints.push(mintOf(r))
     }
     expect(cur.byName.has('SUSPICION')).toBe(false) // the pool drained
     const dir = mkdtempSync(join(tmpdir(), 'chorus-pool-'))
@@ -603,7 +631,7 @@ describe('count(<query>) thresholds select recipes (§9.38)', () => {
     for (let i = 0; i < 3; i++) {
       const r = run(c, cur, '0:0 @ ANA STEW', id)
       expect(r.rejected).toBeNull()
-      picks.push(...r.records[0].recipes)
+      picks.push(...act(r).recipes)
       id += r.records.length
       cur = r.state
     }

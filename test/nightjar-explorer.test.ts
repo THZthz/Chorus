@@ -42,6 +42,7 @@ import type { Clause } from '../src/sentence.js'
 import type { CompiledContent } from '../src/content.js'
 import { Game } from '../src/play.js'
 import { snap } from './snap.js'
+import { settleStep } from './settle.js'
 import {
   candidatesFor, dict, scriptText, content, base, PLAYER,
   winPathStates, sampledWalkStates, WIN_PATH,
@@ -93,30 +94,43 @@ function checkStep(pre: State, r: ExecResult, step: Step): 'refused' | 'applied'
   expect(r.rejected).toBeNull()
   expect(r.records.length).toBeGreaterThan(0)
   checkRecords(r.records)
-  const first = r.records[0]
-  expect(first.tGame).toBe(formatClock(step.clock))
+  const last = r.records[r.records.length - 1]!
 
-  const refused = first.outcomes.some(o => o.op === 'REFUSE')
-  if (refused) {
-    // §6.5: the attempt is logged, the draft discarded, no time passes;
-    // clauses after the refusal never fire, so recipes ≤ clauses
-    expect(first.advancedMin).toBe(0)
-    expect(first.recipes.length).toBeLessThanOrEqual(step.clauses.length)
+  // §6.5 v0.5: a refused BEGIN logs the attempt alone and discards the whole
+  // turn — its advance phase (if any) goes with it, nothing moves
+  if (last.kind === 'action' && last.outcomes.some(o => o.op === 'REFUSE')) {
+    expect(r.records.length).toBe(1)
+    expect(last.advancedMin).toBe(0)
+    expect(last.recipes.length).toBeLessThanOrEqual(step.clauses.length)
     expect(r.state).toBe(pre)
     expect(snap(r.state)).toBe(snap(pre))
     return 'refused'
   }
-  expect(first.recipes.length).toBe(step.clauses.length)
-  // §6.6: time = sum of clause durations + authored ADVANCE extras
-  const sumDur = step.clauses.reduce((a, c) => a + (content.verbs.get(c.verb)?.duration ?? 0), 0)
-  const advance = first.outcomes.reduce((a, o) => {
-    if (o.op !== 'ADVANCE') return a
-    const d = o.args[0]
-    return a + (d && d.t === 'dur' ? d.v : 0)
-  }, 0)
-  expect(first.advancedMin).toBe(sumDur + advance)
-  expect(r.state.now).toBe(absMin(step.clock) + first.advancedMin)
-  // state = fold(log): the records alone reproduce the played state (§7)
+
+  // a turn ends at its boundary: action turns end with the BEGIN row,
+  // pure advances with the wait row (v0.5)
+  if (step.clauses.length > 0) expect(last.kind).toBe('action')
+
+  // v0.5 clock rows: at most one wait row per turn (one advance pass), its
+  // span partitions time, and only it moves `now`
+  const waits = r.records.filter(x => x.kind === 'wait')
+  expect(waits.length).toBeLessThanOrEqual(1)
+  if (waits.length === 1) {
+    expect(r.state.now).toBe((waits[0]!.startMin ?? 0) + waits[0]!.advancedMin)
+  } else {
+    expect(r.state.now).toBe(pre.now) // beginning at now moves nothing
+  }
+
+  // BEGIN semantics: recipes = clauses; advancedMin = the window length —
+  // §6.6 v0.5 (authored ADVANCE defers to the completion, where it extends
+  // the resolving pass's wait span instead of the BEGIN row)
+  if (last.kind === 'action') {
+    expect(last.recipes.length).toBe(step.clauses.length)
+    const sumDur = step.clauses.reduce((a, c) => a + (content.verbs.get(c.verb)?.duration ?? 0), 0)
+    expect(last.advancedMin).toBe(sumDur)
+  }
+  // state = fold(log): the records alone reproduce the played state (§7) —
+  // open windows included
   expect(snap(fold(r.records, cloneState(pre), dict, content))).toBe(snap(r.state))
   checkStateShape(r.state, content)
   return 'applied'
@@ -215,6 +229,7 @@ describe('nightjar explorer — random walk', () => {
 
     let state = cloneState(base)
     const records: ActionRecord[] = []
+    const turnLengths: number[] = [0] // undo truncates to the previous turn's start (v0.5)
     let id = 1
     let executed = 0
     let walkRejects = 0
@@ -222,14 +237,15 @@ describe('nightjar explorer — random walk', () => {
     const snapshots = new Map<number, string>()
     snapshots.set(0, snap(state)) // the walk may need to undo back to the start
 
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 800; i++) {
       const cands = candidatesFor(content, state, PLAYER)
       // mostly walk the well-formed space; keep a 20% budget for error probes
       const benign = cands.filter(c => !c.tag.includes('wrong-kind') && c.tag !== 'clock rewind')
       const pickFrom = rand() < 0.2 || benign.length === 0 ? cands : benign
       const cand = pickFrom[Math.floor(rand() * pickFrom.length) % pickFrom.length]
-      const r = executeStep(content, dict, state, cand.step, { firstRecordId: id })
+      const r = settleStep(content, dict, state, cand.step, id)
       if (r.rejected !== null) { walkRejects++; continue }
+      turnLengths.push(records.length)
       executed++
       records.push(...r.records)
       id += r.records.length
@@ -248,18 +264,16 @@ describe('nightjar explorer — random walk', () => {
       // meaningful.
       if (state.ended) {
         endings++
-        while (records.length > 0 && records[records.length - 1].kind === 'event') records.pop()
-        records.pop()
+        records.length = turnLengths.pop()!
         state = fold(records, cloneState(base), dict, content)
         const expected = snapshots.get(records.length)
         expect(expected, `undo through the ending left no snapshot at length ${records.length}`).toBeDefined()
         expect(snap(state)).toBe(expected)
         continue
       }
-      // §7 undo: drop trailing events + the last action, re-fold, compare
+      // §7 undo: drop the last turn, re-fold, compare
       if (i % 37 === 36 && records.length > 1) {
-        while (records.length > 0 && records[records.length - 1].kind === 'event') records.pop()
-        records.pop()
+        records.length = turnLengths.pop()!
         state = fold(records, cloneState(base), dict, content)
         const expected = snapshots.get(records.length)
         expect(expected, `undo to length ${records.length} left no snapshot`).toBeDefined()

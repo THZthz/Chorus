@@ -159,12 +159,27 @@ projection of that data, never the source of truth.
 > otherwise — byte-identical wherever an exact unit fits, with minutes that
 > fit no unit (`61m` → `1h1m`) the one visible rendering change.
 >
-> **Compatibility: none, by design.** Nothing in this document is a
-> stability guarantee — the grammar, the log and script formats, and the
-> API may break at any version boundary (v0.2.2 changed event semantics;
-> v0.2.3 re-scaled the clock). Old logs are not replay contracts: re-author
-> or migrate them yourself; the engine ships no migration path (§9.30).
-
+> v0.5 = parallel verb stations (§6.7, docs/plans/v0.5-parallel-verbs.md).
+> The processing window becomes real: committing an action **begins** a
+> window `[t, t+duration]` on its verb's station and does NOT move the
+> clock; several stations may run overlapping windows, and every card bound
+> in a committed role is busy until its window closes (actors stay free).
+> The recipe is selected at commit (its id rides the BEGIN row); the
+> outcomes apply at the window's close, on a **COMPLETE** row anchored to
+> the window's start clock (so `expires` replays identically). The clock
+> moves only on explicit advances — a bare clock input (`1:12`), an action
+> whose typed clock lies ahead, or WAIT/ADVANCE — and each advance is one
+> atomic pass that resolves due completions (ordered by end, then begin id)
+> before the halfhour's slot events, ending in a WAIT row: the only record
+> that moves `now`, whose spans partition time. Top-level REFUSE gates
+> still reject at the table; a REFUSE inside an IF branch — and any
+> outcome that cannot apply — defers to the completion, where the window
+> refuses (the completion analog of §9.19: attempt logged, effects
+> discarded, window closed, never a retry loop). Events still ignore
+> locks; a completion drops bindings whose cards died mid-window. Old logs
+> are not replay contracts (§9.30): BEGIN/COMPLETE/WAIT rows, `startMin`
+> and the windows table replace the commit-completes-at-once model.
+>
 ---
 
 ## 1. Goals
@@ -786,43 +801,70 @@ EVENT — the authored `on expire of NAME` trigger's outcomes if one matches
 (decay chains: influence → weaker influence, health → fatigue, summons →
 defunct, usually via `REPLACE`), else the built-in destroy.
 
-### 6.7 The processing cycle (commit → lock → ticks → outcomes → unlock)
+### 6.7 The processing cycle (begin → lock → ticks → complete → unlock)
 
 Committing cards to a verb station is not the whole action: the action
 *processes* over the verb's duration, and the engine narrates that
-processing.
+processing. Since v0.5 the window is **real**: several stations run in
+parallel, and the lock is machinery — the state's open-window table — not a
+projection of serialized time.
 
-1. **Commit & lock.** The step validates and a recipe fires per clause
-   (§6.6). For the step's whole processing window — `t_game` to
-   `t_game + advancedMin` — the verb station and every role-bound card are
-   **locked**: nothing else may act on them, or with them, meanwhile. (A role
-   takes **distinct cards**; the same card cannot fill one role twice.)
+1. **Begin & lock.** The step validates against the post-advance state
+   (§6.6) and a recipe fires per clause. Each clause **begins a window**
+   `[t, t + Σdurations]` (minute-precise; multi-clause steps stagger their
+   windows). The row logged is the BEGIN row: clauses, the commit-time
+   recipe ids, the `PROGRESS` ticks (journal-only), `advancedMin` = the
+   window length. For the whole window the verb's station is closed (a
+   station holds one window) and every card bound in a committed role —
+   object/with/at/about/to; **actors stay free** — is busy: nothing else
+   may act on them, or with them, meanwhile.
 2. **Ticks.** The fired recipes may schedule `PROGRESS` outcomes — authored
-   event descriptions at offsets inside the window (the "read bar"). An
-   offset counts from the record's start clock `t_game`; the display plots
-   ticks on the window. The log stores them in emission order, so a replay
-   re-derives exactly what the player saw and when.
-3. **Outcomes & unlock.** At the window's close the recipe's remaining
-   outcomes apply: `DESTROY`/`SET`/`SPAWN` consume, mutate, or mint cards
-   (the event's type decides which), `NARRATE` closes the scene, and the
-   surviving cards unlock back to the table.
+   event descriptions at offsets inside the window (the "read bar"). They
+   ride the BEGIN row; a `PROGRESS` authored inside an IF branch defers with
+   the branch. An offset counts from the window's start clock; the display
+   plots ticks on the window. The log stores them in emission order, so a
+   replay re-derives exactly what the player saw and when.
+3. **Complete & unlock.** When time reaches the window's end, a COMPLETE
+   row applies the recipe's remaining outcomes: `DESTROY`/`SET`/`SPAWN`
+   consume, mutate, or mint cards, `NARRATE` closes the scene, and the
+   surviving cards unlock back to the table. Bindings re-resolve against
+   the world as it stands at completion; refs whose cards died mid-window
+   (events do not respect locks) drop from the binding. Clock-anchored
+   effects (`SET x, expires, …`) use the window's **start** clock — read
+   from the window table via the row's `beginId`, the same source play
+   used, so the fold never re-derives them from a display clock.
 
-The window is **narrated, not simulated**: all outcomes still apply
-atomically at commit (§6.6), and effects anchored to the clock (such as
-`SET x, expires, …`) use the record's start clock. A `REFUSE` collapses the
-cycle before any of it: no window elapses, no tick is due, and the attempt
-is logged as in §6.5. `PROGRESS` belongs to verb recipes only — the script compiler rejects it in
+Selection is a commit-time snapshot: the fired recipe ids ride the BEGIN
+row and the completion looks them up in compiled content (drift fails
+loud). A **top-level REFUSE** in the selected recipe still rejects at the
+table — the gate check runs the outcome list against a scratch draft at
+commit, where an `IF` is opaque (its branches, REFUSE included, belong to
+the completion). A REFUSE that only decides at completion — inside a
+branch — or an outcome that cannot apply, **refuses the window**: the
+attempt is logged (the COMPLETE row carries the REFUSE marker, a state
+no-op at fold), the partial effects are discarded, and the window closes —
+a pass that rolled back would leave the window retrying forever (the
+completion analog of §9.19).
+
+**Time is explicit.** Beginning at `now` moves nothing; the clock advances
+only through advance passes — a bare clock input, an action whose typed
+clock lies ahead, WAIT/ADVANCE — and each pass resolves due completions
+first (ordered by end minute, then begin row, then clause), then the
+halfhour's slot events (§6.6), completions at minute m preceding slot-m
+events. The pass ends in a WAIT row, the only record that moves `now`,
+whose spans partition time. One pass is atomic (§9.19); expiries created
+by the pass resolve at the next one.
+
+**Why there is no lock-flag machinery beyond the windows table**: the
+table *is* the lock — play and fold rebuild it identically from BEGIN and
+COMPLETE rows (§7), and every busy check is a lookup in it. Concurrent
+verb stations, left open in earlier revisions, are the model since v0.5.
+
+`PROGRESS` belongs to verb recipes only — the script compiler rejects it in
 trigger outcomes (events have no window). `REFUSE` belongs to verb recipes
-too, for the same reason sharpened: a refusal aborts a *step* (§6.5), and an
-event has no step to refuse — so `REFUSE` in any trigger outcome (both
-forms) is a load-time error (§9.34).
-
-**Why the engine has no lock machinery**: time is discrete per action
-(§9.2) — committing a step advances the clock across its entire window, so
-no other step can even begin inside it. The lock is the processing window
-projected by the UI, guaranteed by serialized time rather than enforced by
-flags. Concurrent verb stations (several windows in flight at once) remain
-an open question (§12).
+too, for the same reason sharpened: a refusal aborts a *step* or a window,
+and an event has neither — so `REFUSE` in any trigger outcome (both forms)
+is a load-time error (§9.34).
 
 `PROGRESS(duration, string)` is journal-only, like `NARRATE`: no state
 effect, no time effect, raw template stored and interpolated at render

@@ -1,4 +1,6 @@
 // Core data model — spec §4.2, §7
+import type { Role } from './sentence.js'
+import type { Ref } from './ref.js'
 
 export interface Clock {
   day: number
@@ -45,6 +47,32 @@ export interface Ending {
   flavour: string
 }
 
+/** One open processing window (§6.7, v0.5): a committed verb clause that is
+ *  still "in progress" over `[start, end]` (absolute minutes — the begin
+ *  minute may sit mid-halfhour, so the quantized Clock cannot carry it).
+ *  The verb's station holds one window at a time; every card bound in a
+ *  COMMITTED role (object/with/at/about/to — actors stay free, the player is
+ *  never locked) is busy until the window closes. Play and fold rebuild the
+ *  table identically: play registers windows at BEGIN, fold from the same
+ *  BEGIN rows — `refs` carry the clause's own bindings, so a COMPLETE row can
+ *  re-resolve them against the LATER state (dead refs drop). */
+export interface OpenWindow {
+  /** `${beginRecordId}:${clauseIndex}` — unique per window, orders with its row */
+  key: string
+  beginId: number
+  clause: number
+  verb: string
+  start: number
+  end: number
+  /** the recipe id selected AT COMMIT — selection is a commit-time snapshot */
+  recipe: string
+  /** the clause's role bindings as authored — re-resolved at completion
+   *  (same shape as clauseRefs: `at/about/to` keep their 0-or-1 arrays) */
+  refs: Record<Role, Ref[]>
+  /** ids bound in committed roles — the lock table (actors excluded) */
+  locked: string[]
+}
+
 export interface State {
   entities: Map<string, Entity>
   /** name -> living ids in birth order (head = OLDEST copy, §9.38 pool
@@ -73,10 +101,15 @@ export interface State {
    *  on CompiledContent — never here (law 3: replay re-derives only through
    *  the recorded row, and the row is what makes drift visible). */
   decks: Map<string, number>
+  /** v0.5: the open processing windows (§6.7) — the lock table. Play
+   *  registers at BEGIN and closes at completion; the fold rebuilds both from
+   *  the log's BEGIN/COMPLETE rows. A log may legitimately end with open
+   *  windows (the player quit mid-process), so fold equality covers them. */
+  windows: Map<string, OpenWindow>
 }
 
 export function newState(now = 0): State {
-  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null, rng: 0, decks: new Map() }
+  return { entities: new Map(), byName: new Map(), relations: new Map(), now, fired: new Set(), ended: null, rng: 0, decks: new Map(), windows: new Map() }
 }
 
 export function cloneState(s: State): State {
@@ -93,7 +126,11 @@ export function cloneState(s: State): State {
   // law 6 (§9.42): cursors are copied — a discarded draft's draws must not
   // move the real deck (values are numbers, so a fresh Map is a deep copy)
   const decks = new Map(s.decks)
-  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null, rng: s.rng, decks }
+  // law 6 (v0.5): windows are copied ENTRY-BY-ENTRY — `locked` is an array a
+  // discarded draft must not share with the real state (the byName precedent)
+  const windows = new Map<string, OpenWindow>()
+  for (const [k, w] of s.windows) windows.set(k, { ...w, locked: [...w.locked] })
+  return { entities, byName, relations, now: s.now, fired: new Set(s.fired), ended: s.ended ? { ...s.ended } : null, rng: s.rng, decks, windows }
 }
 
 function cloneAspects(a: Aspects): Aspects {

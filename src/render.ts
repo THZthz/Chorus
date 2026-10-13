@@ -38,9 +38,15 @@ export function flattenAspects(a: Aspects, prefix = ''): string[] {
 }
 
 /** Prose rendering: one template line per clause, the processing ticks (§6.7)
- *  indented under them, then NARRATE lines. */
+ *  indented under them, then NARRATE lines. COMPLETE rows skip the clause
+ *  templates (the window already narrated them at BEGIN) and render their
+ *  NARRATE/REFUSE/ENDING outcomes through the shared path below; WAIT rows
+ *  narrate the passing of time so they are not prose-silent. */
 export function proseLines(record: ActionRecord, content: CompiledContent, dict: Dictionary): string[] {
   const lines: string[] = []
+  if (record.kind === 'wait') {
+    return [`  (+${formatDuration(record.advancedMin)}) time passes.`]
+  }
   if (record.kind === 'action') {
     const s = parseSentence(record.sentence, dict)
     for (const clause of s.clauses) {

@@ -16,7 +16,19 @@ const dict = seedDictionary()
 const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
 
 function fresh(): Game {
-  return Game.fromScript(scriptText, dict)
+  // v0.5: auto-settle — every committed action's window completes before the
+  // next input, restoring the pre-parallel commit-completes-at-once shape
+  const game = Game.fromScript(scriptText, dict)
+  const orig = game.handleLine.bind(game)
+  game.handleLine = (line: string) => {
+    const t = orig(line)
+    if (t.kind === 'action' && game.state.windows.size > 0) {
+      const settle = game.wait()
+      return { kind: 'action', lines: [...t.lines, ...settle.lines] }
+    }
+    return t
+  }
+  return game
 }
 
 function play(game: Game, lines: string[]): Turn[] {
@@ -103,9 +115,9 @@ describe('the nightjar flyer', () => {
     const joined = turn.lines.join('\n')
     expect(joined).toContain('(+1halfhour)')     // live tick line
     expect(joined).toContain("solicitor's letter")
-    const canonical = turn.lines[turn.lines.length - 1]
-    expect(canonical).toContain('PROGRESS(1halfhour,') // the tick is in the record
-    expect(canonical).toContain('SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin')
+    const canonical = turn.lines.filter(l => l.startsWith('«')).join('\n')
+    expect(canonical).toContain('PROGRESS(1halfhour,') // the tick rides the BEGIN row
+    expect(canonical).toContain('SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin') // the mint the completion
   })
 
   test('full win path: motive, means, opportunity → confession', () => {
@@ -122,22 +134,23 @@ describe('the nightjar flyer', () => {
     expect(game.log.records.some(r => r.trigger === 'the_furnace_takes_it')).toBe(true)
   })
 
-  test('every v0.4 mechanic fires on the scripted path, and none of them ends it', () => {
+  test('every v0.4 mechanic fires on the scripted path (v0.5 timeline)', () => {
     const game = fresh()
     play(game, WIN_PATH)
     const ints = (o: { op: string; args: { t: string; v?: unknown }[] }): [number, number] | null => {
       const [a, b] = o.args
       return a?.t === 'int' && b?.t === 'int' ? [a.v as number, b.v as number] : null
     }
-    // F1 — the SUSPICION pool exists: the cabin search's patrol_check and the
-    // 22:30 rounds both landed the middle tier under seed 1899 (never 3)
-    expect(game.state.byName.get('SUSPICION')).toHaveLength(2)
-    // F4 — three ROLLED rows (cabin patrol, conductor's rounds, firebox
-    // find), the counter landing exactly where play left it
+    // F1 — the SUSPICION pool exists: the 22:30 rounds landed the middle
+    // tier under seed 1899; the cabin's own patrol roll now resolves at the
+    // window's close — after the rounds — and lands the pass-by tier
+    expect(game.state.byName.get('SUSPICION')).toHaveLength(1)
+    // F4 — three ROLLED rows (conductor's rounds, cabin patrol, firebox
+    // find — v0.5 completion order), the counter landing where play left it
     const rolled = game.log.records.flatMap(r =>
       r.outcomes.filter(o => o.op === 'ROLLED').map(o => ints(o)),
     )
-    expect(rolled).toEqual([[6, 2], [7, 4], [14, 7]]) // calibrated against seed 1899
+    expect(rolled).toEqual([[5, 2], [8, 4], [14, 7]]) // calibrated against seed 1899
     expect(game.state.rng).toBe(7)
     // F5 — the RUMOURS deck drew twice: once from the patrol trigger (into
     // the guard van), once from the talk recipe (into the dining car)
@@ -158,13 +171,16 @@ describe('the nightjar flyer', () => {
     expect(rounds[0]!.outcomes.some(o => o.op === 'ROLLED')).toBe(true)
     // F2 — the talk recipe's exists() branch took the evidence arm (the seal
     // idea is on the table by 2:00)
-    const meet = game.log.records.find(r => r.recipes.includes('talk.meet_spiritualist'))!
-    const narrate = meet.outcomes.find(o => o.op === 'NARRATE')
+    const meetBegin = game.log.records.find(r => r.recipes.includes('talk.meet_spiritualist'))!
+    const meetDone = game.log.records.find(r => r.kind === 'complete' && r.window === `${meetBegin.id}:0`)!
+    const narrate = meetDone.outcomes.find(o => o.op === 'NARRATE')
     const said = narrate?.args[0]
     expect(said && said.t === 'str' && said.v.includes('we all read the same card: the lord is dead')).toBe(true)
-    // the escalation never tripped — the case ends at the inquest (the win
-    // recipe's grand ending), not at the border
-    expect(game.state.ended).toMatchObject({ id: 'CASE_CLOSED', flavour: 'grand' })
+    // the escalation never tripped — but the inquest's grand ending now
+    // lands at the window's close, one crossing after the vienna quiet
+    // night: first ENDING wins (§9.35), and the train gets there first
+    expect(game.state.ended).toMatchObject({ id: 'QUIET_NIGHT', flavour: 'melancholy' })
+    expect(game.state.byName.has('CONFESSION_OF_QUILL')).toBe(true) // the inquest still won the case
   })
 
   test('a careless search spawns SUSPICION — the pool is real, not flavor (F1)', () => {
@@ -177,21 +193,28 @@ describe('the nightjar flyer', () => {
     expect(turn.lines.join('\n')).toContain('A steward will remember MARCH')
   })
 
-  test('three careless searches and watch ends the case on the spot (escalation)', () => {
+  test('careless searches feed the pool until watch(3) ends the case (escalation)', () => {
     const game = fresh()
     play(game, ['wait', 'explore the first cabin'])
-    // the cabin patrol and the 22:30 rounds have both fed the pool…
+    // the 22:30 rounds fed the pool once; the cabin's own patrol roll now
+    // resolves at the window's close — under seed 1899 it lands the pass-by
+    // tier, so the pool sits at one until the searches pile on
+    expect(game.state.byName.get('SUSPICION')).toHaveLength(1)
+    expect(game.state.ended).toBeNull()
+    // the searched-again recipe spawns a copy AND calls watch(3) — the pool
+    // climbs one copy per careless search until the third ends the story
+    const turn3 = game.handleLine('explore the first cabin')
+    expect(turn3.kind).toBe('action')
     expect(game.state.byName.get('SUSPICION')).toHaveLength(2)
     expect(game.state.ended).toBeNull()
-    // …so the third careless search itself carries the third copy, and
-    // watch(3) — expanded into explore.searched — ends the story mid-step
-    const turn = game.handleLine('explore the first cabin')
-    expect(turn.kind).toBe('action')
+    const turn4 = game.handleLine('explore the first cabin')
+    expect(turn4.kind).toBe('action')
     expect(game.state.ended).toMatchObject({ id: 'OFF_THE_FLYER', flavour: 'melancholy' })
     const actions = game.log.records.filter(r => r.kind === 'action')
     const last = actions[actions.length - 1]!
     expect(last.recipes).toContain('explore.searched')
-    expect(last.outcomes.some(o => o.op === 'ENDING')).toBe(true)
+    const lastComplete = game.log.records.filter(r => r.kind === 'complete').at(-1)!
+    expect(lastComplete.outcomes.some(o => o.op === 'ENDING')).toBe(true) // v0.5: the ENDING lands at the completion
     // undo reopens the story — `ended` derives from the fold (§9.35)
     expect(game.undo().kind).toBe('info')
     expect(game.state.ended).toBeNull()
@@ -253,15 +276,18 @@ describe('the nightjar flyer', () => {
     const game = fresh()
     play(game, ['wait']) // day 0, hour 22 — body_found fires
     expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1)
-    // jump a day ahead: the once-trigger must neither re-fire nor reject the
-    // step — and the lord's 1-day `expires` crosses on the way, so the
-    // authored `on expire` trigger replaces him (REPLACE, §9.32–§9.33)
-    const jump = game.handleLine('1:42 @ MARCH WAIT')
+    // jump a day ahead in ONE step: the once-trigger must neither re-fire nor
+    // reject — and the lord's 1-day `expires` crosses on the way, so the
+    // authored `on expire` trigger replaces him (REPLACE, §9.32–§9.33). The
+    // span also crosses the vienna ending (§9.35) — the ending rides along:
+    // the pass that fired it runs to its full target, and play stops after.
+    const jump = game.handleLine('2:0 @ MARCH WAIT')
     expect(jump.kind).toBe('action')
-    expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1)
+    expect(game.log.records.filter(r => r.trigger === 'body_found')).toHaveLength(1) // once means once
     expect(game.log.records.filter(r => r.trigger === 'lord_tended')).toHaveLength(1)
     expect(game.state.byName.has('THE_LATE_LORD')).toBe(false)
     expect(game.state.byName.has('THE_TENDED_LORD')).toBe(true)
+    expect(game.state.ended).not.toBeNull() // the flyer reached vienna en route
   })
 
   test('the ledger burns at 2:00 — the timetable is the culprit too', () => {
@@ -278,7 +304,7 @@ describe('the nightjar flyer', () => {
     const turn = game.handleLine('talk to cole about the aether seal')
     expect(turn.kind).toBe('action')
     expect(turn.lines.join('\n')).toContain('rake the firebox hot at midnight')
-    const rec = game.log.records.filter(r => r.verb === 'TALK')[1]!
+    const rec = game.log.records.filter(r => r.kind === 'action' && r.verb === 'TALK')[1]!
     expect(rec.to).toMatchObject({ form: 'name', name: 'COLE' })
     expect(rec.sentence).toContain('MARCH TALK TO COLE ABOUT THE_AETHER_SEAL')
   })
@@ -321,7 +347,11 @@ describe('the nightjar flyer', () => {
     expect(game.state.byName.get('PORTENT')).toHaveLength(2)
     expect(game.state.byName.get('VOID')).toHaveLength(1)
     const dry = game.handleLine('dream with the aether seal')
-    expect(dry.kind).toBe('error') // no defaultcard, no reset — a loud failure
+    expect(dry.kind).toBe('action') // v0.5: the draw decides at the completion…
+    // …where the exhausted deck fails loud — the completion row refuses (§9.19 analog)
+    const lastComplete = game.log.records.filter(r => r.kind === 'complete').at(-1)!
+    expect(lastComplete.outcomes.some(o => o.op === 'REFUSE')).toBe(true)
+    expect(game.journal().join('\n')).toMatch(/exhausted/)
   })
 
   test('the whole night replays from the log (state = fold(log))', () => {

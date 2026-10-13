@@ -20,7 +20,7 @@ interface Entry {
   lines: string[]
 }
 
-const BUTTONS = ['look', 'cards', 'story', 'journal', 'undo', 'quit'] as const
+const BUTTONS = ['look', 'cards', 'story', 'journal', 'undo', 'wait', 'quit'] as const
 
 /** the script's verb vocabulary, display form */
 function verbList(game: Game): string[] {
@@ -41,6 +41,8 @@ function statusOf(game: Game): string {
   const place = typeof here === 'string' ? game.state.entities.get(here) : undefined
   if (place) bits.push(`at ${pretty(place.name)}`)
   bits.push(`day ${formatClock(clockFromAbsMin(game.state.now))}`)
+  const processing = game.processing()
+  if (processing.length > 0) bits.push(`processing: ${processing.join(' · ')}`)
   bits.push(`${visible.length} cards`)
   return bits.join(' · ')
 }
@@ -354,6 +356,7 @@ function App({ game, requestExit }: { game: Game; requestExit: () => void }) {
       return
     }
     const turn = label === 'undo' ? game.undo()
+      : label === 'wait' ? game.wait()
       : { kind: 'info' as const, lines:
           label === 'look' ? game.look()
         : label === 'cards' ? game.cards()

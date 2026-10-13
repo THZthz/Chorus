@@ -24,6 +24,7 @@ import { seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { cloneState, newState, type State } from '../src/types.js'
 import { snap } from './snap.js'
+import { settleStep, done, refusal } from './settle.js'
 
 const dict = seedDictionary()
 // the rigs' own verb lexemes (verbs are code-registered, §10)
@@ -33,10 +34,7 @@ dict.registerVerb('ATTUNE')
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, dict)
   let n = 0
-  return executeStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`,
-  })
+  return settleStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
 }
 
 const rolledRow = (rec: ActionRecord): [number, number] | null => {
@@ -158,15 +156,15 @@ describe('determinism (§9.41): the dice are a pure function of (seed, counter)'
     const rb = run(b.content, b.state, '0:0 @ ANA WAIT')
     expect(ra.rejected).toBeNull()
     expect(rb.rejected).toBeNull()
-    expect(rolledRow(ra.records[0]!)).toEqual(rolledRow(rb.records[0]!))
-    expect(rolledRow(ra.records[0]!)).toEqual([14, 3]) // 6+4+4, counters 0..2
+    expect(rolledRow(done(ra)!)).toEqual(rolledRow(done(rb)!))
+    expect(rolledRow(done(ra)!)).toEqual([14, 3]) // 6+4+4, counters 0..2
   })
 
   test('different seed -> different sequence', () => {
     const runs = [0, 1, 42].map(seed => {
       const g = compileScript(diceScript(seed), dict)
       const r = run(g.content, g.state, '0:0 @ ANA WAIT')
-      return rolledRow(r.records[0]!)
+      return rolledRow(done(r)!)
     })
     expect(runs[0]).toEqual([14, 3])
     expect(runs[1]).toEqual([11, 3]) // 4+6+1
@@ -206,8 +204,8 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
     ])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
     expect(r.rejected).toBeNull()
-    expect(rolledRow(r.records[0]!)).toEqual([14, 3])
-    expect(said(r.records[0]!)).toEqual(['mid'])
+    expect(rolledRow(done(r)!)).toEqual([14, 3])
+    expect(said(done(r)!)).toEqual(['mid'])
     expect(r.state.rng).toBe(3)
   })
 
@@ -218,7 +216,7 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
       `IF roll >= 15 -> (NARRATE "high") ELSE IF roll >= 8 -> (NARRATE "mid") ELSE -> (NARRATE "low")`,
     ])
     const forced = fold([{
-      id: 1, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete', trigger: null, tGame: '0:0', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'ROLLED', args: [{ t: 'int', v: 0 }, { t: 'int', v: 100 }] }],
       recipes: [], sentence: '',
@@ -226,8 +224,8 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
     expect(forced.rng).toBe(100)
     const r = run(c, forced, '0:0 @ ANA INSPECT', 2)
     expect(r.rejected).toBeNull()
-    expect(rolledRow(r.records[0]!)).toEqual([7, 103])
-    expect(said(r.records[0]!)).toEqual(['low'])
+    expect(rolledRow(done(r)!)).toEqual([7, 103])
+    expect(said(done(r)!)).toEqual(['low'])
   })
 
   test('bonus expression adds without consuming counters; count 0 rolls no dice', () => {
@@ -235,17 +233,17 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
     const bonus = inspectContent([`ROLL(2, 6, 5), NARRATE "got {roll}"`])
     const rb = run(bonus, seedWorld(), '0:0 @ ANA INSPECT')
     expect(rb.rejected).toBeNull()
-    expect(rolledRow(rb.records[0]!)).toEqual([15, 2])
-    expect(said(rb.records[0]!)).toEqual(['got 15'])
+    expect(rolledRow(done(rb)!)).toEqual([15, 2])
+    expect(said(done(rb)!)).toEqual(['got 15'])
     // a computed bonus too: object.aspect.demand = 3 (RITE_OF_ASCENSION)
     const bonusExpr = inspectContent([`ROLL(1, 6, object.aspect.demand), NARRATE "got {roll}"`])
     const re = run(bonusExpr, seedWorld(), '0:0 @ ANA INSPECT RITE_OF_ASCENSION')
-    expect(rolledRow(re.records[0]!)).toEqual([9, 1]) // 6 (die at c0) + 3
+    expect(rolledRow(done(re)!)).toEqual([9, 1]) // 6 (die at c0) + 3
     // count 0: total is the bonus, counter unmoved, step still fine
     const zero = inspectContent([`ROLL(0, 6, 2)`])
     const rz = run(zero, seedWorld(), '0:0 @ ANA INSPECT')
     expect(rz.rejected).toBeNull()
-    expect(rolledRow(rz.records[0]!)).toEqual([2, 0])
+    expect(rolledRow(done(rz)!)).toEqual([2, 0])
     expect(rz.state.rng).toBe(0)
   })
 
@@ -253,21 +251,24 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
     // countQuery arg: the seed world holds one RITE_OF_ASCENSION
     const c = inspectContent([`ROLL(count(name:RITE_OF_ASCENSION), 6)`])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
-    expect(rolledRow(r.records[0]!)).toEqual([6, 1]) // one die, value 6
+    expect(rolledRow(done(r)!)).toEqual([6, 1]) // one die, value 6
     // a computed count of 0 rolls no dice: total over a missing aspect reads 0
     const zero = inspectContent([`ROLL(total(actors, aspect:nonesuch), 6), NARRATE "after"`])
     const rz = run(zero, seedWorld(), '0:0 @ ANA INSPECT')
     expect(rz.rejected).toBeNull()
-    expect(rolledRow(rz.records[0]!)).toEqual([0, 0])
-    expect(rz.records[0]!.outcomes.map(o => o.op)).toEqual(['ROLLED', 'NARRATE'])
+    expect(rolledRow(done(rz)!)).toEqual([0, 0])
+    expect(done(rz)!.outcomes.map(o => o.op)).toEqual(['ROLLED', 'NARRATE'])
     expect(rz.state.rng).toBe(0)
   })
 
-  test('an operand that cannot resolve (missing attr over a bound role) rejects the step', () => {
+  test('an operand that cannot resolve (missing attr over a bound role) refuses the window (§9.19 completion analog)', () => {
     const attr = inspectContent([`ROLL(actors.attr.nonesuch, 6), NARRATE "never"`])
     const ra = run(attr, seedWorld(), '0:0 @ ANA INSPECT')
-    expect(ra.rejected).toMatch(/ROLL: dice count must be an integer >= 0/)
-    expect(ra.records).toHaveLength(0)
+    // v0.5: the error defers to the completion, where the window refuses —
+    // the attempt is logged, the scratch (and its counters) discarded
+    expect(ra.rejected).toBeNull()
+    expect(refusal(ra)).toMatch(/ROLL: dice count must be an integer >= 0/)
+    expect(ra.state.rng).toBe(0)
   })
 
   test('ROLL arguments get the count(DREAD)-typo lint; ROLL/ROLLED are reserved (§9.14, §9.38)', () => {
@@ -295,36 +296,37 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
     const before = snap(state)
     const r = run(c, state, '0:0 @ ANA INSPECT')
     expect(r.rejected).toBeNull()
-    expect(r.records[0]!.outcomes.map(o => o.op)).toEqual(['NARRATE'])
+    expect(done(r)!.outcomes.map(o => o.op)).toEqual(['NARRATE'])
     expect(r.state.rng).toBe(0)
     expect(snap(state)).toBe(before)
   })
 
-  test('a failing LATER outcome after a successful ROLL rejects the whole step (§9.19)', () => {
-    // the first ROLL succeeds and consumes counters ON THE DRAFT; the second
-    // ROLL's sides < 2 then rejects — nothing logged, the real counter
-    // unmoved (the draft died with the rejection, exactly like a REFUSE's)
+  test('a failing LATER outcome after a successful ROLL refuses the window (§9.19 completion analog)', () => {
+    // the first ROLL succeeds and consumes counters ON THE SCRATCH; the
+    // second ROLL's sides < 2 then refuses the window — the attempt is
+    // logged, the real counter unmoved (the scratch died with the refusal,
+    // exactly like a REFUSE's)
     const c = inspectContent([`ROLL(2, 6), NARRATE "mid {roll}", ROLL(0, 1)`])
     const state = seedWorld()
     const before = snap(state)
     const r = run(c, state, '0:0 @ ANA INSPECT')
-    expect(r.rejected).toMatch(/sides must be an integer >= 2/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/sides must be an integer >= 2/)
     expect(state.rng).toBe(0)
     expect(snap(state)).toBe(before)
-    // fold agreement: there is no record to replay, so the counter stays put
-    expect(fold([], cloneState(state), dict, c).rng).toBe(0)
+    // fold agreement: a REFUSE row is a state no-op, so the counter stays put
+    expect(fold(r.records, cloneState(state), dict, c).rng).toBe(0)
   })
 
-  test('sides < 2 and count < 0 reject the step (§9.19: nothing logged, nothing moved)', () => {
+  test('sides < 2 and count < 0 refuse the window (§9.19 completion analog: nothing moved)', () => {
     const state = seedWorld()
     const before = snap(state)
     const badSides = inspectContent([`ROLL(1, 1), NARRATE "never"`])
     const rs = run(badSides, state, '0:0 @ ANA INSPECT')
-    expect(rs.rejected).toMatch(/sides must be an integer >= 2/)
-    expect(rs.records).toHaveLength(0)
-    expect(rs.state).toBe(state)
+    expect(rs.rejected).toBeNull()
+    expect(refusal(rs)).toMatch(/sides must be an integer >= 2/)
+    expect(state.rng).toBe(0)
+    expect(snap(state)).toBe(before)
     // negative count via a negative aspect (entity lines allow -n)
     const neg = compileContent({
       verbs: {
@@ -339,13 +341,13 @@ describe('the ROLL op: expression args and tier selection (§9.41)', () => {
     s2.entities.get('ana')!.aspects['dread'] = -3
     const before2 = snap(s2)
     const rn = run(neg, s2, '0:0 @ ANA INSPECT')
-    expect(rn.rejected).toMatch(/dice count must be an integer >= 0/)
-    expect(rn.records).toHaveLength(0)
+    expect(rn.rejected).toBeNull()
+    expect(refusal(rn)).toMatch(/dice count must be an integer >= 0/)
     expect(snap(s2)).toBe(before2)
     // and a fractional/missing operand is likewise a rejection, never a silent roll
     const missing = inspectContent([`ROLL(object.aspect.nonesuch, 6)`])
     const rm = run(missing, seedWorld(), '0:0 @ ANA INSPECT') // no object bound
-    expect(rm.rejected).toMatch(/cannot resolve/)
+    expect(refusal(rm)).toMatch(/cannot resolve/)
   })
 })
 
@@ -356,8 +358,8 @@ describe('the roll binding (§9.41): last-wins, per-clause, unbound = rejection'
     const c = inspectContent([`ROLL(1, 6), ROLL(1, 6), NARRATE "final {roll}"`])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
     expect(r.rejected).toBeNull()
-    expect(rolledRows(r.records[0]!)).toEqual([[6, 1], [4, 2]])
-    expect(said(r.records[0]!)).toEqual(['final 4']) // die(0,1,6) = 4, not the first roll's 6
+    expect(rolledRows(done(r)!)).toEqual([[6, 1], [4, 2]])
+    expect(said(done(r)!)).toEqual(['final 4']) // die(0,1,6) = 4, not the first roll's 6
     expect(r.state.rng).toBe(2)
   })
 
@@ -399,33 +401,35 @@ describe('the roll binding (§9.41): last-wins, per-clause, unbound = rejection'
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT; ANA ATTUNE')
     expect(r.rejected).toBeNull()
     // clause one rolls die(0,0,6)=6; clause two rolls die(0,1,6)=4 at the
-    // CONTINUED counter — shared counter, independent bindings
-    expect(said(r.records[0]!)).toEqual(['clause one 6', 'clause two 4'])
-    expect(rolledRows(r.records[0]!)).toEqual([[6, 1], [4, 2]])
+    // CONTINUED counter — shared counter, independent bindings; each clause's
+    // window closes with its own COMPLETE row
+    const completes = r.records.filter(x => x.kind === 'complete')
+    expect(completes.flatMap(x => said(x))).toEqual(['clause one 6', 'clause two 4'])
+    expect(completes.flatMap(x => rolledRows(x))).toEqual([[6, 1], [4, 2]])
   })
 
-  test('unbound roll in a TAKEN branch rejects at runtime (the lint\u2019s false-negative path)', () => {
+  test('unbound roll in a TAKEN branch refuses the window at runtime (the lint\u2019s false-negative path)', () => {
     // branch one may bind (so the lint passes); the ELSE path never rolls
     const c = inspectContent([
       `IF exists(HOUSE) -> (ROLL(1, 6)) ELSE -> (NARRATE "no house"), IF roll >= 0 -> (NARRATE "read {roll}")`,
     ])
     const withHouse = run(c, seedWorld(), '0:0 @ ANA INSPECT')
     expect(withHouse.rejected).toBeNull()
-    expect(said(withHouse.records[0]!)).toEqual(['read 6']) // rolled, so `roll` reads
+    expect(said(done(withHouse)!)).toEqual(['read 6']) // rolled, so `roll` reads
     const withoutHouse = inspectContent([`IF exists(NOSUCH) -> (ROLL(1, 6)) ELSE -> (NARRATE "skip"), IF roll >= 0 -> (NARRATE "read {roll}")`])
     const r = run(withoutHouse, seedWorld(), '0:0 @ ANA INSPECT')
-    expect(r.rejected).toMatch(/'roll' is unbound/)
-    expect(r.records).toHaveLength(0) // atomic: nothing of the step logged
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/'roll' is unbound/)
   })
 
-  test('`roll` as a ROLL ARGUMENT with no prior ROLL rejects at runtime (lint false-negative)', () => {
+  test('`roll` as a ROLL ARGUMENT with no prior ROLL refuses the window at runtime (lint false-negative)', () => {
     // the may-bind lint scans IF conditions only — a ROLL argument reading
-    // `roll` loads fine and is caught by the runtime rejection (false
-    // negatives are allowed; the rejection is the backstop)
+    // `roll` loads fine and is caught by the runtime refusal (false
+    // negatives are allowed; the refusal is the backstop)
     const c = inspectContent([`ROLL(roll, 6)`])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
-    expect(r.rejected).toMatch(/'roll' is unbound/)
-    expect(r.records).toHaveLength(0)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/'roll' is unbound/)
   })
 
   test('a NARRATE in a LATER clause keeps {roll} literal (the binding resets per clause)', () => {
@@ -448,7 +452,8 @@ describe('the roll binding (§9.41): last-wins, per-clause, unbound = rejection'
     }, dict)
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT; ANA ATTUNE')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0]!)).toEqual(['clause one 6', 'clause two {roll}'])
+    const completes = r.records.filter(x => x.kind === 'complete')
+    expect(completes.flatMap(x => said(x))).toEqual(['clause one 6', 'clause two {roll}'])
   })
 
   test('`when:` predicates cannot read roll (load error); IF conditions can', () => {
@@ -496,16 +501,16 @@ describe('{roll} interpolation (§9.41): rewritten at execution, load-fixed else
     const c = inspectContent([`ROLL(3, 6), NARRATE "the bones say {roll}."`])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0]!)).toEqual(['the bones say 14.'])
+    expect(said(done(r)!)).toEqual(['the bones say 14.'])
     // the recorded SENTENCE carries the number — the fold never rewrites prose
-    expect(r.records[0]!.sentence).toContain('NARRATE "the bones say 14."')
-    expect(formatSentence(parseSentence(r.records[0]!.sentence, dict), dict)).toBe(r.records[0]!.sentence)
+    expect(done(r)!.sentence).toContain('NARRATE "the bones say 14."')
+    expect(formatSentence(parseSentence(done(r)!.sentence, dict), dict)).toBe(done(r)!.sentence)
   })
 
   test('a NARRATE before the ROLL keeps the literal token; after a second ROLL it rebinds', () => {
     const c = inspectContent([`NARRATE "early {roll}", ROLL(1, 6), NARRATE "late {roll}"`])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
-    expect(said(r.records[0]!)).toEqual(['early {roll}', 'late 6'])
+    expect(said(done(r)!)).toEqual(['early {roll}', 'late 6'])
   })
 
   test('{roll} in PROGRESS or REFUSE strings is a load error', () => {
@@ -527,7 +532,7 @@ describe('ROLLED (§9.41): engine-written, parse+format round-trip, fold sets rn
   test('the concrete row round-trips through parse and format', () => {
     const c = inspectContent([`ROLL(3, 6)`])
     const r = run(c, seedWorld(), '0:0 @ ANA INSPECT')
-    const row = r.records[0]!.sentence
+    const row = done(r)!.sentence
     expect(row).toContain('ROLLED(14, 3)')
     expect(formatSentence(parseSentence(row, dict), dict)).toBe(row)
     // and the parse entry pins the arity/shape
@@ -554,7 +559,7 @@ describe('ROLLED (§9.41): engine-written, parse+format round-trip, fold sets rn
     const c = inspectContent([`NARRATE "x"`])
     const base = seedWorld()
     const forced = fold([{
-      id: 1, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete', trigger: null, tGame: '0:0', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'ROLLED', args: [{ t: 'int', v: 11 }, { t: 'int', v: 55 }] }],
       recipes: [], sentence: '',
@@ -572,7 +577,7 @@ describe('ROLLED (§9.41): engine-written, parse+format round-trip, fold sets rn
     expect(snap(replayed)).toBe(snap(r.state))
     // a hand-written ROLLED row lands the counter at ctrAfter, whatever it says
     const forced = fold([{
-      id: 1, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete', trigger: null, tGame: '0:0', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'ROLLED', args: [{ t: 'int', v: 11 }, { t: 'int', v: 55 }] }],
       recipes: [], sentence: '',
@@ -592,10 +597,10 @@ describe('REFUSE after ROLL (§9.41): play and fold agree the counter is unmoved
     const r = run(c, state, '0:0 @ ANA INSPECT')
     expect(r.rejected).toBeNull()
     expect(r.records).toHaveLength(1)
-    expect(r.records[0]!.outcomes.map(o => o.op)).toEqual(['ROLLED', 'NARRATE', 'REFUSE'])
-    expect(rolledRow(r.records[0]!)).toEqual([10, 2]) // the dice WERE thrown (6+4)
-    expect(said(r.records[0]!)).toEqual(['considering 10...']) // journal-visible
-    expect(r.records[0]!.advancedMin).toBe(0)
+    expect(done(r)!.outcomes.map(o => o.op)).toEqual(['ROLLED', 'NARRATE', 'REFUSE'])
+    expect(rolledRow(done(r)!)).toEqual([10, 2]) // the dice WERE thrown (6+4)
+    expect(said(done(r)!)).toEqual(['considering 10...']) // journal-visible
+    expect(done(r)!.advancedMin).toBe(0)
     expect(r.state).toBe(state) // the draft died with the refusal
     expect(r.state.rng).toBe(0) // so the counter never moved in play
     expect(snap(state)).toBe(before)
@@ -633,11 +638,15 @@ verbs:
 
   test('play -> undo past the roll -> different action with a roll -> save -> fold(loadLog) === state', () => {
     const game = Game.fromScript(undoScript, dict)
-    // step 1: WAIT rolls 3 dice (counters 0..2, total 14) — this is step k
+    // step 1: WAIT rolls 3 dice (counters 0..2, total 14) — this is step k.
+    // v0.5: the roll lands when the window completes, so settle it
     const t1 = game.handleLine('wait')
     expect(t1.kind).toBe('action')
+    game.wait()
     expect(game.state.rng).toBe(3)
-    // undo past k: the reconstructed state's counter is folded, not remembered
+    // undo past k: the reconstructed state's counter is folded, not remembered.
+    // Two undos — the settle turn and the begin turn — leave no stale window
+    game.undo()
     game.undo()
     expect(game.state.rng).toBe(0)
     expect(game.log.records).toHaveLength(0)
@@ -645,11 +654,12 @@ verbs:
     // i.e. the reconstructed counter, not the discarded history's
     const t2 = game.handleLine('dream')
     expect(t2.kind).toBe('action')
+    game.wait()
     expect(game.state.rng).toBe(1)
     // the die equals the vector value at (seed 0, counter 0, d6) — the same a
     // fresh run's FIRST roll would produce: reconstruction, not drift
     expect(rollDie(0, 0, 6)).toBe(6)
-    expect(game.journal()[0]).toContain('ROLLED(6, 1)')
+    expect(game.journal().join('\n')).toContain('ROLLED(6, 1)')
     // save the whole log and fold it back: byte-identical state, rng included
     const dir = mkdtempSync(join(tmpdir(), 'chorus-dice-'))
     const path = join(dir, 'log.jsonl')
@@ -666,9 +676,9 @@ verbs:
     const { content, state } = compileScript(undoScript, dict)
     const base = cloneState(state)
     const r1 = run(content, state, '0:0 @ ANA WAIT', 1) // rng 0 -> 3
-    const r2 = run(content, r1.state, '0:0 @ ANA DREAM', 2) // rng 3 -> 4
+    const r2 = run(content, r1.state, '0:0 @ ANA DREAM', 1 + r1.records.length) // rng 3 -> 4
     expect(r2.state.rng).toBe(4)
-    const mid = foldUpTo([...r1.records, ...r2.records], base, dict, content, 2)
+    const mid = foldUpTo([...r1.records, ...r2.records], base, dict, content, 1 + r1.records.length)
     expect(mid.rng).toBe(3) // exactly where the folded history left it
     const all = foldUpTo([...r1.records, ...r2.records], base, dict, content, 99)
     expect(all.rng).toBe(4)
@@ -677,21 +687,29 @@ verbs:
   test('undo to MID-log, keep playing: the counter resumes from the fold, the old ROLLED row is gone', () => {
     const game = Game.fromScript(undoScript, dict)
     game.handleLine('wait') // rng 0 -> 3
+    game.wait()
     game.handleLine('dream') // rng 3 -> 4
-    expect(game.journal()[0]).toContain('ROLLED(1, 4)')
-    game.undo() // drops the DREAM action — its ROLLED row goes WITH it (no re-roll anywhere)
+    game.wait()
+    expect(game.journal().join('\n')).toContain('ROLLED(1, 4)')
+    // drop the DREAM turn (its settle + its begin) — the ROLLED row goes WITH
+    // it (no re-roll anywhere), and no stale window is left open
+    game.undo()
+    game.undo()
     expect(game.state.rng).toBe(3)
-    expect(game.journal()[0]).not.toContain('DREAM')
-    expect(game.journal()[0]).not.toContain('ROLLED(1, 4)')
+    expect(game.journal().join('\n')).not.toContain('DREAM')
+    expect(game.journal().join('\n')).not.toContain('ROLLED(1, 4)')
     // a THIRD roll continues from the FOLDED counter: counters 3..5 = 1+5+1 = 7
     game.handleLine('wait')
+    game.wait()
     expect(game.state.rng).toBe(6)
-    expect(game.journal()[0]).toContain('ROLLED(7, 6)')
+    expect(game.journal().join('\n')).toContain('ROLLED(7, 6)')
     // the undone-and-continued path is indistinguishable from a straight-line
     // run of the same surviving history — state AND journal
     const straight = Game.fromScript(undoScript, dict)
     straight.handleLine('wait')
+    straight.wait()
     straight.handleLine('wait')
+    straight.wait()
     expect(snap(straight.state)).toBe(snap(game.state))
     expect(straight.journal()).toEqual(game.journal())
     // the save/fold law still holds on the post-undo log
@@ -844,8 +862,8 @@ verbs:
     const r = run(content, state, '0:0 @ ANA WAIT')
     expect(r.rejected).toBeNull()
     // 2 dice at counters 0,1 = 10 >= 8 -> the pass tier, param interpolated
-    expect(rolledRow(r.records[0]!)).toEqual([10, 2])
-    expect(said(r.records[0]!)).toEqual(['passed 10 vs 8.'])
+    expect(rolledRow(done(r)!)).toEqual([10, 2])
+    expect(said(done(r)!)).toEqual(['passed 10 vs 8.'])
     expect(snap(fold(r.records, cloneState(state), dict, content))).toBe(snap(r.state))
   })
 
@@ -853,7 +871,7 @@ verbs:
     const { content, state } = compileScript(fnScript(', pile(3)'), dict)
     const r = run(content, state, '0:0 @ ANA WAIT')
     expect(r.rejected).toBeNull()
-    const rows = rolledRows(r.records[0]!)
+    const rows = rolledRows(done(r)!)
     expect(rows).toEqual([[10, 2], [8, 5]]) // second call: 3 dice at counters 2..4 = 4+1+3 = 8
   })
 
@@ -878,7 +896,7 @@ describe('seed drift and hygiene (§9.30, §9.41)', () => {
     const row = (seed: number): [number, number] => {
       const g = compileScript(diceScript(seed), dict)
       const r = run(g.content, g.state, '0:0 @ ANA WAIT')
-      return rolledRow(r.records[0]!)!
+      return rolledRow(done(r)!)!
     }
     expect(row(0)).not.toEqual(row(42))
     // the recorded row is what the fold replays: hand-feeding the SAME row to
@@ -886,7 +904,7 @@ describe('seed drift and hygiene (§9.30, §9.41)', () => {
     const c0 = compileScript(diceScript(0), dict).content
     const c42 = compileScript(diceScript(42), dict).content
     const record = {
-      id: 1, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete', trigger: null, tGame: '0:0', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'ROLLED', args: [{ t: 'int', v: 14 }, { t: 'int', v: 3 }] }],
       recipes: [], sentence: '',
@@ -899,6 +917,7 @@ describe('seed drift and hygiene (§9.30, §9.41)', () => {
     const play = (seed: number): string => {
       const game = Game.fromScript(diceScript(seed), dict)
       expect(game.handleLine('wait').kind).toBe('action')
+      game.wait() // v0.5: the roll lands on the completion — the row must be in the log
       const dir = mkdtempSync(join(tmpdir(), 'chorus-dice-det-'))
       const path = join(dir, 'log.jsonl')
       try {

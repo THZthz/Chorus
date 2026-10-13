@@ -62,11 +62,14 @@ export interface Outcome {
 }
 
 export interface Sentence {
-  kind: 'action' | 'event'
+  kind: 'action' | 'event' | 'complete' | 'wait'
   clock: Clock | null
-  trigger: string | null      // event trigger id
+  trigger: string | null      // event trigger id; the VERB of a COMPLETE row
   clauses: Clause[]
   outcomes: Outcome[]
+  /** wait rows only: the advanced span in minutes (records carry the same
+   *  value as advancedMin — the clock row is the only clock-mover, v0.5) */
+  spanMin?: number
 }
 
 export function emptyClause(actors: Ref[]): Clause {

@@ -13,6 +13,7 @@ export const RESERVED_WORDS = [
   'IF', 'ELSE', // §9.39: conditional outcome lists (v0.3.2)
   'ROLL', 'ROLLED', // §9.41: the dice op, and the engine-written record of one (v0.3.4)
   'DRAW', 'DRAWN', // §9.42: the deck-draw op, and the engine-written record of one (v0.3.5)
+  'COMPLETE', // v0.5: the engine-written completion row of a processing window
   ...CORE_VERBS,
 ]
 

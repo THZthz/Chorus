@@ -10,6 +10,13 @@ export function formatSentence(s: Sentence, dict?: SafeDict): string {
   if (s.clock) parts.push(`${formatClock(s.clock)} @`)
   if (s.kind === 'event') {
     parts.push('EVENT', formatTriggerId(s.trigger ?? '?'))
+  } else if (s.kind === 'complete') {
+    // v0.5: `1:42 @ COMPLETE READ -> <outcomes>` — the verb prints bare
+    // (UPPER_SNAKE always re-parses as a name token)
+    parts.push('COMPLETE', s.trigger ?? '?')
+  } else if (s.kind === 'wait') {
+    // v0.5: `0:42 @ WAIT 1h` — the pure-advance clock row
+    parts.push('WAIT', formatDuration(s.spanMin ?? 0))
   } else {
     parts.push(s.clauses.map(c => formatClause(c, dict)).join('; '))
   }

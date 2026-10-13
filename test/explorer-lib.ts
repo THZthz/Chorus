@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { compileScript } from '../src/script.js'
 import { executeStep, type ActionRecord, type Step } from '../src/engine.js'
 import { fold } from '../src/fold.js'
+import { settleStep } from './settle.js'
 import { absMin, clockFromAbsMin, formatClock, nextStepClock } from '../src/clock.js'
 import { parseSentence } from '../src/parse.js'
 import { matchQuery } from '../src/query.js'
@@ -250,14 +251,16 @@ function parsePlayerish(line: string, state: State): Step {
   return parsed.step
 }
 
-/** play the win path on primitives, snapshotting a fresh clone after each step */
+/** play the win path on primitives, snapshotting a fresh clone after each step
+ *  (each step settles — its window completes, the way the pre-v0.5 engine
+ *  committed effects at once) */
 export function winPathStates(): { states: { label: string; state: State }[]; records: ActionRecord[] } {
   let state = cloneState(base)
   const states = [{ label: 'start', state: cloneState(state) }]
   const records: ActionRecord[] = []
   let id = 1
   for (const line of WIN_PATH) {
-    const r = executeStep(content, dict, state, parsePlayerish(line, state), { firstRecordId: id })
+    const r = settleStep(content, dict, state, parsePlayerish(line, state), id)
     if (r.rejected) throw new Error(`win path broke at '${line}': ${r.rejected}`)
     records.push(...r.records)
     id += r.records.length
@@ -276,6 +279,7 @@ export function sampledWalkStates(): { label: string; state: State }[] {
   let state = cloneState(base)
   const records: ActionRecord[] = []
   const states: { label: string; state: State }[] = []
+  const turnLengths: number[] = [0] // ending-undo truncates to the previous turn (v0.5)
   let id = 1
   let executed = 0
   for (let i = 0; i < 500 && states.length < 10; i++) {
@@ -283,16 +287,16 @@ export function sampledWalkStates(): { label: string; state: State }[] {
     const benign = cands.filter(c => !c.tag.includes('wrong-kind') && c.tag !== 'clock rewind')
     const pickFrom = rand() < 0.2 || benign.length === 0 ? cands : benign
     const cand = pickFrom[Math.floor(rand() * pickFrom.length) % pickFrom.length]
-    const r = executeStep(content, dict, state, cand.step, { firstRecordId: id })
+    const r = settleStep(content, dict, state, cand.step, id)
     if (r.rejected !== null) continue
+    turnLengths.push(records.length)
     records.push(...r.records)
     id += r.records.length
     state = r.state
     // §9.35 ending-awareness, as in the walk pass: undo through the ending
     // step so the harvest keeps exercising real play and reaches later hours
     if (state.ended) {
-      while (records.length > 0 && records[records.length - 1].kind === 'event') records.pop()
-      records.pop()
+      records.length = turnLengths.pop()!
       state = fold(records, cloneState(base), dict, content)
       continue
     }

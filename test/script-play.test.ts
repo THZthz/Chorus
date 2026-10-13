@@ -11,6 +11,21 @@ import { seedDictionary, seedState } from '../src/seed.js'
 import { addEntity } from '../src/types.js'
 
 const dict = seedDictionary()
+
+/** v0.5 test adapter: settle each committed action's window right away, so
+ *  the loop tests keep their pre-parallel commit-completes-at-once shape */
+function autoSettle(game: Game): Game {
+  const orig = game.handleLine.bind(game)
+  game.handleLine = (line: string) => {
+    const t = orig(line)
+    if (t.kind === 'action' && game.state.windows.size > 0) {
+      const settle = game.wait()
+      return { kind: 'action', lines: [...t.lines, ...settle.lines] }
+    }
+    return t
+  }
+  return game
+}
 const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
 
 describe('script compiler', () => {
@@ -228,14 +243,14 @@ describe('script compiler', () => {
 })
 
 describe('lenient player input', () => {
-  const game = Game.fromScript(scriptText, dict)
+  const game = autoSettle(Game.fromScript(scriptText, dict))
   const ctx = { dict, content: game.content, state: game.state, player: 'MARCH' }
 
   test('bare verb defaults to the player character', () => {
     const r = parsePlayerInput('wait', ctx)
     expect(r.ok).toBe(true)
     if (r.ok) {
-      expect(r.step.clock).toEqual({ day: 0, halfhour: 42 })
+      expect(r.step.startMin).toBe(42 * 30) // v0.5: the default begin minute is NOW
       expect(r.step.clauses[0]).toMatchObject({ verb: 'WAIT', actors: [{ form: 'name', name: 'MARCH' }] })
     }
   })
@@ -344,7 +359,7 @@ describe('lenient input routes the new core verbs (v0.3)', () => {
 
 describe('the game loop', () => {
   test('a script becomes a playable game', () => {
-    const game = Game.fromScript(scriptText, dict)
+    const game = autoSettle(Game.fromScript(scriptText, dict))
     const turn = game.handleLine('read the manifest')
     expect(turn.kind).toBe('action')
     expect(turn.lines.join(' ')).toContain('passenger manifest')
@@ -364,7 +379,7 @@ describe('the game loop', () => {
   })
 
   test('the table only shows what the inspector has met', () => {
-    const game = Game.fromScript(scriptText, dict)
+    const game = autoSettle(Game.fromScript(scriptText, dict))
     const names = () => game.visible().map(e => e.name)
     expect(names()).toContain('THE_GUARD')           // the archetype you can see
     expect(names()).not.toContain('BRACK')           // the name is learned by talking
@@ -381,7 +396,7 @@ describe('the game loop', () => {
   })
 
   test('inspect reads a visible card\'s face and respects the table', () => {
-    const game = Game.fromScript(scriptText, dict)
+    const game = autoSettle(Game.fromScript(scriptText, dict))
     const face = game.inspect('the manifest')
     expect(face[0]).toBe('THE_MANIFEST  [text]')
     expect(face.join('\n')).toContain('manifest 1')
@@ -392,7 +407,7 @@ describe('the game loop', () => {
   })
 
   test('suggestions are concrete, executable actions', () => {
-    const game = Game.fromScript(scriptText, dict)
+    const game = autoSettle(Game.fromScript(scriptText, dict))
     const s = game.suggestions()
     expect(s.length).toBeGreaterThan(0)
     for (const line of s) {
@@ -403,7 +418,7 @@ describe('the game loop', () => {
   })
 
   test('the log replays from the script base state (state = fold(log))', () => {
-    const game = Game.fromScript(scriptText, dict)
+    const game = autoSettle(Game.fromScript(scriptText, dict))
     game.handleLine('read the manifest')
     const replayed = fold(game.log.records, game['base'], game.dict, game.content)
     expect([...replayed.byName.keys()].sort()).toEqual([...game.state.byName.keys()].sort())

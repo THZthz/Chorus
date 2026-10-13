@@ -12,6 +12,7 @@ import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog, Log } from '../src/store.js'
 import { addEntity, newState, type State } from '../src/types.js'
 import { snap } from './snap.js'
+import { settleStep, act, done, refusal } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,10 +31,7 @@ function run(state: State, src: string, firstRecordId = 1): ExecResult {
 function runWith(theContent: typeof content, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, dict)
   let n = 0
-  return executeStep(theContent, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`, // unique across steps: keyed by record id
-  })
+  return settleStep(theContent, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`) // unique across steps: keyed by record id
 }
 
 describe('READ ladder — first match wins, most specific first (§6.4)', () => {
@@ -41,8 +39,8 @@ describe('READ ladder — first match wins, most specific first (§6.4)', () => 
     const { state } = setup()
     const r = run(state, '0:28 @ ANA READ MAGICK_BOOK')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].recipes).toEqual(['read.default'])
-    expect(r.records[0].advancedMin).toBe(60)
+    expect(act(r).recipes).toEqual(['read.default'])
+    expect(act(r).advancedMin).toBe(60)
     expect(r.state.now).toBe(14 * 60 + 60)
   })
 
@@ -52,18 +50,18 @@ describe('READ ladder — first match wins, most specific first (§6.4)', () => 
     const r = run(state, '0:28 @ BERTHA READ MAGICK_BOOK')
     expect(r.rejected).toBeNull()
     expect(r.records).toHaveLength(1)
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['REFUSE'])
-    expect(r.records[0].advancedMin).toBe(0)
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['REFUSE'])
+    expect(act(r).advancedMin).toBe(0)
     expect(r.state).toBe(state) // same object, untouched
     expect(snap(r.state)).toBe(before)
-    expect(r.records[0].sentence).toContain('REFUSE("The letters swim like minnows.")')
+    expect(done(r).sentence).toContain('REFUSE("The letters swim like minnows.")')
   })
 
   test('parent + child reading fairy tales branches to bonding memory', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA, BERTHA READ FAIRY_TALES')
-    expect(r.records[0].recipes).toEqual(['read.parent_child'])
-    const spawn = r.records[0].outcomes[0]
+    expect(act(r).recipes).toEqual(['read.parent_child'])
+    const spawn = done(r).outcomes[0]
     expect(spawn.op).toBe('SPAWN')
     const nameArg = spawn.args[0]
     expect(nameArg && nameArg.t === 'ref' && nameArg.ref.form === 'name' && nameArg.ref.name).toBe('BONDING_MEMORY')
@@ -73,22 +71,22 @@ describe('READ ladder — first match wins, most specific first (§6.4)', () => 
   test('two unrelated readers get the poorer outcome — no spawn', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA, MY_FOLLOWER READ FAIRY_TALES')
-    expect(r.records[0].recipes).toEqual(['read.unrelated_pair'])
-    expect(r.records[0].outcomes.every(o => o.op === 'NARRATE')).toBe(true)
+    expect(act(r).recipes).toEqual(['read.unrelated_pair'])
+    expect(done(r).outcomes.every(o => o.op === 'NARRATE')).toBe(true)
   })
 
   test('prototype-parameterized spawn resolves into a concrete named card (§9.15)', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA READ THE_FORGETTING')
-    expect(r.records[0].recipes).toEqual(['read.secret'])
-    const spawn = r.records[0].outcomes[0]
+    expect(act(r).recipes).toEqual(['read.secret'])
+    const spawn = done(r).outcomes[0]
     const nameArg = spawn.args[0]
     expect(nameArg && nameArg.t === 'ref' && nameArg.ref.form === 'name' && nameArg.ref.name).toBe('CLUE_THE_FORGETTING')
     const asId = spawn.args.find(a => a.t === 'asId')
     expect(asId).toBeDefined()
     const minted = r.state.byName.get('CLUE_THE_FORGETTING')![0]
     expect(r.state.entities.get(minted)!.aspects['secret']).toBe(2) // 4 - 2
-    expect(r.state.entities.get(minted)!.bornAction).toBe(1)
+    expect(r.state.entities.get(minted)!.bornAction).toBe(done(r)!.id) // v0.5: the completion row mints
   })
 })
 
@@ -119,7 +117,7 @@ describe('TALK with ABOUT (§4.3)', () => {
   test('talking about a secret idea spawns a plan', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT')
-    expect(r.records[0].recipes).toEqual(['talk.plan'])
+    expect(act(r).recipes).toEqual(['talk.plan'])
     expect(r.state.byName.has('PLAN_INFILTRATION')).toBe(true)
   })
 })
@@ -128,8 +126,8 @@ describe('multi-clause steps and time ownership (§9.12)', () => {
   test('travel then read: durations sum, recipes listed in clause order', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ THE_FORGETTING')
-    expect(r.records[0].recipes).toEqual(['travel_to.default', 'read.secret'])
-    expect(r.records[0].advancedMin).toBe(120)
+    expect(act(r).recipes).toEqual(['travel_to.default', 'read.secret'])
+    expect(act(r).advancedMin).toBe(120)
     expect(r.state.entities.get('ana')!.attrs['container']).toBe('study')
     expect(r.state.now).toBe(14 * 60 + 120)
   })
@@ -141,7 +139,7 @@ describe('USE_ON rite — aggregate gate, shown hint (§6.4)', () => {
     state.now = 14 * 60
     const before = snap(state)
     const r = run(state, '0:28 @ ANA AT HOUSE USE_ON RITE_OF_ASCENSION')
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['REFUSE'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['REFUSE'])
     expect(r.state.now).toBe(14 * 60)
     expect(snap(r.state)).toBe(before)
   })
@@ -150,11 +148,11 @@ describe('USE_ON rite — aggregate gate, shown hint (§6.4)', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE')
     expect(r.rejected).toBeNull()
-    expect(r.state.entities.get('rite')!.deadAction).toBe(1)
-    expect(r.state.entities.get('chalice')!.deadAction).toBe(1)
+    expect(r.state.entities.get('rite')!.deadAction).toBe(done(r)!.id) // v0.5: the completion row consumes
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(done(r)!.id)
     const mark = r.state.byName.get('MARK_OF_ASCENSION')![0]
     expect(r.state.entities.get(mark)!.attrs['container']).toBe('house')
-    expect(r.records[0].advancedMin).toBe(180)
+    expect(act(r).advancedMin).toBe(180)
   })
 })
 
@@ -162,26 +160,33 @@ describe('events — authored triggers and expiries (§6.6, §9.16)', () => {
   test('crossing hour 16 fires dusk_falls as its own EVENT row', () => {
     const { state } = setup()
     const r1 = run(state, '0:28 @ ANA WAIT') // crosses 15 only
-    expect(r1.records).toHaveLength(1)
+    const kinds1 = r1.records.map(x => x.kind)
+    if (kinds1[0] === 'wait') kinds1.shift() // the typed clock bridges from now=0
+    expect(kinds1).toEqual(['action', 'complete', 'wait']) // v0.5 turn shape
     const r2 = run(r1.state, '0:30 @ ANA WAIT') // crosses 16 → dusk
-    expect(r2.records).toHaveLength(2)
-    const [action, event] = r2.records
-    expect(event.kind).toBe('event')
+    const event = r2.records.find(x => x.kind === 'event')!
     expect(event.trigger).toBe('dusk_falls')
     expect(event.tGame).toBe('0:32')
-    expect(action.sentence).toContain('->')
+    expect(r2.records.some(x => x.kind === 'action' && x.sentence)).toBe(true)
     expect(r2.state.byName.has('DREAD')).toBe(true)
   })
 
   test('expiry crossing destroys the card via an expire event', () => {
     const { state } = setup()
     state.entities.get('chalice')!.attrs['expiresAt'] = 16 * 60 // 0:32
-    const r = run(state, '0:28 @ ANA WAIT; ANA WAIT; ANA WAIT') // 14 → 17
-    // hour 16 fires dusk_falls (authored) AND the chalice expiry — deterministic order
-    expect(r.records.map(x => x.kind)).toEqual(['action', 'event', 'event'])
-    expect(r.records[1].trigger).toBe('dusk_falls')
-    expect(r.records[2].trigger).toBe('expire:CHALICE')
-    expect(r.state.entities.get('chalice')!.deadAction).toBe(3)
+    const r = run(state, '0:28 @ ANA WAIT; ANA WAIT; ANA WAIT') // three staggered windows, 14 → 17
+    // v0.5 order: each window completes at its end; at minute 960 the window
+    // completes FIRST, then slot 32 strikes — dusk (authored) before the
+    // chalice expiry, deterministic
+    const kinds = r.records.map(x => x.kind)
+    if (kinds[0] === 'wait') kinds.shift() // bridge
+    expect(kinds).toEqual([
+      'action', 'complete', 'complete', 'event', 'event', 'complete', 'wait',
+    ])
+    const events = r.records.filter(x => x.kind === 'event')
+    expect(events[0]!.trigger).toBe('dusk_falls')
+    expect(events[1]!.trigger).toBe('expire:CHALICE')
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(events[1]!.id)
   })
 })
 
@@ -236,21 +241,24 @@ describe('fold — state = fold(log), determinism, undo (§7)', () => {
     const { state } = setup()
     const r1 = run(state, '0:28 @ ANA READ THE_FORGETTING')
     const snapshotAfterOne = snap(r1.state)
-    const r2 = run(r1.state, '0:32 @ ANA READ FAIRY_TALES', r1.records[0].id + 1)
+    const r2 = run(r1.state, '0:32 @ ANA READ FAIRY_TALES', r1.records.length + 1)
     const all = [...r1.records, ...r2.records]
-    const undone = foldUpTo(all, seedState(), dict, content, 2)
+    const undone = foldUpTo(all, seedState(), dict, content, r1.records.length + 1) // drop turn 2
     expect(snap(undone)).toBe(snapshotAfterOne)
   })
 })
 
 describe('dictionary is the law (§9.14)', () => {
-  test('SPAWN cannot mint a duplicate name among the living (§9.14)', () => {
+  test('SPAWN cannot mint a duplicate name among the living (§9.14) — the second window refuses', () => {
     const { state } = setup()
-    const r = run(state, '0:28 @ ANA, BERTHA READ FAIRY_TALES') // mints BONDING_MEMORY
+    const r = run(state, '0:28 @ ANA, BERTHA READ FAIRY_TALES') // window 1 opens
     expect(r.rejected).toBeNull()
-    const r2 = run(r.state, '0:32 @ ANA, BERTHA READ FAIRY_TALES')
-    expect(r2.rejected).toMatch(/already in use/)
-    expect(r2.records).toHaveLength(0)
+    const r2 = run(r.state, '0:32 @ ANA, BERTHA READ FAIRY_TALES') // window 2 opens; window 1 completes en route
+    expect(r2.rejected).toBeNull()
+    // window 2's BONDING_MEMORY mint collides with the living one — the
+    // window refuses (§9.19's completion analog), attempt logged, no second copy
+    expect(refusal(r2)).toMatch(/already in use/)
+    expect(r2.state.byName.get('BONDING_MEMORY')).toHaveLength(1)
   })
 
   test('names of dead entities are reusable (§9.14: unique among the LIVING)', () => {
@@ -261,7 +269,7 @@ describe('dictionary is the law (§9.14)', () => {
     expect(r.state.byName.has('CHALICE')).toBe(false)
     // a new CHALICE can be minted after the old one died
     const rec = {
-      id: 99, kind: 'action' as const, trigger: null, tGame: '0:40', tReal: null, advancedMin: 0,
+      id: 99, kind: 'complete' as const, trigger: null, tGame: '0:40', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'SPAWN', args: [{ t: 'ref', ref: { form: 'name', kind: 'item', name: 'CHALICE' } }, { t: 'asId', id: 'new_chalice' }] }],
       recipes: [], sentence: '',
@@ -275,7 +283,7 @@ describe('review regressions', () => {
   test('SET stores the given value positionally (ref, key, value)', () => {
     const { state } = setup()
     const rec = {
-      id: 1, kind: 'action' as const, trigger: null, tGame: '0:28', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete' as const, trigger: null, tGame: '0:28', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{
         op: 'SET',
@@ -294,7 +302,7 @@ describe('review regressions', () => {
   test('SET expires materializes expiresAt from the record clock', () => {
     const { state } = setup()
     const rec = {
-      id: 1, kind: 'action' as const, trigger: null, tGame: '0:28', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete' as const, trigger: null, tGame: '0:28', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{
         op: 'SET',
@@ -315,7 +323,7 @@ describe('review regressions', () => {
     const relate = (outcomeSrc: string, id: number) => {
       const s = parseSentence(`0:0 @ ANA WAIT -> ${outcomeSrc}`, dict)
       applyRecord({
-        id, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+        id, kind: 'complete', trigger: null, tGame: '0:0', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
         actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
         outcomes: s.outcomes, recipes: [], sentence: '',
       }, state, dict, content)
@@ -344,7 +352,7 @@ describe('review regressions', () => {
     const r = run(state, '0:28 @ ANA, BERTHA TRAVEL_TO VILLA; MY_FOLLOWER WAIT')
     expect(r.rejected).toBeNull()
     // the recorded MOVE must name ANA and BERTHA, not ACTORS
-    const move = r.records[0].outcomes.find(o => o.op === 'MOVE')!
+    const move = done(r).outcomes.find(o => o.op === 'MOVE')!
     const refs = move.args.filter((a): a is Extract<import('../src/sentence.js').Arg, { t: 'ref' }> => a.t === 'ref')
     expect(refs.map(a => a.ref.form === 'id' && a.ref.id).sort()).toEqual(['ana', 'bertha'])
     const replayed = fold(r.records, seedState(), dict, content)
@@ -360,14 +368,15 @@ describe('review regressions', () => {
     expect(r.records).toHaveLength(0)
   })
 
-  test('application failures become rejections, not throws (§6.6)', () => {
+  test('application failures refuse the window instead of throwing (§6.6, v0.5 completion)', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA, BERTHA READ FAIRY_TALES')
     expect(r.rejected).toBeNull()
     const r2 = run(r.state, '0:32 @ ANA, BERTHA READ FAIRY_TALES') // duplicate mint name
-    expect(r2.rejected).toMatch(/already in use/)
-    expect(r2.records).toHaveLength(0)
-    expect(r2.state).toBe(r.state)
+    expect(r2.rejected).toBeNull()
+    expect(refusal(r2)).toMatch(/already in use/)
+    expect(r2.state).not.toBe(r.state)
+    expect(r2.state.byName.get('BONDING_MEMORY')).toHaveLength(1) // the second mint never landed
   })
 })
 
@@ -386,10 +395,7 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
   const runProbe = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
     const s = parseSentence(src, probeDict)
     let n = 0
-    return executeStep(theContent, probeDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-      firstRecordId,
-      idGen: () => `x${firstRecordId}_${++n}`,
-    })
+    return settleStep(theContent, probeDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
   }
   // two recipes, order-dependent: the gate branch needs a hunter in the world
   // AND no ward anywhere; the default is the calm world
@@ -405,8 +411,8 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
     addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
     const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].recipes).toEqual(['probe.hunted'])
-    expect(r.records[0].sentence).toContain('A hunter walks the world.')
+    expect(act(r).recipes).toEqual(['probe.hunted'])
+    expect(done(r).sentence).toContain('A hunter walks the world.')
   })
 
   test('a ward anywhere in the world flips the branch — NOT exists(kind:item aspect:ward>=1) fails', () => {
@@ -414,7 +420,7 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
     addEntity(state, { id: 'hunter', kind: 'character', name: 'HUNTER', aspects: { hunter: 1 }, attrs: { container: 'villa' }, bornAction: null, deadAction: null, stackable: false })
     addEntity(state, { id: 'ward', kind: 'item', name: 'IRON_WARD', aspects: { ward: 2 }, attrs: { container: 'greenhouse' }, bornAction: null, deadAction: null, stackable: false })
     const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
-    expect(r.records[0].recipes).toEqual(['probe.default'])
+    expect(act(r).recipes).toEqual(['probe.default'])
   })
 
   test('destroyed cards stop existing: the gate un-latches after the hunter dies', () => {
@@ -423,7 +429,7 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
     state.entities.get('hunter')!.deadAction = 99 // DESTROY shape: stamp + release the name (§9.14)
     state.byName.delete('HUNTER')
     const r = runProbe(gate(), state, '0:28 @ ANA PROBE')
-    expect(r.records[0].recipes).toEqual(['probe.default'])
+    expect(act(r).recipes).toEqual(['probe.default'])
   })
 
   test('name form: exists(THE_SEALED_DOOR) sees a named card across the map', () => {
@@ -434,7 +440,7 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
       { out: ['NARRATE("No door.")'] },
     ])
     const r = runProbe(c, state, '0:28 @ ANA PROBE')
-    expect(r.records[0].recipes).toEqual(['probe.door'])
+    expect(act(r).recipes).toEqual(['probe.door'])
   })
 
   test('relations are untouched by exists evaluation: rel gates still select as before', () => {
@@ -444,9 +450,9 @@ describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)'
       { out: ['NARRATE("No kinship.")'] },
     ])
     const r = runProbe(c, state, '0:28 @ ANA, BERTHA PROBE') // ANA is BERTHA's parent (seed edge)
-    expect(r.records[0].recipes).toEqual(['probe.bonded'])
+    expect(act(r).recipes).toEqual(['probe.bonded'])
     const r2 = runProbe(c, state, '0:30 @ ANA, MY_FOLLOWER PROBE', 2) // no parent_child edge
-    expect(r2.records[0].recipes).toEqual(['probe.default'])
+    expect(act(r2).recipes).toEqual(['probe.default'])
   })
 })
 
@@ -455,9 +461,12 @@ describe('progress ticks — the processing read-bar (§6.7)', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['PROGRESS', 'PROGRESS', 'DESTROY', 'DESTROY', 'SPAWN'])
-    expect(r.records[0].advancedMin).toBe(180) // the verb's duration only
-    expect(r.records[0].sentence).toContain('PROGRESS(1h, "The circle begins to hum against your palms.")')
+    // v0.5: top-level PROGRESS ticks ride the BEGIN row; the real outcomes
+    // land on the COMPLETE row
+    expect(act(r).outcomes.map(o => o.op)).toEqual(['PROGRESS', 'PROGRESS'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['DESTROY', 'DESTROY', 'SPAWN'])
+    expect(act(r).advancedMin).toBe(180) // the verb's duration only
+    expect(act(r).sentence).toContain('PROGRESS(1h, "The circle begins to hum against your palms.")')
     // the log alone reproduces the played state exactly (ticks are journal-only at fold)
     const replayed = fold(r.records, seedState(), dict, content)
     expect(snap(replayed)).toBe(snap(r.state))
@@ -466,7 +475,7 @@ describe('progress ticks — the processing read-bar (§6.7)', () => {
   test('malformed PROGRESS arity is an application failure, not a silent no-op (§9.19)', () => {
     const { state } = setup()
     const rec = {
-      id: 1, kind: 'action' as const, trigger: null, tGame: '0:28', tReal: null, advancedMin: 0,
+      id: 1, kind: 'complete' as const, trigger: null, tGame: '0:28', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'PROGRESS', args: [{ t: 'str', v: 'no duration' }] }],
       recipes: [], sentence: '',
@@ -500,16 +509,18 @@ describe('clock & duration literals', () => {
     // inside the quantized gap, so it fires even though no window spans 14:30
     const r2 = runWith(content20, r1.state, '0:29 @ ANA WAIT')
     expect(r2.rejected).toBeNull()
-    expect(r2.records.map(x => x.kind)).toEqual(['action', 'event'])
-    expect(r2.records[1].trigger).toBe('the_chime')
-    expect(r2.records[1].tGame).toBe('0:29')
+    // v0.5: the chime crosses inside the advance that leads the step, before
+    // the BEGIN — the quantized dead air is a logged wait row now
+    expect(r2.records.map(x => x.kind)).toEqual(['event', 'wait', 'action', 'complete', 'wait'])
+    expect(r2.records[0]!.trigger).toBe('the_chime')
+    expect(r2.records[0]!.tGame).toBe('0:29')
   })
 
   test('durations spill into the next day', () => {
     const { state } = setup()
     const r = run(state, '0:44 @ ANA WORK AT HOUSE') // 2h → day 1, 0:00
     expect(r.state.now).toBe(22 * 60 + 120)
-    expect(r.records[0].tGame).toBe('0:44')
+    expect(act(r).tGame).toBe('0:44')
   })
 
   test('formatDuration renders zero as 0m', () => {
@@ -521,7 +532,7 @@ describe('record shape (§7)', () => {
   test('records carry sorted actors, provenance, canonical sentence', () => {
     const { state } = setup()
     const r = run(state, '0:28 @ BERTHA, ANA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT')
-    const rec: ActionRecord = r.records[0]
+    const rec: ActionRecord = act(r)
     expect(rec.actors.map(a => a.form === 'name' && a.name)).toEqual(['ANA', 'BERTHA'])
     expect(rec.verb).toBe('TALK')
     expect(rec.tGame).toBe('0:28')
@@ -551,10 +562,7 @@ describe('SET deltas and aspect keys (§9.31)', () => {
   const runTune = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
     const s = parseSentence(src, tuneDict)
     let n = 0
-    return executeStep(theContent, tuneDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-      firstRecordId,
-      idGen: () => `x${firstRecordId}_${++n}`,
-    })
+    return settleStep(theContent, tuneDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
   }
 
   test('a signed value adds to the attr (missing = 0) and the log carries the absolute', () => {
@@ -563,12 +571,12 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const r = runTune(c, state, '0:20 @ ANA TUNE')
     expect(r.rejected).toBeNull()
     expect(r.state.entities.get('ana')!.attrs['funds']).toBe(2) // missing entry counted as 0
-    const set = r.records[0].outcomes[0]
+    const set = done(r).outcomes[0]
     expect(set.op).toBe('SET')
     expect(set.args[2]).toEqual({ t: 'int', v: 2 }) // the record holds the concrete absolute, not the delta
-    expect(r.records[0].sentence).toContain('-> SET(ANA, funds, 2)') // name ref kept, value absolutized
+    expect(done(r).sentence).toContain('-> SET(ANA, funds, 2)') // name ref kept, value absolutized
     // the concrete sentence round-trips
-    expect(formatSentence(parseSentence(r.records[0].sentence, tuneDict), tuneDict)).toBe(r.records[0].sentence)
+    expect(formatSentence(parseSentence(done(r).sentence, tuneDict), tuneDict)).toBe(done(r).sentence)
     // the next delta applies to the new value
     const r2 = runTune(c, r.state, '0:21 @ ANA TUNE', 2)
     expect(r2.state.entities.get('ana')!.attrs['funds']).toBe(4)
@@ -580,7 +588,7 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const r = runTune(c, state, '0:20 @ ANA TUNE')
     expect(r.rejected).toBeNull()
     expect(r.state.entities.get('ana')!.attrs['funds']).toBe(-3)
-    expect(r.records[0].sentence).toContain('SET(#ana, funds, -3)')
+    expect(done(r).sentence).toContain('SET(#ana, funds, -3)')
   })
 
   test('aspect: + delta increments the aspects map; an absolute aspect set writes it too', () => {
@@ -589,11 +597,11 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const r = runTune(c, state, '0:20 @ ANA TUNE')
     expect(r.rejected).toBeNull()
     expect(r.state.entities.get('ana')!.aspects['dread']).toBe(1)
-    expect(r.records[0].sentence).toContain('SET(#ana, aspect:dread, 1)')
+    expect(done(r).sentence).toContain('SET(#ana, aspect:dread, 1)')
     // absolute form through the fold path (concrete outcomes replay as-is)
     const s = parseSentence('0:0 @ ANA WAIT -> SET(#ana, aspect:language.latin, 2)', dict)
     applyRecord({
-      id: 2, kind: 'action', trigger: null, tGame: '0:0', tReal: null, advancedMin: 0,
+      id: 2, kind: 'complete', trigger: null, tGame: '0:0', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: s.outcomes, recipes: [], sentence: '',
     }, r.state, dict, content)
@@ -607,7 +615,7 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     expect(r.state.entities.get('ana')!.attrs['funds']).toBe(5)
     const r2 = runTune(c, r.state, '0:21 @ ANA TUNE', 2)
     expect(r2.state.entities.get('ana')!.attrs['funds']).toBe(5) // not 5+5
-    expect(r2.records[0].sentence).toContain('SET(#ana, funds, 5)') // role concretized (§9.15), value literal
+    expect(done(r2).sentence).toContain('SET(#ana, funds, 5)') // role concretized (§9.15), value literal
   })
 
   test('a role-arg absolute SET in a multi-clause step logs one concrete row per card and replays exactly (§9.15, §7)', () => {
@@ -627,8 +635,11 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const r = runTune(c, state, '0:20 @ ANA TUNE THE_FORGETTING; BERTHA TUNE FAIRY_TALES')
     expect(r.rejected).toBeNull()
     // each clause's OBJECT becomes its own id row — the role itself never
-    // reaches the log, so the fold needs no per-clause attribution
-    expect(r.records[0].sentence).toContain('SET(#forgetting, searched, 1), SET(#fairy, searched, 1)')
+    // reaches the log, so the fold needs no per-clause attribution (v0.5:
+    // each clause's window closes with its own COMPLETE row)
+    const sets = r.records.filter(x => x.kind === 'complete').map(x => x.sentence)
+    expect(sets[0]).toContain('SET(#forgetting, searched, 1)')
+    expect(sets[1]).toContain('SET(#fairy, searched, 1)')
     // §7: the records alone reproduce the played state. (Pre-fix, the fold
     // resolved OBJECT against the whole-record binding — the first clause's
     // card — and the second card never got searched.)
@@ -643,8 +654,8 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const c = counterContent([{ id: 'tune.gain', when: 'count(actors) = 2', out: ['SET(ACTORS, aspect:dread, +1)'] }])
     const r = runTune(c, state, '0:20 @ ANA, BERTHA TUNE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.filter(o => o.op === 'SET')).toHaveLength(2)
-    expect(r.records[0].sentence).toContain('SET(#ana, aspect:dread, 3), SET(#bertha, aspect:dread, 1)')
+    expect(done(r).outcomes.filter(o => o.op === 'SET')).toHaveLength(2)
+    expect(done(r).sentence).toContain('SET(#ana, aspect:dread, 3), SET(#bertha, aspect:dread, 1)')
     expect(r.state.entities.get('ana')!.aspects['dread']).toBe(3)
     expect(r.state.entities.get('bertha')!.aspects['dread']).toBe(1)
   })
@@ -684,31 +695,30 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const c = counterContent([{ out: ['SET(ACTORS, aspect:dread, +1)', 'SET(ACTORS, funds, +2)', 'REFUSE("too costly")'] }])
     const r = runTune(c, state, '0:20 @ ANA TUNE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SET', 'SET', 'REFUSE'])
-    expect(r.records[0].advancedMin).toBe(0)
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SET', 'SET', 'REFUSE'])
+    expect(act(r).advancedMin).toBe(0)
     expect(r.state).toBe(state) // same object, untouched — the deltas ran on the discarded draft
     expect(snap(r.state)).toBe(before)
     expect(snap(fold(r.records, seedState(), tuneDict, c))).toBe(before) // refused record folds as a no-op
   })
 
-  test('a delta on a non-numeric entry rejects the whole step — nothing logged (§9.19)', () => {
+  test('a delta on a non-numeric entry refuses the window — nothing applied (§9.19 completion analog)', () => {
     const { state } = setup()
     const c = counterContent([{ out: ['SET(ACTORS, container, +1)'] }]) // container is a string attr
     const r = runTune(c, state, '0:20 @ ANA TUNE')
-    expect(r.rejected).toMatch(/non-numeric/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/non-numeric/)
+    expect(r.state.entities.get('ana')!.attrs['funds']).toBeUndefined() // nothing applied
   })
 
-  test('a delta on an aspect sub-map rejects the step — the map survives (§9.31)', () => {
+  test('a delta on an aspect sub-map refuses the window — the map survives (§9.31)', () => {
     const { state } = setup()
     state.entities.get('ana')!.aspects['language'] = { french: 2 } // a sub-map, not a number
     const c = counterContent([{ out: ['SET(ACTORS, aspect:language, +1)'] }])
     const r = runTune(c, state, '0:20 @ ANA TUNE')
-    expect(r.rejected).toMatch(/non-numeric/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
-    expect(r.state.entities.get('ana')!.aspects['language']).toEqual({ french: 2 })
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/non-numeric/)
+    expect(r.state.entities.get('ana')!.aspects['language']).toEqual({ french: 2 }) // survives
   })
 
   test('a quoted key stays quoted in the concrete record (§9.15)', () => {
@@ -717,9 +727,9 @@ describe('SET deltas and aspect keys (§9.31)', () => {
     const r = runTune(c, state, '0:20 @ ANA TUNE')
     expect(r.rejected).toBeNull()
     expect(r.state.entities.get('ana')!.attrs['about']).toBe(5)
-    expect(r.records[0].sentence).toContain('SET(#ana, "about", 5)')
+    expect(done(r).sentence).toContain('SET(#ana, "about", 5)')
     // the record must round-trip: unquoted it would re-parse as the about ROLE
-    expect(formatSentence(parseSentence(r.records[0].sentence, tuneDict), tuneDict)).toBe(r.records[0].sentence)
+    expect(formatSentence(parseSentence(done(r).sentence, tuneDict), tuneDict)).toBe(done(r).sentence)
   })
 })
 
@@ -744,10 +754,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
   const runDecay = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
     const s = parseSentence(src, decayDict)
     let n = 0
-    return executeStep(theContent, decayDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-      firstRecordId,
-      idGen: () => `x${firstRecordId}_${++n}`,
-    })
+    return settleStep(theContent, decayDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
   }
 
   test('a place-contained card decays into the prototype, in the same place', () => {
@@ -756,15 +763,15 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE')
     expect(r.rejected).toBeNull()
     // zero new log surface: the record carries the concrete SPAWN+DESTROY pair (§9.33)
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY'])
-    expect(r.records[0].sentence).toContain('-> SPAWN ASHES INTO #house AS #x1_1 ')
-    expect(r.records[0].sentence).toContain('DESTROY(#chalice)')
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY'])
+    expect(done(r).sentence).toMatch(/-> SPAWN ASHES INTO #house AS #x\d+_1 /)
+    expect(done(r).sentence).toContain('DESTROY(#chalice)')
     const ash = r.state.entities.get(r.state.byName.get('ASHES')![0])!
     expect(ash.kind).toBe('item')
     expect(ash.aspects).toEqual({ spent: 1 })
     expect(ash.attrs['container']).toBe('house') // inherits the dying card's place
-    expect(ash.bornAction).toBe(1)
-    expect(r.state.entities.get('chalice')!.deadAction).toBe(1)
+    expect(ash.bornAction).toBe(done(r)!.id)
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(done(r)!.id)
     expect(r.state.byName.has('CHALICE')).toBe(false)
     // the fold replays the pair exactly
     expect(snap(fold(r.records, seedState(), decayDict, c))).toBe(snap(r.state))
@@ -810,10 +817,9 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     const { state } = setup()
     const before = snap(state)
     const r = runDecay(c, state, '0:20 @ ANA DECAY')
-    expect(r.rejected).toMatch(/unresolvable ref/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
-    expect(snap(r.state)).toBe(before)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/unresolvable ref/)
+    expect(r.state.entities.get('chalice')!.deadAction).toBeNull() // nothing applied
   })
 
   test('the old card soft-destroys: its name is released and reusable (§9.14)', () => {
@@ -824,7 +830,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     expect(r.state.entities.get('chalice')!.deadAction).not.toBeNull()
     expect(r.state.byName.has('CHALICE')).toBe(false)
     const rec = {
-      id: 99, kind: 'action' as const, trigger: null, tGame: '0:20', tReal: null, advancedMin: 0,
+      id: 99, kind: 'complete' as const, trigger: null, tGame: '0:20', tReal: null, startMin: null, window: 'fixture', advancedMin: 0,
       actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
       outcomes: [{ op: 'SPAWN', args: [{ t: 'ref', ref: { form: 'name', kind: 'item', name: 'CHALICE' } }, { t: 'asId', id: 'new_chalice' }] }],
       recipes: [], sentence: '',
@@ -848,10 +854,10 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
     const before = snap(state)
     const c = decayContent('REPLACE OBJECT WITH CHALICE', { CHALICE: { kind: 'item' } })
     const r = runDecay(c, state, '0:20 @ ANA DECAY CHALICE') // CHALICE is still alive at spawn time
-    expect(r.rejected).toMatch(/already in use/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
-    expect(snap(r.state)).toBe(before)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/already in use/)
+    expect(r.state.entities.get('chalice')!.deadAction).toBeNull() // nothing applied
+    expect(state.byName.has('CHALICE')).toBe(true)
   })
 
   test('authored REPLACE round-trips; the paren-less form is the only form', () => {
@@ -891,10 +897,7 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
   const runMoth = (state: State, src: string, firstRecordId: number): ExecResult => {
     const s = parseSentence(src, mothDict)
     let n = 0
-    return executeStep(mothContent(), mothDict, state, { clock: s.clock!, clauses: s.clauses }, {
-      firstRecordId,
-      idGen: () => `x${firstRecordId}_${++n}`,
-    })
+    return settleStep(mothContent(), mothDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
   }
 
   test('a decay chain runs across successive waits, then default-destroys (§9.32)', () => {
@@ -903,9 +906,11 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
     let id = 1
     let eId: string | undefined
     let cId: string | undefined
+    const allRecords: ActionRecord[] = []
     for (const step of ['0:30 @ ANA WAIT', '0:32 @ ANA WAIT', '0:34 @ ANA WAIT']) {
       const r = runMoth(state, step, id)
       expect(r.rejected).toBeNull()
+      allRecords.push(...r.records)
       triggers.push(...r.records.filter(x => x.kind === 'event').map(x => x.trigger))
       state = r.state
       eId = eId ?? state.byName.get('INFLUENCE_MOTH_E')?.[0]
@@ -914,12 +919,16 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
     }
     // G decayed into E, E into C, then C expired with no trigger → built-in destroy
     expect(triggers).toEqual(['decay_moth_g', 'decay_moth_e', 'expire:INFLUENCE_MOTH_C'])
-    expect(state.entities.get('moth_g')!.deadAction).toBe(2)
+    // v0.5: every stamp lands on the completion row that did the work —
+    // derive the ids from the log instead of hardcoding them
+    const stamp = (trigger: string): number =>
+      allRecords.filter(x => x.kind === 'event' && x.trigger === trigger)[0]!.id
+    expect(state.entities.get('moth_g')!.deadAction).toBe(stamp('decay_moth_g'))
     const e = state.entities.get(eId!)!
     expect(e.aspects).toEqual({ influence: 2 })        // plain prototype mint (no derive)
     expect(e.attrs['container']).toBe('house')         // inherited container
-    expect(e.deadAction).toBe(4)
-    expect(state.entities.get(cId!)!.deadAction).toBe(6)
+    expect(e.deadAction).toBe(stamp('decay_moth_e'))
+    expect(state.entities.get(cId!)!.deadAction).toBe(stamp('expire:INFLUENCE_MOTH_C'))
     expect(state.byName.has('INFLUENCE_MOTH_G')).toBe(false)
     expect(state.byName.has('INFLUENCE_MOTH_E')).toBe(false)
     expect(state.byName.has('INFLUENCE_MOTH_C')).toBe(false) // destroyed: name released, no successor
@@ -938,11 +947,10 @@ describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
     state.entities.get('chalice')!.attrs['expiresAt'] = 16 * 60 // same crossing as dusk (slot 32)
     const r = runWith(c, state, '0:28 @ ANA WAIT; ANA WAIT; ANA WAIT')
     expect(r.rejected).toBeNull()
-    expect(r.records.map(x => x.kind)).toEqual(['action', 'event', 'event'])
-    expect(r.records[1].trigger).toBe('dusk_falls')     // authored time trigger first
-    expect(r.records[2].trigger).toBe('decay_chalice')  // …then the expiry
-    expect(r.records[2].sentence).toContain('EVENT decay_chalice')
-    expect(r.state.entities.get('chalice')!.deadAction).toBe(3)
+    const events = r.records.filter(x => x.kind === 'event')
+    expect(events.map(x => x.trigger)).toEqual(['dusk_falls', 'decay_chalice']) // triggers first
+    expect(events[1]!.sentence).toContain('EVENT decay_chalice')
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(events[1]!.id)
     expect(r.state.entities.get(r.state.byName.get('RUSTY_CHALICE')![0])!.attrs['container']).toBe('house')
     expect(r.state.byName.has('DREAD')).toBe(true)
   })
@@ -1017,10 +1025,7 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
   const runTune = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
     const s = parseSentence(src, tuneDict)
     let n = 0
-    return executeStep(theContent, tuneDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-      firstRecordId,
-      idGen: () => `x${firstRecordId}_${++n}`,
-    })
+    return settleStep(theContent, tuneDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
   }
   const at = (minutes: number): number => 20 * 30 + minutes // 0:20 = absolute minute 600
 
@@ -1031,7 +1036,7 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
       expect(r.rejected).toBeNull()
       expect(r.state.entities.get('chalice')!.attrs['expiresAt']).toBe(at(minutes))
       // the log keeps the authored quoted string and round-trips (§9.15)
-      expect(r.records[0].sentence).toContain(`-> SET(CHALICE, expires, ${lit})`)
+      expect(done(r).sentence).toContain(`-> SET(CHALICE, expires, ${lit})`)
     }
   })
 
@@ -1041,7 +1046,7 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
     expect(r.rejected).toBeNull()
     expect(r.state.entities.get('chalice')!.attrs['expiresAt']).toBe(at(60))
     // the log stores the pre-converted minutes; canonical output prefers the shorter unit (§5.1)
-    expect(r.records[0].sentence).toContain('-> SET(CHALICE, expires, 1h)')
+    expect(done(r).sentence).toContain('-> SET(CHALICE, expires, 1h)')
     // quoted and bare materialize the same engine fact — identical expiresAt.
     // The authored `expires` attr itself keeps its authored form (§4.2: the
     // engine materializes expiresAt *from* it): minutes for bare, the string
@@ -1054,14 +1059,12 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
     expect(r.state.entities.get('chalice')!.attrs['expires']).toBe(60)
   })
 
-  test('a bad unit rejects the whole step — nothing logged (§9.19)', () => {
+  test('a bad unit refuses the window — nothing logged as state (§9.19 completion analog)', () => {
     const { state } = setup()
-    const before = snap(state)
     const r = runTune(tuneContent('SET(CHALICE, expires, "2fortnights")'), state, '0:20 @ ANA TUNE')
-    expect(r.rejected).toMatch(/bad duration '2fortnights'/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
-    expect(snap(r.state)).toBe(before)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/bad duration '2fortnights'/)
+    expect(state.entities.get('chalice')!.attrs['expiresAt']).toBeUndefined()
   })
 
   test('end-to-end: a quoted expiry fires its authored `on expire` trigger at the next crossing (§9.32)', () => {
@@ -1084,13 +1087,13 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
     const { state } = setup()
     const r1 = runTune(c, state, '0:28 @ ANA TUNE') // expiresAt = 28*30 + 60 = 0:30
     expect(r1.rejected).toBeNull()
-    expect(r1.records).toHaveLength(1) // set this pass: resolves at the NEXT advance (§6.6 snapshot)
-    const r2 = runWith(c, r1.state, '0:30 @ ANA WAIT', 2) // crosses slot 31 (0:31)
+    expect(r1.records.every(x => x.kind !== 'event')).toBe(true) // set this pass: resolves at the NEXT advance (§6.6 snapshot)
+    const r2 = runWith(c, r1.state, '0:30 @ ANA WAIT', 1 + r1.records.length) // crosses slot 31 (0:31)
     expect(r2.rejected).toBeNull()
-    expect(r2.records.map(x => x.kind)).toEqual(['action', 'event'])
-    expect(r2.records[1].trigger).toBe('melt_chalice')
-    expect(r2.records[1].sentence).toContain('EVENT melt_chalice')
-    expect(r2.state.entities.get('chalice')!.deadAction).toBe(3)
+    const event = r2.records.find(x => x.kind === 'event')!
+    expect(event.trigger).toBe('melt_chalice')
+    expect(event.sentence).toContain('EVENT melt_chalice')
+    expect(r2.state.entities.get('chalice')!.deadAction).toBe(event.id)
     expect(r2.state.entities.get(r2.state.byName.get('RUSTY_CHALICE')![0])!.attrs['container']).toBe('house')
     // play and fold agree through the quoted path too (§9.34)
     expect(snap(fold([...r1.records, ...r2.records], seedState(), tuneDict, c))).toBe(snap(r2.state))
@@ -1138,21 +1141,18 @@ describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
   const runVerb = (theContent: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult => {
     const s = parseSentence(src, verbDict)
     let n = 0
-    return executeStep(theContent, verbDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-      firstRecordId,
-      idGen: () => `x${firstRecordId}_${++n}`,
-    })
+    return settleStep(theContent, verbDict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
   }
 
   test('a canonical STUDY sentence parses, selects, and executes (§6.4)', () => {
     const r = runVerb(verbsContent, world(), '0:14 @ ANA STUDY THE_MANIFEST')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].recipes).toEqual(['study.secret'])
-    expect(r.records[0].advancedMin).toBe(60)
+    expect(act(r).recipes).toEqual(['study.secret'])
+    expect(act(r).advancedMin).toBe(60)
     const minted = r.state.byName.get('CLUE_THE_MANIFEST')![0]
     expect(r.state.entities.get(minted)!.aspects['secret']).toBe(2) // 4 − 2 (§9.23)
     // the recorded sentence round-trips
-    expect(formatSentence(parseSentence(r.records[0].sentence, verbDict), verbDict)).toBe(r.records[0].sentence)
+    expect(formatSentence(parseSentence(done(r).sentence, verbDict), verbDict)).toBe(done(r).sentence)
   })
 
   test('the mirrored grammar bites: MANSUS takes a place, not a text', () => {
@@ -1161,8 +1161,8 @@ describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
     expect(r.records).toHaveLength(0)
     const r2 = runVerb(verbsContent, world(), '0:14 @ ANA MANSUS HOUSE')
     expect(r2.rejected).toBeNull()
-    expect(r2.records[0].recipes).toEqual(['mansus.default'])
-    expect(r2.records[0].sentence).toContain('ANA MANSUS HOUSE')
+    expect(act(r2).recipes).toEqual(['mansus.default'])
+    expect(act(r2).sentence).toContain('ANA MANSUS HOUSE')
   })
 
   test('untemplated content renders acceptably: recipe NARRATEs speak, no template line (§5.3)', () => {
@@ -1181,7 +1181,8 @@ describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
     }, verbDict)
     const r = runVerb(bare, world(), '0:14 @ ANA MANSUS HOUSE')
     expect(r.rejected).toBeNull()
-    expect(prose(r.records[0], bare, verbDict)).toBe('ANA walk the Mansus to HOUSE.')
+    // v0.5: the NARRATE speaks at the completion, so the prose renders from there
+    expect(prose(done(r), bare, verbDict)).toBe('ANA walk the Mansus to HOUSE.')
   })
 
   test('the seed verbs pin the mirror in code: STUDY ≡ READ, MANSUS ≡ EXPLORE (§4.3)', () => {

@@ -22,6 +22,7 @@ import { seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { cloneState, type State } from '../src/types.js'
 import { snap } from './snap.js'
+import { settleStep, act, done, refusal } from './settle.js'
 
 const dict = seedDictionary()
 // the rig's second verb lexeme (verbs are code-registered, §10) — an
@@ -31,10 +32,7 @@ dict.registerVerb('SEEK')
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, dict)
   let n = 0
-  return executeStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`,
-  })
+  return settleStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
 }
 
 /** the drawn names of a record, in order (the DRAWN row's second arg) */
@@ -251,7 +249,7 @@ describe('the DRAW op (§9.42): INTO placement and the SPAWN defaults', () => {
     expect(snap(fold(r.records, cloneState(c.state), dict, c.content))).toBe(snap(r.state))
   })
 
-  test('an INTO that cannot resolve rejects the step (§9.19: nothing logged, cursor unmoved)', () => {
+  test('an INTO that cannot resolve refuses the window (§9.19 completion analog: cursor unmoved)', () => {
     const c = compile(rig({ decks: PLAN_DECK, verbs: `  WAIT:
     actors: 1 kind:character
     duration: 0m
@@ -260,11 +258,10 @@ describe('the DRAW op (§9.42): INTO placement and the SPAWN defaults', () => {
     const state = c.state
     const before = snap(state)
     const r = run(c.content, state, '0:0 @ ANA WAIT') // no object bound
-    expect(r.rejected).toMatch(/INTO target of 'RUMOURS' cannot resolve/)
-    expect(r.records).toHaveLength(0)
-    expect(state.decks.get('RUMOURS')).toBeUndefined() // the draft died with the rejection
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/INTO target of 'RUMOURS' cannot resolve/)
+    expect(state.decks.get('RUMOURS')).toBeUndefined() // the scratch died with the refusal
     expect(snap(state)).toBe(before)
-    expect(fold([], cloneState(state), dict, c.content).decks.size).toBe(0)
   })
 })
 
@@ -275,7 +272,7 @@ describe('DRAWN+SPAWN concretization (§9.42): two rows, round-trip, guards', ()
     const c = compile(rig({ decks: PLAN_DECK }))
     const r = run(c.content, c.state, '0:0 @ ANA WAIT')
     expect(r.rejected).toBeNull()
-    const rec = r.records[0]!
+    const rec = done(r)!
     expect(rec.outcomes.map(o => o.op)).toEqual(['DRAWN', 'SPAWN'])
     const drawn = rec.outcomes[0]!
     expect(drawn.args.map(a => a.t)).toEqual(['ref', 'ref'])
@@ -300,7 +297,7 @@ describe('DRAWN+SPAWN concretization (§9.42): two rows, round-trip, guards', ()
     }))
     const r = run(c.content, c.state, '0:0 @ ANA WAIT')
     expect(r.rejected).toBeNull()
-    const sentence = r.records[0]!.sentence
+    const sentence = done(r)!.sentence
     expect(sentence).toContain('DRAWN(PAIR, "X-Y")')
     expect(formatSentence(parseSentence(sentence, dict), dict)).toBe(sentence)
     // and the DRAWN assertion reads the same name back at fold
@@ -408,9 +405,9 @@ describe('exhaustion (§9.42): reset wraps, defaultcard forever, neither rejects
     expect(state.decks.get('SINGLES')).toBe(2)
     const before = snap(state)
     const r = run(c.content, state, '0:0 @ ANA WAIT', id)
-    expect(r.rejected).toMatch(/deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'/)
-    expect(r.records).toHaveLength(0)
-    expect(state.decks.get('SINGLES')).toBe(2) // cursor unmoved (§9.19)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'/)
+    expect(state.decks.get('SINGLES')).toBe(2) // cursor unmoved (§9.19 analog)
     expect(snap(state)).toBe(before)
     expect(fold([], cloneState(state), dict, c.content).decks.get('SINGLES')).toBe(2)
   })
@@ -421,7 +418,10 @@ describe('exhaustion (§9.42): reset wraps, defaultcard forever, neither rejects
 describe('cursor reconstruction (law 1): fold === play, decks included', () => {
   test('play several draws -> JSONL -> fold(loadLog) === played state (snap incl. decks)', () => {
     const game = Game.fromScript(rig({ decks: PLAN_DECK }), dict)
-    for (const _ of [0, 1, 2]) expect(game.handleLine('wait').kind).toBe('action')
+    for (const _ of [0, 1, 2]) {
+      expect(game.handleLine('wait').kind).toBe('action')
+      game.wait() // v0.5: the draw lands when the window completes
+    }
     expect(game.state.decks.get('RUMOURS')).toBe(3)
     const dir = mkdtempSync(join(tmpdir(), 'chorus-decks-'))
     const path = join(dir, 'log.jsonl')
@@ -448,15 +448,15 @@ describe('cursor reconstruction (law 1): fold === play, decks included', () => {
     const before = snap(state)
     const r = run(c.content, state, '0:0 @ ANA WAIT')
     expect(r.rejected).toBeNull()
-    expect(r.records[0]!.outcomes.map(o => o.op)).toEqual(['NARRATE']) // the taken branch only
+    expect(done(r)!.outcomes.map(o => o.op)).toEqual(['NARRATE']) // the taken branch only
     expect(state.decks.size).toBe(0)
     expect(snap(state)).toBe(before)
   })
 
-  test('a failure AFTER a successful DRAW rejects the whole step — draw and cursor discarded (§9.19)', () => {
-    // the cursor advance happened on the draft inside DRAW; the later
-    // outcome's throw discards the DRAFT, so neither the mint nor the cursor
-    // survives — play and fold agree on the empty decks map
+  test('a failure AFTER a successful DRAW refuses the window — draw and cursor discarded (§9.19 analog)', () => {
+    // the cursor advance happened on the completion scratch inside DRAW; the
+    // later outcome's throw refuses the WINDOW, so neither the mint nor the
+    // cursor survives — play and fold agree on the empty decks map
     const c = compile(rig({
       decks: PLAN_DECK,
       verbs: `  WAIT:
@@ -468,27 +468,32 @@ describe('cursor reconstruction (law 1): fold === play, decks included', () => {
     const state = c.state
     const before = snap(state)
     const r = run(c.content, state, '0:0 @ ANA WAIT')
-    expect(r.rejected).toMatch(/MOVE: unresolvable destination/)
-    expect(r.records).toHaveLength(0)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/MOVE: unresolvable destination/)
     expect(state.decks.size).toBe(0)
     expect(snap(state)).toBe(before)
-    expect(fold([], cloneState(state), dict, c.content).decks.size).toBe(0)
+    expect(fold(r.records, cloneState(state), dict, c.content).decks.size).toBe(0)
   })
 
   test('undo past a draw rebuilds the cursor from the fold', () => {
     const game = Game.fromScript(rig({ decks: PLAN_DECK }), dict)
     game.handleLine('wait')
+    game.wait()
     game.handleLine('wait')
+    game.wait()
     expect(game.state.decks.get('RUMOURS')).toBe(2)
-    const beforeUndo = game.log.records[1]!.sentence // draw #2 (seed 0: HEARSAY)
+    const beforeUndo = game.log.records.filter(r => r.sentence.includes('DRAWN')).at(-1)!.sentence // draw #2 (seed 0: HEARSAY)
+    // drop the second draw turn (its settle + its begin) — no stale window
+    game.undo()
     game.undo()
     expect(game.state.decks.get('RUMOURS')).toBe(1) // folded, not remembered
     expect(game.journal().join('\n').match(/DRAWN/g)).toHaveLength(1)
     // drawing again replays the SAME card: the cursor was folded back to 1,
     // so draw #2 serves the identical permutation entry, byte for byte
     game.handleLine('wait')
+    game.wait()
     expect(game.state.decks.get('RUMOURS')).toBe(2)
-    expect(game.log.records[1]!.sentence).toBe(beforeUndo)
+    expect(game.log.records.filter(r => r.sentence.includes('DRAWN')).at(-1)!.sentence).toBe(beforeUndo)
   })
 
   test('two identical compiles agree play-to-fold even mid-deck (control for the drift tests)', () => {
@@ -504,12 +509,18 @@ describe('cursor reconstruction (law 1): fold === play, decks included', () => {
     // wrapped: the PLAN deck resets — 9 draws land the cursor at 9 (two full
     // periods of 4 plus one), so the fold must rebuild a past-the-period cursor
     const wrapped = Game.fromScript(rig({ decks: PLAN_DECK }), dict)
-    for (let i = 0; i < 9; i++) expect(wrapped.handleLine('wait').kind).toBe('action')
+    for (let i = 0; i < 9; i++) {
+      expect(wrapped.handleLine('wait').kind).toBe('action')
+      wrapped.wait()
+    }
     expect(wrapped.state.decks.get('RUMOURS')).toBe(9)
     // exhausted+defaultcard: a period-3 deck with no reset — 5 draws land 2
     // past the end, both served by the defaultcard
     const defaulted = Game.fromScript(rig({ decks: 'GOSSIP spec RUMOUR, HEARSAY, SCANDAL defaultcard HEARSAY', drawDeck: 'GOSSIP' }), dict)
-    for (let i = 0; i < 5; i++) expect(defaulted.handleLine('wait').kind).toBe('action')
+    for (let i = 0; i < 5; i++) {
+      expect(defaulted.handleLine('wait').kind).toBe('action')
+      defaulted.wait()
+    }
     expect(defaulted.state.decks.get('GOSSIP')).toBe(5)
     for (const game of [wrapped, defaulted]) {
       const dir = mkdtempSync(join(tmpdir(), 'chorus-decks-'))
@@ -557,8 +568,8 @@ describe('decks compose with stackable pools (§9.38); the livelock rule (§9.42
     const before = snap(state)
     for (let i = 0; i < 3; i++) {
       const r = run(c.content, state, '0:0 @ ANA WAIT', 2)
-      expect(r.rejected).toBe('SPAWN: name \'WHISPER\' already in use') // the documented stuck-state message
-      expect(r.records).toHaveLength(0)
+      expect(r.rejected).toBeNull()
+      expect(refusal(r)).toBe("SPAWN: name 'WHISPER' already in use") // the documented stuck-state message
       expect(state.decks.get('PAIR')).toBe(1) // stuck forever
       expect(snap(state)).toBe(before)
     }
@@ -640,7 +651,7 @@ describe('DRAW inside function bodies (§9.40 x §9.42)', () => {
     expect(r.rejected).toBeNull()
     const rumour = [...r.state.entities.values()].find(e => e.name === 'RUMOUR')!
     expect(rumour.attrs['container']).toBe('s_kitchen')
-    expect(r.records[0]!.outcomes.map(o => o.op)).toEqual(['DRAWN', 'SPAWN'])
+    expect(done(r)!.outcomes.map(o => o.op)).toEqual(['DRAWN', 'SPAWN'])
   })
 
   test('the same function from a trigger (explicit INTO) lands and replays', () => {
@@ -801,8 +812,8 @@ describe('content drift (§9.42): the DRAWN assertion fires instead of silent di
     const before = snap(state)
     const r = run(c.content, state, '0:0 @ ANA WAIT')
     expect(r.rejected).toBeNull()
-    expect(r.records[0]!.outcomes.map(o => o.op)).toEqual(['DRAWN', 'SPAWN', 'REFUSE'])
-    expect(r.records[0]!.advancedMin).toBe(0)
+    expect(done(r)!.outcomes.map(o => o.op)).toEqual(['DRAWN', 'SPAWN', 'REFUSE'])
+    expect(act(r)!.advancedMin).toBe(0)
     expect(r.state).toBe(state) // draft discarded
     expect(state.decks.get('RUMOURS')).toBeUndefined()
     expect(snap(state)).toBe(before)

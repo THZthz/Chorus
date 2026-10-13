@@ -17,6 +17,7 @@ import { seedDictionary } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { addEntity, cloneState, newState, type State } from '../src/types.js'
 import { snap } from './snap.js'
+import { settleStep, act , done, refusal } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,16 +28,17 @@ dict.registerVerb('STEW') // the rig's own verb lexeme (verbs are code-registere
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, dict)
   let n = 0
-  return executeStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`,
-  })
+  return settleStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
 }
 
-const said = (rec: ActionRecord): string[] =>
-  rec.outcomes.filter(o => o.op === 'NARRATE').map(o => {
-    const a = o.args[0]
-    return a && a.t === 'str' ? a.v : '(not a string)'
+// v0.5: NARRATE defers to the completion — gather across the COMPLETE rows
+const said = (r: ExecResult): string[] =>
+  r.records.filter(x => x.kind === 'complete').flatMap((x) => {
+    const rec: ActionRecord = x
+    return rec.outcomes.filter(o => o.op === 'NARRATE').map((o) => {
+      const a = o.args[0]
+      return a && a.t === 'str' ? a.v : '(not a string)'
+    })
   })
 
 // ---------- rig: the plan's flagship pair, verbatim grammar ----------
@@ -98,7 +100,7 @@ describe('expansion equivalence: call site === hand-expanded twin (§9.40)', () 
     expect(JSON.stringify(ra.records)).toBe(JSON.stringify(rb.records))
     // and the substitution really did land: the interpolated spelling, the
     // spawned pool, and the taken watch arm are all there
-    expect(said(ra.records[0])).toEqual(["The conductor's eyes linger on THE_GUARD.", 'not yet.'])
+    expect(said(ra)).toEqual(["The conductor's eyes linger on THE_GUARD.", 'not yet.'])
     expect(ra.state.byName.get('SUSPICION')).toHaveLength(1)
     expect(snap(fold(ra.records, cloneState(call.state), dict, call.content))).toBe(snap(ra.state))
   })
@@ -161,7 +163,7 @@ describe('functions: call-site dispatch and arity (§9.40)', () => {
     }, dict)
     const r = run(c, world(), '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['x is THE_GUARD.'])
+    expect(said(r)).toEqual(['x is THE_GUARD.'])
   })
 })
 
@@ -182,7 +184,7 @@ describe('parameter substitution: AST positions and string interpolation (§9.40
     const c = rig([{ name: 'mint', params: ['card'], body: 'SPAWN card' }], 'mint(SUSPICION)')
     const r = run(c, world(), '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    const spawn = r.records[0]!.outcomes[0]!
+    const spawn = done(r)!.outcomes[0]!
     expect(spawn.op).toBe('SPAWN')
     expect(spawn.args[0]).toMatchObject({ t: 'ref', ref: { name: 'SUSPICION', kind: 'state' } })
     expect(r.state.byName.get('SUSPICION')).toHaveLength(1)
@@ -199,7 +201,7 @@ describe('parameter substitution: AST positions and string interpolation (§9.40
     const r = run(c, world(), '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
     // secret starts at 1: +2 → 3, then −4 → −1; the log carries computed absolutes (§9.31)
-    expect(r.records[0]!.outcomes.map(o => o.args[2])).toEqual([{ t: 'int', v: 3 }, { t: 'int', v: -1 }])
+    expect(done(r)!.outcomes.map(o => o.args[2])).toEqual([{ t: 'int', v: 3 }, { t: 'int', v: -1 }])
     expect(r.state.entities.get('s_tome')!.aspects['secret']).toBe(-1)
   })
 
@@ -210,14 +212,14 @@ describe('parameter substitution: AST positions and string interpolation (§9.40
     )
     const r = run(c, world(), '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['halt!', 'so does THE_GUARD.'])
+    expect(said(r)).toEqual(['halt!', 'so does THE_GUARD.'])
   })
 
   test('reserved tokens pass through; an undeclared {token} is a load error (pinned decision)', () => {
     // {actors} is §5.3 prose, never a parameter — it survives expansion
     const ok = rig([{ name: 'witness', params: ['who'], body: 'NARRATE "{actors} saw {who}."' }], 'witness(THE_GUARD)')
     const r = run(ok, world(), '0:0 @ ANA STEW')
-    expect(said(r.records[0])).toEqual(['{actors} saw THE_GUARD.'])
+    expect(said(r)).toEqual(['{actors} saw THE_GUARD.'])
     // a typo’d parameter would silently bake into every call’s journal prose —
     // this compiler has no warning channel, so undeclared interpolation is a
     // load error naming the token, the function, and the reserved set
@@ -244,20 +246,20 @@ describe('parameter substitution: AST positions and string interpolation (§9.40
     addSuspicion(s, 2) // 2 >= 3 is false → the ELSE arm runs
     const r = run(c, s, '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['not yet.'])
+    expect(said(r)).toEqual(['not yet.'])
     expect(r.state.ended).toBeNull()
     addSuspicion(r.state, 1) // now 3 >= 3: the same compiled content arrests
     const r2 = run(c, r.state, '0:1 @ ANA STEW', 10)
     expect(r2.state.ended).toEqual({ id: 'ARRESTED', title: 'Taken by the constabulary', flavour: 'melancholy' })
   })
 
-  test('a kind mismatch the AST can represent is a runtime step rejection, like any kind error', () => {
+  test('a kind mismatch the AST can represent refuses the window at runtime, like any kind error', () => {
     // DESTROY of a value literal would iterate nothing (iteration-style op);
-    // SPAWN actually needs its name ref, so the mismatch rejects the step
+    // SPAWN actually needs its name ref, so the mismatch refuses the window
     const c = rig([{ name: 'mint', params: ['card'], body: 'SPAWN card' }], 'mint(7)')
     const r = run(c, world(), '0:0 @ ANA STEW')
-    expect(r.rejected).toMatch(/SPAWN needs a name ref/)
-    expect(r.records).toHaveLength(0)
+    expect(r.rejected).toBeNull()
+    expect(refusal(r)).toMatch(/SPAWN needs a name ref/)
   })
 })
 
@@ -282,7 +284,7 @@ describe('nesting, recursion cycles, and the depth cap (§9.40)', () => {
     }, dict)
     const r = run(c, world(), '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['inner THE_GUARD.'])
+    expect(said(r)).toEqual(['inner THE_GUARD.'])
     expect(r.state.byName.get('SUSPICION')).toHaveLength(1)
   })
 
@@ -302,7 +304,7 @@ describe('nesting, recursion cycles, and the depth cap (§9.40)', () => {
     const verb = rigVerb(['f1()'])
     const eight = compileContent({ verbs: verb, functions: chain(8) }, dict)
     const r = run(eight, world(), '0:0 @ ANA STEW')
-    expect(said(r.records[0])).toEqual(['bottom.'])
+    expect(said(r)).toEqual(['bottom.'])
     expect(() => compileContent({ verbs: verb, functions: chain(9) }, dict))
       .toThrow(/function 'f1' sits 9 calls deep — the nesting cap is 8/)
   })
@@ -363,10 +365,11 @@ verbs:
 `, dict)
     const r = run(c.content, c.state, '0:0 @ ANA STEW') // the 1h duration crosses hour 1 (slot 2)
     expect(r.rejected).toBeNull()
-    const event = r.records[1]!
-    expect(event.kind).toBe('event')
+    const event = r.records.find(x => x.kind === 'event')!
     expect(event.trigger).toBe('patrol')
-    expect(said(event)).toEqual(["The conductor's eyes linger on THE_GUARD."])
+    // the trigger's narration reads straight off the EVENT row's outcomes
+    const a = event.outcomes.find(o => o.op === 'NARRATE')!.args[0]!
+    expect(a.t === 'str' ? a.v : '').toBe("The conductor's eyes linger on THE_GUARD.")
     expect(r.state.byName.get('SUSPICION')).toHaveLength(1)
     expect(snap(fold(r.records, cloneState(c.state), dict, c.content))).toBe(snap(r.state))
   })
@@ -414,7 +417,7 @@ verbs:
     const c = compileContent({ verbs: rigVerb(['tick()']), functions: [fn] }, dict)
     const r = run(c, world(), '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    expect(r.records[0]!.outcomes[0]).toMatchObject({ op: 'PROGRESS', args: [{ t: 'dur', v: 30 }, { t: 'str', v: 'tick' }] })
+    expect(act(r)!.outcomes[0]).toMatchObject({ op: 'PROGRESS', args: [{ t: 'dur', v: 30 }, { t: 'str', v: 'tick' }] })
   })
 
   test('an undeclared ENDING id inside a body is a load error through the expansion', () => {
@@ -468,7 +471,7 @@ describe('IF inside a function body: both arms survive substitution, ENDING incl
     for (let i = 0; i < 3; i++) {
       const r = run(content, cur, '0:0 @ ANA STEW', id)
       expect(r.rejected).toBeNull()
-      told.push(said(r.records[0]))
+      told.push(said(r))
       all.push(...r.records)
       id += r.records.length
       cur = r.state

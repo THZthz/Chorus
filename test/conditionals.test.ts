@@ -19,6 +19,7 @@ import { seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { addEntity, cloneState, newState, type State } from '../src/types.js'
 import { snap } from './snap.js'
+import { settleStep, act, done, refusal } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,10 +33,7 @@ dict.registerVerb('STEW')
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, dict)
   let n = 0
-  return executeStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`,
-  })
+  return settleStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
 }
 
 const narrated = (outcomes: Outcome[]): string[] =>
@@ -43,7 +41,9 @@ const narrated = (outcomes: Outcome[]): string[] =>
     const a = o.args[0]
     return a && a.t === 'str' ? a.v : '(not a string)'
   })
-const said = (rec: ActionRecord): string[] => narrated(rec.outcomes)
+// v0.5: NARRATE defers to the completion — gather across the COMPLETE rows
+const said = (r: ExecResult): string[] =>
+  r.records.filter(x => x.kind === 'complete').flatMap(x => narrated(x.outcomes))
 
 /** a one-verb rig: INSPECT takes actors 1..2 and an optional object */
 function inspectContent(out: string[], extra: Partial<ContentRaw> = {}): CompiledContent {
@@ -173,7 +173,7 @@ describe('branch selection against the draft (§9.39)', () => {
     ])
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['first'])
+    expect(said(r)).toEqual(['first'])
   })
 
   test('an ELSE IF chain picks the first true arm, skipping false ones', () => {
@@ -182,14 +182,14 @@ describe('branch selection against the draft (§9.39)', () => {
     ])
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['two'])
+    expect(said(r)).toEqual(['two'])
   })
 
   test('all false with an ELSE takes the else branch', () => {
     const c = inspectContent([`IF exists(NOSUCH_CARD) -> (NARRATE "a") ELSE -> (NARRATE "b")`])
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['b'])
+    expect(said(r)).toEqual(['b'])
   })
 
   test('all false without an ELSE applies nothing — no error, step completes', () => {
@@ -198,8 +198,8 @@ describe('branch selection against the draft (§9.39)', () => {
     ])
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['NARRATE', 'NARRATE'])
-    expect(said(r.records[0])).toEqual(['before', 'after'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['NARRATE', 'NARRATE'])
+    expect(said(r)).toEqual(['before', 'after'])
   })
 
   test('draft visibility: SET(OBJECT, aspect:level, +2) then IF reads the NEW level, not the input state', () => {
@@ -209,9 +209,9 @@ describe('branch selection against the draft (§9.39)', () => {
     ])
     const r = run(c, seedState(), '0:0 @ ANA ATTUNE CHALICE') // CHALICE carries no level aspect
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['then — the draft'])
+    expect(said(r)).toEqual(['then — the draft'])
     // the delta logged its concrete absolute (§9.31), taken branch only
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SET', 'NARRATE'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SET', 'NARRATE'])
     expect(r.state.entities.get('chalice')!.aspects['level']).toBe(2)
   })
 
@@ -222,7 +222,7 @@ describe('branch selection against the draft (§9.39)', () => {
     )
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['heard'])
+    expect(said(r)).toEqual(['heard'])
   })
 
   test('draft visibility crosses the branch boundary: a branch spawn is visible to the NEXT IF', () => {
@@ -232,8 +232,8 @@ describe('branch selection against the draft (§9.39)', () => {
     )
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'NARRATE']) // taken branch flattened in position
-    expect(said(r.records[0])).toEqual(['saw it'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SPAWN', 'NARRATE']) // taken branch flattened in position
+    expect(said(r)).toEqual(['saw it'])
   })
 
   test('an IF after a REPLACE reads the successor the SPAWN+DESTROY expansion minted', () => {
@@ -244,8 +244,8 @@ describe('branch selection against the draft (§9.39)', () => {
     const r = run(c, seedState(), '0:0 @ ANA INSPECT RITE_OF_ASCENSION')
     expect(r.rejected).toBeNull()
     // the expansion's concrete SPAWN+DESTROY pair, then the taken branch — in position
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY', 'NARRATE'])
-    expect(said(r.records[0])).toEqual(['successor here'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SPAWN', 'DESTROY', 'NARRATE'])
+    expect(said(r)).toEqual(['successor here'])
     expect(snap(fold(r.records, cloneState(seedState()), dict, c))).toBe(snap(r.state))
   })
 
@@ -272,7 +272,7 @@ describe('branch selection against the draft (§9.39)', () => {
     }, dict)
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE; ANA ATTUNE RITE_OF_ASCENSION')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['clause one', 'clause two else'])
+    expect(said(r)).toEqual(['clause one', 'clause two else'])
     expect(snap(fold(r.records, cloneState(seedState()), dict, c))).toBe(snap(r.state))
   })
 
@@ -285,7 +285,7 @@ describe('branch selection against the draft (§9.39)', () => {
     // so the condition reads a dead-stamped entity: false, silently (§9.39)
     const r = run(c, seedState(), '0:0 @ ANA ATTUNE RITE_OF_ASCENSION')
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['gone'])
+    expect(said(r)).toEqual(['gone'])
   })
 })
 
@@ -300,18 +300,20 @@ describe('concretization — the record never contains an IF op (§9.39)', () =>
   test('the taken branch flattens in position; the untaken branch is gone', () => {
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['NARRATE', 'PROGRESS', 'SPAWN', 'NARRATE'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['NARRATE', 'PROGRESS', 'SPAWN', 'NARRATE'])
     const all = JSON.stringify(r.records)
     expect(all).not.toContain('"IF"')
     expect(all).not.toContain('ELSE')
     expect(all).not.toContain('untaken')
-    expect(r.records[0].sentence).toContain('PROGRESS(1halfhour, "tick")') // canonical duration form
-    expect(r.records[0].sentence).not.toContain('IF ')
+    // v0.5: a branch-nested PROGRESS defers with the branch — the completion
+    // row carries the flattened, taken branch verbatim
+    expect(done(r).sentence).toContain('PROGRESS(1halfhour, "tick")') // canonical duration form
+    expect(done(r).sentence).not.toContain('IF ')
   })
 
   test('the recorded sentence round-trips', () => {
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE')
-    const s = r.records[0].sentence
+    const s = done(r).sentence
     expect(formatSentence(parseSentence(s, dict), dict)).toBe(s)
   })
 
@@ -321,7 +323,7 @@ describe('concretization — the record never contains an IF op (§9.39)', () =>
     const quiet = inspectContent([`IF exists(NOSUCH_CARD) -> (NARRATE "no")`])
     const r2 = run(quiet, r1.state, '0:0 @ ANA INSPECT CHALICE', 2) // no ELSE: nothing to replay
     expect(r2.rejected).toBeNull()
-    expect(r2.records[0].outcomes).toHaveLength(0)
+    expect(done(r2).outcomes).toHaveLength(0)
     const dir = mkdtempSync(join(tmpdir(), 'chorus-if-'))
     const path = join(dir, 'log.jsonl')
     try {
@@ -336,38 +338,37 @@ describe('concretization — the record never contains an IF op (§9.39)', () =>
 
 // ---------- REFUSE inside a taken branch (§6.5, §9.39) ----------
 
-describe('REFUSE inside a taken branch refuses the whole step (§6.5)', () => {
+describe('REFUSE inside a taken branch refuses the window (§6.5, v0.5 completion)', () => {
   const c = attuneContent(
     [`IF exists(HOUSE) -> (DESTROY OBJECT, REFUSE("not yet")) ELSE -> (NARRATE "calm")`],
-    60, // a duration the refusal must cancel
+    60, // a duration the refusal cancels — the window opens, then collapses
   )
 
-  test('zero time, attempt logged, state untouched, fold no-op', () => {
+  test('attempt logged at completion, effects discarded, state untouched, fold no-op', () => {
     const state = seedState()
     const before = snap(state)
     const r = run(c, state, '0:0 @ ANA ATTUNE CHALICE')
-    expect(r.rejected).toBeNull()
-    expect(r.records).toHaveLength(1)
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['DESTROY', 'REFUSE'])
-    expect(r.records[0].advancedMin).toBe(0)
-    expect(r.state).toBe(state) // the draft died with the refusal
-    expect(snap(state)).toBe(before)
-    expect(snap(fold(r.records, cloneState(state), dict, c))).toBe(before) // replay is a no-op too
-    expect(said(r.records[0])).toEqual([]) // the untaken else never spoke
+    expect(r.rejected).toBeNull() // v0.5: the commit is clean; the REFUSE decides at completion
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['DESTROY', 'REFUSE'])
+    expect(act(r).advancedMin).toBe(60) // the window DID open…
+    expect(r.state.now).toBe(state.now + 60) // …and the clock crossed it
+    expect(r.state).not.toBe(state)
+    expect(snap(state)).toBe(before) // the scratch died with the refusal
+    expect(snap(fold(r.records, cloneState(state), dict, c))).toBe(snap(r.state)) // replay agrees, effects skipped
+    expect(said(r)).toEqual([]) // the untaken else never spoke
   })
 })
 
 // ---------- asymmetric failure discipline (§9.39) ----------
 
-describe('condition failure rejects the step; the same grammar reads false in when: (§9.39)', () => {
-  test('an IF condition operand with no bound card — step rejected, nothing logged', () => {
+describe('condition failure refuses the window; the same grammar reads false in when: (§9.39)', () => {
+  test('an IF condition operand with no bound card — the window refuses at completion', () => {
     const c = inspectContent([`IF object.aspect.demand >= 1 -> (NARRATE "needs")`])
     const state = seedState()
     const before = snap(state)
     const r = run(c, state, '0:0 @ ANA INSPECT') // no object bound: the operand cannot resolve
-    expect(r.rejected).toMatch(/IF condition: operand 'object\.aspect\.demand' cannot resolve/)
-    expect(r.records).toHaveLength(0)
-    expect(r.state).toBe(state)
+    expect(r.rejected).toBeNull() // v0.5: strict conditions decide at the completion
+    expect(refusal(r)).toMatch(/IF condition: operand 'object\.aspect\.demand' cannot resolve/)
     expect(snap(state)).toBe(before)
   })
 
@@ -389,27 +390,27 @@ describe('condition failure rejects the step; the same grammar reads false in wh
     }, dict)
     const r = run(c, seedState(), '0:0 @ ANA INSPECT')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].recipes).toEqual(['inspect.default']) // false, not a rejection — the asymmetry
+    expect(act(r).recipes).toEqual(['inspect.default']) // false, not a rejection — the asymmetry
   })
 
   test('a missing aspect on a BOUND card still reads false inside an IF (legitimate selection, not failure)', () => {
     const c = inspectContent([`IF object.aspect.demand >= 1 -> (NARRATE "needs") ELSE -> (NARRATE "harmless")`])
     const r = run(c, seedState(), '0:0 @ ANA INSPECT CHALICE') // bound, but no demand aspect
     expect(r.rejected).toBeNull()
-    expect(said(r.records[0])).toEqual(['harmless'])
+    expect(said(r)).toEqual(['harmless'])
   })
 
   test('count/total over an empty role read 0 — branch selection, never a rejection (§9.39 boundary)', () => {
     const count = inspectContent([`IF count(object) >= 1 -> (NARRATE "has") ELSE -> (NARRATE "none")`])
-    expect(said(run(count, seedState(), '0:0 @ ANA INSPECT').records[0]!)).toEqual(['none']) // object slot unbound
+    expect(said(run(count, seedState(), '0:0 @ ANA INSPECT'))).toEqual(['none']) // object slot unbound
     const total = inspectContent([`IF total(object, aspect:demand) >= 1 -> (NARRATE "has") ELSE -> (NARRATE "none")`])
-    expect(said(run(total, seedState(), '0:0 @ ANA INSPECT').records[0]!)).toEqual(['none'])
+    expect(said(run(total, seedState(), '0:0 @ ANA INSPECT'))).toEqual(['none'])
   })
 
   test('the documented guard for an OPTIONAL role: count(object) >= 1 AND object.aspect.x … never rejects', () => {
     const c = inspectContent([`IF count(object) >= 1 AND object.aspect.demand >= 1 -> (NARRATE "demands") ELSE -> (NARRATE "no demand")`])
-    expect(said(run(c, seedState(), '0:0 @ ANA INSPECT').records[0]!)).toEqual(['no demand']) // AND short-circuits before the strict path reads
-    expect(said(run(c, seedState(), '0:0 @ ANA INSPECT RITE_OF_ASCENSION').records[0]!)).toEqual(['demands'])
+    expect(said(run(c, seedState(), '0:0 @ ANA INSPECT'))).toEqual(['no demand']) // AND short-circuits before the strict path reads
+    expect(said(run(c, seedState(), '0:0 @ ANA INSPECT RITE_OF_ASCENSION'))).toEqual(['demands'])
   })
 })
 
@@ -423,14 +424,14 @@ describe('IF conditions in recipes read the step bindings (§9.39)', () => {
   ])
 
   test('count(actors), rel() and exists(<query>) bind against the step and the world', () => {
-    expect(said(run(c, seedState(), '0:0 @ ANA, BERTHA INSPECT').records[0])).toEqual(['kin'])
-    expect(said(run(c, dimWorld(), '0:0 @ ANA INSPECT').records[0])).toEqual(['plain']) // the world form can be false
+    expect(said(run(c, seedState(), '0:0 @ ANA, BERTHA INSPECT'))).toEqual(['kin'])
+    expect(said(run(c, dimWorld(), '0:0 @ ANA INSPECT'))).toEqual(['plain']) // the world form can be false
   })
 
   test('object.aspect.x reads the bound card; the count(DREAD) typo lint covers IF conditions too', () => {
     const d = inspectContent([`IF object.aspect.demand >= 2 -> (NARRATE "demanding") ELSE -> (NARRATE "modest")`])
-    expect(said(run(d, seedState(), '0:0 @ ANA INSPECT RITE_OF_ASCENSION').records[0])).toEqual(['demanding']) // demand:3
-    expect(said(run(d, seedState(), '0:0 @ ANA INSPECT CHALICE').records[0])).toEqual(['modest'])
+    expect(said(run(d, seedState(), '0:0 @ ANA INSPECT RITE_OF_ASCENSION'))).toEqual(['demanding']) // demand:3
+    expect(said(run(d, seedState(), '0:0 @ ANA INSPECT CHALICE'))).toEqual(['modest'])
     expect(() => inspectContent([`IF count(DREAD) >= 3 -> (NARRATE "x")`])).toThrow(/count\(\) argument 'DREAD' is neither a role/)
     expect(() => inspectContent([`IF count(name:DREAD) >= 3 -> (NARRATE "x")`])).not.toThrow()
   })
@@ -511,8 +512,9 @@ describe('slot and expiry triggers evaluate IF against the world (§9.39)', () =
     const state = seedState()
     const r = run(c, state, '0:0 @ ANA WAIT') // 1h crosses slot 2 (1:00)
     expect(r.rejected).toBeNull()
-    expect(r.records.map(x => x.kind)).toEqual(['action', 'event'])
-    const event = r.records[1]
+    // v0.5 order: the WAIT window completes, then the crossed slot's events
+    expect(r.records.map(x => x.kind)).toEqual(['action', 'complete', 'event', 'wait'])
+    const event = r.records.find(x => x.kind === 'event')!
     expect(event.trigger).toBe('patrol')
     expect(event.outcomes.map(o => o.op)).toEqual(['SPAWN']) // the taken branch, no IF op, no else NARRATE
     expect(r.state.byName.has('PARANOIA')).toBe(true)
@@ -581,8 +583,8 @@ verbs:
     for (let i = 0; i < 3; i++) {
       const r = run(content, cur, '0:0 @ ANA STEW', id)
       expect(r.rejected).toBeNull()
-      expect(r.records[0].recipes).toEqual(['stew.default']) // the `when count < 3` recipe keeps firing on input state
-      told.push(said(r.records[0]))
+      expect(act(r).recipes).toEqual(['stew.default']) // the `when count < 3` recipe keeps firing on input state
+      told.push(said(r))
       all.push(...r.records)
       id += r.records.length
       cur = r.state
@@ -608,7 +610,7 @@ verbs:
     addEntity(s, { id: 'w2', kind: 'state', name: 'SUSPICION', aspects: {}, attrs: {}, bornAction: null, deadAction: null, stackable: true })
     const r = run(content, s, '0:0 @ ANA STEW')
     expect(r.rejected).toBeNull()
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['SPAWN', 'ENDING'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['SPAWN', 'ENDING'])
     expect(r.state.ended?.id).toBe('ARRESTED')
   })
 })

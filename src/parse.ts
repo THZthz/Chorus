@@ -149,6 +149,31 @@ class Parser {
       return s
     }
 
+    // COMPLETE rows (v0.5): `1:42 @ COMPLETE READ -> <outcomes>` — the verb
+    // is a RAW name token, never ref(): verb lexemes are reserved and ref()
+    // would throw. The engine writes these; they parse so every concrete row
+    // round-trips (law 2).
+    if (this.atKeyword('COMPLETE')) {
+      this.next()
+      const verbTok = this.next()
+      if (verbTok.t !== 'name') throw new Error('expected a verb name after COMPLETE')
+      const s: Sentence = { kind: 'complete', clock, trigger: verbTok.v, clauses: [], outcomes: [] }
+      if (this.atPunct('->')) { this.next(); s.outcomes = this.outcomeList() }
+      this.expectEnd()
+      return s
+    }
+
+    // WAIT rows (v0.5): `0:42 @ WAIT 1h` — the pure-advance clock row. WAIT
+    // is reserved (a core verb), so this must sit before the action
+    // fallthrough, whose ref() would refuse the token.
+    if (this.atKeyword('WAIT') && this.peek(1)?.t === 'dur') {
+      this.next()
+      const durTok = this.next()
+      if (durTok.t !== 'dur') throw new Error('expected a duration after WAIT')
+      this.expectEnd()
+      return { kind: 'wait', clock, trigger: null, clauses: [], outcomes: [], spanMin: durTok.v }
+    }
+
     const clauses: Clause[] = [this.clause()]
     while (this.atPunct(';')) { this.next(); clauses.push(this.clause()) }
     let outcomes: Outcome[] = []

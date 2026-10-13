@@ -11,6 +11,7 @@ import { journal, flattenAspects, pretty, proseLines, endingNotice } from './ren
 import { matchQuery } from './query.js'
 import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
 import type { Ref } from './ref.js'
+import { clockFromAbsMin, formatClock } from './clock.js'
 import { cloneState, type Entity, type State } from './types.js'
 import { Log } from './store.js'
 import { seedDictionary } from './seed.js'
@@ -37,6 +38,12 @@ export class Game {
     this.state = cloneState(base)
   }
 
+  /** the log length at each turn's start — undo truncates to the previous
+   *  entry. Turn boundaries are bookkeeping, not log archaeology: a turn may
+   *  be [advance…, begin] or a bare advance, and no suffix rule can tell
+   *  them apart once appended (v0.5). */
+  private turnLengths: number[] = []
+
   static fromScript(text: string, dict: Dictionary = seedDictionary()): Game {
     const { content, state, meta } = compileScript(text, dict)
     return new Game(dict, content, meta, state)
@@ -60,6 +67,7 @@ export class Game {
     }
     const result = executeStep(this.content, this.dict, this.state, parsed.step, { firstRecordId: this.log.nextRecordId })
     if (result.rejected) return { kind: 'error', lines: [result.rejected] }
+    this.turnLengths.push(this.log.records.length)
     this.log.appendAll(result.records)
     this.state = result.state
     const lines = result.records.flatMap(r => proseLines(r, this.content, this.dict))
@@ -149,24 +157,53 @@ export class Game {
     return [journal(this.log.records) || '(the journal is empty)']
   }
 
-  /** take back the last action */
+  /** take back the last turn: truncate the log to where it started and
+   *  re-fold (spec §7 — state = fold of the surviving log) */
   undo(): Turn {
-    if (this.log.records.length === 0) return { kind: 'info', lines: ['nothing to undo'] }
-    // drop trailing events, then the last action
-    while (this.log.records.length > 0 && this.log.records[this.log.records.length - 1].kind === 'event') this.log.records.pop()
-    if (this.log.records.length > 0) this.log.records.pop()
+    if (this.turnLengths.length === 0) return { kind: 'info', lines: ['nothing to undo'] }
+    const length = this.turnLengths.pop()!
+    this.log.records.length = length
     this.state = fold(this.log.records, cloneState(this.base), this.dict, this.content)
     return { kind: 'info', lines: ['undone.'] }
   }
 
+  /** the open processing windows, soonest-completing first — the live area's
+   *  "processing:" line (v0.5) */
+  processing(): string[] {
+    return [...this.state.windows.values()]
+      .sort((a, b) => a.end - b.end || a.beginId - b.beginId)
+      .map(w => {
+        const end = clockFromAbsMin(w.end)
+        return `${w.verb.toLowerCase().replace(/_/g, ' ')} — until ${end.day}:${end.halfhour}`
+      })
+  }
+
+  /** let time pass: advance to the earliest window's end, or one hour when
+   *  nothing is in flight (the `wait` button; typing `1:12` does the same).
+   *  The clock input is halfhour-quantized, so round the target UP — the
+   *  advance then resolves everything due at or before it. */
+  wait(): Turn {
+    const now = this.state.now
+    const dueAt = this.state.windows.size > 0
+      ? Math.min(...[...this.state.windows.values()].map(w => w.end))
+      : now + 60
+    const target = Math.ceil(dueAt / 30) * 30
+    const clock = clockFromAbsMin(target)
+    return this.handleLine(`${clock.day}:${clock.halfhour}`)
+  }
+
   /** concrete actions the player can take right now: verb × card bindings
    *  that fit the slots, those lighting up a non-default recipe first —
-   *  every suggestion is lenient-parseable, so typing it just works */
+   *  every suggestion is lenient-parseable, so typing it just works.
+   *  Verbs with an open station and cards locked in a window are excluded
+   *  (they would only reject at the engine, v0.5) */
   suggestions(limit = 3): string[] {
     if (this.state.ended) return [] // §9.35: nothing left to suggest after the ending
     const alive = this.visible()
     const me = this.meta.player ? alive.find(e => e.name === this.meta.player) : undefined
     if (!me) return []
+    const busyVerbs = new Set([...this.state.windows.values()].map(w => w.verb))
+    const busyCards = new Set([...this.state.windows.values()].flatMap(w => w.locked))
     const rank = (e: Entity) => (e.attrs['container'] === me.attrs['container'] ? 0 : 1)
     const lights = (verb: CompiledVerb, bindings: RoleBindings): boolean => {
       const p: PredCtx = { b: bindings, state: this.state }
@@ -187,6 +224,7 @@ export class Game {
     const story: string[] = []
     const flavor: string[] = []
     for (const verb of this.content.verbs.values()) {
+      if (busyVerbs.has(verb.name)) continue // the station is processing (v0.5)
       const actorsSlot = verb.slotByRole.get('actors')
       if (!actorsSlot || actorsSlot.min < 1) continue
       if (actorsSlot.query && !matchQuery(me, actorsSlot.query)) continue
@@ -197,7 +235,7 @@ export class Game {
       for (const slot of verb.slots) {
         if (slot.role === 'actors') continue
         const pool = alive
-          .filter(e => e.name !== me.name && e.id !== me.attrs['container'] && (!slot.query || matchQuery(e, slot.query)))
+          .filter(e => e.name !== me.name && e.id !== me.attrs['container'] && !busyCards.has(e.id) && (!slot.query || matchQuery(e, slot.query)))
           .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
         if (slot.min >= 1 && pool.length < slot.min) { missing = true; break }
         pools.set(slot.role, pool)

@@ -16,6 +16,7 @@ import { Game } from '../src/play.js'
 import { compileScript, parseScript } from '../src/script.js'
 import { cloneState, type State } from '../src/types.js'
 import { snap } from './snap.js'
+import { settleStep, act, done } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,10 +43,7 @@ const endingsTable = {
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {
   const s = parseSentence(src, dict)
   let n = 0
-  return executeStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, {
-    firstRecordId,
-    idGen: () => `x${firstRecordId}_${++n}`,
-  })
+  return settleStep(content, dict, state, { clock: s.clock ?? { day: 0, halfhour: 0 }, clauses: s.clauses }, firstRecordId, () => `x${firstRecordId}_${++n}`)
 }
 
 // ---------- the endings table (§10) ----------
@@ -157,15 +155,15 @@ describe('a recipe that ends the story (§9.35)', () => {
     expect(r.rejected).toBeNull()
     expect(r.state.ended).toEqual({ id: 'DESPAIR_DEATH', title: 'No More', flavour: 'melancholy' })
     expect(r.state.now).toBe(14 * 60 + 60) // the ending does not stop the clock
-    expect(r.records[0].advancedMin).toBe(60)
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['NARRATE', 'ENDING'])
+    expect(act(r).advancedMin).toBe(60)
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['NARRATE', 'ENDING'])
   })
 
   test('the record carries the concrete ENDING and round-trips', () => {
     const state = seedState()
     const r = run(content, state, '0:28 @ ANA WAIT')
-    const rec: ActionRecord = r.records[0]
-    expect(rec.outcomes[1]).toEqual({ op: 'ENDING', args: [{ t: 'ref', ref: { form: 'name', name: 'DESPAIR_DEATH' } }] })
+    const rec: ActionRecord = done(r)
+    expect(rec.outcomes.some(o => o.op === 'ENDING')).toBe(true)
     expect(rec.sentence).toContain('-> NARRATE "The candle gutters.", ENDING DESPAIR_DEATH')
     expect(formatSentence(parseSentence(rec.sentence, dict), dict)).toBe(rec.sentence)
   })
@@ -176,7 +174,7 @@ describe('a recipe that ends the story (§9.35)', () => {
     expect(r.rejected).toBeNull()
     expect(r.state.ended).toEqual({ id: 'LANTERN_VICTORY', title: 'The Light in the Ruins', flavour: 'grand' })
     // both are logged; only the first moved the state
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['ENDING', 'ENDING'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['ENDING', 'ENDING'])
   })
 
   test('further steps are rejected with nothing logged — the state object untouched', () => {
@@ -194,11 +192,11 @@ describe('a recipe that ends the story (§9.35)', () => {
     const c = waitContent(['ENDING DESPAIR_DEATH', 'REFUSE("not yet")'], { endings: endingsTable })
     const state = seedState()
     const r = run(c, state, '0:28 @ ANA WAIT')
-    expect(r.records[0].outcomes.map(o => o.op)).toEqual(['ENDING', 'REFUSE'])
+    expect(done(r).outcomes.map(o => o.op)).toEqual(['ENDING', 'REFUSE'])
     expect(r.state).toBe(state)
     expect(r.state.ended).toBeNull()
     // and the discarded ending is never announced in prose (§6.5)…
-    const lines = proseLines(r.records[0], c, dict)
+    const lines = proseLines(act(r), c, dict)
     expect(lines).toContain('not yet') // the refusal itself is spoken (§6.2)
     expect(lines.join('\n')).not.toContain('— No More —')
   })
@@ -253,8 +251,7 @@ describe('events may end the game (§9.35)', () => {
     const state = seedState()
     const r = run(c, state, '0:30 @ ANA WAIT') // 15:00 → 16:00, crossing slot 32
     expect(r.rejected).toBeNull()
-    expect(r.records.map(x => x.kind)).toEqual(['action', 'event'])
-    const event = r.records[1]
+    const event = r.records.find(x => x.kind === 'event')!
     expect(event.trigger).toBe('despair')
     expect(event.outcomes.some(o => o.op === 'ENDING')).toBe(true)
     expect(r.state.ended).toEqual({ id: 'DESPAIR_DEATH', title: 'No More', flavour: 'melancholy' })
@@ -274,9 +271,9 @@ describe('events may end the game (§9.35)', () => {
     base.entities.get('chalice')!.attrs['expiresAt'] = 15 * 60 // 0:30
     const r = run(c, cloneState(base), '0:28 @ ANA WAIT; ANA WAIT') // 14:00 → 16:00, expiry at 15:00
     expect(r.rejected).toBeNull()
-    expect(r.records.map(x => x.kind)).toEqual(['action', 'event'])
-    expect(r.records[1].trigger).toBe('the_lights_go_out')
-    expect(r.state.entities.get('chalice')!.deadAction).toBe(2)
+    const event = r.records.find(x => x.kind === 'event')!
+    expect(event.trigger).toBe('the_lights_go_out')
+    expect(r.state.entities.get('chalice')!.deadAction).toBe(event.id)
     expect(r.state.ended).toEqual({ id: 'DESPAIR_DEATH', title: 'No More', flavour: 'melancholy' })
     expect(snap(fold(r.records, cloneState(base), dict, c))).toBe(snap(r.state))
   })
@@ -339,7 +336,8 @@ describe('the player surface (§11, §9.35)', () => {
     const game = Game.fromScript(gameScript, dict)
     const turn = game.handleLine('wait')
     expect(turn.kind).toBe('action')
-    expect(turn.lines.join('\n')).toContain('— No More —')
+    const settle = game.wait() // v0.5: the ENDING lands when the window completes
+    expect(settle.lines.join('\n')).toContain('— No More —')
     expect(game.state.ended).toEqual({ id: 'DESPAIR_DEATH', title: 'No More', flavour: 'melancholy' })
     expect(game.journal().join('\n')).toContain('ENDING DESPAIR_DEATH')
     expect(game.story().join('\n')).toContain('— No More —')
@@ -348,6 +346,7 @@ describe('the player surface (§11, §9.35)', () => {
   test('after the ending: the notice instead of execution, and no suggestions', () => {
     const game = Game.fromScript(gameScript, dict)
     game.handleLine('wait')
+    game.wait()
     const nRecords = game.log.records.length
     const turn = game.handleLine('wait')
     expect(turn.kind).toBe('info')
@@ -359,11 +358,14 @@ describe('the player surface (§11, §9.35)', () => {
   test('undo across the ending step reopens the game — ended derives from the fold', () => {
     const game = Game.fromScript(gameScript, dict)
     game.handleLine('wait')
+    game.wait()
     expect(game.state.ended).not.toBeNull()
     expect(game.undo().kind).toBe('info')
+    expect(game.undo().kind).toBe('info') // …and its begin — no stale window stays open
     expect(game.state.ended).toBeNull() // no special-case: re-fold before the ending record
     const turn = game.handleLine('wait')
     expect(turn.kind).toBe('action') // play resumes
+    game.wait() // v0.5: the ENDING lands when the window completes
     expect(game.state.ended).toEqual({ id: 'DESPAIR_DEATH', title: 'No More', flavour: 'melancholy' })
   })
 
@@ -380,7 +382,7 @@ describe('the player surface (§11, §9.35)', () => {
     // own `->` tail), so author the ending in the recipe
     const content = waitContent(['NARRATE("last light.")', 'ENDING DESPAIR_DEATH'], { endings: endingsTable })
     const r = run(content, seedState(), '0:28 @ ANA WAIT')
-    const lines = proseLines(r.records[0], content, dict)
+    const lines = proseLines(done(r), content, dict) // v0.5: the ending narrates at the completion
     expect(lines[lines.length - 1]).toBe('— No More —')
     const plain = proseLines(run(waitContent(['NARRATE("just waiting.")'], { endings: endingsTable }), seedState(), '0:28 @ ANA WAIT').records[0], content, dict)
     expect(plain.join('\n')).not.toContain('— No More —')
@@ -389,6 +391,7 @@ describe('the player surface (§11, §9.35)', () => {
   test('cloneState copies the ending (undo-safe projections)', () => {
     const game = Game.fromScript(gameScript, dict)
     game.handleLine('wait')
+    game.wait()
     const c = cloneState(game.state)
     expect(c.ended).toEqual(game.state.ended)
     c.ended!.title = 'mutated'

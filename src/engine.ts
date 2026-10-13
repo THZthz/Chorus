@@ -11,34 +11,44 @@ import { drawFrom } from './content.js'
 import { evalPred, evalExpr, type PredCtx, type RoleBindings } from './predicate.js'
 import { rollDie } from './dice.js'
 import { matchQuery } from './query.js'
-import { absMin, clockFromAbsMin, crossedSlots, formatClock, parseClock, parseDuration, type Clock } from './clock.js'
+import { MIN_PER_HALFHOUR, absMin, clockFromAbsMin, formatClock, parseClock, parseDuration, type Clock } from './clock.js'
+import { parseSentence } from './parse.js'
 import {
   addEntity, aspectEntry, aspectGet, aspectSet, cloneState, getAlive, oldestNamed, relationKey, releaseName,
-  type Aspects, type Entity, type State,
+  type Aspects, type Entity, type OpenWindow, type State,
 } from './types.js'
 
 export interface Step {
-  clock: Clock
+  /** begin at this absolute minute (v0.5, minute-precise — wins over clock) */
+  startMin?: number
+  /** quantized begin clock — the input syntax; the default begin is now */
+  clock?: Clock | null
   clauses: Clause[]
   tReal?: string
 }
 
 export interface ActionRecord {
   id: number
-  kind: 'action' | 'event'
+  kind: 'action' | 'event' | 'complete' | 'wait'
   trigger: string | null
-  tGame: string          // start clock "day:halfhour"
+  tGame: string          // display clock "day:halfhour" (floored — display only)
   tReal: string | null
-  advancedMin: number    // minutes this record advanced the clock (0 for refused/events)
+  advancedMin: number    // BEGIN: window length; wait: the span; else 0
+  /** v0.5 — exact minutes: BEGIN = begin minute, wait = span start. The
+   *  quantized tGame cannot carry mid-halfhour minutes, and fold must land
+   *  them exactly (expires anchoring, §9.46) */
+  startMin: number | null
+  /** v0.5 — COMPLETE rows only: the window key they close */
+  window: string | null
   actors: Ref[]          // sorted union across clauses
-  verb: string           // first clause's verb ('' for events)
+  verb: string           // first clause's verb ('' for events/waits; the verb of a COMPLETE row)
   objects: Ref[]
   instruments: Ref[]
   at: Ref | null
   about: Ref | null
   to: Ref | null
   outcomes: Outcome[]    // concrete: ids minted, sugar resolved (§9.15)
-  recipes: string[]      // fired recipe ids, clause order
+  recipes: string[]      // BEGIN: fired recipe ids, clause order; COMPLETE: the one recipe
   sentence: string       // canonical, lossless
 }
 
@@ -144,80 +154,170 @@ export function executeStep(
   if (stateIn.ended) {
     return rejected(`the story has ended — ${stateIn.ended.title}`, stateIn)
   }
-  // monotonic mechanics time (§9.5): a step may never rewind the clock
-  if (absMin(step.clock) < stateIn.now) {
+  // v0.5: the begin minute — startMin wins (a mid-halfhour begin is
+  // representable), the quantized clock field is the input syntax
+  const startMin = step.startMin ?? absMin(step.clock ?? clockFromAbsMin(stateIn.now))
+  // monotonic mechanics time (§9.5): a step may never begin before now
+  if (startMin < stateIn.now) {
     const now = clockFromAbsMin(stateIn.now)
-    return rejected(`clock ${formatClock(step.clock)} is before state.now (${now.day}:${now.halfhour})`, stateIn)
+    return rejected(`clock ${formatClock(clockFromAbsMin(startMin))} is before state.now (${now.day}:${now.halfhour})`, stateIn)
   }
-  // events are fired by the clock (§5.1); a player-typed step needs a clause
   if (step.clauses.length === 0) {
-    return rejected('a step needs at least one clause', stateIn)
+    const dueNow = [...stateIn.windows.values()].some(w => w.end <= startMin)
+    if (startMin === stateIn.now && !dueNow) {
+      const now = clockFromAbsMin(stateIn.now)
+      return rejected(`nothing to do — the clock already reads ${now.day}:${now.halfhour} (commit an action, or name a later minute to wait)`, stateIn)
+    }
   }
 
-  // 1+2. validation & selection — nothing applies unless every clause clears
+  // Phase 1 — the advance (v0.5): everything due at or before the begin
+  // minute resolves first — due windows in (end, beginId, clause) order, slot
+  // events at each crossed halfhour, completions before same-minute events.
+  // Atomic with the whole step: any rejection below discards the pass —
+  // nothing logged, clock unmoved (§9.19).
+  let mint = 0
+  const idGen = opts.idGen ?? (() => `e${opts.firstRecordId}_${++mint}`) // deterministic default (§9.3)
+  let draft = cloneState(stateIn)
+  let advance: ActionRecord[] = []
+  try {
+    const pass = resolveDue(content, dict, draft, startMin, opts.firstRecordId, idGen)
+    draft = pass.state
+    advance = pass.records
+  } catch (err) {
+    return rejected(err instanceof Error ? err.message : String(err), stateIn)
+  }
+  const nextId = opts.firstRecordId + advance.length
+
+  // a bare clock step is a pure advance — its wait row already moved the clock
+  if (step.clauses.length === 0) {
+    return { records: advance, state: draft, rejected: null }
+  }
+
+  // Phase 2 — validation, busy checks, selection, all against the
+  // POST-ADVANCE draft: locks release when their windows close during the
+  // pass, so a card freeing exactly at the begin minute is usable (§6.1/§6.4)
   const prepared: Prepared[] = []
   for (const clause of step.clauses) {
     const verb = content.verbs.get(clause.verb)
     if (!verb) return rejected(`${clause.verb} is not a content verb`, stateIn)
     const refs = clauseRefs(clause)
-    const slots = validateSlots(verb, refs, stateIn)
+    const slots = validateSlots(verb, refs, draft)
     if ('error' in slots) return rejected(`${clause.verb}: ${slots.error}`, stateIn)
-    const recipe = selectRecipe(verb, slots.bindings, stateIn)
+    const busy = busyReason(draft, clause.verb, refs)
+    if (busy) return rejected(busy, stateIn)
+    const recipe = selectRecipe(verb, slots.bindings, draft)
     if ('error' in recipe) return rejected(recipe.error, stateIn)
     prepared.push({ clause, verb, refs, bindings: slots.bindings, recipe })
   }
 
-  // 3. application into a draft — REFUSE discards the whole draft (§6.5)
-  const draft = cloneState(stateIn)
-  const startMin = absMin(step.clock)
-  let mint = 0
-  const ctx: ApplyCtx = {
-    state: draft, dict, content,
+  // Phase 3 — the top-level REFUSE pre-pass (v0.5): authored gates reject AT
+  // THE TABLE, not after the window. The trial runs on a scratch draft; only
+  // a REFUSE is decisive here — an application ERROR defers to completion
+  // (the state will have changed by then; the window refuses there, the
+  // completion analog of §9.19). The trial's dice and spawns die with it.
+  const scratch = cloneState(draft)
+  let smint = 0
+  const sctx: ApplyCtx = {
+    state: scratch, dict, content,
     bindings: {} as RoleBindings,
     now: startMin,
-    recordId: opts.firstRecordId,
-    idGen: opts.idGen ?? (() => `e${opts.firstRecordId}_${++mint}`), // deterministic default (§9.3)
+    recordId: nextId,
+    idGen: () => `s${nextId}_${++smint}`,
     extraAdvanceMin: 0,
   }
-
   let refused = false
   const collected: Outcome[] = []
-  const recipeIds: string[] = []
   try {
     outer:
     for (const p of prepared) {
       // §9.41: the dice binding is PER CLAUSE — a roll in clause one is not
       // visible to clause two's conditions
-      ctx.roll = undefined
-      // re-resolve this clause's roles against the draft right before applying,
-      // so entities an earlier clause destroyed can't be used stale (§6.6)
+      sctx.roll = undefined
       const rebound: RoleBindings = {}
       for (const role of ROLES) {
         rebound[role] = p.refs[role]
-          .map(ref => resolveRef(draft, ref))
+          .map(ref => resolveRef(scratch, ref))
           .filter((e): e is Entity => e !== null)
       }
-      ctx.bindings = rebound
-      recipeIds.push(p.recipe.id)
+      sctx.bindings = rebound
       for (const outcome of p.recipe.out) {
-        const res = applyOutcome(outcome, ctx)
+        // an IF is opaque to the gate check: its branches — including any
+        // REFUSE inside them — belong to the completion, where the world the
+        // window imagined actually exists (§9.39 v0.5)
+        if (outcome.op === 'IF') continue
+        const res = applyOutcome(outcome, sctx)
         collected.push(...res.concrete)
         if (res.refused) { refused = true; break outer }
       }
     }
-  } catch (err) {
-    return rejected(err instanceof Error ? err.message : String(err), stateIn)
+  } catch {
+    refused = false // an error is not a gate — it defers to completion time
+    collected.length = 0
   }
-  const advancedMin = refused ? 0 : prepared.reduce((s, p) => s + p.verb.duration, 0) + ctx.extraAdvanceMin
+  if (refused) {
+    // refused BEGIN: attempt logged, zero time, the advance discarded with it
+    const record = makeBeginRecord(opts.firstRecordId, startMin, step, prepared, collected, dict)
+    record.advancedMin = 0 // §6.5: a refusal collapses the cycle — no window elapses
+    return { records: [record], state: stateIn, rejected: null }
+  }
+
+  // Phase 4 — BEGIN (v0.5): one row per step, one window per clause. No
+  // outcome applies here: the row carries the PROGRESS ticks (journal), the
+  // commit-time recipe ids, and the window table does the locking. The
+  // recipe's real outcomes land on the COMPLETE row at the window's close.
+  const begin = makeBeginRecord(nextId, startMin, step, prepared, prepared.flatMap(p => p.recipe.out).filter(o => o.op === 'PROGRESS'), dict)
+  registerWindows(begin, draft, dict, content)
+  return { records: [...advance, begin], state: draft, rejected: null }
+}
+
+/** roles a card is COMMITTED to — the actors stay free (the player is never
+ *  locked, or no two verbs could ever run in parallel) */
+const COMMITTED_ROLES: Role[] = ['object', 'with', 'at', 'about', 'to']
+
+/** §6.7 v0.5 lock checks, against the post-advance draft: one window per
+ *  verb station; committed cards busy while any open window holds them */
+function busyReason(state: State, verb: string, refs: Record<Role, Ref[]>): string | null {
+  for (const w of state.windows.values()) {
+    if (w.verb === verb) {
+      const end = clockFromAbsMin(w.end)
+      return `${verb} is already processing — its station frees at ${end.day}:${end.halfhour}`
+    }
+  }
+  for (const role of COMMITTED_ROLES) {
+    for (const ref of refs[role]) {
+      const e = resolveRef(state, ref)
+      if (!e) continue
+      for (const w of state.windows.values()) {
+        if (w.locked.includes(e.id)) {
+          const end = clockFromAbsMin(w.end)
+          return `${e.name.replace(/_/g, ' ')} is busy with ${w.verb} — it frees at ${end.day}:${end.halfhour}`
+        }
+      }
+    }
+  }
+  return null
+}
+
+function makeBeginRecord(
+  id: number,
+  startMin: number,
+  step: Step,
+  prepared: Prepared[],
+  outcomes: Outcome[],
+  dict: Dictionary,
+): ActionRecord {
+  const advancedMin = prepared.reduce((s, p) => s + p.verb.duration, 0)
   const first = prepared[0]
   const seen = new Set<string>()
   const record: ActionRecord = {
-    id: opts.firstRecordId,
+    id,
     kind: 'action',
     trigger: null,
-    tGame: formatClock(step.clock),
+    tGame: formatClock(clockFromAbsMin(startMin)),
     tReal: step.tReal ?? null,
-    advancedMin,
+    advancedMin,               // the window length — NOT a clock advance (v0.5)
+    startMin,                  // exact begin minute (fold lands it exactly)
+    window: null,
     actors: sortRefs(prepared.flatMap(p => p.clause.actors)).filter(r => {
       const k = r.form === 'id' ? `#${r.id}` : r.name
       if (seen.has(k)) return false
@@ -230,32 +330,51 @@ export function executeStep(
     at: first?.clause.at ?? null,
     about: first?.clause.about ?? null,
     to: first?.clause.to ?? null,
-    outcomes: collected,
-    recipes: recipeIds,
+    outcomes,
+    recipes: prepared.map(p => p.recipe.id),
     sentence: '',
   }
-  const sentenceAst: Sentence = { kind: 'action', clock: parseClock(record.tGame), trigger: null, clauses: step.clauses, outcomes: collected }
-  record.sentence = formatSentence(sentenceAst, dict)
+  record.sentence = formatSentence(
+    { kind: 'action', clock: clockFromAbsMin(startMin), trigger: null, clauses: step.clauses, outcomes },
+    dict,
+  )
+  return record
+}
 
-  if (refused) {
-    return { records: [record], state: stateIn, rejected: null } // draft discarded; attempt logged
-  }
-
-  // 4+6. time & events — the engine owns the clock (§9.12), events get own rows (§9.16).
-  // Events span the whole elapsed span (§9.28): from the state's previous clock,
-  // so quantized dead air before the step cannot swallow a crossing.
-  const state = draft
-  state.now = startMin + advancedMin
-  const records: ActionRecord[] = [record]
-  try {
-    const eventRecords = fireCrossingEvents(content, dict, state, stateIn.now, state.now, opts.firstRecordId + 1, ctx.idGen)
-    records.push(...eventRecords)
-  } catch (err) {
-    // §9.19: an event that cannot apply rejects the whole step — nothing logged
-    return rejected(err instanceof Error ? err.message : String(err), stateIn)
-  }
-
-  return { records, state, rejected: null }
+/** register one window per BEGIN clause — the SAME code path play and fold
+ *  run (the divergence guard): clauses come from the row's canonical sentence
+ *  (law 2 makes that lossless), durations and recipe ids from content */
+function registerWindows(record: ActionRecord, state: State, dict: Dictionary, content: CompiledContent): void {
+  // a BEGIN row's clauses ride its canonical sentence (law 2 makes that
+  // lossless); a degenerate row with no parseable clauses opens no window
+  let clauses: Clause[] = []
+  try { clauses = parseSentence(record.sentence, dict).clauses } catch { clauses = [] }
+  const startMin = record.startMin ?? absMin(parseClock(record.tGame))
+  let offset = 0
+  clauses.forEach((clause, ci) => {
+    const verb = content.verbs.get(clause.verb)
+    if (!verb) throw new Error(`begin row ${record.id}: verb '${clause.verb}' is not in the compiled content — drift`)
+    const refs = clauseRefs(clause)
+    const locked: string[] = []
+    for (const role of COMMITTED_ROLES) {
+      for (const ref of refs[role]) {
+        const e = resolveRef(state, ref)
+        if (e) locked.push(e.id)
+      }
+    }
+    state.windows.set(`${record.id}:${ci}`, {
+      key: `${record.id}:${ci}`,
+      beginId: record.id,
+      clause: ci,
+      verb: clause.verb,
+      start: startMin + offset,
+      end: startMin + offset + verb.duration,
+      recipe: record.recipes[ci] ?? '',
+      refs,
+      locked,
+    })
+    offset += verb.duration
+  })
 }
 
 function rejected(reason: string, state: State): ExecResult {
@@ -826,101 +945,329 @@ function cloneAspects(a: Aspects): Aspects {
  * history, never replayed effects (§6.5).
  */
 export function applyRecord(record: ActionRecord, state: State, dict: Dictionary, content: CompiledContent): void {
-  if (record.outcomes.some(o => o.op === 'REFUSE')) return // refused: state no-op, clock untouched (§6.5)
-  // events don't own the clock — only action records advance/rebase it (§7)
-  if (record.kind === 'event') state.fired.add(record.trigger ?? '') // once-triggers replay as fired (§9.29)
-  if (record.kind === 'action') state.now = absMin(parseClock(record.tGame))
-  const startMin = absMin(parseClock(record.tGame))
-  // rebuild role bindings from the record itself so role-ref outcomes
-  // replay without the original step context (concrete outcomes make this rare)
   const one = (ref: Ref | null): Entity[] => {
     if (!ref) return []
     const e = resolveRef(state, ref)
     return e ? [e] : []
   }
-  let n = 0
-  const ctx: ApplyCtx = {
-    state, dict, content,
-    bindings: {
-      actors: record.actors.flatMap(a => one(a)),
-      object: record.objects.flatMap(a => one(a)),
-      with: record.instruments.flatMap(a => one(a)),
-      at: one(record.at),
-      about: one(record.about),
-      to: one(record.to),
-    },
-    now: startMin,
-    recordId: record.id,
-    idGen: () => `r${record.id}s${++n}`, // deterministic fallback for AS-less SPAWNs
-    extraAdvanceMin: 0,
+  // v0.5 — the pure clock row: the ONLY record that moves `now`, so the
+  // fold's clock is a function of the wait spans alone (BEGIN/COMPLETE never
+  // touch it, which is what makes interleaved windows replay exactly)
+  if (record.kind === 'wait') {
+    const start = record.startMin ?? absMin(parseClock(record.tGame))
+    if (state.now !== start) {
+      throw new Error(`wait row ${record.id} starts at ${record.tGame} but the folded clock reads ${state.now} — wait spans must partition time (log drift, or a pre-v0.5 log)`)
+    }
+    state.now = start + record.advancedMin
+    return
   }
-  for (const o of record.outcomes) applyOutcome(o, ctx)
-  if (record.kind === 'action') state.now = startMin + record.advancedMin
+  // v0.5 — a window closing: remove it first (a refused completion still
+  // closed its window), then apply outcomes anchored to the window's START
+  // clock read from the windows table — the same source play used, so SET
+  // expires and friends replay identically (the completion clock on tGame
+  // never feeds mechanics, §9.46)
+  if (record.kind === 'complete') {
+    // the window SHOULD be registered by the turn's BEGIN row (fold rebuilds
+    // it first); a row closing an unknown window is tolerated with a
+    // tGame-anchored fallback so bare-row fold probes and pre-window logs
+    // still replay — the START-clock anchoring that matters for `expires` is
+    // exercised on the real path, where the window exists
+    const w = record.window ? state.windows.get(record.window) : undefined
+    if (w) state.windows.delete(record.window!)
+    if (record.outcomes.some(o => o.op === 'REFUSE')) return // refused: window closed, effects discarded (§6.5)
+    const startMin = w ? w.start : absMin(parseClock(record.tGame))
+    let n = 0
+    const ctx: ApplyCtx = {
+      state, dict, content,
+      bindings: {
+        actors: record.actors.flatMap(a => one(a)),
+        object: record.objects.flatMap(a => one(a)),
+        with: record.instruments.flatMap(a => one(a)),
+        at: one(record.at),
+        about: one(record.about),
+        to: one(record.to),
+      },
+      now: startMin,
+      recordId: record.id,
+      idGen: () => `r${record.id}s${++n}`, // deterministic fallback for AS-less SPAWNs
+      extraAdvanceMin: 0,
+    }
+    for (const o of record.outcomes) applyOutcome(o, ctx)
+    // ADVANCE replayed here only touches the inert extraAdvanceMin — the
+    // extension lives in the wait row's span (§9.46 replay safety)
+    return
+  }
+  if (record.outcomes.some(o => o.op === 'REFUSE')) return // refused: state no-op, clock untouched (§6.5)
+  // events don't own the clock — only wait rows move it (§7, v0.5)
+  if (record.kind === 'event') state.fired.add(record.trigger ?? '') // once-triggers replay as fired (§9.29)
+  const startMin = absMin(parseClock(record.tGame))
+  if (record.kind === 'event') {
+    let n = 0
+    const ctx: ApplyCtx = {
+      state, dict, content,
+      bindings: {
+        actors: record.actors.flatMap(a => one(a)),
+        object: record.objects.flatMap(a => one(a)),
+        with: record.instruments.flatMap(a => one(a)),
+        at: one(record.at),
+        about: one(record.about),
+        to: one(record.to),
+      },
+      now: startMin,
+      recordId: record.id,
+      idGen: () => `r${record.id}s${++n}`,
+      extraAdvanceMin: 0,
+    }
+    for (const o of record.outcomes) applyOutcome(o, ctx)
+    return
+  }
+  // action = BEGIN (v0.5): register one window per clause — no clock move, no
+  // outcome application (the PROGRESS ticks are journal-only; the recipe's
+  // outcomes land on the COMPLETE row at the window's close)
+  registerWindows(record, state, dict, content)
 }
 
-// ---------- events: triggers & expiries (§6.6, §9.16) ----------
+// ---------- events & completions: the advance pass (§6.6, §6.7, §9.16) ----------
 
-function fireCrossingEvents(
+interface PassResult { state: State; records: ActionRecord[] }
+
+/**
+ * v0.5 — advance the world from `state.now` to `toMin` in ONE atomic pass.
+ * Candidates merge chronologically: due windows close at their `end` (ordered
+ * by end, then beginId, then clause — a total order with no ties); authored
+ * slot triggers and expiries fire at each crossed halfhour (§9.16 order:
+ * triggers in declaration order, then expiries from the hoisted snapshot).
+ * A completion at minute m fires BEFORE slot-m events. The pass ends with one
+ * WAIT row — the only record that moves the clock — spanning exactly
+ * `[state.now, toMin]`, so wait spans partition time (repeating triggers
+ * cannot double-fire across windows). `ADVANCE` outcomes land while windows
+ * complete and EXTEND the pass target; the extension rides the wait row's
+ * span, which is what makes it replay-safe (fold never re-derives it).
+ */
+function resolveDue(
+  content: CompiledContent,
+  dict: Dictionary,
+  stateIn: State,
+  toMin: number,
+  firstRecordId: number,
+  idGen: () => string,
+): PassResult {
+  // a zero-span pass is meaningful only when a due window exists (a
+  // zero-duration verb completes exactly at its begin minute)
+  const hasDue = [...stateIn.windows.values()].some(w => w.end <= toMin)
+  if (toMin < stateIn.now || (toMin === stateIn.now && !hasDue)) return { state: stateIn, records: [] }
+  const fromMin = stateIn.now
+  let state = stateIn
+  const records: ActionRecord[] = []
+  // §6.6: the expiry snapshot is taken once per pass and hoisted over every
+  // completion and slot — no cascades within one advance; expiries created by
+  // this pass's outcomes resolve at the NEXT advance
+  const expiring = [...state.entities.values()]
+    .filter(e => e.deadAction === null && typeof e.attrs['expiresAt'] === 'number')
+    .map(e => ({ id: e.id, name: e.name, at: e.attrs['expiresAt'] as number }))
+  let cursor = fromMin
+  let target = toMin
+  let id = firstRecordId
+  for (;;) {
+    const due = [...state.windows.values()].filter(w => w.end <= target)
+      .sort((a, b) => a.end - b.end || a.beginId - b.beginId || a.clause - b.clause)
+    const nextW = due[0]
+    const slotAbs = nextSlotAfter(cursor, target)
+    if (nextW && (slotAbs === null || nextW.end <= slotAbs)) {
+      const fired = fireWindow(content, dict, state, nextW, id, idGen)
+      state = fired.state
+      records.push(fired.record)
+      id += 1
+      // NOTE: the slot cursor does NOT jump to the window's end — the
+      // halfhours the window spanned must still strike (a completion at
+      // minute m precedes slot-m events, but slot-(<m) events fire after it
+      // in the same pass, §6.6 chronological order)
+      if (fired.advanceExtra > 0) target += fired.advanceExtra
+      continue
+    }
+    if (slotAbs !== null) {
+      // fireSlot speaks in halfhour INDICES (§9.16: slot = abs % 48, minute =
+      // abs * 30); the walk speaks in minutes
+      const slotRecords = fireSlot(content, dict, state, slotAbs / MIN_PER_HALFHOUR, expiring, id, idGen)
+      records.push(...slotRecords)
+      id += slotRecords.length
+      cursor = slotAbs
+      continue
+    }
+    break
+  }
+  records.push(makeWaitRecord(id, fromMin, target - fromMin, dict))
+  state.now = target
+  return { state, records }
+}
+
+/** the first halfhour boundary strictly after `cursor`, or null past `target`
+ *  — the (from, to] crossing rule of §9.28, one boundary at a time */
+function nextSlotAfter(cursor: number, target: number): number | null {
+  const abs = (Math.floor(cursor / MIN_PER_HALFHOUR) + 1) * MIN_PER_HALFHOUR
+  return abs <= target ? abs : null
+}
+
+/**
+ * Close one window: re-resolve its clause bindings (dead refs DROP — events
+ * do not respect locks, §6.7 v0.5), apply the commit-time recipe's outcomes
+ * anchored to the window's START clock (§6.7: clock-anchored effects use the
+ * start clock). A REFUSE that only decides now, or an outcome that cannot
+ * apply, refuses the WINDOW: the partial effects are discarded with the
+ * scratch, the attempt is logged with a REFUSE marker (the fold's existing
+ * no-op rule), and the window still closes — a pass that rolled back would
+ * leave the window retrying forever (§9.19's completion analog).
+ */
+function fireWindow(
+  content: CompiledContent,
+  dict: Dictionary,
+  stateIn: State,
+  w: OpenWindow,
+  recordId: number,
+  idGen: () => string,
+): { state: State; record: ActionRecord; advanceExtra: number } {
+  const verb = content.verbs.get(w.verb)
+  const recipe = verb?.recipes.find(r => r.id === w.recipe)
+  if (!verb || !recipe) {
+    throw new Error(
+      `completion of ${w.verb} (begin row ${w.beginId}): recipe '${w.recipe}' is not in the ` +
+      `compiled content — content drift between commit and completion`,
+    )
+  }
+  const scratch = cloneState(stateIn)
+  const bindings: RoleBindings = {}
+  for (const role of ROLES) {
+    bindings[role] = w.refs[role]
+      .map(ref => resolveRef(scratch, ref))
+      .filter((e): e is Entity => e !== null)
+  }
+  let mint = 0
+  const ctx: ApplyCtx = {
+    state: scratch, dict, content, bindings,
+    now: w.start,             // §6.7: expires and friends anchor to the START clock
+    recordId,
+    idGen: idGen ?? (() => `c${recordId}_${++mint}`),
+    extraAdvanceMin: 0,
+  }
+  const concrete: Outcome[] = []
+  let refused = false
+  try {
+    for (const o of recipe.out) {
+      if (o.op === 'PROGRESS') continue // the ticks rode the BEGIN row
+      const res = applyOutcome(o, ctx)
+      concrete.push(...res.concrete)
+      if (res.refused) { refused = true; break }
+    }
+  } catch (err) {
+    refused = true
+    concrete.length = 0
+    concrete.push({ op: 'REFUSE', args: [{ t: 'str', v: err instanceof Error ? err.message : String(err) }] })
+  }
+  const out = refused ? stateIn : scratch
+  out.windows.delete(w.key)
+  return { state: out, record: makeCompleteRecord(recordId, w, concrete, dict), advanceExtra: ctx.extraAdvanceMin }
+}
+
+function makeCompleteRecord(id: number, w: OpenWindow, outcomes: Outcome[], dict: Dictionary): ActionRecord {
+  const clock = clockFromAbsMin(w.end)
+  const rec: ActionRecord = {
+    id,
+    kind: 'complete',
+    trigger: w.verb,
+    tGame: formatClock(clock), // the completion clock — display only; mechanics anchor via the window
+    tReal: null,
+    advancedMin: 0,            // complete rows never move the clock — waits do
+    startMin: null,
+    window: w.key,
+    actors: [...w.refs.actors],
+    verb: w.verb,
+    objects: [...w.refs.object],
+    instruments: [...w.refs.with],
+    at: w.refs.at[0] ?? null,
+    about: w.refs.about[0] ?? null,
+    to: w.refs.to[0] ?? null,
+    outcomes,
+    recipes: [w.recipe],
+    sentence: '',
+  }
+  rec.sentence = formatSentence({ kind: 'complete', clock, trigger: w.verb, clauses: [], outcomes }, dict)
+  return rec
+}
+
+function makeWaitRecord(id: number, fromMin: number, spanMin: number, dict: Dictionary): ActionRecord {
+  const clock = clockFromAbsMin(fromMin)
+  const rec: ActionRecord = {
+    id,
+    kind: 'wait',
+    trigger: null,
+    tGame: formatClock(clock),
+    tReal: null,
+    advancedMin: spanMin,
+    startMin: fromMin,         // exact span start — fold asserts continuation
+    window: null,
+    actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
+    outcomes: [], recipes: [],
+    sentence: '',
+  }
+  rec.sentence = formatSentence({ kind: 'wait', clock, trigger: null, clauses: [], outcomes: [], spanMin }, dict)
+  return rec
+}
+
+/** fire one crossed halfhour: authored triggers (declaration order) first,
+ *  then expiries from the pass's snapshot — §9.16 order, unchanged (§6.6) */
+function fireSlot(
   content: CompiledContent,
   dict: Dictionary,
   state: State,
-  fromMin: number,
-  toMin: number,
+  absSlot: number,
+  expiring: { id: string; name: string; at: number }[],
   firstEventId: number,
   idGen: () => string,
 ): ActionRecord[] {
   const records: ActionRecord[] = []
-  // snapshot expiries before the pass — §6.6: no cascades within one advance;
-  // expiries created by this pass's outcomes resolve at the NEXT advance
-  const expiring = [...state.entities.values()]
-    .filter(e => e.deadAction === null && typeof e.attrs['expiresAt'] === 'number')
-    .map(e => ({ id: e.id, name: e.name, at: e.attrs['expiresAt'] as number }))
-  for (const absSlot of crossedSlots(fromMin, toMin)) {
-    // authored time triggers first, then expiries — deterministic order (§9.16)
-    for (const trig of content.triggers) {
-      if (!('slot' in trig)) continue // expiry triggers ride the expiry path below
-      if (trig.slot !== absSlot % 48) continue
-      if (trig.once && state.fired.has(trig.id)) continue // §9.29: once means once
-      const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
-      const outcomes: Outcome[] = []
-      for (const o of trig.out) outcomes.push(...applyOutcome(o, ctx).concrete)
-      state.fired.add(trig.id) // on the draft: a later rejection discards it
-      records.push(makeEventRecord(firstEventId + records.length, trig.id, absSlot, outcomes, dict))
+  for (const trig of content.triggers) {
+    if (!('slot' in trig)) continue // expiry triggers ride the expiry path below
+    if (trig.slot !== absSlot % 48) continue
+    if (trig.once && state.fired.has(trig.id)) continue // §9.29: once means once
+    const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
+    const outcomes: Outcome[] = []
+    for (const o of trig.out) outcomes.push(...applyOutcome(o, ctx).concrete)
+    state.fired.add(trig.id) // on the draft: a later rejection discards it
+    records.push(makeEventRecord(firstEventId + records.length, trig.id, absSlot, outcomes, dict))
+  }
+  for (const exp of expiring) {
+    if (exp.at > absSlot * 30) continue
+    const e = state.entities.get(exp.id)
+    if (!e || e.deadAction !== null) continue
+    const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
+    // an authored `on expire of NAME` trigger (§9.32) replaces the built-in
+    // destroy; first match in declaration order wins. Its outcomes ARE the
+    // event record's outcomes (record.trigger = the authored id). An outcome
+    // that cannot apply throws — the whole step is rejected (§9.19).
+    // §9.38 pool asymmetry (documented ruling): the trigger matches by NAME,
+    // so a crossing fires it no matter WHICH copy carries the expires — but
+    // its name-addressed outcomes resolve per the pool rule (the OLDEST
+    // copy), which under a pool may not be the crossing card. The built-in
+    // path below has no such ambiguity: it addresses by id.
+    const authored = content.triggers.find(t => 'onExpireOf' in t && t.onExpireOf === e.name)
+    let triggerId: string
+    let outcomes: Outcome[]
+    if (authored) {
+      triggerId = authored.id
+      outcomes = []
+      for (const o of authored.out) outcomes.push(...applyOutcome(o, ctx).concrete)
+    } else {
+      triggerId = `expire:${e.name}`
+      // §9.38: engine-written destroys are keyed to the EXPIRING entity and
+      // concretize to DESTROY #id — under a pool a name-addressed destroy
+      // would kill the oldest copy while the real expiring card re-fires
+      const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: idRef(exp.id) }] }
+      outcomes = [...applyOutcome(destroy, ctx).concrete]
     }
-    for (const exp of expiring) {
-      if (exp.at > absSlot * 30) continue
-      const e = state.entities.get(exp.id)
-      if (!e || e.deadAction !== null) continue
-      const ctx = makeEventCtx(state, dict, content, absSlot, firstEventId + records.length, idGen)
-      // an authored `on expire of NAME` trigger (§9.32) replaces the built-in
-      // destroy; first match in declaration order wins. Its outcomes ARE the
-      // event record's outcomes (record.trigger = the authored id). An outcome
-      // that cannot apply throws — the whole step is rejected (§9.19).
-      // §9.38 pool asymmetry (documented ruling): the trigger matches by NAME,
-      // so a crossing fires it no matter WHICH copy carries the expires — but
-      // its name-addressed outcomes resolve per the pool rule (the OLDEST
-      // copy), which under a pool may not be the crossing card. The built-in
-      // path below has no such ambiguity: it addresses by id.
-      const authored = content.triggers.find(t => 'onExpireOf' in t && t.onExpireOf === e.name)
-      let triggerId: string
-      let outcomes: Outcome[]
-      if (authored) {
-        triggerId = authored.id
-        outcomes = []
-        for (const o of authored.out) outcomes.push(...applyOutcome(o, ctx).concrete)
-      } else {
-        triggerId = `expire:${e.name}`
-        // §9.38: engine-written destroys are keyed to the EXPIRING entity and
-        // concretize to DESTROY #id — under a pool a name-addressed destroy
-        // would kill the oldest copy while the real expiring card re-fires
-        const destroy: Outcome = { op: 'DESTROY', args: [{ t: 'ref', ref: idRef(exp.id) }] }
-        outcomes = [...applyOutcome(destroy, ctx).concrete]
-      }
-      // play marks fired exactly as the fold's applyRecord does — one entry per
-      // EVENT row's trigger (§9.34); on the draft, so a rejection discards it
-      state.fired.add(triggerId)
-      records.push(makeEventRecord(firstEventId + records.length, triggerId, absSlot, outcomes, dict))
-    }
+    // play marks fired exactly as the fold's applyRecord does — one entry per
+    // EVENT row's trigger (§9.34); on the draft, so a rejection discards it
+    state.fired.add(triggerId)
+    records.push(makeEventRecord(firstEventId + records.length, triggerId, absSlot, outcomes, dict))
   }
   return records
 }
@@ -941,6 +1288,7 @@ function makeEventRecord(id: number, trigger: string, absSlot: number, outcomes:
   const rec: ActionRecord = {
     id, kind: 'event', trigger,
     tGame: formatClock(clock), tReal: null, advancedMin: 0,
+    startMin: null, window: null,
     actors: [], verb: '', objects: [], instruments: [], at: null, about: null, to: null,
     outcomes, recipes: [],
     sentence: '',

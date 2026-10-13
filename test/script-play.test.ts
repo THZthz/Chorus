@@ -2,15 +2,16 @@
 // exercised against the Nightjar Flyer: zones, neighbor links, masked suspects.
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { coreDictionary } from '../src/dict.js'
 import { compileScript, parseScript } from '../src/script.js'
 import { compileContent, forEachAuthoredOutcome } from '../src/content.js'
 import { parsePlayerInput } from '../src/lenient.js'
 import { Game } from '../src/play.js'
 import { fold } from '../src/fold.js'
-import { seedDictionary, seedState } from '../src/seed.js'
 import { addEntity } from '../src/types.js'
+import { seedState } from './seed.js'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 
 /** v0.5 test adapter: settle each committed action's window right away, so
  *  the loop tests keep their pre-parallel commit-completes-at-once shape */
@@ -303,7 +304,7 @@ describe('lenient player input', () => {
 
 describe('lenient input routes the new core verbs (v0.3)', () => {
   // registration is the gate: before v0.3 this compileContent threw 'not registered'
-  const verbsDict = seedDictionary()
+  const verbsDict = coreDictionary()
   const verbsContent = compileContent({
     verbs: {
       STUDY: { // READ's grammar (§4.3)

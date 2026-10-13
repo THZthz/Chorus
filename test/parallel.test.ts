@@ -3,16 +3,17 @@
 // deterministic order, and the fold rebuilds open windows byte-for-byte.
 import { describe, expect, test } from 'vitest'
 import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content.js'
+import { coreDictionary } from '../src/dict.js'
 import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { formatClock, parseClock } from '../src/clock.js'
 import { fold } from '../src/fold.js'
 import { parseSentence } from '../src/parse.js'
-import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { cloneState, newState, type State } from '../src/types.js'
+import { seedContent, seedState } from './seed.js'
 import { snap } from './snap.js'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 const content = compileContent(seedContent(), dict)
 
 function run(state: State, src: string, firstRecordId = 1, theContent: CompiledContent = content): ExecResult {

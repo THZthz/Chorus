@@ -3,9 +3,9 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { compileScript, lintScript } from '../src/script.js'
-import { seedDictionary } from '../src/seed.js'
+import { coreDictionary } from '../src/dict.js'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 const FLYER = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
 
 const compile = (script: string): unknown => compileScript(script, dict)

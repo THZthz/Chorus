@@ -7,13 +7,13 @@
 // collisions and undeclared `{token}` interpolation are load errors.
 import { describe, expect, test } from 'vitest'
 import { compileContent, type CompiledContent, type ContentRaw, type FunctionDef } from '../src/content.js'
+import { coreDictionary } from '../src/dict.js'
 import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { fold } from '../src/fold.js'
 import { formatSentence } from '../src/format.js'
 import { parseFunctionBody, parseOutcomes, parseSentence, type FnTable, type FnTemplate } from '../src/parse.js'
 import type { Outcome } from '../src/sentence.js'
 import { compileScript } from '../src/script.js'
-import { seedDictionary } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { addEntity, cloneState, newState, type State } from '../src/types.js'
 import { snap } from './snap.js'
@@ -22,7 +22,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 dict.registerVerb('STEW') // the rig's own verb lexeme (verbs are code-registered, §10)
 
 function run(content: CompiledContent, state: State, src: string, firstRecordId = 1): ExecResult {

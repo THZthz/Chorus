@@ -10,9 +10,9 @@ import { readFileSync } from 'node:fs'
 import { Game, type Turn } from '../src/play.js'
 import { parsePlayerInput } from '../src/lenient.js'
 import { fold } from '../src/fold.js'
-import { seedDictionary } from '../src/seed.js'
+import { coreDictionary } from '../src/dict.js'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
 
 function fresh(): Game {

@@ -1,7 +1,7 @@
 // Play interface — a text script becomes a playable game.
 // Game = script + log; handleLine is the whole turn loop (testable without a TTY);
 // src/tui.tsx renders it in the terminal (Ink, with a readline fallback).
-import type { Dictionary } from './dict.js'
+import { coreDictionary, type Dictionary } from './dict.js'
 import type { CompiledContent, CompiledVerb, SlotRole } from './content.js'
 import { compileScript, type ScriptMeta } from './script.js'
 import { executeStep } from './engine.js'
@@ -14,7 +14,6 @@ import type { Ref } from './ref.js'
 import { clockFromAbsMin, formatClock } from './clock.js'
 import { cloneState, type Entity, type State } from './types.js'
 import { Log } from './store.js'
-import { seedDictionary } from './seed.js'
 
 export interface Turn {
   kind: 'action' | 'info' | 'error'
@@ -44,7 +43,7 @@ export class Game {
    *  them apart once appended (v0.5). */
   private turnLengths: number[] = []
 
-  static fromScript(text: string, dict: Dictionary = seedDictionary()): Game {
+  static fromScript(text: string, dict: Dictionary = coreDictionary()): Game {
     const { content, state, meta } = compileScript(text, dict)
     return new Game(dict, content, meta, state)
   }

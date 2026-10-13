@@ -6,10 +6,10 @@
 //   npm run lint:scripts -- my-game.txt  # or name files
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { coreDictionary } from './dict.js'
 import { lintScript } from './script.js'
-import { seedDictionary } from './seed.js'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 const args = process.argv.slice(2)
 const files = args.length > 0
   ? args

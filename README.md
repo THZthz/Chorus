@@ -30,7 +30,7 @@ scripts by hand.
 - `src/fold.ts` `store.ts` — replay from the log; JSONL persistence
 - `src/play.ts` — the game loop (script + log; one turn = handleLine)
 - `src/tui.tsx` — the terminal UI (Ink); readline fallback when stdin or stdout is not a TTY
-- `src/seed.ts` — the same sample world in TypeScript (tests)
+- `test/seed.ts` — the sample world (the spec's flagship examples) as a test fixture
 - `src/render.ts` — journal / prose / text cards (L3 projections)
 - `scripts/the-forgotten-house.txt` — a whole game as one text file
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express

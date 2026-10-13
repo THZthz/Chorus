@@ -15,10 +15,9 @@ import { nameRef, type Ref } from '../src/ref.js'
 import { cloneState, type State } from '../src/types.js'
 import { emptyClause, ROLES, type Clause, type Role } from '../src/sentence.js'
 import type { CompiledContent, CompiledSlot } from '../src/content.js'
-import type { Dictionary } from '../src/dict.js'
-import { seedDictionary } from '../src/seed.js'
+import { coreDictionary, type Dictionary } from '../src/dict.js'
 
-export const dict: Dictionary = seedDictionary()
+export const dict: Dictionary = coreDictionary()
 export const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')
 export const { content, state: base, meta } = compileScript(scriptText, dict)
 export const PLAYER = meta.player ?? 'MARCH'

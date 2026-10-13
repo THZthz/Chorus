@@ -1,11 +1,8 @@
-// Seed content + initial world — the spec's flagship examples as data (§6.4).
-import { coreDictionary, type Dictionary } from './dict.js'
-import type { ContentRaw } from './content.js'
-import { addEntity, relationKey, newState, type State } from './types.js'
-
-export function seedDictionary(): Dictionary {
-  return coreDictionary()
-}
+// The seed world + seed content — the spec's flagship examples as data (§6.4).
+// Moved from src/seed.ts: this is a test fixture, not engine machinery. Kept
+// vitest-free so non-test scripts (examples/demo.ts) can import it alike.
+import type { ContentRaw } from '../src/content.js'
+import { addEntity, relationKey, newState, type State } from '../src/types.js'
 
 export function seedContent(): ContentRaw {
   return {

@@ -9,22 +9,23 @@
 // conditions are a load-time error.
 import { describe, expect, test } from 'vitest'
 import { compileContent, type CompiledContent, type ContentRaw, type TriggerDef } from '../src/content.js'
+import { coreDictionary } from '../src/dict.js'
 import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { fold } from '../src/fold.js'
 import { formatSentence } from '../src/format.js'
 import type { Outcome } from '../src/sentence.js'
 import { parseOutcomes, parseSentence } from '../src/parse.js'
 import { compileScript } from '../src/script.js'
-import { seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { addEntity, cloneState, newState, type State } from '../src/types.js'
+import { seedState } from './seed.js'
 import { snap } from './snap.js'
 import { settleStep, act, done, refusal } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 // the rig's own verb lexemes (verbs are code-registered, §10)
 dict.registerVerb('INSPECT')
 dict.registerVerb('ATTUNE')

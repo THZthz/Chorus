@@ -14,19 +14,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compileContent, type CompiledContent, type ContentRaw } from '../src/content.js'
 import { rollDie, splitmix64 } from '../src/dice.js'
+import { coreDictionary } from '../src/dict.js'
 import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { fold, foldUpTo } from '../src/fold.js'
 import { formatSentence } from '../src/format.js'
 import { Game } from '../src/play.js'
 import { parseOutcomes, parseSentence } from '../src/parse.js'
 import { compileScript } from '../src/script.js'
-import { seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { cloneState, newState, type State } from '../src/types.js'
+import { seedState } from './seed.js'
 import { snap } from './snap.js'
 import { settleStep, done, refusal } from './settle.js'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 // the rigs' own verb lexemes (verbs are code-registered, §10)
 dict.registerVerb('INSPECT')
 dict.registerVerb('ATTUNE')

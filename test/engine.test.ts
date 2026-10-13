@@ -2,22 +2,23 @@
 // time ownership (§9.12), events (§9.16), fold determinism (§7).
 import { describe, expect, test } from 'vitest'
 import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content.js'
+import { coreDictionary } from '../src/dict.js'
 import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { formatDuration } from '../src/clock.js'
 import { fold, foldUpTo } from '../src/fold.js'
 import { formatSentence } from '../src/format.js'
 import { parseSentence } from '../src/parse.js'
 import { prose } from '../src/render.js'
-import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog, Log } from '../src/store.js'
 import { addEntity, newState, type State } from '../src/types.js'
+import { seedContent, seedState } from './seed.js'
 import { snap } from './snap.js'
 import { settleStep, act, done, refusal } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 const content = compileContent(seedContent(), dict)
 
 function setup() {
@@ -381,7 +382,7 @@ describe('review regressions', () => {
 })
 
 describe('exists(...) recipes — world-scope conditions (§6.3, CS extantreqs)', () => {
-  const probeDict = seedDictionary()
+  const probeDict = coreDictionary()
   probeDict.registerVerb('PROBE')
   const probeContent = (recipes: ContentRaw['verbs'][string]['recipes']): CompiledContent => compileContent({
     verbs: {
@@ -548,7 +549,7 @@ describe('empty base state fold (fresh world, no content spawns)', () => {
 })
 
 describe('SET deltas and aspect keys (§9.31)', () => {
-  const tuneDict = seedDictionary()
+  const tuneDict = coreDictionary()
   tuneDict.registerVerb('TUNE')
   const counterContent = (recipes: ContentRaw['verbs'][string]['recipes']): CompiledContent => compileContent({
     verbs: {
@@ -736,7 +737,7 @@ describe('SET deltas and aspect keys (§9.31)', () => {
 // ---------- authorable decay: REPLACE + `on expire of` (§9.32–§9.34) ----------
 
 describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
-  const decayDict = seedDictionary()
+  const decayDict = coreDictionary()
   decayDict.registerVerb('DECAY')
   const decayContent = (out: string, prototypes: ContentRaw['prototypes'] = {}) => compileContent({
     verbs: {
@@ -871,7 +872,7 @@ describe('REPLACE — decay into a successor (§4.4, §9.33)', () => {
 })
 
 describe('authored expiry triggers — `on expire of` (§6.6, §9.32)', () => {
-  const mothDict = seedDictionary()
+  const mothDict = coreDictionary()
   const waitVerb: VerbContent = {
     slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
     duration: 60,
@@ -1011,7 +1012,7 @@ describe('trigger outcome guards (§6.7, §9.34)', () => {
 // ---------- v0.3: `expires` accepts every §5.1 duration form (§4.2, §9.36) ----------
 
 describe('SET expires — every §5.1 duration form materializes expiresAt (§4.2, §9.36)', () => {
-  const tuneDict = seedDictionary()
+  const tuneDict = coreDictionary()
   tuneDict.registerVerb('TUNE') // not a core verb — the rig from the §9.31 describes
   const tuneContent = (out: string): CompiledContent => compileContent({
     verbs: {
@@ -1105,7 +1106,7 @@ describe('SET expires — every §5.1 duration form materializes expiresAt (§4.
 describe('core verbs STUDY and MANSUS (§4.3, §9.37)', () => {
   // the mirroring the spec declares: STUDY copies READ's slots, MANSUS copies
   // EXPLORE's — cardinalities and queries stay content (§6.1)
-  const verbDict = seedDictionary() // STUDY/MANSUS are core since v0.3
+  const verbDict = coreDictionary() // STUDY/MANSUS are core since v0.3
   const verbsContent = compileContent({
     verbs: {
       STUDY: {

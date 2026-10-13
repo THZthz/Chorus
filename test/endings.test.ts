@@ -5,23 +5,24 @@
 // undo reopens the game because `ended` derives from the fold.
 import { describe, expect, test } from 'vitest'
 import { compileContent, type CompiledContent, type ContentRaw } from '../src/content.js'
+import { coreDictionary } from '../src/dict.js'
 import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { fold } from '../src/fold.js'
 import { formatSentence } from '../src/format.js'
 import { parseSentence } from '../src/parse.js'
 import { endingBanner, endingNotice, proseLines } from '../src/render.js'
-import { seedContent, seedDictionary, seedState } from '../src/seed.js'
 import { loadLog, saveLog } from '../src/store.js'
 import { Game } from '../src/play.js'
 import { compileScript, parseScript } from '../src/script.js'
 import { cloneState, type State } from '../src/types.js'
+import { seedContent, seedState } from './seed.js'
 import { snap } from './snap.js'
 import { settleStep, act, done } from './settle.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 
 const waitContent = (out: string[], extra: Partial<ContentRaw> = {}): CompiledContent =>
   compileContent({

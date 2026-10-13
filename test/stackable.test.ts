@@ -4,15 +4,16 @@
 // by id while authored name-addressed outcomes hit the oldest.
 import { describe, expect, test } from 'vitest'
 import { compileContent, type CompiledContent } from '../src/content.js'
+import { coreDictionary } from '../src/dict.js'
 import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
 import { fold } from '../src/fold.js'
 import { parseSentence } from '../src/parse.js'
 import { parsePlayerInput } from '../src/lenient.js'
 import { compileScript, parseScript } from '../src/script.js'
-import { seedDictionary, seedState } from '../src/seed.js'
 import { saveLog, loadLog } from '../src/store.js'
 import { addEntity, newState, type State } from '../src/types.js'
 import { parsePredicate, evalPred } from '../src/predicate.js'
+import { seedState } from './seed.js'
 import { snap } from './snap.js'
 import { settleStep, act, done, refusal } from './settle.js'
 import { Game } from '../src/play.js'
@@ -20,9 +21,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const dict = seedDictionary()
+const dict = coreDictionary()
 // the rig dictionary: core verbs + the rig's own lexemes, so every parse below works
-const poolDict = seedDictionary()
+const poolDict = coreDictionary()
 poolDict.registerVerb('STEW')
 poolDict.registerVerb('PROBE')
 poolDict.registerVerb('CALM')

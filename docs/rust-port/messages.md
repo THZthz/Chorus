@@ -24,9 +24,9 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 
 | # | 状态 | 消息模板 | 首个钉住的测试 | TS 源行 | Rust 构造点 |
 |---|------|---------|---------------|---------|------------|
-| 6 | built | ``bad clock '${s}' (expected "day:halfhour")`` | test/clock.test.ts:26-32（`/bad clock/`） | src/core/clock.ts:33 | rust/src/core/clock.rs `parse_clock` |
-| 7 | built | ``bad halfhour '${s}' (0..47)`` | test/clock.test.ts:29（`/bad halfhour/`） | src/core/clock.ts:35 | rust/src/core/clock.rs `parse_clock` |
-| 8 | built | ``bad duration '${s}' (expected e.g. 1halfhour, 2h, 90m, 1d, 1h30m)`` | test/clock.test.ts:50-53（`/bad duration/`） | src/core/clock.ts:54 | rust/src/core/clock.rs `parse_duration` |
+| 6 | pinned | ``bad clock '${s}' (expected "day:halfhour")`` | test/clock.test.ts:26-32（`/bad clock/`）→ rust/tests/clock.rs `day_cannot_be_negative_d_cannot_lex_a_sign`、`rejects_halfhour_out_of_range_and_malformed_input` | src/core/clock.ts:33 | rust/src/core/clock.rs `parse_clock` |
+| 7 | pinned | ``bad halfhour '${s}' (0..47)`` | test/clock.test.ts:29（`/bad halfhour/`）→ rust/tests/clock.rs `rejects_halfhour_out_of_range_and_malformed_input` | src/core/clock.ts:35 | rust/src/core/clock.rs `parse_clock` |
+| 8 | pinned | ``bad duration '${s}' (expected e.g. 1halfhour, 2h, 90m, 1d, 1h30m)`` | test/clock.test.ts:50-53（`/bad duration/`）→ rust/tests/clock.rs `rejects_unknown_units_bare_ints_and_stray_suffixes` | src/core/clock.ts:54 | rust/src/core/clock.rs `parse_duration` |
 | 9 | built | ``negative duration ${minutes}`` | T1.5/W3 对账（无已知直锚） | src/core/clock.ts:63 | rust/src/core/clock.rs `format_duration` |
 | 10 | built | ``duplicate name '${e.name}' among alive entities`` | test/stackable.test.ts:240-248（`/duplicate name 'X'/`） | src/core/types.ts:153 | rust/src/core/types.rs `add_entity` |
 | 11 | built | ``unknown relation type '${type}' (register it in the dictionary)`` | T1.5/W3 对账 | src/core/dict.ts:66 | rust/src/core/dict.rs `relation_def` |
@@ -35,7 +35,7 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 14 | built | ``a function parameter is authored form only — calls expand at load (§9.40)`` | T1.5/W3 对账（formatRef(param) 抛点） | src/core/ref.ts:39 | rust/src/core/ref.rs `format_ref`、rust/src/core/format.rs `format_arg`（param 分支同文） |
 | 15 | built | ``bad query term '${raw}' (expected kind:/aspect:/state:/name:)`` | T1.5/W3 对账 | src/core/query.ts:26/54 | rust/src/core/query.rs `parse_term` |
 | 16 | built | ``bad name term '${raw}' (expected name:<NAME>)`` | T1.5/W3 对账 | src/core/query.ts:33 | rust/src/core/query.rs `parse_term` |
-| 17 | built | ``bad name term '${raw}' (name:X is an exact-case match — put the comparison outside: count(name:X) >= 1)`` | T1.5/W3 对账 | src/core/query.ts:38 | rust/src/core/query.rs `parse_term` |
+| 17 | pinned | ``bad name term '${raw}' (name:X is an exact-case match — put the comparison outside: count(name:X) >= 1)`` | test/query-predicate.test.ts:231-233（`/bad name term/` ×3）→ rust/tests/query_predicate.rs `a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_name` | src/core/query.ts:38 | rust/src/core/query.rs `parse_term` |
 | 18 | built | ``bad aspect term '${raw}'`` / ``bad state term '${raw}'`` | T1.5/W3 对账 | src/core/query.ts:44/49 | rust/src/core/query.rs `parse_term` |
 | 19 | built | ``empty predicate '${src}'`` | T1.5/W3 对账 | src/core/predicate.ts:178 | rust/src/core/predicate.rs `PredParser::parse` |
 | 20 | built | ``unbalanced ')' in IF condition`` | T1.5/W3 对账（conditionals 域） | src/core/predicate.ts:107 | rust/src/core/predicate.rs `parse_predicate_toks` |
@@ -47,9 +47,9 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 26 | built | ``expected integer in scalar condition, got '${v}'`` | T1.5/W3 对账 | src/core/predicate.ts:294 | rust/src/core/predicate.rs `scalar_cond` |
 | 27 | built | ``'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§9.41)`` | test/dice.test.ts:473（`/'roll' is not available in 'when:' predicates/`） | src/core/predicate.ts:319 | rust/src/core/predicate.rs `val_expr` |
 | 28 | built | ``'roll' is unbound — no ROLL has run in this outcome list before this point`` | test/dice.test.ts:423/433（行 5 升级：构造点已落地） | src/core/predicate.ts:477 | rust/src/core/predicate.rs `eval_expr` |
-| 29 | built | ``exists() needs a name or a slot query`` / ``count() needs a role or a slot query`` | T1.5/W3 对账 | src/core/predicate.ts:267/338 | rust/src/core/predicate.rs `exists_pred`/`val_expr` |
-| 30 | built | ``exists() takes one name or a kind:/aspect:/state:/name: query, got '${inner.trim()}'`` | T1.5/W3 对账 | src/core/predicate.ts:275 | rust/src/core/predicate.rs `exists_pred` |
-| 31 | built | ``total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))`` | T1.5/W3 对账 | src/core/predicate.ts:351-354 | rust/src/core/predicate.rs `val_expr` |
+| 29 | pinned | ``exists() needs a name or a slot query`` / ``count() needs a role or a slot query`` | test/query-predicate.test.ts:174（`/needs a name or a slot query/`）→ rust/tests/query_predicate.rs `composability_and_parse_errors`（exists 变体；count 变体仍待 W3 对账） | src/core/predicate.ts:267/338 | rust/src/core/predicate.rs `exists_pred`/`val_expr` |
+| 30 | pinned | ``exists() takes one name or a kind:/aspect:/state:/name: query, got '${inner.trim()}'`` | test/query-predicate.test.ts:175（`/takes one name/`）→ rust/tests/query_predicate.rs `composability_and_parse_errors` | src/core/predicate.ts:275 | rust/src/core/predicate.rs `exists_pred` |
+| 31 | pinned | ``total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))`` | test/query-predicate.test.ts:236（`/total\(\) pools a bound role/`）→ rust/tests/query_predicate.rs `a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_name` | src/core/predicate.ts:351-354 | rust/src/core/predicate.rs `val_expr` |
 | 32 | built | ``bad path '${t}'`` / ``expected aspect|attr in path '${t}'`` / ``expected aspect|attr after '${t}.', got '${field}'`` | T1.5/W3 对账 | src/core/predicate.ts:368/371/378 | rust/src/core/predicate.rs `val_expr` |
 | 33 | built | ``${where}: count() argument '${x.role}' is neither a role (${ROLE_LIST}) nor a query (name:x, kind:k, aspect:a>=1, state:s, -term) — did you mean count(name:${x.role})?`` | test/conditionals.test.ts:432（count(DREAD) typo lint 域） | src/core/predicate.ts:545-548 | rust/src/core/predicate.rs `lint_val_expr` |
 | 34 | built | ``${where}: total() first argument '${x.role}' is not a declared role (${ROLE_LIST}) — total pools a role's aspects; use count(name:x) to count a pool by name`` | T1.5/W3 对账 | src/core/predicate.ts:550-554 | rust/src/core/predicate.rs `lint_val_expr` |
@@ -70,9 +70,9 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 49 | built | ``expected event trigger name`` / ``expected a name after ':' in an event trigger id`` | T1.5/W3 对账 | src/core/parse.ts:134/141 | rust/src/core/parse.rs `sentence` |
 | 50 | built | ``expected a verb name after COMPLETE`` / ``expected a duration after WAIT`` | T1.5/W3 对账 | src/core/parse.ts:159/172 | rust/src/core/parse.rs `sentence` |
 | 51 | built | ``unexpected trailing token '${show(t)}'`` | T1.5/W3 对账 | src/core/parse.ts:187 | rust/src/core/parse.rs `expect_end` |
-| 52 | built | ``expected a registered verb, got '${show(verbTok)}'`` | T1.5/W3 对账 | src/core/parse.ts:199 | rust/src/core/parse.rs `clause` |
+| 52 | pinned | ``expected a registered verb, got '${show(verbTok)}'`` | test/sentence.test.ts:110/114（`/registered verb/`）→ rust/tests/sentence.rs `reserved_words_cannot_be_names`、`unregistered_verbs_are_rejected_at_the_actors_verb_boundary` | src/core/parse.ts:199 | rust/src/core/parse.rs `clause` |
 | 53 | built | ``AT given twice in one clause`` | T1.5/W3 对账 | src/core/parse.ts:221 | rust/src/core/parse.rs `clause` |
-| 54 | built | ``'${v}' is reserved and cannot be a name (quote it)`` | T1.5/W3 对账（/reserved/ 抽样钉于 decks.test.ts:368 等） | src/core/parse.ts:246/252 | rust/src/core/parse.rs `ref_` |
+| 54 | pinned | ``'${v}' is reserved and cannot be a name (quote it)`` | test/sentence.test.ts:108/118/131（`/reserved/`）→ rust/tests/sentence.rs `reserved_words_cannot_be_names`、`names_colliding_with_verbs_must_be_quoted`、`study_and_mansus_register_and_are_reserved_like_every_verb_lexeme`（/reserved/ 抽样锚原为 decks.test.ts:368 等） | src/core/parse.ts:246/252 | rust/src/core/parse.rs `ref_` |
 | 55 | built | ``a parameter cannot follow 'kind:' — bind the whole ref, not the name part`` | T1.5/W3 对账 | src/core/parse.ts:251 | rust/src/core/parse.rs `ref_` |
 | 56 | built | ``REPLACE takes the paren-less form: REPLACE ref WITH prototype`` / ``ENDING takes the paren-less form: ENDING ENDING_ID`` | T1.5/W3 对账 | src/core/parse.ts:290/294 | rust/src/core/parse.rs `op_outcome` |
 | 57 | built | ``ROLL takes the paren form: ROLL(<count-expr>, <sides-expr>[, <bonus-expr>])``（含 roll_arg_expr 的 unexpected end 变体） | T1.5/W3 对账 | src/core/parse.ts:301/489 | rust/src/core/parse.rs `op_outcome`/`roll_arg_expr` |
@@ -82,8 +82,8 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 61 | built | ``NARRATE takes exactly one string`` / ``NARRATE expects a string, got '${show(s)}'`` | T1.5/W3 对账 | src/core/parse.ts:349/357 | rust/src/core/parse.rs `op_outcome` |
 | 62 | built | ``REPLACE expects WITH`` / ``MOVE expects INTO`` / ``${op} requires parentheses`` | T1.5/W3 对账 | src/core/parse.ts:368/374/379 | rust/src/core/parse.rs `op_outcome` |
 | 63 | built | ``expected key=value pair, got '${show(k)}'`` / ``expected #id after AS, got '${show(id)}'`` | T1.5/W3 对账 | src/core/parse.ts:530/525/568 | rust/src/core/parse.rs `spawn_args`/`name_arg` |
-| 64 | built | ``deltas are integers only (no duration deltas)`` | test/sentence.test.ts:100（`deltas are integers only`） | src/core/parse.ts:555 | rust/src/core/parse.rs `arg` |
-| 65 | built | ``expected an integer after '${sign}', got '${show(n)}'`` / ``expected a value, got '${show(t)}'`` / ``unexpected token in outcome args: '${show(t)}'`` | T1.5/W3 对账 | src/core/parse.ts:556/638/611 | rust/src/core/parse.rs `arg`/`value_token` |
+| 64 | pinned | ``deltas are integers only (no duration deltas)`` | test/sentence.test.ts:100-103（`/integers only/`）→ rust/tests/sentence.rs `deltas_are_integers_only_a_duration_after_a_sign_is_a_parse_error` | src/core/parse.ts:555 | rust/src/core/parse.rs `arg` |
+| 65 | pinned | ``expected an integer after '${sign}', got '${show(n)}'`` / ``expected a value, got '${show(t)}'`` / ``unexpected token in outcome args: '${show(t)}'`` | test/sentence.test.ts:102（`/expected an integer/`）→ rust/tests/sentence.rs `deltas_are_integers_only_a_duration_after_a_sign_is_a_parse_error`（仅首变体；后两变体仍 T1.5/W3 对账） | src/core/parse.ts:556/638/611 | rust/src/core/parse.rs `arg`/`value_token` |
 | 66 | built | ``function '${name}' expects ${n} argument(s)${list}, got ${got}`` | test/functions.test.ts:131-137 域 | src/core/parse.ts:402-406 | rust/src/core/parse.rs `fn_call` |
 | 67 | built | unknownCallError 全文（``unknown '${name}(...)' in outcome position — the outcome vocabulary is: ${OUTCOME_OPS}…``） | test/functions.test.ts:138（`declared functions: one, zero`；罗列序=声明序） | src/core/parse.ts:843-853 | rust/src/core/fn_expand.rs `unknown_call_error` |
 | 68 | built | undeclaredTokenError 全文（``function '${fn}': '${token}' in a body string names neither a parameter of '${fn}' nor a reserved token ({…}) — …``） | test/functions.test.ts:227（`/'\{nope\}' in a body string names neither a parameter of 'bad' nor a reserved token/`） | src/core/parse.ts:781-788 | rust/src/core/fn_expand.rs `undeclared_token_error` |
@@ -92,9 +92,19 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 71 | built | ``function '${fn}': parameter '${name}' stands in an IF condition — the call supplies a ${t}, not a number`` | T1.5/W3 对账 | src/core/parse.ts:832-835 | rust/src/core/fn_expand.rs `subst_expr` |
 | 72 | built | internal 家族（``internal: call to undeclared function '${name}' survived parsing`` 等 5 处） | （tripwire/不可达，无测试可达） | src/core/parse.ts:391/694/721/742/747/795/828 | rust/src/core/parse.rs、rust/src/core/fn_expand.rs |
 | 73 | built | ``an IF outcome is authored form only — the log records the taken branch (§9.39)`` 及 FN/ROLL/DRAW/vexpr/param 五姊妹 | T1.5/W3 对账 | src/core/format.ts:41-44/92/93 | rust/src/core/format.rs `format_outcome`/`format_arg` |
+| 74 | pinned | ``functions recurse: ${cycle.join(' -> ')} — calls expand at load time, so a recursion cycle never terminates; rewrite without the cycle`` | test/functions.test.ts:291-301（`/functions recurse: a -> b -> a/`、`/functions recurse: self -> self/`；全量移植在 W3）→ 模板先行冻结于 rust/tests/fn_expand_direct.rs `mutual_recursion_names_the_cycle_self_recursion_names_itself` | src/content/content.ts:559-562 | （W2 content.rs 构造点；按 dice.rs `script_seed_error` 同例先行钉模板） |
+| 75 | pinned | ``function '${name}' sits ${d} calls deep — the nesting cap is ${MAX_FN_DEPTH}`` | test/functions.test.ts:303-310（`/function 'f1' sits 9 calls deep — the nesting cap is 8/`；全量移植在 W3）→ 模板先行冻结于 rust/tests/fn_expand_direct.rs `a_depth_8_chain_expands_transitively_depth_9_is_a_load_error` | src/content/content.ts:586 | （W2 content.rs 构造点；同上先行钉模板） |
+| 76 | pinned | ``function '${tpl.name}': call to undeclared function '${c}'`` | （无 TS toThrow 直锚——parse 前端已拒未知调用，此为 content.ts pass-3 防御 tripwire；模板冻结于 rust/tests/fn_expand_direct.rs `an_undeclared_call_in_a_body_is_named_by_its_declaring_function`，手造 FN 节点可达） | src/content/content.ts:548 | （W2 content.rs 构造点） |
 
 备注（W1）：
 
 - 行 27-42、43-65 的文本在 rust 侧已有 `#[cfg(test)]` 冒烟断言冻结（fn_expand.rs / parse.rs / predicate.rs / clock.rs / query.rs 测试模块），但正式 pinned 口径以 T1.5 移植的 TS 测试文件为准。
 - 行 67 的罗列序是 CORE-06 承重点：`unknownCallError` 用 `FnTable.by_name`（IndexMap）声明序 + `OUTCOME_OPS` 常量序，rust 冒烟测试已钉全文。
 - internal 家族（行 72）在 TS 侧同样不可达（`!` 断言/防御分支），rust 侧以 `unreachable!` 或同文 `ChorusError` 落地，均为规则 11 注释锚定。
+
+## T1.5 对账（W1 收口；随 rust/tests/{sentence,clock,query_predicate}.rs 移植升级）
+
+- **升 pinned（10 行）**：6、7、8（clock 三消息，锚 rust/tests/clock.rs）；52、54、64、65（parse 域，锚 rust/tests/sentence.rs；行 65 仅 `/expected an integer/` 首变体）；17、29、30、31（query/predicate 域，锚 rust/tests/query_predicate.rs；行 29 仅 exists 变体）。
+- **仍待对账（行 9、11、12(dict 版)、13、14、15、16、18-28、32-51、53、55-63、66-73 及 65/29 的次要变体）**：本波 3 个测试文件无可达断言，锚点在 W3 移植的 decks/conditionals/dice/engine/functions 各文件（行 33-42 的 lint 家族在 conditionals.test.ts，行 66-71 在 functions.test.ts，均在 W3）。
+- **新增 3 行（74-76，W2 content.rs 构造点）**：fn_expand 直测子集（PR3-01）在 T1.5 先行把宏展开的环/深度/未声明调用三条消息模板逐字钉进 rust/tests/fn_expand_direct.rs——同 dice.rs 行 1 的"构造点未到、模板先冻结"先例；行 74/75 的 TS 锚（functions.test.ts:291-310）随 W3 全量移植复核。
+- 对账口径（§7 规则 13(d)）：本波移植的 toThrow 计数 = sentence 9 + clock 9 + query-predicate 6 = 24 条 toThrow 断言（与 TS 原文逐条对应）；其中 10 行升级 pinned，其余断言命中的模板已在表行内登记（多断言共钉一行，如行 54 的三处 /reserved/ 抽样）。

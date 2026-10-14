@@ -71,3 +71,71 @@ fn draw_from_exhausted_deck_fails_loud_with_the_verbatim_message() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// W2: the same three rules through a COMPILED deck (the draw rule shared by
+// play and fold is the one content.rs built at load).
+// ---------------------------------------------------------------------------
+
+/// ts: test/decks.test.ts:60-98 (`rig`) — the minimal script shape with the
+/// gossip prototypes and a DRAW-verb; seed 0 keeps the pinned order
+/// RUMOUR, HEARSAY, RUMOUR, SCANDAL (the permutation vectors above).
+fn rig(decks: &str) -> String {
+    format!(
+        r#"script: Probe
+
+prototypes:
+  RUMOUR is idea stackable
+  HEARSAY is idea stackable
+  SCANDAL is idea stackable
+
+entities:
+  ANA is character
+
+decks:
+{decks}
+
+verbs:
+  WAIT:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      default -> DRAW RUMOURS
+"#
+    )
+}
+
+#[test]
+fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_forever() {
+    // ts: test/decks.test.ts:169-177 through compileScript, plus the
+    // defaultcard-forever leg of decks.test.ts:390-394's describe (the
+    // Game-refusal harness around it is W3).
+    let dict = chorus::core::dict::core_dictionary();
+    let game = chorus::content::script::compile_script(
+        &rig("  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset\n  SOLO spec HEARSAY reset\n  GOSSIP spec RUMOUR, HEARSAY, SCANDAL defaultcard HEARSAY\n  SINGLES spec HEARSAY"),
+        &dict,
+    )
+    .unwrap();
+    let rumours = game.content.decks.get("RUMOURS").unwrap();
+    assert_eq!(draw_from(rumours, 0).unwrap().name, "RUMOUR");
+    assert_eq!(draw_from(rumours, 3).unwrap().name, "SCANDAL");
+    assert_eq!(draw_from(rumours, 4).unwrap().name, "RUMOUR"); // reset wraps: period 4
+    assert_eq!(draw_from(rumours, 9).unwrap().name, "HEARSAY"); // 9 % 4 = 1
+    let solo = game.content.decks.get("SOLO").unwrap();
+    assert_eq!(draw_from(solo, 17).unwrap().name, "HEARSAY");
+    // defaultcard forever: past the spec every draw serves the default
+    // (GOSSIP's seed-0 permutation is the identity [0,1,2], pinned here so
+    // draw 0 below is the in-period first spec entry)
+    let gossip = game.content.decks.get("GOSSIP").unwrap();
+    assert_eq!(draw_from(gossip, 0).unwrap().name, "RUMOUR"); // in-period
+    for cursor in [3, 10, 99] {
+        assert_eq!(draw_from(gossip, cursor).unwrap().name, "HEARSAY");
+    }
+    // neither: the verbatim exhaustion error (content.ts:472-477)
+    let singles = game.content.decks.get("SINGLES").unwrap();
+    let err = draw_from(singles, 1).unwrap_err();
+    assert_eq!(
+        err.msg,
+        "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§9.42)"
+    );
+}
+

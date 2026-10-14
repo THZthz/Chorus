@@ -8,11 +8,9 @@
 //! order / anchor-on-expire-first-match / anchor-refuse-id-recycle) once W4
 //! runs. Until then they are the plan's sanctioned hand-derived placeholders.
 //!
-//! tests/common (snap.rs / settle.rs) is T3.5, so this file carries its own
-//! minimal `sig()` fold-equality stand-in; T3.5 replaces it with the real
-//! snap and these tests re-point to it.
-
-use std::collections::BTreeMap;
+//! T3.5 has landed tests/common/snap.rs, so the fold-equality assertions in
+//! this file compare through the REAL `snap()` (the `sig()` stand-in is gone;
+//! TS: test/snap.ts — same field set, PR2-11 order disciplines).
 
 use chorus::content::content::{
     compile_content, CompiledContent, ContentRaw, EndingDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent,
@@ -22,14 +20,15 @@ use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::parse::parse_sentence;
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::Arg;
-use chorus::core::types::{
-    add_entity, clone_state, new_state, AspectVal, AttrValue, Attrs, Entity, State,
-};
+use chorus::core::types::{add_entity, clone_state, new_state, AttrValue, Attrs, Entity, State};
 use chorus::engine::engine::{
     apply_record, execute_step, ActionRecord, ExecOptions, Step,
 };
 use chorus::engine::fold::{fold, fold_up_to};
 use chorus::js::Result;
+
+mod common;
+use common::snap::snap;
 
 // ---------------------------------------------------------------- rig ----
 
@@ -179,97 +178,6 @@ fn run_clock(content: &CompiledContent, dict: &Dictionary, state: State, clock: 
     .unwrap()
 }
 
-/// T3.5 STAND-IN for tests/common/snap.rs (`snap(s) -> String`): the same
-/// field set and the same 5 `a<b?-1:1` sorted maps + sorted fired (PR2-11),
-/// shaped as a serde_json Value with BTreeMaps for the sort. Fold-equality
-/// assertions in this file compare `sig(play) == sig(fold)`.
-fn sig(s: &State) -> String {
-    let ents: BTreeMap<&String, serde_json::Value> = s
-        .entities
-        .iter()
-        .map(|(id, e)| {
-            (
-                id,
-                serde_json::json!({
-                    "kind": e.kind, "name": e.name,
-                    "aspects": aspects_json(&e.aspects), "attrs": attrs_json(&e.attrs),
-                    "born": e.born_action, "dead": e.dead_action, "stackable": e.stackable,
-                }),
-            )
-        })
-        .collect();
-    let rels: BTreeMap<&String, serde_json::Value> = s
-        .relations
-        .iter()
-        .map(|(k, r)| (k, serde_json::json!([r.a, r.b, r.type_, r.value, r.born_action, r.dead_action])))
-        .collect();
-    let mut by_name: BTreeMap<&String, Vec<String>> = BTreeMap::new();
-    let mut bn_keys: Vec<&String> = s.by_name.keys().collect();
-    bn_keys.sort();
-    for k in bn_keys {
-        by_name.insert(k, s.by_name[k].clone());
-    }
-    let decks: BTreeMap<&String, i64> = s.decks.iter().map(|(k, v)| (k, *v)).collect();
-    let windows: BTreeMap<&String, serde_json::Value> = s
-        .windows
-        .iter()
-        .map(|(k, w)| {
-            (
-                k,
-                serde_json::json!({
-                    "beginId": w.begin_id, "clause": w.clause, "verb": w.verb,
-                    "start": w.start, "end": w.end, "recipe": w.recipe,
-                    "locked": w.locked,
-                }),
-            )
-        })
-        .collect();
-    let mut fired: Vec<&String> = s.fired.iter().collect();
-    fired.sort();
-    serde_json::json!({
-        "ents": ents, "rels": rels, "byName": by_name,
-        "now": s.now, "rng": s.rng, "decks": decks,
-        "fired": fired, "ended": s.ended.as_ref().map(|e| serde_json::json!([e.id, e.title, e.flavour])),
-        "windows": windows,
-    })
-    .to_string()
-}
-
-fn aspects_json(a: &chorus::core::types::Aspects) -> serde_json::Value {
-    let mut m = serde_json::Map::new();
-    for (k, v) in a {
-        m.insert(
-            k.clone(),
-            match v {
-                AspectVal::Num(n) => serde_json::json!(n),
-                AspectVal::Sub(sub) => {
-                    let mut sm = serde_json::Map::new();
-                    for (k2, n2) in sub {
-                        sm.insert(k2.clone(), serde_json::json!(n2));
-                    }
-                    serde_json::Value::Object(sm)
-                }
-            },
-        );
-    }
-    serde_json::Value::Object(m)
-}
-
-fn attrs_json(a: &Attrs) -> serde_json::Value {
-    let mut m = serde_json::Map::new();
-    for (k, v) in a {
-        m.insert(
-            k.clone(),
-            match v {
-                AttrValue::Str(s) => serde_json::json!(s),
-                AttrValue::Num(n) => serde_json::json!(n),
-                AttrValue::Bool(b) => serde_json::json!(b),
-            },
-        );
-    }
-    serde_json::Value::Object(m)
-}
-
 /// fold a full log over the SAME base the play started from — the law-1
 /// helper (no tests/common yet).
 fn replay(records: &[ActionRecord], base: &State, dict: &Dictionary, content: &CompiledContent) -> Result<State> {
@@ -330,7 +238,7 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
     // 60 fires after the completion though the cursor conceptually lagged).
     // the fold agrees on the whole shape:
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 1b — chronological pass: earlier completion first, each
@@ -396,7 +304,7 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
     let first = (r1.records.len() + r2.records.len()) as i64 + 1;
     assert_eq!(ids, vec![first, first + 1, first + 2, first + 3, first + 4]);
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 1c — due-tie broken by (beginId, clause): two same-end windows
@@ -465,7 +373,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
         .collect();
     assert_eq!(closes, vec![Some("PACE_A"), Some("PACE_Z")], "clause 0 before 1");
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 2a — same-halfhour expiries fire in ENTITIES INSERTION order
@@ -489,7 +397,7 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     assert!(adv.state.entities["a_card"].dead_action.is_some());
     // the fold replays both destroys through the DESTROY #id rows
     let replayed = replay(&adv.records, &base, &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 2b — authored `on expire of NAME`: FIRST match in declaration
@@ -549,7 +457,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
     expect.sort();
     assert_eq!(fired.iter().map(|s| s.as_str()).collect::<Vec<_>>(), expect);
     let replayed = replay(&adv.records, &base, &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 2c — the expiry snapshot is hoisted ONCE per pass: expiries
@@ -583,7 +491,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     assert_eq!(kinds(&adv1.records), ["complete", "wait"]);
     let pre_adv1 = clone_state(&adv1.state);
     let replayed1 = replay(&adv1.records, &post_begin, &dict, &content).unwrap();
-    assert_eq!(sig(&replayed1), sig(&pre_adv1));
+    assert_eq!(snap(&replayed1), snap(&pre_adv1));
     let _ = &base;
     let complete = &adv1.records[0];
     assert_eq!(outcome_ops(complete), ["SET"]);
@@ -602,7 +510,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     assert_eq!(adv2.state.now, 60);
     assert!(adv2.state.entities["egg"].dead_action.is_some());
     let replayed = replay(&adv2.records, &pre_adv2, &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv2.state));
+    assert_eq!(snap(&replayed), snap(&adv2.state));
 }
 
 /// §3.14 row 3 — REFUSE discards the whole advance pass (records AND clock
@@ -636,7 +544,7 @@ fn refuse_discards_advance_and_recycles_ids() {
     // state untouched: clock unmoved, window still open
     assert_eq!(r2.state.now, 0);
     assert_eq!(r2.state.windows.len(), 1);
-    assert_eq!(sig(&r2.state), sig(&r1.state));
+    assert_eq!(snap(&r2.state), snap(&r1.state));
     // id recycle: the SAME attempt again mints the SAME id
     let r3 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
     assert_eq!(r3.records[0].id, 2, "HAND: recycled id mints identically");
@@ -658,7 +566,7 @@ fn refuse_discards_advance_and_recycles_ids() {
         }
         st
     };
-    assert_eq!(sig(&replay(&full, &base, &dict, &content).unwrap()), sig(&played));
+    assert_eq!(snap(&replay(&full, &base, &dict, &content).unwrap()), snap(&played));
     let undone = fold_up_to(&full, &new_state(0), &dict, &content, 2).unwrap();
     assert_eq!(undone.windows.len(), 1);
     assert_eq!(undone.now, 0);
@@ -693,7 +601,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     full.extend(adv.records.clone());
     let st = fold(&full, &seed(), &dict, &content).unwrap();
     assert_eq!(st.now, 30);
-    assert_eq!(sig(&st), sig(&adv.state));
+    assert_eq!(snap(&st), snap(&adv.state));
     // wait spans must partition time: a wait row whose start disagrees with
     // the folded clock is a loud fold error
     let mut drifted_wait = adv.records[1].clone();
@@ -773,7 +681,7 @@ fn window_completion_failure_refuses_only_that_window() {
     assert_eq!(kinds(&adv2.records), ["wait"]);
     // the fold agrees: the REFUSE complete row is a no-op that closed its window
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv_state));
+    assert_eq!(snap(&replayed), snap(&adv_state));
 }
 
 /// §3.14 row 6 — the first ENDING wins; later ENDINGs are logged no-ops; the
@@ -834,7 +742,7 @@ fn first_ending_wins_and_gates_the_story() {
     assert!(gated.records.is_empty());
     // the fold projects the same ending from the log alone
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv_state));
+    assert_eq!(snap(&replayed), snap(&adv_state));
 }
 
 /// §3.14 row 7a — ROLL last-wins inside one outcome list: the concrete rows
@@ -876,7 +784,7 @@ fn roll_binds_last_wins_within_a_list() {
     assert!(matches!(&complete.outcomes[2].args[0], Arg::Str { v } if *v == format!("r={t2}.")));
     // the fold lands the counter from the ROLLED rows alone (law 3)
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 7b — the dice binding is PER CLAUSE (engine.ts:233-235): a
@@ -959,7 +867,7 @@ fn roll_binding_resets_per_clause() {
     assert_eq!(adv.state.rng, 2);
     let _ = cast_total;
     let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 8 — ADVANCE extends the pass target and the extension rides the
@@ -1095,7 +1003,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     chorus::engine::store::save_log(&path2, &loaded).unwrap();
     assert_eq!(bytes, std::fs::read(&path2).unwrap(), "law 1 within one implementation");
     let replayed = fold(&loaded, &seed(), &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&r2.state));
+    assert_eq!(snap(&replayed), snap(&r2.state));
     assert_eq!(replayed.windows.len(), 2);
     // window table shape: HAND windows PACE_A [0,60] key "1:0", PACE_B [0,30] key "2:0"
     let wa = r2.state.windows.get("1:0").unwrap();
@@ -1105,7 +1013,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     // undo turn 2 (fold_up_to < 3): only the first begin remains
     let undone = fold_up_to(&all, &seed(), &dict, &content, r1.records.len() as i64 + 1).unwrap();
     assert_eq!(undone.windows.len(), 1);
-    assert_eq!(sig(&undone), sig(&r1_state));
+    assert_eq!(snap(&undone), snap(&r1_state));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1146,7 +1054,7 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
     assert!(complete.outcomes[0].args.is_empty());
     assert!(!adv.state.by_name.contains_key("MAGICK_BOOK"));
     let replayed = replay(&adv.records, &base, &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv.state));
+    assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
 /// §3.14 row 12 — slot cadence: a trigger fires once per crossed halfhour in
@@ -1204,5 +1112,5 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     assert!(!t2.contains(&Some("once_dusk")), "once means once (§9.29)");
     assert_eq!(adv2.state.now, 1560);
     let replayed = replay(&adv2.records, &pre, &dict, &content).unwrap();
-    assert_eq!(sig(&replayed), sig(&adv2.state));
+    assert_eq!(snap(&replayed), snap(&adv2.state));
 }

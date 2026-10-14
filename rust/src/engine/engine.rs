@@ -38,6 +38,10 @@ use crate::js::{
 /// ts: src/engine/engine.ts:21-28 — the step input. TS `clock?: Clock | null`
 /// collapses to `Option<Clock>`: `??` treats `undefined` and `null` alike, so
 /// the two shapes are behaviorally one (documented modeling choice).
+/// `Clone/Debug` mirror the TS plain-object semantics: steps are freely
+/// copied into drafts by callers (e.g. the test-side candidate generators),
+/// never shared — no aliasing is observable.
+#[derive(Debug, Clone)]
 pub struct Step {
     /// begin at this absolute minute (v0.5, minute-precise — wins over clock)
     pub start_min: Option<i64>,

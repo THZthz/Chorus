@@ -459,9 +459,14 @@ pub fn compile_content(
                 min: s.min,
                 max: s.max,
                 shown: s.shown.unwrap_or(true),
-                query: match &s.query {
-                    Some(q) => Some(parse_query(q)?),
-                    None => None,
+                // ts: content.ts:224 `s.query ? parseQuery(s.query) : undefined`
+                // — JS truthiness: '' is FALSY, so a hand-built ContentRaw with
+                // query: '' compiles to NO query (not a parse error); parse-
+                // produced queries are never '' (script.ts:384's `\s+(.*)` is
+                // absent for a bare count spec), so this is the exact mapping.
+                query: match s.query.as_deref() {
+                    Some(q) if !q.is_empty() => Some(parse_query(q)?),
+                    _ => None,
                 },
             };
             slot_by_role.insert(s.role.clone(), compiled.clone());
@@ -472,14 +477,24 @@ pub fn compile_content(
             // QUIRK(Q1/ENG-15): the COMPILE side mints 0-based `.recipe${i}`
             // (content.ts:229; pinned by script-play.test.ts:175
             // `study.recipe0`). The lint mirror mints 1-based — frozen drift.
-            let id = r
-                .id
-                .clone()
-                .unwrap_or_else(|| mint_recipe_id(&name_lower, r.when.as_deref(), i, 0));
-            let when = match &r.when {
+            // ts: content.ts:229-230 — BOTH the id mint and the when parse
+            // read `r.when` JS truthiness: '' is FALSY, so a hand-built
+            // ContentRaw with when: '' rides as the DEFAULT recipe (id
+            // `${verb}.default`, no parse error); the lint mirror
+            // (script.ts:485) reads the same truthiness. parse-produced whens
+            // are never '' (script.ts:409's `when\s+(.+)$`).
+            let raw_when = r.when.as_deref().filter(|w| !w.is_empty());
+            let when = match raw_when {
                 Some(w) => Some(parse_predicate(w)?),
                 None => None,
             };
+            // QUIRK(Q1/ENG-15): the COMPILE side mints 0-based `.recipe${i}`
+            // (content.ts:229; pinned by script-play.test.ts:175
+            // `study.recipe0`). The lint mirror mints 1-based — frozen drift.
+            let id = r
+                .id
+                .clone()
+                .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i, 0));
             let mut out = Vec::new();
             for o in &r.out {
                 out.extend(parse_outcome_string(o, dict, &fns)?);
@@ -1186,5 +1201,48 @@ mod tests {
             .map(|(k, v)| (k, *v))
             .collect();
         assert_eq!(got, [("0", 3), ("5", 2), ("container", 1)]);
+    }
+
+    #[test]
+    fn empty_string_when_and_query_are_falsy_like_js() {
+        // wave-2 must-fix-1 — ts: content.ts:224/230: `s.query ? …` and
+        // `r.when ? … : null` read JS truthiness, so a hand-built ContentRaw
+        // with when: '' compiles as the DEFAULT recipe (minting
+        // `${verb}.default`, no parse error) and query: '' compiles to no
+        // query. (Unreachable through parse_script — its `when\s+(.+)` and
+        // slot `(.*)` shapes never yield '' — exactly why only a hand-built
+        // raw can probe it.)
+        let dict = crate::core::dict::core_dictionary();
+        let raw = ContentRaw {
+            verbs: [(
+                "WAIT".to_string(),
+                VerbContent {
+                    slots: vec![SlotDef {
+                        role: "actors".into(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some(String::new()),
+                        shown: None,
+                    }],
+                    duration: 0,
+                    recipes: vec![RecipeDef {
+                        id: None,
+                        when: Some(String::new()),
+                        shown: None,
+                        hint: None,
+                        out: vec!["NARRATE \"idle.\"".to_string()],
+                    }],
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..ContentRaw::default()
+        };
+        let compiled = compile_content(&raw, &dict, &[]).unwrap();
+        let verb = compiled.verbs.get("WAIT").unwrap();
+        assert!(verb.slots[0].query.is_none()); // '' query → no query, not an error
+        let recipe = &verb.recipes[0];
+        assert!(recipe.when.is_none()); // '' when → the DEFAULT recipe
+        assert_eq!(recipe.id, "wait.default"); // the falsy when mints .default
     }
 }

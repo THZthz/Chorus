@@ -178,8 +178,7 @@ interface RawSite {
                                // bare name is NEVER what mints
   where: string}
 
-function spawnNameRef(o: Outcome): { name: string; kind?: string } | null {
-  const a = o.args[0]
+function spawnNameRef(o: Outcome): { name: string; kind?: string } | null {  const a = o.args[0]
   if (o.op !== 'SPAWN' || !a || a.t !== 'ref' || a.ref.form !== 'name') return null
   return { name: a.ref.name, kind: a.ref.kind }
 }
@@ -227,6 +226,20 @@ function walkSites(
     }
   }}
 
+/** owner-string ('trigger t3') → (trigger, declaration index), built once per
+ *  content — the analysis re-derives this O(T) scan in half a dozen places per
+ *  site per fixpoint round otherwise. Missing owner → undefined / decl −1,
+ *  matching the find/findIndex semantics it replaces. */
+const trigIndexCache = new WeakMap<CompiledContent, Map<string, { trig: CompiledContent['triggers'][number]; decl: number }>>()
+const trigIndex = (content: CompiledContent): Map<string, { trig: CompiledContent['triggers'][number]; decl: number }> => {
+  let m = trigIndexCache.get(content)
+  if (m === undefined) {
+    m = new Map(content.triggers.map((t, i) => [`trigger ${t.id}`, { trig: t, decl: i }]))
+    trigIndexCache.set(content, m)
+  }
+  return m
+}
+
 function collectSites(content: CompiledContent, initNames: Map<string, Entity>): {
   live: RawSite[]
   refused: RawSite[]
@@ -239,6 +252,7 @@ function collectSites(content: CompiledContent, initNames: Map<string, Entity>):
    *  re-mint-collision-capable names (§9.14: `!pool.every(stackable)`) */
   collisionNames: Set<string>
 } {
+  const trigIdx = trigIndex(content)
   const live: RawSite[] = []
   const refused: RawSite[] = []
   const setSites: { key: string; owner: string; verbName?: string; targetName?: string; targetRole?: string; segs: number[]; shadowed: boolean; refused: boolean; pathNonStatic: boolean; whenPred: Pred | null; ownerSlot: number | null }[] = []
@@ -248,7 +262,7 @@ function collectSites(content: CompiledContent, initNames: Map<string, Entity>):
   for (const e of initNames.values()) if (!e.stackable) collisionNames.add(e.name)
   const walkList = (out: Outcome[], owner: string, verb: CompiledVerb | undefined, when: Pred | null, recipeIndex: number, shadowRisk: boolean, shadowed: boolean): void => {
     const ownSlot = (() => {
-      const t = content.triggers.find(tt => `trigger ${tt.id}` === owner)
+      const t = trigIdx.get(owner)?.trig
       return t && 'slot' in t ? t.slot : null
     })()
     const flags = new Map<number, SegFlags>()
@@ -389,7 +403,7 @@ function collectSites(content: CompiledContent, initNames: Map<string, Entity>):
       s.targetKilledInList = s.kind === 'replace' && !!s.replaceTarget
         && kills.some(k => k.name === s.replaceTarget && (k.seg !== s.seg || k.pos !== s.pos))
       if (s.kind === 'draw' && s.deck) {
-        const t = content.triggers.find(tt => `trigger ${tt.id}` === s.owner)
+        const t = trigIdx.get(s.owner)?.trig
         let cap = t && 'slot' in t && t.once ? 1 : MANY   // once trigger: one draw ever; recipes & recurring triggers: unbounded (A6/A11)
         if (cap === MANY) {
           // repeatable site: position k is served only if applications
@@ -459,33 +473,59 @@ function predStatic(p: Pred): boolean {
   }
 }
 
-function evalExprStatic(v: ValExpr, cards: Entity[]): number {
+/** the fixpoint's view of the available world (see cardsOf): distinct facts
+ *  with count-capped weights. Query evaluation over weights is EXACTLY the
+ *  evaluation over the flattened entity array it replaces — flatten pushed
+ *  min(count, 32) instances per fact, so a count over the array equals the
+ *  weighted sum below, and an exists over the array equals the name-set hit. */
+interface CardWorld { byName: Map<string, number>; distinct: { e: Entity; w: number }[] }
+
+// matchQuery is pure over immutable compiled Queries and immutable entity
+// descriptors — memoized by object identity, never invalidated. The fixpoint
+// re-asks the same (query, card) pairs thousands of times at CS scale (slot
+// filling, gate evaluation, selfGated).
+const matchMemo = new WeakMap<Query, WeakMap<Entity, boolean>>()
+const matchQ = (q: Query, e: Entity): boolean => {
+  let perEntity = matchMemo.get(q)
+  if (perEntity === undefined) { perEntity = new WeakMap(); matchMemo.set(q, perEntity) }
+  const hit = perEntity.get(e)
+  if (hit !== undefined) return hit
+  const r = matchQuery(e, q)
+  perEntity.set(e, r)
+  return r
+}
+
+function evalExprStatic(v: ValExpr, world: CardWorld): number {
   if (v.t === 'int') return v.v
-  if (v.t === 'countQuery') return cards.filter(c => matchQuery(c, v.query)).length
+  if (v.t === 'countQuery') {
+    let n = 0
+    for (const { e, w } of world.distinct) if (matchQ(v.query, e)) n += w
+    return n
+  }
   throw new Error('internal: evalExprStatic over a non-static operand')
 }
 
-function evalStatic(p: Pred, cards: Entity[]): boolean {
+function evalStatic(p: Pred, world: CardWorld): boolean {
   switch (p.t) {
-    case 'and': return evalStatic(p.a, cards) && evalStatic(p.b, cards)
-    case 'or': return evalStatic(p.a, cards) || evalStatic(p.b, cards)
-    case 'not': return !evalStatic(p.a, cards)
+    case 'and': return evalStatic(p.a, world) && evalStatic(p.b, world)
+    case 'or': return evalStatic(p.a, world) || evalStatic(p.b, world)
+    case 'not': return !evalStatic(p.a, world)
     case 'cmp': {
-      const l = evalExprStatic(p.l, cards)
-      const r = evalExprStatic(p.r, cards)
+      const l = evalExprStatic(p.l, world)
+      const r = evalExprStatic(p.r, world)
       const op: CmpOp = p.op
       return op === '>=' ? l >= r : op === '<=' ? l <= r : op === '>' ? l > r : op === '<' ? l < r : op === '=' ? l === r : l !== r
     }
-    case 'exists': return cards.some(c => c.name === p.name)
-    case 'existsQuery': return cards.some(c => matchQuery(c, p.query))
+    case 'exists': return world.byName.has(p.name)
+    case 'existsQuery': return world.distinct.some(({ e }) => matchQ(p.query, e))
     default: throw new Error('internal: evalStatic over a non-static predicate')
   }
 }
 
 /** every condition on the path must be static AND true against the current
  *  known world — anything else demotes the site to candidate */
-function pathOpen(path: Pred[], cards: Entity[]): boolean {
-  return path.every(p => predStatic(p) && evalStatic(p, cards))
+function pathOpen(path: Pred[], world: CardWorld): boolean {
+  return path.every(p => predStatic(p) && evalStatic(p, world))
 }
 
 // ---------- rendering static predicates (path-export guards) ----------
@@ -536,16 +576,91 @@ function writablePaths(query: Query): string[] {
 
 // ---------- the analysis ----------
 
-export function analyzeCard(content: CompiledContent, initial: State, target: string, opts: CardOptions = {}): CardReport {
+/** Everything target-independent the per-card analysis reads: the site census,
+ *  the risky-trigger demotions, the committability/provenance fixpoint, the
+ *  mint universe and the dead-verb set. Deterministic in (content, initial) —
+ *  the analyzer never mutates either — so it is computed once per pair and
+ *  shared by every subsequent analyzeCard call (WeakMap-keyed; entries die
+ *  with the objects). Callers must not mutate content or initial between
+ *  calls. At CS scale this is the whole per-call cost: the census probes all
+ *  amortize to one fixpoint. */
+interface WorldFacts {
+  notes: string[]                       // world-level notes (refused count + expiry witness notes), copied into every report
+  initNames: Map<string, Entity>
+  protoOf: (name: string) => PrototypeDef | undefined
+  synth: (name: string, kind: string, proto?: PrototypeDef, aspectsOverride?: Aspects) => Entity
+  firstCross: (slot: number) => number
+  live: RawSite[]
+  refused: RawSite[]
+  setSites: ReturnType<typeof collectSites>['setSites']
+  setWrites: Set<string>
+  destroyedBy: Map<string, Set<string>>
+  committable: Map<CompiledVerb, SlotProof[]>
+  proven: Map<RawSite, string[]>
+  frozen: boolean
+  freezeDist: number
+  dirtyOwners: Set<string>
+  deckCap: Map<string, number>
+  universe: Entity[]
+  opaqueSpawnAspects: boolean
+  derivePaths: Set<string>
+  canEverMatch: (query: Query | undefined) => boolean
+  deadVerbs: Set<CompiledVerb>
+  provenSourceFor: (name: string) => string[] | null
+  provenSources: (name: string) => { site: RawSite; sup: string[] }[]
+  initialPath: (name: string) => ReachPath
+  pathFor: (site: RawSite, mints: string, sup: string[], depth: number, seen: Set<string>, derived: boolean) => ReachPath
+}
+
+const worldCache = new WeakMap<CompiledContent, WeakMap<State, WorldFacts>>()
+
+const worldFor = (content: CompiledContent, initial: State): WorldFacts => {
+  let byState = worldCache.get(content)
+  if (byState === undefined) { byState = new WeakMap(); worldCache.set(content, byState) }
+  let facts = byState.get(initial)
+  if (facts === undefined) { facts = computeWorldFacts(content, initial); byState.set(initial, facts) }
+  return facts
+}
+
+function computeWorldFacts(content: CompiledContent, initial: State): WorldFacts {
   const notes: string[] = []
-  const chain: string[] = []
+  const trigIdx = trigIndex(content)
 
   // available cards: initial living entities, grouped by name
   const avail = new Map<string, CardFact[]>()
+  let availVer = 0
+  /** the fixpoint's available-world view — maintained INCREMENTALLY: each
+   *  push appends its weight in O(1), so no rebuild ever follows a proven
+   *  site (the previous shape re-materialized the whole map per change, and
+   *  the version-lazy cache still re-built it ~once per prove at CS scale).
+   *  Query semantics identical to the flattened array it replaces (see
+   *  CardWorld); insertion order preserved (avail iterates in push order). */
+  let flatCache: { ver: number; byName: Map<string, number>; distinct: { e: Entity; w: number }[] } | null = null
+  const cardsOf = (): CardWorld => {
+    if (flatCache !== null && flatCache.ver === availVer) return flatCache
+    const byName = new Map<string, number>()
+    const distinct: { e: Entity; w: number }[] = []
+    for (const list of avail.values()) {
+      for (const f of list) {
+        const w = Math.min(f.count, 32)
+        byName.set(f.entity.name, (byName.get(f.entity.name) ?? 0) + w)
+        distinct.push({ e: f.entity, w })
+      }
+    }
+    flatCache = { ver: availVer, byName, distinct }
+    return flatCache
+  }
   const push = (name: string, fact: CardFact): void => {
     const list = avail.get(name)
     if (list) list.push(fact)
     else avail.set(name, [fact])
+    // keep the world view warm in O(1) — no rebuild after a proven site
+    if (flatCache !== null) {
+      const w = Math.min(fact.count, 32)
+      flatCache.byName.set(name, (flatCache.byName.get(name) ?? 0) + w)
+      flatCache.distinct.push({ e: fact.entity, w })
+    }
+    availVer++
   }
   const initNames = new Map<string, Entity>()   // one representative per name (descriptors)
   const initCount = new Map<string, number>()
@@ -729,9 +844,9 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     // deterministic as well (the DESTROY runs first, or the second crossing
     // finds the target dead).
     const throwFrozen = new Set<string>()
-    const declOf = (owner: string): number => content.triggers.findIndex(tt => `trigger ${tt.id}` === owner)
+    const declOf = (owner: string): number => trigIdx.get(owner)?.decl ?? -1
     const firstCrossOf = (owner: string): number | null => {
-      const t = content.triggers.find(tt => `trigger ${tt.id}` === owner)
+      const t = trigIdx.get(owner)?.trig
       return t && 'slot' in t ? firstCross(t.slot) : null   // recipes commit at player-chosen times
     }
     for (const t of content.triggers) {
@@ -764,7 +879,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
       }
     }
     for (const owner of throwFrozen) {
-      const t = content.triggers.find(tt => `trigger ${tt.id}` === owner)
+      const t = trigIdx.get(owner)?.trig
       if (t && 'slot' in t) {
         const d = firstCross(t.slot)
         firstFreeze.set(d, Math.min(firstFreeze.get(d) ?? d, d))
@@ -902,7 +1017,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
       const list: { how: string; key: string }[] = []
       for (const facts of avail.values()) {
         for (const f of facts) {
-          const fits = slot.query ? matchQuery(f.entity, slot.query) : true
+          const fits = slot.query ? matchQ(slot.query, f.entity) : true
           if (!fits) continue
           const copies = f.entity.stackable ? Math.min(f.count === MANY ? cap : f.count, cap) : 1
           for (let c = 0; c < copies; c++) list.push({ how: f.how, key: `${f.entity.name}#${c}` })
@@ -953,7 +1068,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     }
     for (const site of live) {
       if (proven.has(site)) continue
-      const sup = siteProven(content, site, avail, committable, initNames, setWrites, setSites, destroyedBy, frozen, freezeDist, notes, mintSources, fillers, dirtyOwners, firstCross, triggerMintNames)
+      const sup = siteProven(content, site, avail, committable, initNames, setWrites, setSites, destroyedBy, frozen, freezeDist, notes, mintSources, fillers, dirtyOwners, firstCross, triggerMintNames, cardsOf)
       if (!sup) continue
       proven.set(site, sup)
       recordMintSource(site)
@@ -995,15 +1110,22 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
   // exhaustive over entry paths and kind/name are mint-immutable); an aspect
   // threshold with no descriptor hit stays undecided if anything can write
   // its path (SET / derive / opaque authored pairs).
+  const canEverMemo = new Map<Query, boolean>()   // universe/SET-writes are final here — memoize per distinct slot query
   const canEverMatch = (query: Query | undefined): boolean => {
     if (!query || query.length === 0) return true
-    if (universe.some(u => matchQuery(u, query))) return true
-    if (opaqueSpawnAspects) return true
-    const paths = writablePaths(query)
-    if (paths.length === 0) return false          // purely structural — the universe is exhaustive
-    if (paths.some(p => setWrites.has(p))) return true
-    if (paths.some(p => derivePaths.has(p))) return true
-    return false
+    const hit = canEverMemo.get(query)
+    if (hit !== undefined) return hit
+    const r = (() => {
+      if (universe.some(u => matchQuery(u, query))) return true
+      if (opaqueSpawnAspects) return true
+      const paths = writablePaths(query)
+      if (paths.length === 0) return false          // purely structural — the universe is exhaustive
+      if (paths.some(p => setWrites.has(p))) return true
+      if (paths.some(p => derivePaths.has(p))) return true
+      return false
+    })()
+    canEverMemo.set(query, r)
+    return r
   }
 
   // ---------- dead verbs ----------
@@ -1052,7 +1174,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
       if (site.verb !== undefined) {
         cap = site.cap            // recipe-owned: commits at/short of the freeze are still unbounded (0-duration)
       } else {
-        const t = content.triggers.find(tt => `trigger ${tt.id}` === site.owner)
+        const t = trigIdx.get(site.owner)?.trig
         cap = t && 'slot' in t && firstCross(t.slot) < freezeDist ? 1 : 0
       }
     }
@@ -1060,8 +1182,6 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
   }
 
   // ---------- path export: every PROVEN way to obtain the card ----------
-  const paths: ReachPath[] = []
-  const candidates: CardCandidate[] = []
   const MAX_PATH_DEPTH = 12
   /** every proven source for a name — the SAME predicate as the chain walk
    *  (derive-behind-mandatory-object sites never mint the bare name; a draw
@@ -1125,7 +1245,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
           }
         }
       } else {
-        const trig = content.triggers.find(t => `trigger ${t.id}` === site.owner)
+        const trig = trigIdx.get(site.owner)?.trig
         if (trig && !('slot' in trig)) needed.push({ name: trig.onExpireOf, how: 'must be alive and able to expire (the trigger fires only on its expiry)' })
       }
       for (const n of needed) {
@@ -1142,6 +1262,49 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     return path
   }
 
+  return {
+    notes,
+    initNames,
+    protoOf,
+    synth,
+    firstCross,
+    live,
+    refused,
+    setSites,
+    setWrites,
+    destroyedBy,
+    committable,
+    proven,
+    frozen,
+    freezeDist,
+    dirtyOwners,
+    deckCap,
+    universe,
+    opaqueSpawnAspects,
+    derivePaths,
+    canEverMatch,
+    deadVerbs,
+    provenSourceFor,
+    provenSources,
+    initialPath,
+    pathFor,
+  }
+}
+
+/** the per-card report: world facts are shared across calls (see WorldFacts) —
+ *  everything below reads them read-only and adds only the target-specific
+ *  verdict, chain, path trees and notes. `target` is ignored under `demand`. */
+export function analyzeCard(content: CompiledContent, initial: State, target: string, opts: CardOptions = {}): CardReport {
+  const facts = worldFor(content, initial)
+  const notes = [...facts.notes]
+  const chain: string[] = []
+  const paths: ReachPath[] = []
+  const candidates: CardCandidate[] = []
+  const {
+    initNames, protoOf, synth, live, setSites, setWrites, destroyedBy, committable,
+    proven, frozen, freezeDist, dirtyOwners, deckCap, universe, opaqueSpawnAspects, derivePaths,
+    deadVerbs, provenSourceFor, provenSources, initialPath, pathFor,
+  } = facts
   let existence: CardReport['existence'] = 'none'
   let demandMatch: Entity | null = null
   const demandQ = opts.demand ? parseQuery(opts.demand) : null
@@ -1304,7 +1467,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     for (const verb of content.verbs.values()) {
       if (!committable.has(verb)) continue
       for (const slot of verb.slots) {
-        const fits = slot.query ? matchQuery(descriptor, slot.query) : true
+        const fits = slot.query ? matchQ(slot.query, descriptor) : true
         if (fits) usableVia.push(`${verb.name}.${slot.role}${slot.query ? ' (query matches)' : ' (no query — binds anything)'}`)
       }
     }
@@ -1450,15 +1613,21 @@ function selfGated(content: CompiledContent, site: RawSite, avail: Map<string, C
   // on their second application (stackable X persists) — only once-owners
   // are doomed (verification agents D/E follow-up)
   if (site.verb === undefined) {
-    const t = content.triggers.find(tt => `trigger ${tt.id}` === site.owner)
+    const trigIdx = trigIndex(content)
+    const t = trigIdx.get(site.owner)?.trig
     if (t && 'slot' in t && t.once && site.listStackMints && [...gates].some(g => site.listStackMints!.has(g))) return true
   }
   if (site.verb) {
-    for (const slot of site.verb.slots) {
-      if (slot.min === 0) continue
-      for (const facts of avail.values()) {
-        for (const f of facts) {
-          if (mints.has(f.entity.name) && (slot.query ? matchQuery(f.entity, slot.query) : true)) return true
+    // mints-driven, not slots×world-driven: mints is the (small) set of names
+    // this list itself mints — the double-∃ over (slot, fact) commutes over
+    // (fact, slot), so iterate the facts of just those names
+    for (const mintName of mints) {
+      const facts = avail.get(mintName)
+      if (facts === undefined) continue
+      for (const f of facts) {
+        for (const slot of site.verb.slots) {
+          if (slot.min === 0) continue
+          if (slot.query ? matchQ(slot.query, f.entity) : true) return true
         }
       }
     }
@@ -1483,8 +1652,10 @@ function siteProven(
   dirtyOwners: Set<string>,
   firstCross: (slot: number) => number,
   triggerMintNames: Map<string, Set<string>>,
+  cardsOf: () => CardWorld,
 ): string[] | null {
-  const cards = flatten(avail)
+  const trigIdx = trigIndex(content)
+  const world = cardsOf()
   if (site.fallback) return null                       // ELSE runs only when earlier arms are false — unprovable
   if (site.killedInList) return null                   // the mint is destroyed later in the same list — never player-visible
   if (site.dupRisk) return null                        // a duplicate non-stackable mint in this list refuses the draft
@@ -1501,7 +1672,7 @@ function siteProven(
     && avail.has(site.replaceTarget) && otherKillers.length === 0 && !site.targetKilledInList
   if (site.throwOps - (selfSafe ? 1 : 0) > 0) return null
   if (site.shadowRisk) return null                     // first-match: an earlier recipe may shadow
-  if (!pathOpen(site.path, cards)) return null
+  if (!pathOpen(site.path, world)) return null
   // a static gate on exists(X) is only as durable as X's aliveness — if
   // anything DESTROYS/replaces X anywhere, a later crossing may find the
   // gate false (fuzz seed 6028: t1 gates on exists(ROPE); t0 destroys ROPE
@@ -1522,17 +1693,17 @@ function siteProven(
   // A recipe-timed source keeps the gate satisfiable (the player commits it
   // first), as does an expiry-timed one (the arming SET is player-timed).
   if (site.verb === undefined) {
-    const ownerTrig = content.triggers.find(t => `trigger ${t.id}` === site.owner)
+    const ownerTrig = trigIdx.get(site.owner)?.trig
     if (ownerTrig && 'slot' in ownerTrig) {
       const myFirstCross = firstCross(ownerTrig.slot)
-      const myDecl = content.triggers.findIndex(t => `trigger ${t.id}` === site.owner)
+      const myDecl = trigIdx.get(site.owner)?.decl ?? -1
       const deadAtMyFiring = (src: RawSite): boolean => {
         if (src.verb !== undefined) return false            // recipe commit — player-timed
-        const t2 = content.triggers.find(tt => `trigger ${tt.id}` === src.owner)
+        const t2 = trigIdx.get(src.owner)?.trig
         if (!t2) return true
         if (!('slot' in t2)) return false                   // expiry — arrangeable before the crossing
         if (t2.slot === ownerTrig.slot) {
-          const decl2 = content.triggers.findIndex(tt => `trigger ${tt.id}` === src.owner)
+          const decl2 = trigIdx.get(src.owner)?.decl ?? -1
           return decl2 > myDecl                             // same slot, later declaration → fires after us
         }
         return firstCross(t2.slot) > myFirstCross           // later crossing → not yet alive
@@ -1576,7 +1747,7 @@ function siteProven(
   if (site.verb !== undefined && site.listGateMints) {
     for (const [owner2, mints2] of triggerMintNames) {
       if (mints2.size === 0) continue
-      const t2 = content.triggers.find(tt => `trigger ${tt.id}` === owner2)
+      const t2 = trigIdx.get(owner2)?.trig
       if (!t2 || !('slot' in t2)) continue
       if (site.verb.duration < firstCross(t2.slot)) continue
       for (const n of mints2) {
@@ -1591,14 +1762,14 @@ function siteProven(
   // which the player keeps below S*). (fuzz seed 296.)
   if (frozen && site.verb !== undefined && site.verb.duration > 0) return null
   if (site.verb) {
-    if (site.when !== null && !(predStatic(site.when) && evalStatic(site.when, cards))) return null
+    if (site.when !== null && !(predStatic(site.when) && evalStatic(site.when, world))) return null
     const proofs = committable.get(site.verb)
     if (!proofs) return null
     return slotProofLines(site.verb, proofs)
   }
   // trigger owner
   const owner = site.owner
-  const trig = content.triggers.find(t => `trigger ${t.id}` === owner)
+  const trig = trigIdx.get(owner)?.trig
   if (!trig) return null
   if ('slot' in trig) {
     const onceNote = trig.once ? ' (once: true — still fires its first crossing)' : ' (every crossing)'
@@ -1619,7 +1790,7 @@ function siteProven(
   // `SET(ANA, expires)`, so nothing could arm the very first expiry).
   const desc = initNames.get(trig.onExpireOf) ?? avail.get(trig.onExpireOf)?.[0]?.entity
   const selfArm = (owner: string, cardName: string): boolean => {
-    const t2 = content.triggers.find(tt => `trigger ${tt.id}` === owner)
+    const t2 = trigIdx.get(owner)?.trig
     return t2 !== undefined && !('slot' in t2) && t2.onExpireOf === cardName
   }
   // can `cardName` ever be ARMED to expire? Recursively: its attrs already
@@ -1634,7 +1805,7 @@ function siteProven(
   // (top-level) verdicts, sound because `avail` is fixed within one call.
   const expiryMemo = new Map<string, boolean>()
   const ownerArmable = (owner: string, visiting: Set<string>): boolean => {
-    const t2 = content.triggers.find(tt => `trigger ${tt.id}` === owner)
+    const t2 = trigIdx.get(owner)?.trig
     if (t2 === undefined || 'slot' in t2) return true   // verbs are checked above; slot triggers fire unconditionally
     return expirableCard(t2.onExpireOf, visiting)
   }
@@ -1657,7 +1828,7 @@ function siteProven(
           ? (() => { const v = content.verbs.get(s.verbName); return v !== undefined && v.duration > 0 })()
           : s.ownerSlot !== null && firstCross(s.ownerSlot) >= freezeDist))
         && (!s.verbName || (() => { const v = content.verbs.get(s.verbName!); return v !== undefined && committable.has(v) })())
-        && (s.whenPred === null || (predStatic(s.whenPred) && evalStatic(s.whenPred, cards)))
+        && (s.whenPred === null || (predStatic(s.whenPred) && evalStatic(s.whenPred, world)))
         && (s.targetName === cardName
           || (s.targetRole !== undefined && d !== undefined && (() => {
             const v = s.verbName ? content.verbs.get(s.verbName) : undefined

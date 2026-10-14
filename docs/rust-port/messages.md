@@ -104,7 +104,7 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 
 ## T1.5 对账（W1 收口；随 rust/tests/{sentence,clock,query_predicate}.rs 移植升级）
 
-- **升 pinned（10 行）**：6、7、8（clock 三消息，锚 rust/tests/clock.rs）；52、54、64、65（parse 域，锚 rust/tests/sentence.rs；行 65 仅 `/expected an integer/` 首变体）；17、29、30、31（query/predicate 域，锚 rust/tests/query_predicate.rs；行 29 仅 exists 变体）。
+- **升 pinned（11 行）**：6、7、8（clock 三消息，锚 rust/tests/clock.rs）；52、54、64、65（parse 域，锚 rust/tests/sentence.rs；行 65 仅 `/expected an integer/` 首变体）；17、29、30、31（query/predicate 域，锚 rust/tests/query_predicate.rs；行 29 仅 exists 变体）。
 - **仍待对账（行 9、11、12(dict 版)、13、14、15、16、18-28、32-51、53、55-63、66-73 及 65/29 的次要变体）**：本波 3 个测试文件无可达断言，锚点在 W3 移植的 decks/conditionals/dice/engine/functions 各文件（行 33-42 的 lint 家族在 conditionals.test.ts，行 66-71 在 functions.test.ts，均在 W3）。
 - **新增 3 行（74-76，W2 content.rs 构造点）**：fn_expand 直测子集（PR3-01）在 T1.5 先行把宏展开的环/深度/未声明调用三条消息模板逐字钉进 rust/tests/fn_expand_direct.rs——同 dice.rs 行 1 的"构造点未到、模板先冻结"先例；行 74/75 的 TS 锚（functions.test.ts:291-310）随 W3 全量移植复核。
 - 对账口径（§7 规则 13(d)）：本波移植的 toThrow 计数 = sentence 9 + clock 9 + query-predicate 6 = 24 条 toThrow 断言（与 TS 原文逐条对应）；其中 10 行升级 pinned，其余断言命中的模板已在表行内登记（多断言共钉一行，如行 54 的三处 /reserved/ 抽样）。

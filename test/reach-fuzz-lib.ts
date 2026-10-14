@@ -469,6 +469,17 @@ export function runFuzzSeed(seed: number, maxSteps = 8, maxStates = 500): FuzzOu
     const rep = p.mode === 'name'
       ? analyzeCard(content, sc.initial, p.q, {})
       : analyzeCard(content, sc.initial, '', { demand: p.q })
+    // path-export invariants: a proven verdict MUST come with at least one
+    // exported path, and (name mode) every exported root must mint the probed
+    // name — the enumeration and the verdict must never disagree
+    if (rep.existence === 'proven' && rep.paths.length === 0) {
+      failures.push(`seed ${seed}: '${p.q}' proven obtainable but the path export is empty`)
+    }
+    if (p.mode === 'name') {
+      for (const root of rep.paths) {
+        if (root.mints !== p.q) failures.push(`seed ${seed}: exported path mints '${root.mints}' but the probe was '${p.q}'`)
+      }
+    }
     const truth = p.mode === 'name'
       ? fw.everNames.has(p.q)
       : fw.everDesc.some(e => matchQuery(e, parseQuery(p.q)))

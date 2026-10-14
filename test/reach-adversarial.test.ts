@@ -967,4 +967,51 @@ describe('reach adversarial scenarios', () => {
     const fwHigh = explore(high, dict, state, 8, 2000)
     expect(fwHigh.everNames.has('PRIZE')).toBe(true)
   })
+
+  test('S14 — two-stage expiry arming: the only SET(ANA, expires) lives in a trigger whose own card can never expire → the grand-spawn stays unproven (fuzz seed 100625)', () => {
+    // Mechanism: t_arms fires only when CRATE expires, and would write
+    // ANA.expires; t_grand fires only when ANA expires, and would mint PRIZE.
+    // But NOTHING arms CRATE — the chain is dead at its first link, so
+    // t_grand can never fire. A flat witness-exists check ("some persisting
+    // SET writes ANA.expires") claims PRIZE obtainable — a false positive the
+    // 2000-seed fuzz run refuted by forward play. The analyzer must
+    // recursively demand that an arming witness inside an expiry trigger
+    // have ITS card expirable too.
+    const mk = (withArmer: boolean): ContentRaw => ({
+      prototypes: { PRIZE: { kind: 'idea' } },
+      triggers: [
+        { id: 't_arms', onExpireOf: 'CRATE', out: ['SET(ANA, expires, 30m)'] },
+        { id: 't_grand', onExpireOf: 'ANA', out: ['SPAWN PRIZE'] },
+      ],
+      verbs: {
+        // WAIT is the explorer's only clock — without it no wait step commits
+        WAIT: { slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }], duration: 30, recipes: [{ out: [] }] },
+        ...(withArmer
+          ? {
+              STUDY: {
+                slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+                duration: 0,
+                recipes: [{ out: ['SET(CRATE, expires, 30m)'] }],
+              },
+            }
+          : {}),
+      },
+    })
+
+    // dead chain: t_grand is a live site, so the verdict is unproven (guarded,
+    // NOT structurally absent) — and forward play confirms PRIZE never appears
+    const dead = compile(mk(false))
+    const state = stateWith(ent('ANA', 'character'), ent('CRATE', 'item'))
+    const r = analyzeCard(dead, state, 'PRIZE')
+    expect(r.verdict, 'the arming chain is broken at CRATE — t_grand must not be proven').toBe('unproven')
+    const fw = explore(dead, dict, state, 10, 3000)
+    expect(fw.everNames.has('PRIZE')).toBe(false)
+
+    // control: a committable verb arms CRATE, and the WHOLE chain proves —
+    // CRATE (verb SET) → t_arms fires (SET ANA) → ANA expires → t_grand mints
+    const live = compile(mk(true))
+    expect(analyzeCard(live, state, 'PRIZE').verdict).toBe('obtainable')
+    const fwLive = explore(live, dict, state, 10, 3000)
+    expect(fwLive.everNames.has('PRIZE')).toBe(true)
+  })
 })

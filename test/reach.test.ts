@@ -451,3 +451,141 @@ describe('usability semantics (b)', () => {
     expect(r.existence).toBe('proven')
   })
 })
+
+// ---------- path export (all proven acquisition paths, best-effort) ----------
+
+describe('path export', () => {
+  test('every proven producer is exported — a recipe AND a trigger both minting the card yield two roots', () => {
+    const content = compile({
+      prototypes: { PILLAR: { kind: 'item', stackable: true } },
+      triggers: [{ id: 'quake', slot: 3, out: ['SPAWN PILLAR'] }],
+      verbs: {
+        EXPLORE: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 0,
+          recipes: [{ out: ['SPAWN PILLAR'] }],
+        },
+      },
+    })
+    const r = analyzeCard(content, stateWith(ANA()), 'PILLAR')
+    expect(r.verdict).toBe('obtainable')
+    expect(r.paths).toHaveLength(2)
+    const vias = r.paths.map(p => p.via)
+    expect(vias).toContain('recipe ' + content.verbs.get('EXPLORE')!.recipes[0]!.id + ' of EXPLORE')
+    expect(vias).toContain('trigger quake')
+    for (const p of r.paths) expect(p.mints).toBe('PILLAR')
+  })
+
+  test('an initial entity exports a single leaf path', () => {
+    const r = analyzeCard(compile({ verbs: {} }), stateWith(ANA(), BOOK()), 'THE_BOOK')
+    expect(r.paths).toHaveLength(1)
+    expect(r.paths[0]!.op).toBe('initial')
+    expect(r.paths[0]!.mints).toBe('THE_BOOK')
+    expect(r.paths[0]!.requires).toHaveLength(0)
+    expect(r.paths[0]!.supports[0]).toContain('initial entities')
+  })
+
+  test('requires expands recursively: a slot filler carries its own provenance (initial leaf)', () => {
+    const content = compile({
+      prototypes: { PILLAR: { kind: 'item' } },
+      verbs: {
+        EXPLORE: {
+          slots: [
+            { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+            { role: 'object', min: 1, max: 1, query: 'kind:text' },
+          ],
+          duration: 0,
+          recipes: [{ out: ['SPAWN PILLAR'] }],
+        },
+      },
+    })
+    const r = analyzeCard(content, stateWith(ANA(), BOOK()), 'PILLAR')
+    expect(r.verdict).toBe('obtainable')
+    expect(r.paths).toHaveLength(1)
+    const req = r.paths[0]!.requires.map(q => q.name).sort()
+    expect(req).toEqual(['ANA', 'THE_BOOK'])
+    for (const q of r.paths[0]!.requires) {
+      expect(q.paths).toHaveLength(1)
+      expect(q.paths[0]!.op).toBe('initial')
+    }
+  })
+
+  test('requires chains through produced fillers: deck card → slot → second-stage mint', () => {
+    const content = compile({
+      prototypes: { SEED: { kind: 'item' }, PLANT: { kind: 'text' } },
+      decks: [{ id: 'D1', spec: ['SEED'] }],
+      triggers: [{ id: 'sow', slot: 1, out: ['DRAW D1'] }],
+      verbs: {
+        STUDY: {
+          slots: [
+            { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+            { role: 'object', min: 1, max: 1, query: 'name:SEED' },
+          ],
+          duration: 0,
+          recipes: [{ out: ['SPAWN PLANT'] }],
+        },
+      },
+    })
+    const r = analyzeCard(content, stateWith(ANA()), 'PLANT')
+    expect(r.verdict).toBe('obtainable')
+    expect(r.paths).toHaveLength(1)
+    const seedReq = r.paths[0]!.requires.find(q => q.name === 'SEED')
+    expect(seedReq).toBeDefined()
+    expect(seedReq!.paths).toHaveLength(1)
+    expect(seedReq!.paths[0]!.op).toBe('DRAW')
+    expect(seedReq!.paths[0]!.deck?.id).toBe('D1')
+    expect(seedReq!.paths[0]!.via).toBe('trigger sow')
+  })
+
+  test('demand mode exports a root per matching source, not just the first', () => {
+    const content = compile({
+      prototypes: { RED: { kind: 'item', aspects: { tint: 1 } }, BLUE: { kind: 'idea', aspects: { tint: 1 } } },
+      triggers: [{ id: 'fall', slot: 2, out: ['SPAWN BLUE'] }],
+      verbs: {
+        EXPLORE: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 0,
+          recipes: [{ out: ['SPAWN RED'] }],
+        },
+      },
+    })
+    const r = analyzeCard(content, stateWith(ANA()), '', { demand: 'aspect:tint>=1' })
+    expect(r.verdict).toBe('obtainable')
+    expect(r.paths.map(p => p.mints).sort()).toEqual(['BLUE', 'RED'])
+  })
+
+  test('static IF guards on a proven path render into the guards list', () => {
+    const content = compile({
+      prototypes: { PILLAR: { kind: 'item' }, KEY: { kind: 'item' } },
+      verbs: {
+        EXPLORE: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 0,
+          recipes: [{ out: ['IF exists(KEY) -> (SPAWN PILLAR)'] }],
+        },
+      },
+    })
+    const r = analyzeCard(content, stateWith(ANA(), ent('KEY', 'item')), 'PILLAR')
+    expect(r.verdict).toBe('obtainable')
+    expect(r.paths[0]!.guards).toContain('exists(KEY)')
+  })
+
+  test('guarded (candidate) sources are listed flat in candidates — never as paths', () => {
+    const content = compile({
+      prototypes: { PILLAR: { kind: 'item' } },
+      verbs: {
+        EXPLORE: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 0,
+          recipes: [{ when: 'actors.aspect.occult >= 1', out: ['SPAWN PILLAR'] }],
+        },
+      },
+    })
+    const r = analyzeCard(content, stateWith(ANA()), 'PILLAR')
+    expect(r.verdict).toBe('unproven')
+    expect(r.paths).toHaveLength(0)
+    expect(r.candidates.length).toBeGreaterThan(0)
+    expect(r.candidates[0]!.via).toContain('EXPLORE')
+    expect(r.candidates[0]!.reason).toContain('when')
+  })
+})

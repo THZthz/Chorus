@@ -70,14 +70,55 @@ export interface CardOptions {
 
 export type CardVerdict = 'obtainable' | 'unobtainable' | 'unproven' | 'unusable'
 
+/** one node of an exported acquisition path: a PROVEN producer site (or an
+ *  initial declaration) plus its recursive preconditions. Guarded 'candidate'
+ *  sources never appear here — they are listed flat in CardReport.candidates.
+ *  Termination: the fixpoint is monotone, so every requires-edge points to a
+ *  site proven strictly earlier (or an initial entity); the depth cap and
+ *  per-branch seen-set are defense, not correctness. */
+export interface ReachPath {
+  /** display owner: 'recipe work.r0 of WORK' | 'trigger t3' | 'initial entity X' */
+  via: string
+  op: 'initial' | 'SPAWN' | 'REPLACE' | 'DRAW'
+  /** the card this hop makes available */
+  mints: string
+  /** `mints` is a derived shape (`${PROTO}_${OBJECT}`), not the bare name */
+  derivedName?: true
+  /** DRAW only: where the card sits in the seed-fixed permutation */
+  deck?: { id: string; position?: number; defaultcard?: boolean; capacity?: number }
+  /** static-true IF / `when` conditions on the path, rendered */
+  guards: string[]
+  /** proven support lines (committability / trigger firing / expiry arming) */
+  supports: string[]
+  /** cards this hop needs (slot fillers of the chosen proof / the expiry's
+   *  named card), each with their own provenance */
+  requires: { name: string; how: string; paths: ReachPath[] }[]
+}
+
+/** a guarded source that keeps existence at 'candidate' — flat annotation,
+ *  never a proven path */
+export interface CardCandidate { via: string; reason: string }
+
+/** one filled slot of a verb's committability proof — the structured form of
+ *  the display line (`VERB committable: role ×min ← …`); fillers are the
+ *  expanded instances (name#copy) of the chosen first-fit proof, flattened to
+ *  (name, how) pairs */
+export interface SlotProof { role: Role; min: number; query?: Query; fillers: { name: string; how: string }[] }
+
 export interface CardReport {
   target: string
   verdict: CardVerdict
   /** proven / candidate / none — the existence tier before usable is folded in */
   existence: 'proven' | 'candidate' | 'none'
   requestedUsable: boolean
-  /** the provenance chain, one line per hop (proven paths only) */
+  /** the provenance chain, one line per hop — the FIRST proven path only
+   *  (kept byte-stable; the full enumeration is `paths`) */
   chain: string[]
+  /** every proven acquisition path (best-effort: proven sites only),
+   *  recursively expanded; deterministic order for identical input */
+  paths: ReachPath[]
+  /** guarded sources that block 'unproven' (name mode, candidate existence) */
+  candidates: CardCandidate[]
   /** (b) verb.role sites that can bind the card (committable verbs only) */
   usableVia: string[]
   notes: string[]
@@ -447,6 +488,41 @@ function pathOpen(path: Pred[], cards: Entity[]): boolean {
   return path.every(p => predStatic(p) && evalStatic(p, cards))
 }
 
+// ---------- rendering static predicates (path-export guards) ----------
+//
+// Only the static vocabulary can appear on a PROVEN path (pathOpen requires
+// predStatic AND true), so the renderer covers and/or/not/cmp over int and
+// count(<query>), exists(NAME) and exists(<query>) — the exact trigger-IF
+// vocabulary. Anything else renders as a placeholder and is never expected.
+
+function queryText(q: Query): string {
+  return q.map(t => {
+    const neg = t.neg ? '!' : ''
+    if (t.f === 'kind') return `${neg}kind:${t.kind}`
+    if (t.f === 'name') return `${neg}name:${t.name}`
+    if (t.f === 'aspect') return `${neg}aspect:${t.path}${t.op !== null ? `${t.op}${t.level}` : ''}`
+    return t.op === '!' ? `${neg}state:!${t.key}` : `${neg}state.${t.key}${t.op}${t.value ?? ''}`
+  }).join(' ')
+}
+
+function exprText(v: ValExpr): string {
+  if (v.t === 'int') return String(v.v)
+  if (v.t === 'countQuery') return `count(${queryText(v.query)})`
+  return '?'   // non-static operand — never on a proven path
+}
+
+export function predText(p: Pred): string {
+  switch (p.t) {
+    case 'and': return `(${predText(p.a)} && ${predText(p.b)})`
+    case 'or': return `(${predText(p.a)} || ${predText(p.b)})`
+    case 'not': return `!(${predText(p.a)})`
+    case 'cmp': return `${exprText(p.l)} ${p.op} ${exprText(p.r)}`
+    case 'exists': return `exists(${p.name})`
+    case 'existsQuery': return `exists(${queryText(p.query)})`
+    default: return `<non-static ${p.t}>`
+  }
+}
+
 /** the writable paths a query's aspect/state thresholds demand, in SET-key
  *  form ('aspect:x' / 'state.x') — flatMap keeps the term union narrowed */
 function writablePaths(query: Query): string[] {
@@ -786,7 +862,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
   // forward and the trigger strikes every crossing — verified A6/A7); recipe
   // sites need their verb committable; expiry triggers need their named card
   // available. Committability and availability feed each other — fixpoint.
-  const committable = new Map<CompiledVerb, string[]>()   // verb → slot-support lines
+  const committable = new Map<CompiledVerb, SlotProof[]>()   // verb → its structured committability proof
   const proven = new Map<RawSite, string[]>()             // site → support lines
   // proven provenance: which PROVEN sites mint each name (bare names only —
   // derive-mints behind object-mandatory verbs carry `${PROTO}_${OBJ}`), read
@@ -805,7 +881,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
   }
   const fillers = new Map<CompiledVerb, Set<string>>()    // verb → names its committability proof filled slots with
 
-  const slotSupport = (verb: CompiledVerb): string[] | null => {
+  const slotSupport = (verb: CompiledVerb): SlotProof[] | null => {
     // the engine validates ONE slot per role: validateSlots iterates ROLES
     // and reads slotByRole, whose LAST entry per role wins (content.ts §6
     // compile) — earlier duplicate defs are inert at commit time. Modeling
@@ -853,15 +929,18 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
       return false
     }
     if (!assign(0, 0)) return null
+    const proofs: SlotProof[] = slots.map((slot, i) => ({
+      role: slot.role,
+      min: slot.min,
+      ...(slot.query ? { query: slot.query } : {}),
+      fillers: chosen[i]!.map(inst => ({ name: inst.key.split('#')[0]!, how: inst.how })),
+    }))
     // record the filler NAMES this committability proof relied on — the
     // gate-source-kills-filler rule reads them (fuzz seed 12460)
     const names = new Set<string>()
-    for (const ch of chosen) for (const inst of ch) names.add(inst.key.split('#')[0]!)
+    for (const pf of proofs) for (const f of pf.fillers) names.add(f.name)
     fillers.set(verb, names)
-    return slots.map((slot, i) => {
-      const whos = [...new Set(chosen[i]!.map(c => c.how))].slice(0, 3)
-      return `${verb.name} committable: ${slot.role} ×${slot.min} ← ${whos.join(', ')}`
-    })
+    return proofs
   }
 
   let changed = true
@@ -980,6 +1059,89 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     deckCap.set(site.name, Math.max(deckCap.get(site.name) ?? 0, cap))
   }
 
+  // ---------- path export: every PROVEN way to obtain the card ----------
+  const paths: ReachPath[] = []
+  const candidates: CardCandidate[] = []
+  const MAX_PATH_DEPTH = 12
+  /** every proven source for a name — the SAME predicate as the chain walk
+   *  (derive-behind-mandatory-object sites never mint the bare name; a draw
+   *  must be unblinded and its position within deck capacity) */
+  const provenSources = (name: string): { site: RawSite; sup: string[] }[] => {
+    const out: { site: RawSite; sup: string[] }[] = []
+    for (const [site, sup] of proven) {
+      if (site.derives && objectAlways(site.verb)) continue
+      const hit = site.kind === 'draw'
+        ? (!drawBlindsBare(content, site, name) && servedByCap(site.deck!, name, deckCap.get(site.name) ?? 0))
+        : site.name === name
+      if (hit) out.push({ site, sup })
+    }
+    return out
+  }
+  const initialPath = (name: string): ReachPath => {
+    const e = initNames.get(name)!
+    return {
+      via: `initial entity ${name} (${e.kind})`,
+      op: 'initial',
+      mints: name,
+      guards: [],
+      supports: [`${name} is declared in the initial entities (${e.kind}${Object.keys(e.aspects).length ? ', aspects ' + JSON.stringify(e.aspects) : ''})`],
+      requires: [],
+    }
+  }
+  /** unfold one proven site into a path node. `seen` carries the filler names
+   *  already expanded on this branch: the fixpoint's strict proof order means
+   *  no true cycle exists (a filler is always in `avail` BEFORE this site was
+   *  proven), so the set only dedups repeated fillers and defends that
+   *  invariant; the depth cap is the best-effort backstop. */
+  const pathFor = (site: RawSite, mints: string, sup: string[], depth: number, seen: Set<string>, derived: boolean): ReachPath => {
+    const path: ReachPath = {
+      via: site.where,
+      op: site.kind === 'draw' ? 'DRAW' : site.kind === 'replace' ? 'REPLACE' : 'SPAWN',
+      mints,
+      guards: [...site.path.filter(predStatic).map(predText), ...(site.when !== null && predStatic(site.when) ? [predText(site.when)] : [])],
+      supports: sup,
+      requires: [],
+    }
+    if (derived) path.derivedName = true
+    if (site.kind === 'draw' && site.deck) {
+      const pos = site.deck.order.findIndex(c => c.name === mints)
+      path.deck = {
+        id: site.deck.id,
+        ...(pos >= 0 ? { position: pos } : { defaultcard: true }),
+        ...(site.cap !== MANY ? { capacity: site.cap } : {}),
+      }
+    }
+    // preconditions: the chosen committability proof's slot fillers, or the
+    // expiry trigger's named card; slot triggers carry none
+    if (depth < MAX_PATH_DEPTH) {
+      const needed: { name: string; how: string }[] = []
+      if (site.verb) {
+        const proofs = committable.get(site.verb)
+        if (proofs) {
+          for (const pf of proofs) {
+            for (const f of pf.fillers) {
+              if (!needed.some(n => n.name === f.name)) needed.push({ name: f.name, how: f.how })
+            }
+          }
+        }
+      } else {
+        const trig = content.triggers.find(t => `trigger ${t.id}` === site.owner)
+        if (trig && !('slot' in trig)) needed.push({ name: trig.onExpireOf, how: 'must be alive and able to expire (the trigger fires only on its expiry)' })
+      }
+      for (const n of needed) {
+        const sub: ReachPath[] = []
+        if (initNames.has(n.name)) sub.push(initialPath(n.name))
+        else if (!seen.has(n.name)) {
+          for (const src of provenSources(n.name)) {
+            sub.push(pathFor(src.site, n.name, src.sup, depth + 1, new Set([...seen, n.name]), false))
+          }
+        }
+        path.requires.push({ name: n.name, how: n.how, paths: sub })
+      }
+    }
+    return path
+  }
+
   let existence: CardReport['existence'] = 'none'
   let demandMatch: Entity | null = null
   const demandQ = opts.demand ? parseQuery(opts.demand) : null
@@ -990,38 +1152,48 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     // changes the minted kind — B5), never the bare prototype
     for (const e of initNames.values()) {
       if (!matchQuery(e, demandQ)) continue
-      existence = 'proven'
-      demandMatch = e
-      chain.push(`${e.name} (${e.kind}${Object.keys(e.aspects).length ? ', aspects ' + JSON.stringify(e.aspects) : ''}) satisfies the demand '${opts.demand}'`)
-      chain.push(...provenSourceFor(e.name)!)
-      break
+      if (existence !== 'proven') {
+        existence = 'proven'
+        demandMatch = e
+        chain.push(`${e.name} (${e.kind}${Object.keys(e.aspects).length ? ', aspects ' + JSON.stringify(e.aspects) : ''}) satisfies the demand '${opts.demand}'`)
+        chain.push(...provenSourceFor(e.name)!)
+      }
+      paths.push(initialPath(e.name))
     }
     if (existence === 'none') {
       for (const [site, sup] of proven) {
-        const descs: Entity[] = site.kind === 'draw'
+        const descs: { name: string; desc: Entity; derived: boolean }[] = site.kind === 'draw'
           ? [...site.deck!.order, ...(site.deck!.defaultcard ? [site.deck!.defaultcard!] : [])]
               .map(c => {
                 const desc = synth(c.name, c.kind, content.prototypes.get(c.name))
                 // a draw of a derive-card behind an object-mandatory verb never
                 // carries the bare name (fuzz seed 12320) — blind it so
                 // `name:X` demands cannot match, while kind/aspect demands can
-                return drawBlindsBare(content, site, c.name) ? { ...desc, name: '\u0000derived' } : desc
+                const blind = drawBlindsBare(content, site, c.name)
+                return { name: c.name, desc: blind ? { ...desc, name: '\u0000derived' } : desc, derived: blind }
               })
-          : [synth(site.name, site.kindOverride ?? content.prototypes.get(site.name)?.kind ?? 'item', content.prototypes.get(site.name), siteAspects(site))]
-        for (const desc of descs) {
+          : [(() => {
+              const desc = synth(site.name, site.kindOverride ?? content.prototypes.get(site.name)?.kind ?? 'item', content.prototypes.get(site.name), siteAspects(site))
+              const blind = !!(site.derives && objectAlways(site.verb))
+              return { name: site.name, desc: blind ? { ...desc, name: '\u0000derived' } : desc, derived: blind }
+            })()]
+        for (const { name, desc, derived } of descs) {
           // a derive-mint behind an object-mandatory verb never carries the
           // bare name — blind the name so `name:X` demands cannot match it,
           // while kind/aspect demands still can
-          const match = site.derives && objectAlways(site.verb) ? { ...desc, name: '\u0000derived' } : desc
-          if (!matchQuery(match, demandQ)) continue
-          if (site.kind === 'draw' && !servedByCap(site.deck!, desc.name, deckCap.get(site.name) ?? 0)) continue
-          existence = 'proven'
-          demandMatch = desc
-          chain.push(`${desc.name} (${desc.kind}${Object.keys(desc.aspects).length ? ', aspects ' + JSON.stringify(desc.aspects) : ''}) satisfies the demand '${opts.demand}'`)
-          chain.push(...siteChain(content, site, desc.name, sup))
-          break
+          if (!matchQuery(desc, demandQ)) continue
+          if (site.kind === 'draw' && !servedByCap(site.deck!, name, deckCap.get(site.name) ?? 0)) continue
+          if (existence !== 'proven') {
+            existence = 'proven'
+            demandMatch = desc
+            // the chain shows the REAL name — never the \u0000derived blinding
+            // sentinel (a blinded descriptor used to leak it verbatim here)
+            const shown = derived ? 'a derived-mint card (name formed from the bound object)' : name
+            chain.push(`${shown} (${desc.kind}${Object.keys(desc.aspects).length ? ', aspects ' + JSON.stringify(desc.aspects) : ''}) satisfies the demand '${opts.demand}'`)
+            chain.push(...siteChain(content, site, name, sup))
+          }
+          paths.push(pathFor(site, name, sup, 0, new Set(), derived))
         }
-        if (existence === 'proven') break
       }
     }
     if (existence === 'none') {
@@ -1044,6 +1216,7 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
   } else if (initNames.has(target)) {
     existence = 'proven'
     chain.push(...provenSourceFor(target)!)
+    paths.push(initialPath(target))
   } else {
     for (const [site, sup] of proven) {
       // a derive-mint behind an object-mandatory verb never mints the BARE
@@ -1056,9 +1229,11 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
           ? (!drawBlindsBare(content, site, target) && servedByCap(site.deck!, target, deckCap.get(site.name) ?? 0))
           : site.name === target
       if (!hit) continue
-      existence = 'proven'
-      chain.push(...siteChain(content, site, target, sup))
-      break
+      if (existence !== 'proven') {
+        existence = 'proven'
+        chain.push(...siteChain(content, site, target, sup))
+      }
+      paths.push(pathFor(site, target, sup, 0, new Set(), false))
     }
     if (existence === 'none') {
       // no proven path — but a live, guarded site still blocks 'unobtainable'
@@ -1145,7 +1320,11 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     for (const site of live) {
       if (proven.has(site)) continue
       const serves = site.kind === 'draw' ? deckServes(site.deck!, target) : site.name === target
-      if (serves) notes.push(`candidate source: ${site.where} — guarded (${siteReason(site, initNames)})`)
+      if (serves) {
+        const reason = siteReason(site, initNames)
+        notes.push(`candidate source: ${site.where} — guarded (${reason})`)
+        candidates.push({ via: site.where, reason })
+      }
     }
   }
 
@@ -1155,6 +1334,8 @@ export function analyzeCard(content: CompiledContent, initial: State, target: st
     existence,
     requestedUsable: opts.usable ?? false,
     chain,
+    paths,
+    candidates,
     usableVia,
     notes,
   }
@@ -1289,7 +1470,7 @@ function siteProven(
   content: CompiledContent,
   site: RawSite,
   avail: Map<string, CardFact[]>,
-  committable: Map<CompiledVerb, string[]>,
+  committable: Map<CompiledVerb, SlotProof[]>,
   initNames: Map<string, Entity>,
   setWrites: Set<string>,
   setSites: { key: string; owner: string; verbName?: string; targetName?: string; targetRole?: string; segs: number[]; shadowed: boolean; refused: boolean; pathNonStatic: boolean; whenPred: Pred | null; ownerSlot: number | null }[],
@@ -1411,9 +1592,9 @@ function siteProven(
   if (frozen && site.verb !== undefined && site.verb.duration > 0) return null
   if (site.verb) {
     if (site.when !== null && !(predStatic(site.when) && evalStatic(site.when, cards))) return null
-    const sup = committable.get(site.verb)
-    if (!sup) return null
-    return sup
+    const proofs = committable.get(site.verb)
+    if (!proofs) return null
+    return slotProofLines(site.verb, proofs)
   }
   // trigger owner
   const owner = site.owner
@@ -1437,31 +1618,61 @@ function siteProven(
   // circular (fuzz seed 41247: t0's own body carried the only
   // `SET(ANA, expires)`, so nothing could arm the very first expiry).
   const desc = initNames.get(trig.onExpireOf) ?? avail.get(trig.onExpireOf)?.[0]?.entity
-  const selfArm = (owner: string): boolean => {
+  const selfArm = (owner: string, cardName: string): boolean => {
     const t2 = content.triggers.find(tt => `trigger ${tt.id}` === owner)
-    return t2 !== undefined && !('slot' in t2) && t2.onExpireOf === trig.onExpireOf
+    return t2 !== undefined && !('slot' in t2) && t2.onExpireOf === cardName
   }
-  const expirable = (desc !== undefined && desc.attrs['expires'] !== undefined)
-    || setSites.some(s => (s.key === 'expires' || s.key === 'expiresAt') && (
-      !s.refused && !s.shadowed && !dirtyOwners.has(s.owner) && !selfArm(s.owner)
-      // the arming SET must actually APPLY: a runtime-gated path (roll/role
-      // condition) can be durably false, a frozen world hides owner firings
-      // past the freeze boundary, and a duration>0 recipe window completes
-      // inside the failing step (verification agent D, IF-gated + post-freeze
-      // counterexamples)
-      && !s.pathNonStatic
-      && !(frozen && (s.verbName
-        ? (() => { const v = content.verbs.get(s.verbName); return v !== undefined && v.duration > 0 })()
-        : s.ownerSlot !== null && firstCross(s.ownerSlot) >= freezeDist))
-      && (!s.verbName || (() => { const v = content.verbs.get(s.verbName!); return v !== undefined && committable.has(v) })())
-      && (s.whenPred === null || (predStatic(s.whenPred) && evalStatic(s.whenPred, cards)))
-      && (s.targetName === trig.onExpireOf
-        || (s.targetRole !== undefined && desc !== undefined && (() => {
-          const v = s.verbName ? content.verbs.get(s.verbName) : undefined
-          const slot = v?.slotByRole.get(s.targetRole as Role)
-          return slot ? (slot.query ? matchQuery(desc, slot.query) : true) : false
-        })()))
-    ))
+  // can `cardName` ever be ARMED to expire? Recursively: its attrs already
+  // carry `expires`, or some persisting SET writes its path — and if that
+  // SET's owner is itself an expiry trigger, that trigger's OWN card must be
+  // expirable too. The two-stage chain is the seed-100625 counterexample: the
+  // only `SET(ANA, expires)` lived in t0 (onExpireOf CRATE), but nothing could
+  // ever arm CRATE — so ANA could never expire, and t2's `SPAWN idea:P2` was
+  // judged obtainable although no play ever minted it. `visiting` cuts arming
+  // cycles (an arming cycle can never bootstrap — the one-card case is seed
+  // 41247's selfArm, which this subsumes); the memo caches only cycle-free
+  // (top-level) verdicts, sound because `avail` is fixed within one call.
+  const expiryMemo = new Map<string, boolean>()
+  const ownerArmable = (owner: string, visiting: Set<string>): boolean => {
+    const t2 = content.triggers.find(tt => `trigger ${tt.id}` === owner)
+    if (t2 === undefined || 'slot' in t2) return true   // verbs are checked above; slot triggers fire unconditionally
+    return expirableCard(t2.onExpireOf, visiting)
+  }
+  const expirableCard = (cardName: string, visiting: Set<string>): boolean => {
+    if (expiryMemo.has(cardName)) return expiryMemo.get(cardName)!
+    if (visiting.has(cardName)) return false   // arming cycle — cannot bootstrap
+    const next = new Set([...visiting, cardName])
+    const d = initNames.get(cardName) ?? avail.get(cardName)?.[0]?.entity
+    let result = d !== undefined && d.attrs['expires'] !== undefined
+    if (!result) {
+      result = setSites.some(s => (s.key === 'expires' || s.key === 'expiresAt') && (
+        !s.refused && !s.shadowed && !dirtyOwners.has(s.owner) && !selfArm(s.owner, cardName)
+        // the arming SET must actually APPLY: a runtime-gated path (roll/role
+        // condition) can be durably false, a frozen world hides owner firings
+        // past the freeze boundary, and a duration>0 recipe window completes
+        // inside the failing step (verification agent D, IF-gated + post-freeze
+        // counterexamples)
+        && !s.pathNonStatic
+        && !(frozen && (s.verbName
+          ? (() => { const v = content.verbs.get(s.verbName); return v !== undefined && v.duration > 0 })()
+          : s.ownerSlot !== null && firstCross(s.ownerSlot) >= freezeDist))
+        && (!s.verbName || (() => { const v = content.verbs.get(s.verbName!); return v !== undefined && committable.has(v) })())
+        && (s.whenPred === null || (predStatic(s.whenPred) && evalStatic(s.whenPred, cards)))
+        && (s.targetName === cardName
+          || (s.targetRole !== undefined && d !== undefined && (() => {
+            const v = s.verbName ? content.verbs.get(s.verbName) : undefined
+            const slot = v?.slotByRole.get(s.targetRole as Role)
+            return slot ? (slot.query ? matchQuery(d, slot.query) : true) : false
+          })()))
+        // a witness inside ANOTHER expiry trigger only lands if that
+        // trigger's own card can expire (seed 100625)
+        && ownerArmable(s.owner, next)
+      ))
+    }
+    if (visiting.size === 0) expiryMemo.set(cardName, result)
+    return result
+  }
+  const expirable = desc !== undefined && expirableCard(trig.onExpireOf, new Set())
   if (desc === undefined || !expirable) return null
   notes.push(`expiry trigger ${trig.id} reaches its body only while a living '${trig.onExpireOf}' can expire`)
   return [`trigger ${trig.id} fires on the expiry of ${trig.onExpireOf} (available: ${initNames.has(trig.onExpireOf) ? 'initial' : 'produced'}; expires writable${initNames.has(trig.onExpireOf) ? '' : ' or minted'})`]
@@ -1530,6 +1741,15 @@ function addProduct(
 
 function deckServes(deck: CompiledDeck, target: string): boolean {
   return deck.order.some(c => c.name === target) || deck.defaultcard?.name === target
+}
+
+/** the display lines of a verb's structured committability proof — byte-identical
+ *  to the pre-structure format (`VERB committable: role ×min ← filler, …`) */
+function slotProofLines(verb: CompiledVerb, proofs: SlotProof[]): string[] {
+  return proofs.map(pf => {
+    const whos = [...new Set(pf.fillers.map(f => f.how))].slice(0, 3)
+    return `${verb.name} committable: ${pf.role} ×${pf.min} ← ${whos.join(', ')}`
+  })
 }
 
 /** does `cap` total draws suffice to serve `target`? order positions need

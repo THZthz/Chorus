@@ -1,14 +1,16 @@
 //! Port of test/decks.test.ts — W0 subset (plan §4-W0 / §5.2.1): the four
 //! permutation vectors (decks.test.ts:141-144, computed independently in
-//! python3) and the drawFrom three-rule probe with hand-built decks (the
-//! compileScript-dependent parts — cursors, fold, drift — are W2/W3).
+//! python3) and the drawFrom three-rule probe with hand-built decks; W2 adds
+//! the same three rules through a COMPILED deck (compile_script →
+//! CompiledContent, ts: test/decks.test.ts:169-177's compile(rig(...)) shape).
+//! The engine-dependent parts — cursors, fold, drift — are W3.
 
-use chorus::core::deck_rng::{draw_from, permute_positions, DeckCard, DeckSpec};
+use chorus::content::content::{draw_from, permute_positions, CompiledDeck, DeckCard};
 
 /// A hand-built deck standing in for the compiled one; the kind is inert for
-/// these draws (the mint that consumes it is W2/W3).
-fn deck(id: &str, names: &[&str], defaultcard: Option<&str>, reset: bool) -> DeckSpec {
-    DeckSpec {
+/// the hand-built draws (the mint that consumes it is W2/W3).
+fn deck(id: &str, names: &[&str], defaultcard: Option<&str>, reset: bool) -> CompiledDeck {
+    CompiledDeck {
         id: id.to_string(),
         order: names
             .iter()
@@ -19,7 +21,7 @@ fn deck(id: &str, names: &[&str], defaultcard: Option<&str>, reset: bool) -> Dec
             .collect(),
         defaultcard: defaultcard.map(|n| DeckCard {
             name: n.to_string(),
-            kind: "idea".to_string(),
+            kind: "idea".into(),
         }),
         reset,
     }
@@ -68,3 +70,4 @@ fn draw_from_exhausted_deck_fails_loud_with_the_verbatim_message() {
         "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§9.42)"
     );
 }
+

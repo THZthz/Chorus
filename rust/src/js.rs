@@ -28,6 +28,12 @@ pub fn cmp_utf16(a: &str, b: &str) -> Ordering {
 pub const JS_WS_CLASS: &str =
     "[\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
+/// The negation of [`JS_WS_CLASS`] — JS `\S` (Q8). The regex crate's `\S` is
+/// the complement of White_Space: it EXCLUDES U+0085 and INCLUDES U+FEFF —
+/// exactly the reverse of JS. Every ported `\S` must spell this class.
+pub const JS_NON_WS_CLASS: &str =
+    "[^\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
+
 /// The same JS whitespace set as a code-unit predicate — the hand-written
 /// lexer scanners (W1) run on `Vec<u16>` code units where regex classes
 /// cannot reach (plan §2.3 / PR2-08). ts: src/core/lexer.ts:26 (`/\s/`).
@@ -123,6 +129,40 @@ pub fn static_regex(
         Ok(re) => re,
         Err(e) => unreachable!("static regex literal failed to compile: {e}"),
     })
+}
+
+/// The text of a capture group that ALWAYS participates in its pattern
+/// (rule 11: a non-participation would be a programmer error, never runtime
+/// behavior). Only optional groups go through [`grp_opt`].
+#[must_use]
+pub fn grp_text<'t>(c: &regex::Captures<'t>, i: usize) -> &'t str {
+    c.get(i)
+        .map(|m| m.as_str())
+        .unwrap_or_else(|| unreachable!("capture group {i} always participates in this pattern"))
+}
+
+/// Group 0 (the whole match) — always present after a successful match.
+#[must_use]
+pub fn grp0_text<'a>(c: &'a regex::Captures<'a>) -> &'a str {
+    c.get(0)
+        .map(|m| m.as_str())
+        .unwrap_or_else(|| unreachable!("regex group 0 is always present"))
+}
+
+/// Group 0's start offset (bytes in Rust; byte offsets are monotonic with
+/// the JS UTF-16 unit offsets every ported `.index` compares/slices on).
+#[must_use]
+pub fn grp0_start(c: &regex::Captures) -> usize {
+    c.get(0)
+        .map(|m| m.start())
+        .unwrap_or_else(|| unreachable!("regex group 0 is always present"))
+}
+
+/// An OPTIONAL capture group's text (`(?:…)?` — may legitimately not
+/// participate; TS reads it as `undefined`).
+#[must_use]
+pub fn grp_opt<'t>(c: &regex::Captures<'t>, i: usize) -> Option<&'t str> {
+    c.get(i).map(|m| m.as_str())
 }
 
 /// ts: (plan §3.7 / PR2-05) JS `OrdinaryOwnPropertyKeys`: integer-like keys

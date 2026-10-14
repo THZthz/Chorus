@@ -175,3 +175,23 @@ W2 对账备注：
 - 行 74/75/76 升 **built** 且经真路径复核：`compile_script`→`build_fn_table` 触发，`a -> b -> a` 环与 `f1..f9` 深度 9 的全文在 rust/tests/script_play.rs 与先行冻结模板逐字相等。
 - 其余 built 行的 TS 首钉锚位于 W3 移植的测试文件（dice/decks/engine/functions/stackable/conditionals/endings），W3 移植时升 pinned。
 - 附注（行 102）：`parse_slot_line` 的 `max` 承接 `2..`→Infinity（None 建模），`bad count` 文案与 TS 逐字一致。
+
+## W3 增补（T3.5/T3.6，tests/common 四件 + 会话层 lenient/render/game；行 122–127）
+
+T3.5 无新增消息构造点（tests/common 是测试侧 lib；engine_ordering.rs 的 sig 替身由 tests/common/snap.rs 取代）。T3.6 落地 src/ui/lenient.ts、render.ts、play.ts(Game) 的构造点——它们是**返回值错误面**（parsePlayerInput 的 ParsedInput::Fail / Game 的 error turn），不属于 192 条 toThrow 口径，但文本同为契约，按表登记（状态= built，锚为断言其投影的 TS 测试）：
+
+| # | 状态 | 消息模板 | 首个钉住的测试 | TS 源行 | Rust 构造点 |
+|---|------|---------|---------------|---------|------------|
+| 122 | built | `empty input` | 无直锚（T3.7 script-play 对账） | src/ui/lenient.ts:34/51 | rust/src/session/lenient.rs `parse_player_input` |
+| 123 | built | ``bad clock '${tokens[0]}'`` | 无直锚（T3.7 对账；clock.ts:33 的 `bad clock '…' (expected "day:halfhour")` 是另一构造点，勿混） | src/ui/lenient.ts:60 | rust/src/session/lenient.rs `parse_player_input` |
+| 124 | built | ``no verb found — try one of: ${verbs.map(v => v.replace(/_/g, ' ')).join(', ')}`` | 无直锚（suggestions 面钉于 test/script-play.test.ts:296 `/contains 'explore'/`；错误行本身 T3.7 对账） | src/ui/lenient.ts:82 | rust/src/session/lenient.rs `parse_player_input` |
+| 125 | built | ``I don't know '${word}'`` | test/nightjar.test.ts:248（`/I don't know/`，经 handleLine error turn；T3.7 全量移植） | src/ui/lenient.ts:116 | rust/src/session/lenient.rs `parse_player_input` |
+| 126 | built | ``the story has ended — ${e.title} (${e.flavour}).``（UI 版 notice；引擎版短文见行 6） | test/endings.test.ts:378（toBe 全文）→ rust/tests/session_smoke.rs `game_over_speaks_both_texts_and_undo_reopens` 逐字相等先行钉住 | src/ui/render.ts:21-23（play.ts:60 调用） | rust/src/session/render.rs `ending_notice` |
+| 127 | built | ``nothing on the table answers to '${rawName.trim()}' — press 2 for the table`` | test/script-play.test.ts:406-407（`/nothing on the table/`）→ rust/tests/session_smoke.rs `inspect_reads_a_visible_cards_face` 前缀断言 | src/ui/play.ts:137 | rust/src/session/game.rs `Game::inspect` |
+| 128 | built | ``did you mean: ${parsed.suggestions.join(', ')}?`` ／ `nothing to undo` ／ `undone.` ／ `(no player character — open the cards view)` ／ `You are at ${place?.name ?? 'nowhere'}.` ／ `  (nothing else here)` ／ `(no cards)` ／ `(the journal is empty)` ／ `(nothing has happened yet)` | 均无 toThrow 直锚（endings/script-play 断言 turn.kind 与 `You are at`/`EVENT body_found` 等投影；T3.7 对账） | src/ui/play.ts:64/113/116/120/127/137/151/156 | rust/src/session/game.rs `Game` 各法 |
+
+T3.6 对账备注：
+
+- 行 126 即 UI-02 的 UI 版全文案；与行 6（引擎版 `the story has ended — ${title}`，无 flavour、rejected 通道）双路径并存，均逐字保留、不得合并（验证 04 UI-02）。
+- lenient.ts 的 4 处 `\s`（37/50/182/227）按附录 A.3 以 JS_WS_CLASS 转写（Q8）；`suggestVerb` 的 split(/[\s_]/) 因注册动词受 UPPER_SNAKE 约束仅可能按 `_` 切分（构造点注释已冻结该论证）。
+- suggestions() 池排序的 `a.name.localeCompare(b.name)` 按 §3.21 用近似比较器 `js::cmp_ascii_ci`（ASCII 小写后字节序；禁 ICU）——近似面由 W4 golden 的 suggestions 全列表快照对拍钉死。

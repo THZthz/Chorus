@@ -249,10 +249,24 @@ pub enum JsJson {
     Obj(Vec<(String, JsJson)>),
 }
 
+/// ts: (plan §3.21 / PR2-02) the FROZEN APPROXIMATION of
+/// `String.prototype.localeCompare` for play.ts:238's suggestion pool sort:
+/// ASCII-lowercase both sides, then Rust byte order (`str::cmp`). The repo's
+/// name domain is uppercase-ASCII entity names over lowercase English words,
+/// where the expected order matches ICU; the approximation surface is pinned
+/// by the W4 golden `suggestions()` dumps (and script-play.test.ts:421's
+/// `s[0] === 'read THE MANIFEST'` rides on rank, not on this comparator).
+/// ICU collation stays OUT of the dependency set (plan §2.3); revisit only if
+/// non-ASCII names ever appear (a separately-tracked topic).
+#[must_use]
+pub fn cmp_ascii_ci(a: &str, b: &str) -> Ordering {
+    a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase())
+}
+
 /// ts: (plan §3.7) `JSON.stringify(value)` — compact separators, JS key
 /// order (the caller's), undefined dropping, and the exact `QuoteJSONString`
 /// escape set: `"` → `\"`, `\` → `\\`, `\b\t\n\f\r` short forms, other code
-/// units < 0x20 as `\u00xx` (lowercase hex); DEL (0x7f), U+2028/U+2029 and
+/// units < 0x20 as lowercase `\u00xx` (lowercase hex); DEL (0x7f), U+2028/U+2029 and
 /// all other non-ASCII pass through RAW (Node-verified 2026-10-14, char-code
 /// dump). Lone surrogates would escape as `\udXXX` (well-formed
 /// stringify, ES2019) but are unreachable: a Rust `String` is valid Unicode.

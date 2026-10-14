@@ -12,7 +12,8 @@
     "play": "tsx examples/play.ts",
     "lint:scripts": "tsx tools/lint-cli.ts",
     "reach": "tsx tools/reach-cli.ts",
-    "fuzz:reach": "tsx tools/reach-fuzz-cli.ts"
+    "fuzz:reach": "tsx tools/reach-fuzz-cli.ts",
+    "bench:reach": "tsx tools/reach-scale-cli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

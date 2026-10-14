@@ -12,5 +12,8 @@ pub mod dict;
 pub mod r#ref;
 pub mod clock;
 pub mod query;
+pub mod sentence;
+pub mod predicate;
+pub mod lexer;
 pub mod roles;
 pub mod types;

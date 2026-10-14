@@ -58,17 +58,21 @@ fn is_punct(c: u16) -> bool {
 }
 
 /// NAME_RE scan (ts: lexer.ts:13 `/^[A-Za-z_][A-Za-z0-9_]*/`) at `s[i..]`:
-/// returns the match LENGTH in code units.
+/// returns the match LENGTH in code units. The class is matched against the
+/// CODE UNIT directly — never through `c as u8 as char`, whose truncation
+/// would admit any non-ASCII unit whose LOW BYTE lands in the class (U+0161
+/// 'š' low byte 'a', U+0430 'а' low byte '0'); the TS literal class rejects
+/// every unit >0x7F (wave-1 must-fix-1).
 #[must_use]
 fn scan_name(s: &[u16], i: usize) -> Option<usize> {
     let c = *s.get(i)?;
-    if !(c as u8 as char).is_ascii_alphabetic() && c != b'_' as u16 {
+    if !matches!(c, 0x41..=0x5A | 0x61..=0x7A | 0x5F) {
         return None;
     }
     let mut j = i + 1;
     while j < s.len() {
         let c = s[j];
-        if (c as u8 as char).is_ascii_alphanumeric() || c == b'_' as u16 {
+        if matches!(c, 0x41..=0x5A | 0x61..=0x7A | 0x30..=0x39 | 0x5F) {
             j += 1;
         } else {
             break;
@@ -330,6 +334,28 @@ mod tests {
         let e = lex("ab é").unwrap_err();
         assert_eq!(e.msg, "unexpected character 'é' at offset 3");
         let e = lex("x #!").unwrap_err();
+        assert_eq!(e.msg, "bad id ref at offset 2 (expected #id)");
+    }
+
+    #[test]
+    fn non_ascii_code_units_never_enter_name_tokens() {
+        // wave-1 must-fix-1: NAME_RE is a LITERAL [A-Za-z0-9_] class — a code
+        // unit >0x7F never matches, even when its LOW BYTE does (U+0161 'š'
+        // low byte 0x61 'a'; the `as u8` truncation wrongly absorbed it).
+        // TS: `lex("abš")` throws `unexpected character 'š' at offset 2`.
+        let e = lex("abš").unwrap_err();
+        assert_eq!(e.msg, "unexpected character 'š' at offset 2");
+        // U+0141 'Ł' (low byte 0x41 'A') rejected at a name START…
+        let e = lex("Łat").unwrap_err();
+        assert_eq!(e.msg, "unexpected character 'Ł' at offset 0");
+        // …and after a name: only "a" is the NAME token, 'Ł' throws
+        let e = lex("aŁb").unwrap_err();
+        assert_eq!(e.msg, "unexpected character 'Ł' at offset 1");
+        // U+0430 'а' (low byte 0x30 '0') rejected as a CONTINUATION char
+        let e = lex("x9а").unwrap_err();
+        assert_eq!(e.msg, "unexpected character 'а' at offset 2");
+        // same class as an id-ref body: #aš is `bad id ref` at the '#'
+        let e = lex("a #š").unwrap_err();
         assert_eq!(e.msg, "bad id ref at offset 2 (expected #id)");
     }
 }

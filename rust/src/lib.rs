@@ -10,4 +10,5 @@
 //! observable behavior (IndexMap, never std HashMap at order-sensitive
 //! points).
 
+pub mod core;
 pub mod js;

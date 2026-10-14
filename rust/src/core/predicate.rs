@@ -38,7 +38,10 @@ pub struct PredCtx<'a> {
 }
 
 /// ts: src/core/predicate.ts:53 — the path field: 'aspect' | 'attr'.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Serde derives: type-graph completeness only (predicates never serialize
+/// into the W3 log — `when:` lives in compiled content, IF arms are authored
+/// form only), so the default wire shape is fine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PredField {
     Aspect,
     Attr,
@@ -64,8 +67,9 @@ impl PredField {
     }
 }
 
-/// ts: src/core/predicate.ts:37-47
-#[derive(Debug, Clone, PartialEq)]
+/// ts: src/core/predicate.ts:37-47 — serde derives: type-graph completeness
+/// only (see PredField — never on the wire).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Pred {
     And(Box<Pred>, Box<Pred>),
     Or(Box<Pred>, Box<Pred>),
@@ -80,8 +84,10 @@ pub enum Pred {
     ExistsQuery { query: Query },
 }
 
-/// ts: src/core/predicate.ts:48-62
-#[derive(Debug, Clone, PartialEq)]
+/// ts: src/core/predicate.ts:48-62 — serde derives: type-graph completeness
+/// only (Arg::Vexpr's payload; ROLL args are authored-only and the log
+/// records computed ROLLED ints, so this is never on the wire).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ValExpr {
     Int { v: i64 },
     Count { role: String },
@@ -98,16 +104,18 @@ pub enum ValExpr {
     Roll,
 }
 
-/// ts: src/core/predicate.ts:63-67
-#[derive(Debug, Clone, PartialEq)]
+/// ts: src/core/predicate.ts:63-67 — serde derives: type-graph completeness
+/// only (see PredField).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScalarCond {
     pub path: ScalarPath,
     pub op: CmpOp,
     pub value: i64,
 }
 
-/// ts: predicate.ts:64 — `{ field: 'aspect' | 'attr', key }`.
-#[derive(Debug, Clone, PartialEq)]
+/// ts: predicate.ts:64 — `{ field: 'aspect' | 'attr', key }`. Serde derives:
+/// type-graph completeness only (see PredField).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScalarPath {
     pub field: PredField,
     pub key: String,

@@ -12,7 +12,10 @@ use crate::core::types::{aspect_get, Aspects, AspectVal, AttrValue, Entity};
 use crate::js::{js_num_parse, js_trim, static_regex, ChorusError, JS_WS_CLASS, Result};
 
 /// ts: src/core/query.ts:7 — `'>=' | '<=' | '>' | '<' | '=' | '!='`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Serde derives exist for type-graph completeness only — queries never
+/// serialize into the W3 log (slots/queries live in compiled content only),
+/// so the wire shape is unobservable and the default representation is fine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CmpOp {
     Ge,
     Le,
@@ -70,14 +73,15 @@ pub fn parse_cmp_op(s: &str) -> CmpOp {
 
 /// ts: src/core/query.ts:12 — the state term's op: a CmpOp or the `!`
 /// negation. (TS spells it `CmpOp | '!'` with `value: AttrValue | null`.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum StateOp {
     Bang,
     Cmp(CmpOp),
 }
 
-/// ts: src/core/query.ts:9-14
-#[derive(Debug, Clone, PartialEq)]
+/// ts: src/core/query.ts:9-14 — serde derives: type-graph completeness only
+/// (see CmpOp — queries never reach the log).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum QueryTerm {
     Kind {
         neg: bool,

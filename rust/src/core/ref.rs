@@ -7,20 +7,35 @@
 use std::sync::OnceLock;
 
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::core::dict::Dictionary;
 use crate::js::{cmp_utf16, static_regex, ChorusError, Result};
 
 /// ts: src/core/ref.ts:4-9. The serde tag is `form` (plan §2.3).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// The serde shape is the W3 JSONL log surface (ENG-20): internally tagged,
+/// and the NAME variant's field order matches the TS construction literals
+/// (ref.ts:24-26 `{ form: 'name', kind, name }` / `{ form: 'name', name }`,
+/// parse.ts:242-255) — `kind` omitted when absent exactly like
+/// `JSON.stringify` dropping `undefined`. Never changes wire order.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "form")]
 pub enum Ref {
     /// `{ form: 'name', kind?, name }`
-    Name { kind: Option<String>, name: String },
+    #[serde(rename = "name")]
+    Name {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+        name: String,
+    },
     /// `{ form: 'id', id }`
+    #[serde(rename = "id")]
     Id { id: String },
     /// `{ form: 'param', name }` — F3 authored-only: a function parameter
     /// standing in a whole-ref position (§9.40); calls expand at load, so
     /// this never formats, resolves, or round-trips.
+    #[serde(rename = "param")]
     Param { name: String },
 }
 

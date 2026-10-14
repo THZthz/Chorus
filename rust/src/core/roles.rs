@@ -15,6 +15,24 @@ pub enum Role {
     To,
 }
 
+// The serde spellings are the W3 JSONL log surface (plan §2.3): every TS
+// site serializes a role as its lowercase string (`{ role: 'object' }` in
+// the `{ t: 'role', role }` / `{ role }` into-target args), so the wire form
+// is exactly `as_str`.
+impl serde::Serialize for Role {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Role {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Role::from_lower(&s)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown role '{s}'")))
+    }
+}
+
 impl Role {
     /// The lowercase spelling every TS site uses (`refs: Record<Role, Ref[]>`
     /// keys, ROLE_LIST message text, `asRole` round-trip).

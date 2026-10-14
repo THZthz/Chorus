@@ -38,7 +38,11 @@ pub enum AspectVal {
 
 /// ts: src/core/types.ts:14 — `string | number | boolean`. Cross-variant
 /// `PartialEq` is `false`, exactly like JS `===` across types (plan §3.10).
-#[derive(Debug, Clone, PartialEq)]
+/// The serde form is untagged (the bare JSON primitive — the `pair` arg's
+/// `v` in the W3 log carries `string | number | boolean` directly, plan
+/// §2.3); the variants are disjoint JSON types so untagged is total.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
 pub enum AttrValue {
     Str(String),
     Num(i64),
@@ -272,14 +276,22 @@ pub fn add_entity(s: &mut State, e: Entity) -> Result<()> {
 /// ts: src/core/types.ts:162-170 — §9.14/§9.38 name release on death: remove
 /// the id from the name's pool; the name only frees when the LAST copy dies.
 pub fn release_name(s: &mut State, e: &Entity) {
-    let Some(pool) = s.by_name.get_mut(&e.name) else {
+    release_name_entry(s, &e.name, &e.id);
+}
+
+/// The (name, id) form of [`release_name`] — the engine's DESTROY/REPLACE
+/// paths read the entity off the same `State` they mutate (stamp
+/// `dead_action`, then release), so the `(name, id)` pair avoids the
+/// double borrow. Behaviorally identical to the TS alias call.
+pub fn release_name_entry(s: &mut State, name: &str, id: &str) {
+    let Some(pool) = s.by_name.get_mut(name) else {
         return;
     };
-    if let Some(i) = pool.iter().position(|id| id == &e.id) {
+    if let Some(i) = pool.iter().position(|pid| pid == id) {
         pool.remove(i);
     }
     if pool.is_empty() {
-        s.by_name.remove(&e.name);
+        s.by_name.remove(name);
     }
 }
 

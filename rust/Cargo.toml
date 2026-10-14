@@ -1,0 +1,31 @@
+[package]
+name = "chorus"
+version = "0.1.0"
+edition = "2021"
+# Rust port of the TS text-game engine — docs/rust-port/plan.md §2.1.
+# Single crate, multi-module, lib + (later waves) 5 [[bin]] targets.
+
+# plan §2.3 dependency freeze: exactly these four; nothing else without a
+# plan-level sign-off (rule 6). Cargo.lock is committed (PR2-06).
+[dependencies]
+indexmap = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+regex = "1"
+
+# plan §2.4 memory constraints (16 GB box): no debug info in dev builds,
+# line tables only for tests (failure backtraces stay locatable, PR2-06).
+[profile.dev]
+debug = 0
+opt-level = 0
+
+[profile.test]
+debug = "line-tables-only"
+opt-level = 0
+
+# only for the reach-scale benchmark (plan §2.4)
+[profile.release]
+opt-level = 2
+debug = 0
+lto = false
+codegen-units = 16

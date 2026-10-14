@@ -619,3 +619,439 @@ fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() ->
     assert_eq!(err.msg, "function 'f1' sits 9 calls deep — the nesting cap is 8");
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// T3.7C — the lenient-input describes and the game-loop describe
+// (ts: test/script-play.test.ts:246-428; plan §4-W3 / §5.2.1). The TS
+// `autoSettle(game)` adapter (the file's :16-29 monkey-patch) becomes the
+// explicit [`auto_settle_line`] helper — each committed action's window
+// completes before the next input, restoring the pre-parallel
+// commit-completes-at-once shape. Per-test fresh Dictionary (TEST-10: the
+// vitest per-file isolation becomes per-test isolation).
+// ---------------------------------------------------------------------------
+
+use chorus::session::game::{Game, Turn, TurnKind};
+use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
+
+/// ts: script-play.test.ts:16-29 (`autoSettle`)
+fn auto_settle_line(game: &mut Game, line: &str) -> Result<Turn> {
+    let t = game.handle_line(line)?;
+    let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
+        let settle = game.wait()?;
+        Turn {
+            kind: TurnKind::Action,
+            lines: [t.lines, settle.lines].concat(),
+        }
+    } else {
+        t
+    };
+    Ok(t)
+}
+
+/// ts: script-play.test.ts:247-248 — the lenient context over the fresh
+/// game's world (`{ dict, content: game.content, state: game.state, player: 'MARCH' }`).
+fn flyer_ctx(game: &Game) -> LenientCtx<'_> {
+    LenientCtx {
+        dict: &game.dict,
+        content: &game.content,
+        state: &game.state,
+        player: Some("MARCH"),
+    }
+}
+
+/// ts: script-play.test.ts:421-427 — `game['base']` (the TS private field
+/// read through the index backdoor): compile_script is pure, so a fresh
+/// compile IS the same base state.
+fn flyer_base(game: &Game) -> chorus::core::types::State {
+    compile_script(FLYER, &game.dict).unwrap().state
+}
+
+/// ts: script-play.test.ts:246 — describe 'lenient player input'
+mod lenient_player_input {
+    use super::*;
+
+    #[test]
+    fn bare_verb_defaults_to_the_player_character() {
+        // ts: script-play.test.ts:250-258
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let r = parse_player_input("wait", &flyer_ctx(&game));
+        assert!(r.is_ok());
+        let ParsedInput::Ok { step, .. } = r else {
+            unreachable!()
+        };
+        assert_eq!(step.start_min, Some(42 * 30)); // v0.5: the default begin minute is NOW
+        let c0 = &step.clauses[0];
+        assert_eq!(c0.verb, "WAIT");
+        assert_eq!(
+            c0.actors,
+            vec![Ref::Name {
+                kind: None,
+                name: "MARCH".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn multi_actor_and_multi_word_names_resolve() {
+        // ts: script-play.test.ts:259-268
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let r = parse_player_input("march read the vane ledger", &flyer_ctx(&game));
+        assert!(r.is_ok());
+        let ParsedInput::Ok { step, .. } = r else {
+            unreachable!()
+        };
+        let c0 = &step.clauses[0];
+        assert_eq!(c0.verb, "READ");
+        assert!(
+            matches!(&c0.objects[0], Ref::Name { name, .. } if name == "THE_VANE_LEDGER")
+        );
+    }
+
+    #[test]
+    fn role_phrases_and_objects_do_not_bleed_into_each_other() {
+        // ts: script-play.test.ts:269-280
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let r = parse_player_input(
+            "use on the inquest with the manifest at guard van",
+            &flyer_ctx(&game),
+        );
+        assert!(r.is_ok());
+        let ParsedInput::Ok { step, .. } = r else {
+            unreachable!()
+        };
+        let c0 = &step.clauses[0];
+        assert_eq!(c0.verb, "USE_ON");
+        assert!(matches!(&c0.objects[0], Ref::Name { name, .. } if name == "THE_INQUEST"));
+        assert!(matches!(&c0.with[0], Ref::Name { name, .. } if name == "THE_MANIFEST"));
+        assert!(matches!(&c0.at, Some(Ref::Name { name, .. }) if name == "GUARD_VAN"));
+    }
+
+    #[test]
+    fn canonical_passthrough_still_works() {
+        // ts: script-play.test.ts:281-286
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let r = parse_player_input("0:44 @ MARCH WAIT", &flyer_ctx(&game));
+        assert!(r.is_ok());
+        let ParsedInput::Ok { step, .. } = r else {
+            unreachable!()
+        };
+        assert_eq!(
+            step.clock,
+            Some(Clock {
+                day: 0,
+                halfhour: 44
+            })
+        );
+    }
+
+    #[test]
+    fn unknown_words_get_suggestions() {
+        // ts: script-play.test.ts:287-292
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let r = parse_player_input("read the vane ledgr", &flyer_ctx(&game));
+        assert!(!r.is_ok());
+        let ParsedInput::Fail { suggestions, .. } = r else {
+            unreachable!()
+        };
+        assert!(suggestions.contains(&"THE_VANE_LEDGER".to_string()));
+    }
+
+    #[test]
+    fn verbs_get_suggestions_too() {
+        // ts: script-play.test.ts:293-298
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let r = parse_player_input("xeplore the car", &flyer_ctx(&game));
+        assert!(!r.is_ok());
+        let ParsedInput::Fail { suggestions, .. } = r else {
+            unreachable!()
+        };
+        assert!(suggestions.contains(&"explore".to_string()));
+    }
+
+    #[test]
+    fn names_resolve_case_insensitively_spec_11() {
+        // ts: script-play.test.ts:299-303
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        assert!(parse_player_input("read THE VANE LEDGER", &flyer_ctx(&game)).is_ok());
+    }
+}
+
+/// ts: script-play.test.ts:305 — describe 'lenient input routes the new core
+/// verbs (v0.3)'. Registration is the gate: before v0.3 this compileContent
+/// threw 'not registered'.
+mod lenient_input_routes_the_new_core_verbs {
+    use super::*;
+    use chorus::content::content::{RecipeDef, SlotDef, VerbContent};
+    use chorus::core::types::{add_entity, AttrValue, Attrs, Entity, State};
+    use common::seed::seed_state;
+
+    /// ts: script-play.test.ts:307-328 — STUDY (READ's grammar, §4.3) and
+    /// MANSUS (EXPLORE's grammar, §4.3) registered on a fresh dictionary.
+    fn verbs_content(dict: &chorus::core::dict::Dictionary) -> chorus::content::content::CompiledContent {
+        let verb = |slots: Vec<SlotDef>, out: &str| VerbContent {
+            slots,
+            duration: 60,
+            recipes: vec![RecipeDef {
+                id: None,
+                when: None,
+                shown: None,
+                hint: None,
+                out: vec![out.to_string()],
+            }],
+        };
+        let slot = |role: &str, min: i64, max: Option<i64>, query: &str| SlotDef {
+            role: role.to_string(),
+            min,
+            max,
+            query: Some(query.to_string()),
+            shown: None,
+        };
+        let raw = ContentRaw {
+            verbs: [
+                (
+                    "STUDY",
+                    verb(
+                        vec![
+                            slot("actors", 1, Some(2), "kind:character"),
+                            slot("object", 1, Some(1), "kind:text"),
+                            slot("at", 0, Some(1), "kind:place"),
+                        ],
+                        "NARRATE(\"{actors} study {object}.\")",
+                    ),
+                ),
+                (
+                    "MANSUS",
+                    verb(
+                        vec![
+                            slot("actors", 1, Some(1), "kind:character"),
+                            slot("object", 1, Some(1), "kind:place"),
+                        ],
+                        "NARRATE(\"{actors} walk the Mansus to {object}.\")",
+                    ),
+                ),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+            ..ContentRaw::default()
+        };
+        compile_content(&raw, dict, &[]).unwrap()
+    }
+
+    /// ts: script-play.test.ts:329-334 (`ctx`) — the seed world plus a text
+    /// and a place to route at.
+    fn ctx() -> (
+        chorus::core::dict::Dictionary,
+        chorus::content::content::CompiledContent,
+        State,
+    ) {
+        let verbs_dict = core_dictionary();
+        let verbs_content = verbs_content(&verbs_dict);
+        let mut state = seed_state();
+        let card = |id: &str, kind: &str, name: &str, container: &str| Entity {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            name: name.to_string(),
+            aspects: Default::default(),
+            attrs: {
+                let mut a = Attrs::new();
+                a.insert("container".to_string(), AttrValue::Str(container.to_string()));
+                a
+            },
+            born_action: None,
+            dead_action: None,
+            stackable: false,
+        };
+        add_entity(
+            &mut state,
+            card("manifest", "text", "THE_MANIFEST", "house"),
+        )
+        .unwrap();
+        add_entity(
+            &mut state,
+            card("white_door", "place", "THE_WHITE_DOOR", "villa"),
+        )
+        .unwrap();
+        (verbs_dict, verbs_content, state)
+    }
+
+    #[test]
+    fn study_plus_bare_name_routes_to_the_object_role_like_read() {
+        // ts: script-play.test.ts:336-347
+        let (dict, content, state) = ctx();
+        let r = parse_player_input(
+            "study the manifest",
+            &LenientCtx {
+                dict: &dict,
+                content: &content,
+                state: &state,
+                player: Some("ANA"),
+            },
+        );
+        assert!(r.is_ok());
+        let ParsedInput::Ok { step, .. } = r else {
+            unreachable!()
+        };
+        let c0 = &step.clauses[0];
+        assert_eq!(c0.verb, "STUDY");
+        assert_eq!(
+            c0.actors,
+            vec![Ref::Name {
+                kind: None,
+                name: "ANA".into()
+            }]
+        );
+        assert_eq!(
+            c0.objects,
+            vec![Ref::Name {
+                kind: None,
+                name: "THE_MANIFEST".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn mansus_plus_place_routes_to_the_object_role_like_explore() {
+        // ts: script-play.test.ts:348-359
+        let (dict, content, state) = ctx();
+        let r = parse_player_input(
+            "mansus the white door",
+            &LenientCtx {
+                dict: &dict,
+                content: &content,
+                state: &state,
+                player: Some("ANA"),
+            },
+        );
+        assert!(r.is_ok());
+        let ParsedInput::Ok { step, .. } = r else {
+            unreachable!()
+        };
+        let c0 = &step.clauses[0];
+        assert_eq!(c0.verb, "MANSUS");
+        assert_eq!(
+            c0.actors,
+            vec![Ref::Name {
+                kind: None,
+                name: "ANA".into()
+            }]
+        );
+        assert_eq!(
+            c0.objects,
+            vec![Ref::Name {
+                kind: None,
+                name: "THE_WHITE_DOOR".into()
+            }]
+        );
+    }
+}
+
+/// ts: script-play.test.ts:361 — describe 'the game loop'
+mod the_game_loop {
+    use super::*;
+    use chorus::engine::fold::fold;
+
+    #[test]
+    fn a_script_becomes_a_playable_game() {
+        // ts: script-play.test.ts:362-380
+        let dict = core_dictionary();
+        let mut game = Game::from_script(FLYER, dict).unwrap();
+        let turn = auto_settle_line(&mut game, "read the manifest").unwrap();
+        assert_eq!(turn.kind, TurnKind::Action);
+        assert!(turn.lines.join(" ").contains("passenger manifest"));
+
+        // the timetable speaks: the body is found on the 22:00 crossing
+        auto_settle_line(&mut game, "wait").unwrap();
+        assert!(game
+            .log
+            .records
+            .iter()
+            .any(|r| r.kind == "event" && r.trigger.as_deref() == Some("body_found")));
+        assert!(game.journal().join("\n").contains("EVENT body_found"));
+        assert!(game.story().unwrap().join("\n").contains("entirely dead"));
+        assert!(game.look().join("\n").contains("You are at"));
+
+        // undo takes back the wait, leaving the log consistent
+        let n_before = game.log.records.len();
+        assert_eq!(game.undo().unwrap().kind, TurnKind::Info);
+        assert!(game.log.records.len() < n_before);
+        assert_eq!(game.handle_line("bogus").unwrap().kind, TurnKind::Error);
+    }
+
+    #[test]
+    fn the_table_only_shows_what_the_inspector_has_met() {
+        // ts: script-play.test.ts:382-397
+        let dict = core_dictionary();
+        let mut game = Game::from_script(FLYER, dict).unwrap();
+        let names = |game: &Game| -> Vec<String> {
+            game.visible().iter().map(|e| e.name.clone()).collect()
+        };
+        let n = names(&game);
+        assert!(n.contains(&"THE_GUARD".to_string())); // the archetype you can see
+        assert!(!n.contains(&"BRACK".to_string())); // the name is learned by talking
+        assert!(!n.contains(&"THE_WIDOW".to_string())); // another car: not yet
+        assert!(!n.contains(&"THE_VANE_LEDGER".to_string())); // the sealed cabin
+
+        auto_settle_line(&mut game, "explore the dining car").unwrap();
+        let n = names(&game);
+        assert!(n.contains(&"THE_WIDOW".to_string())); // seen, but not known
+        assert!(!n.contains(&"VERITY".to_string()));
+
+        auto_settle_line(&mut game, "talk with the widow").unwrap();
+        let n = names(&game);
+        assert!(n.contains(&"VERITY".to_string())); // met: the name is known
+        assert!(!n.contains(&"THE_WIDOW".to_string()));
+    }
+
+    #[test]
+    fn inspect_reads_a_visible_cards_face_and_respects_the_table() {
+        // ts: script-play.test.ts:399-408
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let face = game.inspect("the manifest");
+        assert_eq!(face[0], "THE_MANIFEST  [text]");
+        assert!(face.join("\n").contains("manifest 1"));
+        assert!(face.join("\n").contains("at: MARCH"));
+        // the sealed cabin's contents are not on the table yet
+        assert!(game.inspect("the vane ledger")[0].contains("nothing on the table"));
+        assert!(game.inspect("the loch ness monster")[0].contains("nothing on the table"));
+    }
+
+    #[test]
+    fn suggestions_are_concrete_executable_actions() {
+        // ts: script-play.test.ts:410-419 — the pinned s[0] (line 421)
+        let dict = core_dictionary();
+        let game = Game::from_script(FLYER, dict).unwrap();
+        let s = game.suggestions().unwrap();
+        assert!(!s.is_empty());
+        for line in &s {
+            let r = parse_player_input(line, &flyer_ctx(&game));
+            assert!(r.is_ok(), "suggestion must parse: {line}");
+        }
+        assert_eq!(s[0], "read THE MANIFEST");
+    }
+
+    #[test]
+    fn the_log_replays_from_the_script_base_state_state_equals_fold_of_log() {
+        // ts: script-play.test.ts:421-428
+        let dict = core_dictionary();
+        let mut game = Game::from_script(FLYER, dict).unwrap();
+        auto_settle_line(&mut game, "read the manifest").unwrap();
+        let base = flyer_base(&game);
+        let replayed = fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
+        let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
+        let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
+        // TS `.sort()` = JS default string sort = UTF-16 code-unit order
+        replayed_names.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+        played_names.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+        assert_eq!(replayed_names, played_names);
+        assert_eq!(replayed.now, game.state.now);
+    }
+}

@@ -1,7 +1,8 @@
 //! JS semantics infrastructure shared by every ported module (plan §2.2).
-//! W0 skeleton: `cmp_utf16` / the test-side LCG / `ChorusError` /
-//! `JS_WS_CLASS`. `jsjson`, `ordinary_own_property_keys` and `js_num_parse`
-//! arrive in W1 (plan §4-W1).
+//! `cmp_utf16` / the test-side LCG / `ChorusError` / `JS_WS_CLASS` (W0),
+//! `js_num_parse` / `js_trim` / `static_regex` / `ordinary_own_property_keys`
+//! / `clone_map_in_js_order` (W1 core wave), and `jsjson` — the
+//! `JSON.stringify` clone with its Node cross-checks (T1.5, plan §4-W1).
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -184,6 +185,127 @@ pub fn clone_map_in_js_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> ind
     out
 }
 
+/// A JSON value in the exact shape `JSON.stringify` consumes (plan §3.7).
+/// The integer domain is FROZEN (PR2-04): every serialized number in the
+/// record surface (id/advancedMin/startMin/rng/int/delta/dur/pair.v) is an
+/// integer, so there is no float variant and no shortest-round-trip
+/// algorithm — `i64` Display prints identically to JS `Number → String` for
+/// every value that can reach serialization.
+#[derive(Debug, Clone, PartialEq)]
+pub enum JsJson {
+    /// TS `undefined`: dropped as an object value, `null` inside an array,
+    /// the bare text `undefined` at top level (all three behaviors of
+    /// `JSON.stringify`).
+    Undefined,
+    Null,
+    Bool(bool),
+    Int(i64),
+    Str(String),
+    Arr(Vec<JsJson>),
+    /// An object's entries in EXACTLY the output order. JS serializes in
+    /// `OrdinaryOwnPropertyKeys` order — build it through
+    /// [`jsjson_obj_in_js_order`] (or [`ordinary_own_property_keys`]), never
+    /// from raw insertion order.
+    Obj(Vec<(String, JsJson)>),
+}
+
+/// ts: (plan §3.7) `JSON.stringify(value)` — compact separators, JS key
+/// order (the caller's), undefined dropping, and the exact `QuoteJSONString`
+/// escape set: `"` → `\"`, `\` → `\\`, `\b\t\n\f\r` short forms, other code
+/// units < 0x20 as `\u00xx` (lowercase hex); DEL (0x7f), U+2028/U+2029 and
+/// all other non-ASCII pass through RAW (Node-verified 2026-10-14, char-code
+/// dump). Lone surrogates would escape as `\udXXX` (well-formed
+/// stringify, ES2019) but are unreachable: a Rust `String` is valid Unicode.
+pub fn jsjson(v: &JsJson) -> String {
+    let mut out = String::new();
+    jsjson_into(v, &mut out);
+    out
+}
+
+fn jsjson_into(v: &JsJson, out: &mut String) {
+    match v {
+        JsJson::Undefined => out.push_str("undefined"),
+        JsJson::Null => out.push_str("null"),
+        JsJson::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        JsJson::Int(n) => out.push_str(&n.to_string()),
+        JsJson::Str(s) => jsjson_escape(s, out),
+        JsJson::Arr(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                // `undefined` in an array serializes as `null`
+                if matches!(item, JsJson::Undefined) {
+                    out.push_str("null");
+                } else {
+                    jsjson_into(item, out);
+                }
+            }
+            out.push(']');
+        }
+        JsJson::Obj(entries) => {
+            out.push('{');
+            let mut first = true;
+            for (k, val) in entries {
+                // undefined-valued properties are DROPPED, not emitted
+                if matches!(val, JsJson::Undefined) {
+                    continue;
+                }
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                jsjson_escape(k, out);
+                out.push(':');
+                jsjson_into(val, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// ts: JSON `QuoteJSONString` (ECMA-262) — Node-verified escape set, see
+/// [`jsjson`].
+fn jsjson_escape(s: &str, out: &mut String) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{8}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 => {
+                // lowercase hex digits, exactly like JSON.stringify
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+/// ts: (plan §3.7 / PR2-05) `JSON.stringify({ ...map })` — the object SPREAD
+/// itself reorders integer-like keys to the front (OrdinaryOwnPropertyKeys),
+/// so serialization must rebuild through the same order. The engine's
+/// aspects/attrs pairs (engine.ts:511-525/585-589) and the JSONL log (W3)
+/// go through this; `IndexMap` insertion order alone would drift after
+/// `SET(x,"5",true)` + clone.
+#[must_use]
+pub fn jsjson_obj_in_js_order(m: &indexmap::IndexMap<String, JsJson>) -> JsJson {
+    let mut entries: Vec<(String, JsJson)> = Vec::with_capacity(m.len());
+    for k in ordinary_own_property_keys(m) {
+        // every key came from m; the lookup cannot miss
+        if let Some(v) = m.get(&k) {
+            entries.push((k, v.clone()));
+        }
+    }
+    JsJson::Obj(entries)
+}
+
 /// ts: test/reach-fuzz-lib.ts:36-38 — the deterministic test-side LCG,
 /// `s = (Math.imul(s, 1664525) + 1013904223) >>> 0`, identical in
 /// test/reach-scale-lib.ts:28-31 (`lcg`) and inlined in
@@ -347,5 +469,145 @@ mod tests {
         let cloned = clone_map_in_js_order(&m);
         let keys: Vec<String> = cloned.keys().cloned().collect();
         assert_eq!(keys, ["0", "5", "12", "container", "0123"]);
+    }
+
+    // ---- Node cross-checks (PR2-05): every expectation below was generated
+    // ---- by a single `node -e` dump (Object.keys over V8 objects /
+    // ---- JSON.stringify) on 2026-10-14 and hard-coded here, so the suite
+    // ---- never depends on a runtime node.
+
+    fn map_from(pairs: &[(&str, i64)]) -> indexmap::IndexMap<String, i64> {
+        let mut m = indexmap::IndexMap::new();
+        for (k, v) in pairs {
+            m.insert((*k).to_string(), *v);
+        }
+        m
+    }
+
+    #[test]
+    fn own_property_keys_matches_the_node_v8_dump() {
+        // insertion (container,5,0,0123,12) → node k_mixed
+        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+            ("container", 1),
+            ("5", 2),
+            ("0", 3),
+            ("0123", 4),
+            ("12", 5),
+        ]));
+        assert_eq!(got, ["0", "5", "12", "container", "0123"]);
+        // node k_big: 2^32-2 IS an integer index; 2^32-1 is a REGULAR
+        // property and stays in insertion order among the string keys
+        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+            ("4294967294", 1),
+            ("4294967295", 2),
+            ("4294967293", 3),
+            ("x", 4),
+        ]));
+        assert_eq!(got, ["4294967293", "4294967294", "4294967295", "x"]);
+        // node k_leading: "007" is not canonical — only "7" fronts
+        let got: Vec<String> =
+            ordinary_own_property_keys(&map_from(&[("007", 1), ("7", 2)]));
+        assert_eq!(got, ["7", "007"]);
+        // node k_huge: > 2^32-2 never fronts, whatever its digits
+        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+            ("99999999999999999999", 1),
+            ("3", 2),
+        ]));
+        assert_eq!(got, ["3", "99999999999999999999"]);
+        // node k_neg / k_exp: signs and exponents are not canonical numeric
+        // strings
+        let got: Vec<String> =
+            ordinary_own_property_keys(&map_from(&[("-1", 1), ("1", 2)]));
+        assert_eq!(got, ["1", "-1"]);
+        let got: Vec<String> =
+            ordinary_own_property_keys(&map_from(&[("1e2", 1), ("100", 2)]));
+        assert_eq!(got, ["100", "1e2"]);
+        // node k_spread: the SPREAD clone reorders (2,10 to the front) —
+        // clone_map_in_js_order is the { ...obj } twin
+        let got: Vec<String> = clone_map_in_js_order(&map_from(&[
+            ("a", 1),
+            ("10", 2),
+            ("2", 3),
+            ("b", 4),
+        ]))
+        .into_keys()
+        .collect();
+        assert_eq!(got, ["2", "10", "a", "b"]);
+        // node k_ten_nine: numeric ascending, not lexicographic
+        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+            ("10", 1),
+            ("9", 2),
+            ("100", 3),
+            ("2", 4),
+        ]));
+        assert_eq!(got, ["2", "9", "10", "100"]);
+    }
+
+    #[test]
+    fn jsjson_matches_the_node_json_stringify_dump() {
+        use JsJson::*;
+        // aspects-shaped: node j_plain
+        assert_eq!(
+            jsjson(&Obj(vec![
+                ("secret".into(), Int(3)),
+                ("language".into(), Obj(vec![("latin".into(), Int(2))])),
+            ])),
+            r#"{"secret":3,"language":{"latin":2}}"#
+        );
+        // attrs-shaped with integer-like keys: node j_intkeys — the JS key
+        // order is the CALLER's (built via jsjson_obj_in_js_order below)
+        let mut attrs = indexmap::IndexMap::new();
+        attrs.insert("container".to_string(), Str("villa".into()));
+        attrs.insert("5".to_string(), Bool(true));
+        attrs.insert("0".to_string(), Int(1));
+        assert_eq!(
+            jsjson(&jsjson_obj_in_js_order(&attrs)),
+            r#"{"0":1,"5":true,"container":"villa"}"#
+        );
+        // node j_ctrl: NUL/b/t/n/f/r short escapes, quote+backslash, other
+        // <0x20 as lowercase \u00xx — and DEL (0x7f) RAW at the end
+        assert_eq!(
+            jsjson(&Str("a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into())),
+            "\"a\\u0000\\b\\t\\n\\f\\r\\\"\\\\\\u0001\\u000f\\u001f\u{7f}\""
+        );
+        // node j_unicode: non-ASCII (incl. U+2028/U+2029) stays raw
+        assert_eq!(
+            jsjson(&Str("héllo → 世界 \u{2028}\u{2029} \u{1F600}".into())),
+            "\"héllo → 世界 \u{2028}\u{2029} \u{1F600}\""
+        );
+        // node j_neg / j_bigint_like: integer printing, no float machinery
+        assert_eq!(jsjson(&Obj(vec![("v".into(), Int(-42))])), r#"{"v":-42}"#);
+        assert_eq!(
+            jsjson(&Obj(vec![("n".into(), Int(9_007_199_254_740_992))])),
+            r#"{"n":9007199254740992}"#
+        );
+        // node j_bool_arr / j_empty / j_nested_subkey
+        assert_eq!(
+            jsjson(&Arr(vec![Bool(true), Bool(false), Null, Int(0)])),
+            "[true,false,null,0]"
+        );
+        assert_eq!(jsjson(&Obj(vec![])), "{}");
+        assert_eq!(
+            jsjson(&Obj(vec![(
+                "language".into(),
+                Obj(vec![("b.c".into(), Int(7)), ("a".into(), Int(1))]),
+            )])),
+            r#"{"language":{"b.c":7,"a":1}}"#
+        );
+        // undefined dropping: node j_undef_top / j_undef_obj / j_undef_arr
+        assert_eq!(jsjson(&Undefined), "undefined");
+        assert_eq!(
+            jsjson(&Obj(vec![
+                ("a".into(), Undefined),
+                ("b".into(), Int(2)),
+                ("c".into(), Undefined),
+                ("d".into(), Null),
+            ])),
+            r#"{"b":2,"d":null}"#
+        );
+        assert_eq!(
+            jsjson(&Arr(vec![Int(1), Undefined, Int(2)])),
+            "[1,null,2]"
+        );
     }
 }

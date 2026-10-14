@@ -5,9 +5,11 @@
 //!   "ana, bertha talk about clue at dining hall"   → multi-actor + ABOUT + AT
 //!   "0:20 @ ANA WAIT"                              → canonical passthrough
 //!
-//! Appendix A.3: the four `\s` sites (lenient.ts 37/50/182/227) are spelled
-//! with [`JS_WS_CLASS`] (Q8); line 59's `/^\d+:\d+$/` has no `\s` and JS `\d`
-//! is ASCII `[0-9]`.
+//! QUIRK(CORE-08(1)/Q8): JS `\s` includes `\uFEFF` and excludes `\u{85}`;
+//! Rust's `\s` (White_Space) is exactly the reverse. Appendix A.3: the four
+//! `\s` sites (lenient.ts 37/50/182/227) are therefore spelled with
+//! [`JS_WS_CLASS`], never the crate's class; line 59's `/^\d+:\d+$/` has no
+//! `\s` and JS `\d` is ASCII `[0-9]`.
 
 use std::sync::OnceLock;
 

@@ -1,19 +1,19 @@
 // Play interface — a text script becomes a playable game.
 // Game = script + log; handleLine is the whole turn loop (testable without a TTY);
 // src/tui.tsx renders it in the terminal (Ink, with a readline fallback).
-import { coreDictionary, type Dictionary } from './dict.js'
-import type { CompiledContent, CompiledVerb, SlotRole } from './content.js'
-import { compileScript, type ScriptMeta } from './script.js'
-import { executeStep } from './engine.js'
-import { fold } from './fold.js'
+import { coreDictionary, type Dictionary } from '../core/dict.js'
+import type { CompiledContent, CompiledVerb, SlotRole } from '../content/content.js'
+import { compileScript, type ScriptMeta } from '../content/script.js'
+import { executeStep } from '../engine/engine.js'
+import { fold } from '../engine/fold.js'
 import { parsePlayerInput } from './lenient.js'
 import { journal, flattenAspects, pretty, proseLines, endingNotice } from './render.js'
-import { matchQuery } from './query.js'
-import { evalPred, type PredCtx, type RoleBindings } from './predicate.js'
-import type { Ref } from './ref.js'
-import { clockFromAbsMin, formatClock } from './clock.js'
-import { cloneState, type Entity, type State } from './types.js'
-import { Log } from './store.js'
+import { matchQuery } from '../core/query.js'
+import { evalPred, type PredCtx, type RoleBindings } from '../core/predicate.js'
+import type { Ref } from '../core/ref.js'
+import { clockFromAbsMin, formatClock } from '../core/clock.js'
+import { cloneState, type Entity, type State } from '../core/types.js'
+import { Log } from '../engine/store.js'
 
 export interface Turn {
   kind: 'action' | 'info' | 'error'

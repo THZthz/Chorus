@@ -3,8 +3,8 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { Game } from '../src/play.js'
-import { pickScript, runTui, type ScriptChoice } from '../src/tui.js'
+import { Game } from '../src/ui/play.js'
+import { pickScript, runTui, type ScriptChoice } from '../src/ui/tui.js'
 
 const scriptsDir = fileURLToPath(new URL('../scripts', import.meta.url))
 

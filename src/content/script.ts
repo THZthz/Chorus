@@ -33,14 +33,14 @@
 //
 //   templates:
 //     READ says "{actors} read {object} at {at}."
-import type { Dictionary } from './dict.js'
-import { KINDS } from './dict.js'
+import type { Dictionary } from '../core/dict.js'
+import { KINDS } from '../core/dict.js'
 import type { ContentRaw, DeckRaw, EndingDef, FunctionDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent } from './content.js'
 import { compileContent, type CompiledContent } from './content.js'
-import { parseClock, absMin, parseDuration, type Clock } from './clock.js'
-import { parseOutcomes } from './parse.js'
-import { aspectsFromPairs } from './query.js'
-import { addEntity, relationKey, newState, type Aspects, type State } from './types.js'
+import { parseClock, absMin, parseDuration, type Clock } from '../core/clock.js'
+import { parseOutcomes } from '../core/parse.js'
+import { aspectsFromPairs } from '../core/query.js'
+import { addEntity, relationKey, newState, type Aspects, type State } from '../core/types.js'
 
 type Section = 'entities' | 'prototypes' | 'triggers' | 'endings' | 'verbs' | 'templates' | 'functions' | 'decks'
 

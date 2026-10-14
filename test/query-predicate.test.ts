@@ -1,8 +1,8 @@
 // Query mini-language (§4.5) and condition predicates (§6.3)
 import { describe, expect, test } from 'vitest'
-import { parseQuery, matchQuery } from '../src/query.js'
-import { parsePredicate, evalPred, type PredCtx } from '../src/predicate.js'
-import { newState, addEntity, type Entity, type State } from '../src/types.js'
+import { parseQuery, matchQuery } from '../src/core/query.js'
+import { parsePredicate, evalPred, type PredCtx } from '../src/core/predicate.js'
+import { newState, addEntity, type Entity, type State } from '../src/core/types.js'
 
 function ent(partial: Partial<Entity> & { id: string; kind: string; name: string }): Entity {
   return { aspects: {}, attrs: {}, bornAction: null, deadAction: null, stackable: false, ...partial }

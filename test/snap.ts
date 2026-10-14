@@ -2,7 +2,7 @@
 // ONE helper so play/fold comparisons cannot drift — engine.test,
 // endings.test and nightjar-explorer.test all compare through this. New State
 // fields land here with the state itself (v0.4's rng/decks landed with F4/F5).
-import type { State } from '../src/types.js'
+import type { State } from '../src/core/types.js'
 
 export function snap(s: State): string {
   return JSON.stringify({

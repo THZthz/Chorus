@@ -1,8 +1,8 @@
 // The seed world + seed content — the spec's flagship examples as data (§6.4).
 // Moved from src/seed.ts: this is a test fixture, not engine machinery. Kept
 // vitest-free so non-test scripts (examples/demo.ts) can import it alike.
-import type { ContentRaw } from '../src/content.js'
-import { addEntity, relationKey, newState, type State } from '../src/types.js'
+import type { ContentRaw } from '../src/content/content.js'
+import { addEntity, relationKey, newState, type State } from '../src/core/types.js'
 
 export function seedContent(): ContentRaw {
   return {

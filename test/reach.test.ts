@@ -3,10 +3,10 @@
 // direction is the contract: 'unobtainable' only on structural absence;
 // anything guarded demotes to 'unproven'.
 import { describe, expect, test } from 'vitest'
-import { compileContent, type ContentRaw } from '../src/content.js'
-import { coreDictionary } from '../src/dict.js'
-import { analyzeCard } from '../src/reach.js'
-import { addEntity, newState, type Entity, type State } from '../src/types.js'
+import { compileContent, type ContentRaw } from '../src/content/content.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { analyzeCard } from '../src/reach/reach.js'
+import { addEntity, newState, type Entity, type State } from '../src/core/types.js'
 
 const dict = coreDictionary()
 

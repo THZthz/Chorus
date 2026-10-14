@@ -1,12 +1,12 @@
 // L3 projection — spec §5.3, §6.7, §8, §9.35. Pure functions over records/state.
-import type { ActionRecord } from './engine.js'
-import type { CompiledContent } from './content.js'
-import type { Clause } from './sentence.js'
-import type { Ref } from './ref.js'
-import { parseSentence } from './parse.js'
-import { formatDuration } from './clock.js'
-import type { Dictionary } from './dict.js'
-import type { Aspects, Ending, Entity } from './types.js'
+import type { ActionRecord } from '../engine/engine.js'
+import type { CompiledContent } from '../content/content.js'
+import type { Clause } from '../core/sentence.js'
+import type { Ref } from '../core/ref.js'
+import { parseSentence } from '../core/parse.js'
+import { formatDuration } from '../core/clock.js'
+import type { Dictionary } from '../core/dict.js'
+import type { Aspects, Ending, Entity } from '../core/types.js'
 
 export function journal(records: ActionRecord[]): string {
   return records.map(r => r.sentence).join('\n')

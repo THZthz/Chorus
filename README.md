@@ -20,18 +20,13 @@ scripts by hand.
 
 ## Layout
 
-- `src/dict.ts` — L1 dictionary: verbs, reserved words, outcome operators, relation types
-- `src/sentence.ts` `lexer.ts` `parse.ts` `format.ts` — L2 grammar, canonical form
-- `src/query.ts` `predicate.ts` — slot queries (§4.5) and recipe conditions (§6.3)
-- `src/content.ts` — verbs/slots/recipes/prototypes/triggers as data
-- `src/script.ts` — the script compiler: a text file becomes world + logic (§ "sentences + small blocks")
-- `src/lenient.ts` — lenient English-ish player input → canonical steps
-- `src/engine.ts` — slots → recipes → outcomes → time → events; BEGIN/COMPLETE/WAIT rows, advance passes, station locks; step-atomic REFUSE
-- `src/fold.ts` `store.ts` — replay from the log; JSONL persistence
-- `src/play.ts` — the game loop (script + log; one turn = handleLine)
-- `src/tui.tsx` — the terminal UI (Ink); readline fallback when stdin or stdout is not a TTY
+- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse` `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3), `types` `clock` `dice` `ref`
+- `src/content/` — `content` (verbs/slots/recipes/prototypes/triggers as data), `script` (the script compiler: a text file becomes world + logic)
+- `src/engine/` — `engine` (slots → recipes → outcomes → time → events; BEGIN/COMPLETE/WAIT rows, advance passes, station locks; step-atomic REFUSE), `fold` `store` (replay from the log; JSONL persistence)
+- `src/reach/` — the static card-reachability analyzer (obtainable / demand / usability judgments)
+- `src/ui/` — `lenient` (lenient English-ish player input → canonical steps), `play` (the game loop; one turn = handleLine), `render` (journal / prose / text cards — L3 projections), `tui` (the terminal UI (Ink); readline fallback when stdin or stdout is not a TTY)
+- `tools/` — CLIs: `lint-cli` (script linter), `reach-cli` (reachability reports), `reach-fuzz-cli` (seeded differential campaigns)
 - `test/seed.ts` — the sample world (the spec's flagship examples) as a test fixture
-- `src/render.ts` — journal / prose / text cards (L3 projections)
 - `scripts/the-forgotten-house.txt` — a whole game as one text file
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;

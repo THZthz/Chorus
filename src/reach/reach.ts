@@ -46,12 +46,12 @@
 // it to candidate (the throw is ref-dependent, so not categorical). DESTROY
 // is in neither class — an unresolvable DESTROY is a silent no-op, not a
 // failure, so it never blocks anything.
-import type { CompiledContent, CompiledDeck, CompiledVerb, PrototypeDef } from './content.js'
-import type { Outcome, Role } from './sentence.js'
-import type { CmpOp, Query } from './query.js'
-import { matchQuery, parseQuery } from './query.js'
-import type { Pred, ValExpr } from './predicate.js'
-import type { Aspects, Entity, State } from './types.js'
+import type { CompiledContent, CompiledDeck, CompiledVerb, PrototypeDef } from '../content/content.js'
+import type { Outcome, Role } from '../core/sentence.js'
+import type { CmpOp, Query } from '../core/query.js'
+import { matchQuery, parseQuery } from '../core/query.js'
+import type { Pred, ValExpr } from '../core/predicate.js'
+import type { Aspects, Entity, State } from '../core/types.js'
 
 export interface CardOptions {
   /** semantics (b): the card must also be bindable into some committable verb slot */

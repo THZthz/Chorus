@@ -2,14 +2,14 @@
 // windows overlap, stations and cards lock, completions resolve in a
 // deterministic order, and the fold rebuilds open windows byte-for-byte.
 import { describe, expect, test } from 'vitest'
-import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content.js'
-import { coreDictionary } from '../src/dict.js'
-import { executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
-import { formatClock, parseClock } from '../src/clock.js'
-import { fold } from '../src/fold.js'
-import { parseSentence } from '../src/parse.js'
-import { loadLog, saveLog } from '../src/store.js'
-import { cloneState, newState, type State } from '../src/types.js'
+import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content/content.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { executeStep, type ActionRecord, type ExecResult } from '../src/engine/engine.js'
+import { formatClock, parseClock } from '../src/core/clock.js'
+import { fold } from '../src/engine/fold.js'
+import { parseSentence } from '../src/core/parse.js'
+import { loadLog, saveLog } from '../src/engine/store.js'
+import { cloneState, newState, type State } from '../src/core/types.js'
 import { seedContent, seedState } from './seed.js'
 import { snap } from './snap.js'
 

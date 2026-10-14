@@ -1,14 +1,14 @@
 // Content model — verbs, slots, recipes, prototypes, triggers, decks (spec §6).
 // Authored as plain data with string queries/predicates/outcomes; `compileContent`
 // parses them once and fails loudly at load time.
-import type { Outcome } from './sentence.js'
-import type { Pred } from './predicate.js'
-import { lintPred, lintRollMayBind, lintTriggerPred, lintTriggerValExpr, lintValExpr, parsePredicate } from './predicate.js'
-import { parseQuery, type Query } from './query.js'
-import { MAX_FN_DEPTH, collectFnCalls, expandFnCalls, parseFunctionBody, parseOutcomes, type FnTable } from './parse.js'
-import { splitmix64 } from './dice.js'
-import type { Dictionary } from './dict.js'
-import type { Aspects, Attrs } from './types.js'
+import type { Outcome } from '../core/sentence.js'
+import type { Pred } from '../core/predicate.js'
+import { lintPred, lintRollMayBind, lintTriggerPred, lintTriggerValExpr, lintValExpr, parsePredicate } from '../core/predicate.js'
+import { parseQuery, type Query } from '../core/query.js'
+import { MAX_FN_DEPTH, collectFnCalls, expandFnCalls, parseFunctionBody, parseOutcomes, type FnTable } from '../core/parse.js'
+import { splitmix64 } from '../core/dice.js'
+import type { Dictionary } from '../core/dict.js'
+import type { Aspects, Attrs } from '../core/types.js'
 
 export type SlotRole = 'actors' | 'object' | 'with' | 'at' | 'about' | 'to'
 

@@ -2,7 +2,7 @@
 // truth; entity/relation tables are projections built by fold.
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { ActionRecord } from './engine.js'
-import type { State } from './types.js'
+import type { State } from '../core/types.js'
 
 export class Log {
   records: ActionRecord[] = []

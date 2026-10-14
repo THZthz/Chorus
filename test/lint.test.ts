@@ -2,8 +2,8 @@
 // compile and detonate later) and the lint layer (warnings that never throw).
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { compileScript, lintScript } from '../src/script.js'
-import { coreDictionary } from '../src/dict.js'
+import { compileScript, lintScript } from '../src/content/script.js'
+import { coreDictionary } from '../src/core/dict.js'
 
 const dict = coreDictionary()
 const FLYER = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')

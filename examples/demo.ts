@@ -1,13 +1,13 @@
 // End-to-end demo: play a few steps, print the canonical journal and the prose.
 // Run: npx tsx examples/demo.ts   (or add to an npm script)
-import { compileContent } from '../src/content.js'
-import { coreDictionary } from '../src/dict.js'
-import { executeStep } from '../src/engine.js'
-import { fold } from '../src/fold.js'
-import { clockFromAbsMin } from '../src/clock.js'
-import { parseSentence } from '../src/parse.js'
-import { journal, prose } from '../src/render.js'
-import { Log } from '../src/store.js'
+import { compileContent } from '../src/content/content.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { executeStep } from '../src/engine/engine.js'
+import { fold } from '../src/engine/fold.js'
+import { clockFromAbsMin } from '../src/core/clock.js'
+import { parseSentence } from '../src/core/parse.js'
+import { journal, prose } from '../src/ui/render.js'
+import { Log } from '../src/engine/store.js'
 import { seedContent, seedState } from '../test/seed.js'
 
 const dict = coreDictionary()

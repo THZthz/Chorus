@@ -4,10 +4,10 @@
 // the way the pre-v0.5 engine behaved (now = start + Σdurations — the same
 // minute, by construction). Timing-specific behavior (locks, windows,
 // completion order) is tested in test/parallel.test.ts WITHOUT this helper.
-import type { CompiledContent } from '../src/content.js'
-import type { Dictionary } from '../src/dict.js'
-import { executeStep, type ExecResult, type Step } from '../src/engine.js'
-import type { State } from '../src/types.js'
+import type { CompiledContent } from '../src/content/content.js'
+import type { Dictionary } from '../src/core/dict.js'
+import { executeStep, type ExecResult, type Step } from '../src/engine/engine.js'
+import type { State } from '../src/core/types.js'
 
 /** run one step, then a pure advance closing every window it left open.
  *  Records come back chronological ([advance…, begin, complete…, wait]);

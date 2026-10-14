@@ -1,22 +1,22 @@
 // The interpreter — spec §6.6 (validation → selection → application → time →
 // events) with step-atomic REFUSE (§6.5) and event-sourced records (§7).
-import type { Arg, Clause, Outcome, Role, Sentence } from './sentence.js'
-import { ROLES } from './sentence.js'
-import type { Ref } from './ref.js'
-import { idRef, nameRef, sortRefs } from './ref.js'
-import { formatSentence } from './format.js'
-import type { Dictionary } from './dict.js'
-import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb, CompiledDeck, DeckCard } from './content.js'
-import { drawFrom } from './content.js'
-import { evalPred, evalExpr, type PredCtx, type RoleBindings } from './predicate.js'
-import { rollDie } from './dice.js'
-import { matchQuery } from './query.js'
-import { MIN_PER_HALFHOUR, absMin, clockFromAbsMin, formatClock, parseClock, parseDuration, type Clock } from './clock.js'
-import { parseSentence } from './parse.js'
+import type { Arg, Clause, Outcome, Role, Sentence } from '../core/sentence.js'
+import { ROLES } from '../core/sentence.js'
+import type { Ref } from '../core/ref.js'
+import { idRef, nameRef, sortRefs } from '../core/ref.js'
+import { formatSentence } from '../core/format.js'
+import type { Dictionary } from '../core/dict.js'
+import type { CompiledContent, CompiledRecipe, CompiledSlot, CompiledVerb, CompiledDeck, DeckCard } from '../content/content.js'
+import { drawFrom } from '../content/content.js'
+import { evalPred, evalExpr, type PredCtx, type RoleBindings } from '../core/predicate.js'
+import { rollDie } from '../core/dice.js'
+import { matchQuery } from '../core/query.js'
+import { MIN_PER_HALFHOUR, absMin, clockFromAbsMin, formatClock, parseClock, parseDuration, type Clock } from '../core/clock.js'
+import { parseSentence } from '../core/parse.js'
 import {
   addEntity, aspectEntry, aspectGet, aspectSet, cloneState, getAlive, oldestNamed, relationKey, releaseName,
   type Aspects, type Entity, type OpenWindow, type State,
-} from './types.js'
+} from '../core/types.js'
 
 export interface Step {
   /** begin at this absolute minute (v0.5, minute-precise — wins over clock) */

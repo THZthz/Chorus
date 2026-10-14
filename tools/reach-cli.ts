@@ -5,9 +5,9 @@
 //   npm run reach -- scripts/the-nightjar-flyer.txt THE_WAX_CYLINDER [--usable]
 //   npm run reach -- scripts/the-nightjar-flyer.txt --all
 import { readFileSync } from 'node:fs'
-import { coreDictionary } from './dict.js'
-import { analyzeCard } from './reach.js'
-import { compileScript } from './script.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { analyzeCard } from '../src/reach/reach.js'
+import { compileScript } from '../src/content/script.js'
 
 const args = process.argv.slice(2)
 const usable = args.includes('--usable')

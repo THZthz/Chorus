@@ -2,9 +2,9 @@
 // and round-trips. Plus actor-order equality (§9.6), sugar canonicalization,
 // reserved words (§9.14).
 import { describe, expect, test } from 'vitest'
-import { coreDictionary } from '../src/dict.js'
-import { parseSentence } from '../src/parse.js'
-import { formatSentence } from '../src/format.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { parseSentence } from '../src/core/parse.js'
+import { formatSentence } from '../src/core/format.js'
 
 const dict = coreDictionary()
 

@@ -10,9 +10,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "play": "tsx examples/play.ts",
-    "lint:scripts": "tsx src/lint-cli.ts",
-    "reach": "tsx src/reach-cli.ts",
-    "fuzz:reach": "tsx src/reach-fuzz-cli.ts"
+    "lint:scripts": "tsx tools/lint-cli.ts",
+    "reach": "tsx tools/reach-cli.ts",
+    "fuzz:reach": "tsx tools/reach-fuzz-cli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

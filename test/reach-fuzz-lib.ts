@@ -17,18 +17,18 @@
 //
 // 'unproven' asserts nothing by design. A failure is reproducible from its
 // seed: runFuzzSeed(seed) is a pure function of the seed.
-import { compileContent, type CompiledContent, type ContentRaw } from '../src/content.js'
-import { CORE_VERBS, KINDS, coreDictionary, type Dictionary } from '../src/dict.js'
-import { absMin, clockFromAbsMin, formatClock, nextStepClock } from '../src/clock.js'
-import { parseSentence } from '../src/parse.js'
-import { matchQuery, parseQuery } from '../src/query.js'
-import { analyzeCard } from '../src/reach.js'
+import { compileContent, type CompiledContent, type ContentRaw } from '../src/content/content.js'
+import { CORE_VERBS, KINDS, coreDictionary, type Dictionary } from '../src/core/dict.js'
+import { absMin, clockFromAbsMin, formatClock, nextStepClock } from '../src/core/clock.js'
+import { parseSentence } from '../src/core/parse.js'
+import { matchQuery, parseQuery } from '../src/core/query.js'
+import { analyzeCard } from '../src/reach/reach.js'
 import { settleStep } from './settle.js'
-import { emptyClause, type Clause, type Role } from '../src/sentence.js'
-import { addEntity, newState, type Aspects, type Entity, type State } from '../src/types.js'
-import type { Ref } from '../src/ref.js'
-import { idRef, nameRef } from '../src/ref.js'
-import type { Step } from '../src/engine.js'
+import { emptyClause, type Clause, type Role } from '../src/core/sentence.js'
+import { addEntity, newState, type Aspects, type Entity, type State } from '../src/core/types.js'
+import type { Ref } from '../src/core/ref.js'
+import { idRef, nameRef } from '../src/core/ref.js'
+import type { Step } from '../src/engine/engine.js'
 
 // ---------- deterministic RNG (explorer-lib's LCG discipline) ----------
 

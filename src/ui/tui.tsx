@@ -9,7 +9,7 @@ import type { Instance } from 'ink'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import type { Game } from './play.js'
-import { clockFromAbsMin, formatClock } from './clock.js'
+import { clockFromAbsMin, formatClock } from '../core/clock.js'
 import { pretty, endingBanner } from './render.js'
 
 type EntryKind = 'action' | 'info' | 'error'

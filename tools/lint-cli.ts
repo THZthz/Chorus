@@ -6,8 +6,8 @@
 //   npm run lint:scripts -- my-game.txt  # or name files
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { coreDictionary } from './dict.js'
-import { lintScript } from './script.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { lintScript } from '../src/content/script.js'
 
 const dict = coreDictionary()
 const args = process.argv.slice(2)

@@ -1,16 +1,16 @@
 // Engine acceptance tests — the spec §6.4 READ ladder, REFUSE semantics (§6.5),
 // time ownership (§9.12), events (§9.16), fold determinism (§7).
 import { describe, expect, test } from 'vitest'
-import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content.js'
-import { coreDictionary } from '../src/dict.js'
-import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine.js'
-import { formatDuration } from '../src/clock.js'
-import { fold, foldUpTo } from '../src/fold.js'
-import { formatSentence } from '../src/format.js'
-import { parseSentence } from '../src/parse.js'
-import { prose } from '../src/render.js'
-import { loadLog, saveLog, Log } from '../src/store.js'
-import { addEntity, newState, type State } from '../src/types.js'
+import { compileContent, type CompiledContent, type ContentRaw, type VerbContent } from '../src/content/content.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { applyRecord, executeStep, type ActionRecord, type ExecResult } from '../src/engine/engine.js'
+import { formatDuration } from '../src/core/clock.js'
+import { fold, foldUpTo } from '../src/engine/fold.js'
+import { formatSentence } from '../src/core/format.js'
+import { parseSentence } from '../src/core/parse.js'
+import { prose } from '../src/ui/render.js'
+import { loadLog, saveLog, Log } from '../src/engine/store.js'
+import { addEntity, newState, type State } from '../src/core/types.js'
 import { seedContent, seedState } from './seed.js'
 import { snap } from './snap.js'
 import { settleStep, act, done, refusal } from './settle.js'
@@ -354,7 +354,7 @@ describe('review regressions', () => {
     expect(r.rejected).toBeNull()
     // the recorded MOVE must name ANA and BERTHA, not ACTORS
     const move = done(r).outcomes.find(o => o.op === 'MOVE')!
-    const refs = move.args.filter((a): a is Extract<import('../src/sentence.js').Arg, { t: 'ref' }> => a.t === 'ref')
+    const refs = move.args.filter((a): a is Extract<import('../src/core/sentence.js').Arg, { t: 'ref' }> => a.t === 'ref')
     expect(refs.map(a => a.ref.form === 'id' && a.ref.id).sort()).toEqual(['ana', 'bertha'])
     const replayed = fold(r.records, seedState(), dict, content)
     expect(replayed.entities.get('follower')!.attrs['container']).toBe('house') // not dragged along

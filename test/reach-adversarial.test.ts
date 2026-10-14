@@ -13,16 +13,16 @@
 // 'unproven' next to a reachable truth is sound conservatism and is DOCUMENTED,
 // not flipped.
 import { describe, expect, test } from 'vitest'
-import { compileContent, type CompiledContent, type ContentRaw } from '../src/content.js'
-import { coreDictionary } from '../src/dict.js'
-import { rollDie } from '../src/dice.js'
-import { parseClock } from '../src/clock.js'
-import { parseSentence } from '../src/parse.js'
-import { executeStep } from '../src/engine.js'
-import { analyzeCard } from '../src/reach.js'
+import { compileContent, type CompiledContent, type ContentRaw } from '../src/content/content.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { rollDie } from '../src/core/dice.js'
+import { parseClock } from '../src/core/clock.js'
+import { parseSentence } from '../src/core/parse.js'
+import { executeStep } from '../src/engine/engine.js'
+import { analyzeCard } from '../src/reach/reach.js'
 import { settleStep } from './settle.js'
 import { explore } from './reach-fuzz-lib.js'
-import { addEntity, newState, type Entity, type State } from '../src/types.js'
+import { addEntity, newState, type Entity, type State } from '../src/core/types.js'
 
 const dict = coreDictionary()
 

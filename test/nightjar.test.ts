@@ -7,10 +7,10 @@
 // escalation ending — seed 1899 is calibrated for exactly that.
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { Game, type Turn } from '../src/play.js'
-import { parsePlayerInput } from '../src/lenient.js'
-import { fold } from '../src/fold.js'
-import { coreDictionary } from '../src/dict.js'
+import { Game, type Turn } from '../src/ui/play.js'
+import { parsePlayerInput } from '../src/ui/lenient.js'
+import { fold } from '../src/engine/fold.js'
+import { coreDictionary } from '../src/core/dict.js'
 
 const dict = coreDictionary()
 const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')

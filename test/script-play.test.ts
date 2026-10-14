@@ -2,13 +2,13 @@
 // exercised against the Nightjar Flyer: zones, neighbor links, masked suspects.
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { coreDictionary } from '../src/dict.js'
-import { compileScript, parseScript } from '../src/script.js'
-import { compileContent, forEachAuthoredOutcome } from '../src/content.js'
-import { parsePlayerInput } from '../src/lenient.js'
-import { Game } from '../src/play.js'
-import { fold } from '../src/fold.js'
-import { addEntity } from '../src/types.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { compileScript, parseScript } from '../src/content/script.js'
+import { compileContent, forEachAuthoredOutcome } from '../src/content/content.js'
+import { parsePlayerInput } from '../src/ui/lenient.js'
+import { Game } from '../src/ui/play.js'
+import { fold } from '../src/engine/fold.js'
+import { addEntity } from '../src/core/types.js'
 import { seedState } from './seed.js'
 
 const dict = coreDictionary()

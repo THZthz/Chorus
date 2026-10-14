@@ -1,10 +1,10 @@
 // Clock & duration unit tests — spec §5.1 grammar, §9.45 compound durations.
 import { describe, expect, test } from 'vitest'
-import { formatClock, formatDuration, parseClock, parseDuration } from '../src/clock.js'
-import { lex } from '../src/lexer.js'
-import { coreDictionary } from '../src/dict.js'
-import { parseSentence } from '../src/parse.js'
-import { formatSentence } from '../src/format.js'
+import { formatClock, formatDuration, parseClock, parseDuration } from '../src/core/clock.js'
+import { lex } from '../src/core/lexer.js'
+import { coreDictionary } from '../src/core/dict.js'
+import { parseSentence } from '../src/core/parse.js'
+import { formatSentence } from '../src/core/format.js'
 
 const dict = coreDictionary()
 

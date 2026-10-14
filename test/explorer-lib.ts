@@ -3,19 +3,19 @@
 // for the sweep), and the state sources both passes play against. No vitest
 // here — scripts and tests import this alike.
 import { readFileSync } from 'node:fs'
-import { compileScript } from '../src/script.js'
-import { executeStep, type ActionRecord, type Step } from '../src/engine.js'
-import { fold } from '../src/fold.js'
+import { compileScript } from '../src/content/script.js'
+import { executeStep, type ActionRecord, type Step } from '../src/engine/engine.js'
+import { fold } from '../src/engine/fold.js'
 import { settleStep } from './settle.js'
-import { absMin, clockFromAbsMin, formatClock, nextStepClock } from '../src/clock.js'
-import { parseSentence } from '../src/parse.js'
-import { matchQuery } from '../src/query.js'
-import { parsePlayerInput } from '../src/lenient.js'
-import { nameRef, type Ref } from '../src/ref.js'
-import { cloneState, type State } from '../src/types.js'
-import { emptyClause, ROLES, type Clause, type Role } from '../src/sentence.js'
-import type { CompiledContent, CompiledSlot } from '../src/content.js'
-import { coreDictionary, type Dictionary } from '../src/dict.js'
+import { absMin, clockFromAbsMin, formatClock, nextStepClock } from '../src/core/clock.js'
+import { parseSentence } from '../src/core/parse.js'
+import { matchQuery } from '../src/core/query.js'
+import { parsePlayerInput } from '../src/ui/lenient.js'
+import { nameRef, type Ref } from '../src/core/ref.js'
+import { cloneState, type State } from '../src/core/types.js'
+import { emptyClause, ROLES, type Clause, type Role } from '../src/core/sentence.js'
+import type { CompiledContent, CompiledSlot } from '../src/content/content.js'
+import { coreDictionary, type Dictionary } from '../src/core/dict.js'
 
 export const dict: Dictionary = coreDictionary()
 export const scriptText = readFileSync(new URL('../scripts/the-nightjar-flyer.txt', import.meta.url), 'utf8')

@@ -3,15 +3,15 @@
 //   "read the forgetting"                          → ANA READ THE_FORGETTING
 //   "ana, bertha talk about clue at dining hall"   → multi-actor + ABOUT + AT
 //   "0:20 @ ANA WAIT"                              → canonical passthrough
-import type { Dictionary } from './dict.js'
-import type { CompiledContent } from './content.js'
-import type { Clause, Role } from './sentence.js'
-import { parseSentence } from './parse.js'
-import { absMin, parseClock, type Clock } from './clock.js'
-import { nameRef, type Ref } from './ref.js'
-import { matchQuery } from './query.js'
-import type { Entity, State } from './types.js'
-import type { Step } from './engine.js'
+import type { Dictionary } from '../core/dict.js'
+import type { CompiledContent } from '../content/content.js'
+import type { Clause, Role } from '../core/sentence.js'
+import { parseSentence } from '../core/parse.js'
+import { absMin, parseClock, type Clock } from '../core/clock.js'
+import { nameRef, type Ref } from '../core/ref.js'
+import { matchQuery } from '../core/query.js'
+import type { Entity, State } from '../core/types.js'
+import type { Step } from '../engine/engine.js'
 
 export interface LenientCtx {
   dict: Dictionary

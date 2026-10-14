@@ -1,9 +1,9 @@
 // Fold — spec §7: state = fold(log). Rebuilds projections (entities,
 // relations, provenance, clock) by replaying concrete outcomes in order.
-import type { Dictionary } from './dict.js'
-import type { CompiledContent } from './content.js'
+import type { Dictionary } from '../core/dict.js'
+import type { CompiledContent } from '../content/content.js'
 import { applyRecord, type ActionRecord } from './engine.js'
-import { cloneState, type State } from './types.js'
+import { cloneState, type State } from '../core/types.js'
 
 export function fold(records: ActionRecord[], base: State, dict: Dictionary, content: CompiledContent): State {
   const state = cloneState(base)

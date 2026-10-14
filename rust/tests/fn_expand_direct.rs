@@ -15,9 +15,9 @@
 
 mod common;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::format::format_sentence;
@@ -348,9 +348,12 @@ fn table_from(defs: &[(String, Vec<String>, String)]) -> FnTable {
 /// dice.rs `script_seed_error` precedent). W2's implementation must inline
 /// exactly these strings at its throw sites.
 fn content_pass3_guards(table: &FnTable) -> Result<()> {
-    let mut calls_of: IndexMap<String, HashSet<String>> = IndexMap::new();
+    // IndexSet (wave-1 must-fix-2): TS pass-3 iterates each body's
+    // `new Set<string>()` in INSERTION order — the first undeclared callee
+    // and the first cycle found depend on it (content.ts:545-561).
+    let mut calls_of: IndexMap<String, IndexSet<String>> = IndexMap::new();
     for tpl in table.by_name.values() {
-        let mut calls = HashSet::new();
+        let mut calls = IndexSet::new();
         collect_fn_calls(&tpl.body, &mut calls);
         for c in &calls {
             if !table.by_name.contains_key(c) {
@@ -364,7 +367,7 @@ fn content_pass3_guards(table: &FnTable) -> Result<()> {
     }
     fn visit(
         name: &str,
-        calls_of: &IndexMap<String, HashSet<String>>,
+        calls_of: &IndexMap<String, IndexSet<String>>,
         color: &mut HashMap<String, u8>, // 0 white, 1 gray, 2 black
         stack: &mut Vec<String>,
     ) -> Result<()> {
@@ -396,7 +399,7 @@ fn content_pass3_guards(table: &FnTable) -> Result<()> {
             visit(name, &calls_of, &mut color, &mut stack)?;
         }
     }
-    fn depth_of(name: &str, calls_of: &IndexMap<String, HashSet<String>>, memo: &mut HashMap<String, u32>) -> u32 {
+    fn depth_of(name: &str, calls_of: &IndexMap<String, IndexSet<String>>, memo: &mut HashMap<String, u32>) -> u32 {
         if let Some(d) = memo.get(name) {
             return *d;
         }

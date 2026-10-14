@@ -9,9 +9,7 @@
 //! Canonical equals expansion: a call site IS its expanded body, byte for
 //! byte (parse.ts:654-655).
 
-use std::collections::HashSet;
-
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::core::clock::format_duration;
 use crate::core::dict::OUTCOME_OPS;
@@ -43,8 +41,12 @@ pub struct FnTable {
 
 /// ts: src/core/parse.ts:73-84 — every function a body calls, directly
 /// (branch bodies included) — the call graph content compile walks for
-/// recursion cycles and the depth cap.
-pub fn collect_fn_calls(out: &[Outcome], into: &mut HashSet<String>) {
+/// recursion cycles and the depth cap. IndexSet, NOT HashSet: the TS
+/// `Set<string>` iterates in INSERTION order and content.ts pass-3
+/// (:545-561, W2) observes it — the FIRST undeclared name enters the error
+/// text (:548) and the DFS decides which cycle is found first and how
+/// `a -> b -> a` spells (wave-1 must-fix-2).
+pub fn collect_fn_calls(out: &[Outcome], into: &mut IndexSet<String>) {
     for o in out {
         if o.op == "FN" {
             if let Some(call) = &o.call {
@@ -591,12 +593,49 @@ mod tests {
             }]),
             call: None,
         };
-        let mut into = HashSet::new();
+        let mut into = IndexSet::new();
         collect_fn_calls(&[o], &mut into);
-        let mut want = HashSet::new();
+        let mut want = IndexSet::new();
         want.insert("GIVE".to_string());
         want.insert("TAKE".to_string());
         assert_eq!(into, want);
+    }
+
+    #[test]
+    fn collect_fn_calls_preserves_ts_set_insertion_order() {
+        // wave-1 must-fix-2: collectFnCalls fills a JS `Set<string>`, whose
+        // iteration is INSERTION order — content.ts pass-3 (:545-561) reads
+        // it in that order (first undeclared callee in the error text; the
+        // first cycle found and its `a -> b -> a` spelling). Hand-built FN
+        // nodes, as in the branch test above (undeclared fns fail at parse).
+        let fn_ = |call: &str| Outcome {
+            op: "FN".into(),
+            args: vec![],
+            arms: None,
+            fallback: None,
+            call: Some(call.into()),
+        };
+        let arm = IfArm {
+            when: Pred::Cmp {
+                l: ValExpr::Int { v: 1 },
+                op: crate::core::query::CmpOp::Eq,
+                r: ValExpr::Int { v: 1 },
+            },
+            then: vec![fn_("zulu")], // arm bodies walk before the fallback
+        };
+        let o = Outcome {
+            op: "IF".into(),
+            args: vec![],
+            arms: Some(vec![arm]),
+            fallback: Some(vec![fn_("alpha")]),
+            call: None,
+        };
+        let mut into = IndexSet::new();
+        // declaration order across the list, plus a DUPLICATE: Set.add keeps
+        // the element at its FIRST position (TS and IndexSet alike)
+        collect_fn_calls(&[o, fn_("mike"), fn_("zulu")], &mut into);
+        let names: Vec<&str> = into.iter().map(String::as_str).collect();
+        assert_eq!(names, vec!["zulu", "alpha", "mike"]);
     }
 
     #[test]

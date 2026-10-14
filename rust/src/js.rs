@@ -5,6 +5,9 @@
 
 use std::cmp::Ordering;
 use std::fmt;
+use std::sync::OnceLock;
+
+use regex::Regex;
 
 /// ts: src/core/ref.ts:47-49 (sortRefs), src/core/types.ts:225-230
 /// (relationKey), tools/reach-cli.ts:73 (`--all` list) — plan §3.6.
@@ -61,6 +64,125 @@ impl fmt::Display for ChorusError {
 impl std::error::Error for ChorusError {}
 
 pub type Result<T> = std::result::Result<T, ChorusError>;
+
+/// ts: (plan §3.5) every TS `Number(<digit literal>)` — lexer.ts:56-58,
+/// predicate.ts:294-295/323, clock.ts:34/37/55 — goes through an f64 middle
+/// step and only then lands in the integer domain; direct
+/// `str::parse::<i64>()` diverges past 2^53 ("9007199254740993" → JS …992,
+/// direct parse …993, PR2-04). Rust's `str::parse::<f64>` is correctly
+/// rounded (nearest, ties to even) exactly like JS `Number`, so the f64
+/// middle step is reproduced bit-for-bit; the final f64→i64 `as` saturates
+/// at the i64 bounds where TS would keep a lossy f64 — a **documented
+/// divergence** (plan §3.5: no arbitrary precision; no test pins it).
+///
+/// NaN can only occur for inputs the call sites' regexes already rejected;
+/// it maps to 0 rather than panicking (TS would propagate NaN).
+#[must_use]
+pub fn js_num_parse(s: &str) -> i64 {
+    let f: f64 = s.parse().unwrap_or(f64::NAN);
+    if f.is_nan() {
+        0
+    } else {
+        f as i64
+    }
+}
+
+/// The set of characters JS `String.prototype.trim` strips: WhiteSpace plus
+/// line terminators — includes `\u{FEFF}`, excludes `\u{85}`. Rust's
+/// `str::trim` (char::is_whitespace) is exactly the reverse on those two,
+/// so every ported `trim()` before a `\s`-split must use this predicate
+/// (plan §3.8 / Q8). Same set as [`js_is_ws`], on a `char`.
+#[must_use]
+pub fn js_char_is_ws(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}'
+        | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}'
+        | '\u{205f}' | '\u{3000}' | '\u{feff}'
+    )
+}
+
+/// ts: (plan §3.8) `String.prototype.trim` in the JS whitespace set.
+#[must_use]
+pub fn js_trim(s: &str) -> &str {
+    s.trim_matches(js_char_is_ws)
+}
+
+/// ts: (rule 11 / plan §2.3) cache for the appendix-A regex literals. The
+/// patterns are audited against docs/rust-port/plan.md appendix A at review
+/// time; a literal failing to compile is a programmer error with no runtime
+/// behavior to define, hence `unreachable!` (the sanctioned form — engine
+/// paths use no `unwrap`/`expect`).
+#[must_use]
+pub fn static_regex(
+    cell: &OnceLock<Regex>,
+    build: impl FnOnce() -> std::result::Result<Regex, regex::Error>,
+) -> &Regex {
+    cell.get_or_init(|| match build() {
+        Ok(re) => re,
+        Err(e) => unreachable!("static regex literal failed to compile: {e}"),
+    })
+}
+
+/// ts: (plan §3.7 / PR2-05) JS `OrdinaryOwnPropertyKeys`: integer-like keys
+/// first in ascending numeric value, everything else in insertion order.
+/// Frozen judgment: a key is integer-like iff it is a canonical unsigned
+/// decimal string with no leading zero (`0`, `123` — never `+5`, `0123`,
+/// `1e2`) whose value round-trips `ToUint32` and stays `<= 2^32 - 2`
+/// (V8 treats 2^32-1 as a regular property; plan §3.7).
+#[must_use]
+pub fn is_integer_like_key(k: &str) -> bool {
+    let bytes = k.as_bytes();
+    if bytes.is_empty() || !bytes.iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    if bytes.len() > 1 && bytes[0] == b'0' {
+        return false; // leading zero: not canonical
+    }
+    // ≤ 10 digits (2^32-2 has 10) and in range → ToUint32 round-trip holds.
+    k.parse::<u64>().is_ok_and(|v| v <= 4_294_967_294)
+}
+
+/// ts: (plan §3.7 / PR2-05) the key order every JS object spread/clone/
+/// `Object.entries` site produces. `IndexMap` alone only preserves insertion
+/// order; JS additionally fronts integer-like keys, so every observable
+/// clone/spread/serialize point must rebuild through this ordering
+/// (PR2-05's clone points live in `core/types.rs`).
+#[must_use]
+pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<String> {
+    let mut int_keys: Vec<&String> = m
+        .keys()
+        .filter(|k| is_integer_like_key(k))
+        .collect();
+    int_keys.sort_by(|a, b| {
+        // numeric ascending; both sides are canonical digit strings that fit
+        // u64, so numeric compare on the parsed value is exact
+        let av = a.parse::<u64>().unwrap_or(0);
+        let bv = b.parse::<u64>().unwrap_or(0);
+        av.cmp(&bv)
+    });
+    let mut out: Vec<String> = int_keys.into_iter().cloned().collect();
+    for k in m.keys() {
+        if !is_integer_like_key(k) {
+            out.push(k.clone());
+        }
+    }
+    out
+}
+
+/// Clone a string-keyed map rebuilding keys in JS `OrdinaryOwnPropertyKeys`
+/// order (plan §3.7 / PR2-05: the clone/spread points types.ts:118/:132/:138).
+#[must_use]
+pub fn clone_map_in_js_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> indexmap::IndexMap<String, V> {
+    let mut out = indexmap::IndexMap::with_capacity(m.len());
+    for k in ordinary_own_property_keys(m) {
+        // every key came from m; the lookup cannot miss
+        if let Some(v) = m.get(&k) {
+            out.insert(k, v.clone());
+        }
+    }
+    out
+}
 
 /// ts: test/reach-fuzz-lib.ts:36-38 — the deterministic test-side LCG,
 /// `s = (Math.imul(s, 1664525) + 1013904223) >>> 0`, identical in
@@ -171,5 +293,59 @@ mod tests {
         // Math.floor(r() * n) stays in f64
         assert_eq!(scale.next_f64(), 0.3778064283542335);
         assert_eq!(scale.next_int(10), 4);
+    }
+
+    #[test]
+    fn js_num_parse_rounds_like_f64_not_direct_i64() {
+        // PR2-04's exact example: direct i64 parse gives …993, JS f64 …992
+        assert_eq!(js_num_parse("9007199254740993"), 9007199254740992);
+        assert_eq!(js_num_parse("0"), 0);
+        assert_eq!(js_num_parse("47"), 47);
+        assert_eq!(js_num_parse("-5"), -5);
+        // > i64 range: saturates where TS keeps a lossy f64 (documented
+        // divergence, plan §3.5)
+        assert_eq!(js_num_parse("99999999999999999999"), i64::MAX);
+    }
+
+    #[test]
+    fn js_trim_uses_the_js_whitespace_set() {
+        // \u{feff} IS JS trim-able, \u{85} is not — Rust str::trim is reversed
+        assert_eq!(js_trim("\u{feff}abc "), "abc");
+        assert_eq!(js_trim("\u{85}abc\u{85}"), "\u{85}abc\u{85}");
+        assert_eq!(js_trim("  a\tb\u{2028}"), "a\tb");
+    }
+
+    #[test]
+    fn integer_like_keys_follow_the_frozen_v8_judgment() {
+        assert!(is_integer_like_key("0"));
+        assert!(is_integer_like_key("5"));
+        assert!(is_integer_like_key("4294967294")); // 2^32-2, the frozen cap
+        assert!(!is_integer_like_key("4294967295")); // 2^32-1: regular property
+        assert!(!is_integer_like_key("0123")); // leading zero
+        assert!(!is_integer_like_key("+5")); // sign
+        assert!(!is_integer_like_key("1e2"));
+        assert!(!is_integer_like_key("container"));
+        assert!(!is_integer_like_key(""));
+    }
+
+    #[test]
+    fn ordinary_own_property_keys_front_integer_keys() {
+        use indexmap::IndexMap;
+        let mut m = IndexMap::new();
+        m.insert("container".to_string(), 1);
+        m.insert("5".to_string(), 2);
+        m.insert("0".to_string(), 3);
+        m.insert("0123".to_string(), 4);
+        m.insert("12".to_string(), 5);
+        // integer-like keys ascend to the front ("0","5","12"), the rest keep
+        // insertion order ("container","0123") — exactly the JS spread order
+        // that PR2-05 pins for `SET(x,"5",true)` then clone
+        assert_eq!(
+            ordinary_own_property_keys(&m),
+            ["0", "5", "12", "container", "0123"]
+        );
+        let cloned = clone_map_in_js_order(&m);
+        let keys: Vec<String> = cloned.keys().cloned().collect();
+        assert_eq!(keys, ["0", "5", "12", "container", "0123"]);
     }
 }

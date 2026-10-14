@@ -1,0 +1,335 @@
+//! Tokenizer for the sentence grammar — ts: src/core/lexer.ts (spec §5.1).
+//! Quote-aware and paren-aware: strings and outcome args carry
+//! commas/brackets.
+//!
+//! The five regex-shaped scans (NAME_RE lexer.ts:13, NUM_RE :14, DUR_RE :15
+//! with its load-bearing `halfhour|h|m|d` alternation order (Q9), the `/\s/`
+//! skip :26, and `/[0-9]/` :45) are HAND-WRITTEN over `Vec<u16>` code units
+//! (plan §2.3 / PR2-08: the regex crate cannot run on a UTF-16 code-unit
+//! domain, and code-unit indexing is what makes the error offsets and the
+//! `->`/punct decisions byte-identical to JS).
+
+use crate::core::clock::parse_duration;
+use crate::js::{js_is_ws, js_num_parse, ChorusError, Result};
+
+/// ts: src/core/lexer.ts:5-12
+#[derive(Debug, Clone, PartialEq)]
+pub enum Tok {
+    Name { v: String },
+    Int { v: i64 },
+    Dur { v: i64 },  // minutes
+    Str { v: String },
+    IdRef { v: String }, // #c7f3 (without '#')
+    Punct { v: String },
+}
+
+impl Tok {
+    /// The TS `t.t` discriminator — `show(t)` and error paths use it.
+    #[must_use]
+    pub fn t(&self) -> &'static str {
+        match self {
+            Tok::Name { .. } => "name",
+            Tok::Int { .. } => "int",
+            Tok::Dur { .. } => "dur",
+            Tok::Str { .. } => "str",
+            Tok::IdRef { .. } => "idref",
+            Tok::Punct { .. } => "punct",
+        }
+    }
+
+    /// TS `t.v` for every variant.
+    #[must_use]
+    pub fn v_str(&self) -> String {
+        match self {
+            Tok::Name { v } | Tok::Str { v } | Tok::IdRef { v } | Tok::Punct { v } => v.clone(),
+            Tok::Int { v } | Tok::Dur { v } => v.to_string(),
+        }
+    }
+}
+
+/// ts: src/core/lexer.ts:19 — PUNCT. '+'/'-' are punct so a signed SET value
+/// (+1/-2, §9.31) lexes as sign + int ('->' is matched before the punct set,
+/// so the minus is unambiguous); '.' is punct for dotted SET keys (§5.1
+/// dottedName: state.sealed, aspect:language.latin).
+#[must_use]
+fn is_punct(c: u16) -> bool {
+    // ,  ;  :  (  )  @  =  !  >  <  +  -  .
+    matches!(c, 0x2C | 0x3B | 0x3A | 0x28 | 0x29 | 0x40 | 0x3D | 0x21 | 0x3E | 0x3C | 0x2B | 0x2D | 0x2E)
+}
+
+/// NAME_RE scan (ts: lexer.ts:13 `/^[A-Za-z_][A-Za-z0-9_]*/`) at `s[i..]`:
+/// returns the match LENGTH in code units.
+#[must_use]
+fn scan_name(s: &[u16], i: usize) -> Option<usize> {
+    let c = *s.get(i)?;
+    if !(c as u8 as char).is_ascii_alphabetic() && c != b'_' as u16 {
+        return None;
+    }
+    let mut j = i + 1;
+    while j < s.len() {
+        let c = s[j];
+        if (c as u8 as char).is_ascii_alphanumeric() || c == b'_' as u16 {
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    Some(j - i)
+}
+
+/// `[0-9]+` scan (ts: lexer.ts:14) at `s[i..]`.
+#[must_use]
+fn scan_digits(s: &[u16], i: usize) -> Option<usize> {
+    let mut j = i;
+    while j < s.len() && (b'0' as u16..=b'9' as u16).contains(&s[j]) {
+        j += 1;
+    }
+    if j == i {
+        None
+    } else {
+        Some(j - i)
+    }
+}
+
+/// One DUR unit at `s[j..]`, in the TS alternation order `halfhour|h|m|d`
+/// (ts: lexer.ts:15) — the ORDER IS LOAD-BEARING (Q9/CORE-08(2)): trying `h`
+/// first would split `1halfhour` into dur(1h)+name(alfhour).
+#[must_use]
+fn scan_dur_unit(s: &[u16], j: usize) -> Option<usize> {
+    const HALF: [u16; 8] = [
+        b'h' as u16, b'a' as u16, b'l' as u16, b'f' as u16, b'h' as u16, b'o' as u16, b'u' as u16,
+        b'r' as u16,
+    ];
+    if s.len() >= j + 8 && s[j..j + 8] == HALF {
+        return Some(8);
+    }
+    for u in [0x68u16, 0x6D, 0x64] {
+        // 'h', 'm', 'd' — only reached when the 8-char "halfhour" missed
+        if s.get(j) == Some(&u) {
+            return Some(1);
+        }
+    }
+    None
+}
+
+/// DUR_RE scan (ts: lexer.ts:15 `/^([0-9]+)(halfhour|h|m|d)(?:[0-9]+(?:halfhour|h|m|d))*/`):
+/// returns `(group1_len, total_len)` — the leading digit run and the TOTAL
+/// match length of the whole digit+unit run (the TS regex is greedy over the
+/// trailing `(?:…)*` groups, so `1h30m` is one match).
+#[must_use]
+fn scan_dur(s: &[u16], i: usize) -> Option<(usize, usize)> {
+    let first_digits = scan_digits(s, i)?;
+    let first_unit = scan_dur_unit(s, i + first_digits)?;
+    let mut j = i + first_digits + first_unit;
+    // greedy tail: `(?:[0-9]+(?:halfhour|h|m|d))*`
+    while let Some(digits) = scan_digits(s, j) {
+        let Some(unit) = scan_dur_unit(s, j + digits) else { break };
+        j += digits + unit;
+    }
+    Some((first_digits, j - i))
+}
+
+/// The decoded token text: the scan domain is UTF-16 code units, so a token
+/// holding a LONE surrogate cannot become a Rust `String`. Lossy conversion
+/// (U+FFFD) is the documented divergence — TS could carry the lone unit in
+/// its strings, but no golden input exercises it (plan §3.9).
+fn units_to_string(units: &[u16]) -> String {
+    String::from_utf16_lossy(units)
+}
+
+/// ts: src/core/lexer.ts:21-69
+pub fn lex(src: &str) -> Result<Vec<Tok>> {
+    let s: Vec<u16> = src.encode_utf16().collect();
+    let mut toks: Vec<Tok> = Vec::new();
+    let mut i = 0;
+    while i < s.len() {
+        let c = s[i];
+        if js_is_ws(c) {
+            // ts: lexer.ts:26 `/\s/` — the JS whitespace set (Q8), hand scan
+            i += 1;
+            continue;
+        }
+        if c == b'-' as u16 && s.get(i + 1) == Some(&(b'>' as u16)) {
+            toks.push(Tok::Punct { v: "->".to_string() });
+            i += 2;
+            continue;
+        }
+        if c == b'"' as u16 {
+            // ts: lexer.ts:28-37 — QUIRK(Q10/CORE-09): `\X` takes the LITERAL
+            // next code unit (`"\n"` holds the letter n); a trailing
+            // backslash reads past the end — TS appends the string
+            // "undefined" there and then throws unterminated (the
+            // intermediate value is unobservable, behavior-equivalent).
+            let mut j = i + 1;
+            let mut out: Vec<u16> = Vec::new();
+            while j < s.len() && s[j] != b'"' as u16 {
+                if s[j] == b'\\' as u16 {
+                    match s.get(j + 1) {
+                        Some(&next) => out.push(next),
+                        // literal ASCII "undefined", then unterminated below
+                        None => out.extend(b"undefined".iter().map(|b| u16::from(*b))),
+                    }
+                    j += 2;
+                } else {
+                    out.push(s[j]);
+                    j += 1;
+                }
+            }
+            if j >= s.len() {
+                return Err(ChorusError::new("unterminated string literal"));
+            }
+            toks.push(Tok::Str { v: units_to_string(&out) });
+            i = j + 1;
+            continue;
+        }
+        if c == b'#' as u16 {
+            // ts: lexer.ts:38-44
+            let Some(len) = scan_name(&s, i + 1) else {
+                return Err(ChorusError::new(format!(
+                    "bad id ref at offset {i} (expected #id)"
+                )));
+            };
+            toks.push(Tok::IdRef {
+                v: units_to_string(&s[i + 1..i + 1 + len]),
+            });
+            i += 1 + len;
+            continue;
+        }
+        if (b'0' as u16..=b'9' as u16).contains(&c) {
+            // ts: lexer.ts:45-60 — a duration only when the whole number is
+            // the duration's digits ('1halfhour' and compound '1h30m' (§9.45)
+            // are one token; '12' alone stays an int)
+            let rest = &s[i..];
+            let num_len = scan_digits(rest, 0).unwrap_or_else(|| {
+                unreachable!("digit branch entered with a digit at i") // rule 11: guarded by the branch
+            });
+            if let Some((g1_len, dur_len)) = scan_dur(rest, 0) {
+                // ts: lexer.ts:51 — `NUM_RE.exec(rest)![0] === dur[1]`: the
+                // full greedy digit run must equal DUR_RE's first group's
+                // text (kept as the TS guard; both are digit runs from the
+                // same start, so text equality is length equality)
+                if units_to_string(&rest[..num_len]) == units_to_string(&rest[..g1_len]) {
+                    let dur_text = units_to_string(&rest[..dur_len]);
+                    toks.push(Tok::Dur { v: dur_to_minutes(&dur_text)? });
+                    i += dur_len;
+                    continue;
+                }
+            }
+            let num_text = units_to_string(&rest[..num_len]);
+            // ts: lexer.ts:57 — Number(num[0]) through the f64 middle step
+            toks.push(Tok::Int { v: js_num_parse(&num_text) });
+            i += num_len;
+            continue;
+        }
+        if let Some(len) = scan_name(&s, i) {
+            toks.push(Tok::Name { v: units_to_string(&s[i..i + len]) });
+            i += len;
+            continue;
+        }
+        if i + 1 < s.len() {
+            let two = [s[i], s[i + 1]];
+            if two == [b'>' as u16, b'=' as u16] || two == [b'<' as u16, b'=' as u16] {
+                toks.push(Tok::Punct {
+                    v: units_to_string(&two),
+                });
+                i += 2;
+                continue;
+            }
+        }
+        if is_punct(c) {
+            toks.push(Tok::Punct { v: units_to_string(&[c]) });
+            i += 1;
+            continue;
+        }
+        // ts: lexer.ts:66 — the character, not the code unit, prints. A lone
+        // surrogate cannot print (lossy U+FFFD — documented divergence).
+        let ch = char::from_u32(u32::from(c)).unwrap_or(char::REPLACEMENT_CHARACTER);
+        return Err(ChorusError::new(format!(
+            "unexpected character '{ch}' at offset {i}"
+        )));
+    }
+    Ok(toks)
+}
+
+/// ts: src/core/lexer.ts:71-75 — one duration grammar (§5.1): the unit table
+/// lives in clock.ts's parseDuration, shared with the quoted-string expires
+/// path (§4.2). The TS function is a passthrough wrapper (CORE-14(3)) — kept
+/// as such so the anchor stays 1:1.
+fn dur_to_minutes(s: &str) -> Result<i64> {
+    parse_duration(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexes_the_doc_shapes() {
+        let toks = lex("1:2 @ READ TO place, kind:TEXT +1 -> SPAWN X").unwrap();
+        assert_eq!(
+            toks,
+            vec![
+                Tok::Int { v: 1 },
+                Tok::Punct { v: ":".into() },
+                Tok::Int { v: 2 },
+                Tok::Punct { v: "@".into() },
+                Tok::Name { v: "READ".into() },
+                Tok::Name { v: "TO".into() }, // a plain NAME token; the parser/dict decide
+                Tok::Name { v: "place".into() },
+                Tok::Punct { v: ",".into() },
+                Tok::Name { v: "kind".into() },
+                Tok::Punct { v: ":".into() },
+                Tok::Name { v: "TEXT".into() },
+                Tok::Punct { v: "+".into() },
+                Tok::Int { v: 1 },
+                Tok::Punct { v: "->".into() },
+                Tok::Name { v: "SPAWN".into() },
+                Tok::Name { v: "X".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn durations_vs_ints_and_the_q9_alternation_order() {
+        // '1halfhour' is ONE token — 'h' must not win over 'halfhour' (Q9)
+        assert_eq!(lex("1halfhour").unwrap(), vec![Tok::Dur { v: 30 }]);
+        assert_eq!(lex("1h").unwrap(), vec![Tok::Dur { v: 60 }]);
+        assert_eq!(lex("1h30m").unwrap(), vec![Tok::Dur { v: 90 }]);
+        assert_eq!(lex("12").unwrap(), vec![Tok::Int { v: 12 }]);
+        // '1hour': DUR_RE matches '1h', then 'our' lexes as a name
+        assert_eq!(
+            lex("1hour").unwrap(),
+            vec![Tok::Dur { v: 60 }, Tok::Name { v: "our".into() }]
+        );
+        // '12halfhour' — both digits belong to the duration
+        assert_eq!(lex("12halfhour").unwrap(), vec![Tok::Dur { v: 12 * 30 }]);
+    }
+
+    #[test]
+    fn q10_escapes_are_literal_and_unterminated_throws() {
+        // "\n" holds the LETTER n (literal escape), not a newline (Q10)
+        assert_eq!(lex(r#""a\nb""#).unwrap(), vec![Tok::Str { v: "anb".into() }]);
+        // source `"a\\b"` (two backslashes): the escape takes the LITERAL
+        // next unit — a backslash — so the value is a, backslash, b
+        assert_eq!(lex(r#""a\\b""#).unwrap(), vec![Tok::Str { v: "a\\b".into() }]);
+        // source `"a\b"` (one backslash): the escape takes the literal 'b'
+        assert_eq!(lex(r#""a\b""#).unwrap(), vec![Tok::Str { v: "ab".into() }]);
+        // unterminated
+        let e = lex("\"abc").unwrap_err();
+        assert_eq!(e.msg, "unterminated string literal");
+        // trailing backslash: the "undefined" append then unterminated
+        assert_eq!(lex("\"abc\\").unwrap_err().msg, "unterminated string literal");
+    }
+
+    #[test]
+    fn offsets_and_bad_tokens_are_byte_exact() {
+        // '@' is IN the PUNCT set — a genuinely unexpected char errors
+        assert_eq!(lex("@").unwrap(), vec![Tok::Punct { v: "@".into() }]);
+        let e = lex("$").unwrap_err();
+        assert_eq!(e.msg, "unexpected character '$' at offset 0");
+        let e = lex("ab é").unwrap_err();
+        assert_eq!(e.msg, "unexpected character 'é' at offset 3");
+        let e = lex("x #!").unwrap_err();
+        assert_eq!(e.msg, "bad id ref at offset 2 (expected #id)");
+    }
+}

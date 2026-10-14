@@ -11,3 +11,4 @@
 // one-to-one (plan §2.2), so engine/engine.rs is intentional inception.
 #[allow(clippy::module_inception)]
 pub mod engine;
+pub mod fold;

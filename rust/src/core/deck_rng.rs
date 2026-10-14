@@ -78,8 +78,17 @@ pub fn permute_positions(n: usize, seed: i64, deck_id: &str) -> Vec<usize> {
 ///
 /// A negative cursor is unreachable (cursors start at 0 and only advance on
 /// the engine's DRAW path); TS would hand back `undefined` from the first
-/// branch in that case.
+/// branch in that case. Rule 11: the debug_assert documents that
+/// unreachability; the release-side `Err` is a guard so the unreachable
+/// branch can never become an index panic (TS's `undefined` is not
+/// observable here — no caller can produce a negative cursor).
 pub fn draw_from(deck: &DeckSpec, cursor: i64) -> Result<DeckCard> {
+    if cursor < 0 {
+        debug_assert!(false, "negative deck cursor {cursor} is unreachable");
+        return Err(ChorusError::new(format!(
+            "internal: negative deck cursor {cursor}"
+        )));
+    }
     if cursor < deck.order.len() as i64 {
         return Ok(deck.order[cursor as usize].clone());
     }

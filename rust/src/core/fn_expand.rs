@@ -529,7 +529,6 @@ mod tests {
         let call = parse_outcomes("F(1)", &d, Some(&fns)).unwrap_err();
         assert_eq!(call.msg, "function 'F' expects 2 argument(s) (a, b), got 1");
         // unknown NAME( lists ops then declared functions, insertion order
-        let fns2 = table("zeta", &[], "NARRATE \"x\"");
         let fns2 = {
             let mut t = FnTable::default();
             let d2 = dict();
@@ -548,7 +547,6 @@ mod tests {
 
     #[test]
     fn into_position_rejects_non_ref_bindings_with_the_rule() {
-        let d = dict();
         // the INTO target is the param form (bare param name in a body)
         let d2 = dict();
         let mut fns2 = FnTable::default();
@@ -565,17 +563,7 @@ mod tests {
 
     #[test]
     fn collect_fn_calls_walks_branch_bodies() {
-        use crate::core::parse::parse_function_body;
-        let d = dict();
-        let fns = FnTable::default();
-        let out = parse_function_body(
-            "IF true -> ( GIVE() ) ELSE -> ( TAKE() ), OTHER()",
-            &d,
-            &fns,
-            &[],
-        )
-        .unwrap_err();
-        // undeclared fns fail at parse; build the tree by hand instead
+        // undeclared fns fail at parse, so build the tree by hand
         let arm = IfArm {
             when: Pred::Cmp {
                 l: ValExpr::Int { v: 1 },

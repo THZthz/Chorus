@@ -2,11 +2,15 @@
 
 use std::fmt;
 
-/// One error type for the whole engine: every error message lives at exactly
-/// one construction site `ChorusError::new(format!(...))` with its exact
-/// text. Deliberately a plain message, NOT an enum
-/// of variants — the variants + Display double maintenance surface is where
-/// messages drift.
+/// One error type for the whole engine: a plain message, deliberately NOT
+/// an enum of site-grouped variants. Every error message lives at exactly
+/// one construction site — `ChorusError::new(format!(...))` with its exact
+/// text — so each wording is maintained in one place, and the type can
+/// never grow variant/Display pairs that drift apart. The message texts
+/// themselves are the real maintenance surface (the test suite pins each
+/// one character-for-character); a variant taxonomy would add a second
+/// surface — match arms plus Display strings — over the same bytes, not a
+/// smaller one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChorusError {
     pub msg: String,

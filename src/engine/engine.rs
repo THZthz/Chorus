@@ -457,6 +457,7 @@ pub fn execute_step(
             id_gen: &mut scratch_gen,
             extra_advance_min: 0,
             roll: None,
+            chain: None, // the table trial never chains — RUN is skipped below
         };
         // The closure shape (a try/catch around the whole pre-pass loop): a
         // THROW here is NOT a gate — it defers to completion time and clears
@@ -481,8 +482,11 @@ pub fn execute_step(
                     // an IF is opaque to the gate check: its branches —
                     // including any REFUSE inside them — belong to the
                     // completion, where the world the window imagined actually
-                    // exists (§9.39 v0.5)
-                    if outcome.op == "IF" {
+                    // exists (§9.39 v0.5). RUN likewise belongs to the
+                    // completion: its candidate walk and inline guard run
+                    // there (§9.47), and a no-match chain ends silently, so
+                    // there is nothing to gate at the table.
+                    if outcome.op == "IF" || outcome.op == "RUN" {
                         continue;
                     }
                     let res = apply_outcome(outcome, &mut sctx)?;
@@ -811,6 +815,30 @@ struct ApplyCtx<'a> {
     /// expansion is compile-time, so expanded bodies read the caller's list
     /// binding naturally.
     roll: Option<i64>,
+    /// §9.47: the completion-time chain channel — the parent window's
+    /// identity plus the sink for the follow-up BEGIN. Some exactly inside
+    /// fire_window's outcome loop; None at every other application site
+    /// (events, the fold, the Phase-3 table trial — RUN never applies there:
+    /// triggers reject it at load, the trial skips it as completion-owned,
+    /// and the log never carries one for the fold to replay).
+    chain: Option<ChainCtx>,
+}
+
+/// The §9.47 chain channel (see [`ApplyCtx::chain`]): the parent window's
+/// identity the RUN arm needs (its verb names the candidate list, its end
+/// clock is the follow-up's begin, its authored refs become the follow-up
+/// clause), the one-RUN-per-completion detector, and the sink the synthesized
+/// follow-up BEGIN rides to fire_window.
+struct ChainCtx {
+    parent_verb: String,
+    parent_end: i64,
+    parent_refs: IndexMap<Role, Vec<Ref>>,
+    /// the follow-up BEGIN's record id — the COMPLETE row's id + 1
+    next_record_id: i64,
+    /// a second RUN op reached in one completion refuses the parent window
+    /// (§9.47: a station holds one window)
+    run_taken: bool,
+    extra_records: Vec<ActionRecord>,
 }
 
 /// What one outcome application produced.
@@ -857,7 +885,7 @@ fn rewrite_roll_prose(o: &Outcome, ctx: &ApplyCtx) -> Outcome {
     }
 }
 
-/// The op dispatch (17 ops). The match arms follow the authored op list in
+/// The op dispatch (18 ops). The match arms follow the authored op list in
 /// order; the four big SPAWN /
 /// REPLACE / SET / DRAW cases are pulled into helper fns purely for file
 /// size (one arm each).
@@ -865,6 +893,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let args = &o.args;
     match o.op.as_str() {
         "IF" => apply_if(o, ctx),
+        "RUN" => apply_run(args, ctx),
         "SPAWN" => apply_spawn(args, ctx),
         "DESTROY" => {
             let concrete_args = concretize(args, ctx);
@@ -1860,6 +1889,231 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
+/// The §9.47 follow-up clause built from the parent window's authored role
+/// refs: actors/objects/with carry their lists; at/about/to keep their 0-or-1
+/// arrays (the log row's shape). The follow-up re-resolves them at its own
+/// completion (§6.7), exactly as any player-begun window does.
+fn refs_to_clause(verb: &str, refs: &IndexMap<Role, Vec<Ref>>) -> Clause {
+    Clause {
+        actors: refs.get(&Role::Actors).cloned().unwrap_or_default(),
+        at: refs.get(&Role::At).and_then(|v| v.first().cloned()),
+        verb: verb.to_string(),
+        to: refs.get(&Role::To).and_then(|v| v.first().cloned()),
+        objects: refs.get(&Role::Object).cloned().unwrap_or_default(),
+        with: refs.get(&Role::With).cloned().unwrap_or_default(),
+        about: refs.get(&Role::About).and_then(|v| v.first().cloned()),
+    }
+}
+
+/// RUN (§9.47) — a completion may chain into named follow-up recipes. The
+/// carrying window's completion walks its candidates IN ORDER and pins the
+/// FIRST whose `when:` matches the post-outcome draft — evaluated LENIENT,
+/// `strict: false`, exactly like selection (§6.4) — and whose `max` budget
+/// (§9.50) is not spent; it then opens ONE follow-up window on that recipe
+/// with the parent's committed role bindings, beginning at the completion
+/// clock. Zero-concrete: RUN logs NOTHING of itself — the follow-up's BEGIN
+/// row (synthesized here through the player-step record shape, registered by
+/// fire_window through the ONE registration path once the parent has left the
+/// table) is the record. No candidate matches: nothing opens — the chain
+/// ends, silently (CS's chain ending, not a refusal). The pinned recipe's
+/// top-level REFUSE still gates, inline against the draft — a Phase-3-shaped
+/// trial whose refusal rejects the PARENT window (§6.7's window-refuse); a
+/// SECOND RUN op reached in one completion refuses the parent window at that
+/// outcome (a station holds one window).
+fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
+    // snapshot the parent-window identity off the chain channel; a None
+    // channel is unreachable on every authored path (triggers reject RUN at
+    // load, the Phase-3 trial skips it, and the log never carries one)
+    let (parent_verb_name, parent_end, next_record_id, parent_refs) = match ctx.chain.as_ref() {
+        Some(c) => (
+            c.parent_verb.clone(),
+            c.parent_end,
+            c.next_record_id,
+            c.parent_refs.clone(),
+        ),
+        None => {
+            return Err(ChorusError::new(
+                "internal: RUN applied outside a window completion (§9.47)",
+            ))
+        }
+    };
+    if ctx.chain.as_ref().is_some_and(|c| c.run_taken) {
+        return Ok(ApplyResult {
+            concrete: vec![plain(
+                "REFUSE".to_string(),
+                vec![Arg::Str {
+                    v: "a second RUN in one completion — a station holds one window (§6.7, §9.47)"
+                        .to_string(),
+                }],
+            )],
+            refused: true,
+        });
+    }
+    // the op is REACHED — from here a later RUN in this same completion
+    // refuses, even when this one pins nothing
+    if let Some(c) = ctx.chain.as_mut() {
+        c.run_taken = true;
+    }
+    let Some(parent_verb) = ctx.content.verbs.get(&parent_verb_name) else {
+        return Err(ChorusError::new(format!(
+            "internal: RUN's parent verb '{parent_verb_name}' left the compiled content (§9.47)"
+        )));
+    };
+    // the candidate walk IN ORDER. Every id was load-checked against this
+    // very list (§9.47's walk), so an unresolved id is impossible in compiled
+    // content — skip rather than throw, keeping that invariant's failure
+    // shape silent instead of a masked drift error.
+    let mut pinned: Option<&CompiledRecipe> = None;
+    for a in args {
+        let id = match a {
+            Arg::Ref {
+                r#ref: Ref::Name { name, .. },
+            } => name,
+            _ => continue,
+        };
+        let Some(cand) = parent_verb.recipes.iter().find(|r| &r.id == id) else {
+            continue;
+        };
+        // §9.50: the execution budget — an exhausted candidate is simply
+        // non-matching; the walk continues. Read from the draft's state map
+        // (§9.29 posture), which already carries the parent's own begin.
+        if let Some(max) = cand.max {
+            if ctx.state.executed.get(&cand.id).is_some_and(|&n| n >= max) {
+                continue;
+            }
+        }
+        // the `when:` IS re-evaluated — CS's linked hand-off is
+        // requirement-disambiguated (the dream-router shape), so a
+        // pinned-id-no-check rule would make them inexpressible. Lenient,
+        // exactly like selection (§6.4): `roll` never binds on a `when:`.
+        let matched = match &cand.when {
+            None => true,
+            Some(w) => {
+                let pctx = PredCtx {
+                    b: &ctx.bindings,
+                    state: ctx.state,
+                    strict: false,
+                    roll: None,
+                };
+                eval_pred(w, &pctx)?
+            }
+        };
+        if !matched {
+            continue;
+        }
+        pinned = Some(cand);
+        break;
+    }
+    let Some(cand) = pinned else {
+        // no candidate matches: the chain ends silently — no window, no
+        // refusal, no log
+        return Ok(ApplyResult {
+            concrete: Vec::new(),
+            refused: false,
+        });
+    };
+    // the guard survives: the pinned recipe's top-level REFUSE gates INLINE
+    // against the draft — a Phase-3-shaped trial on a scratch (PROGRESS
+    // skipped, IF opaque; the pinned body's own RUN belongs to the follow-up's
+    // completion — one walk per completion; scratch rng/id consumption dies
+    // with the clone). Only a REFUSE is decisive; an application ERROR is not
+    // a gate — it defers to the follow-up's own completion (§6.6's
+    // table-trial discipline).
+    let mut marker: Option<Outcome> = None;
+    {
+        let mut trial = clone_state(ctx.state);
+        let mut tn: i64 = 0;
+        let tag = ctx.record_id;
+        let mut tgen = move || {
+            tn += 1;
+            format!("t{tag}_{tn}")
+        };
+        let mut tctx = ApplyCtx {
+            state: &mut trial,
+            dict: ctx.dict,
+            content: ctx.content,
+            bindings: ctx.bindings.clone(),
+            now: parent_end,
+            record_id: ctx.record_id,
+            id_gen: &mut tgen,
+            extra_advance_min: 0,
+            roll: None,
+            chain: None,
+        };
+        for o in &cand.out {
+            if o.op == "PROGRESS" || o.op == "IF" || o.op == "RUN" {
+                continue;
+            }
+            let res = match apply_outcome(o, &mut tctx) {
+                Ok(res) => res,
+                Err(_) => break, // not a gate — the follow-up's completion owns it
+            };
+            if res.refused {
+                marker = Some(
+                    res.concrete
+                        .into_iter()
+                        .find(|c| c.op == "REFUSE")
+                        .unwrap_or_else(|| {
+                            plain(
+                                "REFUSE".to_string(),
+                                vec![Arg::Str {
+                                    v: "the follow-up gate refused (§9.47)".to_string(),
+                                }],
+                            )
+                        }),
+                );
+                break;
+            }
+        }
+    }
+    if let Some(marker) = marker {
+        // the refusal rejects the PARENT window: the COMPLETE row carries the
+        // marker, the partial effects die with the scratch, no follow-up
+        return Ok(ApplyResult {
+            concrete: vec![marker],
+            refused: true,
+        });
+    }
+    // synthesize the follow-up BEGIN — the same shape a player step produces
+    // (make_begin_record over one prepared clause): SAME verb, the parent
+    // window's authored role refs, beginning at the completion clock. The
+    // pinned recipe's PROGRESS ticks ride it, like any BEGIN.
+    let clause = refs_to_clause(&parent_verb_name, &parent_refs);
+    let progress: Vec<Outcome> = cand
+        .out
+        .iter()
+        .filter(|o| o.op == "PROGRESS")
+        .cloned()
+        .collect();
+    let step = Step {
+        start_min: Some(parent_end),
+        clock: None,
+        clauses: vec![clause.clone()],
+        t_real: None,
+    };
+    let prepared = [Prepared {
+        clause: &clause,
+        verb: parent_verb,
+        refs: clause_refs(&clause),
+        recipe: cand,
+    }];
+    let begin = make_begin_record(
+        next_record_id,
+        parent_end,
+        &step,
+        &prepared,
+        progress,
+        ctx.dict,
+    )?;
+    if let Some(c) = ctx.chain.as_mut() {
+        c.extra_records.push(begin);
+    }
+    Ok(ApplyResult {
+        concrete: Vec::new(), // zero-concrete: the follow-up's BEGIN row is the record
+        refused: false,
+    })
+}
+
 /// §9.39 IF / ELSE IF / ELSE in an outcome
 /// list. Arms evaluate in order against the DRAFT (this list's earlier
 /// outcomes — SET, SPAWN, DESTROY — are visible to later IFs, unlike recipe
@@ -2055,6 +2309,7 @@ pub fn apply_record(
             id_gen: &mut gen,
             extra_advance_min: 0,
             roll: None,
+            chain: None, // the fold replays concrete rows only — RUN never logs
         };
         for o in &record.outcomes {
             apply_outcome(o, &mut ctx)?;
@@ -2095,6 +2350,7 @@ pub fn apply_record(
             id_gen: &mut gen,
             extra_advance_min: 0,
             roll: None,
+            chain: None, // events have no window to chain from (RUN is a load error there anyway)
         };
         for o in &record.outcomes {
             apply_outcome(o, &mut ctx)?;
@@ -2204,6 +2460,14 @@ fn resolve_due(
     let mut cursor = from_min;
     let mut target = to_min;
     let mut id = first_record_id;
+    // §9.47's livelock guard: window completions COUNTED per advance pass.
+    // Cycles are legal (needs→discardseason→drawseason→needs stays legal) —
+    // the budget only bounds the unbounded case, a cycle of ZERO-DURATION
+    // follow-ups generating due work inside one pass. The counter is
+    // per-pass and stateless: finite chains resolve across passes, and the
+    // fold never re-derives any of it (a tripped pass threw before the wait
+    // row, so nothing logged).
+    let mut completions: i64 = 0;
     loop {
         // due windows in (end, begin_id, clause)
         // order: a total order with no ties — so the ordered MINIMUM is
@@ -2225,10 +2489,23 @@ fn resolve_due(
         let slot_abs = next_slot_after(cursor, target);
         if let Some(w) = next_w {
             if slot_abs.is_none_or(|s| w.end <= s) {
+                completions += 1;
+                if completions > WINDOW_COMPLETION_BUDGET {
+                    // loud, per §9.44's posture: the throw rejects the whole
+                    // step — nothing logged, clock unmoved (§9.19)
+                    return Err(ChorusError::new(format!(
+                        "livelock guard: the advance pass completed {completions} windows — \
+                         over the {WINDOW_COMPLETION_BUDGET} budget; a RUN cycle of zero-duration \
+                         follow-ups is spinning (§9.47)"
+                    )));
+                }
                 let fired = fire_window(content, dict, state, &w, id, id_gen)?;
                 state = fired.state;
                 records.push(fired.record);
-                id += 1;
+                // §9.47: the synthesized follow-up BEGINs ride after the
+                // parent's COMPLETE row and own their record ids
+                id += 1 + fired.extra_records.len() as i64;
+                records.extend(fired.extra_records);
                 // NOTE: the slot cursor does NOT jump to the window's end —
                 // the halfhours the window spanned must still strike (a
                 // completion at minute m precedes slot-m events, but
@@ -2280,6 +2557,11 @@ fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
     }
 }
 
+/// §9.47's livelock budget: an advance pass that completes MORE than this
+/// many windows fails loud (a documented guard with a pinned test, the
+/// §9.44 posture). Per-pass, stateless, fold-unaffected.
+const WINDOW_COMPLETION_BUDGET: i64 = 1024;
+
 /// Close one window: re-resolve its
 /// clause bindings (dead refs DROP — events do not respect locks, §6.7 v0.5),
 /// apply the commit-time recipe's outcomes anchored to the window's START
@@ -2293,6 +2575,10 @@ struct FireWindowResult {
     state: State,
     record: ActionRecord,
     advance_extra: i64,
+    /// §9.47: the synthesized follow-up BEGIN rows (at most one — a second
+    /// RUN op refuses the window), logged AFTER the parent's COMPLETE row;
+    /// their windows are already inserted into `state`.
+    extra_records: Vec<ActionRecord>,
 }
 
 fn fire_window(
@@ -2340,6 +2626,18 @@ fn fire_window(
         id_gen,
         extra_advance_min: 0,
         roll: None,
+        // §9.47: the chain channel — the parent-window identity the RUN arm
+        // walks against (its verb names the candidate list, its end clock is
+        // the follow-up's begin, its authored refs become the follow-up
+        // clause)
+        chain: Some(ChainCtx {
+            parent_verb: w.verb.clone(),
+            parent_end: w.end,
+            parent_refs: w.refs.clone(),
+            next_record_id: record_id + 1,
+            run_taken: false,
+            extra_records: Vec::new(),
+        }),
     };
     let mut concrete: Vec<Outcome> = Vec::new();
     let mut refused = false;
@@ -2367,13 +2665,32 @@ fn fire_window(
         }
     }
     let advance_extra = ctx.extra_advance_min;
+    let chain = ctx.chain.take();
     drop(ctx);
+    let mut extra_records: Vec<ActionRecord> = Vec::new();
     let mut out = if refused { state_in } else { scratch };
-    out.windows.shift_remove(&w.key); // removal preserves the remaining keys' insertion order
+    // the parent leaves the open table FIRST (removal preserves the remaining
+    // keys' insertion order) — a same-verb follow-up must not see its own
+    // station busy (§6.7; the ordering is the busy check)
+    out.windows.shift_remove(&w.key);
+    if !refused {
+        // §9.47: each follow-up registers through the ONE registration path
+        // play and fold share — the §9.50 count and the window land
+        // identically on both paths, so the fold's BEGIN replay cannot drift
+        // from the play-side insert. A refused parent takes its follow-up
+        // with it (no follow-up on a window-refuse).
+        if let Some(chain) = chain {
+            for rec in &chain.extra_records {
+                register_windows(rec, &mut out, dict, content)?;
+            }
+            extra_records = chain.extra_records;
+        }
+    }
     Ok(FireWindowResult {
         state: out,
         record: make_complete_record(record_id, w, concrete, dict)?,
         advance_extra,
+        extra_records,
     })
 }
 
@@ -2608,6 +2925,7 @@ fn make_event_ctx<'a>(
         id_gen,
         extra_advance_min: 0,
         roll: None,
+        chain: None, // events have no window to chain from (RUN is a load error there anyway)
     }
 }
 

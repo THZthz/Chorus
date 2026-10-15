@@ -37,10 +37,10 @@ pub const KINDS: [&str; 8] = [
     "resource",
 ];
 
-/// The reserved list: 17 keywords + every
+/// The reserved list: 18 keywords + every
 /// CORE_VERB appended (spelled out; a unit test below pins the tail equal to
 /// CORE_VERBS so the double-write cannot drift).
-pub const RESERVED_WORDS: [&str; 29] = [
+pub const RESERVED_WORDS: [&str; 30] = [
     "EVENT",
     "TO",
     "WITH",
@@ -57,6 +57,7 @@ pub const RESERVED_WORDS: [&str; 29] = [
     "ROLLED", // §9.41: the dice op, and the engine-written record of one (v0.3.4)
     "DRAW",
     "DRAWN", // §9.42: the deck-draw op, and the engine-written record of one (v0.3.5)
+    "RUN", // §9.47: the recipe-chain op — authored, zero-concrete (the follow-up's BEGIN row is the record)
     "COMPLETE", // v0.5: the engine-written completion row of a processing window
     "READ",
     "STUDY",
@@ -77,7 +78,7 @@ pub const RESERVED_WORDS: [&str; 29] = [
 /// array as the single membership/append-order
 /// source. Declaration order is load-bearing: the unknown-call error message
 /// (fn_expand) joins it in this order.
-pub const OUTCOME_OPS: [&str; 17] = [
+pub const OUTCOME_OPS: [&str; 18] = [
     "SPAWN",
     "DESTROY",
     "REPLACE",
@@ -95,6 +96,7 @@ pub const OUTCOME_OPS: [&str; 17] = [
     "ROLLED", // engine-written ONLY: ROLLED(total, ctrAfter) — the fold's counter row (§9.41)
     "DRAW",  // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§9.42)
     "DRAWN", // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§9.42)
+    "RUN",   // authored: RUN "recipe-id" [, …] — zero-concrete; the follow-up's BEGIN row is the record (§9.47)
 ];
 
 /// Definition of a relation type: whether its edges are symmetric.

@@ -1764,7 +1764,11 @@ stays reserved for it.
       (`study.recipe0`; minted ids are `<verb>.recipe<i>`) and the lexer's
       NAME class has no dot, so a bare id is unlexable — the args are
       quoted-string refs (the `DRAWN` precedent). `RUN` joins the reserved
-      words (§5.1; the ROLL/DRAW precedent for authored ops).
+      words (§5.1; the ROLL/DRAW precedent for authored ops). The paren-less
+      list's commas are owned one candidate deep: a comma continues the list
+      only when a quoted string follows, so `RUN "a", NARRATE "x"` composes
+      in an outcome list; when the next outcome itself opens with a string,
+      parenthesize out (`RUN("a"), SPAWN NAME`).
     - **Semantics: an ordered candidate walk.** When the carrying window's
       completion applies its outcomes, RUN walks its candidates IN ORDER and
       pins the FIRST whose `when:` matches the post-outcome draft —
@@ -1776,7 +1780,10 @@ stays reserved for it.
       all-chance-100 multi-entry routers; dream_router's six; the victory
       forks), so a pinned-id-no-check rule would make them inexpressible.
       No candidate matches: nothing opens — the chain ends, silently (that
-      is CS's chain ending, not a refusal).
+      is CS's chain ending, not a refusal). Under content drift an
+      unresolvable candidate silently continues the walk (the §9.30
+      posture) where the window's own commit-time recipe lookup fails
+      loud.
     - **Chance is authored around it** — `ROLL` + `IF` in the parent
       (`IF roll <= 90 -> (RUN "…success") ELSE -> (RUN "…failure")`,
       §9.41/§9.39). Candidates with IDENTICAL requirements are this form,

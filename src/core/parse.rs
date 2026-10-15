@@ -516,6 +516,15 @@ impl<'a> Parser<'a> {
                 call: None,
             });
         }
+        // RUN is the recipe-chain op (§9.47): `RUN "id" [, "id" …]` — the
+        // args are QUOTED-STRING refs only (recipe ids are lowercase and
+        // dotted; the lexer's NAME class has no dot, so a bare id is
+        // unlexable — the DRAWN precedent). The paren'd canonical shell that
+        // format renders is accepted too, so the canonical spelling
+        // re-parses (§5.2).
+        if op == "RUN" {
+            return self.run_outcome();
+        }
         if self.at_punct("(", 0) {
             self.next()?;
             let mut args: Vec<Arg> = Vec::new();
@@ -808,6 +817,61 @@ impl<'a> Parser<'a> {
         }
         Ok(Outcome {
             op: "ROLL".to_string(),
+            args,
+            arms: None,
+            fallback: None,
+            call: None,
+        })
+    }
+
+    /// RUN "id" [, "id" …] (§9.47): every
+    /// candidate is a quoted string — coerced to a name ref (the DRAWN
+    /// coercion, so the arg shape matches the log-ref rule); a bare or dotted
+    /// id is a parse error naming the syntax, and an empty list is one too.
+    /// The paren'd canonical shell `RUN("id", …)` format renders parses to
+    /// the identical outcome, so the §5.2 round-trip holds.
+    fn run_outcome(&mut self) -> Result<Outcome> {
+        let paren = self.at_punct("(", 0);
+        if paren {
+            self.next()?;
+        }
+        let syntax = "RUN takes quoted-string recipe ids: RUN \"id\" [, \"id\" …]";
+        let mut args: Vec<Arg> = Vec::new();
+        loop {
+            if self.peek(0).is_none() {
+                return Err(ChorusError::new(format!(
+                    "{syntax} — got none"
+                )));
+            }
+            let t = self.next()?;
+            let Tok::Str { v } = t else {
+                return Err(ChorusError::new(format!("{syntax} — got {}", show(&t))));
+            };
+            args.push(Arg::Ref {
+                r#ref: Ref::Name { kind: None, name: v },
+            });
+            // a comma continues the candidate list only when a QUOTED STRING
+            // follows (in the paren'd shell: always) — otherwise the comma is
+            // the outcome list's separator and the next outcome takes it
+            // (`RUN "b", NARRATE "chained."`). The one ambiguity this leaves —
+            // `RUN "a", "SOME NAME"` reading the bare spawn as a candidate —
+            // authors parenthesize out of: `RUN("a"), SPAWN "SOME NAME"`.
+            let more = if paren {
+                self.at_punct(",", 0)
+            } else {
+                self.at_punct(",", 0) && matches!(self.peek(1), Some(Tok::Str { .. }))
+            };
+            if more {
+                self.next()?;
+                continue;
+            }
+            break;
+        }
+        if paren {
+            self.expect_punct(")")?;
+        }
+        Ok(Outcome {
+            op: "RUN".to_string(),
             args,
             arms: None,
             fallback: None,
@@ -1311,7 +1375,7 @@ mod tests {
         let err = p.outcome().unwrap_err();
         assert_eq!(
             err.msg,
-            "unknown 'GIVE(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN; no functions declared (bare names spawn — an op's parens are part of its grammar; calls need a declared function)"
+            "unknown 'GIVE(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; no functions declared (bare names spawn — an op's parens are part of its grammar; calls need a declared function)"
         );
     }
 

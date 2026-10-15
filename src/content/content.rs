@@ -562,6 +562,13 @@ pub fn compile_content(
                     "trigger {tid}: REFUSE belongs to verb recipes — events have no step to refuse"
                 )));
             }
+            // §9.47: RUN chains a window completion; events have no window
+            // to chain from
+            if o.op == "RUN" {
+                return Err(ChorusError::new(format!(
+                    "trigger {tid}: RUN belongs to verb recipes — events have no window to chain from"
+                )));
+            }
             Ok(())
         })?;
         // §9.39: event bindings are empty, so a role-dependent operand in a
@@ -609,12 +616,16 @@ pub fn compile_content(
     }
     // §9.35: an ENDING outcome must name a declared ending — recipe or
     // trigger, checked once at load. §9.42: the same walk pins DRAW to a
-    // declared deck.
+    // declared deck. §9.47: a RUN candidate must name a recipe of the
+    // PARENT verb — recipe bodies only (triggers were rejected above),
+    // checked after every verb is compiled so a candidate may name any
+    // recipe of its own verb, position notwithstanding.
     for v in verbs.values() {
         for r in &v.recipes {
             let where_ = format!("recipe {}", r.id);
             check_ending_refs(&where_, &r.out, &endings)?;
             check_deck_refs(&where_, &r.out, &decks)?;
+            check_run_refs(&where_, &r.out, v)?;
         }
     }
     for t in &triggers {
@@ -804,6 +815,39 @@ fn check_deck_refs(
             return Err(ChorusError::new(format!(
                 "{where_}: DRAW '{shown}' is not a declared deck (decks:)"
             )));
+        }
+        Ok(())
+    })
+}
+
+/// §9.47: a RUN's candidates must each name a
+/// compiled recipe of the PARENT verb — an unknown or cross-verb id is a
+/// load error, IF branch bodies included (the §9.35 walk; function expansion
+/// happened before this guard, so expanded bodies check like literal ones).
+/// The runtime walk resolves candidates against this same list, so a loaded
+/// content never hits a RUN candidate it cannot resolve.
+fn check_run_refs(where_: &str, out: &[Outcome], verb: &CompiledVerb) -> Result<()> {
+    for_each_authored_outcome(out, &mut |o| {
+        if o.op != "RUN" {
+            return Ok(());
+        }
+        for a in &o.args {
+            let id = match a {
+                Arg::Ref {
+                    r#ref: Ref::Name { name, .. },
+                } => name,
+                _ => {
+                    return Err(ChorusError::new(format!(
+                        "{where_}: RUN takes quoted-string recipe ids: RUN \"id\" [, \"id\" …]"
+                    )))
+                }
+            };
+            if !verb.recipes.iter().any(|r| &r.id == id) {
+                return Err(ChorusError::new(format!(
+                    "{where_}: RUN '{id}' does not name a recipe of verb {} — unknown and cross-verb ids are load errors (§9.47)",
+                    verb.name
+                )));
+            }
         }
         Ok(())
     })

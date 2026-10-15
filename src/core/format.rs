@@ -4,7 +4,7 @@
 //! outcomes.
 
 use crate::core::clock::{format_clock, format_duration};
-use crate::core::r#ref::{format_ref, is_safe_name, sort_refs};
+use crate::core::r#ref::{format_ref, is_safe_name, sort_refs, Ref};
 use crate::core::sentence::{Arg, Clause, IntoTarget, Outcome, Sentence, SentenceKind};
 use crate::core::dict::Dictionary;
 use crate::error::{ChorusError, Result};
@@ -120,6 +120,27 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
     // ROLLED (§9.41) and DRAWN (§9.42) ride the generic paren'd fallback on
     // purpose: their args format and re-parse — `ROLLED(14, 3)` is two plain
     // ints, `DRAWN(RUMOURS, HEARSAY)` two plain name refs
+    if o.op == "RUN" {
+        // §9.47: the ids render RE-QUOTED in the paren'd shell — recipe ids
+        // are dotted (`study.recipe0`), and a bare dotted spelling would
+        // re-parse as a SET key (the generic name path), never back into a
+        // RUN candidate. RUN is zero-concrete (the follow-up's BEGIN row is
+        // the record), so the log never carries one; the arm exists so the
+        // §5.2 round-trip holds for the authored form wherever it formats.
+        let parts = o
+            .args
+            .iter()
+            .map(|a| match a {
+                Arg::Ref {
+                    r#ref: Ref::Name { name, .. },
+                } => Ok(quote(name)),
+                _ => Err(ChorusError::new(
+                    "a RUN candidate is a quoted-string recipe id (§9.47)",
+                )),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        return Ok(format!("RUN({})", parts.join(", ")));
+    }
     if o.op == "SPAWN" {
         // pretty form: SPAWN X [INTO Y] [AS #id]
         let mut parts = vec!["SPAWN".to_string()];

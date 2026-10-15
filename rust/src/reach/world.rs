@@ -18,7 +18,9 @@ use crate::core::query::{match_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
 use crate::js::{ChorusError, Result};
 
-use super::census::{collect_sites, draw_deck, object_always, pred_static, Census, RawSite, SiteKind, TrigIndex};
+use super::census::{
+    collect_sites, draw_deck, object_always, pred_static, Census, RawSite, SiteKind, TrigIndex,
+};
 
 /// TS `Infinity` for the freeze-distance comparisons (plan §3.11): every
 /// observed value is a first-crossing distance (1..=1440), so `i64::MAX`
@@ -208,6 +210,16 @@ pub(crate) struct WorldFacts<'c> {
     pub mint_sources: IndexMap<String, Vec<usize>>,
     /// verb index → names its committability proof filled slots with
     pub fillers: IndexMap<usize, IndexSet<String>>,
+    /// the universe of cards that can ever exist (static descriptors)
+    pub universe: Vec<Entity>,
+    /// an authored aspects= pair we cannot parse — cannot bound
+    pub opaque_spawn_aspects: bool,
+    pub derive_paths: IndexSet<String>,
+    /// verbs still uncommittable at fixpoint whose min>0 slots can never be
+    /// filled (by verb index)
+    pub dead_verbs: IndexSet<usize>,
+    /// deck id → capacity from proven sites
+    pub deck_cap: IndexMap<String, i64>,
 }
 
 impl<'c> WorldFacts<'c> {
@@ -385,6 +397,11 @@ pub(crate) fn compute_world_facts<'c>(
         proven: IndexMap::new(),
         mint_sources: IndexMap::new(),
         fillers: IndexMap::new(),
+        universe: Vec::new(),
+        opaque_spawn_aspects: false,
+        derive_paths: IndexSet::new(),
+        dead_verbs: IndexSet::new(),
+        deck_cap: IndexMap::new(),
     };
 
     // ts: reach.ts:672-674 — one avail fact per representative name
@@ -465,8 +482,8 @@ pub(crate) fn compute_world_facts<'c>(
     // ts: reach.ts:1061-1078 — the fixpoint (naive round-robin, REACH-10)
     super::fixpoint::run_fixpoint(&mut wf);
 
-    // (the post-fixpoint block — universe, dead verbs, deck caps — is wired
-    // by the T5.3 commit)
+    // ts: reach.ts:1080-1263 — universe, dead verbs, deck caps
+    super::paths::build_post_fixpoint(&mut wf);
 
     wf
 }

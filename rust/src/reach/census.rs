@@ -21,11 +21,6 @@ use crate::content::content::walk_outcomes;
 /// integer — i64 `1_000_000_000`.
 pub const MANY: i64 = 1_000_000_000;
 
-
-/// ts: reach.ts:144 — ops that throw on an unresolvable target and therefore
-/// defer to a completion-time window refusal.
-const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
-
 /// ts: reach.ts:1336/1341/1878-1891/1902-1910 — the `'\u0000derived'`
 /// sentinel avail/byName key for derive-mints behind object-mandatory verbs.
 /// Plan §3.11 offered an enum, but the port keeps the literal string: the
@@ -36,19 +31,9 @@ const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 /// corner where an author names a card with the sentinel itself.
 pub const DERIVED_NAME: &str = "\u{0000}derived";
 
-/// ts: reach.ts:1540-1543 (drawBlindsBare) — a DRAW behind an object-mandatory
-/// verb never serves the BARE name of a deck card whose prototype derives.
-pub(crate) fn draw_blinds_bare(content: &CompiledContent, site: &RawSite, name: &str) -> bool {
-    site.kind == SiteKind::Draw
-        && site.verb.is_some()
-        && object_always(content, site.verb)
-        && content
-            .prototypes
-            .get(name)
-            .and_then(|p| p.derive.as_ref())
-            .and_then(|d| d.name_from.as_deref())
-            == Some("object")
-}
+/// ts: reach.ts:144 — ops that throw on an unresolvable target and therefore
+/// defer to a completion-time window refusal.
+const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 
 // ---------------------------------------------------------------------------
 // world-static predicate shapes — ts: reach.ts:462-474 — and the authored
@@ -77,6 +62,42 @@ pub(crate) fn pred_static(p: &Pred) -> bool {
             let _ = std::mem::size_of::<ValExpr>;
             false
         }
+    }
+}
+
+/// `JSON.parse(site.aspectsJson) as Aspects` — the Q13 model takes integers
+/// and one-level integer sub-maps; members outside the model are dropped
+/// (they read as misses in aspect_get either way — see [`site_aspects`]). A
+/// malformed JSON throws, which the universe build turns into the
+/// `opaqueSpawnAspects` flag (ts: reach.ts:1098-1101).
+pub(crate) fn parse_aspects_json(json: &str) -> crate::js::Result<crate::core::types::Aspects> {
+    let v: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| crate::js::ChorusError::new(format!("bad aspects pair: {e}")))?;
+    let serde_json::Value::Object(map) = v else {
+        return Err(crate::js::ChorusError::new("bad aspects pair: not an object"));
+    };
+    let mut out = crate::core::types::Aspects::new();
+    for (k, val) in map {
+        if let Some(av) = json_to_aspect(&val) {
+            out.insert(k, av);
+        }
+    }
+    Ok(out)
+}
+
+fn json_to_aspect(v: &serde_json::Value) -> Option<crate::core::types::AspectVal> {
+    match v {
+        serde_json::Value::Number(n) => n.as_i64().map(crate::core::types::AspectVal::Num),
+        serde_json::Value::Object(sub) => {
+            let mut m = IndexMap::new();
+            for (k2, v2) in sub {
+                if let Some(n) = v2.as_i64() {
+                    m.insert(k2.clone(), n);
+                }
+            }
+            Some(crate::core::types::AspectVal::Sub(m))
+        }
+        _ => None,
     }
 }
 
@@ -432,6 +453,38 @@ pub(crate) fn object_always(content: &CompiledContent, verb: Option<usize>) -> b
     v.slot_by_role
         .get("object")
         .is_some_and(|slot| slot.min >= 1)
+}
+
+/// ts: reach.ts:1540-1543 (drawBlindsBare) — a DRAW behind an object-mandatory
+/// verb never serves the BARE name of a deck card whose prototype derives.
+pub(crate) fn draw_blinds_bare(
+    content: &CompiledContent,
+    site: &RawSite,
+    name: &str,
+) -> bool {
+    site.kind == SiteKind::Draw
+        && site.verb.is_some()
+        && object_always(content, site.verb)
+        && content
+            .prototypes
+            .get(name)
+            .and_then(|p| p.derive.as_ref())
+            .and_then(|d| d.name_from.as_deref())
+            == Some("object")
+}
+
+/// ts: reach.ts:1547-1550 (siteAspects) — authored `aspects=` pair on a SPAWN
+/// site, parsed; unparseable pairs are the caller's opaque case (None).
+///
+/// JSON values outside the Q13 aspect model (strings/bools/floats/deeper
+/// nesting) parse fine in TS and are carried along; they are invisible to
+/// aspect_get (non-number reads miss) and can only surface through
+/// JSON.stringify of a demand descriptor. The port keeps them OUT of the
+/// merged map — same matchQuery results (miss == absent), and no pinned
+/// surface authors such pairs (documented divergence, plan rule 12).
+pub(crate) fn site_aspects(site: &RawSite) -> Option<crate::core::types::Aspects> {
+    let json = site.aspects_json.as_deref()?;
+    parse_aspects_json(json).ok()
 }
 
 /// ts: reach.ts:243-454 (collectSites).

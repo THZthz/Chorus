@@ -320,8 +320,13 @@ impl<'c> WorldFacts<'c> {
     /// support lines, or None when the site
     /// stays unproven this round.
     pub(crate) fn site_proven(&mut self, si: usize) -> Option<Vec<String>> {
-        let site = self.census.sites[si].clone();
+        // the flat snapshot first (it needs &mut), then BORROW the site —
+        // a per-call RawSite clone here ran once per unproven site per
+        // round and was the fixpoint's second hot spot. The borrow splits
+        // cleanly: `site` reads self.census while every other access is a
+        // disjoint field or an immutable whole-self reborrow.
         let world = self.cards_of();
+        let site = &self.census.sites[si];
         if site.fallback {
             return None; // ELSE runs only when earlier arms are false — unprovable
         }

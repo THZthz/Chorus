@@ -7,6 +7,7 @@
 //! (`pred_static`) live in census.rs — collect_sites itself consumes
 //! pred_static while tagging sites.
 
+use std::rc::Rc;
 use std::sync::OnceLock;
 
 use indexmap::{IndexMap, IndexSet};
@@ -183,8 +184,10 @@ pub(crate) struct WorldFacts<'c> {
     pub avail: IndexMap<String, Vec<CardFact>>,
     pub avail_ver: u64,
     /// the flat_cache — exact mechanics preserved including its
-    /// version stamp
-    pub flat_cache: Option<CardWorld>,
+    /// version stamp; `Rc` because every [`WorldFacts::cards_of`] call
+    /// hands the SAME immutable snapshot to the whole round (a deep clone
+    /// per call was the one true fixpoint hot spot)
+    pub flat_cache: Option<Rc<CardWorld>>,
     /// one representative per name (descriptors; later-wins over
     /// State.entities order — same-name stackable mints in mid-game States)
     pub init_names: IndexMap<String, &'c Entity>,
@@ -265,14 +268,16 @@ impl<'c> WorldFacts<'c> {
     }
 
     /// `cards_of`, over the flat_cache. Exact
-    /// mechanics: [`WorldFacts::push`] updates the cached view but not its
-    /// `ver`, so every push invalidates and the next call rebuilds from
+    /// mechanics: [`WorldFacts::push`] bumps `avail_ver` without touching the
+    /// cache's `ver`, so every push invalidates and the next call rebuilds from
     /// `avail` (insertion order preserved — the "O(1) warmth" claim is
-    /// defeated by the stale ver; reproduced, not repaired).
-    pub(crate) fn cards_of(&mut self) -> CardWorld {
+    /// defeated by the stale ver; reproduced, not repaired). The snapshot is
+    /// handed out as an `Rc`: it is never mutated through the handle, so an
+    /// `Rc::clone` replaces the per-call deep clone byte-for-byte.
+    pub(crate) fn cards_of(&mut self) -> Rc<CardWorld> {
         if let Some(cache) = &self.flat_cache {
             if cache.ver == self.avail_ver {
-                return cache.clone();
+                return Rc::clone(cache);
             }
         }
         let mut by_name: IndexMap<String, i64> = IndexMap::new();
@@ -290,35 +295,27 @@ impl<'c> WorldFacts<'c> {
                 });
             }
         }
-        let cache = CardWorld {
+        let cache = Rc::new(CardWorld {
             ver: self.avail_ver,
             by_name,
             distinct,
-        };
-        self.flat_cache = Some(cache.clone());
+        });
+        self.flat_cache = Some(Rc::clone(&cache));
         cache
     }
 
     /// Add one available-card fact under its name (the `push` mechanics).
+    /// The TS mirror also patched the cached CardWorld here; that patch was
+    /// DEAD WORK — the same statement sequence bumps `avail_ver`, so the very
+    /// next [`WorldFacts::cards_of`] sees `cache.ver != avail_ver` and rebuilds
+    /// from `avail` before any reader could observe the patch. Dropping it is
+    /// output-identical; the ver stamp (the observable part) stays.
     pub(crate) fn push(&mut self, name: String, fact: CardFact) {
         match self.avail.get_mut(&name) {
-            Some(list) => list.push(fact.clone()),
+            Some(list) => list.push(fact),
             None => {
-                self.avail.insert(name.clone(), vec![fact.clone()]);
+                self.avail.insert(name, vec![fact]);
             }
-        }
-        // the cache update without the ver bump (the
-        // exact mechanics; see cards_of)
-        if let Some(cache) = &mut self.flat_cache {
-            let w = std::cmp::min(fact.count, 32);
-            cache.by_name.insert(
-                name.clone(),
-                cache.by_name.get(&name).copied().unwrap_or(0) + w,
-            );
-            cache.distinct.push(DistEntry {
-                e: fact.entity.clone(),
-                w,
-            });
         }
         self.avail_ver += 1;
     }

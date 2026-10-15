@@ -350,25 +350,34 @@ impl<'c> WorldFacts<'c> {
     /// predicate as the chain walk (derive-behind-mandatory-object sites never
     /// mint the bare name; a draw must be unblinded and its position within
     /// deck capacity).
+    ///
+    /// Indexed: `mint_sources` was built at each proof in `proven`'s insertion
+    /// order under EXACTLY this predicate minus the deck-cap test (the cap
+    /// freezes only after `build_post_fixpoint`, which is why the index can't
+    /// absorb it), so the candidate list here is the old whole-`proven` scan
+    /// filtered to the same hits in the same order — the cap check then keeps
+    /// the identical survivors. Selection order (first-fit path export) is
+    /// untouched.
     pub(crate) fn proven_sources(&self, name: &str) -> Vec<(usize, Vec<String>)> {
         let mut out: Vec<(usize, Vec<String>)> = Vec::new();
-        for (&si, sup) in &self.proven {
-            let site = &self.census.sites[si];
-            if site.derives && object_always(self.content, site.verb) {
-                continue;
-            }
-            let hit = if site.kind == SiteKind::Draw {
-                !draw_blinds_bare(self.content, site, name)
-                    && served_by_cap(
+        if let Some(candidates) = self.mint_sources.get(name) {
+            for &si in candidates {
+                let site = &self.census.sites[si];
+                if site.kind == SiteKind::Draw
+                    && !served_by_cap(
                         draw_deck(site),
                         name,
                         self.deck_cap.get(&site.name).copied().unwrap_or(0),
                     )
-            } else {
-                site.name == name
-            };
-            if hit {
-                out.push((si, sup.clone()));
+                {
+                    continue;
+                }
+                let sup = self
+                    .proven
+                    .get(&si)
+                    .unwrap_or_else(|| unreachable!("mint_sources entries are always proven"))
+                    .clone();
+                out.push((si, sup));
             }
         }
         out
@@ -394,14 +403,17 @@ impl<'c> WorldFacts<'c> {
     /// Unfold one proven site into a path node.
     /// `seen` carries the filler names already expanded on this branch (the
     /// fixpoint's strict proof order means no true cycle exists); the depth
-    /// cap is the best-effort backstop.
+    /// cap is the best-effort backstop. The set is threaded `&mut` — the name
+    /// goes in for the subtree and comes back out for the next sibling, which
+    /// yields exactly the per-branch membership the old clone-per-source
+    /// built (the set is membership-only; its iteration order is unobservable).
     pub(crate) fn path_for(
         &self,
         si: usize,
         mints: &str,
         sup: &[String],
         depth: usize,
-        seen: &IndexSet<String>,
+        seen: &mut IndexSet<String>,
         derived: bool,
     ) -> ReachPath {
         let site = &self.census.sites[si];
@@ -469,14 +481,12 @@ impl<'c> WorldFacts<'c> {
                 if self.init_names.contains_key(&name) {
                     sub.push(self.initial_path(&name));
                 } else if !seen.contains(&name) {
-                    for (src_si, src_sup) in self.proven_sources(&name) {
-                        let next_seen: IndexSet<String> = seen
-                            .iter()
-                            .cloned()
-                            .chain(std::iter::once(name.clone()))
-                            .collect();
-                        sub.push(self.path_for(src_si, &name, &src_sup, depth + 1, &next_seen, false));
+                    let sources = self.proven_sources(&name);
+                    seen.insert(name.clone());
+                    for (src_si, src_sup) in sources {
+                        sub.push(self.path_for(src_si, &name, &src_sup, depth + 1, seen, false));
                     }
+                    seen.swap_remove(&name);
                 }
                 path.requires.push(Require { name, how, paths: sub });
             }
@@ -743,7 +753,14 @@ impl<'c> Analyzer<'c> {
                             ));
                             chain.extend(site_chain(site, &name, sup));
                         }
-                        paths.push(facts.path_for(si, &name, sup, 0, &IndexSet::new(), derived));
+                        paths.push(facts.path_for(
+                            si,
+                            &name,
+                            sup,
+                            0,
+                            &mut IndexSet::new(),
+                            derived,
+                        ));
                     }
                 }
             }
@@ -831,7 +848,14 @@ impl<'c> Analyzer<'c> {
                     existence = Existence::Proven;
                     chain.extend(site_chain(site, target, sup));
                 }
-                paths.push(facts.path_for(si, target, sup, 0, &IndexSet::new(), false));
+                paths.push(facts.path_for(
+                    si,
+                    target,
+                    sup,
+                    0,
+                    &mut IndexSet::new(),
+                    false,
+                ));
             }
             if existence == Existence::None {
                 // no proven path, but a live guarded

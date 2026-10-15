@@ -5,6 +5,8 @@
 //! its segment), while a throwing op anywhere in a list demotes every site in
 //! it (a completion refusal discards the whole draft).
 
+use std::rc::Rc;
+
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::content::{CompiledContent, CompiledDeck, CompiledTrigger};
@@ -158,11 +160,14 @@ pub(crate) struct RawSite<'c> {
     /// REPLACE: another op in this list also kills the replace-target
     pub target_killed_in_list: bool,
     /// non-stackable names this LIST mints (bootstrap-gate check); the
-    /// post-pass assigns it to every site, so an empty set is the honest "no mints"
-    pub list_gate_mints: IndexSet<String>,
+    /// post-pass assigns it to every site, so an empty set is the honest "no mints".
+    /// `Rc`: every site of a list shares ONE read-only set (a per-site deep
+    /// clone of the same set bought nothing — the sets are never mutated
+    /// after the post-pass)
+    pub list_gate_mints: Rc<IndexSet<String>>,
     /// STACKABLE names this LIST mints (a gate on them reads false at a
-    /// once-trigger's single firing)
-    pub list_stack_mints: IndexSet<String>,
+    /// once-trigger's single firing) — shared like [`RawSite::list_gate_mints`]
+    pub list_stack_mints: Rc<IndexSet<String>>,
     /// SPAWN of a `deriving name from object` prototype
     pub derives: bool,
     /// display owner (always equal to `owner`)
@@ -628,11 +633,13 @@ fn walk_list<'c, 'a>(
         e.count += 1;
     }
     let dup_risk = mint_counts.values().any(|e| e.count >= 2 && !e.all_stack);
-    let list_gate_mints: IndexSet<String> = mint_counts
-        .iter()
-        .filter(|(_, e)| !e.all_stack)
-        .map(|(n, _)| n.clone())
-        .collect();
+    let list_gate_mints: Rc<IndexSet<String>> = Rc::new(
+        mint_counts
+            .iter()
+            .filter(|(_, e)| !e.all_stack)
+            .map(|(n, _)| n.clone())
+            .collect(),
+    );
     let mut list_stack_mints: IndexSet<String> = IndexSet::new();
     for s in sites.iter() {
         if s.kind == SiteKind::Draw && s.deck.is_some() {
@@ -652,6 +659,10 @@ fn walk_list<'c, 'a>(
             );
         }
     }
+
+    // shared with every site of the list through one Rc (see RawSite's
+    // field docs)
+    let list_stack_mints = Rc::new(list_stack_mints);
 
     // the post-pass, site by site (co-mint reads see
     // the whole list, mutation goes to the one site)
@@ -707,8 +718,8 @@ fn walk_list<'c, 'a>(
                 s.segs.contains(&k.seg) && (k.seg != s.seg || k.pos > s.pos) && k.name == s.name
             });
         s.dup_risk = dup_risk;
-        s.list_gate_mints = list_gate_mints.clone();
-        s.list_stack_mints = list_stack_mints.clone();
+        s.list_gate_mints = Rc::clone(&list_gate_mints);
+        s.list_stack_mints = Rc::clone(&list_stack_mints);
         s.target_killed_in_list = s.kind == SiteKind::Replace
             && s.replace_target.is_some()
             && kills
@@ -914,8 +925,8 @@ fn record_visit<'c, 'a>(
             killed_in_list: false,
             dup_risk: false,
             target_killed_in_list: false,
-            list_gate_mints: IndexSet::new(),
-            list_stack_mints: IndexSet::new(),
+            list_gate_mints: Rc::new(IndexSet::new()),
+            list_stack_mints: Rc::new(IndexSet::new()),
             derives: content
                 .prototypes
                 .get(name)
@@ -954,8 +965,8 @@ fn record_visit<'c, 'a>(
             killed_in_list: false,
             dup_risk: false,
             target_killed_in_list: false,
-            list_gate_mints: IndexSet::new(),
-            list_stack_mints: IndexSet::new(),
+            list_gate_mints: Rc::new(IndexSet::new()),
+            list_stack_mints: Rc::new(IndexSet::new()),
             derives: false,
             where_: owner.to_string(),
         })
@@ -984,8 +995,8 @@ fn record_visit<'c, 'a>(
                 killed_in_list: false,
                 dup_risk: false,
                 target_killed_in_list: false,
-                list_gate_mints: IndexSet::new(),
-                list_stack_mints: IndexSet::new(),
+                list_gate_mints: Rc::new(IndexSet::new()),
+                list_stack_mints: Rc::new(IndexSet::new()),
             derives: false,
             where_: owner.to_string(),
         })

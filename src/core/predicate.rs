@@ -324,7 +324,11 @@ impl<'a> PredParser<'a> {
         let mut spans = Vec::new();
         let mut at = 0;
         while at < src.len() {
-            let c = src[at..].chars().next().expect("at is a char boundary");
+            let Some(c) = src[at..].chars().next() else {
+                unreachable!(
+                    "at is always a char boundary: the scanner advances by whole tokens and whitespace chars only"
+                );
+            };
             if js_char_is_ws(c) {
                 at += c.len_utf8();
                 continue;

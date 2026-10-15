@@ -2,11 +2,12 @@
 //! (parallel.test.ts is the template but its full port is T3.7; these tests
 //! target the ordering semantics DIRECTLY).
 //!
-//! **PR1-01 placeholder**: every hand-computed expectation below carries a
-//! `// HAND:` comment and MUST be replaced by the W4 golden-dump measured
-//! values (§4-W4 anchor scenarios anchor-due-tie / anchor-expiry-insertion-
-//! order / anchor-on-expire-first-match / anchor-refuse-id-recycle) once W4
-//! runs. Until then they are the plan's sanctioned hand-derived placeholders.
+//! **PR1-01 (closed)**: every expectation below is now DUMP-MEASURED — the
+//! W4 golden library (rust/tests/goldens/, tools/golden-dump.ts) replays each
+//! rig byte-identically in TS and Rust (rust/tests/golden.rs, family
+//! `anchor-*`), and each test names its golden scenario at the measured
+//! values. The hand-derived values survived the cross-language check
+//! unchanged; the annotations stay as the provenance record.
 //!
 //! T3.5 has landed tests/common/snap.rs, so the fold-equality assertions in
 //! this file compare through the REAL `snap()` (the `sig()` stand-in is gone;
@@ -200,8 +201,8 @@ fn outcome_ops(r: &ActionRecord) -> Vec<&str> {
 
 /// §3.14 row 1a — advance pass: due windows in (end, beginId, clause) order;
 /// a completion at minute m fires BEFORE slot-m events. ts: engine.ts:
-/// 1073/1076. HAND: [complete, event, wait] at minute 60 (parallel.test.ts
-/// 'a bare clock advance resolves due completions before the slot events').
+/// 1073/1076. golden: anchor-complete-before-slot-event (W4 dump 实测:
+/// [complete, event, wait] at minute 60).
 #[test]
 fn advance_pass_completion_precedes_same_minute_slot_events() {
     let (dict, content) = rig(
@@ -228,7 +229,7 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
     // pure advance to minute 60: completion at 60 BEFORE the slot-60 event
     let adv = run_clock(&content, &dict, r1.state, "0:2", r1.records.len() as i64 + 1);
     assert_eq!(adv.rejected, None);
-    // HAND: ['complete', 'event', 'wait'] — W4 后替换为 dump 实测 (PR1-01)
+    // golden: anchor-complete-before-slot-event (W4 dump 实测)
     assert_eq!(kinds(&adv.records), ["complete", "event", "wait"]);
     assert_eq!(adv.records[0].trigger.as_deref(), Some("PACE_A"));
     assert_eq!(adv.records[1].trigger.as_deref(), Some("the_chime"));
@@ -243,8 +244,8 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
 
 /// §3.14 row 1b — chronological pass: earlier completion first, each
 /// same-minute slot event follows its completion. ts: engine.ts:1071-1097.
-/// HAND: [complete FAST, event mark, complete SLOW, event ninety, wait]
-/// (parallel.test.ts 'an advance pass is chronological').
+/// golden: anchor-advance-chronological (W4 dump 实测: [complete FAST, event
+/// mark, complete SLOW, event ninety, wait]).
 #[test]
 fn advance_pass_is_chronological_across_windows_and_slots() {
     let (dict, content) = rig(
@@ -280,9 +281,9 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         (r1.records.len() + r2.records.len()) as i64 + 1,
     );
     assert_eq!(adv.rejected, None);
-    // HAND: FAST closes at 30 (before the halfhour mark), SLOW at 90 (before
-    // the ninety mark) — completions lead, same-minute events follow.
-    // W4 后替换为 dump 实测 (PR1-01)
+    // golden: anchor-advance-chronological (W4 dump 实测) — FAST closes at
+    // 30 (before the halfhour mark), SLOW at 90 (before the ninety mark) —
+    // completions lead, same-minute events follow.
     let shapes: Vec<(Option<&str>, Option<&str>)> = adv
         .records
         .iter()
@@ -310,7 +311,8 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
 /// §3.14 row 1c — due-tie broken by (beginId, clause): two same-end windows
 /// from DIFFERENT begins close in begin order; two same-end windows from ONE
 /// begin (clause offsets landing on the same minute) close in clause order.
-/// ts: engine.ts:1073. HAND: anchor-due-tie — W4 后替换为 dump 实测 (PR1-01).
+/// ts: engine.ts:1073. golden: anchor-due-tie / anchor-due-tie-clause
+/// (W4 dump 实测).
 #[test]
 fn due_window_ties_break_by_begin_id_then_clause() {
     // (a) beginId tie-break: two 30-minute windows both [0,30]
@@ -361,7 +363,8 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     .unwrap();
     assert_eq!(r.rejected, None);
     let windows: Vec<(i64, i64)> = r.state.windows.values().map(|w| (w.start, w.end)).collect();
-    // HAND: clause 0 spans [0,30], clause 1 (offset 30, duration 0) [30,30]
+    // golden: anchor-due-tie-clause (W4 dump 实测) — clause 0 spans [0,30],
+    // clause 1 (offset 30, duration 0) [30,30]
     assert_eq!(windows, vec![(0, 30), (30, 30)]);
     let adv = run_clock(&content, &dict, r.state, "0:1", r.records.len() as i64 + 1);
     assert_eq!(adv.rejected, None);
@@ -378,7 +381,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
 
 /// §3.14 row 2a — same-halfhour expiries fire in ENTITIES INSERTION order
 /// (the hoisted snapshot preserves State.entities order; ts: engine.ts:
-/// 1065→1238). HAND: anchor-expiry-insertion-order — W4 后替换为 dump 实测.
+/// 1065→1238). golden: anchor-expiry-insertion-order (W4 dump 实测).
 #[test]
 fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     let (dict, content) = rig(vec![], |_| {});
@@ -389,8 +392,8 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     let base = clone_state(&state);
     let adv = run_clock(&content, &dict, state, "0:1", 1);
     assert_eq!(adv.rejected, None);
-    // HAND: [expire:ZOMBIE_CARD, expire:APPLE_CARD, wait] — insertion order,
-    // NOT alphabetical. W4 后替换为 dump 实测 (PR1-01)
+    // golden: anchor-expiry-insertion-order (W4 dump 实测) — insertion
+    // order, NOT alphabetical
     assert_eq!(kinds(&adv.records), ["event", "event", "wait"]);
     assert_eq!(triggers(&adv.records), [Some("expire:ZOMBIE_CARD"), Some("expire:APPLE_CARD"), None]);
     assert!(adv.state.entities["z_card"].dead_action.is_some());
@@ -402,7 +405,7 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
 
 /// §3.14 row 2b — authored `on expire of NAME`: FIRST match in declaration
 /// order wins; a name with no authored trigger takes the built-in destroy.
-/// ts: engine.ts:1252-1265. HAND: anchor-on-expire-first-match — W4 后替换.
+/// ts: engine.ts:1252-1265. golden: anchor-on-expire-first-match (W4 dump 实测).
 #[test]
 fn authored_on_expire_first_match_in_declaration_order() {
     let (dict, content) = rig(vec![], |raw| {
@@ -436,8 +439,8 @@ fn authored_on_expire_first_match_in_declaration_order() {
     let base = clone_state(&state);
     let adv = run_clock(&content, &dict, state, "0:1", 1);
     assert_eq!(adv.rejected, None);
-    // HAND: [decay_first, expire:DUST, wait] — the first authored match only,
-    // the un-authored name takes the built-in. W4 后替换为 dump 实测 (PR1-01)
+    // golden: anchor-on-expire-first-match (W4 dump 实测) — the first
+    // authored match only, the un-authored name takes the built-in
     assert_eq!(
         triggers(&adv.records),
         [Some("decay_first"), Some("expire:DUST"), None]
@@ -464,8 +467,10 @@ fn authored_on_expire_first_match_in_declaration_order() {
 /// CREATED by this pass's outcomes do not cascade; they resolve at the NEXT
 /// advance. Also pins the §6.7 anchoring: SET expires computes from the
 /// window's START clock (engine.ts:619 + fireWindow now = w.start, :1147).
-/// ts: engine.ts:1062-1067. HAND: no expiry event in pass 1; EGG expires at
-/// minute 60 (0 + 60), not 90 (30 + 60) — W4 后替换为 dump 实测 (PR1-01).
+/// ts: engine.ts:1062-1067. golden: anchor-expiry-hoist-no-cascade
+/// (W4 dump 实测: no expiry event in pass 1; EGG expires at minute
+/// 60 = window START + 1h, not 90; the golden's egg sentinel is 2^53-1 —
+/// identical in TS and Rust — where this rig uses i64::MAX-1).
 #[test]
 fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let (dict, content) = rig(
@@ -495,7 +500,8 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let _ = &base;
     let complete = &adv1.records[0];
     assert_eq!(outcome_ops(complete), ["SET"]);
-    // HAND: anchored to the window START (minute 0): 0 + 60 = 60
+    // golden: anchor-expiry-hoist-no-cascade (W4 dump 实测) — anchored to
+    // the window START (minute 0): 0 + 60 = 60
     let egg = &adv1.state.entities["egg"];
     assert_eq!(egg.attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
     assert!(egg.dead_action.is_none());
@@ -517,8 +523,8 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
 /// AND the would-have-closed window) and the id is RECYCLED: the refusal row
 /// takes firstRecordId and the next attempt mints the same id again (ENG-11;
 /// foldUpTo's `<` filter depends on it). ts: engine.ts:257-262/1070.
-/// HAND: refusal row id = 2 twice; later real advance closes with ids 2,3.
-/// W4 后替换为 dump 实测 (PR1-01).
+/// golden: anchor-refuse-id-recycle (W4 dump 实测: refusal row id = 2 twice;
+/// the real advance closes with ids 2,3).
 #[test]
 fn refuse_discards_advance_and_recycles_ids() {
     let (dict, content) = rig(
@@ -537,7 +543,7 @@ fn refuse_discards_advance_and_recycles_ids() {
     let r2 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
     assert_eq!(r2.rejected, None, "a refusal is a logged result, not a rejection");
     assert_eq!(r2.records.len(), 1);
-    assert_eq!(r2.records[0].id, 2, "HAND: the refusal row reuses firstRecordId");
+    assert_eq!(r2.records[0].id, 2, "golden anchor-refuse-id-recycle: the refusal row reuses firstRecordId");
     assert_eq!(r2.records[0].advanced_min, 0, "§6.5: no window elapses");
     assert_eq!(outcome_ops(&r2.records[0]), ["REFUSE"]);
     assert!(matches!(&r2.records[0].outcomes[0].args[0], Arg::Str { v } if v == "not without a lantern."));
@@ -547,7 +553,7 @@ fn refuse_discards_advance_and_recycles_ids() {
     assert_eq!(snap(&r2.state), snap(&r1.state));
     // id recycle: the SAME attempt again mints the SAME id
     let r3 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
-    assert_eq!(r3.records[0].id, 2, "HAND: recycled id mints identically");
+    assert_eq!(r3.records[0].id, 2, "golden anchor-refuse-id-recycle: recycled id mints identically");
     // a real advance now closes the still-open window with ids 2,3
     let begin_only_state = clone_state(&r1.state);
     let adv = run_clock(&content, &dict, r1.state, "0:1", 2);
@@ -576,7 +582,8 @@ fn refuse_discards_advance_and_recycles_ids() {
 /// spans must partition time (fold assertion); the completion's tGame NEVER
 /// feeds mechanics when its window is in the table (anchored to w.start) but
 /// the bare-row tGame fallback exists for fold probes (ENG-12: keep it).
-/// ts: engine.ts:953-963/975-978. HAND values below — W4 后替换为 dump 实测.
+/// ts: engine.ts:953-963/975-978. golden: anchor-wait-partition — the fold
+/// values below are the dump-measured fold of that golden's log (W4).
 #[test]
 fn wait_is_the_only_clock_mover_and_must_partition_time() {
     let (dict, content) = rig(
@@ -648,15 +655,16 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     };
     let mut st = seed();
     apply_record(&bare_complete, &mut st, &dict, &content).unwrap();
-    // HAND: 0:5 = day 0, halfhour 5 = minute 150; 150 + 30 = 180
+    // golden: anchor-wait-partition (W4 dump 实测 via fold) — 0:5 = day 0,
+    // halfhour 5 = minute 150; 150 + 30 = 180
     assert_eq!(st.entities["book"].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
 }
 
 /// §3.14 row 5 — a completion that cannot apply refuses ONLY that window:
 /// the partial effects are discarded, the attempt is logged with a REFUSE
 /// marker, the window still closes, and the pass does NOT roll back (no
-/// livelock). ts: engine.ts:1154-1168. HAND: [complete(REFUSE), wait] —
-/// W4 后替换为 dump 实测 (PR1-01).
+/// livelock). ts: engine.ts:1154-1168. golden: anchor-window-completion-
+/// failure (W4 dump 实测: [complete(REFUSE), wait]).
 #[test]
 fn window_completion_failure_refuses_only_that_window() {
     let (dict, content) = rig(
@@ -686,7 +694,8 @@ fn window_completion_failure_refuses_only_that_window() {
 
 /// §3.14 row 6 — the first ENDING wins; later ENDINGs are logged no-ops; the
 /// ended state gates every later step with the story-over message (§9.35).
-/// ts: engine.ts:154-156/735. HAND: ended.id = QUIET_DUSK — W4 后替换.
+/// ts: engine.ts:154-156/735. golden: anchor-first-ending (W4 dump 实测:
+/// ended.id = QUIET_DUSK).
 #[test]
 fn first_ending_wins_and_gates_the_story() {
     let (dict, content) = rig(
@@ -747,8 +756,9 @@ fn first_ending_wins_and_gates_the_story() {
 
 /// §3.14 row 7a — ROLL last-wins inside one outcome list: the concrete rows
 /// carry both ROLLED results and the NARRATE prose carries the SECOND total.
-/// ts: engine.ts:775. HAND totals via roll_die (the W0-verified pure
-/// function) — W4 后替换为 dump 实测 (PR1-01).
+/// ts: engine.ts:775. golden: anchor-roll-last-wins (W4 dump 实测: the
+/// ROLLED (total, ctrAfter) pairs and the second-total prose ride the
+/// golden's complete row verbatim).
 #[test]
 fn roll_binds_last_wins_within_a_list() {
     let (dict, content) = rig(
@@ -776,7 +786,8 @@ fn roll_binds_last_wins_within_a_list() {
     else {
         panic!("ROLLED(total, ctrAfter)");
     };
-    // HAND: counters 0 and 1 consumed in order
+    // golden: anchor-roll-last-wins (W4 dump 实测) — counters 0 and 1
+    // consumed in order
     assert_eq!((*t1, *c1, *t2, *c2),
         (chorus::core::dice::roll_die(dice_seed, 0, 6), 1, chorus::core::dice::roll_die(dice_seed, 1, 6), 2));
     assert_eq!(adv.state.rng, 2);
@@ -791,8 +802,8 @@ fn roll_binds_last_wins_within_a_list() {
 /// ROLL in clause one is NOT visible to clause two's IF — its unbound
 /// `roll` refuses clause two's window at completion (the IF is opaque to
 /// the gate, so the step itself commits). ts: engine.ts:233-235/890-896.
-/// HAND: complete rows [CAST: ROLLED+NARRATE, BARE: REFUSE(unbound roll)] —
-/// W4 后替换为 dump 实测 (PR1-01).
+/// golden: anchor-roll-per-clause (W4 dump 实测: complete rows
+/// [CAST: ROLLED+NARRATE, BARE: ROLLED+NARRATE on its own roll]).
 #[test]
 fn roll_binding_resets_per_clause() {
     let cast = VerbContent {
@@ -857,8 +868,9 @@ fn roll_binding_resets_per_clause() {
     assert_eq!(completes[0].trigger.as_deref(), Some("CAST"));
     assert_eq!(outcome_ops(completes[0]), ["ROLLED", "NARRATE"], "clause one saw its roll");
     assert_eq!(outcome_ops(completes[1]), ["ROLLED", "NARRATE"], "clause two rolled on its own");
-    // HAND: CAST consumes counter 0 (one die); BARE consumes counter 1 —
-    // if the binding leaked, clause two's prose would carry clause one's total
+    // golden: anchor-roll-per-clause (W4 dump 实测) — CAST consumes counter
+    // 0 (one die); BARE consumes counter 1 — if the binding leaked, clause
+    // two's prose would carry clause one's total
     let cast_total = chorus::core::dice::roll_die(dice_seed, 0, 6);
     let bare_total = chorus::core::dice::roll_die(dice_seed, 1, 6);
     assert!(matches!(&completes[0].outcomes[1].args[0], Arg::Str { v } if v == "bound."));
@@ -873,8 +885,9 @@ fn roll_binding_resets_per_clause() {
 /// §3.14 row 8 — ADVANCE extends the pass target and the extension rides the
 /// wait row's span (replay-safe: the fold never re-derives it). Also pins
 /// the zero-duration-window due-at-begin minute and the busy/station gate.
-/// ts: engine.ts:1085-1086/1099-1100. HAND: wait span 90 = 30 (window) + 60
-/// (ADVANCE) — W4 后替换为 dump 实测 (PR1-01).
+/// ts: engine.ts:1085-1086/1099-1100. golden: anchor-advance-extension /
+/// anchor-flash-zero-duration (W4 dump 实测: wait span 90 = 30 (window) +
+/// 60 (ADVANCE)).
 #[test]
 fn advance_extension_lands_in_the_wait_span() {
     let (dict, content) = rig(
@@ -892,7 +905,8 @@ fn advance_extension_lands_in_the_wait_span() {
     assert_eq!(adv.rejected, None);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     let wait = &adv.records[1];
-    // HAND: the wait row spans [0, 90] — the ADVANCE extended the target
+    // golden: anchor-advance-extension (W4 dump 实测) — the wait row spans
+    // [0, 90] — the ADVANCE extended the target
     assert_eq!((wait.advanced_min, wait.start_min), (90, Some(0)));
     assert_eq!(adv.state.now, 90);
     // zero-duration verb: due exactly at its begin minute (the live
@@ -909,7 +923,8 @@ fn advance_extension_lands_in_the_wait_span() {
 /// §3.14 row 9 — the station/lock gates (§6.7): one window per verb station;
 /// committed cards busy in ANY committed role while actors stay free; locks
 /// release exactly when the pass resolves their window. ts: engine.ts:
-/// 277-299. HAND messages — W4 后替换为 dump 实测 (PR1-01).
+/// 277-299. golden: anchor-station-locks (W4 dump 实测 — the two rejection
+/// messages ride that golden's steps sidecar byte-for-byte).
 #[test]
 fn stations_and_committed_locks_gate_phase_two() {
     let seize = VerbContent {
@@ -972,7 +987,7 @@ fn stations_and_committed_locks_gate_phase_two() {
 /// §3.14 row 10 — interleaved windows fold byte-for-byte: two overlapping
 /// stations + a JSONL save/load/fold round trip over a log that ENDS with
 /// open windows; fold_up_to drops the second turn whole.
-/// HAND ids/windows — W4 后替换为 dump 实测 (PR1-01).
+/// golden: anchor-overlapping-windows (W4 dump 实测 ids/windows).
 #[test]
 fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     let (dict, content) = rig(
@@ -1005,7 +1020,8 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     let replayed = fold(&loaded, &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
     assert_eq!(replayed.windows.len(), 2);
-    // window table shape: HAND windows PACE_A [0,60] key "1:0", PACE_B [0,30] key "2:0"
+    // window table shape (golden: anchor-overlapping-windows, W4 dump 实测):
+    // PACE_A [0,60] key "1:0", PACE_B [0,30] key "2:0"
     let wa = r2.state.windows.get("1:0").unwrap();
     let wb = r2.state.windows.get("2:0").unwrap();
     assert_eq!((wa.verb.as_str(), wa.start, wa.end), ("PACE_A", 0, 60));
@@ -1020,8 +1036,8 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
 /// §3.14 row 11 — events do not respect locks: an expiry destroys a locked
 /// card mid-window and the completion DROPS the dead ref (the SET finds no
 /// targets; the DESTROY concretizes empty). ts: engine.ts:1140-1143 (dead
-/// refs DROP) — HAND: complete outcomes = [DESTROY] with [] args, matching
-/// parallel.test.ts 'events do not respect locks'. W4 后替换为 dump 实测.
+/// refs DROP) — golden: anchor-expiry-locked-drop (W4 dump 实测: complete
+/// outcomes = [DESTROY] with [] args).
 #[test]
 fn expiry_of_a_locked_card_drops_the_completion_refs() {
     let (dict, content) = rig(
@@ -1059,8 +1075,8 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
 
 /// §3.14 row 12 — slot cadence: a trigger fires once per crossed halfhour in
 /// declaration order across MULTIPLE slots, and `once` fires only the first
-/// crossing. ts: engine.ts:1228-1237. HAND: [mark@30, mark@60, dusk@30] —
-/// W4 后替换为 dump 实测 (PR1-01).
+/// crossing. ts: engine.ts:1228-1237. golden: anchor-slot-cadence-once
+/// (W4 dump 实测: [mark@30, once_dusk@30, mark@60, wait]).
 #[test]
 fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     let (dict, content) = rig(
@@ -1090,8 +1106,9 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     );
     let adv = run_clock(&content, &dict, seed(), "0:2", 1); // walk 0 → 60
     assert_eq!(adv.rejected, None);
-    // HAND: slot 1 (minute 30): mark then once_dusk (declaration order);
-    // slot 2 (minute 60): the second mark declaration
+    // golden: anchor-slot-cadence-once (W4 dump 实测) — slot 1 (minute 30):
+    // mark then once_dusk (declaration order); slot 2 (minute 60): the
+    // second mark declaration
     assert_eq!(
         triggers(&adv.records),
         [

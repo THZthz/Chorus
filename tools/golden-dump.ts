@@ -1043,6 +1043,34 @@ const adversarialFamily = (): GoldenSpec[] => {
     const fw = explore(content, sDict, state, 10, 4000)
     check(fw.everNames.has('X'), 'S10 explore saw X')
     check(!fw.everNames.has('GOAL'), 'S10 GOAL never appears')
+    // control (the rule's precision), restated from reach-adversarial.test.ts:783-809:
+    // with the with-slot OPTIONAL the bootstrap EXISTS — commit SELFMADE before
+    // any X is alive; the completion's SPAWN X then mints cleanly and GOAL
+    // follows. selfGated's filler branch skips min:0 slots, so the analyzer
+    // flips to obtainable — and the forward exploration vindicates it. (W4
+    // should-fix-1: this optional 对照块 was missing from the recomputation
+    // gate; it produces no engine records, so the golden corpus is unchanged.)
+    const optional = compileS({
+      prototypes: { X: { kind: 'item' }, GOAL: { kind: 'idea' } },
+      verbs: {
+        MAKER: {
+          slots: [{ role: 'actors', min: 1, max: 1, query: 'kind:character' }],
+          duration: 0,
+          recipes: [{ out: ['SPAWN X'] }],
+        },
+        SELFMADE: {
+          slots: [
+            { role: 'actors', min: 1, max: 1, query: 'kind:character' },
+            { role: 'with', min: 0, max: 1, query: 'kind:item' },
+          ],
+          duration: 0,
+          recipes: [{ out: ['SPAWN X', 'SPAWN GOAL'] }],
+        },
+      },
+    })
+    check(analyzeCard(optional, state, 'GOAL').verdict === 'obtainable', 'S10 optional with-slot bootstrap: GOAL obtainable')
+    const fwOpt = explore(optional, sDict, state, 10, 4000)
+    check(fwOpt.everNames.has('GOAL'), 'S10 optional: the exploration vindicates the analyzer')
     emit('s10', 'S10 — self-filler collision, the completion refuses its own mint', state, content, c.records, attempt.state, c)
   }
 

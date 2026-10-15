@@ -111,7 +111,15 @@ fn main() -> std::process::ExitCode {
     let mut seed = from;
     while seed < from + seeds {
         // ts: runFuzzSeed(seed, …) — ToInt32(seed) feeds the LCG; realistic
-        // seeds are small positive integers, where the cast is exact
+        // seeds are small positive integers, where the cast is exact.
+        // REGISTERED DIVERGENCE (W5 review should-fix-2, pathological argv
+        // only): `steps as usize`/`states as usize` TRUNCATE a fractional
+        // flag, while the TS side keeps the f64 bounds alive in the loops —
+        // `for (let s = 0; s < steps; s++)` with `--steps 2.5` runs s=0,1,2
+        // (three layers) and the state cap `queue.length >= states` admits
+        // 3 states for `--states 2.5`. Integer flags, the defaults and NaN
+        // (`js_number` = `Number`, registered at its definition) are exact;
+        // only a fractional flag digs one level shallower here.
         let out = reach_fuzz_lib::run_fuzz_seed(seed as i32 as u32, steps as usize, states as usize)
             .unwrap_or_else(|e| {
                 eprintln!("Error: {e}");

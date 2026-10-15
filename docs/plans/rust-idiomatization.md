@@ -27,9 +27,8 @@ v0.4/v0.5 plans (§0 determinism laws, reused verbatim below).
 2. **Tests**: 711 green today — **MEASURED basis**: a real `cargo test -j 4`
    run (per-suite result lines summed: 79 unit + 632 integration), 2026-10-14.
    A static `grep '#\[test\]'` yields only 615 — the grep is NOT the baseline;
-   P0 re-baselines from a fresh measured run and the gate number follows the
-   run. `cargo test -j 4` ≈ 45 s wall; clippy `--all-targets` is already
-   zero-warning.
+   the gate number follows a fresh measured run. `cargo test -j 4` ≈ 45 s
+   wall; clippy `--all-targets` is already zero-warning.
 3. **The determinism laws** (v0.4 §0, unchanged): fold(log) byte-equality;
    engine-written rows round-trip; no re-derivation at replay; step/pass
    atomicity; no RNG outside the §9.41 counter; draft discipline (deep clone).
@@ -109,7 +108,7 @@ existing-test footprint, corrected by report B where v2 overstated):
 
 | Q | What it is | Verification-B final ruling (impact re-measured) | Disposition |
 |---|---|---|---|
-| Q1 | recipe ids mint 0-based at compile (`.recipe0`) but 1-based in the lint mirror (`.recipe1`) | fix by flipping the LINT side to 0-based (script.rs:1269) — zero log churn, golden digest untouched. v2 overstated the pins: only script_play.rs:345 + content.rs:1215 (v2's "engine.rs, lint.rs" was wrong); bundled scripts have no id-less non-default recipes | FIX — batch 2 |
+| Q1 | recipe ids mint 0-based at compile (`.recipe0`) but 1-based in the lint mirror (`.recipe1`) | fix by flipping the LINT side to 0-based (script.rs:1269). v2 overstated the pins: only script_play.rs:345 + content.rs:1215 (v2's "engine.rs, lint.rs" was wrong); bundled scripts have no id-less non-default recipes | FIX — batch 2 |
 | Q2 | the predicate string tokenizer silently swallows illegal chars (`aspect:x >= @3` ≡ `aspect:x>=3`) | fix is spec-ALIGNED (§6.3/§4.5 grammar has no `@`; the only whitespace license is "spaces around a comparison are glue" — the fix must, and only must, keep skipping whitespace); aligns predicate.rs with query.rs, which already errors loudly. Pins: 1 unit test (predicate.rs:1160) | FIX — batch 1 |
 | Q3 | `arg()` cannot read a param key (`SET(myparam = 3)` parse error) while SPAWN args support one | fix = TEACH: extend the error message and accept the `key=value` arg form in the arg path. The v2 "reject uniformly" option is REFUTED: spec §9.40 pins the pair "key or value" acceptance face — the op must NOT start rejecting. Zero existing pins; new tests only | FIX (teach only) — batch 2 |
 | Q4 | slot roles are never validated — a typo'd slot compiles and silently never matches | fix is spec-ALIGNED (§4.3's six-role list + §10 "failing loudly at load time … bad grammar"); one check at script.rs:1065 via the existing `Role::from_lower`. Zero breakage: every slot key in bundled + test scripts is legal (actors 24 / object 16 / at 8 / with 4 / about 2 / to 1); new error cases only | FIX — batch 1 |
@@ -140,12 +139,11 @@ existing-test footprint, corrected by report B where v2 overstated):
 ### 1.2 How to read a B fix's cost
 
 Each batch item names: the tests whose assertions change (expected count,
-re-measured by report B), whether the delta is player-visible, and whether
-the golden corpus (§2, phase 0) digest moves. A B commit that cannot
-enumerate all three does not ship. Cross-batch coupling: NONE (the parse
-sites are disjoint — report B §4); two cautions: a Q5 test fixture must trip
-exactly ONE error (a fixture that also typos a slot would double-fire into
-Q4's new check), and only Q11/Q15 move CLI golden lines (enumerated per
+re-measured by report B) and whether the delta is player-visible. A B commit
+that cannot enumerate both does not ship. Cross-batch coupling: NONE (the
+parse sites are disjoint — report B §4); one caution: a Q5 test fixture must
+trip exactly ONE error (a fixture that also typos a slot would double-fire
+into Q4's new check); only Q11/Q15 touch CLI usage output (enumerated per
 commit).
 
 ### 1.3 Class C — zero observable footprint (free Rust-ization)
@@ -267,44 +265,24 @@ no node in any loop (none exists since the TS retirement); profile.dev
 One commit per numbered step; each commit states its class (C0/C1/C2/B-fix).
 
 **Gate for every phase (acceptance, no exceptions)**:
-`cargo test -j 4` → the measured baseline (711 at drafting; §0.1) + (new
-tests only where this plan adds them) green;
-`cargo clippy -j 4 --all-targets` zero warnings; the golden digest (P0)
-byte-identical unless the commit is a settled B fix that enumerates its diff
-(only Q11/Q15 may move digest lines — CLI golden lines only).
+`cargo test -j 4` green (tests updated where a change is intentional —
+B fixes enumerate their assertion edits in the commit message);
+`cargo clippy -j 4 --all-targets` zero warnings.
 
-### Phase 0 — the measurement net (C0, no src changes)
-
-- Scope: add `tests/golden.rs` + a committed digest: every bundled script
-  (`scripts/*.txt`, `tests/demo-world.txt`) × a fixed deterministic command
-  transcript (replay + a scripted handle_line sequence + reach/lint CLI runs)
-  → sha256 of stdout bytes, JSONL bytes, and `snap()` state; one line per
-  case in `tests/golden/digest.txt`. The test regenerates and compares.
-  **Determinism clause**: every case is keyed by its REPO-RELATIVE script
-  path (never the absolute path); tempdirs for JSONL round-trips live under
-  `target/` or the OS temp dir and their paths must never enter a digest
-  line — only the bytes written INTO them are hashed. Verified on the
-  current tree (2026-10-14): no wall-clock can reach the digest — `t_real`
-  is `None` on the whole chain (Step/records are built with `t_real: None`
-  in every harness and the engine never fills it), and `snap()` emits pure
-  JSON with no timestamps — so identical inputs yield identical digest bytes
-  on any machine, any day.
-- This is the C-class zero-behavior PROOF instrument: before/after any
-  refactor, the digest must not move. It complements (not replaces) the 711
-  tests — it catches drift in the corners no assertion reaches (exact CLI
-  bytes, log files on disk).
-- Acceptance: digest committed; suite green; clippy green. No test assertion
-  of the existing 711 changes (new file only).
+**Behavior policy (supersedes any zero-drift wording elsewhere)**: behavior
+consistency is NOT a hard gate. C-class refactors aim for zero behavior
+change but a caught drift is fixed, not gated; when a change alters
+documented behavior at the architecture level, `docs/spec/` is amended in
+the same commit so the spec stays the truthful baseline.
 
 ### Phase 1 — dissolve js.rs (C: items 1, 7, 8, 9)
 
-- Prerequisite: phase 0 digest exists.
 - Scope: the module split, the mechanical `use` sweep (src + tests imports
   ONLY — assertion lines are frozen), the divergence-comment rewording
   (item 8), README layout/"lives at" column updates.
 - Acceptance: gate green; `git diff tests/` shows import lines and
   qualified-path occurrences ONLY — zero semantic edits (23 such lines exist,
-  report C; review-enforced); digest byte-identical.
+  report C; review-enforced).
 - Size: 25 src files + 17 test files touched (§1.3.1 counts), all
   mechanically.
 
@@ -316,18 +294,17 @@ byte-identical unless the commit is a settled B fix that enumerates its diff
   RecordKind remnant = re-document only, `kind` STAYS `String` (§1.3.4);
   optional `thiserror` ONLY if the user opts in (dependency addition lands
   here, declared in §1.3.2).
-- Acceptance: gate green; digest byte-identical; new unit tests allowed ONLY
+- Acceptance: gate green; new unit tests allowed ONLY
   as property tests over unchanged behavior — never as behavior changes.
 
 ### Phase 3 — B fixes, SETTLED work list (verification-B final ruling) + close-out
 
-- Prerequisite: phases 0–2 landed. The ten items below are the approved fix
+- Prerequisite: phases 1–2 landed. The ten items below are the approved fix
   set (§1.1 dispositions); batches have no cross-coupling (disjoint parse
   sites), batch risk ascends. One commit per item: fix + exactly the pinned
-  tests listed + new error cases + README Q-row status + golden digest
-  accounting in the message.
+  tests listed + new error cases + README Q-row status in the message.
 
-- **Batch 1 — compile-time rejections (zero log/digest movement, zero
+- **Batch 1 — compile-time rejections (zero log movement, zero
   existing-test breakage):**
   1. **Q4** slot-role validation — script.rs:1065, one check via
      `Role::from_lower`; new error cases only (all bundled/test slot keys
@@ -346,7 +323,7 @@ byte-identical unless the commit is a settled B fix that enumerates its diff
      the pair "key or value" acceptance face; the op must not start
      rejecting. New tests only.
   5. **Q1** flip the LINT mirror to 0-based (script.rs:1269), unifying on the
-     compile side; digest untouched (no bundled id-less non-default recipes);
+     compile side (no bundled id-less non-default recipes);
      assertions verified: script_play.rs:345, content.rs:1215.
   6. **Q11** bare `inspect` prints usage/the card list (bin/chorus.rs +
      game.rs); repl.rs:60/:102-104 updated; game.rs:305's stale "no test pins
@@ -354,7 +331,7 @@ byte-identical unless the commit is a settled B fix that enumerates its diff
   7. **Q15** CLI shapes — bin/reach.rs argv (`--demand` requires a value),
      lint-scripts.rs missing-directory message, script.rs honest unknown-meta
      error; cli.rs :37/:50/:89/:145 updated; new error texts enumerated in the
-     commit message (these move CLI golden lines).
+     commit message (these change CLI usage output).
 - **Batch 3 — semantic micro-changes (each rewrites exactly its pinned unit
   test):**
   8. **Q10** real escape semantics in quoted strings (lexer.rs:161);
@@ -376,13 +353,10 @@ byte-identical unless the commit is a settled B fix that enumerates its diff
   (violates §4.2's pinned data model), Q14 (unreachable), Q16 (fix direction
   vacuous), B-18/B-19/B-20/B-21 (kept).
 - **Close-out commit**: README Q-table statuses final (fixed / no-fix
-  verified / spec-pinned per row); this plan's status flipped to LANDED with
-  the digest commit hash.
+  verified / spec-pinned per row); this plan's status flipped to LANDED.
 - Acceptance: per-commit test-diff enumeration matches reality; suite green
-  (measured baseline, §0.1); clippy green; spec untouched (`git diff
-  docs/spec/` empty); golden digest byte-identical in EVERY batch-1/2/3
-  commit except Q11/Q15, where ONLY the CLI golden lines move and each moved
-  line is enumerated in the commit message.
+  (measured baseline, §0.1); clippy green; where a fix alters behavior the
+  spec already documents, docs/spec/ is amended in the same commit.
 
 ## 3. Risks and verification
 
@@ -390,9 +364,8 @@ byte-identical unless the commit is a settled B fix that enumerates its diff
   1. the tests pass with assertion lines untouched (diff review: in phases
      1–2 only `use`/path lines and qualified-path occurrences move in
      tests/);
-  2. the phase-0 golden digest is byte-identical before/after (catches
-     stdout/JSONL/snap drift the assertions might not reach — same judgment
-     as the dice suite's two-runs-write-identical-bytes gate);
+  2. the dice suite's two-runs-write-identical-bytes gate still passes
+     (guards JSONL shape against accidental drift);
   3. serde wire shapes are the sharpest risk in phases 1–2 (field order, tag
      spellings, `skip_serializing_if`): the pinned-field-order doc comments on
      `ActionRecord`/`Ref`/`Arg` move WITH their types, and the JSONL
@@ -404,8 +377,8 @@ byte-identical unless the commit is a settled B fix that enumerates its diff
   real script needs. Mitigations: every bundled script + the demo + nightjar
   must still compile (the corpus includes them); the fix's commit enumerates
   each new rejection with an example. No fix in the settled list moves log
-  bytes (report B §4) — the only digest movement is Q11/Q15's CLI golden
-  lines, enumerated per commit.
+  bytes (report B §4) — the only CLI-usage movement is Q11/Q15's, enumerated
+  per commit.
 - **Residual risks, ranked**: (1) serde field-order drift in a mechanical
   sweep — caught by leg 2/3 above; (2) B-fix scope creep into engine
   semantics — contained by one-quirk-one-commit and the enumeration rule;

@@ -616,10 +616,10 @@
         "note": "station + committed-lock gates; rejections ride the sidecar"
       },
       "jsonl": "anchor-station-locks.jsonl",
-      "sha256": "7064f0a0455aa28a3db412053817d31148690493bc1ea842a42d22007f55ced3",
-      "records": 5,
-      "jsonlBytes": 1678,
-      "snap": "{\"ents\":[[\"ana\",{\"id\":\"ana\",\"kind\":\"character\",\"name\":\"ANA\",\"aspects\":{},\"attrs\":{\"container\":\"house\"},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}],[\"bertha\",{\"id\":\"bertha\",\"kind\":\"character\",\"name\":\"BERTHA\",\"aspects\":{},\"attrs\":{\"container\":\"house\"},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}],[\"book\",{\"id\":\"book\",\"kind\":\"text\",\"name\":\"MAGICK_BOOK\",\"aspects\":{},\"attrs\":{\"container\":\"house\"},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}],[\"house\",{\"id\":\"house\",\"kind\":\"place\",\"name\":\"HOUSE\",\"aspects\":{},\"attrs\":{},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}]],\"rels\":[],\"byName\":[[\"ANA\",[\"ana\"]],[\"BERTHA\",[\"bertha\"]],[\"HOUSE\",[\"house\"]],[\"MAGICK_BOOK\",[\"book\"]]],\"now\":1440,\"rng\":0,\"decks\":[],\"fired\":[],\"ended\":null,\"windows\":[[\"5:0\",{\"key\":\"5:0\",\"beginId\":5,\"clause\":0,\"verb\":\"TOUCH\",\"start\":1440,\"end\":1470,\"recipe\":\"touch.default\",\"refs\":{\"actors\":[{\"form\":\"name\",\"name\":\"ANA\"}],\"object\":[{\"form\":\"name\",\"name\":\"MAGICK_BOOK\"}],\"with\":[],\"at\":[],\"about\":[],\"to\":[]},\"locked\":[\"book\"]}]]}",
+      "sha256": "c96ca04ba2bb08fba2b5dab1adc8da4cc9a08b7147198e5ab08489100ce034a3",
+      "records": 6,
+      "jsonlBytes": 2070,
+      "snap": "{\"ents\":[[\"ana\",{\"id\":\"ana\",\"kind\":\"character\",\"name\":\"ANA\",\"aspects\":{},\"attrs\":{\"container\":\"house\"},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}],[\"bertha\",{\"id\":\"bertha\",\"kind\":\"character\",\"name\":\"BERTHA\",\"aspects\":{},\"attrs\":{\"container\":\"house\"},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}],[\"book\",{\"id\":\"book\",\"kind\":\"text\",\"name\":\"MAGICK_BOOK\",\"aspects\":{},\"attrs\":{\"container\":\"house\"},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}],[\"house\",{\"id\":\"house\",\"kind\":\"place\",\"name\":\"HOUSE\",\"aspects\":{},\"attrs\":{},\"bornAction\":null,\"deadAction\":null,\"stackable\":false}]],\"rels\":[],\"byName\":[[\"ANA\",[\"ana\"]],[\"BERTHA\",[\"bertha\"]],[\"HOUSE\",[\"house\"]],[\"MAGICK_BOOK\",[\"book\"]]],\"now\":1440,\"rng\":0,\"decks\":[],\"fired\":[],\"ended\":null,\"windows\":[[\"6:0\",{\"key\":\"6:0\",\"beginId\":6,\"clause\":0,\"verb\":\"TOUCH\",\"start\":1440,\"end\":1470,\"recipe\":\"touch.default\",\"refs\":{\"actors\":[{\"form\":\"name\",\"name\":\"ANA\"}],\"object\":[{\"form\":\"name\",\"name\":\"MAGICK_BOOK\"}],\"with\":[],\"at\":[],\"about\":[],\"to\":[]},\"locked\":[\"book\"]}]]}",
       "steps": "anchor-station-locks.steps.txt"
     },
     {

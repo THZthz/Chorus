@@ -1601,11 +1601,16 @@ const anchorsFamily = (): GoldenSpec[] => {
     check(r3.rejected === 'MAGICK BOOK is busy with SEIZE — it frees at 0:2', 'anchor-station: committed-card busy message')
     steps.rejected(r3)
     const r4 = steps.ok(runStep(content, dict, cloneState(r1.state), '0:0 @ BERTHA TOUCH', 3))
-    records.push(...r4.records)
     check(r4.state.windows.size === 2, 'anchor-station: two stations in parallel; actors never locked')
-    const r5 = steps.ok(runStep(content, dict, r1.state, '1:0 @ ANA TOUCH MAGICK_BOOK', 3))
+    // r5 continues from r4's state so the golden log is ONE continuous play —
+    // a record log assembled from two diverged branches is not fold-able to
+    // its snap (the harness enforces law 1 on every golden). The en-route
+    // lock release is unchanged: the advance resolves 3:0 and 1:0, freeing
+    // MAGICK BOOK, then TOUCH begins.
+    const r5 = steps.ok(runStep(content, dict, r4.state, '1:0 @ ANA TOUCH MAGICK_BOOK', 3))
+    records.push(...r4.records)
     records.push(...r5.records)
-    check(r5.records[0]!.kind === 'complete', 'anchor-station: the SEIZE window closed en route')
+    check(r5.records[0]!.kind === 'complete', 'anchor-station: a window closed en route')
     emit('anchor-station-locks', { dict, content, base }, records, r5.state, steps, 'station + committed-lock gates; rejections ride the sidecar')
   }
 

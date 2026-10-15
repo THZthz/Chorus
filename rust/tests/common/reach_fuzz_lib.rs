@@ -27,6 +27,7 @@ use chorus::core::query::match_query;
 use chorus::core::r#ref::{id_ref, name_ref, Ref};
 use chorus::core::sentence::{empty_clause, Clause};
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
+#[allow(unused_imports)] // ActionRecord only flows through drive_fuzz_seed (unused in the #[path]-mounted fuzz bin)
 use chorus::engine::engine::{ActionRecord, Step};
 use chorus::js::{Lcg, Result};
 
@@ -797,6 +798,413 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
         i += 1;
     }
     out
+}
+
+// ---------- exhaustive bounded forward exploration (the ground truth) ------
+// ts: reach-fuzz-lib.ts:226-444 — W5 adds the explorer + the differential
+// driver (runFuzzSeed) beside the W4 generator so the fuzz bin and the
+// 100-seed vitest port share ONE implementation (CLI-04: runFuzzSeed is a
+// pure function of its seed — no module state anywhere below).
+
+use std::collections::VecDeque;
+
+use indexmap::IndexSet;
+
+use chorus::core::query::parse_query;
+use chorus::core::types::AttrValue;
+use chorus::reach::{Analyzer, CardOptions};
+
+/// ts: reach-fuzz-lib.ts:227-235
+pub struct Forward {
+    pub ever_names: IndexSet<String>,
+    /// keyed by the `name|kind|canon(aspects)|canon(attrs)` descriptor string
+    pub ever_desc: IndexMap<String, Entity>,
+    pub states_seen: usize,
+    /// pushes dropped because an equal-signature state was already queued —
+    /// pure diagnostics (budget tuning)
+    pub deduped: usize,
+    pub capped: bool,
+}
+
+/// JSON text for one aspect leaf value — the leaf of the TS `canon`
+/// recursion (`JSON.stringify(v)`; AspectVal is number | sub-map here).
+/// LOCAL key only (sig / ever_desc keys): the sub-map arm's `k:v` join is not
+/// the TS canon's `k=v` shape, but sub-maps arise solely from Q13 dotted
+/// aspect keys, which the scenario generator never mints — the equivalence
+/// relation is unaffected on the reachable domain.
+fn json_of_aspect(v: &AspectVal) -> String {
+    match v {
+        AspectVal::Num(n) => n.to_string(),
+        AspectVal::Sub(m) => {
+            let parts: Vec<String> = m.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+            format!("{{{}}}", parts.join(","))
+        }
+    }
+}
+
+/// ts: reach-fuzz-lib.ts:237-241 — `canon`: `{k=JSON,…}` with the keys in
+/// default-sort (= UTF-16 code unit, REACH-05) order via `Object.keys().sort()`.
+fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> String {
+    let mut keys: Vec<(&String, &AspectVal)> = pairs.collect();
+    keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
+    let parts: Vec<String> = keys
+        .into_iter()
+        .map(|(k, v)| format!("{k}={}", json_of_aspect(v)))
+        .collect();
+    format!("{{{}}}", parts.join(","))
+}
+
+/// The attrs twin of `canon_pairs` (attr values are `string | number | bool`).
+fn canon_attrs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AttrValue)>) -> String {
+    let mut keys: Vec<(&String, &AttrValue)> = pairs.collect();
+    keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
+    let parts: Vec<String> = keys
+        .into_iter()
+        .map(|(k, v)| {
+            let json = match v {
+                AttrValue::Str(s) => serde_json::to_string(s).expect("a string serializes"),
+                AttrValue::Num(n) => n.to_string(),
+                AttrValue::Bool(b) => b.to_string(),
+            };
+            format!("{k}={json}")
+        })
+        .collect();
+    format!("{{{}}}", parts.join(","))
+}
+
+/// ts: reach-fuzz-lib.ts:243-245 — drop `container` from signatures and
+/// descriptors (it is derivable from relations).
+fn scrubbed(e: &Entity) -> impl Iterator<Item = (&String, &AttrValue)> {
+    e.attrs.iter().filter(|(k, _)| k.as_str() != "container")
+}
+
+/// ts: reach-fuzz-lib.ts:246-282 — the state signature: the SAME fields, the
+/// SAME default-sort discipline. Array elements are pre-joined with ',' and
+/// sorted as strings (Array.prototype.sort's ToString comparison — the sort
+/// input is exactly this unquoted join, not the quoted JSON form). The text
+/// itself is a LOCAL dedup key (never compared cross-language — the TS wraps
+/// the same joins in JSON.stringify quotes); what must match the TS is WHICH
+/// states collide, i.e. the equivalence relation. Every interpolatable value
+/// in the fuzz domain (fixed name/kind/aspect/attr pools, verbs, recipe ids,
+/// integer fields) is comma/bracket-free, so both encodings separate the same
+/// state pairs.
+#[must_use]
+pub fn sig(s: &State) -> String {
+    let name_of = |id: &str| -> String {
+        s.entities
+            .values()
+            .find(|e| e.id == id)
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| id.to_string())
+    };
+    let e: Vec<String> = s
+        .entities
+        .values()
+        .filter(|e| e.dead_action.is_none())
+        .map(|e| {
+            [
+                e.name.clone(),
+                e.kind.clone(),
+                canon_pairs(e.aspects.iter()),
+                canon_attrs(scrubbed(e)),
+            ]
+            .join(",")
+        })
+        .collect();
+    let mut e = e;
+    e.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    // relations are ids — map through names like locked windows (a generated
+    // scenario never RELATEs today, but a signature that ignores a State
+    // field is a latent subtree loss)
+    let r: Vec<String> = s
+        .relations
+        .values()
+        .filter(|rel| rel.dead_action.is_none())
+        .map(|rel| {
+            [
+                name_of(&rel.a),
+                name_of(&rel.b),
+                rel.type_.clone(),
+                rel.value.to_string(),
+            ]
+            .join(",")
+        })
+        .collect();
+    let mut r = r;
+    r.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    let mut f: Vec<String> = s.fired.iter().cloned().collect();
+    f.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    let mut d: Vec<String> = s.decks.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+    d.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    // a window's completion applies ITS recipe's outcomes anchored to w.start
+    // (SET expires!) over ITS role bindings — verb+end+locked alone would
+    // collapse worlds whose completions mint different cards. beginId/clause
+    // stay OUT: they are exploration-order artifacts, not world facts.
+    let w: Vec<String> = s
+        .windows
+        .values()
+        .map(|win| {
+            let mut refs: Vec<String> = win
+                .refs
+                .iter()
+                .flat_map(|(role, list)| {
+                    list.iter().map(move |rref| {
+                        let who = match rref {
+                            Ref::Name { name, .. } => name.clone(),
+                            Ref::Id { id } => name_of(id),
+                            Ref::Param { name, .. } => format!("param:{name}"),
+                        };
+                        format!("{}:{}", role.as_str(), who)
+                    })
+                })
+                .collect();
+            refs.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+            let mut locked: Vec<String> = win.locked.iter().map(|id| name_of(id)).collect();
+            locked.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+            [
+                win.verb.clone(),
+                win.start.to_string(),
+                win.end.to_string(),
+                win.recipe.clone(),
+                refs.join(","),
+                locked.join(","),
+            ]
+            .join(",")
+        })
+        .collect();
+    let mut w = w;
+    w.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    format!(
+        "{{now={},g={},ended={},e=[{}],r=[{}],f=[{}],d=[{}],w=[{}]}}",
+        s.now,
+        s.rng,
+        s.ended.as_ref().map(|en| en.id.clone()).unwrap_or_else(|| "null".to_string()),
+        e.join(","),
+        r.join(","),
+        f.join(","),
+        d.join(","),
+        w.join(","),
+    )
+}
+
+/// ts: reach-fuzz-lib.ts:407-418 — record every living descriptor once.
+fn record(s: &State, ever_names: &mut IndexSet<String>, ever_desc: &mut IndexMap<String, Entity>) {
+    for e in s.entities.values() {
+        if e.dead_action.is_some() {
+            continue;
+        }
+        ever_names.insert(e.name.clone());
+        // attrs belong in the key: a later SET(state.sealed/expires) on the
+        // same living card is a NEW demand-descriptor, not a re-sight of the
+        // old one
+        let key = format!(
+            "{}|{}|{}|{}",
+            e.name,
+            e.kind,
+            canon_pairs(e.aspects.iter()),
+            canon_attrs(scrubbed(e))
+        );
+        if !ever_desc.contains_key(&key) {
+            let mut scrubbed_entity = e.clone();
+            scrubbed_entity.attrs = e
+                .attrs
+                .iter()
+                .filter(|(k, _)| k.as_str() != "container")
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            ever_desc.insert(key, scrubbed_entity);
+        }
+    }
+}
+
+/// ts: reach-fuzz-lib.ts:399-444 — BFS over settleStep with push-time dedup.
+pub fn explore(
+    content: &CompiledContent,
+    dict: &Dictionary,
+    initial: &State,
+    max_steps: usize,
+    max_states: usize,
+) -> Result<Forward> {
+    let mut ever_names: IndexSet<String> = IndexSet::new();
+    let mut ever_desc: IndexMap<String, Entity> = IndexMap::new();
+    let mut visited: IndexSet<String> = IndexSet::new();
+    let mut states_seen = 0usize;
+    let mut deduped = 0usize;
+    let mut capped = false;
+    // ts: `1 + idCounter` — i64, the settleStep id domain
+    let mut id_counter = 0i64;
+    // dedupe at PUSH time: the old pop-time check counted every duplicate pop
+    // against maxStates AND let the queue grow with them — the budget bought
+    // re-sights instead of new worlds. BFS pop order makes the first
+    // (shallowest) push the keeper; equal-signature states record identical
+    // descriptors.
+    let mut queue: VecDeque<(State, usize)> = VecDeque::new();
+    {
+        let key = sig(initial);
+        if visited.insert(key) {
+            record(initial, &mut ever_names, &mut ever_desc);
+            queue.push_back((initial.clone(), 0));
+        } else {
+            deduped += 1;
+        }
+    }
+    while let Some((s, steps)) = queue.pop_front() {
+        if states_seen >= max_states {
+            capped = true;
+            break;
+        }
+        states_seen += 1;
+        if steps >= max_steps || s.ended.is_some() {
+            continue;
+        }
+        for step in candidates(content, dict, &s) {
+            // ts: `settleStep(…, 1 + idCounter, () => `f${idCounter++}`)` —
+            // the first-record id reads the counter BEFORE the idGen closure
+            // ever runs; the closure increments per minted id.
+            let first = 1 + id_counter;
+            let mut gen = || {
+                let out = format!("f{id_counter}");
+                id_counter += 1;
+                out
+            };
+            // settle consumes the state; the rejected branch rides the
+            // rollback clone back (the TS leaves `s` untouched — same thing)
+            let res = settle_step(content, dict, s.clone(), step, first, Some(&mut gen))?;
+            if res.rejected.is_some() {
+                continue;
+            }
+            let key = sig(&res.state);
+            if visited.contains(&key) {
+                deduped += 1;
+                continue;
+            }
+            visited.insert(key);
+            record(&res.state, &mut ever_names, &mut ever_desc);
+            queue.push_back((res.state, steps + 1));
+        }
+    }
+    Ok(Forward {
+        ever_names,
+        ever_desc,
+        states_seen,
+        deduped,
+        capped,
+    })
+}
+
+// ---------- the differential property ----------
+
+/// ts: reach-fuzz-lib.ts:448-455
+pub struct FuzzOutcome {
+    pub seed: u32,
+    pub failures: Vec<String>,
+    pub inconclusive: Vec<String>,
+    pub states_seen: usize,
+    pub deduped: usize,
+    pub probes: usize,
+}
+
+/// ts: reach-fuzz-lib.ts:457-507 — `runFuzzSeed(seed, maxSteps = 8,
+/// maxStates = 500)`: a pure function of its seed (CLI-04 must).
+pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<FuzzOutcome> {
+    let sc = gen_scenario(seed);
+    let dict = core_dictionary();
+    let content = compile_content(&sc.raw, &dict, &sc.entity_kinds)?;
+    let fw = explore(&content, &dict, &sc.initial, max_steps, max_states)?;
+    let mut failures: Vec<String> = Vec::new();
+    let mut inconclusive: Vec<String> = Vec::new();
+    // at most one deep exploration per seed — every failing probe would
+    // otherwise re-run the identical (content, initial, bounds) search
+    let mut deep: Option<Forward> = None;
+    // one Analyzer across the probes — the TS loop's analyzeCard calls share
+    // the module-level worldCache (reach.ts:615) for this (content, initial)
+    // pair; the one-shot convenience would rebuild the facts per probe
+    let analyzer = Analyzer::new(&content, &sc.initial);
+    for p in &sc.probes {
+        let rep = match p.mode {
+            ProbeMode::Name => analyzer.analyze_card(&p.q, CardOptions::default())?,
+            ProbeMode::Demand => analyzer.analyze_card(
+                "",
+                CardOptions {
+                    usable: false,
+                    demand: Some(p.q.clone()),
+                },
+            )?,
+        };
+        // path-export invariants: a proven verdict MUST come with at least one
+        // exported path, and (name mode) every exported root must mint the
+        // probed name — the enumeration and the verdict must never disagree
+        if rep.existence.as_str() == "proven" && rep.paths.is_empty() {
+            failures.push(format!(
+                "seed {seed}: '{}' proven obtainable but the path export is empty",
+                p.q
+            ));
+        }
+        if matches!(p.mode, ProbeMode::Name) {
+            for root in &rep.paths {
+                if root.mints != p.q {
+                    failures.push(format!(
+                        "seed {seed}: exported path mints '{}' but the probe was '{}'",
+                        root.mints, p.q
+                    ));
+                }
+            }
+        }
+        let truth = match p.mode {
+            ProbeMode::Name => fw.ever_names.contains(&p.q),
+            ProbeMode::Demand => {
+                let q = parse_query(&p.q)?;
+                fw.ever_desc.values().any(|e| match_query(e, &q))
+            }
+        };
+        if rep.verdict.as_str() == "unobtainable" && truth {
+            failures.push(format!(
+                "seed {seed}: '{}' judged UNOBTAINABLE but appears in play (verdict {}/{})",
+                p.q,
+                rep.verdict.as_str(),
+                rep.existence.as_str()
+            ));
+        }
+        if rep.verdict.as_str() == "obtainable" && !truth {
+            // second phase — a deeper exhaustive oracle. The analyzer's claims
+            // are existential over UNBOUNDED play (repeatable verbs, recurring
+            // triggers), so a shallow miss can be horizon, not error.
+            if deep.is_none() {
+                deep = Some(explore(&content, &dict, &sc.initial, max_steps + 7, max_states * 20)?);
+            }
+            let deep_fw = deep.as_ref().expect("the deep exploration was just seeded");
+            let truth_deep = match p.mode {
+                ProbeMode::Name => deep_fw.ever_names.contains(&p.q),
+                ProbeMode::Demand => {
+                    let q = parse_query(&p.q)?;
+                    deep_fw.ever_desc.values().any(|e| match_query(e, &q))
+                }
+            };
+            if truth_deep {
+                // analyzer vindicated at depth — base horizon was the limit
+            } else if deep_fw.capped {
+                inconclusive.push(format!(
+                    "seed {seed}: '{}' obtainable but the deep exploration hit its state cap",
+                    p.q
+                ));
+            } else {
+                failures.push(format!(
+                    "seed {seed}: '{}' judged OBTAINABLE but never appears in the exhaustive {}-step exploration (chain: {})",
+                    p.q,
+                    max_steps + 7,
+                    rep.chain.first().map(String::as_str).unwrap_or("?"),
+                ));
+            }
+        }
+    }
+    Ok(FuzzOutcome {
+        seed,
+        failures,
+        inconclusive,
+        states_seen: fw.states_seen,
+        deduped: fw.deduped,
+        probes: sc.probes.len(),
+    })
 }
 
 // ---------- the golden driver (the frozen caller discipline) ----------

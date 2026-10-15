@@ -19,6 +19,10 @@ regex = "1"
 name = "reach-scale"
 path = "src/bin/reach-scale.rs"
 
+[[bin]]
+name = "reach-fuzz"
+path = "src/bin/reach-fuzz.rs"
+
 # plan §2.4 memory constraints (16 GB box): no debug info in dev builds,
 # line tables only for tests (failure backtraces stay locatable, PR2-06).
 [profile.dev]

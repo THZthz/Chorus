@@ -12,7 +12,7 @@ mod common;
 
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
-use chorus::js::cmp_utf16;
+use chorus::core::text::cmp_utf16;
 
 use common::harness::{assert_err_msg, assert_json_eq, canonical};
 

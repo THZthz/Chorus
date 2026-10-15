@@ -4,22 +4,23 @@
 //! Byte identity (law 1): [`save_log`] writes one
 //! `serde_json::to_string(record)` per row — the serde field order on
 //! [`ActionRecord`] and its payload types is pinned, and serde_json's
-//! string escaping matches `JSON.stringify` exactly (`\"` `\\`,
-//! `\b\t\n\f\r`, other <0x20 as lowercase `\u00xx`, DEL and non-ASCII raw —
-//! see js.rs), so save → load → save reproduces the same bytes.
+//! string escaping matches the engine's canonical escape set exactly
+//! (`\"` `\\`, `\b\t\n\f\r`, other <0x20 as lowercase `\u00xx`, DEL and
+//! non-ASCII raw — see `core::jsonw`), so save → load → save reproduces the
+//! same bytes.
 //!
-//! Documented divergences (both sanctioned, neither test-pinned):
+//! Deliberate shapes (neither test-pinned):
 //! - the write is atomic (tmp + rename) rather than an in-place truncate;
 //!   the crash-window behavior differs, the game-visible bytes do not;
 //! - [`load_log`] errors carry the file name and 1-based line number, not
-//!   the bare `JSON.parse` message.
+//!   the bare per-line parse message.
 
 use std::fs;
 use std::path::Path;
 
 use crate::core::types::State;
 use crate::engine::engine::ActionRecord;
-use crate::js::{ChorusError, Result};
+use crate::error::{ChorusError, Result};
 
 /// The append-only action log. Append-only: the invariant is maintained by
 /// the CALLER — undo truncates `records` directly (see [`Log::truncate`]).
@@ -66,7 +67,7 @@ pub fn save_log(path: &Path, records: &[ActionRecord]) -> Result<()> {
         body.push_str(&line);
         body.push('\n');
     }
-    // atomic write (documented divergence, see module doc): write a sibling
+    // atomic write (deliberate, see module doc): write a sibling
     // tmp file, then rename over the target — a reader never sees a partial
     // log. Single-threaded game, so a fixed suffix cannot collide.
     let tmp = path.with_extension("jsonl.tmp");
@@ -77,10 +78,9 @@ pub fn save_log(path: &Path, records: &[ActionRecord]) -> Result<()> {
     Ok(())
 }
 
-/// One JSON record per line. ONLY empty lines are dropped (a
-/// whitespace-only line is truthy in JS and would be fed to JSON.parse,
-/// which then throws — here the error carries the file name and 1-based
-/// line number, the documented divergence).
+/// One JSON record per line. ONLY truly empty lines are dropped; every
+/// other line must parse, and a failure carries the file name and 1-based
+/// line number.
 pub fn load_log(path: &Path) -> Result<Vec<ActionRecord>> {
     let text = fs::read_to_string(path)
         .map_err(|e| ChorusError::new(format!("cannot read {}: {e}", path.display())))?;

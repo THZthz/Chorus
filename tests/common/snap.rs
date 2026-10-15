@@ -29,7 +29,8 @@
 #![allow(dead_code)]
 
 use chorus::core::types::{AspectVal, AttrValue, Aspects, Attrs, Entity, OpenWindow, Relation, State};
-use chorus::js::{cmp_utf16, ordinary_own_property_keys};
+use chorus::core::jsonw::ordinary_own_property_keys;
+use chorus::core::text::cmp_utf16;
 
 /// The full-state JSON image — see the module doc for the frozen surface.
 #[must_use]

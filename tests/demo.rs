@@ -29,7 +29,7 @@ const STEPS: [&str; 6] = [
 /// session layer), then fold the log over the seed state and verify the
 /// replay (Rust against Rust — no external fixtures).
 #[test]
-fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::js::Result<()> {
+fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::error::Result<()> {
     let dict = core_dictionary();
     let content = compile_content(&seed_content(), &dict, &[])?;
 
@@ -89,10 +89,10 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::js::Result<
 /// demo idGen's — a different idGen would print differently but fold
 /// identically.
 #[test]
-fn demo_two_runs_are_byte_identical_and_the_x_mint_spelling_is_the_demo_idgen() -> chorus::js::Result<()> {
+fn demo_two_runs_are_byte_identical_and_the_x_mint_spelling_is_the_demo_idgen() -> chorus::error::Result<()> {
     let dict = core_dictionary();
     let content = compile_content(&seed_content(), &dict, &[])?;
-    let play = || -> chorus::js::Result<Vec<String>> {
+    let play = || -> chorus::error::Result<Vec<String>> {
         let mut sentences = Vec::new();
         let mut state = seed_state();
         let mut id: i64 = 1;

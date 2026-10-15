@@ -9,7 +9,10 @@ use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::core::types::{aspect_get, Aspects, AspectVal, AttrValue, Entity};
-use crate::js::{js_num_parse, js_trim, static_regex, ChorusError, JS_WS_CLASS, Result};
+use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::regex_util::static_regex;
+use crate::core::text::{js_trim, JS_WS_CLASS};
+use crate::error::{ChorusError, Result};
 
 /// A comparison operator: `'>=' | '<=' | '>' | '<' | '=' | '!='`.
 /// Serde derives exist for type-graph completeness only — queries never
@@ -139,7 +142,7 @@ fn split_js_ws(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut start = None;
     for (i, c) in s.char_indices() {
-        if crate::js::js_char_is_ws(c) {
+        if crate::core::text::js_char_is_ws(c) {
             if let Some(st) = start.take() {
                 out.push(&s[st..i]);
             }
@@ -215,7 +218,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             };
             let op = m.get(2).map(|g| parse_cmp_op(g.as_str()));
             let level = match m.get(3) {
-                Some(g) => js_num_parse(g.as_str()),
+                Some(g) => parse_i64_like_f64(g.as_str()),
                 None => 1,
             };
             Ok(QueryTerm::Aspect {
@@ -277,7 +280,7 @@ fn coerce(v: &str) -> AttrValue {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = static_regex(&RE, || Regex::new(r"^-?[0-9]+$"));
     if re.is_match(v) {
-        return AttrValue::Num(js_num_parse(v));
+        return AttrValue::Num(parse_i64_like_f64(v));
     }
     AttrValue::Str(v.to_string())
 }

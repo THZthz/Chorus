@@ -24,7 +24,8 @@ use crate::core::query::match_query;
 use crate::core::r#ref::{name_ref, Ref};
 use crate::core::types::{Entity, State};
 use crate::engine::engine::Step;
-use crate::js::{js_trim, static_regex, JS_WS_CLASS};
+use crate::core::regex_util::static_regex;
+use crate::core::text::{js_trim, JS_WS_CLASS};
 
 /// The parse context: dictionaries, content, state and the default actor.
 pub struct LenientCtx<'a> {

@@ -22,9 +22,10 @@ use crate::core::query::{parse_query, Query};
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::core::types::{Aspects, Attrs};
-use crate::js::{
-    clone_map_in_js_order, js_trim, ordinary_own_property_keys, static_regex, ChorusError, Result,
-};
+use crate::core::jsonw::{clone_map_in_js_order, ordinary_own_property_keys};
+use crate::core::regex_util::static_regex;
+use crate::core::text::js_trim;
+use crate::error::{ChorusError, Result};
 
 // ---------------------------------------------------------------------------
 // authored (raw) content types

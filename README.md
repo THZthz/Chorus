@@ -24,11 +24,12 @@ This repository is a text-only card-game engine implemented in Rust —
 deterministic end to end (same dice rolls, same log bytes, same error text,
 all pinned by the acceptance suite):
 
-- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse` `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3), `types` `clock` `dice` `ref` `roles`
+- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse` `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3), `types` `clock` `dice` `ref` `roles`, `text` (the frozen whitespace/collation classes), `jsonw` (canonical JSON writer + object-key order), `regex_util` `num_parse`
 - `src/content/` — `content` (verbs/slots/recipes/prototypes/triggers as data), `script` (the script compiler: a text file becomes world + logic)
 - `src/engine/` — `engine` (slots → recipes → outcomes → time → events; BEGIN/COMPLETE/WAIT rows, advance passes, station locks; step-atomic REFUSE), `fold` `store` (replay from the log; JSONL persistence)
 - `src/reach/` — the static card-reachability analyzer (`census` `world` `fixpoint` `paths` `render`; obtainable / demand / usability judgments)
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
+- `src/error.rs` / `src/lcg.rs` — the single error channel; the deterministic test-side RNG
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
 - `tests/` — 700+ acceptance tests
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
@@ -166,7 +167,7 @@ any of them is a behavior change, not a cleanup.
 | Q5 | duplicate declarations are inconsistent (entities/endings error; prototypes/templates/verbs silently overwrite; `ANA`/`ana` case-collide) | `script.rs` |
 | Q6 | a BEGIN line whose format∘parse round-trip fails silently opens no window | `engine.rs` / `fold.rs` |
 | Q7 | a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved | `engine.rs` |
-| Q8 | JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex uses the explicit JS class | `js.rs` `JS_WS_CLASS` |
+| Q8 | JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex uses the explicit JS class | `core/text.rs` `JS_WS_CLASS` |
 | Q9 | `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing (`1halfhour` would mis-lex as `1h`) | `lexer.rs` |
 | Q10 | quoted-string `\X` takes the next character literally (`"\n"` is the letter n); a trailing backslash still throws unterminated | `lexer.rs` |
 | Q11 | bare `inspect` shows the first visible card (`startsWith('')` is always true) | `game.rs`, `bin/chorus.rs` |

@@ -9,7 +9,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::core::dict::Dictionary;
-use crate::js::{cmp_utf16, static_regex, ChorusError, Result};
+use crate::core::regex_util::static_regex;
+use crate::core::text::cmp_utf16;
+use crate::error::{ChorusError, Result};
 
 /// A reference to an entity: by bare name (optionally
 /// kind-qualified), by `#id`, or a function parameter (authored-only).

@@ -112,7 +112,7 @@ struct Extra {
 
 /// A one-verb rig:
 /// INSPECT takes actors 1..2 and an optional object.
-fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus::js::Result<CompiledContent> {
+fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus::error::Result<CompiledContent> {
     compile_content(
         &ContentRaw {
             verbs: [(

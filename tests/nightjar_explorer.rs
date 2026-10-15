@@ -333,7 +333,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
 fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
     let world = explorer_world();
     // deterministic LCG so failures reproduce ('NIGH', the RAW state)
-    let mut lcg = chorus::js::Lcg::from_raw_state(0x4e49_4748);
+    let mut lcg = chorus::lcg::Lcg::from_raw_state(0x4e49_4748);
 
     let mut state = clone_state(&world.base);
     let mut records: Vec<ActionRecord> = Vec::new();

@@ -24,7 +24,8 @@ use crate::core::types::{clone_state, AttrValue, Entity, OpenWindow, State};
 use crate::engine::engine::{execute_step, ExecOptions};
 use crate::engine::fold::fold;
 use crate::engine::store::Log;
-use crate::js::{js_trim, Result};
+use crate::core::text::js_trim;
+use crate::error::Result;
 
 use super::lenient::{parse_player_input, LenientCtx, ParsedInput};
 use super::render::{ending_notice, flatten_aspects, journal, pretty, prose_lines};
@@ -567,7 +568,7 @@ impl Game {
                 pool.sort_by(|a, b| {
                     rank(a)
                         .cmp(&rank(b))
-                        .then_with(|| crate::js::cmp_ascii_ci(&a.name, &b.name))
+                        .then_with(|| crate::core::text::cmp_ascii_ci(&a.name, &b.name))
                 });
                 if slot.min >= 1 && (pool.len() as i64) < slot.min {
                     missing = true;

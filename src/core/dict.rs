@@ -6,7 +6,8 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
-use crate::js::{static_regex, ChorusError, Result};
+use crate::core::regex_util::static_regex;
+use crate::error::{ChorusError, Result};
 
 /// The twelve core verbs every script gets for free (spec §4).
 pub const CORE_VERBS: [&str; 12] = [

@@ -26,7 +26,7 @@ use chorus::content::content::{
 };
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
-use chorus::js::Lcg;
+use chorus::lcg::Lcg;
 use chorus::reach::{Analyzer, CardReport, ReachPath};
 
 /// The world plus every card name worth

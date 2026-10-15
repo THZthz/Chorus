@@ -141,7 +141,7 @@ struct Extra {
 
 /// Throwing through — the
 /// load-error assertions feed this Result straight to `assert_err_msg`.
-fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus::js::Result<CompiledContent> {
+fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus::error::Result<CompiledContent> {
     compile_content(
         &ContentRaw {
             verbs: [(
@@ -1235,7 +1235,7 @@ fn undo_to_mid_log_keep_playing_the_counter_resumes_from_the_fold() {
 
 /// Returns the compile `Result`
 /// (the compiler throws through, and several tests assert that throw).
-fn wait_content(dict: &Dictionary, triggers: Vec<TriggerDef>) -> chorus::js::Result<CompiledContent> {
+fn wait_content(dict: &Dictionary, triggers: Vec<TriggerDef>) -> chorus::error::Result<CompiledContent> {
     compile_content(
         &ContentRaw {
             verbs: [(

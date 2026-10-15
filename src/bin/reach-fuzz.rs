@@ -28,10 +28,10 @@ mod reach_fuzz_lib;
 fn js_number(s: &str) -> f64 {
     let t: String = {
         let mut chars: Vec<char> = s.chars().collect();
-        while chars.first().is_some_and(|c| chorus::js::js_char_is_ws(*c)) {
+        while chars.first().is_some_and(|c| chorus::core::text::js_char_is_ws(*c)) {
             chars.remove(0);
         }
-        while chars.last().is_some_and(|c| chorus::js::js_char_is_ws(*c)) {
+        while chars.last().is_some_and(|c| chorus::core::text::js_char_is_ws(*c)) {
             chars.pop();
         }
         chars.into_iter().collect()

@@ -22,7 +22,7 @@ use chorus::engine::engine::{
     apply_record, execute_step, ActionRecord, ExecOptions, Step,
 };
 use chorus::engine::fold::{fold, fold_up_to};
-use chorus::js::Result;
+use chorus::error::Result;
 
 mod common;
 use common::snap::snap;

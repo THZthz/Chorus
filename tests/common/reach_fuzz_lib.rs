@@ -28,7 +28,8 @@ use chorus::core::sentence::{empty_clause, Clause};
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
 #[allow(unused_imports)] // ActionRecord only flows through drive_fuzz_seed (unused in the #[path]-mounted fuzz bin)
 use chorus::engine::engine::{ActionRecord, Step};
-use chorus::js::{Lcg, Result};
+use chorus::error::Result;
+use chorus::lcg::Lcg;
 
 use super::settle::settle_step;
 
@@ -843,7 +844,7 @@ fn json_of_aspect(v: &AspectVal) -> String {
 /// UTF-16 code unit) order.
 fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> String {
     let mut keys: Vec<(&String, &AspectVal)> = pairs.collect();
-    keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
+    keys.sort_by(|a, b| chorus::core::text::cmp_utf16(a.0, b.0));
     let parts: Vec<String> = keys
         .into_iter()
         .map(|(k, v)| format!("{k}={}", json_of_aspect(v)))
@@ -855,7 +856,7 @@ fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> 
 /// bools).
 fn canon_attrs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AttrValue)>) -> String {
     let mut keys: Vec<(&String, &AttrValue)> = pairs.collect();
-    keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
+    keys.sort_by(|a, b| chorus::core::text::cmp_utf16(a.0, b.0));
     let parts: Vec<String> = keys
         .into_iter()
         .map(|(k, v)| {
@@ -909,7 +910,7 @@ pub fn sig(s: &State) -> String {
         })
         .collect();
     let mut e = e;
-    e.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    e.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
     // relations are ids — map through names like locked windows (a generated
     // scenario never RELATEs today, but a signature that ignores a State
     // field is a latent subtree loss)
@@ -928,11 +929,11 @@ pub fn sig(s: &State) -> String {
         })
         .collect();
     let mut r = r;
-    r.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    r.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
     let mut f: Vec<String> = s.fired.iter().cloned().collect();
-    f.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    f.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
     let mut d: Vec<String> = s.decks.iter().map(|(k, v)| format!("{k}:{v}")).collect();
-    d.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    d.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
     // a window's completion applies ITS recipe's outcomes anchored to w.start
     // (SET expires!) over ITS role bindings — verb+end+locked alone would
     // collapse worlds whose completions mint different cards. beginId/clause
@@ -955,9 +956,9 @@ pub fn sig(s: &State) -> String {
                     })
                 })
                 .collect();
-            refs.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+            refs.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
             let mut locked: Vec<String> = win.locked.iter().map(|id| name_of(id)).collect();
-            locked.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+            locked.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
             [
                 win.verb.clone(),
                 win.start.to_string(),
@@ -970,7 +971,7 @@ pub fn sig(s: &State) -> String {
         })
         .collect();
     let mut w = w;
-    w.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    w.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
     format!(
         "{{now={},g={},ended={},e=[{}],r=[{}],f=[{}],d=[{}],w=[{}]}}",
         s.now,

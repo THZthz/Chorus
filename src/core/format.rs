@@ -7,7 +7,7 @@ use crate::core::clock::{format_clock, format_duration};
 use crate::core::r#ref::{format_ref, is_safe_name, sort_refs};
 use crate::core::sentence::{Arg, Clause, IntoTarget, Outcome, Sentence, SentenceKind};
 use crate::core::dict::Dictionary;
-use crate::js::{ChorusError, Result};
+use crate::error::{ChorusError, Result};
 
 /// The canonical spelling of one parsed sentence (spec §5.1).
 pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String> {

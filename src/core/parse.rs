@@ -16,7 +16,7 @@ use crate::core::lexer::{lex, Tok};
 use crate::core::predicate::{parse_predicate_toks, parse_value_expr_toks, ValExpr};
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, Clause, IfArm, IntoTarget, Outcome, Role, Sentence, SentenceKind, Sign};
-use crate::js::{ChorusError, Result};
+use crate::error::{ChorusError, Result};
 
 /// Clause keywords that end the actor/ref scan.
 const CLAUSE_KEYWORDS: [&str; 4] = ["TO", "WITH", "AT", "ABOUT"];

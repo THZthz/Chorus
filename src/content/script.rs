@@ -6,14 +6,16 @@
 //! the §10 warn-loudly sibling (it never throws for a script that compiles).
 //!
 //! Regex-domain freeze: every `(.+)`-style pattern in
-//! this module runs on `split('\n')` + JS-trimmed SINGLE-LINE text, so the
-//! JS-vs-Rust `.` divergence (`\r`/U+2028/U+2029) is unreachable here; these
-//! patterns must NOT be reused on multi-line input.
+//! this module runs on `split('\n')` + [`js_trim`]-trimmed SINGLE-LINE
+//! text, so `.` never sees `\r`/U+2028/U+2029 (line terminators are split
+//! away or trimmed by the frozen whitespace set); these patterns must NOT
+//! be reused on multi-line input.
 //!
 //! Whitespace discipline (Q8): every `\s`/`\S` in these patterns is the
-//! explicit JS class ([`JS_WS_CLASS`]/[`JS_NON_WS_CLASS`]) and every
+//! explicit frozen class ([`JS_WS_CLASS`]/[`JS_NON_WS_CLASS`]) and every
 //! `trim()`/`trimStart()` is [`js_trim`]/a [`js_char_is_ws`] take-while —
-//! JS and Rust disagree on U+0085/U+FEFF exactly reversely.
+//! the frozen set and `char::is_whitespace` disagree on U+0085/U+FEFF
+//! exactly reversely.
 
 use std::sync::OnceLock;
 
@@ -31,10 +33,11 @@ use crate::core::query::aspects_from_pairs;
 use crate::core::types::{
     add_entity, new_state, relation_key, AttrValue, Attrs, Aspects, Entity, Relation, State,
 };
-use crate::js::{
-    grp_opt, grp_text, grp0_start, js_char_is_ws, js_num_parse, js_trim,
-    ordinary_own_property_keys, static_regex, ChorusError, JS_NON_WS_CLASS, JS_WS_CLASS, Result,
-};
+use crate::core::jsonw::ordinary_own_property_keys;
+use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::regex_util::{grp_opt, grp_text, grp0_start, static_regex};
+use crate::core::text::{js_char_is_ws, js_trim, JS_NON_WS_CLASS, JS_WS_CLASS};
+use crate::error::{ChorusError, Result};
 
 // ---------------------------------------------------------------------------
 // script-side types
@@ -104,7 +107,7 @@ fn meta_re() -> &'static Regex {
     })
 }
 
-/// `/^-?\d+$/` (seed gate; JS `\d` is ASCII)
+/// `/^-?[0-9]+$/` (seed gate; ASCII digits only)
 fn seed_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^-?[0-9]+$"))
@@ -480,7 +483,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                                 got
                             )));
                         }
-                        meta.seed = Some(js_num_parse(got));
+                        meta.seed = Some(parse_i64_like_f64(got));
                     }
                     // the else arm: `start` (and only
                     // `start`, the alternation's last word) falls into
@@ -752,7 +755,7 @@ fn parse_entity_line(
                 };
                 pairs.insert(
                     grp_text(&sm, 1).to_string(),
-                    js_num_parse(grp_text(&sm, 2)),
+                    parse_i64_like_f64(grp_text(&sm, 2)),
                 );
             }
             aspects = aspects_from_pairs(&pairs);
@@ -830,7 +833,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
                     };
                     pairs.insert(
                         grp_text(&sm, 1).to_string(),
-                        js_num_parse(grp_text(&sm, 2)),
+                        parse_i64_like_f64(grp_text(&sm, 2)),
                     );
                 }
                 proto.aspects = Some(aspects_from_pairs(&pairs));
@@ -863,7 +866,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
                     grp_text(&dm, 1).to_string(),
                     DeriveAspect {
                         from_object_aspect: grp_text(&dm, 2).to_string(),
-                        minus: grp_opt(&dm, 3).map(js_num_parse).unwrap_or(0),
+                        minus: grp_opt(&dm, 3).map(parse_i64_like_f64).unwrap_or(0),
                     },
                 );
             }
@@ -900,7 +903,7 @@ fn parse_trigger_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<TriggerD
             "line {ln}: triggers expect  ID [once] at (hour|halfhour) N -> OUTCOMES  or  ID on expire of NAME -> OUTCOMES"
         )));
     };
-    let n = js_num_parse(grp_text(&m, 4));
+    let n = parse_i64_like_f64(grp_text(&m, 4));
     if grp_text(&m, 3) == "hour" && n > 23 {
         return Err(ChorusError::new(format!(
             "line {ln}: trigger hour must be 0..23"
@@ -1053,11 +1056,11 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
             "line {ln}: bad count '{count_spec}' (expected 1, 1..2, 2.., 0..1)"
         )));
     };
-    let min = js_num_parse(grp_text(&cm, 1));
+    let min = parse_i64_like_f64(grp_text(&cm, 1));
     // max: the upper-bound group when present; a trailing `..` means
     // unbounded (Infinity); no `..` pins max = min.
     let max = match grp_opt(&cm, 2) {
-        Some(g) => Some(js_num_parse(g)),
+        Some(g) => Some(parse_i64_like_f64(g)),
         None if count_spec.ends_with("..") => None, // Infinity
         None => Some(min),
     };
@@ -1273,7 +1276,7 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
     for (name, verb) in verbs {
         // verb keys are
         // `[A-Z][A-Z0-9_]*` (never integer-like), so insertion order IS the
-        // JS order
+        // canonical key order
         if !verb.slots.is_empty() && verb.recipes.is_empty() {
             warnings.push(format!(
                 "verb {name}: declares slots but no recipes — every action rejects at selection (§6.6)"
@@ -1326,7 +1329,7 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 let Some(slot) = slot_of.get(role) else {
                     continue;
                 };
-                let k = js_num_parse(grp_text(&cap, 3));
+                let k = parse_i64_like_f64(grp_text(&cap, 3));
                 let op = grp_text(&cap, 2);
                 // slot.max: None = Infinity — `k > Infinity` is false and
                 // `k >= Infinity` is false for every finite k

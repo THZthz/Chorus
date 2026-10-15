@@ -24,7 +24,7 @@ use chorus::core::format::format_sentence;
 use chorus::core::fn_expand::{collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH};
 use chorus::core::parse::{parse_function_body, parse_outcomes};
 use chorus::core::sentence::{Outcome, Sentence, SentenceKind};
-use chorus::js::{ChorusError, Result};
+use chorus::error::{ChorusError, Result};
 
 use common::harness::assert_err_msg;
 

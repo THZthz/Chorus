@@ -7,7 +7,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::content::content::{CompiledContent, CompiledDeck, CompiledTrigger};
 use crate::core::query::{match_query, parse_query, Query};
 use crate::core::types::{Aspects, Entity, State};
-use crate::js::Result;
+use crate::error::Result;
 
 use super::census::{
     draw_blinds_bare, draw_deck, object_always, parse_aspects_json, pred_static, site_aspects,

@@ -27,7 +27,8 @@ use chorus::core::sentence::{empty_clause, Clause};
 use chorus::core::types::{clone_state, Entity, State};
 use chorus::engine::engine::{ActionRecord, Step};
 use chorus::engine::fold::fold;
-use chorus::js::{ChorusError, Lcg, Result};
+use chorus::error::{ChorusError, Result};
+use chorus::lcg::Lcg;
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
 use super::settle::settle_step;
@@ -582,7 +583,7 @@ pub fn win_path_states(world: &ExplorerWorld) -> Result<PathStates> {
 /// steps, up to ten states.
 pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>> {
     // 'NIGH' — same LCG discipline as the walk pass (the RAW state,
-    // no XOR — js::Lcg::from_raw_state)
+    // no XOR — lcg::Lcg::from_raw_state)
     let mut lcg = Lcg::from_raw_state(0x4e49_4748);
     let mut state = clone_state(&world.base);
     let mut records: Vec<ActionRecord> = Vec::new();

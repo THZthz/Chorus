@@ -15,7 +15,7 @@ use crate::content::content::{CompiledContent, CompiledTrigger, PrototypeDef};
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
-use crate::js::{ChorusError, Result};
+use crate::error::{ChorusError, Result};
 
 use super::census::{
     collect_sites, draw_deck, object_always, pred_static, Census, RawSite, SiteKind, TrigIndex,

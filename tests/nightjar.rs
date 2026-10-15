@@ -23,7 +23,7 @@ use common::explorer_lib::SCRIPT_TEXT;
 use chorus::content::script::compile_script;
 use chorus::core::dict::core_dictionary;
 use chorus::engine::fold::fold;
-use chorus::js::cmp_utf16;
+use chorus::core::text::cmp_utf16;
 use chorus::session::game::{Game, Turn, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
@@ -34,7 +34,7 @@ fn fresh() -> Game {
 
 /// the auto-settle adapter: after a committed action with open windows, the
 /// settle lines append to the SAME action turn's lines.
-fn auto_settle_line(game: &mut Game, line: &str) -> chorus::js::Result<Turn> {
+fn auto_settle_line(game: &mut Game, line: &str) -> chorus::error::Result<Turn> {
     let t = game.handle_line(line)?;
     let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
         let settle = game.wait()?;
@@ -48,7 +48,7 @@ fn auto_settle_line(game: &mut Game, line: &str) -> chorus::js::Result<Turn> {
     Ok(t)
 }
 
-fn play(game: &mut Game, lines: &[&str]) -> chorus::js::Result<Vec<Turn>> {
+fn play(game: &mut Game, lines: &[&str]) -> chorus::error::Result<Vec<Turn>> {
     let mut turns = Vec::new();
     for l in lines {
         turns.push(auto_settle_line(game, l)?);

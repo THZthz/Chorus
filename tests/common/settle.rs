@@ -21,7 +21,7 @@ use chorus::core::dict::Dictionary;
 use chorus::core::sentence::Arg;
 use chorus::core::types::State;
 use chorus::engine::engine::{execute_step, ActionRecord, ExecOptions, ExecResult, Step};
-use chorus::js::Result;
+use chorus::error::Result;
 
 /// The two `execute_step` calls share the caller's id-generator channel via a
 /// fresh reborrow each time (one generator object seen by both, so ids stay

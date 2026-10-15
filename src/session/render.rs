@@ -9,7 +9,7 @@ use crate::core::sentence::Arg;
 use crate::core::types::{Aspects, Ending};
 use crate::engine::engine::ActionRecord;
 use crate::core::r#ref::Ref;
-use crate::js::Result;
+use crate::error::Result;
 
 /// The canonical journal: one canonical sentence per line.
 #[must_use]

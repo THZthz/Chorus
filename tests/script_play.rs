@@ -14,7 +14,7 @@ use chorus::core::dict::core_dictionary;
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::{Arg, Outcome};
 use chorus::core::types::{AspectVal, Clock};
-use chorus::js::Result;
+use chorus::error::Result;
 
 mod common;
 use common::harness::assert_err_msg;
@@ -1023,8 +1023,8 @@ mod the_game_loop {
         let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
         let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
         // `.sort()` = JS default string sort = UTF-16 code-unit order
-        replayed_names.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
-        played_names.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+        replayed_names.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+        played_names.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
         assert_eq!(replayed_names, played_names);
         assert_eq!(replayed.now, game.state.now);
     }

@@ -23,7 +23,7 @@ use std::process::ExitCode;
 
 use chorus::content::script::{compile_script, CompiledScript};
 use chorus::core::dict::core_dictionary;
-use chorus::js::cmp_utf16;
+use chorus::core::text::cmp_utf16;
 use chorus::reach::{render_report, Analyzer, CardOptions};
 
 fn main() -> ExitCode {
@@ -75,7 +75,7 @@ fn main() -> ExitCode {
 
     // compile the script; a missing file / compile error is a hard error →
     // exit 1. Only the message line is reproducible
-    // (recorded divergence — stderr text, not the stdout freeze).
+    // (deliberate: stderr text is not part of the stdout freeze).
     let dict = core_dictionary();
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -98,7 +98,7 @@ fn main() -> ExitCode {
     // target is ignored by the analyzer under demand).
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
-    let fail = |e: chorus::js::ChorusError| -> ExitCode {
+    let fail = |e: chorus::error::ChorusError| -> ExitCode {
         // an analyze error is fatal → exit 1; the message
         // line is the reproducible part
         eprintln!("Error: {e}");

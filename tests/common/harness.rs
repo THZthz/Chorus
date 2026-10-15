@@ -12,14 +12,14 @@
 use chorus::core::dict::Dictionary;
 use chorus::core::format::format_sentence;
 use chorus::core::parse::parse_sentence;
-use chorus::js::ChorusError;
+use chorus::error::ChorusError;
 
 /// The ChorusError message must
 /// match `pattern` (patterns are JS regex literals copied CHARACTER FOR
 /// CHARACTER — none of the repo's patterns need lookaround/backrefs).
 /// If a pattern ever needs a Rust-regex escaping adjustment, register the
 /// adjustment HERE in one place; none are needed so far.
-pub fn assert_err_msg<T>(res: chorus::js::Result<T>, pattern: &str) {
+pub fn assert_err_msg<T>(res: chorus::error::Result<T>, pattern: &str) {
     let err: ChorusError = match res {
         Ok(_) => panic!("expected error matching /{pattern}/, got Ok"),
         Err(e) => e,

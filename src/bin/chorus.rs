@@ -164,7 +164,7 @@ enum Flow {
 
 /// a Turn's lines go to stdout verbatim — the `« … »` canonical echo is one
 /// of them, preserved byte for byte
-fn turn(t: chorus::js::Result<Turn>, out: &mut impl Write) {
+fn turn(t: chorus::error::Result<Turn>, out: &mut impl Write) {
     match t {
         Ok(t) => {
             for l in &t.lines {
@@ -183,7 +183,7 @@ fn turn(t: chorus::js::Result<Turn>, out: &mut impl Write) {
 
 /// view commands that share the engine's Result channel (story's prose
 /// rendering) — same crash convention as [`turn`]
-fn result(r: chorus::js::Result<Vec<String>>, out: &mut impl Write) {
+fn result(r: chorus::error::Result<Vec<String>>, out: &mut impl Write) {
     match r {
         Ok(lines) => {
             for l in &lines {

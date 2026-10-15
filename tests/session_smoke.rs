@@ -11,7 +11,7 @@
 use chorus::content::content::{compile_content, ContentRaw, EndingDef, RecipeDef, SlotDef, VerbContent};
 use chorus::core::dict::core_dictionary;
 use chorus::engine::engine::ExecOptions;
-use chorus::js::Result;
+use chorus::error::Result;
 use chorus::session::game::{Game, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 use chorus::session::render::{ending_banner, ending_notice, prose_lines};

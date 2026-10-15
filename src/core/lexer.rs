@@ -10,7 +10,9 @@
 //! byte-identical to JS.
 
 use crate::core::clock::parse_duration;
-use crate::js::{js_is_ws, js_num_parse, ChorusError, Result};
+use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::text::js_is_ws;
+use crate::error::{ChorusError, Result};
 
 /// One lexed token.
 #[derive(Debug, Clone, PartialEq)]
@@ -219,7 +221,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             }
             let num_text = units_to_string(&rest[..num_len]);
             // through the f64 middle step, like a JS `Number()` coercion
-            toks.push(Tok::Int { v: js_num_parse(&num_text) });
+            toks.push(Tok::Int { v: parse_i64_like_f64(&num_text) });
             i += num_len;
             continue;
         }

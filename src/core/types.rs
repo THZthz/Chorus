@@ -14,7 +14,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
-use crate::js::{clone_map_in_js_order, ChorusError, Result};
+use crate::core::jsonw::clone_map_in_js_order;
+use crate::error::{ChorusError, Result};
 
 /// The mechanics clock: `day` + `halfhour` (re-exported by `clock`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -388,7 +389,7 @@ pub fn aspect_set(e: &mut Entity, path: &str, v: i64) {
 /// = UTF-16 code-unit order → `cmp_utf16`.
 #[must_use]
 pub fn relation_key(a: &str, b: &str, type_: &str, symmetric: bool) -> String {
-    let (a, b) = if symmetric && crate::js::cmp_utf16(a, b) == std::cmp::Ordering::Greater {
+    let (a, b) = if symmetric && crate::core::text::cmp_utf16(a, b) == std::cmp::Ordering::Greater {
         (b, a)
     } else {
         (a, b)

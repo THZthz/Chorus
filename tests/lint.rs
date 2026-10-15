@@ -32,7 +32,7 @@ entities:
     )
 }
 
-fn compile(text: &str) -> Result<chorus::content::script::CompiledScript, chorus::js::ChorusError> {
+fn compile(text: &str) -> Result<chorus::content::script::CompiledScript, chorus::error::ChorusError> {
     let dict = core_dictionary();
     compile_script(text, &dict)
 }

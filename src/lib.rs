@@ -3,9 +3,12 @@
 //! analyzer.
 //!
 //! Module map: `core` (the engine kernel — parsing, state, queries,
-//! predicates), `content` (script/card compilation), `engine` + `session`
+//! predicates, the frozen text/JSON classes), `content` (script/card
+//! compilation), `engine` + `session`
 //! (the step executor and the headless play surface; no UI layer is part of
-//! this crate), `reach` (static reachability analysis) and the five bins
+//! this crate), `reach` (static reachability analysis), crate-root `error`
+//! (the shared error channel) and `lcg` (the deterministic test-side RNG),
+//! and the five bins
 //! (`bin/chorus` is a line REPL; the other four are fixed-purpose CLI
 //! tools). The curated entry surface is [`prelude`].
 //!
@@ -16,7 +19,8 @@
 pub mod content;
 pub mod core;
 pub mod engine;
-pub mod js;
+pub mod error;
+pub mod lcg;
 pub mod reach;
 pub mod session;
 
@@ -29,10 +33,11 @@ pub mod prelude {
     // content — a script text becomes a world + logic
     pub use crate::content::content::{compile_content, CompiledContent, ContentRaw};
     pub use crate::content::script::{compile_script, lint_script, CompiledScript, ScriptMeta};
-    // core — the dictionary and the JS-semantics error channel
+    // core — the dictionary and the state types
     pub use crate::core::dict::{core_dictionary, Dictionary};
     pub use crate::core::types::{Entity, State};
-    pub use crate::js::{ChorusError, Result};
+    // error — the engine's single error channel
+    pub use crate::error::{ChorusError, Result};
     // engine — one step, the log, the replay
     pub use crate::engine::engine::{execute_step, ActionRecord, ExecOptions, Step};
     pub use crate::engine::fold::{fold, fold_up_to};

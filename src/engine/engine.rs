@@ -30,9 +30,10 @@ use crate::core::types::{
     add_entity, aspect_entry, aspect_get, aspect_set, clone_state, get_alive, oldest_named, relation_key,
     release_name_entry, AspectEntry, AspectVal, Aspects, AttrValue, Attrs, Entity, Ending, OpenWindow, Relation, State,
 };
-use crate::js::{
-    clone_map_in_js_order, jsjson, jsjson_obj_in_js_order, ordinary_own_property_keys, ChorusError, JsJson, Result,
+use crate::core::jsonw::{
+    clone_map_in_js_order, jsjson, jsjson_obj_in_js_order, ordinary_own_property_keys, JsJson,
 };
+use crate::error::{ChorusError, Result};
 
 /// The step input: a quantized `clock` and/or a minute-precise `start_min`,
 /// plus the parsed clauses. `Clone`/`Debug` support callers that copy steps
@@ -1168,8 +1169,8 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 for key in ordinary_own_property_keys(rules) {
                     let rule = &rules[&key];
                     if let Some(base) = aspect_get(obj, &rule.from_object_aspect) {
-                        // JS numbers subtract in f64; saturating subtraction
-                        // is the documented i64 divergence direction
+                        // saturating subtraction at the i64 bounds — the
+                        // engine's defined overflow direction
                         aspects.insert(key, AspectVal::Num(base.saturating_sub(rule.minus)));
                     }
                 }
@@ -1562,8 +1563,8 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     }
                 }
             };
-            // JS numbers add in f64; saturating add is the documented i64
-            // divergence direction
+            // saturating add at the i64 bounds — the engine's defined
+            // overflow direction
             let next = cur.unwrap_or(0).saturating_add(*delta);
             if let Some(e) = ctx.state.entities.get_mut(id) {
                 write!(ctx, e, &AttrValue::Num(next));
@@ -1718,8 +1719,8 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let c = ctx.state.rng;
     let mut total = bonus;
     for i in 0..count {
-        // JS numbers sum in f64; saturating add is the documented i64
-        // divergence direction
+        // saturating add at the i64 bounds — the engine's defined
+        // overflow direction
         total = total.saturating_add(roll_die(ctx.content.seed, c + i, sides));
     }
     ctx.roll = Some(total); // the per-clause binding: `roll` and {roll} read this
@@ -2622,18 +2623,17 @@ fn make_event_record(
 
 // ---------- arithmetic / format helpers (borrow-shape glue) ----------
 
-/// §3.3 accumulation discipline: JS numbers accumulate rng counters, deck
-/// cursors, advance targets, window offsets and wait spans in f64 (exact to
-/// 2^53). i64 `checked_add` overflow is unreachable for any real log — the
-/// documented divergence direction is saturation, with a debug assert on the
-/// way.
+/// §3.3 accumulation discipline: rng counters, deck cursors, advance
+/// targets, window offsets and wait spans accumulate as exact integers.
+/// i64 `checked_add` overflow is unreachable for any real log — the defined
+/// overflow direction is saturation, with a debug assert on the way.
 fn checked_step(a: i64, b: i64, what: &str) -> i64 {
     match a.checked_add(b) {
         Some(v) => v,
         None => {
             debug_assert!(
                 false,
-                "{what}: i64 overflow {a} + {b} (f64 accumulation kept going; documented saturation divergence)"
+                "{what}: i64 overflow {a} + {b} (saturating at the i64 bound)"
             );
             i64::MAX
         }

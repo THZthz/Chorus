@@ -7,7 +7,9 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::js::{js_num_parse, static_regex, ChorusError, Result};
+use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::regex_util::static_regex;
+use crate::error::{ChorusError, Result};
 
 /// The `Clock` type is defined in `types`; this module re-exports it as
 /// part of the clock API.
@@ -74,7 +76,7 @@ pub fn parse_clock(s: &str) -> Result<Clock> {
     };
     // the halfhour goes through the f64 middle step, like a JS `Number()`
     // coercion (huge literals parse lossy)
-    let halfhour = js_num_parse(&m[2]);
+    let halfhour = parse_i64_like_f64(&m[2]);
     // the 47 bound written as HALFHOURS_PER_DAY - 1 (same value,
     // self-documenting)
     if halfhour < 0 || halfhour > HALFHOURS_PER_DAY - 1 {
@@ -82,7 +84,7 @@ pub fn parse_clock(s: &str) -> Result<Clock> {
     }
     // day needs no check: `\d+` cannot lex a sign, so day >= 0 always holds
     Ok(Clock {
-        day: js_num_parse(&m[1]),
+        day: parse_i64_like_f64(&m[1]),
         halfhour,
     })
 }
@@ -116,7 +118,7 @@ pub fn parse_duration(s: &str) -> Result<i64> {
         };
         let whole = m0.as_str();
         joined.push_str(whole);
-        let n = js_num_parse(&c[1]);
+        let n = parse_i64_like_f64(&c[1]);
         min = min.saturating_add(n.saturating_mul(unit_minutes(&c[2])));
     }
     // any gap between matches (an unmatched span) leaves joined != s →

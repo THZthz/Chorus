@@ -15,7 +15,8 @@ use crate::core::clock::format_duration;
 use crate::core::dict::OUTCOME_OPS;
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::sentence::{Arg, IfArm, Outcome};
-use crate::js::{static_regex, ChorusError, Result};
+use crate::core::regex_util::static_regex;
+use crate::error::{ChorusError, Result};
 use std::sync::OnceLock;
 use regex::Regex;
 
@@ -264,11 +265,11 @@ fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<
     let re = static_regex(&RE, || {
         // the whitespace classes are CAPTURE GROUPS (pre = group 1, post = group 3)
         let mut pat = String::from("\\{("); // regex \{(
-        pat.push_str(crate::js::JS_WS_CLASS);
+        pat.push_str(crate::core::text::JS_WS_CLASS);
         pat.push_str("*)");
         pat.push_str("([A-Za-z_][A-Za-z0-9_]*)");
         pat.push('(');
-        pat.push_str(crate::js::JS_WS_CLASS);
+        pat.push_str(crate::core::text::JS_WS_CLASS);
         pat.push_str("*)\\}"); // )}
 
         Regex::new(&pat)

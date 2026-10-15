@@ -5,7 +5,7 @@ use crate::content::content::CompiledContent;
 use crate::core::dict::Dictionary;
 use crate::core::types::{clone_state, State};
 use crate::engine::engine::{apply_record, ActionRecord};
-use crate::js::Result;
+use crate::error::Result;
 
 /// Replay every record in order onto `base`.
 pub fn fold(

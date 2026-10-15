@@ -15,7 +15,10 @@ use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::Outcome;
 use crate::core::lexer::Tok;
 use crate::core::types::{aspect_get, relation_alive, Entity, State};
-use crate::js::{js_num_parse, static_regex, ChorusError, JS_WS_CLASS, Result};
+use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::regex_util::static_regex;
+use crate::core::text::JS_WS_CLASS;
+use crate::error::{ChorusError, Result};
 
 /// Role bindings: role → bound entity IDS (`IndexMap<Role, Vec<String>>`),
 /// never
@@ -535,7 +538,7 @@ impl<'a> PredParser<'a> {
                 key,
             },
             op: parse_cmp_op(op),
-            value: js_num_parse(&v),
+            value: parse_i64_like_f64(&v),
         })
     }
 
@@ -578,7 +581,7 @@ impl<'a> PredParser<'a> {
         static RE: OnceLock<Regex> = OnceLock::new();
         let int_re = static_regex(&RE, || Regex::new(r"^[0-9]+$"));
         if int_re.is_match(&t) {
-            return Ok(ValExpr::Int { v: js_num_parse(&t) });
+            return Ok(ValExpr::Int { v: parse_i64_like_f64(&t) });
         }
         if t == "count" {
             self.expect("(")?;

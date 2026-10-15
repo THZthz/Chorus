@@ -69,11 +69,11 @@ pub(crate) fn pred_static(p: &Pred) -> bool {
 /// (they read as misses in aspect_get either way — see [`site_aspects`]). A
 /// malformed JSON throws, which the universe build turns into the
 /// `opaque_spawn_aspects` flag.
-pub(crate) fn parse_aspects_json(json: &str) -> crate::js::Result<crate::core::types::Aspects> {
+pub(crate) fn parse_aspects_json(json: &str) -> crate::error::Result<crate::core::types::Aspects> {
     let v: serde_json::Value = serde_json::from_str(json)
-        .map_err(|e| crate::js::ChorusError::new(format!("bad aspects pair: {e}")))?;
+        .map_err(|e| crate::error::ChorusError::new(format!("bad aspects pair: {e}")))?;
     let serde_json::Value::Object(map) = v else {
-        return Err(crate::js::ChorusError::new("bad aspects pair: not an object"));
+        return Err(crate::error::ChorusError::new("bad aspects pair: not an object"));
     };
     let mut out = crate::core::types::Aspects::new();
     for (k, val) in map {
@@ -474,10 +474,10 @@ pub(crate) fn draw_blinds_bare(
 ///
 /// JSON values outside the Q13 aspect model (strings/bools/floats/deeper
 /// nesting) parse fine and would be carried along; they are invisible to
-/// aspect_get (non-number reads miss) and can only surface through
-/// JSON.stringify of a demand descriptor. They are kept OUT of the
-/// merged map — same `match_query` results (miss == absent), and no pinned
-/// surface authors such pairs (documented divergence).
+/// aspect_get (non-number reads miss) and can only surface through the
+/// serialized demand descriptor. They are kept OUT of the merged map —
+/// same `match_query` results (miss == absent), and no pinned surface
+/// authors such pairs (a deliberate engine choice).
 pub(crate) fn site_aspects(site: &RawSite) -> Option<crate::core::types::Aspects> {
     let json = site.aspects_json.as_deref()?;
     parse_aspects_json(json).ok()

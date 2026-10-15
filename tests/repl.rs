@@ -31,7 +31,7 @@ const DEMO_SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/demo-world
 fn run_repl(script: &str, lines: &[&str]) -> (Option<i32>, String, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_chorus"))
         .arg(script)
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -262,7 +262,7 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
     use chorus::session::game::Game;
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../scripts/the-nightjar-flyer.txt"
+        "/scripts/the-nightjar-flyer.txt"
     ))
     .expect("the nightjar script");
     let mut game = Game::from_script(&text, core_dictionary()).expect("the script compiles");

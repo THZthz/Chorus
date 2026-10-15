@@ -26,7 +26,7 @@ use common::harness::assert_err_msg;
 /// the script text is data, never precompiled).
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../scripts/the-nightjar-flyer.txt"
+    "/scripts/the-nightjar-flyer.txt"
 ));
 
 fn aspects(pairs: &[(&str, i64)]) -> chorus::core::types::Aspects {

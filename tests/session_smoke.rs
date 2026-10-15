@@ -21,7 +21,7 @@ mod common;
 
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../scripts/the-nightjar-flyer.txt"
+    "/scripts/the-nightjar-flyer.txt"
 ));
 
 /// ts: test/script-play.test.ts:18-29 — the v0.5 test adapter: settle each

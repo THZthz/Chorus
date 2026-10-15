@@ -21,7 +21,7 @@ fn run(bin: &str, args: &[&str]) -> (Option<i32>, String, String) {
     };
     let out = Command::new(exe)
         .args(args)
-        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("the bin spawns");
     (

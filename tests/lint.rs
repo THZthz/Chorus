@@ -12,7 +12,7 @@ use common::harness::assert_err_msg;
 /// script text = data).
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../scripts/the-nightjar-flyer.txt"
+    "/scripts/the-nightjar-flyer.txt"
 ));
 
 /// ts: test/lint.test.ts:13-22 — the shared base script. Byte-shape

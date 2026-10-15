@@ -20,14 +20,18 @@ scripts by hand.
 
 ## Layout
 
-- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse` `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3), `types` `clock` `dice` `ref`
+This repository is the Rust port of the original TypeScript engine — a
+byte-identical rewrite (same dice rolls, same log bytes, same error text;
+the port process and its cross-language differential evidence live in
+[`docs/rust-port/plan.md`](docs/rust-port/plan.md)):
+
+- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse` `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3), `types` `clock` `dice` `ref` `roles`
 - `src/content/` — `content` (verbs/slots/recipes/prototypes/triggers as data), `script` (the script compiler: a text file becomes world + logic)
 - `src/engine/` — `engine` (slots → recipes → outcomes → time → events; BEGIN/COMPLETE/WAIT rows, advance passes, station locks; step-atomic REFUSE), `fold` `store` (replay from the log; JSONL persistence)
-- `src/reach/` — the static card-reachability analyzer (obtainable / demand / usability judgments)
-- `src/ui/` — `lenient` (lenient English-ish player input → canonical steps), `play` (the game loop; one turn = handleLine), `render` (journal / prose / text cards — L3 projections), `tui` (the terminal UI (Ink); readline fallback when stdin or stdout is not a TTY)
-- `tools/` — CLIs: `lint-cli` (script linter), `reach-cli` (reachability reports), `reach-fuzz-cli` (seeded differential campaigns)
-- `test/seed.ts` — the sample world (the spec's flagship examples) as a test fixture
-- `scripts/the-forgotten-house.txt` — a whole game as one text file
+- `src/reach/` — the static card-reachability analyzer (`census` `world` `fixpoint` `paths` `render`; obtainable / demand / usability judgments)
+- `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
+- `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
+- `tests/` — 700+ acceptance tests ported 1:1 from the original vitest suite, plus `tests/goldens/` (276 cross-language golden replays, byte-compared)
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   winnable in 9 commands)
@@ -35,9 +39,8 @@ scripts by hand.
 ## Play
 
 ```sh
-npm run play                    # pick a script interactively (falls back to the first bundled script when piped)
-npm run play -- scripts/the-nightjar-flyer.txt   # or name one directly
-npm run play -- my-game.txt     # any script
+cargo run --bin chorus -- scripts/the-nightjar-flyer.txt   # or any script file
+cargo run --bin chorus -- my-game.txt
 ```
 
 ```
@@ -46,7 +49,6 @@ you are MARCH · at GUARD VAN · day 0:42 · 9 cards
 here: THE GUARD · THE INQUEST
 try: read THE MANIFEST · talk with THE GUARD · explore DINING CAR
 verbs: read · talk · explore · use on · travel to · wait · study · work · mansus · locate at · dream · acquire
-[1 look] [2 cards] [3 story] [4 journal] [5 undo] [6 wait] [7 quit]  ← number + enter
 ──────────────────────────────────────────────────────────
 § unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna
 » read the manifest
@@ -77,9 +79,10 @@ Characters you have not talked to appear as archetypes (`THE GUARD`) — the
 name is learned by meeting them — and the corridor has directions: places
 sit on a table laid out by `north`/`south`/`east`/`west` links, and a travel
 verb only reaches the next car. Everything the player can do is visible in
-the live area — the verb vocabulary, the cards sharing the player's
-location, and number buttons for the meta views (look, cards, story,
-journal, undo, quit); tab completes verbs and card names.
+the live area — the verb vocabulary and the cards sharing the player's
+location; the meta views (`look`, `cards`, `story`, `journal`, `undo`,
+`wait`, `quit`) are one-word commands, and `inspect <card>` prints any card
+in play.
 
 Committed actions **process** over their verb's duration as *parallel
 stations*: committing an action opens a processing window — the verb and
@@ -132,25 +135,25 @@ verbs:
 ## Run
 
 ```sh
-npm install
-npm test          # vitest — spec examples as acceptance tests
-npm run typecheck
-npx tsx examples/demo.ts
+cargo test                # 700+ acceptance tests (the original suite, ported 1:1) + 276 golden replays
+cargo test --test demo    # the demo world's fold-verify smoke
+cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```
 
 ## Try an action
 
-```ts
-const r = executeStep(content, dict, state, step, { firstRecordId: log.nextRecordId })
-// r.rejected !== null  → slot/recipe rejection, nothing logged
-// r.records            → action (+ event) rows; append to the log, state = r.state
+```rust
+let r = execute_step(&content, &dict, state, step,
+                     ExecOptions { first_record_id: log.next_record_id(), id_gen: None })?;
+// r.rejected.is_some() → slot/recipe rejection, nothing logged
+// r.records           → action (+ event) rows; append to the log, state = r.state
 ```
 
 ## Appendix: the frozen quirk list (Q1–Q17)
 
 The engine has bugs and inconsistencies that are, by now, behavior: tests pin
 them, logs encode them, and "fixing" one would break byte-identity with every
-recorded log. The Rust port (`rust/`) therefore reproduces each one as-is —
+recorded log. The Rust port (this repository) therefore reproduces each one as-is —
 ported rows carry a `// QUIRK(<finding-id>):` comment at their ported site
 (rows that are deliberately *not* ported dead code carry a `// NOTE` instead),
 and changing any of them is a behavior change, not a cleanup. Full

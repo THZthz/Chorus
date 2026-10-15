@@ -36,7 +36,7 @@ use super::settle::settle_step;
 /// script text is DATA (ENG-22): embedded by path, never precompiled.
 pub const SCRIPT_TEXT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../scripts/the-nightjar-flyer.txt"
+    "/scripts/the-nightjar-flyer.txt"
 ));
 
 /// The world bundle — ts: explorer-lib.ts:20-24 (`dict`, `scriptText`,

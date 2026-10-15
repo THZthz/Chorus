@@ -2671,7 +2671,9 @@ fn js_truthy(v: Option<&AttrValue>) -> bool {
 /// `JSON.stringify(aspects)` — ts: engine.ts:524/585. Plain JSON.stringify
 /// applies the JS key order (OrdinaryOwnPropertyKeys), so the map goes
 /// through [`jsjson_obj_in_js_order`] (PR2-05; Node-verified in js.rs).
-fn aspects_to_json(a: &Aspects) -> String {
+/// pub(crate): the reach analyzer re-uses this exact frozen format for its
+/// provenance/demand chain lines (reach.ts:1150/1207/1321/1355).
+pub(crate) fn aspects_to_json(a: &Aspects) -> String {
     let mut m: IndexMap<String, JsJson> = IndexMap::new();
     for (k, v) in a {
         m.insert(

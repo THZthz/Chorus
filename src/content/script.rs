@@ -446,6 +446,8 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut decks: Vec<DeckRaw> = Vec::new();
     let mut functions: Vec<FunctionDef> = Vec::new();
     let mut entity_names: IndexSet<String> = IndexSet::new();
+    // minted script id (`s_{name.to_lowercase()}`) → the name holding it
+    let mut minted_ids: IndexMap<String, String> = IndexMap::new();
 
     let mut section: Option<String> = None;
     let mut verb_name: Option<String> = None;
@@ -517,8 +519,12 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 parse_entity_line(t, ln + 1, dict, &mut entities, &mut relations)?;
                 // duplicate entity declarations share one s_<name> id and
                 // would silently overwrite — a load error, not a
-                // last-write-wins (§9.14). QUIRK(Q5): the check is
-                // case-SENSITIVE while the minted id is not.
+                // last-write-wins (§9.14). Names are case-exact (§9.14), so
+                // the name check is case-sensitive — but the minted id is
+                // not (`s_{name.to_lowercase()}`, the compile-side id
+                // scheme), so a second check pins id uniqueness: ANA/ana
+                // both mint s_ana and collide. (Formerly QUIRK(Q5): only
+                // the case-exact half errored.)
                 if entities.len() > declared {
                     let name = match entities.last() {
                         Some(e) => e.name.clone(),
@@ -530,13 +536,28 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                             ln + 1
                         )));
                     }
-                    entity_names.insert(name);
+                    let minted = format!("s_{}", name.to_lowercase());
+                    if let Some(holder) = minted_ids.get(&minted) {
+                        return Err(ChorusError::new(format!(
+                            "line {}: minted id '{minted}' already in use ('{holder}' vs '{name}')",
+                            ln + 1
+                        )));
+                    }
+                    entity_names.insert(name.clone());
+                    minted_ids.insert(minted, name);
                 }
             }
             "prototypes" => {
                 let (key, proto) = parse_prototype_line(t, ln + 1, dict)?;
-                // QUIRK(Q5): duplicate prototype declarations are a
-                // silent last-write-wins (the later insert overwrites)
+                // duplicates are a load error, the same uniform rule as
+                // entities/endings (formerly QUIRK(Q5): a silent
+                // last-write-wins — the later insert overwrote)
+                if prototypes.contains_key(&key) {
+                    return Err(ChorusError::new(format!(
+                        "line {}: duplicate prototype '{key}'",
+                        ln + 1
+                    )));
+                }
                 prototypes.insert(key, proto);
             }
             "decks" => {
@@ -565,12 +586,16 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         ln + 1
                     )));
                 };
-                // QUIRK(Q5): duplicate template declarations silently
-                // overwrite
-                templates.insert(
-                    grp_text(&m, 1).to_string(),
-                    grp_text(&m, 2).to_string(),
-                );
+                // duplicates are a load error, the same uniform rule as
+                // entities/endings (formerly QUIRK(Q5): a silent overwrite)
+                let key = grp_text(&m, 1).to_string();
+                if templates.contains_key(&key) {
+                    return Err(ChorusError::new(format!(
+                        "line {}: duplicate template '{key}'",
+                        ln + 1
+                    )));
+                }
+                templates.insert(key, grp_text(&m, 2).to_string());
             }
             "verbs" => {
                 // verb header: indent 2, UPPER_NAME:
@@ -582,8 +607,16 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                             ln + 1
                         )));
                     }
-                    // QUIRK(Q5): a repeated verb header silently RESETS
-                    // the block (a fresh empty `VerbContent` replaces the old)
+                    // a repeated verb header is a load error, the same
+                    // uniform rule as entities/endings (formerly
+                    // QUIRK(Q5): the block silently RESET — a fresh empty
+                    // `VerbContent` replaced the old)
+                    if verbs.contains_key(&name) {
+                        return Err(ChorusError::new(format!(
+                            "line {}: duplicate verb declaration '{name}'",
+                            ln + 1
+                        )));
+                    }
                     verbs.insert(name.clone(), VerbContent::default());
                     verb_name = Some(name);
                     in_recipes = false;

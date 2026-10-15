@@ -118,6 +118,54 @@ fn a_typo_d_slot_role_is_a_load_error_not_a_silent_never_matching_slot() {
     );
 }
 
+#[test]
+fn duplicate_prototype_declarations_are_a_load_error_not_last_write_wins() {
+    // Q5 fixed: prototypes used to silently overwrite (the later insert won);
+    // they now error like entities/endings. The fixture trips exactly ONE
+    // error — both lines are individually legal (no slot typo to double-fire
+    // into Q4's check).
+    assert_err_msg(
+        compile(&base(
+            "prototypes:\n  SPARK is idea\n  SPARK is idea with secret:1",
+        )),
+        r"line \d+: duplicate prototype 'SPARK'",
+    );
+}
+
+#[test]
+fn duplicate_template_declarations_are_a_load_error_not_last_write_wins() {
+    assert_err_msg(
+        compile(&base(
+            "templates:\n  READ says \"{actors} read {object}.\"\n  READ says \"{actors} skim {object}.\"",
+        )),
+        r"line \d+: duplicate template 'READ'",
+    );
+}
+
+#[test]
+fn a_repeated_verb_header_is_a_load_error_not_a_silent_reset() {
+    // a repeated header used to silently RESET the block (a fresh empty
+    // VerbContent replaced the configured one)
+    assert_err_msg(
+        compile(&base(
+            "verbs:\n  READ:\n    object: 1 kind:text\n    recipes:\n      default -> NARRATE \"one.\"\n  READ:\n    object: 1 kind:text\n    recipes:\n      default -> NARRATE \"two.\"\n",
+        )),
+        r"line \d+: duplicate verb declaration 'READ'",
+    );
+}
+
+#[test]
+fn case_colliding_entity_names_are_a_minted_id_collision_load_error() {
+    // Q5's fourth half: names are case-exact (§9.14), so 'ana'/'ANA' pass
+    // the name dedup — but both mint the script id s_ana
+    // (`s_{name.to_lowercase()}`), and the second add_entity would silently
+    // clobber the first. The id collision is its own load error.
+    assert_err_msg(
+        compile(&base("  ana is character at HOUSE\n  ANA is character at HOUSE")),
+        r"line \d+: minted id 's_ana' already in use \('ana' vs 'ANA'\)",
+    );
+}
+
 // ---------------------------------------------------------------------------
 // lint — warnings that never throw
 // ---------------------------------------------------------------------------

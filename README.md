@@ -164,7 +164,7 @@ any of them is a behavior change, not a cleanup.
 | Q2 | the predicate string tokenizer silently swallows illegal characters (`aspect:x >= @3` ≡ `aspect:x>=3`) | `predicate.rs` |
 | Q3 | `arg()` cannot read a param key (`SET(myparam = 3)` is a parse error) while SPAWN args support one | `parse.rs` |
 | Q4 | FIXED (batch 1): slot roles are validated at load — a typo'd slot is a load error naming the six roles, not a silent never-match | `script.rs` |
-| Q5 | duplicate declarations are inconsistent (entities/endings error; prototypes/templates/verbs silently overwrite; `ANA`/`ana` case-collide) | `script.rs` |
+| Q5 | FIXED (batch 1): duplicate declarations are a uniform load error in every section (entities, prototypes, templates, verbs, decks, endings); `ANA`/`ana` case-collide on the minted id `s_ana` and that collision is its own load error | `script.rs` |
 | Q6 | a BEGIN line whose format∘parse round-trip fails silently opens no window | `engine.rs` / `fold.rs` |
 | Q7 | a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved | `engine.rs` |
 | Q8 | JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex uses the explicit JS class | `core/text.rs` `JS_WS_CLASS` |

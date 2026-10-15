@@ -1739,7 +1739,8 @@ Two invariants keep the mapping safe:
 A whole game is one text file: meta lines, then section blocks of
 sentence-like declarations. `#` starts a comment; blank lines are ignored.
 `compileScript` parses and compiles it once, failing loudly at load time
-(unknown kind, unregistered verb or relation type, bad grammar). Meta lines:
+(unknown kind, unregistered verb or relation type, bad grammar, duplicate
+declaration). Meta lines:
 `script:` (title), `player:` (default actor), `goal:` (shown up front),
 `start: d:h` (initial clock), and `seed: N` — the §9.41 dice seed, an
 integer, default 0.
@@ -1797,10 +1798,18 @@ Rules:
 
 - **Entity line**: `NAME is KIND [stackable] [with aspect:level, …]
   [at|in PLACE]` (trailing `with`/`at`/`in` clauses in either order; the
-  `stackable` keyword sits before them, §9.38). Script ids are `s_<name>`;
-  containers resolve by name after all entities are read. Names must be
+  `stackable` keyword sits before them, §9.38). Script ids are `s_<name>` —
+  the name lowercased, so two names differing only in case mint the same id
+  (`ANA`/`ana` → `s_ana`); since names are case-exact (§9.14), the id
+  collision is its own load error, naming both names. Containers resolve by
+  name after all entities are read. Names must be
   unique among the living (§9.14) — except a `stackable` entity line, whose
   name is a pool (§9.38) — and are written as-is — prefer `UPPER_SNAKE`.
+- **Duplicate declarations are load errors in every section** — entities,
+  prototypes, templates, verbs, decks, endings, functions alike (the
+  functions/decks rule generalized): a second declaration of the same key
+  fails at load naming the key, it never silently overwrites. (Verbs: a
+  repeated verb header, not a body line, is the duplicate.)
 - **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
   dictionary; symmetric/directed storage follows its definition (§4.2).
 - **Verb lexemes are fixed by the dictionary**: a `verbs:` block configures

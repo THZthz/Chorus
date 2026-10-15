@@ -104,6 +104,20 @@ fn a_name_declared_both_as_entity_and_prototype_can_never_spawn_load_error() {
     );
 }
 
+#[test]
+fn a_typo_d_slot_role_is_a_load_error_not_a_silent_never_matching_slot() {
+    // Q4 fixed (spec §4.3's six-role list + §10's fail-loudly rule): the slot
+    // key is validated against the role vocabulary at load; previously the
+    // role was cast unvalidated and the slot compiled only to never match.
+    // (The fixture trips exactly ONE error — the count and query are legal.)
+    assert_err_msg(
+        compile(&base(
+            "verbs:\n  READ:\n    actrs: 1 kind:character\n    object: 1 kind:text\n    recipes:\n      default -> NARRATE \"read.\"\n",
+        )),
+        r"line \d+: bad slot role 'actrs' \(expected one of actors, object, with, at, about, to\)",
+    );
+}
+
 // ---------------------------------------------------------------------------
 // lint — warnings that never throw
 // ---------------------------------------------------------------------------

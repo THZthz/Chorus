@@ -30,6 +30,7 @@ use crate::content::content::{
 use crate::core::clock::{abs_min, parse_clock, parse_duration, Clock};
 use crate::core::dict::{Dictionary, KINDS};
 use crate::core::query::aspects_from_pairs;
+use crate::core::roles::Role;
 use crate::core::types::{
     add_entity, new_state, relation_key, AttrValue, Attrs, Aspects, Entity, Relation, State,
 };
@@ -1044,6 +1045,16 @@ fn parse_ending_line(t: &str, ln: usize) -> Result<(String, EndingDef)> {
 
 /// `ln` is the 1-BASED line number.
 fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
+    // §4.3's six-role list + §10's "failing loudly at load time (… bad
+    // grammar)": a slot key outside the role vocabulary is a load error —
+    // formerly QUIRK(Q4), the role was cast unvalidated and a typo'd slot
+    // compiled only to silently never match.
+    if Role::from_lower(role).is_none() {
+        return Err(ChorusError::new(format!(
+            "line {ln}: bad slot role '{role}' (expected one of {})",
+            ROLE_NAMES.join(", ")
+        )));
+    };
     let trimmed = js_trim(rest);
     let Some(m) = slot_line_re().captures(trimmed) else {
         return Err(ChorusError::new(format!(
@@ -1065,8 +1076,7 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
         None => Some(min),
     };
     Ok(SlotDef {
-        // QUIRK(Q4): the role is cast, never validated — a typo'd role
-        // compiles and silently never matches
+        // validated above via Role::from_lower — every slot role binds
         role: role.to_string(),
         min,
         max,

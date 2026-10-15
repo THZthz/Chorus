@@ -544,13 +544,18 @@ canonical record is identical either way.
 
 ### 6.1 Slot cardinality: how many cards a role takes
 
-A slot declares a **count**, an optional visibility flag, and a query every
-member must satisfy. One slot per line (script syntax, §10):
+A slot declares a **role**, a **count**, an optional visibility flag, and a
+query every member must satisfy. One slot per line (script syntax, §10):
 
 ```
 slot  := role ":" count [ query ]
+role  := "actors" | "object" | "with" | "at" | "about" | "to"   (* §4.3's six roles, exact lowercase *)
 count := int [ ".." [ int ] ]                    (* "1", "2", "1..2", "2..", "0..1" *)
 ```
+
+A slot key outside the six-role vocabulary is a load error naming the valid
+roles (§10's "failing loudly at load time") — never a slot that compiles and
+silently never matches.
 
 ```
 verb READ:

@@ -40,7 +40,7 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 11 | built | ``unknown relation type '${type}' (register it in the dictionary)`` | T1.5/W3 对账 | src/core/dict.ts:66 | rust/src/core/dict.rs `relation_def` |
 | 12 | built | ``${what} '${lexeme}' must be UPPER_SNAKE`` | 变体钉于 test/decks.test.ts:631（deck 版）；dict 版 T1.5 对账 | src/core/dict.ts:73 | rust/src/core/dict.rs `assert_nameable` |
 | 13 | built | ``${what} '${lexeme}' collides with a verb`` | T1.5/W3 对账 | src/core/dict.ts:75 | rust/src/core/dict.rs `assert_nameable` |
-| 14 | built | ``a function parameter is authored form only — calls expand at load (§9.40)`` | T1.5/W3 对账（formatRef(param) 抛点） | src/core/ref.ts:39 | rust/src/core/ref.rs `format_ref`、rust/src/core/format.rs `format_arg`（param 分支同文） |
+| 14 | pinned | ``a function parameter is authored form only — calls expand at load (§9.40)`` | test/functions.test.ts:535（`/a function parameter is authored form only/`，经 format.ts:93 format_arg param 同文分支；T3.7A 升 pinned）→ rust/tests/functions.rs `the_formatter_refuses_authored_form_a_call_node_and_a_parameter_both_throw`（:1328 逐字） | src/core/ref.ts:39 | rust/src/core/ref.rs `format_ref`、rust/src/core/format.rs `format_arg`（param 分支同文） |
 | 15 | built | ``bad query term '${raw}' (expected kind:/aspect:/state:/name:)`` | T1.5/W3 对账 | src/core/query.ts:26/54 | rust/src/core/query.rs `parse_term` |
 | 16 | built | ``bad name term '${raw}' (expected name:<NAME>)`` | T1.5/W3 对账 | src/core/query.ts:33 | rust/src/core/query.rs `parse_term` |
 | 17 | pinned | ``bad name term '${raw}' (name:X is an exact-case match — put the comparison outside: count(name:X) >= 1)`` | test/query-predicate.test.ts:231-233（`/bad name term/` ×3）→ rust/tests/query_predicate.rs `a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_name` | src/core/query.ts:38 | rust/src/core/query.rs `parse_term` |
@@ -99,7 +99,7 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 | 70 | built | ``function '${fn}': parameter '${name}' stands in an INTO position — the call supplies a ${t}, not a ref or role`` | T1.5/W3 对账 | src/core/parse.ts:750-753 | rust/src/core/fn_expand.rs `subst_arg` |
 | 71 | built | ``function '${fn}': parameter '${name}' stands in an IF condition — the call supplies a ${t}, not a number`` | T1.5/W3 对账 | src/core/parse.ts:832-835 | rust/src/core/fn_expand.rs `subst_expr` |
 | 72 | built | internal 家族（``internal: call to undeclared function '${name}' survived parsing`` 等 5 处） | （tripwire/不可达，无测试可达） | src/core/parse.ts:391/694/721/742/747/795/828 | rust/src/core/parse.rs、rust/src/core/fn_expand.rs |
-| 73 | built | ``an IF outcome is authored form only — the log records the taken branch (§9.39)`` 及 FN/ROLL/DRAW/vexpr/param 五姊妹 | T1.5/W3 对账 | src/core/format.ts:41-44/92/93 | rust/src/core/format.rs `format_outcome`/`format_arg` |
+| 73 | pinned | ``an IF outcome is authored form only — the log records the taken branch (§9.39)`` 及 FN/ROLL/DRAW/vexpr/param 五姊妹 | test/functions.test.ts:531（FN 姊妹 `/a function call is authored form only/`；T3.7A 升 pinned，其余变体仍对账）→ rust/tests/functions.rs `the_formatter_refuses_authored_form_a_call_node_and_a_parameter_both_throw`（:1307 逐字） | src/core/format.ts:41-44/92/93 | rust/src/core/format.rs `format_outcome`/`format_arg` |
 | 74 | pinned | ``functions recurse: ${cycle.join(' -> ')} — calls expand at load time, so a recursion cycle never terminates; rewrite without the cycle`` | test/functions.test.ts:291-301（`/functions recurse: a -> b -> a/`、`/functions recurse: self -> self/`）→ rust/tests/functions.rs `mutual_recursion_is_a_load_error_naming_the_cycle_self_recursion_names_itself`（先行冻结于 rust/tests/fn_expand_direct.rs；W2 经 script_play.rs 真路径复核） | src/content/content.ts:559-562 | rust/src/content/content.rs `build_fn_table` pass 3 |
 | 75 | pinned | ``function '${name}' sits ${d} calls deep — the nesting cap is ${MAX_FN_DEPTH}`` | test/functions.test.ts:303-310（`/function 'f1' sits 9 calls deep — the nesting cap is 8/`）→ rust/tests/functions.rs `a_depth_8_chain_of_distinct_functions_loads_depth_9_is_a_load_error`（先行冻结于 rust/tests/fn_expand_direct.rs；W2 经 script_play.rs 真路径复核） | src/content/content.ts:586 | rust/src/content/content.rs `build_fn_table` pass 3 |
 | 76 | built | ``function '${tpl.name}': call to undeclared function '${c}'`` | （无 TS toThrow 直锚——parse 前端已拒未知调用，此为 content.ts pass-3 防御 tripwire；模板冻结于 rust/tests/fn_expand_direct.rs `an_undeclared_call_in_a_body_is_named_by_its_declaring_function`，手造 FN 节点可达） | src/content/content.ts:548 | rust/src/content/content.rs `build_fn_table` pass 3 |
@@ -115,7 +115,7 @@ W1 将 src/core 全部错误构造点移植为 `ChorusError::new`（状态 **bui
 - **升 pinned（11 行）**：6、7、8（clock 三消息，锚 rust/tests/clock.rs）；52、54、64、65（parse 域，锚 rust/tests/sentence.rs；行 65 仅 `/expected an integer/` 首变体）；17、29、30、31（query/predicate 域，锚 rust/tests/query_predicate.rs；行 29 仅 exists 变体）。
 - **仍待对账（行 9、11、12(dict 版)、13、14、15、16、18-28、32-51、53、55-63、66-73 及 65/29 的次要变体）**：本波 3 个测试文件无可达断言，锚点在 W3 移植的 decks/conditionals/dice/engine/functions 各文件（行 33-42 的 lint 家族在 conditionals.test.ts，行 66-71 在 functions.test.ts，均在 W3）。
 - **新增 3 行（74-76，W2 content.rs 构造点）**：fn_expand 直测子集（PR3-01）在 T1.5 先行把宏展开的环/深度/未声明调用三条消息模板逐字钉进 rust/tests/fn_expand_direct.rs——同 dice.rs 行 1 的"构造点未到、模板先冻结"先例；行 74/75 的 TS 锚（functions.test.ts:291-310）随 W3 全量移植复核。
-- 对账口径（§7 规则 13(d)）：本波移植的 toThrow 计数 = sentence 9 + clock 9 + query-predicate 6 = 24 条 toThrow 断言（与 TS 原文逐条对应）；其中 10 行升级 pinned，其余断言命中的模板已在表行内登记（多断言共钉一行，如行 54 的三处 /reserved/ 抽样）。
+- 对账口径（§7 规则 13(d)）：本波移植的 toThrow 计数 = sentence 9 + clock 9 + query-predicate 6 = 24 条 toThrow 断言（与 TS 原文逐条对应）；其中 11 行升级 pinned（W3 review should-fix-1 勘误：原误记 10——上行列举的 6/7/8、52/54/64/65、17/29/30/31 共 11 行），其余断言命中的模板已在表行内登记（多断言共钉一行，如行 54 的三处 /reserved/ 抽样）。
 
 ## W2 增补（T2.1–T2.3，content/script.rs + content/content.rs 构造点全量落地；行 77–111）
 
@@ -198,7 +198,7 @@ T3.6 对账备注：
 
 ## T3.7A 增补（T3.7 测试包 A：engine/parallel/functions 三文件移植；行 129–141）
 
-三文件全量落位 rust/tests/{engine,parallel,functions}.rs（74+13+27 test）。engine.test.ts 涉及的 **8 条 toThrow**（:484/:488/:869/:870/:1002×2/:1007×2）升行 56/61/114 为 pinned 并新增行 138；functions.test.ts 的 **22 条 toThrow** 升行 33/36/66/67/68/74/75/114/117/121 为 pinned；parallel.test.ts 无 toThrow（其 rejected 消息钉升行 8/9/10）。其余 rejected/refusal 消息断言（toMatch 口径）新增行 129–137/139–141。全部锚号已钉准（§7 规则 13(d) 对账：本波 toThrow 计数 = 8 + 0 + 22 = 30 条，另 1 条 `.not.toThrow`（functions.test.ts:236）非消息口径）。
+三文件全量落位 rust/tests/{engine,parallel,functions}.rs（74+13+27 test）。engine.test.ts 涉及的 **8 条 toThrow**（:484/:488/:869/:870/:1002×2/:1007×2）升行 56/61/114 为 pinned 并新增行 138；functions.test.ts 的 **24 条 toThrow**（25 − 1 条 `.not.toThrow`；W3 review should-fix-1 勘误：初记 22，漏 ：531/:535 两条 authored-form）升行 14/33/36/66/67/68/73/74/75/114/117/121 为 pinned（:531 命中行 73 的 FN 姊妹、:535 命中行 14 的 param 同文，Rust 锚 rust/tests/functions.rs:1307/:1328）；parallel.test.ts 无 toThrow（其 rejected 消息钉升行 8/9/10）。其余 rejected/refusal 消息断言（toMatch 口径）新增行 129–137/139–141。全部锚号已钉准（§7 规则 13(d) 对账：本波 toThrow 计数 = 8 + 0 + 24 = 32 条，另 1 条 `.not.toThrow`（functions.test.ts:236）非消息口径）。
 
 | # | 状态 | 消息模板 | 首个钉住的测试 | TS 源行 | Rust 构造点 |
 |---|------|---------|---------------|---------|------------|
@@ -245,7 +245,7 @@ T3.7A 对账备注：
 
 | # | 状态 | 消息模板 | 首个钉住的测试 | TS 源行 | Rust 构造点 |
 |---|------|---------|---------------|---------|------------|
-| 142 | pinned | ``DRAW: INTO target of '${deck_id}' cannot resolve`` | test/decks.test.ts:263（refusal）/ :709（trigger 路径 rejected，整步拒绝零记录）→ rust/tests/decks.rs `an_into_that_cannot_resolve…`/`a_role_into_expanded_into_a_trigger_rejects_at_runtime` | src/engine/engine.ts:1785 | rust/src/engine/engine.rs `apply_outcome` DRAW INTO 物化 |
+| 142 | pinned | ``DRAW: INTO target of '${deckId}' cannot resolve`` | test/decks.test.ts:263（refusal）/ :709（trigger 路径 rejected，整步拒绝零记录）→ rust/tests/decks.rs `an_into_that_cannot_resolve…`/`a_role_into_expanded_into_a_trigger_rejects_at_runtime` | src/engine/engine.ts:819（W3 review should-fix-2 勘误：原误记 ：1785，文件仅 1298 行） | rust/src/engine/engine.rs `apply_outcome` DRAW INTO 物化 |
 
 T3.7B 对账备注：
 

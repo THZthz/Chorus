@@ -1058,10 +1058,10 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
     };
     let min = parse_i64_like_f64(grp_text(&cm, 1));
     // max: the upper-bound group when present; a trailing `..` means
-    // unbounded (Infinity); no `..` pins max = min.
+    // unbounded (no upper bound); no `..` pins max = min.
     let max = match grp_opt(&cm, 2) {
         Some(g) => Some(parse_i64_like_f64(g)),
-        None if count_spec.ends_with("..") => None, // Infinity
+        None if count_spec.ends_with("..") => None, // unbounded
         None => Some(min),
     };
     Ok(SlotDef {
@@ -1331,8 +1331,8 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 };
                 let k = parse_i64_like_f64(grp_text(&cap, 3));
                 let op = grp_text(&cap, 2);
-                // slot.max: None = Infinity — `k > Infinity` is false and
-                // `k >= Infinity` is false for every finite k
+                // slot.max: None = unbounded — no finite count is ever over
+                // an absent bound, so the over-max arms are false
                 let dead = match op {
                     "=" => k < slot.min || slot.max.is_some_and(|mx| k > mx),
                     ">" => slot.max.is_some_and(|mx| k >= mx),

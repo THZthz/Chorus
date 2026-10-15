@@ -108,12 +108,6 @@ struct Prepared<'a> {
     clause: &'a Clause,
     verb: &'a CompiledVerb,
     refs: IndexMap<Role, Vec<Ref>>,
-    /// Resolved against the INPUT state (validation & selection). Never read
-    /// back: Phase 3 re-resolves the clause refs against the SCRATCH draft by
-    /// design; the field is dead but kept so the struct carries what
-    /// validation produced.
-    #[allow(dead_code)]
-    bindings: RoleBindings,
     recipe: &'a CompiledRecipe,
 }
 
@@ -155,8 +149,8 @@ fn validate_slots(
             continue;
         };
         let len = provided.len() as i64;
-        // a JS Infinity max never trips the over-max check;
-        // `Option<i64>` None models that
+        // an unbounded slot (max = None) has no upper bound, so it never
+        // trips the over-max check
         if len < slot.min || slot.max.is_some_and(|max| len > max) {
             let range = match slot.max {
                 None => format!("{}..", slot.min),
@@ -405,7 +399,6 @@ pub fn execute_step(
             clause,
             verb,
             refs,
-            bindings,
             recipe,
         });
     }

@@ -35,13 +35,13 @@ use crate::error::{ChorusError, Result};
 /// validated — a typo'd role compiles and silently never matches.
 pub type SlotRole = String;
 
-/// An authored slot. `max: None` models
-/// `Infinity` (the open-ended `2..` count spec — slots never serialize).
+/// An authored slot. `max: None` is the open-ended count spec (`2..`) —
+/// no upper bound (slots never serialize).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SlotDef {
     pub role: SlotRole,
     pub min: i64,
-    /// `Infinity` allowed (§6.1 open-ended); `None` = Infinity.
+    /// Open-ended allowed (§6.1); `None` = no upper bound.
     pub max: Option<i64>,
     pub query: Option<String>,
     /// default true (§6.2) — resolved at compile
@@ -222,7 +222,7 @@ pub struct CompiledRecipe {
     pub out: Vec<Outcome>,
 }
 
-/// A compiled slot. `max: None` = Infinity.
+/// A compiled slot. `max: None` = no upper bound.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledSlot {
     pub role: SlotRole,

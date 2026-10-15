@@ -82,7 +82,7 @@ pub fn clone_map_in_key_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> in
     if !has_int_keys {
         return m.clone();
     }
-    let mut plain: Vec<usize> = m
+    let plain: Vec<usize> = m
         .keys()
         .enumerate()
         .filter(|(_, k)| !is_integer_like_key(k))

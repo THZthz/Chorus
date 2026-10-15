@@ -336,7 +336,7 @@ impl<'c> WorldFacts<'c> {
         if site.dup_risk {
             return None; // a duplicate non-stackable mint refuses the draft
         }
-        if self_gated(self, &site) {
+        if self_gated(self, site) {
             return None; // gated on (or filled by) a card the list itself mints
         }
         // throwing ops demote the list, EXCEPT a

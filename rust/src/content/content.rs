@@ -21,7 +21,7 @@ use crate::core::predicate::{
 };
 use crate::core::query::{parse_query, Query};
 use crate::core::r#ref::Ref;
-use crate::core::sentence::{Arg, Outcome};
+use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::core::types::{Aspects, Attrs};
 use crate::js::{
     clone_map_in_js_order, js_trim, ordinary_own_property_keys, static_regex, ChorusError, Result,
@@ -625,29 +625,68 @@ pub fn compile_content(
     })
 }
 
+/// ts: content.ts:303-311 + reach.ts:205-227 — the ONE authored-outcome
+/// traversal both consumers share (REACH-01 must: `for_each_authored_outcome`
+/// and the reach analyzer's `walkSites` are hand-mirrored recursions in TS;
+/// the port keeps a single implementation so the 'none' verdict's soundness
+/// argument — exhaustive enumeration in forEachAuthoredOutcome order — stays
+/// structural instead of hopeful).
+///
+/// The recursion is parameterized by a per-branch CONTEXT (the TS
+/// `(path, segs, fallback)` triple on the reach side, `()` for the guards)
+/// and a walker-STATE `S` threaded through every callback by `&mut` (the
+/// reach side's flags/seg-counter/sites accumulators — one state object, so
+/// no closure captures it twice). `arm_ctx`/`else_ctx` derive the child
+/// context exactly where TS evaluates them (per arm, left to right, before
+/// that arm descends — so the reach consumer's `nextSeg()` allocation order
+/// is preserved call for call). The visitor is fallible (the load guards
+/// throw); Rust models the throw as `Err`.
+pub fn walk_outcomes<S, C: Clone>(
+    out: &[Outcome],
+    ctx: &C,
+    state: &mut S,
+    visit: &mut dyn FnMut(&mut S, &Outcome, &C) -> Result<()>,
+    arm_ctx: &mut dyn FnMut(&mut S, &IfArm, &C) -> C,
+    else_ctx: &mut dyn FnMut(&mut S, &C) -> C,
+) -> Result<()> {
+    for o in out {
+        visit(state, o, ctx)?;
+        if o.op == "IF" {
+            if let Some(arms) = &o.arms {
+                for arm in arms {
+                    let child = arm_ctx(state, arm, ctx);
+                    walk_outcomes(&arm.then, &child, state, visit, arm_ctx, else_ctx)?;
+                }
+            }
+            if let Some(fallback) = &o.fallback {
+                let child = else_ctx(state, ctx);
+                walk_outcomes(fallback, &child, state, visit, arm_ctx, else_ctx)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// ts: content.ts:303-311 — visit every outcome in an authored list,
 /// RECURSING into IF branch bodies (§9.39) — the single entry point for the
 /// load-time guards, so nothing escapes by nesting. Ordering with F3:
 /// function expansion happens BEFORE these guards run. The visitor is
 /// fallible (the guards throw); Rust models the throw as `Err`.
+///
+/// The context-free face of [`walk_outcomes`] — the guard consumers carry no
+/// per-branch state, so their context and walker state are both `()`.
 pub fn for_each_authored_outcome(
     out: &[Outcome],
     visit: &mut dyn FnMut(&Outcome) -> Result<()>,
 ) -> Result<()> {
-    for o in out {
-        visit(o)?;
-        if o.op == "IF" {
-            if let Some(arms) = &o.arms {
-                for arm in arms {
-                    for_each_authored_outcome(&arm.then, visit)?;
-                }
-            }
-            if let Some(fallback) = &o.fallback {
-                for_each_authored_outcome(fallback, visit)?;
-            }
-        }
-    }
-    Ok(())
+    walk_outcomes(
+        out,
+        &(),
+        &mut (),
+        &mut |_state, o, ()| visit(o),
+        &mut |_state, _arm, ()| (),
+        &mut |_state, ()| (),
+    )
 }
 
 /// ts: content.ts:314-318 — visit every IF condition in an authored list

@@ -1,0 +1,123 @@
+scenario · card ANA
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via LOCATE_AT.actors (query matches)
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.actors (query matches)
+
+scenario · card BERTHA
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card LEDGER
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'LEDGER' — via initial entity LEDGER (text)
+        · LEDGER is declared in the initial entities (text, aspects {"a":3,"b":2})
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card CRATE
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'CRATE' — via initial entity CRATE (idea)
+        · CRATE is declared in the initial entities (idea, aspects {"a":2,"b":2})
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card ROPE
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ROPE' — via initial entity ROPE (idea)
+        · ROPE is declared in the initial entities (idea, aspects {"a":2,"b":0})
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card P1
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe locate_at.r0 of LOCATE_AT — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, 2 IF condition(s) on the path)
+  candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), recipe `when` guard)
+  candidate source: trigger t0 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 1 IF condition(s) on the path)
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+  note: candidate source: recipe locate_at.r0 of LOCATE_AT — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, 2 IF condition(s) on the path)
+  note: candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), recipe `when` guard)
+  note: candidate source: trigger t0 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 1 IF condition(s) on the path)
+
+scenario · card P2
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  bindable via LOCATE_AT.with (query matches)
+  bindable via LOCATE_AT.with (no query — binds anything)
+  note: candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+
+scenario · card P3
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · SPAWN 'P3' — via trigger t1
+        · trigger t1 fires on slot 24 (every crossing) — the clock is unbounded forward
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card P3_LEDGER
+  verdict: UNPROVEN  (existence: candidate)
+  note: 'P3_LEDGER' matches a derived-mint shape (deriving name from object) — the object half is chosen at play time, so structural absence cannot be proven
+
+scenario · card P3_CRATE
+  verdict: UNPROVEN  (existence: candidate)
+  note: 'P3_CRATE' matches a derived-mint shape (deriving name from object) — the object half is chosen at play time, so structural absence cannot be proven
+
+scenario · card P3_ROPE
+  verdict: UNPROVEN  (existence: candidate)
+  note: 'P3_ROPE' matches a derived-mint shape (deriving name from object) — the object half is chosen at play time, so structural absence cannot be proven
+
+scenario · card GHOST
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card matching 'aspect:a>=3'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'LEDGER' — via initial entity LEDGER (text)
+        · LEDGER is declared in the initial entities (text, aspects {"a":3,"b":2})
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card matching 'aspect:b>=1'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'LEDGER' — via initial entity LEDGER (text)
+        · LEDGER is declared in the initial entities (text, aspects {"a":3,"b":2})
+  path 2/2:
+    · initial 'CRATE' — via initial entity CRATE (idea)
+        · CRATE is declared in the initial entities (idea, aspects {"a":2,"b":2})
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card matching 'kind:idea'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'CRATE' — via initial entity CRATE (idea)
+        · CRATE is declared in the initial entities (idea, aspects {"a":2,"b":2})
+  path 2/2:
+    · initial 'ROPE' — via initial entity ROPE (idea)
+        · ROPE is declared in the initial entities (idea, aspects {"a":2,"b":0})
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.with (query matches)
+  bindable via TRAVEL_TO.with (query matches)
+
+scenario · card matching 'name:ANA'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via LOCATE_AT.actors (query matches)
+  bindable via LOCATE_AT.with (no query — binds anything)
+  bindable via TRAVEL_TO.actors (query matches)
+
+scenario · card matching 'kind:item aspect:a>=2'
+  verdict: UNOBTAINABLE  (existence: none)
+

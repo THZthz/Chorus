@@ -1,0 +1,81 @@
+scenario · card ANA
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via EXPLORE.actors (query matches)
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card BERTHA
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'BERTHA' — via initial entity BERTHA (character)
+        · BERTHA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via EXPLORE.actors (query matches)
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card VIAL
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'VIAL' — via initial entity VIAL (resource)
+        · VIAL is declared in the initial entities (resource, aspects {"a":0,"b":1})
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card ROPE
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ROPE' — via initial entity ROPE (resource)
+        · ROPE is declared in the initial entities (resource, aspects {"a":1,"b":0})
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card P1
+  verdict: UNOBTAINABLE  (existence: none)
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card P2
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · SPAWN 'P2' — via trigger t2
+        · trigger t2 fires on slot 8 (every crossing) — the clock is unbounded forward
+  path 2/2:
+    · SPAWN 'P2' — via trigger t2
+        · trigger t2 fires on slot 8 (every crossing) — the clock is unbounded forward
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card GHOST
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card matching 'aspect:a>=3'
+  verdict: UNPROVEN  (existence: candidate)
+  note: 'aspect:a' is written by SET at: trigger t1 — the threshold can be pumped at play time
+
+scenario · card matching 'aspect:b>=1'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'VIAL' — via initial entity VIAL (resource)
+        · VIAL is declared in the initial entities (resource, aspects {"a":0,"b":1})
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card matching 'kind:resource'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'VIAL' — via initial entity VIAL (resource)
+        · VIAL is declared in the initial entities (resource, aspects {"a":0,"b":1})
+  path 2/2:
+    · initial 'ROPE' — via initial entity ROPE (resource)
+        · ROPE is declared in the initial entities (resource, aspects {"a":1,"b":0})
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card matching 'name:ROPE'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ROPE' — via initial entity ROPE (resource)
+        · ROPE is declared in the initial entities (resource, aspects {"a":1,"b":0})
+  bindable via EXPLORE.with (no query — binds anything)
+
+scenario · card matching 'kind:idea aspect:a>=1'
+  verdict: UNPROVEN  (existence: candidate)
+  note: 'aspect:a' is written by SET at: trigger t1 — the threshold can be pumped at play time
+

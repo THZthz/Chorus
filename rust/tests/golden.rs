@@ -73,7 +73,9 @@ struct GoldenEntry {
     #[serde(default)]
     #[allow(dead_code)]
     driver: serde_json::Value,
-    jsonl: String,
+    /// absent for the reach-cli family (those carry stdout text instead)
+    #[serde(default)]
+    jsonl: Option<String>,
     /// TS-side bookkeeping only — never verified (PR2-09)
     #[serde(default)]
     #[allow(dead_code)]
@@ -90,6 +92,10 @@ struct GoldenEntry {
     steps: Option<String>,
     #[serde(default)]
     suggestions: Option<String>,
+    /// reach-cli family: the frozen CLI stdout text, re-rendered from the
+    /// driver and compared byte for byte (§4-W5, CLI-02 must)
+    #[serde(default)]
+    stdout: Option<String>,
 }
 
 fn manifest() -> Manifest {
@@ -2022,6 +2028,149 @@ fn demo_driver() -> Result<Played> {
 }
 
 // ---------------------------------------------------------------------------
+// reach-cli family (§4-W5, CLI-02 must) — re-render the CLI's stdout from the
+// driver and compare byte for byte. Drivers (from tools/golden-dump.ts):
+//   { type: 'reach-cli', mode: 'all'|'card'|'probes', script?|seed?, card?,
+//     demand?, usable? } and { type: 'reach-scale-census', protos, recipes }.
+// ---------------------------------------------------------------------------
+
+/// ts: tools/reach-cli.ts:69-76 — the `--all` name set: prototypes ∪ LIVE
+/// initial entities ∪ deck.order (NOT defaultcard — CLI-02 correction),
+/// UTF-16 code-unit sorted (REACH-05).
+fn reach_cli_all_names(
+    content: &CompiledContent,
+    state: &State,
+) -> Vec<String> {
+    let mut names: indexmap::IndexSet<String> = indexmap::IndexSet::new();
+    names.extend(content.prototypes.keys().cloned());
+    for e in state.entities.values() {
+        if e.dead_action.is_none() {
+            names.insert(e.name.clone());
+        }
+    }
+    for d in content.decks.values() {
+        for c in &d.order {
+            names.insert(c.name.clone());
+        }
+    }
+    let mut sorted: Vec<String> = names.into_iter().collect();
+    sorted.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
+    sorted
+}
+
+fn reach_cli_stdout(driver: &serde_json::Value, name: &str) -> Result<String> {
+    let dtype = driver["type"].as_str().unwrap_or("");
+    if dtype == "reach-scale-census" {
+        // the PR1-03 A/B reference: the CI-sized 400×400 world's NameStat
+        // NON-timing fields, one TSV row per name (ms is timing — it does
+        // not ship)
+        let protos = driver["protos"].as_u64().expect("census protos") as usize;
+        let recipes = driver["recipes"].as_u64().expect("census recipes") as usize;
+        let world = common::reach_scale_lib::build_cs_scale(protos, recipes);
+        let stats = common::reach_scale_lib::census(&world, &world.names);
+        let lines: Vec<String> = stats
+            .iter()
+            .map(|st| {
+                [
+                    st.name.clone(),
+                    st.verdict.clone(),
+                    st.existence.clone(),
+                    st.roots.to_string(),
+                    st.nodes.to_string(),
+                    st.depth.to_string(),
+                ]
+                .join("\t")
+            })
+            .collect();
+        return Ok(lines.join("\n") + "\n");
+    }
+    let mode = driver["mode"].as_str().expect("reach-cli mode");
+    let usable = driver["usable"].as_bool().unwrap_or(false);
+    let demand = driver["demand"].as_str().map(str::to_string);
+    let mut out = String::new();
+    match mode {
+        // the whole `--all` sweep over the bundled script (the CLI compiles
+        // it fresh per run, ts: tools/reach-cli.ts:35-36); the report closure
+        // captures the demand, so --all --demand renders the demand report
+        // per name (the frozen quirk — the dump's all-demand snapshot)
+        "all" => {
+            let dict = core_dictionary();
+            let compiled = chorus::content::script::compile_script(SCRIPT_TEXT, &dict)?;
+            let analyzer = chorus::reach::Analyzer::new(&compiled.content, &compiled.state);
+            for card in reach_cli_all_names(&compiled.content, &compiled.state) {
+                let rep = analyzer.analyze_card(
+                    &card,
+                    chorus::reach::CardOptions { usable, demand: demand.clone() },
+                )?;
+                chorus::reach::render_report(
+                    &mut out,
+                    driver["script"].as_str().expect("script label"),
+                    &card,
+                    demand.as_deref(),
+                    usable,
+                    &rep,
+                );
+            }
+        }
+        // one report (a named card, or a lone --demand where the target is
+        // ignored — the TS card argv is absent then; '' is the stand-in)
+        "card" => {
+            let dict = core_dictionary();
+            let compiled = chorus::content::script::compile_script(SCRIPT_TEXT, &dict)?;
+            let card = driver["card"].as_str().expect("card");
+            let rep = chorus::reach::analyze_card(
+                &compiled.content,
+                &compiled.state,
+                card,
+                chorus::reach::CardOptions {
+                    usable,
+                    demand: demand.clone(),
+                },
+            )?;
+            chorus::reach::render_report(
+                &mut out,
+                driver["script"].as_str().expect("script label"),
+                card,
+                demand.as_deref(),
+                usable,
+                &rep,
+            );
+        }
+        // a genScenario world: every probe through the CLI shapes
+        // (file label 'scenario', matching the dump; a demand probe's header
+        // carries ITS query — ts: reportInto(…, '', usable, p.q))
+        "probes" => {
+            let seed = driver["seed"].as_u64().expect("probe seed") as u32;
+            let sc = reach_fuzz_lib::gen_scenario(seed);
+            let dict = core_dictionary();
+            let content = compile_content(&sc.raw, &dict, &sc.entity_kinds)?;
+            // one Analyzer across the probes — the TS dump-side analyzeCard
+            // calls share the module-level worldCache for this (content,
+            // initial) pair
+            let analyzer = chorus::reach::Analyzer::new(&content, &sc.initial);
+            for p in &sc.probes {
+                let (target, opts, probe_demand) = match p.mode {
+                    reach_fuzz_lib::ProbeMode::Name => (
+                        p.q.as_str(),
+                        chorus::reach::CardOptions { usable, demand: None },
+                        None,
+                    ),
+                    reach_fuzz_lib::ProbeMode::Demand => (
+                        "",
+                        chorus::reach::CardOptions { usable, demand: Some(p.q.clone()) },
+                        Some(p.q.as_str()),
+                    ),
+                };
+                let rep = analyzer.analyze_card(target, opts)?;
+                chorus::reach::render_report(&mut out, "scenario", target, probe_demand, usable, &rep);
+            }
+        }
+        other => panic!("golden {name}: unknown reach-cli mode {other}"),
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
 // the harness — one test per family, every manifest golden of the kind
 // ---------------------------------------------------------------------------
 
@@ -2044,10 +2193,10 @@ fn check_family(kind: &str) {
             g.records
         );
         // 2: same driver replayed from scratch → byte-identical JSONL
-        let golden_bytes = read_golden(&g.jsonl);
+        let golden_bytes = read_golden(g.jsonl.as_deref().expect("record goldens carry a jsonl"));
         assert_bytes_eq(&golden_bytes, &to_jsonl(&played.records));
         // 1: fold(load_log(golden)) over the base lands the manifest snap
-        let loaded = chorus::engine::store::load_log(&goldens_dir().join(&g.jsonl))
+        let loaded = chorus::engine::store::load_log(&goldens_dir().join(g.jsonl.as_ref().expect("record goldens carry a jsonl")))
             .unwrap_or_else(|e| panic!("golden {}: load_log failed: {e}", g.name));
         let folded = fold(&loaded, &played.base, &played.dict, &played.content)
             .unwrap_or_else(|e| panic!("golden {}: fold failed: {e}", g.name));
@@ -2099,10 +2248,41 @@ fn demo_goldens_replay_byte_identical() {
     check_family("demo");
 }
 
-/// every manifest golden has a driver — no orphan entries
+/// §4-W5 CLI-02 must — the reach-cli stdout freeze: every snapshot is
+/// re-rendered from its driver and compared byte for byte.
+#[test]
+fn reach_cli_goldens_replay_byte_identical() {
+    let m = manifest();
+    let mut checked = 0usize;
+    for g in &m.goldens {
+        if g.kind != "reach-cli" {
+            continue;
+        }
+        checked += 1;
+        let golden = read_golden(g.stdout.as_ref().unwrap_or_else(|| panic!("golden {}: reach-cli goldens carry stdout", g.name)));
+        let played = reach_cli_stdout(&g.driver, &g.name)
+            .unwrap_or_else(|e| panic!("reach-cli driver {} failed: {e}", g.name));
+        assert_bytes_eq(&golden, &played);
+    }
+    assert!(checked > 0, "no reach-cli goldens in the manifest");
+}
+
+/// every manifest golden has a driver — no orphan entries (record goldens
+/// replay through driver_for; the reach-cli goldens' drivers are exercised by
+/// reach_cli_goldens_replay_byte_identical, so here they only get the shape
+/// check — re-rendering the census golden twice would double its minutes)
 #[test]
 fn every_golden_has_a_driver() {
     for g in manifest().goldens {
+        if g.stdout.is_some() {
+            let t = g.driver["type"].as_str().unwrap_or("");
+            assert!(
+                t == "reach-cli" || t == "reach-scale-census",
+                "golden {}: unknown stdout driver type {t}",
+                g.name
+            );
+            continue;
+        }
         assert!(
             driver_for(&g.name).is_ok(),
             "golden {} has no driver",

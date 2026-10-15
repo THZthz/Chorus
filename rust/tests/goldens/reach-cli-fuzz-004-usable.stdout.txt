@@ -1,0 +1,117 @@
+scenario · card ANA  [usable semantics]
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via TALK.actors (query matches)
+  bindable via ACQUIRE.actors (query matches)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card BERTHA  [usable semantics]
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'BERTHA' — via initial entity BERTHA (character)
+        · BERTHA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via TALK.actors (query matches)
+  bindable via ACQUIRE.actors (query matches)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card LEDGER  [usable semantics]
+  verdict: UNUSABLE  (existence: proven)
+  path 1/1:
+    · initial 'LEDGER' — via initial entity LEDGER (text)
+        · LEDGER is declared in the initial entities (text, aspects {"a":3,"b":2})
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card LAMP  [usable semantics]
+  verdict: UNUSABLE  (existence: proven)
+  path 1/1:
+    · initial 'LAMP' — via initial entity LAMP (resource)
+        · LAMP is declared in the initial entities (resource, aspects {"a":3,"b":2})
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card P1  [usable semantics]
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe acquire.r0 of ACQUIRE — guarded (unknown guard)
+  candidate source: trigger t0 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft)
+  candidate source: trigger t0 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+  note: candidate source: recipe acquire.r0 of ACQUIRE — guarded (unknown guard)
+  note: candidate source: trigger t0 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft)
+  note: candidate source: trigger t0 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft)
+
+scenario · card P2  [usable semantics]
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe talk.r2 of TALK — guarded (an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  candidate source: recipe acquire.r1 of ACQUIRE — guarded (an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path)
+  candidate source: recipe acquire.r2 of ACQUIRE — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), recipe `when` guard)
+  candidate source: recipe acquire.r2 of ACQUIRE — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  candidate source: trigger t1 — guarded (a throwing op in this list may discard the whole draft at completion)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+  note: candidate source: recipe talk.r2 of TALK — guarded (an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  note: candidate source: recipe acquire.r1 of ACQUIRE — guarded (an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path)
+  note: candidate source: recipe acquire.r2 of ACQUIRE — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), recipe `when` guard)
+  note: candidate source: recipe acquire.r2 of ACQUIRE — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  note: candidate source: trigger t1 — guarded (a throwing op in this list may discard the whole draft at completion)
+
+scenario · card P3  [usable semantics]
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe acquire.r2 of ACQUIRE — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  candidate source: trigger t1 — guarded (a throwing op in this list may discard the whole draft at completion)
+  candidate source: trigger t2 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+  note: candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe acquire.r2 of ACQUIRE — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
+  note: candidate source: trigger t1 — guarded (a throwing op in this list may discard the whole draft at completion)
+  note: candidate source: trigger t2 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion)
+
+scenario · card GHOST  [usable semantics]
+  verdict: UNOBTAINABLE  (existence: none)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card matching 'aspect:a>=3'  [usable semantics]
+  verdict: UNUSABLE  (existence: proven)
+  path 1/2:
+    · initial 'LEDGER' — via initial entity LEDGER (text)
+        · LEDGER is declared in the initial entities (text, aspects {"a":3,"b":2})
+  path 2/2:
+    · initial 'LAMP' — via initial entity LAMP (resource)
+        · LAMP is declared in the initial entities (resource, aspects {"a":3,"b":2})
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card matching 'aspect:b>=2'  [usable semantics]
+  verdict: UNUSABLE  (existence: proven)
+  path 1/2:
+    · initial 'LEDGER' — via initial entity LEDGER (text)
+        · LEDGER is declared in the initial entities (text, aspects {"a":3,"b":2})
+  path 2/2:
+    · initial 'LAMP' — via initial entity LAMP (resource)
+        · LAMP is declared in the initial entities (resource, aspects {"a":3,"b":2})
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card matching 'kind:place'  [usable semantics]
+  verdict: UNOBTAINABLE  (existence: none)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card matching 'name:ANA'  [usable semantics]
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via TALK.actors (query matches)
+  bindable via ACQUIRE.actors (query matches)
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+
+scenario · card matching 'kind:resource aspect:a>=1'  [usable semantics]
+  verdict: UNUSABLE  (existence: proven)
+  path 1/1:
+    · initial 'LAMP' — via initial entity LAMP (resource)
+        · LAMP is declared in the initial entities (resource, aspects {"a":3,"b":2})
+  note: 1 producer site(s) sit behind an authored REFUSE — they can never apply and are excluded
+

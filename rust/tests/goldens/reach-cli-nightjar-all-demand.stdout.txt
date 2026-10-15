@@ -1,0 +1,528 @@
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+
+scripts/the-nightjar-flyer.txt · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+        · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+  path 2/2:
+    · initial 'THE_VANE_LEDGER' — via initial entity THE_VANE_LEDGER (text)
+        · THE_VANE_LEDGER is declared in the initial entities (text, aspects {"tome":{"ledger":1},"secret":3})
+  bindable via READ.object (query matches)
+  bindable via STUDY.object (query matches)
+  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
+

@@ -1,0 +1,109 @@
+scenario · card ANA
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via TRAVEL_TO.actors (query matches)
+  bindable via ACQUIRE.actors (query matches)
+
+scenario · card BERTHA
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card VIAL
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'VIAL' — via initial entity VIAL (idea)
+        · VIAL is declared in the initial entities (idea, aspects {"a":0,"b":2})
+
+scenario · card CRATE
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'CRATE' — via initial entity CRATE (text)
+        · CRATE is declared in the initial entities (text, aspects {"a":3,"b":2})
+  bindable via ACQUIRE.object (query matches)
+  bindable via ACQUIRE.with (query matches)
+
+scenario · card LAMP
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'LAMP' — via initial entity LAMP (idea)
+        · LAMP is declared in the initial entities (idea, aspects {"a":2,"b":1})
+  bindable via ACQUIRE.object (query matches)
+  bindable via ACQUIRE.with (query matches)
+
+scenario · card P1
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe travel_to.r0 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 2 IF condition(s) on the path, recipe `when` guard)
+  candidate source: recipe travel_to.r0 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, recipe `when` guard)
+  candidate source: recipe travel_to.r1 of TRAVEL_TO — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: trigger t1 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft)
+  bindable via ACQUIRE.with (query matches)
+  note: candidate source: recipe travel_to.r0 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 2 IF condition(s) on the path, recipe `when` guard)
+  note: candidate source: recipe travel_to.r0 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, recipe `when` guard)
+  note: candidate source: recipe travel_to.r1 of TRAVEL_TO — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: trigger t1 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft)
+
+scenario · card P2
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe travel_to.r1 of TRAVEL_TO — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path)
+  candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match), 2 IF condition(s) on the path)
+  candidate source: recipe acquire.r0 of ACQUIRE — guarded (1 IF condition(s) on the path)
+  candidate source: trigger t0 — guarded (1 IF condition(s) on the path)
+  candidate source: trigger t2 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 1 IF condition(s) on the path)
+  note: candidate source: recipe travel_to.r1 of TRAVEL_TO — guarded (a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path)
+  note: candidate source: recipe travel_to.r2 of TRAVEL_TO — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match), 2 IF condition(s) on the path)
+  note: candidate source: recipe acquire.r0 of ACQUIRE — guarded (1 IF condition(s) on the path)
+  note: candidate source: trigger t0 — guarded (1 IF condition(s) on the path)
+  note: candidate source: trigger t2 — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 1 IF condition(s) on the path)
+
+scenario · card GHOST
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card matching 'aspect:a>=1'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'CRATE' — via initial entity CRATE (text)
+        · CRATE is declared in the initial entities (text, aspects {"a":3,"b":2})
+  path 2/2:
+    · initial 'LAMP' — via initial entity LAMP (idea)
+        · LAMP is declared in the initial entities (idea, aspects {"a":2,"b":1})
+  bindable via ACQUIRE.object (query matches)
+  bindable via ACQUIRE.with (query matches)
+
+scenario · card matching 'aspect:b>=1'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/3:
+    · initial 'VIAL' — via initial entity VIAL (idea)
+        · VIAL is declared in the initial entities (idea, aspects {"a":0,"b":2})
+  path 2/3:
+    · initial 'CRATE' — via initial entity CRATE (text)
+        · CRATE is declared in the initial entities (text, aspects {"a":3,"b":2})
+  path 3/3:
+    · initial 'LAMP' — via initial entity LAMP (idea)
+        · LAMP is declared in the initial entities (idea, aspects {"a":2,"b":1})
+
+scenario · card matching 'kind:text'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'CRATE' — via initial entity CRATE (text)
+        · CRATE is declared in the initial entities (text, aspects {"a":3,"b":2})
+  bindable via ACQUIRE.object (query matches)
+  bindable via ACQUIRE.with (query matches)
+
+scenario · card matching 'name:ANA'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via TRAVEL_TO.actors (query matches)
+  bindable via ACQUIRE.actors (query matches)
+
+scenario · card matching 'kind:resource aspect:a>=1'
+  verdict: UNOBTAINABLE  (existence: none)
+

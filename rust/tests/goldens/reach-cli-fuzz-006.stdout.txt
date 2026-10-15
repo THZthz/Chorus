@@ -1,0 +1,92 @@
+scenario · card ANA
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'ANA' — via initial entity ANA (character)
+        · ANA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via MANSUS.actors (query matches)
+  bindable via MANSUS.with (no query — binds anything)
+  bindable via TALK.actors (query matches)
+
+scenario · card BERTHA
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'BERTHA' — via initial entity BERTHA (character)
+        · BERTHA is declared in the initial entities (character)
+  bindable via WAIT.actors (query matches)
+  bindable via MANSUS.actors (query matches)
+  bindable via MANSUS.with (no query — binds anything)
+  bindable via TALK.actors (query matches)
+
+scenario · card VIAL
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'VIAL' — via initial entity VIAL (item)
+        · VIAL is declared in the initial entities (item, aspects {"a":3,"b":2})
+  bindable via MANSUS.with (no query — binds anything)
+
+scenario · card LEDGER
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'LEDGER' — via initial entity LEDGER (item)
+        · LEDGER is declared in the initial entities (item, aspects {"a":3,"b":0})
+  bindable via MANSUS.with (no query — binds anything)
+
+scenario · card P1
+  verdict: UNPROVEN  (existence: candidate)
+  candidate source: recipe mansus.r0 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 1 IF condition(s) on the path, recipe `when` guard)
+  candidate source: recipe mansus.r0 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, recipe `when` guard)
+  candidate source: recipe mansus.r1 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path)
+  candidate source: recipe mansus.r1 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe talk.r0 of TALK — guarded (1 IF condition(s) on the path)
+  candidate source: recipe talk.r0 of TALK — guarded (1 IF condition(s) on the path)
+  candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  candidate source: trigger t0 — guarded (1 IF condition(s) on the path)
+  bindable via MANSUS.with (no query — binds anything)
+  note: candidate source: recipe mansus.r0 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, 1 IF condition(s) on the path, recipe `when` guard)
+  note: candidate source: recipe mansus.r0 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, recipe `when` guard)
+  note: candidate source: recipe mansus.r1 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path)
+  note: candidate source: recipe mansus.r1 of MANSUS — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe talk.r0 of TALK — guarded (1 IF condition(s) on the path)
+  note: candidate source: recipe talk.r0 of TALK — guarded (1 IF condition(s) on the path)
+  note: candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: recipe talk.r1 of TALK — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, a throwing op in this list may discard the whole draft at completion, an earlier recipe of the same verb may shadow it (first-match))
+  note: candidate source: trigger t0 — guarded (1 IF condition(s) on the path)
+
+scenario · card GHOST
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card matching 'aspect:a>=3'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/2:
+    · initial 'VIAL' — via initial entity VIAL (item)
+        · VIAL is declared in the initial entities (item, aspects {"a":3,"b":2})
+  path 2/2:
+    · initial 'LEDGER' — via initial entity LEDGER (item)
+        · LEDGER is declared in the initial entities (item, aspects {"a":3,"b":0})
+  bindable via MANSUS.with (no query — binds anything)
+
+scenario · card matching 'aspect:b>=1'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'VIAL' — via initial entity VIAL (item)
+        · VIAL is declared in the initial entities (item, aspects {"a":3,"b":2})
+  bindable via MANSUS.with (no query — binds anything)
+
+scenario · card matching 'kind:idea'
+  verdict: UNOBTAINABLE  (existence: none)
+
+scenario · card matching 'name:LEDGER'
+  verdict: OBTAINABLE  (existence: proven)
+  path 1/1:
+    · initial 'LEDGER' — via initial entity LEDGER (item)
+        · LEDGER is declared in the initial entities (item, aspects {"a":3,"b":0})
+  bindable via MANSUS.with (no query — binds anything)
+
+scenario · card matching 'kind:text aspect:a>=2'
+  verdict: UNPROVEN  (existence: candidate)
+  note: 'aspect:a' is written by SET at: trigger t0 — the threshold can be pumped at play time
+

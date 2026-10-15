@@ -151,8 +151,9 @@ const r = executeStep(content, dict, state, step, { firstRecordId: log.nextRecor
 The engine has bugs and inconsistencies that are, by now, behavior: tests pin
 them, logs encode them, and "fixing" one would break byte-identity with every
 recorded log. The Rust port (`rust/`) therefore reproduces each one as-is —
-every row below carries a `// QUIRK(<finding-id>):` comment at its ported
-site, and changing any of them is a behavior change, not a cleanup. Full
+ported rows carry a `// QUIRK(<finding-id>):` comment at their ported site
+(rows that are deliberately *not* ported dead code carry a `// NOTE` instead),
+and changing any of them is a behavior change, not a cleanup. Full
 freeze table with freeze requirements: `docs/rust-port/plan.md` §1.2.
 
 | # | quirk (frozen, not fixed) | lives at |

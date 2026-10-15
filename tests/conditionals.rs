@@ -134,6 +134,7 @@ fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus:
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
                 },
@@ -179,6 +180,7 @@ fn attune_content(dict: &Dictionary, out: &[&str], duration: i64) -> CompiledCon
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
                 },
@@ -531,6 +533,7 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec![
                                 "IF exists(HOUSE) -> (NARRATE \"clause one\") ELSE -> (NARRATE \"clause one void\")"
                                     .to_string(),
@@ -557,6 +560,7 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec![
                                 "IF exists(NOSUCH_CARD) -> (NARRATE \"clause two bad\") ELSE -> (NARRATE \"clause two else\")"
                                     .to_string(),
@@ -704,11 +708,20 @@ fn an_if_condition_operand_with_no_bound_card_the_window_refuses_at_completion()
     let dict = cond_dict();
     let c = inspect_content(&dict, &["IF object.aspect.demand >= 1 -> (NARRATE \"needs\")"], Extra::default());
     let state = seed_state();
-    let before = snap(&state);
     let r = run(&c, &dict, clone_state(&state), "0:0 @ ANA INSPECT", 1); // no object bound: the operand cannot resolve
     assert_eq!(r.rejected, None); // v0.5: strict conditions decide at the completion
     assert_refusal(&r, r"IF condition: operand 'object\.aspect\.demand' cannot resolve");
-    assert_eq!(snap(&r.state), before);
+    // the effects are discarded and the window closes — but §9.50: it
+    // registered at begin, so a window that later refuses still counted
+    // (the one deliberate state delta; everything else is untouched)
+    assert_eq!(r.state.executed.get("inspect.default"), Some(&1));
+    assert_eq!(r.state.windows.len(), 0);
+    assert_eq!(r.state.now, state.now);
+    // full-state strength (the dice.rs refusal shape): the fold re-derives
+    // exactly that state from the log alone — the REFUSE complete row is a
+    // state no-op — so any unlogged play-side drift fails loud here
+    let replayed = fold(&r.records, &state, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
 }
 
 #[test]
@@ -736,6 +749,7 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
                             when: Some("object.aspect.demand >= 1".into()),
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["NARRATE(\"gate\")".to_string()],
                         },
                         RecipeDef {
@@ -743,6 +757,7 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["NARRATE(\"default\")".to_string()],
                         },
                     ],
@@ -1009,6 +1024,7 @@ fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                     }],
                 },

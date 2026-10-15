@@ -382,6 +382,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec![],
             }],
         },
@@ -431,6 +432,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 when,
                 shown: None,
                 hint: None,
+                max: None,
                 out: outs,
             });
         }

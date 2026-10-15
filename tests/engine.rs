@@ -878,6 +878,7 @@ mod exists_recipes {
                     ),
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"A hunter walks the world.\")".to_string()],
                 },
                 RecipeDef {
@@ -885,6 +886,7 @@ mod exists_recipes {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"The world is calm.\")".to_string()],
                 },
             ],
@@ -983,6 +985,7 @@ mod exists_recipes {
                     when: Some("exists(THE_SEALED_DOOR)".to_string()),
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"The door still stands.\")".to_string()],
                 },
                 RecipeDef {
@@ -990,6 +993,7 @@ mod exists_recipes {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"No door.\")".to_string()],
                 },
             ],
@@ -1010,6 +1014,7 @@ mod exists_recipes {
                     when: Some("exists(aspect:lantern>=1) AND rel(parent_child, actors)".to_string()),
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"Kin in a haunted world.\")".to_string()],
                 },
                 RecipeDef {
@@ -1017,6 +1022,7 @@ mod exists_recipes {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"No kinship.\")".to_string()],
                 },
             ],
@@ -1115,6 +1121,7 @@ mod clock_and_duration_literals {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"{actors} waits a moment.\")".to_string()],
                 }],
             },
@@ -1273,6 +1280,7 @@ mod set_deltas_and_aspect_keys {
             when: None,
             shown: None,
             hint: None,
+            max: None,
             out: out.iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -1472,6 +1480,7 @@ mod set_deltas_and_aspect_keys {
                 when: Some("count(actors) = 2".to_string()),
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["SET(ACTORS, aspect:dread, +1)".to_string()],
             }],
         );
@@ -1680,6 +1689,7 @@ mod replace_decay {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec![out.to_string()],
                 }],
             },
@@ -1871,6 +1881,7 @@ mod replace_decay {
                                 when: None,
                                 shown: None,
                                 hint: None,
+                                max: None,
                                 out: vec!["REPLACE OBJECT WITH ASHES".to_string()],
                             }],
                         },
@@ -2011,6 +2022,7 @@ mod authored_expiry_triggers {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
             }],
         }
@@ -2414,6 +2426,7 @@ mod set_expires_duration_forms {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec![out.to_string()],
                 }],
             },
@@ -2574,6 +2587,7 @@ mod set_expires_duration_forms {
                                 when: None,
                                 shown: None,
                                 hint: None,
+                                max: None,
                                 out: vec!["SET(CHALICE, expires, \"2halfhour\")".to_string()],
                             }],
                         },
@@ -2594,6 +2608,7 @@ mod set_expires_duration_forms {
                                 when: None,
                                 shown: None,
                                 hint: None,
+                                max: None,
                                 out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                             }],
                         },
@@ -2702,6 +2717,7 @@ mod core_verbs_study_mansus {
                                     when: Some("object.aspect.secret >= 3".to_string()),
                                     shown: None,
                                     hint: None,
+                                    max: None,
                                     out: vec![
                                         "SPAWN CLUE".to_string(),
                                         "NARRATE(\"{actors} tease out a hidden thread.\")"
@@ -2713,6 +2729,7 @@ mod core_verbs_study_mansus {
                                     when: None,
                                     shown: None,
                                     hint: None,
+                                    max: None,
                                     out: vec![
                                         "NARRATE(\"{actors} study {object}.\")".to_string()
                                     ],
@@ -2745,6 +2762,7 @@ mod core_verbs_study_mansus {
                                 when: None,
                                 shown: None,
                                 hint: None,
+                                max: None,
                                 out: vec![
                                     "NARRATE(\"{actors} walk the Mansus to {object}.\")"
                                         .to_string(),
@@ -2882,6 +2900,7 @@ mod core_verbs_study_mansus {
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec![
                                 "NARRATE(\"{actors} walk the Mansus to {object}.\")".to_string(),
                             ],

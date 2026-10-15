@@ -261,6 +261,23 @@ fn select_recipe<'a>(
         roll: None,
     };
     for r in &verb.recipes {
+        // §9.50: the execution budget — a recipe whose count has reached its
+        // `max N` is simply non-matching; the walk continues. The count is
+        // read from the state map only (§9.29 posture), so a max change
+        // under an old log shifts FUTURE selection only (§9.30).
+        //
+        // §9.50, the multi-clause draft-lag: selection reads ONE post-advance
+        // draft for every clause of the step, while registration (and the
+        // count it carries) lands in Phase 4 — so two clauses of one step can
+        // both pin the same max-1 recipe (count +2). Permitted by the
+        // ruling's letter (a registered window increments each clause's id
+        // ON THE DRAFT); stated so neither side is later "fixed" into a
+        // mid-step re-selection.
+        if let Some(max) = r.max {
+            if state.executed.get(&r.id).is_some_and(|&n| n >= max) {
+                continue;
+            }
+        }
         match &r.when {
             None => return Ok(Some(r)),
             Some(w) => {
@@ -690,6 +707,13 @@ fn register_windows(
             }
         }
         let key = format!("{}:{}", record.id, ci);
+        let recipe = record.recipes.get(ci).cloned().unwrap_or_default();
+        // §9.50: the count rides the ONE registration path play and fold
+        // share — a registered window increments its clause's commit-time
+        // recipe id ON THE DRAFT. A table-refused step opens no window and
+        // counts nothing (execute_step returns before Phase 4); a window
+        // that later refuses still counted (it registered at begin).
+        *state.executed.entry(recipe.clone()).or_insert(0) += 1;
         state.windows.insert(
             key.clone(),
             OpenWindow {
@@ -703,7 +727,7 @@ fn register_windows(
                     verb.duration,
                     "window end",
                 ),
-                recipe: record.recipes.get(ci).cloned().unwrap_or_default(),
+                recipe,
                 refs,
                 locked,
             },
@@ -2787,6 +2811,7 @@ mod smoke {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
         }
@@ -2923,6 +2948,7 @@ mod smoke {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: out.iter().map(|s| s.to_string()).collect(),
                 }],
             },
@@ -3018,6 +3044,7 @@ mod smoke {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["RELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
         };
@@ -3029,6 +3056,7 @@ mod smoke {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["UNRELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
         };
@@ -3090,6 +3118,7 @@ mod smoke {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec![
                     "ROLL(2, 6)".to_string(),
                     "NARRATE \"rolled {roll}.\"".to_string(),
@@ -3142,6 +3171,7 @@ mod smoke {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["DRAW RUMOURS".to_string()],
             }],
         };
@@ -3214,6 +3244,7 @@ mod smoke {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec![
                     "IF exists(HOUSE) -> (SPAWN PARANOIA, REFUSE(\"too late.\")) ELSE -> (NARRATE \"calm.\")".to_string(),
                 ],

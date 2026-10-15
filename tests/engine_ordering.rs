@@ -40,6 +40,7 @@ fn verb_of(name: &str, slots: Vec<SlotDef>, duration: i64, out: &[&str]) -> (Str
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
         },
@@ -181,6 +182,20 @@ fn replay(records: &[ActionRecord], base: &State, dict: &Dictionary, content: &C
     fold(records, base, dict, content)
 }
 
+/// The whole-history replay: folding a mid-window slice (advance rows only)
+/// skips the BEGINs whose registration the completions presuppose — §9.50
+/// gives the BEGIN a durable effect (the execution count rides registration),
+/// so a slice must carry its own BEGINs for the fold to land the same state.
+fn replay_all(
+    slices: &[&[ActionRecord]],
+    base: &State,
+    dict: &Dictionary,
+    content: &CompiledContent,
+) -> Result<State> {
+    let flat: Vec<ActionRecord> = slices.iter().flat_map(|s| s.iter()).cloned().collect();
+    fold(&flat, base, dict, content)
+}
+
 fn kinds(records: &[ActionRecord]) -> Vec<&str> {
     records.iter().map(|r| r.kind.as_str()).collect()
 }
@@ -234,7 +249,7 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
     // window covered still struck — this ordering IS that pin (the chime at
     // 60 fires after the completion though the cursor conceptually lagged).
     // the fold agrees on the whole shape:
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(&[&r1.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
@@ -300,7 +315,13 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
     let ids: Vec<i64> = adv.records.iter().map(|r| r.id).collect();
     let first = (r1.records.len() + r2.records.len()) as i64 + 1;
     assert_eq!(ids, vec![first, first + 1, first + 2, first + 3, first + 4]);
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(
+        &[&r1.records, &r2.records, &adv.records],
+        &seed(),
+        &dict,
+        &content,
+    )
+    .unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
@@ -371,7 +392,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
         .map(|r| r.trigger.as_deref())
         .collect();
     assert_eq!(closes, vec![Some("PACE_A"), Some("PACE_Z")], "clause 0 before 1");
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(&[&r.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
@@ -684,7 +705,7 @@ fn window_completion_failure_refuses_only_that_window() {
     assert_eq!(adv2.rejected, None);
     assert_eq!(kinds(&adv2.records), ["wait"]);
     // the fold agrees: the REFUSE complete row is a no-op that closed its window
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(&[&r.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv_state));
 }
 
@@ -746,7 +767,7 @@ fn first_ending_wins_and_gates_the_story() {
     );
     assert!(gated.records.is_empty());
     // the fold projects the same ending from the log alone
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(&[&r.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv_state));
 }
 
@@ -790,7 +811,7 @@ fn roll_binds_last_wins_within_a_list() {
     // the NARRATE carries the SECOND total (last-wins)
     assert!(matches!(&complete.outcomes[2].args[0], Arg::Str { v } if *v == format!("r={t2}.")));
     // the fold lands the counter from the ROLLED rows alone (law 3)
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(&[&r.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
@@ -810,6 +831,7 @@ fn roll_binding_resets_per_clause() {
             when: None,
             shown: None,
             hint: None,
+            max: None,
             out: vec![
                 "ROLL(1, 6)".to_string(),
                 "IF roll >= 0 -> (NARRATE \"bound.\")".to_string(),
@@ -824,6 +846,7 @@ fn roll_binding_resets_per_clause() {
             when: None,
             shown: None,
             hint: None,
+            max: None,
             out: vec![
                 "ROLL(1, 6)".to_string(),
                 "IF roll >= 0 -> (NARRATE \"bare {roll}.\")".to_string(),
@@ -874,7 +897,7 @@ fn roll_binding_resets_per_clause() {
         "clause two must see ITS OWN roll, not {:?}", completes[1].outcomes[1].args[0]);
     assert_eq!(adv.state.rng, 2);
     let _ = cast_total;
-    let replayed = replay(&adv.records, &seed(), &dict, &content).unwrap();
+    let replayed = replay_all(&[&r.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
@@ -940,6 +963,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             when: None,
             shown: None,
             hint: None,
+            max: None,
             out: vec!["NARRATE \"seized.\"".to_string()],
         }],
     };
@@ -951,6 +975,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             when: None,
             shown: None,
             hint: None,
+            max: None,
             out: vec!["NARRATE \"touched.\"".to_string()],
         }],
     };
@@ -1065,7 +1090,7 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
     assert_eq!(outcome_ops(complete), ["DESTROY"]);
     assert!(complete.outcomes[0].args.is_empty());
     assert!(!adv.state.by_name.contains_key("MAGICK_BOOK"));
-    let replayed = replay(&adv.records, &base, &dict, &content).unwrap();
+    let replayed = replay_all(&[&r1.records, &adv.records], &base, &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 

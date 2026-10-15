@@ -163,6 +163,7 @@ fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus:
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
                 },
@@ -551,15 +552,17 @@ fn a_roll_inside_an_untaken_branch_consumes_nothing() {
         Extra::default(),
     );
     let state = seed_world();
-    let before = snap(&state);
+    let base = clone_for_snap(&state);
     let r = run(&c, &dict, state, "0:0 @ ANA INSPECT", 1);
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]);
     assert_eq!(r.state.rng, 0);
-    // `state === before` (identity): the input state is untouched — its
-    // value rides back (identity → snap equality)
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window completed — the step counted (the one snap delta;
+    // the untaken branch's ROLL never ran)
+    assert_eq!(r.state.executed.get("inspect.default"), Some(&1));
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
 }
 
 #[test]
@@ -571,15 +574,17 @@ fn a_failing_later_outcome_after_a_successful_roll_refuses_the_window() {
     let dict = dice_dict();
     let c = inspect_content(&dict, &["ROLL(2, 6), NARRATE \"mid {roll}\", ROLL(0, 1)"], Extra::default());
     let state = seed_world();
-    let before = snap(&state);
     let r = run(&c, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "sides must be an integer >= 2");
     assert_eq!(state.rng, 0);
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window registered at begin — the completion-time refusal
+    // still counted (the one delta; the scratch counter died with it)
+    assert_eq!(r.state.executed.get("inspect.default"), Some(&1));
     // fold agreement: a REFUSE row is a state no-op, so the counter stays put
     let replayed = fold(&r.records, &state, &dict, &c).unwrap();
     assert_eq!(replayed.rng, 0);
+    assert_eq!(snap(&replayed), snap(&r.state));
 }
 
 /// test-side clone helper.
@@ -591,13 +596,17 @@ fn clone_for_snap(s: &State) -> State {
 fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
     let dict = dice_dict();
     let state = seed_world();
-    let before = snap(&state);
     let bad_sides = inspect_content(&dict, &["ROLL(1, 1), NARRATE \"never\""], Extra::default());
     let rs = run(&bad_sides, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1);
     assert_eq!(rs.rejected, None);
     assert_refusal(&rs, "sides must be an integer >= 2");
     assert_eq!(state.rng, 0);
-    assert_eq!(snap(&rs.state), before);
+    // §9.50: the window registered at begin — the completion-time refusal
+    // still counted (the one delta)
+    assert_eq!(rs.state.executed.get("inspect.default"), Some(&1));
+    let base = clone_for_snap(&state);
+    let replayed = fold(&rs.records, &base, &dict, &bad_sides).unwrap();
+    assert_eq!(snap(&replayed), snap(&rs.state));
     // negative count via a negative aspect (entity lines allow -n)
     let neg = compile_content(
         &ContentRaw {
@@ -617,6 +626,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["ROLL(actors.aspect.dread, 6), NARRATE \"never\"".to_string()],
                     }],
                 },
@@ -635,11 +645,13 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
         .unwrap()
         .aspects
         .insert("dread".to_string(), AspectVal::Num(-3));
-    let before2 = snap(&s2);
     let rn = run(&neg, &dict, clone_for_snap(&s2), "0:0 @ ANA INSPECT", 1);
     assert_eq!(rn.rejected, None);
     assert_refusal(&rn, "dice count must be an integer >= 0");
-    assert_eq!(snap(&rn.state), before2);
+    // §9.50: registered at begin — the refusal still counted
+    assert_eq!(rn.state.executed.get("inspect.default"), Some(&1));
+    let replayed_neg = fold(&rn.records, &s2, &dict, &neg).unwrap();
+    assert_eq!(snap(&replayed_neg), snap(&rn.state));
     // and a fractional/missing operand is likewise a rejection, never a silent roll
     let missing = inspect_content(&dict, &["ROLL(object.aspect.nonesuch, 6)"], Extra::default());
     let rm = run(&missing, &dict, seed_world(), "0:0 @ ANA INSPECT", 1); // no object bound
@@ -712,6 +724,7 @@ fn default_recipe(out: &[&str]) -> RecipeDef {
         when: None,
         shown: None,
         hint: None,
+        max: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }
@@ -855,6 +868,7 @@ fn when_predicates_cannot_read_roll_if_conditions_can() {
                         when: Some("roll >= 3".into()),
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["NARRATE(\"gate\")".to_string()],
                     },
                     default_recipe(&["NARRATE(\"default\")"]),

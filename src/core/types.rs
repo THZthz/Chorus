@@ -190,6 +190,11 @@ pub struct State {
     pub rng: i64,
     /// §9.42: deck cursors — for each deck id, how many cards it has served.
     pub decks: IndexMap<String, i64>,
+    /// §9.50: recipe execution counts — recipe id → registered windows.
+    /// Maintained by the ONE window-registration path play and fold share;
+    /// selection reads only this map, never the log (the `fired`
+    /// precedent, §9.29).
+    pub executed: IndexMap<String, i64>,
     /// v0.5: the open processing windows (§6.7) — the lock table.
     pub windows: IndexMap<String, OpenWindow>,
 }
@@ -206,6 +211,7 @@ pub fn new_state(now: i64) -> State {
         ended: None,
         rng: 0,
         decks: IndexMap::new(),
+        executed: IndexMap::new(),
         windows: IndexMap::new(),
     }
 }
@@ -224,6 +230,8 @@ impl Clone for State {
         }
         // law 6 (§9.42): cursors are copied — a discarded draft's draws must
         // not move the real deck
+        // law 6 (§9.50): execution counts are copied — a discarded draft's
+        // window registrations must not spend the real budget
         // law 6 (v0.5): windows are copied ENTRY-BY-ENTRY — `locked` is an
         // array a discarded draft must not share with the real state;
         // `refs` likewise (IndexMap of Vec<Ref>)
@@ -236,6 +244,7 @@ impl Clone for State {
             ended: self.ended.clone(),
             rng: self.rng,
             decks: self.decks.clone(),
+            executed: self.executed.clone(),
             windows: self.windows.clone(),
         }
     }

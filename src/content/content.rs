@@ -57,6 +57,8 @@ pub struct RecipeDef {
     /// gates default hidden (§6.2)
     pub shown: Option<bool>,
     pub hint: Option<String>,
+    /// §9.50: the execution limit (`max N`, N ≥ 1) — None = unlimited
+    pub max: Option<i64>,
     /// outcome strings, parsed at load
     pub out: Vec<String>,
 }
@@ -219,6 +221,8 @@ pub struct CompiledRecipe {
     pub when: Option<Pred>,
     pub shown: bool,
     pub hint: Option<String>,
+    /// §9.50: the execution limit — None = unlimited
+    pub max: Option<i64>,
     pub out: Vec<Outcome>,
 }
 
@@ -490,6 +494,17 @@ pub fn compile_content(
                 .id
                 .clone()
                 .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
+            // §9.50: N ≥ 1 — a `max 0` (or negative) can never fire, so it
+            // fails loudly at load instead (the script parser checks its own
+            // token; this guards the code-level ContentRaw face, like the
+            // slot max<min check above)
+            if let Some(m) = r.max {
+                if m < 1 {
+                    return Err(ChorusError::new(format!(
+                        "verb {name}: recipe {id} has max < 1"
+                    )));
+                }
+            }
             let mut out = Vec::new();
             for o in &r.out {
                 out.extend(parse_outcome_string(o, dict, &fns)?);
@@ -499,6 +514,7 @@ pub fn compile_content(
                 when,
                 shown: r.shown.unwrap_or(false),
                 hint: r.hint.clone(),
+                max: r.max,
                 out,
             });
         }
@@ -1256,6 +1272,7 @@ mod tests {
                         when: Some(String::new()),
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["NARRATE \"idle.\"".to_string()],
                     }],
                 },

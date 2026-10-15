@@ -497,6 +497,18 @@ impl Game {
             // (`.some()` over the recipes)
             for r in &verb.recipes {
                 let Some(w) = &r.when else { continue };
+                // §9.50: a spent recipe stops being suggested — the same
+                // gate selection applies
+                if let Some(max) = r.max {
+                    if self
+                        .state
+                        .executed
+                        .get(&r.id)
+                        .is_some_and(|&n| n >= max)
+                    {
+                        continue;
+                    }
+                }
                 if r.out.iter().any(|o| o.op == "REFUSE") {
                     continue;
                 }

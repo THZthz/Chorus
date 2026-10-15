@@ -127,6 +127,7 @@ fn narr_recipe(out: &str) -> Vec<RecipeDef> {
         when: None,
         shown: None,
         hint: None,
+        max: None,
         out: vec![out.to_string()],
     }]
 }
@@ -447,6 +448,7 @@ mod the_locks {
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["SET(OBJECT, aspect:touched, 1), DESTROY OBJECT".to_string()],
                     }],
                 },
@@ -528,6 +530,7 @@ mod commit_time_gates_vs_completion_time_refusals {
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec![
                             "IF exists(HOUSE) -> (SPAWN PARANOIA, REFUSE(\"too late.\")) ELSE -> (NARRATE \"calm.\")"
                                 .to_string(),

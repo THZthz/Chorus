@@ -4,10 +4,12 @@
 //! this. New State fields land here with the state itself.
 //!
 //! Frozen surface: the output is the exact canonical JSON image of the state —
-//! - key order: `ents, rels, byName, now, rng, decks, fired, ended, windows`
+//! - key order: `ents, rels, byName, now, rng, decks, executed, fired, ended,
+//!   windows`
 //!   (insertion order; no integer-like keys, so
 //!   OrdinaryOwnPropertyKeys agrees);
-//! - the FIVE map fields (`ents/rels/byName/decks/windows`) sort their entry
+//! - the SIX map fields
+//!   (`ents/rels/byName/decks/executed/windows`) sort their entry
 //!   pairs ascending by key
 //!   `<` order, which is UTF-16 code-unit order → `cmp_utf16` (never Rust
 //!   byte order);
@@ -59,6 +61,12 @@ pub fn snap(s: &State) -> String {
     root.insert(
         "decks".to_string(),
         sorted_entries(s.decks.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
+    );
+    // §9.50: the recipe execution counts — play and fold must rebuild them
+    // identically (the same registration path)
+    root.insert(
+        "executed".to_string(),
+        sorted_entries(s.executed.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
     );
     // §9.34: play and fold must agree on fired too (default string sort)
     let mut fired: Vec<&String> = s.fired.iter().collect();

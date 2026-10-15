@@ -35,6 +35,7 @@ pub fn seed_content() -> ContentRaw {
         when: when.map(str::to_string),
         shown: None,
         hint: None,
+        max: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     };
     ContentRaw {
@@ -150,6 +151,7 @@ pub fn seed_content() -> ContentRaw {
                             hint: Some(
                                 "The rite wants pooled lantern — it will starve.".to_string(),
                             ),
+                            max: None,
                             out: vec!["REFUSE(\"The rite starves for light.\")".to_string()],
                         },
                         recipe(

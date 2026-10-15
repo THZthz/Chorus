@@ -133,6 +133,7 @@ mod tests {
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["NARRATE \"d.\"".to_string()],
                     }],
                 },

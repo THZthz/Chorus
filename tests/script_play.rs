@@ -335,9 +335,12 @@ fn the_showcase_compiles_the_full_script_grammar() {
     let dream_with = game.content.verbs["DREAM"].slot_by_role.get("with").unwrap();
     assert_eq!((dream_with.min, dream_with.max), (0, None));
     // slot queries (§4.5): aspect level, negated aspect, and the state flag
+    // (no '|' in either — one alternation group of N terms, §9.49)
     let work_at = game.content.verbs["WORK"].slot_by_role.get("at").unwrap();
-    assert_eq!(work_at.query.as_ref().unwrap().len(), 2);
-    assert_eq!(dream_with.query.as_ref().unwrap().len(), 3);
+    assert_eq!(work_at.query.as_ref().unwrap().len(), 1);
+    assert_eq!(work_at.query.as_ref().unwrap()[0].len(), 2);
+    assert_eq!(dream_with.query.as_ref().unwrap().len(), 1);
+    assert_eq!(dream_with.query.as_ref().unwrap()[0].len(), 3);
     // compound durations (§9.45): 1h30m in a verb config and a PROGRESS tick
     assert_eq!(game.content.verbs["STUDY"].duration, 90);
     // the id-less recipe mints a stable id; the shown gate carries its hint (§6.2)
@@ -783,6 +786,7 @@ mod lenient_input_routes_the_new_core_verbs {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec![out.to_string()],
             }],
         };

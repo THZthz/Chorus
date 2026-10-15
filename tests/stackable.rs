@@ -325,6 +325,7 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["SPAWN SUSPICION".to_string()],
                     }],
                 },
@@ -368,6 +369,7 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["SPAWN CHALICE".to_string()],
                     }],
                 },
@@ -387,13 +389,14 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
     )
     .unwrap();
     let mut state = seed_state();
-    let before = snap(&state);
     let r = run(&poke, &dict, clone_state(&state), "0:0 @ ANA ACQUIRE", 1);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
-    // `state === before` (identity): the input state is untouched — its
-    // value rides back on the refusal (identity → snap equality)
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window registered at begin — the completion-time refusal
+    // still counted (the one delta; nothing else moved, and play/fold agree)
+    assert_eq!(r.state.executed.get("acquire.default"), Some(&1));
+    let replayed = chorus::engine::fold::fold(&r.records, &state, &dict, &poke).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
     // once the non-stackable holder dies the name accepts the stackable mint
     state.entities.get_mut("chalice").unwrap().dead_action = Some(99);
     state.by_name.remove("CHALICE"); // by_name is the order-pool HashMap (outer map is unordered)
@@ -424,6 +427,7 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["SPAWN SUSPICION".to_string()],
                     }],
                 },
@@ -511,6 +515,7 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["SPAWN RUMOUR".to_string()],
                     }],
                 },
@@ -570,6 +575,7 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["SPAWN HEARSAY".to_string()],
                         }],
                     },
@@ -593,6 +599,7 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["REPLACE OBJECT WITH HEARSAY".to_string()],
                         }],
                     },
@@ -811,6 +818,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["SPAWN SUSPICION".to_string()],
                         }],
                     },
@@ -831,6 +839,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                         }],
                     },
@@ -929,6 +938,7 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["REPLACE OBJECT WITH SUSPICION".to_string()],
                     }],
                 },
@@ -986,12 +996,15 @@ fn a_non_stackable_replace_onto_a_stackable_pool_still_rejects() {
     let (content, state) = rig(&dict);
     let pooled = stew(&content, &dict, state, 2);
     let elder = pooled.by_name.get("SUSPICION").unwrap()[0].clone();
-    let before = snap(&pooled);
     let r = run(&c, &dict, clone_state(&pooled), &format!("0:0 @ ANA DECAY #{elder}"), 3); // the successor's name collides with the pool
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
     assert_eq!(r.state.entities.get(&elder).unwrap().dead_action, None); // nothing applied
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window registered at begin — the completion-time refusal
+    // still counted (the one delta; nothing else moved, and play/fold agree)
+    assert_eq!(r.state.executed.get("decay.default"), Some(&1));
+    let replayed = chorus::engine::fold::fold(&r.records, &pooled, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
 }
 
 // ---------------------------------------------------------------------------
@@ -1019,6 +1032,7 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["DESTROY SUSPICION".to_string(), "REFUSE(\"not yet\")".to_string()],
                     }],
                 },
@@ -1109,6 +1123,7 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
                         when: None,
                         shown: None,
                         hint: None,
+                        max: None,
                         out: vec!["SET(OBJECT, expires, 30m)".to_string()],
                     }],
                 },
@@ -1189,6 +1204,7 @@ fn gate(dict: &Dictionary) -> CompiledContent {
                             when: Some("count(name:SUSPICION) >= 2".into()),
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["NARRATE(\"the pot boils.\")".to_string()],
                         },
                         RecipeDef {
@@ -1196,6 +1212,7 @@ fn gate(dict: &Dictionary) -> CompiledContent {
                             when: None,
                             shown: None,
                             hint: None,
+                            max: None,
                             out: vec!["SPAWN SUSPICION".to_string()],
                         },
                     ],
@@ -1250,6 +1267,7 @@ fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
                     when: Some(when.to_string()),
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["NARRATE(\"x\")".to_string()],
                 }],
             },

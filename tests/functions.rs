@@ -163,6 +163,7 @@ fn rig_verb(recipes: &[&str]) -> IndexMap<String, VerbContent> {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec![out.to_string()],
                 })
                 .collect(),

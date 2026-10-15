@@ -85,6 +85,7 @@ fn recipe(out: &[&str]) -> RecipeDef {
         when: None,
         shown: None,
         hint: None,
+        max: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }
@@ -95,6 +96,7 @@ fn recipe_when(when: &str, out: &[&str]) -> RecipeDef {
         when: Some(when.to_string()),
         shown: None,
         hint: None,
+        max: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }

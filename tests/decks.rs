@@ -522,14 +522,17 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
             ..Default::default()
         }),
     );
-    let before = snap(&s);
+    let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1); // no object bound
     assert_eq!(r.rejected, None);
     assert_refusal(&r, r"INTO target of 'RUMOURS' cannot resolve");
     assert_eq!(r.state.decks.get("RUMOURS"), None); // the scratch died with the refusal
-    // `state === before` (identity): the input state is untouched — its
-    // value rides back as r.state on the refusal (identity → snap equality)
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window registered at begin — a window that later refuses
+    // still counted (the one deliberate delta; the cursor scratch died with
+    // it, and play/fold agree on exactly that state)
+    assert_eq!(r.state.executed.get("wait.default"), Some(&1));
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
 }
 
 // ---------------------------------------------------------------------------
@@ -625,6 +628,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["DRAWN(RUMOURS, RUMOUR)".to_string()],
             }],
         })]
@@ -668,6 +672,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["helper()".to_string()],
             }],
         })]
@@ -696,6 +701,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: vec!["IF exists(NOSUCH) -> (DRAWN(RUMOURS, RUMOUR))".to_string()],
             }],
         })]
@@ -721,6 +727,7 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
                 when: None,
                 shown: None,
                 hint: None,
+                max: None,
                 out: out.iter().map(|s| (*s).to_string()).collect(),
             }],
         })]
@@ -826,12 +833,15 @@ fn neither_reset_nor_defaultcard_the_draw_fails_nothing_logged_cursor_unmoved() 
         cur = ok.state;
     }
     assert_eq!(cur.decks.get("SINGLES"), Some(&2));
-    let before = snap(&cur);
     let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", id);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'");
     assert_eq!(r.state.decks.get("SINGLES"), Some(&2)); // cursor unmoved (§9.19 analog)
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window registered at begin — the completion-time refusal
+    // still counted (the one delta; nothing logged but the attempt)
+    assert_eq!(r.state.executed.get("wait.default"), Some(&(cur.executed["wait.default"] + 1)));
+    let replayed_attempt = fold(&r.records, &cur, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed_attempt), snap(&r.state));
     // the fold treats the empty log as the base state: the cursor sits at 2
     let replayed = fold(&[], &cur, &dict, &c).unwrap();
     assert_eq!(replayed.decks.get("SINGLES"), Some(&2));
@@ -878,13 +888,17 @@ fn a_draw_inside_an_untaken_if_branch_leaves_the_cursor_untouched() {
             ..Default::default()
         }),
     );
-    let before = snap(&s);
+    let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]); // the taken branch only
     assert_eq!(r.state.decks.len(), 0);
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window completed — the step counted (the one snap delta;
+    // the untaken branch consumed no draw, §6.7)
+    assert_eq!(r.state.executed.get("wait.default"), Some(&1));
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
 }
 
 #[test]
@@ -903,13 +917,15 @@ fn a_failure_after_a_successful_draw_refuses_the_window_draw_and_cursor_discarde
             ..Default::default()
         }),
     );
-    let before = snap(&s);
     let r = run(&c, &dict, clone_state(&s), "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "MOVE: unresolvable destination");
     assert_eq!(r.state.decks.len(), 0);
-    assert_eq!(snap(&r.state), before);
+    // §9.50: the window registered at begin — the completion-time refusal
+    // still counted (the one delta; neither the mint nor the cursor survived)
+    assert_eq!(r.state.executed.get("wait.default"), Some(&1));
     let replayed = fold(&r.records, &s, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state)); // play and fold agree on it
     assert_eq!(replayed.decks.len(), 0);
 }
 
@@ -1047,13 +1063,20 @@ fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever(
     assert_eq!(first.rejected, None);
     let cur = first.state;
     assert_eq!(cur.decks.get("PAIR"), Some(&1));
-    let before = snap(&cur);
     for _ in 0..3 {
         let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", 2);
         assert_eq!(r.rejected, None);
         assert_eq!(refusal(&r).as_deref(), Some("SPAWN: name 'WHISPER' already in use")); // the documented stuck-state message
         assert_eq!(r.state.decks.get("PAIR"), Some(&1)); // stuck forever
-        assert_eq!(snap(&r.state), before);
+        // §9.50: every attempt registers its window (the count climbs by one,
+        // identically each retry) while the deck stays pinned — the stuck
+        // state is otherwise the same, and play/fold agree on it
+        assert_eq!(
+            r.state.executed.get("wait.default"),
+            Some(&(cur.executed["wait.default"] + 1))
+        );
+        let replayed = fold(&r.records, &cur, &dict, &c).unwrap();
+        assert_eq!(snap(&replayed), snap(&r.state));
     }
 }
 
@@ -1308,6 +1331,7 @@ fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["DRAW RUMOURS".to_string()],
                 }],
             },
@@ -1405,6 +1429,7 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
                     when: None,
                     shown: None,
                     hint: None,
+                    max: None,
                     out: vec!["DRAW SMALL".to_string()],
                 }],
             },

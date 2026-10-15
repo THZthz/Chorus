@@ -1140,7 +1140,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     // UTF-16 unit offsets, so the byte slices carry the same text
     let Some(arrow) = t.find("->") else {
         return Err(ChorusError::new(format!(
-            "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [when COND] -> OUTCOMES"
+            "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [max N] [when COND] -> OUTCOMES"
         )));
     };
     let lhs = dsl_trim(&t[..arrow]);
@@ -1155,27 +1155,90 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     let tokens = split_dsl_ws(lhs);
     let mut i = 0usize;
     if let Some(tok0) = tokens.first() {
-        if recipe_id_re().is_match(tok0) && *tok0 != "when" && *tok0 != "hidden" && *tok0 != "shown"
+        // §9.50: `max` is a keyword — a leading `max N` must never parse as
+        // recipe id "max" (§9.48 will add `aspects` to this exclusion too)
+        if recipe_id_re().is_match(tok0)
+            && *tok0 != "when"
+            && *tok0 != "hidden"
+            && *tok0 != "shown"
+            && *tok0 != "max"
         {
             def.id = Some((*tok0).to_string());
             i += 1;
         }
     }
-    if let Some(tok) = tokens.get(i) {
-        if *tok == "hidden" || *tok == "shown" {
-            def.shown = Some(*tok == "shown");
-            i += 1;
+    // §9.50: the positional walk — `hidden|shown` and `max N` compose in any
+    // order around the regex-extracted clauses (N ≥ 1: a `max 0` or negative
+    // is a load error — such a recipe could never fire, so it fails loudly
+    // instead). `hint "…"` and `when COND` are matched on the lhs BELOW, so
+    // their tokens stay on the stream: the walk jumps the hint's span by byte
+    // offset, and a token left at the cursor that neither clause owns is a
+    // load error — positionals are never silently dropped.
+    let hint_cap = hint_re().captures(lhs);
+    let hint_end = hint_cap.as_ref().and_then(|c| c.get(0)).map(|m| m.end());
+    loop {
+        match tokens.get(i) {
+            Some(tok) if *tok == "hidden" || *tok == "shown" => {
+                def.shown = Some(*tok == "shown");
+                i += 1;
+            }
+            Some(tok) if *tok == "max" => {
+                i += 1;
+                let Some(n_tok) = tokens.get(i) else {
+                    return Err(ChorusError::new(format!(
+                        "line {ln}: `max` needs an integer N ≥ 1"
+                    )));
+                };
+                let n = parse_authored_int(n_tok);
+                if n < 1 {
+                    return Err(ChorusError::new(format!(
+                        "line {ln}: `max {n_tok}` — N must be an integer ≥ 1"
+                    )));
+                }
+                def.max = Some(n);
+                i += 1;
+            }
+            // the quoted hint text may contain whitespace — skip its whole
+            // span by offset. A span that ends before the cursor (a second
+            // `hint`) leaves i unmoved: the trailing check below errors.
+            Some(tok) if *tok == "hint" && hint_end.is_some() => {
+                let end = hint_end.unwrap_or(0);
+                let mut pos = 0usize;
+                let mut starts: Vec<usize> = Vec::with_capacity(tokens.len());
+                for t in &tokens {
+                    while let Some(ch) = lhs[pos..].chars().next() {
+                        if is_dsl_ws_char(ch) {
+                            pos += ch.len_utf8();
+                        } else {
+                            break;
+                        }
+                    }
+                    starts.push(pos);
+                    pos += t.len();
+                }
+                let after = starts.partition_point(|&s| s < end);
+                if after > i {
+                    i = after;
+                } else {
+                    break;
+                }
+            }
+            _ => break,
         }
     }
-    if let Some(hint) = hint_re().captures(lhs) {
-        def.hint = Some(grp_text(&hint, 1).to_string());
-        // the hint is extracted positionally and consumes nothing from
-        // `tokens` (the token cursor does not advance past it).
+    if let Some(tok) = tokens.get(i) {
+        if *tok != "when" || !when_re().is_match(lhs) {
+            return Err(ChorusError::new(format!(
+                "line {ln}: unexpected '{tok}' before '->' — positionals are [id] [hidden|shown] [hint \"...\"] [max N], then [when COND]"
+            )));
+        }
+    }
+    if let Some(hint) = &hint_cap {
+        def.hint = Some(grp_text(hint, 1).to_string());
     }
     if let Some(wm) = when_re().captures(lhs) {
         def.when = Some(grp_text(&wm, 1).to_string());
     }
-    let _ = i;
     Ok(def)
 }
 

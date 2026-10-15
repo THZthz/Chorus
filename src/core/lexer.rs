@@ -160,21 +160,32 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             continue;
         }
         if c == b'"' as u16 {
-            // QUIRK(Q10): `\X` takes the LITERAL
-            // next code unit (`"\n"` holds the letter n); a trailing
-            // backslash reads past the end — the literal string "undefined"
-            // is appended there and the token then throws unterminated (the
-            // intermediate value is unobservable, behavior-equivalent).
+            // Real escape semantics (Q10, fixed batch 3): the named
+            // single-character escapes are the characters themselves (the
+            // frozen JS lineage, Q8), an unknown escape keeps its literal
+            // next unit (JS NonEscapeCharacter), and a trailing backslash
+            // is unterminated — nothing follows for it to escape.
             let mut j = i + 1;
             let mut out: Vec<u16> = Vec::new();
             while j < s.len() && s[j] != b'"' as u16 {
                 if s[j] == b'\\' as u16 {
                     match s.get(j + 1) {
-                        Some(&next) => out.push(next),
-                        // literal ASCII "undefined", then unterminated below
-                        None => out.extend(b"undefined".iter().map(|b| u16::from(*b))),
+                        Some(&next) => {
+                            out.push(match next {
+                                0x62 => 0x0008, // \b backspace
+                                0x74 => 0x0009, // \t tab
+                                0x6E => 0x000A, // \n line feed
+                                0x76 => 0x000B, // \v vertical tab
+                                0x66 => 0x000C, // \f form feed
+                                0x72 => 0x000D, // \r carriage return
+                                0x30 => 0x0000, // \0 NUL
+                                // \" \' \\ and every non-escape unit: itself
+                                _ => next,
+                            });
+                            j += 2;
+                        }
+                        None => j = s.len(),
                     }
-                    j += 2;
                 } else {
                     out.push(s[j]);
                     j += 1;
@@ -308,19 +319,27 @@ mod tests {
     }
 
     #[test]
-    fn q10_escapes_are_literal_and_unterminated_throws() {
-        // "\n" holds the LETTER n (literal escape), not a newline (Q10)
-        assert_eq!(lex(r#""a\nb""#).unwrap(), vec![Tok::Str { v: "anb".into() }]);
-        // source `"a\\b"` (two backslashes): the escape takes the LITERAL
-        // next unit — a backslash — so the value is a, backslash, b
+    fn q10_real_escapes_and_unterminated_throws() {
+        // real escape semantics (Q10, batch 3): the named escapes are the
+        // characters themselves, an unknown escape keeps the literal next
+        // unit, and `\"`/`\\` behave exactly as before
+        assert_eq!(lex(r#""a\nb""#).unwrap(), vec![Tok::Str { v: "a\nb".into() }]);
+        assert_eq!(lex(r#""a\tb""#).unwrap(), vec![Tok::Str { v: "a\tb".into() }]);
+        // source `"a\\b"` (two backslashes) holds ONE backslash
         assert_eq!(lex(r#""a\\b""#).unwrap(), vec![Tok::Str { v: "a\\b".into() }]);
-        // source `"a\b"` (one backslash): the escape takes the literal 'b'
-        assert_eq!(lex(r#""a\b""#).unwrap(), vec![Tok::Str { v: "ab".into() }]);
+        // `\"` is the escaped quote — the bundled content's only escape,
+        // byte-identical under the new semantics
+        assert_eq!(lex("\"a\\\"b\"").unwrap(), vec![Tok::Str { v: "a\"b".into() }]);
+        // a non-escape letter keeps the literal next unit
+        // (JS NonEscapeCharacter)
+        assert_eq!(lex(r#""a\qb""#).unwrap(), vec![Tok::Str { v: "aqb".into() }]);
         // unterminated
         let e = lex("\"abc").unwrap_err();
         assert_eq!(e.msg, "unterminated string literal");
-        // trailing backslash: the "undefined" append then unterminated
+        // trailing backslash: still unterminated — nothing follows to escape
         assert_eq!(lex("\"abc\\").unwrap_err().msg, "unterminated string literal");
+        // `\"` does not CLOSE the string either
+        assert_eq!(lex("\"a\\\"").unwrap_err().msg, "unterminated string literal");
     }
 
     #[test]

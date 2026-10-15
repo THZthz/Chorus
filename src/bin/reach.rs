@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     let usable = args.iter().any(|a| a == "--usable");
     // a present --demand with no next argv slot is an ARGV ERROR (Q15):
     // it used to read argv[idx+1] = undefined and silently vanish into
-    // name mode. An EMPTY string value is JS-falsy at every consumer —
+    // name mode. An EMPTY string value is falsy at every consumer —
     // it rides as None exactly as before (the usage gate owns that face).
     let demand_idx = args.iter().position(|a| a == "--demand");
     let demand: Option<String> = match demand_idx {
@@ -66,7 +66,7 @@ fn main() -> ExitCode {
     let card: Option<&String> = rest.get(1);
     let all = rest.iter().any(|a| a == "--all");
     // the usage gate: a present file AND (a card OR --all OR a demand),
-    // with JS string truthiness; the text (two lines) is exact. An EMPTY
+    // with the frozen string truthiness; the text (two lines) is exact. An EMPTY
     // argv element is falsy for the file slot and the card slot alike.
     let file = match file {
         Some(f)

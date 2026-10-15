@@ -21,20 +21,20 @@ pub fn cmp_utf16(a: &str, b: &str) -> Ordering {
 /// the reverse on those two. All regexes must spell whitespace with this
 /// explicit class; `\S` is the negation of the same class, never the
 /// crate's `\S`.
-pub const JS_WS_CLASS: &str =
+pub const DSL_WS_CLASS: &str =
     "[\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
-/// The negation of [`JS_WS_CLASS`] — the class every regex `\S` must spell
+/// The negation of [`DSL_WS_CLASS`] — the class every regex `\S` must spell
 /// (Q8). The regex crate's `\S` is the complement of White_Space: it
 /// EXCLUDES U+FEFF and INCLUDES U+0085 — exactly the reverse of this class.
-pub const JS_NON_WS_CLASS: &str =
+pub const DSL_NON_WS_CLASS: &str =
     "[^\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
 /// The same frozen whitespace set as a code-unit predicate — the
 /// hand-written lexer scanners run on `Vec<u16>` code units where regex
 /// classes cannot reach.
 #[must_use]
-pub fn js_is_ws(c: u16) -> bool {
+pub fn is_dsl_ws(c: u16) -> bool {
     matches!(
         c,
         0x09 | 0x0a | 0x0b | 0x0c | 0x0d | 0x20 | 0x00a0 | 0x1680
@@ -46,9 +46,9 @@ pub fn js_is_ws(c: u16) -> bool {
 /// includes `\u{FEFF}`, excludes `\u{85}`. Rust's `str::trim`
 /// (`char::is_whitespace`) is exactly the reverse on those two, so every
 /// `trim()` before a whitespace split must use this predicate (Q8). Same
-/// set as [`js_is_ws`], on a `char`.
+/// set as [`is_dsl_ws`], on a `char`.
 #[must_use]
-pub fn js_char_is_ws(c: char) -> bool {
+pub fn is_dsl_ws_char(c: char) -> bool {
     matches!(
         c,
         '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}'
@@ -59,8 +59,8 @@ pub fn js_char_is_ws(c: char) -> bool {
 
 /// Trim over the engine's frozen whitespace set.
 #[must_use]
-pub fn js_trim(s: &str) -> &str {
-    s.trim_matches(js_char_is_ws)
+pub fn dsl_trim(s: &str) -> &str {
+    s.trim_matches(is_dsl_ws_char)
 }
 
 /// The engine's frozen suggestion-pool collation (B-21): ASCII-lowercase
@@ -92,8 +92,8 @@ mod tests {
     }
 
     #[test]
-    fn js_ws_class_pins_the_q8_set_exactly() {
-        let re = regex::Regex::new(JS_WS_CLASS).unwrap();
+    fn dsl_ws_class_pins_the_q8_set_exactly() {
+        let re = regex::Regex::new(DSL_WS_CLASS).unwrap();
         assert!(re.is_match("\u{feff}")); // the frozen class includes the BOM…
         assert!(!re.is_match("\u{85}")); // …but excludes NEL — Rust \s is the reverse
         assert!(re.is_match("\u{00a0}"));
@@ -111,17 +111,17 @@ mod tests {
             0x09u16, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0x00a0, 0x1680, 0x2000, 0x200a, 0x2028, 0x2029,
             0x202f, 0x205f, 0x3000, 0xfeff,
         ] {
-            assert!(js_is_ws(u), "u+{u:04x} must be engine whitespace");
+            assert!(is_dsl_ws(u), "u+{u:04x} must be engine whitespace");
         }
-        assert!(!js_is_ws(0x85)); // NEL: White_Space yes, the frozen class no
-        assert!(!js_is_ws(0x180e)); // Mongolian vowel separator: neither
+        assert!(!is_dsl_ws(0x85)); // NEL: White_Space yes, the frozen class no
+        assert!(!is_dsl_ws(0x180e)); // Mongolian vowel separator: neither
     }
 
     #[test]
-    fn js_trim_uses_the_js_whitespace_set() {
+    fn dsl_trim_uses_the_dsl_whitespace_set() {
         // \u{feff} IS trim-able, \u{85} is not — Rust str::trim is reversed
-        assert_eq!(js_trim("\u{feff}abc "), "abc");
-        assert_eq!(js_trim("\u{85}abc\u{85}"), "\u{85}abc\u{85}");
-        assert_eq!(js_trim("  a\tb\u{2028}"), "a\tb");
+        assert_eq!(dsl_trim("\u{feff}abc "), "abc");
+        assert_eq!(dsl_trim("\u{85}abc\u{85}"), "\u{85}abc\u{85}");
+        assert_eq!(dsl_trim("  a\tb\u{2028}"), "a\tb");
     }
 }

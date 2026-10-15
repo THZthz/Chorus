@@ -514,7 +514,7 @@ mod a_recipe_that_ends_the_story {
         let state = seed_state();
         let r1 = run(&content, &dict, state, "0:28 @ ANA WAIT", 1);
         let before = snap(&r1.state);
-        // JS identity `r2.state === r1.state` → execute_step hands
+        // reference identity `r2.state === r1.state` — execute_step hands
         // the ORIGINAL back untouched on a rejection, so snap equality IS the
         // semantic content of the check
         let r2 = run(
@@ -543,7 +543,7 @@ mod a_recipe_that_ends_the_story {
         let before = snap(&state);
         let r = run(&c, &dict, state, "0:28 @ ANA WAIT", 1);
         assert_eq!(ops(done(&r).unwrap()), ["ENDING", "REFUSE"]);
-        // JS identity `r.state === state` — the refused turn returns the
+        // reference identity `r.state === state` — the refused turn returns the
         // untouched input state; snap equality is its Rust observable
         assert_eq!(snap(&r.state), before);
         assert!(r.state.ended.is_none());
@@ -600,7 +600,7 @@ mod a_recipe_that_ends_the_story {
         for a in &attempts {
             assert_rejected(a, r"the story has ended — No More");
             assert_eq!(a.records.len(), 0); // nothing logged, never a throw
-            // JS identity `a.state === r1.state` — snap equality (untouched)
+            // reference identity `a.state === r1.state` — snap equality (untouched)
             assert_eq!(snap(&a.state), snap(&r1.state));
         }
     }

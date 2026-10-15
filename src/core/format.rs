@@ -197,7 +197,7 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
         Arg::AsId { id } => Ok(format!("AS #{id}")),
         Arg::Pair { k, v } => Ok(match v {
             crate::core::types::AttrValue::Str(s) => format!("{k}={}", quote(s)),
-            other => format!("{k}={}", other.to_js_string()),
+            other => format!("{k}={}", other.to_canonical_string()),
         }),
         Arg::Vexpr { .. } => Err(ChorusError::new(
             "a ROLL value expression is authored form only — the log records the computed ROLLED ints (§9.41)",

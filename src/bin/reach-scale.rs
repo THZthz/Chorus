@@ -26,7 +26,7 @@ use std::sync::mpsc;
 
 use reach_scale_lib::{build_cs_scale, census, summarize};
 
-/// Flag numbers parse with JS `Number` semantics — the flags accept plain
+/// Flag numbers parse with `Number` (ECMA-262) semantics — the flags accept plain
 /// integers (the CLI's own documented interface).
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -35,7 +35,7 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 }
 
 fn as_num(v: Option<String>, dflt: f64) -> f64 {
-    // JS `Number()` semantics: parse to f64 or NaN; the default applies
+    // `Number()` semantics: parse to f64 or NaN; the default applies
     // only when the flag is absent
     match v {
         Some(s) => s.trim().parse::<f64>().unwrap_or(f64::NAN),
@@ -54,7 +54,7 @@ fn main() -> std::process::ExitCode {
         let n_protos = as_num(args.get(w + 3).cloned(), f64::NAN) as usize;
         let n_recipes = as_num(args.get(w + 4).cloned(), f64::NAN) as usize;
         let world = build_cs_scale(n_protos, n_recipes);
-        // the name filter `idx % k == i` runs on NUMBERS (JS semantics):
+        // the name filter `idx % k == i` runs on NUMBERS (f64 semantics):
         // k = 0 makes the remainder NaN (never equal), a fractional i never
         // equals an integer remainder; Rust's f64 `%` has exactly those
         // semantics (0.0 % 0.0 = NaN, NaN == i is false), where the usize
@@ -68,7 +68,7 @@ fn main() -> std::process::ExitCode {
             .collect();
         let stats = census(&world, &mine);
         // the shard file is `reach-scale-<i>.json` — `<i>` prints like a
-        // JS Number: bare digits for integers, "NaN" for NaN
+        // Number display: bare digits for integers, "NaN" for NaN
         let path = std::env::temp_dir().join(format!("reach-scale-{i}.json"));
         // serializing plain stats cannot fail; rule 11 keeps the
         // panic explicit and the grep gate clean
@@ -80,7 +80,7 @@ fn main() -> std::process::ExitCode {
 
     let n_protos = as_num(flag(&args, "--protos"), 1566.0) as usize;
     let n_recipes = as_num(flag(&args, "--recipes"), 2084.0) as usize;
-    // the `--cores` default carries JS `Number` semantics too — the default is
+    // the `--cores` default carries the same `Number` semantics too — the default is
     // the CONSERVATIVE cap (see the module header); `--cores` overrides.
     let default_cores = std::thread::available_parallelism()
         .map(|n| n.get())

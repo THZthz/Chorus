@@ -878,7 +878,7 @@ fn scrubbed(e: &Entity) -> impl Iterator<Item = (&String, &AttrValue)> {
 }
 
 /// The state signature: the SAME fields, the SAME default-sort discipline.
-/// Array elements are pre-joined with ',' and sorted as strings (the JS
+/// Array elements are pre-joined with ',' and sorted as strings (the
 /// default string sort — the sort input is exactly this unquoted join, not
 /// the quoted JSON form). The text itself is a LOCAL dedup key (its exact
 /// bytes are never replayed from recorded runs); what must be stable is WHICH

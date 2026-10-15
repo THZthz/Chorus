@@ -10,7 +10,7 @@
 //! Every test builds a FRESH Dictionary (SEEK is a per-test
 //! registration). Error-message patterns are copied CHARACTER FOR CHARACTER
 //! from the frozen literals.
-//! JS object-identity semantics (`r.state === state`) have no Rust
+//! Reference-identity semantics (`r.state === state`) have no Rust
 //! observable: `settle_step` hands the ORIGINAL (never-mutated) state back
 //! on a refusal, as a value — `snap()` equality IS the semantic content of
 //! those checks (noted at each site, never weakened).

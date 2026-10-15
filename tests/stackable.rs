@@ -7,7 +7,7 @@
 //! Every test builds a FRESH Dictionary (the module-level dict pair becomes
 //! per-test constructors — `pool_dict()`
 //! registers the rig's own lexemes STEW/PROBE/CALM/DECAY). Error-message
-//! patterns are copied CHARACTER FOR CHARACTER from the frozen literals. JS
+//! patterns are copied CHARACTER FOR CHARACTER from the frozen literals.
 //! object-identity semantics (`r.state === pooled`) have no Rust observable:
 //! `settle_step` hands the ORIGINAL (never-mutated) state back on a refusal,
 //! as a value — `snap()` equality IS the semantic content of those checks

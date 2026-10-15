@@ -11,7 +11,7 @@ use regex::Regex;
 use crate::core::types::{aspect_get, Aspects, AspectVal, AttrValue, Entity};
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
-use crate::core::text::{js_trim, JS_WS_CLASS};
+use crate::core::text::{dsl_trim, DSL_WS_CLASS};
 use crate::error::{ChorusError, Result};
 
 /// A comparison operator: `'>=' | '<=' | '>' | '<' | '=' | '!='`.
@@ -123,26 +123,26 @@ impl QueryTerm {
 pub type Query = Vec<QueryTerm>;
 
 /// Terms are `src.trim().split(/\s+/).filter(Boolean)` — collapsed into
-/// "split on runs of JS whitespace,
+/// "split on runs of DSL whitespace,
 /// keep non-empty" (the same term list results); the whitespace set is the
-/// JS one (Q8), not Rust's.
+/// frozen DSL one (Q8), not Rust's.
 pub fn parse_query(src: &str) -> Result<Query> {
     let mut out = Vec::new();
-    for term in split_js_ws(js_trim(src)) {
+    for term in split_dsl_ws(dsl_trim(src)) {
         out.push(parse_term(term)?);
     }
     Ok(out)
 }
 
-/// `split(/\s+/).filter(Boolean)` on the JS whitespace class;
+/// `split(/\s+/).filter(Boolean)` on the frozen DSL whitespace class;
 /// hand-splitting the
 /// same class is term-for-term identical because `\s+` never matches empty.
 #[must_use]
-fn split_js_ws(s: &str) -> Vec<&str> {
+fn split_dsl_ws(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut start = None;
     for (i, c) in s.char_indices() {
-        if crate::core::text::js_char_is_ws(c) {
+        if crate::core::text::is_dsl_ws_char(c) {
             if let Some(st) = start.take() {
                 out.push(&s[st..i]);
             }
@@ -199,13 +199,13 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             })
         }
         "aspect" => {
-            // `\s` is the JS class (Q8), `-?\d+`
+            // `\s` is the frozen class (Q8), `-?\d+`
             // is ASCII digits; the alternation order is leftmost-first.
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || {
                 Regex::new(&format!(
                     r"^(?:([A-Za-z_][A-Za-z0-9_.]*))?(?:{ws}*(>=|<=|>|<|!=|=){ws}*(-?[0-9]+))?$",
-                    ws = JS_WS_CLASS
+                    ws = DSL_WS_CLASS
                 ))
             });
             let Some(m) = re.captures(rest) else {
@@ -229,13 +229,13 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             })
         }
         "state" => {
-            // same JS `\s` treatment; `(.+)` is
-            // line-free by construction (terms are split on JS whitespace).
+            // the same `\s` treatment; `(.+)` is
+            // line-free by construction (terms are split on DSL whitespace).
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || {
                 Regex::new(&format!(
                     r"^(!)?([A-Za-z_][A-Za-z0-9_.]*)(?:{ws}*(>=|<=|>|<|!=|=){ws}*(.+))?$",
-                    ws = JS_WS_CLASS
+                    ws = DSL_WS_CLASS
                 ))
             });
             let Some(m) = re.captures(rest) else {
@@ -309,7 +309,7 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
             // state:!sealed → attrs['state.sealed']
             let v = e.attrs.get(&format!("state.{key}"));
             match op {
-                // JS `!== true`: a string "false", a 0, and undefined all
+                // strict inequality against `true`: the string "false", a 0, a missing value all
                 // count as unsealed
                 StateOp::Bang => !matches!(v, Some(AttrValue::Bool(true))),
                 StateOp::Cmp(op) => {
@@ -335,7 +335,7 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
 }
 
 /// Build Aspects from `{key: n}` pairs in
-/// the caller's iteration order (JS Object.entries = insertion order; the
+/// the caller's iteration order (insertion order; the
 /// compile sites own that). QUIRK(Q13): the head collision clobbers
 /// a scalar with a sub-map (and a scalar write clobbers a sub-map) — both
 /// directions silent, frozen.

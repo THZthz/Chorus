@@ -15,7 +15,7 @@ use chorus::core::parse::parse_sentence;
 use chorus::error::ChorusError;
 
 /// The ChorusError message must
-/// match `pattern` (patterns are JS regex literals copied CHARACTER FOR
+/// match `pattern` (patterns are regex literals copied CHARACTER FOR
 /// CHARACTER — none of the repo's patterns need lookaround/backrefs).
 /// If a pattern ever needs a Rust-regex escaping adjustment, register the
 /// adjustment HERE in one place; none are needed so far.

@@ -25,7 +25,7 @@ pub const MANY: i64 = 1_000_000_000;
 /// The literal string (not an enum) is load-bearing: the
 /// three sentinel properties (occupies an avail/by-name key; slot queries hit
 /// it via the intact kind/aspect descriptor; `exists(NAME)`/`count(name:)`
-/// gates miss it because no authored name collides) are exactly JS string
+/// gates miss it because no authored name collides) are exactly strict string
 /// identity on this value, and the raw string reproduces even the adversarial
 /// corner where an author names a card with the sentinel itself.
 pub const DERIVED_NAME: &str = "\u{0000}derived";

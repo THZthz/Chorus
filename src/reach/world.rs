@@ -21,7 +21,7 @@ use super::census::{
     collect_sites, draw_deck, object_always, pred_static, Census, RawSite, SiteKind, TrigIndex,
 };
 
-/// JS `Infinity` for the freeze-distance comparisons: every
+/// An `i64::MAX` stand-in for an unbounded freeze distance: every
 /// observed value is a first-crossing distance (1..=1440), so `i64::MAX`
 /// preserves every comparison direction (`fc < freeze_dist` always true when
 /// unfrozen, `fc >= freeze_dist` always false).
@@ -365,7 +365,7 @@ pub(crate) fn compute_world_facts<'c>(
     let trig_idx = TrigIndex::build(content);
 
     // initial living entities, grouped by name; the
-    // LAST entity with a name wins the representative slot (JS Map.set keeps
+    // LAST entity with a name wins the representative slot (insertion keeps
     // the original insertion position — IndexMap::insert likewise).
     let mut init_names: IndexMap<String, &'c Entity> = IndexMap::new();
     let mut init_count: IndexMap<String, i64> = IndexMap::new();

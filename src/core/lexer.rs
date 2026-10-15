@@ -3,15 +3,15 @@
 //! commas/brackets.
 //!
 //! The five regex-shaped scans (NAME, digits, DUR
-//! with its load-bearing `halfhour|h|m|d` alternation order (Q9), the JS
-//! `\s` skip, and `[0-9]`) are HAND-WRITTEN over `Vec<u16>` code units: the
+//! with its load-bearing `halfhour|h|m|d` alternation order (Q9), the frozen
+//! whitespace skip, and `[0-9]`) are HAND-WRITTEN over `Vec<u16>` code units: the
 //! regex crate cannot run on a UTF-16 code-unit domain, and code-unit
 //! indexing is what makes the error offsets and the `->`/punct decisions
-//! byte-identical to JS.
+//! byte-identical.
 
 use crate::core::clock::parse_duration;
 use crate::core::num_parse::parse_authored_int;
-use crate::core::text::js_is_ws;
+use crate::core::text::is_dsl_ws;
 use crate::error::{ChorusError, Result};
 
 /// One lexed token.
@@ -149,8 +149,8 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
     let mut i = 0;
     while i < s.len() {
         let c = s[i];
-        if js_is_ws(c) {
-            // the JS whitespace set (Q8), hand-scanned
+        if is_dsl_ws(c) {
+            // the frozen DSL whitespace set (Q8), hand-scanned
             i += 1;
             continue;
         }
@@ -162,8 +162,8 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
         if c == b'"' as u16 {
             // Real escape semantics (Q10, fixed batch 3): the named
             // single-character escapes are the characters themselves (the
-            // frozen JS lineage, Q8), an unknown escape keeps its literal
-            // next unit (JS NonEscapeCharacter), and a trailing backslash
+            // frozen set, Q8), an unknown escape keeps its literal
+            // next unit (the ECMA-262 `NonEscapeCharacter` rule), and a trailing backslash
             // is unterminated — nothing follows for it to escape.
             let mut j = i + 1;
             let mut out: Vec<u16> = Vec::new();
@@ -331,7 +331,7 @@ mod tests {
         // byte-identical under the new semantics
         assert_eq!(lex("\"a\\\"b\"").unwrap(), vec![Tok::Str { v: "a\"b".into() }]);
         // a non-escape letter keeps the literal next unit
-        // (JS NonEscapeCharacter)
+        // (the ECMA-262 `NonEscapeCharacter` rule)
         assert_eq!(lex(r#""a\qb""#).unwrap(), vec![Tok::Str { v: "aqb".into() }]);
         // unterminated
         let e = lex("\"abc").unwrap_err();

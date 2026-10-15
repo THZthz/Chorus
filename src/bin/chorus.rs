@@ -115,7 +115,7 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
     // `/^inspect\b\s*(.*)$/` over the trimmed line; the
     // prefix wins over everything else (`inspector` does NOT match: \b)
     if let Some(rest) = trimmed.strip_prefix("inspect") {
-        // JS \b is ASCII (\w = [A-Za-z0-9_]): a following word character
+        // the `\b` word-boundary class is ASCII (`\w` = [A-Za-z0-9_]): a following word
         // (`inspector`, `inspect5`, `inspect_x`) means NO boundary and the
         // line falls through to handle_line, exactly as the regex demands
         if rest.is_empty() || rest.starts_with(|c: char| !c.is_ascii_alphanumeric() && c != '_') {

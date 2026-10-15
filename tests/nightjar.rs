@@ -153,7 +153,7 @@ mod the_nightjar_flyer {
             assert!(!game.state.by_name.contains_key(name), "{name}");
         }
         let mut verbs: Vec<&str> = game.content.verbs.keys().map(String::as_str).collect();
-        verbs.sort_unstable(); // JS `.sort()` — ASCII keys, code-unit order
+        verbs.sort_unstable(); // `.sort()` — ASCII keys, code-unit order
         assert_eq!(
             verbs,
             [
@@ -692,7 +692,7 @@ mod the_nightjar_flyer {
             fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
         let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
         let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
-        // JS `.sort()` = default string sort = UTF-16 code-unit order
+        // `.sort()` = default string sort = UTF-16 code-unit order
         replayed_names.sort_by(|a, b| cmp_utf16(a, b));
         played_names.sort_by(|a, b| cmp_utf16(a, b));
         assert_eq!(replayed_names, played_names);

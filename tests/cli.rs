@@ -59,7 +59,7 @@ fn reach_trailing_demand_is_an_argv_error_q15() {
     );
 }
 
-/// `--demand ''`: the EMPTY string is FALSY in JS, so
+/// `--demand ''`: the EMPTY string is FALSY, so
 /// `!demand` holds and the usage gate exits 2 with the
 /// exact two-line text (Rust used to treat Some("") as a provided demand and
 /// rendered a demand report).

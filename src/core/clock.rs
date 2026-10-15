@@ -32,7 +32,7 @@ pub fn abs_min(c: Clock) -> i64 {
         .saturating_mul(MIN_PER_HALFHOUR)
 }
 
-/// JS floor division via div_euclid/rem_euclid, on the non-negative inputs
+/// Floor division via div_euclid/rem_euclid, on the non-negative inputs
 /// the engine constructs (callers self-certify non-negativity). Negative
 /// input is a debug-time contract violation, never runtime behavior.
 #[must_use]
@@ -47,7 +47,7 @@ pub fn clock_from_abs_min(m: i64) -> Clock {
 
 /// The earliest startable step clock at or
 /// after absolute minute m (§9.28): sub-halfhour actions leave the rest of
-/// the tick as dead air. `%` is the JS truncated remainder (same sign as the
+/// the tick as dead air. `%` is the truncated remainder (same sign as the
 /// dividend).
 #[must_use]
 pub fn next_step_clock(m: i64) -> Clock {
@@ -66,7 +66,7 @@ pub fn format_clock(c: Clock) -> String {
 /// check is deliberate)
 #[allow(clippy::manual_range_contains)]
 pub fn parse_clock(s: &str) -> Result<Clock> {
-    // JS `\d` is ASCII, so the regex uses explicit `[0-9]` classes.
+    // the digit class is ASCII: the regex uses explicit `[0-9]` classes.
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = static_regex(&RE, || Regex::new(r"^([0-9]+):([0-9]+)$"));
     let Some(m) = re.captures(s) else {
@@ -102,7 +102,7 @@ fn unit_minutes(unit: &str) -> i64 {
 /// Duration literal grammar: one or more
 /// `int ("halfhour" | "h" | "m" | "d")` pairs (§5.1); compounds like `1h30m`
 /// sum their pairs (§9.45). The unit alternation order `halfhour|h|m|d` is
-/// LOAD-BEARING (Q9): the regex crate is leftmost-first like JS,
+/// LOAD-BEARING (Q9): the regex crate is leftmost-first —
 /// and `h` before `halfhour` would split `1halfhour` into `1h`+`alfhour`.
 pub fn parse_duration(s: &str) -> Result<i64> {
     static RE: OnceLock<Regex> = OnceLock::new();

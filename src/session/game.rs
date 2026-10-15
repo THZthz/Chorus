@@ -20,11 +20,11 @@ use crate::core::query::match_query;
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
 use crate::core::sentence::Arg;
-use crate::core::types::{clone_state, AttrValue, Entity, OpenWindow, State};
+use crate::core::types::{clone_state, is_truthy, AttrValue, Entity, OpenWindow, State};
 use crate::engine::engine::{execute_step, ExecOptions};
 use crate::engine::fold::fold;
 use crate::engine::store::Log;
-use crate::core::text::js_trim;
+use crate::core::text::dsl_trim;
 use crate::error::Result;
 
 use super::lenient::{parse_player_input, LenientCtx, ParsedInput};
@@ -108,7 +108,7 @@ impl Game {
     /// one turn of play — pure enough to drive from tests
     /// (`Result` carries prose rendering's error channel)
     pub fn handle_line(&mut self, line: &str) -> Result<Turn> {
-        let t = js_trim(line);
+        let t = dsl_trim(line);
         if t.is_empty() {
             return Ok(turn(TurnKind::Info, vec![]));
         }
@@ -306,7 +306,7 @@ impl Game {
     /// showed the FIRST visible card, Q11) names the usage and lists the
     /// table instead; it never guesses a card.
     pub fn inspect(&self, raw_name: &str) -> Vec<String> {
-        let q = js_trim(raw_name).to_lowercase().replace('_', " ");
+        let q = dsl_trim(raw_name).to_lowercase().replace('_', " ");
         if q.is_empty() {
             // Q11: usage + the card list (the same projection `cards`
             // prints), not the first visible card
@@ -326,7 +326,7 @@ impl Game {
         let Some(card) = card else {
             return vec![format!(
                 "nothing on the table answers to '{}' — press 2 for the table",
-                js_trim(raw_name)
+                dsl_trim(raw_name)
             )];
         };
         let mut lines = vec![format!("{}  [{}]", card.name, card.kind)];
@@ -339,14 +339,14 @@ impl Game {
                 lines.push(format!("  at: {}", pretty(&container.name)));
             }
         }
-        // `if (card.attrs['zone'])` is JS truthiness:
+        // `if (card.attrs['zone'])` reads through the frozen truthiness:
         // '' / 0 / false are silent, everything else prints
         if is_truthy(card.attrs.get("zone")) {
             lines.push(format!(
                 "  zone: {}",
                 card.attrs
                     .get("zone")
-                    .map_or(String::new(), |v| v.to_js_string())
+                    .map_or(String::new(), |v| v.to_canonical_string())
             ));
         }
         if let Some(n) = card.born_action {
@@ -431,7 +431,7 @@ impl Game {
             .map(|w| w.end)
             .min()
             .unwrap_or(now + 60);
-        // ceil to the halfhour — the JS `Math.ceil(dueAt / 30) * 30` spelling;
+        // ceil to the halfhour — the `ceil(dueAt / 30) * 30` spelling;
         // the manual ceil-division is exact for
         // the non-negative minutes the engine ever holds (i64::div_ceil is
         // still feature-gated on this toolchain)
@@ -477,7 +477,7 @@ impl Game {
             .flat_map(|w| w.locked.iter().map(String::as_str))
             .collect();
         // same-container cards rank first (the Option
-        // equality models JS `===` over possibly-undefined attrs)
+        // equality models strict equality over possibly-missing attrs)
         let me_container = me.attrs.get("container");
         let rank = |e: &Entity| {
             if e.attrs.get("container") == me_container {
@@ -570,7 +570,7 @@ impl Game {
                             && slot.query.as_ref().is_none_or(|q| match_query(e, q))
                     })
                     .collect();
-                // rank ascending, then name — the JS comparator
+                // rank ascending, then name — the frozen comparator
                 // `rank(a) - rank(b) || a.name.localeCompare(b.name)`;
                 // the localeCompare tail is §3.21's frozen approximation
                 // (cmp_ascii_ci — ASCII-lowercase then byte order)
@@ -624,7 +624,7 @@ impl Game {
                 let Some(slot) = verb.slot_by_role.get(role_str) else {
                     unreachable!("pool role is always a declared slot role")
                 };
-                    // cap = max(slot.min, min(slot.max, 2)) — a JS Infinity max
+                    // cap = max(slot.min, min(slot.max, 2)) — an unbounded max
                     // (None) loses to the 2
                 let cap = std::cmp::max(slot.min, std::cmp::min(slot.max.unwrap_or(2), 2));
                 let role = Role::from_lower(role_str);
@@ -693,12 +693,3 @@ impl Game {
     }
 }
 
-/// JS truthiness over a JSON primitive or a missing value.
-fn is_truthy(v: Option<&AttrValue>) -> bool {
-    match v {
-        None => false,                                  // undefined
-        Some(AttrValue::Str(s)) => !s.is_empty(),       // ''
-        Some(AttrValue::Num(n)) => *n != 0,             // 0 (and NaN's domain is empty here)
-        Some(AttrValue::Bool(b)) => *b,                 // false
-    }
-}

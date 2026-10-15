@@ -22,9 +22,9 @@ use crate::core::query::{parse_query, Query};
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::core::types::{Aspects, Attrs};
-use crate::core::jsonw::{clone_map_in_js_order, ordinary_own_property_keys};
+use crate::core::jsonw::{clone_map_in_key_order, ordinary_own_property_keys};
 use crate::core::regex_util::static_regex;
-use crate::core::text::js_trim;
+use crate::core::text::dsl_trim;
 use crate::error::{ChorusError, Result};
 
 // ---------------------------------------------------------------------------
@@ -337,11 +337,11 @@ pub struct DeclaredEntity {
 // ---------------------------------------------------------------------------
 
 /// The compile-side `Object.entries`
-/// iteration points: JS fronts integer-like
+/// iteration points: the canonical order fronts integer-like
 /// keys, so every one of these walks goes through
 /// [`ordinary_own_property_keys`]. Do NOT reject integer-like key names —
 /// reproduce the key order.
-fn entries_in_js_order<V>(m: &IndexMap<String, V>) -> Vec<(&str, &V)> {
+fn entries_in_key_order<V>(m: &IndexMap<String, V>) -> Vec<(&str, &V)> {
     let keys = ordinary_own_property_keys(m);
     let mut out = Vec::with_capacity(keys.len());
     for k in &keys {
@@ -371,7 +371,7 @@ pub(crate) fn collect_stackable(
         }
     }
     if let Some(prototypes) = prototypes {
-        for (name, p) in entries_in_js_order(prototypes) {
+        for (name, p) in entries_in_key_order(prototypes) {
             if p.stackable {
                 names.insert(name.to_string());
                 kinds.insert(p.kind.clone());
@@ -399,12 +399,12 @@ pub fn compile_content(
     let (stackable_names, stackable_kinds) =
         collect_stackable(entities, raw.prototypes.as_ref());
     let mut endings = IndexMap::new();
-    for (id, e) in entries_in_js_order(raw.endings.as_ref().unwrap_or(&IndexMap::new())) {
+    for (id, e) in entries_in_key_order(raw.endings.as_ref().unwrap_or(&IndexMap::new())) {
         let re = ending_id_re();
         if !re.is_match(id) {
             return Err(ChorusError::new(format!("ending '{id}' must be UPPER_SNAKE")));
         }
-        if e.title.is_empty() || js_trim(&e.title).is_empty() {
+        if e.title.is_empty() || dsl_trim(&e.title).is_empty() {
             return Err(ChorusError::new(format!("ending {id}: needs a title")));
         }
         let flavour = e.flavour.clone().unwrap_or_else(|| "melancholy".to_string());
@@ -432,7 +432,7 @@ pub fn compile_content(
         entities,
     )?;
     let mut verbs = IndexMap::new();
-    for (name, v) in entries_in_js_order(&raw.verbs) {
+    for (name, v) in entries_in_key_order(&raw.verbs) {
         if !dict.is_verb(name) {
             return Err(ChorusError::new(format!(
                 "verb '{name}' is not registered in the dictionary"
@@ -457,7 +457,7 @@ pub fn compile_content(
                 min: s.min,
                 max: s.max,
                 shown: s.shown.unwrap_or(true),
-                // JS truthiness of an empty string:
+                // the frozen truthiness of an empty string:
                 // '' is FALSY, so a hand-built ContentRaw with
                 // query: '' compiles to NO query (not a parse error); parse-
                 // produced queries are never '' (the script grammar's
@@ -473,7 +473,7 @@ pub fn compile_content(
         }
         let mut recipes = Vec::with_capacity(v.recipes.len());
         for (i, r) in v.recipes.iter().enumerate() {
-            // BOTH the id mint and the when parse read `r.when` JS truthiness:
+            // BOTH the id mint and the when parse read `r.when` through the frozen truthiness:
             // '' is FALSY, so a hand-built
             // ContentRaw with when: '' rides as the DEFAULT recipe (id
             // `<verb>.default`, no parse error); the lint mirror
@@ -581,11 +581,11 @@ pub fn compile_content(
             }),
         }
     }
-    // JS key order via the JS-order clone
+    // canonical key order via the key-order clone
     // (`new Map(Object.entries(...))` semantics)
-    let prototypes = clone_map_in_js_order(raw.prototypes.as_ref().unwrap_or(&IndexMap::new()));
+    let prototypes = clone_map_in_key_order(raw.prototypes.as_ref().unwrap_or(&IndexMap::new()));
     let mut templates = IndexMap::new();
-    for (name, tpl) in entries_in_js_order(raw.templates.as_ref().unwrap_or(&IndexMap::new())) {
+    for (name, tpl) in entries_in_key_order(raw.templates.as_ref().unwrap_or(&IndexMap::new())) {
         if !dict.is_verb(name) {
             return Err(ChorusError::new(format!(
                 "template '{name}' is not a registered verb — templates configure verbs, same as the verbs: section"
@@ -1046,7 +1046,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
             }
         }
         // first-occurrence duplicates, deduped
-        // preserving first-seen order (JS `new Set(dups)` iteration)
+        // preserving first-seen order (set iteration semantics)
         let mut dup_set: IndexSet<&str> = IndexSet::new();
         let mut dups: Vec<&str> = Vec::new();
         for (i, p) in def.params.iter().enumerate() {
@@ -1219,12 +1219,12 @@ mod tests {
     }
 
     #[test]
-    fn entries_in_js_order_fronts_integer_like_keys() {
+    fn entries_in_key_order_fronts_integer_like_keys() {
         let mut m = IndexMap::new();
         m.insert("container".to_string(), 1);
         m.insert("5".to_string(), 2);
         m.insert("0".to_string(), 3);
-        let got: Vec<(&str, i64)> = entries_in_js_order(&m)
+        let got: Vec<(&str, i64)> = entries_in_key_order(&m)
             .into_iter()
             .map(|(k, v)| (k, *v))
             .collect();
@@ -1232,8 +1232,8 @@ mod tests {
     }
 
     #[test]
-    fn empty_string_when_and_query_are_falsy_like_js() {
-        // the empty-string `query`/`when` checks read JS truthiness, so a
+    fn empty_string_when_and_query_are_falsy() {
+        // the empty-string `query`/`when` checks read the frozen truthiness, so a
         // hand-built ContentRaw
         // with when: '' compiles as the DEFAULT recipe (minting
         // `<verb>.default`, no parse error) and query: '' compiles to no

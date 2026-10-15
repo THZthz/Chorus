@@ -11,7 +11,7 @@
 //! assertions regex-match the minted `#x\d+_1` ids, so the id sequence is
 //! load-bearing).
 //!
-//! JS object-identity semantics (`r.state === state`) have no
+//! Reference-identity semantics (`r.state === state`) have no
 //! Rust observable: `execute_step` consumes the State and hands the ORIGINAL
 //! back untouched on a rejection/refusal, so `snap()` equality IS the
 //! semantic content of those checks (noted at each site, never weakened).

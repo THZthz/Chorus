@@ -115,7 +115,7 @@ pub fn clause_key(c: &Clause) -> String {
 }
 
 /// every k-subset of arr with min ≤ k ≤ max, in
-/// pool order (deterministic). `max: None` models JS `Infinity` (the recursion
+/// pool order (deterministic). `max: None` models an unbounded max (the recursion
 /// then only stops when the pool is exhausted).
 fn subsets(arr: &[&Entity], min: i64, max: Option<i64>) -> Vec<Vec<Ref>> {
     let mut out: Vec<Vec<Ref>> = Vec::new();

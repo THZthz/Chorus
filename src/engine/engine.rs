@@ -27,11 +27,11 @@ use crate::core::r#ref::{id_ref, name_ref, sort_refs, Ref};
 use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::{Arg, Clause, IfArm, IntoTarget, Outcome, Sentence, SentenceKind};
 use crate::core::types::{
-    add_entity, aspect_entry, aspect_get, aspect_set, clone_state, get_alive, oldest_named, relation_key,
+    add_entity, aspect_entry, aspect_get, aspect_set, clone_state, get_alive, is_truthy, oldest_named, relation_key,
     release_name_entry, AspectEntry, AspectVal, Aspects, AttrValue, Attrs, Entity, Ending, OpenWindow, Relation, State,
 };
 use crate::core::jsonw::{
-    clone_map_in_js_order, jsjson, jsjson_obj_in_js_order, ordinary_own_property_keys, JsJson,
+    clone_map_in_key_order, jsonw, jsonw_obj_in_key_order, ordinary_own_property_keys, Jsonw,
 };
 use crate::error::{ChorusError, Result};
 
@@ -1150,13 +1150,13 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         )));
     };
     let mut name = proto_name.clone();
-    // the attrs spread is a JS key-order point (integer-like keys front)
+    // the attrs spread is a canonical key-order point (integer-like keys front)
     let mut aspects: Aspects = match proto.and_then(|p| p.aspects.as_ref()) {
         Some(a) => clone_aspects(a),
         None => Aspects::new(),
     };
     let mut attrs: Attrs = match proto.and_then(|p| p.attrs.as_ref()) {
-        Some(a) => clone_map_in_js_order(a),
+        Some(a) => clone_map_in_key_order(a),
         None => Attrs::new(),
     };
     // derive (`name from object`, §6.4)
@@ -1173,7 +1173,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             }
             if let Some(rules) = &derive.aspects {
                 // `Object.entries(derive.aspects)` — the
-                // JS key order is observable (aspects insertion order)
+                // The canonical key order is observable (aspects insertion order)
                 for key in ordinary_own_property_keys(rules) {
                     let rule = &rules[&key];
                     if let Some(base) = aspect_get(obj, &rule.from_object_aspect) {
@@ -1244,8 +1244,8 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 .cloned(),
         }
     };
-    // the container attr is written only when truthy (JS truthiness)
-    if js_truthy(container.as_ref()) {
+    // the container attr is written only when truthy (the frozen truthiness)
+    if is_truthy(container.as_ref()) {
         if let Some(c) = &container {
             attrs.insert("container".to_string(), c.clone());
         }
@@ -1277,7 +1277,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             attrs.insert(k, v);
         }
         if !had_container {
-            attrs.shift_remove("container"); // JS delete keeps the other keys' slots (order-preserving)
+            attrs.shift_remove("container"); // removal keeps the other keys' slots (order-preserving)
         }
     }
     add_entity(
@@ -1298,16 +1298,16 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let mut concrete_args: Vec<Arg> = vec![Arg::Ref {
         r#ref: name_ref(name, Some(kind)),
     }];
-    if js_truthy(container.as_ref()) {
+    if is_truthy(container.as_ref()) {
         if let Some(c) = &container {
             // `id_ref` over the string-cast value
             concrete_args.push(Arg::Into {
-                r#ref: IntoTarget::Ref(id_ref(c.to_js_string())),
+                r#ref: IntoTarget::Ref(id_ref(c.to_canonical_string())),
             });
         }
     }
     concrete_args.push(Arg::AsId { id });
-    // The pair STRINGS are built through the JS key order (the
+    // The pair STRINGS are built through the canonical key order (the
     // `SET(x,"5",…)` path can put integer-like keys into attrs).
     if !aspects.is_empty() {
         concrete_args.push(Arg::Pair {
@@ -1399,7 +1399,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
         let id = (ctx.id_gen)();
         let mut attrs: Attrs = match proto.and_then(|p| p.attrs.as_ref()) {
-            Some(a) => clone_map_in_js_order(a),
+            Some(a) => clone_map_in_key_order(a),
             None => Attrs::new(),
         };
         // container / zone ride off the dying card's CURRENT attrs
@@ -1940,7 +1940,7 @@ fn expand(args: &[Arg], ctx: &ApplyCtx) -> Vec<String> {
 }
 
 /// The aspects clone: the top-level
-/// `Object.entries` AND each sub-map spread are JS key-order points
+/// `Object.entries` AND each sub-map spread are canonical key-order points
 /// (`{ ...v }` fronts integer-like keys).
 fn clone_aspects(a: &Aspects) -> Aspects {
     let mut out = Aspects::new();
@@ -1950,7 +1950,7 @@ fn clone_aspects(a: &Aspects) -> Aspects {
                 k,
                 match v {
                     AspectVal::Num(n) => AspectVal::Num(*n),
-                    AspectVal::Sub(m) => AspectVal::Sub(clone_map_in_js_order(m)),
+                    AspectVal::Sub(m) => AspectVal::Sub(clone_map_in_key_order(m)),
                 },
             );
         }
@@ -2005,7 +2005,7 @@ pub fn apply_record(
             .and_then(|k| state.windows.get(k))
             .map(|w| w.start);
         if let Some(k) = &record.window {
-            state.windows.shift_remove(k); // JS Map.delete preserves insertion order
+            state.windows.shift_remove(k); // removal preserves the remaining keys' insertion order
         }
         // refused: window closed, effects discarded (§6.5)
         if record.outcomes.iter().any(|o| o.op == "REFUSE") {
@@ -2344,7 +2344,7 @@ fn fire_window(
     let advance_extra = ctx.extra_advance_min;
     drop(ctx);
     let mut out = if refused { state_in } else { scratch };
-    out.windows.shift_remove(&w.key); // JS Map.delete preserves insertion order
+    out.windows.shift_remove(&w.key); // removal preserves the remaining keys' insertion order
     Ok(FireWindowResult {
         state: out,
         record: make_complete_record(record_id, w, concrete, dict)?,
@@ -2648,54 +2648,43 @@ fn checked_step(a: i64, b: i64, what: &str) -> i64 {
     }
 }
 
-/// JS truthiness over container-shaped values (the `if (container)` guards):
-/// '' / 0 / false are falsy.
-fn js_truthy(v: Option<&AttrValue>) -> bool {
-    match v {
-        None => false,
-        Some(AttrValue::Str(s)) => !s.is_empty(),
-        Some(AttrValue::Num(n)) => *n != 0,
-        Some(AttrValue::Bool(b)) => *b,
-    }
-}
-
 /// `JSON.stringify(aspects)`. Plain JSON.stringify
-/// applies the JS key order (OrdinaryOwnPropertyKeys), so the map goes
-/// through [`jsjson_obj_in_js_order`].
+/// applies the canonical key order (OrdinaryOwnPropertyKeys), so the map goes
+/// through [`jsonw_obj_in_key_order`].
 /// pub(crate): the reach analyzer re-uses this exact frozen format for its
 /// provenance/demand chain lines.
 pub(crate) fn aspects_to_json(a: &Aspects) -> String {
-    let mut m: IndexMap<String, JsJson> = IndexMap::new();
+    let mut m: IndexMap<String, Jsonw> = IndexMap::new();
     for (k, v) in a {
         m.insert(
             k.clone(),
             match v {
-                AspectVal::Num(n) => JsJson::Int(*n),
-                AspectVal::Sub(sub) => JsJson::Obj(
+                AspectVal::Num(n) => Jsonw::Int(*n),
+                AspectVal::Sub(sub) => Jsonw::Obj(
                     sub.iter()
-                        .map(|(k2, n2)| (k2.clone(), JsJson::Int(*n2)))
+                        .map(|(k2, n2)| (k2.clone(), Jsonw::Int(*n2)))
                         .collect(),
                 ),
             },
         );
     }
-    jsjson(&jsjson_obj_in_js_order(&m))
+    jsonw(&jsonw_obj_in_key_order(&m))
 }
 
-/// `JSON.stringify(attrs)` (same JS key-order rule).
+/// `JSON.stringify(attrs)` (same canonical key-order rule).
 fn attrs_to_json(a: &Attrs) -> String {
-    let mut m: IndexMap<String, JsJson> = IndexMap::new();
+    let mut m: IndexMap<String, Jsonw> = IndexMap::new();
     for (k, v) in a {
         m.insert(
             k.clone(),
             match v {
-                AttrValue::Str(s) => JsJson::Str(s.clone()),
-                AttrValue::Num(n) => JsJson::Int(*n),
-                AttrValue::Bool(b) => JsJson::Bool(*b),
+                AttrValue::Str(s) => Jsonw::Str(s.clone()),
+                AttrValue::Num(n) => Jsonw::Int(*n),
+                AttrValue::Bool(b) => Jsonw::Bool(*b),
             },
         );
     }
-    jsjson(&jsjson_obj_in_js_order(&m))
+    jsonw(&jsonw_obj_in_key_order(&m))
 }
 
 /// `JSON.parse(pair.v) as Aspects`. Values are

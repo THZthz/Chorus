@@ -119,7 +119,7 @@ fn snap_hides_map_insertion_order_and_sorts_by_utf16_order() {
 
 #[test]
 fn snap_sorts_keys_by_utf16_code_units_not_rust_bytes() {
-    // U+10000 (surrogate pair, first unit 0xD800) sorts BEFORE U+E000 in JS
+    // U+10000 (surrogate pair, first unit 0xD800) sorts BEFORE U+E000 in UTF-16
     // `<` order but AFTER it in Rust byte order — the exact trap this
     // pin exists for
     let mut s = solo("MARCH");

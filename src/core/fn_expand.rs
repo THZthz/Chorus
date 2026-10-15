@@ -252,7 +252,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
 
 /// `{param}` → the call-site arg's canonical
 /// spelling, inside a function body string. One NON-RESCANNING pass over the
-/// body string (JS /g replace ≡ single-pass non-overlapping, and the
+/// body string (a global replace ≡ single-pass non-overlapping, and the
 /// replacements are never rescanned — regex `replace_all` + manual assembly
 /// matches exactly): the exact spelling `{name}` substitutes (reserved
 /// tokens pass through; undeclared names are a load error); a SPACED
@@ -260,16 +260,16 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
 /// braces are ordinary prose.
 fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<String> {
     // `\{(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*)\}`
-    // with the JS `\s` class (Q8)
+    // with the frozen whitespace class (Q8)
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = static_regex(&RE, || {
         // the whitespace classes are CAPTURE GROUPS (pre = group 1, post = group 3)
         let mut pat = String::from("\\{("); // regex \{(
-        pat.push_str(crate::core::text::JS_WS_CLASS);
+        pat.push_str(crate::core::text::DSL_WS_CLASS);
         pat.push_str("*)");
         pat.push_str("([A-Za-z_][A-Za-z0-9_]*)");
         pat.push('(');
-        pat.push_str(crate::core::text::JS_WS_CLASS);
+        pat.push_str(crate::core::text::DSL_WS_CLASS);
         pat.push_str("*)\\}"); // )}
 
         Regex::new(&pat)
@@ -344,9 +344,9 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
         Arg::Dur { v } => format_duration(*v),
         Arg::Key { v } => Ok(v.clone()),
         Arg::Pair { k, v } => {
-            // the value RAW (`k=v` via the JS string form; format_arg quotes
+            // the value RAW (`k=v` via the canonical string form; format_arg quotes
             // it — the frozen asymmetry)
-            Ok(format!("{k}={}", v.to_js_string()))
+            Ok(format!("{k}={}", v.to_canonical_string()))
         }
         other => Err(ChorusError::new(format!(
             "function '{fn_}': parameter '{param}' cannot interpolate into a string (bound to a {})",
@@ -602,8 +602,8 @@ mod tests {
     }
 
     #[test]
-    fn collect_fn_calls_preserves_js_set_insertion_order() {
-        // collect_fn_calls fills an IndexSet mirroring a JS `Set<string>`:
+    fn collect_fn_calls_preserves_set_insertion_order() {
+        // collect_fn_calls fills an IndexSet — an insertion-ordered string set:
         // iteration is INSERTION order — content compile reads
         // it in that order (first undeclared callee in the error text; the
         // first cycle found and its `a -> b -> a` spelling). Hand-built FN
@@ -632,7 +632,7 @@ mod tests {
         };
         let mut into = IndexSet::new();
         // declaration order across the list, plus a DUPLICATE: insertion keeps
-        // the element at its FIRST position (JS Set and IndexSet alike)
+        // the element at its FIRST position (insertion-ordered sets agree)
         collect_fn_calls(&[o, fn_("mike"), fn_("zulu")], &mut into);
         let names: Vec<&str> = into.iter().map(String::as_str).collect();
         assert_eq!(names, vec!["zulu", "alpha", "mike"]);

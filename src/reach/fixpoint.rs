@@ -98,7 +98,7 @@ impl<'c> WorldFacts<'c> {
             .cloned()
             .collect();
         if slots.is_empty() {
-            // an empty proof is TRUTHY in JS: the verb
+            // an empty proof is TRUTHY: the verb
             // commits with no slot requirements
             return Some(Vec::new());
         }

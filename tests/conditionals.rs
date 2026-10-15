@@ -11,7 +11,7 @@
 //! Every test builds a FRESH Dictionary with INSPECT/ATTUNE/STEW registered
 //! (per-test isolation matters for reserved-word collisions). Error-message
 //! patterns are copied CHARACTER FOR CHARACTER from the frozen literals;
-//! the one JS `/s` (dotall) flag becomes an inline `(?s)` (the harness's
+//! the one `/s` (dotall) flag becomes an inline `(?s)` (the harness's
 //! registered escape adjustment).
 
 mod common;

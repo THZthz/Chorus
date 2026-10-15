@@ -5,11 +5,11 @@
 //!   "ana, bertha talk about clue at dining hall"   → multi-actor + ABOUT + AT
 //!   "0:20 @ ANA WAIT"                              → canonical passthrough
 //!
-//! QUIRK(Q8): JS `\s` includes `\uFEFF` and excludes `\u{85}`;
+//! QUIRK(Q8): the frozen whitespace class includes `\uFEFF` and excludes `\u{85}`;
 //! Rust's `\s` (White_Space) is exactly the reverse. The four
 //! `\s` regex sites are therefore spelled with
-//! [`JS_WS_CLASS`], never the crate's class; `/^\d+:\d+$/` has no
-//! `\s`, and JS `\d` is ASCII `[0-9]`.
+//! [`DSL_WS_CLASS`], never the crate's class; `/^\d+:\d+$/` has no
+//! `\s`, and digits are ASCII `[0-9]`.
 
 use std::sync::OnceLock;
 
@@ -25,7 +25,7 @@ use crate::core::r#ref::{name_ref, Ref};
 use crate::core::types::{Entity, State};
 use crate::engine::engine::Step;
 use crate::core::regex_util::static_regex;
-use crate::core::text::{js_trim, JS_WS_CLASS};
+use crate::core::text::{dsl_trim, DSL_WS_CLASS};
 
 /// The parse context: dictionaries, content, state and the default actor.
 pub struct LenientCtx<'a> {
@@ -108,19 +108,19 @@ impl Group {
 }
 
 // `/^\d+:\d+\s*@/` — the canonical escape hatch;
-// `\s` → JS_WS_CLASS, `\d` → ASCII [0-9].
+// `\s` → DSL_WS_CLASS, `\d` → ASCII [0-9].
 fn passthrough_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || Regex::new(&format!("^[0-9]+:[0-9]+{JS_WS_CLASS}@")))
+    static_regex(&RE, || Regex::new(&format!("^[0-9]+:[0-9]+{DSL_WS_CLASS}@")))
 }
 
-// `split(/[\s,;]+)/`: the JS_WS class
+// `split(/[\s,;]+)/`: the DSL_WS_CLASS
 // extended with the two literal separators inside ONE bracket class.
 fn token_split_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        // JS_WS_CLASS is "[…]" — splice its inner run into the union class
-        let inner = &JS_WS_CLASS[1..JS_WS_CLASS.len() - 1];
+        // DSL_WS_CLASS is "[…]" — splice its inner run into the union class
+        let inner = &DSL_WS_CLASS[1..DSL_WS_CLASS.len() - 1];
         Regex::new(&format!("[{inner},;]+"))
     })
 }
@@ -133,7 +133,7 @@ fn clock_token_re() -> &'static Regex {
 
 /// Parse one line of player input.
 pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
-    let trimmed = js_trim(line);
+    let trimmed = dsl_trim(line);
     if trimmed.is_empty() {
         return fail("empty input", vec![]);
     }
@@ -166,7 +166,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         };
     }
 
-    // split and drop the empties JS's filter(Boolean) drops
+    // split and drop the empties (the filter(Boolean) shape)
     let tokens: Vec<&str> = token_split_re()
         .split(trimmed)
         .filter(|t| !t.is_empty())
@@ -336,7 +336,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
                     .cloned()
                     .collect();
                 // actors.len() + fitting.len() <= actors_slot.max
-                // (a JS Infinity max never bounds: Option None)
+                // (an unbounded max never bounds: Option None)
                 let under_max = match actors_slot.max {
                     None => true,
                     Some(m) => (actors.len() + fitting.len()) as i64 <= m,
@@ -399,10 +399,10 @@ fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
 }
 
 /// Normalize for matching: lowercase,
-/// underscores→spaces, drop articles. The split is JS `/\s+/` (Q8 class).
+/// underscores→spaces, drop articles. The split is `/\s+/` (Q8 class).
 fn norm(name: &str) -> String {
     static SPLIT: OnceLock<Regex> = OnceLock::new();
-    let re = static_regex(&SPLIT, || Regex::new(&format!("{JS_WS_CLASS}+")));
+    let re = static_regex(&SPLIT, || Regex::new(&format!("{DSL_WS_CLASS}+")));
     let lowered = name.to_lowercase().replace('_', " ");
     re.split(&lowered)
         .filter(|w| !w.is_empty() && !ARTICLES.contains(w))
@@ -527,8 +527,8 @@ fn suggest_verb(word: &str, verbs: &[String], limit: usize) -> Vec<String> {
         .collect()
 }
 
-/// The DP runs on chars (the JS reference indexes
-/// UTF-16 units; identical for the ASCII name/verb domain these feed).
+/// The DP runs on chars (a UTF-16-unit index would agree
+/// over the ASCII name/verb domain these feed).
 fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();

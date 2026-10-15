@@ -17,7 +17,7 @@ use crate::core::lexer::Tok;
 use crate::core::types::{aspect_get, relation_alive, Entity, State};
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
-use crate::core::text::{js_char_is_ws, JS_WS_CLASS};
+use crate::core::text::{is_dsl_ws_char, DSL_WS_CLASS};
 use crate::error::{ChorusError, Result};
 
 /// Role bindings: role → bound entity IDS (`IndexMap<Role, Vec<String>>`),
@@ -329,7 +329,7 @@ impl<'a> PredParser<'a> {
                     "at is always a char boundary: the scanner advances by whole tokens and whitespace chars only"
                 );
             };
-            if js_char_is_ws(c) {
+            if is_dsl_ws_char(c) {
                 at += c.len_utf8();
                 continue;
             }
@@ -517,7 +517,7 @@ impl<'a> PredParser<'a> {
             // not structure (the replacement keeps only the captured op)
             static CMP: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&CMP, || {
-                Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", JS_WS_CLASS, JS_WS_CLASS))
+                Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", DSL_WS_CLASS, DSL_WS_CLASS))
             });
             let query = parse_query(&re.replace_all(&inner, "$1"))?;
             return Ok(Pred::ExistsQuery { query });
@@ -639,7 +639,7 @@ impl<'a> PredParser<'a> {
                 let inner = self.src[self.spans[first].0..self.spans[close].0].to_string();
                 static CMP: OnceLock<Regex> = OnceLock::new();
                 let re = static_regex(&CMP, || {
-                    Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", JS_WS_CLASS, JS_WS_CLASS))
+                    Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", DSL_WS_CLASS, DSL_WS_CLASS))
                 });
                 let query = parse_query(&re.replace_all(&inner, "$1"))?;
                 return Ok(ValExpr::CountQuery { query });
@@ -732,7 +732,7 @@ fn role_cards<'a>(ctx: &PredCtx<'a>, role: &str) -> Vec<&'a Entity> {
 pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
     match p {
         Pred::And(a, b) => {
-            // JS `&&` short-circuits: b is not evaluated (and may throw)
+            // `&&` short-circuits: b is not evaluated (and may error)
             if eval_pred(a, ctx)? {
                 eval_pred(b, ctx)
             } else {
@@ -760,11 +760,11 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
                     .map(|e| {
                         // container redirect: the container attr's stringified
                         // value names the container entity, else the card itself
-                        // (the JS spelling)
+                        // (the canonical string spelling)
                         let cid = e
                             .attrs
                             .get("container")
-                            .map(|v| v.to_js_string())
+                            .map(|v| v.to_canonical_string())
                             .unwrap_or_default();
                         ctx.state.entities.get(&cid).unwrap_or(e)
                     })
@@ -816,8 +816,8 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
             Ok(false)
         }
         Pred::Cmp { l, op, r } => {
-            // QUIRK: either operand undefined → false (the JS `undefined`
-            // comparison semantics)
+            // QUIRK: either operand missing → false (a missing value
+            // never compares)
             let lv = eval_expr(l, ctx)?;
             let rv = eval_expr(r, ctx)?;
             Ok(match (lv, rv) {

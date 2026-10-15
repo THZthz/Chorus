@@ -73,7 +73,7 @@ fn cold_vs_warm_the_second_analysis_on_the_same_world_amortizes_the_fixpoint() {
 }
 
 /// Two independently built worlds produce
-/// byte-identical reports (cache purity). The JS comparison stringifies
+/// byte-identical reports (cache purity). The reference comparison stringifies
 /// the whole report; the rendered CLI text is the stricter byte surface here
 /// (same traversal, printable).
 #[test]

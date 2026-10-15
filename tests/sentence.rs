@@ -226,7 +226,7 @@ fn names_colliding_with_verbs_must_be_quoted() {
 #[test]
 fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
     let dict = core_dictionary();
-    // the JS default sort is UTF-16 code-unit
+    // the default sort is UTF-16 code-unit
     // order — that comparator is the contract — so the Rust sort goes
     // through cmp_utf16
     let mut verbs: Vec<String> = dict.verbs.iter().cloned().collect();

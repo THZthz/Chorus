@@ -107,7 +107,7 @@ pub fn ref_sort_key(r: &Ref) -> String {
     }
 }
 
-/// Stable sort by [`ref_sort_key`] in JS UTF-16
+/// Stable sort by [`ref_sort_key`] in UTF-16
 /// code-unit order (**never** `str::cmp` — non-BMP names would
 /// order differently). `sort_by` is stable, and keys are
 /// computed per comparison.

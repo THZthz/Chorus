@@ -6,14 +6,14 @@
 //! the §10 warn-loudly sibling (it never throws for a script that compiles).
 //!
 //! Regex-domain freeze: every `(.+)`-style pattern in
-//! this module runs on `split('\n')` + [`js_trim`]-trimmed SINGLE-LINE
+//! this module runs on `split('\n')` + [`dsl_trim`]-trimmed SINGLE-LINE
 //! text, so `.` never sees `\r`/U+2028/U+2029 (line terminators are split
 //! away or trimmed by the frozen whitespace set); these patterns must NOT
 //! be reused on multi-line input.
 //!
 //! Whitespace discipline (Q8): every `\s`/`\S` in these patterns is the
-//! explicit frozen class ([`JS_WS_CLASS`]/[`JS_NON_WS_CLASS`]) and every
-//! `trim()`/`trimStart()` is [`js_trim`]/a [`js_char_is_ws`] take-while —
+//! explicit frozen class ([`DSL_WS_CLASS`]/[`DSL_NON_WS_CLASS`]) and every
+//! `trim()`/`trimStart()` is [`dsl_trim`]/a [`is_dsl_ws_char`] take-while —
 //! the frozen set and `char::is_whitespace` disagree on U+0085/U+FEFF
 //! exactly reversely.
 
@@ -37,7 +37,7 @@ use crate::core::types::{
 use crate::core::jsonw::ordinary_own_property_keys;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::{grp_opt, grp_text, grp0_start, static_regex};
-use crate::core::text::{js_char_is_ws, js_trim, JS_NON_WS_CLASS, JS_WS_CLASS};
+use crate::core::text::{is_dsl_ws_char, dsl_trim, DSL_NON_WS_CLASS, DSL_WS_CLASS};
 use crate::error::{ChorusError, Result};
 
 // ---------------------------------------------------------------------------
@@ -96,8 +96,8 @@ pub struct CompiledScript {
 
 // ---------------------------------------------------------------------------
 // shared regex literals. Q8 class substitutions throughout:
-// `\s` → JS_WS_CLASS, `\S` → JS_NON_WS_CLASS, `\b` →
-// `(?-u:\b)` (the ASCII JS word boundary).
+// `\s` → DSL_WS_CLASS, `\S` → DSL_NON_WS_CLASS, `\b` →
+// `(?-u:\b)` (the ASCII word boundary).
 // ---------------------------------------------------------------------------
 
 /// `/^(script|player|goal|start|seed):\s*(.+)$`
@@ -108,7 +108,7 @@ fn meta_re() -> &'static Regex {
         // dispatch on it, so an unknown key is RECOGNIZED as a meta attempt
         // (and named by the unknown-key error, Q15) instead of masquerading
         // as a section problem. Group 1 stays the key, group 2 the value.
-        Regex::new(&format!(r"^([a-z][a-z0-9_]*):{JS_WS_CLASS}*(.+)$"))
+        Regex::new(&format!(r"^([a-z][a-z0-9_]*):{DSL_WS_CLASS}*(.+)$"))
     })
 }
 
@@ -149,7 +149,7 @@ fn recipes_re() -> &'static Regex {
 fn slot_role_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"^([a-z]+):{JS_WS_CLASS}*(.+)$"))
+        Regex::new(&format!(r"^([a-z]+):{DSL_WS_CLASS}*(.+)$"))
     })
 }
 
@@ -158,7 +158,7 @@ fn entity_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}+is{JS_WS_CLASS}+([A-Za-z_.]+)(?-u:\b){JS_WS_CLASS}*(.*)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}+is{DSL_WS_CLASS}+([A-Za-z_.]+)(?-u:\b){DSL_WS_CLASS}*(.*)$"#
         ))
     })
 }
@@ -167,7 +167,7 @@ fn entity_re() -> &'static Regex {
 fn of_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"^of{JS_WS_CLASS}+({JS_NON_WS_CLASS}+)$"))
+        Regex::new(&format!(r"^of{DSL_WS_CLASS}+({DSL_NON_WS_CLASS}+)$"))
     })
 }
 
@@ -176,7 +176,7 @@ fn of_re() -> &'static Regex {
 fn stackable_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"^stackable(?-u:\b){JS_WS_CLASS}*"))
+        Regex::new(&format!(r"^stackable(?-u:\b){DSL_WS_CLASS}*"))
     })
 }
 
@@ -185,7 +185,7 @@ fn at_in_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"(?:^|{JS_WS_CLASS}+)(?:at|in){JS_WS_CLASS}+({JS_NON_WS_CLASS}+){JS_WS_CLASS}*$"#
+            r#"(?:^|{DSL_WS_CLASS}+)(?:at|in){DSL_WS_CLASS}+({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*$"#
         ))
     })
 }
@@ -194,7 +194,7 @@ fn at_in_re() -> &'static Regex {
 fn with_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{JS_WS_CLASS}+)with{JS_WS_CLASS}+(.+)$"))
+        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)with{DSL_WS_CLASS}+(.+)$"))
     })
 }
 
@@ -202,7 +202,7 @@ fn with_re() -> &'static Regex {
 fn deriving_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{JS_WS_CLASS}+)deriving{JS_WS_CLASS}+(.+)$"))
+        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)deriving{DSL_WS_CLASS}+(.+)$"))
     })
 }
 
@@ -211,7 +211,7 @@ fn aspect_spec_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r"^{JS_WS_CLASS}*([A-Za-z_][A-Za-z0-9_.]*):(-?[0-9]+){JS_WS_CLASS}*$"
+            r"^{DSL_WS_CLASS}*([A-Za-z_][A-Za-z0-9_.]*):(-?[0-9]+){DSL_WS_CLASS}*$"
         ))
     })
 }
@@ -221,7 +221,7 @@ fn prototype_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}+is{JS_WS_CLASS}+([a-z]+)(?-u:\b){JS_WS_CLASS}*(.*)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}+is{DSL_WS_CLASS}+([a-z]+)(?-u:\b){DSL_WS_CLASS}*(.*)$"#
         ))
     })
 }
@@ -231,7 +231,7 @@ fn name_from_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r"^{JS_WS_CLASS}*name{JS_WS_CLASS}+from{JS_WS_CLASS}+object{JS_WS_CLASS}*$"
+            r"^{DSL_WS_CLASS}*name{DSL_WS_CLASS}+from{DSL_WS_CLASS}+object{DSL_WS_CLASS}*$"
         ))
     })
 }
@@ -241,7 +241,7 @@ fn derive_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r"^{JS_WS_CLASS}*([A-Za-z_][A-Za-z0-9_.]*){JS_WS_CLASS}+from{JS_WS_CLASS}+object\.([A-Za-z_][A-Za-z0-9_.]*)(?:{JS_WS_CLASS}*-{JS_WS_CLASS}*([0-9]+))?{JS_WS_CLASS}*$"
+            r"^{DSL_WS_CLASS}*([A-Za-z_][A-Za-z0-9_.]*){DSL_WS_CLASS}+from{DSL_WS_CLASS}+object\.([A-Za-z_][A-Za-z0-9_.]*)(?:{DSL_WS_CLASS}*-{DSL_WS_CLASS}*([0-9]+))?{DSL_WS_CLASS}*$"
         ))
     })
 }
@@ -251,7 +251,7 @@ fn expire_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}+on{JS_WS_CLASS}+expire{JS_WS_CLASS}+of{JS_WS_CLASS}+({JS_NON_WS_CLASS}+){JS_WS_CLASS}*->{JS_WS_CLASS}*(.+)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}+on{DSL_WS_CLASS}+expire{DSL_WS_CLASS}+of{DSL_WS_CLASS}+({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
         ))
     })
 }
@@ -261,7 +261,7 @@ fn trigger_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+)({JS_WS_CLASS}+once)?{JS_WS_CLASS}+at{JS_WS_CLASS}+(hour|halfhour){JS_WS_CLASS}+([0-9]+){JS_WS_CLASS}*->{JS_WS_CLASS}*(.+)$"#
+            r#"^({DSL_NON_WS_CLASS}+)({DSL_WS_CLASS}+once)?{DSL_WS_CLASS}+at{DSL_WS_CLASS}+(hour|halfhour){DSL_WS_CLASS}+([0-9]+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
         ))
     })
 }
@@ -271,7 +271,7 @@ fn fn_paren_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}*\(([^)]*)\){JS_WS_CLASS}*->{JS_WS_CLASS}*(.+)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*\(([^)]*)\){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
         ))
     })
 }
@@ -281,7 +281,7 @@ fn fn_arrow_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}*->{JS_WS_CLASS}*(.+)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
         ))
     })
 }
@@ -291,7 +291,7 @@ fn fn_bare_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}+({JS_NON_WS_CLASS}.*?){JS_WS_CLASS}*->{JS_WS_CLASS}*(.+)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}+({DSL_NON_WS_CLASS}.*?){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
         ))
     })
 }
@@ -301,7 +301,7 @@ fn deck_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+){JS_WS_CLASS}+spec(?-u:\b){JS_WS_CLASS}*(.*)$"#
+            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}+spec(?-u:\b){DSL_WS_CLASS}*(.*)$"#
         ))
     })
 }
@@ -311,7 +311,7 @@ fn defaultcard_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"(?:^|{JS_WS_CLASS})defaultcard{JS_WS_CLASS}+({JS_NON_WS_CLASS}+){JS_WS_CLASS}*$"#
+            r#"(?:^|{DSL_WS_CLASS})defaultcard{DSL_WS_CLASS}+({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*$"#
         ))
     })
 }
@@ -320,7 +320,7 @@ fn defaultcard_re() -> &'static Regex {
 fn reset_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{JS_WS_CLASS})reset{JS_WS_CLASS}*$"))
+        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS})reset{DSL_WS_CLASS}*$"))
     })
 }
 
@@ -329,7 +329,7 @@ fn ending_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^([A-Z][A-Z0-9_]*):{JS_WS_CLASS}*"(.+)"(?:{JS_WS_CLASS}+\(([a-z]+)\))?$"#
+            r#"^([A-Z][A-Z0-9_]*):{DSL_WS_CLASS}*"(.+)"(?:{DSL_WS_CLASS}+\(([a-z]+)\))?$"#
         ))
     })
 }
@@ -339,7 +339,7 @@ fn slot_line_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({JS_NON_WS_CLASS}+)(?:{JS_WS_CLASS}+(.*))?$"#
+            r#"^({DSL_NON_WS_CLASS}+)(?:{DSL_WS_CLASS}+(.*))?$"#
         ))
     })
 }
@@ -366,7 +366,7 @@ fn recipe_id_re() -> &'static Regex {
 fn hint_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r#"hint{JS_WS_CLASS}+"([^"]*)""#))
+        Regex::new(&format!(r#"hint{DSL_WS_CLASS}+"([^"]*)""#))
     })
 }
 
@@ -374,7 +374,7 @@ fn hint_re() -> &'static Regex {
 fn when_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{JS_WS_CLASS})when{JS_WS_CLASS}+(.+)$"))
+        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS})when{DSL_WS_CLASS}+(.+)$"))
     })
 }
 
@@ -384,7 +384,7 @@ fn count_gate_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r"count\((actors|object|with|at|about|to)\){JS_WS_CLASS}*(>=|<=|>|<|=|!=){JS_WS_CLASS}*([0-9]+)"
+            r"count\((actors|object|with|at|about|to)\){DSL_WS_CLASS}*(>=|<=|>|<|=|!=){DSL_WS_CLASS}*([0-9]+)"
         ))
     })
 }
@@ -402,7 +402,7 @@ fn read_aspect_re() -> &'static Regex {
 }
 
 /// Predicate-path read scan `/\baspect\.([a-z_][a-z0-9_.]*)/g` (`\b` is the
-/// ASCII JS word boundary)
+/// ASCII word boundary)
 fn read_path_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"(?-u:\b)aspect\.([a-z_][a-z0-9_.]*)"))
@@ -413,7 +413,7 @@ fn write_set_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r"SET\({JS_WS_CLASS}*[^,()]+,{JS_WS_CLASS}*aspect:([a-z_][a-z0-9_.]*)"
+            r"SET\({DSL_WS_CLASS}*[^,()]+,{DSL_WS_CLASS}*aspect:([a-z_][a-z0-9_.]*)"
         ))
     })
 }
@@ -424,11 +424,11 @@ fn name_lexeme_re() -> &'static Regex {
     static_regex(&RE, || Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$"))
 }
 
-/// `split(/\s+/)` over JS whitespace: runs of JS
+/// `split(/\s+/)` over the DSL whitespace class: runs of
 /// whitespace split; the inputs are always trimmed or `\S`-anchored, so
-/// filtering the empty pieces yields exactly the JS token sequence.
-fn split_js_ws(s: &str) -> Vec<&str> {
-    s.split(js_char_is_ws).filter(|p| !p.is_empty()).collect()
+/// filtering the empty pieces yields exactly the canonical token sequence.
+fn split_dsl_ws(s: &str) -> Vec<&str> {
+    s.split(is_dsl_ws_char).filter(|p| !p.is_empty()).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -461,28 +461,28 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
         // EVERY tab becomes
         // two spaces (`replace(/\t/g, '  ')` semantics)
         let line = raw_line.replace('\t', "  ");
-        let trimmed = js_trim(&line);
+        let trimmed = dsl_trim(&line);
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        // the count of leading JS whitespace CODE UNITS (in the JS spelling,
-        // the length minus the trimStart-ed length). No JS-whitespace char is
+        // the count of leading DSL whitespace CODE UNITS (equivalently,
+        // the length minus the trimmed length). No DSL-whitespace char is
         // astral, so units == chars here.
-        let indent = line.chars().take_while(|c| js_char_is_ws(*c)).count();
+        let indent = line.chars().take_while(|c| is_dsl_ws_char(*c)).count();
         let t = trimmed;
 
         // meta lines (indent 0, outside sections)
         if indent == 0 && section.is_none() {
             if let Some(m) = meta_re().captures(t) {
                 match grp_text(&m, 1) {
-                    "script" => meta.title = Some(js_trim(grp_text(&m, 2)).to_string()),
-                    "player" => meta.player = Some(js_trim(grp_text(&m, 2)).to_string()),
-                    "goal" => meta.goal = Some(js_trim(grp_text(&m, 2)).to_string()),
+                    "script" => meta.title = Some(dsl_trim(grp_text(&m, 2)).to_string()),
+                    "player" => meta.player = Some(dsl_trim(grp_text(&m, 2)).to_string()),
+                    "goal" => meta.goal = Some(dsl_trim(grp_text(&m, 2)).to_string()),
                     "seed" => {
                         // §9.41: integer seed, XORed with the rng counter as a
                         // 64-bit value. The message is constructed IN PLACE at
                         // this throw site.
-                        let got = js_trim(grp_text(&m, 2));
+                        let got = dsl_trim(grp_text(&m, 2));
                         if !seed_re().is_match(got) {
                             return Err(ChorusError::new(format!(
                                 "line {}: seed must be an integer, got '{}'",
@@ -496,7 +496,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     // that lands here explicitly, and a bad VALUE blames
                     // the clock — correct attribution for a known key
                     // (§10: `start: d:h`).
-                    "start" => meta.start = Some(parse_clock(js_trim(grp_text(&m, 2)))?),
+                    "start" => meta.start = Some(parse_clock(dsl_trim(grp_text(&m, 2)))?),
                     // Q15: an unknown meta key names itself and lists the
                     // five keys. The old wildcard arm treated anything
                     // un-listed as the clock key — the next key added to
@@ -661,7 +661,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         )));
                     };
                     if grp_text(&m, 1) == "duration" {
-                        v.duration = parse_duration(js_trim(grp_text(&m, 2)))?;
+                        v.duration = parse_duration(dsl_trim(grp_text(&m, 2)))?;
                         continue;
                     }
                     let slot = parse_slot_line(grp_text(&m, 1), grp_text(&m, 2), ln + 1)?;
@@ -683,8 +683,8 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 
     // §9.14: a name is one card — declared both ways, every SPAWN of the
     // prototype would collide with the living entity (§9.19); fail at load.
-    // `Object.keys` semantics — JS fronts integer-like
-    // keys, so the walk goes through the JS key order (prototype names are
+    // `Object.keys` semantics — the canonical order fronts integer-like
+    // keys, so the walk goes through the canonical key order (prototype names are
     // `\S+`, so "5 is idea" is a real key shape here).
     for name in ordinary_own_property_keys(&prototypes) {
         if entity_names.contains(&name) {
@@ -783,7 +783,7 @@ fn parse_entity_line(
         let at_in = at_in_re().captures(rest);
         let with_m = with_re().captures(rest);
         // the earlier match wins (whichever clause starts first);
-        // byte offsets order identically to the JS UTF-16 unit offsets
+        // byte offsets order identically to the UTF-16 unit offsets
         if let Some(a) = &at_in {
             let a_start = grp0_start(a);
             let with_is_first = with_m
@@ -801,7 +801,7 @@ fn parse_entity_line(
                 let Some(sm) = aspect_spec_re().captures(spec) else {
                     return Err(ChorusError::new(format!(
                         "line {ln}: bad aspect spec '{}' (expected aspect:level)",
-                        js_trim(spec)
+                        dsl_trim(spec)
                     )));
                 };
                 pairs.insert(
@@ -815,7 +815,7 @@ fn parse_entity_line(
         }
         break;
     }
-    if !js_trim(rest).is_empty() {
+    if !dsl_trim(rest).is_empty() {
         return Err(ChorusError::new(format!(
             "line {ln}: could not parse entity line '{t}'"
         )));
@@ -879,7 +879,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
                     let Some(sm) = aspect_spec_re().captures(spec) else {
                         return Err(ChorusError::new(format!(
                             "line {ln}: bad aspect spec '{}'",
-                            js_trim(spec)
+                            dsl_trim(spec)
                         )));
                     };
                     pairs.insert(
@@ -909,7 +909,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
                 let Some(dm) = derive_re().captures(item) else {
                     return Err(ChorusError::new(format!(
                         "line {ln}: bad derive '{}' (expected 'name from object' or 'field from object.field-2')",
-                        js_trim(item)
+                        dsl_trim(item)
                     )));
                 };
                 let aspects = derive.aspects.get_or_insert_with(IndexMap::new);
@@ -926,7 +926,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
         }
         break;
     }
-    if !js_trim(rest).is_empty() {
+    if !dsl_trim(rest).is_empty() {
         return Err(ChorusError::new(format!(
             "line {ln}: could not parse prototype line '{t}'"
         )));
@@ -982,33 +982,33 @@ fn parse_trigger_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<TriggerD
 /// duplicates are `compile_content`'s. `ln` is the 1-BASED line number.
 fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
     if let Some(m) = fn_paren_re().captures(t) {
-        let params_raw = js_trim(grp_text(&m, 2));
+        let params_raw = dsl_trim(grp_text(&m, 2));
         let params: Vec<String> = if params_raw.is_empty() {
             Vec::new()
         } else {
-            params_raw.split(',').map(|s| js_trim(s).to_string()).collect()
+            params_raw.split(',').map(|s| dsl_trim(s).to_string()).collect()
         };
         return Ok(FunctionDef {
             name: grp_text(&m, 1).to_string(),
             params,
-            body: js_trim(grp_text(&m, 3)).to_string(),
+            body: dsl_trim(grp_text(&m, 3)).to_string(),
         });
     }
     if let Some(m) = fn_arrow_re().captures(t) {
         return Ok(FunctionDef {
             name: grp_text(&m, 1).to_string(),
             params: Vec::new(),
-            body: js_trim(grp_text(&m, 2)).to_string(),
+            body: dsl_trim(grp_text(&m, 2)).to_string(),
         });
     }
     if let Some(m) = fn_bare_re().captures(t) {
         return Ok(FunctionDef {
             name: grp_text(&m, 1).to_string(),
-            params: split_js_ws(grp_text(&m, 2))
+            params: split_dsl_ws(grp_text(&m, 2))
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
-            body: js_trim(grp_text(&m, 3)).to_string(),
+            body: dsl_trim(grp_text(&m, 3)).to_string(),
         });
     }
     Err(ChorusError::new(format!(
@@ -1033,25 +1033,25 @@ fn parse_deck_line(t: &str, ln: usize) -> Result<DeckRaw> {
         )));
     };
     let id = grp_text(&m, 1);
-    let mut rest: &str = js_trim(grp_text(&m, 2));
+    let mut rest: &str = dsl_trim(grp_text(&m, 2));
     let mut defaultcard: Option<String> = None;
     let mut reset = false;
     loop {
         if let Some(dc) = defaultcard_re().captures(rest) {
             defaultcard = Some(grp_text(&dc, 1).to_string());
-            rest = js_trim(&rest[..grp0_start(&dc)]);
+            rest = dsl_trim(&rest[..grp0_start(&dc)]);
             continue;
         }
         if let Some(rm) = reset_re().captures(rest) {
             reset = true;
-            rest = js_trim(&rest[..grp0_start(&rm)]);
+            rest = dsl_trim(&rest[..grp0_start(&rm)]);
             continue;
         }
         break;
     }
     let spec: Vec<String> = rest
         .split(',')
-        .map(js_trim)
+        .map(dsl_trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect();
@@ -1105,7 +1105,7 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
             ROLE_NAMES.join(", ")
         )));
     };
-    let trimmed = js_trim(rest);
+    let trimmed = dsl_trim(rest);
     let Some(m) = slot_line_re().captures(trimmed) else {
         return Err(ChorusError::new(format!(
             "line {ln}: bad slot '{role}: {rest}'"
@@ -1144,8 +1144,8 @@ fn parse_recipe_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<RecipeDef
             "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [when COND] -> OUTCOMES"
         )));
     };
-    let lhs = js_trim(&t[..arrow]);
-    let rhs = js_trim(&t[arrow + 2..]);
+    let lhs = dsl_trim(&t[..arrow]);
+    let rhs = dsl_trim(&t[arrow + 2..]);
     let mut def = RecipeDef {
         out: vec![rhs.to_string()],
         ..RecipeDef::default()
@@ -1153,7 +1153,7 @@ fn parse_recipe_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<RecipeDef
     if default_re().is_match(lhs) {
         return Ok(def);
     }
-    let tokens = split_js_ws(lhs);
+    let tokens = split_dsl_ws(lhs);
     let mut i = 0usize;
     if let Some(tok0) = tokens.first() {
         if recipe_id_re().is_match(tok0) && *tok0 != "when" && *tok0 != "hidden" && *tok0 != "shown"
@@ -1370,10 +1370,10 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 }
                 continue;
             };
-            // JS whitespace runs collapse to one space, then JS-trim
+            // DSL whitespace runs collapse to one space, then a DSL trim
             // (`replace(/\s+/g, ' ').trim()` semantics)
             let norm = when
-                .split(js_char_is_ws)
+                .split(is_dsl_ws_char)
                 .filter(|p| !p.is_empty())
                 .collect::<Vec<&str>>()
                 .join(" ");

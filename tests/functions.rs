@@ -418,7 +418,7 @@ mod call_site_dispatch_and_arity {
         // no functions declared: ops only
         assert_err_msg(
             parse_outcomes("mystery(3)", &dict, None),
-            // (?s): the JS /s flag — `.` spans the message's newlines
+            // (?s): the /s (dotall) flag — `.` spans the message's newlines
             r"(?s)unknown 'mystery\(\.\.\.\)' in outcome position.*SPAWN, DESTROY.*no functions declared",
         );
         // with functions declared, they are listed too

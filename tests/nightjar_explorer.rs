@@ -124,7 +124,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
         assert_eq!(r.records.len(), 1);
         assert_eq!(last.advanced_min, 0);
         assert!(last.recipes.len() <= step.clauses.len());
-        // JS identity `r.state === pre` — the refused step returns the
+        // reference identity `r.state === pre` — the refused step returns the
         // untouched input state; snap equality is the Rust observable
         assert_eq!(snap(&r.state), snap(pre));
         return "refused";
@@ -177,7 +177,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
     "applied"
 }
 
-/// one execute_step on a private clone of `state` — the JS engine passes
+/// one execute_step on a private clone of `state` — the engine passes
 /// `state` by reference and lets execute_step draft internally; the Rust
 /// engine consumes its input, so the clone IS the draft hand-off.
 fn exec_on(
@@ -235,7 +235,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
             if r.rejected.is_some() {
                 rejected += 1;
                 assert_eq!(r.records.len(), 0);
-                // JS identity `r.state === state` — untouched input back
+                // reference identity `r.state === state` — untouched input back
                 assert_eq!(snap(&r.state), snap(state));
                 continue;
             }

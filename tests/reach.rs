@@ -1011,7 +1011,7 @@ fn demand_mode_exports_a_root_per_matching_source_not_just_the_first() {
     assert_eq!(mints, ["BLUE", "RED"]);
 }
 
-/// JS truthiness on the analyzer side: an EMPTY demand
+/// The frozen truthiness on the analyzer side: an EMPTY demand
 /// string is NO demand —
 /// `Some("")` must render byte-identical to `demand: None` (the card NAME in
 /// the header, plain name-mode analysis); `parse_query("")` returning an

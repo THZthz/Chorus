@@ -1,7 +1,7 @@
 //! The canonical JSON surface: the engine's frozen object-key order
 //! (integer-like keys ascending first, everything else in insertion order —
 //! the `OrdinaryOwnPropertyKeys` judgment, B-20) and the canonical JSON
-//! writer [`jsjson`], whose escape set and integer-only number domain are
+//! writer [`jsonw`], whose escape set and integer-only number domain are
 //! frozen (B-20). serde_json's `preserve_order` feature is load-bearing for
 //! the pinned key order — do not touch.
 
@@ -53,7 +53,7 @@ pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<S
 /// Clone a string-keyed map rebuilding keys in
 /// [`ordinary_own_property_keys`] order (the object-spread semantics).
 #[must_use]
-pub fn clone_map_in_js_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> indexmap::IndexMap<String, V> {
+pub fn clone_map_in_key_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> indexmap::IndexMap<String, V> {
     let mut out = indexmap::IndexMap::with_capacity(m.len());
     for k in ordinary_own_property_keys(m) {
         // every key came from m; the lookup cannot miss
@@ -71,7 +71,7 @@ pub fn clone_map_in_js_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> ind
 /// algorithm — `i64` Display prints identically to the canonical number
 /// rendering for every value that can reach serialization.
 #[derive(Debug, Clone, PartialEq)]
-pub enum JsJson {
+pub enum Jsonw {
     /// `undefined`: dropped as an object value, `null` inside an array,
     /// the bare text `undefined` at top level (all three serialization
     /// behaviors).
@@ -80,12 +80,12 @@ pub enum JsJson {
     Bool(bool),
     Int(i64),
     Str(String),
-    Arr(Vec<JsJson>),
+    Arr(Vec<Jsonw>),
     /// An object's entries in EXACTLY the output order. Serialization uses
     /// the frozen `OrdinaryOwnPropertyKeys` order — build it through
-    /// [`jsjson_obj_in_js_order`] (or [`ordinary_own_property_keys`]), never
+    /// [`jsonw_obj_in_key_order`] (or [`ordinary_own_property_keys`]), never
     /// from raw insertion order.
-    Obj(Vec<(String, JsJson)>),
+    Obj(Vec<(String, Jsonw)>),
 }
 
 /// The engine's canonical JSON serialization: compact separators, the
@@ -96,49 +96,49 @@ pub enum JsJson {
 /// all other non-ASCII pass through RAW (Node-verified 2026-10-14, char-code
 /// dump). Lone surrogates would escape as `\udXXX` (well-formed
 /// stringify, ES2019) but are unreachable: a Rust `String` is valid Unicode.
-pub fn jsjson(v: &JsJson) -> String {
+pub fn jsonw(v: &Jsonw) -> String {
     let mut out = String::new();
-    jsjson_into(v, &mut out);
+    jsonw_into(v, &mut out);
     out
 }
 
-fn jsjson_into(v: &JsJson, out: &mut String) {
+fn jsonw_into(v: &Jsonw, out: &mut String) {
     match v {
-        JsJson::Undefined => out.push_str("undefined"),
-        JsJson::Null => out.push_str("null"),
-        JsJson::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        JsJson::Int(n) => out.push_str(&n.to_string()),
-        JsJson::Str(s) => jsjson_escape(s, out),
-        JsJson::Arr(items) => {
+        Jsonw::Undefined => out.push_str("undefined"),
+        Jsonw::Null => out.push_str("null"),
+        Jsonw::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Jsonw::Int(n) => out.push_str(&n.to_string()),
+        Jsonw::Str(s) => jsonw_escape(s, out),
+        Jsonw::Arr(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
                 }
                 // `undefined` in an array serializes as `null`
-                if matches!(item, JsJson::Undefined) {
+                if matches!(item, Jsonw::Undefined) {
                     out.push_str("null");
                 } else {
-                    jsjson_into(item, out);
+                    jsonw_into(item, out);
                 }
             }
             out.push(']');
         }
-        JsJson::Obj(entries) => {
+        Jsonw::Obj(entries) => {
             out.push('{');
             let mut first = true;
             for (k, val) in entries {
                 // undefined-valued properties are DROPPED, not emitted
-                if matches!(val, JsJson::Undefined) {
+                if matches!(val, Jsonw::Undefined) {
                     continue;
                 }
                 if !first {
                     out.push(',');
                 }
                 first = false;
-                jsjson_escape(k, out);
+                jsonw_escape(k, out);
                 out.push(':');
-                jsjson_into(val, out);
+                jsonw_into(val, out);
             }
             out.push('}');
         }
@@ -146,8 +146,8 @@ fn jsjson_into(v: &JsJson, out: &mut String) {
 }
 
 /// The frozen string escape set (ECMA-262 `QuoteJSONString`), see
-/// [`jsjson`].
-fn jsjson_escape(s: &str, out: &mut String) {
+/// [`jsonw`].
+fn jsonw_escape(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
         match c {
@@ -174,15 +174,15 @@ fn jsjson_escape(s: &str, out: &mut String) {
 /// order — raw insertion order would drift after `SET(x,"5",true)` + clone.
 /// The engine's aspects/attrs pairs and the JSONL log go through this.
 #[must_use]
-pub fn jsjson_obj_in_js_order(m: &indexmap::IndexMap<String, JsJson>) -> JsJson {
-    let mut entries: Vec<(String, JsJson)> = Vec::with_capacity(m.len());
+pub fn jsonw_obj_in_key_order(m: &indexmap::IndexMap<String, Jsonw>) -> Jsonw {
+    let mut entries: Vec<(String, Jsonw)> = Vec::with_capacity(m.len());
     for k in ordinary_own_property_keys(m) {
         // every key came from m; the lookup cannot miss
         if let Some(v) = m.get(&k) {
             entries.push((k, v.clone()));
         }
     }
-    JsJson::Obj(entries)
+    Jsonw::Obj(entries)
 }
 
 #[cfg(test)]
@@ -218,7 +218,7 @@ mod tests {
             ordinary_own_property_keys(&m),
             ["0", "5", "12", "container", "0123"]
         );
-        let cloned = clone_map_in_js_order(&m);
+        let cloned = clone_map_in_key_order(&m);
         let keys: Vec<String> = cloned.keys().cloned().collect();
         assert_eq!(keys, ["0", "5", "12", "container", "0123"]);
     }
@@ -275,8 +275,8 @@ mod tests {
             ordinary_own_property_keys(&map_from(&[("1e2", 1), ("100", 2)]));
         assert_eq!(got, ["100", "1e2"]);
         // node k_spread: the SPREAD clone reorders (2,10 to the front) —
-        // clone_map_in_js_order is the spread twin
-        let got: Vec<String> = clone_map_in_js_order(&map_from(&[
+        // clone_map_in_key_order is the spread twin
+        let got: Vec<String> = clone_map_in_key_order(&map_from(&[
             ("a", 1),
             ("10", 2),
             ("2", 3),
@@ -296,60 +296,60 @@ mod tests {
     }
 
     #[test]
-    fn jsjson_matches_the_node_json_stringify_dump() {
-        use JsJson::*;
+    fn jsonw_matches_the_node_json_stringify_dump() {
+        use Jsonw::*;
         // aspects-shaped: node j_plain
         assert_eq!(
-            jsjson(&Obj(vec![
+            jsonw(&Obj(vec![
                 ("secret".into(), Int(3)),
                 ("language".into(), Obj(vec![("latin".into(), Int(2))])),
             ])),
             r#"{"secret":3,"language":{"latin":2}}"#
         );
         // attrs-shaped with integer-like keys: node j_intkeys — the key
-        // order is the CALLER's (built via jsjson_obj_in_js_order below)
+        // order is the CALLER's (built via jsonw_obj_in_key_order below)
         let mut attrs = indexmap::IndexMap::new();
         attrs.insert("container".to_string(), Str("villa".into()));
         attrs.insert("5".to_string(), Bool(true));
         attrs.insert("0".to_string(), Int(1));
         assert_eq!(
-            jsjson(&jsjson_obj_in_js_order(&attrs)),
+            jsonw(&jsonw_obj_in_key_order(&attrs)),
             r#"{"0":1,"5":true,"container":"villa"}"#
         );
         // node j_ctrl: NUL/b/t/n/f/r short escapes, quote+backslash, other
         // <0x20 as lowercase \u00xx — and DEL (0x7f) RAW at the end
         assert_eq!(
-            jsjson(&Str("a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into())),
+            jsonw(&Str("a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into())),
             "\"a\\u0000\\b\\t\\n\\f\\r\\\"\\\\\\u0001\\u000f\\u001f\u{7f}\""
         );
         // node j_unicode: non-ASCII (incl. U+2028/U+2029) stays raw
         assert_eq!(
-            jsjson(&Str("héllo → 世界 \u{2028}\u{2029} \u{1F600}".into())),
+            jsonw(&Str("héllo → 世界 \u{2028}\u{2029} \u{1F600}".into())),
             "\"héllo → 世界 \u{2028}\u{2029} \u{1F600}\""
         );
         // node j_neg / j_bigint_like: integer printing, no float machinery
-        assert_eq!(jsjson(&Obj(vec![("v".into(), Int(-42))])), r#"{"v":-42}"#);
+        assert_eq!(jsonw(&Obj(vec![("v".into(), Int(-42))])), r#"{"v":-42}"#);
         assert_eq!(
-            jsjson(&Obj(vec![("n".into(), Int(9_007_199_254_740_992))])),
+            jsonw(&Obj(vec![("n".into(), Int(9_007_199_254_740_992))])),
             r#"{"n":9007199254740992}"#
         );
         // node j_bool_arr / j_empty / j_nested_subkey
         assert_eq!(
-            jsjson(&Arr(vec![Bool(true), Bool(false), Null, Int(0)])),
+            jsonw(&Arr(vec![Bool(true), Bool(false), Null, Int(0)])),
             "[true,false,null,0]"
         );
-        assert_eq!(jsjson(&Obj(vec![])), "{}");
+        assert_eq!(jsonw(&Obj(vec![])), "{}");
         assert_eq!(
-            jsjson(&Obj(vec![(
+            jsonw(&Obj(vec![(
                 "language".into(),
                 Obj(vec![("b.c".into(), Int(7)), ("a".into(), Int(1))]),
             )])),
             r#"{"language":{"b.c":7,"a":1}}"#
         );
         // undefined dropping: node j_undef_top / j_undef_obj / j_undef_arr
-        assert_eq!(jsjson(&Undefined), "undefined");
+        assert_eq!(jsonw(&Undefined), "undefined");
         assert_eq!(
-            jsjson(&Obj(vec![
+            jsonw(&Obj(vec![
                 ("a".into(), Undefined),
                 ("b".into(), Int(2)),
                 ("c".into(), Undefined),
@@ -358,7 +358,7 @@ mod tests {
             r#"{"b":2,"d":null}"#
         );
         assert_eq!(
-            jsjson(&Arr(vec![Int(1), Undefined, Int(2)])),
+            jsonw(&Arr(vec![Int(1), Undefined, Int(2)])),
             "[1,null,2]"
         );
     }

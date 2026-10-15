@@ -1022,7 +1022,7 @@ mod the_game_loop {
         let replayed = fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
         let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
         let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
-        // `.sort()` = JS default string sort = UTF-16 code-unit order
+        // `.sort()` = the default string sort = UTF-16 code-unit order
         replayed_names.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
         played_names.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
         assert_eq!(replayed_names, played_names);

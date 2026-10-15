@@ -5,13 +5,13 @@
 //!
 //! Frozen surface: the output is the exact JSON image of `JSON.stringify({...})` —
 //! - key order: `ents, rels, byName, now, rng, decks, fired, ended, windows`
-//!   (insertion order; no integer-like keys, so JS
+//!   (insertion order; no integer-like keys, so
 //!   OrdinaryOwnPropertyKeys agrees);
 //! - the FIVE map fields (`ents/rels/byName/decks/windows`) sort their entry
-//!   pairs ascending by key in JS
+//!   pairs ascending by key
 //!   `<` order, which is UTF-16 code-unit order → `cmp_utf16` (never Rust
 //!   byte order);
-//! - `fired` takes the JS default string sort (the same UTF-16 order);
+//! - `fired` takes the default string sort (the same UTF-16 order);
 //! - `windows` sorts its entries and then SHALLOW-copies each window: the
 //!   copy is unobservable behind the JSON image, and
 //!   the JSON projection of the Rust `OpenWindow` struct preserves the
@@ -21,7 +21,7 @@
 //! Object-valued fields serialized as plain objects (`aspects`,
 //! `attrs`, window `refs`) go through `ordinary_own_property_keys`, which is
 //! exactly `JSON.stringify`'s walk order — idempotent on maps that were
-//! cloned through the JS-order clone paths, exact even when they were not.
+//! cloned through the key-order clone paths, exact even when they were not.
 
 //! (Shared test lib: every helper is the common discipline, not per-file
 //! dead code — each mounting test crate uses a different subset, exactly like
@@ -60,7 +60,7 @@ pub fn snap(s: &State) -> String {
         "decks".to_string(),
         sorted_entries(s.decks.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
     );
-    // §9.34: play and fold must agree on fired too (JS default string sort)
+    // §9.34: play and fold must agree on fired too (default string sort)
     let mut fired: Vec<&String> = s.fired.iter().collect();
     fired.sort_by(|a, b| cmp_utf16(a, b));
     root.insert("fired".to_string(), serde_json::json!(fired));
@@ -84,7 +84,7 @@ pub fn snap(s: &State) -> String {
 }
 
 /// Map entries sorted ascending by key
-/// in JS `<` order = UTF-16 code-unit order (`cmp_utf16`; keys are unique).
+/// in `<` order = UTF-16 code-unit order (`cmp_utf16`; keys are unique).
 /// Emits `[key, value]` PAIRS — the JSON image of the entry list.
 fn sorted_entries<I>(entries: I) -> serde_json::Value
 where
@@ -123,7 +123,7 @@ fn relation_json(r: &Relation) -> serde_json::Value {
     })
 }
 
-/// The window object's JSON image. The JS semantics keep
+/// The window object's JSON image. The frozen semantics keep
 /// the window's insertion key order (no integer-like keys), and the `refs`
 /// object keeps its insertion order = ROLES order — the Rust
 /// struct field order and the refs `IndexMap` mirror both exactly, so this

@@ -14,7 +14,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
-use crate::core::jsonw::clone_map_in_js_order;
+use crate::core::jsonw::clone_map_in_key_order;
 use crate::error::{ChorusError, Result};
 
 /// The mechanics clock: `day` + `halfhour` (re-exported by `clock`).
@@ -37,7 +37,8 @@ pub enum AspectVal {
 }
 
 /// A scalar attr value: a JSON string, number, or boolean. Cross-variant
-/// `PartialEq` is `false`, exactly like JS `===` across types.
+/// `PartialEq` is `false` — variants are disjoint types, so a cross-variant
+/// comparison never reads as equal (the frozen strict-equality judgment).
 /// The serde form is untagged (the bare JSON primitive — the `pair` arg's
 /// `v` in the log carries the primitive directly);
 /// the variants are disjoint JSON types so untagged is total.
@@ -50,16 +51,30 @@ pub enum AttrValue {
 }
 
 impl AttrValue {
-    /// The JS `String(v)` spelling on a primitive — e.g. a predicate's
-    /// container default (a missing attr stringifies as the empty string)
+    /// The canonical string spelling of a primitive — e.g. a predicate's
+    /// container default (a missing attr spells as the empty string)
     /// and the format/fn_expand arg spellings.
     #[must_use]
-    pub fn to_js_string(&self) -> String {
+    pub fn to_canonical_string(&self) -> String {
         match self {
             AttrValue::Str(s) => s.clone(),
             AttrValue::Num(n) => n.to_string(),
             AttrValue::Bool(b) => b.to_string(),
         }
+    }
+}
+
+/// The engine's frozen truthiness judgment over a primitive or a missing
+/// value: a missing value, the empty string, `0` and `false` are falsy;
+/// everything else is truthy. Every `if (…)`-shaped read of an attr or
+/// aspect goes through this predicate.
+#[must_use]
+pub fn is_truthy(v: Option<&AttrValue>) -> bool {
+    match v {
+        None => false,                             // a missing value
+        Some(AttrValue::Str(s)) => !s.is_empty(),  // the empty string
+        Some(AttrValue::Num(n)) => *n != 0,        // zero
+        Some(AttrValue::Bool(b)) => *b,            // false
     }
 }
 
@@ -86,8 +101,8 @@ pub struct Entity {
 
 impl Clone for Entity {
     // The hand-rolled clone mirrors an object-spread copy. The attrs/aspects
-    // SPREADS reorder integer-like keys to the front (JS
-    // OrdinaryOwnPropertyKeys) — a plain IndexMap clone would keep insertion
+    // SPREADS reorder integer-like keys to the front (the
+    // OrdinaryOwnPropertyKeys order) — a plain IndexMap clone would keep insertion
     // order and drift after `SET(x, "5", true)` + clone.
     // We implement Clone (not just a free fn) so no clone path can skip the
     // reorder.
@@ -97,7 +112,7 @@ impl Clone for Entity {
             kind: self.kind.clone(),
             name: self.name.clone(),
             aspects: clone_aspects(&self.aspects),
-            attrs: clone_map_in_js_order(&self.attrs),
+            attrs: clone_map_in_key_order(&self.attrs),
             born_action: self.born_action,
             dead_action: self.dead_action,
             stackable: self.stackable,
@@ -198,7 +213,7 @@ pub fn new_state(now: i64) -> State {
 impl Clone for State {
     // `State::clone`: every container is deep-copied so
     // a discarded draft can never mutate real state (law 6 comments below);
-    // the dict-valued copies go through the JS key order (see Entity::clone).
+    // the dict-valued copies go through the canonical key order (see Entity::clone).
     fn clone(&self) -> Self {
         // law 6 (§9.38): the pool ARRAYS are deep-copied — a shallow map
         // clone would share arrays, so a discarded draft's pool destroy would
@@ -213,7 +228,7 @@ impl Clone for State {
         // array a discarded draft must not share with the real state;
         // `refs` likewise (IndexMap of Vec<Ref>)
         State {
-            entities: self.entities.clone(), // values clone through Entity::clone (JS key order)
+            entities: self.entities.clone(), // values clone through Entity::clone (canonical key order)
             by_name,
             relations: self.relations.clone(),
             now: self.now,
@@ -232,11 +247,11 @@ pub fn clone_state(s: &State) -> State {
     s.clone()
 }
 
-/// The aspects clone: also goes through the JS key order (like the
+/// The aspects clone: also goes through the canonical key order (like the
 /// object-spread of a sub-map).
 #[must_use]
 fn clone_aspects(a: &Aspects) -> Aspects {
-    clone_map_in_js_order(a)
+    clone_map_in_key_order(a)
 }
 
 /// §9.14 + §9.38: names are unique among the
@@ -348,7 +363,7 @@ pub fn aspect_entry<'a>(e: &'a Entity, path: &str) -> Option<AspectEntry<'a>> {
     };
     let sub = e.aspects.get(&path[..dot]);
     match sub {
-        Some(AspectVal::Num(_)) | None => None, // a scalar head reads as a miss, as does a missing sub-key (JS: both undefined)
+        Some(AspectVal::Num(_)) | None => None, // a scalar head reads as a miss, as does a missing sub-key (both read as undefined)
         Some(AspectVal::Sub(m)) => m.get(&path[dot + 1..]).map(|n| AspectEntry::Num(*n)),
     }
 }
@@ -385,8 +400,8 @@ pub fn aspect_set(e: &mut Entity, path: &str, v: i64) {
 
 /// Symmetric edges get one canonical key
 /// (sorted); directed edges keep the stored direction — swapping directed
-/// endpoints loses the direction. The `a > b` comparison is JS string order
-/// = UTF-16 code-unit order → `cmp_utf16`.
+/// endpoints loses the direction. The `a > b` comparison is UTF-16
+/// code-unit order → `cmp_utf16`.
 #[must_use]
 pub fn relation_key(a: &str, b: &str, type_: &str, symmetric: bool) -> String {
     let (a, b) = if symmetric && crate::core::text::cmp_utf16(a, b) == std::cmp::Ordering::Greater {

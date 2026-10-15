@@ -42,7 +42,7 @@ pub(crate) fn query_text(q: &[QueryTerm]) -> String {
                             op.as_str(),
                             value
                                 .as_ref()
-                                .map(|v| v.to_js_string())
+                                .map(|v| v.to_canonical_string())
                                 .unwrap_or_default()
                         ),
                     }
@@ -148,7 +148,7 @@ pub fn render_report(
     r: &CardReport,
 ) {
     let head = match demand {
-        // an EMPTY demand is falsy (JS truthiness) and prints the bare card
+        // an EMPTY demand is falsy (the frozen truthiness) and prints the bare card
         // name; otherwise the header is "matching '<demand>'"
         Some(d) if !d.is_empty() => format!("matching '{d}'"),
         _ => card.to_string(),

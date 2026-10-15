@@ -21,17 +21,17 @@ mod settle;
 #[path = "../../tests/common/reach_fuzz_lib.rs"]
 mod reach_fuzz_lib;
 
-/// JS `Number(str)` for the flag values — trim JS whitespace,
+/// `Number(str)` (ECMA-262) for the flag values — trim DSL whitespace,
 /// '' → 0, decimal/hex/±Infinity literals, anything else NaN. (A NaN feeds
 /// straight into the loop condition, which then never runs —
 /// replicated below by keeping the loop in f64.)
-fn js_number(s: &str) -> f64 {
+fn parse_canonical_number(s: &str) -> f64 {
     let t: String = {
         let mut chars: Vec<char> = s.chars().collect();
-        while chars.first().is_some_and(|c| chorus::core::text::js_char_is_ws(*c)) {
+        while chars.first().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
             chars.remove(0);
         }
-        while chars.last().is_some_and(|c| chorus::core::text::js_char_is_ws(*c)) {
+        while chars.last().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
             chars.pop();
         }
         chars.into_iter().collect()
@@ -55,7 +55,7 @@ fn js_number(s: &str) -> f64 {
     }
     // decimal: optional sign, digits with optional fraction and exponent —
     // anything else is NaN (str::parse would also accept "inf"/"nan", which
-    // JS Number rejects)
+    // `Number` rejects)
     let mut body = t.as_str();
     if let Some(rest) = body.strip_prefix(['+', '-']) {
         body = rest;
@@ -69,10 +69,10 @@ fn js_number(s: &str) -> f64 {
     }
 }
 
-/// JS `Number → String` display for a flag-derived number — integers print
+/// The `Number → String` display (ECMA-262) for a flag-derived number — integers print
 /// bare, NaN prints
 /// "NaN" (the summary line embeds these verbatim).
-fn js_display(v: f64) -> String {
+fn display_number(v: f64) -> String {
     if v.is_nan() {
         "NaN".to_string()
     } else if v.is_infinite() {
@@ -90,7 +90,7 @@ fn main() -> std::process::ExitCode {
     let flag = |name: &str, dflt: f64| -> f64 {
         args.iter()
             .position(|a| a == name)
-            .map(|i| args.get(i + 1).map(|v| js_number(v)).unwrap_or(f64::NAN))
+            .map(|i| args.get(i + 1).map(|v| parse_canonical_number(v)).unwrap_or(f64::NAN))
             .unwrap_or(dflt)
     };
     let seeds = flag("--seeds", 200.0);
@@ -103,7 +103,7 @@ fn main() -> std::process::ExitCode {
     let mut worst = 0.0f64;
     let mut dup_pushes = 0.0f64;
     // the bad-seed list stays in f64 so the join prints fractional
-    // `--from`-derived seeds exactly like the JS number display
+    // `--from`-derived seeds exactly like the canonical number display
     let mut bad_seeds: Vec<f64> = Vec::new();
     let t0 = std::time::Instant::now();
     // the seed loop runs from .. from+seeds in f64: NaN seeds
@@ -114,11 +114,11 @@ fn main() -> std::process::ExitCode {
         // seeds are small positive integers, where the cast is exact.
         // REGISTERED DIVERGENCE (pathological argv
         // only): `steps as usize`/`states as usize` TRUNCATE a fractional
-        // flag, while the JS loops keep the f64 bounds alive —
+        // flag, while untruncated f64 loop bounds stay alive —
         // `--steps 2.5` runs steps 0,1,2
         // (three layers) and the state cap admits
         // 3 states for `--states 2.5`. Integer flags, the defaults and NaN
-        // (`js_number` = `Number`, registered at its definition) are exact;
+        // (`parse_canonical_number` = `Number`, registered at its definition) are exact;
         // only a fractional flag digs one level shallower here.
         let out = reach_fuzz_lib::run_fuzz_seed(seed as i32 as u32, steps as usize, states as usize)
             .unwrap_or_else(|e| {
@@ -146,9 +146,9 @@ fn main() -> std::process::ExitCode {
         if done % 50.0 == 0.0 {
             println!(
                 "… {}/{} seeds, {} failures",
-                js_display(done),
-                js_display(seeds),
-                js_display(failures)
+                display_number(done),
+                display_number(seeds),
+                display_number(failures)
             );
         }
         seed += 1.0;
@@ -157,17 +157,17 @@ fn main() -> std::process::ExitCode {
     let elapsed = t0.elapsed().as_secs_f64();
     println!(
         "\n{} seeds × ≤{} steps × ≤{} states: {} failure(s), {} inconclusive, busiest world {} states, {} duplicate push(es) deduped, {:.1}s",
-        js_display(seeds),
-        js_display(steps),
-        js_display(states),
-        js_display(failures),
-        js_display(inconclusive),
-        js_display(worst),
-        js_display(dup_pushes),
+        display_number(seeds),
+        display_number(steps),
+        display_number(states),
+        display_number(failures),
+        display_number(inconclusive),
+        display_number(worst),
+        display_number(dup_pushes),
         elapsed
     );
     if !bad_seeds.is_empty() {
-        let joined: Vec<String> = bad_seeds.iter().map(|s| js_display(*s)).collect();
+        let joined: Vec<String> = bad_seeds.iter().map(|s| display_number(*s)).collect();
         println!("failing seeds: {}", joined.join(" "));
     }
     std::process::ExitCode::from(u8::from(failures > 0.0))

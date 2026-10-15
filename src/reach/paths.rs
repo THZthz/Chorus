@@ -210,7 +210,7 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
                 Ok(parsed) => {
                     // the authored pair overrides the prototype's aspects,
                     // key by key;
-                    // key order is JS-normalized at the stringify points, so a
+                    // the key order is canonicalized at the stringify points, so a
                     // plain insertion merge is observably identical
                     let mut merged = p.and_then(|p| p.aspects.clone()).unwrap_or_default();
                     for (k, v) in parsed {
@@ -638,7 +638,7 @@ impl<'c> Analyzer<'c> {
         let mut existence = Existence::None;
         let mut demand_match: Option<Entity> = None;
         let demand_q: Option<Query> = match opts.demand.as_deref() {
-            // an EMPTY demand string counts as no demand (JS truthiness of
+            // an EMPTY demand string counts as no demand (the frozen truthiness of
             // `''`); parse_query("") would return an empty query
             // without erroring and must not enter demand mode
             Some(d) if !d.is_empty() => Some(parse_query(d)?),

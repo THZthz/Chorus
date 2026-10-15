@@ -33,6 +33,13 @@
 //   8. manifest.json        — { name, kind, driver, sha256(jsonl), snap, … }
 //        + demo             — examples/demo.ts journal/prose goldens (W6's diff
 //                             target, generated here per §4-W6)
+//   9. reach-cli-*          — the CLI's stdout freeze (§4-W5, CLI-02 must):
+//                             nightjar --all + per-card/demand snapshots +
+//                             genScenario sampled worlds (seeds 1..20, plus a
+//                             --usable pass for 1..5), each a stdout.txt the
+//                             Rust harness re-renders from its driver; plus
+//                             reach-scale-census (the 400×400 NameStat
+//                             non-timing fields, PR1-03)
 //
 // Every JSONL is `records.map(JSON.stringify).join('\n') + '\n'` (the TS
 // saveLog shape — ALWAYS \n-terminated, so a 0-record golden is a single
@@ -50,7 +57,8 @@ import { parseSentence } from '../src/core/parse.js'
 import { matchQuery } from '../src/core/query.js'
 import { executeStep, type ActionRecord, type ExecResult, type Step } from '../src/engine/engine.js'
 import { fold } from '../src/engine/fold.js'
-import { analyzeCard } from '../src/reach/reach.js'
+import { analyzeCard, type ReachPath } from '../src/reach/reach.js'
+import { compileScript } from '../src/content/script.js'
 import { journal as journalOf, prose } from '../src/ui/render.js'
 import { Game } from '../src/ui/play.js'
 import { addEntity, cloneState, newState, type Entity, type State } from '../src/core/types.js'
@@ -59,6 +67,7 @@ import { emptyClause, type Clause, type Role } from '../src/core/sentence.js'
 
 import { settleStep } from '../test/settle.js'
 import { explore, genScenario, rng } from '../test/reach-fuzz-lib.js'
+import { buildCsScale, census } from '../test/reach-scale-lib.js'
 import { snap } from '../test/snap.js'
 import { seedContent, seedState } from '../test/seed.js'
 import {
@@ -84,7 +93,7 @@ interface World {
 
 interface GoldenSpec {
   name: string
-  kind: 'script' | 'scenario' | 'anchor' | 'walk' | 'fuzz' | 'demo'
+  kind: 'script' | 'scenario' | 'anchor' | 'walk' | 'fuzz' | 'demo' | 'reach-cli'
   driver: Record<string, unknown>
   world: World
   records: ActionRecord[]
@@ -93,6 +102,9 @@ interface GoldenSpec {
   prose?: string
   steps?: string
   suggestions?: string
+  /** reach-cli family: the CLI's frozen stdout text (CLI-02 must) — no
+   *  records/jsonl; the Rust harness re-renders from the driver */
+  stdout?: string
 }
 
 const fail = (msg: string): never => {
@@ -1894,6 +1906,173 @@ const demoFamily = (): GoldenSpec[] => {
 }
 
 // ---------------------------------------------------------------------------
+// family 7 — the reach-cli stdout freeze (§4-W5, CLI-02 must) + the
+// reach-scale census A/B reference (PR1-03). The report/renderPath helpers
+// below are copied VERBATIM from tools/reach-cli.ts:38-67 with console.log
+// swapped for a line sink — the CLI's stdout shapes are the frozen surface.
+// ---------------------------------------------------------------------------
+
+/** ts: tools/reach-cli.ts:38-52 — `renderPath` */
+const renderPathInto = (lines: string[], p: ReachPath, depth: number): void => {
+  const pad = '    '.repeat(depth + 1)
+  const deck = p.deck
+    ? ` — deck ${p.deck.id}${p.deck.position !== undefined ? ` order[${p.deck.position}]` : ' defaultcard'}${p.deck.capacity !== undefined ? ` (draw capacity ${p.deck.capacity})` : ''}`
+    : ''
+  const derived = p.derivedName ? ' (derived-mint name — `${PROTO}_${OBJECT}`)' : ''
+  lines.push(`${pad}· ${p.op === 'initial' ? 'initial' : p.op} '${p.mints}'${derived}${deck} — via ${p.via}`)
+  for (const g of p.guards) lines.push(`${pad}    guard: ${g}`)
+  for (const s of p.supports) lines.push(`${pad}    · ${s}`)
+  for (const r of p.requires) {
+    lines.push(`${pad}    requires ${r.name} — ${r.how}`)
+    if (r.paths.length === 0) lines.push(`${pad}      (no proven source on this branch — cycle guard / depth cap)`)
+    for (const sub of r.paths) renderPathInto(lines, sub, depth + 2)
+  }
+}
+
+/** ts: tools/reach-cli.ts:54-67 — one card's report block */
+const reportInto = (
+  lines: string[],
+  file: string,
+  content: CompiledContent,
+  state: State,
+  name: string,
+  usable: boolean,
+  demand: string | undefined,
+): void => {
+  const r = analyzeCard(content, state, name, { usable, demand })
+  lines.push(`${file} · card ${demand ? `matching '${demand}'` : name}${usable ? '  [usable semantics]' : ''}`)
+  lines.push(`  verdict: ${r.verdict.toUpperCase()}  (existence: ${r.existence})`)
+  if (r.paths.length === 0 && r.existence === 'proven') lines.push('  (no path exported — unexpected)')
+  r.paths.forEach((p, i) => {
+    lines.push(`  path ${i + 1}/${r.paths.length}:`)
+    renderPathInto(lines, p, 0)
+  })
+  for (const c of r.candidates) lines.push(`  candidate source: ${c.via} — guarded (${c.reason})`)
+  for (const u of r.usableVia) lines.push(`  bindable via ${u}`)
+  for (const n of r.notes) lines.push(`  note: ${n}`)
+  lines.push('')
+}
+
+/** ts: tools/reach-cli.ts:9 — the bundled script the CLI documents; the label
+ *  printed in every header is the argv path verbatim */
+const REACH_CLI_SCRIPT = 'scripts/the-nightjar-flyer.txt'
+
+const reachCliFamily = (): GoldenSpec[] => {
+  const specs: GoldenSpec[] = []
+  const emit = (name: string, driver: Record<string, unknown>, world: World, lines: string[]): void => {
+    specs.push({
+      name,
+      kind: 'reach-cli',
+      driver,
+      world,
+      records: [],
+      snap: snap(world.base),
+      stdout: lines.join('\n') + '\n',
+    })
+  }
+
+  // -- the nightjar snapshots: the CLI compiles the script FRESH each run
+  //    (ts: tools/reach-cli.ts:35-36) --------------------------------------
+  {
+    const dict = coreDictionary()
+    const { content, state } = compileScript(scriptText, dict)
+    const world: World = { dict, content, base: state }
+
+    // --all (ts: tools/reach-cli.ts:69-76 — the branch order is frozen; the
+    // name set is prototypes ∪ LIVE initial entities ∪ deck.order, NOT
+    // defaultcard, UTF-16 sorted — CLI-02/REACH-05)
+    const names = new Set<string>(content.prototypes.keys())
+    for (const e of state.entities.values()) if (e.deadAction === null) names.add(e.name)
+    for (const d of content.decks.values()) for (const c of d.order) names.add(c.name)
+    const allLines: string[] = []
+    for (const n of [...names].sort()) reportInto(allLines, REACH_CLI_SCRIPT, content, state, n, false, undefined)
+    emit('reach-cli-nightjar-all', { type: 'reach-cli', mode: 'all', script: REACH_CLI_SCRIPT }, world, allLines)
+
+    // --all WITH --demand: the CLI's report() closes over the demand, so the
+    // all-branch renders the DEMAND report once per name (the frozen quirk)
+    const allDemandLines: string[] = []
+    for (const n of [...names].sort()) reportInto(allDemandLines, REACH_CLI_SCRIPT, content, state, n, false, 'kind:text')
+    emit(
+        'reach-cli-nightjar-all-demand',
+        { type: 'reach-cli', mode: 'all', script: REACH_CLI_SCRIPT, demand: 'kind:text' },
+        world,
+        allDemandLines,
+    )
+
+    // per-card, both semantics (the CLI's doc examples)
+    for (const suffix of ['', '-usable'] as const) {
+      const usable = suffix === '-usable'
+      const lines: string[] = []
+      reportInto(lines, REACH_CLI_SCRIPT, content, state, 'THE_WAX_CYLINDER', usable, undefined)
+      emit(
+        `reach-cli-nightjar-card${suffix}`,
+        { type: 'reach-cli', mode: 'card', script: REACH_CLI_SCRIPT, card: 'THE_WAX_CYLINDER', usable },
+        world,
+        lines,
+      )
+    }
+
+    // demand variants (semantics (c): ANY obtainable card satisfying the
+    // query — the target is ignored, matching the CLI's lone --demand run
+    // where the card argv is absent)
+    for (const [suffix, q] of [['', 'aspect:secret>=3'], ['-kind', 'kind:text']] as const) {
+      const lines: string[] = []
+      reportInto(lines, REACH_CLI_SCRIPT, content, state, '', false, q)
+      emit(
+        `reach-cli-nightjar-demand${suffix}`,
+        { type: 'reach-cli', mode: 'card', script: REACH_CLI_SCRIPT, card: '', demand: q, usable: false },
+        world,
+        lines,
+      )
+    }
+  }
+
+  // -- genScenario sampled worlds: every probe of each seed rendered through
+  //    the CLI shapes (file label 'scenario'); seeds 1..5 get a second pass
+  //    under --usable semantics
+  for (let seed = 1; seed <= 20; seed++) {
+    const sc = genScenario(seed)
+    const dict = coreDictionary()
+    const content = compileContent(sc.raw, dict, sc.entityKinds)
+    const world: World = { dict, content, base: sc.initial }
+    for (const usable of seed <= 5 ? [false, true] : [false]) {
+      const lines: string[] = []
+      for (const p of sc.probes) {
+        if (p.mode === 'name') reportInto(lines, 'scenario', content, sc.initial, p.q, usable, undefined)
+        else reportInto(lines, 'scenario', content, sc.initial, '', usable, p.q)
+      }
+      emit(
+        `reach-cli-fuzz-${String(seed).padStart(3, '0')}${usable ? '-usable' : ''}`,
+        { type: 'reach-cli', mode: 'probes', seed, usable },
+        world,
+        lines,
+      )
+    }
+  }
+
+  // -- the reach-scale census A/B reference (PR1-03): the CI-sized 400×400
+  //    world, one TSV row per name — name/verdict/existence/roots/nodes/depth
+  //    are the cross-language MUST-EQUAL fields; ms is timing and only a
+  //    magnitude reference, so it does not ship in the golden
+  {
+    const world = buildCsScale(400, 400)
+    const stats = census(world)
+    const lines = stats.map(st => [st.name, st.verdict, st.existence, String(st.roots), String(st.nodes), String(st.depth)].join('\t'))
+    specs.push({
+      name: 'reach-scale-census',
+      kind: 'reach-cli',
+      driver: { type: 'reach-scale-census', protos: 400, recipes: 400 },
+      world: { dict: world.dict, content: world.content, base: world.initial },
+      records: [],
+      snap: snap(world.initial),
+      stdout: lines.join('\n') + '\n',
+    })
+  }
+
+  return specs
+}
+
+// ---------------------------------------------------------------------------
 // output + CLI
 // ---------------------------------------------------------------------------
 
@@ -1904,6 +2083,7 @@ const FAMILIES: Array<() => GoldenSpec[]> = [
   anchorsFamily,
   fuzzFamily,
   demoFamily,
+  reachCliFamily,
 ]
 
 const buildAll = (): GoldenSpec[] => {
@@ -1938,6 +2118,17 @@ const foldPrefix = (g: GoldenSpec, n: number, fromFile?: string): void => {
 const writeGoldens = (outDir: string, specs: GoldenSpec[]): void => {
   mkdirSync(outDir, { recursive: true })
   const entries = specs.map(g => {
+    // the reach-cli family carries stdout text instead of a record log
+    if (g.stdout !== undefined) {
+      writeFileSync(join(outDir, `${g.name}.stdout.txt`), g.stdout, 'utf8')
+      return {
+        name: g.name,
+        kind: g.kind,
+        driver: g.driver,
+        stdout: `${g.name}.stdout.txt`,
+        snap: g.snap,
+      }
+    }
     const jsonl = jsonlOf(g.records)
     writeFileSync(join(outDir, `${g.name}.jsonl`), jsonl, 'utf8')
     const entry: Record<string, unknown> = {
@@ -1979,7 +2170,7 @@ const writeGoldens = (outDir: string, specs: GoldenSpec[]): void => {
     goldens: entries,
   }
   writeFileSync(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8')
-  const totalBytes = entries.reduce((s, e) => s + (e.jsonlBytes as number), 0)
+  const totalBytes = entries.reduce((s, e) => s + ((e.jsonlBytes as number | undefined) ?? 0), 0)
   const byKind: Record<string, number> = {}
   for (const e of entries) byKind[e.kind as string] = (byKind[e.kind as string] ?? 0) + 1
   process.stdout.write(`goldens: ${entries.length} (${JSON.stringify(byKind)}), jsonl bytes total: ${totalBytes}\n`)

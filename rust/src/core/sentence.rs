@@ -25,14 +25,17 @@ pub struct Clause {
 /// Untagged = the wire form is the bare inner object (`{ role: 'object' }`
 /// or the ref itself), exactly the TS values; the variants are disjoint on
 /// the wire (only one has `role`, only the other has `form`).
+///
+/// W4 golden fix: the `Ref` arm is a NEWTYPE — the TS value of `ref` IS the
+/// Ref object itself (`{ t: 'into', ref: { form: 'id', … } }`), so the JSONL
+/// carries the bare Ref. The former struct variant serialized a wrapped
+/// `{"ref": …}` — a shape no TS log can produce (first divergence caught by
+/// the demo golden, record 3).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum IntoTarget {
     /// a whole `Ref` (including the authored-only param form)
-    Ref {
-        #[serde(rename = "ref")]
-        r#ref: Ref,
-    },
+    Ref(Ref),
     /// `{ role }`
     Role { role: Role },
 }

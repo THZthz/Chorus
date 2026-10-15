@@ -217,9 +217,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
             Ok(bound.clone())
         }
         Arg::Into {
-            r#ref: crate::core::sentence::IntoTarget::Ref {
-                r#ref: crate::core::r#ref::Ref::Param { name },
-            },
+            r#ref: crate::core::sentence::IntoTarget::Ref(crate::core::r#ref::Ref::Param { name }),
         } => {
             let Some(bound) = bind.get(name) else {
                 return Err(ChorusError::new(format!(
@@ -228,7 +226,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
             };
             match bound {
                 Arg::Ref { r#ref } => Ok(Arg::Into {
-                    r#ref: crate::core::sentence::IntoTarget::Ref { r#ref: r#ref.clone() },
+                    r#ref: crate::core::sentence::IntoTarget::Ref(r#ref.clone()),
                 }),
                 Arg::Role { role } => Ok(Arg::Into {
                     r#ref: crate::core::sentence::IntoTarget::Role { role: *role },

@@ -758,9 +758,7 @@ fn mint_is_stackable(content: &CompiledContent, name: &str, kind: Option<&str>) 
 /// ts: src/engine/engine.ts:407-409
 fn id_or_self(e: Option<&Entity>, fallback: IntoTarget) -> IntoTarget {
     match e {
-        Some(e) => IntoTarget::Ref {
-            r#ref: id_ref(e.id.clone()),
-        },
+        Some(e) => IntoTarget::Ref(id_ref(e.id.clone())),
         None => fallback,
     }
 }
@@ -883,13 +881,13 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                         r#ref: id_or_self(bound, IntoTarget::Role { role: *role }),
                     }
                 }
-                into_ref @ IntoTarget::Ref { .. } => Arg::Into {
+                into_ref @ IntoTarget::Ref(..) => Arg::Into {
                     r#ref: into_ref.clone(),
                 },
             };
             let dest: Option<String> = match &into_concrete {
                 Arg::Into {
-                    r#ref: IntoTarget::Ref { r#ref },
+                    r#ref: IntoTarget::Ref(r#ref),
                 } => resolve_ref(ctx.state, r#ref)?.map(|e| e.id.clone()),
                 _ => None,
             };
@@ -1232,7 +1230,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 .get(role)
                 .and_then(|v| v.first())
                 .map(|id| AttrValue::Str(id.clone())),
-            IntoTarget::Ref { r#ref } => {
+            IntoTarget::Ref(r#ref) => {
                 resolve_ref(ctx.state, r#ref)?.map(|e| AttrValue::Str(e.id.clone()))
             }
         }
@@ -1306,9 +1304,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         if let Some(c) = &container {
             // ts: engine.ts:522 — `idRef(container)` over the string-cast value
             concrete_args.push(Arg::Into {
-                r#ref: IntoTarget::Ref {
-                    r#ref: id_ref(c.to_js_string()),
-                },
+                r#ref: IntoTarget::Ref(id_ref(c.to_js_string())),
             });
         }
     }
@@ -1459,9 +1455,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }];
         if let Some(c) = &container {
             spawn_args.push(Arg::Into {
-                r#ref: IntoTarget::Ref {
-                    r#ref: id_ref(c.clone()),
-                },
+                r#ref: IntoTarget::Ref(id_ref(c.clone())),
             });
         }
         spawn_args.push(Arg::AsId { id });
@@ -1794,7 +1788,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     .get(role)
                     .and_then(|v| v.first())
                     .cloned(),
-                IntoTarget::Ref { r#ref } => {
+                IntoTarget::Ref(r#ref) => {
                     resolve_ref(ctx.state, r#ref)?.map(|e| e.id.clone())
                 }
             };
@@ -1804,9 +1798,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 )));
             };
             Some(Arg::Into {
-                r#ref: IntoTarget::Ref {
-                    r#ref: id_ref(dest),
-                },
+                r#ref: IntoTarget::Ref(id_ref(dest)),
             })
         }
         None => None,

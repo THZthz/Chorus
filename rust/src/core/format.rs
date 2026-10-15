@@ -189,7 +189,7 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
         Arg::Key { v } => Ok(v.clone()), // plain, dotted and aspect:-prefixed keys print bare (§9.31)
         Arg::Into { r#ref } => Ok(match r#ref {
             IntoTarget::Role { role } => format!("INTO {}", role.as_str().to_uppercase()),
-            IntoTarget::Ref { r#ref } => format!("INTO {}", format_ref(r#ref, dict)?),
+            IntoTarget::Ref(r#ref) => format!("INTO {}", format_ref(r#ref, dict)?),
         }),
         Arg::AsId { id } => Ok(format!("AS #{id}")),
         Arg::Pair { k, v } => Ok(match v {

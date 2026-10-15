@@ -218,9 +218,7 @@ impl Game {
                         }
                         | Arg::Into {
                             r#ref:
-                                crate::core::sentence::IntoTarget::Ref {
-                                    r#ref: Ref::Name { name, .. },
-                                },
+                                crate::core::sentence::IntoTarget::Ref(Ref::Name { name, .. }),
                         } => {
                             named.insert(name.clone());
                         }

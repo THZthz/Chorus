@@ -1107,9 +1107,7 @@ impl<'a> Parser<'a> {
         if let Some(Tok::Name { v }) = &t {
             if self.params.as_ref().is_some_and(|p| p.contains(v)) {
                 self.next()?;
-                return Ok(IntoTarget::Ref {
-                    r#ref: Ref::Param { name: v.clone() },
-                });
+                return Ok(IntoTarget::Ref(Ref::Param { name: v.clone() }));
             }
         }
         if let Some(Tok::Name { v }) = &t {
@@ -1118,7 +1116,7 @@ impl<'a> Parser<'a> {
                 return Ok(IntoTarget::Role { role });
             }
         }
-        Ok(IntoTarget::Ref { r#ref: self.ref_()? })
+        Ok(IntoTarget::Ref(self.ref_()?))
     }
 
     /// ts: parse.ts:628-639

@@ -28,7 +28,7 @@ pub struct Clause {
 /// The `Ref` arm is a NEWTYPE — the value of `ref` IS the Ref object itself
 /// (`{ t: 'into', ref: { form: 'id', … } }`), so the JSONL
 /// carries the bare Ref (a wrapped `{"ref": …}` would be a shape no log can
-/// produce; the demo golden replay, record 3, pins this).
+/// produce; the demo replay test, record 3, pins this).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum IntoTarget {
@@ -268,7 +268,7 @@ mod tests {
     use crate::core::r#ref::id_ref;
 
     #[test]
-    fn empty_clause_mirrors_the_ts_shape() {
+    fn empty_clause_is_the_canonical_empty_clause() {
         let c = empty_clause(vec![id_ref("e1")]);
         assert_eq!(c.actors.len(), 1);
         assert!(c.verb.is_empty());
@@ -277,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn arg_tags_match_the_ts_discriminator_strings() {
+    fn arg_tags_match_the_wire_discriminator_strings() {
         assert_eq!(Arg::Int { v: 3 }.tag(), "int");
         assert_eq!(Arg::Delta { v: -1 }.tag(), "delta");
         assert_eq!(

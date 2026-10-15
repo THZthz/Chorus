@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return, // a module dir that has not landed yet (engine/ is W3)
+        Err(_) => return, // a module dir that may be absent (engine/)
     };
     for entry in entries.flatten() {
         let p = entry.path();
@@ -78,11 +78,10 @@ fn no_math_random_literal_anywhere_in_rust_sources() {
     );
 }
 
-/// The discardable-TUI zero-residue check: the
-/// ink/react component layer was ruled out of scope and no
-/// equivalent was ever written — this is the standing check that it stays
+/// The discardable-TUI zero-residue check: no TUI component/UI-framework
+/// layer was ever introduced — this is the standing check that it stays
 /// that way. Scanned after comment/string blanking, so the doc comments
-/// SAYING "the ink/react TUI is absent" do not trip it, and the reach
+/// SAYING "the TUI ecosystem is absent" do not trip it, and the reach
 /// CLI's FROZEN usage text (a string literal)
 /// is defanged too.
 #[test]
@@ -109,7 +108,7 @@ fn no_tui_ecosystem_residue_in_rust_sources() {
 }
 
 // ---------------------------------------------------------------------------
-// Engine-path panic gate (plan rule 11): `unwrap`/`expect` are forbidden on
+// Engine-path panic gate: `unwrap`/`expect` are forbidden on
 // every non-test path under src/ (test code is exempt) — a TEXTUAL
 // scan with the documented limitations below.
 // ---------------------------------------------------------------------------
@@ -290,13 +289,13 @@ fn cut_cfg_test_items(text: &str) -> String {
 
 #[test]
 fn no_unwrap_or_expect_outside_cfg_test_paths_under_src() {
-    // plan rule 11: engine paths forbid `unwrap`/`expect`; test code
+    // Engine paths forbid `unwrap`/`expect`; test code
     // (#[cfg(test)] modules in src, everything under tests/) is exempt.
     // Textual approximation — documented limitations: (1) a call split
     // across lines (`.unwrap`\n`()`) would slip; (2) block comments are
     // treated as non-nested; (3) pathological lifetimes cannot be confused
     // with char literals in valid Rust. The gate keeps the mechanism TEXTUAL
-    // (upgrading to a syntax tree would need a new dependency — rule 6) and
+    // (upgrading to a syntax tree would need a new dependency) and
     // registers the limitations instead; the rule itself is unchanged.
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();

@@ -613,7 +613,7 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
         // multi-clause is always pushed, so the pick space is never empty
         debug_assert!(
             !pick_from.is_empty(),
-            "candidatesFor always offers at least the multi-clause probe"
+            "candidates_for always offers at least the multi-clause probe"
         );
         let pick = ((lcg.next_f64() * pick_from.len() as f64).floor() as usize)
             % pick_from.len();

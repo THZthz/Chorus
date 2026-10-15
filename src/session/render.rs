@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn pretty_and_flatten_and_join_and_match_the_ts_shapes() {
+    fn pretty_and_flatten_and_join_and_match_shapes() {
         assert_eq!(pretty("THE_MANIFEST"), "THE MANIFEST");
         let mut sub = indexmap::IndexMap::new();
         sub.insert("cylinder".to_string(), 1);

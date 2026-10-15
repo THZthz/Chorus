@@ -650,9 +650,9 @@ fn register_windows(
     // a BEGIN row's clauses ride its canonical sentence (law 2 makes that
     // lossless); a degenerate row with no parseable clauses opens no window.
     // QUIRK(Q6): the format∘parse round-trip failure SILENTLY opens no
-    // window (`catch { clauses = [] }`) — frozen; do NOT turn this into an
-    // error and do NOT pass clauses through memory (both change behavior on
-    // degenerate inputs).
+    // window (the clauses are dropped to empty) — frozen; do NOT turn this
+    // into an error and do NOT pass clauses through memory (both change
+    // behavior on degenerate inputs).
     let clauses: Vec<Clause> = match parse_sentence(&record.sentence, dict) {
         Ok(s) => s.clauses,
         Err(_) => Vec::new(),
@@ -2633,7 +2633,7 @@ fn checked_step(a: i64, b: i64, what: &str) -> i64 {
         None => {
             debug_assert!(
                 false,
-                "{what}: i64 overflow {a} + {b} (TS f64 keeps going; documented divergence, plan §3.3)"
+                "{what}: i64 overflow {a} + {b} (f64 accumulation kept going; documented saturation divergence)"
             );
             i64::MAX
         }
@@ -3297,7 +3297,7 @@ mod smoke {
     }
 
     #[test]
-    fn records_serialize_in_the_ts_field_order() {
+    fn records_serialize_in_the_jsonl_wire_field_order() {
         // the JSONL wire order is the pinned object-literal order.
         let (dict, content) = rig(
             vec![("PACE", pace(30, &["NARRATE \"d.\""]))],
@@ -3318,7 +3318,7 @@ mod smoke {
     }
 
     #[test]
-    fn rejected_messages_match_the_ts_texts() {
+    fn rejected_messages_are_byte_exact() {
         let (dict, content) = rig(vec![("PACE", pace(30, &["NARRATE \"d.\""]))], |_| {});
         // before-now
         let r = execute_step(

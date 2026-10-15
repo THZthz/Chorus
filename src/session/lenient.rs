@@ -35,9 +35,9 @@ pub struct LenientCtx<'a> {
     pub player: Option<&'a str>,
 }
 
-/// `{ ok: true; step; canonical }` |
-/// `{ ok: false; error; suggestions }` as an enum ([`ParsedInput::is_ok`]
-/// is the `.ok` test).
+/// Success carries the parsed [`Step`] and its canonical text; failure
+/// carries the error message and a suggestion pool ([`ParsedInput::is_ok`]
+/// discriminates the two variants).
 #[derive(Debug, Clone)]
 pub enum ParsedInput {
     Ok {
@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn levenshtein_matches_the_ts_dp() {
+    fn levenshtein_is_the_standard_dp() {
         assert_eq!(levenshtein("kitten", "sitting"), 3);
         assert_eq!(levenshtein("ledgr", "ledger"), 1);
         assert_eq!(levenshtein("", "abc"), 3);

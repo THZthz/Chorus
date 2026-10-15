@@ -1,22 +1,25 @@
-# The demo world (examples/demo.ts = test/seed.ts) as a script — the W6
-# REPL's fixture for the scripted demo session (plan §4-W6, PR3-09).
+# The demo world as a script — the REPL's fixture for the scripted demo
+# session (tests/repl.rs).
 #
-# Transcribed from test/seed.ts's seedContent()/seedState() with THREE
-# registered, test-pinned deviations (tests/repl.rs documents each):
-#   1. the CLUE_SECRET_HIDEOUT PROTOTYPE is dropped: script.ts:186 rejects a
-#      name declared both as entity and prototype, and the seed world holds
-#      both (programmatic fixtures skip that load guard). The demo steps only
-#      ever TALK ABOUT the living entity; nothing spawns the prototype.
-#   2. entity ids are the script compiler's `s_${lower(name)}` (types.ts:159),
-#      where the seed state uses bare ids ('house', 'ana', ...). Visible only
-#      in canonical sentences (INTO #…, container attrs), never in prose.
-#   3. spawn mints use the engine-default idGen `e{firstRecordId}_{n}`
-#      (engine.ts:179 — the Game/handleLine path), where examples/demo.ts
-#      injects `x${id}_${++n}` (demo.ts:33). Same shape, different spelling.
+# Self-contained fixture with THREE registered, test-pinned deviations from
+# the equivalent hand-built state fixture (tests/repl.rs documents each):
+#   1. the CLUE_SECRET_HIDEOUT PROTOTYPE is dropped: the script loader
+#      rejects a name declared both as entity and prototype, and the
+#      hand-built world holds both (programmatic fixtures skip that load
+#      guard). The demo steps only ever TALK ABOUT the living entity;
+#      nothing spawns the prototype.
+#   2. entity ids are minted as s_ + lowercased name (the script compiler's
+#      frozen id convention), where the hand-built state uses bare ids
+#      ('house', 'ana', ...). Visible only in canonical sentences (INTO #…,
+#      container attrs), never in prose.
+#   3. spawn mints use the engine-default idGen `e{firstRecordId}_{n}` (the
+#      Game/handleLine path), not an injected alternate spelling. Same
+#      shape, different spelling — both spellings are this repository's
+#      frozen conventions.
 #
-# Behavior check (tests/repl.rs): the session's story projection is
-# byte-identical to goldens/demo.prose.txt and the journal matches
-# goldens/demo.journal.txt under exactly the id map of deviations 2+3.
+# Behavior check (tests/repl.rs): the session's story projection and the
+# journal are pinned byte-for-byte in that file, under exactly the id map of
+# deviations 2+3.
 
 script: The Forgotten House
 player: ANA

@@ -218,7 +218,7 @@ fn delta_position_the_authored_sign_folds_into_the_calls_number() {
     // Bump(2)/drop(4): the sign rides the
     // param and folds into the call's number at expansion.
     // The engine concretizes SET deltas to computed ints at runtime — the
-    // log-level assertion is W3's; here the AST carries the signed delta.
+    // log-level assertion lives in the engine tests; here the AST carries the signed delta.
     let dict = core_dictionary();
     let fns = raw_table(
         &dict,
@@ -443,7 +443,7 @@ fn mutual_recursion_names_the_cycle_self_recursion_names_itself() {
 #[test]
 fn a_depth_8_chain_expands_transitively_depth_9_is_a_load_error() {
     // Depth(f) = 1 + max(depth of callees);
-    // 8 loads, 9 errors. The LOAD gate is content compile (W2) — here the
+    // 8 loads, 9 errors. The LOAD gate is content compile — here the
     // guard mirror enforces it over the real call graph, and the depth-8
     // chain's EXPANSION is checked directly.
     let dict = core_dictionary();

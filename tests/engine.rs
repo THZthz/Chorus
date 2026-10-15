@@ -169,7 +169,7 @@ fn container_attrs(container: &str) -> Attrs {
         .collect()
 }
 
-/// A hand-built COMPLETE record the way the review-regression literals do
+/// A hand-built COMPLETE record like the regression literals in this file
 /// (id, kind "complete", trigger None, t_game set, t_real/start_min
 /// None, window "fixture", advanced_min 0).
 fn fixture_complete(id: i64, t_game: &str, outcomes: Vec<Outcome>) -> ActionRecord {
@@ -626,8 +626,8 @@ mod dictionary_is_the_law {
     }
 }
 
-/// Review regressions
-mod review_regressions {
+/// Behavior regressions
+mod behavior_regressions {
     use super::*;
 
     #[test]
@@ -1952,7 +1952,7 @@ mod replace_decay {
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"already in use");
         assert_eq!(r.state.entities["chalice"].dead_action, None); // nothing applied
-        // ts checks the ORIGINAL state object still holds the name — the
+        // the ORIGINAL state object still holds the name — the
         // refusal discards everything, so the returned state carries it too
         assert!(r.state.by_name.contains_key("CHALICE"));
         let _ = (&dict, &content);
@@ -2547,7 +2547,7 @@ mod set_expires_duration_forms {
         );
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"bad duration '2fortnights'");
-        // ts checks the ORIGINAL state's chalice — untouched by the refusal
+        // the ORIGINAL state's chalice — untouched by the refusal
         assert_eq!(r.state.entities["chalice"].attrs.get("expiresAt"), None);
     }
 

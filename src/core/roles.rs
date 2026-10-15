@@ -76,7 +76,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn roles_round_trip_and_keep_ts_order() {
+    fn roles_round_trip_and_keep_declaration_order() {
         let names: Vec<&str> = ROLES.iter().map(|r| r.as_str()).collect();
         assert_eq!(names, ["actors", "object", "with", "at", "about", "to"]);
         for r in ROLES {

@@ -1,9 +1,9 @@
 //! Hand-crafted adversarial scenarios for the static card-reachability
 //! analyzer (S1–S14), **analyzer side
 //! only** (the engine-side halves of these tests — settle traces,
-//! the exhaustive explorer — are confirmed by the engine tests
-//! and the golden corpus, S1–S14 zero-byte-diff; this file carries the
-//! reach-verdict / existence / chain / notes / usable_via assertions).
+//! the exhaustive explorer — are confirmed by the engine test-suite; this
+//! file carries the reach-verdict / existence / chain / notes / usable_via
+//! assertions).
 //!
 //! Verdict contract under test (the reach header contract): 'unobtainable' must never
 //! fire wrongly; 'obtainable' must be backed by a real chain; guarded sites
@@ -940,7 +940,7 @@ fn q17_zero_entity_scripts_keep_the_site_reason_branch_reachable() {
 
 /// Compile-side regression guard for the scenarios' declared-entity pass:
 /// the fixture worlds never collide on add_entity (the Q5 case-duplication
-/// quirk aside) — pins the `s_${lower(name)}` id shape the analyzer reads.
+/// quirk aside) — pins the s_ + lowercased-name id shape the analyzer reads.
 #[test]
 fn declared_entities_flow_through_compile_without_collisions() {
     let dict = core_dictionary();

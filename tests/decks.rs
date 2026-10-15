@@ -110,7 +110,7 @@ verbs:
     )
 }
 
-/// The plan's §5 example deck (seed 0 order:
+/// The flagship example deck (seed 0 order:
 /// RUMOUR, HEARSAY, RUMOUR, SCANDAL — pinned via permute_positions below).
 const PLAN_DECK: &str = "RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset";
 
@@ -225,7 +225,7 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
 // ---------------------------------------------------------------------------
 
 /// A hand-built deck standing in for the compiled one; the kind is inert for
-/// the hand-built draws (the mint that consumes it is W2/W3).
+/// the hand-built draws (the deck-draw mint consumes it).
 fn deck(id: &str, names: &[&str], defaultcard: Option<&str>, reset: bool) -> chorus::content::content::CompiledDeck {
     chorus::content::content::CompiledDeck {
         id: id.to_string(),
@@ -290,7 +290,7 @@ fn draw_from_exhausted_deck_fails_loud_with_the_verbatim_message() {
 /// The minimal script shape with the
 /// gossip prototypes and a DRAW-verb; seed 0 keeps the pinned order
 /// RUMOUR, HEARSAY, RUMOUR, SCANDAL (the permutation vectors above).
-fn w2_rig(decks: &str) -> String {
+fn deck_rig(decks: &str) -> String {
     format!(
         r#"script: Probe
 
@@ -321,7 +321,7 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
     // defaultcard-forever leg.
     let dict = core_dictionary();
     let game = compile_script(
-        &w2_rig("  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset\n  SOLO spec HEARSAY reset\n  GOSSIP spec RUMOUR, HEARSAY, SCANDAL defaultcard HEARSAY\n  SINGLES spec HEARSAY"),
+        &deck_rig("  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset\n  SOLO spec HEARSAY reset\n  GOSSIP spec RUMOUR, HEARSAY, SCANDAL defaultcard HEARSAY\n  SINGLES spec HEARSAY"),
         &dict,
     )
     .unwrap();

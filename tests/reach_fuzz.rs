@@ -10,7 +10,7 @@
 //! at the default 8 steps × 500 states (deep +7/×20 never fires its cap —
 //! 0 inconclusive over 300 seeds), so 100 seeds sample 2.5× the scenarios of
 //! the old 40. The CLI (reach-fuzz bin) shakes thousands. The suite rides the
-//! W5 shared module tests/common/reach_fuzz_lib.rs —
+//! shared module tests/common/reach_fuzz_lib.rs —
 //! the same module the bin mounts, so bin and test cannot drift.
 
 mod common;

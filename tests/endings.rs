@@ -4,9 +4,9 @@
 //! triggers and authored expiries may ENDING (the CS despair-death shape);
 //! undo reopens the game because `ended` derives from the fold.
 //!
-//! Every test builds a FRESH Dictionary. UI-02: BOTH game-over texts are
-//! pinned here — the UI notice full text (`:378`) and the engine rejected
-//! short text (`:186`/`:219`) — never merged.
+//! Every test builds a FRESH Dictionary. BOTH game-over texts are
+//! pinned here — the UI notice full text and the engine rejected
+//! short text — never merged.
 
 mod common;
 
@@ -925,9 +925,9 @@ mod the_player_surface {
             }),
             "— HUSH · quiet —"
         );
-        // UI-02: the UI notice FULL text (the engine's rejected short text —
+        // the UI notice FULL text (the engine's rejected short text —
         // `the story has ended — No More` without flavour — is pinned above
-        // at :186/:219 and lives in engine.rs; the two are never merged)
+        // and lives in engine.rs; the two are never merged)
         assert_eq!(
             ending_notice(&Ending {
                 id: "DESPAIR_DEATH".into(),

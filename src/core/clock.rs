@@ -22,7 +22,7 @@ pub const HALFHOURS_PER_DAY: i64 = 48;
 #[must_use]
 pub fn abs_min(c: Clock) -> i64 {
     // saturating i64: a clock day parsed from an absurd literal
-    // (> 2^63/1440) saturates here instead of wrapping; no test or golden
+    // (> 2^63/1440) saturates here instead of wrapping; no test
     // reaches that region.
     (c.day)
         .saturating_mul(HALFHOURS_PER_DAY)

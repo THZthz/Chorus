@@ -61,8 +61,8 @@ fn cold_vs_warm_the_second_analysis_on_the_same_world_amortizes_the_fixpoint() {
         warm * 3.0 < cold,
         "warm ({warm:.2}ms) must amortize the cold fixpoint ({cold:.1}ms)"
     );
-    // `warm < 50` was a V8/JIT-era
-    // CI guardrail; the unoptimized debug build runs the same
+    // a fixed 50ms ceiling was an
+    // interpreter-era guardrail; the unoptimized debug build runs the same
     // lookup + path walk an order of magnitude slower (~100ms measured), so
     // the absolute ceiling rides the magnitude-reference rule with
     // ×10 profile headroom. The STRUCTURAL amortization pin stays above.
@@ -175,7 +175,7 @@ fn demand_semantics_survive_the_scale_any_obtainable_card_matches() {
     assert!(!rep.paths.is_empty());
 }
 
-/// the genScenario worlds' demand probes also hold at an explicit fuzz seed
+/// the gen_scenario worlds' demand probes also hold at an explicit fuzz seed
 /// (pinned nowhere else) — keep one seed as a cross-lib smoke so both
 /// libs stay mounted in one binary (guards the #[path] / mod wiring).
 #[test]

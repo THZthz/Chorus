@@ -407,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn aspects_from_pairs_clobbers_like_ts() {
+    fn aspects_from_pairs_clobbers() {
         // QUIRK Q13: a later 'a.b' clobbers the scalar 'a' whole
         let mut pairs = IndexMap::new();
         pairs.insert("a".to_string(), 1);

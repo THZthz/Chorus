@@ -601,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_fn_calls_preserves_ts_set_insertion_order() {
+    fn collect_fn_calls_preserves_js_set_insertion_order() {
         // collect_fn_calls fills an IndexSet mirroring a JS `Set<string>`:
         // iteration is INSERTION order — content compile reads
         // it in that order (first undeclared callee in the error text; the

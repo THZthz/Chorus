@@ -99,7 +99,7 @@ fn check_records(records: &[ActionRecord], world: &ExplorerWorld) {
         );
         // prose rendering must never error on a committed record
         prose_lines(rec, &world.content, &world.dict)
-            .unwrap_or_else(|e| panic!("proseLines threw on {}: {e}", rec.sentence));
+            .unwrap_or_else(|e| panic!("prose_lines threw on {}: {e}", rec.sentence));
         assert_eq!(rec.actors, sort_refs(&rec.actors));
         assert!(rec.advanced_min >= 0);
         if rec.kind == "event" {
@@ -504,7 +504,7 @@ fn slash_commands_garbage_and_the_event_guard_never_throw() {
     for line in cases {
         let kind = game
             .handle_line(line)
-            .unwrap_or_else(|e| panic!("handleLine({line:?}) threw: {e}"))
+            .unwrap_or_else(|e| panic!("handle_line({line:?}) threw: {e}"))
             .kind;
         assert!(
             kind == TurnKind::Info || kind == TurnKind::Error || kind == TurnKind::Action,

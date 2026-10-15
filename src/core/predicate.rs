@@ -679,7 +679,7 @@ impl<'a> PredParser<'a> {
 /// `DESTROY OBJECT` then `IF object.aspect.x` is a silent false.
 fn role_cards<'a>(ctx: &PredCtx<'a>, role: &str) -> Vec<&'a Entity> {
     let Some(r) = Role::from_lower(role) else {
-        return Vec::new(); // `ctx.b[role] ?? []` — an undeclared role binds nothing
+        return Vec::new(); // a missing role binds nothing — reads as empty
     };
     ctx.b
         .get(&r)

@@ -205,7 +205,7 @@ verbs:
     )
 }
 
-/// A hand-built COMPLETE record the way the review-regression literals do
+/// A hand-built COMPLETE record like the regression literals in this file
 /// (id, kind "complete", trigger None, t_game "0:0", t_real None,
 /// start_min None, window "fixture", advanced_min 0).
 fn fixture_complete(id: i64, outcomes: Vec<Outcome>) -> ActionRecord {
@@ -1453,7 +1453,8 @@ fn trigger_rolls_replay_through_saved_jsonl_rows() {
 
 fn fn_script(extra: &str) -> String {
     let duration = if extra.contains("cross") { "1h" } else { "0m" };
-    // `${extra.replace(' cross', '')}` — the cross marker only sets the duration
+    // the cross marker only sets the duration; it is stripped from the
+    // function names themselves
     let tail = extra.replace(" cross", "");
     format!(
         r#"

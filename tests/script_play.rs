@@ -530,10 +530,10 @@ fn bad_scripts_fail_loudly() {
 
 // ---------------------------------------------------------------------------
 // compile_script(the-nightjar-flyer) — the full
-// load path over the embedded showcase. The full CompiledContent JSON
-// 对拍 lives in the golden replay; here the compile must simply succeed and the
-// headline derived fields must match the pinned values (seed permutation,
-// stackable sets, minted ids) — which the tests above assert field-by-field.
+// load path over the embedded showcase. Here the compile must simply succeed
+// and the headline derived fields must match the pinned values (seed
+// permutation, stackable sets, minted ids) — which the tests above assert
+// field-by-field.
 // ---------------------------------------------------------------------------
 
 /// A direct-raw compile_content caller passes NO entities (deck entries
@@ -588,7 +588,7 @@ fn direct_compile_content_with_entities_resolves_deck_entries_and_stackable() {
     assert!(compiled.stackable_kinds.contains("idea"));
 }
 
-/// The contract for messages.md rows 74-76: the cycle/depth/undeclared
+/// The frozen guard texts: the cycle/depth/undeclared
 /// guards fire through the REAL compile path (content.rs build_fn_table),
 /// with the exact texts pre-frozen by tests/fn_expand_direct.rs.
 #[test]

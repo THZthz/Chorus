@@ -1160,7 +1160,7 @@ fn render_card(
 
 /// 同 (content, State) 两次分析输出逐字节一致 — the determinism pin.
 #[test]
-fn the_same_content_and_state_analyzed_twice_is_byte_identical_reach03() {
+fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
     let dict = core_dictionary();
     for seed in 1u32..=60 {
         let sc = common::reach_fuzz_lib::gen_scenario(seed);
@@ -1190,7 +1190,7 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical_reach03() {
 /// A shared Analyzer (the world-cache shape) must agree
 /// byte-for-byte with fresh-per-call analyzers.
 #[test]
-fn a_shared_analyzer_matches_fresh_per_call_analyzers_reach07() {
+fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
     let dict = core_dictionary();
     for seed in 1u32..=30 {
         let sc = common::reach_fuzz_lib::gen_scenario(seed);

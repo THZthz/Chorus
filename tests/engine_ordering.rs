@@ -1,9 +1,9 @@
 //! §3.14 ordering/atomicity matrix — dedicated ordering tests targeting
 //! the ordering semantics DIRECTLY.
 //!
-//! Every expectation below is a FROZEN EXPECTATION — the literal values were
-//! dump-measured once against these ordering rigs (family `anchor-*`), and
-//! each test names its scenario at the measured values; the annotations stay
+//! Every expectation below is a FROZEN EXPECTATION — the literal values are
+//! this repository's frozen expectations; each test names its scenario
+//! (family `anchor-*`) at those values, and the annotations stay
 //! as the provenance record.
 //!
 //! The fold-equality assertions in this file compare through the shared
@@ -197,8 +197,8 @@ fn outcome_ops(r: &ActionRecord) -> Vec<&str> {
 
 /// §3.14 row 1a — advance pass: due windows in (end, beginId, clause) order;
 /// a completion at minute m fires BEFORE slot-m events.
-/// scenario: anchor-complete-before-slot-event (frozen expectation, dump-measured:
-/// [complete, event, wait] at minute 60).
+/// scenario: anchor-complete-before-slot-event (frozen expectation):
+/// [complete, event, wait] at minute 60.
 #[test]
 fn advance_pass_completion_precedes_same_minute_slot_events() {
     let (dict, content) = rig(
@@ -225,7 +225,7 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
     // pure advance to minute 60: completion at 60 BEFORE the slot-60 event
     let adv = run_clock(&content, &dict, r1.state, "0:2", r1.records.len() as i64 + 1);
     assert_eq!(adv.rejected, None);
-    // scenario: anchor-complete-before-slot-event (frozen expectation, dump-measured)
+    // scenario: anchor-complete-before-slot-event (frozen expectation)
     assert_eq!(kinds(&adv.records), ["complete", "event", "wait"]);
     assert_eq!(adv.records[0].trigger.as_deref(), Some("PACE_A"));
     assert_eq!(adv.records[1].trigger.as_deref(), Some("the_chime"));
@@ -240,8 +240,8 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
 
 /// §3.14 row 1b — chronological pass: earlier completion first, each
 /// same-minute slot event follows its completion.
-/// scenario: anchor-advance-chronological (frozen expectation, dump-measured: [complete FAST, event
-/// mark, complete SLOW, event ninety, wait]).
+/// scenario: anchor-advance-chronological (frozen expectation): [complete FAST, event
+/// mark, complete SLOW, event ninety, wait].
 #[test]
 fn advance_pass_is_chronological_across_windows_and_slots() {
     let (dict, content) = rig(
@@ -277,7 +277,7 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         (r1.records.len() + r2.records.len()) as i64 + 1,
     );
     assert_eq!(adv.rejected, None);
-    // scenario: anchor-advance-chronological (frozen expectation, dump-measured) — FAST closes at
+    // scenario: anchor-advance-chronological (frozen expectation) — FAST closes at
     // 30 (before the halfhour mark), SLOW at 90 (before the ninety mark) —
     // completions lead, same-minute events follow.
     let shapes: Vec<(Option<&str>, Option<&str>)> = adv
@@ -308,7 +308,7 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
 /// from DIFFERENT begins close in begin order; two same-end windows from ONE
 /// begin (clause offsets landing on the same minute) close in clause order.
 /// . scenario: anchor-due-tie / anchor-due-tie-clause
-/// (frozen expectation, dump-measured).
+/// (frozen expectation).
 #[test]
 fn due_window_ties_break_by_begin_id_then_clause() {
     // (a) beginId tie-break: two 30-minute windows both [0,30]
@@ -359,7 +359,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     .unwrap();
     assert_eq!(r.rejected, None);
     let windows: Vec<(i64, i64)> = r.state.windows.values().map(|w| (w.start, w.end)).collect();
-    // scenario: anchor-due-tie-clause (frozen expectation, dump-measured) — clause 0 spans [0,30],
+    // scenario: anchor-due-tie-clause (frozen expectation) — clause 0 spans [0,30],
     // clause 1 (offset 30, duration 0) [30,30]
     assert_eq!(windows, vec![(0, 30), (30, 30)]);
     let adv = run_clock(&content, &dict, r.state, "0:1", r.records.len() as i64 + 1);
@@ -377,7 +377,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
 
 /// §3.14 row 2a — same-halfhour expiries fire in ENTITIES INSERTION order
 /// (the hoisted snapshot preserves State.entities insert order).
-/// scenario: anchor-expiry-insertion-order (frozen expectation, dump-measured).
+/// scenario: anchor-expiry-insertion-order (frozen expectation).
 #[test]
 fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     let (dict, content) = rig(vec![], |_| {});
@@ -388,7 +388,7 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     let base = clone_state(&state);
     let adv = run_clock(&content, &dict, state, "0:1", 1);
     assert_eq!(adv.rejected, None);
-    // scenario: anchor-expiry-insertion-order (frozen expectation, dump-measured) — insertion
+    // scenario: anchor-expiry-insertion-order (frozen expectation) — insertion
     // order, NOT alphabetical
     assert_eq!(kinds(&adv.records), ["event", "event", "wait"]);
     assert_eq!(triggers(&adv.records), [Some("expire:ZOMBIE_CARD"), Some("expire:APPLE_CARD"), None]);
@@ -401,7 +401,7 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
 
 /// §3.14 row 2b — authored `on expire of NAME`: FIRST match in declaration
 /// order wins; a name with no authored trigger takes the built-in destroy.
-/// . scenario: anchor-on-expire-first-match (frozen expectation, dump-measured).
+/// . scenario: anchor-on-expire-first-match (frozen expectation).
 #[test]
 fn authored_on_expire_first_match_in_declaration_order() {
     let (dict, content) = rig(vec![], |raw| {
@@ -435,7 +435,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
     let base = clone_state(&state);
     let adv = run_clock(&content, &dict, state, "0:1", 1);
     assert_eq!(adv.rejected, None);
-    // scenario: anchor-on-expire-first-match (frozen expectation, dump-measured) — the first
+    // scenario: anchor-on-expire-first-match (frozen expectation) — the first
     // authored match only, the un-authored name takes the built-in
     assert_eq!(
         triggers(&adv.records),
@@ -464,9 +464,9 @@ fn authored_on_expire_first_match_in_declaration_order() {
 /// advance. Also pins the §6.7 anchoring: SET expires computes from the
 /// window's START clock (fireWindow now = w.start).
 /// scenario: anchor-expiry-hoist-no-cascade
-/// (frozen expectation, dump-measured: no expiry event in pass 1; EGG expires at minute
-/// 60 = window START + 1h, not 90; the frozen egg sentinel is 2^53-1 —
-/// identical across engines — where this rig uses i64::MAX-1).
+/// (frozen expectation: no expiry event in pass 1; EGG expires at minute
+/// 60 = window START + 1h, not 90; the frozen egg sentinel is 2^53-1,
+/// where this rig uses i64::MAX-1).
 #[test]
 fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let (dict, content) = rig(
@@ -496,7 +496,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let _ = &base;
     let complete = &adv1.records[0];
     assert_eq!(outcome_ops(complete), ["SET"]);
-    // scenario: anchor-expiry-hoist-no-cascade (frozen expectation, dump-measured) — anchored to
+    // scenario: anchor-expiry-hoist-no-cascade (frozen expectation) — anchored to
     // the window START (minute 0): 0 + 60 = 60
     let egg = &adv1.state.entities["egg"];
     assert_eq!(egg.attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
@@ -519,7 +519,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
 /// AND the would-have-closed window) and the id is RECYCLED: the refusal row
 /// takes firstRecordId and the next attempt mints the same id again (the
 /// fold_up_to `<` filter depends on it).
-/// scenario: anchor-refuse-id-recycle (frozen expectation, dump-measured: refusal row id = 2 twice;
+/// scenario: anchor-refuse-id-recycle (frozen expectation: refusal row id = 2 twice;
 /// the real advance closes with ids 2,3).
 #[test]
 fn refuse_discards_advance_and_recycles_ids() {
@@ -579,7 +579,7 @@ fn refuse_discards_advance_and_recycles_ids() {
 /// feeds mechanics when its window is in the table (anchored to w.start) but
 /// the bare-row tGame fallback exists for fold probes — keep it).
 /// scenario: anchor-wait-partition — the fold
-/// values below are the dump-measured fold of that scenario's log (frozen).
+/// values below are the fold of that scenario's log (frozen).
 #[test]
 fn wait_is_the_only_clock_mover_and_must_partition_time() {
     let (dict, content) = rig(
@@ -651,7 +651,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     };
     let mut st = seed();
     apply_record(&bare_complete, &mut st, &dict, &content).unwrap();
-    // scenario: anchor-wait-partition (frozen expectation, dump-measured via fold) — 0:5 = day 0,
+    // scenario: anchor-wait-partition (frozen expectation, folded) — 0:5 = day 0,
     // halfhour 5 = minute 150; 150 + 30 = 180
     assert_eq!(st.entities["book"].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
 }
@@ -660,7 +660,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
 /// the partial effects are discarded, the attempt is logged with a REFUSE
 /// marker, the window still closes, and the pass does NOT roll back (no
 /// livelock). scenario: anchor-window-completion-
-/// failure (frozen expectation, dump-measured: [complete(REFUSE), wait]).
+/// failure (frozen expectation: [complete(REFUSE), wait]).
 #[test]
 fn window_completion_failure_refuses_only_that_window() {
     let (dict, content) = rig(
@@ -690,7 +690,7 @@ fn window_completion_failure_refuses_only_that_window() {
 
 /// §3.14 row 6 — the first ENDING wins; later ENDINGs are logged no-ops; the
 /// ended state gates every later step with the story-over message (§9.35).
-/// . scenario: anchor-first-ending (frozen expectation, dump-measured:
+/// . scenario: anchor-first-ending (frozen expectation:
 /// ended.id = QUIET_DUSK).
 #[test]
 fn first_ending_wins_and_gates_the_story() {
@@ -752,7 +752,7 @@ fn first_ending_wins_and_gates_the_story() {
 
 /// §3.14 row 7a — ROLL last-wins inside one outcome list: the concrete rows
 /// carry both ROLLED results and the NARRATE prose carries the SECOND total.
-/// . scenario: anchor-roll-last-wins (frozen expectation, dump-measured: the
+/// . scenario: anchor-roll-last-wins (frozen expectation: the
 /// ROLLED (total, ctrAfter) pairs and the second-total prose ride the
 /// frozen complete row verbatim).
 #[test]
@@ -782,7 +782,7 @@ fn roll_binds_last_wins_within_a_list() {
     else {
         panic!("ROLLED(total, ctrAfter)");
     };
-    // scenario: anchor-roll-last-wins (frozen expectation, dump-measured) — counters 0 and 1
+    // scenario: anchor-roll-last-wins (frozen expectation) — counters 0 and 1
     // consumed in order
     assert_eq!((*t1, *c1, *t2, *c2),
         (chorus::core::dice::roll_die(dice_seed, 0, 6), 1, chorus::core::dice::roll_die(dice_seed, 1, 6), 2));
@@ -798,7 +798,7 @@ fn roll_binds_last_wins_within_a_list() {
 /// ROLL in clause one is NOT visible to clause two's IF — its unbound
 /// `roll` refuses clause two's window at completion (the IF is opaque to
 /// the gate, so the step itself commits).
-/// scenario: anchor-roll-per-clause (frozen expectation, dump-measured: complete rows
+/// scenario: anchor-roll-per-clause (frozen expectation: complete rows
 /// [CAST: ROLLED+NARRATE, BARE: ROLLED+NARRATE on its own roll]).
 #[test]
 fn roll_binding_resets_per_clause() {
@@ -864,7 +864,7 @@ fn roll_binding_resets_per_clause() {
     assert_eq!(completes[0].trigger.as_deref(), Some("CAST"));
     assert_eq!(outcome_ops(completes[0]), ["ROLLED", "NARRATE"], "clause one saw its roll");
     assert_eq!(outcome_ops(completes[1]), ["ROLLED", "NARRATE"], "clause two rolled on its own");
-    // scenario: anchor-roll-per-clause (frozen expectation, dump-measured) — CAST consumes counter
+    // scenario: anchor-roll-per-clause (frozen expectation) — CAST consumes counter
     // 0 (one die); BARE consumes counter 1 — if the binding leaked, clause
     // two's prose would carry clause one's total
     let cast_total = chorus::core::dice::roll_die(dice_seed, 0, 6);
@@ -882,7 +882,7 @@ fn roll_binding_resets_per_clause() {
 /// wait row's span (replay-safe: the fold never re-derives it). Also pins
 /// the zero-duration-window due-at-begin minute and the busy/station gate.
 /// . scenario: anchor-advance-extension /
-/// anchor-flash-zero-duration (frozen expectation, dump-measured: wait span 90 = 30 (window) +
+/// anchor-flash-zero-duration (frozen expectation: wait span 90 = 30 (window) +
 /// 60 (ADVANCE)).
 #[test]
 fn advance_extension_lands_in_the_wait_span() {
@@ -901,12 +901,12 @@ fn advance_extension_lands_in_the_wait_span() {
     assert_eq!(adv.rejected, None);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     let wait = &adv.records[1];
-    // scenario: anchor-advance-extension (frozen expectation, dump-measured) — the wait row spans
+    // scenario: anchor-advance-extension (frozen expectation) — the wait row spans
     // [0, 90] — the ADVANCE extended the target
     assert_eq!((wait.advanced_min, wait.start_min), (90, Some(0)));
     assert_eq!(adv.state.now, 90);
-    // zero-duration verb: due exactly at its begin minute (the live
-    // toMin === now && !hasDue branch's complement)
+    // zero-duration verb: due exactly at its begin minute (the complement of
+    // the branch where a window's end minute is still in the future)
     let (dict, content) = rig(vec![verb_of("FLASH", vec![actor_slot()], 0, &["NARRATE \"zap.\""])], |_| {});
     let r = run(&content, &dict, seed(), "0:0 @ ANA FLASH", 1);
     let adv = run_clock(&content, &dict, r.state, "0:0", 2);
@@ -919,7 +919,7 @@ fn advance_extension_lands_in_the_wait_span() {
 /// §3.14 row 9 — the station/lock gates (§6.7): one window per verb station;
 /// committed cards busy in ANY committed role while actors stay free; locks
 /// release exactly when the pass resolves their window.
-/// scenario: anchor-station-locks (frozen expectation, dump-measured — the two rejection
+/// scenario: anchor-station-locks (frozen expectation — the two rejection
 /// messages are frozen byte-for-byte).
 #[test]
 fn stations_and_committed_locks_gate_phase_two() {
@@ -983,7 +983,7 @@ fn stations_and_committed_locks_gate_phase_two() {
 /// §3.14 row 10 — interleaved windows fold byte-for-byte: two overlapping
 /// stations + a JSONL save/load/fold round trip over a log that ENDS with
 /// open windows; fold_up_to drops the second turn whole.
-/// scenario: anchor-overlapping-windows (frozen expectation, dump-measured ids/windows).
+/// scenario: anchor-overlapping-windows (frozen expectation ids/windows).
 #[test]
 fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     let (dict, content) = rig(
@@ -1016,7 +1016,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     let replayed = fold(&loaded, &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
     assert_eq!(replayed.windows.len(), 2);
-    // window table shape (scenario: anchor-overlapping-windows, frozen expectation, dump-measured):
+    // window table shape (scenario: anchor-overlapping-windows, frozen expectation):
     // PACE_A [0,60] key "1:0", PACE_B [0,30] key "2:0"
     let wa = r2.state.windows.get("1:0").unwrap();
     let wb = r2.state.windows.get("2:0").unwrap();
@@ -1032,7 +1032,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
 /// §3.14 row 11 — events do not respect locks: an expiry destroys a locked
 /// card mid-window and the completion DROPS the dead ref (the SET finds no
 /// targets; the DESTROY concretizes empty; dead
-/// refs DROP) — scenario: anchor-expiry-locked-drop (frozen expectation, dump-measured: complete
+/// refs DROP) — scenario: anchor-expiry-locked-drop (frozen expectation: complete
 /// outcomes = [DESTROY] with [] args).
 #[test]
 fn expiry_of_a_locked_card_drops_the_completion_refs() {
@@ -1072,7 +1072,7 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
 /// §3.14 row 12 — slot cadence: a trigger fires once per crossed halfhour in
 /// declaration order across MULTIPLE slots, and `once` fires only the first
 /// crossing. scenario: anchor-slot-cadence-once
-/// (frozen expectation, dump-measured: [mark@30, once_dusk@30, mark@60, wait]).
+/// (frozen expectation: [mark@30, once_dusk@30, mark@60, wait]).
 #[test]
 fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     let (dict, content) = rig(
@@ -1102,7 +1102,7 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     );
     let adv = run_clock(&content, &dict, seed(), "0:2", 1); // walk 0 → 60
     assert_eq!(adv.rejected, None);
-    // scenario: anchor-slot-cadence-once (frozen expectation, dump-measured) — slot 1 (minute 30):
+    // scenario: anchor-slot-cadence-once (frozen expectation) — slot 1 (minute 30):
     // mark then once_dusk (declaration order); slot 2 (minute 60): the
     // second mark declaration
     assert_eq!(

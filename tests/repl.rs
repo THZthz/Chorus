@@ -4,7 +4,7 @@
 //!
 //! - the dispatcher: a session exercising every routing branch is replayed
 //!   through the library Game and the full stdout must match byte for byte
-//!   (UI-03: the bin is routing only). The piped session is deterministic
+//!   (the bin is routing only). The piped session is deterministic
 //!   across runs, so the bin's bytes and the library's bytes are the same
 //!   surface judged twice.
 
@@ -38,13 +38,13 @@ fn run_repl(script: &str, lines: &[&str]) -> (Option<i32>, String, String) {
     )
 }
 
-/// the runPlain banner: the meta title (UI-04: the
+/// the plain-run banner: the meta title (the
 /// script's `script:` line) and the lowercased verb list
 fn banner(title: &str, verbs: &[String]) -> String {
     format!("── {title} ──\nverbs: {}\n", verbs.join(" · "))
 }
 
-/// UI-03 — the dispatcher is routing only: a session that exercises every
+/// The dispatcher is routing only: a session that exercises every
 /// branch (meta words, inspect prefix incl. the Q11 bare form, a fall-through
 /// word like `inspectorish`, bad input, handle_line turns) replays through
 /// the library Game, and the whole stdout matches byte for byte.
@@ -57,7 +57,7 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
         "story",                    // meta → game.story() (empty: the placeholder)
         "frobnicate",               // handle_line → error turn + suggestions
         "inspect the wax cylinder", // inspect prefix, named card
-        "inspect",                  // QUIRK(UI-06/Q11): bare inspect shows the first visible card
+        "inspect",                  // QUIRK(Q11): bare inspect shows the first visible card
         "inspectorish note",        // \b fails inside a word → handle_line
         "explore the first cabin",  // a real turn (opens a window)
         "wait",                     // meta → game.wait() settles it

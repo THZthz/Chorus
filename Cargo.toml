@@ -2,21 +2,23 @@
 name = "chorus"
 version = "0.1.0"
 edition = "2021"
-# Rust port of the TS text-game engine — docs/rust-port/plan.md §2.1.
-# Single crate, multi-module, lib + (later waves) 5 [[bin]] targets.
+# A text-game engine: single crate, multi-module, lib + 5 [[bin]] targets.
 
-# plan §2.3 dependency freeze: exactly these four; nothing else without a
-# plan-level sign-off (rule 6). Cargo.lock is committed (PR2-06).
+# Dependencies are frozen to exactly these four crates; Cargo.lock is
+# committed.
 [dependencies]
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 
-# plan §2.1 — the five bin targets. The W6 line REPL (plan §4-W6 T6.1) is
-# new simplified UI; the four tools/ CLI shapes below are the frozen TS
-# surface (argv parsing, stdout text and exit codes; verification 03
-# CLI-01..05).
+# The five binary targets:
+# - chorus: the main line REPL game over a compiled script
+# - reach: card-reachability CLI ("can the player obtain card X?")
+# - reach-fuzz: deep randomized fuzz runs of the reach analyzer
+# - reach-scale: full-scale reachability census benchmark
+# - lint-scripts: lint bundled scripts (load-time warnings)
+# All five keep byte-exact stdout text and exit codes.
 [[bin]]
 name = "chorus"
 path = "src/bin/chorus.rs"
@@ -37,8 +39,8 @@ path = "src/bin/reach-scale.rs"
 name = "lint-scripts"
 path = "src/bin/lint-scripts.rs"
 
-# plan §2.4 memory constraints (16 GB box): no debug info in dev builds,
-# line tables only for tests (failure backtraces stay locatable, PR2-06).
+# Dev builds carry no debug info; test builds keep line tables only so
+# failure backtraces stay locatable (memory constraint on a 16 GB box).
 [profile.dev]
 debug = 0
 opt-level = 0
@@ -47,7 +49,7 @@ opt-level = 0
 debug = "line-tables-only"
 opt-level = 0
 
-# only for the reach-scale benchmark (plan §2.4)
+# release is only exercised by the reach-scale benchmark
 [profile.release]
 opt-level = 2
 debug = 0

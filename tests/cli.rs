@@ -71,7 +71,7 @@ fn reach_empty_string_demand_is_falsy_usage_exits_2() {
 }
 
 /// with a card name, `--demand ''` degrades to plain
-/// NAME mode (the falsy demand never reaches analyzeCard/render: the header
+/// NAME mode (the falsy demand never reaches analyze_card/render: the header
 /// prints the card name, the run is the no-demand run).
 #[test]
 fn reach_empty_string_demand_degrades_to_name_mode() {

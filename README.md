@@ -30,7 +30,7 @@ all pinned by the acceptance suite):
 - `src/reach/` — the static card-reachability analyzer (`census` `world` `fixpoint` `paths` `render`; obtainable / demand / usability judgments)
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
-- `tests/` — 700+ acceptance tests, plus `tests/goldens/` (golden replay fixtures, byte-compared)
+- `tests/` — 700+ acceptance tests
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   winnable in 9 commands)
@@ -134,7 +134,7 @@ verbs:
 ## Run
 
 ```sh
-cargo test                # 700+ acceptance tests + golden replay fixtures, byte-compared
+cargo test                # 700+ acceptance tests
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```

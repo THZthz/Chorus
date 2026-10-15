@@ -9,7 +9,7 @@
 //!
 //! Frozen surface:
 //!   - stdout text incl. render_path's 4-space indent steps, `path i/n:`,
-//!     `verdict: X (existence: y)` — golden-frozen;
+//!     `verdict: X (existence: y)` — byte-frozen;
 //!   - the `--all` name set = prototypes ∪ LIVE initial entities ∪
 //!     deck.order (NOT defaultcard), sorted by UTF-16 code-unit order;
 //!   - Q15 current-shape quirks: a trailing `--demand` silently loses
@@ -138,7 +138,7 @@ fn main() -> ExitCode {
             }
         }
     } else {
-        // `report(card!)`: card may be absent when
+        // report(card): card may be absent when
         // only --demand is given; the analyzer ignores the target under
         // demand (the demand branch runs first)
         let card = card.map(String::as_str).unwrap_or("");

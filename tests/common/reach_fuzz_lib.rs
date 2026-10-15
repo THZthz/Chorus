@@ -1,12 +1,12 @@
-//! Differential-fuzz machinery (W4 落位, plan §2.2 / PR3-03). gen_scenario + the
+//! Differential-fuzz machinery: gen_scenario + the
 //! LCG + the frozen action selector. The selector and its caller discipline
-//! are the fact-frozen surface of review-1 appendix 4(a): they must stay
-//! bit-identical to the golden drivers, draw for draw — that identity is the
-//! precondition for replaying the fuzz goldens at all.
+//! are the frozen surface: they must stay
+//! bit-identical draw for draw — that identity is the
+//! precondition for reproducing every recorded fuzz run at all.
 //!
 //! `gen_scenario` keeps the frozen rng draw order (every short-circuit and
 //! evaluation-order choice is deliberate — see the inline draw-order notes),
-//! because the golden corpus is only reproducible while scenario construction
+//! because recorded runs are only reproducible while scenario construction
 //! is draw-for-draw identical.
 //!
 //! (Shared test lib discipline: the `allow` lives in this one place.)
@@ -34,7 +34,7 @@ use super::settle::settle_step;
 
 // ---------- deterministic RNG (the frozen LCG discipline) ----------
 
-/// `Lcg::new` XORs 0x9e3779b9 into the seed (plan §3.12); `next_f64`
+/// `Lcg::new` XORs 0x9e3779b9 into the seed; `next_f64`
 /// supplies exactly one uniform draw per call.
 #[must_use]
 pub fn rng(seed: u32) -> Lcg {
@@ -89,7 +89,7 @@ fn non_char_kinds() -> Vec<String> {
     KIND_POOL.iter().filter(|k| **k != "place").map(|k| (*k).to_string()).collect()
 }
 
-/// The analyzer-facing probe list rides along for W5; its draws continue on
+/// The analyzer-facing probe list rides along; its draws continue on
 /// the SAME rng after the content is built, so the order below is part of the
 /// frozen draw order.
 pub struct Probe {
@@ -480,7 +480,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
 
     let mut initial = new_state(0);
     for e in entities.iter().cloned() {
-        add_entity(&mut initial, e).expect("genScenario entities never collide (unique names)");
+        add_entity(&mut initial, e).expect("gen_scenario entities never collide (unique names)");
     }
 
     // probes — every name that could ever exist, derived shapes, and demands;
@@ -582,12 +582,13 @@ pub fn gen_scenario(seed: u32) -> Scenario {
     }
 }
 
-// ---------- the frozen action selector (must stay bit-identical to the golden
-// ---------- drivers — that identity is the precondition for golden replay) --
+// ---------- the frozen action selector (must stay bit-identical to the
+// ---------- frozen caller discipline — that identity is the precondition
+// ---------- for reproducing recorded runs) --------------------------------
 
 /// the frozen action selector — ONE uniform draw over the candidate list
 /// (never empty: the waits are always offered); draw-for-draw identical to
-/// the golden drivers.
+/// the frozen caller discipline.
 #[must_use]
 pub fn choose_step<'a>(r: &mut Lcg, steps: &'a [Step]) -> &'a Step {
     let i = r.next_int(steps.len());
@@ -798,9 +799,9 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
 }
 
 // ---------- exhaustive bounded forward exploration (the ground truth) ------
-// W5 adds the explorer + the differential driver (run_fuzz_seed) beside the
+// The explorer + the differential driver (run_fuzz_seed) sit beside the
 // generator so the fuzz bin and the 100-seed sweep share ONE implementation
-// (CLI-04: run_fuzz_seed is a pure function of its seed — no module state
+// (run_fuzz_seed is a pure function of its seed — no module state
 // anywhere below).
 
 use std::collections::VecDeque;
@@ -839,7 +840,7 @@ fn json_of_aspect(v: &AspectVal) -> String {
 }
 
 /// Aspect pairs joined `{k=v,…}` with the keys in default-sort (=
-/// UTF-16 code unit, REACH-05) order.
+/// UTF-16 code unit) order.
 fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> String {
     let mut keys: Vec<(&String, &AspectVal)> = pairs.collect();
     keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
@@ -879,7 +880,7 @@ fn scrubbed(e: &Entity) -> impl Iterator<Item = (&String, &AttrValue)> {
 /// Array elements are pre-joined with ',' and sorted as strings (the JS
 /// default string sort — the sort input is exactly this unquoted join, not
 /// the quoted JSON form). The text itself is a LOCAL dedup key (its exact
-/// bytes are never replayed from goldens); what must be stable is WHICH
+/// bytes are never replayed from recorded runs); what must be stable is WHICH
 /// states collide, i.e. the equivalence relation. Every interpolatable value
 /// in the fuzz domain (fixed name/kind/aspect/attr pools, verbs, recipe ids,
 /// integer fields) is comma/bracket-free, so both encodings separate the same
@@ -1099,7 +1100,7 @@ pub struct FuzzOutcome {
     pub probes: usize,
 }
 
-/// The differential driver: a pure function of its seed (CLI-04 must).
+/// The differential driver: a pure function of its seed.
 pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<FuzzOutcome> {
     let sc = gen_scenario(seed);
     let dict = core_dictionary();
@@ -1200,9 +1201,9 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
     })
 }
 
-// ---------- the golden driver (the frozen caller discipline) ----------
+// ---------- the frozen caller discipline ----------
 
-/// the outcome of one fuzz golden's driver — the frozen loop shape: K applied
+/// the outcome of one fuzz driver run — the frozen loop shape: K applied
 /// settle_step calls or the attempt cap; a soft-locked world legitimately lands
 /// short of K.
 pub struct FuzzRun {
@@ -1214,7 +1215,7 @@ pub struct FuzzRun {
     pub attempts: usize,
 }
 
-/// THE FROZEN CALLER DISCIPLINE (review-1 appendix 4(a)): one selector
+/// THE FROZEN CALLER DISCIPLINE: one selector
 /// instance per seed seeded rng(seed); per attempt draw once over the full
 /// candidate list; a rejected settle_step consumes the draw and retries; K=25
 /// applied steps or the 400-attempt cap.

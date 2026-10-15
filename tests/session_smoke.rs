@@ -2,10 +2,10 @@
 //! exercised here, all pinned by the acceptance suites:
 //! - lenient: bare-verb default player, multi-word names, role-phrase groups,
 //!   canonical passthrough, suggestion surfaces, case-insensitive names;
-//! - render: the ending banner/notice texts (UI-02), the prose closing line;
+//! - render: the ending banner/notice texts, the prose closing line;
 //! - Game: from_script → handle_line → journal/story/look → undo → bogus
 //!   error, visible/inspect projection, suggestions with `s[0]` pinned,
-//!   and BOTH game-over texts (UI-02) through a
+//!   and BOTH game-over texts through a
 //!   minimal endings script.
 
 use chorus::content::content::{compile_content, ContentRaw, EndingDef, RecipeDef, SlotDef, VerbContent};
@@ -54,7 +54,7 @@ fn lenient_routes_the_pinned_phrases() {
         player: Some("MARCH"),
     };
 
-    // 'bare verb defaults to the player character' (script-play:250-258)
+    // 'bare verb defaults to the player character'
     let ParsedInput::Ok { step, .. } = parse_player_input("wait", &ctx) else {
         panic!("'wait' must parse");
     };
@@ -64,7 +64,7 @@ fn lenient_routes_the_pinned_phrases() {
     assert_eq!(c0.actors.len(), 1);
     assert!(matches!(&c0.actors[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "MARCH"));
 
-    // 'multi-actor and multi-word names resolve' (script-play:261-269)
+    // 'multi-actor and multi-word names resolve'
     let ParsedInput::Ok { step, .. } = parse_player_input("march read the vane ledger", &ctx)
     else {
         panic!("multi-word name must parse");
@@ -75,7 +75,7 @@ fn lenient_routes_the_pinned_phrases() {
         matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_VANE_LEDGER")
     );
 
-    // 'role phrases and objects do not bleed into each other' (:272-281)
+    // 'role phrases and objects do not bleed into each other'
     let ParsedInput::Ok { step, .. } =
         parse_player_input("use on the inquest with the manifest at guard van", &ctx)
     else {
@@ -87,13 +87,13 @@ fn lenient_routes_the_pinned_phrases() {
     assert!(matches!(&c0.with[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_MANIFEST"));
     assert!(matches!(&c0.at, Some(chorus::core::r#ref::Ref::Name { name, .. }) if name == "GUARD_VAN"));
 
-    // 'canonical passthrough still works' (:284-287)
+    // 'canonical passthrough still works'
     let ParsedInput::Ok { step, .. } = parse_player_input("0:44 @ MARCH WAIT", &ctx) else {
         panic!("passthrough must parse");
     };
     assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 0, halfhour: 44 }));
 
-    // 'unknown words get suggestions' (:290-293) — the failed word is 'vane',
+    // 'unknown words get suggestions' — the failed word is 'vane',
     // so the suggestion rides the normalized-prefix path
     let ParsedInput::Fail { suggestions, .. } = parse_player_input("read the vane ledgr", &ctx)
     else {
@@ -101,13 +101,13 @@ fn lenient_routes_the_pinned_phrases() {
     };
     assert!(suggestions.contains(&"THE_VANE_LEDGER".to_string()), "{suggestions:?}");
 
-    // 'verbs get suggestions too' (:296-299)
+    // 'verbs get suggestions too'
     let ParsedInput::Fail { suggestions, .. } = parse_player_input("xeplore the car", &ctx) else {
         panic!("'xeplore' must fail");
     };
     assert!(suggestions.contains(&"explore".to_string()), "{suggestions:?}");
 
-    // 'names resolve case-insensitively (spec §11)' (:302-304)
+    // 'names resolve case-insensitively (spec §11)'
     assert!(parse_player_input("read THE VANE LEDGER", &ctx).is_ok());
 }
 
@@ -166,7 +166,6 @@ fn render_banner_notice_and_the_prose_closing_line() {
 
 #[test]
 fn a_script_becomes_a_playable_game() {
-    // ('a script becomes a playable game')
     let dict = core_dictionary();
     let mut game = Game::from_script(FLYER, dict).unwrap();
     let turn = auto_settle_line(&mut game, "read the manifest").unwrap();
@@ -232,7 +231,7 @@ fn inspect_reads_a_visible_cards_face() {
 
 #[test]
 fn suggestions_are_concrete_executable_actions() {
-    // The pinned s[0] (line 421)
+    // The pinned s[0]
     let dict = core_dictionary();
     let game = Game::from_script(FLYER, dict).unwrap();
     let s = game.suggestions().unwrap();
@@ -254,13 +253,12 @@ fn suggestions_are_concrete_executable_actions() {
 
 #[test]
 fn game_over_speaks_both_texts_and_undo_reopens() {
-    // + UI-02's two texts
     let dict = core_dictionary();
     let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
     game.handle_line("wait").unwrap();
     game.wait().unwrap();
     assert!(game.state.ended.is_some());
-    // engine version (UI-02 short text) — rejected, no flavour
+    // engine version (the short text) — rejected, no flavour
     let again = chorus::engine::engine::execute_step(
         &game.content,
         &game.dict,
@@ -278,7 +276,7 @@ fn game_over_speaks_both_texts_and_undo_reopens() {
         again.rejected.as_deref(),
         Some("the story has ended — No More")
     );
-    // UI version (UI-02 full notice) — the info turn, not execution
+    // UI version (the full notice) — the info turn, not execution
     let turn = game.handle_line("wait").unwrap();
     assert_eq!(turn.kind, TurnKind::Info);
     assert_eq!(turn.lines, vec!["the story has ended — No More (melancholy)."]);

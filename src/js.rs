@@ -251,7 +251,7 @@ pub enum JsJson {
 /// ASCII-lowercase both sides, then Rust byte order (`str::cmp`). The repo's
 /// name domain is uppercase-ASCII entity names over lowercase English words,
 /// where the expected order matches ICU; the approximation surface is pinned
-/// by the golden `suggestions()` dumps.
+/// by the `suggestions()` tests.
 /// ICU collation stays OUT of the dependency set; revisit only if
 /// non-ASCII names ever appear (a separately-tracked topic).
 #[must_use]
@@ -446,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn lcg_reproduces_the_ts_sequence_bit_for_bit() {
+    fn lcg_reproduces_the_frozen_sequence_bit_for_bit() {
         // fuzz entry, seed 0 — states cross-checked against node
         // (Math.imul + >>>0 discipline), 2026-10-14
         let mut fuzz = Lcg::new(0);

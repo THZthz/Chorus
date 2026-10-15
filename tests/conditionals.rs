@@ -239,7 +239,7 @@ fn tmp_log_path(tag: &str) -> std::path::PathBuf {
 
 #[test]
 fn parses_into_arms_plus_fallback_the_else_chain_is_consumed_inside_the_if_node() {
-    // the plan's flagship example verbatim
+    // the flagship example, verbatim
     let out = parse_outcomes(
         r#"PROGRESS(30m, "You work the crowd."),
    IF count(name:SUSPICION) >= 3 -> (NARRATE "Too many eyes.", SPAWN PARANOIA)
@@ -1108,7 +1108,7 @@ fn a_trigger_if_whose_condition_is_false_takes_the_else_branch() {
 }
 
 // ---------------------------------------------------------------------------
-// pooled worlds compose: the plan's arrest case, end to end
+// pooled worlds compose: the arrest case, end to end
 // ---------------------------------------------------------------------------
 
 const ARREST_SCRIPT: &str = r#"

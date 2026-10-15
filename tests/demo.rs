@@ -1,4 +1,4 @@
-//! The end-to-end fold-verify smoke (UI-13: "state = fold(log)" is the
+//! The end-to-end fold-verify smoke ("state = fold(log)" is the
 //! replay law users can watch). The demo's six canonical steps are played
 //! through raw execute_step and verified self-consistently — Rust against
 //! Rust: fold(log) must repopulate the played state, and two runs must
@@ -70,7 +70,7 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::js::Result<
         records.extend(r.records);
     }
 
-    // State = fold(log): the replay law (UI-13). The
+    // State = fold(log): the replay law. The
     // example prints match/MISMATCH and the folded clock; the port asserts.
     let replayed = fold(&records, &seed_state(), &dict, &content)?;
     assert_eq!(

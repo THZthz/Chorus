@@ -38,8 +38,8 @@
 # deck — a second deck with neither `defaultcard` nor `reset`, whose
 # exhaustion is a loud failure (§9.42).
 #
-# seed: 1899 — calibrated for the scripted win path (the WIN_PATH in
-# test/nightjar.test.ts): the cabin search's patrol and the 22:30 rounds both
+# seed: 1899 — calibrated for the scripted win path: the cabin search's
+# patrol and the 22:30 rounds both
 # land the conductor's middle tier, so two SUSPICION gather in his book — the
 # pool exists, the escalation never trips — and the firebox ash gives a clean
 # find. Change it and the night plays differently.

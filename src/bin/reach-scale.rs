@@ -1,5 +1,5 @@
 //! Full-scale census CLI for the reachability analyzer over CS-shaped
-//! content (the scaling sibling of fuzz:reach; CI keeps tests/reach_scale.rs
+//! content (the scaling sibling of reach-fuzz; CI keeps tests/reach_scale.rs
 //! small, this shakes the whole 1,566 × 2,084 world).
 //!
 //!   cargo run --bin reach-scale                      # full CS scale

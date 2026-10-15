@@ -8,7 +8,8 @@
 //!
 //! This file is the compile→execute FULL-CHAIN expansion
 //! verification that the direct subset (tests/fn_expand_direct.rs) could not
-//! cover — the cycle/depth texts (messages.md 行 74–76) are re-checked here
+//! cover — the cycle/depth texts (frozen in tests/fn_expand_direct.rs) are
+//! re-checked here
 //! through the real compile path. Error-message patterns are copied CHARACTER FOR
 //! CHARACTER; each test owns a fresh Dictionary with STEW registered
 //! (per-test).
@@ -97,7 +98,7 @@ fn said(r: &ExecResult) -> Vec<String> {
         .collect()
 }
 
-// ---------- rig: the plan's flagship pair, verbatim grammar ----------------
+// ---------- rig: the flagship pair, verbatim grammar ----------------
 
 const CALL_FUNCTIONS: &str = r#"functions:
   sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
@@ -759,7 +760,7 @@ mod nesting_recursion_and_the_depth_cap {
     }
 
     /// Mutual recursion names the cycle;
-    /// self-recursion names itself (messages.md 行 74, full-chain re-check)
+    /// self-recursion names itself (frozen text, full-chain re-check)
     #[test]
     fn mutual_recursion_is_a_load_error_naming_the_cycle_self_recursion_names_itself() {
         let dict = stew_dict();
@@ -793,7 +794,7 @@ mod nesting_recursion_and_the_depth_cap {
     }
 
     /// A depth-8 chain of distinct functions
-    /// loads; depth 9 is a load error (messages.md 行 75, full-chain re-check)
+    /// loads; depth 9 is a load error (frozen text, full-chain re-check)
     #[test]
     fn a_depth_8_chain_of_distinct_functions_loads_depth_9_is_a_load_error() {
         let dict = stew_dict();

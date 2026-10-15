@@ -135,7 +135,7 @@ fn scan_dur(s: &[u16], i: usize) -> Option<(usize, usize)> {
 
 /// The decoded token text: the scan domain is UTF-16 code units, so a token
 /// holding a LONE surrogate cannot become a Rust `String`; lossy conversion
-/// (U+FFFD) applies — no golden input exercises a lone surrogate.
+/// (U+FFFD) applies — no test input exercises a lone surrogate.
 fn units_to_string(units: &[u16]) -> String {
     String::from_utf16_lossy(units)
 }

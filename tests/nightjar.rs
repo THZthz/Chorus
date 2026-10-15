@@ -6,9 +6,9 @@
 //! exists() branch in the talk recipe) without ever tripping the patrol's
 //! escalation ending — seed 1899 is calibrated for exactly that.
 //!
-//! P0 anchors (the golden diff reuses these): the win path's dice order
-//! [[5,2],[8,4],[14,7]], the deck order ['SCANDAL','RUMOUR'], and
-//! PORTENT×2/VOID×1 — asserted value-for-value (:153/:163/:347-348).
+//! P0 anchors (asserted value-for-value in this file): the win path's dice
+//! order [[5,2],[8,4],[14,7]], the deck order ['SCANDAL','RUMOUR'], and
+//! PORTENT×2/VOID×1.
 //!
 //! The v0.5 test adapter auto-settles: each committed action's open windows
 //! complete before the next input ([`auto_settle_line`]; there is no
@@ -268,7 +268,7 @@ mod the_nightjar_flyer {
         assert_eq!(pool_len(&game, "SUSPICION"), 1);
         // F4 — three ROLLED rows (conductor's rounds, cabin patrol, firebox
         // find — v0.5 completion order), the counter landing where play left
-        // it. P0 ANCHOR: value-for-value, the golden reuses it.
+        // it. P0 ANCHOR: asserted value-for-value in this file.
         let rolled: Vec<Option<(i64, i64)>> = game
             .log
             .records
@@ -286,7 +286,7 @@ mod the_nightjar_flyer {
         assert_eq!(game.state.rng, 7);
         // F5 — the RUMOURS deck drew twice: once from the patrol trigger
         // (into the guard van), once from the talk recipe (into the dining
-        // car). P0 ANCHOR (nightjar.test:163).
+        // car). P0 ANCHOR (the deck order pinned in this file).
         let drawn: Vec<String> = game
             .log
             .records
@@ -662,7 +662,7 @@ mod the_nightjar_flyer {
             TurnKind::Action
         );
         // the seed-fixed permutation served VOID, PORTENT, PORTENT —
-        // stackable pools. P0 ANCHOR, the golden reuses it.
+        // stackable pools. P0 ANCHOR, asserted in this file.
         assert_eq!(pool_len(&game, "PORTENT"), 2);
         assert_eq!(pool_len(&game, "VOID"), 1);
         // v0.5: the draw decides at the completion…

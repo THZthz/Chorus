@@ -16,12 +16,20 @@ regex = "1"
 # plan §4-W5 T5.4 — the four TS tools/ CLI shapes (argv parsing, stdout text
 # and exit codes are the frozen surface; verification 03 CLI-01..05).
 [[bin]]
-name = "reach-scale"
-path = "src/bin/reach-scale.rs"
+name = "reach"
+path = "src/bin/reach.rs"
 
 [[bin]]
 name = "reach-fuzz"
 path = "src/bin/reach-fuzz.rs"
+
+[[bin]]
+name = "reach-scale"
+path = "src/bin/reach-scale.rs"
+
+[[bin]]
+name = "lint-scripts"
+path = "src/bin/lint-scripts.rs"
 
 # plan §2.4 memory constraints (16 GB box): no debug info in dev builds,
 # line tables only for tests (failure backtraces stay locatable, PR2-06).

@@ -166,6 +166,20 @@ fn case_colliding_entity_names_are_a_minted_id_collision_load_error() {
     );
 }
 
+#[test]
+fn an_illegal_character_in_a_when_line_is_a_load_error_naming_char_and_offset() {
+    // Q2 fixed (§6.3's grammar has no `@`): a `@3`-class typo used to be
+    // silently swallowed by the predicate tokenizer — `secret >= @2` read
+    // as `secret >= 2` and selected. The tokenizer now fails at load naming
+    // the character and its offset. (The fixture trips exactly ONE error.)
+    assert_err_msg(
+        compile(&base(
+            "verbs:\n  READ:\n    object: 1 kind:text\n    recipes:\n      r1 when object.aspect.secret >= @2 -> NARRATE \"x.\"\n",
+        )),
+        r"illegal character '@' at offset 24 in predicate 'object.aspect.secret >= @2'",
+    );
+}
+
 // ---------------------------------------------------------------------------
 // lint — warnings that never throw
 // ---------------------------------------------------------------------------

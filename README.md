@@ -161,7 +161,7 @@ any of them is a behavior change, not a cleanup.
 | # | quirk (frozen, not fixed) | lives at |
 |---|---------------------------|----------|
 | Q1 | recipe ids are 0-based when compiled (`.recipe0`) but 1-based in the lint mirror (`.recipe1`) | `content.rs` / `script.rs` |
-| Q2 | the predicate string tokenizer silently swallows illegal characters (`aspect:x >= @3` ≡ `aspect:x>=3`) | `predicate.rs` |
+| Q2 | FIXED (batch 1): the predicate tokenizer is a load error on grammar-illegal characters (naming the char and its offset); whitespace stays glue | `predicate.rs` |
 | Q3 | `arg()` cannot read a param key (`SET(myparam = 3)` is a parse error) while SPAWN args support one | `parse.rs` |
 | Q4 | FIXED (batch 1): slot roles are validated at load — a typo'd slot is a load error naming the six roles, not a silent never-match | `script.rs` |
 | Q5 | FIXED (batch 1): duplicate declarations are a uniform load error in every section (entities, prototypes, templates, verbs, decks, endings); `ANA`/`ana` case-collide on the minted id `s_ana` and that collision is its own load error | `script.rs` |

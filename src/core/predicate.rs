@@ -17,7 +17,7 @@ use crate::core::lexer::Tok;
 use crate::core::types::{aspect_get, relation_alive, Entity, State};
 use crate::core::num_parse::parse_i64_like_f64;
 use crate::core::regex_util::static_regex;
-use crate::core::text::JS_WS_CLASS;
+use crate::core::text::{js_char_is_ws, JS_WS_CLASS};
 use crate::error::{ChorusError, Result};
 
 /// Role bindings: role → bound entity IDS (`IndexMap<Role, Vec<String>>`),
@@ -147,7 +147,7 @@ pub struct PredView {
 
 /// Parse one `when:` predicate string.
 pub fn parse_predicate(src: &str) -> Result<Pred> {
-    PredParser::new(src, None, None, false).parse()
+    PredParser::new(src, None, None, false)?.parse()
 }
 
 /// Parse one IF condition out of the
@@ -287,40 +287,69 @@ struct PredParser<'a> {
 
 impl<'a> PredParser<'a> {
     /// The string front-end constructor.
-    fn new(src: &str, pre: Option<PredView>, params: Option<&'a HashSet<String>>, allow_roll: bool) -> PredParser<'a> {
+    fn new(
+        src: &str,
+        pre: Option<PredView>,
+        params: Option<&'a HashSet<String>>,
+        allow_roll: bool,
+    ) -> Result<PredParser<'a>> {
         if let Some(PredView { toks, spans, .. }) = pre {
-            return PredParser {
+            return Ok(PredParser {
                 toks,
                 spans,
                 pos: 0,
                 src: src.to_string(),
                 params,
                 allow_roll,
-            };
+            });
         }
-        // QUIRK(Q2): the tokenizer SILENTLY SWALLOWS characters no
-        // alternative matches (`aspect:x >= @3` ≡ `aspect:x>=3` — `@` just
-        // vanishes). find_iter reproduces the JS /g exec loop's skip
-        // semantics. This is a frozen quirk: DO NOT "fix" into an error.
-        // (`\d` is ASCII `[0-9]`.)
+        // §6.3's grammar has no characters beyond the alternatives below:
+        // one outside the vocabulary (plus whitespace) is a LOAD ERROR
+        // naming the character and its offset — formerly QUIRK(Q2), the
+        // tokenizer silently swallowed it (`aspect:x >= @3` ≡
+        // `aspect:x>=3`, the `@` just vanished). Whitespace stays glue
+        // (§6.3's only license: "spaces around a comparison inside a
+        // query are glue") — the ONLY silent skip. `!` is a token because
+        // exists()/count() embed §4.5 queries verbatim (`state:!sealed`)
+        // and the inner text is reconstructed from the source, so its
+        // characters must survive; a stray `!` still errors loudly at the
+        // parser ("expected comparison op, got '!'"), never silently.
+        // (`\d` is ASCII `[0-9]`; offsets are byte offsets, the spans
+        // convention.)
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || {
-            Regex::new(r"[A-Za-z_][A-Za-z0-9_.]*|[0-9]+|>=|<=|!=|=|>|<|\(|\)|,|:|-")
+            Regex::new(r"[A-Za-z_][A-Za-z0-9_.]*|[0-9]+|>=|<=|!=|!|=|>|<|\(|\)|,|:|-")
         });
         let mut toks = Vec::new();
         let mut spans = Vec::new();
-        for m in re.find_iter(src) {
-            toks.push(m.as_str().to_string());
-            spans.push((m.start(), m.end()));
+        let mut at = 0;
+        while at < src.len() {
+            let c = src[at..].chars().next().expect("at is a char boundary");
+            if js_char_is_ws(c) {
+                at += c.len_utf8();
+                continue;
+            }
+            match re.find_at(src, at) {
+                Some(m) if m.start() == at => {
+                    spans.push((m.start(), m.end()));
+                    toks.push(m.as_str().to_string());
+                    at = m.end();
+                }
+                _ => {
+                    return Err(ChorusError::new(format!(
+                        "illegal character '{c}' at offset {at} in predicate '{src}'"
+                    )));
+                }
+            }
         }
-        PredParser {
+        Ok(PredParser {
             toks,
             spans,
             pos: 0,
             src: src.to_string(),
             params,
             allow_roll,
-        }
+        })
     }
 
     fn peek(&self) -> Option<&String> {
@@ -1161,11 +1190,36 @@ mod tests {
     }
 
     #[test]
-    fn tokenizer_swallows_illegal_characters_quirk() {
-        // QUIRK(Q2): `@` silently vanishes — frozen, do not fix
-        let p1 = parse_predicate("count(actors) @>= 2").unwrap();
-        let p2 = parse_predicate("count(actors) >= 2").unwrap();
+    fn tokenizer_errors_on_grammar_illegal_characters() {
+        // Q2 fixed (§6.3's grammar has no `@`): the tokenizer is a load
+        // error naming the character and its offset — formerly the `@`
+        // silently vanished (`aspect:x >= @3` ≡ `aspect:x>=3`).
+        let e = parse_predicate("count(actors) @>= 2").unwrap_err();
+        assert_eq!(
+            e.msg,
+            "illegal character '@' at offset 14 in predicate 'count(actors) @>= 2'"
+        );
+        // whitespace stays glue (§6.3's only skip): the spaced form parses
+        // identical to the tight one
+        let p1 = parse_predicate("count(actors) >= 2").unwrap();
+        let p2 = parse_predicate("count(actors)>=2").unwrap();
         assert_eq!(p1, p2);
+        // `!` survives tokenization: exists()/count() embed §4.5 queries
+        // verbatim (`state:!sealed`) and the inner text is reconstructed
+        // from the source — assert the negation actually rode along (a
+        // sealed door does NOT match state:!sealed; a swallowed `!` would
+        // compile the positive term and match)
+        let pq = parse_predicate("exists(state:!sealed)").unwrap();
+        let Pred::ExistsQuery { query } = pq else {
+            panic!("expected ExistsQuery, got {pq:?}");
+        };
+        let mut door = ent("d1", "DOOR", "place", Aspects::new(), Attrs::new());
+        door.attrs
+            .insert("state.sealed".into(), crate::core::types::AttrValue::Bool(true));
+        assert!(!match_query(&door, &query));
+        // a stray `!` outside a query is still a loud parse error
+        let e2 = parse_predicate("count(actors) ! 2").unwrap_err();
+        assert_eq!(e2.msg, "expected comparison op, got '!'");
         assert!(parse_predicate("").is_err());
         assert_eq!(
             parse_predicate("").unwrap_err().msg,

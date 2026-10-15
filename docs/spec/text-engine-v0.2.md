@@ -625,6 +625,13 @@ v0.2 limits: path operands read `role.aspect.key` and `role.attr.key`
 (numeric attrs); the scalar conditions inside `every`/`any` read **aspects
 only** (`aspect:key >= n`).
 
+Any character this grammar does not use is a **load error**: the predicate
+tokenizer fails naming the character and its offset — the §4.5 terms
+embedded in `exists(...)`/`count(...)` ride along verbatim (their `!`
+negation included). Whitespace is the only non-token it skips (the glue
+rule below), so a `@3`-class typo is visible at load instead of silently
+vanishing from the condition.
+
 **`exists(...)` — the world-existential check** (Chorus's answer to Cultist
 Simulator's `extantreqs`/`tablereqs`, docs/reverse/cultist-simulator.md):
 true iff at least one **alive** card anywhere in the state matches — every

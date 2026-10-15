@@ -403,6 +403,10 @@ impl<'c> WorldFacts<'c> {
                     match self.trig_idx.get(&src.owner) {
                         None => true,
                         Some((CompiledTrigger::Expire { .. }, _)) => false, // arrangeable
+                        // §9.48: a completion trigger mints when some window
+                        // completes binding its home card — not statically
+                        // timed, so its mints are never "dead at my firing"
+                        Some((CompiledTrigger::Complete { .. }, _)) => false,
                         Some((CompiledTrigger::Slot { slot: s2, .. }, decl2)) => {
                             if *s2 == *owner_slot {
                                 decl2 > my_decl // same slot, later declaration
@@ -711,6 +715,10 @@ fn owner_armable(
     match wf.trig_idx.get(owner) {
         None => true,
         Some((CompiledTrigger::Slot { .. }, _)) => true,
+        // §9.48: a completion trigger fires whenever a window completes
+        // binding its home card — treated as arrangeable, the generous
+        // (sound-for-'none') side
+        Some((CompiledTrigger::Complete { .. }, _)) => true,
         Some((CompiledTrigger::Expire { on_expire_of, .. }, _)) => {
             expirable_card(wf, world, memo, on_expire_of, visiting)
         }

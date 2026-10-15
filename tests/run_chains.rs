@@ -770,6 +770,7 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
                     shown: None,
                     hint: None,
                     max: None,
+                    aspects: Vec::new(),
                     out: vec!["RUN \"ghost\"".to_string()],
                 }],
             },

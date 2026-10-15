@@ -172,6 +172,8 @@ fn triggers_and_prototypes_compile() {
             CompiledTrigger::Expire { id, on_expire_of, .. } => {
                 format!("{id}|{on_expire_of}")
             }
+            // §9.48: the FLYER carries no `on complete` lines — nothing maps
+            CompiledTrigger::Complete { .. } => String::new(),
         })
         .collect();
     assert_eq!(
@@ -787,6 +789,7 @@ mod lenient_input_routes_the_new_core_verbs {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec![out.to_string()],
             }],
         };

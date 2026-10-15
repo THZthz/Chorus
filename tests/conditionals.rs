@@ -135,6 +135,7 @@ fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus:
                         shown: None,
                         hint: None,
                         max: None,
+                        aspects: Vec::new(),
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
                 },
@@ -181,6 +182,7 @@ fn attune_content(dict: &Dictionary, out: &[&str], duration: i64) -> CompiledCon
                         shown: None,
                         hint: None,
                         max: None,
+                        aspects: Vec::new(),
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
                 },
@@ -534,6 +536,7 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
                             shown: None,
                             hint: None,
                             max: None,
+                            aspects: Vec::new(),
                             out: vec![
                                 "IF exists(HOUSE) -> (NARRATE \"clause one\") ELSE -> (NARRATE \"clause one void\")"
                                     .to_string(),
@@ -561,6 +564,7 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
                             shown: None,
                             hint: None,
                             max: None,
+                            aspects: Vec::new(),
                             out: vec![
                                 "IF exists(NOSUCH_CARD) -> (NARRATE \"clause two bad\") ELSE -> (NARRATE \"clause two else\")"
                                     .to_string(),
@@ -750,6 +754,7 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
                             shown: None,
                             hint: None,
                             max: None,
+                            aspects: Vec::new(),
                             out: vec!["NARRATE(\"gate\")".to_string()],
                         },
                         RecipeDef {
@@ -758,6 +763,7 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
                             shown: None,
                             hint: None,
                             max: None,
+                            aspects: Vec::new(),
                             out: vec!["NARRATE(\"default\")".to_string()],
                         },
                     ],
@@ -1025,6 +1031,7 @@ fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent
                         shown: None,
                         hint: None,
                         max: None,
+                        aspects: Vec::new(),
                         out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                     }],
                 },

@@ -473,7 +473,7 @@ pub(crate) fn compute_world_facts<'c>(
             .iter()
             .map(|t| match t {
                 CompiledTrigger::Slot { slot, .. } => wf.first_cross(*slot),
-                CompiledTrigger::Expire { .. } => {
+                CompiledTrigger::Expire { .. } | CompiledTrigger::Complete { .. } => {
                     unreachable!("riskyTriggers filters to slot triggers")
                 }
             })

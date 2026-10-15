@@ -59,6 +59,9 @@ pub struct RecipeDef {
     pub hint: Option<String>,
     /// §9.50: the execution limit (`max N`, N ≥ 1) — None = unlimited
     pub max: Option<i64>,
+    /// §9.48: the `aspects` presence list (`aspects <name> [, <name>]*`) —
+    /// content only, never logged; the `on complete <aspect>` gate reads it
+    pub aspects: Vec<String>,
     /// outcome strings, parsed at load
     pub out: Vec<String>,
 }
@@ -91,11 +94,30 @@ pub struct ExpireTriggerDef {
     pub out: Vec<String>,
 }
 
-/// A trigger is a [`SlotTriggerDef`] or an [`ExpireTriggerDef`].
+/// A completion trigger (`on complete [<aspect>]`, §9.48). ID-less in the
+/// script — the id is engine-minted (`complete:{home}`, then
+/// `complete:{home}#2`, … in declaration order). `home` is the
+/// entity/prototype NAME the clause was authored on: the gate matches it
+/// against a locked card's CURRENT name, which is exactly how a prototype's
+/// trigger reaches its mints (they carry the prototype's name, the same
+/// name-keyed read by which mints take the prototype's aspects — §9.48
+/// "inherits like other prototype members"; a `derive`-renamed mint carries
+/// its new name and no longer fires the prototype's triggers).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompleteTriggerDef {
+    pub id: String,
+    pub home: String,
+    pub aspect: Option<String>,
+    pub out: Vec<String>,
+}
+
+/// A trigger is a [`SlotTriggerDef`], an [`ExpireTriggerDef`], or a
+/// [`CompleteTriggerDef`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum TriggerDef {
     Slot(SlotTriggerDef),
     Expire(ExpireTriggerDef),
+    Complete(CompleteTriggerDef),
 }
 
 impl TriggerDef {
@@ -104,6 +126,7 @@ impl TriggerDef {
         match self {
             TriggerDef::Slot(t) => &t.id,
             TriggerDef::Expire(t) => &t.id,
+            TriggerDef::Complete(t) => &t.id,
         }
     }
 
@@ -112,6 +135,7 @@ impl TriggerDef {
         match self {
             TriggerDef::Slot(t) => &t.out,
             TriggerDef::Expire(t) => &t.out,
+            TriggerDef::Complete(t) => &t.out,
         }
     }
 }
@@ -223,6 +247,9 @@ pub struct CompiledRecipe {
     pub hint: Option<String>,
     /// §9.50: the execution limit — None = unlimited
     pub max: Option<i64>,
+    /// §9.48: the `aspects` presence list — the emitter gate an
+    /// `on complete <aspect>` trigger reads; content, never logged
+    pub aspects: Vec<String>,
     pub out: Vec<Outcome>,
 }
 
@@ -282,13 +309,24 @@ pub enum CompiledTrigger {
         on_expire_of: String,
         out: Vec<Outcome>,
     },
+    /// §9.48: `on complete [<aspect>]` — home/aspect semantics mirror
+    /// [`CompleteTriggerDef`]; fires in fire_window's completion, never as an
+    /// event (no EVENT row, no `state.fired`).
+    Complete {
+        id: String,
+        home: String,
+        aspect: Option<String>,
+        out: Vec<Outcome>,
+    },
 }
 
 impl CompiledTrigger {
     #[must_use]
     pub fn id(&self) -> &str {
         match self {
-            CompiledTrigger::Slot { id, .. } | CompiledTrigger::Expire { id, .. } => id,
+            CompiledTrigger::Slot { id, .. }
+            | CompiledTrigger::Expire { id, .. }
+            | CompiledTrigger::Complete { id, .. } => id,
         }
     }
 
@@ -296,7 +334,9 @@ impl CompiledTrigger {
     #[must_use]
     pub fn out(&self) -> &[Outcome] {
         match self {
-            CompiledTrigger::Slot { out, .. } | CompiledTrigger::Expire { out, .. } => out,
+            CompiledTrigger::Slot { out, .. }
+            | CompiledTrigger::Expire { out, .. }
+            | CompiledTrigger::Complete { out, .. } => out,
         }
     }
 }
@@ -323,6 +363,12 @@ pub struct CompiledContent {
     pub stackable_kinds: IndexSet<String>,
     /// §9.42 the deck table: id → compiled deck (permutation + exhaustion)
     pub decks: IndexMap<String, CompiledDeck>,
+    /// §9.47/§9.48 the GLOBAL recipe-id table: recipe id → owning verb name.
+    /// Recipe-body RUN candidates resolve against their parent verb (the
+    /// per-verb §9.47 check); `on complete` bodies may cross verbs and resolve
+    /// through this table instead — which is why it demands GLOBAL id
+    /// uniqueness: the build below is where a cross-verb collision fails loud.
+    pub recipe_verbs: IndexMap<String, String>,
 }
 
 /// One declared entity line. The `stackable` flag rides
@@ -515,6 +561,7 @@ pub fn compile_content(
                 shown: r.shown.unwrap_or(false),
                 hint: r.hint.clone(),
                 max: r.max,
+                aspects: r.aspects.clone(),
                 out,
             });
         }
@@ -539,6 +586,29 @@ pub fn compile_content(
             },
         );
     }
+    // §9.47/§9.48: the global recipe-id table, built once here over every
+    // compiled verb — `on complete` RUN candidates resolve cross-verb through
+    // it, and the build is where GLOBAL id uniqueness fails loud: the same id
+    // authored by two different verbs would make a cross-verb resolution
+    // ambiguous, so it is a load error naming both verbs. (Recipe-body RUN
+    // candidates stay per-parent-verb — the §9.47 check — and same-verb
+    // duplicates remain first-match selection, §6.4.)
+    let mut recipe_verbs: IndexMap<String, String> = IndexMap::new();
+    for v in verbs.values() {
+        for r in &v.recipes {
+            match recipe_verbs.get(&r.id) {
+                Some(prev) if prev != &v.name => {
+                    return Err(ChorusError::new(format!(
+                        "recipe id '{}' is declared by both verb {prev} and verb {} — on-complete RUN resolution needs globally unique recipe ids (§9.47, §9.48)",
+                        r.id, v.name
+                    )));
+                }
+                _ => {
+                    recipe_verbs.insert(r.id.clone(), v.name.clone());
+                }
+            }
+        }
+    }
     let mut triggers = Vec::new();
     for t in raw.triggers.as_deref().unwrap_or(&[]) {
         // §9.40: expansion (inside parse_outcome_string) has already run —
@@ -548,23 +618,43 @@ pub fn compile_content(
             out.extend(parse_outcome_string(o, dict, &fns)?);
         }
         let tid = t.id().to_string();
+        // completion triggers (§9.48) run under a different guard regime than
+        // the event kinds: RUN is LEGAL (their home is a window completion)
+        // and the role-free lint does not run — the window's bindings are
+        // live there. REFUSE stays banned in every home (§9.34).
+        let is_complete = matches!(t, TriggerDef::Complete(_));
         // §6.7/§9.34 guards — recursive over IF branch bodies (§9.39)
         for_each_authored_outcome(&out, &mut |o| {
             // §6.7: PROGRESS narrates a processing window; events have none
             if o.op == "PROGRESS" {
-                return Err(ChorusError::new(format!(
-                    "trigger {tid}: PROGRESS belongs to verb recipes, not events"
-                )));
+                return Err(ChorusError::new(if is_complete {
+                    format!(
+                        "trigger {tid}: PROGRESS belongs to the completing recipe — completion triggers fire after the outcome list (§9.48)"
+                    )
+                } else {
+                    format!(
+                        "trigger {tid}: PROGRESS belongs to verb recipes, not events"
+                    )
+                }));
             }
             // §9.34: REFUSE aborts a step (§6.5); events have no step to refuse
+            // — and a completion trigger cannot refuse the completion it
+            // fires inside of either (§9.48 keeps the ban in all homes)
             if o.op == "REFUSE" {
-                return Err(ChorusError::new(format!(
-                    "trigger {tid}: REFUSE belongs to verb recipes — events have no step to refuse"
-                )));
+                return Err(ChorusError::new(if is_complete {
+                    format!(
+                        "trigger {tid}: REFUSE belongs to verb recipes — a completion trigger cannot refuse the completion it fires in (§9.34, §9.48)"
+                    )
+                } else {
+                    format!(
+                        "trigger {tid}: REFUSE belongs to verb recipes — events have no step to refuse"
+                    )
+                }));
             }
             // §9.47: RUN chains a window completion; events have no window
-            // to chain from
-            if o.op == "RUN" {
+            // to chain from — but a completion trigger fires INSIDE one, so
+            // its candidates resolve below against the global table instead
+            if o.op == "RUN" && !is_complete {
                 return Err(ChorusError::new(format!(
                     "trigger {tid}: RUN belongs to verb recipes — events have no window to chain from"
                 )));
@@ -572,14 +662,21 @@ pub fn compile_content(
             Ok(())
         })?;
         // §9.39: event bindings are empty, so a role-dependent operand in a
-        // trigger IF condition would silently read false/0
+        // trigger IF condition would silently read false/0. Completion-trigger
+        // bodies see the WINDOW's re-resolved bindings, so the role-free lint
+        // does NOT run on them — only the recipe-side count()/total() lint.
         for_each_if_condition(&out, &mut |w| {
             lint_pred(&format!("trigger {tid}"), w)?; // the count-typo lint applies here too
-            lint_trigger_pred(&format!("trigger {tid}"), w)
+            if !is_complete {
+                lint_trigger_pred(&format!("trigger {tid}"), w)?;
+            }
+            Ok(())
         })?;
-        // §9.41: trigger ROLL arguments must be role-FREE
+        // §9.41: trigger ROLL arguments must be role-FREE — except in
+        // completion triggers, whose window bindings are live (the dice lint
+        // in lint_dice still applies)
         for_each_authored_outcome(&out, &mut |o| {
-            if o.op == "ROLL" {
+            if o.op == "ROLL" && !is_complete {
                 for a in &o.args {
                     if let Arg::Vexpr { v } = a {
                         lint_trigger_val_expr_what(&format!("trigger {tid}"), v, "ROLL argument")?;
@@ -589,6 +686,35 @@ pub fn compile_content(
             Ok(())
         })?;
         lint_dice(&format!("trigger {tid}"), &out)?;
+        // §9.48: a completion trigger's RUN candidates resolve against the
+        // GLOBAL recipe table (cross-verb legal; a collision already failed
+        // loud in the table build above) — an unknown id is a load error, IF
+        // branches included (the §9.35 walk)
+        if is_complete {
+            for_each_authored_outcome(&out, &mut |o| {
+                if o.op != "RUN" {
+                    return Ok(());
+                }
+                for a in &o.args {
+                    let id = match a {
+                        Arg::Ref {
+                            r#ref: Ref::Name { name, .. },
+                        } => name,
+                        _ => {
+                            return Err(ChorusError::new(format!(
+                                "trigger {tid}: RUN takes quoted-string recipe ids: RUN \"id\" [, \"id\" …]"
+                            )))
+                        }
+                    };
+                    if !recipe_verbs.contains_key(id) {
+                        return Err(ChorusError::new(format!(
+                            "trigger {tid}: RUN '{id}' does not name a compiled recipe — on-complete candidates resolve against the global recipe table (§9.47, §9.48)"
+                        )));
+                    }
+                }
+                Ok(())
+            })?;
+        }
         match t {
             TriggerDef::Expire(e) => triggers.push(CompiledTrigger::Expire {
                 id: e.id.clone(),
@@ -599,6 +725,12 @@ pub fn compile_content(
                 id: s.id.clone(),
                 slot: s.slot,
                 once: s.once.unwrap_or(false),
+                out,
+            }),
+            TriggerDef::Complete(c) => triggers.push(CompiledTrigger::Complete {
+                id: c.id.clone(),
+                home: c.home.clone(),
+                aspect: c.aspect.clone(),
                 out,
             }),
         }
@@ -643,6 +775,7 @@ pub fn compile_content(
         stackable_names,
         stackable_kinds,
         decks,
+        recipe_verbs,
     })
 }
 
@@ -1317,6 +1450,7 @@ mod tests {
                         shown: None,
                         hint: None,
                         max: None,
+                        aspects: Vec::new(),
                         out: vec!["NARRATE \"idle.\"".to_string()],
                     }],
                 },

@@ -350,6 +350,7 @@ fn ending_rig() -> ContentRaw {
                     shown: None,
                     hint: None,
                     max: None,
+                    aspects: Vec::new(),
                     out: vec![
                         "NARRATE \"last light.\"".to_string(),
                         "ENDING DESPAIR_DEATH".to_string(),

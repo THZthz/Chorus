@@ -23,9 +23,9 @@ use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
 use crate::content::content::{
-    collect_stackable, compile_content, mint_recipe_id, CompiledContent, ContentRaw, DeclaredEntity,
-    DeriveAspect, DeckRaw, EndingDef, ExpireTriggerDef, FunctionDef, PrototypeDef, PrototypeDerive,
-    RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
+    collect_stackable, compile_content, mint_recipe_id, CompleteTriggerDef, CompiledContent,
+    ContentRaw, DeclaredEntity, DeriveAspect, DeckRaw, EndingDef, ExpireTriggerDef, FunctionDef,
+    PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
 use crate::core::clock::{abs_min, parse_clock, parse_duration, Clock};
 use crate::core::dict::{Dictionary, KINDS};
@@ -452,6 +452,26 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut entity_names: IndexSet<String> = IndexSet::new();
     // minted script id (`s_{name.to_lowercase()}`) → the name holding it
     let mut minted_ids: IndexMap<String, String> = IndexMap::new();
+    // §9.48: per-home clause ordinal for the minted trigger ids
+    let mut complete_ordinal: IndexMap<String, usize> = IndexMap::new();
+    // §9.48: the last declared prototype NAME — a standalone `on complete`
+    // line in prototypes: attaches to it
+    let mut last_prototype: Option<String> = None;
+
+    /// Push one parsed clause as a completion trigger under `home` (§9.48).
+    fn push_complete(
+        triggers: &mut Vec<TriggerDef>,
+        home: &str,
+        clause: CompleteClause,
+        ordinals: &mut IndexMap<String, usize>,
+    ) {
+        triggers.push(TriggerDef::Complete(CompleteTriggerDef {
+            id: mint_complete_id(home, ordinals),
+            home: home.to_string(),
+            aspect: clause.aspect,
+            out: vec![clause.body],
+        }));
+    }
 
     let mut section: Option<String> = None;
     let mut verb_name: Option<String> = None;
@@ -532,8 +552,28 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 
         match sec.as_str() {
             "entities" => {
+                // §9.48: a standalone `on complete` line attaches to the
+                // most recently declared entity — multiple lines per entity
+                // are legal and fire in declaration order
+                if find_on_complete(t) == Some(0) {
+                    let Some(home) = entities.last().map(|e| e.name.clone()) else {
+                        return Err(ChorusError::new(format!(
+                            "line {}: 'on complete' needs a preceding entity declaration (§9.48)",
+                            ln + 1
+                        )));
+                    };
+                    for clause in parse_complete_clauses(t, ln + 1)? {
+                        push_complete(
+                            &mut triggers,
+                            &home,
+                            clause,
+                            &mut complete_ordinal,
+                        );
+                    }
+                    continue;
+                }
                 let declared = entities.len();
-                parse_entity_line(t, ln + 1, dict, &mut entities, &mut relations)?;
+                let clauses = parse_entity_line(t, ln + 1, dict, &mut entities, &mut relations)?;
                 // duplicate entity declarations share one s_<name> id and
                 // would silently overwrite — a load error, not a
                 // last-write-wins (§9.14). Names are case-exact (§9.14), so
@@ -561,11 +601,40 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         )));
                     }
                     entity_names.insert(name.clone());
-                    minted_ids.insert(minted, name);
+                    minted_ids.insert(minted, name.clone());
+                    // §9.48: the line's own `on complete` clauses attach to
+                    // the entity just declared, in line order
+                    for clause in clauses {
+                        push_complete(
+                            &mut triggers,
+                            &name,
+                            clause,
+                            &mut complete_ordinal,
+                        );
+                    }
                 }
             }
             "prototypes" => {
-                let (key, proto) = parse_prototype_line(t, ln + 1, dict)?;
+                // §9.48: a standalone `on complete` line attaches to the most
+                // recently declared prototype
+                if find_on_complete(t) == Some(0) {
+                    let Some(home) = last_prototype.clone() else {
+                        return Err(ChorusError::new(format!(
+                            "line {}: 'on complete' needs a preceding prototype declaration (§9.48)",
+                            ln + 1
+                        )));
+                    };
+                    for clause in parse_complete_clauses(t, ln + 1)? {
+                        push_complete(
+                            &mut triggers,
+                            &home,
+                            clause,
+                            &mut complete_ordinal,
+                        );
+                    }
+                    continue;
+                }
+                let (key, proto, clauses) = parse_prototype_line(t, ln + 1, dict)?;
                 // duplicates are a load error, the same uniform rule as
                 // entities/endings (formerly QUIRK(Q5): a silent
                 // last-write-wins — the later insert overwrote)
@@ -575,6 +644,10 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         ln + 1
                     )));
                 }
+                for clause in clauses {
+                    push_complete(&mut triggers, &key, clause, &mut complete_ordinal);
+                }
+                last_prototype = Some(key.clone());
                 prototypes.insert(key, proto);
             }
             "decks" => {
@@ -712,6 +785,217 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 }
 
 // ---------------------------------------------------------------------------
+// completion-trigger clauses (§9.48)
+// ---------------------------------------------------------------------------
+
+/// One parsed `on complete [<aspect>] -> ( body )` clause (§9.48). The body
+/// is the RAW outcome text inside the parens — compiled like every trigger
+/// body (function expansion, the load guards) in `compile_content`.
+#[derive(Debug, Clone)]
+pub(crate) struct CompleteClause {
+    pub aspect: Option<String>,
+    pub body: String,
+}
+
+/// The clause keywords an aspect name may not collide with (§9.48): the
+/// entity/prototype-line clause heads and the trigger's own keywords —
+/// `with` is the load-bearing one (the with-clause scanner works the same
+/// line), the rest keep the vocabulary closed.
+const COMPLETE_ASPECT_BANNED: [&str; 7] =
+    ["with", "at", "in", "on", "complete", "deriving", "stackable"];
+
+/// Byte offset of the first TOP-LEVEL `on complete` in `text`, or `None`.
+/// Top-level means paren-depth 0 and outside a string literal — an `on
+/// complete` inside a clause body (e.g. in a NARRATE string) never splits the
+/// line. Runs on split('\n') + trimmed SINGLE-LINE text only (the module's
+/// frozen regex domain). A token start is the text start or a position after
+/// a DSL-whitespace CHARACTER (the frozen class — U+3000 and U+FEFF
+/// included), so a name like `only_complete` never matches and a wide-space
+/// boundary splits exactly like an ASCII one; the walk is char_indices, so
+/// no multi-byte char is ever read as its first byte.
+fn find_on_complete(text: &str) -> Option<usize> {
+    let mut depth: usize = 0;
+    let mut in_str = false;
+    let mut prev: Option<char> = None;
+    for (i, c) in text.char_indices() {
+        if in_str {
+            if c == '"' {
+                in_str = false;
+            }
+            prev = Some(c);
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ => {
+                let at_token_start = prev.is_none_or(is_dsl_ws_char);
+                if depth == 0 && at_token_start && c == 'o' && text[i..].starts_with("on") {
+                    // the boundary after `on`, then the `complete` token, then
+                    // its own boundary (an aspect token or the arrow follows)
+                    let after_on = &text[i + "on".len()..];
+                    let ws_run =
+                        after_on.len() - after_on.trim_start_matches(is_dsl_ws_char).len();
+                    if let Some(after) = after_on[ws_run..].strip_prefix("complete") {
+                        let bounded = after
+                            .chars()
+                            .next()
+                            .is_none_or(|n| is_dsl_ws_char(n) || n == '-');
+                        if bounded {
+                            return Some(i);
+                        }
+                    }
+                }
+            }
+        }
+        prev = Some(c);
+    }
+    None
+}
+
+/// Offset of the ')' matching the '(' at offset 0 of `s` — string-literal
+/// aware (the string grammar has no escapes: the hint form `[^"]*` froze
+/// that). `None` when unbalanced.
+fn matching_paren(s: &str) -> Option<usize> {
+    let mut depth: usize = 0;
+    let mut in_str = false;
+    for (i, b) in s.bytes().enumerate() {
+        if in_str {
+            if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parse the clause SEQUENCE
+/// `on complete [<aspect>] -> ( body ) [on complete …]` from `src` — the
+/// caller locates the first clause with [`find_on_complete`], so `src` starts
+/// there. The paren'd body may itself carry nested parens (IF arms) and
+/// strings; the depth scan is string-aware for both. `ln` is 1-BASED.
+/// (No dictionary needed: the aspect class is syntactic, and its collision
+/// set is the local clause-keyword list.)
+fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
+    const SYNTAX: &str = "on complete [<aspect>] -> ( outcomes )";
+    let mut rest = dsl_trim(src);
+    let mut clauses = Vec::new();
+    loop {
+        if rest.is_empty() {
+            return Ok(clauses);
+        }
+        let Some(after_on) = rest.strip_prefix("on").and_then(|r| {
+            let r = r.trim_start_matches(is_dsl_ws_char);
+            r.strip_prefix("complete")
+        }) else {
+            return Err(ChorusError::new(format!(
+                "line {ln}: expected `{SYNTAX}`, got '{rest}'"
+            )));
+        };
+        // the keyword ends at a boundary — an aspect token or the arrow
+        if !after_on
+            .chars()
+            .next()
+            .is_none_or(|c| is_dsl_ws_char(c) || c == '-')
+        {
+            return Err(ChorusError::new(format!(
+                "line {ln}: expected `{SYNTAX}`, got '{rest}'"
+            )));
+        }
+        let mut cur = after_on.trim_start_matches(is_dsl_ws_char);
+        // the optional aspect: one bare lowercase name token — DOTTED keys
+        // included, the exact class the recipe `aspects` list declares (the
+        // gate matches the full dotted key, §9.48)
+        let mut aspect: Option<String> = None;
+        let name_end = cur
+            .chars()
+            .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_' || *c == '.')
+            .count();
+        if name_end > 0 && cur.starts_with(|c: char| c.is_ascii_lowercase()) {
+            let tok = &cur[..name_end];
+            if COMPLETE_ASPECT_BANNED.contains(&tok) {
+                return Err(ChorusError::new(format!(
+                    "line {ln}: aspect '{tok}' is a reserved clause keyword (§9.48)"
+                )));
+            }
+            if tok.ends_with('.') {
+                return Err(ChorusError::new(format!(
+                    "line {ln}: bad aspect '{tok}' — a dotted aspect name cannot end at its dot (§9.48)"
+                )));
+            }
+            aspect = Some(tok.to_string());
+            cur = cur[name_end..].trim_start_matches(is_dsl_ws_char);
+        }
+        let Some(after_arrow) = cur.strip_prefix("->") else {
+            return Err(ChorusError::new(format!(
+                "line {ln}: `on complete` needs `-> ( outcomes )`{}",
+                aspect
+                    .as_ref()
+                    .map(|a| format!(" after aspect '{a}'"))
+                    .unwrap_or_default()
+            )));
+        };
+        let body_src = after_arrow.trim_start_matches(is_dsl_ws_char);
+        let Some(open_rel) = body_src.find('(') else {
+            return Err(ChorusError::new(format!(
+                "line {ln}: `on complete` needs a paren'd outcome list: {SYNTAX}"
+            )));
+        };
+        if !dsl_trim(&body_src[..open_rel]).is_empty() {
+            return Err(ChorusError::new(format!(
+                "line {ln}: `on complete` needs a paren'd outcome list: {SYNTAX}"
+            )));
+        }
+        let Some(close_rel) = matching_paren(&body_src[open_rel..]) else {
+            return Err(ChorusError::new(format!(
+                "line {ln}: `on complete` outcome list is missing its closing ')'"
+            )));
+        };
+        let open = open_rel + 1;
+        let close = open_rel + close_rel;
+        let body = dsl_trim(&body_src[open..close]);
+        if body.is_empty() {
+            return Err(ChorusError::new(format!(
+                "line {ln}: `on complete` needs an outcome list: {SYNTAX}"
+            )));
+        }
+        clauses.push(CompleteClause {
+            aspect,
+            body: body.to_string(),
+        });
+        rest = dsl_trim(&body_src[close + 1..]);
+    }
+}
+
+/// The engine-minted completion-trigger id (§9.48): `complete:{home}` for the
+/// first clause authored on a home, `complete:{home}#n` from the second on —
+/// deterministic and unique, shaped like the engine-written `expire:{name}`
+/// id. The id surfaces in load errors only: completion triggers log no EVENT
+/// rows and never touch `state.fired`.
+fn mint_complete_id(home: &str, ordinals: &mut IndexMap<String, usize>) -> String {
+    let n = ordinals.entry(home.to_string()).or_insert(0);
+    *n += 1;
+    if *n == 1 {
+        format!("complete:{home}")
+    } else {
+        format!("complete:{home}#{}", n)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // entity lines
 // ---------------------------------------------------------------------------
 
@@ -728,17 +1012,26 @@ fn check_name(name: &str, ln: usize, dict: &Dictionary, what: &str) -> Result<()
     Ok(())
 }
 
-/// `ln` is the 1-BASED line number (the caller adds one).
+/// `ln` is the 1-BASED line number (the caller adds one). Returns the line's
+/// `on complete` clauses (§9.48) for the caller to attach to the declared
+/// entity — they are stripped from the line BEFORE the with/at-in clause walk
+/// so the clause scanners never see (and eat) the clause region or an aspect
+/// named like a clause keyword.
 fn parse_entity_line(
     t: &str,
     ln: usize,
     dict: &Dictionary,
     entities: &mut Vec<EntitySpec>,
     relations: &mut Vec<RelationSpec>,
-) -> Result<()> {
-    let Some(m) = entity_re().captures(t) else {
+) -> Result<Vec<CompleteClause>> {
+    // §9.48: trailing `on complete …` clauses split off first
+    let (base, clause_src) = match find_on_complete(t) {
+        Some(at) => (&t[..at], Some(parse_complete_clauses(&t[at..], ln)?)),
+        None => (t, None),
+    };
+    let Some(m) = entity_re().captures(base) else {
         return Err(ChorusError::new(format!(
-            "line {ln}: entities expect  NAME is KIND [with ...] [at PLACE]"
+            "line {ln}: entities expect  NAME is KIND [with ...] [at PLACE] [on complete [<aspect>] -> ( outcomes )]"
         )));
     };
     let name = grp_text(&m, 1);
@@ -746,6 +1039,11 @@ fn parse_entity_line(
     let rest0 = grp_text(&m, 3);
     // relation form: A is RELTYPE of B
     if dict.relation_types.contains_key(second) {
+        if clause_src.is_some() {
+            return Err(ChorusError::new(format!(
+                "line {ln}: a relation line cannot carry `on complete` clauses (§9.48)"
+            )));
+        }
         let Some(rel) = of_re().captures(rest0) else {
             return Err(ChorusError::new(format!(
                 "line {ln}: relations expect  A is TYPE of B"
@@ -759,7 +1057,7 @@ fn parse_entity_line(
             type_: second.to_string(),
             b: b.to_string(),
         });
-        return Ok(());
+        return Ok(Vec::new());
     }
     check_name(name, ln, dict, "entity name")?;
     if !KINDS.contains(&second) {
@@ -827,18 +1125,28 @@ fn parse_entity_line(
         aspects,
         container_name,
     });
-    Ok(())
+    Ok(clause_src.unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------
 // prototype lines
 // ---------------------------------------------------------------------------
 
-/// `ln` is the 1-BASED line number.
-fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String, PrototypeDef)> {
-    let Some(m) = prototype_re().captures(t) else {
+/// `ln` is the 1-BASED line number. Returns (name, prototype, the line's
+/// `on complete` clauses (§9.48) — stripped BEFORE the deriving/with walk,
+/// exactly like the entity line).
+fn parse_prototype_line(
+    t: &str,
+    ln: usize,
+    dict: &Dictionary,
+) -> Result<(String, PrototypeDef, Vec<CompleteClause>)> {
+    let (base, clause_src) = match find_on_complete(t) {
+        Some(at) => (&t[..at], Some(parse_complete_clauses(&t[at..], ln)?)),
+        None => (t, None),
+    };
+    let Some(m) = prototype_re().captures(base) else {
         return Err(ChorusError::new(format!(
-            "line {ln}: prototypes expect  NAME is KIND [stackable] [deriving ...] [with ...]"
+            "line {ln}: prototypes expect  NAME is KIND [stackable] [deriving ...] [with ...] [on complete [<aspect>] -> ( outcomes )]"
         )));
     };
     let name = grp_text(&m, 1);
@@ -931,7 +1239,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
             "line {ln}: could not parse prototype line '{t}'"
         )));
     }
-    Ok((name.to_string(), proto))
+    Ok((name.to_string(), proto, clause_src.unwrap_or_default()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1140,7 +1448,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     // UTF-16 unit offsets, so the byte slices carry the same text
     let Some(arrow) = t.find("->") else {
         return Err(ChorusError::new(format!(
-            "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [max N] [when COND] -> OUTCOMES"
+            "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [max N] [aspects NAME, ...] [when COND] -> OUTCOMES"
         )));
     };
     let lhs = dsl_trim(&t[..arrow]);
@@ -1155,13 +1463,14 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     let tokens = split_dsl_ws(lhs);
     let mut i = 0usize;
     if let Some(tok0) = tokens.first() {
-        // §9.50: `max` is a keyword — a leading `max N` must never parse as
-        // recipe id "max" (§9.48 will add `aspects` to this exclusion too)
+        // §9.50/§9.48: `max` and `aspects` are keywords — a leading `max N`
+        // or `aspects NAME, …` must never parse as a recipe id
         if recipe_id_re().is_match(tok0)
             && *tok0 != "when"
             && *tok0 != "hidden"
             && *tok0 != "shown"
             && *tok0 != "max"
+            && *tok0 != "aspects"
         {
             def.id = Some((*tok0).to_string());
             i += 1;
@@ -1170,10 +1479,12 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     // §9.50: the positional walk — `hidden|shown` and `max N` compose in any
     // order around the regex-extracted clauses (N ≥ 1: a `max 0` or negative
     // is a load error — such a recipe could never fire, so it fails loudly
-    // instead). `hint "…"` and `when COND` are matched on the lhs BELOW, so
-    // their tokens stay on the stream: the walk jumps the hint's span by byte
-    // offset, and a token left at the cursor that neither clause owns is a
-    // load error — positionals are never silently dropped.
+    // instead). §9.48 adds the `aspects NAME, …` presence list to the same
+    // walk — both orders around `max` parse. `hint "…"` and `when COND` are
+    // matched on the lhs BELOW, so their tokens stay on the stream: the walk
+    // jumps the hint's span by byte offset, and a token left at the cursor
+    // that neither clause owns is a load error — positionals are never
+    // silently dropped.
     let hint_cap = hint_re().captures(lhs);
     let hint_end = hint_cap.as_ref().and_then(|c| c.get(0)).map(|m| m.end());
     loop {
@@ -1197,6 +1508,33 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
                 }
                 def.max = Some(n);
                 i += 1;
+            }
+            Some(tok) if *tok == "aspects" => {
+                // §9.48: `aspects <name> [, <name>]*` — the presence list an
+                // `on complete <aspect>` gate reads. The whitespace split
+                // leaves each separator comma riding its member token; every
+                // member but the last must end in one, so `aspects a max 1`
+                // never swallows the positional `max` (the keyword set is
+                // excluded from members entirely).
+                i += 1;
+                let mut names: Vec<String> = Vec::new();
+                while let Some(tok) = tokens.get(i) {
+                    if !is_aspects_member(tok) {
+                        break;
+                    }
+                    let ended = !tok.ends_with(',');
+                    names.push(tok.trim_end_matches(',').to_string());
+                    i += 1;
+                    if ended {
+                        break;
+                    }
+                }
+                if names.is_empty() {
+                    return Err(ChorusError::new(format!(
+                        "line {ln}: `aspects` needs at least one name — aspects <name> [, <name>]*"
+                    )));
+                }
+                def.aspects.extend(names);
             }
             // the quoted hint text may contain whitespace — skip its whole
             // span by offset. A span that ends before the cursor (a second
@@ -1229,7 +1567,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     if let Some(tok) = tokens.get(i) {
         if *tok != "when" || !when_re().is_match(lhs) {
             return Err(ChorusError::new(format!(
-                "line {ln}: unexpected '{tok}' before '->' — positionals are [id] [hidden|shown] [hint \"...\"] [max N], then [when COND]"
+                "line {ln}: unexpected '{tok}' before '->' — positionals are [id] [hidden|shown] [hint \"...\"] [max N] [aspects NAME, ...], then [when COND]"
             )));
         }
     }
@@ -1240,6 +1578,23 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
         def.when = Some(grp_text(&wm, 1).to_string());
     }
     Ok(def)
+}
+
+/// An `aspects` list member after the whitespace split (§9.48): a lowercase
+/// name with an optional trailing separator comma. The positional keywords
+/// are excluded, so a list never swallows `max`/`when`/…, and a dotted
+/// sub-aspect (`language.latin`) is one member — the exact class the
+/// `on complete <aspect>` head reads (its trailing-dot case errors there).
+fn is_aspects_member(tok: &str) -> bool {
+    let t = tok.strip_suffix(',').unwrap_or(tok);
+    !t.is_empty()
+        && t.starts_with(|c: char| c.is_ascii_lowercase())
+        && t.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
+        && !matches!(
+            t,
+            "max" | "when" | "hidden" | "shown" | "hint" | "default" | "aspects"
+        )
 }
 
 // ---------------------------------------------------------------------------

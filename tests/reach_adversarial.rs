@@ -84,6 +84,7 @@ fn recipe(out: &[&str]) -> RecipeDef {
         shown: None,
         hint: None,
         max: None,
+        aspects: Vec::new(),
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }
@@ -95,6 +96,7 @@ fn recipe_when(when: &str, out: &[&str]) -> RecipeDef {
         shown: None,
         hint: None,
         max: None,
+        aspects: Vec::new(),
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }

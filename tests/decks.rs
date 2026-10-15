@@ -629,6 +629,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec!["DRAWN(RUMOURS, RUMOUR)".to_string()],
             }],
         })]
@@ -673,6 +674,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec!["helper()".to_string()],
             }],
         })]
@@ -702,6 +704,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec!["IF exists(NOSUCH) -> (DRAWN(RUMOURS, RUMOUR))".to_string()],
             }],
         })]
@@ -728,6 +731,7 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: out.iter().map(|s| (*s).to_string()).collect(),
             }],
         })]
@@ -1332,6 +1336,7 @@ fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
                     shown: None,
                     hint: None,
                     max: None,
+                    aspects: Vec::new(),
                     out: vec!["DRAW RUMOURS".to_string()],
                 }],
             },
@@ -1430,6 +1435,7 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
                     shown: None,
                     hint: None,
                     max: None,
+                    aspects: Vec::new(),
                     out: vec!["DRAW SMALL".to_string()],
                 }],
             },

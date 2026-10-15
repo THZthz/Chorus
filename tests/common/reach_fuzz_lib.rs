@@ -383,6 +383,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec![],
             }],
         },
@@ -433,6 +434,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: outs,
             });
         }

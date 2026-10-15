@@ -41,6 +41,7 @@ fn verb_of(name: &str, slots: Vec<SlotDef>, duration: i64, out: &[&str]) -> (Str
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
         },
@@ -832,6 +833,7 @@ fn roll_binding_resets_per_clause() {
             shown: None,
             hint: None,
             max: None,
+            aspects: Vec::new(),
             out: vec![
                 "ROLL(1, 6)".to_string(),
                 "IF roll >= 0 -> (NARRATE \"bound.\")".to_string(),
@@ -847,6 +849,7 @@ fn roll_binding_resets_per_clause() {
             shown: None,
             hint: None,
             max: None,
+            aspects: Vec::new(),
             out: vec![
                 "ROLL(1, 6)".to_string(),
                 "IF roll >= 0 -> (NARRATE \"bare {roll}.\")".to_string(),
@@ -964,6 +967,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             shown: None,
             hint: None,
             max: None,
+            aspects: Vec::new(),
             out: vec!["NARRATE \"seized.\"".to_string()],
         }],
     };
@@ -976,6 +980,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             shown: None,
             hint: None,
             max: None,
+            aspects: Vec::new(),
             out: vec!["NARRATE \"touched.\"".to_string()],
         }],
     };

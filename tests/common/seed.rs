@@ -36,6 +36,7 @@ pub fn seed_content() -> ContentRaw {
         shown: None,
         hint: None,
         max: None,
+        aspects: Vec::new(),
         out: out.iter().map(|s| (*s).to_string()).collect(),
     };
     ContentRaw {
@@ -152,6 +153,7 @@ pub fn seed_content() -> ContentRaw {
                                 "The rite wants pooled lantern — it will starve.".to_string(),
                             ),
                             max: None,
+                            aspects: Vec::new(),
                             out: vec!["REFUSE(\"The rite starves for light.\")".to_string()],
                         },
                         recipe(

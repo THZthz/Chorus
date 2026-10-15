@@ -829,8 +829,17 @@ struct ApplyCtx<'a> {
 /// clock is the follow-up's begin, its authored refs become the follow-up
 /// clause), the one-RUN-per-completion detector, and the sink the synthesized
 /// follow-up BEGIN rides to fire_window.
+///
+/// §9.48 extends the channel for completion triggers: `parent_key` excludes
+/// the parent's own window from the follow-up busy check, `deferring` parks
+/// recipe-body RUN ops (a completion fires `on complete` triggers AFTER the
+/// recipe's own outcomes and BEFORE any RUN), `in_complete` marks the
+/// completion-trigger phase (cross-verb candidates through the global table,
+/// other busy stations skip silently), and `deferred` holds the parked ops in
+/// list order.
 struct ChainCtx {
     parent_verb: String,
+    parent_key: String,
     parent_end: i64,
     parent_refs: IndexMap<Role, Vec<Ref>>,
     /// the follow-up BEGIN's record id — the COMPLETE row's id + 1
@@ -839,6 +848,14 @@ struct ChainCtx {
     /// (§9.47: a station holds one window)
     run_taken: bool,
     extra_records: Vec<ActionRecord>,
+    /// §9.48: recipe-body RUN ops park here (in outcome order) while the
+    /// completion's `on complete` triggers fire, then replay
+    deferring: bool,
+    deferred: Vec<Outcome>,
+    /// §9.48: inside the completion-trigger phase — candidates resolve
+    /// against the global recipe table (cross-verb legal) and any busy
+    /// station other than the parent's own window skips the candidate
+    in_complete: bool,
 }
 
 /// What one outcome application produced.
@@ -893,7 +910,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let args = &o.args;
     match o.op.as_str() {
         "IF" => apply_if(o, ctx),
-        "RUN" => apply_run(args, ctx),
+        "RUN" => apply_run(o, ctx),
         "SPAWN" => apply_spawn(args, ctx),
         "DESTROY" => {
             let concrete_args = concretize(args, ctx);
@@ -1916,27 +1933,53 @@ fn refs_to_clause(verb: &str, refs: &IndexMap<Role, Vec<Ref>>) -> Clause {
 /// fire_window through the ONE registration path once the parent has left the
 /// table) is the record. No candidate matches: nothing opens — the chain
 /// ends, silently (CS's chain ending, not a refusal). The pinned recipe's
-/// top-level REFUSE still gates, inline against the draft — a Phase-3-shaped
+/// top-level REFUSE still gates inline against the draft — a Phase-3-shaped
 /// trial whose refusal rejects the PARENT window (§6.7's window-refuse); a
 /// SECOND RUN op reached in one completion refuses the parent window at that
 /// outcome (a station holds one window).
-fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
-    // snapshot the parent-window identity off the chain channel; a None
-    // channel is unreachable on every authored path (triggers reject RUN at
-    // load, the Phase-3 trial skips it, and the log never carries one)
-    let (parent_verb_name, parent_end, next_record_id, parent_refs) = match ctx.chain.as_ref() {
-        Some(c) => (
-            c.parent_verb.clone(),
-            c.parent_end,
-            c.next_record_id,
-            c.parent_refs.clone(),
-        ),
-        None => {
-            return Err(ChorusError::new(
-                "internal: RUN applied outside a window completion (§9.47)",
-            ))
+///
+/// §9.48: a RUN reached inside an `on complete` body (the chain's
+/// `in_complete` phase) resolves candidates against the GLOBAL recipe table
+/// — cross-verb legal — and any busy station other than the parent's own
+/// window skips the candidate silently (a same-verb hand-off must not see
+/// its own station busy; the ordering hazard is specified away, not left to
+/// implementation order). Recipe-body RUN ops reached while `deferring` is
+/// set park on the chain instead: the completion fires its `on complete`
+/// triggers AFTER the recipe's own outcomes and BEFORE any RUN, and the
+/// parked ops replay in list order afterwards.
+fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
+    let args = &o.args;
+    // §9.48: a recipe-body RUN during the deferral window parks here — not
+    // yet REACHED (the one-chain-slot detector stays untouched), zero-concrete
+    if ctx.chain.as_ref().is_some_and(|c| c.deferring) {
+        if let Some(c) = ctx.chain.as_mut() {
+            c.deferred.push(o.clone());
         }
-    };
+        return Ok(ApplyResult {
+            concrete: Vec::new(),
+            refused: false,
+        });
+    }
+    // snapshot the parent-window identity off the chain channel; a None
+    // channel is unreachable on every authored path (slot/expire triggers
+    // reject RUN at load, the Phase-3 trial skips it, and the log never
+    // carries one for the fold to replay)
+    let (parent_verb_name, parent_key, parent_end, next_record_id, parent_refs, in_complete) =
+        match ctx.chain.as_ref() {
+            Some(c) => (
+                c.parent_verb.clone(),
+                c.parent_key.clone(),
+                c.parent_end,
+                c.next_record_id,
+                c.parent_refs.clone(),
+                c.in_complete,
+            ),
+            None => {
+                return Err(ChorusError::new(
+                    "internal: RUN applied outside a window completion (§9.47)",
+                ))
+            }
+        };
     if ctx.chain.as_ref().is_some_and(|c| c.run_taken) {
         return Ok(ApplyResult {
             concrete: vec![plain(
@@ -1954,16 +1997,22 @@ fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     if let Some(c) = ctx.chain.as_mut() {
         c.run_taken = true;
     }
-    let Some(parent_verb) = ctx.content.verbs.get(&parent_verb_name) else {
-        return Err(ChorusError::new(format!(
-            "internal: RUN's parent verb '{parent_verb_name}' left the compiled content (§9.47)"
-        )));
+    let parent_verb = ctx.content.verbs.get(&parent_verb_name);
+    let parent_verb = match parent_verb {
+        Some(v) => v,
+        None => {
+            return Err(ChorusError::new(format!(
+                "internal: RUN's parent verb '{parent_verb_name}' left the compiled content (§9.47)"
+            )));
+        }
     };
-    // the candidate walk IN ORDER. Every id was load-checked against this
-    // very list (§9.47's walk), so an unresolved id is impossible in compiled
-    // content — skip rather than throw, keeping that invariant's failure
-    // shape silent instead of a masked drift error.
-    let mut pinned: Option<&CompiledRecipe> = None;
+    // the candidate walk IN ORDER. Recipe-body candidates were load-checked
+    // against this very list (§9.47's walk), so an unresolved id is impossible
+    // in compiled content — skip rather than throw, keeping that invariant's
+    // failure shape silent instead of a masked drift error. Completion-trigger
+    // candidates (§9.48) were load-checked against the GLOBAL table, which the
+    // collision guard keeps unambiguous; resolution consults it here.
+    let mut pinned: Option<(&str, &CompiledRecipe)> = None;
     for a in args {
         let id = match a {
             Arg::Ref {
@@ -1971,9 +2020,39 @@ fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             } => name,
             _ => continue,
         };
-        let Some(cand) = parent_verb.recipes.iter().find(|r| &r.id == id) else {
-            continue;
+        // resolve the candidate's owning verb + recipe
+        let (cand_verb_name, cand): (&str, &CompiledRecipe) = if in_complete {
+            // §9.48: the global table owns the id (the collision guard keeps
+            // it unambiguous)
+            let Some(vn) = ctx.content.recipe_verbs.get(id.as_str()) else {
+                continue;
+            };
+            let Some(v) = ctx.content.verbs.get(vn) else {
+                continue;
+            };
+            match v.recipes.iter().find(|r| &r.id == id) {
+                Some(r) => (v.name.as_str(), r),
+                None => continue,
+            }
+        } else {
+            match parent_verb.recipes.iter().find(|r| &r.id == id) {
+                Some(r) => (parent_verb.name.as_str(), r),
+                None => continue,
+            }
         };
+        // §9.48: a busy follow-up station skips the candidate silently —
+        // every open window on the candidate's verb EXCEPT the parent's own
+        // (which is still in the table mid-completion; the same-verb hand-off
+        // must not see itself busy)
+        if in_complete
+            && ctx
+                .state
+                .windows
+                .values()
+                .any(|w| w.verb == cand_verb_name && w.key != parent_key)
+        {
+            continue;
+        }
         // §9.50: the execution budget — an exhausted candidate is simply
         // non-matching; the walk continues. Read from the draft's state map
         // (§9.29 posture), which already carries the parent's own begin.
@@ -2001,10 +2080,10 @@ fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         if !matched {
             continue;
         }
-        pinned = Some(cand);
+        pinned = Some((cand_verb_name, cand));
         break;
     }
-    let Some(cand) = pinned else {
+    let Some((cand_verb_name, cand)) = pinned else {
         // no candidate matches: the chain ends silently — no window, no
         // refusal, no log
         return Ok(ApplyResult {
@@ -2075,10 +2154,20 @@ fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         });
     }
     // synthesize the follow-up BEGIN — the same shape a player step produces
-    // (make_begin_record over one prepared clause): SAME verb, the parent
-    // window's authored role refs, beginning at the completion clock. The
-    // pinned recipe's PROGRESS ticks ride it, like any BEGIN.
-    let clause = refs_to_clause(&parent_verb_name, &parent_refs);
+    // (make_begin_record over one prepared clause): the PINNED CANDIDATE's
+    // verb (§9.48: the follow-up may live on another verb than the parent),
+    // the parent window's authored role refs, beginning at the completion
+    // clock. The pinned recipe's PROGRESS ticks ride it, like any BEGIN.
+    let cand_verb = ctx.content.verbs.get(cand_verb_name);
+    let cand_verb = match cand_verb {
+        Some(v) => v,
+        None => {
+            return Err(ChorusError::new(format!(
+                "internal: RUN's candidate verb '{cand_verb_name}' left the compiled content (§9.47, §9.48)"
+            )));
+        }
+    };
+    let clause = refs_to_clause(cand_verb_name, &parent_refs);
     let progress: Vec<Outcome> = cand
         .out
         .iter()
@@ -2093,7 +2182,7 @@ fn apply_run(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     };
     let prepared = [Prepared {
         clause: &clause,
-        verb: parent_verb,
+        verb: cand_verb,
         refs: clause_refs(&clause),
         recipe: cand,
     }];
@@ -2629,14 +2718,20 @@ fn fire_window(
         // §9.47: the chain channel — the parent-window identity the RUN arm
         // walks against (its verb names the candidate list, its end clock is
         // the follow-up's begin, its authored refs become the follow-up
-        // clause)
+        // clause). §9.48: recipe-body RUN ops DEFER while the completion's
+        // `on complete` triggers fire — a completion applies the recipe's own
+        // outcomes, then the triggers, then any RUN.
         chain: Some(ChainCtx {
             parent_verb: w.verb.clone(),
+            parent_key: w.key.clone(),
             parent_end: w.end,
             parent_refs: w.refs.clone(),
             next_record_id: record_id + 1,
             run_taken: false,
             extra_records: Vec::new(),
+            deferring: true,
+            deferred: Vec::new(),
+            in_complete: false,
         }),
     };
     let mut concrete: Vec<Outcome> = Vec::new();
@@ -2664,14 +2759,123 @@ fn fire_window(
             }
         }
     }
+    // §9.48: the completion-trigger phase — the window's committed locked
+    // cards (the §6.7 busy set, actors free; deduped, a card bound through
+    // two roles fires once; in locked order) fire their authored
+    // `on complete` triggers, bare ones always and aspect-gated ones iff the
+    // completed recipe declares the aspect. Outcomes apply on the draft in
+    // fire order and their concrete rows APPEND to the recipe's own — no
+    // EVENT row, no state.fired (the fold replays the appended list without
+    // recomputing gates). A failure inside a body refuses the WINDOW (the
+    // §6.7 parent-window path), never a whole-step throw. RUN inside a body
+    // applies through the chain channel: cross-verb candidates via the
+    // global table, the parent's own window excluded from the busy check.
+    if !refused {
+        if let Some(c) = ctx.chain.as_mut() {
+            c.deferring = false;
+            c.in_complete = true;
+        }
+        'complete_phase: {
+            let mut seen: HashSet<&String> = HashSet::new();
+            for card_id in &w.locked {
+                if !seen.insert(card_id) {
+                    continue; // dedupe: one card in two roles fires once
+                }
+                // a card that died mid-window no longer carries triggers
+                // (bindings drop dead refs the same way, §6.7)
+                let Some(home) = ctx
+                    .state
+                    .entities
+                    .get(card_id)
+                    .filter(|e| e.dead_action.is_none())
+                    .map(|e| e.name.clone())
+                else {
+                    continue;
+                };
+                for trig in &content.triggers {
+                    let CompiledTrigger::Complete {
+                        home: trig_home,
+                        aspect,
+                        out,
+                        ..
+                    } = trig
+                    else {
+                        continue;
+                    };
+                    if trig_home != &home {
+                        continue;
+                    }
+                    // the authored emitter gate: the aspect form fires iff
+                    // the completed recipe declares the aspect
+                    if let Some(a) = aspect {
+                        if !recipe.aspects.iter().any(|x| x == a) {
+                            continue;
+                        }
+                    }
+                    for o in out {
+                        match apply_outcome(o, &mut ctx) {
+                            Ok(res) => {
+                                concrete.extend(res.concrete);
+                                if res.refused {
+                                    refused = true;
+                                    break 'complete_phase;
+                                }
+                            }
+                            Err(err) => {
+                                refused = true;
+                                concrete.clear();
+                                concrete.push(plain(
+                                    "REFUSE".to_string(),
+                                    vec![Arg::Str { v: err.msg }],
+                                ));
+                                break 'complete_phase;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(c) = ctx.chain.as_mut() {
+            c.in_complete = false;
+        }
+    }
+    // §9.48/§9.47: the recipe's own RUN ops — parked while the triggers
+    // fired — replay now, in list order, under the same window-refuse
+    // handling as the outcome loop above. A refusal here (the inline guard,
+    // the second-RUN rule) still rejects the PARENT window.
+    if !refused {
+        let deferred: Vec<Outcome> = ctx
+            .chain
+            .as_ref()
+            .map(|c| c.deferred.clone())
+            .unwrap_or_default();
+        for o in &deferred {
+            match apply_outcome(o, &mut ctx) {
+                Ok(res) => {
+                    concrete.extend(res.concrete);
+                    if res.refused {
+                        refused = true;
+                        break;
+                    }
+                }
+                Err(err) => {
+                    refused = true;
+                    concrete.clear();
+                    concrete.push(plain("REFUSE".to_string(), vec![Arg::Str { v: err.msg }]));
+                    break;
+                }
+            }
+        }
+    }
     let advance_extra = ctx.extra_advance_min;
     let chain = ctx.chain.take();
     drop(ctx);
     let mut extra_records: Vec<ActionRecord> = Vec::new();
     let mut out = if refused { state_in } else { scratch };
     // the parent leaves the open table FIRST (removal preserves the remaining
-    // keys' insertion order) — a same-verb follow-up must not see its own
-    // station busy (§6.7; the ordering is the busy check)
+    // keys' insertion order) — the follow-up's registration sees the station
+    // free of its parent (§6.7; the busy check proper is apply_run's, with
+    // the parent's own window excluded, §9.48)
     out.windows.shift_remove(&w.key);
     if !refused {
         // §9.47: each follow-up registers through the ONE registration path
@@ -3130,6 +3334,7 @@ mod smoke {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
         }
@@ -3267,6 +3472,7 @@ mod smoke {
                     shown: None,
                     hint: None,
                     max: None,
+                    aspects: Vec::new(),
                     out: out.iter().map(|s| s.to_string()).collect(),
                 }],
             },
@@ -3363,6 +3569,7 @@ mod smoke {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec!["RELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
         };
@@ -3375,6 +3582,7 @@ mod smoke {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec!["UNRELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
         };
@@ -3437,6 +3645,7 @@ mod smoke {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec![
                     "ROLL(2, 6)".to_string(),
                     "NARRATE \"rolled {roll}.\"".to_string(),
@@ -3490,6 +3699,7 @@ mod smoke {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec!["DRAW RUMOURS".to_string()],
             }],
         };
@@ -3563,6 +3773,7 @@ mod smoke {
                 shown: None,
                 hint: None,
                 max: None,
+                aspects: Vec::new(),
                 out: vec![
                     "IF exists(HOUSE) -> (SPAWN PARANOIA, REFUSE(\"too late.\")) ELSE -> (NARRATE \"calm.\")".to_string(),
                 ],

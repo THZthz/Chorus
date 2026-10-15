@@ -1,2 +1,0 @@
-usage: reach <script.txt> <CARD_NAME> [--usable] [--demand "<query>"]
-       reach <script.txt> --all

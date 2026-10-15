@@ -1,0 +1,32 @@
+0:42 @ MARCH WAIT
+0:44 @ COMPLETE WAIT -> NARRATE "{actors} watch the night fields run past."
+0:44 @ EVENT body_found -> DESTROY(THE_PATENTEE), SPAWN THE_LATE_LORD INTO #s_first_cabin AS #e2_1 aspects="{\"aether\":1}" attrs="{\"container\":\"s_first_cabin\"}", SPAWN THE_AETHER_SEAL INTO #s_first_cabin AS #e2_2 aspects="{\"secret\":1,\"case\":{\"seal\":1}}" attrs="{\"container\":\"s_first_cabin\"}", SET(FIRST_CABIN, unsealed, 1), SET(THE_AETHER_SEAL, state.sealed, true), SET(THE_LATE_LORD, expires, 1d), NARRATE "A cry from the first cabin. Lord Vane lies behind his own aether-seal, unrobbed, unwounded, and entirely dead."
+0:42 @ WAIT 1h
+0:44 @ MARCH EXPLORE FIREBOX
+0:45 @ EVENT conductor_rounds -> DRAWN(RUMOURS, SCANDAL), SPAWN SCANDAL INTO #s_guard_van AS #e6_1 attrs="{\"container\":\"s_guard_van\"}", ROLLED(5, 2), SPAWN SUSPICION INTO #s_march AS #e6_2 attrs="{\"container\":\"s_march\"}", NARRATE "A steward will remember MARCH asking after things that are none of an inspector's business."
+0:46 @ COMPLETE EXPLORE -> ROLLED(11, 5), PROGRESS(1halfhour, "You sift warm ash while Cole watches the shovel a shade too carefully."), SPAWN THE_WAX_CYLINDER INTO #s_firebox AS #e6_3 aspects="{\"tome\":{\"cylinder\":1},\"aether\":2,\"secret\":2}" attrs="{\"container\":\"s_firebox\"}", SET(#s_firebox, searched, 1), NARRATE "11 minutes of sifting, well spent: a wax phonomotor cylinder, half-melted but intact, the lord's monogram on the brass case."
+0:46 @ EVENT night_porter -> NARRATE "The corridor lamps dim to embers. The porter walks the train from end to end, counting doors under his breath."
+0:44 @ WAIT 1h
+0:46 @ MARCH READ THE_WAX_CYLINDER -> PROGRESS(20m, "You wind the cylinder onto the phonomotor; the stylus trembles and finds its groove."), PROGRESS(50m, "A voice assembles out of the hiss — the lord's own, speaking the words that open his seal.")
+1:0 @ COMPLETE READ -> SPAWN THE_STOLEN_VOICE INTO #s_guard_van AS #e11_1 aspects="{\"secret\":2,\"case\":{\"means\":1},\"proof\":1}" attrs="{\"container\":\"s_guard_van\"}", SET(THE_AETHER_SEAL, state.sealed, false), DESTROY(#e6_3), NARRATE "{actors} play the cylinder to its end. Someone owns the lord's voice, and the seal answers it."
+1:0 @ EVENT border_stop -> SPAWN THE_TELEGRAM INTO #s_guard_van AS #e11_2 aspects="{\"tome\":{\"telegram\":1},\"secret\":2,\"language\":{\"french\":2}}" attrs="{\"container\":\"s_guard_van\"}", NARRATE "The Flyer hisses down at the border. A telegraph boy sprints the platform and puts a French telegram into Brack's white glove."
+0:46 @ WAIT 1h
+1:0 @ MARCH READ THE_VANE_LEDGER -> PROGRESS(1halfhour, "Two hands wrote this ledger, and in the margins they argue.")
+1:2 @ COMPLETE READ -> SPAWN THE_EMBEZZLEMENT INTO #s_guard_van AS #e15_1 aspects="{\"secret\":2,\"case\":{\"motive\":1},\"proof\":1}" attrs="{\"container\":\"s_guard_van\"}", SPAWN HUNCH_THE_VANE_LEDGER INTO #s_guard_van AS #e15_2 aspects="{\"aether\":1,\"hunch\":2}" attrs="{\"container\":\"s_guard_van\"}", DESTROY(#s_the_vane_ledger), NARRATE "Quill's neat corrections hide a steady drain on the aether royalties. The lord had found it. Quill knew he had — and the shape of it stays with you."
+1:2 @ EVENT the_long_tunnel -> UNRELATE(FIREBOX, GUARD_VAN, south), NARRATE "The train enters the Vendahl tunnel. For three hours the lamps burn blue, every mirror fogs over — and the crew door to the firebox closes like a held breath."
+1:0 @ WAIT 1h
+1:2 @ MARCH DREAM WITH THE_AETHER_SEAL
+1:4 @ COMPLETE DREAM -> DRAWN(DREAMS, VOID), SPAWN VOID INTO #s_guard_van AS #e19_1 attrs="{\"container\":\"s_guard_van\"}", ADVANCE(1halfhour), NARRATE "{actors} sleep on the seal and wake with its shape behind the eyes. The dream leaves a card on the pillow."
+1:4 @ EVENT the_furnace_takes_it -> DESTROY(THE_VANE_LEDGER), NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox, and a ledger cover stamped VANE is curling in the flames."
+1:2 @ WAIT 3halfhour
+1:5 @ MARCH DREAM WITH THE_AETHER_SEAL
+1:7 @ COMPLETE DREAM -> DRAWN(DREAMS, PORTENT), SPAWN PORTENT INTO #s_guard_van AS #e23_1 aspects="{\"aether\":1}" attrs="{\"container\":\"s_guard_van\"}", ADVANCE(1halfhour), NARRATE "{actors} sleep on the seal and wake with its shape behind the eyes. The dream leaves a card on the pillow."
+1:8 @ EVENT dawn_watch -> RELATE(FIREBOX, GUARD_VAN, south), NARRATE "The small hours turn. The Vendahl tunnel lets go of the train, and the crew door to the firebox breathes again."
+1:5 @ WAIT 3halfhour
+1:8 @ MARCH DREAM WITH THE_AETHER_SEAL
+1:10 @ COMPLETE DREAM -> DRAWN(DREAMS, PORTENT), SPAWN PORTENT INTO #s_guard_van AS #e27_1 aspects="{\"aether\":1}" attrs="{\"container\":\"s_guard_van\"}", ADVANCE(1halfhour), NARRATE "{actors} sleep on the seal and wake with its shape behind the eyes. The dream leaves a card on the pillow."
+1:8 @ WAIT 3halfhour
+1:11 @ MARCH DREAM WITH THE_AETHER_SEAL
+1:12 @ EVENT vienna_arrival -> NARRATE "Vienna lights slide along the glass, and the Flyer glides in with her mystery intact — the passengers scatter, and the case scatters with them.", ENDING QUIET_NIGHT
+1:13 @ COMPLETE DREAM -> REFUSE("deck 'DREAMS' is exhausted — no 'reset' and no 'defaultcard' (§9.42)")
+1:11 @ WAIT 1h

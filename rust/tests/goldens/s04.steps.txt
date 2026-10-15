@@ -1,0 +1,4 @@
+ok 3
+ok 3
+rejected PROBE: PROBE: 'object' takes 2..2, got 1
+ok 3

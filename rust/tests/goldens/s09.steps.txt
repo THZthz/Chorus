@@ -1,0 +1,3 @@
+ok 3
+ok 2
+rejected RITUAL: no recipe matched

@@ -1,0 +1,3 @@
+ok 1
+rejected SPAWN: name 'P_TRIPLE' already in use
+rejected SPAWN: name 'P_TRIPLE' already in use

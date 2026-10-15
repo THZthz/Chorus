@@ -1,0 +1,46 @@
+[start]
+read THE MANIFEST
+talk with THE GUARD
+explore DINING CAR
+
+[after wait]
+read THE MANIFEST
+talk with THE GUARD
+explore DINING CAR
+
+[after explore the first cabin]
+read THE MANIFEST
+talk with THE GUARD
+explore DINING CAR
+
+[after read the solicitor letter]
+read THE TELEGRAM
+talk with THE GUARD
+explore DINING CAR
+
+[after explore the firebox]
+read THE TELEGRAM
+talk with THE GUARD
+explore DINING CAR
+
+[after read the vane ledger]
+read THE TELEGRAM
+talk with THE GUARD
+explore DINING CAR
+
+[after talk with the spiritualist]
+read THE TELEGRAM
+talk with THE GUARD
+explore DINING CAR
+
+[after seraphine read the wax cylinder]
+read THE TELEGRAM
+talk with THE GUARD
+explore DINING CAR
+
+[after seraphine read the telegram]
+read THE MANIFEST
+talk with THE GUARD
+explore DINING CAR
+
+[after use on the inquest with the embezzlement the stolen voice the vienna warning]

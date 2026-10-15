@@ -36,7 +36,7 @@ fn integer_like_key_value(k: &str) -> Option<u64> {
 /// clone/spread/serialize point must rebuild through this ordering
 /// (the clone points live in `core/types.rs`).
 #[must_use]
-pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<String> {
+pub fn canonical_key_order<V>(m: &indexmap::IndexMap<String, V>) -> Vec<String> {
     if !m.keys().any(|k| is_integer_like_key(k)) {
         // no integer-like keys ⇒ the canonical order IS the insertion order
         // (the reorder only fronts integer-like keys), so the two-pass walk
@@ -45,8 +45,10 @@ pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<S
     }
     let mut out: Vec<String> = Vec::with_capacity(m.len());
     for i in integer_keys_in_order(m) {
-        // every index came from this map's key walk; the lookup cannot miss
-        out.push(m.get_index(i).expect("index from the same map's walk").0.clone());
+        let Some((k, _)) = m.get_index(i) else {
+            unreachable!("every index comes from this same map's key walk");
+        };
+        out.push(k.clone());
     }
     for k in m.keys() {
         if !is_integer_like_key(k) {
@@ -70,7 +72,7 @@ fn integer_keys_in_order<V>(m: &indexmap::IndexMap<String, V>) -> impl Iterator<
 }
 
 /// Clone a string-keyed map rebuilding keys in
-/// [`ordinary_own_property_keys`] order (the canonical key-order clone).
+/// [`canonical_key_order`] order (the canonical key-order clone).
 ///
 /// Index-partitioned: the order is computed on INDICES (no key-String
 /// churn, no re-lookup per key), and a map with no integer-like keys takes
@@ -90,8 +92,9 @@ pub fn clone_map_in_key_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> in
         .collect();
     let mut out = indexmap::IndexMap::with_capacity(m.len());
     for i in integer_keys_in_order(m).chain(plain) {
-        // every index came from this map's key walk; the lookup cannot miss
-        let (k, v) = m.get_index(i).expect("index from the same map's walk");
+        let Some((k, v)) = m.get_index(i) else {
+            unreachable!("every index comes from this same map's key walk");
+        };
         out.insert(k.clone(), v.clone());
     }
     out
@@ -116,19 +119,18 @@ pub enum Jsonw {
     Arr(Vec<Jsonw>),
     /// An object's entries in EXACTLY the output order. Serialization uses
     /// the frozen `OrdinaryOwnPropertyKeys` order — build it through
-    /// [`jsonw_obj_in_key_order`] (or [`ordinary_own_property_keys`]), never
+    /// [`jsonw_obj_in_key_order`] (or [`canonical_key_order`]), never
     /// from raw insertion order.
     Obj(Vec<(String, Jsonw)>),
 }
 
 /// The engine's canonical JSON serialization: compact separators, the
 /// caller's key order, `undefined` dropping, and the frozen
-/// `QuoteJSONString` escape set (ECMA-262): `"` → `\"`, `\` → `\\`,
+/// `QuoteJSONString` escape set (plan B-20): `"` → `\"`, `\` → `\\`,
 /// `\b\t\n\f\r` short forms, other code units < 0x20 as lowercase `\u00xx`
 /// (lowercase hex); DEL (0x7f), U+2028/U+2029 and
-/// all other non-ASCII pass through RAW (Node-verified 2026-10-14, char-code
-/// dump). Lone surrogates would escape as `\udXXX` (well-formed
-/// stringify, ES2019) but are unreachable: a Rust `String` is valid Unicode.
+/// all other non-ASCII pass through RAW. Lone surrogates would escape as
+/// `\udXXX` but are unreachable: a Rust `String` is valid Unicode.
 pub fn jsonw(v: &Jsonw) -> String {
     let mut out = String::new();
     jsonw_into(v, &mut out);
@@ -178,7 +180,7 @@ fn jsonw_into(v: &Jsonw, out: &mut String) {
     }
 }
 
-/// The frozen string escape set (ECMA-262 `QuoteJSONString`), see
+/// The frozen string escape set (`QuoteJSONString`, plan B-20), see
 /// [`jsonw`].
 fn jsonw_escape(s: &str, out: &mut String) {
     out.push('"');
@@ -203,13 +205,13 @@ fn jsonw_escape(s: &str, out: &mut String) {
 
 /// Serialize a string-keyed map as a canonical object: the frozen key order
 /// applies BEFORE serialization (integer-like keys front, see
-/// [`ordinary_own_property_keys`]), so maps must rebuild through that
+/// [`canonical_key_order`]), so maps must rebuild through that
 /// order — raw insertion order would drift after `SET(x,"5",true)` + clone.
 /// The engine's aspects/attrs pairs and the JSONL log go through this.
 #[must_use]
 pub fn jsonw_obj_in_key_order(m: &indexmap::IndexMap<String, Jsonw>) -> Jsonw {
     let mut entries: Vec<(String, Jsonw)> = Vec::with_capacity(m.len());
-    for k in ordinary_own_property_keys(m) {
+    for k in canonical_key_order(m) {
         // every key came from m; the lookup cannot miss
         if let Some(v) = m.get(&k) {
             entries.push((k, v.clone()));
@@ -236,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_own_property_keys_front_integer_keys() {
+    fn canonical_key_order_front_integer_keys() {
         use indexmap::IndexMap;
         let mut m = IndexMap::new();
         m.insert("container".to_string(), 1);
@@ -245,21 +247,16 @@ mod tests {
         m.insert("0123".to_string(), 4);
         m.insert("12".to_string(), 5);
         // integer-like keys ascend to the front ("0","5","12"), the rest keep
-        // insertion order ("container","0123") — exactly the spread order
+        // insertion order ("container","0123") — exactly the clone order
         // pinned for `SET(x,"5",true)` then clone
         assert_eq!(
-            ordinary_own_property_keys(&m),
+            canonical_key_order(&m),
             ["0", "5", "12", "container", "0123"]
         );
         let cloned = clone_map_in_key_order(&m);
         let keys: Vec<String> = cloned.keys().cloned().collect();
         assert_eq!(keys, ["0", "5", "12", "container", "0123"]);
     }
-
-    // ---- Node cross-checks: every expectation below was generated
-    // ---- by a single `node -e` dump (Object.keys over V8 objects /
-    // ---- JSON.stringify) on 2026-10-14 and hard-coded here, so the suite
-    // ---- never depends on a runtime node.
 
     fn map_from(pairs: &[(&str, i64)]) -> indexmap::IndexMap<String, i64> {
         let mut m = indexmap::IndexMap::new();
@@ -271,8 +268,8 @@ mod tests {
 
     #[test]
     fn own_property_keys_matches_the_node_v8_dump() {
-        // insertion (container,5,0,0123,12) → node k_mixed
-        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+        // insertion (container,5,0,0123,12) — mixed shapes in one map
+        let got: Vec<String> = canonical_key_order(&map_from(&[
             ("container", 1),
             ("5", 2),
             ("0", 3),
@@ -280,35 +277,35 @@ mod tests {
             ("12", 5),
         ]));
         assert_eq!(got, ["0", "5", "12", "container", "0123"]);
-        // node k_big: 2^32-2 IS an integer index; 2^32-1 is a REGULAR
-        // property and stays in insertion order among the string keys
-        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+        // 2^32-2 IS integer-like; 2^32-1 is a REGULAR
+        // key and stays in insertion order among the string keys
+        let got: Vec<String> = canonical_key_order(&map_from(&[
             ("4294967294", 1),
             ("4294967295", 2),
             ("4294967293", 3),
             ("x", 4),
         ]));
         assert_eq!(got, ["4294967293", "4294967294", "4294967295", "x"]);
-        // node k_leading: "007" is not canonical — only "7" fronts
+        // "007" is not canonical — only "7" fronts
         let got: Vec<String> =
-            ordinary_own_property_keys(&map_from(&[("007", 1), ("7", 2)]));
+            canonical_key_order(&map_from(&[("007", 1), ("7", 2)]));
         assert_eq!(got, ["7", "007"]);
-        // node k_huge: > 2^32-2 never fronts, whatever its digits
-        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+        // > 2^32-2 never fronts, whatever its digits
+        let got: Vec<String> = canonical_key_order(&map_from(&[
             ("99999999999999999999", 1),
             ("3", 2),
         ]));
         assert_eq!(got, ["3", "99999999999999999999"]);
-        // node k_neg / k_exp: signs and exponents are not canonical numeric
+        // signs and exponents are not canonical numeric
         // strings
         let got: Vec<String> =
-            ordinary_own_property_keys(&map_from(&[("-1", 1), ("1", 2)]));
+            canonical_key_order(&map_from(&[("-1", 1), ("1", 2)]));
         assert_eq!(got, ["1", "-1"]);
         let got: Vec<String> =
-            ordinary_own_property_keys(&map_from(&[("1e2", 1), ("100", 2)]));
+            canonical_key_order(&map_from(&[("1e2", 1), ("100", 2)]));
         assert_eq!(got, ["100", "1e2"]);
-        // node k_spread: the SPREAD clone reorders (2,10 to the front) —
-        // clone_map_in_key_order is the spread twin
+        // the key-order clone reorders (2,10 to the front) —
+        // clone_map_in_key_order is that clone path
         let got: Vec<String> = clone_map_in_key_order(&map_from(&[
             ("a", 1),
             ("10", 2),
@@ -318,8 +315,8 @@ mod tests {
         .into_keys()
         .collect();
         assert_eq!(got, ["2", "10", "a", "b"]);
-        // node k_ten_nine: numeric ascending, not lexicographic
-        let got: Vec<String> = ordinary_own_property_keys(&map_from(&[
+        // numeric ascending, not lexicographic
+        let got: Vec<String> = canonical_key_order(&map_from(&[
             ("10", 1),
             ("9", 2),
             ("100", 3),
@@ -331,7 +328,7 @@ mod tests {
     #[test]
     fn jsonw_matches_the_node_json_stringify_dump() {
         use Jsonw::*;
-        // aspects-shaped: node j_plain
+        // aspects-shaped object
         assert_eq!(
             jsonw(&Obj(vec![
                 ("secret".into(), Int(3)),
@@ -339,7 +336,7 @@ mod tests {
             ])),
             r#"{"secret":3,"language":{"latin":2}}"#
         );
-        // attrs-shaped with integer-like keys: node j_intkeys — the key
+        // attrs-shaped with integer-like keys — the key
         // order is the CALLER's (built via jsonw_obj_in_key_order below)
         let mut attrs = indexmap::IndexMap::new();
         attrs.insert("container".to_string(), Str("villa".into()));
@@ -349,24 +346,24 @@ mod tests {
             jsonw(&jsonw_obj_in_key_order(&attrs)),
             r#"{"0":1,"5":true,"container":"villa"}"#
         );
-        // node j_ctrl: NUL/b/t/n/f/r short escapes, quote+backslash, other
-        // <0x20 as lowercase \u00xx — and DEL (0x7f) RAW at the end
+        // control characters: NUL/b/t/n/f/r short escapes, quote+backslash,
+        // other <0x20 as lowercase \u00xx — and DEL (0x7f) RAW at the end
         assert_eq!(
             jsonw(&Str("a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into())),
             "\"a\\u0000\\b\\t\\n\\f\\r\\\"\\\\\\u0001\\u000f\\u001f\u{7f}\""
         );
-        // node j_unicode: non-ASCII (incl. U+2028/U+2029) stays raw
+        // non-ASCII (incl. U+2028/U+2029) stays raw
         assert_eq!(
             jsonw(&Str("héllo → 世界 \u{2028}\u{2029} \u{1F600}".into())),
             "\"héllo → 世界 \u{2028}\u{2029} \u{1F600}\""
         );
-        // node j_neg / j_bigint_like: integer printing, no float machinery
+        // negative / 2^53-scale values: integer printing, no float machinery
         assert_eq!(jsonw(&Obj(vec![("v".into(), Int(-42))])), r#"{"v":-42}"#);
         assert_eq!(
             jsonw(&Obj(vec![("n".into(), Int(9_007_199_254_740_992))])),
             r#"{"n":9007199254740992}"#
         );
-        // node j_bool_arr / j_empty / j_nested_subkey
+        // arrays, the empty object, nested sub-keys
         assert_eq!(
             jsonw(&Arr(vec![Bool(true), Bool(false), Null, Int(0)])),
             "[true,false,null,0]"
@@ -379,7 +376,7 @@ mod tests {
             )])),
             r#"{"language":{"b.c":7,"a":1}}"#
         );
-        // undefined dropping: node j_undef_top / j_undef_obj / j_undef_arr
+        // undefined dropping: top level, object values, array items
         assert_eq!(jsonw(&Undefined), "undefined");
         assert_eq!(
             jsonw(&Obj(vec![

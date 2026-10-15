@@ -21,7 +21,7 @@ mod settle;
 #[path = "../../tests/common/reach_fuzz_lib.rs"]
 mod reach_fuzz_lib;
 
-/// `Number(str)` (ECMA-262) for the flag values — trim DSL whitespace,
+/// The canonical number grammar for the flag values — trim DSL whitespace,
 /// '' → 0, decimal/hex/±Infinity literals, anything else NaN. (A NaN feeds
 /// straight into the loop condition, which then never runs —
 /// replicated below by keeping the loop in f64.)
@@ -55,7 +55,7 @@ fn parse_canonical_number(s: &str) -> f64 {
     }
     // decimal: optional sign, digits with optional fraction and exponent —
     // anything else is NaN (str::parse would also accept "inf"/"nan", which
-    // `Number` rejects)
+    // the canonical grammar rejects)
     let mut body = t.as_str();
     if let Some(rest) = body.strip_prefix(['+', '-']) {
         body = rest;
@@ -69,9 +69,9 @@ fn parse_canonical_number(s: &str) -> f64 {
     }
 }
 
-/// The `Number → String` display (ECMA-262) for a flag-derived number — integers print
-/// bare, NaN prints
-/// "NaN" (the summary line embeds these verbatim).
+/// The canonical number display for a flag-derived number — integers print
+/// bare, non-finite values print
+/// "NaN"/"±Infinity" (the summary line embeds these verbatim).
 fn display_number(v: f64) -> String {
     if v.is_nan() {
         "NaN".to_string()

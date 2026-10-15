@@ -168,7 +168,7 @@ carries a `// NOTE` instead) and stay byte-still.
 | Q5 | FIXED (batch 1): duplicate declarations are a uniform load error in every section (entities, prototypes, templates, verbs, decks, endings); `ANA`/`ana` case-collide on the minted id `s_ana` and that collision is its own load error | `script.rs` |
 | Q6 | FIXED (batch 3): a BEGIN row whose sentence fails the format∘parse re-parse is a loud play/fold drift error naming the row, the sentence and the parse failure — it no longer silently opens no window | `engine.rs` / `fold.rs` |
 | Q7 | SPEC-PINNED (§9.41): a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved — spec behavior, not a defect | `engine.rs` |
-| Q8 | NO-FIX (verified): ECMAScript `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex keeps the explicit frozen class, the engine's frozen choice (the divergence is unreachable from bundled content and the fix has the widest regression surface) | `core/text.rs` `DSL_WS_CLASS` |
+| Q8 | NO-FIX (verified): the DSL `\s` class ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex keeps the explicit frozen class, the engine's frozen choice (the divergence is unreachable from bundled content and the fix has the widest regression surface) | `core/text.rs` `DSL_WS_CLASS` |
 | Q9 | IMPLEMENTATION NOTE: the `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing — the behavior itself is spec-pinned (§9.45, `1halfhour` is ONE token) | `lexer.rs` |
 | Q10 | FIXED (batch 3): quoted strings carry real escape semantics — `\n` is a newline, `\t` a tab, `\r`/`\b`/`\f`/`\v`/`\0` likewise, `\"`/`\\` as before, an unknown escape keeps its literal unit; a trailing backslash still throws unterminated | `lexer.rs` |
 | Q11 | FIXED (batch 2): bare `inspect` names the usage and lists the visible table — it never guesses the first card | `game.rs`, `bin/chorus.rs` |
@@ -182,9 +182,10 @@ carries a `// NOTE` instead) and stay byte-still.
 Suggestions that were rejected exactly because they would change behavior:
 worklist/event-driven reach fixpoints (the naive round-robin is the only known
 byte-identical schedule), load-time rejection of integer-like keys (use the
-JS `OrdinaryOwnPropertyKeys` key order instead), and merging the two
-deliberately different string/pair arg spellings. The JS-semantics
-conventions are KEPT as this engine's own frozen choices (plan B-18–B-21):
+canonical `OrdinaryOwnPropertyKeys` key order instead), and merging the two
+deliberately different string/pair arg spellings. Those surface conventions
+are KEPT as this engine's own frozen choices (plan B-18–B-21):
 the exact error-message wordings, `cmp_utf16` collation, the
-`OrdinaryOwnPropertyKeys` key order + `jsjson` escape set, and the
+`OrdinaryOwnPropertyKeys` key order + the canonical JSON escape set
+(`jsonw`), and the
 `cmp_ascii_ci` suggestion sort — each documented at its site.

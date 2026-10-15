@@ -44,12 +44,18 @@ Cultist Simulator\                                  version.txt = "2026.1.g.2"
           portals\ 1 file      7 portals             Mansus map transitions
           achievements\ 5 files  90                  (incl. DLC: dancer/exile/ghoul/priest achievements)
           cultures\ 7 lang dirs, settings\ 29, dicta\ 1
-        loc_de|es|fr|jp|ru|zh-hans\                  SAME LEVEL as core\; a 7-of-12 subdir SUBSET
-                                                     (no cultures/dicta/levers/portals/settings;
-                                                      8 core files absent, e.g. legacies.json);
-                                                     loc files are FULL entity copies — shared ids can
-                                                     differ beyond label/description (atStart, slot,
-                                                     achievement(s), comment(s))
+        loc_de|es|fr|jp|ru|zh-hans\                  SAME LEVEL as core\; a 6-dir LOCALIZATION layer; NOT a uniform subset.
+                                                     de/jp/ru/zh-hans: strict core subsets missing
+                                                     the same 20 files each (no cultures/dicta/levers/
+                                                     portals/settings; no legacies.json; also credits,
+                                                     tlg, versionnews, xperimental, z_levers, _debug,
+                                                     __debug, study_research). es/fr: NOT subsets —
+                                                     they ADD portals\, use suffixed names (-spa/-fre)
+                                                     and carry ~160 files core lacks (DLC content);
+                                                     167/168 files vs core 160. Loc entries are FULL
+                                                     entity copies that can differ beyond label/
+                                                     description AND can DROP functional fields (loc_de
+                                                     lockscaredge loses burnTo) — core is authoritative
 ```
 
 DLC content is **present in core**: `achievements_{dancer,exile,ghoul,priest}.json`,
@@ -57,7 +63,7 @@ DLC content is **present in core**: `achievements_{dancer,exile,ghoul,priest}.js
 
 Every file is `{"<entitytype>": [ {...}, ... ]}` in *lenient JSON*. Quirk census (all 160
 scanned): BOM in 9 files, unquoted keys in 3 (`decks/mansus.json`, `elements/_aspects_uq.json`,
-`recipes/talk_l_romance.json`), trailing commas in 50, and **raw newlines inside strings in
+`recipes/talk_l_romance.json`), trailing commas in 33, and **raw newlines inside strings in
 exactly 2 files** (`decks/mansus.json`, `elements/versionnews.json`) — json5 alone fails on
 those two; escape newlines first (see `loadlib.py`). Extract:
 
@@ -73,7 +79,7 @@ scp -r "12899@192.168.3.18:E:/programs/steam/steamapps/common/Cultist Simulator/
 |---|---|
 | `id, label, description, icon` | identity (label/description = copyrighted text) |
 | `aspects {id:int}` | the matching currency |
-| `slots [slot]` | slots that open when this card is placed in a verb (`id, actionid` — verb to open, `required{}` any-of, `forbidden{}`, `consumes`, `essential`, **`greedy`** — auto-grab, 108 uses) |
+| `slots [slot]` | slots that open when this card is placed in a verb (`id, actionid` — verb to open, `required{}` any-of, `forbidden{}`, `consumes`, `essential`, **`greedy`** — auto-grab; all 108 uses in the dataset sit in *recipe* slots, none in element slots) |
 | `xtriggers {eventName: recipeId}` | event→transform hooks fired *on* the card (element-only; see §3.3) |
 | `induces [{id:recipeId, chance:%}]` | chance to auto-run a recipe after any recipe finishes involving this card (element-only; 14 elements have it) |
 | `lifetime:int` / `decayTo:elementId` | seconds until decay/transform — **13 distinct values in data**: `{1:98, 10:2, 30:1, 59:1, 60:47, 90:7, 100:2, 120:31, 150:1, 180:35, 240:1, 300:19, 600:12}`; absent = permanent |
@@ -86,7 +92,10 @@ isAspect elements (+36 in `_aspects_uq.json`, +4 in `vault_locks.json`). Only **
 10%, grail→`grailinduction` 5%, moth→`mothinduction` 10% (forge/edge/winter/knock have
 none). `dreadful`→dreadinduction 30%, `fascinating`→fascinationinduction 30%, and
 `job`/`ingredient` induce `{needs, 100%}` — that's what hooks every work/consumable into
-the Time-Passes expense cycle. All 8 principles carry `sort:"_p.0"`.
+the Time-Passes expense cycle. The full induces-carrier set is **14 elements**, not 8:
+`dance` (→`heartinduction` 10% + `mothglimmeringinduction` 10%), `secret`
+(→`secret.induction` 30%) and four `poison.*` elements (30–70%) also induce; the
+mappings listed above are individually correct. All 8 principles carry `sort:"_p.0"`.
 
 The entire Health/Fatigue/Injury machine is *one element + xtriggers* (in
 `abilities.json`; the doc previously quoted an abridged version):
@@ -114,7 +123,7 @@ Other verbatim examples: `{"id":"notoriety","label":"Notoriety","aspects":{"repu
 
 One big input slot whose `required` is **any-of** (a card matching any listed aspect opens
 the station). `time` has a slot with no `required` key at all; `portal.mansus` is
-`{id, label, icon:"map"}` — no slot ("icon-only").
+`{id, label, description, icon:"map"}` — no slot ("icon-only").
 
 ### recipe (2,084 — the rulebook)
 
@@ -127,8 +136,8 @@ the station). `time` has a slot with no `required` key at all; `portal.mansus` i
 | `effects {id:±int}` | applied at completion: `+` create, `−` consume (`funds:-999` = destroy all in the situation) |
 | `aspects {id:int}` | hidden aspects added to the situation *while running* — feeds xtriggers on contained cards (e.g. `{"fatiguing":1}` decays health) |
 | `slots [slot]` | 238 recipes have one; opens only after the recipe starts (rite offering slots, expedition slots) |
-| `linked [{id, chance:%, additional?, expulsion?{filter,limit}, challenges?}]` | chain of what runs *after* completion; each entry rolled by its chance (absent = 100; 1,473 linked entries). 27 entries carry `expulsion` (removes a filtered card — expedition casualties). 8 linked entries are full inline recipe definitions |
-| `alt [ …same shape… ]` | alternatives considered in addition; first requirements-match wins (748 entries, 3 inline) |
+| `linked [{id, chance:%, additional?, challenges?}]` | chain of what runs *after* completion; each entry rolled by its chance (absent = 100; 1,473 linked entries). **No linked entry carries `expulsion` — it lives on `alt` entries** (27 of them, expedition casualties; see next row). 21 linked entries carry a `challenges` map (the only content uses of the ChallengeArbiter — all `"base"`, Exile long-recipe files). 8 linked entries are full inline recipe definitions |
+| `alt [ …same shape… ]` | alternatives considered in addition; first requirements-match wins (748 entries, 3 inline). 27 alt entries carry `expulsion {filter, limit}` (removes a filtered card — expedition casualties) |
 | `mutations [{filter{}, mutate, level, additive}]` | rewrite aspects on cards matching the filter (164 recipes) |
 | `deckeffects {deckId:count}` (74) / `internaldeck {spec[], draws, resetonexhaustion, defaultcard}` (37) | draw cards onto the table |
 | `extantreqs {elementId:int}` (42 recipes) / `tablereqs` (18) | existence checks anywhere-in-play / on-table only (not consumed; negatives forbid) |
@@ -137,26 +146,33 @@ the station). `time` has a slot with no `required` key at all; `portal.mansus` i
 | `craftable` / `hintonly` | player-startable (573 true + 1 string `"true"`; 489 false; 1,021 absent) vs grey suggestion (169 hintonly) |
 | `maxexecutions:int` (26), `inductions`, `portaleffect` (6: wood/whitedoor/stagdoor/spiderdoor/peacockdoor×2), `burnimage`, `achievements[]`, `signalimportantloop` (exactly 1: `needs`) | misc |
 
-`chances`/`challenges`: core content **hard-codes** tier chances in `linked` entries; the
-`challenges {aspect:"base"|"advanced"}` mechanism exists in the engine
-(`ChallengeArbiter`) but **0 core recipes use it**. IL-verified tables (raw aspect total
-in, integer percent out, inclusive thresholds; result = **max** across challenge entries):
+`chances`/`challenges`: expedition tier chances are **hard-coded** in `linked` entries
+(90/70/30); the `challenges {aspect:"base"|"advanced"}` mechanism exists in the engine
+(`ChallengeArbiter`) and IS used — but only at the linked-entry level: 21 linked entries,
+all in `recipes/long_recipes_attacks.json` + `recipes/long_recipes.json` (Exile
+long-recipe content), every one `"base"` (the top-level `challenges` key: 0 uses).
+IL-verified tables (three independent decodes; raw aspect total in, integer percent out,
+inclusive thresholds; result = **max** across challenge entries):
 
 | aspect total | base | advanced |
 |---|---|---|
 | ≤ 0 | 0% | 0% |
-| 1–4 / 5–9 / 10–14 | 30% / 70% / 90% | 10% / 30% / 70% |
+| 1–4 | 30% | 0% |
+| 5–9 | 70% | 10% |
+| 10–14 | 90% | 30% |
 | 15–19 | 90% | 70% |
 | ≥ 20 | 90% | 90% |
 
 (An earlier IL pass in this doc claimed base 3–9→70 / 1–2→30 — **wrong**; the
-re-decode agrees with the wiki's "1→30, 5→70, 10→90".)
+re-decode agrees with the wiki's "1→30, 5→70, 10→90". The 2026-10-15 third decode
+(§9) confirmed both tables — this table's advanced column had previously kept stale
+one-bucket-shifted values that contradicted §8 correction 1's own text.)
 
 ### deck (67)
 
 `spec:[elementIds…]` (30/67 decks repeat ids to weight the draw), `resetonexhaustion`
-(57), `defaultcard` (28; fillers incl. fleeting, rumour, contentment), `drawmessages`
-(15), `label`/`description` (51). Key decks: `seasonevents`, `hunters`,
+(key on 57: 49 true, 8 false), `defaultcard` (28; fillers incl. fleeting, rumour,
+contentment), `drawmessages` (15), `label`/`description` (51). Key decks: `seasonevents`, `hunters`,
 `acquaintances`, `hirelings`, `scholarpatrons`, `stagriddles`, `schemeevents`,
 `talkevents`, `exploreevents`, **6** vault-region decks (`vaultscontinent`,
 `vaultseveningisles`, `vaultslandbeyondforest`, `vaultsloneandlevelsands`,
@@ -172,7 +188,8 @@ door decks.
 - **legacy (14 + 1 orphan):** `effects {elementId:count}` = starting inventory of the
   next run, `fromending` (lowercase; aspirant = `"default"`; all 15 carry it),
   `startingverbid:"work"` on all 14 loadable ones, `statusbarelements` (aspirant only),
-  `availableWithoutEndingMatch` (14).
+  `availableWithoutEndingMatch` (key on 14, but true only on 4: aspirant, detective,
+  brightyoungthing, physician).
 - **lever (8):** score your end-of-run cards against `weights{aspect:score}` — e.g.
   `lastfollower`: `{follower:1000, hireling:-1000, summoned:-1000, disciple:10,
   exalted:20, romanticinterest:99}`, `requiredScore` 1000. `z_levers.json` binds each
@@ -206,8 +223,9 @@ door decks.
    vitality, contentment, restlessness]`. Mansus: `dreamenterwood {waywood:1,passion:1}`
    (portaleffect wood) → draw door deck → `waywhite` → `dreamenterwhite
    {waywhite:1,health:1}` (portaleffect whitedoor) → stag-door riddle cards
-   (`waystagbefore_1..5`, answered by `waystag_after`) → Spider → Peacock → ascension
-   lore. Expeditions: obstacle recipe with an interleaved `alt` ladder
+   (`waystagbefore_1..5`, answered by recipes `dream_answerstagriddle_1..5`, which grant
+   the `waystag_after` element; `dreamenterstag` then requires `{waystag_after:1,
+   reason:1}`) → Spider → Peacock → ascension lore. Expeditions: obstacle recipe with an interleaved `alt` ladder
    `[highknock{knock:10}, highedge{edge:10}, midknock{knock:5}, midedge{edge:5},
    lowknock{knock:1}, lowedge{edge:1}]`; each tier's `linked` hard-codes
    `[{success, chance 90/70/30}, {failure, chance 100}]` (high/mid/low); both outcomes
@@ -222,13 +240,17 @@ door decks.
    `[{summoningmasteryregained, 70}, {summoningescaped, 100}]`. Victory: desire ladders
    ascend via recipe effects (a→b) and `xtriggers {ascend:next}` (c→e); the craftable
    trigger `minorlanternvictory_trigger {ritual:1, ascensionenlightenmentf:1,
-   lantern:36}` → `minorlanternvictory` (`ending:"minorlanternvictory"`) wins the game —
+   lantern:36}` → `minorlanternvictory_overture`, whose linked branches three ways
+   (`minorlanternvictory`, `minorlanternvictorywithrisen`, `belovedfarewell`; the first
+   fires `ending:"minorlanternvictory"`) wins the game —
    note `lantern:36` matches the wiki's "magnitude 36" final-rite rule.
 5. **Seasons = the pressure system.** `needs` (actionid time, warmup 60, the only
    `signalimportantloop` recipe) drains its greedy Expenses slot, then `linked` →
    `discardseason` (`effects {season:-1, funds:-999}` — sweeps whatever Funds the
    greedy slot grabbed) → `drawseason {deckeffects {seasonevents:1}}` → back to `needs`.
-   The fan-out is **`needs`' additional-alt entries gated on the drawn season card**
+   The fan-out is **`needs`' nine `additional:true` alt entries** (forlornbloodsickness at
+   70%, then sickness, pleasantday, suspicion, ambition, despairrisklink, visionsrisklink,
+   starvation, rosenext), each target recipe gated on the drawn season card
    (season cards themselves have no xtriggers/induces; all are `lifetime:1` instant
    markers, 98 elements at lifetime 1 incl. `strategy.prep`): **Despair**
    (`despairrisklink` → `despairrisk` with a greedy `{inducesdespair:1}` slot grabbing
@@ -238,7 +260,11 @@ door decks.
    `visionsending`), **Sickness** (runs `aspects {fallsick:1}` so health xtriggers into
    affliction; no health/fatigue → `deathofthebody`), **Suspicion** (`linked
    [suspiciongrabreputation 100, suspiciontrycreatehunter 70]`), **Ambitions** (the
-   ascension step — see §5), Silence, Ardours.
+   ascension step — see §5), Serenity (`pleasantday`, gated `seasonserenities:1`),
+   Ardours (`rosenext`). **No Silence entry** — a `seasonsilence` element exists but is
+   wired nowhere in `needs`; gating lives on each target recipe's requirements (e.g.
+   `despairrisklink` needs `seasondespair:1`, `starvation` needs `funds:-1`), not on
+   the alt entries.
 6. **State markers.** `unique:true` (373 elements), `uniquenessgroup` (36 groups),
    instant markers at `lifetime:1`, Notoriety decays at 300, Dread at 180, influence
    chains at 60 (`influencemothg(60)→influencemothe→influencemothc→influencemoth→
@@ -286,7 +312,9 @@ door decks.
   Dread; expeditions/auctions/cult loot; Apostle jobs → Funds 7.
 - **Rites:** the rite used doesn't affect the ritual — only which component types feed
   the Invocation/Offering slots; the ritual is picked by total aspect pool; **any Knock
-  in the pool disqualifies everything but summoning**. Summons are temporary — ordinary
+  in the pool disqualifies everything but summoning** — and this is data-visible: all
+  25 non-summoning rite-situation recipes carry `knock:-1` (13 `arcane_*` lore-crafting,
+  12 `ritehinthas*`), while summons require knock ≥ 2. Summons are temporary — ordinary
   spirits 180 s in data (wiki agrees; only the two Risen last 60 s, and "Risen" is not
   in core JSON — see §3.6); dismissal = Reason (safe) or Passion (gamble).
   Transformation-rite failure rates (per wiki, quoting game files): Grand 10% / Major
@@ -401,9 +429,15 @@ in script format is not realistic. Two viable scopes:
 
 ## 7. Artifacts
 
-- Extracted content (working copy, not in repo): `/tmp/cs-re/core/` (160 JSONs) +
-  `loadlib.py` (json5 loader with newline repair) + analysis outputs (`analysis_*.txt`,
-  `samples.json`) + the two game DLLs for further IL reads.
+- Extracted content (working copy, not in repo). **Durable local copy:
+  `/Users/amias/Projects/cs-re/`** (2026-10-15: `core/` 160 JSONs byte-verified
+  per-file against the install over ssh — zero size mismatches — and all 160 parse
+  via `loadlib.py`; entity counts match §2, including the `legcies` orphan; both game
+  DLLs included). The 6 `loc/` dirs (20,646,951 bytes) were archived there the same
+  day — reference only; core is authoritative (see §9-8). The original `/tmp/cs-re/`
+  is disposable scratch. Contents:
+  `core/` + `loadlib.py` (json5 loader with newline repair) + analysis outputs
+  (`analysis_*.txt`, `samples.json`) + the two game DLLs for further IL reads.
 - Verification tooling left by the audit (§8): `/tmp/cs-verify2..4/` (JSON census and
   IL-decoder scripts; `/tmp/cs-verify4/ildasm.py` is a reusable hand-written IL reader).
 - Small engine bug found while surveying: `src/engine.ts:436-443` `toMinutes` (used for
@@ -449,3 +483,45 @@ Remaining unknowns (documented as unknown): the multi-match recipe tie-break (en
 code, not in data); season rotation order; where "Risen" content lives (likely DLC);
 UI "sec"/"min" label strings (not in either DLL — localization assets); Exile's exact
 Reckoner curve (wiki Trace page vs data, DLC not installed).
+
+---
+
+## 9. Re-verification (2026-10-15) — four independent checkers
+
+Four subagents re-derived §1–§5 claims from the durable copy
+(`/Users/amias/Projects/cs-re/core/`); one also re-decoded the IL with a fresh
+decoder, one audited the remote install over ssh. All corrections are applied above;
+the headline outcomes:
+
+1. **Advanced challenge table fixed** — the §2 table had kept stale one-bucket-shifted
+   values that contradicted §8 correction 1's own text. Third decode confirms:
+   advanced ≤4→0 / 5–9→10 / 10–14→30 / 15–19→70 / ≥20→90. Base table and the
+   max-across-entries rule reconfirmed, as were heartbeat 0.1 s and the speed
+   multipliers.
+2. **`expulsion` lives on `alt`, not `linked`** — 0 linked entries carry it; the 27
+   expulsion entries are alt entries (expedition casualties).
+3. **`challenges` IS used** — 21 linked entries (Exile long-recipe files, all
+   `"base"`); the old "0 core recipes use it" holds only for the top-level key.
+4. **`greedy` is recipe-only** — all 108 uses sit in recipe slots, 0 in element slots.
+5. **induces carriers are 14, not 8** — `dance`, `secret` and four `poison.*` elements
+   were missing from the earlier inventory.
+6. **No Silence in the season fan-out** — `needs` has exactly nine `additional` alts
+   (forlornbloodsickness 70%, sickness, pleasantday, suspicion, ambition,
+   despairrisklink, visionsrisklink, starvation, rosenext); `seasonsilence` exists but
+   is wired nowhere.
+7. **Trailing-comma census: 33 files, not 50** (BOM 9 / unquoted keys 3 / raw
+   newlines 2 — all reconfirmed).
+8. **loc dirs: es/fr are not core subsets** — they add `portals\`, use suffixed
+   filenames and carry ~160 DLC files core lacks; de/jp/ru/zh-hans each lack the same
+   20 core files. Loc copies can DROP functional fields (loc_de `lockscaredge` loses
+   `burnTo`); no loc copy of versionnews.json exists.
+9. **Knock disqualification is data-visible** — 25 non-summoning rite-situation
+   recipes carry `knock:-1`; summons require knock ≥ 2.
+10. Everything else reconfirmed: the full §2 census (2084 recipes / 1566 elements /
+    67 decks / 48 endings / 14+1 legacies / 8 levers / 7 portals / 90 achievements,
+    warmup and lifetime histograms, craftable/hintonly splits, 791 requirement keys
+    with the 592/199 split, 596 negatives, linked 1473 with 8 inline, alt 748 with 3
+    inline), every §3 chain (needs cycle, despair/visions, dream router, full Mansus
+    ladder, expedition alt ladder with 90/70/30 and the casualty expulsion, rite
+    chain, lantern-36 trigger), the exemplar entities verbatim, version.txt, and the
+    7 DLC files in core.

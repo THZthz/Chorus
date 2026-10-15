@@ -345,8 +345,8 @@ fn table_from(defs: &[(String, Vec<String>, String)]) -> FnTable {
 /// dice.rs `script_seed_error` precedent). The compile side must inline
 /// exactly these strings at its throw sites.
 fn content_pass3_guards(table: &FnTable) -> Result<()> {
-    // IndexSet: pass-3 iterates each body's
-    // `new Set<string>()` in INSERTION order — the first undeclared callee
+    // IndexSet: pass-3 iterates each body's call set
+    // in INSERTION order — the first undeclared callee
     // and the first cycle found depend on it.
     let mut calls_of: IndexMap<String, IndexSet<String>> = IndexMap::new();
     for tpl in table.by_name.values() {

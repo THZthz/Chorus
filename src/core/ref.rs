@@ -18,8 +18,8 @@ use crate::error::{ChorusError, Result};
 ///
 /// The serde shape is the JSONL log surface: internally tagged with tag
 /// `form`, and the NAME variant's field order is `kind` then `name` —
-/// `kind` omitted when absent exactly like
-/// `JSON.stringify` dropping `undefined`. Never changes wire order.
+/// `kind` omitted when absent per the canonical undefined-dropping rule.
+/// Never changes wire order.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "form")]
 pub enum Ref {

@@ -34,7 +34,7 @@ use crate::core::roles::Role;
 use crate::core::types::{
     add_entity, new_state, relation_key, AttrValue, Attrs, Aspects, Entity, Relation, State,
 };
-use crate::core::jsonw::ordinary_own_property_keys;
+use crate::core::jsonw::canonical_key_order;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::{grp_opt, grp_text, grp0_start, static_regex};
 use crate::core::text::{is_dsl_ws_char, dsl_trim, DSL_NON_WS_CLASS, DSL_WS_CLASS};
@@ -684,9 +684,9 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     // §9.14: a name is one card — declared both ways, every SPAWN of the
     // prototype would collide with the living entity (§9.19); fail at load.
     // The canonical order fronts integer-like keys, so the walk goes
-    // through `ordinary_own_property_keys` (prototype names are
+    // through `canonical_key_order` (prototype names are
     // `\S+`, so "5 is idea" is a real key shape here).
-    for name in ordinary_own_property_keys(&prototypes) {
+    for name in canonical_key_order(&prototypes) {
         if entity_names.contains(&name) {
             return Err(ChorusError::new(format!(
                 "'{name}' is declared both as an entity and a prototype — spawns of it could never mint"

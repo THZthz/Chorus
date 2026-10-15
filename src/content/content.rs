@@ -22,7 +22,7 @@ use crate::core::query::{parse_query, Query};
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::core::types::{Aspects, Attrs};
-use crate::core::jsonw::{clone_map_in_key_order, ordinary_own_property_keys};
+use crate::core::jsonw::{clone_map_in_key_order, canonical_key_order};
 use crate::core::regex_util::static_regex;
 use crate::core::text::dsl_trim;
 use crate::error::{ChorusError, Result};
@@ -179,7 +179,7 @@ pub struct DeckRaw {
 
 /// The raw content tree. Every optional
 /// collection becomes `Option`; the maps are IndexMaps (insertion order IS
-/// observable: compile-time `Object.entries` walks and the `.recipe<i>`
+/// observable: compile-time canonical key-order walks and the `.recipe<i>`
 /// minted ids).
 #[derive(Debug, Clone, Default)]
 pub struct ContentRaw {
@@ -336,13 +336,12 @@ pub struct DeclaredEntity {
 // compile_content
 // ---------------------------------------------------------------------------
 
-/// The compile-side `Object.entries`
-/// iteration points: the canonical order fronts integer-like
-/// keys, so every one of these walks goes through
-/// [`ordinary_own_property_keys`]. Do NOT reject integer-like key names —
-/// reproduce the key order.
+/// The compile-side key-order walks: the canonical order fronts integer-like
+/// keys, so every one of these goes through
+/// [`entries_in_key_order`]. Integer-like key names are legal —
+/// reproduce the order, do not reject them.
 fn entries_in_key_order<V>(m: &IndexMap<String, V>) -> Vec<(&str, &V)> {
-    let keys = ordinary_own_property_keys(m);
+    let keys = canonical_key_order(m);
     let mut out = Vec::with_capacity(keys.len());
     for k in &keys {
         // re-borrow both sides from m so the returned refs outlive `keys`
@@ -582,7 +581,6 @@ pub fn compile_content(
         }
     }
     // canonical key order via the key-order clone
-    // (`new Map(Object.entries(...))` semantics)
     let prototypes = clone_map_in_key_order(raw.prototypes.as_ref().unwrap_or(&IndexMap::new()));
     let mut templates = IndexMap::new();
     for (name, tpl) in entries_in_key_order(raw.templates.as_ref().unwrap_or(&IndexMap::new())) {

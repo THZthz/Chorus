@@ -26,7 +26,7 @@ use std::sync::mpsc;
 
 use reach_scale_lib::{build_cs_scale, census, summarize};
 
-/// Flag numbers parse with `Number` (ECMA-262) semantics — the flags accept plain
+/// Flag numbers parse to f64 (garbage is NaN) — the flags accept plain
 /// integers (the CLI's own documented interface).
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -35,7 +35,7 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 }
 
 fn as_num(v: Option<String>, dflt: f64) -> f64 {
-    // `Number()` semantics: parse to f64 or NaN; the default applies
+    // parse to f64 or NaN; the default applies
     // only when the flag is absent
     match v {
         Some(s) => s.trim().parse::<f64>().unwrap_or(f64::NAN),

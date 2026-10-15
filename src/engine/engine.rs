@@ -31,7 +31,7 @@ use crate::core::types::{
     release_name_entry, AspectEntry, AspectVal, Aspects, AttrValue, Attrs, Entity, Ending, OpenWindow, Relation, State,
 };
 use crate::core::jsonw::{
-    clone_map_in_key_order, jsonw, jsonw_obj_in_key_order, ordinary_own_property_keys, Jsonw,
+    clone_map_in_key_order, jsonw, jsonw_obj_in_key_order, canonical_key_order, Jsonw,
 };
 use crate::error::{ChorusError, Result};
 
@@ -1172,9 +1172,9 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 name = format!("{name}_{}", obj.name);
             }
             if let Some(rules) = &derive.aspects {
-                // `Object.entries(derive.aspects)` — the
-                // The canonical key order is observable (aspects insertion order)
-                for key in ordinary_own_property_keys(rules) {
+                // the derive.aspects walk is a canonical key-order point —
+                // the order is observable (aspects insertion order)
+                for key in canonical_key_order(rules) {
                     let rule = &rules[&key];
                     if let Some(base) = aspect_get(obj, &rule.from_object_aspect) {
                         // saturating subtraction at the i64 bounds — the
@@ -1269,8 +1269,8 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     }
     if let Some(AttrValue::Str(json)) = attrs_arg {
         let materialized = attrs_from_json(json)?;
-        // Object.assign keeps existing keys' slots and
-        // appends new ones in the source's order (IndexMap::insert matches);
+        // the merge keeps existing keys' slots and appends new ones in the
+        // source's order (IndexMap::insert matches);
         // the container survives only if the pair carried one
         let had_container = materialized.contains_key("container");
         for (k, v) in materialized {
@@ -1939,12 +1939,11 @@ fn expand(args: &[Arg], ctx: &ApplyCtx) -> Vec<String> {
     out
 }
 
-/// The aspects clone: the top-level
-/// `Object.entries` AND each sub-map spread are canonical key-order points
-/// (`{ ...v }` fronts integer-like keys).
+/// The aspects clone: the top-level walk AND each sub-map clone are
+/// canonical key-order points (the canonical order fronts integer-like keys).
 fn clone_aspects(a: &Aspects) -> Aspects {
     let mut out = Aspects::new();
-    for k in ordinary_own_property_keys(a) {
+    for k in canonical_key_order(a) {
         if let Some(v) = a.get(&k) {
             out.insert(
                 k,
@@ -2650,8 +2649,8 @@ fn checked_step(a: i64, b: i64, what: &str) -> i64 {
     }
 }
 
-/// `JSON.stringify(aspects)`. Plain JSON.stringify
-/// applies the canonical key order (OrdinaryOwnPropertyKeys), so the map goes
+/// The aspects map's canonical JSON form. Serialization applies the
+/// canonical key order (`OrdinaryOwnPropertyKeys`), so the map goes
 /// through [`jsonw_obj_in_key_order`].
 /// pub(crate): the reach analyzer re-uses this exact frozen format for its
 /// provenance/demand chain lines.
@@ -2673,7 +2672,7 @@ pub(crate) fn aspects_to_json(a: &Aspects) -> String {
     jsonw(&jsonw_obj_in_key_order(&m))
 }
 
-/// `JSON.stringify(attrs)` (same canonical key-order rule).
+/// The attrs map's canonical JSON form (same canonical key-order rule).
 fn attrs_to_json(a: &Attrs) -> String {
     let mut m: IndexMap<String, Jsonw> = IndexMap::new();
     for (k, v) in a {
@@ -2689,7 +2688,7 @@ fn attrs_to_json(a: &Attrs) -> String {
     jsonw(&jsonw_obj_in_key_order(&m))
 }
 
-/// `JSON.parse(pair.v) as Aspects`. Values are
+/// Parse an aspects JSON pair value into `Aspects`. Values are
 /// numbers or one-level sub-maps of numbers (the Q13 model).
 fn aspects_from_json(s: &str) -> Result<Aspects> {
     let v: serde_json::Value = serde_json::from_str(s)
@@ -2735,7 +2734,7 @@ fn json_to_aspect_val(v: &serde_json::Value) -> Result<AspectVal> {
 /// Parse an attrs JSON pair: a flat object whose values are
 /// strings/numbers/booleans.
 /// Key order follows the document (serde_json
-/// preserve_order), which is what `Object.assign` appends in.
+/// preserve_order) — the order new keys append in.
 fn attrs_from_json(s: &str) -> Result<Attrs> {
     let v: serde_json::Value = serde_json::from_str(s)
         .map_err(|e| ChorusError::new(format!("bad attrs pair: {e}")))?;
@@ -3303,14 +3302,14 @@ mod smoke {
 
     #[test]
     fn records_serialize_in_the_jsonl_wire_field_order() {
-        // the JSONL wire order is the pinned object-literal order.
+        // the JSONL wire order is the pinned record field order.
         let (dict, content) = rig(
             vec![("PACE", pace(30, &["NARRATE \"d.\""]))],
             |_| {},
         );
         let r = run(&content, &dict, seed_state(), "0:0 @ ANA PACE", 1);
         let line = serde_json::to_string(&r.records[0]).unwrap();
-        // hand-written JSON.stringify shape for a BEGIN row
+        // hand-written canonical JSON shape for a BEGIN row
         let expected = concat!(
             r#"{"id":1,"kind":"action","trigger":null,"tGame":"0:0","tReal":null,"advancedMin":30,"startMin":0,"#,
             r#""window":null,"actors":[{"form":"name","name":"ANA"}],"verb":"PACE","objects":[],"instruments":[],"#,

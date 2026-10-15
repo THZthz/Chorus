@@ -570,10 +570,9 @@ impl Game {
                             && slot.query.as_ref().is_none_or(|q| match_query(e, q))
                     })
                     .collect();
-                // rank ascending, then name — the frozen comparator
-                // `rank(a) - rank(b) || a.name.localeCompare(b.name)`;
-                // the localeCompare tail is §3.21's frozen approximation
-                // (cmp_ascii_ci — ASCII-lowercase then byte order)
+                // rank ascending, then name — the frozen comparator:
+                // rank ascending, ties broken by `cmp_ascii_ci`
+                // (§3.21's frozen name order — ASCII-lowercase then byte order)
                 let mut pool = pool;
                 pool.sort_by(|a, b| {
                     rank(a)

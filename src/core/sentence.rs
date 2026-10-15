@@ -91,7 +91,7 @@ impl Sign {
 ///
 /// Wire order (JSONL): `t` comes first and then the payload
 /// fields in the declaration order below — `param`'s `sign` omitted when
-/// absent, exactly like `JSON.stringify` dropping `undefined`. The log only
+/// absent (the canonical undefined-dropping rule). The log only
 /// ever carries the ref/role/int/delta/str/bool/dur/key/into/asId/pair
 /// shapes (vexpr/param are authored-only and expand/roll away), but the
 /// serde impl covers every variant so the model has one representation.
@@ -191,8 +191,8 @@ pub struct IfArm {
 /// One outcome. The serde field order matches the only
 /// construction shape that can reach the log — `{ op, args }`;
 /// `arms`/`fallback`/`call` are the authored-only
-/// IF/FN extras and serialize as absent exactly like `JSON.stringify`
-/// dropping `undefined`.
+/// IF/FN extras and serialize as absent per the canonical
+/// undefined-dropping rule.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Outcome {
     pub op: String,

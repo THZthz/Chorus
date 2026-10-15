@@ -110,7 +110,7 @@ pub fn settle_step(
 }
 
 /// the BEGIN row of a settled turn — the record the pre-v0.5 tests indexed as
-/// records[0] (under v0.5 a turn may open with a bridge wait or close with a
+/// records\[0\] (under v0.5 a turn may open with a bridge wait or close with a
 /// completion; the begin row is its spine). Falls back to the last record.
 #[must_use]
 pub fn act(r: &ExecResult) -> Option<&ActionRecord> {

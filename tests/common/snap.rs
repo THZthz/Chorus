@@ -3,7 +3,7 @@
 //! engine tests, endings tests and nightjar-explorer tests all compare through
 //! this. New State fields land here with the state itself.
 //!
-//! Frozen surface: the output is the exact JSON image of `JSON.stringify({...})` —
+//! Frozen surface: the output is the exact canonical JSON image of the state —
 //! - key order: `ents, rels, byName, now, rng, decks, fired, ended, windows`
 //!   (insertion order; no integer-like keys, so
 //!   OrdinaryOwnPropertyKeys agrees);
@@ -19,8 +19,8 @@
 //!   [`window_json`].
 //!
 //! Object-valued fields serialized as plain objects (`aspects`,
-//! `attrs`, window `refs`) go through `ordinary_own_property_keys`, which is
-//! exactly `JSON.stringify`'s walk order — idempotent on maps that were
+//! `attrs`, window `refs`) walk [`canonical_key_order`] order —
+//! idempotent on maps that were
 //! cloned through the key-order clone paths, exact even when they were not.
 
 //! (Shared test lib: every helper is the common discipline, not per-file
@@ -29,7 +29,7 @@
 #![allow(dead_code)]
 
 use chorus::core::types::{AspectVal, AttrValue, Aspects, Attrs, Entity, OpenWindow, Relation, State};
-use chorus::core::jsonw::ordinary_own_property_keys;
+use chorus::core::jsonw::canonical_key_order;
 use chorus::core::text::cmp_utf16;
 
 /// The full-state JSON image — see the module doc for the frozen surface.
@@ -146,11 +146,11 @@ fn window_json(w: &OpenWindow) -> serde_json::Value {
     })
 }
 
-/// `JSON.stringify` of an aspects map: sub-maps one level deep (Q13's flat
-/// model), every level walked in OrdinaryOwnPropertyKeys order.
+/// The canonical JSON image of an aspects map: sub-maps one level deep
+/// (Q13's flat model), every level walked in `OrdinaryOwnPropertyKeys` order.
 fn aspects_json(a: &Aspects) -> serde_json::Value {
     let mut out = serde_json::Map::new();
-    for k in ordinary_own_property_keys(a) {
+    for k in canonical_key_order(a) {
         let Some(v) = a.get(&k) else {
             continue;
         };
@@ -161,7 +161,7 @@ fn aspects_json(a: &Aspects) -> serde_json::Value {
                 AspectVal::Sub(sub) => {
                     // sub-map values are plain ints (the Q13 flat model)
                     let mut m = serde_json::Map::new();
-                    for k2 in ordinary_own_property_keys(sub) {
+                    for k2 in canonical_key_order(sub) {
                         if let Some(n2) = sub.get(&k2) {
                             m.insert(k2, serde_json::json!(n2));
                         }
@@ -177,7 +177,7 @@ fn aspects_json(a: &Aspects) -> serde_json::Value {
 /// The attrs map's JSON image (string, number, or boolean values).
 fn attrs_json(a: &Attrs) -> serde_json::Value {
     let mut out = serde_json::Map::new();
-    for k in ordinary_own_property_keys(a) {
+    for k in canonical_key_order(a) {
         let Some(v) = a.get(&k) else {
             continue;
         };

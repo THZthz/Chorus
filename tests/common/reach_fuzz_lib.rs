@@ -1,14 +1,13 @@
-//! Differential-fuzz machinery — ts: test/reach-fuzz-lib.ts (W4 落位, plan
-//! §2.2 / PR3-03). genScenario + the LCG + the frozen action selector, line by
-//! line against the TS original. The selector and its caller discipline are
-//! the fact-frozen surface of review-1 appendix 4(a): the TS side ships its
-//! source as rust/tests/goldens/action-selector.ts and the two must stay
-//! behavior-identical draw for draw.
+//! Differential-fuzz machinery (W4 落位, plan §2.2 / PR3-03). gen_scenario + the
+//! LCG + the frozen action selector. The selector and its caller discipline
+//! are the fact-frozen surface of review-1 appendix 4(a): they must stay
+//! bit-identical to the golden drivers, draw for draw — that identity is the
+//! precondition for replaying the fuzz goldens at all.
 //!
-//! `gen_scenario` consumes the SAME rng draw order as the TS (every
-//! short-circuit and eager template-array evaluation is deliberate — see the
-//! inline `ts:` anchors), because the golden corpus is only reproducible while
-//! scenario construction is draw-for-draw identical.
+//! `gen_scenario` keeps the frozen rng draw order (every short-circuit and
+//! evaluation-order choice is deliberate — see the inline draw-order notes),
+//! because the golden corpus is only reproducible while scenario construction
+//! is draw-for-draw identical.
 //!
 //! (Shared test lib discipline: the `allow` lives in this one place.)
 #![allow(dead_code)]
@@ -33,32 +32,32 @@ use chorus::js::{Lcg, Result};
 
 use super::settle::settle_step;
 
-// ---------- deterministic RNG (explorer-lib's LCG discipline) ----------
+// ---------- deterministic RNG (the frozen LCG discipline) ----------
 
-/// ts: reach-fuzz-lib.ts:35-38 — `Lcg::new` XORs 0x9e3779b9 exactly like the
-/// TS `seed ^ 0x9e3779b9` (plan §3.12); `next_f64` is the TS `r()`.
+/// `Lcg::new` XORs 0x9e3779b9 into the seed (plan §3.12); `next_f64`
+/// supplies exactly one uniform draw per call.
 #[must_use]
 pub fn rng(seed: u32) -> Lcg {
     Lcg::new(seed)
 }
 
-/// ts: reach-fuzz-lib.ts:40 — `Math.floor(r() * n)`
+/// One uniform draw, floored into `0..n`.
 fn int(r: &mut Lcg, n: usize) -> usize {
     r.next_int(n)
 }
 
-/// ts: reach-fuzz-lib.ts:41 — `pick` over &str literals: index, then clone the
-/// string out (the draw order is what is frozen, not the borrow).
+/// Index draw, then clone the string out (the draw order is what is frozen,
+/// not the borrow).
 fn pick_str(r: &mut Lcg, arr: &[&str]) -> String {
     arr[int(r, arr.len())].to_string()
 }
 
-/// ts: reach-fuzz-lib.ts:41 — `pick` over owned Strings.
+/// Index draw over owned Strings, then clone.
 fn pick_of(r: &mut Lcg, arr: &[String]) -> String {
     arr[int(r, arr.len())].clone()
 }
 
-/// ts: reach-fuzz-lib.ts:42-47
+/// Sample `n` distinct entries: each draw removes one pool element.
 fn sample_distinct(r: &mut Lcg, arr: &[String], n: usize) -> Vec<String> {
     let mut pool = arr.to_vec();
     let mut out: Vec<String> = Vec::new();
@@ -71,7 +70,7 @@ fn sample_distinct(r: &mut Lcg, arr: &[String], n: usize) -> Vec<String> {
 
 // ---------- scenario generator ----------
 
-/// ts: reach-fuzz-lib.ts:52-55 — the literal pools
+/// The literal pools.
 const ASPECTS: [&str; 2] = ["a", "b"];
 const NAME_POOL: [&str; 5] = ["LAMP", "ROPE", "LEDGER", "CRATE", "VIAL"];
 const KIND_POOL: [&str; 5] = ["item", "text", "idea", "place", "resource"];
@@ -80,19 +79,19 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
     vs.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// ts: reach-fuzz-lib.ts:51 — CORE_VERBS minus WAIT
+/// CORE_VERBS minus WAIT.
 fn non_wait_verbs() -> Vec<String> {
     CORE_VERBS.iter().filter(|v| **v != "WAIT").map(|v| (*v).to_string()).collect()
 }
 
-/// ts: reach-fuzz-lib.ts:55 — KIND_POOL minus place
+/// KIND_POOL minus place.
 fn non_char_kinds() -> Vec<String> {
     KIND_POOL.iter().filter(|k| **k != "place").map(|k| (*k).to_string()).collect()
 }
 
-/// ts: reach-fuzz-lib.ts:57-65 — the analyzer-facing probe list rides along
-/// for W5; its draws continue on the SAME rng after the content is built, so
-/// the order below is part of the mirror.
+/// The analyzer-facing probe list rides along for W5; its draws continue on
+/// the SAME rng after the content is built, so the order below is part of the
+/// frozen draw order.
 pub struct Probe {
     pub mode: ProbeMode,
     pub q: String,
@@ -102,19 +101,20 @@ pub enum ProbeMode {
     Demand,
 }
 
-/// ts: reach-fuzz-lib.ts:57-65
+/// One generated scenario: the raw content, its compile inputs, the initial
+/// state, and the probe list.
 pub struct Scenario {
     pub seed: i64,
     pub raw: ContentRaw,
     pub initial: State,
-    /// the initial entities as {name, kind} — compileContent's deck-entry
-    /// validation takes them explicitly (compileScript passes the same list)
+    /// the initial entities as name/kind pairs — compile_content's deck-entry
+    /// validation takes them explicitly
     pub entity_kinds: Vec<DeclaredEntity>,
     pub probes: Vec<Probe>,
 }
 
-/// ts: reach-fuzz-lib.ts:67-76 — `bornAction: 0` (the fuzz entities are minted
-/// at action 0 by convention, unlike the test-fixture worlds' `null`)
+/// Fuzz entities are minted at action 0 by convention (born_action Some(0)),
+/// unlike the test-fixture worlds' None.
 fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
     Entity {
         id: format!("s_{}", name.to_lowercase()),
@@ -128,8 +128,8 @@ fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
     }
 }
 
-/// The scenario's mutable build context — the TS closures (`aspectVal`, `op`)
-/// capture `r` and the local tables; Rust threads them explicitly.
+/// The scenario's mutable build context — the rng handle plus the local
+/// tables every generator step draws against, threaded explicitly.
 struct Gen<'a> {
     r: &'a mut Lcg,
     others: Vec<String>,
@@ -139,14 +139,14 @@ struct Gen<'a> {
 }
 
 impl Gen<'_> {
-    /// ts: reach-fuzz-lib.ts:81 — `const aspectVal = () => int(r, 4)`
+    /// One draw in 0..4.
     fn aspect_val(&mut self) -> i64 {
         int(self.r, 4) as i64
     }
 
-    /// ts: reach-fuzz-lib.ts:120-151 — the outcome-op generator. Every branch
-    /// guard's draw happens EXACTLY where the TS evaluates it (short-circuits
-    /// included).
+    /// The outcome-op generator. Every branch guard's draw happens EXACTLY
+    /// where the guard evaluates it (short-circuits included) — the draw
+    /// order is frozen.
     fn op(&mut self, allow_refuse: bool) -> String {
         let roll = self.r.next_f64();
         if roll < 0.22 {
@@ -156,7 +156,7 @@ impl Gen<'_> {
             } else {
                 String::new()
             };
-            // ts: `hasHouse && r() < 0.15` — no draw when hasHouse is false
+            // short-circuit: no draw when has_house is false
             let into = if self.has_house && self.r.next_f64() < 0.15 {
                 " INTO HOUSE".to_string()
             } else {
@@ -169,15 +169,15 @@ impl Gen<'_> {
             let b = pick_of(self.r, &self.proto_names);
             return format!("REPLACE {a} WITH {b}");
         }
-        // ts: `roll < 0.42 && deck` — truthiness, no draw; a deckless world
+        // the deck check draws nothing; a deckless world
         // falls through to the SET branch
         if roll < 0.42 && self.has_deck {
             return "DRAW D1".to_string();
         }
         if roll < 0.56 {
             let tgt = pick_str(self.r, &["ACTORS", "OBJECT", "ANA", "BERTHA"]);
-            // ts: the key array carries a conditional spread whose CONDITION
-            // draw always happens (`...(r() < 0.1 ? ['expires'] : [])`)
+            // the "expires" condition draw ALWAYS happens (it precedes the
+            // key pick) even when the key is not added
             let has_expires = self.r.next_f64() < 0.1;
             let mut keys = vec![
                 "aspect:a".to_string(),
@@ -211,8 +211,8 @@ impl Gen<'_> {
             xs.push("ANA".to_string());
             xs.push("GHOST".to_string());
             let x = pick_of(self.r, &xs);
-            // ts: `r() < 0.3 && protoNames.length >= 2` — the DRAW always
-            // happens, the length check is the (free) right operand
+            // the 0.3 draw always happens; the length check is the
+            // (free) right operand of the &&
             let nested = self.r.next_f64() < 0.3 && self.proto_names.len() >= 2;
             let inner = if nested {
                 let g = pick_of(self.r, &self.proto_names);
@@ -226,7 +226,7 @@ impl Gen<'_> {
         }
         if roll < 0.90 {
             let dice = if self.r.next_f64() < 0.3 { 2 } else { 1 };
-            // ts: the template draws left to right — the bound, then the mint
+            // the template draws left to right — the bound, then the mint
             let bound = 2 + int(self.r, 4 * dice) as i64;
             let p = pick_of(self.r, &self.proto_names);
             return format!("ROLL({dice}, 6), IF roll >= {bound} -> (SPAWN {p}) ELSE -> (NARRATE \"low\")");
@@ -237,9 +237,9 @@ impl Gen<'_> {
         "NARRATE \"beat\"".to_string()
     }
 
-    /// ts: reach-fuzz-lib.ts:170-177 — the `when` candidates. The TS builds
-    /// the array EAGERLY: all template interpolations draw BEFORE the pick
-    /// selects one — `int`, `pick(others…)`, (none), `pick(protoNames)`.
+    /// The `when` candidates. All four are built EAGERLY — every template
+    /// interpolation draws BEFORE the final pick selects one:
+    /// t1 one int, t2 one pool pick, t3 none, t4 one proto-name pick.
     fn gen_when(&mut self) -> String {
         let t1 = format!("actors.aspect.a >= {}", 1 + int(self.r, 3) as i64);
         let mut pool = self.others.clone();
@@ -261,23 +261,22 @@ impl Gen<'_> {
     }
 }
 
-/// ts: reach-fuzz-lib.ts:78-223 — draw-for-draw identical.
+/// The scenario generator — the frozen draw order described in the module
+/// header.
 pub fn gen_scenario(seed: u32) -> Scenario {
     let mut r = rng(seed);
     let non_wait = non_wait_verbs();
-    // ts: `sampleDistinct(r, NON_WAIT_VERBS, 2 + int(r, 3))` — the count
-    // argument's draw happens BEFORE sampleDistinct's internal draws
+    // the count draw happens BEFORE sample_distinct's internal draws
     let n_verbs = 2 + int(&mut r, 3); // 2–4
     let verbs = sample_distinct(&mut r, &non_wait, n_verbs);
 
     // initial entities — two characters (ANA the player + maybe BERTHA), 1–3
-    // pool cards, maybe a place (ts: reach-fuzz-lib.ts:83-94)
+    // pool cards, maybe a place
     let mut entities: Vec<Entity> = vec![ent("ANA", "character", IndexMap::new())];
     let n_others = 1 + int(&mut r, 3);
     let others = sample_distinct(&mut r, &str_vec(&NAME_POOL), n_others);
     for n in &others {
-        // ts: `ent(n, pick(r, NON_CHAR_KINDS), { a: aspectVal(), b: int(r, 3) })`
-        // — pick, then a, then b (object-literal property order)
+        // draw order: kind pick, then aspect a, then aspect b
         let kind = pick_of(&mut r, &non_char_kinds());
         let a = int(&mut r, 4) as i64;
         let b = int(&mut r, 3) as i64;
@@ -296,7 +295,6 @@ pub fn gen_scenario(seed: u32) -> Scenario {
     }
 
     // prototypes — static aspects, stackable, derive mints (up to one)
-    // (ts: reach-fuzz-lib.ts:96-106)
     let n_protos = 1 + int(&mut r, 3);
     let proto_names: Vec<String> = ["P1", "P2", "P3"][..n_protos].iter().map(|s| (*s).to_string()).collect();
     let mut prototypes: IndexMap<String, PrototypeDef> = IndexMap::new();
@@ -307,7 +305,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             kind,
             ..PrototypeDef::default()
         };
-        // ts: `{ [pick(r, ASPECTS)]: int(r, 3) }` — key draw, then value draw
+        // key draw, then value draw
         if r.next_f64() < 0.6 {
             let key = pick_str(&mut r, &ASPECTS);
             let v = int(&mut r, 3) as i64;
@@ -318,7 +316,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         if r.next_f64() < 0.25 {
             p.stackable = true;
         }
-        // ts: `!deriveDone && r() < 0.25` — short-circuit: no draw once done
+        // short-circuit: no draw once derive is done
         if !derive_done && r.next_f64() < 0.25 {
             p.derive = Some(PrototypeDerive {
                 name_from: Some("object".to_string()),
@@ -329,9 +327,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         prototypes.insert(pn.clone(), p);
     }
 
-    // deck — repeats weight the spec; defaultcard/reset combinations
-    // (ts: reach-fuzz-lib.ts:108-117). The `r() < 0.6` draw ALWAYS happens
-    // (left operand of the &&).
+    // deck — repeats weight the spec; defaultcard/reset combinations.
+    // The 0.6 deck draw ALWAYS happens (left operand of the &&).
     let mut deck_names: Vec<String> = proto_names.clone();
     deck_names.extend(others.iter().cloned());
     let deck_roll = r.next_f64();
@@ -341,7 +338,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         for _ in 0..n_spec {
             spec.push(pick_of(&mut r, &deck_names));
         }
-        // ts: spread order — the defaultcard condition draw, then the reset
+        // draw order — the defaultcard condition draw, then the reset
         let defaultcard = if r.next_f64() < 0.4 {
             Some(pick_of(&mut r, &deck_names))
         } else {
@@ -358,7 +355,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         None
     };
 
-    // verbs × recipes (ts: reach-fuzz-lib.ts:119-183)
+    // verbs × recipes
     let mut ctx = Gen {
         r: &mut r,
         others: others.clone(),
@@ -409,7 +406,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 query.push_str(&format!(" aspect:{a}>={bound}"));
             }
             let query = query.trim().to_string();
-            // ts: `role === 'with' && r() < 0.15` — short-circuit on the role
+            // short-circuit on the role check (min:2 slots are "with"-only)
             let double = role == "with" && ctx.r.next_f64() < 0.15;
             slots.push(SlotDef {
                 role,
@@ -447,7 +444,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         );
     }
 
-    // triggers (ts: reach-fuzz-lib.ts:185-191)
+    // triggers
     let n_triggers = 1 + int(ctx.r, 3);
     let mut triggers: Vec<TriggerDef> = Vec::new();
     for i in 0..n_triggers {
@@ -486,8 +483,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         add_entity(&mut initial, e).expect("genScenario entities never collide (unique names)");
     }
 
-    // probes — every name that could ever exist, derived shapes, and demands
-    // (ts: reach-fuzz-lib.ts:203-220); the Set preserves first-occurrence order
+    // probes — every name that could ever exist, derived shapes, and demands;
+    // the seen-list preserves first-occurrence order
     let mut probes: Vec<Probe> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
     let push_unique = |seen: &mut Vec<String>, name: String| {
@@ -517,8 +514,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             q: name,
         });
     }
-    // ts: Object.entries(prototypes).find(([, p]) => p.derive)?.[0] —
-    // insertion order
+    // first derive-bearing prototype, in insertion order
     let derive_proto = proto_names
         .iter()
         .find(|pn| prototypes.get(*pn).is_some_and(|p| p.derive.is_some()))
@@ -565,8 +561,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         verbs: verbs_raw,
         prototypes: Some(prototypes),
         decks: deck.map(|d| vec![d]),
-        // ts: `...(triggers.length ? { triggers } : {})` — an EMPTY trigger
-        // list is `undefined`, not []
+        // an EMPTY trigger list is absent (None), never an empty vec
         triggers: if triggers.is_empty() { None } else { Some(triggers) },
         ..ContentRaw::default()
     };
@@ -587,19 +582,21 @@ pub fn gen_scenario(seed: u32) -> Scenario {
     }
 }
 
-// ---------- the frozen action selector (goldens/action-selector.ts twin) ----
+// ---------- the frozen action selector (must stay bit-identical to the golden
+// ---------- drivers — that identity is the precondition for golden replay) --
 
-/// ts: goldens/action-selector.ts (frozen verbatim) — ONE uniform draw over
-/// the candidate list (never empty: the waits are always offered).
+/// the frozen action selector — ONE uniform draw over the candidate list
+/// (never empty: the waits are always offered); draw-for-draw identical to
+/// the golden drivers.
 #[must_use]
 pub fn choose_step<'a>(r: &mut Lcg, steps: &'a [Step]) -> &'a Step {
     let i = r.next_int(steps.len());
     &steps[i]
 }
 
-// ---------- the exploration candidate space (ts: reach-fuzz-lib.ts:284-397) --
+// ---------- the exploration candidate space -------------------------------
 
-/// ts: reach-fuzz-lib.ts:284-292
+/// All k-element subsets of `arr`, in combinatorial order.
 fn k_subsets<'a>(arr: &[&'a Entity], k: usize) -> Vec<Vec<&'a Entity>> {
     fn walk<'a>(arr: &[&'a Entity], k: usize, start: usize, cur: &mut Vec<&'a Entity>, out: &mut Vec<Vec<&'a Entity>>) {
         if cur.len() == k {
@@ -617,14 +614,14 @@ fn k_subsets<'a>(arr: &[&'a Entity], k: usize) -> Vec<Vec<&'a Entity>> {
     out
 }
 
-/// ts: reach-fuzz-lib.ts:294-397 — the bounded candidate space, verbatim.
+/// The bounded candidate space.
 pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Vec<Step> {
     let mut out: Vec<Step> = Vec::new();
     let mut min_fills: Vec<Clause> = Vec::new();
     let alive: Vec<&Entity> = s.entities.values().filter(|e| e.dead_action.is_none()).collect();
     let clock = next_step_clock(s.now);
     // waits — advance the clock so slot triggers, expiries and completions
-    // strike (ts: reach-fuzz-lib.ts:300-307)
+    // strike
     for ahead in [0usize, 1, 2, 12, 24, 48] {
         let begin = if ahead == 0 {
             clock
@@ -655,8 +652,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
             continue;
         }
         // the engine validates ONE slot per role: the LAST entry per role wins
-        // (ts: reach-fuzz-lib.ts:312-327) — effSlots keeps the last defs in
-        // verb.slots order
+        // — eff_slots keeps the last defs in verb.slots order
         let mut eff_slots: Vec<&CompiledSlot> = Vec::new();
         {
             let mut by_role: IndexMap<&str, usize> = IndexMap::new();
@@ -680,7 +676,8 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
                     None => true,
                 })
                 .collect();
-            // ts: `Math.min(slot.max === Infinity ? 2 : slot.max, 2)`
+            // candidate arity is capped at 2 — an unbounded slot max counts
+            // as 2 here, never more
             let max_k: usize = match slot.max {
                 None => 2,
                 Some(m) => std::cmp::min(m.max(0) as usize, 2),
@@ -690,7 +687,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
             while k <= max_k {
                 for set in k_subsets(&pool, k) {
                     // a binding taking TWO copies of one name must pin them by
-                    // #id (ts: reach-fuzz-lib.ts:335-346)
+                    // #id
                     let dup = {
                         let mut names: Vec<&str> = set.iter().map(|e| e.name.as_str()).collect();
                         names.sort_unstable();
@@ -722,7 +719,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
         if !viable {
             continue;
         }
-        // cross-role identity (ts: reach-fuzz-lib.ts:353-372)
+        // cross-role identity: one entity cannot fill two roles of a clause
         let ref_key = |r: &Ref| -> String {
             match r {
                 Ref::Id { id } => id.clone(),
@@ -774,7 +771,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
         }
     }
     // multi-clause steps — per-clause recipe provenance, summed durations, and
-    // cross-clause locks (ts: reach-fuzz-lib.ts:388-395)
+    // cross-clause locks
     let mut i = 0usize;
     while i < min_fills.len() && i < 3 {
         let mut clauses = vec![min_fills[i].clone()];
@@ -801,10 +798,10 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
 }
 
 // ---------- exhaustive bounded forward exploration (the ground truth) ------
-// ts: reach-fuzz-lib.ts:226-444 — W5 adds the explorer + the differential
-// driver (runFuzzSeed) beside the W4 generator so the fuzz bin and the
-// 100-seed vitest port share ONE implementation (CLI-04: runFuzzSeed is a
-// pure function of its seed — no module state anywhere below).
+// W5 adds the explorer + the differential driver (run_fuzz_seed) beside the
+// generator so the fuzz bin and the 100-seed sweep share ONE implementation
+// (CLI-04: run_fuzz_seed is a pure function of its seed — no module state
+// anywhere below).
 
 use std::collections::VecDeque;
 
@@ -814,7 +811,7 @@ use chorus::core::query::parse_query;
 use chorus::core::types::AttrValue;
 use chorus::reach::{Analyzer, CardOptions};
 
-/// ts: reach-fuzz-lib.ts:227-235
+/// Cumulative exploration bookkeeping.
 pub struct Forward {
     pub ever_names: IndexSet<String>,
     /// keyed by the `name|kind|canon(aspects)|canon(attrs)` descriptor string
@@ -826,10 +823,9 @@ pub struct Forward {
     pub capped: bool,
 }
 
-/// JSON text for one aspect leaf value — the leaf of the TS `canon`
-/// recursion (`JSON.stringify(v)`; AspectVal is number | sub-map here).
-/// LOCAL key only (sig / ever_desc keys): the sub-map arm's `k:v` join is not
-/// the TS canon's `k=v` shape, but sub-maps arise solely from Q13 dotted
+/// JSON text for one aspect leaf value (a number or a sub-map here).
+/// LOCAL key only (sig / ever_desc keys): the sub-map arm joins `k:v` rather
+/// than the canonical `k=` form, but sub-maps arise solely from Q13 dotted
 /// aspect keys, which the scenario generator never mints — the equivalence
 /// relation is unaffected on the reachable domain.
 fn json_of_aspect(v: &AspectVal) -> String {
@@ -842,8 +838,8 @@ fn json_of_aspect(v: &AspectVal) -> String {
     }
 }
 
-/// ts: reach-fuzz-lib.ts:237-241 — `canon`: `{k=JSON,…}` with the keys in
-/// default-sort (= UTF-16 code unit, REACH-05) order via `Object.keys().sort()`.
+/// Aspect pairs joined `{k=v,…}` with the keys in default-sort (=
+/// UTF-16 code unit, REACH-05) order.
 fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> String {
     let mut keys: Vec<(&String, &AspectVal)> = pairs.collect();
     keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
@@ -854,7 +850,8 @@ fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> 
     format!("{{{}}}", parts.join(","))
 }
 
-/// The attrs twin of `canon_pairs` (attr values are `string | number | bool`).
+/// The attrs twin of `canon_pairs` (attr values are strings, numbers, or
+/// bools).
 fn canon_attrs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AttrValue)>) -> String {
     let mut keys: Vec<(&String, &AttrValue)> = pairs.collect();
     keys.sort_by(|a, b| chorus::js::cmp_utf16(a.0, b.0));
@@ -872,18 +869,17 @@ fn canon_attrs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AttrValue)>) -> 
     format!("{{{}}}", parts.join(","))
 }
 
-/// ts: reach-fuzz-lib.ts:243-245 — drop `container` from signatures and
-/// descriptors (it is derivable from relations).
+/// Drop `container` from signatures and descriptors (it is derivable from
+/// relations).
 fn scrubbed(e: &Entity) -> impl Iterator<Item = (&String, &AttrValue)> {
     e.attrs.iter().filter(|(k, _)| k.as_str() != "container")
 }
 
-/// ts: reach-fuzz-lib.ts:246-282 — the state signature: the SAME fields, the
-/// SAME default-sort discipline. Array elements are pre-joined with ',' and
-/// sorted as strings (Array.prototype.sort's ToString comparison — the sort
-/// input is exactly this unquoted join, not the quoted JSON form). The text
-/// itself is a LOCAL dedup key (never compared cross-language — the TS wraps
-/// the same joins in JSON.stringify quotes); what must match the TS is WHICH
+/// The state signature: the SAME fields, the SAME default-sort discipline.
+/// Array elements are pre-joined with ',' and sorted as strings (the JS
+/// default string sort — the sort input is exactly this unquoted join, not
+/// the quoted JSON form). The text itself is a LOCAL dedup key (its exact
+/// bytes are never replayed from goldens); what must be stable is WHICH
 /// states collide, i.e. the equivalence relation. Every interpolatable value
 /// in the fuzz domain (fixed name/kind/aspect/attr pools, verbs, recipe ids,
 /// integer fields) is comma/bracket-free, so both encodings separate the same
@@ -987,7 +983,7 @@ pub fn sig(s: &State) -> String {
     )
 }
 
-/// ts: reach-fuzz-lib.ts:407-418 — record every living descriptor once.
+/// Record every living descriptor once.
 fn record(s: &State, ever_names: &mut IndexSet<String>, ever_desc: &mut IndexMap<String, Entity>) {
     for e in s.entities.values() {
         if e.dead_action.is_some() {
@@ -1017,7 +1013,7 @@ fn record(s: &State, ever_names: &mut IndexSet<String>, ever_desc: &mut IndexMap
     }
 }
 
-/// ts: reach-fuzz-lib.ts:399-444 — BFS over settleStep with push-time dedup.
+/// BFS over settle_step with push-time dedup.
 pub fn explore(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -1031,10 +1027,10 @@ pub fn explore(
     let mut states_seen = 0usize;
     let mut deduped = 0usize;
     let mut capped = false;
-    // ts: `1 + idCounter` — i64, the settleStep id domain
+    // i64: the settle_step first-record id domain
     let mut id_counter = 0i64;
     // dedupe at PUSH time: the old pop-time check counted every duplicate pop
-    // against maxStates AND let the queue grow with them — the budget bought
+    // against max_states AND let the queue grow with them — the budget bought
     // re-sights instead of new worlds. BFS pop order makes the first
     // (shallowest) push the keeper; equal-signature states record identical
     // descriptors.
@@ -1058,9 +1054,8 @@ pub fn explore(
             continue;
         }
         for step in candidates(content, dict, &s) {
-            // ts: `settleStep(…, 1 + idCounter, () => `f${idCounter++}`)` —
-            // the first-record id reads the counter BEFORE the idGen closure
-            // ever runs; the closure increments per minted id.
+            // the first-record id reads the counter BEFORE the id generator
+            // closure ever runs; the closure increments per minted id.
             let first = 1 + id_counter;
             let mut gen = || {
                 let out = format!("f{id_counter}");
@@ -1068,7 +1063,7 @@ pub fn explore(
                 out
             };
             // settle consumes the state; the rejected branch rides the
-            // rollback clone back (the TS leaves `s` untouched — same thing)
+            // rollback clone back (the caller's `s` is left untouched)
             let res = settle_step(content, dict, s.clone(), step, first, Some(&mut gen))?;
             if res.rejected.is_some() {
                 continue;
@@ -1094,7 +1089,7 @@ pub fn explore(
 
 // ---------- the differential property ----------
 
-/// ts: reach-fuzz-lib.ts:448-455
+/// The outcome of one differential-fuzz seed.
 pub struct FuzzOutcome {
     pub seed: u32,
     pub failures: Vec<String>,
@@ -1104,8 +1099,7 @@ pub struct FuzzOutcome {
     pub probes: usize,
 }
 
-/// ts: reach-fuzz-lib.ts:457-507 — `runFuzzSeed(seed, maxSteps = 8,
-/// maxStates = 500)`: a pure function of its seed (CLI-04 must).
+/// The differential driver: a pure function of its seed (CLI-04 must).
 pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<FuzzOutcome> {
     let sc = gen_scenario(seed);
     let dict = core_dictionary();
@@ -1116,9 +1110,8 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
     // at most one deep exploration per seed — every failing probe would
     // otherwise re-run the identical (content, initial, bounds) search
     let mut deep: Option<Forward> = None;
-    // one Analyzer across the probes — the TS loop's analyzeCard calls share
-    // the module-level worldCache (reach.ts:615) for this (content, initial)
-    // pair; the one-shot convenience would rebuild the facts per probe
+    // one Analyzer across the probes — the facts for this (content, initial)
+    // pair are built once, not once per probe
     let analyzer = Analyzer::new(&content, &sc.initial);
     for p in &sc.probes {
         let rep = match p.mode {
@@ -1209,9 +1202,9 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
 
 // ---------- the golden driver (the frozen caller discipline) ----------
 
-/// the outcome of one fuzz golden's driver — mirrors the TS tool's loop in
-/// tools/golden-dump.ts (fuzzFamily): K applied settleSteps or the attempt
-/// cap; a soft-locked world legitimately lands short of K.
+/// the outcome of one fuzz golden's driver — the frozen loop shape: K applied
+/// settle_step calls or the attempt cap; a soft-locked world legitimately lands
+/// short of K.
 pub struct FuzzRun {
     /// a pristine clone of sc.initial — the fold-check base for the harness
     pub base: State,
@@ -1221,10 +1214,10 @@ pub struct FuzzRun {
     pub attempts: usize,
 }
 
-/// ts: tools/golden-dump.ts fuzzFamily — one selector instance per seed seeded
-/// rng(seed); per attempt draw once over the full candidate list; a rejected
-/// settleStep consumes the draw and retries; K=25 applied steps or the
-/// 400-attempt cap. THE FROZEN CALLER DISCIPLINE (review-1 appendix 4(a)).
+/// THE FROZEN CALLER DISCIPLINE (review-1 appendix 4(a)): one selector
+/// instance per seed seeded rng(seed); per attempt draw once over the full
+/// candidate list; a rejected settle_step consumes the draw and retries; K=25
+/// applied steps or the 400-attempt cap.
 pub fn drive_fuzz_seed(seed: u32, k: usize, attempt_cap: usize) -> Result<FuzzRun> {
     let sc = gen_scenario(seed);
     let dict = core_dictionary();
@@ -1241,13 +1234,12 @@ pub fn drive_fuzz_seed(seed: u32, k: usize, attempt_cap: usize) -> Result<FuzzRu
         let steps = candidates(&content, &dict, &state);
         let step = choose_step(&mut sel, &steps).clone();
         // settle consumes the state; the rejected branch rides the rollback
-        // clone back (identical to the TS leaving `state` untouched)
+        // clone back (the rejected attempt leaves `state` untouched)
         let res = settle_step(&content, &dict, state, step, id, None)?;
         state = res.state;
         if res.rejected.is_some() {
             continue;
         }
-        // ts: `records.push(...res.records); id += res.records.length`
         let n = res.records.len() as i64;
         records.extend(res.records);
         id += n;

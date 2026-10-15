@@ -1,6 +1,5 @@
-//! Path export and the per-card report — ts: src/reach/reach.ts:1080-1505
-//! plus the helpers at :1554-1592 and :1913-1968. The universe/dead-verbs/
-//! deck-cap block finalizes the world facts after the fixpoint; `analyzeCard`
+//! Path export and the per-card report. The universe/dead-verbs/
+//! deck-cap block finalizes the world facts after the fixpoint; [`analyze_card`]
 //! folds the target-specific verdict, chain, path trees and notes on top.
 
 use indexmap::{IndexMap, IndexSet};
@@ -18,10 +17,10 @@ use super::render::pred_text;
 use super::world::{writable_paths, Analyzer, WorldFacts};
 
 // ---------------------------------------------------------------------------
-// report types — ts: reach.ts:56-125
+// report types
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:56-69 — `CardOptions`.
+/// The analysis request knobs.
 #[derive(Debug, Clone, Default)]
 pub struct CardOptions {
     /// semantics (b): the card must also be bindable into some committable
@@ -32,7 +31,8 @@ pub struct CardOptions {
     pub demand: Option<String>,
 }
 
-/// ts: reach.ts:71 — `'obtainable' | 'unobtainable' | 'unproven' | 'unusable'`.
+/// The verdict tier, surfaced as the report strings
+/// `obtainable` / `unobtainable` / `unproven` / `unusable`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardVerdict {
     Obtainable,
@@ -53,7 +53,7 @@ impl CardVerdict {
     }
 }
 
-/// ts: reach.ts:112 — `'proven' | 'candidate' | 'none'`, the existence tier
+/// The existence tier (report strings `proven` / `candidate` / `none`)
 /// before usable is folded in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Existence {
@@ -73,7 +73,7 @@ impl Existence {
     }
 }
 
-/// ts: reach.ts:82 — the path op tag.
+/// The path op tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathOp {
     Initial,
@@ -94,7 +94,7 @@ impl PathOp {
     }
 }
 
-/// ts: reach.ts:88 — DRAW only: where the card sits in the seed-fixed
+/// DRAW only: where the card sits in the seed-fixed
 /// permutation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PathDeck {
@@ -104,7 +104,7 @@ pub struct PathDeck {
     pub capacity: Option<i64>,
 }
 
-/// ts: reach.ts:95 — one prerequisite card with its own provenance.
+/// One prerequisite card with its own provenance.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Require {
     pub name: String,
@@ -112,15 +112,16 @@ pub struct Require {
     pub paths: Vec<ReachPath>,
 }
 
-/// ts: reach.ts:79-96 — one node of an exported acquisition path.
+/// One node of an exported acquisition path.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReachPath {
-    /// display owner: 'recipe work.r0 of WORK' | 'trigger t3' | 'initial entity X'
+    /// display owner: `recipe work.r0 of WORK`, `trigger t3`,
+    /// or `initial entity X`
     pub via: String,
     pub op: PathOp,
     /// the card this hop makes available
     pub mints: String,
-    /// `mints` is a derived shape (`${PROTO}_${OBJECT}`), not the bare name
+    /// `mints` is a derived shape (`<PROTO>_<OBJECT>`), not the bare name
     pub derived_name: bool,
     pub deck: Option<PathDeck>,
     /// static-true IF / `when` conditions on the path, rendered
@@ -131,14 +132,14 @@ pub struct ReachPath {
     pub requires: Vec<Require>,
 }
 
-/// ts: reach.ts:100 — a guarded source that keeps existence at 'candidate'.
+/// A guarded source that keeps existence at `candidate`.
 #[derive(Debug, Clone)]
 pub struct CardCandidate {
     pub via: String,
     pub reason: String,
 }
 
-/// ts: reach.ts:108-125 — the per-card report.
+/// The per-card report.
 #[derive(Debug, Clone)]
 pub struct CardReport {
     pub target: String,
@@ -154,14 +155,14 @@ pub struct CardReport {
     pub notes: Vec<String>,
 }
 
-/// ts: reach.ts:1185 — the best-effort path depth backstop.
+/// The best-effort path depth backstop.
 const MAX_PATH_DEPTH: usize = 12;
 
 // ---------------------------------------------------------------------------
-// post-fixpoint world facts — ts: reach.ts:1080-1182
+// post-fixpoint world facts
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:1554-1564 — flatten with multiplicity (capped at 32 per fact)
+/// Flatten with multiplicity (capped at 32 per fact)
 /// so count(<query>) thresholds can read it.
 fn flatten(avail: &IndexMap<String, Vec<super::world::CardFact>>) -> Vec<Entity> {
     let mut out: Vec<Entity> = Vec::new();
@@ -177,13 +178,13 @@ fn flatten(avail: &IndexMap<String, Vec<super::world::CardFact>>) -> Vec<Entity>
     out
 }
 
-/// ts: reach.ts:1080-1182 — the universe of cards that can ever exist, the
+/// The universe of cards that can ever exist, the
 /// dead-verb set and the deck capacities from proven sites.
 pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
     let content = wf.content;
     // Static mint-time descriptors: initial ∪ prototypes ∪ deck cards ∪ mint
     // names (with kind overrides and authored `aspects=` pair overrides).
-    // Aspect values here are bounds, not facts (ts: reach.ts:1080-1086).
+    // Aspect values here are bounds, not facts.
     let mut universe: Vec<Entity> = flatten(&wf.avail);
     for (name, p) in &content.prototypes {
         universe.push(wf.synth(name, &p.kind, Some(p), None));
@@ -207,7 +208,8 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
         if let Some(json) = &s.aspects_json {
             match parse_aspects_json(json) {
                 Ok(parsed) => {
-                    // ts: reach.ts:1099 — `{ ...(p?.aspects ?? {}), ...JSON.parse(...) }`;
+                    // the authored pair overrides the prototype's aspects,
+                    // key by key;
                     // key order is JS-normalized at the stringify points, so a
                     // plain insertion merge is observably identical
                     let mut merged = p.and_then(|p| p.aspects.clone()).unwrap_or_default();
@@ -217,7 +219,7 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
                     override_ = Some(merged);
                 }
                 Err(_) => {
-                    // ts: reach.ts:1100 — authored pair we cannot parse —
+                    // authored pair we cannot parse —
                     // cannot bound
                     opaque_spawn_aspects = true;
                 }
@@ -232,7 +234,7 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
     }
     wf.universe = universe;
     wf.opaque_spawn_aspects = opaque_spawn_aspects;
-    // ts: reach.ts:1104-1107
+    // derive-fed aspect paths
     for p in content.prototypes.values() {
         if let Some(d) = &p.derive {
             if let Some(aspects) = &d.aspects {
@@ -242,12 +244,12 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
             }
         }
     }
-    // ts: reach.ts:1131-1145 — dead verbs
+    // dead verbs
     for vi in 0..content.verbs.len() {
         if wf.committable.contains_key(&vi) {
             continue;
         }
-        // ts: reach.ts:1140-1143 — slotByRole, not verb.slots: a shadowed
+        // `slot_by_role`, not verb.slots: a shadowed
         // duplicate def must not doom the verb (fuzz seed 262)
         let Some((_, verb)) = content.verbs.get_index(vi) else {
             unreachable!("verb index {vi} came from content.verbs enumeration");
@@ -259,7 +261,7 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
             wf.dead_verbs.insert(vi);
         }
     }
-    // ts: reach.ts:1161-1182 — deck capacity from proven sites (the freeze
+    // deck capacity from proven sites (the freeze
     // model: pre-S* trigger draws count 1, at/after-S* count 0; recipe-owned
     // draws stay unbounded)
     let proven: Vec<usize> = wf.proven.keys().copied().collect();
@@ -289,8 +291,8 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
 }
 
 impl<'c> WorldFacts<'c> {
-    /// ts: reach.ts:1113-1129 — can a card matching `query` EVER exist? The
-    /// TS `canEverMemo` is dropped: the function is pure over fields that are
+    /// Can a card matching `query` EVER exist? No memo is needed: the
+    /// function is pure over fields that are
     /// final once the world facts are built, so memoization cannot change any
     /// result (a value-equal query yields a value-equal answer).
     pub(crate) fn can_ever_match(&self, query: Option<&Query>) -> bool {
@@ -319,7 +321,7 @@ impl<'c> WorldFacts<'c> {
         false
     }
 
-    /// ts: reach.ts:1147-1159 — the provenance chain, one line per hop (first
+    /// The provenance chain, one line per hop (first
     /// proven source only).
     pub(crate) fn proven_source_for(&self, name: &str) -> Option<Vec<String>> {
         if let Some(e) = self.init_names.get(name) {
@@ -344,7 +346,7 @@ impl<'c> WorldFacts<'c> {
         None
     }
 
-    /// ts: reach.ts:1189-1199 — every proven source for a name — the SAME
+    /// Every proven source for a name — the SAME
     /// predicate as the chain walk (derive-behind-mandatory-object sites never
     /// mint the bare name; a draw must be unblinded and its position within
     /// deck capacity).
@@ -372,10 +374,10 @@ impl<'c> WorldFacts<'c> {
         out
     }
 
-    /// ts: reach.ts:1200-1210 — the initial-declaration leaf path.
+    /// The initial-declaration leaf path.
     pub(crate) fn initial_path(&self, name: &str) -> ReachPath {
         let Some(e) = self.init_names.get(name) else {
-            unreachable!("initial_path is only called under initNames.has (ts: reach.ts:1201)");
+            unreachable!("initial_path is only called under initNames.has");
         };
         ReachPath {
             via: format!("initial entity {name} ({})", e.kind),
@@ -389,7 +391,7 @@ impl<'c> WorldFacts<'c> {
         }
     }
 
-    /// ts: reach.ts:1216-1263 — unfold one proven site into a path node.
+    /// Unfold one proven site into a path node.
     /// `seen` carries the filler names already expanded on this branch (the
     /// fixpoint's strict proof order means no true cycle exists); the depth
     /// cap is the best-effort backstop.
@@ -438,7 +440,7 @@ impl<'c> WorldFacts<'c> {
                 capacity: if site.cap != MANY { Some(site.cap) } else { None },
             });
         }
-        // ts: reach.ts:1234-1250 — preconditions: the chosen committability
+        // preconditions: the chosen committability
         // proof's slot fillers, or the expiry trigger's named card; slot
         // triggers carry none
         if depth < MAX_PATH_DEPTH {
@@ -483,7 +485,7 @@ impl<'c> WorldFacts<'c> {
     }
 }
 
-/// ts: reach.ts:1150/1207 — the initial-entity provenance line.
+/// The initial-entity provenance line.
 fn initial_decl_line(name: &str, e: &Entity) -> String {
     let aspects = if e.aspects.is_empty() {
         String::new()
@@ -493,7 +495,7 @@ fn initial_decl_line(name: &str, e: &Entity) -> String {
     format!("{name} is declared in the initial entities ({}{aspects})", e.kind)
 }
 
-/// ts: reach.ts:1913-1915 — does the deck carry the target at all?
+/// Does the deck carry the target at all?
 pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
     deck.order.iter().any(|c| c.name == target)
         || deck
@@ -502,7 +504,7 @@ pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
             .is_some_and(|dc| dc.name == target)
 }
 
-/// ts: reach.ts:1929-1935 — does `cap` total draws suffice to serve `target`?
+/// Does `cap` total draws suffice to serve `target`?
 /// order positions need cap > idx; the defaultcard needs the cursor to pass
 /// the order's end; reset only makes the sequence periodic (seed 74985).
 pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool {
@@ -524,9 +526,7 @@ pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool
     }
 }
 
-/// ts: reach.ts:1937-1955 — the display chain of one proven site. The TS
-/// `content` parameter is dead (`void content`) and is NOT ported (plan
-/// REACH-08).
+/// The display chain of one proven site.
 pub(crate) fn site_chain(site: &RawSite, target: &str, supports: &[String]) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     if site.kind == SiteKind::Draw {
@@ -576,7 +576,7 @@ pub(crate) fn site_chain(site: &RawSite, target: &str, supports: &[String]) -> V
     lines
 }
 
-/// ts: reach.ts:1957-1968 — why a guarded site stays a candidate.
+/// Why a guarded site stays a candidate.
 pub(crate) fn site_reason(
     site: &RawSite,
     init_names: &IndexMap<String, &Entity>,
@@ -603,7 +603,7 @@ pub(crate) fn site_reason(
     if site.shadow_risk {
         bits.push("an earlier recipe of the same verb may shadow it (first-match)".to_string());
     }
-    // QUIRK(Q17/REACH-08): reachable for zero-entity scripts (the language
+    // QUIRK(Q17): reachable for zero-entity scripts (the language
     // allows a script with no entities:) — this branch must stay
     if site.verb.is_some() && init_names.is_empty() {
         bits.push("verb committability unknown".to_string());
@@ -622,11 +622,11 @@ pub(crate) fn site_reason(
 }
 
 // ---------------------------------------------------------------------------
-// analyzeCard — ts: reach.ts:1294-1505
+// analyze_card
 // ---------------------------------------------------------------------------
 
 impl<'c> Analyzer<'c> {
-    /// ts: reach.ts:1297 — the per-card report; world facts are shared across
+    /// The per-card report; world facts are shared across
     /// calls. `target` is ignored under `demand`.
     pub fn analyze_card(&self, target: &str, opts: CardOptions) -> Result<CardReport> {
         let facts = self.facts();
@@ -638,16 +638,15 @@ impl<'c> Analyzer<'c> {
         let mut existence = Existence::None;
         let mut demand_match: Option<Entity> = None;
         let demand_q: Option<Query> = match opts.demand.as_deref() {
-            // ts: reach.ts:1310 — `opts.demand ? parseQuery(opts.demand) : null`
-            // — JS truthiness: the EMPTY string is falsy, i.e. no demand
-            // (wave-5 must-fix-1; parse_query("") would return an empty query
-            // without erroring and must not enter demand mode)
+            // an EMPTY demand string counts as no demand (JS truthiness of
+            // `''`); parse_query("") would return an empty query
+            // without erroring and must not enter demand mode
             Some(d) if !d.is_empty() => Some(parse_query(d)?),
             _ => None,
         };
 
         if let Some(dq) = &demand_q {
-            // ts: reach.ts:1312-1325 — semantics (c): ANY obtainable card
+            // semantics (c): ANY obtainable card
             // satisfying the demand query, matched against each source's ACTUAL
             // product descriptor, never the bare prototype
             for e in facts.init_names.values() {
@@ -661,14 +660,14 @@ impl<'c> Analyzer<'c> {
                     match facts.proven_source_for(&e.name) {
                         Some(lines) => chain.extend(lines),
                         None => unreachable!(
-                            "initNames hit ⇒ provenSourceFor returns the initial line (ts: reach.ts:1148)"
+                            "initNames hit ⇒ provenSourceFor returns the initial line"
                         ),
                     }
                 }
                 paths.push(facts.initial_path(&e.name));
             }
             if existence == Existence::None {
-                // ts: reach.ts:1326-1361 — the proven-site descriptor scan
+                // the proven-site descriptor scan
                 for (&si, sup) in &facts.proven {
                     let site = &facts.census.sites[si];
                     let descs: Vec<(String, Entity, bool)> = if site.kind == SiteKind::Draw {
@@ -687,7 +686,7 @@ impl<'c> Analyzer<'c> {
                                     content.prototypes.get(&c.name),
                                     None,
                                 );
-                                // ts: reach.ts:1332-1336 — a draw of a
+                                // a draw of a
                                 // derive-card behind an object-mandatory verb
                                 // never carries the bare name (12320)
                                 let blind = draw_blinds_bare(content, site, &c.name);
@@ -729,7 +728,7 @@ impl<'c> Analyzer<'c> {
                         if existence != Existence::Proven {
                             existence = Existence::Proven;
                             demand_match = Some(desc.clone());
-                            // ts: reach.ts:1352-1355 — the chain shows the REAL
+                            // the chain shows the REAL
                             // name, never the blinding sentinel
                             let shown = if derived {
                                 "a derived-mint card (name formed from the bound object)".to_string()
@@ -749,7 +748,7 @@ impl<'c> Analyzer<'c> {
                 }
             }
             if existence == Existence::None {
-                // ts: reach.ts:1362-1378 — a static descriptor may match behind
+                // a static descriptor may match behind
                 // guarded sites; a threshold may be pumped by SET or fed by
                 // derive; any of these keeps 'none' unprovable
                 let matches_somewhere = facts.universe.iter().any(|u| match_query(u, dq));
@@ -797,21 +796,21 @@ impl<'c> Analyzer<'c> {
                 };
             }
         } else if facts.init_names.contains_key(target) {
-            // ts: reach.ts:1379-1382
+            // an initial entity is proven outright
             existence = Existence::Proven;
             match facts.proven_source_for(target) {
                 Some(lines) => chain.extend(lines),
                 None => unreachable!(
-                    "initNames hit ⇒ provenSourceFor returns the initial line (ts: reach.ts:1148)"
+                    "initNames hit ⇒ provenSourceFor returns the initial line"
                 ),
             }
             paths.push(facts.initial_path(target));
         } else {
-            // ts: reach.ts:1383-1400 — the proven-site scan for the bare name
+            // the proven-site scan for the bare name
             for (&si, sup) in &facts.proven {
                 let site = &facts.census.sites[si];
-                // ts: reach.ts:1384-1389 — a derive-mint behind an
-                // object-mandatory verb never mints the BARE name (C4/B6/12320)
+                // a derive-mint behind an
+                // object-mandatory verb never mints the BARE name (12320)
                 if site.derives && object_always(content, site.verb) {
                     continue;
                 }
@@ -835,7 +834,7 @@ impl<'c> Analyzer<'c> {
                 paths.push(facts.path_for(si, target, sup, 0, &IndexSet::new(), false));
             }
             if existence == Existence::None {
-                // ts: reach.ts:1401-1419 — no proven path, but a live guarded
+                // no proven path, but a live guarded
                 // site still blocks 'unobtainable'
                 let candidate_exists = facts.census.live.iter().any(|&i| {
                     let s = &facts.census.sites[i];
@@ -844,7 +843,7 @@ impl<'c> Analyzer<'c> {
                     let serves = if s.kind == SiteKind::Draw {
                         !draw_blinds_bare(content, s, target)
                             && deck_serves(draw_deck(s), target)
-                            // ts: reach.ts:1408-1417 — a PROVEN draw site whose
+                            // a PROVEN draw site whose
                             // cap cannot reach this position is still a guarded
                             // source in a frozen world (81401); unfrozen caps
                             // are exact structural facts
@@ -865,13 +864,13 @@ impl<'c> Analyzer<'c> {
                 }
             }
             if existence == Existence::None {
-                // ts: reach.ts:1421-1446 — every producer of the bare name is a
+                // every producer of the bare name is a
                 // derive-mint behind an object-mandatory verb — BUT the bare
                 // name is still reachable when the object binding dies
-                // mid-window (B6; seed 30790)
+                // mid-window (seed 30790)
                 let derived_only = facts.census.live.iter().any(|&i| {
                     let s = &facts.census.sites[i];
-                    // ts: reach.ts:1429-1433 — a dead verb's sites never
+                    // a dead verb's sites never
                     // produce; they must not negate the derive-drop escape
                     // (seed 91492)
                     s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v))
@@ -899,7 +898,7 @@ impl<'c> Analyzer<'c> {
                     );
                 }
             }
-            // ts: reach.ts:1447-1455 — derived mints can mint names we cannot
+            // derived mints can mint names we cannot
             // enumerate; their shape must never be called structurally absent
             let derived_pattern = content.prototypes.iter().any(|(pname, p)| {
                 p.derive
@@ -916,7 +915,7 @@ impl<'c> Analyzer<'c> {
             }
         }
 
-        // ts: reach.ts:1458-1474 — (b) usability
+        // (b) usability
         let mut usable_via: Vec<String> = Vec::new();
         let descriptor: Option<Entity> = match (&demand_match, facts.init_names.get(target)) {
             (Some(d), _) => Some(d.clone()),
@@ -956,7 +955,7 @@ impl<'c> Analyzer<'c> {
             }
         }
 
-        // ts: reach.ts:1476-1480 — the verdict
+        // the verdict
         let verdict = match existence {
             Existence::None => CardVerdict::Unobtainable,
             Existence::Candidate => CardVerdict::Unproven,
@@ -969,7 +968,7 @@ impl<'c> Analyzer<'c> {
             }
         };
 
-        // ts: reach.ts:1482-1492 — guarded (candidate) sources listed flat
+        // guarded (candidate) sources listed flat
         if demand_q.is_none() && existence == Existence::Candidate && chain.is_empty() {
             for &i in &facts.census.live {
                 if facts.proven.contains_key(&i) {
@@ -1009,7 +1008,7 @@ impl<'c> Analyzer<'c> {
     }
 }
 
-/// ts: reach.ts:1321/1355 — the demand chain head line.
+/// The demand chain head line.
 fn demand_chain_head(shown: &str, kind: &str, aspects: &Aspects, demand: Option<&str>) -> String {
     let aspects_part = if aspects.is_empty() {
         String::new()
@@ -1022,9 +1021,9 @@ fn demand_chain_head(shown: &str, kind: &str, aspects: &Aspects, demand: Option<
     )
 }
 
-/// ts: reach.ts:1297 — the module-level entry (a fresh world per call — the
-/// TS worldFor cache is a pure memo, so a fresh [`Analyzer`] is observably
-/// identical; the CLI should hold one Analyzer across cards instead).
+/// The module-level entry (a fresh world per call — a fresh [`Analyzer`] is
+/// observably identical to reuse; the CLI should hold one Analyzer across
+/// cards instead).
 pub fn analyze_card(
     content: &CompiledContent,
     initial: &State,

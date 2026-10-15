@@ -1,13 +1,12 @@
-//! Port of test/sentence.test.ts (W1, plan §5.2.1) — spec-conformance tests:
+//! Sentence spec-conformance tests —
 //! every §5.2 worked example parses, canonicalizes, and round-trips. Plus
 //! actor-order equality (§9.6), sugar canonicalization, reserved words
 //! (§9.14).
 //!
-//! Mapping (plan §5.2): one `#[test]` per TS `test`, TS name kept
-//! (snake_case) as the traceability anchor; a FRESH Dictionary per test
-//! (TEST-10 — this choice matters for reserved-word-collision tests);
-//! `toThrow(/re/)` → `assert_err_msg(res, "re")` with the pattern copied
-//! verbatim.
+//! Conventions: one `#[test]` per behavior; a FRESH Dictionary per test
+//! (this choice matters for reserved-word-collision tests);
+//! error assertions go through `assert_err_msg(res, "re")` with the pattern
+//! copied verbatim.
 
 mod common;
 
@@ -17,11 +16,10 @@ use chorus::js::cmp_utf16;
 
 use common::harness::{assert_err_msg, assert_json_eq, canonical};
 
-// ---------- spec §5.2 worked examples (ts: sentence.test.ts:19-59) ----------
+// ---------- spec §5.2 worked examples --------------------------------------
 
 #[test]
 fn solo_read_with_at_context_bare_ref_shorthand_becomes_spawn() {
-    // ts: sentence.test.ts:20-23
     let dict = core_dictionary();
     assert_eq!(
         canonical("0:14 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT", &dict),
@@ -31,7 +29,7 @@ fn solo_read_with_at_context_bare_ref_shorthand_becomes_spawn() {
 
 #[test]
 fn two_characters_talking_actor_order_is_not_semantic() {
-    // ts: sentence.test.ts:25-30 (§9.6)
+    // (§9.6)
     let dict = core_dictionary();
     let a = canonical(
         "2:19 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1",
@@ -50,7 +48,6 @@ fn two_characters_talking_actor_order_is_not_semantic() {
 
 #[test]
 fn two_clause_step() {
-    // ts: sentence.test.ts:32-35
     let dict = core_dictionary();
     assert_eq!(
         canonical(
@@ -63,7 +60,7 @@ fn two_clause_step() {
 
 #[test]
 fn event_sentence() {
-    // ts: sentence.test.ts:37-44 — NARRATE's canonical form is paren-less;
+    // NARRATE's canonical form is paren-less;
     // SPAWN stays pretty …but the paren form parses equally
     let dict = core_dictionary();
     assert_eq!(
@@ -84,7 +81,7 @@ fn event_sentence() {
 
 #[test]
 fn engine_written_expiry_trigger_ids_round_trip() {
-    // ts: sentence.test.ts:46-53 (§6.6) — the built-in expiry path writes
+    // (§6.6) — the built-in expiry path writes
     // `expire:<NAME>` into the row; a segment that cannot lex as a name
     // prints quoted — and reassembles
     let dict = core_dictionary();
@@ -100,7 +97,6 @@ fn engine_written_expiry_trigger_ids_round_trip() {
 
 #[test]
 fn rite_with_instruments_and_into() {
-    // ts: sentence.test.ts:55-58
     let dict = core_dictionary();
     assert_eq!(
         canonical(
@@ -111,11 +107,10 @@ fn rite_with_instruments_and_into() {
     );
 }
 
-// ---------- canonicalization (ts: sentence.test.ts:61-81) ----------
+// ---------- canonicalization -----------------------------------------------
 
 #[test]
 fn typed_ref_sugar_kind_name_drops_the_kind_in_canonical_form() {
-    // ts: sentence.test.ts:62-65
     let dict = core_dictionary();
     assert_eq!(
         canonical("ANA READ text:THE_PALE_LADY AT THE_STUDY", &dict),
@@ -125,7 +120,7 @@ fn typed_ref_sugar_kind_name_drops_the_kind_in_canonical_form() {
 
 #[test]
 fn post_verbal_at_moves_pre_verbal() {
-    // ts: sentence.test.ts:67-70 (§9.10)
+    // (§9.10)
     let dict = core_dictionary();
     assert_eq!(
         canonical("ANA READ THE_PALE_LADY AT THE_STUDY", &dict),
@@ -135,7 +130,6 @@ fn post_verbal_at_moves_pre_verbal() {
 
 #[test]
 fn id_refs_and_quoted_names_round_trip() {
-    // ts: sentence.test.ts:72-75
     let dict = core_dictionary();
     assert_eq!(
         canonical("#ana READ \"ODD NAME, WITH COMMA\"", &dict),
@@ -145,7 +139,7 @@ fn id_refs_and_quoted_names_round_trip() {
 
 #[test]
 fn role_refs_in_outcomes_render_uppercase() {
-    // ts: sentence.test.ts:77-80 (MOVE ACTORS INTO OBJECT)
+    // (MOVE ACTORS INTO OBJECT)
     let dict = core_dictionary();
     assert_eq!(
         canonical("ANA TRAVEL_TO VILLA -> MOVE ACTORS INTO OBJECT", &dict),
@@ -153,11 +147,10 @@ fn role_refs_in_outcomes_render_uppercase() {
     );
 }
 
-// ---------- SET deltas and aspect keys, §9.31 (ts: sentence.test.ts:83-104) ----------
+// ---------- SET deltas and aspect keys, §9.31 ------------------------------
 
 #[test]
 fn signed_values_parse_as_deltas_and_print_with_their_sign() {
-    // ts: sentence.test.ts:84-89
     let dict = core_dictionary();
     assert_eq!(
         canonical("0:0 @ ANA WAIT -> SET(ANA, level, +1)", &dict),
@@ -171,7 +164,7 @@ fn signed_values_parse_as_deltas_and_print_with_their_sign() {
 
 #[test]
 fn aspect_keys_keep_their_prefix_dotted_attr_keys_print_bare() {
-    // ts: sentence.test.ts:91-98 (§5.1 dottedName)
+    // (§5.1 dottedName)
     let dict = core_dictionary();
     assert_eq!(
         canonical("0:0 @ ANA WAIT -> SET(ANA, aspect:dread, -1)", &dict),
@@ -189,7 +182,7 @@ fn aspect_keys_keep_their_prefix_dotted_attr_keys_print_bare() {
 
 #[test]
 fn deltas_are_integers_only_a_duration_after_a_sign_is_a_parse_error() {
-    // ts: sentence.test.ts:100-103 (§9.31)
+    // (§9.31)
     let dict = core_dictionary();
     assert_err_msg(
         parse_sentence("0:0 @ ANA WAIT -> SET(ANA, funds, +2h)", &dict),
@@ -201,11 +194,10 @@ fn deltas_are_integers_only_a_duration_after_a_sign_is_a_parse_error() {
     );
 }
 
-// ---------- lexical discipline, §9.14 (ts: sentence.test.ts:106-121) ----------
+// ---------- lexical discipline, §9.14 --------------------------------------
 
 #[test]
 fn reserved_words_cannot_be_names() {
-    // ts: sentence.test.ts:107-111
     let dict = core_dictionary();
     assert_err_msg(parse_sentence("0:0 @ ABOUT READ X", &dict), "reserved");
     assert_err_msg(parse_sentence("ANA READ INTO", &dict), "reserved");
@@ -215,14 +207,12 @@ fn reserved_words_cannot_be_names() {
 
 #[test]
 fn unregistered_verbs_are_rejected_at_the_actors_verb_boundary() {
-    // ts: sentence.test.ts:113-115
     let dict = core_dictionary();
     assert_err_msg(parse_sentence("ANA FLY VILLA", &dict), "registered verb");
 }
 
 #[test]
 fn names_colliding_with_verbs_must_be_quoted() {
-    // ts: sentence.test.ts:117-120
     let dict = core_dictionary();
     assert_err_msg(parse_sentence("0:0 @ READ TALK ABOUT X", &dict), "reserved");
     assert_eq!(
@@ -231,14 +221,14 @@ fn names_colliding_with_verbs_must_be_quoted() {
     );
 }
 
-// ---------- the core verb set is twelve, §4.3 v0.3 (ts: sentence.test.ts:123-141) ----------
+// ---------- the core verb set is twelve, §4.3 v0.3 -------------------------
 
 #[test]
 fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
-    // ts: sentence.test.ts:124-133
     let dict = core_dictionary();
-    // `[...dict.verbs].sort()` — the JS default sort is UTF-16 code-unit
-    // order (CORE-05's comparator), so the Rust sort goes through cmp_utf16
+    // the JS default sort is UTF-16 code-unit
+    // order — that comparator is the contract — so the Rust sort goes
+    // through cmp_utf16
     let mut verbs: Vec<String> = dict.verbs.iter().cloned().collect();
     verbs.sort_by(|a, b| cmp_utf16(a, b));
     assert_json_eq(
@@ -259,7 +249,7 @@ fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
 
 #[test]
 fn the_new_verbs_round_trip_like_the_old_ones() {
-    // ts: sentence.test.ts:135-140 (§5.1); post-verbal AT canonicalizes
+    // (§5.1); post-verbal AT canonicalizes
     // pre-verbal for the new verbs too (§9.10)
     let dict = core_dictionary();
     assert_eq!(

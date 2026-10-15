@@ -1,7 +1,6 @@
-//! ts: src/ui/* — the session layer (plan §2.2): `lenient.rs`, `render.rs`
-//! and `game.rs` (play.ts's Game). Headless only: the ink/react TUI
-//! (tui.tsx) and examples/play.ts's entry logic are NOT ported (plan §1.3 —
-//! Game itself is load-bearing for 7 test files, UI-01).
+//! The session layer: `lenient.rs`, `render.rs` and `game.rs` (the Game).
+//! Headless only: no TUI ships here; the game logic is fully testable
+//! without a TTY.
 
 pub mod game;
 pub mod lenient;

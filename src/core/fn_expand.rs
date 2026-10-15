@@ -1,13 +1,13 @@
-//! Expansion: compile-time call substitution — ts: src/core/parse.ts:25-84
-//! (FnTemplate/FnTable/collectFnCalls) and :646-853 (expandFnCalls and the
-//! substitution helpers). CORE-01's sanctioned pure-move split: this layer
+//! Expansion: compile-time call substitution — function templates, the
+//! load-time function table, call-graph collection, and the
+//! substitution helpers. This layer
 //! is only ever invoked by content compile, after `parse_outcomes` /
 //! `parse_function_body`, BEFORE the load guards — so expanded bodies are
 //! guarded exactly like literal ones and the engine (and therefore the log)
 //! never sees a call.
 //!
 //! Canonical equals expansion: a call site IS its expanded body, byte for
-//! byte (parse.ts:654-655).
+//! byte.
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -19,7 +19,7 @@ use crate::js::{static_regex, ChorusError, Result};
 use std::sync::OnceLock;
 use regex::Regex;
 
-/// ts: src/core/parse.ts:30-34 — one declared function: its parameter names
+/// One declared function: its parameter names
 /// and its body compiled to a TEMPLATE — an outcome list that may still hold
 /// param placeholders and nested `FN` call nodes.
 #[derive(Debug, Clone)]
@@ -29,23 +29,22 @@ pub struct FnTemplate {
     pub body: Vec<Outcome>,
 }
 
-/// ts: src/core/parse.ts:39-41 — the load-time function table, threaded
+/// The load-time function table, threaded
 /// EXPLICITLY into every parse that may contain calls (never Dictionary
-/// state). byName MUST preserve declaration order (IndexMap): iteration
-/// feeds `unknownCallError`'s "declared functions:" list (parse.ts:845/849,
-/// CORE-06) and the content-compile walk points (content.ts:543/571/585).
+/// state). `by_name` MUST preserve declaration order (IndexMap): iteration
+/// feeds `unknown_call_error`'s "declared functions:" list and the
+/// content-compile walk order.
 #[derive(Debug, Clone, Default)]
 pub struct FnTable {
     pub by_name: IndexMap<String, FnTemplate>,
 }
 
-/// ts: src/core/parse.ts:73-84 — every function a body calls, directly
+/// Every function a body calls, directly
 /// (branch bodies included) — the call graph content compile walks for
-/// recursion cycles and the depth cap. IndexSet, NOT HashSet: the TS
-/// `Set<string>` iterates in INSERTION order and content.ts pass-3
-/// (:545-561, W2) observes it — the FIRST undeclared name enters the error
-/// text (:548) and the DFS decides which cycle is found first and how
-/// `a -> b -> a` spells (wave-1 must-fix-2).
+/// recursion cycles and the depth cap. IndexSet, NOT HashSet: iteration
+/// is INSERTION order and content compile observes it — the FIRST undeclared
+/// name enters the error text and the DFS decides which cycle is found first
+/// and how `a -> b -> a` spells.
 pub fn collect_fn_calls(out: &[Outcome], into: &mut IndexSet<String>) {
     for o in out {
         if o.op == "FN" {
@@ -67,24 +66,26 @@ pub fn collect_fn_calls(out: &[Outcome], into: &mut IndexSet<String>) {
     }
 }
 
-/// ts: src/core/parse.ts:676-678 — replace every FN call in an authored
+/// Replace every FN call in an authored
 /// outcome list with its function's body, substituting parameters.
 pub fn expand_fn_calls(out: &[Outcome], fns: &FnTable) -> Result<Vec<Outcome>> {
     expand_list(out, fns, &mut IndexMap::new(), None)
 }
 
-/// ts: src/core/parse.ts:682 — tokens a body string may carry that are never
-/// parameter names: the §5.3 prose substitutions and F4's {roll}. The SET
-/// INSERTION ORDER is load-bearing: `undeclaredTokenError` joins it
-/// (`{${[...FN_RESERVED_TOKENS].join('} {')}}`, parse.ts:784).
+/// Tokens a body string may carry that are never
+/// parameter names: the §5.3 prose substitutions and {roll}. The SET
+/// INSERTION ORDER is load-bearing: `undeclared_token_error` joins it
+/// into its message.
 pub const FN_RESERVED_TOKENS: [&str; 7] = ["actors", "object", "with", "at", "about", "to", "roll"];
 
-/// ts: src/core/parse.ts:686 — nesting cap for legitimate chains (§9.40):
+/// Nesting cap for legitimate chains (§9.40):
 /// depth(f) = 1 + max(depth of its callees), a body with no calls is depth 1
 /// — depth 9 is a load error (rejected over the call graph at content load).
 pub const MAX_FN_DEPTH: u32 = 8;
 
-/// ts: src/core/parse.ts:688-715
+/// Expand a list: FN calls splice in their expanded bodies, IF arms and
+/// fallbacks recurse, and inside a function body every arg is substituted
+/// against the current bindings.
 fn expand_list(
     list: &[Outcome],
     fns: &FnTable,
@@ -95,9 +96,9 @@ fn expand_list(
     for o in list {
         if o.op == "FN" {
             let Some(name) = &o.call else {
-                // ts: parse.ts:692 `o.call!` — parse-fn_call always sets it;
+                // fn_call parse always sets `call`;
                 // hand-built FN nodes without a call are a programmer error
-                unreachable!("FN node without a call (ts: parse.ts:692)")
+                unreachable!("FN node without a call")
             };
             let Some(tpl) = fns.by_name.get(name) else {
                 return Err(ChorusError::new(format!(
@@ -110,10 +111,10 @@ fn expand_list(
             let mut bind2: IndexMap<String, Arg> = IndexMap::new();
             for (i, p) in tpl.params.iter().enumerate() {
                 let Some(arg) = o.args.get(i) else {
-                    // ts: parse.ts:698 `o.args[i]!` — arity checked at
+                    // arity checked at
                     // fn_call; hand-built lists violating it are a
-                    // programmer error (rule 11)
-                    unreachable!("FN call missing arg {i} for '{name}' (ts: parse.ts:698)")
+                    // programmer error
+                    unreachable!("FN call missing arg {i} for '{name}'")
                 };
                 bind2.insert(p.clone(), subst_arg(arg, fn_, bind)?);
             }
@@ -167,7 +168,7 @@ fn expand_list(
     Ok(out)
 }
 
-/// ts: src/core/parse.ts:718-759 — substitute one arg against the enclosing
+/// Substitute one arg against the enclosing
 /// function's bindings.
 fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Result<Arg> {
     match a {
@@ -248,7 +249,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
     }
 }
 
-/// ts: src/core/parse.ts:769-777 — `{param}` → the call-site arg's canonical
+/// `{param}` → the call-site arg's canonical
 /// spelling, inside a function body string. One NON-RESCANNING pass over the
 /// body string (JS /g replace ≡ single-pass non-overlapping, and the
 /// replacements are never rescanned — regex `replace_all` + manual assembly
@@ -257,12 +258,11 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
 /// spelling (`{ x }`, `{ actors }`) never rewrites. Commas/quotes inside
 /// braces are ordinary prose.
 fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<String> {
-    // appendix A.1: parse.ts:770 — `\{(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*)\}`
-    // with the JS `\s` class (Q8); R (replace_all + captures, $-free)
+    // `\{(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*)\}`
+    // with the JS `\s` class (Q8)
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = static_regex(&RE, || {
-        // ts: parse.ts:770 — the exact TS shape `\{(\s*)(name)(\s*)\}`:
-        // the whitespace classes are CAPTURE GROUPS (pre = $1, post = $3)
+        // the whitespace classes are CAPTURE GROUPS (pre = group 1, post = group 3)
         let mut pat = String::from("\\{("); // regex \{(
         pat.push_str(crate::js::JS_WS_CLASS);
         pat.push_str("*)");
@@ -277,11 +277,11 @@ fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<
     let mut last = 0;
     for caps in re.captures_iter(s) {
         let m = caps.get(0).map(|m| (m.start(), m.end())).unwrap_or_else(|| {
-            unreachable!("regex group 0 is always present") // rule 11
+            unreachable!("regex group 0 is always present") // impossible by construction
         });
         out.push_str(&s[last..m.0]);
         let whole = &s[m.0..m.1];
-        // TS closure receives pre/name/post; both spaced spellings error
+        // the capture groups give pre/name/post; both spaced spellings error
         let pre = caps.get(1).map(|g| g.as_str()).unwrap_or_default();
         let name = caps.get(2).map(|g| g.as_str()).unwrap_or_default();
         let post = caps.get(3).map(|g| g.as_str()).unwrap_or_default();
@@ -303,7 +303,7 @@ fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<
     Ok(out)
 }
 
-/// ts: src/core/parse.ts:781-788 — the undeclared-interpolation load error:
+/// The undeclared-interpolation load error:
 /// names the token, the function, and the reserved set it would have had to
 /// belong to.
 #[must_use]
@@ -314,8 +314,8 @@ fn undeclared_token_error(fn_: &str, token: &str) -> ChorusError {
     ))
 }
 
-/// ts: src/core/parse.ts:791-808 — the canonical spelling of a call-site
-/// arg, for string interpolation. CORE-13 (标红): the str/pair spellings are
+/// The canonical spelling of a call-site
+/// arg, for string interpolation. The str/pair spellings are
 /// DELIBERATELY UNQUOTED here — format.rs's format_arg quotes them. The two
 /// spellings are frozen separately; merging them would break byte-for-byte
 /// expansion. Only delta/int/dur/bool spellings are shared with format_arg.
@@ -338,13 +338,13 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
         } else {
             format!("+{v}")
         }),
-        Arg::Str { v } => Ok(v.clone()), // RAW — the deliberate unquoted spelling (CORE-13)
+        Arg::Str { v } => Ok(v.clone()), // RAW — the deliberate unquoted spelling
         Arg::Bool { v } => Ok(v.to_string()),
         Arg::Dur { v } => format_duration(*v),
         Arg::Key { v } => Ok(v.clone()),
         Arg::Pair { k, v } => {
-            // ts: parse.ts:804 `${a.k}=${String(a.v)}` — the value RAW
-            // (formatArg quotes it; CORE-13's frozen asymmetry)
+            // the value RAW (`k=v` via the JS string form; format_arg quotes
+            // it — the frozen asymmetry)
             Ok(format!("{k}={}", v.to_js_string()))
         }
         other => Err(ChorusError::new(format!(
@@ -354,7 +354,7 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
     }
 }
 
-/// ts: src/core/parse.ts:813-823 — substitute a condition: parameters stand
+/// Substitute a condition: parameters stand
 /// in cmp operands (numeric literal positions); quantifiers/exists/query
 /// terms take none — the grammar already rejected them at parse.
 fn subst_pred(p: &Pred, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<Pred> {
@@ -373,12 +373,13 @@ fn subst_pred(p: &Pred, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<P
             op: *op,
             r: subst_expr(r, fn_, bind)?,
         }),
-        // rel/every/any/exists/existsQuery carry no parameters
+        // Rel/Every/Any/Exists/ExistsQuery carry no parameters
         _ => Ok(p.clone()),
     }
 }
 
-/// ts: src/core/parse.ts:825-838
+/// Substitute a value expression: only a param operand rewrites; a bound
+/// int/delta/dur lands as an int.
 fn subst_expr(x: &ValExpr, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<ValExpr> {
     if let ValExpr::Param { name } = x {
         let Some(bound) = bind.get(name) else {
@@ -401,7 +402,7 @@ fn subst_expr(x: &ValExpr, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Resul
     Ok(x.clone())
 }
 
-/// ts: src/core/parse.ts:843-853 — the unknown `NAME(...)` compile error:
+/// The unknown `NAME(...)` compile error:
 /// the full outcome vocabulary — ops, then declared functions — so the
 /// author can see what IS legal; a name that looks like a predicate helper
 /// gets the forgotten-IF hint.
@@ -510,7 +511,7 @@ mod tests {
         let fns = table("BUMP", &["n"], "NARRATE \"+{n}\", SET(level, +n), SET(level, -n)");
         let body_call = parse_outcomes("BUMP(2)", &d, Some(&fns)).unwrap();
         // +{n} interpolates "+2" into the string; +n/-n fold the authored
-        // sign into the call's number (parse.ts:722-728)
+        // sign into the call's number
         let expanded = expand_fn_calls(&body_call, &fns).unwrap();
         match (&expanded[0].args[0], &expanded[1].args[1], &expanded[2].args[1]) {
             (Arg::Str { v }, Arg::Delta { v: a }, Arg::Delta { v: b }) => {
@@ -601,8 +602,8 @@ mod tests {
 
     #[test]
     fn collect_fn_calls_preserves_ts_set_insertion_order() {
-        // wave-1 must-fix-2: collectFnCalls fills a JS `Set<string>`, whose
-        // iteration is INSERTION order — content.ts pass-3 (:545-561) reads
+        // collect_fn_calls fills an IndexSet mirroring a JS `Set<string>`:
+        // iteration is INSERTION order — content compile reads
         // it in that order (first undeclared callee in the error text; the
         // first cycle found and its `a -> b -> a` spelling). Hand-built FN
         // nodes, as in the branch test above (undeclared fns fail at parse).
@@ -629,8 +630,8 @@ mod tests {
             call: None,
         };
         let mut into = IndexSet::new();
-        // declaration order across the list, plus a DUPLICATE: Set.add keeps
-        // the element at its FIRST position (TS and IndexSet alike)
+        // declaration order across the list, plus a DUPLICATE: insertion keeps
+        // the element at its FIRST position (JS Set and IndexSet alike)
         collect_fn_calls(&[o, fn_("mike"), fn_("zulu")], &mut into);
         let names: Vec<&str> = into.iter().map(String::as_str).collect();
         assert_eq!(names, vec!["zulu", "alpha", "mike"]);
@@ -638,7 +639,7 @@ mod tests {
 
     #[test]
     fn param_sign_on_delta_position_folds_negation() {
-        // direct subst_arg check of the sign rule (parse.ts:722-728)
+        // direct subst_arg check of the sign rule
         let mut bind = IndexMap::new();
         bind.insert("n".to_string(), Arg::Int { v: 4 });
         let a = Arg::Param {

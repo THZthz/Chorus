@@ -1,10 +1,9 @@
-//! ts: src/content/* — one Rust module per TS file (plan §2.2). `script.rs`
-//! is the line-segment script parser + load-time lint; `content.rs` is the
-//! compiler (and hosts the §9.42 deck machinery folded in from W0's
-//! `core/deck_rng.rs` staging module).
+//! The content layer: `script.rs` is the line-segment script parser +
+//! load-time lint; `content.rs` is the compiler (and hosts the §9.42 deck
+//! machinery).
 
-// `content/content.rs` mirrors the TS tree 1:1 (plan §2.2) — the clippy
-// "inception" shape is the mapping's cost, not an accident.
+// the clippy "inception" shape (`content::content`) is deliberate — the
+// module and its core type share a name.
 #![allow(clippy::module_inception)]
 
 pub mod content;

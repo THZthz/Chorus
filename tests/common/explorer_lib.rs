@@ -1,12 +1,12 @@
-//! Shared machinery for the nightjar explorer tests — ts: test/explorer-lib.ts:
-//! the compiled Nightjar Flyer content, the candidate generator (sampled for
+//! Shared machinery for the nightjar explorer tests — the compiled
+//! Nightjar Flyer content, the candidate generator (sampled for
 //! the walk, exhaustive for the sweep), and the state sources both passes play
 //! against. No test framework here — scripts and tests import this alike.
 //!
-//! Modeling note: the TS module-level singletons (`dict`, `content`, `base`,
-//! `meta`, `PLAYER`) become [`ExplorerWorld`], built fresh per call —
+//! Modeling note: the world bundle (`dict`, `content`, `base`,
+//! `meta`, `player`) is [`ExplorerWorld`], built fresh per call —
 //! `compile_script` is pure, so the values are identical; there is no
-//! process-global state on the Rust side.
+//! process-global state.
 
 //! (Shared test lib: every helper is the common discipline, not per-file
 //! dead code — each mounting test crate uses a different subset, exactly like
@@ -32,27 +32,26 @@ use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
 use super::settle::settle_step;
 
-/// ts: explorer-lib.ts:21 (`readFileSync(…/the-nightjar-flyer.txt)`) — the
-/// script text is DATA (ENG-22): embedded by path, never precompiled.
+/// The script text is DATA: embedded by path, never precompiled.
 pub const SCRIPT_TEXT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/scripts/the-nightjar-flyer.txt"
 ));
 
-/// The world bundle — ts: explorer-lib.ts:20-24 (`dict`, `scriptText`,
-/// `compileScript(...)` → `content`/`base`/`meta`, `PLAYER`). `meta` rides
-/// along for the T3.7 tests that assert on it (title/goal/start).
+/// The world bundle: the dictionary, the compiled script's
+/// `content`/`base`/`meta`, and the player name. `meta` rides
+/// along for the explorer tests that assert on it (title/goal/start).
 pub struct ExplorerWorld {
     pub dict: Dictionary,
     pub content: CompiledContent,
     pub base: State,
-    #[allow(dead_code)] // consumed by the T3.7 test ports
+    #[allow(dead_code)] // consumed by the explorer tests
     pub meta: ScriptMeta,
-    /// ts: explorer-lib.ts:23 — `meta.player ?? 'MARCH'`
+    /// the player name — `meta.player`, defaulting to 'MARCH' when unset
     pub player: String,
 }
 
-/// ts: explorer-lib.ts:20-24 — built per call (see module doc).
+/// Built fresh per call (see module doc).
 pub fn explorer_world() -> ExplorerWorld {
     let dict = core_dictionary();
     let compiled = compile_script(SCRIPT_TEXT, &dict).expect("the nightjar flyer compiles");
@@ -70,16 +69,16 @@ pub fn explorer_world() -> ExplorerWorld {
     }
 }
 
-// ------------------------ candidate generation ------------------------
+// ------------------------ candidate generation -----------------------------
 
-/// ts: explorer-lib.ts:27-30
+/// A candidate action: a display tag plus the step it plays.
 #[derive(Debug, Clone)]
 pub struct Cand {
     pub tag: String,
     pub step: Step,
 }
 
-/// ts: explorer-lib.ts:33 — 'sampled' = the bounded space the random walk
+/// 'sampled' = the bounded space the random walk
 /// picks from; 'full' = the sweep's exhaustive space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Depth {
@@ -88,12 +87,11 @@ pub enum Depth {
 }
 
 /// roles whose fill is a list (the rest are single-ref and cannot over-fill)
-/// — ts: explorer-lib.ts:59
 const LIST_ROLES: [&str; 3] = ["actors", "object", "with"];
 
-/// ts: explorer-lib.ts:35-41 — roleRefs: the role's ref list; the single-ref
-/// roles yield the one ref or null. The JSON image (null / array / object) is
-/// exactly what the TS `JSON.stringify(roleRefs(c, r))` produced.
+/// The role's ref list — the single-ref
+/// roles yield the one ref or null. The JSON image (null / array / object)
+/// is the canonical wire form.
 fn role_refs(c: &Clause, role: Role) -> serde_json::Value {
     match role {
         Role::Actors => serde_json::to_value(&c.actors).unwrap_or(serde_json::Value::Null),
@@ -105,7 +103,7 @@ fn role_refs(c: &Clause, role: Role) -> serde_json::Value {
     }
 }
 
-/// ts: explorer-lib.ts:43-44
+/// The clause-set key: the verb plus every role's ref-list JSON, `|`-joined.
 #[must_use]
 pub fn clause_key(c: &Clause) -> String {
     let mut parts: Vec<String> = vec![c.verb.clone()];
@@ -115,8 +113,8 @@ pub fn clause_key(c: &Clause) -> String {
     parts.join("|")
 }
 
-/// ts: explorer-lib.ts:47-56 — every k-subset of arr with min ≤ k ≤ max, in
-/// pool order (deterministic). `max: None` models TS Infinity (the recursion
+/// every k-subset of arr with min ≤ k ≤ max, in
+/// pool order (deterministic). `max: None` models JS `Infinity` (the recursion
 /// then only stops when the pool is exhausted).
 fn subsets(arr: &[&Entity], min: i64, max: Option<i64>) -> Vec<Vec<Ref>> {
     let mut out: Vec<Vec<Ref>> = Vec::new();
@@ -145,8 +143,8 @@ fn walk(
     }
 }
 
-/// ts: explorer-lib.ts:71-74 — the keyed dedupe: first tag for a clause-set
-/// key wins, insertion order preserved (the TS `out` Map).
+/// the keyed dedupe: first tag for a clause-set
+/// key wins, insertion order preserved.
 fn push_tag(out: &mut IndexMap<String, Cand>, clock: Clock, tag: &str, clauses: Vec<Clause>) {
     let key = clauses
         .iter()
@@ -164,7 +162,7 @@ fn push_tag(out: &mut IndexMap<String, Cand>, clock: Clock, tag: &str, clauses: 
     });
 }
 
-/// ts: explorer-lib.ts:115-125 — buildClause
+/// Assemble a clause from a per-role fill map.
 fn build_clause(verb_name: &str, over: &IndexMap<String, Vec<Ref>>) -> Clause {
     let mut c = empty_clause(vec![]);
     c.verb = verb_name.to_string();
@@ -177,8 +175,7 @@ fn build_clause(verb_name: &str, over: &IndexMap<String, Vec<Ref>>) -> Clause {
     c
 }
 
-/// ts: explorer-lib.ts:177-189 — the small-verb cartesian product, same
-/// enumeration order as the TS recursion (first role outermost).
+/// the small-verb cartesian product, enumerated first-role-outermost (deterministic order).
 fn product_rec(
     i: usize,
     roles: &[Role],
@@ -191,8 +188,9 @@ fn product_rec(
     if i == roles.len() {
         let mut over: IndexMap<String, Vec<Ref>> = IndexMap::new();
         for r in roles {
-            // ts: `(fills.get(r) ?? [])[idx.get(r)!] ?? []` — idx always has r
-            // by the time this depth runs (set by the loop one level up)
+            // idx always has r
+            // by the time this depth runs (set by the loop one level up);
+            // a missing fill is an empty vec
             let v = match (fills.get(r.as_str()), idx.get(r)) {
                 (Some(list), Some(&k)) => list.get(k).cloned().unwrap_or_default(),
                 _ => Vec::new(),
@@ -217,8 +215,8 @@ fn product_rec(
     }
 }
 
-/// ts: explorer-lib.ts:61-231. (`dict` is an explicit parameter here: the TS
-/// version closed over the module-level dictionary.)
+/// The candidate generator. (`dict` is an explicit parameter rather than a
+/// captured global.)
 pub fn candidates_for(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -254,7 +252,7 @@ pub fn candidates_for(
 
     for verb in content.verbs.values() {
         // options per declared role: empty (when allowed), singles, and
-        // shaped extras — ts: explorer-lib.ts:78-103
+        // shaped extras.
         let mut fills: IndexMap<String, Vec<Vec<Ref>>> = IndexMap::new();
         for slot in &verb.slots {
             let mut opts: Vec<Vec<Ref>> = Vec::new();
@@ -271,8 +269,8 @@ pub fn candidates_for(
                     opts.push(set);
                 }
                 // … then the boundary: one card beyond the declared max
-                // (TS `candidates.length > slot.max && slot.max > 0` —
-                // Infinity fails both comparisons, hence Option)
+                // (an unbounded max — Infinity — fails both comparisons,
+                // hence Option)
                 if let Some(m) = slot.max {
                     if candidates.len() as i64 > m && m > 0 {
                         opts.push(
@@ -291,7 +289,7 @@ pub fn candidates_for(
                 for e in candidates.iter().take(4) {
                     opts.push(vec![name_ref(e.name.clone(), None)]);
                 }
-                // TS `actorsSlot.max >= 2` — Infinity (None) passes
+                // an actors slot max >= 2 — unbounded (None) passes
                 let actors_roomy = verb
                     .slot_by_role
                     .get("actors")
@@ -318,8 +316,7 @@ pub fn candidates_for(
             fills.insert(slot.role.clone(), opts);
         }
 
-        // baseline valid fill: the first option covering each slot's minimum
-        // — ts: explorer-lib.ts:105-113
+        // baseline valid fill: the first option covering each slot's minimum.
         let mut min_fill: IndexMap<String, Vec<Ref>> = IndexMap::new();
         let mut viable = true;
         for role in ROLES {
@@ -372,8 +369,7 @@ pub fn candidates_for(
                     );
                 }
             }
-            // deliberate slot-mismatch probe(s): card(s) that must not fit
-            // — ts: explorer-lib.ts:139-147
+            // deliberate slot-mismatch probe(s): card(s) that must not fit.
             if let Some(q) = &slot.query {
                 let wrong: Vec<&Entity> =
                     alive.iter().copied().filter(|e| !match_query(e, q)).collect();
@@ -396,7 +392,7 @@ pub fn candidates_for(
                 }
             }
             // §6.7: a role takes DISTINCT cards — the same card twice in one
-            // role (full sweep only) — ts: explorer-lib.ts:148-156
+            // role (full sweep only).
             if full && LIST_ROLES.contains(&role.as_str()) {
                 let first = min_fill.get(role.as_str()).and_then(|v| v.first()).cloned();
                 if let Some(first) = first {
@@ -413,8 +409,7 @@ pub fn candidates_for(
 
         if full {
             // §6.7: distinct cards ACROSS roles too — force each pair of
-            // LIST_ROLES to share the same card and let the engine rule
-            // — ts: explorer-lib.ts:158-171
+            // LIST_ROLES to share the same card and let the engine rule.
             for (i, a) in LIST_ROLES.into_iter().enumerate() {
                 for b in &LIST_ROLES[i + 1..] {
                     let Some(ref_a) = min_fill.get(a).and_then(|v| v.first()).cloned() else {
@@ -434,8 +429,7 @@ pub fn candidates_for(
                     );
                 }
             }
-            // small verbs: the full cartesian product of role options
-            // — ts: explorer-lib.ts:172-190
+            // small verbs: the full cartesian product of role options.
             let roles_with_opts: Vec<Role> = ROLES
                 .iter()
                 .copied()
@@ -457,8 +451,7 @@ pub fn candidates_for(
             }
         }
 
-        // witness × topic matrix for verbs that interrogate (to × about)
-        // — ts: explorer-lib.ts:192-205
+        // witness × topic matrix for verbs that interrogate (to × about).
         let to_opts = fills.get("to").cloned().unwrap_or_default();
         let about_opts = fills.get("about").cloned().unwrap_or_default();
         if !to_opts.is_empty() && !about_opts.is_empty() {
@@ -474,7 +467,7 @@ pub fn candidates_for(
         }
     }
 
-    // multi-clause and clock-discipline probes — ts: explorer-lib.ts:208-229
+    // multi-clause and clock-discipline probes.
     let wait_clauses = parse_sentence(
         &format!("{} @ {} WAIT", format_clock(clock), player),
         dict,
@@ -523,9 +516,9 @@ pub fn candidates_for(
     out.into_values().collect()
 }
 
-// ------------------------ state sources ------------------------
+// ------------------------ state sources ------------------------------------
 
-/// ts: explorer-lib.ts:235-245
+/// The canonical win path through the Nightjar Flyer (nine commands).
 pub const WIN_PATH: [&str; 9] = [
     "wait",
     "explore the first cabin",
@@ -538,7 +531,7 @@ pub const WIN_PATH: [&str; 9] = [
     "use on the inquest with the embezzlement the stolen voice the vienna warning",
 ];
 
-/// ts: explorer-lib.ts:247-251 — throws when a win-path line stops parsing.
+/// Parses a player-ish line; throws when a win-path line stops parsing.
 fn parse_playerish(world: &ExplorerWorld, line: &str, state: &State) -> Result<Step> {
     match parse_player_input(
         line,
@@ -556,12 +549,12 @@ fn parse_playerish(world: &ExplorerWorld, line: &str, state: &State) -> Result<S
     }
 }
 
-/// ts: explorer-lib.ts:256 — `{ states: { label, state }[], records }`
+/// The labeled per-step state snapshots plus the whole record list.
 pub type PathStates = (Vec<(String, State)>, Vec<ActionRecord>);
 
 /// play the win path on primitives, snapshotting a fresh clone after each step
 /// (each step settles — its window completes, the way the pre-v0.5 engine
-/// committed effects at once). ts: explorer-lib.ts:256-270
+/// committed effects at once).
 pub fn win_path_states(world: &ExplorerWorld) -> Result<PathStates> {
     let mut state = clone_state(&world.base);
     let mut states = vec![("start".to_string(), clone_state(&state))];
@@ -586,9 +579,9 @@ pub fn win_path_states(world: &ExplorerWorld) -> Result<PathStates> {
 
 /// diverse states beyond the win path: a short deterministic sampled walk
 /// (no verification — the walk pass owns that) harvested every 20 applied
-/// steps, up to ten states. ts: explorer-lib.ts:275-306
+/// steps, up to ten states.
 pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>> {
-    // 'NIGH' — same LCG discipline as the walk pass (TEST-04: the RAW state,
+    // 'NIGH' — same LCG discipline as the walk pass (the RAW state,
     // no XOR — js::Lcg::from_raw_state)
     let mut lcg = Lcg::from_raw_state(0x4e49_4748);
     let mut state = clone_state(&world.base);
@@ -660,7 +653,7 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
             continue;
         }
         executed += 1;
-        // ts: explorer-lib.ts:303 — `executed % 20 === 0`
+        // harvest every 20 applied steps
         if executed.is_multiple_of(20) {
             states.push((format!("walk {executed}"), clone_state(&state)));
         }

@@ -1,8 +1,0 @@
-action+wait
-action+wait
-action+wait
-action+wait
-action+wait
-action+wait
-action+wait
-action+wait

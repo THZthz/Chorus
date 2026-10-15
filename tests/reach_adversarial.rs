@@ -1,11 +1,11 @@
 //! Hand-crafted adversarial scenarios for the static card-reachability
-//! analyzer — ts: test/reach-adversarial.test.ts (S1–S14), **analyzer side
-//! only** (plan §5.2.1: the engine-side halves of these tests — settleStep
-//! traces, the exhaustive explorer — were confirmed by the W3 engine tests
-//! and the W4 golden corpus, S1–S14 zero-byte-diff; this file ports the
-//! reach-verdict / existence / chain / notes / usableVia assertions).
+//! analyzer (S1–S14), **analyzer side
+//! only** (the engine-side halves of these tests — settle traces,
+//! the exhaustive explorer — are confirmed by the engine tests
+//! and the golden corpus, S1–S14 zero-byte-diff; this file carries the
+//! reach-verdict / existence / chain / notes / usable_via assertions).
 //!
-//! Verdict contract under test (reach.ts header): 'unobtainable' must never
+//! Verdict contract under test (the reach header contract): 'unobtainable' must never
 //! fire wrongly; 'obtainable' must be backed by a real chain; guarded sites
 //! demote to 'unproven'.
 
@@ -20,9 +20,8 @@ use chorus::core::dice::roll_die;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
 use chorus::reach::{analyze_card, Analyzer, CardOptions, CardVerdict, Existence};
 
-/// ts: reach-adversarial.test.ts:46-50 — `compile(raw)`: rig verbs are
-/// code-registered (§10, the parallel.test.ts precedent). One dictionary per
-/// test (plan §5.2 TEST-10), mutated exactly like the TS module-level one.
+/// Rig verbs are
+/// code-registered (§10). One fresh dictionary per test.
 fn compile(raw: &ContentRaw) -> chorus::content::content::CompiledContent {
     let mut dict = core_dictionary();
     for name in raw.verbs.keys() {
@@ -33,7 +32,7 @@ fn compile(raw: &ContentRaw) -> chorus::content::content::CompiledContent {
     compile_content(raw, &dict, &[]).expect("scenario compiles")
 }
 
-/// ts: reach-adversarial.test.ts:29-38 — `ent(name, kind, aspects)`.
+/// One scenario entity (id derived from the lowercased name).
 fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
     let mut a: IndexMap<String, AspectVal> = IndexMap::new();
     for (k, v) in aspects {
@@ -51,7 +50,7 @@ fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
     }
 }
 
-/// ts: reach-adversarial.test.ts:40-44 — `stateWith(...es)`.
+/// A state holding exactly these scenario entities.
 fn state_with(es: Vec<Entity>) -> State {
     let mut s = new_state(0);
     for e in es {
@@ -187,7 +186,7 @@ fn analyze_demand(
 fn _witness(_s: &IndexSet<String>) {}
 
 // ---------------------------------------------------------------- S1
-/// ts: reach-adversarial.test.ts:83-141 (analyzer half).
+/// (analyzer half).
 /// FORGE (60m) mints KEYCARD at completion; INSPECT binds kind:item — the
 /// static fixpoint must chain the mint into the slot; window geometry cannot
 /// demote the claims (the analyzer is time-free).
@@ -255,7 +254,7 @@ fn s1_parallel_windows_the_mint_chains_into_the_slot_and_stays_usable() {
 }
 
 // ---------------------------------------------------------------- S2
-/// ts: reach-adversarial.test.ts:177-241 (analyzer half).
+/// (analyzer half).
 /// SET(PAPER, expires) + `on expire of PAPER -> SPAWN ASH`: the expiry
 /// trigger counts as a producer once its named card is available AND
 /// expirable.
@@ -295,7 +294,7 @@ fn s2_expiry_chain_the_expiry_trigger_proves_its_mint() {
 }
 
 // ---------------------------------------------------------------- S3
-/// ts: reach-adversarial.test.ts:244-302 (analyzer half).
+/// (analyzer half).
 /// SPAWN A; REPLACE A WITH B; REPLACE B WITH C — the fixpoint proves SEED
 /// first, then the REPLACE sites in later rounds; transience does not demote.
 #[test]
@@ -347,9 +346,9 @@ fn s3_replace_chain_c_obtainable_through_the_two_hop_chain() {
 }
 
 // ---------------------------------------------------------------- S4
-/// ts: reach-adversarial.test.ts:305-377 (analyzer half).
+/// (analyzer half).
 /// SUSPICION is stackable; PROBE's object slot takes TWO kind:state cards —
-/// slotSupport expands a stackable mint fact into name#copy instances, so
+/// slot_support expands a stackable mint fact into name#copy instances, so
 /// min:2 is satisfiable from ONE source.
 #[test]
 fn s4_stackable_pool_feeding_a_min2_slot() {
@@ -398,7 +397,7 @@ fn s4_stackable_pool_feeding_a_min2_slot() {
 }
 
 // ---------------------------------------------------------------- S5
-/// ts: reach-adversarial.test.ts:380-440 (analyzer half).
+/// (analyzer half).
 /// Chained derive mints must never be called structurally absent.
 #[test]
 fn s5_derive_of_derive_the_chained_names_are_candidate_never_unobtainable() {
@@ -472,7 +471,7 @@ fn s5_derive_of_derive_the_chained_names_are_candidate_never_unobtainable() {
 }
 
 // ---------------------------------------------------------------- S6
-/// ts: reach-adversarial.test.ts:443-540 (analyzer half).
+/// (analyzer half).
 /// Stackable variant: full reachability. Non-stackable control: the
 /// analyzer's freeze line is coarser than the truth (every pre-freeze trigger
 /// draw site caps at ONE draw; decks take the MAX over sites) — DUSK stays
@@ -531,13 +530,13 @@ fn s6_deck_reset_and_defaultcard_with_the_non_stackable_freeze_nuance() {
     let dawn = analyze(&plain, &state, "DAWN");
     assert_eq!(dawn.verdict, CardVerdict::Unproven); // needs 2 CYCLE draws
     let ember = analyze(&plain, &state, "EMBER");
-    assert_eq!(ember.verdict, CardVerdict::Unproven); // its trigger is dupRisk'd
+    assert_eq!(ember.verdict, CardVerdict::Unproven); // its trigger is dup_risk-flagged
     let echo = analyze(&plain, &state, "ECHO");
     assert_eq!(echo.verdict, CardVerdict::Unproven); // needs 2 FALLBACK draws
 }
 
 // ---------------------------------------------------------------- S7
-/// ts: reach-adversarial.test.ts:543-589 (analyzer half).
+/// (analyzer half).
 /// `SPAWN rite:RELIC` overrides the minted kind; the KIND carries the
 /// stackable declaration so the mint stacks; demand 'kind:rite' is proven by
 /// the overridden MINT descriptor.
@@ -578,7 +577,7 @@ fn s7_kind_override_plus_kind_stackable_and_demand_matching_the_overridden_descr
 }
 
 // ---------------------------------------------------------------- S8
-/// ts: reach-adversarial.test.ts:592-677 (analyzer half).
+/// (analyzer half).
 /// Three same-slot triggers sharing a non-stackable mint: the shared mint
 /// dooms the whole event pass — every sibling's mints demote, in BOTH
 /// declaration orders; the distinct-mint control stays obtainable.
@@ -661,7 +660,7 @@ fn s8_same_slot_triple_triggers_with_overlapping_mint_names_demote_in_both_order
 }
 
 // ---------------------------------------------------------------- S9
-/// ts: reach-adversarial.test.ts:680-726 (analyzer half).
+/// (analyzer half).
 /// The gate-durability rule (seed 6028): a static gate on exists(ROPE) with a
 /// ROPE killer demotes the site to candidate.
 #[test]
@@ -692,8 +691,8 @@ fn s9_gate_death_the_mortal_gate_demotes_to_unproven() {
 }
 
 // ---------------------------------------------------------------- S10
-/// ts: reach-adversarial.test.ts:729-810 (analyzer half).
-/// selfGated: the recipe's own mint fills a required slot and collides
+/// (analyzer half).
+/// self_gated: the recipe's own mint fills a required slot and collides
 /// post-bootstrap — GOAL stays unproven; with the slot OPTIONAL the bootstrap
 /// exists and the analyzer flips to obtainable.
 #[test]
@@ -736,14 +735,14 @@ fn s10_self_filler_collision_selfgated_demotes_until_the_slot_is_optional() {
     assert!(goal.notes.join(" ").contains("candidate source"));
 
     // control (the rule's precision): with the with-slot OPTIONAL the
-    // bootstrap EXISTS — selfGated's filler branch skips min:0 slots
+    // bootstrap EXISTS — the self-gated filler branch skips min:0 slots
     let optional = compile(&mk(0));
     let goal_opt = analyze(&optional, &state, "GOAL");
     assert_eq!(goal_opt.verdict, CardVerdict::Obtainable);
 }
 
 // ---------------------------------------------------------------- S11
-/// ts: reach-adversarial.test.ts:813-867 (analyzer half).
+/// (analyzer half).
 /// Two clauses in one step, each completing its own recipe mint — nothing
 /// about co-clause commits can demote them.
 #[test]
@@ -788,7 +787,7 @@ fn s11_multi_clause_commit_both_mints_obtainable() {
 }
 
 // ---------------------------------------------------------------- S12
-/// ts: reach-adversarial.test.ts:870-905 (analyzer half).
+/// (analyzer half).
 /// A world-static FALSE `when: exists(GHOST)` recipe: the guard is static and
 /// false, so the site is not provable — but it is not STRUCTURALLY absent
 /// either → 'unproven'/candidate.
@@ -815,10 +814,10 @@ fn s12_a_world_static_false_when_recipe_is_unproven_not_unobtainable() {
 }
 
 // ---------------------------------------------------------------- S13
-/// ts: reach-adversarial.test.ts:908-969 (analyzer half).
+/// (analyzer half).
 /// Roll-guarded mint: the analyzer cannot evaluate roll — the mint arm is
 /// runtime-gated → 'unproven' for BOTH seeds (never 'obtainable', never
-/// 'unobtainable'). Seed search via rollDie exactly like the TS rig.
+/// 'unobtainable'). Seed search via roll_die exactly like the rig.
 #[test]
 fn s13_roll_guarded_mint_stays_unproven_for_both_seeds() {
     let mk = |seed: i64| ContentRaw {
@@ -851,7 +850,7 @@ fn s13_roll_guarded_mint_stays_unproven_for_both_seeds() {
 }
 
 // ---------------------------------------------------------------- S14
-/// ts: reach-adversarial.test.ts:971-1016 (analyzer half).
+/// (analyzer half).
 /// Two-stage expiry arming (seed 100625): the arming chain must be checked
 /// recursively — a witness inside an expiry trigger needs THAT trigger's own
 /// card expirable too.
@@ -904,10 +903,10 @@ fn s14_two_stage_expiry_arming_the_broken_chain_stays_unproven() {
 }
 
 // ---------------------------------------------------------------- extra
-/// The zero-entity corner (Q17 / REACH-08 修正): a script with no entities at
-/// all reaches siteReason's `!initNames.size` branch. The verb must not be
+/// The zero-entity corner (Q17): a script with no entities at
+/// all reaches site_reason's empty-init-names branch. The verb must not be
 /// DEAD for the candidate listing to run, so the universe carries a
-/// character-kind prototype (a static descriptor keeps canEverMatch true);
+/// character-kind prototype (a static descriptor keeps can_ever_match true);
 /// the gated site then stays a candidate whose reason names the unknown
 /// committability.
 #[test]

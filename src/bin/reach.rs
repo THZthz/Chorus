@@ -1,5 +1,5 @@
-//! Card-reachability CLI — ts: tools/reach-cli.ts, ported byte for byte.
-//! "can the player obtain card X?" over a bundled script. Both semantics:
+//! Card-reachability CLI. "can the player obtain card X?" over a bundled
+//! script. Both semantics:
 //! default is existence; --usable also requires the card to be bindable into
 //! some committable verb slot.
 //!
@@ -7,16 +7,16 @@
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --all
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --demand "aspect:secret >= 3"
 //!
-//! Frozen surface (verification 03 CLI-01/CLI-02, plan §4-W5):
-//!   - stdout text incl. renderPath's 4-space indent steps, `path i/n:`,
-//!     `verdict: X (existence: y)` — golden-frozen via tools/golden-dump.ts;
+//! Frozen surface:
+//!   - stdout text incl. render_path's 4-space indent steps, `path i/n:`,
+//!     `verdict: X (existence: y)` — golden-frozen;
 //!   - the `--all` name set = prototypes ∪ LIVE initial entities ∪
 //!     deck.order (NOT defaultcard), sorted by UTF-16 code-unit order;
-//!   - Q15/CLI-01 current-shape quirks: a trailing `--demand` silently loses
-//!     its value (argv[demandIdx+1] undefined), a missing card+all+demand
+//!   - Q15 current-shape quirks: a trailing `--demand` silently loses
+//!     its value (the next argv slot is absent), a missing card+all+demand
 //!     combination exits 2 with the usage text, and a bad demand query is a
-//!     compile-time analyze error exiting 1 (the TS prints a JS stack trace;
-//!     the message line is the frozen part).
+//!     compile-time analyze error exiting 1 (the message line is the frozen
+//!     part).
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -27,15 +27,14 @@ use chorus::js::cmp_utf16;
 use chorus::reach::{render_report, Analyzer, CardOptions};
 
 fn main() -> ExitCode {
-    // ts: tools/reach-cli.ts:17-33 — argv parsing replicated verbatim
+    // argv parsing — frozen surface, byte for byte
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usable = args.iter().any(|a| a == "--usable");
-    // ts: reach-cli.ts:19-20 — `args[demandIdx + 1]` blind read; a trailing
-    // --demand yields undefined → demand silently vanishes (Q15/CLI-01).
-    // JS truthiness (wave-5 must-fix-1): an EMPTY string value is falsy at
-    // every consumer (`!demand` in the usage gate :30, `demand ?` in the
-    // report header :56, `opts.demand ?` in analyzeCard) — normalized to
-    // None here, the Option shape of "not provided".
+    // a blind read one past the `--demand` index; a trailing
+    // --demand has no next slot → demand silently vanishes (Q15).
+    // JS truthiness: an EMPTY string value is falsy at
+    // every consumer (the usage gate, the report header, `analyze_card`) —
+    // normalized to None here, the Option shape of "not provided".
     let demand_idx = args.iter().position(|a| a == "--demand");
     let demand: Option<String> =
         demand_idx.and_then(|i| args.get(i + 1).cloned()).filter(|d| !d.is_empty());
@@ -47,7 +46,7 @@ fn main() -> ExitCode {
             continue;
         }
         if args[i] == "--demand" {
-            i += 2; // ts: `i++; continue` of the outer for-loop
+            i += 2; // the flag and its value are both consumed
             continue;
         }
         rest.push(args[i].clone());
@@ -56,8 +55,8 @@ fn main() -> ExitCode {
     let file: Option<&String> = rest.first();
     let card: Option<&String> = rest.get(1);
     let all = rest.iter().any(|a| a == "--all");
-    // ts: reach-cli.ts:30-33 — the usage gate `!file || (!card && !all &&
-    // !demand)`; the text (two lines) is exact. JS string truthiness: an EMPTY
+    // the usage gate: a present file AND (a card OR --all OR a demand),
+    // with JS string truthiness; the text (two lines) is exact. An EMPTY
     // argv element is falsy for the file slot and the card slot alike.
     let file = match file {
         Some(f)
@@ -68,16 +67,15 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: tsx tools/reach-cli.ts <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       tsx tools/reach-cli.ts <script.txt> --all"
+                "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all"
             );
             return ExitCode::from(2);
         }
     };
 
-    // ts: reach-cli.ts:35-36 — compileScript(readFileSync(file, 'utf8'), dict);
-    // a missing file / compile error is an uncaught throw → exit 1. The TS
-    // prints a JS stack after the message; only the message line is
-    // reproducible (recorded divergence — stderr text, not the stdout freeze).
+    // compile the script; a missing file / compile error is a hard error →
+    // exit 1. Only the message line is reproducible
+    // (recorded divergence — stderr text, not the stdout freeze).
     let dict = core_dictionary();
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -95,21 +93,21 @@ fn main() -> ExitCode {
     };
     let CompiledScript { content, state, .. } = compiled;
 
-    // ts: reach-cli.ts:69-76 — the branch ORDER is the frozen behavior: --all
-    // wins over an explicit card name; a lone --demand reports once (card
-    // undefined in the TS, ignored by the analyzer under demand).
+    // the branch ORDER is the frozen behavior: --all
+    // wins over an explicit card name; a lone --demand reports once (the
+    // target is ignored by the analyzer under demand).
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     let fail = |e: chorus::js::ChorusError| -> ExitCode {
-        // ts: the analyzeCard throw escapes uncaught → exit 1; the message
+        // an analyze error is fatal → exit 1; the message
         // line is the reproducible part
         eprintln!("Error: {e}");
         ExitCode::from(1)
     };
     if all {
-        // ts: reach-cli.ts:70-73 — prototypes ∪ live initial entities ∪
-        // deck.order (CLI-02 correction: NOT defaultcard); insertion set,
-        // then UTF-16 code-unit sort (REACH-05 must)
+        // prototypes ∪ live initial entities ∪
+        // deck.order (NOT defaultcard); insertion set,
+        // then UTF-16 code-unit sort
         let mut names: indexmap::IndexSet<String> = indexmap::IndexSet::new();
         names.extend(content.prototypes.keys().cloned());
         for e in state.entities.values() {
@@ -126,9 +124,8 @@ fn main() -> ExitCode {
         sorted.sort_by(|a, b| cmp_utf16(a, b));
         let analyzer = Analyzer::new(&content, &state);
         for name in &sorted {
-            // ts: report(n) passes the CAPTURED demand on — `--all --demand q`
-            // renders the demand report once per name (the closure shape is
-            // the behavior)
+            // report(n) passes the CAPTURED demand on — `--all --demand q`
+            // renders the demand report once per name
             let r = match analyzer.analyze_card(name, CardOptions { usable, demand: demand.clone() })
             {
                 Ok(r) => r,
@@ -141,9 +138,9 @@ fn main() -> ExitCode {
             }
         }
     } else {
-        // ts: reach-cli.ts:74-76 — `report(card!)`: card may be absent when
+        // `report(card!)`: card may be absent when
         // only --demand is given; the analyzer ignores the target under
-        // demand (analyzeCard's demandQ branch runs first)
+        // demand (the demand branch runs first)
         let card = card.map(String::as_str).unwrap_or("");
         let analyzer = Analyzer::new(&content, &state);
         let r = match analyzer.analyze_card(card, CardOptions { usable, demand: demand.clone() }) {

@@ -1,11 +1,11 @@
-//! The committability/provenance fixpoint — ts: src/reach/reach.ts:980-1078
-//! (slotSupport + the loop) and :1575-1911 (siteProven and its helpers).
+//! The committability/provenance fixpoint: `slot_support` + the loop, and
+//! `site_proven` with its helpers.
 //!
-//! REACH-10 (标红, plan §4-W5): the loop is a NAIVE round-robin — every round
+//! The loop is a NAIVE round-robin — every round
 //! re-tests all unproven verbs (content.verbs order) and then all unproven
 //! sites (live order) until a full pass changes nothing. Worklist/event-driven
-//! rewrites are FORBIDDEN: `count(X) <= k` gates make pathOpen anti-monotone,
-//! so proven-set membership depends on the test schedule, and the TS
+//! rewrites are FORBIDDEN: `count(X) <= k` gates make `path_open` anti-monotone,
+//! so proven-set membership depends on the test schedule, and the
 //! proven-once-never-removed semantics couple the schedule to the output.
 
 use indexmap::{IndexMap, IndexSet};
@@ -25,10 +25,10 @@ use super::world::{
 };
 
 // ---------------------------------------------------------------------------
-// gate-name collectors — ts: reach.ts:1575-1592
+// gate-name collectors
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:1575-1579 — name terms mentioned by a value expression (the
+/// Name terms mentioned by a value expression (the
 /// bootstrap-gate check: `count(name:X) >= k` gates on X's aliveness exactly
 /// like exists(X); polarity is ignored on purpose — the check only DEMOTES).
 fn expr_exists_names(v: &ValExpr, acc: &mut IndexSet<String>) {
@@ -41,7 +41,7 @@ fn expr_exists_names(v: &ValExpr, acc: &mut IndexSet<String>) {
     }
 }
 
-/// ts: reach.ts:1581-1592
+/// Name terms mentioned anywhere in a predicate.
 pub(crate) fn pred_exists_names(p: &Pred, acc: &mut IndexSet<String>) {
     match p {
         Pred::And(a, b) | Pred::Or(a, b) => {
@@ -68,10 +68,11 @@ pub(crate) fn pred_exists_names(p: &Pred, acc: &mut IndexSet<String>) {
 }
 
 // ---------------------------------------------------------------------------
-// slotSupport — ts: reach.ts:999-1059
+// slot_support
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:1017 — a candidate instance row (`{ how, key }`).
+/// A candidate instance row (a `how` provenance string plus a
+/// `name#copy` key).
 #[derive(Debug, Clone)]
 struct CandInst {
     how: String,
@@ -79,12 +80,12 @@ struct CandInst {
 }
 
 impl<'c> WorldFacts<'c> {
-    /// ts: reach.ts:999-1059 — the structured committability proof for one
+    /// The structured committability proof for one
     /// verb. Roles take DISTINCT instances (name#copy), so the same instance
     /// cannot fill two roles and a min:2 slot needs two copies; the first-fit
-    /// assign walks the candidate order (avail push order → REACH-03).
+    /// assign walks the candidate order (avail push order).
     pub(crate) fn slot_support(&mut self, verb_idx: usize) -> Option<Vec<SlotProof>> {
-        // ts: reach.ts:1009 — slotByRole (last def per role wins at commit);
+        // `slot_by_role` (last def per role wins at commit);
         // modeling shadowed duplicates as extra requirements killed verbs the
         // engine commits fine (fuzz seed 262)
         let Some((_name, v)) = self.content.verbs.get_index(verb_idx) else {
@@ -97,11 +98,11 @@ impl<'c> WorldFacts<'c> {
             .cloned()
             .collect();
         if slots.is_empty() {
-            // ts: reach.ts:1010 — an empty proof is TRUTHY in JS: the verb
+            // an empty proof is TRUTHY in JS: the verb
             // commits with no slot requirements
             return Some(Vec::new());
         }
-        // ts: reach.ts:1015
+        // the per-slot candidate cap
         let cap: i64 = 4;
         let cand: Vec<Vec<CandInst>> = slots
             .iter()
@@ -147,15 +148,16 @@ impl<'c> WorldFacts<'c> {
                 fillers: chosen[i]
                     .iter()
                     .map(|inst| SlotFiller {
-                        // ts: reach.ts:1051 — `inst.key.split('#')[0]` (the
-                        // split always yields a head, even an empty one)
+                        // the name head of the
+                        // `name#copy` key (splitting always yields a first
+                        // piece, even an empty one)
                         name: inst.key.split('#').next().unwrap_or_default().to_string(),
                         how: inst.how.clone(),
                     })
                     .collect(),
             })
             .collect();
-        // ts: reach.ts:1053-1057 — the filler NAMES this proof relied on
+        // the filler NAMES this proof relied on
         // (the gate-source-kills-filler rule, seed 12460)
         let mut names: IndexSet<String> = IndexSet::new();
         for pf in &proofs {
@@ -167,9 +169,9 @@ impl<'c> WorldFacts<'c> {
         Some(proofs)
     }
 
-    /// ts: reach.ts:986-996 — proven provenance: which PROVEN sites mint each
+    /// Proven provenance: which PROVEN sites mint each
     /// name (bare names only — derive-mints behind object-mandatory verbs
-    /// carry `${PROTO}_${OBJ}`).
+    /// carry `<PROTO>_<OBJECT>` names).
     pub(crate) fn record_mint_source(&mut self, si: usize) {
         let content = self.content;
         let site = self.census.sites[si].clone();
@@ -196,14 +198,14 @@ impl<'c> WorldFacts<'c> {
         }
     }
 
-    /// ts: reach.ts:1852-1911 — register the proven site's product into the
+    /// Register the proven site's product into the
     /// available world (capacity-aware for draws, blinded for derive-mints).
     pub(crate) fn add_product(&mut self, si: usize) {
         let content = self.content;
         let site = self.census.sites[si].clone();
         if site.kind == SiteKind::Draw {
             let deck = draw_deck(&site);
-            // ts: reach.ts:1865 — capacity-aware: only the first `site.cap`
+            // capacity-aware: only the first `site.cap`
             // order positions are ever served (seed 150846 phantom entries)
             let served_len = std::cmp::min(site.cap as usize, deck.order.len());
             let mut counts: IndexMap<String, i64> = IndexMap::new();
@@ -211,13 +213,14 @@ impl<'c> WorldFacts<'c> {
                 *counts.entry(c.name.clone()).or_insert(0) += 1;
             }
             for (name, n) in &counts {
-                // ts: reach.ts:1869-1872 — the FIRST order entry with the
-                // name; its index is the position (find + indexOf agree)
+                // the FIRST order entry with the
+                // name; its index is the position (the find and the
+                // position scan agree)
                 let Some(card) = deck.order.iter().find(|c| c.name == *name) else {
-                    unreachable!("counts keys come from deck.order (ts: reach.ts:1869)");
+                    unreachable!("counts keys come from deck.order");
                 };
                 let Some(pos) = deck.order.iter().position(|c| c.name == *name) else {
-                    unreachable!("counts keys come from deck.order (ts: reach.ts:1872)");
+                    unreachable!("counts keys come from deck.order");
                 };
                 let proto = content.prototypes.get(name);
                 let infinite = deck.reset
@@ -225,7 +228,7 @@ impl<'c> WorldFacts<'c> {
                         .defaultcard
                         .as_ref()
                         .is_some_and(|dc| dc.name == *name);
-                // ts: reach.ts:1873-1878 — a derive-card drawn behind an
+                // a derive-card drawn behind an
                 // object-mandatory verb mints under the DERIVED name (90936)
                 let blind = draw_blinds_bare(content, &site, name);
                 let key = if blind { DERIVED_NAME } else { name.as_str() };
@@ -277,11 +280,11 @@ impl<'c> WorldFacts<'c> {
             .clone()
             .or_else(|| proto.map(|p| p.kind.clone()))
             .unwrap_or_else(|| "item".to_string());
-        // ts: reach.ts:1897-1902 — a derive-mint behind an object-mandatory
+        // a derive-mint behind an object-mandatory
         // verb never carries the bare name — register it blinded (90936)
         let blind = site.derives && object_always(content, site.verb);
         let key = if blind { DERIVED_NAME } else { site.name.as_str() };
-        // ts: reach.ts:1903-1908 — KIND-level stackable declarations stack the
+        // KIND-level stackable declarations stack the
         // mint exactly like name-level ones (§9.38, seed 81401)
         let count = if mint_stacks(content, &site.name, site.kind_override.as_deref()) {
             MANY
@@ -313,10 +316,8 @@ impl<'c> WorldFacts<'c> {
         );
     }
 
-    /// ts: reach.ts:1638-1850 — `siteProven`, the 17-parameter TS signature
-    /// converged onto `&self` (REACH-02: notes/firstCross already live on
-    /// WorldFacts; avail/mintSources/fillers/triggerMintNames/cardsOf ride
-    /// with them). Returns the site's support lines, or None when the site
+    /// Whether a site proves this round. Returns the site's
+    /// support lines, or None when the site
     /// stays unproven this round.
     pub(crate) fn site_proven(&mut self, si: usize) -> Option<Vec<String>> {
         let site = self.census.sites[si].clone();
@@ -333,7 +334,7 @@ impl<'c> WorldFacts<'c> {
         if self_gated(self, &site) {
             return None; // gated on (or filled by) a card the list itself mints
         }
-        // ts: reach.ts:1663-1673 — throwing ops demote the list, EXCEPT a
+        // throwing ops demote the list, EXCEPT a
         // REPLACE whose own name target is provably available and whose death
         // is not scheduled anywhere else (seed 5070)
         let killers: IndexSet<String> = match &site.replace_target {
@@ -357,15 +358,15 @@ impl<'c> WorldFacts<'c> {
         match path_open(&site.path, &world) {
             Ok(true) => {}
             Ok(false) => return None,
-            // ts: reach.ts:505/521 — the internal throws sit behind predStatic
-            // guards and are unreachable here; debug-trap if a port bug
+            // the internal throws sit behind pred_static
+            // guards and are unreachable here; debug-trap if a bug
             // ever reaches one
             Err(e) => {
                 debug_assert!(false, "internal: {e}");
                 return None;
             }
         }
-        // ts: reach.ts:1676-1684 — a static gate on exists(X) is only as
+        // a static gate on exists(X) is only as
         // durable as X's aliveness (seed 6028)
         let mut gated_names: IndexSet<String> = IndexSet::new();
         for p in site.path.iter().chain(site.when.iter()) {
@@ -379,7 +380,7 @@ impl<'c> WorldFacts<'c> {
         {
             return None;
         }
-        // ts: reach.ts:1685-1716 — gate-timing (seed 40449): a SLOT trigger's
+        // gate-timing (seed 40449): a SLOT trigger's
         // static gate names a card whose only proven producers fire at (or
         // after) the trigger's own first crossing
         if site.verb.is_none() {
@@ -419,7 +420,7 @@ impl<'c> WorldFacts<'c> {
                 }
             }
         }
-        // ts: reach.ts:1717-1733 — gate-source kills a slot filler (12460)
+        // gate-source kills a slot filler (12460)
         if let Some(vi) = site.verb {
             if let Some(f) = self.fillers.get(&vi) {
                 if !f.is_empty() {
@@ -445,7 +446,7 @@ impl<'c> WorldFacts<'c> {
                 }
             }
         }
-        // ts: reach.ts:1734-1757 — cross-list trigger-vs-recipe mint collision
+        // cross-list trigger-vs-recipe mint collision
         // (81915): every window completes at begin+duration ≥ B, so the
         // boundary at B has already fired the trigger or rolled the pass back
         let verb_duration: Option<i64> = site.verb.map(|vi| match self.content.verbs.get_index(vi) {
@@ -471,12 +472,12 @@ impl<'c> WorldFacts<'c> {
                 }
             }
         }
-        // ts: reach.ts:1758-1763 — frozen-completion rule (seed 296):
+        // frozen-completion rule (seed 296):
         // provable only for duration-0 recipes
         if self.frozen && site.verb.is_some() && verb_duration.unwrap_or(0) > 0 {
             return None;
         }
-        // ts: reach.ts:1764-1769 — recipe-owned site: the `when` must be
+        // recipe-owned site: the `when` must be
         // static-true and the verb committable
         if let Some(vi) = site.verb {
             if let Some(when) = &site.when {
@@ -499,7 +500,7 @@ impl<'c> WorldFacts<'c> {
             };
             return Some(slot_proof_lines(&verb_name, proofs));
         }
-        // ts: reach.ts:1770-1777 — trigger owner
+        // trigger owner
         let (trig, _) = self.trig_idx.get(&site.owner)?;
         if let CompiledTrigger::Slot { id, slot, once, .. } = trig {
             let once_note = if *once {
@@ -514,10 +515,11 @@ impl<'c> WorldFacts<'c> {
         let CompiledTrigger::Expire { id, on_expire_of, .. } = trig else {
             unreachable!("a compiled trigger is either Slot or Expire");
         };
-        // ts: reach.ts:1779-1849 — expiry trigger: the named card must be
+        // expiry trigger: the named card must be
         // obtainable AND able to expire. The arming-witness recursion is the
-        // seed-100625 rule; `visiting` cuts arming cycles (41247's selfArm is
-        // subsumed), and the memo caches only cycle-free (top-level) verdicts.
+        // seed-100625 rule; `visiting` cuts arming cycles (the seed-41247
+        // self-arming check is subsumed), and the memo caches only cycle-free
+        // (top-level) verdicts.
         let desc: Option<Entity> = self
             .init_names
             .get(on_expire_of)
@@ -554,7 +556,7 @@ impl<'c> WorldFacts<'c> {
 }
 
 /// The content.verbs insertion index of a verb name (identity-key maps are
-/// index-keyed per plan §2.6.5; verb names are unique per content).
+/// index-keyed; verb names are unique per content).
 fn verb_idx_of(wf: &WorldFacts, verb_name: &str) -> usize {
     match wf.content.verbs.get_index_of(verb_name) {
         Some(vi) => vi,
@@ -562,7 +564,7 @@ fn verb_idx_of(wf: &WorldFacts, verb_name: &str) -> usize {
     }
 }
 
-/// ts: reach.ts:1919-1924 — the display lines of a verb's structured
+/// The display lines of a verb's structured
 /// committability proof (byte-identical to the pre-structure format).
 pub(crate) fn slot_proof_lines(verb_name: &str, proofs: &[SlotProof]) -> Vec<String> {
     proofs
@@ -583,7 +585,7 @@ pub(crate) fn slot_proof_lines(verb_name: &str, proofs: &[SlotProof]) -> Vec<Str
         .collect()
 }
 
-/// ts: reach.ts:1032-1045 — `assign(i, from)`: fill slot i with exactly
+/// `assign(i, from)`: fill slot i with exactly
 /// slot.min DISTINCT instances (name#copy keys — no reuse within or across
 /// roles); first-fit over the fixed candidate order.
 fn assign(
@@ -619,13 +621,13 @@ fn assign(
 }
 
 // ---------------------------------------------------------------------------
-// selfGated — ts: reach.ts:1594-1636
+// self_gated
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:1602-1636 — does a static-true condition gate this list on a
+/// Does a static-true condition gate this list on a
 /// card THE LIST ITSELF mints (any op)? Post-bootstrap the gate is true and
-/// the self-mint collides — and a completion refusal freezes the dice counter
-/// (A4), so the escape roll never comes (seeds 523, 5631).
+/// the self-mint collides — and a completion refusal freezes the dice counter,
+/// so the escape roll never comes (seeds 523, 5631).
 pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
     let mut gates: IndexSet<String> = IndexSet::new();
     for p in site.path.iter().chain(site.when.iter()) {
@@ -637,7 +639,7 @@ pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
     if gates.iter().any(|g| mints.contains(g)) {
         return true;
     }
-    // ts: reach.ts:1614-1619 — own-list STACKABLE mint behind a gate: the gate
+    // own-list STACKABLE mint behind a gate: the gate
     // reads FALSE at a once-trigger's single firing; recurring and recipe
     // lists bootstrap on their second application — only once-owners are doomed
     if site.verb.is_none() {
@@ -647,7 +649,7 @@ pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
             }
         }
     }
-    // ts: reach.ts:1620-1634 — mints-driven, not slots×world-driven: mints is
+    // mints-driven, not slots×world-driven: mints is
     // the (small) set of names this list itself mints
     if let Some(vi) = site.verb {
         let Some((_vn, verb)) = wf.content.verbs.get_index(vi) else {
@@ -677,10 +679,10 @@ pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// the expiry arming recursion — ts: reach.ts:1792-1845
+// the expiry arming recursion
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:1792-1795 — the arming SET's owner is an expiry trigger on the
+/// The arming SET's owner is an expiry trigger on the
 /// very card being armed (circular arming).
 fn self_arm(wf: &WorldFacts, owner: &str, card_name: &str) -> bool {
     match wf.trig_idx.get(owner) {
@@ -689,7 +691,7 @@ fn self_arm(wf: &WorldFacts, owner: &str, card_name: &str) -> bool {
     }
 }
 
-/// ts: reach.ts:1807-1811 — the owner's arming chain: verbs are checked above;
+/// The owner's arming chain: verbs are checked above;
 /// slot triggers fire unconditionally; an expiry trigger needs its own card
 /// expirable.
 fn owner_armable(
@@ -708,7 +710,7 @@ fn owner_armable(
     }
 }
 
-/// ts: reach.ts:1833-1837 — the arming SET's role target must bind a card
+/// The arming SET's role target must bind a card
 /// whose descriptor fits the role's slot query.
 fn role_slot_fits(wf: &WorldFacts, s: &SetSite, role: &str, d: &Entity) -> bool {
     let v = s
@@ -725,7 +727,7 @@ fn role_slot_fits(wf: &WorldFacts, s: &SetSite, role: &str, d: &Entity) -> bool 
     }
 }
 
-/// ts: reach.ts:1812-1845 — can `cardName` ever be ARMED to expire?
+/// Can `card_name` ever be ARMED to expire?
 fn expirable_card(
     wf: &WorldFacts,
     world: &CardWorld,
@@ -764,7 +766,7 @@ fn expirable_card(
                 && !s.shadowed
                 && !wf.dirty_owners.contains(&s.owner)
                 && !self_arm(wf, &s.owner, card_name)
-                // ts: reach.ts:1820-1829 — the arming SET must actually APPLY:
+                // the arming SET must actually APPLY:
                 // a runtime-gated path can be durably false, a frozen world
                 // hides owner firings past the freeze boundary, and a
                 // duration>0 recipe window completes inside the failing step
@@ -800,7 +802,7 @@ fn expirable_card(
                         (Some(role), Some(de)) => role_slot_fits(wf, s, role, de),
                         _ => false,
                     })
-                // ts: reach.ts:1838-1840 — a witness inside ANOTHER expiry
+                // a witness inside ANOTHER expiry
                 // trigger only lands if that trigger's own card can expire
                 // (seed 100625)
                 && owner_armable(wf, world, memo, &s.owner, &next)
@@ -813,14 +815,14 @@ fn expirable_card(
 }
 
 // ---------------------------------------------------------------------------
-// the loop — ts: reach.ts:1061-1078 (REACH-10: naive round-robin ONLY)
+// the loop (naive round-robin ONLY)
 // ---------------------------------------------------------------------------
 
 pub(crate) fn run_fixpoint(wf: &mut WorldFacts) {
     let mut changed = true;
     while changed {
         changed = false;
-        // ts: reach.ts:1064-1068 — verbs in content.verbs order
+        // verbs in content.verbs order
         for vi in 0..wf.content.verbs.len() {
             if wf.committable.contains_key(&vi) {
                 continue;
@@ -830,7 +832,7 @@ pub(crate) fn run_fixpoint(wf: &mut WorldFacts) {
                 changed = true;
             }
         }
-        // ts: reach.ts:1069-1077 — sites in live order; proven-once-never-
+        // sites in live order; proven-once-never-
         // removed (the anti-monotone count-gate semantics live exactly here)
         let live: Vec<usize> = wf.census.live.clone();
         for si in live {

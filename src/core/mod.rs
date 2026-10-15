@@ -1,11 +1,11 @@
-//! ts: src/core/* — one Rust module per TS file (plan §2.2).
-//! W0: dice; W1 adds roles/clock/types/ref/dict/query/predicate/
-//! sentence/lexer/parse/fn_expand/format. (W0's `deck_rng` staging module
-//! folded into `content/content.rs` in W2, per plan §2.2.)
+//! The engine kernel: RNG (dice), clock and durations, the state data model
+//! (types), references and relations (ref), roles, the dictionary, query
+//! evaluation, predicates, and the sentence pipeline (sentence → lexer →
+//! parse → fn_expand → format).
 //!
-//! `ref.ts` lands as `core::r#ref` (`ref` is a Rust keyword); the file name
-//! keeps the TS mapping. `Role/ROLES` are sunk into `roles` (CORE-02) and
-//! re-exported by `sentence` to mirror the TS surface.
+//! `r#ref` is spelled with the raw identifier because `ref` is a Rust
+//! keyword. `Role`/`ROLES` live in `roles` and are re-exported by
+//! `sentence`.
 
 pub mod dice;
 pub mod dict;

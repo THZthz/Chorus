@@ -1,17 +1,16 @@
 //! Randomized differential testing for the card-reachability analyzer —
-//! ts: test/reach-fuzz.test.ts, ported test-for-test (100 seeds). The
-//! soundness contract under fire:
+//! 100 seeds. The soundness contract under fire:
 //!   unobtainable ⇒ never appears in any explored play   (hard — the forward
 //!                  truth is an under-approximation, sound under any bounds)
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //! Failures print their seed — run_fuzz_seed(seed) reproduces exactly.
 //!
-//! Bounds rationale (ts: reach-fuzz.test.ts:8-11, 2026-10 audit): ~46 ms/seed
+//! Bounds rationale (2026-10 audit): ~46 ms/seed
 //! at the default 8 steps × 500 states (deep +7/×20 never fires its cap —
 //! 0 inconclusive over 300 seeds), so 100 seeds sample 2.5× the scenarios of
-//! the old 40. The CLI (reach-fuzz bin) shakes thousands. The Rust
-//! implementation is the W5 extension of tests/common/reach_fuzz_lib.rs —
+//! the old 40. The CLI (reach-fuzz bin) shakes thousands. The suite rides the
+//! W5 shared module tests/common/reach_fuzz_lib.rs —
 //! the same module the bin mounts, so bin and test cannot drift.
 
 mod common;
@@ -20,9 +19,8 @@ use common::reach_fuzz_lib::run_fuzz_seed;
 
 const SEEDS: u32 = 100;
 
-/// ts: reach-fuzz.test.ts:19-24 — `seed N`: `runFuzzSeed(seed)` with the
-/// DEFAULT bounds (8 steps × 500 states); inconclusive probes ride the test
-/// output (the TS console.warn), failures fail the test.
+/// One seed under the DEFAULT bounds (8 steps × 500 states); inconclusive
+/// probes print to the test output, failures fail the test.
 fn assert_seed_sound(seed: u32) {
     let out = run_fuzz_seed(seed, 8, 500).expect("the fuzz oracle never errors on its own scenarios");
     if !out.inconclusive.is_empty() {

@@ -1,10 +1,8 @@
-//! Slot roles — sunk here from TS `sentence.ts` (plan §2.2: `Role/ROLES`
-//! 下沉 core/roles.rs, CORE-02). Zero behavior change: the six role names
-//! and their declaration order are load-bearing (ROLE_LIST in predicate lint
-//! messages, `asRole` soft-reservation order — Q12).
+//! Slot roles (`Role`/`ROLES`). The six role names and their declaration
+//! order are load-bearing (ROLE_LIST in predicate lint messages, the
+//! `from_lower` soft-reservation order — Q12).
 
-/// ts: src/core/sentence.ts:6 — `type Role = 'actors' | 'object' | 'with' |
-/// 'at' | 'about' | 'to'`.
+/// A slot role: the six lowercase names a sentence's role positions use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Role {
     Actors,
@@ -15,10 +13,9 @@ pub enum Role {
     To,
 }
 
-// The serde spellings are the W3 JSONL log surface (plan §2.3): every TS
-// site serializes a role as its lowercase string (`{ role: 'object' }` in
-// the `{ t: 'role', role }` / `{ role }` into-target args), so the wire form
-// is exactly `as_str`.
+// The serde wire form is the lowercase string: log rows embed a role as
+// `{ role: 'object' }` (in the `{ t: 'role', role }` / `{ role }`
+// into-target args), so serialization is exactly `as_str`.
 impl serde::Serialize for Role {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())
@@ -34,8 +31,8 @@ impl<'de> serde::Deserialize<'de> for Role {
 }
 
 impl Role {
-    /// The lowercase spelling every TS site uses (`refs: Record<Role, Ref[]>`
-    /// keys, ROLE_LIST message text, `asRole` round-trip).
+    /// The lowercase spelling used wherever a role appears in wire/text form
+    /// (`refs` map keys, ROLE_LIST message text, the `from_lower` round-trip).
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -48,8 +45,7 @@ impl Role {
         }
     }
 
-    /// Exact lowercase-name lookup (the TS `ROLES.includes(lower)` membership
-    /// after an explicit `ROLES` list check; order preserved).
+    /// Exact lowercase-name lookup (membership in `ROLES`; order preserved).
     #[must_use]
     pub fn from_lower(s: &str) -> Option<Role> {
         match s {
@@ -64,8 +60,8 @@ impl Role {
     }
 }
 
-/// ts: src/core/sentence.ts:8 — declaration order is load-bearing: it feeds
-/// `ROLE_LIST` (`predicate.ts:518`) and the lint messages that join it.
+/// Declaration order is load-bearing: it feeds `ROLE_LIST` and the lint
+/// messages that join it.
 pub const ROLES: [Role; 6] = [
     Role::Actors,
     Role::Object,

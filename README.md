@@ -20,10 +20,9 @@ scripts by hand.
 
 ## Layout
 
-This repository is the Rust port of the original TypeScript engine — a
-byte-identical rewrite (same dice rolls, same log bytes, same error text;
-the port process and its cross-language differential evidence live in
-[`docs/rust-port/plan.md`](docs/rust-port/plan.md)):
+This repository is a text-only card-game engine implemented in Rust —
+deterministic end to end (same dice rolls, same log bytes, same error text,
+all pinned by the acceptance suite):
 
 - `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse` `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3), `types` `clock` `dice` `ref` `roles`
 - `src/content/` — `content` (verbs/slots/recipes/prototypes/triggers as data), `script` (the script compiler: a text file becomes world + logic)
@@ -31,7 +30,7 @@ the port process and its cross-language differential evidence live in
 - `src/reach/` — the static card-reachability analyzer (`census` `world` `fixpoint` `paths` `render`; obtainable / demand / usability judgments)
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
-- `tests/` — 700+ acceptance tests ported 1:1 from the original vitest suite, plus `tests/goldens/` (276 cross-language golden replays, byte-compared)
+- `tests/` — 700+ acceptance tests, plus `tests/goldens/` (golden replay fixtures, byte-compared)
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   winnable in 9 commands)
@@ -67,11 +66,11 @@ THE_WAX_CYLINDER  [text]
 ```
 
 The session opens with the script's `goal:` and a `try:` row of concrete
-executable actions (`Game.suggestions()` — state-driven, refreshed every
+executable actions (`session::game`'s `suggestions()` — state-driven, refreshed every
 turn). The player types English-ish text (`read the pale lady`, `explore the
 firebox`, `talk with the guard`); the engine assigns the clock, resolves
 names fuzzily (case, articles, underscores), and suggests corrections.
-The night keeps score, as the steward's line above hints: careless searches
+The night keeps score, as the steward's line above hints — careless searches
 and the conductor's rounds stack SUSPICION — a pool, not a card — and three
 copies make the case leave the train.
 Strict canonical sentences (`0:20 @ MARCH WAIT`) pass through unchanged.
@@ -135,7 +134,7 @@ verbs:
 ## Run
 
 ```sh
-cargo test                # 700+ acceptance tests (the original suite, ported 1:1) + 276 golden replays
+cargo test                # 700+ acceptance tests + golden replay fixtures, byte-compared
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```
@@ -153,36 +152,34 @@ let r = execute_step(&content, &dict, state, step,
 
 The engine has bugs and inconsistencies that are, by now, behavior: tests pin
 them, logs encode them, and "fixing" one would break byte-identity with every
-recorded log. The Rust port (this repository) therefore reproduces each one as-is —
-ported rows carry a `// QUIRK(<finding-id>):` comment at their ported site
-(rows that are deliberately *not* ported dead code carry a `// NOTE` instead),
-and changing any of them is a behavior change, not a cleanup. Full
-freeze table with freeze requirements: `docs/rust-port/plan.md` §1.2.
+recorded log. This repository therefore reproduces each one as-is — the
+source rows implementing each quirk carry a `// QUIRK(<id>):` comment at
+their site (deliberately dead code carries a `// NOTE` instead), and changing
+any of them is a behavior change, not a cleanup.
 
 | # | quirk (frozen, not fixed) | lives at |
 |---|---------------------------|----------|
-| Q1 | recipe ids are 0-based when compiled (`.recipe0`) but 1-based in the lint mirror (`.recipe1`) | `content.ts:229` / `script.ts:485` — `content.rs` / `script.rs` |
-| Q2 | the predicate string tokenizer silently swallows illegal characters (`aspect:x >= @3` ≡ `aspect:x>=3`) | `predicate.ts:172-178` — `predicate.rs` |
-| Q3 | `arg()` cannot read a param key (`SET(myparam = 3)` is a parse error) while SPAWN args support one | `parse.ts:575/533-537` — `parse.rs` |
-| Q4 | slot roles are not validated — a typo'd slot compiles and silently never matches | `script.ts:391` — `script.rs` / `engine.rs` |
-| Q5 | duplicate declarations are inconsistent (entities/endings error; prototypes/templates/verbs silently overwrite; `ANA`/`ana` case-collide) | `script.ts:136-163` — `script.rs` |
-| Q6 | a BEGIN line whose format∘parse round-trip fails silently opens no window | `engine.ts:344-356` — `engine.rs` / `fold.rs` |
-| Q7 | a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved | `engine.ts:437-447` — `engine.rs` |
-| Q8 | JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every ported regex uses the explicit JS class | `lexer.ts:26` et al. — `js.rs` `JS_WS_CLASS` |
-| Q9 | `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing (`1halfhour` would mis-lex as `1h`) | `lexer.ts:15` — `lexer.rs` |
-| Q10 | quoted-string `\X` takes the next character literally (`"\n"` is the letter n); a trailing backslash still throws unterminated | `lexer.ts:30-33` — `lexer.rs` |
-| Q11 | bare `inspect` shows the first visible card (`startsWith('')` is always true) | `play.ts:133-136` — `game.rs`, `bin/chorus.rs` |
-| Q12 | ROLES are soft-reserved in outcome-arg position (asRole intercepts before bare refs) but are not reserved words | `parse.ts:576-581` — `parse.rs` |
-| Q13 | aspects are one level deep with last-write-wins flattened keys (`'a.b.c'` lands as `{a:{'b.c':v}}`) | `query.ts:102-114` — `types.rs` `AspectVal` |
-| Q14 | `sameRef` throws on a param ref instead of returning false; relation keys trust the engine's `#hex` ids against `\|` collisions | `ref.ts:39/51-53` — `ref.rs` |
-| Q15 | CLI current shapes: a trailing `--demand` silently vanishes; lint-cli exits 1 on a missing directory; an unknown meta key is blamed on "bad clock" | `reach-cli.ts:20` / `lint-cli.ts:16` / `script.ts:116` — `bin/reach.rs`, `bin/lint-scripts.rs`, `script.rs` |
-| Q16 | a `-0` delta formats as `+0`; `SET(x,-0)` can be authored | `format.ts:84` — `format.rs` |
-| Q17 | reach `siteReason`'s `!initNames.size` branch is reachable (zero-entity scripts are legal), not dead code | `reach.ts:1964` — `reach/paths.rs` |
+| Q1 | recipe ids are 0-based when compiled (`.recipe0`) but 1-based in the lint mirror (`.recipe1`) | `content.rs` / `script.rs` |
+| Q2 | the predicate string tokenizer silently swallows illegal characters (`aspect:x >= @3` ≡ `aspect:x>=3`) | `predicate.rs` |
+| Q3 | `arg()` cannot read a param key (`SET(myparam = 3)` is a parse error) while SPAWN args support one | `parse.rs` |
+| Q4 | slot roles are not validated — a typo'd slot compiles and silently never matches | `script.rs` / `engine.rs` |
+| Q5 | duplicate declarations are inconsistent (entities/endings error; prototypes/templates/verbs silently overwrite; `ANA`/`ana` case-collide) | `script.rs` |
+| Q6 | a BEGIN line whose format∘parse round-trip fails silently opens no window | `engine.rs` / `fold.rs` |
+| Q7 | a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved | `engine.rs` |
+| Q8 | JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex uses the explicit JS class | `js.rs` `JS_WS_CLASS` |
+| Q9 | `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing (`1halfhour` would mis-lex as `1h`) | `lexer.rs` |
+| Q10 | quoted-string `\X` takes the next character literally (`"\n"` is the letter n); a trailing backslash still throws unterminated | `lexer.rs` |
+| Q11 | bare `inspect` shows the first visible card (`startsWith('')` is always true) | `game.rs`, `bin/chorus.rs` |
+| Q12 | ROLES are soft-reserved in outcome-arg position (`as_role` intercepts before bare refs) but are not reserved words | `parse.rs` |
+| Q13 | aspects are one level deep with last-write-wins flattened keys (`'a.b.c'` lands as `{a:{'b.c':v}}`) | `types.rs` `AspectVal` |
+| Q14 | same-ref comparison errors on a param ref instead of returning false; relation keys trust the engine's `#hex` ids against `\|` collisions | `ref.rs` |
+| Q15 | CLI current shapes: a trailing `--demand` silently vanishes; the linter exits 1 on a missing directory; an unknown meta key is blamed on "bad clock" | `bin/reach.rs`, `bin/lint-scripts.rs`, `script.rs` |
+| Q16 | a `-0` delta formats as `+0`; `SET(x,-0)` can be authored | `format.rs` |
+| Q17 | reach `site_reason`'s empty-init-names branch is reachable (zero-entity scripts are legal), not dead code | `reach/paths.rs` |
 
 Suggestions that were rejected exactly because they would change behavior:
 worklist/event-driven reach fixpoints (the naive round-robin is the only known
 byte-identical schedule), load-time rejection of integer-like keys (use the
 JS `OrdinaryOwnPropertyKeys` key order instead), unifying the recipe-id
 bases, tightening slot-role validation or duplicate-declaration handling, and
-merging the two deliberately different string/pair arg spellings. The full
-do-not-do list is plan §1.2.
+merging the two deliberately different string/pair arg spellings.

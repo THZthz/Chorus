@@ -1,4 +1,4 @@
-//! Port of test/lint.test.ts (14 tests) — the compiler's load-time
+//! Lint (14 tests) — the compiler's load-time
 //! discipline: error upgrades (things that used to compile and detonate
 //! later) and the lint layer (warnings that never throw).
 
@@ -8,14 +8,13 @@ use chorus::core::dict::core_dictionary;
 mod common;
 use common::harness::assert_err_msg;
 
-/// ts: test/lint.test.ts:9 — the bundled showcase, read as text (ENG-22:
-/// script text = data).
+/// The bundled showcase, read as text (script text = data).
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/scripts/the-nightjar-flyer.txt"
 ));
 
-/// ts: test/lint.test.ts:13-22 — the shared base script. Byte-shape
+/// The shared base script. Byte-shape
 /// preserved (leading newline, section order) because line numbers flow into
 /// load-error messages.
 fn base(extra: &str) -> String {
@@ -44,7 +43,6 @@ fn compile(text: &str) -> Result<chorus::content::script::CompiledScript, chorus
 
 #[test]
 fn a_template_for_an_unregistered_verb_is_rejected() {
-    // ts: test/lint.test.ts:25-27
     assert_err_msg(
         compile(&base("templates:\n  WRONGVERB says \"{actors} reads.\"")),
         r"WRONGVERB.*not a registered verb",
@@ -53,7 +51,6 @@ fn a_template_for_an_unregistered_verb_is_rejected() {
 
 #[test]
 fn player_must_name_a_declared_character() {
-    // ts: test/lint.test.ts:29-34
     let dict = core_dictionary();
     assert_err_msg(
         compile_script(
@@ -73,7 +70,7 @@ fn player_must_name_a_declared_character() {
 
 #[test]
 fn reserved_words_cannot_be_names() {
-    // ts: test/lint.test.ts:36-43 (§5.1)
+    // (§5.1)
     assert_err_msg(compile(&base("  TO is place")), r"'TO' is a reserved word");
     assert_err_msg(
         compile(&base("  WITH is character at HOUSE")),
@@ -93,7 +90,6 @@ fn reserved_words_cannot_be_names() {
 
 #[test]
 fn duplicate_entity_declarations_are_a_load_error_not_last_write_wins() {
-    // ts: test/lint.test.ts:45-47
     assert_err_msg(
         compile(&base("  HOUSE is place with study:1")),
         r"duplicate entity declaration 'HOUSE'",
@@ -102,7 +98,6 @@ fn duplicate_entity_declarations_are_a_load_error_not_last_write_wins() {
 
 #[test]
 fn a_name_declared_both_as_entity_and_prototype_can_never_spawn_load_error() {
-    // ts: test/lint.test.ts:49-51
     assert_err_msg(
         compile(&base("  SPARK is idea\nprototypes:\n  SPARK is idea")),
         r"'SPARK' is declared both as an entity and a prototype",
@@ -115,14 +110,12 @@ fn a_name_declared_both_as_entity_and_prototype_can_never_spawn_load_error() {
 
 #[test]
 fn the_bundled_showcase_lints_clean() {
-    // ts: test/lint.test.ts:55-57
     let dict = core_dictionary();
     assert_eq!(lint_script(FLYER, &dict).unwrap(), Vec::<String>::new());
 }
 
 #[test]
 fn a_verb_with_slots_but_no_recipes() {
-    // ts: test/lint.test.ts:59-68
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -142,7 +135,6 @@ verbs:
 
 #[test]
 fn a_recipe_after_a_catch_all_is_unreachable() {
-    // ts: test/lint.test.ts:70-82
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -168,7 +160,6 @@ verbs:
 
 #[test]
 fn an_identical_when_shadows_the_later_recipe() {
-    // ts: test/lint.test.ts:84-96
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -195,7 +186,6 @@ verbs:
 
 #[test]
 fn a_count_role_bound_beyond_the_slot_cardinality_can_never_hold() {
-    // ts: test/lint.test.ts:98-110
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -222,7 +212,6 @@ verbs:
 
 #[test]
 fn unknown_narrate_tokens_warn_roles_and_function_params_do_not() {
-    // ts: test/lint.test.ts:112-131
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -264,7 +253,6 @@ triggers:
 
 #[test]
 fn a_deck_entry_that_is_not_stackable_trips_the_livelock_rule() {
-    // ts: test/lint.test.ts:133-149
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -295,7 +283,6 @@ verbs:
 
 #[test]
 fn an_aspect_queried_but_never_declared_warns_declared_ones_do_not() {
-    // ts: test/lint.test.ts:151-163
     let dict = core_dictionary();
     let w = lint_script(
         &base(
@@ -322,7 +309,6 @@ verbs:
 
 #[test]
 fn a_non_lexeme_entity_name_warns_legal_but_every_ref_needs_quotes() {
-    // ts: test/lint.test.ts:165-168
     let dict = core_dictionary();
     let w = lint_script(&base("  X-Y is item with weight:1"), &dict).unwrap();
     assert!(

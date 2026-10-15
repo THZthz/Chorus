@@ -1,8 +1,0 @@
-scripts/the-nightjar-flyer.txt · card THE_WAX_CYLINDER  [usable semantics]
-  verdict: UNPROVEN  (existence: candidate)
-  candidate source: recipe explore.firebox of EXPLORE — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
-  bindable via READ.object (query matches)
-  bindable via STUDY.object (query matches)
-  note: expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire
-  note: candidate source: recipe explore.firebox of EXPLORE — guarded (this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft, an earlier recipe of the same verb may shadow it (first-match), 1 IF condition(s) on the path, recipe `when` guard)
-

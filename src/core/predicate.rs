@@ -1,4 +1,4 @@
-//! Condition predicates for recipe `when` — ts: src/core/predicate.ts (spec
+//! Condition predicates for recipe `when` (spec
 //! §6.3). The SAME grammar serves the IF conditions of outcome lists (§9.39):
 //! `parse_predicate` string-parses `when:` lines; `parse_predicate_toks`
 //! parses an IF condition out of the SENTENCE token stream. One grammar, two
@@ -17,13 +17,13 @@ use crate::core::lexer::Tok;
 use crate::core::types::{aspect_get, relation_alive, Entity, State};
 use crate::js::{js_num_parse, static_regex, ChorusError, JS_WS_CLASS, Result};
 
-/// ts: src/core/predicate.ts:18 — `Record<string, Entity[]>`. Per plan §2.6.2
-/// the Rust bindings store entity IDS (`IndexMap<Role, Vec<String>>`), never
-/// cloned entities: roleCards and evalPred must read the CURRENT dead_action
+/// Role bindings: role → bound entity IDS (`IndexMap<Role, Vec<String>>`),
+/// never
+/// cloned entities: role_cards and eval_pred must read the CURRENT dead_action
 /// through `state.entities.get` mid-list (dead-stamp reads false silently).
 pub type RoleBindings = IndexMap<Role, Vec<String>>;
 
-/// ts: src/core/predicate.ts:20-35
+/// The evaluation context: bindings, state, strictness, dice.
 pub struct PredCtx<'a> {
     pub b: &'a RoleBindings,
     pub state: &'a State,
@@ -37,9 +37,9 @@ pub struct PredCtx<'a> {
     pub roll: Option<i64>,
 }
 
-/// ts: src/core/predicate.ts:53 — the path field: 'aspect' | 'attr'.
+/// The path field: 'aspect' | 'attr'.
 /// Serde derives: type-graph completeness only (predicates never serialize
-/// into the W3 log — `when:` lives in compiled content, IF arms are authored
+/// into the log — `when:` lives in compiled content, IF arms are authored
 /// form only), so the default wire shape is fine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PredField {
@@ -56,7 +56,7 @@ impl PredField {
         }
     }
 
-    /// ts: predicate.ts:370/377 — the two-word field validation, shared.
+    /// The two-word field validation, shared by every path grammar site.
     #[must_use]
     pub fn from_name(s: &str) -> Option<PredField> {
         match s {
@@ -67,7 +67,7 @@ impl PredField {
     }
 }
 
-/// ts: src/core/predicate.ts:37-47 — serde derives: type-graph completeness
+/// Serde derives: type-graph completeness
 /// only (see PredField — never on the wire).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Pred {
@@ -84,7 +84,7 @@ pub enum Pred {
     ExistsQuery { query: Query },
 }
 
-/// ts: src/core/predicate.ts:48-62 — serde derives: type-graph completeness
+/// Serde derives: type-graph completeness
 /// only (Arg::Vexpr's payload; ROLL args are authored-only and the log
 /// records computed ROLLED ints, so this is never on the wire).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -104,7 +104,7 @@ pub enum ValExpr {
     Roll,
 }
 
-/// ts: src/core/predicate.ts:63-67 — serde derives: type-graph completeness
+/// Serde derives: type-graph completeness
 /// only (see PredField).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScalarCond {
@@ -113,7 +113,7 @@ pub struct ScalarCond {
     pub value: i64,
 }
 
-/// ts: predicate.ts:64 — `{ field: 'aspect' | 'attr', key }`. Serde derives:
+/// `{ field: 'aspect' | 'attr', key }`. Serde derives:
 /// type-graph completeness only (see PredField).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScalarPath {
@@ -123,17 +123,18 @@ pub struct ScalarPath {
 
 // ---------- parser (precedence climbing: NOT > AND > OR) ----------
 
-/// ts: src/core/predicate.ts:71 — lookup order preserved.
+/// The comparison-op alternation; lookup order preserved
+/// (leftmost-first matching).
 const CMP_OPS: [&str; 6] = [">=", "<=", "!=", "=", ">", "<"];
 
-/// ts: src/core/predicate.ts:78-82 — a pre-lexed predicate: lexemes + source
+/// A pre-lexed predicate: lexemes + source
 /// spans + the source the spans index. The string front-end builds it from
 /// the regex tokenizer below; the Tok front-end (parse_predicate_toks)
 /// re-serializes sentence Toks into the same shape, so every grammar rule —
 /// including the exists()/count() inner-query reconstruction, which reads
-/// source offsets — behaves identically. (Spans are BYTE offsets in Rust:
-/// all token edges are ASCII, so byte offsets index the same boundaries the
-/// TS UTF-16 offsets do; the substring CONTENT is identical either way.)
+/// source offsets — behaves identically. (Spans are BYTE offsets:
+/// all token edges are ASCII, so byte offsets land on the same boundaries
+/// UTF-16 offsets would; the substring CONTENT is identical either way.)
 #[derive(Debug, Clone)]
 pub struct PredView {
     pub src: String,
@@ -141,12 +142,12 @@ pub struct PredView {
     pub spans: Vec<(usize, usize)>,
 }
 
-/// ts: src/core/predicate.ts:84-86
+/// Parse one `when:` predicate string.
 pub fn parse_predicate(src: &str) -> Result<Pred> {
     PredParser::new(src, None, None, false).parse()
 }
 
-/// ts: src/core/predicate.ts:98-123 — parse one IF condition out of the
+/// Parse one IF condition out of the
 /// SENTENCE token stream (§9.39) and report where it ended. Returns
 /// `(pred, end)` where `end` is the number of Toks consumed, i.e. the index
 /// of the `->` arrow in the given slice.
@@ -191,7 +192,7 @@ pub fn parse_predicate_toks(
         return Err(ChorusError::new("an IF needs a condition before '->'"));
     }
     let PredView { src, toks, spans } = pred_view_from_toks(slice)?;
-    // allowRoll: `roll` (§9.41) is an outcome-list operand — an IF condition
+    // `allow_roll`: `roll` (§9.41) is an outcome-list operand — an IF condition
     // may read the list's dice; a `when:` line (the string front-end) may not
     let parser = PredParser {
         toks,
@@ -205,7 +206,7 @@ pub fn parse_predicate_toks(
     Ok((pred, end))
 }
 
-/// ts: src/core/predicate.ts:132-135 — ONE standalone value expression
+/// ONE standalone value expression
 /// (§9.41): the ROLL argument grammar — one grammar, three front-ends.
 pub fn parse_value_expr_toks(
     toks: &[Tok],
@@ -223,18 +224,19 @@ pub fn parse_value_expr_toks(
     parser.parse_value_expr()
 }
 
-/// ts: src/core/predicate.ts:141-161 — sentence Toks → this parser's own
+/// Sentence Toks → this parser's own
 /// token alphabet (§9.39). Word-adjacent lexemes are space-separated so they
 /// cannot merge; everything else glues exactly as the string grammar expects
 /// (`aspect:hunter>=1`, `state:!sealed`, dotted paths, `-aspect:winter`).
-/// The 拼串 + span shape is load-bearing (CORE-21): the inner-query
-/// reconstruction reads source offsets, so error texts carry the拼接
+/// The glued-string + span shape is load-bearing: the inner-query
+/// reconstruction reads source offsets, so error texts carry the glued
 /// traces — do NOT refactor to direct Tok interpretation.
 pub fn pred_view_from_toks(toks: &[Tok]) -> Result<PredView> {
     let mut src = String::new();
     let mut ptoks: Vec<String> = Vec::new();
     let mut spans: Vec<(usize, usize)> = Vec::new();
-    // appendix A.1: predicate.ts:155 — `/[A-Za-z0-9_]$/` + `/^[A-Za-z0-9_]/`
+    // word-edge detection: a lexeme ending in a word char glues a space
+    // before a lexeme starting with one
     static END_WORD: OnceLock<Regex> = OnceLock::new();
     static START_WORD: OnceLock<Regex> = OnceLock::new();
     let end_word = static_regex(&END_WORD, || Regex::new(r"[A-Za-z0-9_]$"));
@@ -270,7 +272,7 @@ pub fn pred_view_from_toks(toks: &[Tok]) -> Result<PredView> {
     Ok(PredView { src, toks: ptoks, spans })
 }
 
-/// ts: src/core/predicate.ts:163-390 — the recursive-descent predicate parser.
+/// The recursive-descent predicate parser.
 struct PredParser<'a> {
     toks: Vec<String>,
     spans: Vec<(usize, usize)>,
@@ -281,7 +283,7 @@ struct PredParser<'a> {
 }
 
 impl<'a> PredParser<'a> {
-    /// ts: predicate.ts:168-179 — the string front-end constructor.
+    /// The string front-end constructor.
     fn new(src: &str, pre: Option<PredView>, params: Option<&'a HashSet<String>>, allow_roll: bool) -> PredParser<'a> {
         if let Some(PredView { toks, spans, .. }) = pre {
             return PredParser {
@@ -293,11 +295,11 @@ impl<'a> PredParser<'a> {
                 allow_roll,
             };
         }
-        // QUIRK(CORE-08(3)/Q2): the tokenizer SILENTLY SWALLOWS characters no
+        // QUIRK(Q2): the tokenizer SILENTLY SWALLOWS characters no
         // alternative matches (`aspect:x >= @3` ≡ `aspect:x>=3` — `@` just
-        // vanishes). find_iter reproduces the /g exec loop's skip semantics.
-        // This is a frozen quirk: DO NOT "fix" into an error.
-        // appendix A.1: predicate.ts:172 — R; `\d` is ASCII `[0-9]`.
+        // vanishes). find_iter reproduces the JS /g exec loop's skip
+        // semantics. This is a frozen quirk: DO NOT "fix" into an error.
+        // (`\d` is ASCII `[0-9]`.)
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || {
             Regex::new(r"[A-Za-z_][A-Za-z0-9_.]*|[0-9]+|>=|<=|!=|=|>|<|\(|\)|,|:|-")
@@ -322,7 +324,7 @@ impl<'a> PredParser<'a> {
         self.toks.get(self.pos)
     }
 
-    /// ts: predicate.ts:181-186
+    /// Next token, or the end-of-predicate error.
     fn next(&mut self) -> Result<String> {
         match self.peek() {
             Some(t) => {
@@ -334,7 +336,7 @@ impl<'a> PredParser<'a> {
         }
     }
 
-    /// ts: predicate.ts:187-190
+    /// Consume `w` or fail.
     fn expect(&mut self, w: &str) -> Result<()> {
         let t = self.next()?;
         if t != w {
@@ -343,11 +345,11 @@ impl<'a> PredParser<'a> {
         Ok(())
     }
 
-    /// ts: predicate.ts:192-196
+    /// Parse one full predicate.
     fn parse(mut self) -> Result<Pred> {
         if self.toks.is_empty() {
-            // the TS constructor's `empty predicate '<src>'` throw, deferred
-            // to the parse call (same message, same caller-visible failure)
+            // the empty-predicate error surfaces at parse call time, not
+            // construction (same message, same caller-visible failure)
             return Err(ChorusError::new(format!("empty predicate '{}'", self.src)));
         }
         let p = self.or()?;
@@ -360,7 +362,7 @@ impl<'a> PredParser<'a> {
         Ok(p)
     }
 
-    /// ts: predicate.ts:200-204 — one full value expression (§9.41 ROLL
+    /// One full value expression (§9.41 ROLL
     /// args): the §6.3 operand grammar, all tokens consumed.
     fn parse_value_expr(mut self) -> Result<ValExpr> {
         let v = self.val_expr()?;
@@ -373,7 +375,7 @@ impl<'a> PredParser<'a> {
         Ok(v)
     }
 
-    /// ts: predicate.ts:206-210
+    /// or := and ('OR' and)*.
     fn or(&mut self) -> Result<Pred> {
         let mut a = self.and()?;
         while self.peek().map(|t| t.as_str()) == Some("OR") {
@@ -384,7 +386,7 @@ impl<'a> PredParser<'a> {
         Ok(a)
     }
 
-    /// ts: predicate.ts:211-215
+    /// and := unary ('AND' unary)*.
     fn and(&mut self) -> Result<Pred> {
         let mut a = self.unary()?;
         while self.peek().map(|t| t.as_str()) == Some("AND") {
@@ -395,7 +397,7 @@ impl<'a> PredParser<'a> {
         Ok(a)
     }
 
-    /// ts: predicate.ts:216-219
+    /// unary := 'NOT' unary | atom.
     fn unary(&mut self) -> Result<Pred> {
         if self.peek().map(|t| t.as_str()) == Some("NOT") {
             self.next()?;
@@ -405,7 +407,7 @@ impl<'a> PredParser<'a> {
         self.atom()
     }
 
-    /// ts: predicate.ts:220-240
+    /// atom := '(' or ')' | every/any | exists | rel | cmp.
     fn atom(&mut self) -> Result<Pred> {
         if self.peek().map(|t| t.as_str()) == Some("(") {
             self.next()?;
@@ -437,7 +439,7 @@ impl<'a> PredParser<'a> {
         self.cmp_from_expr()
     }
 
-    /// ts: predicate.ts:242-250
+    /// quantified := ('every'|'any') '(' role ',' scalarCond ')'.
     fn quantified(&mut self) -> Result<Pred> {
         let kind = self.next()?;
         self.expect("(")?;
@@ -452,7 +454,7 @@ impl<'a> PredParser<'a> {
         })
     }
 
-    /// ts: predicate.ts:252-277 — exists(NAME): an ALIVE entity bears the
+    /// exists(NAME): an ALIVE entity bears the
     /// name; exists(<query>): an alive entity matches the §4.5 slot query.
     fn exists_pred(&mut self) -> Result<Pred> {
         self.next()?; // 'exists'
@@ -471,13 +473,12 @@ impl<'a> PredParser<'a> {
         if close == first {
             return Err(ChorusError::new("exists() needs a name or a slot query"));
         }
-        // ts: predicate.ts:269 — inner() reads the source spans (CORE-21)
+        // the inner text is cut from the source spans
         let inner = self.src[self.spans[first].0..self.spans[close].0].to_string();
         if self.query_starter_at(first) {
             // §4.5 splits terms on whitespace, so tighten `aspect:hunter >= 1`
             // to `aspect:hunter>=1` — spaces around a comparison are glue,
-            // not structure (appendix A.1: predicate.ts:273 — replace with
-            // `$1` capture expansion)
+            // not structure (the replacement keeps only the captured op)
             static CMP: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&CMP, || {
                 Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", JS_WS_CLASS, JS_WS_CLASS))
@@ -496,7 +497,7 @@ impl<'a> PredParser<'a> {
         })
     }
 
-    /// ts: predicate.ts:280-284 — a query-term starter at token i:
+    /// A query-term starter at token i:
     /// kind:/aspect:/state:/name: or a leading `-` (§4.5, §9.38).
     fn query_starter_at(&self, i: usize) -> bool {
         let Some(head) = self.toks.get(i) else {
@@ -508,7 +509,7 @@ impl<'a> PredParser<'a> {
         }
     }
 
-    /// ts: predicate.ts:286-296
+    /// scalarCond := 'aspect' ':' key cmp int.
     fn scalar_cond(&mut self) -> Result<ScalarCond> {
         self.expect("aspect")?; // v0.2: scalar conditions read aspects
         self.expect(":")?;
@@ -520,7 +521,7 @@ impl<'a> PredParser<'a> {
             )));
         };
         let v = self.next()?;
-        // appendix A.1: predicate.ts:294 `/^\d+$/` — R, ASCII digits
+        // ASCII digits only
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || Regex::new(r"^[0-9]+$"));
         if !re.is_match(&v) {
@@ -538,7 +539,7 @@ impl<'a> PredParser<'a> {
         })
     }
 
-    /// ts: predicate.ts:298-305
+    /// cmp := valExpr cmpOp valExpr.
     fn cmp_from_expr(&mut self) -> Result<Pred> {
         let l = self.val_expr()?;
         let op_tok = self.next()?;
@@ -555,7 +556,7 @@ impl<'a> PredParser<'a> {
         })
     }
 
-    /// ts: predicate.ts:307-383
+    /// One operand: param | roll | int | count/total | role.field.key path.
     fn val_expr(&mut self) -> Result<ValExpr> {
         let t = self.next()?;
         // F3 (§9.40): a bare parameter name is a param operand — expansion
@@ -658,7 +659,7 @@ impl<'a> PredParser<'a> {
         Ok(ValExpr::Path { role: t, field, key })
     }
 
-    /// ts: predicate.ts:385-389
+    /// A dotted name consumed as one logical lexeme.
     fn dotted_name(&mut self) -> Result<String> {
         let mut name = self.next()?;
         while self.peek().map(|t| t.as_str()) == Some(".") {
@@ -672,9 +673,9 @@ impl<'a> PredParser<'a> {
 
 // ---------- evaluation ----------
 
-/// ts: src/core/predicate.ts:394-401 — a role's bound cards, ALIVE only
-/// (§9.39 draft reads). Reads the CURRENT entities through the id handles
-/// (plan §2.6.2): a dead-stamped entity reads as absent mid-list —
+/// A role's bound cards, ALIVE only
+/// (§9.39 draft reads). Reads the CURRENT entities through the id handles:
+/// a dead-stamped entity reads as absent mid-list —
 /// `DESTROY OBJECT` then `IF object.aspect.x` is a silent false.
 fn role_cards<'a>(ctx: &PredCtx<'a>, role: &str) -> Vec<&'a Entity> {
     let Some(r) = Role::from_lower(role) else {
@@ -691,11 +692,11 @@ fn role_cards<'a>(ctx: &PredCtx<'a>, role: &str) -> Vec<&'a Entity> {
         .unwrap_or_default()
 }
 
-/// ts: src/core/predicate.ts:403-457
+/// Evaluate one predicate node.
 pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
     match p {
         Pred::And(a, b) => {
-            // TS `&&` short-circuits: b is not evaluated (and may throw)
+            // JS `&&` short-circuits: b is not evaluated (and may throw)
             if eval_pred(a, ctx)? {
                 eval_pred(b, ctx)
             } else {
@@ -721,8 +722,9 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
                 cards
                     .into_iter()
                     .map(|e| {
-                        // ts: predicate.ts:416 —
-                        // `entities.get(String(e.attrs['container'] ?? '')) ?? e`
+                        // container redirect: the container attr's stringified
+                        // value names the container entity, else the card itself
+                        // (the JS spelling)
                         let cid = e
                             .attrs
                             .get("container")
@@ -756,8 +758,8 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
             Ok(cards.iter().any(|e| scalar_ok(e, cond)))
         }
         Pred::Exists { name } => {
-            // byName holds ALIVE entities only (§9.14); the deadAction
-            // re-check is the same belt-and-braces resolveRef wears. Under
+            // `by_name` holds ALIVE entities only (§9.14); the `dead_action`
+            // re-check is the same belt-and-braces `resolve_ref` wears. Under
             // pools (§9.38) the existential is ANY living copy of the name.
             match ctx.state.by_name.get(name) {
                 Some(pool) => Ok(pool
@@ -769,7 +771,7 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
         Pred::ExistsQuery { query } => {
             // the WHOLE world, not the step's bound roles — CS extantreqs
             // ("anywhere in play"); entities insertion order is the scan
-            // order (matchQuery is order-insensitive per-card, CORE-06)
+            // order (match_query is order-insensitive per-card)
             for e in ctx.state.entities.values() {
                 if e.dead_action.is_none() && match_query(e, query) {
                     return Ok(true);
@@ -778,8 +780,8 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
             Ok(false)
         }
         Pred::Cmp { l, op, r } => {
-            // QUIRK (plan §3.10): either operand undefined → false (TS
-            // `l === undefined || r === undefined`)
+            // QUIRK: either operand undefined → false (the JS `undefined`
+            // comparison semantics)
             let lv = eval_expr(l, ctx)?;
             let rv = eval_expr(r, ctx)?;
             Ok(match (lv, rv) {
@@ -790,7 +792,7 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
     }
 }
 
-/// ts: src/core/predicate.ts:459-462
+/// Evaluate a scalar condition (missing aspect → false).
 fn scalar_ok(e: &Entity, cond: &ScalarCond) -> bool {
     let v = match cond.path.field {
         PredField::Aspect => aspect_get(e, &cond.path.key),
@@ -802,7 +804,7 @@ fn scalar_ok(e: &Entity, cond: &ScalarCond) -> bool {
     }
 }
 
-/// ts: src/core/predicate.ts:464-467
+/// Numeric attr read (non-number → None).
 fn number_attr(e: &Entity, key: &str) -> Option<i64> {
     match e.attrs.get(key) {
         Some(crate::core::types::AttrValue::Num(n)) => Some(*n),
@@ -810,7 +812,7 @@ fn number_attr(e: &Entity, key: &str) -> Option<i64> {
     }
 }
 
-/// ts: src/core/predicate.ts:469-514
+/// Evaluate one value expression (None = unresolved).
 pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
     match x {
         ValExpr::Int { v } => Ok(Some(*v)),
@@ -826,7 +828,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
         }
         ValExpr::Count { role } => Ok(Some(role_cards(ctx, role).len() as i64)),
         ValExpr::CountQuery { query } => {
-            // world scope, like existsQuery (§6.3): every ALIVE card matching
+            // world scope, like `ExistsQuery` (§6.3): every ALIVE card matching
             let mut n: i64 = 0;
             for e in ctx.state.entities.values() {
                 if e.dead_action.is_none() && match_query(e, query) {
@@ -836,8 +838,8 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
             Ok(Some(n))
         }
         ValExpr::Total { role, path } => {
-            // reduce along roleCards order; saturating add — TS sums in f64
-            // where i64 would overflow (documented §3.5 divergence family)
+            // reduce along role_cards order; saturating add — only absurd
+            // magnitudes overflow, and no log pins their sums
             let sum = role_cards(ctx, role)
                 .iter()
                 .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
@@ -845,7 +847,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
         }
         ValExpr::Path { role, field, key } => {
             // the oldest ALIVE bound card: first id, in binding order, that
-            // is still alive (TS `bound.find(c => c.deadAction === null)`)
+            // is still alive
             let bound: &[String] = match Role::from_lower(role) {
                 Some(r) => ctx.b.get(&r).map(|v| v.as_slice()).unwrap_or(&[]),
                 None => &[], // an undeclared role binds nothing
@@ -863,7 +865,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
                     // §9.39: an IF condition names a CARD that is not there —
                     // an unresolvable ref, a step rejection (§9.19) — but ONLY
                     // when the role has NO bindings at all; all-dead bindings
-                    // read false silently (the documented dead-stamp rule)
+                    // read false silently (the dead-stamp rule)
                     if ctx.strict && bound.is_empty() {
                         return Err(ChorusError::new(format!(
                             "IF condition: operand '{role}.{field}.{key}' cannot resolve — role '{role}' has no bound card",
@@ -886,7 +888,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
 
 // ---------- load-time argument lint (§9.38) ----------
 
-/// ts: src/core/predicate.ts:518 — `ROLES.join(', ')`.
+/// `ROLES` joined with ', ' (the ROLE_LIST message text).
 #[must_use]
 pub fn role_list() -> String {
     ROLES
@@ -896,7 +898,7 @@ pub fn role_list() -> String {
         .join(", ")
 }
 
-/// ts: src/core/predicate.ts:524-541 — count()/total() arguments must be a
+/// count()/total() arguments must be a
 /// DECLARED ROLE or a query-term starter. Called at content compile for
 /// every recipe `when`; the runtime path is unaffected.
 pub fn lint_pred(where_: &str, p: &Pred) -> Result<()> {
@@ -910,12 +912,12 @@ pub fn lint_pred(where_: &str, p: &Pred) -> Result<()> {
             lint_val_expr(where_, l)?;
             lint_val_expr(where_, r)
         }
-        // rel/every/any/exists/existsQuery carry no count/total args
+        // Rel/Every/Any/Exists/ExistsQuery carry no count/total args
         _ => Ok(()),
     }
 }
 
-/// ts: src/core/predicate.ts:543-556
+/// Lint the count()/total() operand expressions of a predicate.
 pub fn lint_val_expr(where_: &str, x: &ValExpr) -> Result<()> {
     let is_role = |role: &str| Role::from_lower(role).is_some();
     if let ValExpr::Count { role } = x {
@@ -937,7 +939,7 @@ pub fn lint_val_expr(where_: &str, x: &ValExpr) -> Result<()> {
     Ok(())
 }
 
-/// ts: src/core/predicate.ts:564-591 — trigger (slot + expiry) outcome lists
+/// Trigger (slot + expiry) outcome lists
 /// have EMPTY event bindings, so any role-dependent operand in an IF
 /// condition there would silently read false/0. Called from content compile.
 pub fn lint_trigger_pred(where_: &str, p: &Pred) -> Result<()> {
@@ -963,12 +965,13 @@ pub fn lint_trigger_pred(where_: &str, p: &Pred) -> Result<()> {
                 b = if is_every { "true" } else { "false" }
             )))
         }
-        _ => Ok(()), // exists/existsQuery are world forms
+        _ => Ok(()), // `Exists`/`ExistsQuery` are world forms
     }
 }
 
-/// ts: src/core/predicate.ts:593-613 — `what` defaults to 'IF operand'
-/// (content.ts:267 passes 'ROLL argument' for vexpr operands).
+/// `what` names the operand kind in the messages
+/// ('IF operand' by default; content compile passes 'ROLL argument' for
+/// vexpr operands).
 pub fn lint_trigger_val_expr_what(where_: &str, x: &ValExpr, what: &str) -> Result<()> {
     match x {
         ValExpr::Count { role } => Err(ChorusError::new(format!(
@@ -981,20 +984,20 @@ pub fn lint_trigger_val_expr_what(where_: &str, x: &ValExpr, what: &str) -> Resu
             "{where_}: {what} {role}.{field}.{key} reads a step role — trigger bindings are empty, it would always be false; use world forms (exists(…), count(name:…))",
             field = field.as_str()
         ))),
-        // int / countQuery are world forms; `roll` (§9.41) reads the list's
+        // `Int` / `CountQuery` are world forms; `roll` (§9.41) reads the list's
         // own dice, not a role
         _ => Ok(()),
     }
 }
 
-/// ts: predicate.ts:593 — the default-`what` entry point.
+/// The default-`what` entry point.
 pub fn lint_trigger_val_expr(where_: &str, x: &ValExpr) -> Result<()> {
     lint_trigger_val_expr_what(where_, x, "IF operand")
 }
 
 // ---------- §9.41 compile-time may-bind lint for the `roll` operand ----------
 
-/// ts: src/core/predicate.ts:629-637 — does this predicate read the `roll`
+/// Does this predicate read the `roll`
 /// operand anywhere?
 #[must_use]
 fn pred_uses_roll(p: &Pred) -> bool {
@@ -1006,7 +1009,7 @@ fn pred_uses_roll(p: &Pred) -> bool {
     }
 }
 
-/// ts: src/core/predicate.ts:651-653 — best-effort may-bind analysis (§9.41,
+/// Best-effort may-bind analysis (§9.41,
 /// false NEGATIVES allowed). The scan walks each list linearly, descending
 /// into IF branch bodies; a ROLL seen anywhere earlier makes later references
 /// lint-clean.
@@ -1015,7 +1018,7 @@ pub fn lint_roll_may_bind(where_: &str, out: &[Outcome]) -> Result<()> {
     Ok(())
 }
 
-/// ts: src/core/predicate.ts:656-678 — walk one list; returns whether it
+/// Walk one list; returns whether it
 /// could possibly bind `roll` (contain a ROLL).
 fn walk_roll_may_bind(where_: &str, list: &[Outcome], bound: bool) -> Result<bool> {
     let mut may_bind = bound;
@@ -1055,8 +1058,7 @@ fn walk_roll_may_bind(where_: &str, list: &[Outcome], bound: bool) -> Result<boo
     Ok(may_bind)
 }
 
-// re-exports for the parse layer's convenience (the modules' cyclic type use
-// is intra-crate by design — CORE-02)
+// (the modules' cyclic type use is intra-crate by design)
 
 #[cfg(test)]
 mod tests {
@@ -1104,7 +1106,7 @@ mod tests {
 
     #[test]
     fn three_valued_boundaries_are_frozen() {
-        // every([]) is vacuously true, any([]) vacuously false (CORE-17)
+        // every([]) is vacuously true, any([]) vacuously false
         let p = parse_predicate("every(actors, aspect:x >= 1)").unwrap();
         let p2 = parse_predicate("any(actors, aspect:x >= 1)").unwrap();
         let mut state = new_state(0);
@@ -1139,7 +1141,7 @@ mod tests {
         let mut state = new_state(0);
         let mut door = ent("x1", "THE_SEALED_DOOR", "place", Aspects::new(), Attrs::new());
         door.aspects.insert("occult".into(), AspectVal::Num(5));
-        // byName pool drives exists(NAME)
+        // `by_name` pool drives exists(NAME)
         let _ = state.entities.insert("x1".into(), door.clone());
         let _ = state.by_name.insert("THE_SEALED_DOOR".into(), vec!["x1".into()]);
         let bindings = RoleBindings::new();
@@ -1157,7 +1159,7 @@ mod tests {
 
     #[test]
     fn tokenizer_swallows_illegal_characters_quirk() {
-        // QUIRK(Q2/CORE-08(3)): `@` silently vanishes — frozen, do not fix
+        // QUIRK(Q2): `@` silently vanishes — frozen, do not fix
         let p1 = parse_predicate("count(actors) @>= 2").unwrap();
         let p2 = parse_predicate("count(actors) >= 2").unwrap();
         assert_eq!(p1, p2);
@@ -1178,7 +1180,7 @@ mod tests {
             Tok::Int { v: 3 },
         ])
         .unwrap();
-        // TS inserts the glue space before ANY word-initial text — digits
+        // the glue space goes before ANY word-initial text — digits
         // are word chars — so an int after a name is "aspect:secret 3"
         assert_eq!(view.src, "aspect:secret 3");
         // word-adjacent tokens get a space so they cannot merge

@@ -1,8 +1,8 @@
-//! JS semantics infrastructure shared by every ported module (plan §2.2).
-//! `cmp_utf16` / the test-side LCG / `ChorusError` / `JS_WS_CLASS` (W0),
-//! `js_num_parse` / `js_trim` / `static_regex` / `ordinary_own_property_keys`
-//! / `clone_map_in_js_order` (W1 core wave), and `jsjson` — the
-//! `JSON.stringify` clone with its Node cross-checks (T1.5, plan §4-W1).
+//! JS semantics infrastructure shared by every module:
+//! `cmp_utf16`, the test-side LCG, `ChorusError`, the JS whitespace/word
+//! classes, JS number/trim semantics, `static_regex`,
+//! `ordinary_own_property_keys` / `clone_map_in_js_order`, and `jsjson` —
+//! the `JSON.stringify` clone.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -10,33 +10,32 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-/// ts: src/core/ref.ts:47-49 (sortRefs), src/core/types.ts:225-230
-/// (relationKey), tools/reach-cli.ts:73 (`--all` list) — plan §3.6.
 /// JS compares strings as UTF-16 code-unit sequences; Rust `str::cmp` is
 /// byte order, which diverges on non-BMP characters (a surrogate pair starts
 /// at 0xD800, below every single unit >= 0xE000). **Never** substitute
-/// `str::cmp` (verification CORE-05).
+/// `str::cmp` — ref sorting, relation keys and reach lists all require JS
+/// order.
 #[must_use]
 pub fn cmp_utf16(a: &str, b: &str) -> Ordering {
     a.encode_utf16().cmp(b.encode_utf16())
 }
 
-/// QUIRK(CORE-08(1)/Q8): JS `\s` includes `\uFEFF` and excludes `\u{85}`;
+/// QUIRK(Q8): JS `\s` includes `\uFEFF` and excludes `\u{85}`;
 /// the regex crate's `\s` (Unicode White_Space) is exactly the reverse. All
-/// ported regexes must spell whitespace with this explicit class (plan §3.8);
+/// regexes must spell whitespace with this explicit class;
 /// `\S` is the negation of the same class, never the crate's `\S`.
 pub const JS_WS_CLASS: &str =
     "[\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
 /// The negation of [`JS_WS_CLASS`] — JS `\S` (Q8). The regex crate's `\S` is
 /// the complement of White_Space: it EXCLUDES U+0085 and INCLUDES U+FEFF —
-/// exactly the reverse of JS. Every ported `\S` must spell this class.
+/// exactly the reverse of JS. Every `\S` must spell this class.
 pub const JS_NON_WS_CLASS: &str =
     "[^\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
 /// The same JS whitespace set as a code-unit predicate — the hand-written
-/// lexer scanners (W1) run on `Vec<u16>` code units where regex classes
-/// cannot reach (plan §2.3 / PR2-08). ts: src/core/lexer.ts:26 (`/\s/`).
+/// lexer scanners run on `Vec<u16>` code units where regex classes
+/// cannot reach.
 #[must_use]
 pub fn js_is_ws(c: u16) -> bool {
     matches!(
@@ -46,11 +45,11 @@ pub fn js_is_ws(c: u16) -> bool {
     )
 }
 
-/// ts: (plan §2.5) every TS `throw new Error(...)` becomes exactly one Rust
-/// construction site `ChorusError::new(format!(...))` with the template
-/// copied character-for-character. Deliberately a plain message, NOT an enum
+/// One error type for the whole engine: every error message lives at exactly
+/// one construction site `ChorusError::new(format!(...))` with its exact
+/// text. Deliberately a plain message, NOT an enum
 /// of variants — the variants + Display double maintenance surface is where
-/// messages drift (§2.5).
+/// messages drift.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChorusError {
     pub msg: String,
@@ -72,18 +71,17 @@ impl std::error::Error for ChorusError {}
 
 pub type Result<T> = std::result::Result<T, ChorusError>;
 
-/// ts: (plan §3.5) every TS `Number(<digit literal>)` — lexer.ts:56-58,
-/// predicate.ts:294-295/323, clock.ts:34/37/55 — goes through an f64 middle
-/// step and only then lands in the integer domain; direct
+/// JS `Number(<digit literal>)` semantics: the value goes through an f64
+/// middle step and only then lands in the integer domain; direct
 /// `str::parse::<i64>()` diverges past 2^53 ("9007199254740993" → JS …992,
-/// direct parse …993, PR2-04). Rust's `str::parse::<f64>` is correctly
+/// direct parse …993). Rust's `str::parse::<f64>` is correctly
 /// rounded (nearest, ties to even) exactly like JS `Number`, so the f64
 /// middle step is reproduced bit-for-bit; the final f64→i64 `as` saturates
-/// at the i64 bounds where TS would keep a lossy f64 — a **documented
-/// divergence** (plan §3.5: no arbitrary precision; no test pins it).
+/// at the i64 bounds where JS would keep a lossy f64 (no arbitrary
+/// precision; no log pins that region).
 ///
 /// NaN can only occur for inputs the call sites' regexes already rejected;
-/// it maps to 0 rather than panicking (TS would propagate NaN).
+/// it maps to 0 rather than panicking (JS would propagate NaN).
 #[must_use]
 pub fn js_num_parse(s: &str) -> i64 {
     let f: f64 = s.parse().unwrap_or(f64::NAN);
@@ -97,8 +95,8 @@ pub fn js_num_parse(s: &str) -> i64 {
 /// The set of characters JS `String.prototype.trim` strips: WhiteSpace plus
 /// line terminators — includes `\u{FEFF}`, excludes `\u{85}`. Rust's
 /// `str::trim` (char::is_whitespace) is exactly the reverse on those two,
-/// so every ported `trim()` before a `\s`-split must use this predicate
-/// (plan §3.8 / Q8). Same set as [`js_is_ws`], on a `char`.
+/// so every `trim()` before a `\s`-split must use this predicate
+/// (Q8). Same set as [`js_is_ws`], on a `char`.
 #[must_use]
 pub fn js_char_is_ws(c: char) -> bool {
     matches!(
@@ -109,16 +107,15 @@ pub fn js_char_is_ws(c: char) -> bool {
     )
 }
 
-/// ts: (plan §3.8) `String.prototype.trim` in the JS whitespace set.
+/// `String.prototype.trim` in the JS whitespace set.
 #[must_use]
 pub fn js_trim(s: &str) -> &str {
     s.trim_matches(js_char_is_ws)
 }
 
-/// ts: (rule 11 / plan §2.3) cache for the appendix-A regex literals. The
-/// patterns are audited against docs/rust-port/plan.md appendix A at review
-/// time; a literal failing to compile is a programmer error with no runtime
-/// behavior to define, hence `unreachable!` (the sanctioned form — engine
+/// Cache for the module-level regex literals. A literal failing to compile
+/// is a programmer error with no runtime
+/// behavior to define, hence `unreachable!` (engine
 /// paths use no `unwrap`/`expect`).
 #[must_use]
 pub fn static_regex(
@@ -132,7 +129,7 @@ pub fn static_regex(
 }
 
 /// The text of a capture group that ALWAYS participates in its pattern
-/// (rule 11: a non-participation would be a programmer error, never runtime
+/// (a non-participation would be a programmer error, never runtime
 /// behavior). Only optional groups go through [`grp_opt`].
 #[must_use]
 pub fn grp_text<'t>(c: &regex::Captures<'t>, i: usize) -> &'t str {
@@ -149,8 +146,8 @@ pub fn grp0_text<'a>(c: &'a regex::Captures<'a>) -> &'a str {
         .unwrap_or_else(|| unreachable!("regex group 0 is always present"))
 }
 
-/// Group 0's start offset (bytes in Rust; byte offsets are monotonic with
-/// the JS UTF-16 unit offsets every ported `.index` compares/slices on).
+/// Group 0's start offset (bytes; byte offsets are monotonic with
+/// the JS UTF-16 unit offsets the `.index` compare/slice decisions use).
 #[must_use]
 pub fn grp0_start(c: &regex::Captures) -> usize {
     c.get(0)
@@ -159,18 +156,18 @@ pub fn grp0_start(c: &regex::Captures) -> usize {
 }
 
 /// An OPTIONAL capture group's text (`(?:…)?` — may legitimately not
-/// participate; TS reads it as `undefined`).
+/// participate; JS reads it as `undefined`).
 #[must_use]
 pub fn grp_opt<'t>(c: &regex::Captures<'t>, i: usize) -> Option<&'t str> {
     c.get(i).map(|m| m.as_str())
 }
 
-/// ts: (plan §3.7 / PR2-05) JS `OrdinaryOwnPropertyKeys`: integer-like keys
+/// JS `OrdinaryOwnPropertyKeys`: integer-like keys
 /// first in ascending numeric value, everything else in insertion order.
 /// Frozen judgment: a key is integer-like iff it is a canonical unsigned
 /// decimal string with no leading zero (`0`, `123` — never `+5`, `0123`,
 /// `1e2`) whose value round-trips `ToUint32` and stays `<= 2^32 - 2`
-/// (V8 treats 2^32-1 as a regular property; plan §3.7).
+/// (V8 treats 2^32-1 as a regular property).
 #[must_use]
 pub fn is_integer_like_key(k: &str) -> bool {
     let bytes = k.as_bytes();
@@ -184,11 +181,11 @@ pub fn is_integer_like_key(k: &str) -> bool {
     k.parse::<u64>().is_ok_and(|v| v <= 4_294_967_294)
 }
 
-/// ts: (plan §3.7 / PR2-05) the key order every JS object spread/clone/
+/// The key order every JS object spread/clone/
 /// `Object.entries` site produces. `IndexMap` alone only preserves insertion
 /// order; JS additionally fronts integer-like keys, so every observable
 /// clone/spread/serialize point must rebuild through this ordering
-/// (PR2-05's clone points live in `core/types.rs`).
+/// (the clone points live in `core/types.rs`).
 #[must_use]
 pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<String> {
     let mut int_keys: Vec<&String> = m
@@ -212,7 +209,7 @@ pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<S
 }
 
 /// Clone a string-keyed map rebuilding keys in JS `OrdinaryOwnPropertyKeys`
-/// order (plan §3.7 / PR2-05: the clone/spread points types.ts:118/:132/:138).
+/// order (the `{ ...obj }` spread semantics).
 #[must_use]
 pub fn clone_map_in_js_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> indexmap::IndexMap<String, V> {
     let mut out = indexmap::IndexMap::with_capacity(m.len());
@@ -225,15 +222,15 @@ pub fn clone_map_in_js_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> ind
     out
 }
 
-/// A JSON value in the exact shape `JSON.stringify` consumes (plan §3.7).
-/// The integer domain is FROZEN (PR2-04): every serialized number in the
+/// A JSON value in the exact shape `JSON.stringify` consumes.
+/// The integer domain is FROZEN: every serialized number in the
 /// record surface (id/advancedMin/startMin/rng/int/delta/dur/pair.v) is an
 /// integer, so there is no float variant and no shortest-round-trip
 /// algorithm — `i64` Display prints identically to JS `Number → String` for
 /// every value that can reach serialization.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsJson {
-    /// TS `undefined`: dropped as an object value, `null` inside an array,
+    /// JS `undefined`: dropped as an object value, `null` inside an array,
     /// the bare text `undefined` at top level (all three behaviors of
     /// `JSON.stringify`).
     Undefined,
@@ -249,21 +246,20 @@ pub enum JsJson {
     Obj(Vec<(String, JsJson)>),
 }
 
-/// ts: (plan §3.21 / PR2-02) the FROZEN APPROXIMATION of
-/// `String.prototype.localeCompare` for play.ts:238's suggestion pool sort:
+/// The FROZEN APPROXIMATION of
+/// `String.prototype.localeCompare` for the suggestion pool sort:
 /// ASCII-lowercase both sides, then Rust byte order (`str::cmp`). The repo's
 /// name domain is uppercase-ASCII entity names over lowercase English words,
 /// where the expected order matches ICU; the approximation surface is pinned
-/// by the W4 golden `suggestions()` dumps (and script-play.test.ts:421's
-/// `s[0] === 'read THE MANIFEST'` rides on rank, not on this comparator).
-/// ICU collation stays OUT of the dependency set (plan §2.3); revisit only if
+/// by the golden `suggestions()` dumps.
+/// ICU collation stays OUT of the dependency set; revisit only if
 /// non-ASCII names ever appear (a separately-tracked topic).
 #[must_use]
 pub fn cmp_ascii_ci(a: &str, b: &str) -> Ordering {
     a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase())
 }
 
-/// ts: (plan §3.7) `JSON.stringify(value)` — compact separators, JS key
+/// `JSON.stringify(value)` — compact separators, JS key
 /// order (the caller's), undefined dropping, and the exact `QuoteJSONString`
 /// escape set: `"` → `\"`, `\` → `\\`, `\b\t\n\f\r` short forms, other code
 /// units < 0x20 as lowercase `\u00xx` (lowercase hex); DEL (0x7f), U+2028/U+2029 and
@@ -319,7 +315,7 @@ fn jsjson_into(v: &JsJson, out: &mut String) {
     }
 }
 
-/// ts: JSON `QuoteJSONString` (ECMA-262) — Node-verified escape set, see
+/// JSON `QuoteJSONString` (ECMA-262) — Node-verified escape set, see
 /// [`jsjson`].
 fn jsjson_escape(s: &str, out: &mut String) {
     out.push('"');
@@ -342,10 +338,10 @@ fn jsjson_escape(s: &str, out: &mut String) {
     out.push('"');
 }
 
-/// ts: (plan §3.7 / PR2-05) `JSON.stringify({ ...map })` — the object SPREAD
+/// `JSON.stringify({ ...map })` — the object SPREAD
 /// itself reorders integer-like keys to the front (OrdinaryOwnPropertyKeys),
 /// so serialization must rebuild through the same order. The engine's
-/// aspects/attrs pairs (engine.ts:511-525/585-589) and the JSONL log (W3)
+/// aspects/attrs pairs and the JSONL log
 /// go through this; `IndexMap` insertion order alone would drift after
 /// `SET(x,"5",true)` + clone.
 #[must_use]
@@ -360,17 +356,16 @@ pub fn jsjson_obj_in_js_order(m: &indexmap::IndexMap<String, JsJson>) -> JsJson 
     JsJson::Obj(entries)
 }
 
-/// ts: test/reach-fuzz-lib.ts:36-38 — the deterministic test-side LCG,
-/// `s = (Math.imul(s, 1664525) + 1013904223) >>> 0`, identical in
-/// test/reach-scale-lib.ts:28-31 (`lcg`) and inlined in
-/// test/explorer-lib.ts:276-277 (plan §3.12, REACH-14). u32 wrapping
+/// The deterministic test-side LCG,
+/// `s = (Math.imul(s, 1664525) + 1013904223) >>> 0` — the frozen sequences
+/// shared by the reach-fuzz, reach-scale and explorer drivers. u32 wrapping
 /// arithmetic is bit-exact for `Math.imul` + `>>>0`.
 ///
-/// The three TS seed entries (TEST-04), kept one-to-one:
-/// - fuzz:  `Lcg::new(seed)` — XOR 0x9e3779b9 (reach-fuzz-lib.ts:37)
-/// - scale: `Lcg::new(0xc5)` (reach-scale-lib.ts:33)
+/// The three seed entry points, kept one-to-one:
+/// - fuzz:  `Lcg::new(seed)` — XOR 0x9e3779b9
+/// - scale: `Lcg::new(0xc5)`
 /// - explorer: `Lcg::from_raw_state(0x4e494748)` — 'NIGH', seeded as the raw
-///   constant with **no XOR** (explorer-lib.ts:276).
+///   constant with **no XOR**.
 #[derive(Debug, Clone)]
 pub struct Lcg {
     s: u32,
@@ -395,13 +390,13 @@ impl Lcg {
 
     /// `((s = …) >>> 0) / 0x100000000` — u32→f64 is exact and the division by
     /// 2^32 is a power-of-two scaling, so the f64 result is bit-identical to
-    /// TS's (plan §3.12: kept in f64, never integerized).
+    /// the JS expression (kept in f64, never integerized).
     #[must_use]
     pub fn next_f64(&mut self) -> f64 {
         f64::from(self.next_u32()) / 4294967296.0
     }
 
-    /// `Math.floor(r() * n)` — computed in f64 exactly as TS (plan §3.12).
+    /// `Math.floor(r() * n)` — computed in f64, exactly like the JS expression.
     #[must_use]
     pub fn next_int(&mut self, n: usize) -> usize {
         (self.next_f64() * n as f64).floor() as usize
@@ -416,7 +411,7 @@ mod tests {
     fn cmp_utf16_orders_a_surrogate_pair_before_high_bmp() {
         // U+10000 encodes as the pair D800 DC00; U+E000 is one unit 0xE000.
         // UTF-16 order puts "\u{10000}" BEFORE "\u{E000}"; Rust byte order
-        // says the opposite — the exact trap plan §3.6 forbids.
+        // says the opposite — the exact trap `cmp_utf16` exists for.
         assert_eq!(cmp_utf16("\u{10000}", "\u{E000}"), Ordering::Less);
         assert_eq!(cmp_utf16("\u{E000}", "\u{10000}"), Ordering::Greater);
         assert_eq!(cmp_utf16("abc", "abc"), Ordering::Equal);
@@ -459,11 +454,11 @@ mod tests {
         assert_eq!(fuzz.next_u32(), 3911581779);
         assert_eq!(fuzz.next_u32(), 1066994070);
         assert_eq!(fuzz.next_u32(), 1621898237);
-        // explorer entry: 'NIGH' as the RAW state, no XOR (explorer-lib.ts:276)
+        // explorer entry: 'NIGH' as the RAW state, no XOR
         let mut nigh = Lcg::from_raw_state(0x4e49_4748);
         assert_eq!(nigh.next_f64(), 0.3694802538957447);
         assert_eq!(nigh.next_f64(), 0.35568378726020455);
-        // scale entry: lcg(0xc5) (reach-scale-lib.ts:33)
+        // scale entry: lcg(0xc5)
         let mut scale = Lcg::new(0xc5);
         assert_eq!(scale.next_f64(), 0.23735849070362747);
         // Math.floor(r() * n) stays in f64
@@ -473,13 +468,13 @@ mod tests {
 
     #[test]
     fn js_num_parse_rounds_like_f64_not_direct_i64() {
-        // PR2-04's exact example: direct i64 parse gives …993, JS f64 …992
+        // direct i64 parse gives …993, JS f64 …992
         assert_eq!(js_num_parse("9007199254740993"), 9007199254740992);
         assert_eq!(js_num_parse("0"), 0);
         assert_eq!(js_num_parse("47"), 47);
         assert_eq!(js_num_parse("-5"), -5);
-        // > i64 range: saturates where TS keeps a lossy f64 (documented
-        // divergence, plan §3.5)
+        // > i64 range: saturates where JS keeps a lossy f64 (no log pins
+        // that region)
         assert_eq!(js_num_parse("99999999999999999999"), i64::MAX);
     }
 
@@ -515,7 +510,7 @@ mod tests {
         m.insert("12".to_string(), 5);
         // integer-like keys ascend to the front ("0","5","12"), the rest keep
         // insertion order ("container","0123") — exactly the JS spread order
-        // that PR2-05 pins for `SET(x,"5",true)` then clone
+        // pinned for `SET(x,"5",true)` then clone
         assert_eq!(
             ordinary_own_property_keys(&m),
             ["0", "5", "12", "container", "0123"]
@@ -525,7 +520,7 @@ mod tests {
         assert_eq!(keys, ["0", "5", "12", "container", "0123"]);
     }
 
-    // ---- Node cross-checks (PR2-05): every expectation below was generated
+    // ---- Node cross-checks: every expectation below was generated
     // ---- by a single `node -e` dump (Object.keys over V8 objects /
     // ---- JSON.stringify) on 2026-10-14 and hard-coded here, so the suite
     // ---- never depends on a runtime node.

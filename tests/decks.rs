@@ -1,18 +1,16 @@
-//! Port of test/decks.test.ts — F5: seed-fixed permutation draws + the DRAW
-//! op (spec §9.42, plan v0.4 F5). W0 shipped the four permutation vectors
-//! (:141-144, computed independently in python3) and the drawFrom three-rule
-//! probe; W2 re-proved the three rules through a COMPILED deck. T3.7B
-//! completes the file: play-side draw sequences, INTO placement, the
+//! Decks — seed-fixed permutation draws + the DRAW
+//! op (spec §9.42): the four permutation vectors
+//! (computed independently in python3), the drawFrom three-rule
+//! probe re-proved through a COMPILED deck, and play-side draw sequences, INTO placement, the
 //! DRAWN+SPAWN concretization, exhaustion through the engine, cursor
 //! reconstruction through JSONL/fold/undo, the livelock rule, load-time deck
 //! validation, DRAW inside function bodies, content-drift loud failures and
 //! the hygiene gate.
 //!
-//! Structure mirrors the TS `describe` blocks one-to-one (plan §5.2); every
-//! test builds a FRESH Dictionary (TEST-10; the TS module-level
-//! `dict.registerVerb('SEEK')` becomes a per-test registration). toThrow /
-//! toMatch patterns are copied CHARACTER FOR CHARACTER from the TS literals.
-//! TS object-identity assertions (`r.state === state`) have no Rust
+//! Every test builds a FRESH Dictionary (SEEK is a per-test
+//! registration). Error-message patterns are copied CHARACTER FOR CHARACTER
+//! from the frozen literals.
+//! JS object-identity semantics (`r.state === state`) have no Rust
 //! observable: `settle_step` hands the ORIGINAL (never-mutated) state back
 //! on a refusal, as a value — `snap()` equality IS the semantic content of
 //! those checks (noted at each site, never weakened).
@@ -41,18 +39,17 @@ use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
 use chorus::session::game::{Game, TurnKind};
 
-// ---------------------------------------------------------------- rigs ----
+// ---------------------------------------------------------------- rigs ------
 
-/// ts: test/decks.test.ts:28-31 — the file-level dict registers SEEK (the
-/// placement-default verb; verbs are code-registered, §10). Per-test fresh
-/// (TEST-10).
+/// The file-level dict registers SEEK (the
+/// placement-default verb; verbs are code-registered, §10). Per-test fresh.
 fn deck_dict() -> Dictionary {
     let mut d = core_dictionary();
     d.register_verb("SEEK").unwrap();
     d
 }
 
-/// ts: test/decks.test.ts:48-95 (`RigOpts` + `rig`) — the deck rig: ANA at
+/// The deck rig: ANA at
 /// HOUSE, KITCHEN inside HOUSE, stackable gossip prototypes by default, and
 /// a `default -> DRAW RUMOURS` WAIT verb.
 #[derive(Default)]
@@ -72,7 +69,7 @@ fn rig(o: Rig) -> String {
         .prototypes
         .unwrap_or("  RUMOUR is idea stackable\n  HEARSAY is idea stackable\n  SCANDAL is idea stackable")
         .to_string();
-    // ts `${o.verbs ?? `... DRAW ${o.drawDeck ?? 'RUMOURS'}`}` — the draw-deck
+    // the draw-deck
     // default only applies when the verbs block itself is defaulted
     let draw_deck = o.draw_deck.unwrap_or("RUMOURS");
     let verbs = match o.verbs {
@@ -113,18 +110,18 @@ verbs:
     )
 }
 
-/// ts: test/decks.test.ts:99 — the plan's §5 example deck (seed 0 order:
-/// RUMOUR, HEARSAY, RUMOUR, SCANDAL — pinned via permutePositions below).
+/// The plan's §5 example deck (seed 0 order:
+/// RUMOUR, HEARSAY, RUMOUR, SCANDAL — pinned via permute_positions below).
 const PLAN_DECK: &str = "RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset";
 
-/// ts: test/decks.test.ts:101-104 (`compile`)
 fn compile(dict: &Dictionary, text: &str) -> (CompiledContent, State) {
     let compiled = compile_script(text, dict).unwrap();
     (compiled.content, compiled.state)
 }
 
-/// ts: test/decks.test.ts:33-37 (`run`) — parse + settleStep with the exact
-/// idGen closure `() => `x${firstRecordId}_${++n}``.
+/// Parse + settle_step with the exact
+/// id-generator closure: `x{first_record_id}_{n}`, the counter incrementing
+/// per minted id.
 fn run(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -154,7 +151,7 @@ fn run(
     .unwrap()
 }
 
-/// ts: test/decks.test.ts:39-44 (`drawnNames`) — the drawn names of a result,
+/// The drawn names of a result,
 /// in order (the DRAWN row's second arg).
 fn drawn_names(r: &ExecResult) -> Vec<String> {
     drawn_names_of(&r.records)
@@ -172,7 +169,7 @@ fn drawn_names_of(records: &[ActionRecord]) -> Vec<String> {
         .collect()
 }
 
-/// ts: test/decks.test.ts:107-120 (`playDraws`) — play `n` WAITs, returning
+/// Play `n` WAITs, returning
 /// the drawn names, the records, and the final state.
 fn play_draws(
     content: &CompiledContent,
@@ -197,14 +194,14 @@ fn play_draws(
     (names, records, state)
 }
 
-/// ts: test/decks.test.ts:427-436/527-535/667-673 (mkdtempSync + saveLog).
+/// Temp log path (unique per process and tag) + a JSONL round trip.
 fn tmp_log_path(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("chorus-decks-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir.join("log.jsonl")
 }
 
-/// `expect(refusal(r)).toMatch(re)`.
+/// `refusal(r)` matches `re`.
 fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg = refusal(r)
         .unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
@@ -212,7 +209,7 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
-/// `expect(r.rejected).toMatch(re)`.
+/// `r.rejected` matches `re`.
 fn assert_rejected(r: &ExecResult, pattern: &str) {
     let msg = r
         .rejected
@@ -223,8 +220,8 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// W0 subset (plan §4-W0): the permutation vectors and the drawFrom three
-// rules; W2 re-proved the three rules through a compiled deck.
+// The permutation vectors and the drawFrom three
+// rules; re-proved through a compiled deck below.
 // ---------------------------------------------------------------------------
 
 /// A hand-built deck standing in for the compiled one; the kind is inert for
@@ -249,7 +246,7 @@ fn deck(id: &str, names: &[&str], defaultcard: Option<&str>, reset: bool) -> cho
 
 #[test]
 fn permutation_is_pure_in_seed_and_deck_id_with_position_vectors() {
-    // ts: test/decks.test.ts:134-144 — the shuffle keys are pinned splitmix64
+    // The shuffle keys are pinned splitmix64
     // values, so these are not probabilistic asserts; the n=7 and
     // negative-seed rows were computed independently (python3).
     assert_eq!(permute_positions(4, 0, "RUMOURS"), vec![0, 2, 1, 3]);
@@ -260,7 +257,7 @@ fn permutation_is_pure_in_seed_and_deck_id_with_position_vectors() {
 
 #[test]
 fn draw_from_below_period_wraps_on_reset_and_serves_the_defaultcard() {
-    // ts: test/decks.test.ts:169-178 — PLAN_DECK (decks.test.ts:99) compiles
+    // PLAN_DECK compiles
     // (seed 0) to the order pinned by permutation_is_pure_in_seed_and_deck_id
     // _with_position_vectors above: RUMOUR, HEARSAY, RUMOUR, SCANDAL.
     let rumours = deck(
@@ -279,8 +276,8 @@ fn draw_from_below_period_wraps_on_reset_and_serves_the_defaultcard() {
 
 #[test]
 fn draw_from_exhausted_deck_fails_loud_with_the_verbatim_message() {
-    // ts: src/content/content.ts:476 — the raw error carries the (§9.42)
-    // suffix; decks.test.ts:410 pins it through a refusal as
+    // The raw error carries the (§9.42)
+    // suffix; the refusal path pins it as
     // /deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'/
     let singles = deck("SINGLES", &["HEARSAY"], None, false);
     let err = draw_from(&singles, 1).unwrap_err();
@@ -290,7 +287,7 @@ fn draw_from_exhausted_deck_fails_loud_with_the_verbatim_message() {
     );
 }
 
-/// ts: test/decks.test.ts:60-98 (`rig`) — the minimal script shape with the
+/// The minimal script shape with the
 /// gossip prototypes and a DRAW-verb; seed 0 keeps the pinned order
 /// RUMOUR, HEARSAY, RUMOUR, SCANDAL (the permutation vectors above).
 fn w2_rig(decks: &str) -> String {
@@ -320,8 +317,8 @@ verbs:
 
 #[test]
 fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_forever() {
-    // ts: test/decks.test.ts:169-177 through compileScript, plus the
-    // defaultcard-forever leg of decks.test.ts:390-394's describe.
+    // Through the full script compiler, plus the
+    // defaultcard-forever leg.
     let dict = core_dictionary();
     let game = compile_script(
         &w2_rig("  RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset\n  SOLO spec HEARSAY reset\n  GOSSIP spec RUMOUR, HEARSAY, SCANDAL defaultcard HEARSAY\n  SINGLES spec HEARSAY"),
@@ -343,7 +340,7 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
     for cursor in [3, 10, 99] {
         assert_eq!(draw_from(gossip, cursor).unwrap().name, "HEARSAY");
     }
-    // neither: the verbatim exhaustion error (content.ts:472-477)
+    // neither: the verbatim exhaustion error
     let singles = game.content.decks.get("SINGLES").unwrap();
     let err = draw_from(singles, 1).unwrap_err();
     assert_eq!(
@@ -356,7 +353,6 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
 // the permutation (§9.42): pure in (seed, deck id), positions shuffled
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:125-132
 #[test]
 fn same_seed_and_deck_id_the_identical_draw_sequence_across_two_fresh_compiles() {
     let dict = deck_dict();
@@ -369,9 +365,9 @@ fn same_seed_and_deck_id_the_identical_draw_sequence_across_two_fresh_compiles()
     assert_eq!(&ra_names[..4], ["RUMOUR", "HEARSAY", "RUMOUR", "SCANDAL"]); // seed 0 order, pinned
 }
 
-/// ts: decks.test.ts:134-152 (the vector half lives in
+/// (the vector half lives in
 /// permutation_is_pure_in_seed_and_deck_id_with_position_vectors above —
-/// same TS test; the compile-side half is here)
+/// same scenario; the compile-side half is here)
 #[test]
 fn different_seed_different_order_seed_pair_0_vs_42_provably_differs() {
     let dict = deck_dict();
@@ -384,7 +380,6 @@ fn different_seed_different_order_seed_pair_0_vs_42_provably_differs() {
     assert_ne!(ra, rb);
 }
 
-/// ts: decks.test.ts:154-158
 #[test]
 fn multiset_weighting_intact_a_a_b_serves_a_twice_per_period() {
     let dict = deck_dict();
@@ -401,7 +396,6 @@ fn multiset_weighting_intact_a_a_b_serves_a_twice_per_period() {
     assert_eq!(names, ["RUMOUR", "RUMOUR", "SCANDAL"]); // 2:1 weighting preserved
 }
 
-/// ts: decks.test.ts:160-167
 #[test]
 fn the_permutation_lives_on_compiledcontent_not_state() {
     let dict = deck_dict();
@@ -414,14 +408,11 @@ fn the_permutation_lives_on_compiledcontent_not_state() {
     assert_eq!(after_state.rng, 0); // decks never touch the dice counter (§9.42)
 }
 
-// (ts: decks.test.ts:169-178 `drawFrom: below the period serves
-// order[cursor]` — ported above in the W0/W2 subset tests.)
 
 // ---------------------------------------------------------------------------
 // the DRAW op (§9.42): INTO placement and the SPAWN defaults
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:184-194
 #[test]
 fn draw_into_a_place_lands_the_card_there() {
     let dict = deck_dict();
@@ -441,7 +432,6 @@ fn draw_into_a_place_lands_the_card_there() {
     assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
 }
 
-/// ts: decks.test.ts:196-215
 #[test]
 fn no_into_the_at_card_default_wins_over_the_actor_container() {
     let dict = deck_dict();
@@ -470,7 +460,6 @@ fn no_into_the_at_card_default_wins_over_the_actor_container() {
     assert_ne!(second.attrs.get("container"), placed_container.as_ref());
 }
 
-/// ts: decks.test.ts:217-234
 #[test]
 fn a_trigger_draw_without_into_mints_containerless() {
     let dict = deck_dict();
@@ -497,7 +486,6 @@ fn a_trigger_draw_without_into_mints_containerless() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: decks.test.ts:236-251
 #[test]
 fn a_trigger_draw_with_an_explicit_into_lands_in_the_named_place() {
     let dict = deck_dict();
@@ -521,7 +509,6 @@ fn a_trigger_draw_with_an_explicit_into_lands_in_the_named_place() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: decks.test.ts:253-266
 #[test]
 fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
     let dict = deck_dict();
@@ -540,7 +527,7 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
     assert_eq!(r.rejected, None);
     assert_refusal(&r, r"INTO target of 'RUMOURS' cannot resolve");
     assert_eq!(r.state.decks.get("RUMOURS"), None); // the scratch died with the refusal
-    // ts `snap(state)).toBe(before)`: the input state is untouched — its
+    // `state === before` (identity): the input state is untouched — its
     // value rides back as r.state on the refusal (identity → snap equality)
     assert_eq!(snap(&r.state), before);
 }
@@ -549,7 +536,6 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
 // DRAWN+SPAWN concretization (§9.42): two rows, round-trip, guards
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:272-287
 #[test]
 fn the_record_carries_drawn_then_the_concrete_spawn_and_the_row_round_trips() {
     let dict = deck_dict();
@@ -577,10 +563,9 @@ fn the_record_carries_drawn_then_the_concrete_spawn_and_the_row_round_trips() {
     assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), rec.sentence);
 }
 
-/// ts: decks.test.ts:289-306
 #[test]
 fn the_row_round_trips_for_an_unsafe_card_name_too() {
-    // a name failing SAFE_NAME formats re-quoted through formatRef; the DRAWN
+    // a name failing SAFE_NAME formats re-quoted through format_ref; the DRAWN
     // paren path must accept ref's quoted-string form or the recorded row
     // would be unparseable (law 2)
     let dict = deck_dict();
@@ -605,7 +590,6 @@ fn the_row_round_trips_for_an_unsafe_card_name_too() {
     assert_eq!(replayed.decks.get("PAIR"), Some(&1));
 }
 
-/// ts: decks.test.ts:308-318
 #[test]
 fn the_drawn_parse_format_entry_parses_pins_its_shape_formats_bare() {
     let dict = deck_dict();
@@ -626,7 +610,7 @@ fn the_drawn_parse_format_entry_parses_pins_its_shape_formats_bare() {
     assert_err_msg(parse_outcomes("DRAWN RUMOURS, HEARSAY", &dict, None), "requires parentheses");
 }
 
-/// ts: decks.test.ts:320-346 — authoring DRAWN is a load error (engine-written
+/// Authoring DRAWN is a load error (engine-written
 /// only, like ROLLED), through recipes, triggers, expanded function bodies
 /// and untaken IF branches alike.
 #[test]
@@ -726,7 +710,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
     assert_err_msg(compile_content(&if_raw, &dict, &[]), "DRAWN is engine-written");
 }
 
-/// the WAIT-verb base raw of decks.test.ts:349-353 (`base`)
+/// the WAIT-verb base raw
 fn draw_base_raw(out: &[&str]) -> ContentRaw {
     ContentRaw {
         verbs: [("WAIT".to_string(), VerbContent {
@@ -750,7 +734,6 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
     }
 }
 
-/// ts: decks.test.ts:348-363
 #[test]
 fn draw_without_a_deck_id_with_parens_or_naming_an_unknown_deck_is_a_load_error() {
     let dict = deck_dict();
@@ -762,7 +745,7 @@ fn draw_without_a_deck_id_with_parens_or_naming_an_unknown_deck_is_a_load_error(
     );
     assert_err_msg(
         compile_content(&draw_base_raw(&["IF exists(HOUSE) -> (DRAW NOSUCH)"]), &dict, &[]),
-        "DRAW 'NOSUCH' is not a declared deck", // recurses into branches like checkEndingRefs
+        "DRAW 'NOSUCH' is not a declared deck", // recurses into branches like check_ending_refs
     );
     let trigger_raw = ContentRaw {
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
@@ -776,7 +759,6 @@ fn draw_without_a_deck_id_with_parens_or_naming_an_unknown_deck_is_a_load_error(
     assert_err_msg(compile_content(&trigger_raw, &dict, &[]), "trigger t: DRAW 'NOSUCH' is not a declared deck");
 }
 
-/// ts: decks.test.ts:365-378
 #[test]
 fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names() {
     let dict = deck_dict();
@@ -801,7 +783,6 @@ fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names
 // exhaustion (§9.42): reset wraps, defaultcard forever, neither rejects
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:384-388
 #[test]
 fn reset_wraps_the_sequence_is_periodic_with_period_len_spec() {
     let dict = deck_dict();
@@ -810,7 +791,6 @@ fn reset_wraps_the_sequence_is_periodic_with_period_len_spec() {
     assert_eq!(names, ["RUMOUR", "HEARSAY", "RUMOUR", "SCANDAL", "RUMOUR"]); // draw 5 == draw 1
 }
 
-/// ts: decks.test.ts:390-394
 #[test]
 fn defaultcard_forever_past_the_spec_every_draw_serves_the_default() {
     let dict = deck_dict();
@@ -826,7 +806,6 @@ fn defaultcard_forever_past_the_spec_every_draw_serves_the_default() {
     assert_eq!(names, ["RUMOUR", "HEARSAY", "SCANDAL", "HEARSAY", "HEARSAY"]);
 }
 
-/// ts: decks.test.ts:396-414
 #[test]
 fn neither_reset_nor_defaultcard_the_draw_fails_nothing_logged_cursor_unmoved() {
     let dict = deck_dict();
@@ -862,7 +841,6 @@ fn neither_reset_nor_defaultcard_the_draw_fails_nothing_logged_cursor_unmoved() 
 // cursor reconstruction (law 1): fold === play, decks included
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:420-437
 #[test]
 fn play_several_draws_jsonl_then_fold_load_log_equals_the_played_state() {
     let dict = core_dictionary();
@@ -887,7 +865,6 @@ fn play_several_draws_jsonl_then_fold_load_log_equals_the_played_state() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// ts: decks.test.ts:439-455
 #[test]
 fn a_draw_inside_an_untaken_if_branch_leaves_the_cursor_untouched() {
     let dict = deck_dict();
@@ -910,7 +887,6 @@ fn a_draw_inside_an_untaken_if_branch_leaves_the_cursor_untouched() {
     assert_eq!(snap(&r.state), before);
 }
 
-/// ts: decks.test.ts:457-477
 #[test]
 fn a_failure_after_a_successful_draw_refuses_the_window_draw_and_cursor_discarded() {
     // the cursor advance happened on the completion scratch inside DRAW; the
@@ -937,7 +913,6 @@ fn a_failure_after_a_successful_draw_refuses_the_window_draw_and_cursor_discarde
     assert_eq!(replayed.decks.len(), 0);
 }
 
-/// ts: decks.test.ts:479-498
 #[test]
 fn undo_past_a_draw_rebuilds_the_cursor_from_the_fold() {
     let dict = core_dictionary();
@@ -947,7 +922,7 @@ fn undo_past_a_draw_rebuilds_the_cursor_from_the_fold() {
     game.handle_line("wait").unwrap();
     game.wait().unwrap();
     assert_eq!(game.state.decks.get("RUMOURS"), Some(&2));
-    // ts `.filter(...).at(-1)` — the last DRAWN-bearing record
+    // `.filter(...).at(-1)` — the last DRAWN-bearing record
     let before_undo = game
         .log
         .records
@@ -979,7 +954,6 @@ fn undo_past_a_draw_rebuilds_the_cursor_from_the_fold() {
     assert_eq!(after, before_undo);
 }
 
-/// ts: decks.test.ts:500-507
 #[test]
 fn two_identical_compiles_agree_play_to_fold_even_mid_deck() {
     let dict = deck_dict();
@@ -993,7 +967,6 @@ fn two_identical_compiles_agree_play_to_fold_even_mid_deck() {
     assert_eq!(snap(&fold(&records, &base_b, &dict, &cb).unwrap()), snap(&state));
 }
 
-/// ts: decks.test.ts:509-537
 #[test]
 fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the_period() {
     // wrapped: the PLAN deck resets — 9 draws land the cursor at 9 (two full
@@ -1039,7 +1012,6 @@ fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the
 // decks compose with stackable pools (§9.38 x §9.42); the livelock rule
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:543-552
 #[test]
 fn stackable_deck_entries_pool_two_rumour_draws_a_pool_of_two_living_copies() {
     let dict = deck_dict();
@@ -1055,7 +1027,6 @@ fn stackable_deck_entries_pool_two_rumour_draws_a_pool_of_two_living_copies() {
     assert_eq!(state.by_name.get("HEARSAY").unwrap().len(), 1);
 }
 
-/// ts: decks.test.ts:554-577
 #[test]
 fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever() {
     // the authoring rule (§9.42): deck entries should be STACKABLE, or be
@@ -1086,7 +1057,6 @@ fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever(
     }
 }
 
-/// ts: decks.test.ts:579-606
 #[test]
 fn the_documented_escape_consuming_the_drawn_copy_on_the_same_step_lets_every_serve_through() {
     // the livelock rule's other half — a NON-stackable entry is fine when the
@@ -1129,7 +1099,6 @@ fn the_documented_escape_consuming_the_drawn_copy_on_the_same_step_lets_every_se
 // load-time deck validation (§10, §9.42)
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:612-617
 #[test]
 fn an_unknown_spec_entry_is_a_load_error_naming_the_deck_and_the_entry() {
     let dict = deck_dict();
@@ -1138,7 +1107,7 @@ fn an_unknown_spec_entry_is_a_load_error_naming_the_deck_and_the_entry() {
     let re = regex::Regex::new("deck RUMOURS: spec entry 'NOSUCH' is neither a declared prototype nor an entity")
         .unwrap();
     assert!(re.is_match(&err.msg), "{err}");
-    // declared entity lines count as resolutions too (compileScript passes them)
+    // declared entity lines count as resolutions too (compile_script passes them)
     let ok = compile_script(
         &rig(Rig {
             entities: "  OLD_MAP is item at HOUSE",
@@ -1151,7 +1120,6 @@ fn an_unknown_spec_entry_is_a_load_error_naming_the_deck_and_the_entry() {
     assert!(ok.is_ok());
 }
 
-/// ts: decks.test.ts:619-622
 #[test]
 fn an_unknown_defaultcard_is_a_load_error_naming_the_deck_and_the_entry() {
     let dict = deck_dict();
@@ -1165,7 +1133,6 @@ fn an_unknown_defaultcard_is_a_load_error_naming_the_deck_and_the_entry() {
     assert!(re.is_match(&err.msg), "{err}");
 }
 
-/// ts: decks.test.ts:624-628
 #[test]
 fn an_empty_spec_is_a_load_error_at_parse_and_at_compile() {
     let dict = deck_dict();
@@ -1179,7 +1146,6 @@ fn an_empty_spec_is_a_load_error_at_parse_and_at_compile() {
     assert_err_msg(compile_content(&raw, &dict, &[]), "deck EMPTY: the spec is empty");
 }
 
-/// ts: decks.test.ts:630-635
 #[test]
 fn deck_ids_must_be_upper_snake_unreserved_and_unique() {
     let dict = deck_dict();
@@ -1204,7 +1170,6 @@ fn deck_ids_must_be_upper_snake_unreserved_and_unique() {
 // DRAW inside function bodies (§9.40 x §9.42)
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:641-656
 #[test]
 fn a_param_as_the_into_target_expands_from_a_recipe_call() {
     let dict = deck_dict();
@@ -1227,7 +1192,6 @@ fn a_param_as_the_into_target_expands_from_a_recipe_call() {
     assert_eq!(ops, ["DRAWN", "SPAWN"]);
 }
 
-/// ts: decks.test.ts:658-674
 #[test]
 fn the_same_function_from_a_trigger_explicit_into_lands_and_replays() {
     let dict = deck_dict();
@@ -1252,7 +1216,6 @@ fn the_same_function_from_a_trigger_explicit_into_lands_and_replays() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: decks.test.ts:676-690
 #[test]
 fn a_param_as_the_deck_id_expands_and_passes_the_deck_check_at_the_call_site() {
     let dict = deck_dict();
@@ -1273,7 +1236,6 @@ fn a_param_as_the_deck_id_expands_and_passes_the_deck_check_at_the_call_site() {
     assert_eq!(r.state.decks.get("QUIET"), Some(&1));
 }
 
-/// ts: decks.test.ts:692-712
 #[test]
 fn a_role_into_expanded_into_a_trigger_rejects_at_runtime() {
     // guards stay load-time for the DECK id only; the INTO role resolves at
@@ -1296,12 +1258,11 @@ fn a_role_into_expanded_into_a_trigger_rejects_at_runtime() {
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_rejected(&r, "INTO target of 'RUMOURS' cannot resolve");
     assert_eq!(r.records.len(), 0); // §9.19: the whole step rejects
-    // ts `snap(state)).toBe(before)`: on a rejection the input state's value
+    // `state === before` (identity): on a rejection the input state's value
     // rides back untouched (identity → snap equality)
     assert_eq!(snap(&r.state), before);
 }
 
-/// ts: decks.test.ts:714-727
 #[test]
 fn a_function_body_drawing_with_progress_after_it_still_trips_the_progress_guard() {
     // the trigger PROGRESS/REFUSE guards walk the EXPANDED list — a DRAW in
@@ -1328,7 +1289,6 @@ fn a_function_body_drawing_with_progress_after_it_still_trips_the_progress_guard
 // content drift (§9.42): the DRAWN assertion fires instead of silent divergence
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:733-741 (`driftRaw`)
 fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
     ContentRaw {
         seed: Some(seed),
@@ -1379,13 +1339,12 @@ fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
     }
 }
 
-/// ts: decks.test.ts:743 (`driftWorld`) — ANA carries container 'house' from
+/// ANA carries container 'house' from
 /// the seed world.
 fn drift_world() -> State {
     seed_state()
 }
 
-/// ts: decks.test.ts:745-756
 #[test]
 fn a_seed_change_under_an_old_log_the_assertion_names_the_deck_cursor_both_names() {
     // §9.30 asymmetry, decks edition: a seed change shifts every FUTURE draw —
@@ -1404,7 +1363,6 @@ fn a_seed_change_under_an_old_log_the_assertion_names_the_deck_cursor_both_names
     assert!(re.is_match(&err.msg), "{err}");
 }
 
-/// ts: decks.test.ts:758-769
 #[test]
 fn a_changed_spec_under_the_same_seed_fires_too_a_removed_deck_says_so() {
     let dict = deck_dict();
@@ -1415,7 +1373,7 @@ fn a_changed_spec_under_the_same_seed_fires_too_a_removed_deck_says_so() {
     let re = regex::Regex::new("content drift between play and fold").unwrap();
     assert!(re.is_match(&err.msg), "{err}");
     // a deck that vanished from the compiled content: unreachable through
-    // compileContent (the DRAW check pins the id at load), so simulate the
+    // compile_content (the DRAW check pins the id at load), so simulate the
     // drift on the compiled table
     let mut deckless = compile_content(&drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]), &dict, &[]).unwrap();
     deckless.decks.shift_remove("RUMOURS");
@@ -1424,7 +1382,6 @@ fn a_changed_spec_under_the_same_seed_fires_too_a_removed_deck_says_so() {
     assert!(re.is_match(&err.msg), "{err}");
 }
 
-/// ts: decks.test.ts:771-801
 #[test]
 fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_re_derives() {
     // a spec of one, no reset: draw #0 is the spec entry, draws #1.. carry the
@@ -1490,7 +1447,6 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
     assert!(re.is_match(&err.msg), "{err}");
 }
 
-/// ts: decks.test.ts:803-825
 #[test]
 fn refuse_after_a_draw_the_draft_dies_the_cursor_never_moves_the_fold_skips_the_rows() {
     let dict = deck_dict();
@@ -1510,7 +1466,7 @@ fn refuse_after_a_draw_the_draft_dies_the_cursor_never_moves_the_fold_skips_the_
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DRAWN", "SPAWN", "REFUSE"]);
     assert_eq!(act(&r).unwrap().advanced_min, 0);
-    // ts `r.state === state`: the draft was discarded — the input state's
+    // `r.state === state`: the draft was discarded — the input state's
     // value rides back untouched (identity → snap equality)
     assert_eq!(snap(&r.state), before);
     assert_eq!(s.decks.get("RUMOURS"), None);
@@ -1524,10 +1480,9 @@ fn refuse_after_a_draw_the_draft_dies_the_cursor_never_moves_the_fold_skips_the_
 // hygiene (§9.42)
 // ---------------------------------------------------------------------------
 
-/// ts: decks.test.ts:831-838 — the gate in its Rust habitat: no `rand::`
-/// anywhere in src (the Rust `Math.random`) — decks draw from splitmix64
-/// keys, not from chance. (The TS original greps src/*.ts for `Math.random`
-/// the same way.)
+/// The gate in its Rust habitat: no `rand::`
+/// anywhere in src — decks draw from splitmix64
+/// keys, not from chance.
 #[test]
 fn grep_gate_no_rand_anywhere_in_src() {
     fn collect(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
@@ -1551,17 +1506,15 @@ fn grep_gate_no_rand_anywhere_in_src() {
     assert_eq!(offenders, Vec::<String>::new());
 }
 
-/// ts: decks.test.ts:841-848
 #[test]
 fn clone_state_copies_the_deck_cursors_a_discarded_draft_moves_nothing() {
     let dict = core_dictionary();
     let mut game = Game::from_script(&rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }), dict).unwrap();
     game.handle_line("wait").unwrap();
-    // ts: `const real = game.state.decks.get('RUMOURS')!` — read BEFORE the
-    // window completes (the draw lands at game.wait()), so the TS value is
-    // `undefined` (its `!` is a type-level assertion only); the Rust Option
-    // mirrors that exactly. The law-6 assertion survives: mutating the clone
-    // moves nothing in the real state.
+    // read BEFORE the
+    // window completes (the draw lands at game.wait()), so the deck entry is
+    // still absent — the Rust Option mirrors that exactly. The law-6
+    // assertion survives: mutating the clone moves nothing in the real state.
     let real = game.state.decks.get("RUMOURS");
     let mut draft = clone_state(&game.state);
     draft.decks.insert("RUMOURS".to_string(), 99);

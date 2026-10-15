@@ -1,12 +1,11 @@
-//! Static card-reachability — ts: test/reach.test.ts, ported 1:1 (32 tests).
+//! Static card-reachability (32 tests).
 //! Both semantics — (a) existence and (b) usability — over hand-built
 //! ContentRaw fixtures. The conservative direction is the contract:
 //! 'unobtainable' only on structural absence; anything guarded demotes to
 //! 'unproven'.
 //!
-//! TS uses one module-level `coreDictionary()`; nothing in this file
-//! registers verbs, so a fresh dictionary per test is the exact TS isolation
-//! (plan §5.2 TEST-10).
+//! Nothing in this file registers verbs, so a fresh core dictionary per
+//! test is the exact isolation.
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -22,7 +21,7 @@ use chorus::reach::{
 
 mod common;
 
-/// ts: reach.test.ts:13-22 — `ent(name, kind, aspects)`.
+/// One fixture entity (id derived from the lowercased name).
 fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
     let mut a: IndexMap<String, AspectVal> = IndexMap::new();
     for (k, v) in aspects {
@@ -40,7 +39,7 @@ fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
     }
 }
 
-/// ts: reach.test.ts:24-28 — `stateWith(...es)`.
+/// A state holding exactly these fixture entities.
 fn state_with(es: Vec<Entity>) -> State {
     let mut s = new_state(0);
     for e in es {
@@ -49,7 +48,7 @@ fn state_with(es: Vec<Entity>) -> State {
     s
 }
 
-/// ts: reach.test.ts:30 — `compile(raw)` (one fresh dictionary per test).
+/// Compile a fixture (one fresh dictionary per test).
 fn compile(raw: &ContentRaw) -> chorus::content::content::CompiledContent {
     let dict = core_dictionary();
     compile_content(raw, &dict, &[]).expect("fixture content compiles")
@@ -129,9 +128,8 @@ fn empty_raw() -> ContentRaw {
     ContentRaw::default()
 }
 
-// ---------- (a) existence ----------
+// ---------- (a) existence --------------------------------------------------
 
-/// ts: reach.test.ts:38
 #[test]
 fn an_initial_entity_is_proven_obtainable_a_name_with_no_source_is_structurally_unobtainable() {
     let content = compile(&empty_raw());
@@ -145,7 +143,6 @@ fn an_initial_entity_is_proven_obtainable_a_name_with_no_source_is_structurally_
     assert_eq!(ghost.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:49
 #[test]
 fn a_deck_hit_behind_a_slot_trigger_draw_is_proven_the_order_is_seed_fixed_at_load() {
     let raw = ContentRaw {
@@ -168,7 +165,6 @@ fn a_deck_hit_behind_a_slot_trigger_draw_is_proven_the_order_is_seed_fixed_at_lo
     assert_eq!(c.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:65
 #[test]
 fn deck_capacity_one_once_trigger_draw_serves_only_order0_deeper_positions_are_never_served() {
     let raw = ContentRaw {
@@ -196,7 +192,6 @@ fn deck_capacity_one_once_trigger_draw_serves_only_order0_deeper_positions_are_n
     assert_eq!(b.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:78
 #[test]
 fn a_duplicate_non_stackable_mint_in_one_list_refuses_the_draft_every_site_in_it_demotes() {
     let mk = |dup: bool| {
@@ -246,7 +241,6 @@ fn a_duplicate_non_stackable_mint_in_one_list_refuses_the_draft_every_site_in_it
     assert_eq!(control.verdict, CardVerdict::Obtainable);
 }
 
-/// ts: reach.test.ts:102
 #[test]
 fn a_deck_nobody_draws_is_not_a_source() {
     let raw = ContentRaw {
@@ -260,7 +254,6 @@ fn a_deck_nobody_draws_is_not_a_source() {
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:111
 #[test]
 fn spawn_via_a_default_recipe_on_a_committable_verb_the_chain_names_the_slot_supports() {
     let raw = ContentRaw {
@@ -286,7 +279,6 @@ fn spawn_via_a_default_recipe_on_a_committable_verb_the_chain_names_the_slot_sup
         .contains("EXPLORE committable: actors ×1 ← initial entity ANA"));
 }
 
-/// ts: reach.test.ts:128
 #[test]
 fn a_role_dependent_when_demotes_to_unproven_never_a_false_unobtainable() {
     let raw = ContentRaw {
@@ -309,7 +301,6 @@ fn a_role_dependent_when_demotes_to_unproven_never_a_false_unobtainable() {
     assert!(rep.notes.join(" ").contains("guarded"));
 }
 
-/// ts: reach.test.ts:145
 #[test]
 fn a_world_static_when_that_already_holds_stays_proven() {
     let raw = ContentRaw {
@@ -335,7 +326,6 @@ fn a_world_static_when_that_already_holds_stays_proven() {
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
 }
 
-/// ts: reach.test.ts:160
 #[test]
 fn an_uncommittable_verb_is_a_dead_producer_structural_absence() {
     let raw = ContentRaw {
@@ -359,7 +349,6 @@ fn an_uncommittable_verb_is_a_dead_producer_structural_absence() {
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:177
 #[test]
 fn the_fixpoint_chains_mints_through_slots_deck_card_to_slot_to_second_stage_mint() {
     let raw = ContentRaw {
@@ -389,7 +378,6 @@ fn the_fixpoint_chains_mints_through_slots_deck_card_to_slot_to_second_stage_min
     assert!(rep.chain.join("\n").contains("KEY_CARD"));
 }
 
-/// ts: reach.test.ts:201
 #[test]
 fn an_authored_refuse_upstream_kills_the_site_the_apply_loop_stops_there() {
     let raw = ContentRaw {
@@ -410,7 +398,6 @@ fn an_authored_refuse_upstream_kills_the_site_the_apply_loop_stops_there() {
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:215
 #[test]
 fn a_derived_mint_shape_is_never_structurally_absent() {
     let raw = ContentRaw {
@@ -439,9 +426,8 @@ fn a_derived_mint_shape_is_never_structurally_absent() {
     assert!(rep.notes.join(" ").contains("derived-mint"));
 }
 
-// ---------- mixed sources & segment discipline ----------
+// ---------- mixed sources & segment discipline -----------------------------
 
-/// ts: reach.test.ts:229
 #[test]
 fn mixture_a_deck_fed_card_satisfies_an_if_exists_guard_gating_a_spawn() {
     let raw = ContentRaw {
@@ -468,7 +454,6 @@ fn mixture_a_deck_fed_card_satisfies_an_if_exists_guard_gating_a_spawn() {
     assert!(rep.chain.join("\n").contains("SPAWN mints"));
 }
 
-/// ts: reach.test.ts:247
 #[test]
 fn mixture_a_slot_needing_two_items_sums_across_sources_initial_plus_deck() {
     // without the deck there is only ROPE — one of two — so the verb never
@@ -522,7 +507,6 @@ fn mixture_a_slot_needing_two_items_sums_across_sources_initial_plus_deck() {
     assert!(full.chain.join("\n").contains("KEY_CARD"));
 }
 
-/// ts: reach.test.ts:275
 #[test]
 fn segment_scoping_a_refuse_inside_an_if_arm_does_not_kill_the_outer_list() {
     let raw = ContentRaw {
@@ -547,7 +531,6 @@ fn segment_scoping_a_refuse_inside_an_if_arm_does_not_kill_the_outer_list() {
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
 }
 
-/// ts: reach.test.ts:291
 #[test]
 fn a_top_level_refuse_kills_the_whole_list_earlier_spawns_included() {
     let raw = ContentRaw {
@@ -568,7 +551,6 @@ fn a_top_level_refuse_kills_the_whole_list_earlier_spawns_included() {
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
-/// ts: reach.test.ts:305
 #[test]
 fn a_throwing_op_anywhere_in_the_list_demotes_every_site_in_it() {
     let raw = ContentRaw {
@@ -590,7 +572,6 @@ fn a_throwing_op_anywhere_in_the_list_demotes_every_site_in_it() {
     assert!(rep.notes.join(" ").contains("throwing op"));
 }
 
-/// ts: reach.test.ts:321
 #[test]
 fn replace_is_a_producer_of_its_with_target() {
     let raw = ContentRaw {
@@ -617,16 +598,15 @@ fn replace_is_a_producer_of_its_with_target() {
     assert!(rep.chain[0].contains("REPLACE mints"));
 }
 
-// ---------- (c) demand semantics: attribute thresholds ----------
+// ---------- (c) demand semantics: attribute thresholds ---------------------
 
-/// ts: reach.test.ts:341-345 — `bookWorld()`.
+/// The book-world fixture: ANA plus THE_BOOK (text, secret:2).
 fn book_world() -> (chorus::content::content::CompiledContent, State) {
     let content = compile(&empty_raw());
-    let state = state_with(vec![ana(), book()]); // THE_BOOK: text, secret:2
+    let state = state_with(vec![ana(), book()]);
     (content, state)
 }
 
-/// ts: reach.test.ts:347
 #[test]
 fn a_threshold_satisfiable_by_a_static_descriptor_is_proven_across_comparison_ops() {
     for demand in [
@@ -652,7 +632,6 @@ fn a_threshold_satisfiable_by_a_static_descriptor_is_proven_across_comparison_op
     }
 }
 
-/// ts: reach.test.ts:356
 #[test]
 fn a_bounded_threshold_nothing_can_write_is_soundly_unobtainable() {
     let (content, state) = book_world();
@@ -670,7 +649,6 @@ fn a_bounded_threshold_nothing_can_write_is_soundly_unobtainable() {
     assert_eq!(rep.existence, Existence::None);
 }
 
-/// ts: reach.test.ts:363
 #[test]
 fn a_set_pump_keeps_an_unmatched_threshold_from_being_called_impossible() {
     let raw = ContentRaw {
@@ -703,7 +681,6 @@ fn a_set_pump_keeps_an_unmatched_threshold_from_being_called_impossible() {
     assert!(rep.notes.join(" ").contains("pumped"));
 }
 
-/// ts: reach.test.ts:382
 #[test]
 fn a_pumped_threshold_un_deads_a_verb_slot_no_static_card_could_fill() {
     let mk = |with_pump: bool| {
@@ -752,7 +729,6 @@ fn a_pumped_threshold_un_deads_a_verb_slot_no_static_card_could_fill() {
     assert_eq!(with.verdict, CardVerdict::Unproven);
 }
 
-/// ts: reach.test.ts:413
 #[test]
 fn a_derive_fed_threshold_cannot_be_bounded() {
     let raw = ContentRaw {
@@ -790,9 +766,9 @@ fn a_derive_fed_threshold_cannot_be_bounded() {
     assert!(rep.notes.join(" ").contains("derive"));
 }
 
-// ---------- (b) usability ----------
+// ---------- (b) usability --------------------------------------------------
 
-/// ts: reach.test.ts:425-437 — `readableBook()`.
+/// The readable-book fixture: READ binds a kind:text object.
 fn readable_book() -> chorus::content::content::CompiledContent {
     let raw = ContentRaw {
         verbs: IndexMap::from([(
@@ -811,7 +787,6 @@ fn readable_book() -> chorus::content::content::CompiledContent {
     compile(&raw)
 }
 
-/// ts: reach.test.ts:439
 #[test]
 fn an_initial_card_bindable_through_a_committable_verb_slot_is_obtainable_under_usable() {
     let content = readable_book();
@@ -829,7 +804,6 @@ fn an_initial_card_bindable_through_a_committable_verb_slot_is_obtainable_under_
     assert!(rep.usable_via.contains(&"READ.object (query matches)".to_string()));
 }
 
-/// ts: reach.test.ts:445
 #[test]
 fn an_existing_card_no_slot_can_bind_is_unusable_under_usable_obtainable_without_the_flag() {
     let content = readable_book();
@@ -850,9 +824,8 @@ fn an_existing_card_no_slot_can_bind_is_unusable_under_usable_obtainable_without
     assert_eq!(rep.existence, Existence::Proven);
 }
 
-// ---------- path export (all proven acquisition paths, best-effort) ----------
+// ---------- path export (all proven acquisition paths, best-effort) --------
 
-/// ts: reach.test.ts:458
 #[test]
 fn every_proven_producer_is_exported_a_recipe_and_a_trigger_both_minting_yield_two_roots() {
     let raw = ContentRaw {
@@ -890,7 +863,6 @@ fn every_proven_producer_is_exported_a_recipe_and_a_trigger_both_minting_yield_t
     }
 }
 
-/// ts: reach.test.ts:479
 #[test]
 fn an_initial_entity_exports_a_single_leaf_path() {
     let content = compile(&empty_raw());
@@ -909,7 +881,6 @@ fn an_initial_entity_exports_a_single_leaf_path() {
     assert!(p.supports[0].contains("initial entities"));
 }
 
-/// ts: reach.test.ts:488
 #[test]
 fn requires_expands_recursively_a_slot_filler_carries_its_own_provenance() {
     let raw = ContentRaw {
@@ -946,7 +917,6 @@ fn requires_expands_recursively_a_slot_filler_carries_its_own_provenance() {
     }
 }
 
-/// ts: reach.test.ts:513
 #[test]
 fn requires_chains_through_produced_fillers_deck_card_to_slot_to_second_stage_mint() {
     let raw = ContentRaw {
@@ -986,7 +956,6 @@ fn requires_chains_through_produced_fillers_deck_card_to_slot_to_second_stage_mi
     assert_eq!(seed_req.paths[0].via, "trigger sow");
 }
 
-/// ts: reach.test.ts:540
 #[test]
 fn demand_mode_exports_a_root_per_matching_source_not_just_the_first() {
     let raw = ContentRaw {
@@ -1042,9 +1011,8 @@ fn demand_mode_exports_a_root_per_matching_source_not_just_the_first() {
     assert_eq!(mints, ["BLUE", "RED"]);
 }
 
-/// wave-5 must-fix-1 — JS truthiness on the analyzer side: an EMPTY demand
-/// string is NO demand. ts: reach.ts:1310 `opts.demand ? parseQuery(...) :
-/// null` and reach-cli.ts:56's `demand ? \`matching '${demand}'\` : name` —
+/// JS truthiness on the analyzer side: an EMPTY demand
+/// string is NO demand —
 /// `Some("")` must render byte-identical to `demand: None` (the card NAME in
 /// the header, plain name-mode analysis); `parse_query("")` returning an
 /// empty query without erroring would silently enter demand mode instead.
@@ -1104,7 +1072,6 @@ fn an_empty_string_demand_is_falsy_renders_exactly_like_no_demand() {
     assert!(plain.starts_with("s.txt · card ANA\n"), "{plain}");
 }
 
-/// ts: reach.test.ts:557
 #[test]
 fn static_if_guards_on_a_proven_path_render_into_the_guards_list() {
     let raw = ContentRaw {
@@ -1134,7 +1101,6 @@ fn static_if_guards_on_a_proven_path_render_into_the_guards_list() {
     assert!(rep.paths[0].guards.contains(&"exists(KEY)".to_string()));
 }
 
-/// ts: reach.test.ts:573
 #[test]
 fn guarded_candidate_sources_are_listed_flat_in_candidates_never_as_paths() {
     let raw = ContentRaw {
@@ -1160,10 +1126,10 @@ fn guarded_candidate_sources_are_listed_flat_in_candidates_never_as_paths() {
 }
 
 // ---------------------------------------------------------------------------
-// REACH-03: the same (content, State) analyzed twice must produce
-// byte-identical reports (Map insertion order is output order — avail push
+// the same (content, State) analyzed twice must produce
+// byte-identical reports (insertion order is output order — avail push
 // order → first-fit proofs; proven order → chain first-hit and paths order).
-// Exercised over genScenario's adversarial corpus: every probe of every seed,
+// Exercised over gen_scenario's adversarial corpus: every probe of every seed,
 // rendered through the frozen CLI shapes and compared byte for byte, plus one
 // shared-Analyzer pass against two fresh-Analyzer passes.
 // ---------------------------------------------------------------------------
@@ -1192,7 +1158,7 @@ fn render_card(
     }
 }
 
-/// REACH-03 — plan §4-W5 验收: 同 (content, State) 两次分析输出逐字节一致.
+/// 同 (content, State) 两次分析输出逐字节一致 — the determinism pin.
 #[test]
 fn the_same_content_and_state_analyzed_twice_is_byte_identical_reach03() {
     let dict = core_dictionary();
@@ -1221,7 +1187,7 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical_reach03() {
     }
 }
 
-/// REACH-07 — a shared Analyzer (the worldFor cache shape) must agree
+/// A shared Analyzer (the world-cache shape) must agree
 /// byte-for-byte with fresh-per-call analyzers.
 #[test]
 fn a_shared_analyzer_matches_fresh_per_call_analyzers_reach07() {

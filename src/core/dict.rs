@@ -1,4 +1,4 @@
-//! L1 Dictionary — ts: src/core/dict.ts (spec §4, §9.14 reserved words,
+//! L1 Dictionary (spec §4, §9.14 reserved words,
 //! §4.4 normative outcome arities).
 
 use std::sync::OnceLock;
@@ -8,7 +8,7 @@ use regex::Regex;
 
 use crate::js::{static_regex, ChorusError, Result};
 
-/// ts: src/core/dict.ts:3-6
+/// The twelve core verbs every script gets for free (spec §4).
 pub const CORE_VERBS: [&str; 12] = [
     "READ",
     "STUDY",
@@ -24,7 +24,7 @@ pub const CORE_VERBS: [&str; 12] = [
     "WAIT",
 ];
 
-/// ts: src/core/dict.ts:9 — noun classes, spec §4.1.
+/// Noun classes, spec §4.1.
 pub const KINDS: [&str; 8] = [
     "character",
     "place",
@@ -36,10 +36,9 @@ pub const KINDS: [&str; 8] = [
     "resource",
 ];
 
-/// ts: src/core/dict.ts:11-18 — the reserved list: 17 keywords + every
-/// CORE_VERB appended (the TS `...CORE_VERBS` spread is spelled out; a
-/// unit test below pins the tail equal to CORE_VERBS so the double-write
-/// cannot drift — CORE-14 notes the same名单复写 shape in TS).
+/// The reserved list: 17 keywords + every
+/// CORE_VERB appended (spelled out; a unit test below pins the tail equal to
+/// CORE_VERBS so the double-write cannot drift).
 pub const RESERVED_WORDS: [&str; 29] = [
     "EVENT",
     "TO",
@@ -72,12 +71,11 @@ pub const RESERVED_WORDS: [&str; 29] = [
     "WAIT",
 ];
 
-/// ts: src/core/dict.ts:20-35 — the outcome op vocabulary. TS models it as a
-/// string union + `OUTCOME_OPS: OutcomeOp[]`; the Rust port keeps the
-/// outcomes' `op` as a plain `String` (the engine's unknown-op throw needs
-/// the raw text) with this array as the single membership/append-order
-/// source. Declaration order is load-bearing: `unknownCallError` joins it
-/// (parse.ts:848, CORE-06).
+/// The outcome op vocabulary. An outcome's `op` is kept as a plain
+/// `String` (the engine's unknown-op throw needs the raw text) with this
+/// array as the single membership/append-order
+/// source. Declaration order is load-bearing: the unknown-call error message
+/// (fn_expand) joins it in this order.
 pub const OUTCOME_OPS: [&str; 17] = [
     "SPAWN",
     "DESTROY",
@@ -98,13 +96,14 @@ pub const OUTCOME_OPS: [&str; 17] = [
     "DRAWN", // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§9.42)
 ];
 
-/// ts: src/core/dict.ts:37-39
+/// Definition of a relation type: whether its edges are symmetric.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RelationTypeDef {
     pub symmetric: bool,
 }
 
-/// ts: src/core/dict.ts:41-77
+/// The nameable-word registry: verbs, relation types, reserved words. All
+/// three keep insertion order (IndexSet/IndexMap).
 #[derive(Debug, Clone)]
 pub struct Dictionary {
     pub verbs: IndexSet<String>,
@@ -119,7 +118,7 @@ impl Default for Dictionary {
 }
 
 impl Dictionary {
-    /// ts: dict.ts:44 — `readonly reserved = new Set<string>(RESERVED_WORDS)`.
+    /// New dictionary with `reserved` pre-populated from RESERVED_WORDS.
     #[must_use]
     pub fn new() -> Dictionary {
         Dictionary {
@@ -129,7 +128,7 @@ impl Dictionary {
         }
     }
 
-    /// ts: dict.ts:46-50
+    /// Register a verb lexeme (must be nameable; also added to `reserved`).
     pub fn register_verb(&mut self, lexeme: &str) -> Result<()> {
         self.assert_nameable(lexeme, "verb")?;
         self.verbs.insert(lexeme.to_string());
@@ -137,26 +136,26 @@ impl Dictionary {
         Ok(())
     }
 
-    /// ts: dict.ts:52-54 — NO assertNameable here: registerRelation is
-    /// unvalidated by design (CORE-15(1)); the asymmetry is frozen.
+    /// NO `assert_nameable` check here: relation registration is
+    /// unvalidated by design; the asymmetry with verbs is frozen (an
+    /// arbitrary string is a legal relation type).
     pub fn register_relation(&mut self, type_: impl Into<String>, def: RelationTypeDef) {
         self.relation_types.insert(type_.into(), def);
     }
 
-    /// ts: dict.ts:56-58
+    /// Verb membership test.
     #[must_use]
     pub fn is_verb(&self, tok: &str) -> bool {
         self.verbs.contains(tok)
     }
 
-    /// ts: dict.ts:60-62 — `isOp` membership over OUTCOME_OPS (the TS linear
-    /// `includes` over the const array; same result by any mechanism).
+    /// Outcome-op membership over OUTCOME_OPS.
     #[must_use]
     pub fn is_op(&self, tok: &str) -> bool {
         OUTCOME_OPS.contains(&tok)
     }
 
-    /// ts: dict.ts:64-68
+    /// Look up a relation type's definition, or error if unregistered.
     pub fn relation_def(&self, type_: &str) -> Result<RelationTypeDef> {
         self.relation_types.get(type_).copied().ok_or_else(|| {
             ChorusError::new(format!(
@@ -165,10 +164,9 @@ impl Dictionary {
         })
     }
 
-    /// ts: dict.ts:70-76 — reserved words cannot be registered as names/verbs
+    /// Reserved words cannot be registered as names/verbs
     /// (spec §5.1, §9.14).
     fn assert_nameable(&self, lexeme: &str, what: &str) -> Result<()> {
-        // appendix A.1: dict.ts:72 `/^[A-Z][A-Z0-9_]*$/` — R
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || Regex::new(r"^[A-Z][A-Z0-9_]*$"));
         if !re.is_match(lexeme) {
@@ -185,7 +183,8 @@ impl Dictionary {
     }
 }
 
-/// ts: src/core/dict.ts:79-92
+/// The built-in dictionary: the core verbs registered plus the eight
+/// built-in relation types.
 #[must_use]
 pub fn core_dictionary() -> Dictionary {
     let mut d = Dictionary::new();
@@ -214,7 +213,7 @@ mod tests {
 
     #[test]
     fn reserved_words_tail_is_core_verbs_and_core_dict_registers_clean() {
-        // the TS `...CORE_VERBS` spread, pinned so the double-write cannot drift
+        // the appended CORE_VERBS tail, pinned so the double-write cannot drift
         assert_eq!(
             RESERVED_WORDS[RESERVED_WORDS.len() - CORE_VERBS.len()..],
             CORE_VERBS
@@ -245,7 +244,7 @@ mod tests {
         d.register_verb("VALID").unwrap();
         let e2 = d.register_verb("VALID").unwrap_err();
         assert_eq!(e2.msg, "verb 'VALID' collides with a verb");
-        // registerRelation has NO validation (CORE-15(1)) — frozen asymmetry
+        // `register_relation` has NO validation — frozen asymmetry
         d.register_relation("x y z", RelationTypeDef { symmetric: true });
         assert!(d.relation_types.contains_key("x y z"));
     }

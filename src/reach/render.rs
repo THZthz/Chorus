@@ -1,7 +1,6 @@
-//! Text rendering — ts: src/reach/reach.ts:531-575 (static predicate text for
-//! path-export guards) and :1917-1968 (proof/chain/reason display), plus the
-//! reach-cli's stdout shapes (tools/reach-cli.ts:44-79) frozen byte for byte:
-//! renderPath's 4-space indent steps, `path i/n:` and
+//! Text rendering: static predicate text for path-export guards and
+//! proof/chain/reason display, plus the CLI's stdout shapes frozen byte for
+//! byte: render_path's 4-space indent steps, `path i/n:` and
 //! `verdict: X (existence: y)`.
 
 use std::fmt::Write;
@@ -12,10 +11,10 @@ use crate::core::query::{QueryTerm, StateOp};
 use super::paths::{CardReport, Existence, ReachPath};
 
 // ---------------------------------------------------------------------------
-// rendering static predicates — ts: reach.ts:538-564
+// rendering static predicates
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:538-546
+/// Text of one query list: terms space-joined.
 pub(crate) fn query_text(q: &[QueryTerm]) -> String {
     q.iter()
         .map(|t| {
@@ -54,7 +53,7 @@ pub(crate) fn query_text(q: &[QueryTerm]) -> String {
         .join(" ")
 }
 
-/// ts: reach.ts:548-552
+/// Text of one static value expression.
 pub(crate) fn expr_text(v: &ValExpr) -> String {
     match v {
         ValExpr::Int { v } => v.to_string(),
@@ -64,7 +63,7 @@ pub(crate) fn expr_text(v: &ValExpr) -> String {
     }
 }
 
-/// ts: reach.ts:554-564 — exported in TS (`export function predText`).
+/// Text of one static predicate.
 pub fn pred_text(p: &Pred) -> String {
     match p {
         Pred::And(a, b) => format!("({} && {})", pred_text(a), pred_text(b)),
@@ -73,8 +72,8 @@ pub fn pred_text(p: &Pred) -> String {
         Pred::Cmp { l, op, r } => format!("{} {} {}", expr_text(l), op.as_str(), expr_text(r)),
         Pred::Exists { name } => format!("exists({name})"),
         Pred::ExistsQuery { query } => format!("exists({})", query_text(query)),
-        // ts: reach.ts:562 — `<non-static ${p.t}>`; the TS tags are the
-        // variant discriminants 'rel' / 'every' / 'any'
+        // the tag is the variant name (rel/every/any):
+        // "<non-static rel>" and friends
         Pred::Rel { .. } => "<non-static rel>".to_string(),
         Pred::Every { .. } => "<non-static every>".to_string(),
         Pred::Any { .. } => "<non-static any>".to_string(),
@@ -82,10 +81,10 @@ pub fn pred_text(p: &Pred) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// the reach-cli stdout shapes — ts: tools/reach-cli.ts:44-79
+// the CLI stdout shapes
 // ---------------------------------------------------------------------------
 
-/// ts: tools/reach-cli.ts:44-66 — `renderPath`, one path node with its
+/// One path node with its
 /// recursive preconditions; indent steps are 4 spaces per depth level.
 pub fn render_path(out: &mut String, p: &ReachPath, depth: usize) {
     let pad = "    ".repeat(depth + 1);
@@ -104,8 +103,8 @@ pub fn render_path(out: &mut String, p: &ReachPath, depth: usize) {
         ),
         None => String::new(),
     };
-    // ts: tools/reach-cli.ts:48 — the literal text carries backticks and the
-    // ${PROTO}_${OBJECT} shape verbatim
+    // the literal text carries backticks and the
+    // `${PROTO}_${OBJECT}` shape verbatim — those exact characters are emitted
     let derived = if p.derived_name {
         " (derived-mint name — `${PROTO}_${OBJECT}`)"
     } else {
@@ -138,7 +137,7 @@ pub fn render_path(out: &mut String, p: &ReachPath, depth: usize) {
     }
 }
 
-/// ts: tools/reach-cli.ts:68-79 — one card's report block (the CLI calls this
+/// One card's report block (the CLI calls this
 /// per card; a trailing blank line separates reports).
 pub fn render_report(
     out: &mut String,
@@ -149,9 +148,8 @@ pub fn render_report(
     r: &CardReport,
 ) {
     let head = match demand {
-        // ts: tools/reach-cli.ts:56 — `demand ? \`matching '${demand}'\` : name`
-        // — JS truthiness: the EMPTY string is falsy and prints the card name
-        // (wave-5 must-fix-1)
+        // an EMPTY demand is falsy (JS truthiness) and prints the bare card
+        // name; otherwise the header is "matching '<demand>'"
         Some(d) if !d.is_empty() => format!("matching '{d}'"),
         _ => card.to_string(),
     };

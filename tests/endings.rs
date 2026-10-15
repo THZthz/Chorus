@@ -1,12 +1,10 @@
-//! Port of test/endings.test.ts (25 tests) — T3.7 test package C, file 1/4.
-//! Endings — the ENDING outcome, the `endings:` script section, and game-over
+//! Endings (25 tests) — the ENDING outcome, the `endings:` script section, and game-over
 //! discipline (spec §9.35): first ENDING in a step wins; the step completes
 //! normally; steps on an ended state are rejected with nothing logged; time
 //! triggers and authored expiries may ENDING (the CS despair-death shape);
 //! undo reopens the game because `ended` derives from the fold.
 //!
-//! Structure mirrors the TS `describe` blocks one-to-one (plan §5.2). Every
-//! test builds a FRESH Dictionary (TEST-10). UI-02: BOTH game-over texts are
+//! Every test builds a FRESH Dictionary. UI-02: BOTH game-over texts are
 //! pinned here — the UI notice full text (`:378`) and the engine rejected
 //! short text (`:186`/`:219`) — never merged.
 
@@ -35,9 +33,8 @@ use chorus::session::game::{Game, TurnKind};
 use chorus::session::render::{ending_banner, ending_notice, prose_lines};
 use indexmap::IndexMap;
 
-// ---------------------------------------------------------------- rig ----
+// ---------------------------------------------------------------- rig ------
 
-/// ts: endings.test.ts:39-42 (`endingsTable`)
 fn endings_table() -> IndexMap<String, EndingDef> {
     [
         (
@@ -60,8 +57,8 @@ fn endings_table() -> IndexMap<String, EndingDef> {
     .collect()
 }
 
-/// ts: endings.test.ts:27-37 (`waitContent`) — `extra` rides as post-set
-/// fields on the returned raw (the TS spread `...extra`).
+/// `extra` rides as post-set
+/// fields on the returned raw.
 fn wait_content_raw(out: &[&str]) -> ContentRaw {
     ContentRaw {
         verbs: [(
@@ -90,15 +87,15 @@ fn wait_content_raw(out: &[&str]) -> ContentRaw {
     }
 }
 
-/// compile wait_content_raw + endingsTable (+ anything the caller adds).
+/// compile wait_content_raw + the endings table (+ anything the caller adds).
 fn wait_content(out: &[&str]) -> ContentRaw {
     let mut raw = wait_content_raw(out);
     raw.endings = Some(endings_table());
     raw
 }
 
-/// ts: endings.test.ts:44-48 (`run`) — parse + settleStep with the idGen
-/// closure `() => `x${firstRecordId}_${++n}``.
+/// Parse + settle_step with the id-generator
+/// closure `x{first_record_id}_{n}`, the counter incrementing per minted id.
 fn run(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -131,7 +128,7 @@ fn run(
     .unwrap()
 }
 
-/// `expect(x.rejected).toMatch(re)`.
+/// `x.rejected` matches `re`.
 fn assert_rejected(r: &ExecResult, pattern: &str) {
     let msg = r
         .rejected
@@ -149,9 +146,8 @@ fn ended_of(state: &State) -> Ending {
     state.ended.clone().expect("the story has ended")
 }
 
-// ---------- the endings table (§10) ----------
+// ---------- the endings table (§10) ----------------------------------------
 
-/// ts: endings.test.ts:53-72 (`script`)
 const SCRIPT: &str = "
 script: The Long Fall
 player: ANA
@@ -178,7 +174,6 @@ mod the_endings_script_section {
 
     #[test]
     fn the_table_compiles_with_resolved_flavours_default_melancholy() {
-        // ts: endings.test.ts:74-78
         let dict = core_dictionary();
         let game = compile_script(SCRIPT, &dict).unwrap();
         assert_eq!(
@@ -199,7 +194,6 @@ mod the_endings_script_section {
 
     #[test]
     fn duplicate_ending_ids_fail_at_load() {
-        // ts: endings.test.ts:80-83
         let dict = core_dictionary();
         assert_err_msg(
             parse_script(
@@ -212,7 +206,6 @@ mod the_endings_script_section {
 
     #[test]
     fn bad_ending_lines_fail_loudly() {
-        // ts: endings.test.ts:85-89
         let dict = core_dictionary();
         assert_err_msg(
             parse_script("endings:\n  DESPAIR_DEATH No More\n", &dict),
@@ -232,7 +225,6 @@ mod the_endings_script_section {
 
     #[test]
     fn compile_failures_ending_with_an_undeclared_id_recipe_and_trigger_alike() {
-        // ts: endings.test.ts:91-105
         let dict = core_dictionary();
         assert_err_msg(
             compile_content(
@@ -304,7 +296,6 @@ mod the_endings_script_section {
 
     #[test]
     fn raw_content_discipline_upper_snake_ids_titled_lowercase_flavour() {
-        // ts: endings.test.ts:107-112
         let dict = core_dictionary();
         let ending = |id: &str, title: &str, flavour: Option<&str>| {
             let mut endings = IndexMap::new();
@@ -340,7 +331,6 @@ mod the_endings_script_section {
 
     #[test]
     fn two_scripts_compiled_side_by_side_keep_separate_ending_tables_no_bleed() {
-        // ts: endings.test.ts:114-125
         let dict = core_dictionary();
         let a = compile_script("endings:\n  ONLY_A: \"A Title\"\n", &dict)
             .unwrap()
@@ -398,14 +388,13 @@ mod the_endings_script_section {
     }
 }
 
-// ---------- the ENDING outcome: parse, format, round-trip ----------
+// ---------- the ENDING outcome: parse, format, round-trip ------------------
 
 mod the_ending_outcome_paren_less_round_tripping {
     use super::*;
 
     #[test]
     fn parses_as_a_ref_form_id_and_canonicalizes_to_itself() {
-        // ts: endings.test.ts:131-138
         let dict = core_dictionary();
         let s = parse_sentence("0:0 @ ANA WAIT -> ENDING DESPAIR_DEATH", &dict).unwrap();
         assert_eq!(
@@ -437,7 +426,7 @@ mod the_ending_outcome_paren_less_round_tripping {
 
     #[test]
     fn the_paren_form_is_a_parse_error_paren_less_only() {
-        // ts: endings.test.ts:140-142 (§9.35)
+        // (§9.35)
         let dict = core_dictionary();
         assert_err_msg(
             parse_sentence("0:0 @ ANA WAIT -> ENDING(DESPAIR_DEATH)", &dict),
@@ -446,9 +435,9 @@ mod the_ending_outcome_paren_less_round_tripping {
     }
 }
 
-// ---------- a recipe that ends the story (§9.35) ----------
+// ---------- a recipe that ends the story (§9.35) ---------------------------
 
-/// ts: endings.test.ts:147-151 — the describe-level content
+/// The section-level content
 /// (`['NARRATE("The candle gutters.")', 'ENDING DESPAIR_DEATH']`).
 fn guttering(dict: &Dictionary) -> CompiledContent {
     compile_content(&wait_content(&["NARRATE(\"The candle gutters.\")", "ENDING DESPAIR_DEATH"]), dict, &[])
@@ -460,7 +449,6 @@ mod a_recipe_that_ends_the_story {
 
     #[test]
     fn the_step_applies_ends_the_story_and_the_clock_rides_along() {
-        // ts: endings.test.ts:153-161
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
@@ -481,7 +469,6 @@ mod a_recipe_that_ends_the_story {
 
     #[test]
     fn the_record_carries_the_concrete_ending_and_round_trips() {
-        // ts: endings.test.ts:163-170
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
@@ -499,7 +486,6 @@ mod a_recipe_that_ends_the_story {
 
     #[test]
     fn explicit_flavour_resolves_through_first_ending_in_one_step_wins() {
-        // ts: endings.test.ts:172-179
         let dict = core_dictionary();
         let two_endings = compile_content(
             &wait_content(&["ENDING LANTERN_VICTORY", "ENDING DESPAIR_DEATH"]),
@@ -523,13 +509,12 @@ mod a_recipe_that_ends_the_story {
 
     #[test]
     fn further_steps_are_rejected_with_nothing_logged_the_state_object_untouched() {
-        // ts: endings.test.ts:181-190
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
         let r1 = run(&content, &dict, state, "0:28 @ ANA WAIT", 1);
         let before = snap(&r1.state);
-        // TS identity `expect(r2.state).toBe(r1.state)` → execute_step hands
+        // JS identity `r2.state === r1.state` → execute_step hands
         // the ORIGINAL back untouched on a rejection, so snap equality IS the
         // semantic content of the check
         let r2 = run(
@@ -546,7 +531,7 @@ mod a_recipe_that_ends_the_story {
 
     #[test]
     fn a_refuse_after_the_ending_discards_the_ending_with_the_whole_draft() {
-        // ts: endings.test.ts:192-203 (§6.5)
+        // (§6.5)
         let dict = core_dictionary();
         let c = compile_content(
             &wait_content(&["ENDING DESPAIR_DEATH", "REFUSE(\"not yet\")"]),
@@ -558,7 +543,7 @@ mod a_recipe_that_ends_the_story {
         let before = snap(&state);
         let r = run(&c, &dict, state, "0:28 @ ANA WAIT", 1);
         assert_eq!(ops(done(&r).unwrap()), ["ENDING", "REFUSE"]);
-        // TS `expect(r.state).toBe(state)` — the refused turn returns the
+        // JS identity `r.state === state` — the refused turn returns the
         // untouched input state; snap equality is its Rust observable
         assert_eq!(snap(&r.state), before);
         assert!(r.state.ended.is_none());
@@ -570,7 +555,6 @@ mod a_recipe_that_ends_the_story {
 
     #[test]
     fn the_game_over_guard_is_first_stale_clocks_event_sentences_multi_clause_steps_all_bounce() {
-        // ts: endings.test.ts:205-223
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
@@ -589,7 +573,7 @@ mod a_recipe_that_ends_the_story {
                 2,
             ),
         ];
-        // an EVENT-typed sentence reaches executeStep with zero clauses
+        // an EVENT-typed sentence reaches execute_step with zero clauses
         // (canonical passthrough)
         let ev = parse_sentence("0:40 @ EVENT dusk_falls -> ENDING DESPAIR_DEATH", &dict).unwrap();
         attempts.push(
@@ -616,14 +600,13 @@ mod a_recipe_that_ends_the_story {
         for a in &attempts {
             assert_rejected(a, r"the story has ended — No More");
             assert_eq!(a.records.len(), 0); // nothing logged, never a throw
-            // TS `expect(a.state).toBe(r1.state)` — snap equality (untouched)
+            // JS identity `a.state === r1.state` — snap equality (untouched)
             assert_eq!(snap(&a.state), snap(&r1.state));
         }
     }
 
     #[test]
     fn fold_equality_incl_ended_through_jsonl() {
-        // ts: endings.test.ts:225-240
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
@@ -655,7 +638,7 @@ mod a_recipe_that_ends_the_story {
     }
 }
 
-// ---------- events may end the game (§9.35) ----------
+// ---------- events may end the game (§9.35) --------------------------------
 
 mod events_may_end_the_game {
     use super::*;
@@ -663,7 +646,6 @@ mod events_may_end_the_game {
 
     #[test]
     fn a_time_trigger_chain_ends_the_game_when_the_clock_crosses_the_despair_death_shape() {
-        // ts: endings.test.ts:246-262
         let dict = core_dictionary();
         let mut raw = wait_content(&["NARRATE(\"{actors} wait.\")"]);
         raw.triggers = Some(vec![TriggerDef::Slot(SlotTriggerDef {
@@ -708,7 +690,7 @@ mod events_may_end_the_game {
 
     #[test]
     fn an_authored_expiry_trigger_may_ending_and_must_consume_the_card_itself() {
-        // ts: endings.test.ts:264-280 (§9.32)
+        // (§9.32)
         let dict = core_dictionary();
         let mut raw = wait_content(&["NARRATE(\"{actors} wait.\")"]);
         // the authored outcomes replace the built-in destroy entirely (§9.32),
@@ -764,7 +746,7 @@ mod events_may_end_the_game {
 
     #[test]
     fn an_authored_expiry_trigger_that_does_not_destroy_its_card_re_fires() {
-        // ts: endings.test.ts:282-296 (§9.32, §9.35)
+        // (§9.32, §9.35)
         let dict = core_dictionary();
         let mut raw = wait_content(&["NARRATE(\"{actors} wait.\")"]);
         // the authored outcomes replace the built-in destroy entirely — forget
@@ -806,7 +788,6 @@ mod events_may_end_the_game {
 
     #[test]
     fn action_outranks_event_on_first_wins_within_one_advance() {
-        // ts: endings.test.ts:298-306
         let dict = core_dictionary();
         let mut raw = wait_content(&["ENDING LANTERN_VICTORY"]);
         raw.triggers = Some(vec![TriggerDef::Slot(SlotTriggerDef {
@@ -824,9 +805,8 @@ mod events_may_end_the_game {
     }
 }
 
-// ---------- the player surface (§11) ----------
+// ---------- the player surface (§11) ---------------------------------------
 
-/// ts: endings.test.ts:311-333 (`gameScript`)
 const GAME_SCRIPT: &str = "
 script: The Long Fall
 player: ANA
@@ -856,7 +836,6 @@ mod the_player_surface {
 
     #[test]
     fn the_ending_turn_tells_the_closing_line_the_journal_stays_canonical() {
-        // ts: endings.test.ts:336-345
         let dict = core_dictionary();
         let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
         let turn = game.handle_line("wait").unwrap();
@@ -878,7 +857,6 @@ mod the_player_surface {
 
     #[test]
     fn after_the_ending_the_notice_instead_of_execution_and_no_suggestions() {
-        // ts: endings.test.ts:347-357
         let dict = core_dictionary();
         let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
         game.handle_line("wait").unwrap();
@@ -896,7 +874,6 @@ mod the_player_surface {
 
     #[test]
     fn undo_across_the_ending_step_reopens_the_game_ended_derives_from_the_fold() {
-        // ts: endings.test.ts:359-371
         let dict = core_dictionary();
         let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
         game.handle_line("wait").unwrap();
@@ -923,7 +900,6 @@ mod the_player_surface {
 
     #[test]
     fn the_banner_and_the_notice_render_title_plus_flavour() {
-        // ts: endings.test.ts:373-379
         assert_eq!(
             ending_banner(&Ending {
                 id: "DESPAIR_DEATH".into(),
@@ -964,8 +940,8 @@ mod the_player_surface {
 
     #[test]
     fn the_prose_of_the_ending_step_carries_the_closing_line_others_do_not() {
-        // ts: endings.test.ts:381-390 — outcomes come from the fired recipe
-        // (executeStep ignores a sentence's own `->` tail), so author the
+        // Outcomes come from the fired recipe
+        // (execute_step ignores a sentence's own `->` tail), so author the
         // ending in the recipe
         let dict = core_dictionary();
         let content = compile_content(
@@ -996,7 +972,6 @@ mod the_player_surface {
 
     #[test]
     fn clone_state_copies_the_ending_undo_safe_projections() {
-        // ts: endings.test.ts:392-400
         let dict = core_dictionary();
         let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
         game.handle_line("wait").unwrap();

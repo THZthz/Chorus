@@ -1,5 +1,4 @@
-//! Port of test/nightjar-explorer.test.ts (4 tests) — T3.7 test package C,
-//! file 3/4. Exploratory story test — plays Murder on the Nightjar Flyer the
+//! Nightjar explorer (4 tests). Exploratory story test — plays Murder on the Nightjar Flyer the
 //! way no human would. Three passes, all deterministic:
 //!
 //!   A. sweep      — at every state of the win path (plus states harvested
@@ -13,8 +12,8 @@
 //!                   player-typed EVENT guard.
 //!
 //! Anything here failing means an engine bug, not a content bug: the checks
-//! are invariants, not plot. The TS shared lib lives in
-//! tests/common/explorer_lib.rs (W3b seam: explorer_world/candidates_for/
+//! are invariants, not plot. The shared lib lives in
+//! tests/common/explorer_lib.rs (explorer_world/candidates_for/
 //! WIN_PATH/win_path_states/sampled_walk_states/SCRIPT_TEXT/clause_key).
 
 mod common;
@@ -38,7 +37,6 @@ use chorus::session::render::prose_lines;
 
 // -------------------------- shared invariants ------------------------------
 
-/// ts: nightjar-explorer.test.ts:53-74 (`checkStateShape`)
 fn check_state_shape(s: &State, content: &CompiledContent) {
     let mut seen = std::collections::HashSet::new();
     for e in s.entities.values() {
@@ -89,7 +87,6 @@ fn check_state_shape(s: &State, content: &CompiledContent) {
     }
 }
 
-/// ts: nightjar-explorer.test.ts:76-90 (`checkRecords`)
 fn check_records(records: &[ActionRecord], world: &ExplorerWorld) {
     for rec in records {
         // losslessness: the canonical sentence re-parses and re-formats to
@@ -100,7 +97,7 @@ fn check_records(records: &[ActionRecord], world: &ExplorerWorld) {
             format_sentence(&s, Some(&world.dict)).unwrap(),
             rec.sentence
         );
-        // `expect(() => proseLines(...)).not.toThrow()`
+        // prose rendering must never error on a committed record
         prose_lines(rec, &world.content, &world.dict)
             .unwrap_or_else(|e| panic!("proseLines threw on {}: {e}", rec.sentence));
         assert_eq!(rec.actors, sort_refs(&rec.actors));
@@ -114,7 +111,7 @@ fn check_records(records: &[ActionRecord], world: &ExplorerWorld) {
 }
 
 /// full spec-conformance check of one executed step against its pre-state.
-/// ts: nightjar-explorer.test.ts:92-137 (`checkStep`) → 'refused' | 'applied'
+/// Returns "refused" or "applied".
 fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -> &'static str {
     assert_eq!(r.rejected, None, "step was rejected: {:?}", r.rejected);
     assert!(!r.records.is_empty());
@@ -127,7 +124,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
         assert_eq!(r.records.len(), 1);
         assert_eq!(last.advanced_min, 0);
         assert!(last.recipes.len() <= step.clauses.len());
-        // TS `expect(r.state).toBe(pre)` — the refused step returns the
+        // JS identity `r.state === pre` — the refused step returns the
         // untouched input state; snap equality is the Rust observable
         assert_eq!(snap(&r.state), snap(pre));
         return "refused";
@@ -152,7 +149,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
         assert_eq!(r.state.now, pre.now); // beginning at now moves nothing
     }
 
-    // BEGIN semantics: recipes = clauses; advancedMin = the window length —
+    // BEGIN semantics: recipes = clauses; advanced_min = the window length —
     // §6.6 v0.5 (authored ADVANCE defers to the completion, where it extends
     // the resolving pass's wait span instead of the BEGIN row)
     if last.kind == "action" {
@@ -180,9 +177,9 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
     "applied"
 }
 
-/// one executeStep on a private clone of `state` — the TS passes `state` by
-/// reference and lets executeStep draft internally; the Rust engine consumes
-/// its input, so the clone IS the draft hand-off.
+/// one execute_step on a private clone of `state` — the JS engine passes
+/// `state` by reference and lets execute_step draft internally; the Rust
+/// engine consumes its input, so the clone IS the draft hand-off.
 fn exec_on(
     world: &ExplorerWorld,
     state: &State,
@@ -205,7 +202,6 @@ fn exec_on(
 
 // ------------------- pass A: exhaustive sweep ------------------------------
 
-/// ts: nightjar-explorer.test.ts:141-220
 #[test]
 fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() {
     let world = explorer_world();
@@ -239,7 +235,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
             if r.rejected.is_some() {
                 rejected += 1;
                 assert_eq!(r.records.len(), 0);
-                // TS `expect(r.state).toBe(state)` — untouched input back
+                // JS identity `r.state === state` — untouched input back
                 assert_eq!(snap(&r.state), snap(state));
                 continue;
             }
@@ -333,11 +329,10 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
 
 // ---------------- pass B: seeded random walk with undo ---------------------
 
-/// ts: nightjar-explorer.test.ts:224-297
 #[test]
 fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
     let world = explorer_world();
-    // deterministic LCG so failures reproduce ('NIGH', TEST-04 raw state)
+    // deterministic LCG so failures reproduce ('NIGH', the RAW state)
     let mut lcg = chorus::js::Lcg::from_raw_state(0x4e49_4748);
 
     let mut state = clone_state(&world.base);
@@ -481,7 +476,6 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
 
 // --------------------- pass C: the typed surface ---------------------------
 
-/// ts: nightjar-explorer.test.ts:301-327
 #[test]
 fn slash_commands_garbage_and_the_event_guard_never_throw() {
     let world = explorer_world();
@@ -527,7 +521,6 @@ fn slash_commands_garbage_and_the_event_guard_never_throw() {
     assert_eq!(game.undo().unwrap().kind, TurnKind::Info);
 }
 
-/// ts: nightjar-explorer.test.ts:329-336
 #[test]
 fn the_guard_a_player_typed_event_sentence_is_rejected_nothing_logged() {
     let world = explorer_world();

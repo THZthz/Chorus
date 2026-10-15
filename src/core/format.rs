@@ -1,5 +1,5 @@
-//! Canonical serializer — ts: src/core/format.ts (spec §5.1, §9.6, §9.10,
-//! §9.14, §9.15). Format(parse(x)) is the canonical form: actors sorted,
+//! Canonical serializer (spec §5.1, §9.6, §9.10, §9.14, §9.15).
+//! Format(parse(x)) is the canonical form: actors sorted,
 //! pre-verbal AT, bare-name refs (re-quoted when unsafe/reserved), concrete
 //! outcomes.
 
@@ -9,7 +9,7 @@ use crate::core::sentence::{Arg, Clause, IntoTarget, Outcome, Sentence, Sentence
 use crate::core::dict::Dictionary;
 use crate::js::{ChorusError, Result};
 
-/// ts: src/core/format.ts:8-27
+/// The canonical spelling of one parsed sentence (spec §5.1).
 pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String> {
     let mut parts: Vec<String> = Vec::new();
     if let Some(clock) = s.clock {
@@ -53,7 +53,8 @@ pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String
     Ok(parts.join(" "))
 }
 
-/// ts: src/core/format.ts:29-38
+/// One clause in canonical order: actors (sorted), pre-verbal AT, verb,
+/// TO, objects (sorted), WITH (sorted), ABOUT.
 fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
     let mut parts: Vec<String> = Vec::new();
     let actors = sort_refs(&c.actors)
@@ -92,7 +93,9 @@ fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
     Ok(parts.join(" "))
 }
 
-/// ts: src/core/format.ts:40-73
+/// One outcome. Authored-only ops (IF, FN, ROLL, DRAW) are errors here; the
+/// concrete rows ROLLED/DRAWN ride the generic paren'd fallback; SPAWN,
+/// NARRATE, REPLACE and ENDING have dedicated canonical spellings.
 fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
     if o.op == "IF" {
         return Err(ChorusError::new(
@@ -160,7 +163,7 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
     Ok(format!("{}({})", o.op, args.join(", ")))
 }
 
-/// ts: src/core/format.ts:75-77
+/// Comma-joined args.
 fn format_args(args: &[Arg], dict: Option<&Dictionary>) -> Result<String> {
     let parts = args
         .iter()
@@ -169,8 +172,8 @@ fn format_args(args: &[Arg], dict: Option<&Dictionary>) -> Result<String> {
     Ok(parts.join(", "))
 }
 
-/// ts: src/core/format.ts:79-95. CORE-13 (标红): the str/pair spellings here
-/// QUOTE — fn_expand's argSpelling deliberately does not; the two spelling
+/// The canonical arg spelling. The str/pair spellings here
+/// QUOTE — `fn_expand`'s `arg_spelling` deliberately does not; the two spelling
 /// layers are frozen separately, only delta/int/dur/bool are shared.
 pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
     match a {
@@ -205,14 +208,14 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
     }
 }
 
-/// ts: src/core/format.ts:97-99 — S-style replaces (appendix A.1): `\` →
-/// `\\` first, then `"` → `\"`.
+/// Quote a string: `\` → `\\` first, then `"` → `\"` (backslash must be
+/// escaped first or the quote escapes would double-encode).
 #[must_use]
 pub fn quote(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// ts: src/core/format.ts:105-107 — colon-joined trigger ids (`expire:<NAME>`,
+/// Colon-joined trigger ids (`expire:<NAME>`,
 /// §6.6; authored ids may carry colons too): each segment prints bare when it
 /// re-parses as a name token and quoted when it does not, so every logged
 /// event row stays lossless (§1, §7) whatever the expiring entity was named.
@@ -244,7 +247,7 @@ mod tests {
         // post-verbal AT canonicalizes pre-verbal (§9.10)
         let s2 = parse_sentence("ANA READ book AT shelf", &d).unwrap();
         assert_eq!(format_sentence(&s2, Some(&d)).unwrap(), "ANA AT shelf READ book");
-        // re-parse stability: format(parse(format(parse(x)))) === format(parse(x))
+        // re-parse stability: format(parse(format(parse(x)))) == format(parse(x))
         let s3 = parse_sentence(&out, &d).unwrap();
         assert_eq!(format_sentence(&s3, Some(&d)).unwrap(), out);
     }
@@ -258,7 +261,7 @@ mod tests {
         )
         .unwrap();
         let out = format_sentence(&s, Some(&d)).unwrap();
-        // DESTROY has no format special-case in TS — the generic paren'd
+        // DESTROY has no format special-case — the generic paren'd
         // fallback prints DESTROY(OBJECT), which re-parses through the
         // generic arg grammar (arg() reads OBJECT as a role ref)
         assert_eq!(

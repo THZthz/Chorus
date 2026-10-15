@@ -1,15 +1,15 @@
-//! Lenient player input → canonical [`Step`] — ts: src/ui/lenient.ts.
+//! Lenient player input → canonical [`Step`].
 //! The player types English-ish text; the engine assigns the clock, resolves
 //! names fuzzily, and suggests fixes (spec §11):
 //!   "read the forgetting"                          → ANA READ THE_FORGETTING
 //!   "ana, bertha talk about clue at dining hall"   → multi-actor + ABOUT + AT
 //!   "0:20 @ ANA WAIT"                              → canonical passthrough
 //!
-//! QUIRK(CORE-08(1)/Q8): JS `\s` includes `\uFEFF` and excludes `\u{85}`;
-//! Rust's `\s` (White_Space) is exactly the reverse. Appendix A.3: the four
-//! `\s` sites (lenient.ts 37/50/182/227) are therefore spelled with
-//! [`JS_WS_CLASS`], never the crate's class; line 59's `/^\d+:\d+$/` has no
-//! `\s` and JS `\d` is ASCII `[0-9]`.
+//! QUIRK(Q8): JS `\s` includes `\uFEFF` and excludes `\u{85}`;
+//! Rust's `\s` (White_Space) is exactly the reverse. The four
+//! `\s` regex sites are therefore spelled with
+//! [`JS_WS_CLASS`], never the crate's class; `/^\d+:\d+$/` has no
+//! `\s`, and JS `\d` is ASCII `[0-9]`.
 
 use std::sync::OnceLock;
 
@@ -26,7 +26,7 @@ use crate::core::types::{Entity, State};
 use crate::engine::engine::Step;
 use crate::js::{js_trim, static_regex, JS_WS_CLASS};
 
-/// ts: src/ui/lenient.ts:16-22
+/// The parse context: dictionaries, content, state and the default actor.
 pub struct LenientCtx<'a> {
     pub dict: &'a Dictionary,
     pub content: &'a CompiledContent,
@@ -35,9 +35,9 @@ pub struct LenientCtx<'a> {
     pub player: Option<&'a str>,
 }
 
-/// ts: src/ui/lenient.ts:24-26 — `{ ok: true; step; canonical }` |
-/// `{ ok: false; error; suggestions }`. The TS `ok` boolean becomes the
-/// enum discriminant ([`ParsedInput::is_ok`] is the `.ok` test).
+/// `{ ok: true; step; canonical }` |
+/// `{ ok: false; error; suggestions }` as an enum ([`ParsedInput::is_ok`]
+/// is the `.ok` test).
 #[derive(Debug, Clone)]
 pub enum ParsedInput {
     Ok {
@@ -51,7 +51,7 @@ pub enum ParsedInput {
 }
 
 impl ParsedInput {
-    /// The TS `parsed.ok` test.
+    /// The `parsed.ok` test.
     #[must_use]
     pub fn is_ok(&self) -> bool {
         matches!(self, ParsedInput::Ok { .. })
@@ -65,13 +65,13 @@ fn fail(error: impl Into<String>, suggestions: Vec<String>) -> ParsedInput {
     }
 }
 
-/// ts: src/ui/lenient.ts:28
+/// Articles dropped during normalization.
 const ARTICLES: [&str; 7] = ["the", "a", "an", "my", "her", "his", "their"];
 
-/// ts: src/ui/lenient.ts:29
+/// Role keywords that route phrases.
 const ROLE_KEYWORDS: [&str; 4] = ["at", "with", "about", "to"];
 
-// ts: src/ui/lenient.ts:30 — `type GroupKey = 'object' | 'at' | 'with' |
+// `type GroupKey = 'object' | 'at' | 'with' |
 // 'about' | 'to'`; the discriminants index the fixed-size groups array.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Group {
@@ -93,7 +93,7 @@ impl Group {
         }
     }
 
-    /// A role keyword routes the current group (lenient.ts:93); `object` is
+    /// A role keyword routes the current group; `object` is
     /// the starting group and is never a keyword.
     fn from_keyword(low: &str) -> Option<Group> {
         match low {
@@ -106,14 +106,14 @@ impl Group {
     }
 }
 
-// ts: lenient.ts:37 — `/^\d+:\d+\s*@/` (canonical escape hatch, UI-11);
-// appendix A.3: `\s` → JS_WS_CLASS, `\d` → ASCII [0-9].
+// `/^\d+:\d+\s*@/` — the canonical escape hatch;
+// `\s` → JS_WS_CLASS, `\d` → ASCII [0-9].
 fn passthrough_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(&format!("^[0-9]+:[0-9]+{JS_WS_CLASS}@")))
 }
 
-// ts: lenient.ts:50 — `split(/[\s,;]+)/`; appendix A.3: the JS_WS class
+// `split(/[\s,;]+)/`: the JS_WS class
 // extended with the two literal separators inside ONE bracket class.
 fn token_split_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -124,13 +124,13 @@ fn token_split_re() -> &'static Regex {
     })
 }
 
-// ts: lenient.ts:59 — `/^\d+:\d+$/` (no `\s` on this line, appendix A.3).
+// `/^\d+:\d+$/` (no `\s` on this line).
 fn clock_token_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new("^[0-9]+:[0-9]+$"))
 }
 
-/// ts: src/ui/lenient.ts:32-159
+/// Parse one line of player input.
 pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     let trimmed = js_trim(line);
     if trimmed.is_empty() {
@@ -138,12 +138,12 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     }
 
     // canonical passthrough: clock-prefixed or containing an outcome arrow
-    // (UI-11; the raw parser message surfaces on failure, lenient.ts:46)
+    // (the raw parser message surfaces on failure)
     if passthrough_re().is_match(trimmed) || trimmed.contains("->") {
         return match parse_sentence(trimmed, ctx.dict) {
             Ok(s) => {
                 // v0.5: the begin minute — an explicit clock starts there;
-                // without one the action begins NOW (lenient.ts:40-44)
+                // without one the action begins NOW
                 let start_min = match s.clock {
                     Some(c) => abs_min(c),
                     None => ctx.state.now,
@@ -165,7 +165,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         };
     }
 
-    // ts: lenient.ts:50-51 — split and drop the empties JS's filter(Boolean) drops
+    // split and drop the empties JS's filter(Boolean) drops
     let tokens: Vec<&str> = token_split_re()
         .split(trimmed)
         .filter(|t| !t.is_empty())
@@ -176,7 +176,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
 
     let names = alive_names(ctx.state);
 
-    // optional leading clock token; default: begin now (v0.5) — ts: lenient.ts:55-66
+    // optional leading clock token; default: begin now (v0.5)
     let mut i = 0usize;
     let mut clock: Option<Clock> = None;
     let mut start_min = ctx.state.now;
@@ -193,8 +193,8 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         i = 1;
         // a lone clock is a pure advance — let time pass, resolving every
         // window due by that minute (v0.5). Before this branch existed the
-        // input fell into the verb search and crashed on
-        // `suggestVerb(undefined)` (lenient.ts:62-65).
+        // input fell into the verb search and crashed in the
+        // verb-suggestion path.
         if i >= tokens.len() {
             return ParsedInput::Ok {
                 step: Step {
@@ -209,7 +209,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     }
 
     // find the verb: single token ('READ') or two-token preposition form
-    // ('use on' → USE_ON) — ts: lenient.ts:68-77
+    // ('use on' → USE_ON)
     let mut verb_index: Option<usize> = None;
     let mut verb_len = 1usize;
     for j in i..tokens.len() {
@@ -222,7 +222,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         if ROLE_KEYWORDS.contains(&tokens[j].to_lowercase().as_str()) {
             break;
         }
-        // ts: lenient.ts:75 — `(tokens[j + 1]?.toUpperCase() ?? '')`
         let next = tokens
             .get(j + 1)
             .map(|t| t.to_uppercase())
@@ -235,7 +234,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         }
     }
     let Some(verb_index) = verb_index else {
-        // ts: lenient.ts:78-85
         let verbs: Vec<String> = ctx.dict.verbs.iter().map(|v| v.to_lowercase()).collect();
         return ParsedInput::Fail {
             error: format!(
@@ -254,7 +252,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         .to_uppercase();
 
     // split the tail into role phrases; bare names before a keyword are
-    // objects — ts: lenient.ts:88-95
+    // objects
     let mut groups: [Vec<&str>; 5] = [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()];
     let mut current = Group::Object;
     for tok in &tokens[verb_index + verb_len..] {
@@ -265,7 +263,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         }
     }
 
-    // ts: lenient.ts:97-111 — failures collect in TS order: actors, objects,
+    // failures collect in a fixed order: actors, objects,
     // to, with, THEN at/about (unknown[0] carries the error message)
     let mut unknown: Vec<String> = Vec::new();
     let actors_raw = &tokens[i..verb_index];
@@ -288,7 +286,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     unknown.extend(about.1); // about/at fail loudly too (§11)
 
     if !unknown.is_empty() {
-        // ts: lenient.ts:113-117
         let word = &unknown[0];
         let pool: Vec<String> = names.values().map(|v| v.entity.name.clone()).collect();
         return ParsedInput::Fail {
@@ -301,11 +298,10 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     // actor (forgotten-house) — route 'with' content to the verb's real slot,
     // but only where the entity fits (§6 slot queries); anything that does not
     // fit stays in `with` so the engine rejects the phrasing the player typed
-    // — ts: lenient.ts:119-147
     let mut to = to_refs.first().cloned();
     if let Some(verb_def) = ctx.content.verbs.get(&verb) {
         if !with_role.is_empty() && !verb_def.slot_by_role.contains_key("with") {
-            // ts: lenient.ts:128-135 — the fits() probe: byName pools hold
+            // the `fits` probe: `by_name` pools hold
             // living ids with the oldest first (§9.38), so a name ref probes
             // the pool HEAD
             let fits = |r: &Ref, role: &str| -> bool {
@@ -327,9 +323,9 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
                 slot.query.as_ref().is_none_or(|q| match_query(e, q))
             };
             if to.is_none() && fits(&with_role[0], "to") {
-                // structural (PartialEq) equality is exact here where TS uses
-                // object identity: `fitting` is `withRole.filter(fits)` and
-                // fits() is content-determined, so every ref equal to a kept
+                // structural (PartialEq) equality is exact here:
+                // the kept set is `with_role` filtered by `fits`, and
+                // `fits` is content-determined, so every ref equal to a kept
                 // one is kept too — the removed sets coincide either way.
                 to = Some(with_role.remove(0));
             } else if let Some(actors_slot) = verb_def.slot_by_role.get("actors") {
@@ -338,8 +334,8 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
                     .filter(|r| fits(r, "actors"))
                     .cloned()
                     .collect();
-                // ts: lenient.ts:142 — `actors.length + fitting.length <= actorsSlot.max`
-                // (TS Infinity never bounds: Option None)
+                // actors.len() + fitting.len() <= actors_slot.max
+                // (a JS Infinity max never bounds: Option None)
                 let under_max = match actors_slot.max {
                     None => true,
                     Some(m) => (actors.len() + fitting.len()) as i64 <= m,
@@ -353,7 +349,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         }
     }
 
-    // ts: lenient.ts:149-158
     let clause = crate::core::sentence::Clause {
         actors,
         at: at.0.first().cloned(),
@@ -376,16 +371,16 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
 
 // ---------- name resolution ----------
 
-/// ts: src/ui/lenient.ts:163
+/// One resolvable name: the entity and its normalized form.
 pub struct NameEntry<'a> {
     pub entity: &'a Entity,
     pub norm: String,
 }
 
-/// ts: src/ui/lenient.ts:165-177 — §9.38: one entry per distinct name — the
-/// OLDEST living copy (the head of the byName pool; entities iterate in birth
+/// §9.38: one entry per distinct name — the
+/// OLDEST living copy (the head of the `by_name` pool; entities iterate in birth
 /// order). Lenient input has no #id form of its own, so a pool name typed in
-/// prose addresses the oldest; the engine's resolveRef enforces the same rule
+/// prose addresses the oldest; the engine's `resolve_ref` enforces the same rule
 /// on the composed sentence.
 fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
     let mut map: IndexMap<String, NameEntry> = IndexMap::new();
@@ -402,7 +397,7 @@ fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
     map
 }
 
-/// ts: src/ui/lenient.ts:180-183 — normalize for matching: lowercase,
+/// Normalize for matching: lowercase,
 /// underscores→spaces, drop articles. The split is JS `/\s+/` (Q8 class).
 fn norm(name: &str) -> String {
     static SPLIT: OnceLock<Regex> = OnceLock::new();
@@ -414,7 +409,8 @@ fn norm(name: &str) -> String {
         .join(" ")
 }
 
-/// ts: src/ui/lenient.ts:185-202
+/// Resolve one role phrase into refs, longest-name-first; the second element
+/// carries the words that resolved to nothing.
 fn resolve_group(raw: &[&str], names: &IndexMap<String, NameEntry>) -> (Vec<Ref>, Vec<String>) {
     let toks: Vec<&str> = raw
         .iter()
@@ -427,8 +423,8 @@ fn resolve_group(raw: &[&str], names: &IndexMap<String, NameEntry>) -> (Vec<Ref>
     while j < toks.len() {
         let mut hit: Option<&NameEntry> = None;
         let mut used = 0usize;
-        // UI-07: `Math.min(4, toks.length - j)` — the magic 4 named
-        // (plan §4-W3: MAX_NAME_WORDS constant)
+        // `Math.min(4, toks.length - j)` — the magic 4 is the
+        // MAX_NAME_WORDS constant
         const MAX_NAME_WORDS: usize = 4;
         let mut len = std::cmp::min(MAX_NAME_WORDS, toks.len() - j);
         while len >= 1 {
@@ -454,7 +450,7 @@ fn resolve_group(raw: &[&str], names: &IndexMap<String, NameEntry>) -> (Vec<Ref>
     (refs, failed)
 }
 
-/// ts: src/ui/lenient.ts:204-208
+/// The default actor as refs, when set and alive.
 fn player_refs(ctx: &LenientCtx) -> Vec<Ref> {
     let Some(player) = ctx.player else {
         return vec![];
@@ -470,7 +466,7 @@ fn player_refs(ctx: &LenientCtx) -> Vec<Ref> {
 
 // ---------- suggestions ----------
 
-/// ts: src/ui/lenient.ts:212-220
+/// Suggest close names: prefix matches first, then levenshtein ≤ 2.
 fn suggest(word: &str, pool: &[String], limit: usize) -> Vec<String> {
     let w = norm(word);
     if w.is_empty() {
@@ -494,10 +490,10 @@ fn suggest(word: &str, pool: &[String], limit: usize) -> Vec<String> {
         .collect()
 }
 
-/// ts: src/ui/lenient.ts:224-233 — like suggest(), but multi-word verbs
+/// Like suggest(), but multi-word verbs
 /// ('travel to') also match on their first word, so 'tavel' still lands on
-/// 'travel to'; display form uses spaces. Registered verbs are UPPER_SNAKE
-/// (dict.ts:72), so `/[\s_]/` can only ever split on `_` here.
+/// 'travel to'; display form uses spaces. Registered verbs are UPPER_SNAKE,
+/// so `/[\s_]/` can only ever split on `_` here.
 fn suggest_verb(word: &str, verbs: &[String], limit: usize) -> Vec<String> {
     let w = norm(word);
     if w.is_empty() {
@@ -530,7 +526,7 @@ fn suggest_verb(word: &str, verbs: &[String], limit: usize) -> Vec<String> {
         .collect()
 }
 
-/// ts: src/ui/lenient.ts:235-248 — the DP runs on chars (the TS indices are
+/// The DP runs on chars (the JS reference indexes
 /// UTF-16 units; identical for the ASCII name/verb domain these feed).
 fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
@@ -543,7 +539,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
         *cell = j;
     }
     for i in 1..=a.len() {
-        // (the dp table is indexed, mirroring the TS loop shape 1:1)
+        // (the dp table is indexed)
         #[allow(clippy::needless_range_loop)]
         for j in 1..=b.len() {
             dp[i][j] = std::cmp::min(
@@ -583,7 +579,7 @@ mod tests {
         ];
         // prefix hits win: this is the script-play 'read the vane ledgr' shape
         // — the failed word is 'vane' (the multi-word scan ate 'ledgr'), and
-        // 'vane ledger' startsWith 'vane'
+        // 'vane ledger' starts with 'vane'
         assert_eq!(suggest("vane", &pool, 3), vec!["THE_VANE_LEDGER"]);
         // no prefix → near (levenshtein ≤ 2) fallback
         assert_eq!(

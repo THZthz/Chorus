@@ -1,4 +1,4 @@
-//! Slot-query mini-language — ts: src/core/query.ts (spec §4.5). Tests ONE
+//! Slot-query mini-language (spec §4.5). Tests ONE
 //! card at a time:
 //!   kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:winter
 //!   name:SUSPICION  -name:SUSPICION   (§9.38: exact-case, like name refs/exists)
@@ -11,9 +11,9 @@ use regex::Regex;
 use crate::core::types::{aspect_get, Aspects, AspectVal, AttrValue, Entity};
 use crate::js::{js_num_parse, js_trim, static_regex, ChorusError, JS_WS_CLASS, Result};
 
-/// ts: src/core/query.ts:7 — `'>=' | '<=' | '>' | '<' | '=' | '!='`.
+/// A comparison operator: `'>=' | '<=' | '>' | '<' | '=' | '!='`.
 /// Serde derives exist for type-graph completeness only — queries never
-/// serialize into the W3 log (slots/queries live in compiled content only),
+/// serialize into the log (slots/queries live in compiled content only),
 /// so the wire shape is unobservable and the default representation is fine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CmpOp {
@@ -26,7 +26,7 @@ pub enum CmpOp {
 }
 
 impl CmpOp {
-    /// The exact TS spelling (error messages and serialization are pinned).
+    /// The exact operator spelling (error messages and serialization are pinned).
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -39,10 +39,8 @@ impl CmpOp {
         }
     }
 
-    /// ts: query.ts:91-100 (`numCmp`) — one of the two duplicate bodies in
-    /// TS (the twin lives in predicate.ts:615-624; CORE-13 notes they are
-    /// identical; collapsing them is sanctioned — CORE-13(1) — and
-    /// behavior-preserving, so both modules route through this one).
+    /// Integer comparison shared by the query and predicate evaluators (the
+    /// two modules carry identical semantics; both route through this one).
     #[must_use]
     pub fn num_cmp(self, a: i64, b: i64) -> bool {
         match self {
@@ -56,7 +54,7 @@ impl CmpOp {
     }
 }
 
-/// The `(>=|<=|>|<|!=|=)` alternation, TS order preserved (leftmost-first);
+/// The `(>=|<=|>|<|!=|=)` alternation, in that order (leftmost-first);
 /// unreachable default — the alternation only yields these six.
 #[must_use]
 pub fn parse_cmp_op(s: &str) -> CmpOp {
@@ -71,15 +69,15 @@ pub fn parse_cmp_op(s: &str) -> CmpOp {
     }
 }
 
-/// ts: src/core/query.ts:12 — the state term's op: a CmpOp or the `!`
-/// negation. (TS spells it `CmpOp | '!'` with `value: AttrValue | null`.)
+/// The state term's op: a CmpOp or the `!`
+/// negation (with an optional attr value).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum StateOp {
     Bang,
     Cmp(CmpOp),
 }
 
-/// ts: src/core/query.ts:9-14 — serde derives: type-graph completeness only
+/// Serde derives: type-graph completeness only
 /// (see CmpOp — queries never reach the log).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum QueryTerm {
@@ -106,7 +104,7 @@ pub enum QueryTerm {
 }
 
 impl QueryTerm {
-    /// TS `t.neg` on every variant.
+    /// The term's `neg` flag on every variant.
     #[must_use]
     pub fn neg(&self) -> bool {
         match self {
@@ -118,11 +116,11 @@ impl QueryTerm {
     }
 }
 
-/// ts: src/core/query.ts:15
+/// A query: the AND of its terms.
 pub type Query = Vec<QueryTerm>;
 
-/// ts: src/core/query.ts:17-19 — `src.trim().split(/\s+/).filter(Boolean)`.
-/// The trim and the filter collapse into "split on runs of JS whitespace,
+/// Terms are `src.trim().split(/\s+/).filter(Boolean)` — collapsed into
+/// "split on runs of JS whitespace,
 /// keep non-empty" (the same term list results); the whitespace set is the
 /// JS one (Q8), not Rust's.
 pub fn parse_query(src: &str) -> Result<Query> {
@@ -133,9 +131,9 @@ pub fn parse_query(src: &str) -> Result<Query> {
     Ok(out)
 }
 
-/// `split(/\s+/).filter(Boolean)` on the JS whitespace set (appendix A.1:
-/// query.ts:18 — the `R` mechanism over the JS class; hand-splitting the
-/// same class is term-for-term identical because `\s+` never matches empty).
+/// `split(/\s+/).filter(Boolean)` on the JS whitespace class;
+/// hand-splitting the
+/// same class is term-for-term identical because `\s+` never matches empty.
 #[must_use]
 fn split_js_ws(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
@@ -155,7 +153,8 @@ fn split_js_ws(s: &str) -> Vec<&str> {
     out
 }
 
-/// ts: src/core/query.ts:21-56
+/// One term: optional leading `-` negation, then
+/// `kind:`/`name:`/`aspect:`/`state:`.
 fn parse_term(raw: &str) -> Result<QueryTerm> {
     let mut term = raw;
     let neg = term.starts_with('-');
@@ -183,8 +182,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             // exact-case, like name refs and exists(NAME) (§9.38). A
             // comparison is meaningless on a name — and the count()/exists()
             // glue-tightening would silently bake `X>=1` in as the NAME (a
-            // silent 0), so reject it loudly. appendix A.1: query.ts:37
-            // `/[<>=!]/` — R.
+            // silent 0), so reject it loudly (any of `<>=!` in the value).
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || Regex::new(r"[<>=!]"));
             if re.is_match(rest) {
@@ -198,8 +196,8 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             })
         }
         "aspect" => {
-            // appendix A.1: query.ts:43 — `\s` is the JS class (Q8), `-?\d+`
-            // is ASCII digits; the alternation keeps TS order (leftmost-first).
+            // `\s` is the JS class (Q8), `-?\d+`
+            // is ASCII digits; the alternation order is leftmost-first.
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || {
                 Regex::new(&format!(
@@ -210,7 +208,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             let Some(m) = re.captures(rest) else {
                 return Err(ChorusError::new(format!("bad aspect term '{raw}'")));
             };
-            // TS `!m || !m[1]` — the optional path group absent (or empty,
+            // the optional path group absent (or empty,
             // which its leading [A-Za-z_] makes impossible) is the error.
             let Some(path) = m.get(1).filter(|g| !g.is_empty()) else {
                 return Err(ChorusError::new(format!("bad aspect term '{raw}'")));
@@ -228,7 +226,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             })
         }
         "state" => {
-            // appendix A.1: query.ts:48 — same JS `\s` treatment; `(.+)` is
+            // same JS `\s` treatment; `(.+)` is
             // line-free by construction (terms are split on JS whitespace).
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || {
@@ -266,7 +264,8 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
     }
 }
 
-/// ts: src/core/query.ts:58-63
+/// Value coercion: "true"/"false" → bool, then
+/// integer → number, else the raw string.
 fn coerce(v: &str) -> AttrValue {
     if v == "true" {
         return AttrValue::Bool(true);
@@ -274,7 +273,7 @@ fn coerce(v: &str) -> AttrValue {
     if v == "false" {
         return AttrValue::Bool(false);
     }
-    // appendix A.1: query.ts:61 `/^-?\d+$/` — R, ASCII digits
+    // `-?\d+`, ASCII digits
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = static_regex(&RE, || Regex::new(r"^-?[0-9]+$"));
     if re.is_match(v) {
@@ -283,13 +282,13 @@ fn coerce(v: &str) -> AttrValue {
     AttrValue::Str(v.to_string())
 }
 
-/// ts: src/core/query.ts:65-67
+/// Every term must match the entity (each term's `neg` flips its result).
 #[must_use]
 pub fn match_query(e: &Entity, query: &[QueryTerm]) -> bool {
     query.iter().all(|t| match_term(e, t) != t.neg())
 }
 
-/// ts: src/core/query.ts:69-89
+/// One term against one entity (pre-negation).
 fn match_term(e: &Entity, t: &QueryTerm) -> bool {
     match t {
         QueryTerm::Kind { kind, .. } => e.kind == *kind,
@@ -307,8 +306,8 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
             // state:!sealed → attrs['state.sealed']
             let v = e.attrs.get(&format!("state.{key}"));
             match op {
-                // `v !== true` — a string "false", a 0, and undefined all
-                // count as unsealed (plan §3.10)
+                // JS `!== true`: a string "false", a 0, and undefined all
+                // count as unsealed
                 StateOp::Bang => !matches!(v, Some(AttrValue::Bool(true))),
                 StateOp::Cmp(op) => {
                     let Some(v) = v else {
@@ -316,7 +315,7 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
                     };
                     // numeric-vs-numeric takes the numeric compare; then the
                     // `===`/`!==` generic branch; an ordering op over a
-                    // non-number reads false (TS `typeof` guard)
+                    // non-number reads false (the number-type guard)
                     if let (AttrValue::Num(vn), Some(AttrValue::Num(n))) = (v, value.as_ref()) {
                         return op.num_cmp(*vn, *n);
                     }
@@ -332,9 +331,9 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
     }
 }
 
-/// ts: src/core/query.ts:102-114 — build Aspects from `{key: n}` pairs in
-/// the caller's iteration order (JS Object.entries = insertion order; W2's
-/// compile sites own that). QUIRK(Q13/CORE-18): the head collision clobbers
+/// Build Aspects from `{key: n}` pairs in
+/// the caller's iteration order (JS Object.entries = insertion order; the
+/// compile sites own that). QUIRK(Q13): the head collision clobbers
 /// a scalar with a sub-map (and a scalar write clobbers a sub-map) — both
 /// directions silent, frozen.
 pub fn aspects_from_pairs(pairs: &IndexMap<String, i64>) -> Aspects {
@@ -345,7 +344,8 @@ pub fn aspects_from_pairs(pairs: &IndexMap<String, i64>) -> Aspects {
             continue;
         };
         let head = &k[..dot];
-        // `typeof out[head] === 'object' ? out[head] : (out[head] = {})`
+        // an existing non-sub-map head is replaced by a fresh sub-map; a
+        // missing head creates one (the sub-scalar clobber, Q13)
         if !matches!(out.get(head), Some(AspectVal::Sub(_))) {
             out.insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
         }
@@ -400,7 +400,7 @@ mod tests {
             QueryTerm::Aspect { path, op, level, .. } => {
                 assert_eq!(path, "language.latin");
                 assert_eq!(*op, None);
-                assert_eq!(*level, 1); // the TS default when no comparison follows
+                assert_eq!(*level, 1); // the default when no comparison follows
             }
             _ => panic!("expected aspect term"),
         }

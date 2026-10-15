@@ -1,13 +1,12 @@
-//! The interpreter — ts: src/engine/engine.ts (spec §6.6: validation →
-//! selection → application → time → events, with step-atomic REFUSE (§6.5)
-//! and event-sourced records (§7)).
+//! The interpreter (spec §6.6: validation → selection → application → time
+//! → events, with step-atomic REFUSE (§6.5) and event-sourced records (§7)).
 //!
-//! Ownership model (plan §2.6): [`ApplyCtx`] holds `&mut State`; bindings
-//! hold entity IDS (`RoleBindings = IndexMap<Role, Vec<String>>`), so every
-//! read goes through `state.entities.get(&id)` and sees the CURRENT
-//! `dead_action` (the dead-stamp rule); `expand` resolves to ids and the
-//! caller re-gets each entity, which splits the `&`/`&mut` borrows exactly
-//! where the plan prescribes. No Rc/Arc/RefCell/Cell anywhere.
+//! Ownership model: [`ApplyCtx`] holds `&mut State`; bindings hold entity
+//! IDS (`RoleBindings = IndexMap<Role, Vec<String>>`), so every read goes
+//! through `state.entities.get(&id)` and sees the CURRENT `dead_action`
+//! (the dead-stamp rule); `expand` resolves to ids and the caller re-gets
+//! each entity, which splits the `&`/`&mut` borrows cleanly. No
+//! Rc/Arc/RefCell/Cell anywhere.
 
 use std::collections::HashSet;
 
@@ -35,12 +34,10 @@ use crate::js::{
     clone_map_in_js_order, jsjson, jsjson_obj_in_js_order, ordinary_own_property_keys, ChorusError, JsJson, Result,
 };
 
-/// ts: src/engine/engine.ts:21-28 — the step input. TS `clock?: Clock | null`
-/// collapses to `Option<Clock>`: `??` treats `undefined` and `null` alike, so
-/// the two shapes are behaviorally one (documented modeling choice).
-/// `Clone/Debug` mirror the TS plain-object semantics: steps are freely
-/// copied into drafts by callers (e.g. the test-side candidate generators),
-/// never shared — no aliasing is observable.
+/// The step input: a quantized `clock` and/or a minute-precise `start_min`,
+/// plus the parsed clauses. `Clone`/`Debug` support callers that copy steps
+/// into scratch drafts (e.g. the test-side candidate generators); steps are
+/// freely copied, never shared — no aliasing is observable.
 #[derive(Debug, Clone)]
 pub struct Step {
     /// begin at this absolute minute (v0.5, minute-precise — wins over clock)
@@ -51,12 +48,10 @@ pub struct Step {
     pub t_real: Option<String>,
 }
 
-/// ts: src/engine/engine.ts:30-53 — the log row. The serde field order is
-/// the TS object-literal order (all four make*Record construction sites use
-/// the same literal, engine.ts:312-336/1173-1192/1199-1211/1288-1295), and
-/// the `Option`s WITHOUT `skip_serializing_if` serialize as `null` exactly
-/// like the TS `trigger: null` / `startMin: null` fields (plan §3.15).
-/// `kind` stays a raw String: TS `applyRecord` switches on it and ANY other
+/// The log row. The serde field order is pinned: every make*Record
+/// construction site builds the same literal shape, and the `Option`s
+/// WITHOUT `skip_serializing_if` serialize as explicit `null` fields.
+/// `kind` stays a raw String: replay switches on it and ANY other
 /// value falls through to the action branch — the String preserves that
 /// open-world behavior (and JSON round-trips losslessly).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -89,16 +84,17 @@ pub struct ActionRecord {
     pub sentence: String,       // canonical, lossless
 }
 
-/// ts: src/engine/engine.ts:55-59
+/// One executed step: the records minted, the resulting state (unchanged
+/// when rejected or refused), and the rejection reason if any.
 pub struct ExecResult {
     pub records: Vec<ActionRecord>,
     pub state: State, // unchanged when rejected or refused
     pub rejected: Option<String>,
 }
 
-/// ts: src/engine/engine.ts:61-64 — the injected `idGen?: () => string`
-/// closure rides as `&mut dyn FnMut`; `None` selects the deterministic
-/// default minted inside [`execute_step`] (§9.3).
+/// Execution options: the injected `id_gen` closure rides as
+/// `&mut dyn FnMut`; `None` selects the deterministic default minted inside
+/// [`execute_step`] (§9.3).
 pub struct ExecOptions<'a> {
     pub first_record_id: i64,
     pub id_gen: Option<&'a mut dyn FnMut() -> String>,
@@ -106,22 +102,22 @@ pub struct ExecOptions<'a> {
 
 // ---------- role binding & slot validation (§6.1) ----------
 
-/// ts: src/engine/engine.ts:68-74
+/// One validated, recipe-selected clause.
 struct Prepared<'a> {
     clause: &'a Clause,
     verb: &'a CompiledVerb,
     refs: IndexMap<Role, Vec<Ref>>,
     /// Resolved against the INPUT state (validation & selection). Never read
     /// back: Phase 3 re-resolves the clause refs against the SCRATCH draft by
-    /// design (engine.ts:236-242) — the TS field is exactly as dead; kept to
-    /// mirror the TS Prepared shape.
+    /// design; the field is dead but kept so the struct carries what
+    /// validation produced.
     #[allow(dead_code)]
     bindings: RoleBindings,
     recipe: &'a CompiledRecipe,
 }
 
-/// ts: src/engine/engine.ts:76-81 — the TS literal keys follow the ROLES
-/// declaration order; the IndexMap preserves it for the `refs[role]` lookups.
+/// Clause refs per role; the IndexMap keys follow the ROLES declaration
+/// order for the `refs[role]` lookups.
 fn clause_refs(c: &Clause) -> IndexMap<Role, Vec<Ref>> {
     let mut m = IndexMap::new();
     m.insert(Role::Actors, c.actors.clone());
@@ -133,10 +129,10 @@ fn clause_refs(c: &Clause) -> IndexMap<Role, Vec<Ref>> {
     m
 }
 
-/// ts: src/engine/engine.ts:83-112 — slot errors carry the EXACT TS text
-/// WITHOUT the `${verb}: ` prefix; the caller prepends it (engine.ts:205).
-/// Q4 (ENG-16): slot roles are never validated — `slot_by_role` is keyed by
-/// the RAW role string, so a typo'd slot silently never matches (frozen).
+/// Slot validation. Error texts come WITHOUT the `<verb>: ` prefix; the
+/// caller prepends it. Q4: slot roles are never validated — `slot_by_role`
+/// is keyed by the RAW role string, so a typo'd slot silently never matches
+/// (frozen).
 fn validate_slots(
     verb: &CompiledVerb,
     refs: &IndexMap<Role, Vec<Ref>>,
@@ -158,8 +154,8 @@ fn validate_slots(
             continue;
         };
         let len = provided.len() as i64;
-        // ts: engine.ts:93 — `provided.length > slot.max` is never true for
-        // TS Infinity; `Option<i64>` None models that (ENG-07)
+        // a JS Infinity max never trips the over-max check;
+        // `Option<i64>` None models that
         if len < slot.min || slot.max.is_some_and(|max| len > max) {
             let range = match slot.max {
                 None => format!("{}..", slot.min),
@@ -204,9 +200,10 @@ fn validate_slots(
     Ok(bindings)
 }
 
-/// ts: src/engine/engine.ts:114-125. A param ref here means an expansion bug
-/// (§9.40) — the TS throw propagates uncaught through every caller, so the
-/// Rust `Err` does too (never a rejection). The one documented merge point
+/// Resolve a ref to a LIVING entity (`None` = dead, unknown, or kind
+/// mismatch). A param ref here means an expansion bug
+/// (§9.40) — the error propagates uncaught through every caller (never a
+/// rejection). The one documented merge point
 /// is execute_step's Phase-2 `validate_slots` fold (unreachable input — see
 /// the channel note there).
 pub fn resolve_ref<'a>(state: &'a State, r: &Ref) -> Result<Option<&'a Entity>> {
@@ -216,7 +213,7 @@ pub fn resolve_ref<'a>(state: &'a State, r: &Ref) -> Result<Option<&'a Entity>> 
             "internal: a function parameter ref survived expansion",
         )),
         // §9.38 pool addressing: a name held by N > 1 living copies addresses
-        // the OLDEST copy — the HEAD of the byName pool (insertion order,
+        // the OLDEST copy — the HEAD of the `by_name` pool (insertion order,
         // never id sort)
         Ref::Name { name, kind } => {
             let Some(e) = oldest_named(state, name) else {
@@ -232,7 +229,7 @@ pub fn resolve_ref<'a>(state: &'a State, r: &Ref) -> Result<Option<&'a Entity>> 
     }
 }
 
-/// ts: src/engine/engine.ts:127-129
+/// Display form of a ref: `#id` for ids, the bare name otherwise.
 fn show(r: &Ref) -> String {
     match r {
         Ref::Id { id } => format!("#{id}"),
@@ -242,8 +239,8 @@ fn show(r: &Ref) -> String {
 
 // ---------- recipe selection (§6.4): first match wins ----------
 
-/// ts: src/engine/engine.ts:133-140 — `None` = the "no recipe matched" error
-/// shape; the caller owns the message text (ENG-09: call-site text).
+/// First-match recipe selection; `None` = "no recipe matched" — the caller
+/// owns the message text.
 fn select_recipe<'a>(
     verb: &'a CompiledVerb,
     bindings: &RoleBindings,
@@ -270,10 +267,9 @@ fn select_recipe<'a>(
 
 // ---------- execution (§6.6) ----------
 
-/// ts: src/engine/engine.ts:144-271 — the four phases. Only the Phase-4
-/// `register_windows` can hard-error (the verb-drift throw, engine.ts:356) —
-/// every other failure is a `rejected` result, mirroring the TS try/catch
-/// placement exactly.
+/// The four-phase step (§6.6). Only the Phase-4 `register_windows` can
+/// hard-error (the verb-drift throw) — every other failure is a `rejected`
+/// result by design.
 pub fn execute_step(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -290,10 +286,10 @@ pub fn execute_step(
             state_in,
         ));
     }
-    // v0.5: the begin minute — startMin wins (a mid-halfhour begin is
+    // v0.5: the begin minute — start_min wins (a mid-halfhour begin is
     // representable), the quantized clock field is the input syntax.
-    // ts: engine.ts:159 — `??` keeps 0 (startMin = 0 wins over the clock):
-    // Option + unwrap_or_else, never a 0-sentinel (ENG-07).
+    // A DEFINED start_min wins even when it is 0 (0 wins over the clock):
+    // Option + unwrap_or_else, never a 0-sentinel.
     let start_min = match step.start_min {
         Some(m) => m,
         None => abs_min(
@@ -333,7 +329,7 @@ pub fn execute_step(
         id_gen,
     } = opts;
 
-    // deterministic default mint (§9.3) — ts: engine.ts:179
+    // deterministic default mint (§9.3)
     let mut mint: i64 = 0;
     let mut default_gen = move || {
         mint += 1;
@@ -345,7 +341,7 @@ pub fn execute_step(
     };
 
     // Phase 1 — the advance (v0.5): everything due at or before the begin
-    // minute resolves first — due windows in (end, beginId, clause) order,
+    // minute resolves first — due windows in (end, begin_id, clause) order,
     // slot events at each crossed halfhour, completions before same-minute
     // events. Atomic with the whole step: any rejection below discards the
     // pass — nothing logged, clock unmoved (§9.19).
@@ -353,7 +349,7 @@ pub fn execute_step(
     let (mut draft, advance) =
         match resolve_due(content, dict, draft, start_min, first_record_id, id_gen) {
             Ok(pass) => (pass.state, pass.records),
-            // ts: engine.ts:186-188 — ANY throw out of the pass rejects the step
+            // ANY throw out of the pass rejects the step
             Err(err) => return Ok(rejected(err.msg, state_in)),
         };
     let next_id = first_record_id + advance.len() as i64;
@@ -379,22 +375,18 @@ pub fn execute_step(
             ));
         };
         let refs = clause_refs(clause);
-        // Channel note (W3 review should-fix-3): TS splits this error surface
-        // in two — the five reachable validateSlots errors travel the
-        // `{error}` return channel and reject here with the `${verb}: `
-        // prefix (engine.ts:204-205), while resolveRef's param-form throw
-        // (engine.ts:118) finds no try/catch in Phase 2 and escapes
-        // executeStep uncaught (busy_reason/select_recipe do map their throws
-        // to the Err channel — see the `?` below). Rust merges both into one
-        // `Result<ChorusError>` (a plain message by design, js.rs §2.5 —
-        // nothing to split the channels on), so that internal error would
+        // Channel note: the reachable validate_slots errors reject here with
+        // the `<verb>: ` prefix (the `{error}` return channel), while
+        // resolve_ref's param-form error finds no rejection path in Phase 2
+        // and escapes execute_step as a hard Err (busy_reason/select_recipe
+        // map their errors to the Err channel — see the `?` below). Merging
+        // both into one `Result<ChorusError>` means that internal error would
         // surface as a rejection here instead. Unreachable on every input
         // path (§9.40): the parser only produces param refs while parsing a
-        // function-body template (parse.ts:60-65) and rejects one after
-        // `kind:` (parse.ts:251), FN expansion substitutes every parameter
+        // function-body template and rejects one after
+        // `kind:`, FN expansion substitutes every parameter
         // before compile, and the lenient/record paths only produce name/id
-        // refs — no caller on either side can build a param-ref clause, so
-        // the fold is observationally identical to TS.
+        // refs — no caller can build a param-ref clause.
         let bindings = match validate_slots(verb, &refs, &draft) {
             Ok(b) => b,
             Err(e) => return Ok(rejected(format!("{}: {}", clause.verb, e.msg), state_in)),
@@ -442,9 +434,9 @@ pub fn execute_step(
             extra_advance_min: 0,
             roll: None,
         };
-        // The closure shape mirrors the TS try{...}catch{refused=false} around
-        // the whole pre-pass loop (engine.ts:230-256): a THROW here is NOT a
-        // gate — it defers to completion time and clears the trial.
+        // The closure shape (a try/catch around the whole pre-pass loop): a
+        // THROW here is NOT a gate — it defers to completion time and clears
+        // the trial.
         let gate: Result<bool> = (|| {
             for p in &prepared {
                 // §9.41: the dice binding is PER CLAUSE — a roll in clause one
@@ -472,15 +464,14 @@ pub fn execute_step(
                     let res = apply_outcome(outcome, &mut sctx)?;
                     collected.extend(res.concrete);
                     if res.refused {
-                        // exits the closure with the decisive gate — same
-                        // shape as the TS `break outer`
+                        // exits the closure with the decisive gate
                         return Ok(true);
                     }
                 }
             }
             Ok(false)
         })();
-        // ts: engine.ts:253-256 — an error is not a gate; the trial is cleared
+        // an error is not a gate; the trial is cleared
         refused = match gate {
             Ok(r) => r,
             Err(_) => {
@@ -491,10 +482,10 @@ pub fn execute_step(
     }
     if refused {
         // refused BEGIN: attempt logged, zero time, the advance discarded with
-        // it. ts: engine.ts:257-262 — the record takes `firstRecordId` (the
-        // advance's ids die with the draft and are REUSED next round; ENG-11:
-        // foldUpTo's `r.id < uptoExclusive` filter depends on the recycle —
-        // never make the id sequence monotonic across the refusal).
+        // it. The record takes `first_record_id` (the advance's ids die with
+        // the draft and are REUSED next round; fold_up_to's `r.id <
+        // upto_exclusive` filter depends on the recycle — never make the id
+        // sequence monotonic across the refusal).
         let mut record =
             make_begin_record(first_record_id, start_min, &step, &prepared, collected, dict)?;
         record.advanced_min = 0; // §6.5: a refusal collapses the cycle — no window elapses
@@ -526,15 +517,15 @@ pub fn execute_step(
     })
 }
 
-/// ts: src/engine/engine.ts:273-275 — roles a card is COMMITTED to; the
+/// Roles a card is COMMITTED to; the
 /// actors stay free (the player is never locked, or no two verbs could ever
 /// run in parallel)
 const COMMITTED_ROLES: [Role; 5] = [Role::Object, Role::With, Role::At, Role::About, Role::To];
 
-/// ts: src/engine/engine.ts:277-299 — §6.7 v0.5 lock checks, against the
-/// post-advance draft: one window per verb station; committed cards busy
-/// while any open window holds them. First match wins (ENG-04: the iteration
-/// order over `windows` is observable through this message).
+/// §6.7 v0.5 lock checks, against the post-advance draft: one window per
+/// verb station; committed cards busy while any open window holds them.
+/// First match wins (the iteration order over `windows` is observable
+/// through this message).
 fn busy_reason(
     state: &State,
     verb: &str,
@@ -554,11 +545,11 @@ fn busy_reason(
             let Some(e) = resolve_ref(state, r)? else {
                 continue;
             };
-            for w in state.windows.values() {
-                if w.locked.iter().any(|id| id == &e.id) {
-                    let end = clock_from_abs_min(w.end);
-                    // ts: engine.ts:293 — `e.name.replace(/_/g, ' ')`
-                    let name = e.name.replace('_', " ");
+                for w in state.windows.values() {
+                    if w.locked.iter().any(|id| id == &e.id) {
+                        let end = clock_from_abs_min(w.end);
+                        // underscores render as spaces in the busy message
+                        let name = e.name.replace('_', " ");
                     return Ok(Some(format!(
                         "{name} is busy with {} — it frees at {}:{}",
                         w.verb, end.day, end.halfhour
@@ -570,7 +561,8 @@ fn busy_reason(
     Ok(None)
 }
 
-/// ts: src/engine/engine.ts:301-342
+/// Build the BEGIN row: merged deduped actors, the first clause's role refs,
+/// durations summed into `advanced_min`.
 fn make_begin_record(
     id: i64,
     start_min: i64,
@@ -592,7 +584,7 @@ fn make_begin_record(
     )
     .into_iter()
     .filter(|r| {
-        // ts: engine.ts:321-326 — dedupe on `#id` / name keys
+        // dedupe on `#id` / name keys
         let k = match r {
             Ref::Id { id } => format!("#{id}"),
             Ref::Name { name, .. } | Ref::Param { name } => name.clone(),
@@ -645,7 +637,7 @@ fn make_begin_record(
     Ok(record)
 }
 
-/// ts: src/engine/engine.ts:344-378 — register one window per BEGIN clause —
+/// Register one window per BEGIN clause —
 /// the SAME code path play and fold run (the divergence guard): clauses come
 /// from the row's canonical sentence (law 2 makes that lossless), durations
 /// and recipe ids from content.
@@ -657,7 +649,7 @@ fn register_windows(
 ) -> Result<()> {
     // a BEGIN row's clauses ride its canonical sentence (law 2 makes that
     // lossless); a degenerate row with no parseable clauses opens no window.
-    // QUIRK(Q6/ENG-06): the format∘parse round-trip failure SILENTLY opens no
+    // QUIRK(Q6): the format∘parse round-trip failure SILENTLY opens no
     // window (`catch { clauses = [] }`) — frozen; do NOT turn this into an
     // error and do NOT pass clauses through memory (both change behavior on
     // degenerate inputs).
@@ -672,7 +664,8 @@ fn register_windows(
     let mut offset: i64 = 0;
     for (ci, clause) in clauses.iter().enumerate() {
         let Some(verb) = content.verbs.get(&clause.verb) else {
-            // ts: engine.ts:356 — this throw is NOT caught by execute_step
+            // this hard-error is NOT caught by execute_step — drift is never
+            // a rejection
             return Err(ChorusError::new(format!(
                 "begin row {}: verb '{}' is not in the compiled content — drift",
                 record.id, clause.verb
@@ -711,7 +704,7 @@ fn register_windows(
     Ok(())
 }
 
-/// ts: src/engine/engine.ts:380-382
+/// A rejection result: no records, the input state untouched.
 fn rejected(reason: String, state: State) -> ExecResult {
     ExecResult {
         records: Vec::new(),
@@ -720,7 +713,7 @@ fn rejected(reason: String, state: State) -> ExecResult {
     }
 }
 
-/// ts: src/engine/engine.ts:384-395 — role args → concrete id refs captured
+/// Role args → concrete id refs captured
 /// from the draft bindings (§9.15: the log never contains sugar)
 fn concretize(args: &[Arg], ctx: &ApplyCtx) -> Vec<Arg> {
     let mut out: Vec<Arg> = Vec::new();
@@ -743,7 +736,7 @@ fn concretize(args: &[Arg], ctx: &ApplyCtx) -> Vec<Arg> {
     out
 }
 
-/// ts: src/engine/engine.ts:397-405 — §9.38: the mint's stackability from its
+/// §9.38: the mint's stackability from its
 /// RESOLVED name+kind — a NAME declared stackable, or a KIND carrying a
 /// stackable declaration. Concrete SPAWN rows always carry the resolved
 /// `kind:K`, so the fold recomputes from the same (name, kind) pair: play
@@ -755,7 +748,7 @@ fn mint_is_stackable(content: &CompiledContent, name: &str, kind: Option<&str>) 
         || kind.is_some_and(|k| content.stackable_kinds.contains(k))
 }
 
-/// ts: src/engine/engine.ts:407-409
+/// The bound id ref for a role target, or the target itself when unbound.
 fn id_or_self(e: Option<&Entity>, fallback: IntoTarget) -> IntoTarget {
     match e {
         Some(e) => IntoTarget::Ref(id_ref(e.id.clone())),
@@ -765,9 +758,9 @@ fn id_or_self(e: Option<&Entity>, fallback: IntoTarget) -> IntoTarget {
 
 // ---------- outcome application (§4.4) ----------
 
-/// ts: src/engine/engine.ts:413-430. `id_gen` is the TS closure parameter;
-/// `roll` is `Option<i64>` over the TS `roll?: number` (undefined until the
-/// list's ROLL applies; reset per clause of a multi-clause step).
+/// The outcome-application context. `id_gen` is the injected id closure;
+/// `roll` is `None` until the list's ROLL applies (reset per clause of a
+/// multi-clause step).
 struct ApplyCtx<'a> {
     state: &'a mut State,
     dict: &'a Dictionary,
@@ -787,7 +780,7 @@ struct ApplyCtx<'a> {
     roll: Option<i64>,
 }
 
-/// ts: src/engine/engine.ts:432-435
+/// What one outcome application produced.
 struct ApplyResult {
     concrete: Vec<Outcome>, // what the log stores: ids minted, sugar resolved, deltas computed (§9.15, §9.31)
     refused: bool,
@@ -804,9 +797,9 @@ fn plain(op: String, args: Vec<Arg>) -> Outcome {
     }
 }
 
-/// §9.41 {roll} interpolation — ts: engine.ts:437-453. A NARRATE string's
+/// §9.41 {roll} interpolation. A NARRATE string's
 /// `{roll}` token is rewritten AT EXECUTION, so the concrete row carries the
-/// number — the journal never re-derives dice. QUIRK(Q7/ENG-11): a NARRATE in
+/// number — the journal never re-derives dice. QUIRK(Q7): a NARRATE in
 /// a REFUSED step is journal-visible WITH its number even though the counter
 /// never moved (the draft died — the documented, deterministic re-roll
 /// oddity); frozen, do not "fix".
@@ -831,10 +824,10 @@ fn rewrite_roll_prose(o: &Outcome, ctx: &ApplyCtx) -> Outcome {
     }
 }
 
-/// ts: src/engine/engine.ts:455-875 — the op dispatch (17 ops). The match
-/// arms mirror the TS switch arms in the same order; the four big SPAWN /
+/// The op dispatch (17 ops). The match arms follow the authored op list in
+/// order; the four big SPAWN /
 /// REPLACE / SET / DRAW cases are pulled into helper fns purely for file
-/// size (one arm each, the same order of operations as the TS case bodies).
+/// size (one arm each).
 fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let args = &o.args;
     match o.op.as_str() {
@@ -864,7 +857,6 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         "REPLACE" => apply_replace(args, ctx),
         "SET" => apply_set(args, ctx),
         "MOVE" => {
-            // ts: engine.ts:660-673
             let Some(Arg::Into { r#ref: into_ref }) =
                 args.iter().find(|a| matches!(a, Arg::Into { .. }))
             else {
@@ -892,7 +884,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 _ => None,
             };
             let Some(dest) = dest else {
-                // ts: engine.ts:669 — `!dest || typeof dest !== 'string'`
+                // the `!dest` guard: an unresolvable destination is a hard error
                 return Err(ChorusError::new("MOVE: unresolvable destination"));
             };
             let refs: Vec<Arg> = concretize(
@@ -930,7 +922,6 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             })
         }
         "ADVANCE" => {
-            // ts: engine.ts:679-684
             let Some(Arg::Dur { v }) = args.first() else {
                 return Err(ChorusError::new("ADVANCE needs a duration"));
             };
@@ -957,7 +948,6 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             })
         }
         "RELATE" => {
-            // ts: engine.ts:694-710
             let refs: Vec<&Ref> = args
                 .iter()
                 .filter_map(|a| match a {
@@ -1001,7 +991,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             })
         }
         "UNRELATE" => {
-            // ts: engine.ts:711-722 — §7: stamp, don't erase — undo re-folds
+            // §7: stamp, don't erase — undo re-folds
             let refs: Vec<&Ref> = args
                 .iter()
                 .filter_map(|a| match a {
@@ -1031,7 +1021,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             })
         }
         "ENDING" => {
-            // §9.35 — ts: engine.ts:723-737: the FIRST ENDING to apply wins;
+            // §9.35: the FIRST ENDING to apply wins;
             // later ones are logged no-ops. Title/flavour resolve here from
             // content — the one code path both play and fold share.
             let id = match args.first() {
@@ -1066,10 +1056,10 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }),
         "ROLL" => apply_roll(args, ctx),
         "ROLLED" => {
-            // §9.41, fold side — ts: engine.ts:782-791: set the counter,
+            // §9.41, fold side: set the counter,
             // nothing else (the total is journal data; replay never re-derives
             // a die, law 3). Play never applies this op: authored ROLLED is a
-            // load error, so the only path here is applyRecord over a logged
+            // load error, so the only path here is `apply_record` over a logged
             // row.
             let Some(Arg::Int { v: ctr_after }) = args.get(1) else {
                 return Err(ChorusError::new("ROLLED needs (total, ctrAfter)"));
@@ -1082,12 +1072,12 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
         "DRAW" => apply_draw(args, ctx),
         "DRAWN" => {
-            // §9.42, fold side — ts: engine.ts:844-871: advance the cursor,
+            // §9.42, fold side: advance the cursor,
             // ASSERTING the recorded name is exactly what the compiled
             // permutation serves at that cursor (play and fold share
-            // drawFrom, so only content drift can disagree). Play never
+            // `draw_from`, so only content drift can disagree). Play never
             // applies this op: authored DRAWN is a load error, so the only
-            // path here is applyRecord over a logged row.
+            // path here is `apply_record` over a logged row.
             let (deck_name, recorded) = match (args.first(), args.get(1)) {
                 (
                     Some(Arg::Ref {
@@ -1124,9 +1114,9 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     }
 }
 
-/// ts: src/engine/engine.ts:460-527 — the SPAWN case.
+/// The SPAWN case.
 fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
-    // ts: engine.ts:461-466 — the first ref arg must be a NAME ref
+    // the first ref arg must be a NAME ref
     let ref_arg = args.iter().find_map(|a| match a {
         Arg::Ref { r#ref } => Some(r#ref),
         _ => None,
@@ -1151,8 +1141,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         )));
     };
     let mut name = proto_name.clone();
-    // ts: engine.ts:468-469 — the attrs spread is a JS key-order point
-    // (PR2-05 clone point engine.ts:469)
+    // the attrs spread is a JS key-order point (integer-like keys front)
     let mut aspects: Aspects = match proto.and_then(|p| p.aspects.as_ref()) {
         Some(a) => clone_aspects(a),
         None => Aspects::new(),
@@ -1161,7 +1150,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Some(a) => clone_map_in_js_order(a),
         None => Attrs::new(),
     };
-    // ts: engine.ts:470-480 — derive (`name from object`, §6.4)
+    // derive (`name from object`, §6.4)
     if let Some(derive) = proto.and_then(|p| p.derive.as_ref()) {
         let obj_id = ctx
             .bindings
@@ -1174,12 +1163,12 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 name = format!("{name}_{}", obj.name);
             }
             if let Some(rules) = &derive.aspects {
-                // ts: engine.ts:475 — `Object.entries(derive.aspects)` — the
+                // `Object.entries(derive.aspects)` — the
                 // JS key order is observable (aspects insertion order)
                 for key in ordinary_own_property_keys(rules) {
                     let rule = &rules[&key];
                     if let Some(base) = aspect_get(obj, &rule.from_object_aspect) {
-                        // PR2-04: TS subtracts in f64; saturating subtraction
+                        // JS numbers subtract in f64; saturating subtraction
                         // is the documented i64 divergence direction
                         aspects.insert(key, AspectVal::Num(base.saturating_sub(rule.minus)));
                     }
@@ -1208,7 +1197,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             }
         }
     }
-    // ts: engine.ts:494-495 — an explicit AS id, else the mint generator
+    // an explicit AS id, else the mint generator
     let as_id = args.iter().find_map(|a| match a {
         Arg::AsId { id } => Some(id.clone()),
         _ => None,
@@ -1217,7 +1206,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Some(id) => id,
         None => (ctx.id_gen)(),
     };
-    // ts: engine.ts:496-503 — container: INTO arg, else the `at` binding,
+    // container: INTO arg, else the `at` binding,
     // else the first actor's `container` attr (raw value, truthiness-gated)
     let into = args.iter().find_map(|a| match a {
         Arg::Into { r#ref } => Some(r#ref),
@@ -1246,13 +1235,13 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 .cloned(),
         }
     };
-    // ts: engine.ts:503 — `if (container) attrs['container'] = container`
+    // the container attr is written only when truthy (JS truthiness)
     if js_truthy(container.as_ref()) {
         if let Some(c) = &container {
             attrs.insert("container".to_string(), c.clone());
         }
     }
-    // ts: engine.ts:504-518 — fold-time reconstruction: a recorded SPAWN
+    // fold-time reconstruction: a recorded SPAWN
     // (asId present) may carry materialized aspects/attrs as JSON pairs —
     // prefer them over derive. An explicit attrs= pair is authoritative
     // (§9.18): it already carries the mint's location (container and/or
@@ -1271,7 +1260,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     }
     if let Some(AttrValue::Str(json)) = attrs_arg {
         let materialized = attrs_from_json(json)?;
-        // ts: engine.ts:516-517 — Object.assign keeps existing keys' slots and
+        // Object.assign keeps existing keys' slots and
         // appends new ones in the source's order (IndexMap::insert matches);
         // the container survives only if the pair carried one
         let had_container = materialized.contains_key("container");
@@ -1295,21 +1284,21 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             stackable: is_stack,
         },
     )?;
-    // ts: engine.ts:520-526 — concrete outcome: everything a fold needs,
+    // concrete outcome: everything a fold needs,
     // nothing from the step context
     let mut concrete_args: Vec<Arg> = vec![Arg::Ref {
         r#ref: name_ref(name, Some(kind)),
     }];
     if js_truthy(container.as_ref()) {
         if let Some(c) = &container {
-            // ts: engine.ts:522 — `idRef(container)` over the string-cast value
+            // `id_ref` over the string-cast value
             concrete_args.push(Arg::Into {
                 r#ref: IntoTarget::Ref(id_ref(c.to_js_string())),
             });
         }
     }
     concrete_args.push(Arg::AsId { id });
-    // The pair STRINGS are built through the JS key order (PR2-05: the
+    // The pair STRINGS are built through the JS key order (the
     // `SET(x,"5",…)` path can put integer-like keys into attrs).
     if !aspects.is_empty() {
         concrete_args.push(Arg::Pair {
@@ -1329,7 +1318,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// ts: src/engine/engine.ts:538-594 — the REPLACE case: §4.4 REPLACE ref WITH
+/// The REPLACE case: §4.4 REPLACE ref WITH
 /// prototype — mint from the prototype into the dying card's CURRENT
 /// container, then soft-destroy it. The log carries the concrete SPAWN+
 /// DESTROY pair, so the fold replays it exactly (§9.33).
@@ -1371,9 +1360,9 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     };
     let targets: Vec<String> = match target_arg {
         Some(a) => expand(std::slice::from_ref(a), ctx),
-        // TS would crash on `undefined.t` — unreachable through authored
-        // paths (parse enforces the arity); the empty-target error below is
-        // the degenerate shape's destination either way
+        // unreachable through authored paths (parse enforces the arity);
+        // the empty-target error below is the degenerate shape's destination
+        // either way
         None => Vec::new(),
     };
     if targets.is_empty() {
@@ -1445,7 +1434,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 stackable: is_stack,
             },
         )?;
-        // ts: engine.ts:580-581 — soft-destroy AFTER the spawn
+        // soft-destroy AFTER the spawn
         if let Some(d) = ctx.state.entities.get_mut(&dying_id) {
             d.dead_action = Some(ctx.record_id);
         }
@@ -1486,7 +1475,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// ts: src/engine/engine.ts:595-659 — the SET case (§4.4 arity: SET(ref, key,
+/// The SET case (§4.4 arity: SET(ref, key,
 /// value) — positional).
 fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let (ref_arg, key_arg, val_arg) = match (args.first(), args.get(1), args.get(2)) {
@@ -1514,7 +1503,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Arg::Ref { .. } if aspect_path.is_none() => key_arg.clone(),
         _ => Arg::Key { v: raw_key.clone() },
     };
-    // ts: engine.ts:613-621 — the write closure
+    // the write closure
     macro_rules! write {
         ($ctx:expr, $e:expr, $value:expr) => {{
             let value: &AttrValue = $value;
@@ -1549,7 +1538,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     continue; // unreachable under §2.6.1
                 };
                 if let Some(path) = aspect_path {
-                    // raw entry, not aspectGet: a sub-map must REFUSE the
+                    // raw entry, not `aspect_get`: a sub-map must REFUSE the
                     // delta, not count as missing and be clobbered (§9.31
                     // non-numeric rule)
                     match aspect_entry(e, path) {
@@ -1573,8 +1562,8 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     }
                 }
             };
-            // PR2-04: TS adds in f64; saturating add is the i64 divergence
-            // direction (documented, plan §3.5)
+            // JS numbers add in f64; saturating add is the documented i64
+            // divergence direction
             let next = cur.unwrap_or(0).saturating_add(*delta);
             if let Some(e) = ctx.state.entities.get_mut(id) {
                 write!(ctx, e, &AttrValue::Num(next));
@@ -1653,7 +1642,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// ts: src/engine/engine.ts:741-781 — ROLL (§9.41), the engine's ONLY
+/// ROLL (§9.41), the engine's ONLY
 /// randomness. The args are §6.3 value expressions evaluated against this
 /// clause's bindings and the DRAFT (strictly: a path over an unbound role
 /// rejects the step, like an IF condition). A roll of m dice consumes exactly
@@ -1700,7 +1689,7 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // dice): an operand that cannot resolve — a missing aspect/attr over its
     // role — rejects the step, never a silent 0-dice roll. (`Number.isInteger`
     // is vacuous over i64 — the reachable checks are the undefined and range
-    // ones; the messages keep the TS text either way.)
+    // ones; the message texts are frozen either way.)
     let Some(count) = count else {
         return Err(ChorusError::new(
             "ROLL: dice count must be an integer >= 0, got nothing",
@@ -1729,8 +1718,8 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let c = ctx.state.rng;
     let mut total = bonus;
     for i in 0..count {
-        // PR2-04: TS sums in f64; saturating add is the i64 divergence
-        // direction (documented, plan §3.5)
+        // JS numbers sum in f64; saturating add is the documented i64
+        // divergence direction
         total = total.saturating_add(roll_die(ctx.content.seed, c + i, sides));
     }
     ctx.roll = Some(total); // the per-clause binding: `roll` and {roll} read this
@@ -1747,7 +1736,7 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// ts: src/engine/engine.ts:792-843 — the DRAW case (§9.42): draw the deck's
+/// The DRAW case (§9.42): draw the deck's
 /// next card. The deck table lives on compiled content (the permutation is
 /// pure in seed+id, law 5); the cursor lives on State and advances ON THE
 /// DRAFT here — a later failure or REFUSE discards it with the whole draft
@@ -1803,7 +1792,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
         None => None,
     };
-    // serve + advance the cursor; drawFrom throws on an exhausted deck with
+    // serve + advance the cursor; `draw_from` throws on an exhausted deck with
     // neither `reset` nor `defaultcard` — §9.19 (nothing logged, cursor
     // unmoved: the mutation below happens on the draft only after it returns)
     let cursor = ctx.state.decks.get(&deck_id).copied().unwrap_or(0);
@@ -1838,7 +1827,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// ts: src/engine/engine.ts:890-896 — §9.39 IF / ELSE IF / ELSE in an outcome
+/// §9.39 IF / ELSE IF / ELSE in an outcome
 /// list. Arms evaluate in order against the DRAFT (this list's earlier
 /// outcomes — SET, SPAWN, DESTROY — are visible to later IFs, unlike recipe
 /// selection which reads the input state); the first true condition wins;
@@ -1855,8 +1844,7 @@ fn apply_if(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     for arm in arms {
         // the first true condition wins — and since a taken arm returns
         // immediately, no later arm's condition ever sees a prior arm's
-        // effects (scoping the state borrow here is behavior-identical to
-        // the TS pctx alias)
+        // effects (scoping the state borrow here is behavior-neutral)
         let chosen = {
             let pctx = PredCtx {
                 b: &ctx.bindings,
@@ -1879,7 +1867,7 @@ fn apply_if(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     }
 }
 
-/// ts: src/engine/engine.ts:898-908 — apply a branch body in order; a REFUSE
+/// Apply a branch body in order; a REFUSE
 /// inside a taken branch refuses the whole step as usual (§6.5 — draft
 /// discarded, attempt logged)
 fn apply_all(outcomes: &[Outcome], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
@@ -1900,7 +1888,7 @@ fn apply_all(outcomes: &[Outcome], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// `expires` materialization (§4.2) — ts: engine.ts:910-918: numbers are
+/// `expires` materialization (§4.2): numbers are
 /// already minutes — the lexer pre-converts bare duration literals (§5.1)
 /// before SET sees them; quoted strings go through the one duration parser,
 /// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
@@ -1913,12 +1901,12 @@ fn to_minutes(v: &AttrValue) -> Result<i64> {
     }
 }
 
-/// ts: src/engine/engine.ts:920-932 — resolve ref/role args to entity IDS
-/// (role refs expand across the binding). §2.6.3: the TS version returns live
-/// Entity aliases; here the ids come back and each caller re-gets the entity,
+/// Resolve ref/role args to entity IDS
+/// (role refs expand across the binding). §2.6.3: the ids come back (not
+/// live entity handles) and each caller re-gets the entity,
 /// so a mid-list DESTROY is seen by every later read (dead-stamp rule).
-/// Role bindings push ALL their ids (dead ones included — the TS alias list
-/// does the same); name/id refs resolve alive-only.
+/// Role bindings push ALL their ids (dead ones included); name/id refs
+/// resolve alive-only.
 fn expand(args: &[Arg], ctx: &ApplyCtx) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for a in args {
@@ -1942,9 +1930,9 @@ fn expand(args: &[Arg], ctx: &ApplyCtx) -> Vec<String> {
     out
 }
 
-/// ts: src/engine/engine.ts:934-938 — the aspects clone: the top-level
+/// The aspects clone: the top-level
 /// `Object.entries` AND each sub-map spread are JS key-order points
-/// (`{ ...v }` fronts integer-like keys, PR2-05).
+/// (`{ ...v }` fronts integer-like keys).
 fn clone_aspects(a: &Aspects) -> Aspects {
     let mut out = Aspects::new();
     for k in ordinary_own_property_keys(a) {
@@ -1963,7 +1951,7 @@ fn clone_aspects(a: &Aspects) -> Aspects {
 
 // ---------- fold support (§7: state = fold(log)) ----------
 
-/// ts: src/engine/engine.ts:947-1028 — apply one record's concrete outcomes to
+/// Apply one record's concrete outcomes to
 /// a state (replay). Refused records are state no-ops: their logged outcomes
 /// are journal history, never replayed effects (§6.5).
 pub fn apply_record(
@@ -2000,7 +1988,7 @@ pub fn apply_record(
         // with a tGame-anchored fallback so bare-row fold probes and
         // pre-window logs still replay — the START-clock anchoring that
         // matters for `expires` is exercised on the real path, where the
-        // window exists (ENG-12: this fallback branch is load-bearing for
+        // window exists (this fallback branch is load-bearing for
         // bare-row probes and MUST stay)
         let w_start = record
             .window
@@ -2008,7 +1996,7 @@ pub fn apply_record(
             .and_then(|k| state.windows.get(k))
             .map(|w| w.start);
         if let Some(k) = &record.window {
-            state.windows.shift_remove(k); // TS Map.delete preserves order
+            state.windows.shift_remove(k); // JS Map.delete preserves insertion order
         }
         // refused: window closed, effects discarded (§6.5)
         if record.outcomes.iter().any(|o| o.op == "REFUSE") {
@@ -2018,7 +2006,7 @@ pub fn apply_record(
             Some(s) => s,
             None => abs_min(parse_clock(&record.t_game)?),
         };
-        // ENG-03: the shared ctx construction; the branch skeleton stays here
+        // the shared ctx construction; the branch skeleton stays here
         let bindings = fold_bindings(record, state)?;
         let mut n: i64 = 0;
         let mut gen = move || {
@@ -2039,7 +2027,7 @@ pub fn apply_record(
         for o in &record.outcomes {
             apply_outcome(o, &mut ctx)?;
         }
-        // ADVANCE replayed here only touches the inert extraAdvanceMin — the
+        // ADVANCE replayed here only touches the inert `extra_advance_min` — the
         // extension lives in the wait row's span (§9.46 replay safety)
         return Ok(());
     }
@@ -2050,14 +2038,15 @@ pub fn apply_record(
     }
     // events don't own the clock — only wait rows move it (§7, v0.5)
     if record.kind == "event" {
-        // once-triggers replay as fired (§9.29); `record.trigger ?? ''`
+        // once-triggers replay as fired (§9.29); a missing trigger name folds
+        // as the empty string
         state
             .fired
             .insert(record.trigger.clone().unwrap_or_default());
     }
     let start_min = abs_min(parse_clock(&record.t_game)?);
     if record.kind == "event" {
-        // ENG-03: the shared ctx construction; the branch skeleton stays here
+        // the shared ctx construction; the branch skeleton stays here
         let bindings = fold_bindings(record, state)?;
         let mut n: i64 = 0;
         let mut gen = move || {
@@ -2086,10 +2075,10 @@ pub fn apply_record(
     register_windows(record, state, dict, content)
 }
 
-/// ts: src/engine/engine.ts:948-952 + 980-994/1005-1020 — ENG-03: the
+/// The
 /// complete and event branches share EXACTLY this ctx construction (the
 /// bindings flattening and fixed fields); the two branch skeletons themselves
-/// stay separate (window delete, fired add, and the startMin source differ).
+/// stay separate (window delete, fired add, and the start_min source differ).
 /// Bindings hold ids resolved against the CURRENT fold state.
 fn fold_bindings(record: &ActionRecord, state: &State) -> Result<RoleBindings> {
     let flat = |refs: &[Ref]| -> Result<Vec<String>> {
@@ -2113,16 +2102,15 @@ fn fold_bindings(record: &ActionRecord, state: &State) -> Result<RoleBindings> {
 
 // ---------- events & completions: the advance pass (§6.6, §6.7, §9.16) ----------
 
-/// ts: src/engine/engine.ts:1032
+/// The advance pass result: the rewritten state plus the records minted.
 struct PassResult {
     state: State,
     records: Vec<ActionRecord>,
 }
 
-/// One hoisted expiry snapshot entry — ts: engine.ts:1065-1067 `{ id, name,
-/// at }`. `name` is never read (fireSlot re-reads the LIVE entity's name,
-/// engine.ts:1240-1252) — dead in TS exactly as here; kept to mirror the
-/// snapshot shape.
+/// One hoisted expiry snapshot entry: `id`, `name`,
+/// `at`. `name` is never read (fire_slot re-reads the LIVE entity's name);
+/// kept to mirror the snapshot shape.
 struct Expiring {
     id: String,
     #[allow(dead_code)]
@@ -2130,18 +2118,17 @@ struct Expiring {
     at: i64,
 }
 
-/// v0.5 — advance the world from `state.now` to `toMin` in ONE atomic pass.
+/// v0.5 — advance the world from `state.now` to `to_min` in ONE atomic pass.
 /// Candidates merge chronologically: due windows close at their `end` (ordered
-/// by end, then beginId, then clause — a total order with no ties); authored
+/// by end, then begin_id, then clause — a total order with no ties); authored
 /// slot triggers and expiries fire at each crossed halfhour (§9.16 order:
 /// triggers in declaration order, then expiries from the hoisted snapshot).
 /// A completion at minute m fires BEFORE slot-m events. The pass ends with one
 /// WAIT row — the only record that moves the clock — spanning exactly
-/// `[state.now, toMin]`, so wait spans partition time (repeating triggers
+/// `[state.now, to_min]`, so wait spans partition time (repeating triggers
 /// cannot double-fire across windows). `ADVANCE` outcomes land while windows
 /// complete and EXTEND the pass target; the extension rides the wait row's
 /// span, which is what makes it replay-safe (fold never re-derives it).
-/// ts: src/engine/engine.ts:1047-1102.
 fn resolve_due(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -2152,9 +2139,9 @@ fn resolve_due(
 ) -> Result<PassResult> {
     // a zero-span pass is meaningful only when a due window exists (a
     // zero-duration verb completes exactly at its begin minute).
-    // ENG-18: the FIRST disjunct (`toMin < stateIn.now`) is dead —
-    // executeStep guarantees `startMin >= state.now` (engine.ts:161-164) —
-    // but the SECOND disjunct is the live `toMin === now && !hasDue` path
+    // The FIRST disjunct (`to_min < state.now`) is dead —
+    // execute_step guarantees `start_min >= state.now` —
+    // but the SECOND disjunct is the live `to_min == now && !has_due` path
     // and MUST stay.
     let has_due = state_in.windows.values().any(|w| w.end <= to_min);
     if to_min < state_in.now || (to_min == state_in.now && !has_due) {
@@ -2169,7 +2156,7 @@ fn resolve_due(
     // §6.6: the expiry snapshot is taken once per pass and hoisted over every
     // completion and slot — no cascades within one advance; expiries created
     // by this pass's outcomes resolve at the NEXT advance. Snapshot order =
-    // entities insertion order (ENG-04).
+    // entities insertion order.
     let expiring: Vec<Expiring> = state
         .entities
         .values()
@@ -2181,7 +2168,7 @@ fn resolve_due(
             name: e.name.clone(),
             at: match e.attrs.get("expiresAt") {
                 Some(AttrValue::Num(n)) => *n,
-                _ => unreachable!("filtered to a number above (ts: engine.ts:1066)"),
+                _ => unreachable!("filtered to a number above"),
             },
         })
         .collect();
@@ -2189,7 +2176,7 @@ fn resolve_due(
     let mut target = to_min;
     let mut id = first_record_id;
     loop {
-        // ts: engine.ts:1072-1073 — due windows in (end, beginId, clause)
+        // due windows in (end, begin_id, clause)
         // order: a total order with no ties
         let mut due: Vec<&OpenWindow> =
             state.windows.values().filter(|w| w.end <= target).collect();
@@ -2219,7 +2206,7 @@ fn resolve_due(
             }
         }
         if let Some(slot_abs) = slot_abs {
-            // fireSlot speaks in halfhour INDICES (§9.16: slot = abs % 48,
+            // `fire_slot` speaks in halfhour INDICES (§9.16: slot = abs % 48,
             // minute = abs * 30); the walk speaks in minutes
             let slot_records = fire_slot(
                 content,
@@ -2242,15 +2229,15 @@ fn resolve_due(
     Ok(PassResult { state, records })
 }
 
-/// ts: src/engine/engine.ts:1104-1109 — the first halfhour boundary strictly
+/// The first halfhour boundary strictly
 /// after `cursor`, or None past `target` — the (from, to] crossing rule of
 /// §9.28, one boundary at a time
 fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
     debug_assert!(
         cursor >= 0,
-        "next_slot_after: negative cursor {cursor} (ts: clock.ts:36 — clocks are non-negative)"
+        "next_slot_after: negative cursor {cursor} (clocks are non-negative)"
     );
-    // Math.floor == truncated division on the non-negative domain (CORE-10)
+    // Math.floor == truncated division on the non-negative domain
     let abs = (cursor / MIN_PER_HALFHOUR + 1) * MIN_PER_HALFHOUR;
     if abs <= target {
         Some(abs)
@@ -2259,7 +2246,7 @@ fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
     }
 }
 
-/// ts: src/engine/engine.ts:1111-1169 — close one window: re-resolve its
+/// Close one window: re-resolve its
 /// clause bindings (dead refs DROP — events do not respect locks, §6.7 v0.5),
 /// apply the commit-time recipe's outcomes anchored to the window's START
 /// clock (§6.7: clock-anchored effects use the start clock). A REFUSE that
@@ -2282,7 +2269,7 @@ fn fire_window(
     record_id: i64,
     id_gen: &mut dyn FnMut() -> String,
 ) -> Result<FireWindowResult> {
-    // ts: engine.ts:1129-1136 — the drift guard throws OUT of fireWindow (and
+    // the drift guard throws OUT of fire_window (and
     // out of the pass; the caller rejects the step)
     let recipe = content
         .verbs
@@ -2302,16 +2289,13 @@ fn fire_window(
     for role in ROLES {
         let mut ids = Vec::new();
         for r in &w.refs[&role] {
-            // dead refs DROP: `.filter((e): e is Entity => e !== null)`
+            // dead refs DROP
             if let Some(e) = resolve_ref(&scratch, r)? {
                 ids.push(e.id.clone());
             }
         }
         bindings.insert(role, ids);
     }
-    // ENG-18: the TS `idGen ?? (...)` fallback and its `let mint = 0` are
-    // unreachable (the parameter is non-optional `() => string`) and are
-    // deliberately NOT ported.
     let mut ctx = ApplyCtx {
         state: &mut scratch,
         dict,
@@ -2325,7 +2309,7 @@ fn fire_window(
     };
     let mut concrete: Vec<Outcome> = Vec::new();
     let mut refused = false;
-    // ts: engine.ts:1154-1165 — the try/catch spans the outcome loop: an
+    // the try/catch spans the outcome loop: an
     // outcome that cannot apply refuses the WINDOW with a REFUSE marker
     // carrying the message.
     for o in &recipe.out {
@@ -2351,7 +2335,7 @@ fn fire_window(
     let advance_extra = ctx.extra_advance_min;
     drop(ctx);
     let mut out = if refused { state_in } else { scratch };
-    out.windows.shift_remove(&w.key); // TS Map.delete preserves order
+    out.windows.shift_remove(&w.key); // JS Map.delete preserves insertion order
     Ok(FireWindowResult {
         state: out,
         record: make_complete_record(record_id, w, concrete, dict)?,
@@ -2359,7 +2343,7 @@ fn fire_window(
     })
 }
 
-/// ts: src/engine/engine.ts:1171-1195
+/// Build the COMPLETE row for one closed window.
 fn make_complete_record(
     id: i64,
     w: &OpenWindow,
@@ -2402,7 +2386,7 @@ fn make_complete_record(
     Ok(rec)
 }
 
-/// ts: src/engine/engine.ts:1197-1214
+/// Build the WAIT row spanning exactly `[from_min, from_min + span_min]`.
 fn make_wait_record(
     id: i64,
     from_min: i64,
@@ -2444,7 +2428,7 @@ fn make_wait_record(
     Ok(rec)
 }
 
-/// ts: src/engine/engine.ts:1216-1273 — fire one crossed halfhour: authored
+/// Fire one crossed halfhour: authored
 /// triggers (declaration order) first, then expiries from the pass's snapshot
 /// — §9.16 order, unchanged (§6.6).
 fn fire_slot(
@@ -2457,7 +2441,7 @@ fn fire_slot(
     id_gen: &mut dyn FnMut() -> String,
 ) -> Result<Vec<ActionRecord>> {
     let mut records: Vec<ActionRecord> = Vec::new();
-    // ts: engine.ts:1228-1237 — authored slot triggers in DECLARATION order
+    // authored slot triggers in DECLARATION order
     for trig in &content.triggers {
         let CompiledTrigger::Slot {
             id: trig_id,
@@ -2492,8 +2476,8 @@ fn fire_slot(
         let rid = first_event_id + records.len() as i64;
         records.push(make_event_record(rid, trig_id, abs_slot, outcomes, dict)?);
     }
-    // ts: engine.ts:1238-1271 — expiries from the hoisted snapshot, in
-    // snapshot order (= entities insertion order, ENG-04)
+    // expiries from the hoisted snapshot, in
+    // snapshot order (= entities insertion order)
     for exp in expiring {
         if exp.at > abs_slot * MIN_PER_HALFHOUR {
             continue;
@@ -2534,7 +2518,7 @@ fn fire_slot(
                 (a.id().to_string(), outcomes)
             }
             None => {
-                // ts: engine.ts:1260-1265 — engine-written destroys are keyed
+                // engine-written destroys are keyed
                 // to the EXPIRING entity and concretize to DESTROY #id —
                 // under a pool a name-addressed destroy would kill the oldest
                 // copy while the real expiring card re-fires
@@ -2559,7 +2543,7 @@ fn fire_slot(
                 (format!("expire:{ent_name}"), outcomes)
             }
         };
-        // play marks fired exactly as the fold's applyRecord does — one entry
+        // play marks fired exactly as the fold's `apply_record` does — one entry
         // per EVENT row's trigger (§9.34); on the draft, so a rejection
         // discards it
         state.fired.insert(trigger_id.clone());
@@ -2569,10 +2553,9 @@ fn fire_slot(
     Ok(records)
 }
 
-/// ts: src/engine/engine.ts:1275-1284 — event bindings are EMPTY ({}), and
-/// `now` is the crossed boundary in absolute minutes (absSlot * 30 — one of
-/// the three bare `* 30` sites ENG-19 lists; the MIN_PER_HALFHOUR constant is
-/// the sanctioned equal-value rewrite, plan §3.18).
+/// Event bindings are EMPTY ({}), and
+/// `now` is the crossed boundary in absolute minutes
+/// (abs_slot * MIN_PER_HALFHOUR).
 fn make_event_ctx<'a>(
     state: &'a mut State,
     dict: &'a Dictionary,
@@ -2594,7 +2577,7 @@ fn make_event_ctx<'a>(
     }
 }
 
-/// ts: src/engine/engine.ts:1286-1298
+/// Build the EVENT row for one fired trigger at one crossed boundary.
 fn make_event_record(
     id: i64,
     trigger: &str,
@@ -2637,9 +2620,9 @@ fn make_event_record(
     Ok(rec)
 }
 
-// ---------- port helpers (no TS counterpart: borrow-shape glue) ----------
+// ---------- arithmetic / format helpers (borrow-shape glue) ----------
 
-/// §3.3/PR2-04 accumulation discipline: TS accumulates rng counters, deck
+/// §3.3 accumulation discipline: JS numbers accumulate rng counters, deck
 /// cursors, advance targets, window offsets and wait spans in f64 (exact to
 /// 2^53). i64 `checked_add` overflow is unreachable for any real log — the
 /// documented divergence direction is saturation, with a debug assert on the
@@ -2657,8 +2640,8 @@ fn checked_step(a: i64, b: i64, what: &str) -> i64 {
     }
 }
 
-/// JS truthiness over container-shaped values (engine.ts:503 `if (container)`
-/// / engine.ts:522): '' / 0 / false are falsy.
+/// JS truthiness over container-shaped values (the `if (container)` guards):
+/// '' / 0 / false are falsy.
 fn js_truthy(v: Option<&AttrValue>) -> bool {
     match v {
         None => false,
@@ -2668,11 +2651,11 @@ fn js_truthy(v: Option<&AttrValue>) -> bool {
     }
 }
 
-/// `JSON.stringify(aspects)` — ts: engine.ts:524/585. Plain JSON.stringify
+/// `JSON.stringify(aspects)`. Plain JSON.stringify
 /// applies the JS key order (OrdinaryOwnPropertyKeys), so the map goes
-/// through [`jsjson_obj_in_js_order`] (PR2-05; Node-verified in js.rs).
+/// through [`jsjson_obj_in_js_order`].
 /// pub(crate): the reach analyzer re-uses this exact frozen format for its
-/// provenance/demand chain lines (reach.ts:1150/1207/1321/1355).
+/// provenance/demand chain lines.
 pub(crate) fn aspects_to_json(a: &Aspects) -> String {
     let mut m: IndexMap<String, JsJson> = IndexMap::new();
     for (k, v) in a {
@@ -2691,7 +2674,7 @@ pub(crate) fn aspects_to_json(a: &Aspects) -> String {
     jsjson(&jsjson_obj_in_js_order(&m))
 }
 
-/// `JSON.stringify(attrs)` — ts: engine.ts:525/589 (same key-order rule).
+/// `JSON.stringify(attrs)` (same JS key-order rule).
 fn attrs_to_json(a: &Attrs) -> String {
     let mut m: IndexMap<String, JsJson> = IndexMap::new();
     for (k, v) in a {
@@ -2707,7 +2690,7 @@ fn attrs_to_json(a: &Attrs) -> String {
     jsjson(&jsjson_obj_in_js_order(&m))
 }
 
-/// `JSON.parse(pair.v) as Aspects` — ts: engine.ts:511-513. Values are
+/// `JSON.parse(pair.v) as Aspects`. Values are
 /// numbers or one-level sub-maps of numbers (the Q13 model).
 fn aspects_from_json(s: &str) -> Result<Aspects> {
     let v: serde_json::Value = serde_json::from_str(s)
@@ -2750,8 +2733,9 @@ fn json_to_aspect_val(v: &serde_json::Value) -> Result<AspectVal> {
     }
 }
 
-/// `JSON.parse(pair.v) as Record<string, string|number|boolean>` —
-/// ts: engine.ts:514-515. Key order follows the document (serde_json
+/// Parse an attrs JSON pair: a flat object whose values are
+/// strings/numbers/booleans.
+/// Key order follows the document (serde_json
 /// preserve_order), which is what `Object.assign` appends in.
 fn attrs_from_json(s: &str) -> Result<Attrs> {
     let v: serde_json::Value = serde_json::from_str(s)
@@ -2781,9 +2765,7 @@ fn json_to_attr_value(v: &serde_json::Value) -> Result<AttrValue> {
 }
 
 // --------------------------------------------------------------------------
-// W3 smoke tests — T3.7 ports engine.test.ts/parallel.test.ts in full; these
-// are the minimal per-op / per-phase proof-of-life required by the wave
-// (plan §4-W3: "为每个 op/阶段写最小冒烟证明可运行").
+// Smoke tests: minimal per-op / per-phase proof-of-life.
 // --------------------------------------------------------------------------
 #[cfg(test)]
 mod smoke {
@@ -2812,7 +2794,7 @@ mod smoke {
         }
     }
 
-    /// ts: parallel.test.ts rigContent — code-registered verbs (§10).
+    /// Test rig — code-registered verbs (§10).
     fn rig(verbs: Vec<(&str, VerbContent)>, extra: impl FnOnce(&mut ContentRaw)) -> (Dictionary, CompiledContent) {
         let mut dict = core_dictionary();
         let mut map: IndexMap<String, VerbContent> = IndexMap::new();
@@ -3002,8 +2984,8 @@ mod smoke {
         let mut ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
         // IF/ROLL/DRAW/ROLLED/DRAWN are exercised by their own smokes below;
         // REFUSE cannot co-apply (it discards the draft) — its smoke is
-        // separate. PROGRESS rode the BEGIN row (skipped at completion,
-        // engine.ts:1156). ENDING x2: the second is a logged no-op.
+        // separate. PROGRESS rode the BEGIN row (skipped at completion).
+        // ENDING x2: the second is a logged no-op.
         for op in ["RELATE", "SPAWN", "SET", "SET", "SET", "REVEAL", "MOVE", "ADVANCE", "NARRATE", "SPAWN", "DESTROY", "ENDING", "ENDING"] {
             assert_eq!(ops.first().copied(), Some(op), "op order at {ops:?}");
             ops.remove(0);
@@ -3080,7 +3062,7 @@ mod smoke {
         let r1 = run(&content, &dict, state, "0:0 @ ANA PACE", 1);
         assert_eq!(r1.state.windows.len(), 1);
         // the GATE step is refused: the advance (complete+wait) is discarded,
-        // the attempt row takes firstRecordId = 2, state untouched
+        // the attempt row takes first_record_id = 2, state untouched
         let r2 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
         assert_eq!(r2.rejected, None);
         assert_eq!(r2.records.len(), 1);
@@ -3316,14 +3298,14 @@ mod smoke {
 
     #[test]
     fn records_serialize_in_the_ts_field_order() {
-        // ENG-20: the JSONL wire order is the TS object-literal order.
+        // the JSONL wire order is the pinned object-literal order.
         let (dict, content) = rig(
             vec![("PACE", pace(30, &["NARRATE \"d.\""]))],
             |_| {},
         );
         let r = run(&content, &dict, seed_state(), "0:0 @ ANA PACE", 1);
         let line = serde_json::to_string(&r.records[0]).unwrap();
-        // hand-written TS JSON.stringify shape for a BEGIN row (engine.ts:312-336)
+        // hand-written JSON.stringify shape for a BEGIN row
         let expected = concat!(
             r#"{"id":1,"kind":"action","trigger":null,"tGame":"0:0","tReal":null,"advancedMin":30,"startMin":0,"#,
             r#""window":null,"actors":[{"form":"name","name":"ANA"}],"verb":"PACE","objects":[],"instruments":[],"#,
@@ -3360,7 +3342,7 @@ mod smoke {
             r.rejected.as_deref(),
             Some("clock 0:1 is before state.now (0:2)")
         );
-        // nothing to do (the live toMin === now && !hasDue branch, ENG-18)
+        // nothing to do (the live to_min == now && !has_due branch)
         let r = advance(&content, &dict, seed_state(), "0:0", 1);
         assert!(
             r.rejected
@@ -3378,7 +3360,7 @@ mod smoke {
         });
         let r = run(&content, &dict, ended, "0:1 @ ANA PACE", 1);
         assert_eq!(r.rejected.as_deref(), Some("the story has ended — It is over."));
-        // wait-partition fold assertion (ENG-12)
+        // wait-partition fold assertion
         let mut st = new_state(5);
         let err = apply_record(
             &ActionRecord {

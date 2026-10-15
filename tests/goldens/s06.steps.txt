@@ -1,5 +1,0 @@
-ok 6
-ok 4
-ok 4
-ok 4
-ok 3

@@ -1,12 +1,11 @@
-//! T3.6 smoke tests for the session layer (lenient/render/game) — the full
-//! TS-test ports are T3.7 (plan §4.7). Anchors exercised here, all pinned by
-//! test/script-play.test.ts and test/endings.test.ts:
+//! Smoke tests for the session layer (lenient/render/game). Anchors
+//! exercised here, all pinned by the acceptance suites:
 //! - lenient: bare-verb default player, multi-word names, role-phrase groups,
 //!   canonical passthrough, suggestion surfaces, case-insensitive names;
 //! - render: the ending banner/notice texts (UI-02), the prose closing line;
 //! - Game: from_script → handle_line → journal/story/look → undo → bogus
-//!   error, visible/inspect projection, suggestions with `s[0]` pinned
-//!   (script-play.test.ts:421), and BOTH game-over texts (UI-02) through a
+//!   error, visible/inspect projection, suggestions with `s[0]` pinned,
+//!   and BOTH game-over texts (UI-02) through a
 //!   minimal endings script.
 
 use chorus::content::content::{compile_content, ContentRaw, EndingDef, RecipeDef, SlotDef, VerbContent};
@@ -24,10 +23,10 @@ const FLYER: &str = include_str!(concat!(
     "/scripts/the-nightjar-flyer.txt"
 ));
 
-/// ts: test/script-play.test.ts:18-29 — the v0.5 test adapter: settle each
+/// The v0.5 test adapter: settle each
 /// committed action's window right away, so loop tests keep their
-/// pre-parallel commit-completes-at-once shape. (T3.7's ports of the
-/// game-loop describe mount this same helper.)
+/// pre-parallel commit-completes-at-once shape. (The game-loop suites
+/// mount this same helper.)
 fn auto_settle_line(game: &mut Game, line: &str) -> Result<chorus::session::game::Turn> {
     let t = game.handle_line(line)?;
     let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
@@ -42,7 +41,7 @@ fn auto_settle_line(game: &mut Game, line: &str) -> Result<chorus::session::game
     Ok(t)
 }
 
-// ------------------------------- lenient --------------------------------
+// ------------------------------- lenient -----------------------------------
 
 #[test]
 fn lenient_routes_the_pinned_phrases() {
@@ -112,11 +111,10 @@ fn lenient_routes_the_pinned_phrases() {
     assert!(parse_player_input("read THE VANE LEDGER", &ctx).is_ok());
 }
 
-// -------------------------------- render --------------------------------
+// -------------------------------- render -----------------------------------
 
 #[test]
 fn render_banner_notice_and_the_prose_closing_line() {
-    // ts: test/endings.test.ts:373-378
     let e = chorus::core::types::Ending {
         id: "DESPAIR_DEATH".into(),
         title: "No More".into(),
@@ -126,7 +124,7 @@ fn render_banner_notice_and_the_prose_closing_line() {
     assert_eq!(ending_notice(&e), "the story has ended — No More (melancholy).");
 
     // the prose of the ending step carries the closing line; others do not
-    // (endings.test.ts:381-391) — a WAIT recipe whose outcomes end the story
+    // — a WAIT recipe whose outcomes end the story
     let dict = core_dictionary();
     let raw = ending_rig();
     let content = compile_content(&raw, &dict, &[]).unwrap();
@@ -164,11 +162,11 @@ fn render_banner_notice_and_the_prose_closing_line() {
     assert_eq!(lines[lines.len() - 1], "— No More —");
 }
 
-// --------------------------------- Game ---------------------------------
+// --------------------------------- Game ------------------------------------
 
 #[test]
 fn a_script_becomes_a_playable_game() {
-    // ts: test/script-play.test.ts:337-350 ('a script becomes a playable game')
+    // ('a script becomes a playable game')
     let dict = core_dictionary();
     let mut game = Game::from_script(FLYER, dict).unwrap();
     let turn = auto_settle_line(&mut game, "read the manifest").unwrap();
@@ -199,7 +197,6 @@ fn a_script_becomes_a_playable_game() {
 
 #[test]
 fn the_table_only_shows_what_the_inspector_has_met() {
-    // ts: test/script-play.test.ts:332-347
     let dict = core_dictionary();
     let mut game = Game::from_script(FLYER, dict).unwrap();
     let names = |game: &Game| -> Vec<String> { game.visible().iter().map(|e| e.name.clone()).collect() };
@@ -222,7 +219,6 @@ fn the_table_only_shows_what_the_inspector_has_met() {
 
 #[test]
 fn inspect_reads_a_visible_cards_face() {
-    // ts: test/script-play.test.ts:349-357
     let dict = core_dictionary();
     let game = Game::from_script(FLYER, dict).unwrap();
     let face = game.inspect("the manifest");
@@ -236,7 +232,7 @@ fn inspect_reads_a_visible_cards_face() {
 
 #[test]
 fn suggestions_are_concrete_executable_actions() {
-    // ts: test/script-play.test.ts:360-368 — the pinned s[0] (line 421)
+    // The pinned s[0] (line 421)
     let dict = core_dictionary();
     let game = Game::from_script(FLYER, dict).unwrap();
     let s = game.suggestions().unwrap();
@@ -258,7 +254,7 @@ fn suggestions_are_concrete_executable_actions() {
 
 #[test]
 fn game_over_speaks_both_texts_and_undo_reopens() {
-    // ts: test/endings.test.ts:359-367 + UI-02's two texts
+    // + UI-02's two texts
     let dict = core_dictionary();
     let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
     game.handle_line("wait").unwrap();
@@ -294,9 +290,8 @@ fn game_over_speaks_both_texts_and_undo_reopens() {
     assert_eq!(game.handle_line("wait").unwrap().kind, TurnKind::Action);
 }
 
-// ------------------------------ fixtures --------------------------------
+// ------------------------------ fixtures -----------------------------------
 
-/// ts: test/endings.test.ts:311-328 (`gameScript`)
 const GAME_SCRIPT: &str = "
 script: The Long Fall
 player: ANA
@@ -321,7 +316,7 @@ templates:
   WAIT says \"{actors} wait.\"
 ";
 
-/// ts: test/endings.test.ts:20-30 (`waitContent` + `endingsTable`) — a WAIT
+/// A WAIT
 /// verb whose recipe ends the story, plus the §10 endings table.
 fn ending_rig() -> ContentRaw {
     let mut endings = indexmap::IndexMap::new();
@@ -370,7 +365,7 @@ fn ending_rig() -> ContentRaw {
     }
 }
 
-/// ts: test/seed.ts:159-195 (the ANA-in-HOUSE slice the endings rig plays on)
+/// (the ANA-in-HOUSE slice the endings rig plays on)
 fn seed_world_with_ana() -> chorus::core::types::State {
     use chorus::core::types::{add_entity, new_state, AttrValue, Attrs, Entity};
     let mut s = new_state(0);

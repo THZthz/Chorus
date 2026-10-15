@@ -1,21 +1,18 @@
-//! Append-only log + JSONL persistence — ts: src/engine/store.ts (spec §7).
-//! The log is the source of truth; entity/relation tables are projections
-//! built by fold.
+//! Append-only log + JSONL persistence (spec §7). The log is the source of
+//! truth; entity/relation tables are projections built by fold.
 //!
 //! Byte identity (law 1): [`save_log`] writes one
 //! `serde_json::to_string(record)` per row — the serde field order on
-//! [`ActionRecord`] and its payload types is pinned to the TS object-literal
-//! order, and serde_json's string escaping matches `JSON.stringify` exactly
-//! (`\"` `\\`, `\b\t\n\f\r`, other <0x20 as lowercase `\u00xx`, DEL and
-//! non-ASCII raw — Node-verified in js.rs), so the bytes are TS-identical.
+//! [`ActionRecord`] and its payload types is pinned, and serde_json's
+//! string escaping matches `JSON.stringify` exactly (`\"` `\\`,
+//! `\b\t\n\f\r`, other <0x20 as lowercase `\u00xx`, DEL and non-ASCII raw —
+//! see js.rs), so save → load → save reproduces the same bytes.
 //!
-//! Documented divergences (ENG-20, plan §2.2 — both sanctioned, neither
-//! test-pinned):
-//! - the write is atomic (tmp + rename) where TS `writeFileSync` truncates
-//!   in place; the crash-window behavior differs, the game-visible bytes do
-//!   not;
-//! - [`load_log`] errors carry the file name and 1-based line number where
-//!   TS surfaced the bare `JSON.parse` message.
+//! Documented divergences (both sanctioned, neither test-pinned):
+//! - the write is atomic (tmp + rename) rather than an in-place truncate;
+//!   the crash-window behavior differs, the game-visible bytes do not;
+//! - [`load_log`] errors carry the file name and 1-based line number, not
+//!   the bare `JSON.parse` message.
 
 use std::fs;
 use std::path::Path;
@@ -24,15 +21,13 @@ use crate::core::types::State;
 use crate::engine::engine::ActionRecord;
 use crate::js::{ChorusError, Result};
 
-/// ts: src/engine/store.ts:7-22 (`Log`). Append-only: the invariant is
-/// maintained by the CALLER (play.ts:164 truncates `records` directly for
-/// undo — the Rust mirror is [`Log::truncate`], ENG-02).
+/// The append-only action log. Append-only: the invariant is maintained by
+/// the CALLER — undo truncates `records` directly (see [`Log::truncate`]).
 pub struct Log {
     pub records: Vec<ActionRecord>,
-    /// ts: store.ts:9 — the constructor stores the base state. Production
-    /// code never reads it (ENG-02 verified: the only readers are the
-    /// decks/dice test fixtures, 2 files / 4 call sites). Kept public as a
-    /// TEST FIXTURE, not engine state; do not build gameplay on it.
+    /// The base state the constructor stores. Production code never reads
+    /// it; the only readers are test fixtures. Kept public as a TEST
+    /// FIXTURE, not engine state; do not build gameplay on it.
     pub initial_state: State,
 }
 
@@ -44,27 +39,25 @@ impl Log {
         }
     }
 
-    /// ts: store.ts:11-13
+    /// The next record id: one past the last appended record.
     #[must_use]
     pub fn next_record_id(&self) -> i64 {
         self.records.len() as i64 + 1
     }
 
-    /// ts: store.ts:15-17
+    /// Append every record produced by an execution step, in order.
     pub fn append_all(&mut self, records: Vec<ActionRecord>) {
         self.records.extend(records);
     }
 
-    /// The undo truncation point — ts: play.ts:164
-    /// `this.log.records.length = length`. (`Log.journal()` is NOT ported:
-    /// dead code per plan §1.2 / UI-05.)
+    /// The undo truncation point: drop every record past `len`; undo then
+    /// re-folds the surviving prefix (see [`crate::engine::fold::fold_up_to`]).
     pub fn truncate(&mut self, len: usize) {
         self.records.truncate(len);
     }
 }
 
-/// ts: src/engine/store.ts:24-27 — one `JSON.stringify(record)` per line,
-/// `\n`-joined with a trailing newline.
+/// One JSON record per line, `\n`-joined with a trailing newline.
 pub fn save_log(path: &Path, records: &[ActionRecord]) -> Result<()> {
     let mut body = String::new();
     for r in records {
@@ -84,11 +77,10 @@ pub fn save_log(path: &Path, records: &[ActionRecord]) -> Result<()> {
     Ok(())
 }
 
-/// ts: src/engine/store.ts:29-32 — `readFileSync(path, 'utf8')
-/// .split('\n').filter(Boolean).map(JSON.parse)`. ONLY empty lines are
-/// dropped (a whitespace-only line is truthy in JS and would be fed to
-/// JSON.parse, which then throws — the Rust error carries the line number,
-/// the documented divergence).
+/// One JSON record per line. ONLY empty lines are dropped (a
+/// whitespace-only line is truthy in JS and would be fed to JSON.parse,
+/// which then throws — here the error carries the file name and 1-based
+/// line number, the documented divergence).
 pub fn load_log(path: &Path) -> Result<Vec<ActionRecord>> {
     let text = fs::read_to_string(path)
         .map_err(|e| ChorusError::new(format!("cannot read {}: {e}", path.display())))?;
@@ -106,8 +98,8 @@ pub fn load_log(path: &Path) -> Result<Vec<ActionRecord>> {
 }
 
 // --------------------------------------------------------------------------
-// W3 tests: the JSONL byte-identity discipline (law 1 / ENG-20). The full
-// dice.test.ts:917-933 port lands in T3.7; these pin the store contract.
+// Tests: the JSONL byte-identity discipline (law 1). These pin the store
+// contract.
 // --------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -236,7 +228,7 @@ mod tests {
 
     #[test]
     fn same_seed_double_run_is_byte_identical() {
-        // the dice.test.ts:917-933 judgment, engine-shaped: two identical
+        // the law-1 judgment, engine-shaped: two identical
         // plays produce identical JSONL bytes
         let a = play_two_turns();
         let b = play_two_turns();
@@ -267,7 +259,7 @@ mod tests {
         let records = play_two_turns();
         log.append_all(records.clone());
         assert_eq!(log.next_record_id(), records.len() as i64 + 1);
-        log.truncate(1); // ts: play.ts:164 — the undo truncation
+        log.truncate(1); // the undo truncation
         assert_eq!(log.records.len(), 1);
         assert_eq!(log.records[0], records[0]);
         assert_eq!(log.next_record_id(), 2);

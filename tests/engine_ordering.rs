@@ -1,17 +1,13 @@
-//! §3.14 ordering/atomicity matrix — the T3.4 dedicated ordering tests
-//! (parallel.test.ts is the template but its full port is T3.7; these tests
-//! target the ordering semantics DIRECTLY).
+//! §3.14 ordering/atomicity matrix — dedicated ordering tests targeting
+//! the ordering semantics DIRECTLY.
 //!
-//! **PR1-01 (closed)**: every expectation below is now DUMP-MEASURED — the
-//! W4 golden library (rust/tests/goldens/, tools/golden-dump.ts) replays each
-//! rig byte-identically in TS and Rust (rust/tests/golden.rs, family
-//! `anchor-*`), and each test names its golden scenario at the measured
-//! values. The hand-derived values survived the cross-language check
-//! unchanged; the annotations stay as the provenance record.
+//! Every expectation below is a FROZEN EXPECTATION — the literal values were
+//! dump-measured once against these ordering rigs (family `anchor-*`), and
+//! each test names its scenario at the measured values; the annotations stay
+//! as the provenance record.
 //!
-//! T3.5 has landed tests/common/snap.rs, so the fold-equality assertions in
-//! this file compare through the REAL `snap()` (the `sig()` stand-in is gone;
-//! TS: test/snap.ts — same field set, PR2-11 order disciplines).
+//! The fold-equality assertions in this file compare through the shared
+//! `snap()` (tests/common/snap.rs — same field set and order disciplines).
 
 use chorus::content::content::{
     compile_content, CompiledContent, ContentRaw, EndingDef, PrototypeDef, RecipeDef, SlotDef, TriggerDef, VerbContent,
@@ -31,7 +27,7 @@ use chorus::js::Result;
 mod common;
 use common::snap::snap;
 
-// ---------------------------------------------------------------- rig ----
+// ---------------------------------------------------------------- rig ------
 
 fn verb_of(name: &str, slots: Vec<SlotDef>, duration: i64, out: &[&str]) -> (String, VerbContent) {
     (
@@ -70,9 +66,9 @@ fn object_slot(query: Option<&str>) -> SlotDef {
     }
 }
 
-/// ts: parallel.test.ts rigContent — rig verbs are code-registered (§10).
-/// Each test builds a FRESH Dictionary (TEST-10: per-test isolation is the
-/// vitest-equivalent discipline and affects reserved-word collisions).
+/// RigContent — rig verbs are code-registered (§10).
+/// Each test builds a FRESH Dictionary (per-test isolation affects
+/// reserved-word collisions).
 fn rig(verbs: Vec<(String, VerbContent)>, extra: impl FnOnce(&mut ContentRaw)) -> (Dictionary, CompiledContent) {
     let mut dict = core_dictionary();
     let mut map = indexmap::IndexMap::new();
@@ -91,7 +87,7 @@ fn rig(verbs: Vec<(String, VerbContent)>, extra: impl FnOnce(&mut ContentRaw)) -
     (dict, content)
 }
 
-/// A lean seed world (test/snap.ts's seedState is T3.5's fixture; the
+/// A lean seed world (the
 /// ordering rig needs only characters + items with insert-order variance).
 fn seed() -> State {
     let mut s = new_state(0);
@@ -118,7 +114,7 @@ fn seed() -> State {
 }
 
 /// An item inserted with an `expiresAt` attr (the §9.36 materialized form —
-/// tests write the engine fact directly, exactly like parallel.test.ts:189).
+/// tests write the engine fact directly).
 fn expiring_item(s: &mut State, id: &str, name: &str, at: i64) {
     let mut attrs = Attrs::new();
     attrs.insert("container".to_string(), AttrValue::Str("house".to_string()));
@@ -197,11 +193,11 @@ fn outcome_ops(r: &ActionRecord) -> Vec<&str> {
     r.outcomes.iter().map(|o| o.op.as_str()).collect()
 }
 
-// ------------------------------------------------------------- matrix ----
+// ------------------------------------------------------------- matrix ------
 
 /// §3.14 row 1a — advance pass: due windows in (end, beginId, clause) order;
-/// a completion at minute m fires BEFORE slot-m events. ts: engine.ts:
-/// 1073/1076. golden: anchor-complete-before-slot-event (W4 dump 实测:
+/// a completion at minute m fires BEFORE slot-m events.
+/// scenario: anchor-complete-before-slot-event (frozen expectation, dump-measured:
 /// [complete, event, wait] at minute 60).
 #[test]
 fn advance_pass_completion_precedes_same_minute_slot_events() {
@@ -229,7 +225,7 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
     // pure advance to minute 60: completion at 60 BEFORE the slot-60 event
     let adv = run_clock(&content, &dict, r1.state, "0:2", r1.records.len() as i64 + 1);
     assert_eq!(adv.rejected, None);
-    // golden: anchor-complete-before-slot-event (W4 dump 实测)
+    // scenario: anchor-complete-before-slot-event (frozen expectation, dump-measured)
     assert_eq!(kinds(&adv.records), ["complete", "event", "wait"]);
     assert_eq!(adv.records[0].trigger.as_deref(), Some("PACE_A"));
     assert_eq!(adv.records[1].trigger.as_deref(), Some("the_chime"));
@@ -243,8 +239,8 @@ fn advance_pass_completion_precedes_same_minute_slot_events() {
 }
 
 /// §3.14 row 1b — chronological pass: earlier completion first, each
-/// same-minute slot event follows its completion. ts: engine.ts:1071-1097.
-/// golden: anchor-advance-chronological (W4 dump 实测: [complete FAST, event
+/// same-minute slot event follows its completion.
+/// scenario: anchor-advance-chronological (frozen expectation, dump-measured: [complete FAST, event
 /// mark, complete SLOW, event ninety, wait]).
 #[test]
 fn advance_pass_is_chronological_across_windows_and_slots() {
@@ -281,7 +277,7 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         (r1.records.len() + r2.records.len()) as i64 + 1,
     );
     assert_eq!(adv.rejected, None);
-    // golden: anchor-advance-chronological (W4 dump 实测) — FAST closes at
+    // scenario: anchor-advance-chronological (frozen expectation, dump-measured) — FAST closes at
     // 30 (before the halfhour mark), SLOW at 90 (before the ninety mark) —
     // completions lead, same-minute events follow.
     let shapes: Vec<(Option<&str>, Option<&str>)> = adv
@@ -311,8 +307,8 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
 /// §3.14 row 1c — due-tie broken by (beginId, clause): two same-end windows
 /// from DIFFERENT begins close in begin order; two same-end windows from ONE
 /// begin (clause offsets landing on the same minute) close in clause order.
-/// ts: engine.ts:1073. golden: anchor-due-tie / anchor-due-tie-clause
-/// (W4 dump 实测).
+/// . scenario: anchor-due-tie / anchor-due-tie-clause
+/// (frozen expectation, dump-measured).
 #[test]
 fn due_window_ties_break_by_begin_id_then_clause() {
     // (a) beginId tie-break: two 30-minute windows both [0,30]
@@ -363,7 +359,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     .unwrap();
     assert_eq!(r.rejected, None);
     let windows: Vec<(i64, i64)> = r.state.windows.values().map(|w| (w.start, w.end)).collect();
-    // golden: anchor-due-tie-clause (W4 dump 实测) — clause 0 spans [0,30],
+    // scenario: anchor-due-tie-clause (frozen expectation, dump-measured) — clause 0 spans [0,30],
     // clause 1 (offset 30, duration 0) [30,30]
     assert_eq!(windows, vec![(0, 30), (30, 30)]);
     let adv = run_clock(&content, &dict, r.state, "0:1", r.records.len() as i64 + 1);
@@ -380,8 +376,8 @@ fn due_window_ties_break_by_begin_id_then_clause() {
 }
 
 /// §3.14 row 2a — same-halfhour expiries fire in ENTITIES INSERTION order
-/// (the hoisted snapshot preserves State.entities order; ts: engine.ts:
-/// 1065→1238). golden: anchor-expiry-insertion-order (W4 dump 实测).
+/// (the hoisted snapshot preserves State.entities insert order).
+/// scenario: anchor-expiry-insertion-order (frozen expectation, dump-measured).
 #[test]
 fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     let (dict, content) = rig(vec![], |_| {});
@@ -392,7 +388,7 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
     let base = clone_state(&state);
     let adv = run_clock(&content, &dict, state, "0:1", 1);
     assert_eq!(adv.rejected, None);
-    // golden: anchor-expiry-insertion-order (W4 dump 实测) — insertion
+    // scenario: anchor-expiry-insertion-order (frozen expectation, dump-measured) — insertion
     // order, NOT alphabetical
     assert_eq!(kinds(&adv.records), ["event", "event", "wait"]);
     assert_eq!(triggers(&adv.records), [Some("expire:ZOMBIE_CARD"), Some("expire:APPLE_CARD"), None]);
@@ -405,7 +401,7 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
 
 /// §3.14 row 2b — authored `on expire of NAME`: FIRST match in declaration
 /// order wins; a name with no authored trigger takes the built-in destroy.
-/// ts: engine.ts:1252-1265. golden: anchor-on-expire-first-match (W4 dump 实测).
+/// . scenario: anchor-on-expire-first-match (frozen expectation, dump-measured).
 #[test]
 fn authored_on_expire_first_match_in_declaration_order() {
     let (dict, content) = rig(vec![], |raw| {
@@ -439,7 +435,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
     let base = clone_state(&state);
     let adv = run_clock(&content, &dict, state, "0:1", 1);
     assert_eq!(adv.rejected, None);
-    // golden: anchor-on-expire-first-match (W4 dump 实测) — the first
+    // scenario: anchor-on-expire-first-match (frozen expectation, dump-measured) — the first
     // authored match only, the un-authored name takes the built-in
     assert_eq!(
         triggers(&adv.records),
@@ -466,11 +462,11 @@ fn authored_on_expire_first_match_in_declaration_order() {
 /// §3.14 row 2c — the expiry snapshot is hoisted ONCE per pass: expiries
 /// CREATED by this pass's outcomes do not cascade; they resolve at the NEXT
 /// advance. Also pins the §6.7 anchoring: SET expires computes from the
-/// window's START clock (engine.ts:619 + fireWindow now = w.start, :1147).
-/// ts: engine.ts:1062-1067. golden: anchor-expiry-hoist-no-cascade
-/// (W4 dump 实测: no expiry event in pass 1; EGG expires at minute
-/// 60 = window START + 1h, not 90; the golden's egg sentinel is 2^53-1 —
-/// identical in TS and Rust — where this rig uses i64::MAX-1).
+/// window's START clock (fireWindow now = w.start).
+/// scenario: anchor-expiry-hoist-no-cascade
+/// (frozen expectation, dump-measured: no expiry event in pass 1; EGG expires at minute
+/// 60 = window START + 1h, not 90; the frozen egg sentinel is 2^53-1 —
+/// identical across engines — where this rig uses i64::MAX-1).
 #[test]
 fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let (dict, content) = rig(
@@ -500,7 +496,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let _ = &base;
     let complete = &adv1.records[0];
     assert_eq!(outcome_ops(complete), ["SET"]);
-    // golden: anchor-expiry-hoist-no-cascade (W4 dump 实测) — anchored to
+    // scenario: anchor-expiry-hoist-no-cascade (frozen expectation, dump-measured) — anchored to
     // the window START (minute 0): 0 + 60 = 60
     let egg = &adv1.state.entities["egg"];
     assert_eq!(egg.attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
@@ -521,9 +517,9 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
 
 /// §3.14 row 3 — REFUSE discards the whole advance pass (records AND clock
 /// AND the would-have-closed window) and the id is RECYCLED: the refusal row
-/// takes firstRecordId and the next attempt mints the same id again (ENG-11;
-/// foldUpTo's `<` filter depends on it). ts: engine.ts:257-262/1070.
-/// golden: anchor-refuse-id-recycle (W4 dump 实测: refusal row id = 2 twice;
+/// takes firstRecordId and the next attempt mints the same id again (the
+/// fold_up_to `<` filter depends on it).
+/// scenario: anchor-refuse-id-recycle (frozen expectation, dump-measured: refusal row id = 2 twice;
 /// the real advance closes with ids 2,3).
 #[test]
 fn refuse_discards_advance_and_recycles_ids() {
@@ -543,7 +539,7 @@ fn refuse_discards_advance_and_recycles_ids() {
     let r2 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
     assert_eq!(r2.rejected, None, "a refusal is a logged result, not a rejection");
     assert_eq!(r2.records.len(), 1);
-    assert_eq!(r2.records[0].id, 2, "golden anchor-refuse-id-recycle: the refusal row reuses firstRecordId");
+    assert_eq!(r2.records[0].id, 2, "a refusal row reuses the pass's firstRecordId");
     assert_eq!(r2.records[0].advanced_min, 0, "§6.5: no window elapses");
     assert_eq!(outcome_ops(&r2.records[0]), ["REFUSE"]);
     assert!(matches!(&r2.records[0].outcomes[0].args[0], Arg::Str { v } if v == "not without a lantern."));
@@ -553,14 +549,14 @@ fn refuse_discards_advance_and_recycles_ids() {
     assert_eq!(snap(&r2.state), snap(&r1.state));
     // id recycle: the SAME attempt again mints the SAME id
     let r3 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
-    assert_eq!(r3.records[0].id, 2, "golden anchor-refuse-id-recycle: recycled id mints identically");
+    assert_eq!(r3.records[0].id, 2, "a recycled id mints identically on replay");
     // a real advance now closes the still-open window with ids 2,3
     let begin_only_state = clone_state(&r1.state);
     let adv = run_clock(&content, &dict, r1.state, "0:1", 2);
     assert_eq!(adv.records.iter().map(|r| r.id).collect::<Vec<_>>(), vec![2, 3]);
     assert_eq!(adv.state.windows.len(), 0);
     assert_eq!(adv.state.now, 30);
-    // law 1 + foldUpTo: folding everything matches the played state; folding
+    // law 1 + fold_up_to: folding everything matches the played state; folding
     // ONLY the begin row (< 2) matches the pre-advance state — the `<`
     // filter is what makes undo-past-a-refusal work
     let mut full = r1.records.clone();
@@ -581,9 +577,9 @@ fn refuse_discards_advance_and_recycles_ids() {
 /// §3.14 row 4 — the wait row is the ONLY record that moves `now`; wait
 /// spans must partition time (fold assertion); the completion's tGame NEVER
 /// feeds mechanics when its window is in the table (anchored to w.start) but
-/// the bare-row tGame fallback exists for fold probes (ENG-12: keep it).
-/// ts: engine.ts:953-963/975-978. golden: anchor-wait-partition — the fold
-/// values below are the dump-measured fold of that golden's log (W4).
+/// the bare-row tGame fallback exists for fold probes — keep it).
+/// scenario: anchor-wait-partition — the fold
+/// values below are the dump-measured fold of that scenario's log (frozen).
 #[test]
 fn wait_is_the_only_clock_mover_and_must_partition_time() {
     let (dict, content) = rig(
@@ -655,7 +651,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     };
     let mut st = seed();
     apply_record(&bare_complete, &mut st, &dict, &content).unwrap();
-    // golden: anchor-wait-partition (W4 dump 实测 via fold) — 0:5 = day 0,
+    // scenario: anchor-wait-partition (frozen expectation, dump-measured via fold) — 0:5 = day 0,
     // halfhour 5 = minute 150; 150 + 30 = 180
     assert_eq!(st.entities["book"].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
 }
@@ -663,8 +659,8 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
 /// §3.14 row 5 — a completion that cannot apply refuses ONLY that window:
 /// the partial effects are discarded, the attempt is logged with a REFUSE
 /// marker, the window still closes, and the pass does NOT roll back (no
-/// livelock). ts: engine.ts:1154-1168. golden: anchor-window-completion-
-/// failure (W4 dump 实测: [complete(REFUSE), wait]).
+/// livelock). scenario: anchor-window-completion-
+/// failure (frozen expectation, dump-measured: [complete(REFUSE), wait]).
 #[test]
 fn window_completion_failure_refuses_only_that_window() {
     let (dict, content) = rig(
@@ -694,7 +690,7 @@ fn window_completion_failure_refuses_only_that_window() {
 
 /// §3.14 row 6 — the first ENDING wins; later ENDINGs are logged no-ops; the
 /// ended state gates every later step with the story-over message (§9.35).
-/// ts: engine.ts:154-156/735. golden: anchor-first-ending (W4 dump 实测:
+/// . scenario: anchor-first-ending (frozen expectation, dump-measured:
 /// ended.id = QUIET_DUSK).
 #[test]
 fn first_ending_wins_and_gates_the_story() {
@@ -756,9 +752,9 @@ fn first_ending_wins_and_gates_the_story() {
 
 /// §3.14 row 7a — ROLL last-wins inside one outcome list: the concrete rows
 /// carry both ROLLED results and the NARRATE prose carries the SECOND total.
-/// ts: engine.ts:775. golden: anchor-roll-last-wins (W4 dump 实测: the
+/// . scenario: anchor-roll-last-wins (frozen expectation, dump-measured: the
 /// ROLLED (total, ctrAfter) pairs and the second-total prose ride the
-/// golden's complete row verbatim).
+/// frozen complete row verbatim).
 #[test]
 fn roll_binds_last_wins_within_a_list() {
     let (dict, content) = rig(
@@ -786,7 +782,7 @@ fn roll_binds_last_wins_within_a_list() {
     else {
         panic!("ROLLED(total, ctrAfter)");
     };
-    // golden: anchor-roll-last-wins (W4 dump 实测) — counters 0 and 1
+    // scenario: anchor-roll-last-wins (frozen expectation, dump-measured) — counters 0 and 1
     // consumed in order
     assert_eq!((*t1, *c1, *t2, *c2),
         (chorus::core::dice::roll_die(dice_seed, 0, 6), 1, chorus::core::dice::roll_die(dice_seed, 1, 6), 2));
@@ -798,11 +794,11 @@ fn roll_binds_last_wins_within_a_list() {
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
-/// §3.14 row 7b — the dice binding is PER CLAUSE (engine.ts:233-235): a
+/// §3.14 row 7b — the dice binding is PER CLAUSE: a
 /// ROLL in clause one is NOT visible to clause two's IF — its unbound
 /// `roll` refuses clause two's window at completion (the IF is opaque to
-/// the gate, so the step itself commits). ts: engine.ts:233-235/890-896.
-/// golden: anchor-roll-per-clause (W4 dump 实测: complete rows
+/// the gate, so the step itself commits).
+/// scenario: anchor-roll-per-clause (frozen expectation, dump-measured: complete rows
 /// [CAST: ROLLED+NARRATE, BARE: ROLLED+NARRATE on its own roll]).
 #[test]
 fn roll_binding_resets_per_clause() {
@@ -868,7 +864,7 @@ fn roll_binding_resets_per_clause() {
     assert_eq!(completes[0].trigger.as_deref(), Some("CAST"));
     assert_eq!(outcome_ops(completes[0]), ["ROLLED", "NARRATE"], "clause one saw its roll");
     assert_eq!(outcome_ops(completes[1]), ["ROLLED", "NARRATE"], "clause two rolled on its own");
-    // golden: anchor-roll-per-clause (W4 dump 实测) — CAST consumes counter
+    // scenario: anchor-roll-per-clause (frozen expectation, dump-measured) — CAST consumes counter
     // 0 (one die); BARE consumes counter 1 — if the binding leaked, clause
     // two's prose would carry clause one's total
     let cast_total = chorus::core::dice::roll_die(dice_seed, 0, 6);
@@ -885,8 +881,8 @@ fn roll_binding_resets_per_clause() {
 /// §3.14 row 8 — ADVANCE extends the pass target and the extension rides the
 /// wait row's span (replay-safe: the fold never re-derives it). Also pins
 /// the zero-duration-window due-at-begin minute and the busy/station gate.
-/// ts: engine.ts:1085-1086/1099-1100. golden: anchor-advance-extension /
-/// anchor-flash-zero-duration (W4 dump 实测: wait span 90 = 30 (window) +
+/// . scenario: anchor-advance-extension /
+/// anchor-flash-zero-duration (frozen expectation, dump-measured: wait span 90 = 30 (window) +
 /// 60 (ADVANCE)).
 #[test]
 fn advance_extension_lands_in_the_wait_span() {
@@ -905,7 +901,7 @@ fn advance_extension_lands_in_the_wait_span() {
     assert_eq!(adv.rejected, None);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     let wait = &adv.records[1];
-    // golden: anchor-advance-extension (W4 dump 实测) — the wait row spans
+    // scenario: anchor-advance-extension (frozen expectation, dump-measured) — the wait row spans
     // [0, 90] — the ADVANCE extended the target
     assert_eq!((wait.advanced_min, wait.start_min), (90, Some(0)));
     assert_eq!(adv.state.now, 90);
@@ -922,9 +918,9 @@ fn advance_extension_lands_in_the_wait_span() {
 
 /// §3.14 row 9 — the station/lock gates (§6.7): one window per verb station;
 /// committed cards busy in ANY committed role while actors stay free; locks
-/// release exactly when the pass resolves their window. ts: engine.ts:
-/// 277-299. golden: anchor-station-locks (W4 dump 实测 — the two rejection
-/// messages ride that golden's steps sidecar byte-for-byte).
+/// release exactly when the pass resolves their window.
+/// scenario: anchor-station-locks (frozen expectation, dump-measured — the two rejection
+/// messages are frozen byte-for-byte).
 #[test]
 fn stations_and_committed_locks_gate_phase_two() {
     let seize = VerbContent {
@@ -987,7 +983,7 @@ fn stations_and_committed_locks_gate_phase_two() {
 /// §3.14 row 10 — interleaved windows fold byte-for-byte: two overlapping
 /// stations + a JSONL save/load/fold round trip over a log that ENDS with
 /// open windows; fold_up_to drops the second turn whole.
-/// golden: anchor-overlapping-windows (W4 dump 实测 ids/windows).
+/// scenario: anchor-overlapping-windows (frozen expectation, dump-measured ids/windows).
 #[test]
 fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     let (dict, content) = rig(
@@ -1020,7 +1016,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     let replayed = fold(&loaded, &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
     assert_eq!(replayed.windows.len(), 2);
-    // window table shape (golden: anchor-overlapping-windows, W4 dump 实测):
+    // window table shape (scenario: anchor-overlapping-windows, frozen expectation, dump-measured):
     // PACE_A [0,60] key "1:0", PACE_B [0,30] key "2:0"
     let wa = r2.state.windows.get("1:0").unwrap();
     let wb = r2.state.windows.get("2:0").unwrap();
@@ -1035,8 +1031,8 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
 
 /// §3.14 row 11 — events do not respect locks: an expiry destroys a locked
 /// card mid-window and the completion DROPS the dead ref (the SET finds no
-/// targets; the DESTROY concretizes empty). ts: engine.ts:1140-1143 (dead
-/// refs DROP) — golden: anchor-expiry-locked-drop (W4 dump 实测: complete
+/// targets; the DESTROY concretizes empty; dead
+/// refs DROP) — scenario: anchor-expiry-locked-drop (frozen expectation, dump-measured: complete
 /// outcomes = [DESTROY] with [] args).
 #[test]
 fn expiry_of_a_locked_card_drops_the_completion_refs() {
@@ -1075,8 +1071,8 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
 
 /// §3.14 row 12 — slot cadence: a trigger fires once per crossed halfhour in
 /// declaration order across MULTIPLE slots, and `once` fires only the first
-/// crossing. ts: engine.ts:1228-1237. golden: anchor-slot-cadence-once
-/// (W4 dump 实测: [mark@30, once_dusk@30, mark@60, wait]).
+/// crossing. scenario: anchor-slot-cadence-once
+/// (frozen expectation, dump-measured: [mark@30, once_dusk@30, mark@60, wait]).
 #[test]
 fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     let (dict, content) = rig(
@@ -1106,7 +1102,7 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     );
     let adv = run_clock(&content, &dict, seed(), "0:2", 1); // walk 0 → 60
     assert_eq!(adv.rejected, None);
-    // golden: anchor-slot-cadence-once (W4 dump 实测) — slot 1 (minute 30):
+    // scenario: anchor-slot-cadence-once (frozen expectation, dump-measured) — slot 1 (minute 30):
     // mark then once_dusk (declaration order); slot 2 (minute 60): the
     // second mark declaration
     assert_eq!(

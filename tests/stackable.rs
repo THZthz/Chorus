@@ -1,15 +1,14 @@
-//! Port of test/stackable.test.ts (21 tests) — F1: stackable cards, multiple
-//! same-name instances (spec §9.38, plan v0.4 F1). Declared with `stackable`
+//! Stackable cards (21 tests): multiple
+//! same-name instances (spec §9.38). Declared with `stackable`
 //! on entity/prototype lines; the name becomes a POOL of living copies
 //! addressed oldest-first; engine-written expiry destroys go by id while
 //! authored name-addressed outcomes hit the oldest.
 //!
-//! Structure mirrors the TS `describe` blocks one-to-one (plan §5.2); every
-//! test builds a FRESH Dictionary (TEST-10: the TS module-level
-//! `dict`/`poolDict` pair becomes per-test constructors — `pool_dict()`
-//! registers the rig's own lexemes STEW/PROBE/CALM/DECAY). toThrow / toMatch
-//! patterns are copied CHARACTER FOR CHARACTER from the TS literals. TS
-//! object-identity assertions (`r.state === pooled`) have no Rust observable:
+//! Every test builds a FRESH Dictionary (the module-level dict pair becomes
+//! per-test constructors — `pool_dict()`
+//! registers the rig's own lexemes STEW/PROBE/CALM/DECAY). Error-message
+//! patterns are copied CHARACTER FOR CHARACTER from the frozen literals. JS
+//! object-identity semantics (`r.state === pooled`) have no Rust observable:
 //! `settle_step` hands the ORIGINAL (never-mutated) state back on a refusal,
 //! as a value — `snap()` equality IS the semantic content of those checks
 //! (noted at each site, never weakened).
@@ -41,10 +40,10 @@ use chorus::engine::store::{load_log, save_log};
 use chorus::session::game::Game;
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
-// ---------------------------------------------------------------- rigs ----
+// ---------------------------------------------------------------- rigs ------
 
-/// ts: test/stackable.test.ts:24-30 — the rig dictionary: core verbs + the
-/// rig's own lexemes, so every parse below works. Per-test fresh (TEST-10).
+/// The rig dictionary: core verbs + the
+/// rig's own lexemes, so every parse below works. Per-test fresh.
 fn pool_dict() -> Dictionary {
     let mut d = core_dictionary();
     d.register_verb("STEW").unwrap();
@@ -54,7 +53,7 @@ fn pool_dict() -> Dictionary {
     d
 }
 
-/// ts: test/stackable.test.ts:35-82 (`poolScript`) — the rig script
+/// The rig script
 /// exercises the §10 `stackable` keyword end to end: a stackable prototype
 /// (SPAWN SUSPICION pools), a destroy-by-name verb, and a probe that binds
 /// up to two same-named cards into its object role.
@@ -107,14 +106,13 @@ templates:
   WAIT says "{actors} wait."
 "#;
 
-/// ts: test/stackable.test.ts:84-86 (`rig`)
 fn rig(dict: &Dictionary) -> (CompiledContent, State) {
     let compiled = compile_script(POOL_SCRIPT, dict).unwrap();
     (compiled.content, compiled.state)
 }
 
-/// ts: test/stackable.test.ts:88-92 (`run`) — settleStep with the exact idGen
-/// closure `() => `x${firstRecordId}_${++n}``.
+/// settle_step with the exact id-generator
+/// closure: `x{first_record_id}_{n}`, the counter incrementing per minted id.
 fn run(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -144,7 +142,6 @@ fn run(
     .unwrap()
 }
 
-/// ts: test/stackable.test.ts:94-103 (`stew`)
 fn stew(content: &CompiledContent, dict: &Dictionary, mut state: State, times: usize) -> State {
     let mut id = 1i64;
     for _ in 0..times {
@@ -156,7 +153,7 @@ fn stew(content: &CompiledContent, dict: &Dictionary, mut state: State, times: u
     state
 }
 
-/// `expect(refusal(r)).toMatch(re)`.
+/// `refusal(r)` matches `re`.
 fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
@@ -164,7 +161,7 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
-/// ts: test/stackable.test.ts:20-22 (mkdtempSync).
+/// Temp log path, unique per process and tag.
 fn tmp_log_path(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("chorus-pool-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -175,7 +172,6 @@ fn tmp_log_path(tag: &str) -> std::path::PathBuf {
 // the stackable keyword (§9.38, §10)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:108-146
 #[test]
 fn parses_on_entity_and_prototype_lines_and_lands_in_the_compiled_sets() {
     let dict = core_dictionary();
@@ -199,9 +195,9 @@ prototypes:
     assert!(!parsed.entities.iter().find(|e| e.name == "PLAIN").unwrap().stackable);
     let protos = parsed.content.prototypes.as_ref().unwrap();
     assert!(protos.get("RUMOUR").unwrap().stackable);
-    // TS `.toBeUndefined()` — the absent optional; the Rust `bool` models
-    // "absent = not stackable" exactly (content.ts keeps it optional only
-    // because every read is a truthiness test)
+    // the absent optional; the Rust `bool` models
+    // "absent = not stackable" exactly (the field is optional in the frozen
+    // shape only because every read is a truthiness test)
     assert!(!protos.get("QUIET").unwrap().stackable);
 
     let compiled = compile_script(
@@ -231,7 +227,6 @@ prototypes:
     assert!(!state.entities.get("s_house").unwrap().stackable);
 }
 
-/// ts: stackable.test.ts:148-151
 #[test]
 fn the_keyword_must_sit_before_with_deriving_anything_else_fails_the_line() {
     let dict = core_dictionary();
@@ -247,7 +242,6 @@ fn the_keyword_must_sit_before_with_deriving_anything_else_fails_the_line() {
 // spawn pools and oldest-copy addressing (§9.38)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:157-167
 #[test]
 fn three_spawns_stack_the_pool_holds_three_ids_in_birth_order_exists_sees_the_pool() {
     let dict = pool_dict();
@@ -267,7 +261,6 @@ fn three_spawns_stack_the_pool_holds_three_ids_in_birth_order_exists_sees_the_po
     assert!(eval_pred(&p, &ctx).unwrap());
 }
 
-/// ts: stackable.test.ts:169-180
 #[test]
 fn the_player_surface_lists_every_copy_inspect_reads_the_oldest() {
     let mut game = Game::from_script(POOL_SCRIPT, pool_dict()).unwrap();
@@ -291,7 +284,6 @@ fn the_player_surface_lists_every_copy_inspect_reads_the_oldest() {
     ); // first-visible = oldest
 }
 
-/// ts: stackable.test.ts:182-202
 #[test]
 fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_the_name() {
     let dict = pool_dict();
@@ -308,7 +300,7 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
         );
         assert_eq!(
             r.state.by_name.get("SUSPICION").map_or(0, |v| v.len()),
-            expected // undefined once the name frees (the `?? []` fallback)
+            expected // the pool reads as empty once the name frees (the empty fallback)
         );
         cur = r.state;
         id += r.records.len() as i64;
@@ -355,7 +347,6 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
     assert_eq!(r.rejected, None);
 }
 
-/// ts: stackable.test.ts:204-219
 #[test]
 fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_logged() {
     let dict = pool_dict();
@@ -400,17 +391,16 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
     let r = run(&poke, &dict, clone_state(&state), "0:0 @ ANA ACQUIRE", 1);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
-    // ts `snap(state)).toBe(before)`: the input state is untouched — its
+    // `state === before` (identity): the input state is untouched — its
     // value rides back on the refusal (identity → snap equality)
     assert_eq!(snap(&r.state), before);
     // once the non-stackable holder dies the name accepts the stackable mint
     state.entities.get_mut("chalice").unwrap().dead_action = Some(99);
-    state.by_name.remove("CHALICE"); // byName is the order-pool HashMap (outer map is unordered)
+    state.by_name.remove("CHALICE"); // by_name is the order-pool HashMap (outer map is unordered)
     let r2 = run(&poke, &dict, state, "0:0 @ ANA ACQUIRE", 2);
     assert_eq!(r2.rejected, None);
 }
 
-/// ts: stackable.test.ts:221-233
 #[test]
 fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace() {
     let dict = pool_dict();
@@ -452,7 +442,7 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
         &[],
     )
     .unwrap();
-    let _before = snap(&pooled); // ts: computed but never asserted (dead in the original too)
+    let _before = snap(&pooled); // computed but never asserted (deliberate)
     let r = run(&plain, &dict, clone_state(&pooled), "0:0 @ ANA ACQUIRE", 1);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
@@ -466,7 +456,6 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
     );
 }
 
-/// ts: stackable.test.ts:235-249
 #[test]
 fn add_entity_enforces_the_law_itself_non_stackable_duplicates_throw_stackables_append() {
     let mint = |s: &mut State, id: &str, stackable: bool| {
@@ -498,7 +487,6 @@ fn add_entity_enforces_the_law_itself_non_stackable_duplicates_throw_stackables_
     assert_err_msg(mint(&mut s2, "c", false), "duplicate name 'X'");
 }
 
-/// ts: stackable.test.ts:251-274
 #[test]
 fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_name() {
     let dict = core_dictionary();
@@ -557,7 +545,6 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
     assert_eq!(state.by_name.get("RUMOUR_CHALICE").unwrap().len(), 2);
 }
 
-/// ts: stackable.test.ts:276-315
 #[test]
 fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stackable_kind() {
     // the authored ref is a bare name (no kind); the concrete row always
@@ -651,7 +638,6 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
 // slot bindings hold same-named copies individually (§9.38)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:321-337
 #[test]
 fn two_copies_bind_by_id_set_and_destroy_object_address_each_bound_card() {
     let dict = pool_dict();
@@ -690,7 +676,6 @@ fn two_copies_bind_by_id_set_and_destroy_object_address_each_bound_card() {
     assert!(!r.state.by_name.contains_key("SUSPICION")); // the last copy died: name freed
 }
 
-/// ts: stackable.test.ts:339-354
 #[test]
 fn lenient_input_resolves_a_pool_name_to_its_oldest_copy() {
     let mut game = Game::from_script(POOL_SCRIPT, pool_dict()).unwrap();
@@ -731,7 +716,6 @@ fn lenient_input_resolves_a_pool_name_to_its_oldest_copy() {
 // expiry under a pool (§9.38)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:360-382
 #[test]
 fn engine_expiry_addresses_by_id_the_younger_expires_and_dies_no_re_fire_later() {
     let dict = pool_dict();
@@ -767,7 +751,6 @@ fn engine_expiry_addresses_by_id_the_younger_expires_and_dies_no_re_fire_later()
     assert_eq!(r2.records.iter().filter(|x| x.kind == "event").count(), 0);
 }
 
-/// ts: stackable.test.ts:384-403
 #[test]
 fn three_copies_past_their_expires_cross_one_two_slot_advance_oldest_dies_first_all_by_id() {
     let dict = pool_dict();
@@ -801,12 +784,11 @@ fn three_copies_past_their_expires_cross_one_two_slot_advance_oldest_dies_first_
     assert_eq!(dead_ids, pool);
     assert!(!r.state.by_name.contains_key("SUSPICION"));
     // every row is id-keyed, so the fold replays the triple destroy exactly
-    // (the TS fold base is the pre-play `pooled` value)
+    // (the fold base is the pre-play `pooled` value)
     let replayed = fold(&r.records, &base, &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: stackable.test.ts:405-444
 #[test]
 fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_oldest() {
     let dict = pool_dict();
@@ -925,7 +907,6 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
 // REPLACE X WITH X succeeds for stackables (§9.38)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:450-462 (`decay`)
 fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
     compile_content(
         &ContentRaw {
@@ -968,7 +949,6 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
     .unwrap()
 }
 
-/// ts: stackable.test.ts:464-484
 #[test]
 fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
     let dict = pool_dict();
@@ -999,7 +979,6 @@ fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
     assert_eq!(r2.state.by_name.get("SUSPICION").unwrap().len(), 1);
 }
 
-/// ts: stackable.test.ts:486-508
 #[test]
 fn a_non_stackable_replace_onto_a_stackable_pool_still_rejects() {
     let dict = pool_dict();
@@ -1019,7 +998,6 @@ fn a_non_stackable_replace_onto_a_stackable_pool_still_rejects() {
 // REFUSE after a pool destroy leaves the real pool untouched (§6.5, law 6)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:514-540
 #[test]
 fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies() {
     let dict = pool_dict();
@@ -1070,10 +1048,10 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DESTROY", "REFUSE"]);
     assert_eq!(act(&r).unwrap().advanced_min, 0);
-    // ts `r.state === pooled`: same value, untouched — the destroy ran on the
+    // `r.state === pooled`: same value, untouched — the destroy ran on the
     // discarded draft (identity → snap equality)
     assert_eq!(snap(&r.state), before);
-    // a shallow cloneState would have shared the array: the draft's splice
+    // a shallow clone_state would have shared the array: the draft's splice
     // would have dropped the elder from the REAL pool too
     assert_eq!(pooled.by_name.get("SUSPICION"), Some(&vec![eldest.clone(), younger.clone()]));
     assert_eq!(pooled.entities.get(&eldest).unwrap().dead_action, None);
@@ -1085,7 +1063,6 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
 // ---------------------------------------------------------------------------
 
 /// the completion row's SPAWN mint id (the `as`-bound `#id`).
-/// ts: stackable.test.ts:566-571 (`mintOf`)
 fn mint_of(r: &ExecResult) -> String {
     let sp = r
         .records
@@ -1105,7 +1082,6 @@ fn mint_of(r: &ExecResult) -> String {
     }
 }
 
-/// ts: stackable.test.ts:546-606
 #[test]
 fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
     let dict = pool_dict();
@@ -1185,7 +1161,7 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
     let loaded = load_log(&path).unwrap();
     let (base2_content, base2_state) = rig(&dict);
     let replayed = fold(&loaded, &base2_state, &dict, &base2_content).unwrap();
-    assert_eq!(snap(&replayed), snap(&cur)); // snap includes the byName multimap (shared helper)
+    assert_eq!(snap(&replayed), snap(&cur)); // snap includes the by_name multimap (shared helper)
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1193,7 +1169,6 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
 // counting the pool: count(<query>) (§9.38)
 // ---------------------------------------------------------------------------
 
-/// ts: stackable.test.ts:612-624 (`gate`)
 fn gate(dict: &Dictionary) -> CompiledContent {
     compile_content(
         &ContentRaw {
@@ -1242,7 +1217,6 @@ fn gate(dict: &Dictionary) -> CompiledContent {
     .unwrap()
 }
 
-/// ts: stackable.test.ts:626-641
 #[test]
 fn the_pool_count_grows_per_copy_and_flips_the_branch_at_the_threshold() {
     let dict = pool_dict();
@@ -1262,7 +1236,6 @@ fn the_pool_count_grows_per_copy_and_flips_the_branch_at_the_threshold() {
     assert_eq!(cur.by_name.get("SUSPICION").unwrap().len(), 2); // the threshold branch narrates, it does not spawn
 }
 
-/// ts: stackable.test.ts:643-663
 #[test]
 fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
     let dict = core_dictionary();
@@ -1294,7 +1267,7 @@ fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
         r"total\(\) first argument 'DREAD' is not a declared role",
     );
     // the query form compiles — the lint only fences the role-looking typo
-    let _ = compile_content(&wait_raw("count(name:DREAD) >= 3"), &dict, &[]); // .not.toThrow()
+    let _ = compile_content(&wait_raw("count(name:DREAD) >= 3"), &dict, &[]); // compiles clean
     // a comparison glued INSIDE the term would bake 'DREAD>=1' in as the NAME
     // (a silent 0) — the name: term rejects it at load instead
     assert_err_msg(

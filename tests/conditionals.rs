@@ -1,5 +1,5 @@
-//! Port of test/conditionals.test.ts (36 tests) — F2: IF / ELSE IF / ELSE in
-//! outcome lists (spec §6.8, §9.39, plan v0.4 F2). Branch selection runs
+//! Conditionals (36 tests): IF / ELSE IF / ELSE in
+//! outcome lists (spec §6.8, §9.39). Branch selection runs
 //! against the DRAFT (earlier outcomes in the same list are visible to later
 //! IFs); first true branch wins; the log records only the taken branch's
 //! outcomes, flattened in position — the record never contains an IF op.
@@ -8,10 +8,9 @@
 //! trigger guards and the endings check recurse into branch bodies;
 //! role-dependent operands in trigger IF conditions are a load-time error.
 //!
-//! Structure mirrors the TS `describe` blocks one-to-one (plan §5.2); every
-//! test builds a FRESH Dictionary with INSPECT/ATTUNE/STEW registered
-//! (TEST-10; the TS module-level registrations become per-test). toThrow /
-//! toMatch patterns are copied CHARACTER FOR CHARACTER from the TS literals;
+//! Every test builds a FRESH Dictionary with INSPECT/ATTUNE/STEW registered
+//! (per-test isolation matters for reserved-word collisions). Error-message
+//! patterns are copied CHARACTER FOR CHARACTER from the frozen literals;
 //! the one JS `/s` (dotall) flag becomes an inline `(?s)` (the harness's
 //! registered escape adjustment).
 
@@ -38,10 +37,10 @@ use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
 use indexmap::IndexMap;
 
-// ---------------------------------------------------------------- rigs ----
+// ---------------------------------------------------------------- rigs ------
 
-/// ts: test/conditionals.test.ts:28-32 — the rig's own verb lexemes (verbs
-/// are code-registered, §10). Per-test fresh (TEST-10).
+/// The rig's own verb lexemes (verbs
+/// are code-registered, §10). Per-test fresh.
 fn cond_dict() -> Dictionary {
     let mut d = core_dictionary();
     d.register_verb("INSPECT").unwrap();
@@ -50,8 +49,9 @@ fn cond_dict() -> Dictionary {
     d
 }
 
-/// ts: test/conditionals.test.ts:34-38 (`run`) — settleStep with the exact
-/// idGen closure `() => `x${firstRecordId}_${++n}``.
+/// settle_step with the exact
+/// id-generator closure: `x{first_record_id}_{n}`, the counter incrementing
+/// per minted id.
 fn run(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -81,7 +81,6 @@ fn run(
     .unwrap()
 }
 
-/// ts: test/conditionals.test.ts:40-44 (`narrated`)
 fn narrated(outcomes: &[Outcome]) -> Vec<String> {
     outcomes
         .iter()
@@ -93,7 +92,7 @@ fn narrated(outcomes: &[Outcome]) -> Vec<String> {
         .collect()
 }
 
-/// ts: test/conditionals.test.ts:46-48 (`said`) — v0.5: NARRATE defers to the
+/// V0.5: NARRATE defers to the
 /// completion — gather across the COMPLETE rows.
 fn said(r: &ExecResult) -> Vec<String> {
     r.records
@@ -103,7 +102,7 @@ fn said(r: &ExecResult) -> Vec<String> {
         .collect()
 }
 
-/// the extra ContentRaw fields `inspectContent`'s TS spread accepts.
+/// the extra ContentRaw fields the rig's spread accepts.
 #[derive(Default)]
 struct Extra {
     prototypes: Option<IndexMap<String, PrototypeDef>>,
@@ -111,7 +110,7 @@ struct Extra {
     endings: Option<IndexMap<String, EndingDef>>,
 }
 
-/// ts: test/conditionals.test.ts:50-64 (`inspectContent`) — a one-verb rig:
+/// A one-verb rig:
 /// INSPECT takes actors 1..2 and an optional object.
 fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus::js::Result<CompiledContent> {
     compile_content(
@@ -156,7 +155,7 @@ fn inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> CompiledCon
     try_inspect_content(dict, out, extra).unwrap()
 }
 
-/// ts: test/conditionals.test.ts:67-80 (`attuneContent`) — a one-verb rig
+/// A one-verb rig
 /// with a REQUIRED object role (ATTUNE).
 fn attune_content(dict: &Dictionary, out: &[&str], duration: i64) -> CompiledContent {
     compile_content(
@@ -194,7 +193,7 @@ fn attune_content(dict: &Dictionary, out: &[&str], duration: i64) -> CompiledCon
     .unwrap()
 }
 
-/// ts: test/conditionals.test.ts:83-87 (`dimWorld`) — the seed world with
+/// The seed world with
 /// every lantern stripped — exists(aspect:lantern>=1) is false.
 fn dim_world() -> State {
     let mut s = seed_state();
@@ -205,7 +204,7 @@ fn dim_world() -> State {
     s
 }
 
-/// `expect(refusal(r)).toMatch(re)`.
+/// `refusal(r)` matches `re`.
 fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
@@ -213,7 +212,7 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
-/// `expect(r.rejected).toMatch(re)`.
+/// `r.rejected` matches `re`.
 fn assert_rejected(r: &ExecResult, pattern: &str) {
     let msg = r
         .rejected
@@ -227,7 +226,7 @@ fn ops(outcomes: &[Outcome]) -> Vec<&str> {
     outcomes.iter().map(|o| o.op.as_str()).collect()
 }
 
-/// ts: test/conditionals.test.ts:427-436 (mkdtempSync).
+/// Temp log path, unique per process and tag.
 fn tmp_log_path(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("chorus-if-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -238,7 +237,6 @@ fn tmp_log_path(tag: &str) -> std::path::PathBuf {
 // IF / ELSE IF / ELSE grammar (§5.1, §9.39)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:92-110
 #[test]
 fn parses_into_arms_plus_fallback_the_else_chain_is_consumed_inside_the_if_node() {
     // the plan's flagship example verbatim
@@ -263,7 +261,6 @@ fn parses_into_arms_plus_fallback_the_else_chain_is_consumed_inside_the_if_node(
     assert_eq!(ops(out[1].fallback.as_ref().unwrap()), ["NARRATE"]);
 }
 
-/// ts: conditionals.test.ts:112-119
 #[test]
 fn conditions_keep_their_commas_rel_and_every_never_split_the_chain() {
     let out = parse_outcomes(
@@ -276,7 +273,6 @@ fn conditions_keep_their_commas_rel_and_every_never_split_the_chain() {
     assert_eq!(out[0].op, "IF");
 }
 
-/// ts: conditionals.test.ts:121-134
 #[test]
 fn a_nested_else_binds_to_the_nearest_if_greedy() {
     let dict = cond_dict();
@@ -299,7 +295,6 @@ fn a_nested_else_binds_to_the_nearest_if_greedy() {
     assert_eq!(narrated(outer[0].fallback.as_ref().unwrap()), ["outer else"]);
 }
 
-/// ts: conditionals.test.ts:136-141
 #[test]
 fn if_and_else_are_reserved_words_quoted_names_still_parse() {
     let dict = cond_dict();
@@ -309,7 +304,6 @@ fn if_and_else_are_reserved_words_quoted_names_still_parse() {
     assert_eq!(parse_outcomes("SPAWN \"IF\"", &dict, None).unwrap().len(), 1); // the quote is the escape hatch
 }
 
-/// ts: conditionals.test.ts:143-150
 #[test]
 fn parse_errors_missing_branch_parens_else_without_if_dangling_else_if_condition_without_arrow() {
     let dict = cond_dict();
@@ -324,11 +318,10 @@ fn parse_errors_missing_branch_parens_else_without_if_dangling_else_if_condition
     assert_err_msg(parse_outcomes("IF exists(X) ELSE -> (NARRATE \"y\")", &dict, None), "->");
 }
 
-/// ts: conditionals.test.ts:152-165
 #[test]
 fn authored_outcome_strings_must_parse_completely_trailing_tokens_are_load_errors_too() {
     let dict = cond_dict();
-    // content compile goes through parseOutcomes; a second ELSE, junk after a
+    // content compile goes through parse_outcomes; a second ELSE, junk after a
     // complete chain, or a forgotten IF keyword must not vanish silently there
     assert_err_msg(
         parse_outcomes(
@@ -347,7 +340,7 @@ fn authored_outcome_strings_must_parse_completely_trailing_tokens_are_load_error
     // with a forgotten-IF hint for the predicate helpers (§9.40)
     assert_err_msg(
         parse_outcomes("exists(X) -> (NARRATE \"a\")", &dict, None),
-        // the TS pattern carries the /s (dotall) flag — inline (?s) here
+        // the frozen pattern carries the /s (dotall) flag — inline (?s) here
         r"(?s)unknown 'exists\(\.\.\.\)' in outcome position.*IF keyword",
     ); // the IF keyword is not optional
     assert_err_msg(
@@ -366,7 +359,6 @@ fn authored_outcome_strings_must_parse_completely_trailing_tokens_are_load_error
 // branch selection against the draft (§9.39)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:171-178
 #[test]
 fn first_true_branch_wins_later_arms_never_apply() {
     let dict = cond_dict();
@@ -380,7 +372,6 @@ fn first_true_branch_wins_later_arms_never_apply() {
     assert_eq!(said(&r), ["first"]);
 }
 
-/// ts: conditionals.test.ts:180-187
 #[test]
 fn an_else_if_chain_picks_the_first_true_arm_skipping_false_ones() {
     let dict = cond_dict();
@@ -394,7 +385,6 @@ fn an_else_if_chain_picks_the_first_true_arm_skipping_false_ones() {
     assert_eq!(said(&r), ["two"]);
 }
 
-/// ts: conditionals.test.ts:189-194
 #[test]
 fn all_false_with_an_else_takes_the_else_branch() {
     let dict = cond_dict();
@@ -408,7 +398,6 @@ fn all_false_with_an_else_takes_the_else_branch() {
     assert_eq!(said(&r), ["b"]);
 }
 
-/// ts: conditionals.test.ts:196-204
 #[test]
 fn all_false_without_an_else_applies_nothing_no_error_step_completes() {
     let dict = cond_dict();
@@ -423,7 +412,6 @@ fn all_false_without_an_else_applies_nothing_no_error_step_completes() {
     assert_eq!(said(&r), ["before", "after"]);
 }
 
-/// ts: conditionals.test.ts:206-217
 #[test]
 fn draft_visibility_set_then_if_reads_the_new_level_not_the_input_state() {
     let dict = cond_dict();
@@ -446,7 +434,6 @@ fn draft_visibility_set_then_if_reads_the_new_level_not_the_input_state() {
     );
 }
 
-/// ts: conditionals.test.ts:219-227
 #[test]
 fn world_form_conditions_too_spawn_then_if_count_name_x_fires_in_the_same_list() {
     let dict = cond_dict();
@@ -468,7 +455,6 @@ fn world_form_conditions_too_spawn_then_if_count_name_x_fires_in_the_same_list()
     assert_eq!(said(&r), ["heard"]);
 }
 
-/// ts: conditionals.test.ts:229-238
 #[test]
 fn draft_visibility_crosses_the_branch_boundary_a_branch_spawn_is_visible_to_the_next_if() {
     let dict = cond_dict();
@@ -491,7 +477,6 @@ fn draft_visibility_crosses_the_branch_boundary_a_branch_spawn_is_visible_to_the
     assert_eq!(said(&r), ["saw it"]);
 }
 
-/// ts: conditionals.test.ts:240-251
 #[test]
 fn an_if_after_a_replace_reads_the_successor_the_expansion_minted() {
     let dict = cond_dict();
@@ -521,7 +506,6 @@ fn an_if_after_a_replace_reads_the_successor_the_expansion_minted() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: conditionals.test.ts:253-278
 #[test]
 fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
     let dict = cond_dict();
@@ -597,7 +581,6 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: conditionals.test.ts:280-290
 #[test]
 fn the_dead_stamp_rule_destroy_object_then_if_reads_the_dead_card_as_absent_silent_false() {
     let dict = cond_dict();
@@ -620,7 +603,7 @@ fn the_dead_stamp_rule_destroy_object_then_if_reads_the_dead_card_as_absent_sile
 // concretization — the record never contains an IF op (§9.39)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:296-299 — the describe-level content (PARANOIA
+/// The section-level content (PARANOIA
 /// prototype added).
 fn concretization_content(dict: &Dictionary) -> CompiledContent {
     inspect_content(
@@ -638,7 +621,6 @@ fn concretization_content(dict: &Dictionary) -> CompiledContent {
     )
 }
 
-/// ts: conditionals.test.ts:301-313
 #[test]
 fn the_taken_branch_flattens_in_position_the_untaken_branch_is_gone() {
     let dict = cond_dict();
@@ -657,7 +639,6 @@ fn the_taken_branch_flattens_in_position_the_untaken_branch_is_gone() {
     assert!(!sentence.contains("IF "));
 }
 
-/// ts: conditionals.test.ts:315-319
 #[test]
 fn the_recorded_sentence_round_trips() {
     let dict = cond_dict();
@@ -668,7 +649,6 @@ fn the_recorded_sentence_round_trips() {
     assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), s);
 }
 
-/// ts: conditionals.test.ts:321-337
 #[test]
 fn fold_and_jsonl_equality_replaying_the_flattened_rows_reproduces_play_exactly() {
     let dict = cond_dict();
@@ -692,7 +672,6 @@ fn fold_and_jsonl_equality_replaying_the_flattened_rows_reproduces_play_exactly(
 // REFUSE inside a taken branch refuses the window (§6.5, v0.5 completion)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:342-360
 #[test]
 fn refuse_inside_a_taken_branch_attempt_logged_effects_discarded_state_untouched_fold_no_op() {
     let dict = cond_dict();
@@ -709,7 +688,7 @@ fn refuse_inside_a_taken_branch_attempt_logged_effects_discarded_state_untouched
     assert_eq!(ops(&done(&r).unwrap().outcomes), ["DESTROY", "REFUSE"]);
     assert_eq!(act(&r).unwrap().advanced_min, 60); // the window DID open…
     assert_eq!(r.state.now, base_now + 60); // …and the clock crossed it
-    // ts `r.state !== state`: the step state genuinely moved (now advanced)
+    // `r.state !== state`: the step state genuinely moved (now advanced)
     assert_eq!(snap(&state), before); // the scratch died with the refusal
     let replayed = fold(&r.records, &state, &dict, &c).unwrap(); // replay agrees, effects skipped
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -720,7 +699,6 @@ fn refuse_inside_a_taken_branch_attempt_logged_effects_discarded_state_untouched
 // condition failure refuses the window; the same grammar reads false in when:
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:366-374
 #[test]
 fn an_if_condition_operand_with_no_bound_card_the_window_refuses_at_completion() {
     let dict = cond_dict();
@@ -733,7 +711,6 @@ fn an_if_condition_operand_with_no_bound_card_the_window_refuses_at_completion()
     assert_eq!(snap(&r.state), before);
 }
 
-/// ts: conditionals.test.ts:376-395
 #[test]
 fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
     let dict = cond_dict();
@@ -784,7 +761,6 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
     assert_eq!(act(&r).unwrap().recipes, ["inspect.default"]); // false, not a rejection — the asymmetry
 }
 
-/// ts: conditionals.test.ts:397-402
 #[test]
 fn a_missing_aspect_on_a_bound_card_still_reads_false_inside_an_if() {
     let dict = cond_dict();
@@ -798,7 +774,6 @@ fn a_missing_aspect_on_a_bound_card_still_reads_false_inside_an_if() {
     assert_eq!(said(&r), ["harmless"]);
 }
 
-/// ts: conditionals.test.ts:404-409
 #[test]
 fn count_and_total_over_an_empty_role_read_0_branch_selection_never_a_rejection() {
     let dict = cond_dict();
@@ -816,7 +791,6 @@ fn count_and_total_over_an_empty_role_read_0_branch_selection_never_a_rejection(
     assert_eq!(said(&run(&total, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)), ["none"]);
 }
 
-/// ts: conditionals.test.ts:411-415
 #[test]
 fn the_documented_guard_for_an_optional_role_count_and_never_rejects() {
     let dict = cond_dict();
@@ -837,7 +811,7 @@ fn the_documented_guard_for_an_optional_role_count_and_never_rejects() {
 // IF conditions in recipes read the step bindings (§9.39)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:421-425 — the describe-level content.
+/// The section-level content.
 fn bindings_content(dict: &Dictionary) -> CompiledContent {
     inspect_content(
         dict,
@@ -846,7 +820,6 @@ fn bindings_content(dict: &Dictionary) -> CompiledContent {
     )
 }
 
-/// ts: conditionals.test.ts:427-430
 #[test]
 fn count_actors_rel_and_exists_query_bind_against_the_step_and_the_world() {
     let dict = cond_dict();
@@ -855,7 +828,6 @@ fn count_actors_rel_and_exists_query_bind_against_the_step_and_the_world() {
     assert_eq!(said(&run(&c, &dict, dim_world(), "0:0 @ ANA INSPECT", 1)), ["plain"]); // the world form can be false
 }
 
-/// ts: conditionals.test.ts:432-438
 #[test]
 fn object_aspect_reads_the_bound_card_the_count_dread_typo_lint_covers_if_conditions_too() {
     let dict = cond_dict();
@@ -875,14 +847,13 @@ fn object_aspect_reads_the_bound_card_the_count_dread_typo_lint_covers_if_condit
         r"count\(\) argument 'DREAD' is neither a role",
     );
     let _ = try_inspect_content(&dict, &["IF count(name:DREAD) >= 3 -> (NARRATE \"x\")"], Extra::default());
-    // .not.toThrow()
+    // compiles clean
 }
 
 // ---------------------------------------------------------------------------
 // role-dependent operands in trigger IF conditions are load errors (§9.39)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:442 (`triggers`)
 fn slot_triggers(out: &[&str]) -> Vec<TriggerDef> {
     vec![TriggerDef::Slot(SlotTriggerDef {
         id: "t".into(),
@@ -892,7 +863,6 @@ fn slot_triggers(out: &[&str]) -> Vec<TriggerDef> {
     })]
 }
 
-/// ts: conditionals.test.ts:471-472 (`expiry`)
 fn expiry_trigger(out: &[&str]) -> Vec<TriggerDef> {
     vec![TriggerDef::Expire(chorus::content::content::ExpireTriggerDef {
         id: "t".into(),
@@ -901,7 +871,6 @@ fn expiry_trigger(out: &[&str]) -> Vec<TriggerDef> {
     })]
 }
 
-/// ts: conditionals.test.ts:444-457
 #[test]
 fn path_count_total_rel_every_any_each_named_by_the_error() {
     let dict = cond_dict();
@@ -935,7 +904,6 @@ fn path_count_total_rel_every_any_each_named_by_the_error() {
     );
 }
 
-/// ts: conditionals.test.ts:459-469
 #[test]
 fn the_check_recurses_into_branch_bodies_and_world_forms_pass() {
     let dict = cond_dict();
@@ -960,10 +928,9 @@ fn the_check_recurses_into_branch_bodies_and_world_forms_pass() {
         &raw(&["IF exists(X) -> (NARRATE \"ok\") ELSE IF count(name:X) >= 3 -> (NARRATE \"ok too\")"]),
         &dict,
         &[],
-    ); // .not.toThrow()
+    ); // compiles clean
 }
 
-/// ts: conditionals.test.ts:471-478
 #[test]
 fn expiry_triggers_lint_their_if_conditions_too_same_empty_bindings_argument() {
     let dict = cond_dict();
@@ -984,10 +951,9 @@ fn expiry_triggers_lint_their_if_conditions_too_same_empty_bindings_argument() {
         r"trigger t: IF operand total\(actors, aspect:nerve\) reads a step role",
     );
     let _ = compile_content(&raw(&["IF count(name:CHALICE) >= 1 -> (NARRATE \"ok\")"]), &dict, &[]);
-    // .not.toThrow()
+    // compiles clean
 }
 
-/// ts: conditionals.test.ts:480-493
 #[test]
 fn the_recursive_guards_catch_progress_refuse_unknown_ending_nested_in_if_branches() {
     let dict = cond_dict();
@@ -1024,7 +990,6 @@ fn the_recursive_guards_catch_progress_refuse_unknown_ending_nested_in_if_branch
 // IF inside working triggers (§9.39, world-form conditions)
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:499-509 (`wait`)
 fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent {
     compile_content(
         &ContentRaw {
@@ -1065,7 +1030,6 @@ fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent
     .unwrap()
 }
 
-/// ts: conditionals.test.ts:511-523
 #[test]
 fn a_slot_trigger_takes_its_if_branch_exists_form_and_the_record_flattens_it() {
     let dict = cond_dict();
@@ -1093,7 +1057,6 @@ fn a_slot_trigger_takes_its_if_branch_exists_form_and_the_record_flattens_it() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: conditionals.test.ts:525-540
 #[test]
 fn an_expiry_trigger_takes_its_if_branch_count_name_form() {
     let dict = cond_dict();
@@ -1126,7 +1089,6 @@ fn an_expiry_trigger_takes_its_if_branch_count_name_form() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// ts: conditionals.test.ts:542-548
 #[test]
 fn a_trigger_if_whose_condition_is_false_takes_the_else_branch() {
     let dict = cond_dict();
@@ -1149,7 +1111,6 @@ fn a_trigger_if_whose_condition_is_false_takes_the_else_branch() {
 // pooled worlds compose: the plan's arrest case, end to end
 // ---------------------------------------------------------------------------
 
-/// ts: conditionals.test.ts:554-575 (`arrestScript`)
 const ARREST_SCRIPT: &str = r#"
 script: Arrest
 player: ANA
@@ -1173,7 +1134,6 @@ verbs:
       default when count(name:SUSPICION) < 3 -> SPAWN SUSPICION, IF count(name:SUSPICION) >= 3 -> (ENDING ARRESTED) ELSE -> (NARRATE "Nobody notices.")
 "#;
 
-/// ts: conditionals.test.ts:577-602
 #[test]
 fn selection_reads_the_input_state_the_recipe_reads_its_own_spawn_on_the_draft() {
     let dict = cond_dict();
@@ -1208,7 +1168,6 @@ fn selection_reads_the_input_state_the_recipe_reads_its_own_spawn_on_the_draft()
     assert_eq!(snap(&replayed), snap(&over.state));
 }
 
-/// ts: conditionals.test.ts:604-616
 #[test]
 fn a_second_actor_works_the_same_pool_count_name_is_world_scoped() {
     let dict = cond_dict();

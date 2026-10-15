@@ -1,13 +1,12 @@
-//! Port of test/parallel.test.ts (13 tests) — T3.7 test package A, file 2/3.
-//! Parallel verb stations (v0.5) — the feature's own acceptance tests:
+//! Parallel verb stations (13 tests, v0.5) — the feature's own acceptance suite:
 //! windows overlap, stations and cards lock, completions resolve in a
 //! deterministic order, and the fold rebuilds open windows byte-for-byte.
 //!
-//! Differences from the engine.rs rig (both mirror the TS originals): this
-//! file's `run` is executeStep ONLY (no settle adapter) and its lone-clock
-//! branch is a pure advance — ts: parallel.test.ts:19-26. Rig verbs are
-//! code-registered into a shared Dictionary (ts: rigContent); each Rust test
-//! owns a fresh Dictionary (TEST-10).
+//! Differences from the engine.rs rig: this
+//! file's `run` is execute_step ONLY (no settle adapter) and its lone-clock
+//! branch is a pure advance. Rig verbs are
+//! code-registered into a shared Dictionary; each test
+//! owns a fresh Dictionary.
 
 mod common;
 
@@ -28,7 +27,7 @@ use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
 use indexmap::IndexMap;
 
-// ---------------------------------------------------------------- rig ----
+// ---------------------------------------------------------------- rig ------
 
 static LONE_CLOCK: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
 
@@ -36,9 +35,9 @@ fn lone_clock() -> &'static regex::Regex {
     LONE_CLOCK.get_or_init(|| regex::Regex::new(r"^\d+:\d+$").unwrap())
 }
 
-/// ts: parallel.test.ts:19-26 `run` — a lone clock token is a pure advance;
-/// otherwise parse and execute. TS passes `{ firstRecordId }` only — no
-/// idGen, so the engine's deterministic default mint is in force here.
+/// A lone clock token is a pure advance;
+/// otherwise parse and execute. No id generator is passed, so the engine's
+/// deterministic default mint is in force here.
 fn run(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -81,7 +80,7 @@ fn step_of(s: &Sentence) -> Step {
     }
 }
 
-/// ts: parallel.test.ts:28-31 rigContent — rig verbs are code-registered (§10).
+/// The rig content — rig verbs are code-registered (§10).
 fn rig_content(
     dict: &mut Dictionary,
     verbs: Vec<(&str, VerbContent)>,
@@ -132,7 +131,7 @@ fn narr_recipe(out: &str) -> Vec<RecipeDef> {
     }]
 }
 
-/// ts: parallel.test.ts:34-38 — two stations, two durations, no side effects
+/// Two stations, two durations, no side effects
 /// — the geometry rig.
 fn geo(dict: &mut Dictionary, a_dur: i64, b_dur: i64) -> CompiledContent {
     rig_content(
@@ -159,12 +158,12 @@ fn geo(dict: &mut Dictionary, a_dur: i64, b_dur: i64) -> CompiledContent {
     )
 }
 
-/// ts: parallel.test.ts:40-42 seed()
+/// The shared seed state.
 fn seed() -> State {
     seed_state()
 }
 
-/// ts: parallel.test.ts:265-275 saveLogTmp — a temp-file JSONL round trip.
+/// A temp-file JSONL round trip.
 fn save_log_tmp(tag: &str, records: &[ActionRecord]) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("chorus-parallel-{}-{tag}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -182,13 +181,13 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
     assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
-// ------------------------------------------ parallel windows — the model ----
+// ------------------------------------------ parallel windows — the model ------
 
-/// ts: parallel.test.ts:44-103 — describe 'parallel windows — the model'
+/// Parallel windows — the model: overlapping windows, stations, locks, and
+/// deterministic completion order.
 mod parallel_windows_the_model {
     use super::*;
 
-    /// ts: parallel.test.ts:45
     #[test]
     fn two_verbs_run_overlapping_windows_the_clock_stays_put_until_an_advance() {
         let mut dict = core_dictionary();
@@ -220,7 +219,6 @@ mod parallel_windows_the_model {
         );
     }
 
-    /// ts: parallel.test.ts:62
     #[test]
     fn a_bare_clock_advance_resolves_due_completions_before_the_slot_events() {
         let mut dict = core_dictionary();
@@ -263,7 +261,6 @@ mod parallel_windows_the_model {
         assert_eq!(adv.records.last().unwrap().kind, "wait");
     }
 
-    /// ts: parallel.test.ts:82
     #[test]
     fn an_advance_pass_is_chronological_earlier_completion_first_tie_goes_to_the_completion() {
         let mut dict = core_dictionary();
@@ -344,11 +341,11 @@ mod parallel_windows_the_model {
     }
 }
 
-/// ts: parallel.test.ts:105-179 — describe 'the locks'
+/// The locks: a committed card is busy in any role.
 mod the_locks {
     use super::*;
 
-    /// ts: parallel.test.ts:106-117 lockRig
+    /// The lock rig content.
     fn lock_rig(dict: &mut Dictionary) -> CompiledContent {
         rig_content(
             dict,
@@ -374,7 +371,6 @@ mod the_locks {
         )
     }
 
-    /// ts: parallel.test.ts:119
     #[test]
     fn station_exclusivity_the_same_verb_cannot_open_a_second_window() {
         let mut dict = core_dictionary();
@@ -386,12 +382,11 @@ mod the_locks {
         let r2 = run(&c2, &dict, clone_state(&state), "0:0 @ ANA SEIZE", r1.records.len() as i64 + 1);
         assert_rejected(&r2, r"SEIZE is already processing");
         assert_eq!(r2.records.len(), 0);
-        // ts: `expect(r2.state).toBe(state)` — the untouched original; the
+        // `r2.state === state` — the untouched original; the
         // Rust observable is value equality through snap
         assert_eq!(snap(&r2.state), snap(&state));
     }
 
-    /// ts: parallel.test.ts:129
     #[test]
     fn committed_cards_are_busy_in_any_role_actors_stay_free() {
         let mut dict = core_dictionary();
@@ -416,7 +411,6 @@ mod the_locks {
         assert_eq!(r3.state.windows.len(), 2);
     }
 
-    /// ts: parallel.test.ts:142
     #[test]
     fn locks_release_the_moment_a_pass_resolves_their_window() {
         let mut dict = core_dictionary();
@@ -438,7 +432,6 @@ mod the_locks {
         assert_eq!(r2.records[0].kind, "complete"); // the SEIZE window closed en route
     }
 
-    /// ts: parallel.test.ts:153
     #[test]
     fn events_do_not_respect_locks_an_expiry_destroys_a_locked_card_and_the_completion_drops_the_ref() {
         let mut dict = core_dictionary();
@@ -490,11 +483,10 @@ mod the_locks {
     }
 }
 
-/// ts: parallel.test.ts:181-219 — describe 'commit-time gates vs completion-time refusals'
+/// Commit-time gates vs completion-time refusals.
 mod commit_time_gates_vs_completion_time_refusals {
     use super::*;
 
-    /// ts: parallel.test.ts:182
     #[test]
     fn a_top_level_refuse_still_rejects_at_the_table_zero_time_attempt_logged() {
         let mut dict = core_dictionary();
@@ -517,11 +509,10 @@ mod commit_time_gates_vs_completion_time_refusals {
         assert_eq!(r.records.len(), 1);
         assert!(r.records[0].outcomes.iter().any(|o| o.op == "REFUSE"));
         assert_eq!(r.records[0].advanced_min, 0);
-        // ts: `expect(r.state).toBe(state)` — untouched; snap equality
+        // `r.state === state` — untouched; snap equality
         assert_eq!(snap(&r.state), before);
     }
 
-    /// ts: parallel.test.ts:197
     #[test]
     fn an_if_branch_refuse_defers_the_window_opens_the_completion_refuses_effects_discarded() {
         let mut dict = core_dictionary();
@@ -582,12 +573,11 @@ mod commit_time_gates_vs_completion_time_refusals {
     }
 }
 
-/// ts: parallel.test.ts:221-240 — describe 'completion-time failures refuse
-/// the window — never a livelock'
+/// Completion-time failures refuse
+/// the window — never a livelock.
 mod completion_time_failures_never_a_livelock {
     use super::*;
 
-    /// ts: parallel.test.ts:222
     #[test]
     fn a_completion_that_cannot_apply_closes_the_window_and_logs_the_attempt() {
         let mut dict = core_dictionary();
@@ -629,11 +619,10 @@ mod completion_time_failures_never_a_livelock {
     }
 }
 
-/// ts: parallel.test.ts:242-258 — describe 'undo with open windows'
+/// Undo with open windows.
 mod undo_with_open_windows {
     use super::*;
 
-    /// ts: parallel.test.ts:243
     #[test]
     fn undo_drops_a_whole_turn_a_log_may_end_with_open_windows_and_folds_to_them() {
         let mut dict = core_dictionary();
@@ -667,11 +656,10 @@ mod undo_with_open_windows {
     }
 }
 
-/// ts: parallel.test.ts:277-310 — describe 'input surface'
+/// The input surface.
 mod input_surface {
     use super::*;
 
-    /// ts: parallel.test.ts:278
     #[test]
     fn a_lone_clock_advances_the_same_minute_with_nothing_due_is_rejected() {
         let mut dict = core_dictionary();
@@ -703,7 +691,6 @@ mod input_surface {
         assert_eq!(adv2.state.windows.len(), 0);
     }
 
-    /// ts: parallel.test.ts:293
     #[test]
     fn beginning_at_a_mid_halfhour_minute_is_representable_and_folds_exactly() {
         let mut dict = core_dictionary();

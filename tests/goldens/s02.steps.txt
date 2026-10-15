@@ -1,3 +1,0 @@
-ok 3
-ok 2
-rejected SPAWN: name 'ASH' already in use

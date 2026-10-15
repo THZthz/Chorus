@@ -1,17 +1,17 @@
-//! fn_expand 直测子集 (PR3-01, plan §4-W1 "宏展开验收改直测子集") — the
-//! subset of test/functions.test.ts that runs WITHOUT compileScript /
-//! compileContent: a hand-built FnTable (the TS rig's `rawTable`), driven
+//! fn_expand 直测子集 — the
+//! expansion tests that run WITHOUT the script compiler: a hand-built
+//! FnTable, driven
 //! straight through `parse_outcomes` / `parse_function_body` /
 //! `collect_fn_calls` / `expand_fn_calls` / `format_sentence`.
 //!
-//! The full functions.test port (compileScript → executeStep 全链路) lands in
-//! W3 as tests/functions.rs (plan §5.2.1); this file is its W1 direct seam.
+//! The full functions test (compile → execute 全链路) lives in
+//! tests/functions.rs; this file is its direct seam.
 //!
 //! The recursion-cycle and depth-cap GUARDS live in content compile
-//! (content.ts:543-588, W2's content.rs) — their message templates are
+//! (content.rs) — their message templates are
 //! frozen here byte-for-byte over the real `collect_fn_calls` graph, by the
 //! same precedent as tests/dice.rs `script_seed_error` (test-local template
-//! freeze; the W2 construction sites must reproduce them exactly).
+//! freeze; the compile-side construction sites must reproduce them exactly).
 
 mod common;
 
@@ -28,8 +28,8 @@ use chorus::js::{ChorusError, Result};
 
 use common::harness::assert_err_msg;
 
-/// ts: functions.test.ts:570-577 (`rawTable`) — a parse-level FnTable the
-/// way compileContent's passes build it: pass 1 inserts every name (so
+/// A parse-level FnTable the
+/// way compile_content's passes build it: pass 1 inserts every name (so
 /// forward refs parse), pass 2 parses the bodies against the full table.
 fn raw_table(dict: &Dictionary, defs: &[(&str, &[&str], &str)]) -> FnTable {
     let mut table = FnTable::default();
@@ -56,9 +56,9 @@ fn raw_table(dict: &Dictionary, defs: &[(&str, &[&str], &str)]) -> FnTable {
     table
 }
 
-/// `formatSentence({ kind: 'action', clock: null, trigger: null,
-/// clauses: [], outcomes }, dict)` — the outcome-list formatting probe used
-/// for the format∘expand 对拍.
+/// The outcome-list formatting probe used
+/// for the format∘expand 对拍: format_sentence over a bare action sentence
+/// (clock None, trigger None, no clauses, the given outcomes).
 fn fmt_outcomes(out: &[Outcome], dict: &Dictionary) -> String {
     format_sentence(
         &Sentence {
@@ -75,12 +75,12 @@ fn fmt_outcomes(out: &[Outcome], dict: &Dictionary) -> String {
 }
 
 // ---------- expansion equivalence: call site === hand-expanded twin
-// ---------- (§9.40, ts: functions.test.ts:85-107, direct subset) ----------
+// ---------- (§9.40, direct subset) -----------------------------------------
 
 #[test]
 fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
     let dict = core_dictionary();
-    // the plan's flagship pair, verbatim grammar (functions.test.ts:46-58):
+    // the flagship pair, verbatim grammar:
     // the call rig and its hand-expanded twin
     let fns = raw_table(
         &dict,
@@ -114,7 +114,7 @@ fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
 
     // format∘expand 对拍 (the string-substitution case included): the
     // formatted expansion is byte-identical to the formatted twin. format
-    // refuses IF (authored form only — format.ts:41), so the byte compare
+    // refuses IF (authored form only), so the byte compare
     // runs on the concrete prefix, exactly like the engine's concrete SPAWN
     // row would print.
     let as_sentence = |out: &[Outcome]| Sentence {
@@ -135,11 +135,10 @@ fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
 }
 
 // ---------- grammar: call-site dispatch and arity (§9.40,
-// ---------- ts: functions.test.ts:111-142, direct subset) ----------
+// ---------- direct subset) ------------------------------------------------
 
 #[test]
 fn a_call_parses_into_an_authored_fn_node_expansion_is_a_separate_pass() {
-    // ts: functions.test.ts:117-123
     let dict = core_dictionary();
     let table = raw_table(
         &dict,
@@ -162,7 +161,6 @@ fn assert_json_eq_ops(out: &[Outcome], ops: &[&str]) {
 
 #[test]
 fn arity_mismatch_is_a_load_error_too_few_too_many_and_parameterless() {
-    // ts: functions.test.ts:125-129
     let dict = core_dictionary();
     let table = raw_table(
         &dict,
@@ -187,7 +185,6 @@ fn arity_mismatch_is_a_load_error_too_few_too_many_and_parameterless() {
 
 #[test]
 fn unknown_name_in_outcome_position_is_a_compile_error_listing_the_vocabulary() {
-    // ts: functions.test.ts:131-142
     let dict = core_dictionary();
     // no functions declared: ops only
     assert_err_msg(
@@ -214,12 +211,12 @@ fn unknown_name_in_outcome_position_is_a_compile_error_listing_the_vocabulary() 
 }
 
 // ---------- the two substitution mechanisms (§9.40,
-// ---------- ts: functions.test.ts:193-236, direct subset) ----------
+// ---------- direct subset) ------------------------------------------------
 
 #[test]
 fn delta_position_the_authored_sign_folds_into_the_calls_number() {
-    // ts: functions.test.ts:193-206 — bump(2)/drop(4): the sign rides the
-    // param and folds into the call's number at expansion (parse.ts:722-728).
+    // Bump(2)/drop(4): the sign rides the
+    // param and folds into the call's number at expansion.
     // The engine concretizes SET deltas to computed ints at runtime — the
     // log-level assertion is W3's; here the AST carries the signed delta.
     let dict = core_dictionary();
@@ -239,8 +236,8 @@ fn delta_position_the_authored_sign_folds_into_the_calls_number() {
         }
         other => panic!("expected signed deltas, got {other:?}"),
     }
-    // and the delta SPELLING interpolates with its sign (argSpelling shares
-    // format_arg's delta branch — CORE-13's shared layer)
+    // and the delta SPELLING interpolates with its sign (arg_spelling shares
+    // format_arg's delta branch — the shared layer)
     let fns2 = raw_table(&dict, &[("tag", &["n"], "NARRATE \"+{n}\"")]);
     let call2 = parse_outcomes("tag(2)", &dict, Some(&fns2)).unwrap();
     let expanded2 = expand_fn_calls(&call2, &fns2).unwrap();
@@ -252,7 +249,7 @@ fn delta_position_the_authored_sign_folds_into_the_calls_number() {
 
 #[test]
 fn reserved_tokens_pass_through_undeclared_or_spaced_braces_are_load_errors() {
-    // ts: functions.test.ts:218-236 — {actors} is §5.3 prose, never a
+    // {actors} is §5.3 prose, never a
     // parameter; a typo'd parameter is a LOAD ERROR naming the token, the
     // function, and the reserved set; spaced spellings never rewrite (same
     // typo, same error, whether or not the identifier names a parameter);
@@ -303,10 +300,10 @@ fn reserved_tokens_pass_through_undeclared_or_spaced_braces_are_load_errors() {
     }
 }
 
-// ---------- nesting, recursion cycles, and the depth cap (§9.40,
-// ---------- ts: functions.test.ts:268-319; guards mirror content.ts:543-588) ----------
+// ---------- nesting, recursion cycles, and the depth cap (§9.40;
+// ---------- guards mirror content.rs) --------------------------------------
 
-/// ts: functions.test.ts:269-274 (`chain`) — f1 → … → fn, the tail
+/// F1 → … → fn, the tail
 /// narrating "bottom.".
 fn chain_defs(n: usize) -> Vec<(String, Vec<String>, String)> {
     (0..n)
@@ -340,17 +337,17 @@ fn table_from(defs: &[(String, Vec<String>, String)]) -> FnTable {
     raw_table(&dict, &slices)
 }
 
-/// ts: src/content/content.ts:543-588 — pass 3 over the call graph:
+/// Pass 3 over the call graph:
 /// undeclared-call check, recursion-cycle DFS (WHITE/GRAY/BLACK), then the
-/// depth cap. **W2 落位说明**: the construction points belong to W2's
+/// depth cap. The construction points belong to
 /// content.rs; this mirror freezes both message templates over the REAL
-/// `collect_fn_calls` output so they cannot drift before then (the
-/// dice.rs `script_seed_error` precedent). W2's implementation must inline
+/// `collect_fn_calls` output so they cannot drift (the
+/// dice.rs `script_seed_error` precedent). The compile side must inline
 /// exactly these strings at its throw sites.
 fn content_pass3_guards(table: &FnTable) -> Result<()> {
-    // IndexSet (wave-1 must-fix-2): TS pass-3 iterates each body's
+    // IndexSet: pass-3 iterates each body's
     // `new Set<string>()` in INSERTION order — the first undeclared callee
-    // and the first cycle found depend on it (content.ts:545-561).
+    // and the first cycle found depend on it.
     let mut calls_of: IndexMap<String, IndexSet<String>> = IndexMap::new();
     for tpl in table.by_name.values() {
         let mut calls = IndexSet::new();
@@ -426,7 +423,6 @@ fn content_pass3_guards(table: &FnTable) -> Result<()> {
 
 #[test]
 fn mutual_recursion_names_the_cycle_self_recursion_names_itself() {
-    // ts: functions.test.ts:291-301
     let table = table_from(&[
         ("a".into(), vec![], "b()".into()),
         ("b".into(), vec![], "a()".into()),
@@ -446,7 +442,7 @@ fn mutual_recursion_names_the_cycle_self_recursion_names_itself() {
 
 #[test]
 fn a_depth_8_chain_expands_transitively_depth_9_is_a_load_error() {
-    // ts: functions.test.ts:303-310 — depth(f) = 1 + max(depth of callees);
+    // Depth(f) = 1 + max(depth of callees);
     // 8 loads, 9 errors. The LOAD gate is content compile (W2) — here the
     // guard mirror enforces it over the real call graph, and the depth-8
     // chain's EXPANSION is checked directly.
@@ -467,9 +463,9 @@ fn a_depth_8_chain_expands_transitively_depth_9_is_a_load_error() {
 
 #[test]
 fn an_undeclared_call_in_a_body_is_named_by_its_declaring_function() {
-    // content.ts:549's guard. UNREACHABLE through the parse front-end (a
-    // body calling an undeclared name fails at parse with unknownCallError),
-    // so — exactly like the TS tree — this pass-3 check is a defensive
+    // UNREACHABLE through the parse front-end (a
+    // body calling an undeclared name fails at parse with unknown_call_error),
+    // so this pass-3 check is a defensive
     // tripwire; the FN node is hand-built to reach it (the same shape the
     // fn_expand.rs smoke tests use for collect_fn_calls).
     let mut table = FnTable::default();

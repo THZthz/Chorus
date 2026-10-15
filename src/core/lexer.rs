@@ -1,18 +1,18 @@
-//! Tokenizer for the sentence grammar — ts: src/core/lexer.ts (spec §5.1).
+//! Tokenizer for the sentence grammar (spec §5.1).
 //! Quote-aware and paren-aware: strings and outcome args carry
 //! commas/brackets.
 //!
-//! The five regex-shaped scans (NAME_RE lexer.ts:13, NUM_RE :14, DUR_RE :15
-//! with its load-bearing `halfhour|h|m|d` alternation order (Q9), the `/\s/`
-//! skip :26, and `/[0-9]/` :45) are HAND-WRITTEN over `Vec<u16>` code units
-//! (plan §2.3 / PR2-08: the regex crate cannot run on a UTF-16 code-unit
-//! domain, and code-unit indexing is what makes the error offsets and the
-//! `->`/punct decisions byte-identical to JS).
+//! The five regex-shaped scans (NAME, digits, DUR
+//! with its load-bearing `halfhour|h|m|d` alternation order (Q9), the JS
+//! `\s` skip, and `[0-9]`) are HAND-WRITTEN over `Vec<u16>` code units: the
+//! regex crate cannot run on a UTF-16 code-unit domain, and code-unit
+//! indexing is what makes the error offsets and the `->`/punct decisions
+//! byte-identical to JS.
 
 use crate::core::clock::parse_duration;
 use crate::js::{js_is_ws, js_num_parse, ChorusError, Result};
 
-/// ts: src/core/lexer.ts:5-12
+/// One lexed token.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tok {
     Name { v: String },
@@ -24,7 +24,7 @@ pub enum Tok {
 }
 
 impl Tok {
-    /// The TS `t.t` discriminator — `show(t)` and error paths use it.
+    /// The token-kind discriminator used by `show` and the error paths.
     #[must_use]
     pub fn t(&self) -> &'static str {
         match self {
@@ -37,7 +37,7 @@ impl Tok {
         }
     }
 
-    /// TS `t.v` for every variant.
+    /// The token's value text for every variant.
     #[must_use]
     pub fn v_str(&self) -> String {
         match self {
@@ -47,22 +47,22 @@ impl Tok {
     }
 }
 
-/// ts: src/core/lexer.ts:19 — PUNCT. '+'/'-' are punct so a signed SET value
+/// PUNCT. '+'/'-' are punct so a signed SET value
 /// (+1/-2, §9.31) lexes as sign + int ('->' is matched before the punct set,
 /// so the minus is unambiguous); '.' is punct for dotted SET keys (§5.1
-/// dottedName: state.sealed, aspect:language.latin).
+/// dotted names: `state.sealed`, `aspect:language.latin`).
 #[must_use]
 fn is_punct(c: u16) -> bool {
     // ,  ;  :  (  )  @  =  !  >  <  +  -  .
     matches!(c, 0x2C | 0x3B | 0x3A | 0x28 | 0x29 | 0x40 | 0x3D | 0x21 | 0x3E | 0x3C | 0x2B | 0x2D | 0x2E)
 }
 
-/// NAME_RE scan (ts: lexer.ts:13 `/^[A-Za-z_][A-Za-z0-9_]*/`) at `s[i..]`:
+/// NAME scan (`/^[A-Za-z_][A-Za-z0-9_]*/`) at `s[i..]`:
 /// returns the match LENGTH in code units. The class is matched against the
 /// CODE UNIT directly — never through `c as u8 as char`, whose truncation
 /// would admit any non-ASCII unit whose LOW BYTE lands in the class (U+0161
-/// 'š' low byte 'a', U+0430 'а' low byte '0'); the TS literal class rejects
-/// every unit >0x7F (wave-1 must-fix-1).
+/// 'š' low byte 'a', U+0430 'а' low byte '0'); the literal class rejects
+/// every unit >0x7F.
 #[must_use]
 fn scan_name(s: &[u16], i: usize) -> Option<usize> {
     let c = *s.get(i)?;
@@ -81,7 +81,7 @@ fn scan_name(s: &[u16], i: usize) -> Option<usize> {
     Some(j - i)
 }
 
-/// `[0-9]+` scan (ts: lexer.ts:14) at `s[i..]`.
+/// `[0-9]+` scan at `s[i..]`.
 #[must_use]
 fn scan_digits(s: &[u16], i: usize) -> Option<usize> {
     let mut j = i;
@@ -95,8 +95,8 @@ fn scan_digits(s: &[u16], i: usize) -> Option<usize> {
     }
 }
 
-/// One DUR unit at `s[j..]`, in the TS alternation order `halfhour|h|m|d`
-/// (ts: lexer.ts:15) — the ORDER IS LOAD-BEARING (Q9/CORE-08(2)): trying `h`
+/// One DUR unit at `s[j..]`, tried in the alternation order `halfhour|h|m|d`
+/// — the ORDER IS LOAD-BEARING (Q9): trying `h`
 /// first would split `1halfhour` into dur(1h)+name(alfhour).
 #[must_use]
 fn scan_dur_unit(s: &[u16], j: usize) -> Option<usize> {
@@ -116,9 +116,9 @@ fn scan_dur_unit(s: &[u16], j: usize) -> Option<usize> {
     None
 }
 
-/// DUR_RE scan (ts: lexer.ts:15 `/^([0-9]+)(halfhour|h|m|d)(?:[0-9]+(?:halfhour|h|m|d))*/`):
+/// DUR scan (`/^([0-9]+)(halfhour|h|m|d)(?:[0-9]+(?:halfhour|h|m|d))*/`):
 /// returns `(group1_len, total_len)` — the leading digit run and the TOTAL
-/// match length of the whole digit+unit run (the TS regex is greedy over the
+/// match length of the whole digit+unit run (greedy over the
 /// trailing `(?:…)*` groups, so `1h30m` is one match).
 #[must_use]
 fn scan_dur(s: &[u16], i: usize) -> Option<(usize, usize)> {
@@ -134,14 +134,13 @@ fn scan_dur(s: &[u16], i: usize) -> Option<(usize, usize)> {
 }
 
 /// The decoded token text: the scan domain is UTF-16 code units, so a token
-/// holding a LONE surrogate cannot become a Rust `String`. Lossy conversion
-/// (U+FFFD) is the documented divergence — TS could carry the lone unit in
-/// its strings, but no golden input exercises it (plan §3.9).
+/// holding a LONE surrogate cannot become a Rust `String`; lossy conversion
+/// (U+FFFD) applies — no golden input exercises a lone surrogate.
 fn units_to_string(units: &[u16]) -> String {
     String::from_utf16_lossy(units)
 }
 
-/// ts: src/core/lexer.ts:21-69
+/// The tokenizer over one sentence's source text.
 pub fn lex(src: &str) -> Result<Vec<Tok>> {
     let s: Vec<u16> = src.encode_utf16().collect();
     let mut toks: Vec<Tok> = Vec::new();
@@ -149,7 +148,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
     while i < s.len() {
         let c = s[i];
         if js_is_ws(c) {
-            // ts: lexer.ts:26 `/\s/` — the JS whitespace set (Q8), hand scan
+            // the JS whitespace set (Q8), hand-scanned
             i += 1;
             continue;
         }
@@ -159,10 +158,10 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             continue;
         }
         if c == b'"' as u16 {
-            // ts: lexer.ts:28-37 — QUIRK(Q10/CORE-09): `\X` takes the LITERAL
+            // QUIRK(Q10): `\X` takes the LITERAL
             // next code unit (`"\n"` holds the letter n); a trailing
-            // backslash reads past the end — TS appends the string
-            // "undefined" there and then throws unterminated (the
+            // backslash reads past the end — the literal string "undefined"
+            // is appended there and the token then throws unterminated (the
             // intermediate value is unobservable, behavior-equivalent).
             let mut j = i + 1;
             let mut out: Vec<u16> = Vec::new();
@@ -187,7 +186,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             continue;
         }
         if c == b'#' as u16 {
-            // ts: lexer.ts:38-44
+            // id ref: '#' followed by name characters
             let Some(len) = scan_name(&s, i + 1) else {
                 return Err(ChorusError::new(format!(
                     "bad id ref at offset {i} (expected #id)"
@@ -200,17 +199,16 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             continue;
         }
         if (b'0' as u16..=b'9' as u16).contains(&c) {
-            // ts: lexer.ts:45-60 — a duration only when the whole number is
+            // a duration only when the whole number is
             // the duration's digits ('1halfhour' and compound '1h30m' (§9.45)
             // are one token; '12' alone stays an int)
             let rest = &s[i..];
             let num_len = scan_digits(rest, 0).unwrap_or_else(|| {
-                unreachable!("digit branch entered with a digit at i") // rule 11: guarded by the branch
+                unreachable!("digit branch entered with a digit at i") // guarded by the branch
             });
             if let Some((g1_len, dur_len)) = scan_dur(rest, 0) {
-                // ts: lexer.ts:51 — `NUM_RE.exec(rest)![0] === dur[1]`: the
-                // full greedy digit run must equal DUR_RE's first group's
-                // text (kept as the TS guard; both are digit runs from the
+                // the full greedy digit run must equal the DUR's first
+                // group's text (both are digit runs from the
                 // same start, so text equality is length equality)
                 if units_to_string(&rest[..num_len]) == units_to_string(&rest[..g1_len]) {
                     let dur_text = units_to_string(&rest[..dur_len]);
@@ -220,7 +218,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                 }
             }
             let num_text = units_to_string(&rest[..num_len]);
-            // ts: lexer.ts:57 — Number(num[0]) through the f64 middle step
+            // through the f64 middle step, like a JS `Number()` coercion
             toks.push(Tok::Int { v: js_num_parse(&num_text) });
             i += num_len;
             continue;
@@ -245,8 +243,8 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             i += 1;
             continue;
         }
-        // ts: lexer.ts:66 — the character, not the code unit, prints. A lone
-        // surrogate cannot print (lossy U+FFFD — documented divergence).
+        // the character, not the code unit, prints. A lone
+        // surrogate cannot print (lossy U+FFFD).
         let ch = char::from_u32(u32::from(c)).unwrap_or(char::REPLACEMENT_CHARACTER);
         return Err(ChorusError::new(format!(
             "unexpected character '{ch}' at offset {i}"
@@ -255,10 +253,8 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
     Ok(toks)
 }
 
-/// ts: src/core/lexer.ts:71-75 — one duration grammar (§5.1): the unit table
-/// lives in clock.ts's parseDuration, shared with the quoted-string expires
-/// path (§4.2). The TS function is a passthrough wrapper (CORE-14(3)) — kept
-/// as such so the anchor stays 1:1.
+/// One duration grammar (§5.1): the unit table lives in `clock`'s
+/// parse_duration, shared with the quoted-string expires path (§4.2).
 fn dur_to_minutes(s: &str) -> Result<i64> {
     parse_duration(s)
 }
@@ -339,10 +335,10 @@ mod tests {
 
     #[test]
     fn non_ascii_code_units_never_enter_name_tokens() {
-        // wave-1 must-fix-1: NAME_RE is a LITERAL [A-Za-z0-9_] class — a code
+        // NAME is a LITERAL [A-Za-z0-9_] class — a code
         // unit >0x7F never matches, even when its LOW BYTE does (U+0161 'š'
-        // low byte 0x61 'a'; the `as u8` truncation wrongly absorbed it).
-        // TS: `lex("abš")` throws `unexpected character 'š' at offset 2`.
+        // low byte 0x61 'a'; an `as u8` truncation would wrongly absorb it).
+        // `lex("abš")` throws `unexpected character 'š' at offset 2`.
         let e = lex("abš").unwrap_err();
         assert_eq!(e.msg, "unexpected character 'š' at offset 2");
         // U+0141 'Ł' (low byte 0x41 'A') rejected at a name START…

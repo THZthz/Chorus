@@ -1,5 +1,4 @@
-//! The site census — ts: src/reach/reach.ts:127-454 (+ the helpers at
-//! :1507-1550 that only census faces read). Enumerates every SPAWN/REPLACE/
+//! The site census. Enumerates every SPAWN/REPLACE/
 //! DRAW site over the compiled content with the segment discipline that
 //! mirrors the engine's draft semantics: each IF branch is its own SEGMENT
 //! (an authored REFUSE kills exactly the sites whose ancestor chain contains
@@ -15,34 +14,34 @@ use crate::core::sentence::{Arg, Outcome};
 use crate::core::types::Entity;
 use crate::content::content::walk_outcomes;
 
-/// ts: reach.ts:135 — `MANY = 1e9`, the "unbounded copies" sentinel (plan
-/// §3.11): it feeds the `min(count, 32)` weight cap, the `cap !== MANY` draw
-/// export gate and `cap > idx` position checks, so it must stay an exact
+/// `MANY = 1e9`, the "unbounded copies" sentinel: it feeds the `min(count,
+/// 32)` weight cap, the draw export gate (`cap != MANY` means exportable)
+/// and `cap > idx` position checks, so it must stay an exact
 /// integer — i64 `1_000_000_000`.
 pub const MANY: i64 = 1_000_000_000;
 
-/// ts: reach.ts:1336/1341/1878-1891/1902-1910 — the `'\u0000derived'`
-/// sentinel avail/byName key for derive-mints behind object-mandatory verbs.
-/// Plan §3.11 offered an enum, but the port keeps the literal string: the
-/// three sentinel properties (occupies an avail/byName key; slot queries hit
+/// The `"\u{0000}derived"`
+/// sentinel avail/by-name key for derive-mints behind object-mandatory verbs.
+/// The literal string (not an enum) is load-bearing: the
+/// three sentinel properties (occupies an avail/by-name key; slot queries hit
 /// it via the intact kind/aspect descriptor; `exists(NAME)`/`count(name:)`
 /// gates miss it because no authored name collides) are exactly JS string
 /// identity on this value, and the raw string reproduces even the adversarial
 /// corner where an author names a card with the sentinel itself.
 pub const DERIVED_NAME: &str = "\u{0000}derived";
 
-/// ts: reach.ts:144 — ops that throw on an unresolvable target and therefore
+/// Ops that throw on an unresolvable target and therefore
 /// defer to a completion-time window refusal.
 const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 
 // ---------------------------------------------------------------------------
-// world-static predicate shapes — ts: reach.ts:462-474 — and the authored
-// aspects= pair parse (ts: reach.ts:1099/1549). These live beside the census
-// because collectSites itself consumes predStatic while tagging sites
-// (runtimeGated / pathNonStatic, reach.ts:307/320-322).
+// world-static predicate shapes and the authored
+// aspects= pair parse. These live beside the census
+// because collect_sites itself consumes pred_static while tagging sites
+// (runtime_gated / path_non_static).
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:462-464
+/// A value expression is world-static when it reads no runtime state.
 pub(crate) fn expr_static(v: &crate::core::predicate::ValExpr) -> bool {
     matches!(
         v,
@@ -50,7 +49,7 @@ pub(crate) fn expr_static(v: &crate::core::predicate::ValExpr) -> bool {
     )
 }
 
-/// ts: reach.ts:466-474
+/// A predicate is world-static when every operand is.
 pub(crate) fn pred_static(p: &Pred) -> bool {
     use crate::core::predicate::ValExpr;
     match p {
@@ -65,11 +64,11 @@ pub(crate) fn pred_static(p: &Pred) -> bool {
     }
 }
 
-/// `JSON.parse(site.aspectsJson) as Aspects` — the Q13 model takes integers
+/// Parse a site's `aspects=` JSON string under the Q13 model: it takes integers
 /// and one-level integer sub-maps; members outside the model are dropped
 /// (they read as misses in aspect_get either way — see [`site_aspects`]). A
 /// malformed JSON throws, which the universe build turns into the
-/// `opaqueSpawnAspects` flag (ts: reach.ts:1098-1101).
+/// `opaque_spawn_aspects` flag.
 pub(crate) fn parse_aspects_json(json: &str) -> crate::js::Result<crate::core::types::Aspects> {
     let v: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| crate::js::ChorusError::new(format!("bad aspects pair: {e}")))?;
@@ -101,35 +100,34 @@ fn json_to_aspect(v: &serde_json::Value) -> Option<crate::core::types::AspectVal
     }
 }
 
-/// ts: reach.ts:146 — per-segment walk flags.
+/// Per-segment walk flags.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct SegFlags {
     pub refused: bool,
     pub throwing: i64,
 }
 
-/// ts: reach.ts:148-179 — one raw producer site, pre-fixpoint. Identity keys
-/// are indices (plan §2.6.5): `verb` is the content.verbs insertion index,
+/// One raw producer site, pre-fixpoint. Identity keys
+/// are indices: `verb` is the content.verbs insertion index,
 /// `deck` a shared reference (compiled decks are immutable).
 #[derive(Debug, Clone)]
 pub(crate) struct RawSite<'c> {
     pub kind: SiteKind,
     /// spawn/replace: the minted name; draw: the deck id
     pub name: String,
-    /// SPAWN kind:X — overrides the minted kind (NOT a kind lookup; B5)
+    /// SPAWN kind:X — overrides the minted kind (NOT a kind lookup)
     pub kind_override: Option<String>,
     pub deck: Option<&'c CompiledDeck>,
     /// authored `aspects=` pair — a static mint-time aspect override
     pub aspects_json: Option<String>,
-    /// display: 'recipe <id> of VERB' | 'trigger <id>'
+    /// display: `recipe <id> of VERB` or `trigger <id>`
     pub owner: String,
     /// the owning verb's content.verbs index (None for trigger-owned sites)
     pub verb: Option<usize>,
     /// recipe selection guard (None → default)
     pub when: Option<Pred>,
-    /// ts: reach.ts:157 — assigned per TS shape; TS likewise never reads it
-    /// (only `i > 0` feeds shadowRisk at the walkList call), so the port
-    /// carries it as data and no consumer
+    /// Assigned but never read (only `i > 0` feeds shadow_risk at the
+    /// walk_list call); carried as data with no consumer
     #[allow(dead_code)]
     pub recipe_index: i64,
     /// an earlier recipe of the same verb exists (first-match may shadow)
@@ -159,19 +157,19 @@ pub(crate) struct RawSite<'c> {
     pub dup_risk: bool,
     /// REPLACE: another op in this list also kills the replace-target
     pub target_killed_in_list: bool,
-    /// non-stackable names this LIST mints (bootstrap-gate check); postPass
-    /// assigns it to every site, so an empty set is the honest "no mints"
+    /// non-stackable names this LIST mints (bootstrap-gate check); the
+    /// post-pass assigns it to every site, so an empty set is the honest "no mints"
     pub list_gate_mints: IndexSet<String>,
     /// STACKABLE names this LIST mints (a gate on them reads false at a
     /// once-trigger's single firing)
     pub list_stack_mints: IndexSet<String>,
     /// SPAWN of a `deriving name from object` prototype
     pub derives: bool,
-    /// display owner (always equal to `owner`; kept for the TS shape)
+    /// display owner (always equal to `owner`)
     pub where_: String,
 }
 
-/// ts: reach.ts:149 — `'spawn' | 'replace' | 'draw'`.
+/// The three producer-site kinds: SPAWN, REPLACE, DRAW.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SiteKind {
     Spawn,
@@ -179,8 +177,7 @@ pub(crate) enum SiteKind {
     Draw,
 }
 
-/// ts: reach.ts:246/258/1645 — the SET-site row (the thrice-repeated TS
-/// object type, converged here once).
+/// The SET-site row (one shared shape for every SET encountered on the walk).
 #[derive(Debug, Clone)]
 pub(crate) struct SetSite {
     pub key: String,
@@ -200,8 +197,8 @@ pub(crate) struct SetSite {
 
 /// The census result. Sites live in one arena Vec (walk order across all
 /// lists); `live`/`refused` are arena indices in push order — the risky block
-/// mutates sites through these indices exactly like the TS byList references
-/// mutate the shared site objects.
+/// mutates sites through these indices (the shared per-list site objects,
+/// flattened into the arena).
 #[derive(Debug)]
 pub(crate) struct Census<'c> {
     pub sites: Vec<RawSite<'c>>,
@@ -212,7 +209,7 @@ pub(crate) struct Census<'c> {
     pub destroyed_by: IndexMap<String, IndexSet<String>>,
     /// names minted NON-stackably anywhere in the content
     pub non_stack_names: IndexSet<String>,
-    /// nonStackNames ∪ initial non-stackable entity names
+    /// `non_stack_names` ∪ initial non-stackable entity names
     pub collision_names: IndexSet<String>,
 }
 
@@ -230,10 +227,10 @@ impl<'c> Default for Census<'c> {
     }
 }
 
-/// ts: reach.ts:233-241 — owner string ('trigger t3') → (trigger, declaration
-/// index). The TS WeakMap cache collapses into this value, built once per
-/// world computation (REACH-07's Analyzer shape); duplicate trigger ids keep
-/// Map later-wins (and the original slot).
+/// Owner string ('trigger t3') → (trigger, declaration
+/// index). Built once per world computation (one per `Analyzer`); duplicate
+/// trigger ids keep later-wins
+/// semantics — the stored trigger is replaced, the original slot retained.
 #[derive(Debug)]
 pub(crate) struct TrigIndex<'c> {
     entries: IndexMap<String, (&'c CompiledTrigger, i64)>,
@@ -248,14 +245,14 @@ impl<'c> TrigIndex<'c> {
         TrigIndex { entries }
     }
 
-    /// (trigger, decl) — decl is the TS `?? -1` sentinel caller-side, so the
-    /// stored index is i64.
+    /// (trigger, decl) — decl is the -1 sentinel (callers tolerate a missing
+    /// declaration index), so the stored index is i64.
     pub(crate) fn get(&self, owner: &str) -> Option<(&'c CompiledTrigger, i64)> {
         self.entries.get(owner).map(|(t, d)| (*t, *d))
     }
 }
 
-/// ts: reach.ts:181-184 — SPAWN's first arg as a (name, kind?) name ref.
+/// SPAWN's first arg as a (name, kind?) name ref.
 pub(crate) fn spawn_name_ref(o: &Outcome) -> Option<(&str, Option<&str>)> {
     if o.op != "SPAWN" {
         return None;
@@ -268,7 +265,7 @@ pub(crate) fn spawn_name_ref(o: &Outcome) -> Option<(&str, Option<&str>)> {
     }
 }
 
-/// ts: reach.ts:186-190 — REPLACE's second arg as a name ref.
+/// REPLACE's second arg as a name ref.
 pub(crate) fn replace_with_ref(o: &Outcome) -> Option<&str> {
     if o.op != "REPLACE" {
         return None;
@@ -281,7 +278,7 @@ pub(crate) fn replace_with_ref(o: &Outcome) -> Option<&str> {
     }
 }
 
-/// ts: reach.ts:192-196 — DRAW's first arg as a name ref (the deck id).
+/// DRAW's first arg as a name ref (the deck id).
 pub(crate) fn draw_deck_id(o: &Outcome) -> Option<&str> {
     if o.op != "DRAW" {
         return None;
@@ -295,7 +292,7 @@ pub(crate) fn draw_deck_id(o: &Outcome) -> Option<&str> {
 }
 
 /// The per-branch traversal context of [`walk_sites`]: the enclosing IF
-/// conditions, the ancestor segment chain and the ELSE flag — the TS
+/// conditions, the ancestor segment chain and the ELSE flag — the
 /// `(path, segs, fallback)` triple threaded through the recursion.
 #[derive(Debug, Clone)]
 pub(crate) struct WalkFrame {
@@ -304,7 +301,7 @@ pub(crate) struct WalkFrame {
     pub fallback: bool,
 }
 
-/// ts: reach.ts:272 — a DESTROY/REPLACE kill recorded during the walk.
+/// A DESTROY/REPLACE kill recorded during the walk.
 #[derive(Debug)]
 pub(crate) struct Kill {
     pub seg: usize,
@@ -315,8 +312,8 @@ pub(crate) struct Kill {
 
 /// The walker state threaded through [`walk_outcomes`] by `&mut`: the
 /// per-list segment-flag table, the seg allocator, the op counter, the raw
-/// sites and the kill log — one state object (the TS closures' shared
-/// mutable captures, made explicit).
+/// sites and the kill log — one shared state object so every traversal
+/// callback sees the same bookkeeping.
 #[derive(Debug, Default)]
 pub(crate) struct WalkState<'c> {
     pub flags: IndexMap<usize, SegFlags>,
@@ -326,8 +323,8 @@ pub(crate) struct WalkState<'c> {
     pub kills: Vec<Kill>,
 }
 
-/// The immutable record context of one list's walk (the TS `walkList`
-/// closure's captured parameters). `'c` is the compiled content's lifetime
+/// The immutable per-list context of one list's walk.
+/// `'c` is the compiled content's lifetime
 /// (the only lifetime a RawSite borrows — its deck); `'a` covers the
 /// per-list strings/preds, which the sites CLONE.
 pub(crate) struct RecordCx<'c, 'a> {
@@ -346,10 +343,10 @@ pub(crate) struct WalkSitesOutput<'c> {
     pub state: WalkState<'c>,
 }
 
-/// ts: reach.ts:205-227 — `walkSites`, built on the ONE authored-outcome
-/// traversal shared with content's load guards (REACH-01). Each IF branch
-/// gets its own SEGMENT allocated exactly where TS evaluates `nextSeg()`
-/// (per arm, left to right, before that arm descends; the ELSE body after
+/// Built on the ONE authored-outcome
+/// traversal shared with content's load guards. Each IF branch
+/// gets its own SEGMENT allocated per arm, left to right, before that arm
+/// descends (the ELSE body after
 /// all arms); a REFUSE marks its OWN segment and a throwing op marks its
 /// segment too, but demotion is list-wide. The seg-flag bookkeeping lives
 /// inside the traversal (never outside it), so the census's exhaustive
@@ -370,14 +367,14 @@ pub(crate) fn walk_sites<'c>(
         outs,
         &root,
         &mut st,
-        // visit + the seg-flag marking for this op (ts: reach.ts:217-226):
+        // visit + the seg-flag marking for this op:
         // REFUSE/throwing marks the INNERMOST segment of the active frame —
         // the same segment a nested arm's sites carry in their ancestor chain
         &mut |st, o, frame| {
             record_visit(st, o, frame, cx, set_sites, destroyed_by);
             let seg = match frame.segs.last() {
                 Some(&s) => s,
-                None => unreachable!("every WalkFrame carries at least seg 0 (ts: reach.ts:214)"),
+                None => unreachable!("every WalkFrame carries at least seg 0"),
             };
             if o.op == "REFUSE" {
                 st.flags.entry(seg).or_default().refused = true;
@@ -388,7 +385,7 @@ pub(crate) fn walk_sites<'c>(
             }
             Ok(())
         },
-        // an IF arm: [...path, arm.when] + a FRESH segment (ts: reach.ts:220)
+        // an IF arm: [...path, arm.when] + a FRESH segment
         &mut |st, arm, frame| {
             st.seg_counter += 1;
             let seg = st.seg_counter;
@@ -403,7 +400,6 @@ pub(crate) fn walk_sites<'c>(
             }
         },
         // the ELSE body: same path, a fresh segment, fallback = true
-        // (ts: reach.ts:221)
         &mut |st, frame| {
             st.seg_counter += 1;
             let seg = st.seg_counter;
@@ -416,7 +412,7 @@ pub(crate) fn walk_sites<'c>(
             }
         },
     );
-    // ts: reach.ts:215 — walkSites creates the flags entry for every segment
+    // walk_sites creates the flags entry for every segment
     // it enters, including arms with empty bodies. Segments are dense from 0,
     // so ensuring them after the walk is entry-for-entry identical.
     for seg in 0..=st.seg_counter {
@@ -425,7 +421,7 @@ pub(crate) fn walk_sites<'c>(
     WalkSitesOutput { state: st }
 }
 
-/// ts: reach.ts:1514-1530 (mintStacks) — a mint's stackability comes from the
+/// A mint's stackability comes from the
 /// RESOLVED name+kind: the name is declared stackable, or its KIND carries a
 /// stackable declaration.
 pub(crate) fn mint_stacks(content: &CompiledContent, name: &str, kind: Option<&str>) -> bool {
@@ -440,7 +436,7 @@ pub(crate) fn mint_stacks(content: &CompiledContent, name: &str, kind: Option<&s
     resolved.is_some_and(|k| content.stackable_kinds.contains(k))
 }
 
-/// ts: reach.ts:1509-1512 (objectAlways) — the verb binds an object on EVERY
+/// The verb binds an object on EVERY
 /// commit (its object slot is mandatory), so a `deriving name from object`
 /// mint never carries the bare name. `verb` is the content.verbs index.
 pub(crate) fn object_always(content: &CompiledContent, verb: Option<usize>) -> bool {
@@ -455,7 +451,7 @@ pub(crate) fn object_always(content: &CompiledContent, verb: Option<usize>) -> b
         .is_some_and(|slot| slot.min >= 1)
 }
 
-/// ts: reach.ts:1540-1543 (drawBlindsBare) — a DRAW behind an object-mandatory
+/// A DRAW behind an object-mandatory
 /// verb never serves the BARE name of a deck card whose prototype derives.
 pub(crate) fn draw_blinds_bare(
     content: &CompiledContent,
@@ -473,34 +469,34 @@ pub(crate) fn draw_blinds_bare(
             == Some("object")
 }
 
-/// ts: reach.ts:1547-1550 (siteAspects) — authored `aspects=` pair on a SPAWN
+/// Authored `aspects=` pair on a SPAWN
 /// site, parsed; unparseable pairs are the caller's opaque case (None).
 ///
 /// JSON values outside the Q13 aspect model (strings/bools/floats/deeper
-/// nesting) parse fine in TS and are carried along; they are invisible to
+/// nesting) parse fine and would be carried along; they are invisible to
 /// aspect_get (non-number reads miss) and can only surface through
-/// JSON.stringify of a demand descriptor. The port keeps them OUT of the
-/// merged map — same matchQuery results (miss == absent), and no pinned
-/// surface authors such pairs (documented divergence, plan rule 12).
+/// JSON.stringify of a demand descriptor. They are kept OUT of the
+/// merged map — same `match_query` results (miss == absent), and no pinned
+/// surface authors such pairs (documented divergence).
 pub(crate) fn site_aspects(site: &RawSite) -> Option<crate::core::types::Aspects> {
     let json = site.aspects_json.as_deref()?;
     parse_aspects_json(json).ok()
 }
 
-/// ts: reach.ts:243-454 (collectSites).
+/// The census build over the whole compiled content.
 pub(crate) fn collect_sites<'c>(
     content: &'c CompiledContent,
     init_names: &IndexMap<String, &'c Entity>,
     trig_idx: &TrigIndex<'c>,
 ) -> Census<'c> {
     let mut census = Census::default();
-    // ts: reach.ts:262 — initial non-stackable names poison the collision set
+    // initial non-stackable names poison the collision set
     for e in init_names.values() {
         if !e.stackable {
             census.collision_names.insert(e.name.clone());
         }
     }
-    // ts: reach.ts:442-449 — verbs first, recipes in declaration order
+    // verbs first, recipes in declaration order
     for (vi, (_name, verb)) in content.verbs.iter().enumerate() {
         for (i, r) in verb.recipes.iter().enumerate() {
             // first-match (§6.4): any earlier recipe can shadow this one; an
@@ -520,7 +516,7 @@ pub(crate) fn collect_sites<'c>(
             );
         }
     }
-    // ts: reach.ts:450-452 — triggers after verbs
+    // triggers after verbs
     for t in &content.triggers {
         walk_list(
             content,
@@ -538,15 +534,16 @@ pub(crate) fn collect_sites<'c>(
     census
 }
 
-/// ts: reach.ts:350 — the per-name mint counter row.
+/// The per-name mint counter row.
 struct MintCount {
     count: i64,
     all_stack: bool,
 }
 
-/// One list's walk — ts: reach.ts:263-441 (the `walkList` closure). A new
+/// One list's walk. A new
 /// segment-flag table, op counter and kill log per list; the census
-/// accumulators (live/refused/setSites/destroyedBy/… ) ride through `census`.
+/// accumulators (`live`/`refused`/`set_sites`/`destroyed_by`/… ) ride
+/// through `census`.
 #[allow(clippy::too_many_arguments)]
 fn walk_list<'c, 'a>(
     content: &'c CompiledContent,
@@ -560,14 +557,14 @@ fn walk_list<'c, 'a>(
     shadowed: bool,
     census: &mut Census<'c>,
 ) {
-    // ts: reach.ts:264-267 — the owner trigger's slot, if any
+    // the owner trigger's slot, if any
     let own_slot: Option<i64> = match trig_idx.get(owner) {
         Some((CompiledTrigger::Slot { slot, .. }, _)) => Some(*slot),
         _ => None,
     };
 
-    // ts: reach.ts:330 — the walk itself; the REFUSE/throwing marking rides
-    // inside walk_sites (REACH-01)
+    // the walk itself; the REFUSE/throwing marking rides
+    // inside walk_sites
     let cx = RecordCx {
         content,
         owner,
@@ -584,7 +581,7 @@ fn walk_list<'c, 'a>(
     let kills = &st.kills;
     let flags = &st.flags;
 
-    // ts: reach.ts:337-338 — segment-scoped REFUSE death + list-wide throwing
+    // segment-scoped REFUSE death + list-wide throwing
     let dead_segs: IndexSet<usize> = flags
         .iter()
         .filter(|(_, f)| f.refused)
@@ -592,7 +589,7 @@ fn walk_list<'c, 'a>(
         .collect();
     let throw_ops: i64 = flags.values().map(|f| f.throwing).sum();
 
-    // ts: reach.ts:350-384 — per-name mint counts, duplicates → dupRisk
+    // per-name mint counts, duplicates → dup_risk
     let mut mint_counts: IndexMap<String, MintCount> = IndexMap::new();
     for s in sites.iter() {
         if s.kind == SiteKind::Draw && s.deck.is_some() {
@@ -656,10 +653,10 @@ fn walk_list<'c, 'a>(
         }
     }
 
-    // ts: reach.ts:396-434 — the post-pass, site by site (co-mint reads see
+    // the post-pass, site by site (co-mint reads see
     // the whole list, mutation goes to the one site)
     for i in 0..sites.len() {
-        // ts: reach.ts:405-428 — draw caps
+        // draw caps
         let mut cap_draw: Option<i64> = None;
         if sites[i].kind == SiteKind::Draw && sites[i].deck.is_some() {
             let deck = draw_deck(&sites[i]);
@@ -734,7 +731,7 @@ fn walk_list<'c, 'a>(
             census.live.push(idx);
         }
     }
-    // ts: reach.ts:438-440 — a SET inside a REFUSE-doomed segment chain can
+    // a SET inside a REFUSE-doomed segment chain can
     // never persist; it must not serve as an expiry-arming witness (41047)
     for set in census.set_sites.iter_mut() {
         if set.owner == owner && set.segs.iter().any(|id| dead_segs.contains(id)) {
@@ -743,7 +740,7 @@ fn walk_list<'c, 'a>(
     }
 }
 
-/// ts: reach.ts:351-367 (addMint) — per-name UNIFORMITY: a list re-minting X
+/// Per-name UNIFORMITY: a list re-minting X
 /// collides unless EVERY mint of X stacks (§9.14; seed 2654).
 fn add_mint(
     content: &CompiledContent,
@@ -768,7 +765,7 @@ fn add_mint(
     e.all_stack = e.all_stack && stacks;
 }
 
-/// ts: reach.ts:387 (stacky)
+/// Collect the STACKABLE names this list mints.
 fn stacky(content: &CompiledContent, set: &mut IndexSet<String>, name: &str, kind: Option<&str>) {
     if mint_stacks(content, name, kind) {
         set.insert(name.to_string());
@@ -776,18 +773,18 @@ fn stacky(content: &CompiledContent, set: &mut IndexSet<String>, name: &str, kin
 }
 
 /// The DRAW site's deck — a draw naming an unknown deck is a load error
-/// (checkDeckRefs) and such sites never enter the census (ts: reach.ts:327),
-/// so a deckless draw site is unreachable.
+/// (`check_deck_refs`) and such sites never enter
+/// the census, so a deckless draw site is unreachable.
 pub(crate) fn draw_deck<'c>(site: &RawSite<'c>) -> &'c CompiledDeck {
     match site.deck {
         Some(d) => d,
-        None => unreachable!("draw sites with unknown decks never enter the census (ts: reach.ts:327)"),
+        None => unreachable!("draw sites with unknown decks never enter the census"),
     }
 }
 
-/// ts: reach.ts:273-329 (the `record` closure) — one visit of the census
-/// walk. The REFUSE/throwing flag marking stays in [`walk_sites`] (it is part
-/// of the shared traversal's contract, REACH-01).
+/// One visit of the census
+/// walk. The REFUSE/throwing flag marking
+/// stays in [`walk_sites`] (it is part of the shared traversal's contract).
 fn record_visit<'c, 'a>(
     st: &mut WalkState<'c>,
     o: &Outcome,
@@ -806,7 +803,7 @@ fn record_visit<'c, 'a>(
     let own_slot = cx.own_slot;
     let seg = match frame.segs.last() {
         Some(&s) => s,
-        None => unreachable!("every WalkFrame carries at least seg 0 (ts: reach.ts:274)"),
+        None => unreachable!("every WalkFrame carries at least seg 0"),
     };
     let pos = st.op_counter;
     st.op_counter += 1;
@@ -816,7 +813,7 @@ fn record_visit<'c, 'a>(
     let sites = &mut st.sites;
     let kills = &mut st.kills;
 
-    // ts: reach.ts:276-279 — a name-form first arg kills that name
+    // a name-form first arg kills that name
     let kill_name: Option<&str> = match o.args.first() {
         Some(Arg::Ref {
             r#ref: Ref::Name { name, .. },
@@ -872,7 +869,7 @@ fn record_visit<'c, 'a>(
                 target_role,
                 segs: segs.clone(),
                 shadowed,
-                refused: false, // annotated after the walk, once deadSegs are known
+                refused: false, // annotated after the walk, once dead_segs are known
                 path_non_static: path.iter().any(|p| !pred_static(p)),
                 when_pred: when.cloned(),
                 owner_slot: own_slot,
@@ -996,8 +993,8 @@ fn record_visit<'c, 'a>(
     let Some(site) = site else {
         return;
     };
-    // ts: reach.ts:325-327 — a DRAW naming an unknown deck is a load error
-    // (checkDeckRefs), so deck can only be undefined for hand-built content
+    // a DRAW naming an unknown deck is a load error
+    // (`check_deck_refs`), so deck can only be None for hand-built content
     if site.kind == SiteKind::Draw && site.deck.is_none() {
         return;
     }

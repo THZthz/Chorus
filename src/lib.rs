@@ -1,16 +1,17 @@
-//! chorus — Rust port of the TS text-game engine (docs/rust-port/plan.md).
+//! chorus — a deterministic text-game engine: content compiler, core
+//! evaluator, headless session layer, and a static card-reachability
+//! analyzer.
 //!
-//! Module tree mirrors `src/` one-to-one (plan §2.2): `core` (W1), `content`
-//! (W2), `engine` + `session` (W3, the headless session layer — the ink/react
-//! TUI is deliberately NOT ported, plan §1.3), `reach` (W5) and the five bins
-//! (`bin/chorus` is W6's line REPL; the other four are the frozen tools/
-//! CLI shapes). The curated entry surface is [`prelude`] (CORE-03).
+//! Module map: `core` (the engine kernel — parsing, state, queries,
+//! predicates), `content` (script/card compilation), `engine` + `session`
+//! (the step executor and the headless play surface; no UI layer is part of
+//! this crate), `reach` (static reachability analysis) and the five bins
+//! (`bin/chorus` is a line REPL; the other four are fixed-purpose CLI
+//! tools). The curated entry surface is [`prelude`].
 //!
-//! Porting discipline (plan §7): every ported unit carries a
-//! `// ts: <file>:<line>` anchor; frozen quirks carry `// QUIRK(<id>):`;
-//! error messages are byte-exact (`ChorusError`); iteration order is
-//! observable behavior (IndexMap, never std HashMap at order-sensitive
-//! points).
+//! Invariants kept crate-wide: error messages are byte-exact
+//! (`ChorusError`); iteration order is observable behavior (IndexMap, never
+//! std HashMap at order-sensitive points).
 
 pub mod content;
 pub mod core;
@@ -19,13 +20,11 @@ pub mod js;
 pub mod reach;
 pub mod session;
 
-/// CORE-03 — the crate's curated front door. The module tree above stays
-/// public (the ported test files anchor `chorus::<module>` paths one-to-one
-/// with the TS imports, and the reach analyzer's seam modules are part of the
-/// reviewed surface), so this prelude is a convenience re-export of the
-/// entry points a consumer of the ported engine actually reaches for — not a
-/// visibility boundary. Anything not listed here is reached through its
-/// module path, exactly like its TS counterpart's import.
+/// The crate's curated front door. The module tree above stays public (the
+/// reach analyzer's seam modules are part of the reviewed surface), so this
+/// prelude is a convenience re-export of the entry points a consumer of the
+/// engine actually reaches for — not a visibility boundary. Anything not
+/// listed here is reached through its module path.
 pub mod prelude {
     // content — a script text becomes a world + logic
     pub use crate::content::content::{compile_content, CompiledContent, ContentRaw};
@@ -38,7 +37,7 @@ pub mod prelude {
     pub use crate::engine::engine::{execute_step, ActionRecord, ExecOptions, Step};
     pub use crate::engine::fold::{fold, fold_up_to};
     pub use crate::engine::store::{load_log, save_log, Log};
-    // session — the play surface (play.ts's Game) and its projections
+    // session — the play surface and its projections
     pub use crate::session::game::{Game, Turn, TurnKind};
     pub use crate::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
     pub use crate::session::render::{

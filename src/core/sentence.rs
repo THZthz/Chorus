@@ -1,6 +1,5 @@
-//! Sentence AST — ts: src/core/sentence.ts (mirrors spec §5.1 exactly).
-//! `Role/ROLES` are sunk into `core::roles` (CORE-02) and re-exported here
-//! to mirror the TS export surface.
+//! Sentence AST (spec §5.1). `Role`/`ROLES` live in `core::roles` and are
+//! re-exported here.
 
 use crate::core::clock::Clock;
 use crate::core::predicate::{Pred, ValExpr};
@@ -8,7 +7,8 @@ use crate::core::r#ref::Ref;
 
 pub use crate::core::roles::{Role, ROLES};
 
-/// ts: src/core/sentence.ts:10-18
+/// One clause: SUBJECTS VERB [TO x] [OBJECTS] [WITH y] [ABOUT z], with a
+/// pre-verbal AT in canonical form.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Clause {
     pub actors: Vec<Ref>, // unordered set; canonical form is sorted
@@ -20,17 +20,15 @@ pub struct Clause {
     pub about: Option<Ref>,
 }
 
-/// The `into` target's `Ref | { role }` union (ts: sentence.ts:29), kept as
-/// an untagged enum — the serde shape plan §2.3 vetted for W3's log records.
-/// Untagged = the wire form is the bare inner object (`{ role: 'object' }`
-/// or the ref itself), exactly the TS values; the variants are disjoint on
+/// The `into` target's `Ref | { role }` union, kept as
+/// an untagged enum. Untagged = the wire form is the bare inner object
+/// (`{ role: 'object' }` or the ref itself); the variants are disjoint on
 /// the wire (only one has `role`, only the other has `form`).
 ///
-/// W4 golden fix: the `Ref` arm is a NEWTYPE — the TS value of `ref` IS the
-/// Ref object itself (`{ t: 'into', ref: { form: 'id', … } }`), so the JSONL
-/// carries the bare Ref. The former struct variant serialized a wrapped
-/// `{"ref": …}` — a shape no TS log can produce (first divergence caught by
-/// the demo golden, record 3).
+/// The `Ref` arm is a NEWTYPE — the value of `ref` IS the Ref object itself
+/// (`{ t: 'into', ref: { form: 'id', … } }`), so the JSONL
+/// carries the bare Ref (a wrapped `{"ref": …}` would be a shape no log can
+/// produce; the demo golden replay, record 3, pins this).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum IntoTarget {
@@ -40,9 +38,9 @@ pub enum IntoTarget {
     Role { role: Role },
 }
 
-/// `1 | -1` (ts: sentence.ts:36) — the sign a delta position carries on a
-/// param placeholder, folded into the call's number at expansion. Wire form
-/// (plan §2.3): the JSON numbers `1` / `-1`, omitted when absent.
+/// `1 | -1` — the sign a delta position carries on a
+/// param placeholder, folded into the call's number at expansion. Wire form:
+/// the JSON numbers `1` / `-1`, omitted when absent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sign {
     Pos,
@@ -69,7 +67,7 @@ impl<'de> serde::Deserialize<'de> for Sign {
 }
 
 impl Sign {
-    /// ts: parse.ts:725-726 — `a.sign * bound.v`.
+    /// `sign * v`.
     #[must_use]
     pub fn apply(self, v: i64) -> i64 {
         match self {
@@ -78,7 +76,7 @@ impl Sign {
         }
     }
 
-    /// ts: parse.ts:553 — `sign: t.v === '-' ? -1 : 1`.
+    /// `1` for '+', `-1` for '-' (as lexed from a delta position).
     #[must_use]
     pub fn as_i64(self) -> i64 {
         match self {
@@ -88,12 +86,10 @@ impl Sign {
     }
 }
 
-/// ts: src/core/sentence.ts:20-39 — the Arg union. The serde tag is `t`
-/// (plan §2.3); `pair`/`valueToken` reuse [`AttrValue`] because TS spells
-/// both as `string | number | boolean`.
+/// The Arg union. The serde tag is `t`;
+/// `pair`'s value reuses [`AttrValue`] (a JSON string, number, or boolean).
 ///
-/// Wire order (W3 JSONL, ENG-20): every TS construction literal (parse.ts
-/// :310-609, engine.ts :389-589) writes `t` first and then the payload
+/// Wire order (JSONL): `t` comes first and then the payload
 /// fields in the declaration order below — `param`'s `sign` omitted when
 /// absent, exactly like `JSON.stringify` dropping `undefined`. The log only
 /// ever carries the ref/role/int/delta/str/bool/dur/key/into/asId/pair
@@ -127,7 +123,7 @@ pub enum Arg {
     /// `{ t: 'dur', v }` — minutes
     #[serde(rename = "dur")]
     Dur { v: i64 },
-    /// `{ t: 'key', v }` — SET key: 'level', 'state.sealed', 'aspect:dread' (§9.31)
+    /// `{ t: 'key', v }` — SET key: `level`, `state.sealed`, `aspect:dread` (§9.31)
     #[serde(rename = "key")]
     Key { v: String },
     /// `{ t: 'into', ref: Ref | { role } }`
@@ -159,8 +155,8 @@ pub enum Arg {
 }
 
 impl Arg {
-    /// The TS `t` tag string — error messages name the tag
-    /// (`the call supplies a ${bound.t}`, fn_expand substExpr/substArg).
+    /// The wire tag string — error messages name the tag
+    /// ("the call supplies a <tag>").
     #[must_use]
     pub fn tag(&self) -> &'static str {
         match self {
@@ -181,7 +177,7 @@ impl Arg {
     }
 }
 
-/// ts: src/core/sentence.ts:42-45 — one IF/ELSE IF arm (§9.39): a condition
+/// One IF/ELSE IF arm (§9.39): a condition
 /// and its paren'd outcome body. Serde derives exist only so [`Outcome`]
 /// (whose `arms` field holds these) has one representation — IF outcomes are
 /// authored form only and never reach the log (§9.39), so the wire shape of
@@ -192,9 +188,9 @@ pub struct IfArm {
     pub then: Vec<Outcome>,
 }
 
-/// ts: src/core/sentence.ts:47-62. The serde field order matches the only
-/// construction shape that can reach the log — `{ op, args }` (parse.ts:356+,
-/// engine.ts:520-591); `arms`/`fallback`/`call` are the authored-only
+/// One outcome. The serde field order matches the only
+/// construction shape that can reach the log — `{ op, args }`;
+/// `arms`/`fallback`/`call` are the authored-only
 /// IF/FN extras and serialize as absent exactly like `JSON.stringify`
 /// dropping `undefined`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -216,7 +212,7 @@ pub struct Outcome {
     pub call: Option<String>,
 }
 
-/// ts: src/core/sentence.ts:65 — `kind: 'action' | 'event' | 'complete' | 'wait'`.
+/// The sentence kind, serialized as `action` / `event` / `complete` / `wait`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SentenceKind {
     Action,
@@ -237,7 +233,7 @@ impl SentenceKind {
     }
 }
 
-/// ts: src/core/sentence.ts:64-73
+/// One parsed sentence.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sentence {
     pub kind: SentenceKind,
@@ -251,8 +247,8 @@ pub struct Sentence {
     pub span_min: Option<i64>,
 }
 
-/// ts: src/core/sentence.ts:75-77 — MUST be ported: explorer-lib/reach-fuzz-lib
-/// consume it (plan §1.2 "死代码不移植" list explicitly spares emptyClause).
+/// A clause with actors and everything else empty — consumed by the
+/// reach analyzer and the fuzz driver.
 #[must_use]
 pub fn empty_clause(actors: Vec<Ref>) -> Clause {
     Clause {

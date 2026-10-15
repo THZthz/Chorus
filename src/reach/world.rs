@@ -1,12 +1,11 @@
-//! The analysis host — ts: src/reach/reach.ts:456-978 (the WorldFacts
-//! interface, computeWorldFacts' pre-fixpoint half) plus the identity-cache
-//! replacement (REACH-07): TS memoizes world facts per (content, initial) in
-//! two nested WeakMaps and the trigger index in a third; the port collapses
-//! all three into one `Analyzer<'c>` holding `(content, initial)` with a
+//! The analysis host: the WorldFacts
+//! interface, `compute_world_facts`' pre-fixpoint half, and the identity-cache
+//! design — all world facts are pure functions of (content, initial), so one
+//! `Analyzer<'c>` holding `(content, initial)` suffices, with a
 //! lazily-computed [`WorldFacts`]. The world-static predicate EVALUATORS
-//! (evalStatic/pathOpen/writablePaths) live here; the static-shape PREDICATES
-//! (`predStatic`) live in census.rs — TS's collectSites itself consumes
-//! predStatic while tagging sites (reach.ts:307/320-322).
+//! (`eval_static`/`path_open`/`writable_paths`) live here; the static-shape PREDICATES
+//! (`pred_static`) live in census.rs — collect_sites itself consumes
+//! pred_static while tagging sites.
 
 use std::sync::OnceLock;
 
@@ -22,36 +21,37 @@ use super::census::{
     collect_sites, draw_deck, object_always, pred_static, Census, RawSite, SiteKind, TrigIndex,
 };
 
-/// TS `Infinity` for the freeze-distance comparisons (plan §3.11): every
+/// JS `Infinity` for the freeze-distance comparisons: every
 /// observed value is a first-crossing distance (1..=1440), so `i64::MAX`
-/// preserves every comparison direction (`fc < freezeAt` always true when
-/// unfrozen, `fc >= freezeDist` always false).
+/// preserves every comparison direction (`fc < freeze_dist` always true when
+/// unfrozen, `fc >= freeze_dist` always false).
 pub(crate) const INFINITY: i64 = i64::MAX;
 
 // ---------------------------------------------------------------------------
-// world-static predicate evaluation — ts: reach.ts:476-529 (verified B12)
+// world-static predicate evaluation
 // ---------------------------------------------------------------------------
 
-/// The fixpoint's view of the available world (ts: reach.ts:481): distinct
+/// The fixpoint's view of the available world: distinct
 /// facts with count-capped weights. Query evaluation over weights is EXACTLY
 /// the evaluation over the flattened entity array — flatten pushed
 /// min(count, 32) instances per fact.
 #[derive(Debug, Clone)]
 pub(crate) struct CardWorld {
-    /// the flatCache version stamp (ported verbatim — see [`WorldFacts::push`])
+    /// the flat_cache version stamp (see [`WorldFacts::push`])
     pub ver: u64,
     pub by_name: IndexMap<String, i64>,
     pub distinct: Vec<DistEntry>,
 }
 
-/// ts: reach.ts:481 — `{ e: Entity; w: number }`.
+/// One distinct fact: the entity descriptor `e` and its
+/// capped weight `w`.
 #[derive(Debug, Clone)]
 pub(crate) struct DistEntry {
     pub e: Entity,
     pub w: i64,
 }
 
-/// ts: reach.ts:498-506
+/// Evaluate a static value expression against the available world.
 fn eval_expr_static(v: &ValExpr, world: &CardWorld) -> Result<i64> {
     match v {
         ValExpr::Int { v } => Ok(*v),
@@ -61,14 +61,14 @@ fn eval_expr_static(v: &ValExpr, world: &CardWorld) -> Result<i64> {
             .filter(|d| match_query(&d.e, query))
             .map(|d| d.w)
             .sum()),
-        // ts: reach.ts:505 — preserved as Err (TS throws; capturable)
+        // preserved as Err (catchable upstream)
         _ => Err(ChorusError::new(
             "internal: evalExprStatic over a non-static operand",
         )),
     }
 }
 
-/// ts: reach.ts:508-523
+/// Evaluate a static predicate against the available world.
 pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
     match p {
         Pred::And(a, b) => {
@@ -96,14 +96,14 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
             .distinct
             .iter()
             .any(|d| match_query(&d.e, query))),
-        // ts: reach.ts:521 — preserved as Err (TS throws; capturable)
+        // preserved as Err (catchable upstream)
         _ => Err(ChorusError::new(
             "internal: evalStatic over a non-static predicate",
         )),
     }
 }
 
-/// ts: reach.ts:527-529 — every condition on the path must be static AND true
+/// Every condition on the path must be static AND true
 /// against the current known world; anything else demotes the site.
 pub(crate) fn path_open(path: &[Pred], world: &CardWorld) -> Result<bool> {
     for p in path {
@@ -115,7 +115,7 @@ pub(crate) fn path_open(path: &[Pred], world: &CardWorld) -> Result<bool> {
     Ok(true)
 }
 
-/// ts: reach.ts:566-575 — the writable paths a query's aspect/state thresholds
+/// The writable paths a query's aspect/state thresholds
 /// demand, in SET-key form ('aspect:x' / 'state.x').
 pub(crate) fn writable_paths(query: &[QueryTerm]) -> Vec<String> {
     query
@@ -129,17 +129,17 @@ pub(crate) fn writable_paths(query: &[QueryTerm]) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// the structured committability proof — ts: reach.ts:102-106
+// the structured committability proof
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:102 — `{ name, how }` filler pair.
+/// A slot filler: the `name` and `how` it was obtained.
 #[derive(Debug, Clone)]
 pub struct SlotFiller {
     pub name: String,
     pub how: String,
 }
 
-/// ts: reach.ts:102-106 — one filled slot of a verb's committability proof.
+/// One filled slot of a verb's committability proof.
 #[derive(Debug, Clone)]
 pub struct SlotProof {
     pub role: String,
@@ -149,10 +149,10 @@ pub struct SlotProof {
 }
 
 // ---------------------------------------------------------------------------
-// the available-card fact — ts: reach.ts:129-133
+// the available-card fact
 // ---------------------------------------------------------------------------
 
-/// ts: reach.ts:129-133 — one available card: a static descriptor + how many
+/// One available card: a static descriptor + how many
 /// live copies it can contribute.
 #[derive(Debug, Clone)]
 pub(crate) struct CardFact {
@@ -162,15 +162,15 @@ pub(crate) struct CardFact {
 }
 
 // ---------------------------------------------------------------------------
-// WorldFacts — ts: reach.ts:587-613
+// WorldFacts
 // ---------------------------------------------------------------------------
 
-/// Everything target-independent the per-card analysis reads (ts: reach.ts
-/// :579-586). Deterministic in (content, initial) — the analyzer never
-/// mutates either. Identity keys are indices (plan §2.6.5): `committable` /
+/// Everything target-independent the per-card analysis reads. Deterministic
+/// in (content, initial) — the analyzer never
+/// mutates either. Identity keys are indices: `committable` /
 /// `fillers` are keyed by the content.verbs insertion index, `proven` /
-/// `mint_sources` by the census site arena index; every insertion-ordered TS
-/// Map/Set is an IndexMap/IndexSet (REACH-03: avail push order → slotSupport
+/// `mint_sources` by the census site arena index; every insertion-ordered
+/// Map/Set is an IndexMap/IndexSet (avail push order → `slot_support`
 /// candidate order → first-fit proofs; proven order = proof order → chain
 /// first-hit and paths order).
 pub(crate) struct WorldFacts<'c> {
@@ -182,13 +182,13 @@ pub(crate) struct WorldFacts<'c> {
     /// available cards by name, fact lists in push order
     pub avail: IndexMap<String, Vec<CardFact>>,
     pub avail_ver: u64,
-    /// the flatCache (ts: reach.ts:638) — ported verbatim including its
+    /// the flat_cache — exact mechanics preserved including its
     /// version stamp
     pub flat_cache: Option<CardWorld>,
     /// one representative per name (descriptors; later-wins over
     /// State.entities order — same-name stackable mints in mid-game States)
     pub init_names: IndexMap<String, &'c Entity>,
-    /// trigger owner → its non-stackable mint names (hoisted for siteProven's
+    /// trigger owner → its non-stackable mint names (hoisted for `site_proven`'s
     /// trigger-vs-recipe rule, 81915)
     pub trigger_mint_names: IndexMap<String, IndexSet<String>>,
     pub set_writes: IndexSet<String>,
@@ -206,7 +206,7 @@ pub(crate) struct WorldFacts<'c> {
     pub committable: IndexMap<usize, Vec<SlotProof>>,
     /// site arena index → support lines (proof order)
     pub proven: IndexMap<usize, Vec<String>>,
-    /// bare name → PROVEN sites minting it, in proof order (mintSources)
+    /// bare name → PROVEN sites minting it, in proof order (`mint_sources`)
     pub mint_sources: IndexMap<String, Vec<usize>>,
     /// verb index → names its committability proof filled slots with
     pub fillers: IndexMap<usize, IndexSet<String>>,
@@ -223,10 +223,10 @@ pub(crate) struct WorldFacts<'c> {
 }
 
 impl<'c> WorldFacts<'c> {
-    /// ts: reach.ts:684-687 — minutes until the FIRST crossing of slot s (a
+    /// Minutes until the FIRST crossing of slot s (a
     /// start-slot trigger's first crossing is the next cycle — boundary ==
     /// now is already spent). The `d === 0 → 1440` branch is part of the
-    /// semantics (REACH-14).
+    /// semantics.
     pub(crate) fn first_cross(&self, slot: i64) -> i64 {
         let d = (slot * 30 - self.initial.now).rem_euclid(1440);
         if d == 0 {
@@ -236,13 +236,13 @@ impl<'c> WorldFacts<'c> {
         }
     }
 
-    /// ts: reach.ts:676 — `protoOf`.
+    /// The declared prototype for a name, if any.
     pub(crate) fn proto_of(&self, name: &str) -> Option<&'c PrototypeDef> {
         self.content.prototypes.get(name)
     }
 
-    /// ts: reach.ts:688-697 — synthesize a static entity descriptor (id
-    /// `~${name}`; bornAction 0; deadAction null).
+    /// Synthesize a static entity descriptor (id
+    /// `~<name>`; `born_action` 0; `dead_action` None).
     pub(crate) fn synth(
         &self,
         name: &str,
@@ -264,10 +264,10 @@ impl<'c> WorldFacts<'c> {
         }
     }
 
-    /// ts: reach.ts:639-652 — `cardsOf`, over the flatCache. Verbatim
+    /// `cards_of`, over the flat_cache. Exact
     /// mechanics: [`WorldFacts::push`] updates the cached view but not its
     /// `ver`, so every push invalidates and the next call rebuilds from
-    /// `avail` (insertion order preserved — the TS "O(1) warmth" comment is
+    /// `avail` (insertion order preserved — the "O(1) warmth" claim is
     /// defeated by the stale ver; reproduced, not repaired).
     pub(crate) fn cards_of(&mut self) -> CardWorld {
         if let Some(cache) = &self.flat_cache {
@@ -299,7 +299,7 @@ impl<'c> WorldFacts<'c> {
         cache
     }
 
-    /// ts: reach.ts:653-664 — `push`.
+    /// Add one available-card fact under its name (the `push` mechanics).
     pub(crate) fn push(&mut self, name: String, fact: CardFact) {
         match self.avail.get_mut(&name) {
             Some(list) => list.push(fact.clone()),
@@ -307,8 +307,8 @@ impl<'c> WorldFacts<'c> {
                 self.avail.insert(name.clone(), vec![fact.clone()]);
             }
         }
-        // ts: reach.ts:657-663 — the cache update without the ver bump (the
-        // exact TS mechanics; see cards_of)
+        // the cache update without the ver bump (the
+        // exact mechanics; see cards_of)
         if let Some(cache) = &mut self.flat_cache {
             let w = std::cmp::min(fact.count, 32);
             cache.by_name.insert(
@@ -325,12 +325,12 @@ impl<'c> WorldFacts<'c> {
 }
 
 // ---------------------------------------------------------------------------
-// Analyzer — the REACH-07 replacement for worldCache/trigIndexCache
+// Analyzer — the per-(content, initial) host; per-fact caches are unnecessary
 // ---------------------------------------------------------------------------
 
 /// The per-(content, initial) analysis host. Deterministic in its inputs; the
 /// world facts are computed once on first use and shared by every subsequent
-/// [`Analyzer::analyze_card`] call (the WeakMap-keyed worldFor shape). The
+/// [`Analyzer::analyze_card`] call. The
 /// caller must not mutate content or initial between calls.
 pub struct Analyzer<'c> {
     pub(crate) content: &'c CompiledContent,
@@ -348,14 +348,14 @@ impl<'c> Analyzer<'c> {
         }
     }
 
-    /// ts: reach.ts:617-623 — `worldFor` (compute once per pair).
+    /// The world facts (compute once per (content, initial) pair).
     pub(crate) fn facts(&self) -> &WorldFacts<'c> {
         self.world.get_or_init(|| compute_world_facts(self.content, self.initial))
     }
 }
 
 // ---------------------------------------------------------------------------
-// computeWorldFacts — ts: reach.ts:625-978 (pre-fixpoint half)
+// compute_world_facts — the pre-fixpoint half
 // ---------------------------------------------------------------------------
 
 pub(crate) fn compute_world_facts<'c>(
@@ -364,7 +364,7 @@ pub(crate) fn compute_world_facts<'c>(
 ) -> WorldFacts<'c> {
     let trig_idx = TrigIndex::build(content);
 
-    // ts: reach.ts:665-671 — initial living entities, grouped by name; the
+    // initial living entities, grouped by name; the
     // LAST entity with a name wins the representative slot (JS Map.set keeps
     // the original insertion position — IndexMap::insert likewise).
     let mut init_names: IndexMap<String, &'c Entity> = IndexMap::new();
@@ -404,7 +404,7 @@ pub(crate) fn compute_world_facts<'c>(
         deck_cap: IndexMap::new(),
     };
 
-    // ts: reach.ts:672-674 — one avail fact per representative name
+    // one avail fact per representative name
     let pushes: Vec<(String, CardFact)> = wf
         .init_names
         .iter()
@@ -423,11 +423,11 @@ pub(crate) fn compute_world_facts<'c>(
         wf.push(name, fact);
     }
 
-    // ts: reach.ts:699-702 — the census (collisionNames seeded with the
+    // the census (collision_names seeded with the
     // initial non-stackable names inside)
     let census = collect_sites(content, &wf.init_names, &wf.trig_idx);
     wf.census = census;
-    // ts: reach.ts:703 — the SET-written paths
+    // the SET-written paths
     wf.set_writes = wf
         .census
         .set_sites
@@ -435,19 +435,19 @@ pub(crate) fn compute_world_facts<'c>(
         .map(|s| s.key.clone())
         .collect();
 
-    // ts: reach.ts:712-953 — the risky-trigger demotions (list-level mint
+    // the risky-trigger demotions (list-level mint
     // risk, same-slot pair rule, cross-slot timing, freeze line)
     risky_block(&mut wf);
 
-    // ts: reach.ts:957-962 — dirtyOwners
+    // dirty_owners
     for &i in wf.census.live.iter().chain(&wf.census.refused) {
         let s = &wf.census.sites[i];
         if s.dup_risk {
             wf.dirty_owners.insert(s.owner.clone());
         }
     }
-    // ts: reach.ts:965-971 — the freeze line: FIRST-CROSSING distance units,
-    // NOT cyclic order (verification agent D, seed 65415 shape)
+    // the freeze line: FIRST-CROSSING distance units,
+    // NOT cyclic order (seed 65415 shape)
     let risky_triggers: Vec<&CompiledTrigger> = wf
         .content
         .triggers
@@ -465,13 +465,13 @@ pub(crate) fn compute_world_facts<'c>(
             .map(|t| match t {
                 CompiledTrigger::Slot { slot, .. } => wf.first_cross(*slot),
                 CompiledTrigger::Expire { .. } => {
-                    unreachable!("riskyTriggers filters to slot triggers (ts: reach.ts:965)")
+                    unreachable!("riskyTriggers filters to slot triggers")
                 }
             })
             .min()
             .unwrap_or(INFINITY);
     }
-    // ts: reach.ts:972-974 — the refused note
+    // the refused note
     if !wf.census.refused.is_empty() {
         wf.notes.push(format!(
             "{} producer site(s) sit behind an authored REFUSE — they can never apply and are excluded",
@@ -479,33 +479,33 @@ pub(crate) fn compute_world_facts<'c>(
         ));
     }
 
-    // ts: reach.ts:1061-1078 — the fixpoint (naive round-robin, REACH-10)
+    // the fixpoint (naive round-robin)
     super::fixpoint::run_fixpoint(&mut wf);
 
-    // ts: reach.ts:1080-1263 — universe, dead verbs, deck caps
+    // universe, dead verbs, deck caps
     super::paths::build_post_fixpoint(&mut wf);
 
     wf
 }
 
-/// ts: reach.ts:712-953 — the risky block: list-level mint risk against the
+/// The risky block: list-level mint risk against the
 /// INITIAL world and CROSS-LIST trigger timing. Mutates census sites
-/// (`dupRisk`) through arena indices exactly like the TS byList references
-/// mutate the shared site objects.
+/// (`dup_risk`) through arena indices (the shared per-list site objects,
+/// flattened into the arena).
 fn risky_block(wf: &mut WorldFacts) {
-    // ts: reach.ts:713-718 — byList: live ∪ refused grouped by owner
+    // by_list: live ∪ refused grouped by owner
     let mut by_list: IndexMap<String, Vec<usize>> = IndexMap::new();
     for &i in wf.census.live.iter().chain(&wf.census.refused) {
         let owner = wf.census.sites[i].owner.clone();
         by_list.entry(owner).or_default().push(i);
     }
 
-    /// `byList.get(owner) ?? []`
+    /// The owner's site indices, empty when the owner has none.
     fn idxs<'m>(m: &'m IndexMap<String, Vec<usize>>, k: &str) -> &'m [usize] {
         m.get(k).map_or(&[], Vec::as_slice)
     }
 
-    /// ts: reach.ts:719-730 — collision-filtered mint names of a site list.
+    /// Collision-filtered mint names of a site list.
     fn mint_set_of(census: &Census, sites: &[usize]) -> IndexSet<String> {
         let mut names = IndexSet::new();
         for &i in sites {
@@ -529,7 +529,7 @@ fn risky_block(wf: &mut WorldFacts) {
         names
     }
 
-    // ts: reach.ts:731-737 — a list minting the name of a living initial
+    // a list minting the name of a living initial
     // non-stackable card collides on its first commit (seeds 40/43)
     let mut risky: IndexMap<String, bool> = IndexMap::new();
     for (owner, sites) in &by_list {
@@ -540,7 +540,7 @@ fn risky_block(wf: &mut WorldFacts) {
         risky.insert(owner.clone(), val);
     }
 
-    // ts: reach.ts:738-744 — slot triggers by slot, declaration order
+    // slot triggers by slot, declaration order
     let mut trig_by_slot: IndexMap<i64, Vec<String>> = IndexMap::new();
     for t in &wf.content.triggers {
         if let CompiledTrigger::Slot { id, slot, .. } = t {
@@ -551,7 +551,7 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:745-763 — same-slot pairs: a shared mint name makes the
+    // same-slot pairs: a shared mint name makes the
     // pair mutually risky, and one risky trigger kills the whole EVENT PASS
     for owners in trig_by_slot.values() {
         for i in 0..owners.len() {
@@ -571,9 +571,9 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:771-782 — across DIFFERENT slots the LATER first crossing
-    // demotes (fuzz seed 7475). trigFlat's sort is stability-irrelevant
-    // (REACH-05): equal-c pairs are skipped below.
+    // across DIFFERENT slots the LATER first crossing
+    // demotes (fuzz seed 7475). trig_flat's sort is stability-irrelevant:
+    // equal first-cross pairs are skipped below.
     let mut trig_flat: Vec<(String, i64)> = wf
         .content
         .triggers
@@ -599,7 +599,7 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:793-801 — the gated-branch escape set: every non-stackable
+    // the gated-branch escape set: every non-stackable
     // mint name anywhere (initial copies included)
     let mut other_mints: IndexSet<String> = IndexSet::new();
     for e in wf.init_names.values() {
@@ -620,7 +620,7 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:802-815 — roll/role-gated mint arms join the risky set
+    // roll/role-gated mint arms join the risky set
     // when their mint name is ALSO minted elsewhere (fuzz seed 686)
     for (owner_o, sites_o) in &by_list {
         let gated: Vec<String> = sites_o
@@ -655,7 +655,7 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:827-830 — listBlocked
+    // list_blocked
     let list_blocked = |wf: &WorldFacts, owner: &str| -> bool {
         if risky.get(owner) == Some(&true) {
             return true;
@@ -665,7 +665,7 @@ fn risky_block(wf: &mut WorldFacts) {
             .any(|&i| wf.census.sites[i].dup_risk)
     };
 
-    // ts: reach.ts:846-870 — deterministic-throw freeze (seeds 2876, 10388)
+    // deterministic-throw freeze (seeds 2876, 10388)
     let mut throw_frozen: IndexSet<String> = IndexSet::new();
     let decl_of = |owner: &str| -> i64 { wf.trig_idx.get(owner).map_or(-1, |(_, d)| d) };
     let first_cross_of = |owner: &str| -> Option<i64> {
@@ -723,10 +723,9 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:871-888 — firstFreeze: the first crossing of a blocking
-    // boundary freezes the clock there forever. REACH-13: the TS Map's
-    // `set(d, min(get(d) ?? d, d))` is key==value — a Set; only
-    // `min(keys)` is ever read.
+    // first_freeze: the first crossing of a blocking
+    // boundary freezes the clock there forever. Crossings accumulate
+    // deduplicated (key==value set semantics); only their min is ever read.
     let mut first_freeze: Vec<i64> = Vec::new();
     for t in &wf.content.triggers {
         let CompiledTrigger::Slot { id, slot, once, .. } = t else {
@@ -746,7 +745,7 @@ fn risky_block(wf: &mut WorldFacts) {
     }
     let freeze_at: i64 = first_freeze.iter().copied().min().unwrap_or(INFINITY);
 
-    // ts: reach.ts:902-918 — same-slot pass-mates of a freezing trigger never
+    // same-slot pass-mates of a freezing trigger never
     // persist either; the exemption is EXACT (recurring minter standing ON
     // the boundary slot, clean first firings only)
     let boundary_slot: Option<i64> = if freeze_at != INFINITY {
@@ -788,7 +787,7 @@ fn risky_block(wf: &mut WorldFacts) {
         }
     }
 
-    // ts: reach.ts:919-930 — risky owners and deterministic throwers demote
+    // risky owners and deterministic throwers demote
     for (owner, is_risky) in &risky {
         if !*is_risky {
             continue;
@@ -804,7 +803,7 @@ fn risky_block(wf: &mut WorldFacts) {
             wf.census.sites[i].dup_risk = true;
         }
     }
-    // ts: reach.ts:941-947 — a draft-condemned trigger refuses deterministically
+    // a draft-condemned trigger refuses deterministically
     // at its slot just the same (fuzz seed 65415)
     for t in &wf.content.triggers {
         let CompiledTrigger::Slot { id, .. } = t else {
@@ -819,7 +818,7 @@ fn risky_block(wf: &mut WorldFacts) {
             wf.census.sites[i].dup_risk = true;
         }
     }
-    // ts: reach.ts:949-952 — hoisted for siteProven's trigger-vs-recipe rule
+    // hoisted for `site_proven`'s trigger-vs-recipe rule
     for t in &wf.content.triggers {
         let CompiledTrigger::Slot { id, .. } = t else {
             continue;

@@ -1,6 +1,5 @@
-//! Cultist-Simulator-scale load generator for the reachability analyzer —
-//! ts: test/reach-scale-lib.ts (plan §4-W5 / §5.2.1 / PR3-03). The companion
-//! of `reach_fuzz_lib`: that one checks SOUNDNESS against engine truth, this
+//! Cultist-Simulator-scale load generator for the reachability analyzer. The
+//! companion of `reach_fuzz_lib`: that one checks SOUNDNESS against engine truth, this
 //! one checks the analyzer's SCALING — compile + per-card census + path
 //! export over CS-shaped content. NO test harness here (explorer-lib
 //! precedent — scripts and tests import alike; the reach-scale bin mounts
@@ -10,7 +9,7 @@
 //! §6): N prototypes ≈ CS elements, M recipes ≈ CS's 2,084-recipe rulebook
 //! modeled the Chorus way (ONE VERB PER SITUATION — same-verb multi-recipe is
 //! first-match and self-shadow), 67 decks, season/expiry triggers.
-//! Deterministic in the arguments: same (nProtos, nRecipes) ⇒ byte-identical
+//! Deterministic in its arguments — same (n_protos, n_recipes) ⇒ byte-identical
 //! content, so two builds produce independent, comparable worlds.
 //!
 //! (Shared test lib discipline: the `allow` lives in this one place.)
@@ -30,7 +29,7 @@ use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
 use chorus::js::Lcg;
 use chorus::reach::{Analyzer, CardReport, ReachPath};
 
-/// ts: reach-scale-lib.ts:18-25 — the world plus every card name worth
+/// The world plus every card name worth
 /// probing and the shape counters the CLI prints.
 pub struct ScaleWorld {
     pub content: CompiledContent,
@@ -42,7 +41,7 @@ pub struct ScaleWorld {
     pub stats: ScaleStats,
 }
 
-/// ts: reach-scale-lib.ts:24 — `{ protos, recipes, ops, decks, triggers }`.
+/// The shape counters: `{ protos, recipes, ops, decks, triggers }`.
 pub struct ScaleStats {
     pub protos: usize,
     pub recipes: usize,
@@ -51,26 +50,26 @@ pub struct ScaleStats {
     pub triggers: usize,
 }
 
-// ---------- deterministic RNG (explorer-lib's LCG discipline) ----------
+// ---------- deterministic RNG (explorer-lib's LCG discipline) --------------
 
-/// ts: reach-scale-lib.ts:28-31 — `lcg(0xc5)`; `Lcg::new` XORs 0x9e3779b9
-/// exactly like the TS `seed ^ 0x9e3779b9` (plan §3.12).
+/// The shared LCG discipline: `Lcg::new` XORs 0x9e3779b9
+/// into the seed.
 #[must_use]
 fn lcg(seed: u32) -> Lcg {
     Lcg::new(seed)
 }
 
-/// ts: reach-scale-lib.ts:35 — `Math.floor(rnd() * n)`
+/// One uniform draw, floored into `0..n`.
 fn int(r: &mut Lcg, n: usize) -> usize {
     r.next_int(n)
 }
 
-/// ts: reach-scale-lib.ts:36 — `pick(arr)`. The INDEX DRAW happens even when
-/// the array is EMPTY (`int(0)` = `floor(rnd()*0)` still consumes one LCG
-/// draw — QUIRK(REACH-14): the CI-sized 400-prototype slice has no hubs
-/// (`protoNames.slice(900, 905)` is empty), so the picked value is
-/// `undefined` and the surrounding template literal becomes the literal
-/// string "SPAWN undefined"; the draw is what keeps the stream aligned.
+/// Index draw over `arr`. The INDEX DRAW happens even when
+/// the array is EMPTY (`int(0)` still consumes one LCG
+/// draw — the CI-sized 400-prototype slice has no hubs,
+/// so the picked value is the literal string "undefined" and the surrounding
+/// template mints the literal card "SPAWN undefined"; the draw is what keeps
+/// the stream aligned).
 fn pick_template(r: &mut Lcg, arr: &[String]) -> String {
     let i = int(r, arr.len());
     arr.get(i)
@@ -82,25 +81,24 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
     vs.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// ts: reach-scale-lib.ts:33-143 — `buildCsScale`, draw-for-draw identical.
+/// The CS-scale world builder. Draw-for-draw deterministic: the same
+/// (n_protos, n_recipes) arguments consume the same LCG stream.
 pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut rnd = lcg(0xc5);
 
-    /// ts: reach-scale-lib.ts:38
     const KINDS: [&str; 8] = [
         "item", "text", "idea", "resource", "rite", "state", "place", "character",
     ];
-    /// ts: reach-scale-lib.ts:39
     const ASPECTS: [&str; 12] = [
         "lantern", "forge", "edge", "winter", "knock", "heart", "grail", "moth", "lore",
         "ingredient", "tool", "follower",
     ];
-    // ts: reach-scale-lib.ts:40 — `R1`..`R20`
+    // resources `R1`..`R20`
     let resources: Vec<String> = (1..=20).map(|i| format!("R{i}")).collect();
     let kinds_non_char: Vec<&str> = KINDS.iter().copied().filter(|k| *k != "character").collect();
 
-    // ts: reach-scale-lib.ts:42-51 — the prototypes. `kind` for i < 30 is
-    // 'character' with NO draw (the ternary's false arm never evaluates).
+    // the prototypes. `kind` for i < 30 is
+    // 'character' with NO draw (the else branch never runs).
     let mut protos: IndexMap<String, PrototypeDef> = IndexMap::new();
     let mut proto_names: Vec<String> = Vec::with_capacity(n_protos);
     for i in 0..n_protos {
@@ -109,12 +107,11 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         let kind = if i < 30 {
             "character".to_string()
         } else {
-            // ts: `pick(KINDS.filter(k => k !== 'character'))`
+            // draw over the non-character kinds
             kinds_non_char[int(&mut rnd, kinds_non_char.len())].to_string()
         };
-        // ts: `for (let a = 0, n = 1 + int(4); a < n; a++) aspects[pick(ASPECTS)] = 1 + int(15)`
-        // — n drawn once; a repeated key draw overwrites in place (object
-        // assignment keeps the first-insertion position — IndexMap alike).
+        // n drawn once; a repeated key draw overwrites in place (insertion
+        // keeps the first position — IndexMap alike).
         let mut aspects: IndexMap<String, AspectVal> = IndexMap::new();
         let n_aspects = 1 + int(&mut rnd, 4);
         for _ in 0..n_aspects {
@@ -122,8 +119,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             let val = 1 + int(&mut rnd, 15) as i64;
             aspects.insert(key, AspectVal::Num(val));
         }
-        // ts: `...(rnd() < 0.24 ? {} : { stackable: true })` — CS: 373/1566
-        // unique; the ROLL always happens (ternary condition)
+        // stackable unless the 0.24 roll hits — CS: 373/1566
+        // unique; the ROLL always happens (it is the branch condition)
         let stackable = rnd.next_f64() >= 0.24;
         protos.insert(
             id,
@@ -139,9 +136,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
 
     // CS's "big verb + requirements selection" is modeled one verb per
     // situation: same-verb multi-recipe is first-match in Chorus, so recipe
-    // #2+ self-shadows (ts: reach-scale-lib.ts:53-58)
-    /// ts: reach-scale-lib.ts:55-58 — `[label, query]` pairs; the label is
-    /// discarded by the destructuring pick.
+    // #2+ self-shadows.
+    /// query strings, picked uniformly per recipe.
     const VERB_SLOTS: [&str; 6] = [
         "aspect:lore>=1",
         "aspect:heart>=1",
@@ -150,13 +146,13 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         "aspect:winter>=1",
         "aspect:knock>=1",
     ];
-    // ts: reach-scale-lib.ts:59 — `protoNames.slice(900, 905)`; EMPTY for the
-    // CI-sized 400-prototype slice (then `pick` templates "undefined").
+    // hubs: 5 prototype names from index 900; EMPTY for the
+    // CI-sized 400-prototype slice (then pick_template mints "undefined").
     let hubs: Vec<String> = proto_names.iter().skip(900).take(5).cloned().collect();
     let n_decks = 67usize;
 
-    // The scenario's mutable build context — the TS closure (`op`) captures
-    // `rnd` and the local tables; Rust threads them explicitly.
+    // The scenario's mutable build context: `rnd` and the local tables are
+    // threaded explicitly through `Ctx`.
     struct Ctx<'a> {
         rnd: &'a mut Lcg,
         proto_names: &'a [String],
@@ -165,8 +161,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         n_decks: usize,
     }
     impl Ctx<'_> {
-        /// ts: reach-scale-lib.ts:61-69 — the outcome-op generator; every
-        /// branch guard's draw happens EXACTLY where the TS evaluates it.
+        /// the outcome-op generator; every
+        /// branch guard's draw order is load-bearing and happens exactly here.
         fn op(&mut self, allow_refuse: bool) -> String {
             let roll = self.rnd.next_f64();
             if roll < 0.6 {
@@ -184,7 +180,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 let v = 1 + int(self.rnd, 10) as i64;
                 return format!("SET({r}, aspect:{a}, {v})");
             }
-            // ts: `roll < 0.95 && allowRefuse` — no extra draw either way
+            // roll and allow_refuse are both draw-free — no extra draw either way
             if roll < 0.95 && allow_refuse {
                 return "REFUSE(\"no\")".to_string();
             }
@@ -192,7 +188,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         }
     }
 
-    // ts: reach-scale-lib.ts:70-72 — WAIT comes FIRST in the verbs object
+    // WAIT comes FIRST in the verbs map
     // (content.verbs insertion order is observable; its recipe carries the
     // authored id 'time.needs').
     let mut verbs_raw: IndexMap<String, VerbContent> = IndexMap::new();
@@ -226,19 +222,19 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     };
     let mut ops = 0usize;
     for i in 0..n_recipes {
-        // ts: `const [, query] = pick(VERB_SLOTS)` — the label is dropped
+        // draw from VERB_SLOTS — the label element is dropped
         let query = VERB_SLOTS[int(ctx.rnd, VERB_SLOTS.len())];
         let name = format!("V{i}");
         let mut out: Vec<String>;
         let mut when: Option<String> = None;
         if i % 4 == 0 {
             // clean chain: deterministic CS-style producers (hubs minted
-            // widely) (ts: reach-scale-lib.ts:79-82)
+            // widely).
             let a = format!("SPAWN {}", pick_template(ctx.rnd, ctx.hubs));
             let b = format!("SPAWN {}", pick_template(ctx.rnd, ctx.proto_names));
             out = if ctx.rnd.next_f64() < 0.5 { vec![a, b] } else { vec![b, a] };
         } else {
-            // ts: reach-scale-lib.ts:83-88 — the ROLL/IF-exists/when pushes;
+            // the ROLL/IF-exists/when pushes;
             // each guard draw happens before its template's draws
             let n_out = 1 + int(ctx.rnd, 4);
             out = Vec::with_capacity(n_out + 2);
@@ -259,7 +255,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                     "IF exists({g}) -> (SPAWN {p}) ELSE -> (NARRATE \"nested\")"
                 ));
             }
-            // ts: reach-scale-lib.ts:86-88 — the three `when` templates are
+            // the three `when` templates are
             // built EAGERLY (all their draws happen), then the pick draws
             if ctx.rnd.next_f64() < 0.25 {
                 let t1 = format!("count(name:{}) >= 1", pick_template(ctx.rnd, ctx.proto_names));
@@ -271,8 +267,9 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             }
         }
         ops += out.len();
-        // ts: reach-scale-lib.ts:91-99 — slots then duration then the recipe;
-        // the optional `with` slot's ROLL always happens (spread ternary)
+        // slots then duration then the recipe;
+        // the optional `with` slot's ROLL always happens (the condition
+        // draw precedes the branch)
         let mut slots = vec![
             SlotDef {
                 role: "actors".to_string(),
@@ -299,7 +296,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 shown: None,
             });
         }
-        // ts: `duration: pick([0, 30, 60, 60, 60])`
+        // duration picked from the weighted pool [0, 30, 60, 60, 60]
         let durations: [&str; 5] = ["0", "30", "60", "60", "60"];
         let duration: i64 = durations[int(ctx.rnd, durations.len())].parse().expect("duration literal");
         verbs_raw.insert(
@@ -320,8 +317,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     // (ctx's &mut rnd borrow ends at its last use above — NLL, no explicit
     // drop needed)
 
-    // ts: reach-scale-lib.ts:101-106 — the 67 decks; spec length 5+int(26);
-    // the defaultcard pick only draws when its roll passes (ternary)
+    // the 67 decks; spec length 5+int(26);
+    // the defaultcard pick only draws when its 0.45 roll passes
     let mut decks: Vec<DeckRaw> = Vec::with_capacity(n_decks);
     for i in 0..n_decks {
         let n_spec = 5 + int(&mut rnd, 26);
@@ -343,7 +340,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         });
     }
 
-    // ts: reach-scale-lib.ts:107-113 — 8 season slot triggers + the expiry
+    // 8 season slot triggers + the expiry
     // pair, concatenated in that order
     let mut triggers: Vec<TriggerDef> = Vec::with_capacity(10);
     for i in 0..8 {
@@ -373,7 +370,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         ],
     }));
 
-    // ts: reach-scale-lib.ts:135-137 — register the verb names, then compile.
+    // register the verb names, then compile.
     // Registration draws NOTHING, so hoisting it above the raw construction
     // (which consumes verbs_raw) leaves the LCG draw order untouched.
     let mut dict = core_dictionary();
@@ -391,7 +388,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         ..ContentRaw::default()
     };
 
-    // ts: reach-scale-lib.ts:122-133 — the initial world: ANA + the 20
+    // the initial world: ANA + the 20
     // resources (ALL 12 aspects each, drawn in ASPECTS order) + two followers
     fn ent(name: &str, kind: &str, aspects: IndexMap<String, AspectVal>) -> Entity {
         Entity {
@@ -423,11 +420,11 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     add_entity(&mut initial, ent("CARL", "character", follower))
         .expect("initial entities never collide");
 
-    // ts: reach-scale-lib.ts:137 — compileContent(raw, dict) — NO entityKinds:
+    // the compile call passes NO entity_kinds:
     // the declared list is empty
     let content = compile_content(&raw, &dict, &[]).expect("the CS-scale world compiles");
 
-    // ts: reach-scale-lib.ts:138 — insertion-order dedup (a JS Set)
+    // insertion-order dedup
     let mut seen: IndexSet<String> = IndexSet::new();
     for n in &proto_names {
         seen.insert(n.clone());
@@ -458,11 +455,11 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     }
 }
 
-// ---------- census (single-process; the CLI shards across cores) ----------
+// ---------- census (single-process; the CLI shards across cores) -----------
 
-/// ts: reach-scale-lib.ts:147-155 — the per-name stat row. FIELD ORDER IS THE
-/// CROSS-LANGUAGE A/B INTERFACE (CLI-03 must): the worker-mode JSON and the
-/// TS `JSON.stringify(stats)` must list these keys in this order.
+/// The per-name stat row. FIELD ORDER IS THE
+/// WORKER-MODE JSON INTERFACE: the serialized stats list these keys in
+/// this order.
 #[derive(Debug, Clone, Serialize)]
 pub struct NameStat {
     pub name: String,
@@ -474,7 +471,7 @@ pub struct NameStat {
     pub depth: usize,
 }
 
-/// ts: reach-scale-lib.ts:158-159
+/// The require-tree depth (recursive).
 fn depth_of(p: &ReachPath, d: usize) -> usize {
     let mut best = d;
     for r in &p.requires {
@@ -485,7 +482,7 @@ fn depth_of(p: &ReachPath, d: usize) -> usize {
     best
 }
 
-/// ts: reach-scale-lib.ts:160-161
+/// The require-tree node count (recursive).
 fn nodes_of(p: &ReachPath) -> usize {
     1 + p
         .requires
@@ -494,13 +491,12 @@ fn nodes_of(p: &ReachPath) -> usize {
         .sum::<usize>()
 }
 
-/// ts: reach-scale-lib.ts:157-173 — one `analyze_card` per name; `ms` is
-/// wall-clock and only a magnitude reference (PR1-03: the cross-language
-/// comparison covers the NON-timing fields only).
+/// One `analyze_card` per name; `ms` is
+/// wall-clock and only a magnitude reference (the pinned comparison covers
+/// the NON-timing fields only).
 ///
-/// Holds ONE [`Analyzer`] across all names: the TS module-level
-/// `worldCache` WeakMap (reach.ts:615) shares WorldFacts across the
-/// per-name `analyzeCard` calls — first call cold, the rest warm — and
+/// Holds ONE [`Analyzer`] across all names: the shared WorldFacts cache
+/// spans the per-name calls — first call cold, the rest warm — and
 /// that cache sharing is pinned observable behavior. The one-shot
 /// `analyze_card` convenience would rebuild the Analyzer per name and
 /// pay full price every time.
@@ -528,13 +524,13 @@ pub fn census(world: &ScaleWorld, names: &[String]) -> Vec<NameStat> {
         .collect()
 }
 
-/// ts: reach-scale-lib.ts:175-184 — the CLI's one-line summary.
+/// The CLI's one-line summary.
 pub fn summarize(stats: &[NameStat]) -> String {
     let mut times: Vec<f64> = stats.iter().map(|st| st.ms).collect();
     times.sort_by(|a, b| a.partial_cmp(b).expect("ms values are finite"));
     let q = |p: f64| -> f64 { times[std::cmp::min(times.len() - 1, (times.len() as f64 * p).floor() as usize)] };
-    // ts: `const verdicts: Record<string, number> = {}` — insertion order =
-    // first occurrence in stats order (JSON.stringify prints it)
+    // `verdicts` is insertion-ordered — order =
+    // first occurrence in stats order (the JSON summary prints it)
     let mut verdicts: IndexMap<&str, i64> = IndexMap::new();
     for st in stats {
         *verdicts.entry(st.verdict.as_str()).or_insert(0) += 1;

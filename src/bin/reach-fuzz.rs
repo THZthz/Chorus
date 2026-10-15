@@ -1,30 +1,29 @@
-//! Deep runs for the reach fuzz — ts: tools/reach-fuzz-cli.ts, ported byte
-//! for byte (the vitest file keeps seeds few for CI; this CLI shakes
-//! thousands).
+//! Deep runs for the reach fuzz (the test suite keeps seeds few for CI; this
+//! CLI shakes thousands).
 //!
 //!   cargo run --bin reach-fuzz -- --seeds 500
 //!   cargo run --bin reach-fuzz -- --seeds 1000 --steps 9 --states 800 --from 300
 //!
-//! Frozen surface (verification 03 CLI-04, plan §4-W5): flags default
+//! Frozen surface: flags default
 //! 200/7/400/1; FAIL lines AND the soft inconclusive lines go to stderr;
 //! progress + the summary go to stdout; exit code 1 iff there is a failure;
-//! failing seeds print as a space-separated list. `runFuzzSeed` is a pure
+//! failing seeds print as a space-separated list. `run_fuzz_seed` is a pure
 //! function of its seed (the shared implementation lives in
-//! tests/common/reach_fuzz_lib.rs, mounted here — single source of truth with
-//! the vitest port).
+//! tests/common/reach_fuzz_lib.rs, mounted here — single source of truth
+//! with the test suite).
 
-// The fuzz machinery is the TEST lib (ts: test/reach-fuzz-lib.js — the TS CLI
-// imports it from test/ too); bins cannot see tests/, so the shared files are
-// mounted by path. `reach_fuzz_lib`'s `use super::settle::settle_step`
-// resolves against this crate root, where `settle` is mounted first.
+// The fuzz machinery is the shared TEST lib; bins cannot see tests/, so the
+// shared files are mounted by path. `reach_fuzz_lib`'s
+// `use super::settle::settle_step` resolves against this crate root, where
+// `settle` is mounted first.
 #[path = "../../tests/common/settle.rs"]
 mod settle;
 #[path = "../../tests/common/reach_fuzz_lib.rs"]
 mod reach_fuzz_lib;
 
-/// ts: (plan §3.5) `Number(str)` for the flag values — trim JS whitespace,
-/// '' → 0, decimal/hex/±Infinity literals, anything else NaN. (The TS CLI
-/// feeds a NaN straight into the loop condition, which then never runs —
+/// JS `Number(str)` for the flag values — trim JS whitespace,
+/// '' → 0, decimal/hex/±Infinity literals, anything else NaN. (A NaN feeds
+/// straight into the loop condition, which then never runs —
 /// replicated below by keeping the loop in f64.)
 fn js_number(s: &str) -> f64 {
     let t: String = {
@@ -70,7 +69,8 @@ fn js_number(s: &str) -> f64 {
     }
 }
 
-/// ts: `${n}` for a flag-derived number — integers print bare, NaN prints
+/// JS `Number → String` display for a flag-derived number — integers print
+/// bare, NaN prints
 /// "NaN" (the summary line embeds these verbatim).
 fn js_display(v: f64) -> String {
     if v.is_nan() {
@@ -85,7 +85,7 @@ fn js_display(v: f64) -> String {
 }
 
 fn main() -> std::process::ExitCode {
-    // ts: reach-fuzz-cli.ts:8-16 — the flag readers, defaults 200/7/400/1
+    // the flag readers, defaults 200/7/400/1
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |name: &str, dflt: f64| -> f64 {
         args.iter()
@@ -102,21 +102,21 @@ fn main() -> std::process::ExitCode {
     let mut inconclusive = 0.0f64;
     let mut worst = 0.0f64;
     let mut dup_pushes = 0.0f64;
-    // ts: `badSeeds: number[]` — kept in f64 so the join prints fractional
-    // `--from`-derived seeds exactly like the JS template literal
+    // the bad-seed list stays in f64 so the join prints fractional
+    // `--from`-derived seeds exactly like the JS number display
     let mut bad_seeds: Vec<f64> = Vec::new();
     let t0 = std::time::Instant::now();
-    // ts: `for (let seed = from; seed < from + seeds; seed++)` — NaN seeds
+    // the seed loop runs from .. from+seeds in f64: NaN seeds
     // never enter the loop (NaN < NaN is false)
     let mut seed = from;
     while seed < from + seeds {
-        // ts: runFuzzSeed(seed, …) — ToInt32(seed) feeds the LCG; realistic
+        // `run_fuzz_seed` — ToInt32(seed) feeds the LCG; realistic
         // seeds are small positive integers, where the cast is exact.
-        // REGISTERED DIVERGENCE (W5 review should-fix-2, pathological argv
+        // REGISTERED DIVERGENCE (pathological argv
         // only): `steps as usize`/`states as usize` TRUNCATE a fractional
-        // flag, while the TS side keeps the f64 bounds alive in the loops —
-        // `for (let s = 0; s < steps; s++)` with `--steps 2.5` runs s=0,1,2
-        // (three layers) and the state cap `queue.length >= states` admits
+        // flag, while the JS loops keep the f64 bounds alive —
+        // `--steps 2.5` runs steps 0,1,2
+        // (three layers) and the state cap admits
         // 3 states for `--states 2.5`. Integer flags, the defaults and NaN
         // (`js_number` = `Number`, registered at its definition) are exact;
         // only a fractional flag digs one level shallower here.
@@ -128,22 +128,22 @@ fn main() -> std::process::ExitCode {
         worst = worst.max(out.states_seen as f64);
         dup_pushes += out.deduped as f64;
         for f in &out.failures {
-            eprintln!("FAIL {f}"); // ts: console.error
+            eprintln!("FAIL {f}"); // console.error
             failures += 1.0;
         }
         if !out.failures.is_empty() {
             bad_seeds.push(seed);
         }
         for i in &out.inconclusive {
-            eprintln!("soft {i}"); // ts: console.warn — soft lines ride stderr too (CLI-04)
+            eprintln!("soft {i}"); // console.warn — soft lines ride stderr too
             inconclusive += 1.0;
         }
-        // ts: `(seed - from + 1) % 50 === 0` — a NUMBER equality: a fractional
+        // the progress check is a NUMBER equality (`done % 50 == 0`): a
+        // fractional
         // seed run never hits it, so the modulo stays in f64 (an integer cast
         // would fire on 50.5)
         let done = seed - from + 1.0;
         if done % 50.0 == 0.0 {
-            // ts: console.log(`… ${n}/${seeds} seeds, ${failures} failures`)
             println!(
                 "… {}/{} seeds, {} failures",
                 js_display(done),
@@ -153,7 +153,7 @@ fn main() -> std::process::ExitCode {
         }
         seed += 1.0;
     }
-    // ts: reach-fuzz-cli.ts:33-35 — the summary + failing-seed lines
+    // the summary + failing-seed lines
     let elapsed = t0.elapsed().as_secs_f64();
     println!(
         "\n{} seeds × ≤{} steps × ≤{} states: {} failure(s), {} inconclusive, busiest world {} states, {} duplicate push(es) deduped, {:.1}s",

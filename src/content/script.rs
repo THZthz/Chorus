@@ -1,16 +1,16 @@
-//! Script compiler — ts: src/content/script.ts. A game script is a piece of
+//! Script compiler. A game script is a piece of
 //! text: meta lines, section blocks, and sentence-like declarations
 //! (spec: "sentences + small blocks"). [`parse_script`] is the
 //! indentation-sensitive line-segment parser; [`compile_script`] turns a
 //! script into runnable game content + the initial State; [`lint_script`] is
 //! the §10 warn-loudly sibling (it never throws for a script that compiles).
 //!
-//! Regex-domain freeze (plan §3.8 / PR2-03): every `(.+)`-style pattern in
+//! Regex-domain freeze: every `(.+)`-style pattern in
 //! this module runs on `split('\n')` + JS-trimmed SINGLE-LINE text, so the
 //! JS-vs-Rust `.` divergence (`\r`/U+2028/U+2029) is unreachable here; these
 //! patterns must NOT be reused on multi-line input.
 //!
-//! Whitespace discipline (Q8): every `\s`/`\S` in the ported patterns is the
+//! Whitespace discipline (Q8): every `\s`/`\S` in these patterns is the
 //! explicit JS class ([`JS_WS_CLASS`]/[`JS_NON_WS_CLASS`]) and every
 //! `trim()`/`trimStart()` is [`js_trim`]/a [`js_char_is_ws`] take-while —
 //! JS and Rust disagree on U+0085/U+FEFF exactly reversely.
@@ -37,10 +37,10 @@ use crate::js::{
 };
 
 // ---------------------------------------------------------------------------
-// script-side types — ts: script.ts:47-77
+// script-side types
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:47-55
+/// Script meta: title, player, goal, start clock, dice seed.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ScriptMeta {
     pub title: Option<String>,
@@ -52,7 +52,7 @@ pub struct ScriptMeta {
     pub seed: Option<i64>,
 }
 
-/// ts: script.ts:57-64
+/// One declared entity line.
 #[derive(Debug, Clone)]
 pub struct EntitySpec {
     pub name: String,
@@ -63,16 +63,16 @@ pub struct EntitySpec {
     pub container_name: Option<String>,
 }
 
-/// ts: script.ts:66-70
+/// One declared relation line.
 #[derive(Debug, Clone)]
 pub struct RelationSpec {
     pub a: String,
-    /// TS field `type` (a Rust keyword)
+    /// Rust name `type_` (`type` is a keyword)
     pub type_: String,
     pub b: String,
 }
 
-/// ts: script.ts:72-77
+/// The parsed script: meta + raw content + declared entities/relations.
 #[derive(Debug, Clone)]
 pub struct Script {
     pub meta: ScriptMeta,
@@ -81,7 +81,7 @@ pub struct Script {
     pub relations: Vec<RelationSpec>,
 }
 
-/// ts: script.ts:417 — the `compileScript` return shape
+/// The `compile_script` return shape
 /// `{ content, state, meta }`.
 #[derive(Debug)]
 pub struct CompiledScript {
@@ -91,13 +91,12 @@ pub struct CompiledScript {
 }
 
 // ---------------------------------------------------------------------------
-// shared regex literals — appendix A.2, transcribed 1:1 with the Q8 class
-// substitutions (`\s` → JS_WS_CLASS, `\S` → JS_NON_WS_CLASS, `\b` →
-// `(?-u:\b)`); the trailing `R` markers in the appendix mean "regex crate on
-// &str", which is what every pattern here is.
+// shared regex literals. Q8 class substitutions throughout:
+// `\s` → JS_WS_CLASS, `\S` → JS_NON_WS_CLASS, `\b` →
+// `(?-u:\b)` (the ASCII JS word boundary).
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:106 — `/^(script|player|goal|start|seed):\s*(.+)$/`
+/// `/^(script|player|goal|start|seed):\s*(.+)$`
 fn meta_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -105,13 +104,13 @@ fn meta_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:113 — `/^-?\d+$/` (seed gate; JS `\d` is ASCII)
+/// `/^-?\d+$/` (seed gate; JS `\d` is ASCII)
 fn seed_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^-?[0-9]+$"))
 }
 
-/// ts: script.ts:123 — section headers, free-form order
+/// Section headers, free-form order.
 fn section_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(
@@ -120,25 +119,25 @@ fn section_re() -> &'static Regex {
     )
 }
 
-/// ts: script.ts:155 — `/^([A-Z_]+) says "(.*)"$`
+/// `/^([A-Z_]+) says "(.*)"$`
 fn template_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r#"^([A-Z_]+) says "(.*)"$"#))
 }
 
-/// ts: script.ts:160 — `/^[A-Z][A-Z0-9_]*:$/`
+/// `/^[A-Z][A-Z0-9_]*:$/`
 fn verb_header_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^[A-Z][A-Z0-9_]*:$"))
 }
 
-/// ts: script.ts:169 — `/^recipes:$/`
+/// `/^recipes:$/`
 fn recipes_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^recipes:$"))
 }
 
-/// ts: script.ts:171 — `/^([a-z]+):\s*(.+)$/`
+/// `/^([a-z]+):\s*(.+)$`
 fn slot_role_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -146,7 +145,7 @@ fn slot_role_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:205 — `/^(\S+)\s+is\s+([A-Za-z_.]+)\b\s*(.*)$/`
+/// `/^(\S+)\s+is\s+([A-Za-z_.]+)\b\s*(.*)$/`
 fn entity_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -156,7 +155,7 @@ fn entity_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:210 — `/^of\s+(\S+)$/`
+/// `/^of\s+(\S+)$/`
 fn of_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -164,7 +163,7 @@ fn of_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:224/264 — `/^stackable\b\s*/` (a PREFIX match; the matched
+/// `/^stackable\b\s*/` (a PREFIX match; the matched
 /// text is sliced off `rest`)
 fn stackable_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -173,7 +172,7 @@ fn stackable_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:230 — `/(?:^|\s+)(?:at|in)\s+(\S+)\s*$/`
+/// `/(?:^|\s+)(?:at|in)\s+(\S+)\s*$/`
 fn at_in_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -183,7 +182,7 @@ fn at_in_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:231/269 — `/(?:^|\s+)with\s+(.+)$/`
+/// `/(?:^|\s+)with\s+(.+)$/`
 fn with_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -191,7 +190,7 @@ fn with_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:270 — `/(?:^|\s+)deriving\s+(.+)$/`
+/// `/(?:^|\s+)deriving\s+(.+)$/`
 fn deriving_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -199,7 +198,7 @@ fn deriving_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:240/276 — `/^\s*([A-Za-z_][A-Za-z0-9_.]*):(-?\d+)\s*$/`
+/// `/^\s*([A-Za-z_][A-Za-z0-9_.]*):(-?\d+)\s*$/`
 fn aspect_spec_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -209,7 +208,7 @@ fn aspect_spec_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:257 — `/^(\S+)\s+is\s+([a-z]+)\b\s*(.*)$/`
+/// `/^(\S+)\s+is\s+([a-z]+)\b\s*(.*)$/`
 fn prototype_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -219,7 +218,7 @@ fn prototype_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:290 — `/^\s*name\s+from\s+object\s*$/`
+/// `/^\s*name\s+from\s+object\s*$/`
 fn name_from_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -229,7 +228,7 @@ fn name_from_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:292 — `/^\s*(…)\s+from\s+object\.(…)(?:\s*-\s*(\d+))?\s*$/`
+/// `/^\s*(…)\s+from\s+object\.(…)(?:\s*-\s*(\d+))?\s*$/`
 fn derive_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -239,7 +238,7 @@ fn derive_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:309 — expiry form (§6.6, §9.32)
+/// Expiry form (§6.6, §9.32).
 fn expire_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -249,7 +248,7 @@ fn expire_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:311 — clock form: `ID [once] at (hour|halfhour) N -> …`
+/// Clock form: `ID [once] at (hour|halfhour) N -> …`
 fn trigger_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -259,7 +258,7 @@ fn trigger_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:325 — paren'd comma-separated params
+/// Paren'd comma-separated params.
 fn fn_paren_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -269,7 +268,7 @@ fn fn_paren_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:329 — no params, no parens
+/// No params, no parens.
 fn fn_arrow_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -279,7 +278,7 @@ fn fn_arrow_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:331 — bare, space-separated params (lazy `\S.*?`)
+/// Bare, space-separated params (lazy `\S.*?`).
 fn fn_bare_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -289,7 +288,7 @@ fn fn_bare_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:344 — `/^(\S+)\s+spec\b\s*(.*)$/`
+/// `/^(\S+)\s+spec\b\s*(.*)$/`
 fn deck_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -299,7 +298,7 @@ fn deck_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:351 — `/(?:^|\s)defaultcard\s+(\S+)\s*$/` (single `\s`)
+/// `/(?:^|\s)defaultcard\s+(\S+)\s*$/` (single `\s`)
 fn defaultcard_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -309,7 +308,7 @@ fn defaultcard_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:357 — `/(?:^|\s)reset\s*$/` (single `\s`)
+/// `/(?:^|\s)reset\s*$/` (single `\s`)
 fn reset_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -317,7 +316,7 @@ fn reset_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:374 — `/^([A-Z][A-Z0-9_]*):\s*"(.+)"(?:\s+\(([a-z]+)\))?$/`
+/// `/^([A-Z][A-Z0-9_]*):\s*"(.+)"(?:\s+\(([a-z]+)\))?$`
 fn ending_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -327,7 +326,7 @@ fn ending_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:384 — `/^(\S+)(?:\s+(.*))?$/`
+/// `/^(\S+)(?:\s+(.*))?$/`
 fn slot_line_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -337,25 +336,25 @@ fn slot_line_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:387 — `/^(\d+)(?:\.\.(\d+)?)?$/`
+/// `/^(\d+)(?:\.\.(\d+)?)?$/`
 fn count_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^([0-9]+)(?:\.\.([0-9]+)?)?$"))
 }
 
-/// ts: script.ts:400 — `/^default\b/`
+/// `/^default\b/`
 fn default_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^default(?-u:\b)"))
 }
 
-/// ts: script.ts:403 — `/^[a-z0-9_.]+$/` (candidate recipe ids)
+/// `/^[a-z0-9_.]+$/` (candidate recipe ids)
 fn recipe_id_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^[a-z0-9_.]+$"))
 }
 
-/// ts: script.ts:407 — `/hint\s+"([^"]*)"/`
+/// `/hint\s+"([^"]*)"/`
 fn hint_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -363,7 +362,7 @@ fn hint_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:409 — `/(?:^|\s)when\s+(.+)$/` (single `\s`)
+/// `/(?:^|\s)when\s+(.+)$/` (single `\s`)
 fn when_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -371,7 +370,7 @@ fn when_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:508 — the count-gate matchAll
+/// The count-gate scan
 /// `/count\((actors|object|with|at|about|to)\)\s*(>=|<=|>|<|=|!=)\s*(\d+)/g`
 fn count_gate_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -382,26 +381,26 @@ fn count_gate_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:530 — template tokens `/\{([a-z_][a-z0-9_]*)\}/g`
+/// Template tokens `/\{([a-z_][a-z0-9_]*)\}/g`
 fn template_token_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"\{([a-z_][a-z0-9_]*)\}"))
 }
 
-/// ts: script.ts:589 — readSetAspect `/aspect:([a-z_][a-z0-9_.]*)/g`
+/// Aspect-term read scan `/aspect:([a-z_][a-z0-9_.]*)/g`
 fn read_aspect_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"aspect:([a-z_][a-z0-9_.]*)"))
 }
 
-/// ts: script.ts:594 — `/\baspect\.([a-z_][a-z0-9_.]*)/g` (`\b` is the ASCII
-/// JS word boundary)
+/// Predicate-path read scan `/\baspect\.([a-z_][a-z0-9_.]*)/g` (`\b` is the
+/// ASCII JS word boundary)
 fn read_path_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"(?-u:\b)aspect\.([a-z_][a-z0-9_.]*)"))
 }
 
-/// ts: script.ts:597 — `/SET\(\s*[^,()]+,\s*aspect:([a-z_][a-z0-9_.]*)/g`
+/// SET-aspect write scan `/SET\(\s*[^,()]+,\s*aspect:([a-z_][a-z0-9_.]*)/g`
 fn write_set_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -411,13 +410,13 @@ fn write_set_re() -> &'static Regex {
     })
 }
 
-/// ts: script.ts:614 — `/^[A-Za-z_][A-Za-z0-9_]*$/` (the name-lexeme test)
+/// `/^[A-Za-z_][A-Za-z0-9_]*$/` (the name-lexeme test)
 fn name_lexeme_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$"))
 }
 
-/// ts: script.ts:332/401 — `split(/\s+/)` over JS whitespace: runs of JS
+/// `split(/\s+/)` over JS whitespace: runs of JS
 /// whitespace split; the inputs are always trimmed or `\S`-anchored, so
 /// filtering the empty pieces yields exactly the JS token sequence.
 fn split_js_ws(s: &str) -> Vec<&str> {
@@ -425,10 +424,10 @@ fn split_js_ws(s: &str) -> Vec<&str> {
 }
 
 // ---------------------------------------------------------------------------
-// parseScript — ts: script.ts:79-190
+// parse_script
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:79 — parse a script's text into meta + raw content + the
+/// Parse a script's text into meta + raw content + the
 /// declared entity/relation lines (grammar only; all load-time validation
 /// against the dictionary/world happens in `compile_script`/`compile_content`).
 pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
@@ -449,15 +448,15 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut in_recipes = false;
 
     for (ln, raw_line) in text.split('\n').enumerate() {
-        // ts: script.ts:99 — `rawLine.replace(/\t/g, '  ')`: EVERY tab becomes
-        // two spaces
+        // EVERY tab becomes
+        // two spaces (`replace(/\t/g, '  ')` semantics)
         let line = raw_line.replace('\t', "  ");
         let trimmed = js_trim(&line);
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        // ts: script.ts:101 — `line.length - line.trimStart().length`: the
-        // count of leading JS whitespace CODE UNITS. No JS-whitespace char is
+        // the count of leading JS whitespace CODE UNITS (in the JS spelling,
+        // the length minus the trimStart-ed length). No JS-whitespace char is
         // astral, so units == chars here.
         let indent = line.chars().take_while(|c| js_char_is_ws(*c)).count();
         let t = trimmed;
@@ -472,7 +471,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     "seed" => {
                         // §9.41: integer seed, XORed with the rng counter as a
                         // 64-bit value. The message is constructed IN PLACE at
-                        // this throw site (script.ts:113; messages.md row 1).
+                        // this throw site.
                         let got = js_trim(grp_text(&m, 2));
                         if !seed_re().is_match(got) {
                             return Err(ChorusError::new(format!(
@@ -483,17 +482,17 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         }
                         meta.seed = Some(js_num_parse(got));
                     }
-                    // ts: script.ts:116 — the else arm: `start` (and only
+                    // the else arm: `start` (and only
                     // `start`, the alternation's last word) falls into
                     // parse_clock, so a bad value throws the CLOCK error text.
-                    // QUIRK(Q15/ENG-19): misleading attribution, frozen.
+                    // QUIRK(Q15): misleading attribution, frozen.
                     _ => meta.start = Some(parse_clock(js_trim(grp_text(&m, 2)))?),
                 }
                 continue;
             }
         }
 
-        // section headers (indent 0); free-form order — compileContent fixes
+        // section headers (indent 0); free-form order — `compile_content` fixes
         // the compile order (functions first), so `functions:` may sit anywhere
         if indent == 0 && section_re().is_match(t) {
             section = Some(t[..t.len() - 1].to_string());
@@ -514,7 +513,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 parse_entity_line(t, ln + 1, dict, &mut entities, &mut relations)?;
                 // duplicate entity declarations share one s_<name> id and
                 // would silently overwrite — a load error, not a
-                // last-write-wins (§9.14). QUIRK(Q5/ENG-17): the check is
+                // last-write-wins (§9.14). QUIRK(Q5): the check is
                 // case-SENSITIVE while the minted id is not.
                 if entities.len() > declared {
                     let name = match entities.last() {
@@ -532,8 +531,8 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
             }
             "prototypes" => {
                 let (key, proto) = parse_prototype_line(t, ln + 1, dict)?;
-                // QUIRK(Q5/ENG-17): duplicate prototype declarations are a
-                // silent last-write-wins (`prototypes[key] = proto`)
+                // QUIRK(Q5): duplicate prototype declarations are a
+                // silent last-write-wins (the later insert overwrites)
                 prototypes.insert(key, proto);
             }
             "decks" => {
@@ -562,7 +561,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         ln + 1
                     )));
                 };
-                // QUIRK(Q5/ENG-17): duplicate template declarations silently
+                // QUIRK(Q5): duplicate template declarations silently
                 // overwrite
                 templates.insert(
                     grp_text(&m, 1).to_string(),
@@ -579,8 +578,8 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                             ln + 1
                         )));
                     }
-                    // QUIRK(Q5/ENG-17): a repeated verb header silently RESETS
-                    // the block (`verbs[verbName] = { slots: [], … }`)
+                    // QUIRK(Q5): a repeated verb header silently RESETS
+                    // the block (a fresh empty `VerbContent` replaces the old)
                     verbs.insert(name.clone(), VerbContent::default());
                     verb_name = Some(name);
                     in_recipes = false;
@@ -592,7 +591,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         ln + 1
                     )));
                 };
-                // ts: script.ts:168 `verbs[verbName]!` — the header inserted it
+                // the header inserted it
                 let Some(v) = verbs.get_mut(&vn) else {
                     unreachable!("verb header inserted '{vn}'");
                 };
@@ -630,7 +629,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 
     // §9.14: a name is one card — declared both ways, every SPAWN of the
     // prototype would collide with the living entity (§9.19); fail at load.
-    // ts: script.ts:185 `Object.keys(prototypes)` — JS fronts integer-like
+    // `Object.keys` semantics — JS fronts integer-like
     // keys, so the walk goes through the JS key order (prototype names are
     // `\S+`, so "5 is idea" is a real key shape here).
     for name in ordinary_own_property_keys(&prototypes) {
@@ -644,7 +643,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     Ok(Script {
         meta,
         content: ContentRaw {
-            seed: None, // rides in via meta (script.ts:423 merges it)
+            seed: None, // rides in via meta (compile_script merges it)
             verbs,
             triggers: Some(triggers),
             prototypes: Some(prototypes),
@@ -659,10 +658,10 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 }
 
 // ---------------------------------------------------------------------------
-// entity lines — ts: script.ts:192-252
+// entity lines
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:198-202 — §5.1: reserved words cannot be names — as a
+/// §5.1: reserved words cannot be names — as a
 /// declaration they would make every unquoted ref in clauses parse as the
 /// keyword, so fail at load. (Non-lexeme names like `X-Y` are legal but
 /// quota every ref — linted, not errored: §9.42's unsafe-name corner.)
@@ -675,7 +674,7 @@ fn check_name(name: &str, ln: usize, dict: &Dictionary, what: &str) -> Result<()
     Ok(())
 }
 
-/// ts: script.ts:204-252. `ln` is the 1-BASED line number (the TS `ln + 1`).
+/// `ln` is the 1-BASED line number (the caller adds one).
 fn parse_entity_line(
     t: &str,
     ln: usize,
@@ -729,8 +728,8 @@ fn parse_entity_line(
     loop {
         let at_in = at_in_re().captures(rest);
         let with_m = with_re().captures(rest);
-        // ts: script.ts:232 `atIn.index > withM.index` — Rust byte offsets
-        // order identically to the JS UTF-16 unit offsets
+        // the earlier match wins (whichever clause starts first);
+        // byte offsets order identically to the JS UTF-16 unit offsets
         if let Some(a) = &at_in {
             let a_start = grp0_start(a);
             let with_is_first = with_m
@@ -778,10 +777,10 @@ fn parse_entity_line(
 }
 
 // ---------------------------------------------------------------------------
-// prototype lines — ts: script.ts:254-303
+// prototype lines
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:256-303. `ln` is the 1-BASED line number.
+/// `ln` is the 1-BASED line number.
 fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String, PrototypeDef)> {
     let Some(m) = prototype_re().captures(t) else {
         return Err(ChorusError::new(format!(
@@ -882,11 +881,11 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
 }
 
 // ---------------------------------------------------------------------------
-// trigger lines — ts: script.ts:305-317
+// trigger lines
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:307-317. `ln` is the 1-BASED line number. (The TS signature
-/// takes the dictionary but never reads it — `_dict` here mirrors that.)
+/// `ln` is the 1-BASED line number. (`_dict` is never read — the trigger
+/// grammar needs no dictionary.)
 fn parse_trigger_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<TriggerDef> {
     // expiry form: ID on expire of NAME -> OUTCOMES (§6.6, §9.32)
     if let Some(exp) = expire_re().captures(t) {
@@ -921,12 +920,12 @@ fn parse_trigger_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<TriggerD
 }
 
 // ---------------------------------------------------------------------------
-// function lines (§9.40, §10) — ts: script.ts:319-334
+// function lines (§9.40, §10)
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:324-334 — `NAME(param, …) -> OUTCOMES` (or the bare form
+/// `NAME(param, …) -> OUTCOMES` (or the bare form
 /// `NAME param …`). Grammar only: name/param shape, op collisions and
-/// duplicates are compileContent's. `ln` is the 1-BASED line number.
+/// duplicates are `compile_content`'s. `ln` is the 1-BASED line number.
 fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
     if let Some(m) = fn_paren_re().captures(t) {
         let params_raw = js_trim(grp_text(&m, 2));
@@ -964,12 +963,12 @@ fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
 }
 
 // ---------------------------------------------------------------------------
-// deck lines (§9.42, §10) — ts: script.ts:336-368
+// deck lines (§9.42, §10)
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:343-368 — `ID spec NAME, … [defaultcard NAME] [reset]`.
+/// `ID spec NAME, … [defaultcard NAME] [reset]`.
 /// Grammar only: entry/defaultcard resolution against prototypes + entities,
-/// duplicate ids and the permutation are compileContent's (§9.42). The
+/// duplicate ids and the permutation are `compile_content`'s (§9.42). The
 /// trailing clauses may sit in either order (stripped from the end until
 /// neither matches); `defaultcard`/`reset` are keywords, not spec entries.
 /// `ln` is the 1-BASED line number.
@@ -1016,10 +1015,10 @@ fn parse_deck_line(t: &str, ln: usize) -> Result<DeckRaw> {
 }
 
 // ---------------------------------------------------------------------------
-// ending lines (§9.35, §10) — ts: script.ts:370-379
+// ending lines (§9.35, §10)
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:372-379 — `ID: "Title" (flavour)` — flavour optional,
+/// `ID: "Title" (flavour)` — flavour optional,
 /// default melancholy (resolved at compile). `ln` is the 1-BASED line number.
 fn parse_ending_line(t: &str, ln: usize) -> Result<(String, EndingDef)> {
     let Some(m) = ending_re().captures(t) else {
@@ -1037,10 +1036,10 @@ fn parse_ending_line(t: &str, ln: usize) -> Result<(String, EndingDef)> {
 }
 
 // ---------------------------------------------------------------------------
-// slots & recipes — ts: script.ts:381-413
+// slots & recipes
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:383-392. `ln` is the 1-BASED line number.
+/// `ln` is the 1-BASED line number.
 fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
     let trimmed = js_trim(rest);
     let Some(m) = slot_line_re().captures(trimmed) else {
@@ -1055,16 +1054,15 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
         )));
     };
     let min = js_num_parse(grp_text(&cm, 1));
-    // ts: script.ts:390 — `cm[2] !== undefined ? Number(cm[2]) : (… &&
-    // countSpec.endsWith('..') ? Infinity : min)`. ENG-18: the
-    // `cm[1] !== undefined` conjunct is always true — dropped.
+    // max: the upper-bound group when present; a trailing `..` means
+    // unbounded (Infinity); no `..` pins max = min.
     let max = match grp_opt(&cm, 2) {
         Some(g) => Some(js_num_parse(g)),
-        None if count_spec.ends_with("..") => None, // TS Infinity
+        None if count_spec.ends_with("..") => None, // Infinity
         None => Some(min),
     };
     Ok(SlotDef {
-        // QUIRK(Q4/ENG-16): the role is cast, never validated — a typo'd role
+        // QUIRK(Q4): the role is cast, never validated — a typo'd role
         // compiles and silently never matches
         role: role.to_string(),
         min,
@@ -1074,11 +1072,10 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
     })
 }
 
-/// ts: script.ts:394-413. `ln` is the 1-BASED line number. (The TS signature
-/// takes the dictionary but never reads it.)
+/// `ln` is the 1-BASED line number. (`_dict` is never read.)
 fn parse_recipe_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<RecipeDef> {
-    // ts: script.ts:395 — `t.indexOf('->')`: the ASCII needle aligns byte and
-    // UTF-16 unit offsets, so the Rust byte slices carry the same text
+    // the ASCII `->` needle aligns byte and
+    // UTF-16 unit offsets, so the byte slices carry the same text
     let Some(arrow) = t.find("->") else {
         return Err(ChorusError::new(format!(
             "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [when COND] -> OUTCOMES"
@@ -1110,30 +1107,30 @@ fn parse_recipe_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<RecipeDef
     }
     if let Some(hint) = hint_re().captures(lhs) {
         def.hint = Some(grp_text(&hint, 1).to_string());
-        // ts: script.ts:408 `i = i` — a no-op (ENG-18): the hint is extracted
-        // positionally and consumes nothing from `tokens`.
+        // the hint is extracted positionally and consumes nothing from
+        // `tokens` (the token cursor does not advance past it).
     }
     if let Some(wm) = when_re().captures(lhs) {
         def.when = Some(grp_text(&wm, 1).to_string());
     }
-    let _ = i; // ts: script.ts:411 `void i`
+    let _ = i;
     Ok(def)
 }
 
 // ---------------------------------------------------------------------------
-// compile: script → runnable game — ts: script.ts:415-466
+// compile: script → runnable game
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:417 — `compileScript(text, dict)` → `{ content, state, meta }`.
+/// `compile_script(text, dict)` → `{ content, state, meta }`.
 pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
     let script = parse_script(text, dict)?;
     // §9.41: the meta `seed:` rides into the compiled content — every die is
     // a pure function of (seed, counter), so the sequence is fixed at load.
     // The deck permutations (§9.42) are keyed on the same seed. Declared
     // entities ride along so deck spec entries may name plain entity lines
-    // too (script.ts:419-423). ENG-01: the entities now go in ONCE (with
-    // their stackability flags); the post-compile mutation of the §9.38 sets
-    // is gone — compile_content builds them.
+    // too. The entities go in ONCE (with
+    // their stackability flags) — compile_content builds the §9.38 sets
+    // from them.
     let declared: Vec<DeclaredEntity> = script
         .entities
         .iter()
@@ -1178,8 +1175,7 @@ pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
                 .entities
                 .get(&id_of(container_name))
                 .map(|c| c.id.clone());
-            // ts: script.ts:442 `state.entities.get(idOf(e.name))!` — the
-            // entity was added in the loop above
+            // the entity was added in the loop above
             let Some(self_e) = state.entities.get_mut(&id_of(&e.name)) else {
                 unreachable!("entity '{}' was added above", e.name);
             };
@@ -1251,13 +1247,13 @@ pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
 }
 
 // ---------------------------------------------------------------------------
-// load-time lint (§10's "fail loudly", warn-loudly sibling) — ts: script.ts:468-620
+// load-time lint (§10's "fail loudly", warn-loudly sibling)
 // ---------------------------------------------------------------------------
 
-/// ts: script.ts:470
+/// The six role names, in their canonical order.
 const ROLE_NAMES: [&str; 6] = ["actors", "object", "with", "at", "about", "to"];
 
-/// ts: script.ts:478-620 — warnings for content that compiles but is
+/// Warnings for content that compiles but is
 /// probably not what the author meant. `compile_script` still owns errors;
 /// this never throws for a script that compiles, and returns one
 /// human-readable string per finding. Empty for a clean script.
@@ -1266,16 +1262,16 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
     compile_script(text, dict)?; // lints run on scripts that already compile
     let mut warnings: Vec<String> = Vec::new();
     let verbs = &script.content.verbs;
-    // raw default recipes carry no id — mirror compileContent's minting.
-    // QUIRK(Q1/ENG-15): the lint mirror mints 1-BASED ids (script.ts:485);
-    // the compile side (content.rs:229) mints 0-based — frozen drift.
+    // raw default recipes carry no id — mirror compile_content's minting.
+    // QUIRK(Q1): the lint mirror mints 1-BASED ids;
+    // the compile side mints 0-based — frozen drift.
     let recipe_id = |verb: &str, r: &RecipeDef, i: usize| {
         mint_recipe_id(&verb.to_lowercase(), r.when.as_deref(), i, 1)
     };
 
     // a configured verb nobody can ever succeed with
     for (name, verb) in verbs {
-        // ts: script.ts:488 `Object.entries(verbs)` — verb keys are
+        // verb keys are
         // `[A-Z][A-Z0-9_]*` (never integer-like), so insertion order IS the
         // JS order
         if !verb.slots.is_empty() && verb.recipes.is_empty() {
@@ -1288,7 +1284,6 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
     // dead recipes: after a catch-all, shadowed by an identical when, or a
     // count(role) bound the slot's cardinality can never satisfy
     for (name, verb) in verbs {
-        // ts: script.ts:497 — `new Map(verb.slots.map(s => [s.role, s]))`:
         // a repeated role keeps its original slot but last-wins on lookup
         let mut slot_of: IndexMap<&str, &SlotDef> = IndexMap::new();
         for s in &verb.slots {
@@ -1312,8 +1307,8 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 }
                 continue;
             };
-            // ts: script.ts:504 — `r.when.replace(/\s+/g, ' ').trim()`:
             // JS whitespace runs collapse to one space, then JS-trim
+            // (`replace(/\s+/g, ' ').trim()` semantics)
             let norm = when
                 .split(js_char_is_ws)
                 .filter(|p| !p.is_empty())
@@ -1333,7 +1328,7 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 };
                 let k = js_num_parse(grp_text(&cap, 3));
                 let op = grp_text(&cap, 2);
-                // slot.max: None = TS Infinity — `k > Infinity` is false and
+                // slot.max: None = Infinity — `k > Infinity` is false and
                 // `k >= Infinity` is false for every finite k
                 let dead = match op {
                     "=" => k < slot.min || slot.max.is_some_and(|mx| k > mx),
@@ -1416,7 +1411,7 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 entries.push(dc);
             }
             for entry in entries {
-                // ts: script.ts:555-556 — prototype kind first, then the
+                // prototype kind first, then the
                 // declared entity line's kind
                 let kind = script
                     .content
@@ -1465,8 +1460,7 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 format!("{prefix}.{k}")
             };
             add_write(writes, &path);
-            // ts: script.ts:577 `if (typeof v !== 'number') walkAspects(v, path)`
-            // — the only non-number shape is the one-level sub-map (Q13), whose
+            // the only non-number shape is the one-level sub-map (Q13), whose
             // leaves are all numbers, so no further recursion is reachable
             if let crate::core::types::AspectVal::Sub(sub) = v {
                 for sk in sub.keys() {

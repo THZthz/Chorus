@@ -1,8 +1,7 @@
-//! Refs — ts: src/core/ref.ts (spec §5.1, §9.14). Canonical output is the
+//! Refs (spec §5.1, §9.14). Canonical output is the
 //! bare name (unique among the living); `kind:NAME` and `#id` are accepted
 //! input sugar; reserved words and unsafe names must be quoted strings.
-//! The module is `core::r#ref` in Rust (`ref` is a keyword); the file keeps
-//! the TS name per plan §2.2.
+//! The module is `core::r#ref` in Rust (`ref` is a keyword).
 
 use std::sync::OnceLock;
 
@@ -12,12 +11,12 @@ use serde::{Deserialize, Serialize};
 use crate::core::dict::Dictionary;
 use crate::js::{cmp_utf16, static_regex, ChorusError, Result};
 
-/// ts: src/core/ref.ts:4-9. The serde tag is `form` (plan §2.3).
+/// A reference to an entity: by bare name (optionally
+/// kind-qualified), by `#id`, or a function parameter (authored-only).
 ///
-/// The serde shape is the W3 JSONL log surface (ENG-20): internally tagged,
-/// and the NAME variant's field order matches the TS construction literals
-/// (ref.ts:24-26 `{ form: 'name', kind, name }` / `{ form: 'name', name }`,
-/// parse.ts:242-255) — `kind` omitted when absent exactly like
+/// The serde shape is the JSONL log surface: internally tagged with tag
+/// `form`, and the NAME variant's field order is `kind` then `name` —
+/// `kind` omitted when absent exactly like
 /// `JSON.stringify` dropping `undefined`. Never changes wire order.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "form")]
@@ -39,20 +38,20 @@ pub enum Ref {
     Param { name: String },
 }
 
-/// ts: src/core/ref.ts:16 — SAFE_NAME.
+/// SAFE_NAME: `^[A-Za-z_][A-Za-z0-9_]*$`.
 fn safe_name_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$"))
 }
 
-/// ts: src/core/ref.ts:20-22 — a segment that re-parses as a bare name token
+/// A segment that re-parses as a bare name token
 /// (used by the sentence formatter to decide between bare and quoted spellings).
 #[must_use]
 pub fn is_safe_name(name: &str) -> bool {
     safe_name_re().is_match(name)
 }
 
-/// ts: src/core/ref.ts:24-26 (`nameRef(name, kind?)`)
+/// A name ref, optionally kind-qualified.
 #[must_use]
 pub fn name_ref(name: impl Into<String>, kind: Option<String>) -> Ref {
     match kind {
@@ -67,16 +66,14 @@ pub fn name_ref(name: impl Into<String>, kind: Option<String>) -> Ref {
     }
 }
 
-/// ts: src/core/ref.ts:28-30 (`idRef`)
+/// An id ref (`#id`).
 #[must_use]
 pub fn id_ref(id: impl Into<String>) -> Ref {
     Ref::Id { id: id.into() }
 }
 
-/// ts: src/core/ref.ts:32-41 — the minimal dictionary surface the formatter
-/// needs is `dict.reserved` (the TS `SafeDict` indirection existed only to
-/// avoid a circular import — CORE-02 — which a single Rust crate does not
-/// have, so we take the Dictionary directly).
+/// The only dictionary surface the formatter
+/// needs is `dict.reserved`.
 pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
     match r {
         Ref::Id { id } => Ok(format!("#{id}")),
@@ -86,8 +83,8 @@ pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
             if safe {
                 Ok(name.clone())
             } else {
-                // ts: ref.ts:37 — only `"` is escaped, into `\"` (S-style
-                // replace per appendix A.1); backslashes pass through raw.
+                // only `"` is escaped, into `\"`;
+                // backslashes pass through raw.
                 Ok(format!("\"{}\"", name.replace('"', "\\\"")))
             }
         }
@@ -97,9 +94,9 @@ pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
     }
 }
 
-/// ts: src/core/ref.ts:43-45 — key construction only; the comparisons happen
-/// in [`sort_refs`] and `relationKey` (types.rs), both through `cmp_utf16`
-/// (plan §3.6). A param ref yields its name, exactly like the TS fallback.
+/// Key construction only; the comparisons happen
+/// in [`sort_refs`] and the relation-key builder (types.rs), both through
+/// `cmp_utf16`. A param ref yields its name.
 #[must_use]
 pub fn ref_sort_key(r: &Ref) -> String {
     match r {
@@ -108,10 +105,10 @@ pub fn ref_sort_key(r: &Ref) -> String {
     }
 }
 
-/// ts: src/core/ref.ts:47-49 — stable sort by refSortKey in JS UTF-16
-/// code-unit order (CORE-05: **never** `str::cmp` — non-BMP names would
-/// order differently). TS `Array.sort` is stable; so is `sort_by`. Keys are
-/// computed per comparison exactly like the TS comparator.
+/// Stable sort by [`ref_sort_key`] in JS UTF-16
+/// code-unit order (**never** `str::cmp` — non-BMP names would
+/// order differently). `sort_by` is stable, and keys are
+/// computed per comparison.
 #[must_use]
 pub fn sort_refs(refs: &[Ref]) -> Vec<Ref> {
     let mut out = refs.to_vec();
@@ -119,10 +116,8 @@ pub fn sort_refs(refs: &[Ref]) -> Vec<Ref> {
     out
 }
 
-// NOTE: `sameRef` (ref.ts:51-53) is dead code in the TS tree (src and test
-// have zero call sites) and is deliberately NOT ported (plan §1.2 "明确
-// 禁止" list; verification CORE-05 修正: it is an equality compare, not a
-// sort, and never needed cmp_utf16 in the first place).
+// NOTE: a ref equality compare is deliberately absent;
+// nothing in the engine calls one.
 
 #[cfg(test)]
 mod tests {
@@ -142,7 +137,7 @@ mod tests {
             format_ref(&name_ref("READ", None), Some(&dict)).unwrap(),
             "\"READ\"" // reserved → quoted
         );
-        // QUIRK (ref.ts:37): only `"` is escaped into \" — backslashes stay raw
+        // QUIRK: only `"` is escaped into \" — backslashes stay raw
         assert_eq!(
             format_ref(&name_ref("a\"b\\c", None), None).unwrap(),
             "\"a\\\"b\\c\""
@@ -168,7 +163,7 @@ mod tests {
         assert_eq!(sorted[2], sorted[3]);
         assert_eq!(sorted[2], name_ref("b", None));
         // non-BMP name sorts before U+E000 in UTF-16 order (and AFTER it in
-        // Rust byte order — the exact trap cmp_utf16 exists for, CORE-05)
+        // Rust byte order — the exact trap cmp_utf16 exists for)
         let uni = vec![name_ref("\u{e000}", None), name_ref("\u{10000}", None)];
         let keys2: Vec<String> = sort_refs(&uni).iter().map(ref_sort_key).collect();
         assert_eq!(keys2, ["\u{10000}", "\u{e000}"]);

@@ -1,25 +1,24 @@
-//! Shared full-state snapshot for fold-equality assertions — ts: test/snap.ts
-//! (spec §7, plan law 6). ONE helper so play/fold comparisons cannot drift —
+//! Shared full-state snapshot for fold-equality assertions (spec §7). ONE
+//! helper so play/fold comparisons cannot drift —
 //! engine tests, endings tests and nightjar-explorer tests all compare through
 //! this. New State fields land here with the state itself.
 //!
-//! Frozen surface (TEST-13 / PR2-11 / plan §5.2): the output is the exact JSON
-//! image of the TS `JSON.stringify({...})` —
+//! Frozen surface: the output is the exact JSON image of `JSON.stringify({...})` —
 //! - key order: `ents, rels, byName, now, rng, decks, fired, ended, windows`
-//!   (the TS literal's insertion order; no integer-like keys, so JS
+//!   (insertion order; no integer-like keys, so JS
 //!   OrdinaryOwnPropertyKeys agrees);
 //! - the FIVE map fields (`ents/rels/byName/decks/windows`) sort their entry
-//!   pairs by the TS comparator `([a],[b]) => a<b?-1:1` — ascending key in JS
+//!   pairs ascending by key in JS
 //!   `<` order, which is UTF-16 code-unit order → `cmp_utf16` (never Rust
 //!   byte order);
 //! - `fired` takes the JS default string sort (the same UTF-16 order);
-//! - `windows` sorts its entries and then SHALLOW-copies each window
-//!   (`[k, { ...w }]`): the copy is unobservable behind JSON.stringify, and
-//!   the JSON projection of the Rust `OpenWindow` struct preserves the TS
-//!   object's insertion key order (no integer-like keys) — see
+//! - `windows` sorts its entries and then SHALLOW-copies each window: the
+//!   copy is unobservable behind the JSON image, and
+//!   the JSON projection of the Rust `OpenWindow` struct preserves the
+//!   window object's insertion key order (no integer-like keys) — see
 //!   [`window_json`].
 //!
-//! Object-valued fields that TS serializes as plain objects (`aspects`,
+//! Object-valued fields serialized as plain objects (`aspects`,
 //! `attrs`, window `refs`) go through `ordinary_own_property_keys`, which is
 //! exactly `JSON.stringify`'s walk order — idempotent on maps that were
 //! cloned through the JS-order clone paths, exact even when they were not.
@@ -32,7 +31,7 @@
 use chorus::core::types::{AspectVal, AttrValue, Aspects, Attrs, Entity, OpenWindow, Relation, State};
 use chorus::js::{cmp_utf16, ordinary_own_property_keys};
 
-/// ts: test/snap.ts:7-23
+/// The full-state JSON image — see the module doc for the frozen surface.
 #[must_use]
 pub fn snap(s: &State) -> String {
     let mut root = serde_json::Map::new();
@@ -83,10 +82,9 @@ pub fn snap(s: &State) -> String {
     serde_json::Value::Object(root).to_string()
 }
 
-/// The TS `.sort(([a], [b]) => a<b?-1:1)` over map entries: ascending by key
-/// in JS `<` order = UTF-16 code-unit order (`cmp_utf16`; keys are unique so
-/// the comparator's `a===b` hole never fires). Emits `[key, value]` PAIRS —
-/// the JSON image of `[...map.entries()]`.
+/// Map entries sorted ascending by key
+/// in JS `<` order = UTF-16 code-unit order (`cmp_utf16`; keys are unique).
+/// Emits `[key, value]` PAIRS — the JSON image of the entry list.
 fn sorted_entries<I>(entries: I) -> serde_json::Value
 where
     I: Iterator<Item = (String, serde_json::Value)>,
@@ -102,7 +100,7 @@ where
     )
 }
 
-/// ts: types.ts:17-29 — the entity object in its TS declaration order.
+/// The entity object in its frozen field order.
 fn entity_json(e: &Entity) -> serde_json::Value {
     serde_json::json!({
         "id": e.id,
@@ -116,7 +114,7 @@ fn entity_json(e: &Entity) -> serde_json::Value {
     })
 }
 
-/// ts: types.ts:31-38 — the relation object in its TS declaration order.
+/// The relation object in its frozen field order.
 fn relation_json(r: &Relation) -> serde_json::Value {
     serde_json::json!({
         "a": r.a, "b": r.b, "type": r.type_, "value": r.value,
@@ -124,11 +122,11 @@ fn relation_json(r: &Relation) -> serde_json::Value {
     })
 }
 
-/// ts: snap.ts:21 — the `{ ...w }` shallow copy's JSON. The TS spread keeps
+/// The window object's JSON image. The JS semantics keep
 /// the window's insertion key order (no integer-like keys), and the `refs`
-/// object keeps its `clauseRefs` insertion order = ROLES order — the Rust
+/// object keeps its insertion order = ROLES order — the Rust
 /// struct field order and the refs `IndexMap` mirror both exactly, so this
-/// projection IS the copy's JSON image.
+/// projection IS the window's JSON image.
 fn window_json(w: &OpenWindow) -> serde_json::Value {
     let mut refs = serde_json::Map::new();
     for (role, rs) in &w.refs {
@@ -175,7 +173,7 @@ fn aspects_json(a: &Aspects) -> serde_json::Value {
     serde_json::Value::Object(out)
 }
 
-/// `JSON.stringify` of an attrs map (`string | number | boolean` values).
+/// The attrs map's JSON image (string, number, or boolean values).
 fn attrs_json(a: &Attrs) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     for k in ordinary_own_property_keys(a) {

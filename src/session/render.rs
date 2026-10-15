@@ -1,6 +1,5 @@
-//! L3 projection — ts: src/ui/render.ts (spec §5.3, §6.7, §8, §9.35). Pure
-//! functions over records/state. `card()` (render.ts:118-135) is dead code
-//! with zero callers (UI-05) and is deliberately NOT ported (plan §1.2).
+//! L3 projection (spec §5.3, §6.7, §8, §9.35). Pure
+//! functions over records/state.
 
 use crate::content::content::CompiledContent;
 use crate::core::dict::Dictionary;
@@ -12,7 +11,7 @@ use crate::engine::engine::ActionRecord;
 use crate::core::r#ref::Ref;
 use crate::js::Result;
 
-/// ts: src/ui/render.ts:11-13
+/// The canonical journal: one canonical sentence per line.
 #[must_use]
 pub fn journal(records: &[ActionRecord]) -> String {
     records
@@ -23,28 +22,25 @@ pub fn journal(records: &[ActionRecord]) -> String {
 }
 
 /// the status-area banner once the story has ended: — NO MORE · melancholy —
-/// ts: src/ui/render.ts:16-18
 #[must_use]
 pub fn ending_banner(e: &Ending) -> String {
     format!("— {} · {} —", e.title.to_uppercase(), e.flavour)
 }
 
 /// the notice shown when the player acts after the ending
-/// ts: src/ui/render.ts:21-23
 #[must_use]
 pub fn ending_notice(e: &Ending) -> String {
     format!("the story has ended — {} ({}).", e.title, e.flavour)
 }
 
 /// display form of an authored name: THE_FORGETTING → THE FORGETTING
-/// ts: src/ui/render.ts:26-28
 #[must_use]
 pub fn pretty(name: &str) -> String {
     name.replace('_', " ")
 }
 
 /// nested aspects as flat "path level" strings: tome.cylinder 1
-/// ts: src/ui/render.ts:31-38 (the `prefix` parameter is the recursion's
+/// (the `prefix` parameter is the recursion's
 /// internal accumulator; the public form starts empty)
 #[must_use]
 pub fn flatten_aspects(a: &Aspects) -> Vec<String> {
@@ -58,8 +54,8 @@ fn flatten_with_prefix(a: &Aspects, prefix: &str) -> Vec<String> {
             crate::core::types::AspectVal::Num(n) => {
                 out.push(format!("{prefix}{k} {n}"));
             }
-            // sub-values are plain ints (Q13's flat model), so the TS
-            // recursion into `${prefix}${k}.` yields exactly this one level
+            // sub-values are plain ints (Q13's flat model), so the recursion
+            // into `<prefix><k>.` yields exactly this one level
             crate::core::types::AspectVal::Sub(sub) => {
                 for (sk, sv) in sub {
                     out.push(format!("{prefix}{k}.{sk} {sv}"));
@@ -75,8 +71,8 @@ fn flatten_with_prefix(a: &Aspects, prefix: &str) -> Vec<String> {
 /// templates (the window already narrated them at BEGIN) and render their
 /// NARRATE/REFUSE/ENDING outcomes through the shared path below; WAIT rows
 /// narrate the passing of time so they are not prose-silent.
-/// ts: src/ui/render.ts:45-83 (the `Result` carries formatDuration/parse's
-/// error channel — TS throws, both unreachable on engine-built records)
+/// (the `Result` carries `format_duration`/parse's
+/// error channel — both error paths are unreachable on engine-built records)
 pub fn prose_lines(
     record: &ActionRecord,
     content: &CompiledContent,
@@ -84,14 +80,12 @@ pub fn prose_lines(
 ) -> Result<Vec<String>> {
     let mut lines: Vec<String> = Vec::new();
     if record.kind == "wait" {
-        // ts: render.ts:48
         return Ok(vec![format!(
             "  (+{}) time passes.",
             format_duration(record.advanced_min)?
         )]);
     }
     if record.kind == "action" {
-        // ts: render.ts:51-56
         let s = parse_sentence(&record.sentence, dict)?;
         for clause in &s.clauses {
             if let Some(template) = content.templates.get(&clause.verb) {
@@ -99,7 +93,6 @@ pub fn prose_lines(
             }
         }
     }
-    // ts: render.ts:57-69
     for o in &record.outcomes {
         let Some(narr) = o.args.iter().find_map(|a| match a {
             Arg::Str { v } => Some(v),
@@ -127,7 +120,6 @@ pub fn prose_lines(
     // ENDING wins, mirroring the state rule; the journal stays canonical (the
     // `ENDING <id>` outcome is already visible there). A REFUSED step's ending
     // was discarded with the whole draft (§6.5), so it never gets the line.
-    // ts: render.ts:74-81
     let refused = record.outcomes.iter().any(|o| o.op == "REFUSE");
     let ending = if refused {
         None
@@ -152,13 +144,13 @@ pub fn prose_lines(
     Ok(lines)
 }
 
-/// ts: src/ui/render.ts:85-87
+/// The prose as one string.
 pub fn prose(record: &ActionRecord, content: &CompiledContent, dict: &Dictionary) -> Result<String> {
     Ok(prose_lines(record, content, dict)?.join("\n"))
 }
 
-/// ts: src/ui/render.ts:89 — a lone ref: name / #id / the em dash fallback
-/// (param refs are authored-only and never reach a record; TS would print '—')
+/// A lone ref: name / #id / the em dash fallback
+/// (param refs are authored-only and never reach a record)
 fn ref_name(r: Option<&Ref>) -> String {
     match r {
         Some(Ref::Name { name, .. }) => name.clone(),
@@ -167,8 +159,8 @@ fn ref_name(r: Option<&Ref>) -> String {
     }
 }
 
-/// ts: src/ui/render.ts:90 — refs inside a list render names / #ids (a param
-/// ref yields its name, exactly like the TS tail)
+/// Refs inside a list render names / #ids (a param
+/// ref yields its name).
 fn ref_names(rs: &[Ref]) -> Vec<String> {
     rs.iter()
         .map(|r| match r {
@@ -178,7 +170,7 @@ fn ref_names(rs: &[Ref]) -> Vec<String> {
         .collect()
 }
 
-/// ts: src/ui/render.ts:92-100 — the token replaces run in the TS literal's
+/// The token replaces run in the authored
 /// order (actors, object, at, about, to, with); str::replace is a global
 /// replace, the exact /g semantics.
 fn interpolate_clause(template: &str, clause: &crate::core::sentence::Clause) -> String {
@@ -194,7 +186,7 @@ fn interpolate_clause(template: &str, clause: &crate::core::sentence::Clause) ->
         .replace("{with}", &join_and(&ref_names(&clause.with)))
 }
 
-/// ts: src/ui/render.ts:102-110 — the record variant (instruments = with)
+/// The record variant (instruments = with).
 fn interpolate_record(template: &str, record: &ActionRecord) -> String {
     template
         .replace("{actors}", &join_and(&ref_names(&record.actors)))
@@ -208,7 +200,7 @@ fn interpolate_record(template: &str, record: &ActionRecord) -> String {
         .replace("{with}", &join_and(&ref_names(&record.instruments)))
 }
 
-/// ts: src/ui/render.ts:112-115
+/// English "A, B and C" joining.
 fn join_and(names: &[String]) -> String {
     if names.len() <= 1 {
         return names.first().cloned().unwrap_or_default();
@@ -226,7 +218,6 @@ mod tests {
 
     #[test]
     fn banners_and_notice_render_title_plus_flavour() {
-        // ts: test/endings.test.ts:373-378
         let e = Ending {
             id: "DESPAIR_DEATH".into(),
             title: "No More".into(),

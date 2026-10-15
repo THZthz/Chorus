@@ -1,10 +1,9 @@
-//! Content model — ts: src/content/content.ts (spec §6). Authored as plain
+//! Content model (spec §6). Authored as plain
 //! data with string queries/predicates/outcomes; [`compile_content`] parses
 //! them once and fails loudly at load time.
 //!
 //! This module also hosts the deck machinery (FNV id hash, position
-//! permutation, the shared draw rule), folded in from the W0 staging module
-//! `core/deck_rng.rs` per plan §2.2.
+//! permutation, the shared draw rule).
 
 use std::sync::OnceLock;
 
@@ -28,32 +27,31 @@ use crate::js::{
 };
 
 // ---------------------------------------------------------------------------
-// authored (raw) content types — ts: content.ts:13-120
+// authored (raw) content types
 // ---------------------------------------------------------------------------
 
-/// ts: content.ts:13 — `SlotRole`. Q4 (ENG-16): slot roles are NEVER
-/// validated, so the port keeps the raw string instead of the `Role` enum —
-/// a typo'd role compiles and silently never matches.
+/// A slot role, kept as the RAW string (Q4): slot roles are NEVER
+/// validated — a typo'd role compiles and silently never matches.
 pub type SlotRole = String;
 
-/// ts: content.ts:15-21. `max: None` models TS `Infinity` (the open-ended
-/// `2..` count spec; ENG-07's Option mapping — slots never serialize).
+/// An authored slot. `max: None` models
+/// `Infinity` (the open-ended `2..` count spec — slots never serialize).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SlotDef {
     pub role: SlotRole,
     pub min: i64,
-    /// TS `Infinity` allowed (§6.1 open-ended); `None` = Infinity.
+    /// `Infinity` allowed (§6.1 open-ended); `None` = Infinity.
     pub max: Option<i64>,
     pub query: Option<String>,
     /// default true (§6.2) — resolved at compile
     pub shown: Option<bool>,
 }
 
-/// ts: content.ts:23-29
+/// An authored recipe.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RecipeDef {
     pub id: Option<String>,
-    /// undefined/'' → default recipe
+    /// None or an empty string → the default recipe
     pub when: Option<String>,
     /// gates default hidden (§6.2)
     pub shown: Option<bool>,
@@ -62,7 +60,7 @@ pub struct RecipeDef {
     pub out: Vec<String>,
 }
 
-/// ts: content.ts:31-35
+/// An authored verb.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct VerbContent {
     pub slots: Vec<SlotDef>,
@@ -72,7 +70,7 @@ pub struct VerbContent {
     pub recipes: Vec<RecipeDef>,
 }
 
-/// ts: content.ts:40-45 — a clock trigger (§9.29).
+/// A clock trigger (§9.29).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotTriggerDef {
     pub id: String,
@@ -82,7 +80,7 @@ pub struct SlotTriggerDef {
     pub out: Vec<String>,
 }
 
-/// ts: content.ts:51-55 — an expiry trigger (`on expire of NAME`, §6.6/§9.32).
+/// An expiry trigger (`on expire of NAME`, §6.6/§9.32).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpireTriggerDef {
     pub id: String,
@@ -90,7 +88,7 @@ pub struct ExpireTriggerDef {
     pub out: Vec<String>,
 }
 
-/// ts: content.ts:57 — `TriggerDef = SlotTriggerDef | ExpireTriggerDef`.
+/// A trigger is a [`SlotTriggerDef`] or an [`ExpireTriggerDef`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum TriggerDef {
     Slot(SlotTriggerDef),
@@ -115,31 +113,31 @@ impl TriggerDef {
     }
 }
 
-/// ts: content.ts:67-70 — the `derive` clause's per-aspect entry.
+/// The `derive` clause's per-aspect entry.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DeriveAspect {
     pub from_object_aspect: String,
-    /// TS `minus?: number` — parse always materializes a number (default 0)
+    /// optional number; parse always materializes one (default 0)
     pub minus: i64,
 }
 
-/// ts: content.ts:66-71 — `PrototypeDef['derive']`.
+/// The `derive` clause of a prototype.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrototypeDerive {
-    /// minted name: `` `${name}_${object.name}` `` — the only TS value is the
-    /// literal `'object'`
+    /// minted name shape: `<name>_<object.name>` — the only legal
+    /// value is the literal `object`
     pub name_from: Option<String>,
     pub aspects: Option<IndexMap<String, DeriveAspect>>,
 }
 
-/// ts: content.ts:61-71 — prototype-parameterized spawn (§6.4, §9.15).
-/// Shared by the raw and compiled faces exactly like TS (the compiled
+/// A prototype: prototype-parameterized spawn (§6.4, §9.15).
+/// Shared by the raw and compiled faces (the compiled
 /// `prototypes` map stores the same struct).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrototypeDef {
     pub kind: String,
     /// §9.38: mints from this prototype may share their name with living
-    /// copies. TS keeps it optional; every read is a truthiness test, so a
+    /// copies. Every read is a truthiness test, so a
     /// plain `bool` (default false) is exact.
     pub stackable: bool,
     pub aspects: Option<Aspects>,
@@ -147,15 +145,15 @@ pub struct PrototypeDef {
     pub derive: Option<PrototypeDerive>,
 }
 
-/// ts: content.ts:77-80 — a story ending (§9.35). The flavour is an OPEN
-/// vocabulary (any lowercase word) — ENG-13: never tighten to an enum.
+/// A story ending (§9.35). The flavour is an OPEN
+/// vocabulary (any lowercase word) — never tighten to an enum.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EndingDef {
     pub title: String,
     pub flavour: Option<String>,
 }
 
-/// ts: content.ts:86-90 — a function declaration (§9.40): a parametric
+/// A function declaration (§9.40): a parametric
 /// outcome MACRO, compiled to templates before verbs/triggers parse.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FunctionDef {
@@ -166,7 +164,7 @@ pub struct FunctionDef {
     pub body: String,
 }
 
-/// ts: content.ts:95-100 — a deck declaration (§9.42).
+/// A deck declaration (§9.42).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DeckRaw {
     pub id: String,
@@ -178,9 +176,10 @@ pub struct DeckRaw {
     pub reset: bool,
 }
 
-/// ts: content.ts:109-120 — the raw content tree. Every optional TS
+/// The raw content tree. Every optional
 /// collection becomes `Option`; the maps are IndexMaps (insertion order IS
-/// observable: compile-time `Object.entries` walks and `.recipe${i}`).
+/// observable: compile-time `Object.entries` walks and the `.recipe<i>`
+/// minted ids).
 #[derive(Debug, Clone, Default)]
 pub struct ContentRaw {
     /// §9.41: the dice seed (default 0). Meta line `seed: N` (§10).
@@ -200,10 +199,10 @@ pub struct ContentRaw {
 }
 
 // ---------------------------------------------------------------------------
-// compiled content types — ts: content.ts:122-186
+// compiled content types
 // ---------------------------------------------------------------------------
 
-/// ts: content.ts:102-107 — one resolvable deck entry: the card NAME and the
+/// One resolvable deck entry: the card NAME and the
 /// kind its mint carries (prototype kind, or the declared entity line's kind).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeckCard {
@@ -211,7 +210,7 @@ pub struct DeckCard {
     pub kind: String,
 }
 
-/// ts: content.ts:122-128
+/// A compiled recipe.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledRecipe {
     pub id: String,
@@ -222,7 +221,7 @@ pub struct CompiledRecipe {
     pub out: Vec<Outcome>,
 }
 
-/// ts: content.ts:130-136. `max: None` = TS Infinity.
+/// A compiled slot. `max: None` = Infinity.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledSlot {
     pub role: SlotRole,
@@ -232,25 +231,25 @@ pub struct CompiledSlot {
     pub query: Option<Query>,
 }
 
-/// ts: content.ts:138-144
+/// A compiled verb.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledVerb {
     pub name: String,
     pub slots: Vec<CompiledSlot>,
-    /// TS `Map<SlotRole, CompiledSlot>` — keyed by the RAW role string (Q4)
+    /// Keyed by the RAW role string (Q4) — role matching never normalizes
     pub slot_by_role: IndexMap<SlotRole, CompiledSlot>,
     pub duration: i64,
     pub recipes: Vec<CompiledRecipe>,
 }
 
-/// ts: content.ts:146-149 — flavour resolved (default 'melancholy', §10).
+/// A compiled ending: flavour resolved (default 'melancholy', §10).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledEnding {
     pub title: String,
     pub flavour: String,
 }
 
-/// ts: content.ts:157-164 — a compiled deck (§9.42): the fixed draw order is
+/// A compiled deck (§9.42): the fixed draw order is
 /// a PERMUTATION OVER POSITIONS of the spec (multiset preserved), derived
 /// purely from (seed, deck id) at load. It lives on compiled content, never
 /// on State: identical at play and fold, consuming NO rng counter (law 5).
@@ -264,7 +263,7 @@ pub struct CompiledDeck {
     pub reset: bool,
 }
 
-/// The compiled trigger forms — ts: content.ts:171-174 (the inline union).
+/// The compiled trigger forms (inline variants).
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompiledTrigger {
     Slot {
@@ -297,8 +296,9 @@ impl CompiledTrigger {
     }
 }
 
-/// ts: content.ts:166-186 — `CompiledContent`. All maps IndexMap (ENG-04:
-/// compile error order, `.recipe${i}` indices and UI traversal depend on it).
+/// `CompiledContent`. All maps IndexMap
+/// (compile error order, the `.recipe<i>` minted ids and UI traversal depend
+/// on it).
 #[derive(Debug, Clone)]
 pub struct CompiledContent {
     /// §9.41: every die is `f(seed, counter)`; the run's dice sequence is
@@ -312,7 +312,7 @@ pub struct CompiledContent {
     /// §9.38 stackability, derived from `stackable` declarations at load:
     /// declared stackable prototype/entity NAMES, and the KINDS of those
     /// declarations (a `kind:K` mint is stackable when its kind carries one).
-    /// Only `.has()` is ever read, so the single ENG-01 build (prototype side
+    /// Only membership is ever read, so the single build (prototype side
     /// + script entity side, once, here) is behavior-preserving.
     pub stackable_names: IndexSet<String>,
     pub stackable_kinds: IndexSet<String>,
@@ -320,10 +320,9 @@ pub struct CompiledContent {
     pub decks: IndexMap<String, CompiledDeck>,
 }
 
-/// ts: content.ts:194 (`entities: Iterable<{ name: string; kind: string }>`)
-/// with ENG-01's sanctioned structural addition: the `stackable` flag rides
+/// One declared entity line. The `stackable` flag rides
 /// along so the §9.38 sets build ONCE here instead of `compile_script`
-/// mutating the compiled content afterwards (behavior-preserving — Set
+/// mutating the compiled content afterwards (behavior-preserving — set
 /// membership is order- and structure-free).
 #[derive(Debug, Clone)]
 pub struct DeclaredEntity {
@@ -333,11 +332,11 @@ pub struct DeclaredEntity {
 }
 
 // ---------------------------------------------------------------------------
-// compileContent — ts: content.ts:194-294
+// compile_content
 // ---------------------------------------------------------------------------
 
-/// ts: content.ts:204/208/219/274/276 — the compile-side `Object.entries`
-/// iteration points (plan §3.7 / ENG-04 / REACH-04): JS fronts integer-like
+/// The compile-side `Object.entries`
+/// iteration points: JS fronts integer-like
 /// keys, so every one of these walks goes through
 /// [`ordinary_own_property_keys`]. Do NOT reject integer-like key names —
 /// reproduce the key order.
@@ -353,11 +352,10 @@ fn entries_in_js_order<V>(m: &IndexMap<String, V>) -> Vec<(&str, &V)> {
     out
 }
 
-/// ts: content.ts:202-206 (prototype side), script.ts:426-428 (entity side)
-/// and script.ts:545-552 (the lint's own copy) — the THREE stackable-set
-/// build sites folded into ONE builder (ENG-01 / plan W2 "三集合合一"). Set
+/// The stackable-set builder: the compile side, the script entity side,
+/// and the lint's own copy all share ONE builder. Set
 /// membership is order-independent, so the build order here (entities first,
-/// then prototypes, matching the lint's historical order) changes no `has()`
+/// then prototypes) changes no membership
 /// result anywhere.
 pub(crate) fn collect_stackable(
     entities: &[DeclaredEntity],
@@ -382,7 +380,7 @@ pub(crate) fn collect_stackable(
     (names, kinds)
 }
 
-/// ts: content.ts:194 — compile raw content. `entities` contributes the
+/// Compile raw content. `entities` contributes the
 /// script's declared entity lines so deck spec entries (§9.42) may name
 /// plain entities as well as prototypes; `compile_script` passes them,
 /// direct callers without entities pass `&[]` (deck entries validate
@@ -393,11 +391,10 @@ pub fn compile_content(
     entities: &[DeclaredEntity],
 ) -> Result<CompiledContent> {
     // §9.40 FIRST, before any verb/trigger body parses: build the function
-    // table (content.ts:199) — call sites dispatch against it and expand
+    // table — call sites dispatch against it and expand
     // immediately after their parse, so the guards below walk expanded lists.
     let fns = build_fn_table(raw.functions.as_deref().unwrap_or(&[]), dict)?;
-    // §9.38: two derived sets every mint site reads (content.ts:202-206 +
-    // the folded entity side, ENG-01)
+    // §9.38: two derived sets every mint site reads
     let (stackable_names, stackable_kinds) =
         collect_stackable(entities, raw.prototypes.as_ref());
     let mut endings = IndexMap::new();
@@ -444,7 +441,7 @@ pub fn compile_content(
         let mut slot_by_role = IndexMap::new();
         let mut slots = Vec::with_capacity(v.slots.len());
         for s in &v.slots {
-            // ts: content.ts:223 — `s.max < s.min`: TS Infinity is never
+            // `s.max < s.min`: Infinity is never
             // less than anything, so the check only runs for a finite max
             if let Some(max) = s.max {
                 if max < s.min {
@@ -459,11 +456,12 @@ pub fn compile_content(
                 min: s.min,
                 max: s.max,
                 shown: s.shown.unwrap_or(true),
-                // ts: content.ts:224 `s.query ? parseQuery(s.query) : undefined`
-                // — JS truthiness: '' is FALSY, so a hand-built ContentRaw with
+                // JS truthiness of an empty string:
+                // '' is FALSY, so a hand-built ContentRaw with
                 // query: '' compiles to NO query (not a parse error); parse-
-                // produced queries are never '' (script.ts:384's `\s+(.*)` is
-                // absent for a bare count spec), so this is the exact mapping.
+                // produced queries are never '' (the script grammar's
+                // `query\s+(.*)` capture is absent for a bare count spec),
+                // so this is the exact mapping.
                 query: match s.query.as_deref() {
                     Some(q) if !q.is_empty() => Some(parse_query(q)?),
                     _ => None,
@@ -474,23 +472,24 @@ pub fn compile_content(
         }
         let mut recipes = Vec::with_capacity(v.recipes.len());
         for (i, r) in v.recipes.iter().enumerate() {
-            // QUIRK(Q1/ENG-15): the COMPILE side mints 0-based `.recipe${i}`
-            // (content.ts:229; pinned by script-play.test.ts:175
-            // `study.recipe0`). The lint mirror mints 1-based — frozen drift.
-            // ts: content.ts:229-230 — BOTH the id mint and the when parse
-            // read `r.when` JS truthiness: '' is FALSY, so a hand-built
+            // QUIRK(Q1): the COMPILE side mints 0-based `.recipe<i>` ids
+            // (pinned by the script-play fixture's `study.recipe0`); the lint
+            // mirror mints 1-based — frozen drift.
+            // BOTH the id mint and the when parse read `r.when` JS truthiness:
+            // '' is FALSY, so a hand-built
             // ContentRaw with when: '' rides as the DEFAULT recipe (id
-            // `${verb}.default`, no parse error); the lint mirror
-            // (script.ts:485) reads the same truthiness. parse-produced whens
-            // are never '' (script.ts:409's `when\s+(.+)$`).
+            // `<verb>.default`, no parse error); the lint mirror
+            // reads the same truthiness. parse-produced whens
+            // are never '' (the script grammar's `when\s+(.+)` requires
+            // content).
             let raw_when = r.when.as_deref().filter(|w| !w.is_empty());
             let when = match raw_when {
                 Some(w) => Some(parse_predicate(w)?),
                 None => None,
             };
-            // QUIRK(Q1/ENG-15): the COMPILE side mints 0-based `.recipe${i}`
-            // (content.ts:229; pinned by script-play.test.ts:175
-            // `study.recipe0`). The lint mirror mints 1-based — frozen drift.
+            // QUIRK(Q1): the COMPILE side mints 0-based `.recipe<i>` ids
+            // (pinned by the script-play fixture's `study.recipe0`); the lint
+            // mirror mints 1-based — frozen drift.
             let id = r
                 .id
                 .clone()
@@ -508,7 +507,7 @@ pub fn compile_content(
             });
         }
         // §9.38 load-time lint: count()/total() args must be declared roles
-        // or queries — over every `when` AND every IF condition (content.ts:237-241)
+        // or queries — over every `when` AND every IF condition
         for r in &recipes {
             let where_ = format!("recipe {}", r.id);
             if let Some(w) = &r.when {
@@ -585,8 +584,8 @@ pub fn compile_content(
             }),
         }
     }
-    // ts: content.ts:274 — `new Map(Object.entries(raw.prototypes ?? {}))`:
     // JS key order via the JS-order clone
+    // (`new Map(Object.entries(...))` semantics)
     let prototypes = clone_map_in_js_order(raw.prototypes.as_ref().unwrap_or(&IndexMap::new()));
     let mut templates = IndexMap::new();
     for (name, tpl) in entries_in_js_order(raw.templates.as_ref().unwrap_or(&IndexMap::new())) {
@@ -625,22 +624,20 @@ pub fn compile_content(
     })
 }
 
-/// ts: content.ts:303-311 + reach.ts:205-227 — the ONE authored-outcome
-/// traversal both consumers share (REACH-01 must: `for_each_authored_outcome`
-/// and the reach analyzer's `walkSites` are hand-mirrored recursions in TS;
-/// the port keeps a single implementation so the 'none' verdict's soundness
-/// argument — exhaustive enumeration in forEachAuthoredOutcome order — stays
-/// structural instead of hopeful).
+/// The ONE authored-outcome
+/// traversal both consumers share (the load guards and the reach analyzer):
+/// a single implementation keeps the reach 'none' verdict's soundness
+/// argument — exhaustive enumeration in this order —
+/// structural instead of hopeful.
 ///
-/// The recursion is parameterized by a per-branch CONTEXT (the TS
-/// `(path, segs, fallback)` triple on the reach side, `()` for the guards)
+/// The recursion is parameterized by a per-branch CONTEXT (the reach side's
+/// `(path, segs, fallback)` triple, `()` for the guards)
 /// and a walker-STATE `S` threaded through every callback by `&mut` (the
 /// reach side's flags/seg-counter/sites accumulators — one state object, so
 /// no closure captures it twice). `arm_ctx`/`else_ctx` derive the child
-/// context exactly where TS evaluates them (per arm, left to right, before
-/// that arm descends — so the reach consumer's `nextSeg()` allocation order
-/// is preserved call for call). The visitor is fallible (the load guards
-/// throw); Rust models the throw as `Err`.
+/// context per arm, left to right, BEFORE that arm descends — so the reach
+/// consumer's allocation order is preserved call for call. The visitor is
+/// fallible (the load guards throw); Rust models the throw as `Err`.
 pub fn walk_outcomes<S, C: Clone>(
     out: &[Outcome],
     ctx: &C,
@@ -667,10 +664,10 @@ pub fn walk_outcomes<S, C: Clone>(
     Ok(())
 }
 
-/// ts: content.ts:303-311 — visit every outcome in an authored list,
+/// Visit every outcome in an authored list,
 /// RECURSING into IF branch bodies (§9.39) — the single entry point for the
-/// load-time guards, so nothing escapes by nesting. Ordering with F3:
-/// function expansion happens BEFORE these guards run. The visitor is
+/// load-time guards, so nothing escapes by nesting. Function expansion
+/// happens BEFORE these guards run. The visitor is
 /// fallible (the guards throw); Rust models the throw as `Err`.
 ///
 /// The context-free face of [`walk_outcomes`] — the guard consumers carry no
@@ -689,7 +686,7 @@ pub fn for_each_authored_outcome(
     )
 }
 
-/// ts: content.ts:314-318 — visit every IF condition in an authored list
+/// Visit every IF condition in an authored list
 /// (branch bodies included).
 fn for_each_if_condition(
     out: &[Outcome],
@@ -707,7 +704,7 @@ fn for_each_if_condition(
     })
 }
 
-/// ts: content.ts:337-356 — §9.41/§9.42 load lints shared by recipe and
+/// §9.41/§9.42 load lints shared by recipe and
 /// trigger outcome lists, all run AFTER function expansion.
 fn lint_dice(where_: &str, out: &[Outcome]) -> Result<()> {
     for_each_authored_outcome(out, &mut |o| {
@@ -745,7 +742,7 @@ fn lint_dice(where_: &str, out: &[Outcome]) -> Result<()> {
     lint_roll_may_bind(where_, out)
 }
 
-/// ts: content.ts:358-367 — §9.35: ENDING must name a declared ending;
+/// §9.35: ENDING must name a declared ending;
 /// recurses into IF branch bodies (an unknown ending hidden in an untaken
 /// branch is still a load error).
 fn check_ending_refs(
@@ -773,7 +770,7 @@ fn check_ending_refs(
     })
 }
 
-/// ts: content.ts:369-380 — §9.42: a DRAW must name a declared deck (an INTO
+/// §9.42: a DRAW must name a declared deck (an INTO
 /// target needs no check here: it resolves at runtime like every ref
 /// position).
 fn check_deck_refs(
@@ -802,10 +799,10 @@ fn check_deck_refs(
 }
 
 // ---------------------------------------------------------------------------
-// decks (§9.42): seed-fixed permutations — ts: content.ts:384-477
+// decks (§9.42): seed-fixed permutations
 // ---------------------------------------------------------------------------
 
-/// ts: content.ts:391-425 — compile the deck table. Each spec entry must name
+/// Compile the deck table. Each spec entry must name
 /// a declared prototype or entity (load error naming the deck and the entry
 /// otherwise); repeats are legal and weight the draw. The fixed draw order is
 /// derived per deck from (seed, deck id) ALONE — a permutation over POSITIONS
@@ -817,13 +814,13 @@ fn compile_decks(
     prototypes: &IndexMap<String, PrototypeDef>,
     entities: &[DeclaredEntity],
 ) -> Result<IndexMap<String, CompiledDeck>> {
-    // ts: content.ts:398-399 — `entityKinds` Map: later duplicates overwrite
+    // `entity_kinds`: later duplicates overwrite
     // the value (keeping the original insertion slot)
     let mut entity_kinds: IndexMap<&str, &str> = IndexMap::new();
     for e in entities {
         entity_kinds.insert(e.name.as_str(), e.kind.as_str());
     }
-    // ts: content.ts:402-408 — entries resolve prototype-first, then entity
+    // entries resolve prototype-first, then entity
     // lines — the same name in both is unambiguous (the prototype is what
     // SPAWN would mint)
     let resolve = |deck: &str, what: &str, name: &str| -> Result<DeckCard> {
@@ -886,9 +883,8 @@ fn compile_decks(
     Ok(decks)
 }
 
-/// ts: content.ts:430-437 — FNV-1a 64 over the deck id's UTF-8 bytes
-/// (`.as_bytes()` is the same byte sequence TextEncoder produces), folding
-/// the id into one full-width 64-bit key part.
+/// FNV-1a 64 over the deck id's UTF-8 bytes,
+/// folding the id into one full-width 64-bit key part.
 #[must_use]
 pub fn hash_deck_id(id: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -899,9 +895,9 @@ pub fn hash_deck_id(id: &str) -> u64 {
     h
 }
 
-/// ts: content.ts:453-461 — Fisher–Yates over positions 0..n-1; position i
+/// Fisher–Yates over positions 0..n-1; position i
 /// (descending from n-1 to 1) draws
-/// `j = splitmix64(asUintN(seed) ^ hashDeckId(deckId) ^ asUintN(i)) % (i+1)`
+/// `j = splitmix64(asUintN(seed) ^ hash_deck_id(deck_id) ^ asUintN(i)) % (i+1)`
 /// and swaps. `seed as u64` covers the asUintN two's-complement treatment of
 /// negative seeds (the (7, -3, 'NEG') vector pins it); `i as u64` is a no-op
 /// asUintN for the non-negative loop index. Uniform up to the negligible
@@ -921,7 +917,7 @@ pub fn permute_positions(n: usize, seed: i64, deck_id: &str) -> Vec<usize> {
     pos
 }
 
-/// ts: content.ts:472-478 — serve the card at `cursor`, shared by play (the
+/// Serve the card at `cursor`, shared by play (the
 /// DRAW op) and fold (the DRAWN row's assertion) so the two can never drift:
 /// below the period it is `order[cursor]`; past it, `reset` wraps (periodic
 /// with period len(order)) and otherwise `defaultcard` serves forever; with
@@ -930,11 +926,9 @@ pub fn permute_positions(n: usize, seed: i64, deck_id: &str) -> Vec<usize> {
 /// (compile_decks rejects an empty spec).
 ///
 /// A negative cursor is unreachable (cursors start at 0 and only advance on
-/// the engine's DRAW path); TS would hand back `undefined` from the first
-/// branch in that case. Rule 11: the debug_assert documents that
+/// the engine's DRAW path). The debug_assert documents that
 /// unreachability; the release-side `Err` is a guard so the unreachable
-/// branch can never become an index panic (TS's `undefined` is not
-/// observable here — no caller can produce a negative cursor).
+/// branch can never become an index panic.
 pub fn draw_from(deck: &CompiledDeck, cursor: i64) -> Result<DeckCard> {
     if cursor < 0 {
         debug_assert!(false, "negative deck cursor {cursor} is unreachable");
@@ -954,10 +948,10 @@ pub fn draw_from(deck: &CompiledDeck, cursor: i64) -> Result<DeckCard> {
     Err(ChorusError::new(format!(
         "deck '{}' is exhausted — no 'reset' and no 'defaultcard' (§9.42)",
         deck.id
-    ))) // ts: content.ts:476
+    )))
 }
 
-/// ts: content.ts:479-486 — allow several outcomes in one string; usually
+/// Allow several outcomes in one string; usually
 /// one per array element. §9.40: with a function table, parse dispatches
 /// NAME( calls and the expansion pass runs in the same step — verb/trigger
 /// bodies are compiled fully expanded, so every guard (and the engine) sees
@@ -972,16 +966,16 @@ fn parse_outcome_string(src: &str, dict: &Dictionary, fns: &FnTable) -> Result<V
 }
 
 // ---------------------------------------------------------------------------
-// functions: the compile-time macro table (§9.40) — ts: content.ts:490-592
+// functions: the compile-time macro table (§9.40)
 // ---------------------------------------------------------------------------
 
-/// ts: content.ts:229 / script.ts:485 — the shared recipe-id mint, one
-/// function with two parameterized variants (plan §1.2 Q1 / ENG-15: the
-/// bases are FROZEN drift — `base = 0` is the compile side's `.recipe${i}`
-/// (pinned by script-play.test.ts:175 `study.recipe0`), `base = 1` is the
-/// lint mirror's `.recipe${i + 1}` (script.ts:485; untested but frozen).
-/// Outputs are byte-identical to TS on both paths; unifying the bases is a
-/// separate issue.
+/// The shared recipe-id mint, one
+/// function with two parameterized variants (Q1: the
+/// bases are FROZEN drift — `base = 0` is the compile side's 0-based
+/// `.recipe<i>` (pinned by the script-play fixture's `study.recipe0`),
+/// `base = 1` is the
+/// lint mirror's 1-based `.recipe<i + 1>` (untested but frozen).
+/// Unifying the bases is a behavior change.
 pub(crate) fn mint_recipe_id(verb_lower: &str, when: Option<&str>, i: usize, base: usize) -> String {
     match when {
         Some(_) => format!("{verb_lower}.recipe{}", i + base),
@@ -989,7 +983,7 @@ pub(crate) fn mint_recipe_id(verb_lower: &str, when: Option<&str>, i: usize, bas
     }
 }
 
-/// ts: content.ts:490 — `FN_IDENT` — function names and parameters.
+/// `FN_IDENT` — function names and parameters.
 fn fn_ident_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$"))
@@ -1010,7 +1004,7 @@ fn upper_snake_re() -> &'static Regex {
     static_regex(&RE, || Regex::new(r"^[A-Z][A-Z0-9_]*$"))
 }
 
-/// ts: content.ts:508-592 — build the function table; functions parse BEFORE
+/// Build the function table; functions parse BEFORE
 /// any verb/trigger body (§9.40), in three ordered passes:
 /// 1. declarations: name/param shape, op-name collisions, IF/ELSE,
 ///    duplicates. No entity/verb name constraint.
@@ -1029,8 +1023,6 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
             )));
         }
         if dict.is_op(&def.name) {
-            // ts: content.ts:516-519 — the TS string is one literal split
-            // across two source lines; the joined text is byte-exact here
             return Err(ChorusError::new(format!(
                 "function '{}' collides with an outcome op — functions and ops share one caller vocabulary; rename the function",
                 def.name
@@ -1053,8 +1045,8 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
                 )));
             }
         }
-        // ts: content.ts:528-529 — first-occurrence duplicates, deduped
-        // preserving first-seen order (the TS `new Set(dups)` iteration)
+        // first-occurrence duplicates, deduped
+        // preserving first-seen order (JS `new Set(dups)` iteration)
         let mut dup_set: IndexSet<&str> = IndexSet::new();
         let mut dups: Vec<&str> = Vec::new();
         for (i, p) in def.params.iter().enumerate() {
@@ -1080,8 +1072,8 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
     }
     // pass 2 — bodies (nested-call arity checks against the declared params)
     for def in defs {
-        // ts: content.ts:536-539 — the body parse is wrapped:
-        // `function '${def.name}': ${err.message}`
+        // the body parse error is wrapped:
+        // `function '<name>': <message>`
         let body = match parse_function_body(&def.body, dict, &table, &def.params) {
             Ok(b) => b,
             Err(err) => {
@@ -1091,7 +1083,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
                 )))
             }
         };
-        // ts: content.ts:534 `table.byName.get(def.name)!` — pass 1 inserted it
+        // pass 1 inserted it
         match table.by_name.get_mut(&def.name) {
             Some(tpl) => tpl.body = body,
             None => unreachable!("pass 1 inserted '{}'", def.name),
@@ -1103,8 +1095,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
         let mut calls = IndexSet::new();
         collect_fn_calls(&tpl.body, &mut calls);
         for c in &calls {
-            // ts: content.ts:547 — messages.md row 76 (pinned at
-            // tests/fn_expand_direct.rs `an_undeclared_call_in_a_body_...`)
+            // pinned at tests/fn_expand_direct.rs `an_undeclared_call_in_a_body_...`
             if !table.by_name.contains_key(c) {
                 return Err(ChorusError::new(format!(
                     "function '{}': call to undeclared function '{c}'",
@@ -1117,7 +1108,6 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
     const WHITE: u8 = 0;
     const GRAY: u8 = 1;
     const BLACK: u8 = 2;
-    // ts: content.ts:552-553 — `color`/`stack`
     let mut color: IndexMap<String, u8> = IndexMap::new();
     let mut stack: Vec<String> = Vec::new();
     fn visit(
@@ -1132,7 +1122,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
             for c in calls {
                 let col = color.get(c).copied().unwrap_or(WHITE);
                 if col == GRAY {
-                    // ts: content.ts:560 — `[...stack.slice(stack.indexOf(c)), c]`;
+                    // the cycle is `stack[position(c)..] + [c]`;
                     // a GRAY node is by construction on the stack
                     let start = match stack.iter().position(|x| x == c) {
                         Some(s) => s,
@@ -1140,8 +1130,8 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
                     };
                     let mut cycle: Vec<String> = stack[start..].to_vec();
                     cycle.push(c.clone());
-                    // messages.md row 74 (pinned at tests/fn_expand_direct.rs
-                    // `mutual_recursion_names_the_cycle_...`)
+                    // pinned at tests/fn_expand_direct.rs
+                    // `mutual_recursion_names_the_cycle_...`
                     return Err(ChorusError::new(format!(
                         "functions recurse: {} — calls expand at load time, so a recursion cycle never terminates; rewrite without the cycle",
                         cycle.join(" -> ")
@@ -1177,13 +1167,13 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
         depth.insert(name.to_string(), v);
         v
     }
-    // ts: content.ts:574 — `depth` memo
+    // the `depth` memo
     let mut depth: IndexMap<String, u32> = IndexMap::new();
     for name in table.by_name.keys() {
         let d = depth_of(name, &calls_of, &mut depth);
         if d > MAX_FN_DEPTH {
-            // messages.md row 75 (pinned at tests/fn_expand_direct.rs
-            // `a_depth_8_chain_expands_transitively_...`)
+            // pinned at tests/fn_expand_direct.rs
+            // `a_depth_8_chain_expands_transitively_...`
             return Err(ChorusError::new(format!(
                 "function '{name}' sits {d} calls deep — the nesting cap is {MAX_FN_DEPTH}"
             )));
@@ -1198,8 +1188,7 @@ mod tests {
 
     #[test]
     fn deck_machinery_matches_the_w0_vectors_and_the_draw_rules() {
-        // the moved-from core/deck_rng vectors stay pinned through the new
-        // home (ts: test/decks.test.ts:141-144)
+        // the frozen deck vectors stay pinned
         assert_eq!(permute_positions(4, 0, "RUMOURS"), vec![0, 2, 1, 3]);
         assert_eq!(permute_positions(4, 42, "RUMOURS"), vec![3, 0, 1, 2]);
         assert_eq!(permute_positions(7, 0, "SEVEN"), vec![0, 6, 3, 1, 4, 5, 2]);
@@ -1222,7 +1211,7 @@ mod tests {
 
     #[test]
     fn recipe_id_mint_keeps_both_frozen_bases() {
-        // QUIRK(Q1/ENG-15): compile 0-based vs lint 1-based, one function
+        // QUIRK(Q1): compile 0-based vs lint 1-based, one function
         assert_eq!(mint_recipe_id("study", Some("x"), 0, 0), "study.recipe0");
         assert_eq!(mint_recipe_id("study", Some("x"), 3, 1), "study.recipe4");
         assert_eq!(mint_recipe_id("study", None, 7, 0), "study.default");
@@ -1244,10 +1233,10 @@ mod tests {
 
     #[test]
     fn empty_string_when_and_query_are_falsy_like_js() {
-        // wave-2 must-fix-1 — ts: content.ts:224/230: `s.query ? …` and
-        // `r.when ? … : null` read JS truthiness, so a hand-built ContentRaw
+        // the empty-string `query`/`when` checks read JS truthiness, so a
+        // hand-built ContentRaw
         // with when: '' compiles as the DEFAULT recipe (minting
-        // `${verb}.default`, no parse error) and query: '' compiles to no
+        // `<verb>.default`, no parse error) and query: '' compiles to no
         // query. (Unreachable through parse_script — its `when\s+(.+)` and
         // slot `(.*)` shapes never yield '' — exactly why only a hand-built
         // raw can probe it.)

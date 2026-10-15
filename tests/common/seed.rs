@@ -1,5 +1,5 @@
-//! The seed world + seed content — ts: test/seed.ts (the spec's flagship
-//! examples as data, §6.4). A test fixture, not engine machinery.
+//! The seed world + seed content — the spec's flagship examples as data
+//! (§6.4). A test fixture, not engine machinery.
 
 //! (Shared test lib: every helper is the common discipline, not per-file
 //! dead code — each mounting test crate uses a different subset, exactly like
@@ -15,7 +15,7 @@ use chorus::core::types::{
     State,
 };
 
-/// ts: test/seed.ts:7-157
+/// The seed content: the spec's flagship examples as data (§6.4).
 #[must_use]
 pub fn seed_content() -> ContentRaw {
     let verb = |slots: Vec<SlotDef>, duration: i64, recipes: Vec<RecipeDef>| VerbContent {
@@ -324,9 +324,9 @@ pub fn seed_content() -> ContentRaw {
     }
 }
 
-/// ts: test/seed.ts:159-195. (Test-fixture path: `add_entity` cannot fail on
+/// The seed world. (Test-fixture path: `add_entity` cannot fail on
 /// this literal world, so the `expect`s are the fixture's proof, not engine
-/// panics — plan §7 rule 11 exempts test code.)
+/// panics — test code may panic on its own fixtures.)
 #[must_use]
 pub fn seed_state() -> State {
     let mut s = new_state(0);

@@ -1,12 +1,11 @@
-//! Recursive-descent sentence parser — ts: src/core/parse.ts lines 1-640
+//! Recursive-descent sentence parser
 //! (spec §5.1). The one semantic decision point: where the actor list ends
 //! and the verb begins. That needs the verb registry (both are uppercase
 //! tokens), so the parser consults the Dictionary (spec §9.14).
 //!
-//! The function-macro layer (FnTemplate/FnTable, ts:25-84) and the compile-
-//! time expansion (ts:646-853) live in [`crate::core::fn_expand`] (CORE-01's
-//! sanctioned split; the seam types — `Outcome`, `Arg`, `FnTable` — are
-//! shared, not broken).
+//! The function-macro layer (FnTemplate/FnTable) and the compile-
+//! time expansion live in [`crate::core::fn_expand`] (the seam types —
+//! `Outcome`, `Arg`, `FnTable` — are shared, not broken).
 
 use std::collections::HashSet;
 
@@ -19,11 +18,11 @@ use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, Clause, IfArm, IntoTarget, Outcome, Role, Sentence, SentenceKind, Sign};
 use crate::js::{ChorusError, Result};
 
-/// ts: src/core/parse.ts:13
+/// Clause keywords that end the actor/ref scan.
 const CLAUSE_KEYWORDS: [&str; 4] = ["TO", "WITH", "AT", "ABOUT"];
 
-/// ts: src/core/parse.ts:16-19 — 'ACTORS' → 'actors' (role refs in outcome
-/// args are uppercase). QUIRK(Q12/CORE-15(3)): `asRole` intercepts BEFORE any
+/// 'ACTORS' → 'actors' (role refs in outcome
+/// args are uppercase). QUIRK(Q12): `as_role` intercepts BEFORE any
 /// bare-ref fallback in outcome-arg positions, but the role names are NOT in
 /// RESERVED_WORDS — a soft reservation whose interception order is
 /// load-bearing (an entity named `object` cannot be bare-referenced in an
@@ -33,12 +32,12 @@ fn as_role(v: &str) -> Option<Role> {
     Role::from_lower(&v.to_lowercase())
 }
 
-/// ts: src/core/parse.ts:21-23
+/// Parse one full sentence.
 pub fn parse_sentence(src: &str, dict: &Dictionary) -> Result<Sentence> {
     Parser::new(lex(src)?, dict, None, None).sentence()
 }
 
-/// ts: src/core/parse.ts:53-58 — parse an outcome list for recipe `out`
+/// Parse an outcome list for recipe `out`
 /// strings at content load: authored outcome strings must parse COMPLETELY
 /// (§5.1).
 pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Result<Vec<Outcome>> {
@@ -48,7 +47,7 @@ pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Re
     Ok(out)
 }
 
-/// ts: src/core/parse.ts:64-69 — parse one function BODY into its template
+/// Parse one function BODY into its template
 /// (§9.40): parameters are active, nested calls become FN nodes, NOTHING
 /// expands yet.
 pub fn parse_function_body(
@@ -63,7 +62,7 @@ pub fn parse_function_body(
     Ok(out)
 }
 
-/// ts: src/core/parse.ts:86-640 — the Parser class.
+/// The recursive-descent parser over one sentence's tokens.
 pub struct Parser<'a> {
     toks: Vec<Tok>,
     pos: usize,
@@ -125,8 +124,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// ts: parse.ts:115-183 (the halfhour range check keeps the TS
-    /// `v < 0 || v > 47` shape for 1:1 review)
+    /// (clippy's `manual_range_contains` lint is silenced — the explicit
+    /// bound check is deliberate)
     #[allow(clippy::manual_range_contains)]
     pub fn sentence(&mut self) -> Result<Sentence> {
         let mut clock: Option<Clock> = None;
@@ -137,8 +136,8 @@ impl<'a> Parser<'a> {
             };
             self.expect_punct(":")?;
             let halfhour_tok = self.next()?;
-            // ts: parse.ts:122 — the 47 bound written HALFHOURS_PER_DAY - 1
-            // (plan §3.18's equal-value rewrite)
+            // the 47 bound written HALFHOURS_PER_DAY - 1 (same value,
+            // self-documenting)
             let Tok::Int { v: halfhour } = halfhour_tok else {
                 return Err(ChorusError::new("bad halfhour (0..47)"));
             };
@@ -257,7 +256,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// ts: parse.ts:185-188
+    /// Error unless the token stream is fully consumed.
     pub fn expect_end(&mut self) -> Result<()> {
         if let Some(t) = self.peek(0) {
             return Err(ChorusError::new(format!(
@@ -268,7 +267,8 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// ts: parse.ts:190-225
+    /// clause = ref ("," ref)* [AT ref] VERB [TO ref] [objects] [WITH refs]
+    /// [ABOUT ref] [AT ref].
     fn clause(&mut self) -> Result<Clause> {
         let mut actors = vec![self.ref_()?];
         while self.at_punct(",", 0) {
@@ -338,7 +338,8 @@ impl<'a> Parser<'a> {
         Ok(clause)
     }
 
-    /// ts: parse.ts:227-233
+    /// Does the next token begin a ref? (name tokens excluded when
+    /// verb/keyword/EVENT.)
     fn starts_ref(&self) -> bool {
         let Some(t) = self.peek(0) else {
             return false;
@@ -353,7 +354,7 @@ impl<'a> Parser<'a> {
         !self.dict.is_verb(&v) && !CLAUSE_KEYWORDS.contains(&v.as_str()) && v != "EVENT"
     }
 
-    /// ts: parse.ts:235-256 — ref = name | kind ":" name | "#" id | string
+    /// ref = name | kind ":" name | "#" id | string
     /// (§5.1). Names in the dictionary's reserved set (keywords AND verb
     /// lexemes) must be quoted. §9.40: inside a function body a bare
     /// parameter is a ref-position placeholder (a param shadows any
@@ -362,7 +363,7 @@ impl<'a> Parser<'a> {
     fn ref_(&mut self) -> Result<Ref> {
         let t = self.next()?;
         let Tok::Name { v } = t else {
-            // ts: parse.ts:242-244 — idref and str return directly; anything
+            // idref and str return directly; anything
             // but a name is the `expected a ref` error
             return match t {
                 Tok::IdRef { v } => Ok(Ref::Id { id: v }),
@@ -408,7 +409,7 @@ impl<'a> Parser<'a> {
         Ok(Ref::Name { kind: None, name: v })
     }
 
-    /// ts: parse.ts:258-262
+    /// outcome ( "," outcome )*.
     fn outcome_list(&mut self) -> Result<Vec<Outcome>> {
         let mut out = vec![self.outcome()?];
         while self.at_punct(",", 0) {
@@ -418,7 +419,7 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
-    /// ts: parse.ts:264-267
+    /// An outcome list, or empty when nothing follows.
     fn outcome_list_or_empty(&mut self) -> Result<Vec<Outcome>> {
         if self.peek(0).is_none() {
             return Ok(Vec::new());
@@ -426,7 +427,7 @@ impl<'a> Parser<'a> {
         self.outcome_list()
     }
 
-    /// ts: parse.ts:269-382 — outcome = OPERATOR "(" args ")" | ref (bare
+    /// outcome = OPERATOR "(" args ")" | ref (bare
     /// ref = SPAWN, §4.4). IF (§9.39) is intercepted before op dispatch. A
     /// declared function's NAME( dispatches to a call BEFORE op parsing
     /// (§9.40); an unknown NAME( is a compile error listing the vocabulary.
@@ -460,7 +461,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// ts: parse.ts:284-380 — the op dispatch arm (name token + isOp).
+    /// The op dispatch arm (a NAME token that `is_op` accepts).
     fn op_outcome(&mut self, op: String) -> Result<Outcome> {
         self.next()?;
         // REPLACE is paren-less only: its WITH keyword would mis-parse as the
@@ -685,7 +686,7 @@ impl<'a> Parser<'a> {
         Err(ChorusError::new(format!("{op} requires parentheses")))
     }
 
-    /// ts: parse.ts:389-409 — NAME(arg, …): a call to a declared function
+    /// NAME(arg, …): a call to a declared function
     /// (§9.40). Arity is checked HERE, a load error.
     fn fn_call(&mut self) -> Result<Outcome> {
         let name_tok = self.next()?;
@@ -696,8 +697,8 @@ impl<'a> Parser<'a> {
         };
         let params = match self.fns.and_then(|f| f.by_name.get(&name)) {
             Some(tpl) => tpl.params.clone(),
-            // ts: parse.ts:393 `this.fns!.byName.get(name)!` — the dispatch
-            // guard checked `byName.has(name)`; unreachable (rule 11)
+            // the dispatch guard checked `by_name.contains_key(name)` above;
+            // unreachable
             None => unreachable!("fn_call dispatched on a name absent from FnTable"),
         };
         self.expect_punct("(")?;
@@ -731,9 +732,9 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// ts: parse.ts:411-432 — IF pred -> ( outcomes ) { ELSE IF … } [ELSE …]
+    /// IF pred -> ( outcomes ) { ELSE IF … } [ELSE …]
     /// (§9.39). The ELSE chain is consumed greedily INSIDE this node — the
-    /// `,`-loop of outcomeList must not strand an ELSE.
+    /// `,`-loop of outcome_list must not strand an ELSE.
     fn if_outcome(&mut self) -> Result<Outcome> {
         self.next()?; // IF
         let mut arms = vec![self.if_arm()?];
@@ -758,7 +759,8 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// ts: parse.ts:434-444
+    /// One IF arm: the condition is a balanced unit up to the depth-0 `->`,
+    /// then the branch body.
     fn if_arm(&mut self) -> Result<IfArm> {
         // the condition is parsed from the SENTENCE token stream as a
         // balanced unit up to the depth-0 `->` (predicates contain commas via
@@ -770,7 +772,7 @@ impl<'a> Parser<'a> {
         Ok(IfArm { when: pred, then })
     }
 
-    /// ts: parse.ts:446-451
+    /// Branch body: `( outcomes )`.
     fn branch_body(&mut self) -> Result<Vec<Outcome>> {
         self.expect_punct("(")?;
         let out = self.outcome_list()?;
@@ -778,7 +780,7 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
-    /// ts: parse.ts:453-481 — ROLL(<count-expr>, <sides-expr>[, <bonus-expr>])
+    /// ROLL(<count-expr>, <sides-expr>[, <bonus-expr>])
     /// (§9.41). Each argument is consumed as a BALANCED Tok unit up to the
     /// depth-0 `,` (or the closing `)`), then parsed with the SAME §6.3
     /// value-expression grammar the IF cmp operands use.
@@ -813,7 +815,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// ts: parse.ts:483-500 — one balanced ROLL argument: Toks up to the
+    /// One balanced ROLL argument: Toks up to the
     /// depth-0 ',' or ')'.
     fn roll_arg_expr(&mut self) -> Result<ValExpr> {
         let start = self.pos;
@@ -846,7 +848,7 @@ impl<'a> Parser<'a> {
         parse_value_expr_toks(slice, self.params.as_ref())
     }
 
-    /// ts: parse.ts:502-516 — §9.40: a parameter wins before the role check
+    /// §9.40: a parameter wins before the role check
     /// (a param may shadow a role name inside a body exactly as it shadows
     /// an entity name); QUIRK(Q12): the role check intercepts BEFORE any
     /// bare-ref fallback — the soft-reservation order is load-bearing.
@@ -870,10 +872,10 @@ impl<'a> Parser<'a> {
         Ok(Arg::Ref { r#ref: self.ref_()? })
     }
 
-    /// ts: parse.ts:518-541 — SPAWN ref [INTO target] [AS #id] [k=v …]
+    /// SPAWN ref [INTO target] [AS #id] [k=v …]
     /// (canonical paren-less form). §9.40: a parameter as the pair's key OR
-    /// value replaces the whole pair (spawnArgs' param checks are LIVE —
-    /// unlike arg()'s dead key check, Q3/CORE-12).
+    /// value replaces the whole pair (these param checks are LIVE —
+    /// unlike arg()'s dead key check, Q3).
     fn spawn_args(&mut self) -> Result<Vec<Arg>> {
         let mut args = vec![Arg::Ref { r#ref: self.ref_()? }];
         if self.at_keyword("INTO") {
@@ -903,8 +905,7 @@ impl<'a> Parser<'a> {
             };
             self.next()?; // '='
             // §9.40: a parameter as the pair's key OR value replaces the
-            // whole pair (spawnArgs 533-537 — the LIVE twin of arg()'s dead
-            // branch, Q3)
+            // whole pair (the LIVE twin of arg()'s dead branch, Q3)
             let v_is_param = match self.peek(0) {
                 Some(Tok::Name { v }) => self.params.as_ref().is_some_and(|p| p.contains(v)),
                 _ => false,
@@ -935,7 +936,7 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
-    /// ts: parse.ts:543-612 — the generic outcome arg.
+    /// The generic outcome arg.
     pub fn arg(&mut self) -> Result<Arg> {
         let Some(t) = self.peek(0).cloned() else {
             return Err(ChorusError::new("unexpected end of outcome args"));
@@ -998,7 +999,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// ts: parse.ts:563-610 — the name-token arm of arg().
+    /// The name-token arm of arg().
     fn name_arg(&mut self, v: String) -> Result<Arg> {
         if v == "INTO" {
             self.next()?;
@@ -1017,13 +1018,12 @@ impl<'a> Parser<'a> {
             };
             return Ok(Arg::AsId { id: idv });
         }
-        // QUIRK(Q3/CORE-12): TS line 575 checks the param table HERE and
-        // returns a param — which makes the key-param check at TS 587
-        // UNREACHABLE (dead code, not ported). DO NOT add a param-key check
+        // QUIRK(Q3): the param check below returns the WHOLE arg as a param —
+        // which makes a key-param check UNREACHABLE here (dead code,
+        // deliberately absent). DO NOT add a param-key check
         // and DO NOT "fix" SET's refusal of `SET(myparam = 3)` — it reports
         // `expected ')', got '='` from the outcome loop, frozen.
-        // NOTE: the param check at TS 575 is the one above in ref-spirit —
-        // here in arg() the bare-param branch (TS 575) IS reachable and lives
+        // NOTE: the bare-param branch IS reachable and lives
         // right below (the whole arg becomes a placeholder).
         if self.params.as_ref().is_some_and(|p| p.contains(&v)) {
             self.next()?;
@@ -1045,9 +1045,9 @@ impl<'a> Parser<'a> {
         }
         if self.at_punct("=", 1) {
             // §9.40: a parameter as the pair's VALUE replaces the whole pair
-            // (TS 588 — reachable). The KEY check (TS 587) is dead (Q3).
-            // Deliberate asymmetry vs spawnArgs: the value token is NOT
-            // consumed here (TS 589 advances only over key and '='), so
+            // (reachable). The KEY check is dead (Q3).
+            // Deliberate asymmetry vs spawn_args: the value token is NOT
+            // consumed here (only key and '=' advance), so
             // `SET(x, k = p)` leaves `p` in the stream and the outcome loop
             // reports `expected ')', got 'p'` — frozen behavior.
             let value_is_param = match self.peek(2) {
@@ -1063,7 +1063,7 @@ impl<'a> Parser<'a> {
                         sign: None,
                     });
                 }
-                unreachable!("value_is_param checked the same peek"); // rule 11
+                unreachable!("value_is_param checked the same peek"); // guarded by the peek above
             }
             let k = v;
             return Ok(Arg::Pair {
@@ -1101,7 +1101,7 @@ impl<'a> Parser<'a> {
         Ok(Arg::Ref { r#ref: self.ref_()? })
     }
 
-    /// ts: parse.ts:614-626 — the INTO target: param | role | ref.
+    /// The INTO target: param | role | ref.
     fn ref_target(&mut self) -> Result<IntoTarget> {
         let t = self.peek(0).cloned();
         if let Some(Tok::Name { v }) = &t {
@@ -1119,7 +1119,7 @@ impl<'a> Parser<'a> {
         Ok(IntoTarget::Ref(self.ref_()?))
     }
 
-    /// ts: parse.ts:628-639
+    /// A scalar value token for k=v pairs.
     fn value_token(&mut self) -> Result<crate::core::types::AttrValue> {
         use crate::core::types::AttrValue;
         let t = self.next()?;
@@ -1144,7 +1144,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// ts: parse.ts:642-644 — `show(t)`: strings print re-quoted (RAW quotes, no
+/// `show(t)`: strings print re-quoted (RAW quotes, no
 /// escaping), everything else prints its v.
 #[must_use]
 pub fn show(t: &Tok) -> String {
@@ -1171,12 +1171,12 @@ mod tests {
         let d = dict();
         let mut params = HashSet::new();
         params.insert("myparam".to_string());
-        // SET(myparam = 3) inside a body: arg() consumes myparam as a param
-        // (TS 575), then the outcome loop trips on '=' — the frozen error
+        // SET(myparam = 3) inside a body: arg() consumes myparam as a param,
+        // then the outcome loop trips on '=' — the frozen error
         let mut p = Parser::new(lex("SET(myparam = 3)").unwrap(), &d, None, Some(params.clone()));
         let err = p.outcome_list_or_empty().unwrap_err();
         assert_eq!(err.msg, "expected ')', got '='");
-        // SPAWN's spawnArgs DOES accept the param key (the whole pair becomes
+        // SPAWN's own arg parse DOES accept the param key (the whole pair becomes
         // the param, and the value token is consumed) — the frozen asymmetry
         let mut p2 = Parser::new(lex("SPAWN X myparam = 3").unwrap(), &d, None, Some(params));
         let out = p2.outcome_list_or_empty().unwrap();
@@ -1195,10 +1195,11 @@ mod tests {
         let d = dict();
         let mut params = HashSet::new();
         params.insert("p".to_string());
-        // TS 588 is reachable: a param as the pair's VALUE. arg() consumes
+        // The value-param branch is reachable: a param as the pair's VALUE.
+        // arg() consumes
         // key and '=' but NOT the param token — the outcome loop then
         // reports the frozen `expected ')', got 'p'` (asymmetric with
-        // spawnArgs, which consumes it)
+        // spawn_args, which consumes it)
         let mut p = Parser::new(lex("SET(x, k = p)").unwrap(), &d, None, Some(params));
         let err = p.outcome_list_or_empty().unwrap_err();
         assert_eq!(err.msg, "expected ')', got 'p'");

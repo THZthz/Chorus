@@ -1,13 +1,12 @@
-//! T3.5 smoke tests for tests/common (snap/settle/seed/explorer_lib) — the
-//! full TS-test ports are T3.7 (plan §4.7); these prove the four libs are
-//! alive and behaviorally pinned where it counts:
+//! Smoke tests for tests/common (snap/settle/seed/explorer_lib) — these
+//! prove the four libs are alive and behaviorally pinned where it matters:
 //! - snap: the FIVE `a<b?-1:1` sorts + fired sort are UTF-16-order and
-//!   insertion-order-insensitive (PR2-11 / TEST-13);
+//!   insertion-order-insensitive;
 //! - snap+fold: fold(load-free) equality on a played step (law 6);
 //! - settle: a settled turn carries begin+complete, act/done/refusal route;
 //! - seed: the fixture compiles and carries the §6.4 world;
 //! - explorer_lib: the win path plays end-to-end and the sampled walk
-//!   harvests states (LCG 'NIGH' entry, TEST-04).
+//!   harvests states (LCG 'NIGH' entry).
 
 mod common;
 
@@ -78,7 +77,7 @@ fn solo(name: &str) -> State {
     s
 }
 
-// ------------------------------- snap -----------------------------------
+// ------------------------------- snap --------------------------------------
 
 #[test]
 fn snap_hides_map_insertion_order_and_sorts_by_utf16_order() {
@@ -121,7 +120,8 @@ fn snap_hides_map_insertion_order_and_sorts_by_utf16_order() {
 #[test]
 fn snap_sorts_keys_by_utf16_code_units_not_rust_bytes() {
     // U+10000 (surrogate pair, first unit 0xD800) sorts BEFORE U+E000 in JS
-    // `<` order but AFTER it in Rust byte order — the exact CORE-05 trap
+    // `<` order but AFTER it in Rust byte order — the exact trap this
+    // pin exists for
     let mut s = solo("MARCH");
     for (id, name) in [("\u{e000}", "E000"), ("\u{10000}", "PLANE1")] {
         let e = Entity {
@@ -167,7 +167,7 @@ fn snap_matches_play_and_fold_through_a_settled_step() {
     assert_eq!(snap(&folded), snap(&played), "fold equality (law 6)");
 }
 
-// ------------------------------- settle ---------------------------------
+// ------------------------------- settle ------------------------------------
 
 #[test]
 fn settle_completes_the_window_and_act_done_route() {
@@ -248,13 +248,13 @@ fn refusal_reads_the_authored_gate_and_the_turn_rolls_back() {
     .unwrap();
     assert_eq!(refusal(&r).as_deref(), Some("not in the mood."));
     // a refused turn logs its BEGIN attempt only (the ids are REUSED next
-    // round, ENG-11) and the state rolls back whole
+    // round) and the state rolls back whole
     assert_eq!(r.records.len(), 1);
     assert_eq!(r.records[0].kind, "action");
     assert_eq!(snap(&r.state), snap(&base), "the state rolls back whole");
 }
 
-// -------------------------------- seed ----------------------------------
+// -------------------------------- seed -------------------------------------
 
 #[test]
 fn seed_content_compiles_and_seed_state_carries_the_world() {
@@ -292,7 +292,7 @@ fn seed_content_compiles_and_seed_state_carries_the_world() {
         .contains_key("ana|bertha|parent_child"));
 }
 
-// ---------------------------- explorer_lib ------------------------------
+// ---------------------------- explorer_lib ---------------------------------
 
 #[test]
 fn the_win_path_plays_end_to_end_through_lenient_input() {

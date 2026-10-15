@@ -1,5 +1,4 @@
-//! Port of test/nightjar.test.ts (21 tests) — T3.7 test package C, file 2/4.
-//! The Nightjar Flyer — story acceptance: the mystery compiles, plays, and
+//! The Nightjar Flyer (21 tests) — story acceptance: the mystery compiles, plays, and
 //! is winnable; the timetable (triggers) is a real adversary; PROGRESS ticks
 //! (§6.7) render as the action's read-bar. Since v0.4 it is also the
 //! showcase: the scripted win path must fire every new mechanic (the
@@ -7,14 +6,14 @@
 //! exists() branch in the talk recipe) without ever tripping the patrol's
 //! escalation ending — seed 1899 is calibrated for exactly that.
 //!
-//! P0 anchors (W4 golden diff reuses these): the win path's dice order
+//! P0 anchors (the golden diff reuses these): the win path's dice order
 //! [[5,2],[8,4],[14,7]], the deck order ['SCANDAL','RUMOUR'], and
 //! PORTENT×2/VOID×1 — asserted value-for-value (:153/:163/:347-348).
 //!
-//! The TS `fresh()` monkey-patches `handleLine` with auto-settle; Rust has no
-//! monkey-patching, so [`auto_settle_line`] is the explicit form of the same
-//! v0.5 test adapter (each committed action's window completes before the
-//! next input). TS object-identity assertions have no Rust observable; snap /
+//! The v0.5 test adapter auto-settles: each committed action's open windows
+//! complete before the next input ([`auto_settle_line`]; there is no
+//! implicit settling to lean on, so the adapter is explicit here).
+//! Object-identity assertions have no Rust observable; snap /
 //! field equality is used at those sites (never weakened).
 
 mod common;
@@ -28,13 +27,13 @@ use chorus::js::cmp_utf16;
 use chorus::session::game::{Game, Turn, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
-/// ts: nightjar.test.ts:18-32 (`fresh`) — Game + the auto-settle adapter.
+/// Game + the auto-settle adapter.
 fn fresh() -> Game {
     Game::from_script(SCRIPT_TEXT, core_dictionary()).unwrap()
 }
 
 /// the auto-settle adapter: after a committed action with open windows, the
-/// settle lines ride the SAME action turn (`[...t.lines, ...settle.lines]`).
+/// settle lines append to the SAME action turn's lines.
 fn auto_settle_line(game: &mut Game, line: &str) -> chorus::js::Result<Turn> {
     let t = game.handle_line(line)?;
     let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
@@ -49,7 +48,6 @@ fn auto_settle_line(game: &mut Game, line: &str) -> chorus::js::Result<Turn> {
     Ok(t)
 }
 
-/// ts: nightjar.test.ts:34-36 (`play`)
 fn play(game: &mut Game, lines: &[&str]) -> chorus::js::Result<Vec<Turn>> {
     let mut turns = Vec::new();
     for l in lines {
@@ -58,7 +56,7 @@ fn play(game: &mut Game, lines: &[&str]) -> chorus::js::Result<Vec<Turn>> {
     Ok(turns)
 }
 
-/// ts: nightjar.test.ts:38-48 (`WIN_PATH` — the test-local copy; the
+/// (`WIN_PATH` — the test-local copy; the
 /// explorer lib's is the sweep/walk's own)
 const WIN_PATH: [&str; 9] = [
     "wait",                          // 22:00 — the body is found
@@ -75,7 +73,7 @@ const WIN_PATH: [&str; 9] = [
 use chorus::core::sentence::Arg;
 use chorus::engine::engine::ActionRecord;
 
-/// ts: nightjar.test.ts:140-143 (`ints`) — the ROLLED (total, ctrAfter) pair.
+/// The ROLLED (total, counter-after) pair.
 fn ints(o: &chorus::core::sentence::Outcome) -> Option<(i64, i64)> {
     match (o.args.first(), o.args.get(1)) {
         (Some(Arg::Int { v: a }), Some(Arg::Int { v: b })) => Some((*a, *b)),
@@ -83,7 +81,7 @@ fn ints(o: &chorus::core::sentence::Outcome) -> Option<(i64, i64)> {
     }
 }
 
-/// ts: nightjar.test.ts:157-162 — the DRAWN name (arg 1's name ref).
+/// The DRAWN name (arg 1's name ref).
 fn drawn_name(o: &chorus::core::sentence::Outcome) -> String {
     match o.args.get(1) {
         Some(Arg::Ref {
@@ -97,22 +95,20 @@ fn pool_len(game: &Game, name: &str) -> usize {
     game.state.by_name.get(name).map_or(0, Vec::len)
 }
 
-/// ts: nightjar.test.ts:357-363 — `game['base']` (the TS private field read
-/// through the index backdoor): compile_script is pure, so a fresh compile
-/// IS the same base state.
+/// The game's base state — the pristine pre-play state: compile_script is
+/// pure, so a fresh compile IS the same base state.
 fn base_of(game: &Game) -> chorus::core::types::State {
     compile_script(SCRIPT_TEXT, &game.dict).unwrap().state
 }
 
-// ------------------------------- tests ----------------------------------
+// ------------------------------- tests -------------------------------------
 
-/// ts: nightjar.test.ts:50 — the single top-level describe.
+/// The single top-level section.
 mod the_nightjar_flyer {
     use super::*;
 
     #[test]
     fn lenient_talk_with_x_maps_onto_talks_to_slot() {
-        // ts: nightjar.test.ts:51-63
         let game = fresh();
         let r = parse_player_input(
             "talk with the guard",
@@ -137,7 +133,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn compiles_the_train_the_masked_suspects_and_the_twelve_verb_core_set() {
-        // ts: nightjar.test.ts:65-79
         let game = fresh();
         assert_eq!(game.title(), "Murder on the Nightjar Flyer");
         for name in [
@@ -158,7 +153,7 @@ mod the_nightjar_flyer {
             assert!(!game.state.by_name.contains_key(name), "{name}");
         }
         let mut verbs: Vec<&str> = game.content.verbs.keys().map(String::as_str).collect();
-        verbs.sort_unstable(); // TS `.sort()` — ASCII keys, code-unit order
+        verbs.sort_unstable(); // JS `.sort()` — ASCII keys, code-unit order
         assert_eq!(
             verbs,
             [
@@ -170,7 +165,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn the_train_is_a_zone_not_a_card_her_cars_carry_it_as_an_attribute() {
-        // ts: nightjar.test.ts:81-85
         let game = fresh();
         assert!(!game.state.by_name.contains_key("NIGHTJAR_FLYER"));
         assert_eq!(
@@ -181,7 +175,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn travel_follows_the_corridor_adjacent_cars_only() {
-        // ts: nightjar.test.ts:87-97
         let mut game = fresh();
         let refused = auto_settle_line(&mut game, "travel to the dining car").unwrap();
         assert_eq!(refused.kind, TurnKind::Action);
@@ -201,7 +194,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn the_timetable_discovers_the_body_at_22_00() {
-        // ts: nightjar.test.ts:99-108
         let mut game = fresh();
         let turn = auto_settle_line(&mut game, "wait").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
@@ -218,7 +210,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn progress_ticks_render_as_the_actions_read_bar() {
-        // ts: nightjar.test.ts:110-121 (§6.7)
+        // (§6.7)
         let mut game = fresh();
         auto_settle_line(&mut game, "wait").unwrap();
         let turn = auto_settle_line(&mut game, "explore the first cabin").unwrap();
@@ -239,7 +231,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn full_win_path_motive_means_opportunity_confession() {
-        // ts: nightjar.test.ts:123-135
         let mut game = fresh();
         let turns = play(&mut game, &WIN_PATH).unwrap();
         assert!(turns.iter().all(|t| t.kind == TurnKind::Action));
@@ -268,16 +259,16 @@ mod the_nightjar_flyer {
 
     #[test]
     fn every_v0_4_mechanic_fires_on_the_scripted_path_v0_5_timeline() {
-        // ts: nightjar.test.ts:137-184 — the P0 anchor battery
+        // The P0 anchor battery
         let mut game = fresh();
         play(&mut game, &WIN_PATH).unwrap();
-        // F1 — the SUSPICION pool exists: the 22:30 rounds landed the middle
+        // F1 — the SUSPICION pool is present: the 22:30 rounds landed the middle
         // tier under seed 1899; the cabin's own patrol roll now resolves at
         // the window's close — after the rounds — and lands the pass-by tier
         assert_eq!(pool_len(&game, "SUSPICION"), 1);
         // F4 — three ROLLED rows (conductor's rounds, cabin patrol, firebox
         // find — v0.5 completion order), the counter landing where play left
-        // it. P0 ANCHOR (nightjar.test:153): value-for-value, W4 reuses.
+        // it. P0 ANCHOR: value-for-value, the golden reuses it.
         let rolled: Vec<Option<(i64, i64)>> = game
             .log
             .records
@@ -352,7 +343,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn a_careless_search_spawns_suspicion_the_pool_is_real_not_flavor() {
-        // ts: nightjar.test.ts:186-194 (F1)
+        // (F1)
         let mut game = fresh();
         play(&mut game, &["wait", "explore the first cabin"]).unwrap();
         let before = pool_len(&game, "SUSPICION");
@@ -365,7 +356,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn careless_searches_feed_the_pool_until_watch_3_ends_the_case_escalation() {
-        // ts: nightjar.test.ts:196-221
         let mut game = fresh();
         play(&mut game, &["wait", "explore the first cabin"]).unwrap();
         // the 22:30 rounds fed the pool once; the cabin's own patrol roll now
@@ -409,7 +399,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn the_french_gate_refuses_an_anglophone_reader_and_speaks_in_prose() {
-        // ts: nightjar.test.ts:223-230 (§6.2)
+        // (§6.2)
         let mut game = fresh();
         play(&mut game, &["wait", "wait", "wait"]).unwrap(); // to 0:00 — the telegram lands
         let turn = auto_settle_line(&mut game, "read the telegram").unwrap();
@@ -420,7 +410,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn searching_the_sealed_cabin_before_the_murder_neither_spoils_nor_breaks_the_search() {
-        // ts: nightjar.test.ts:232-242
         let mut game = fresh();
         let pre = auto_settle_line(&mut game, "explore the first cabin").unwrap();
         assert_eq!(pre.kind, TurnKind::Action);
@@ -434,7 +423,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn unknown_topics_and_places_fail_loudly_lenient_about_at() {
-        // ts: nightjar.test.ts:244-249
         let mut game = fresh();
         let turn = auto_settle_line(&mut game, "talk to seraphine about the lost tracklist")
             .unwrap();
@@ -444,7 +432,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn an_inquest_on_a_hunch_or_on_empty_hands_refuses() {
-        // ts: nightjar.test.ts:251-261
         let mut game = fresh();
         play(
             &mut game,
@@ -463,7 +450,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn halfhour_actions_land_back_on_the_ticks_and_the_timetable_fires_as_the_night_passes() {
-        // ts: nightjar.test.ts:263-273
         let mut game = fresh();
         // 21:00 → 21:30 — meet Cole
         assert_eq!(
@@ -503,7 +489,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn once_triggers_fire_exactly_once_and_the_lord_expires_into_his_successor() {
-        // ts: nightjar.test.ts:275-291 (§9.29, §9.32)
+        // (§9.29, §9.32)
         let mut game = fresh();
         play(&mut game, &["wait"]).unwrap(); // day 0, hour 22 — body_found fires
         assert_eq!(
@@ -547,7 +533,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn the_ledger_burns_at_2_00_the_timetable_is_the_culprit_too() {
-        // ts: nightjar.test.ts:293-299
         let mut game = fresh();
         play(&mut game, &["wait", "wait", "wait", "wait", "wait"]).unwrap(); // 21:00 → 2:00
         assert!(!game.state.by_name.contains_key("THE_VANE_LEDGER"));
@@ -557,7 +542,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn interrogation_exercises_the_to_role_end_to_end() {
-        // ts: nightjar.test.ts:301-310
         let mut game = fresh();
         play(&mut game, &["wait", "talk to the stoker"]).unwrap(); // the seal idea spawns; meet Cole
         let turn = auto_settle_line(&mut game, "talk to cole about the aether seal").unwrap();
@@ -580,7 +564,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn the_showcase_verbs_play_wages_the_tunnel_closure_and_a_ticket_with_one_price() {
-        // ts: nightjar.test.ts:312-336
         let mut game = fresh();
         // meet Brack — RELATE(MARCH, BRACK, neighbor)
         assert_eq!(
@@ -645,7 +628,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn dreaming_draws_the_dreams_deck_until_it_runs_dry() {
-        // ts: nightjar.test.ts:338-355 (§9.42, §9.23)
+        // (§9.42, §9.23)
         let mut game = fresh();
         play(
             &mut game,
@@ -679,7 +662,7 @@ mod the_nightjar_flyer {
             TurnKind::Action
         );
         // the seed-fixed permutation served VOID, PORTENT, PORTENT —
-        // stackable pools. P0 ANCHOR (nightjar.test:347-348), W4 reuses.
+        // stackable pools. P0 ANCHOR, the golden reuses it.
         assert_eq!(pool_len(&game, "PORTENT"), 2);
         assert_eq!(pool_len(&game, "VOID"), 1);
         // v0.5: the draw decides at the completion…
@@ -702,7 +685,6 @@ mod the_nightjar_flyer {
 
     #[test]
     fn the_whole_night_replays_from_the_log_state_equals_fold_of_log() {
-        // ts: nightjar.test.ts:357-363
         let mut game = fresh();
         play(&mut game, &WIN_PATH).unwrap();
         let base = base_of(&game);
@@ -710,7 +692,7 @@ mod the_nightjar_flyer {
             fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
         let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
         let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
-        // TS `.sort()` = JS default string sort = UTF-16 code-unit order
+        // JS `.sort()` = default string sort = UTF-16 code-unit order
         replayed_names.sort_by(|a, b| cmp_utf16(a, b));
         played_names.sort_by(|a, b| cmp_utf16(a, b));
         assert_eq!(replayed_names, played_names);

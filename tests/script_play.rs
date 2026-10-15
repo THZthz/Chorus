@@ -1,10 +1,9 @@
-//! Port of test/script-play.test.ts — the COMPILER subset (plan §4-W2 /
-//! §5.2.1): the `script compiler` describe, exercised against the Nightjar
-//! Flyer. The lenient-input describes and the game-loop describe are W3
-//! (they need Game/lenient/fold).
+//! Script-compiler acceptance — the script-compiler behaviors, exercised
+//! against the Nightjar Flyer. The lenient-input and game-loop suites below
+//! need Game/lenient/fold.
 //!
-//! The script text is DATA (ENG-22): embedded with include_str! from the
-//! same file the TS tests read (scripts/the-nightjar-flyer.txt).
+//! The script text is DATA: embedded with include_str! from
+//! scripts/the-nightjar-flyer.txt.
 
 use chorus::content::content::{
     compile_content, for_each_authored_outcome, CompiledEnding, CompiledTrigger, ContentRaw,
@@ -20,10 +19,10 @@ use chorus::js::Result;
 mod common;
 use common::harness::assert_err_msg;
 
-/// ts: test/lint.test.ts:9 / test/script-play.test.ts:30 — the bundled
+/// The bundled
 /// showcase, read as text. include_str! pins the path
-/// `<worktree>/scripts/the-nightjar-flyer.txt` (the plan's ENG-22 verdict:
-/// the script text is data, never precompiled).
+/// `scripts/the-nightjar-flyer.txt` (the script text is data, never
+/// precompiled).
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/scripts/the-nightjar-flyer.txt"
@@ -52,7 +51,6 @@ fn names(deck: &chorus::content::content::CompiledDeck) -> Vec<&str> {
 
 #[test]
 fn meta_lines_set_title_player_goal_the_starting_clock_and_the_dice_seed() {
-    // ts: test/script-play.test.ts:35-44
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     assert_eq!(
@@ -79,7 +77,6 @@ fn meta_lines_set_title_player_goal_the_starting_clock_and_the_dice_seed() {
 
 #[test]
 fn entities_carry_kinds_aspects_and_containers() {
-    // ts: test/script-play.test.ts:46-56
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     let march_id = &game.state.by_name["MARCH"][0];
@@ -105,7 +102,6 @@ fn entities_carry_kinds_aspects_and_containers() {
 
 #[test]
 fn the_train_is_a_zone_not_a_card_her_cars_carry_it_as_an_attribute() {
-    // ts: test/script-play.test.ts:58-62
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     assert!(!game.state.by_name.contains_key("NIGHTJAR_FLYER"));
@@ -116,7 +112,7 @@ fn the_train_is_a_zone_not_a_card_her_cars_carry_it_as_an_attribute() {
 
 #[test]
 fn places_sit_on_the_corridor_with_explicit_directions() {
-    // ts: test/script-play.test.ts:64-73 — the stored edge keeps the authored
+    // The stored edge keeps the authored
     // direction, and queries find it from either endpoint order
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
@@ -136,7 +132,6 @@ fn places_sit_on_the_corridor_with_explicit_directions() {
 
 #[test]
 fn verb_blocks_compile_slots_durations_and_recipes() {
-    // ts: test/script-play.test.ts:75-85
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     let read = game.content.verbs.get("READ").unwrap();
@@ -164,7 +159,7 @@ fn verb_blocks_compile_slots_durations_and_recipes() {
 
 #[test]
 fn triggers_and_prototypes_compile() {
-    // ts: test/script-play.test.ts:87-107 — the timetable: recurring + `once`,
+    // The timetable: recurring + `once`,
     // the `at hour N` alias (hour 1 = slot 2), and the expiry trigger form
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
@@ -194,20 +189,19 @@ fn triggers_and_prototypes_compile() {
         ]
     );
     let late_lord = game.content.prototypes.get("THE_LATE_LORD").unwrap();
-    // toMatchObject in the TS test is a SUBSET match; THE_LATE_LORD carries
+    // the pinned assertion is a SUBSET match; THE_LATE_LORD carries
     // exactly {aether:1}
     assert_eq!(late_lord.kind, "item");
     assert_eq!(late_lord.aspects, Some(aspects(&[("aether", 1)])));
     let brack = game.content.prototypes.get("BRACK").unwrap();
-    // subset: BRACK is `character with duty:2, nerve:2` — the TS test only
-    // pins kind + duty
+    // subset: BRACK is `character with duty:2, nerve:2` — the pin covers
+    // only kind + duty
     assert_eq!(brack.kind, "character");
     assert_eq!(brack.aspects.as_ref().and_then(|a| a.get("duty")), Some(&AspectVal::Num(2)));
 }
 
 #[test]
 fn the_v0_4_sections_compile_pools_deck_endings_and_expanded_functions() {
-    // ts: test/script-play.test.ts:109-140
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     assert_eq!(game.content.seed, 1899); // the header's documented, calibrated seed
@@ -286,7 +280,7 @@ fn the_v0_4_sections_compile_pools_deck_endings_and_expanded_functions() {
 
 #[test]
 fn the_showcase_compiles_the_full_script_grammar() {
-    // ts: test/script-play.test.ts:142-202 (§4–§10 sweep)
+    // (§4–§10 sweep)
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     // entity lines: stackable (§9.38) on the resource kind (§4.1), plus a
@@ -433,7 +427,6 @@ fn the_showcase_compiles_the_full_script_grammar() {
 
 #[test]
 fn templates_compile() {
-    // ts: test/script-play.test.ts:204-209
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     assert_eq!(
@@ -450,7 +443,7 @@ fn templates_compile() {
 
 #[test]
 fn expiry_triggers_parse_into_their_own_trigger_form() {
-    // ts: test/script-play.test.ts:211-230 (§9.32)
+    // (§9.32)
     let dict = core_dictionary();
     let script = parse_script(
         "triggers:\n  decay_moth on expire of INFLUENCE_MOTH_G -> REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E\n",
@@ -502,7 +495,6 @@ fn expiry_triggers_parse_into_their_own_trigger_form() {
 
 #[test]
 fn bad_expiry_trigger_grammar_fails_loudly() {
-    // ts: test/script-play.test.ts:232-236
     let dict = core_dictionary();
     assert_err_msg(
         parse_script("triggers:\n  decay_moth on expire -> SPAWN DREAD\n", &dict),
@@ -520,7 +512,6 @@ fn bad_expiry_trigger_grammar_fails_loudly() {
 
 #[test]
 fn bad_scripts_fail_loudly() {
-    // ts: test/script-play.test.ts:238-243
     let dict = core_dictionary();
     assert_err_msg(
         parse_script("entities:\n  X is dragon\n", &dict),
@@ -538,17 +529,17 @@ fn bad_scripts_fail_loudly() {
 }
 
 // ---------------------------------------------------------------------------
-// W2 冒烟 (plan §4-W2 产出): compile_script(the-nightjar-flyer) — the full
-// load path over the embedded showcase. The TS-side CompiledContent full
-// JSON 对拍 is W3/W4 (§6.2); here the compile must simply succeed and the
-// headline derived fields must match the TS-pinned values (seed permutation,
+// compile_script(the-nightjar-flyer) — the full
+// load path over the embedded showcase. The full CompiledContent JSON
+// 对拍 lives in the golden replay; here the compile must simply succeed and the
+// headline derived fields must match the pinned values (seed permutation,
 // stackable sets, minted ids) — which the tests above assert field-by-field.
 // ---------------------------------------------------------------------------
 
-/// A direct-raw compileContent caller passes NO entities (deck entries
+/// A direct-raw compile_content caller passes NO entities (deck entries
 /// validate against prototypes only) — the deck entries here name entity
-/// lines, so this must throw `deck GOSSIP: spec entry 'RUMOUR' is neither a
-/// declared prototype nor an entity` (content.ts:194's documented behavior).
+/// lines, so this must fail with `deck GOSSIP: spec entry 'RUMOUR' is neither a
+/// declared prototype nor an entity` (the documented compiler behavior).
 #[test]
 fn direct_compile_content_without_entities_rejects_entity_deck_entries() {
     let dict = core_dictionary();
@@ -570,7 +561,7 @@ fn direct_compile_content_without_entities_rejects_entity_deck_entries() {
 }
 
 /// compile_content with entities passes them to deck resolution AND builds
-/// the stackable sets in one shot (ENG-01's single build point).
+/// the stackable sets in one shot (the single build point).
 #[test]
 fn direct_compile_content_with_entities_resolves_deck_entries_and_stackable() {
     let dict = core_dictionary();
@@ -597,20 +588,20 @@ fn direct_compile_content_with_entities_resolves_deck_entries_and_stackable() {
     assert!(compiled.stackable_kinds.contains("idea"));
 }
 
-/// The W2 contract for messages.md rows 74-76: the cycle/depth/undeclared
+/// The contract for messages.md rows 74-76: the cycle/depth/undeclared
 /// guards fire through the REAL compile path (content.rs build_fn_table),
 /// with the exact texts pre-frozen by tests/fn_expand_direct.rs.
 #[test]
 fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() -> Result<()> {
     let dict = core_dictionary();
-    // cycle: functions.test.ts:291-301's a -> b -> a
+    // cycle: a -> b -> a
     let cyclic = "functions:\n  a -> b()\n  b -> a()\n";
     let err = compile_script(cyclic, &dict).unwrap_err();
     assert_eq!(
         err.msg,
         "functions recurse: a -> b -> a — calls expand at load time, so a recursion cycle never terminates; rewrite without the cycle"
     );
-    // depth: functions.test.ts:303-310's chain f1..f9
+    // depth: the chain f1..f9
     let mut deep = String::from("functions:\n");
     for i in 1..=9 {
         deep.push_str(&format!("  f{i} -> {}\n", if i == 9 { "NARRATE \"bottom\"".to_string() } else { format!("f{}()", i + 1) }));
@@ -621,19 +612,16 @@ fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() ->
 }
 
 // ---------------------------------------------------------------------------
-// T3.7C — the lenient-input describes and the game-loop describe
-// (ts: test/script-play.test.ts:246-428; plan §4-W3 / §5.2.1). The TS
-// `autoSettle(game)` adapter (the file's :16-29 monkey-patch) becomes the
-// explicit [`auto_settle_line`] helper — each committed action's window
-// completes before the next input, restoring the pre-parallel
-// commit-completes-at-once shape. Per-test fresh Dictionary (TEST-10: the
-// vitest per-file isolation becomes per-test isolation).
+// The lenient-input and game-loop suites. The
+// [`auto_settle_line`] adapter is the explicit form of the auto-settle
+// behavior — each committed action's window completes before the next input,
+// restoring the pre-parallel commit-completes-at-once shape. Per-test fresh
+// Dictionary.
 // ---------------------------------------------------------------------------
 
 use chorus::session::game::{Game, Turn, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
-/// ts: script-play.test.ts:16-29 (`autoSettle`)
 fn auto_settle_line(game: &mut Game, line: &str) -> Result<Turn> {
     let t = game.handle_line(line)?;
     let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
@@ -648,8 +636,8 @@ fn auto_settle_line(game: &mut Game, line: &str) -> Result<Turn> {
     Ok(t)
 }
 
-/// ts: script-play.test.ts:247-248 — the lenient context over the fresh
-/// game's world (`{ dict, content: game.content, state: game.state, player: 'MARCH' }`).
+/// The lenient context over the fresh
+/// game's world (dict, content, state, player 'MARCH').
 fn flyer_ctx(game: &Game) -> LenientCtx<'_> {
     LenientCtx {
         dict: &game.dict,
@@ -659,20 +647,18 @@ fn flyer_ctx(game: &Game) -> LenientCtx<'_> {
     }
 }
 
-/// ts: script-play.test.ts:421-427 — `game['base']` (the TS private field
-/// read through the index backdoor): compile_script is pure, so a fresh
-/// compile IS the same base state.
+/// The game's base state — the pristine pre-play state: compile_script is
+/// pure, so a fresh compile IS the same base state.
 fn flyer_base(game: &Game) -> chorus::core::types::State {
     compile_script(FLYER, &game.dict).unwrap().state
 }
 
-/// ts: script-play.test.ts:246 — describe 'lenient player input'
+/// Lenient player input.
 mod lenient_player_input {
     use super::*;
 
     #[test]
     fn bare_verb_defaults_to_the_player_character() {
-        // ts: script-play.test.ts:250-258
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let r = parse_player_input("wait", &flyer_ctx(&game));
@@ -694,7 +680,6 @@ mod lenient_player_input {
 
     #[test]
     fn multi_actor_and_multi_word_names_resolve() {
-        // ts: script-play.test.ts:259-268
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let r = parse_player_input("march read the vane ledger", &flyer_ctx(&game));
@@ -711,7 +696,6 @@ mod lenient_player_input {
 
     #[test]
     fn role_phrases_and_objects_do_not_bleed_into_each_other() {
-        // ts: script-play.test.ts:269-280
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let r = parse_player_input(
@@ -731,7 +715,6 @@ mod lenient_player_input {
 
     #[test]
     fn canonical_passthrough_still_works() {
-        // ts: script-play.test.ts:281-286
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let r = parse_player_input("0:44 @ MARCH WAIT", &flyer_ctx(&game));
@@ -750,7 +733,6 @@ mod lenient_player_input {
 
     #[test]
     fn unknown_words_get_suggestions() {
-        // ts: script-play.test.ts:287-292
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let r = parse_player_input("read the vane ledgr", &flyer_ctx(&game));
@@ -763,7 +745,6 @@ mod lenient_player_input {
 
     #[test]
     fn verbs_get_suggestions_too() {
-        // ts: script-play.test.ts:293-298
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let r = parse_player_input("xeplore the car", &flyer_ctx(&game));
@@ -776,23 +757,22 @@ mod lenient_player_input {
 
     #[test]
     fn names_resolve_case_insensitively_spec_11() {
-        // ts: script-play.test.ts:299-303
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         assert!(parse_player_input("read THE VANE LEDGER", &flyer_ctx(&game)).is_ok());
     }
 }
 
-/// ts: script-play.test.ts:305 — describe 'lenient input routes the new core
-/// verbs (v0.3)'. Registration is the gate: before v0.3 this compileContent
-/// threw 'not registered'.
+/// Lenient input routes the new core
+/// verbs (v0.3). Registration is the gate: unregistered verbs fail the
+/// compile with 'not registered'.
 mod lenient_input_routes_the_new_core_verbs {
     use super::*;
     use chorus::content::content::{RecipeDef, SlotDef, VerbContent};
     use chorus::core::types::{add_entity, AttrValue, Attrs, Entity, State};
     use common::seed::seed_state;
 
-    /// ts: script-play.test.ts:307-328 — STUDY (READ's grammar, §4.3) and
+    /// STUDY (READ's grammar, §4.3) and
     /// MANSUS (EXPLORE's grammar, §4.3) registered on a fresh dictionary.
     fn verbs_content(dict: &chorus::core::dict::Dictionary) -> chorus::content::content::CompiledContent {
         let verb = |slots: Vec<SlotDef>, out: &str| VerbContent {
@@ -845,7 +825,7 @@ mod lenient_input_routes_the_new_core_verbs {
         compile_content(&raw, dict, &[]).unwrap()
     }
 
-    /// ts: script-play.test.ts:329-334 (`ctx`) — the seed world plus a text
+    /// The seed world plus a text
     /// and a place to route at.
     fn ctx() -> (
         chorus::core::dict::Dictionary,
@@ -884,7 +864,6 @@ mod lenient_input_routes_the_new_core_verbs {
 
     #[test]
     fn study_plus_bare_name_routes_to_the_object_role_like_read() {
-        // ts: script-play.test.ts:336-347
         let (dict, content, state) = ctx();
         let r = parse_player_input(
             "study the manifest",
@@ -919,7 +898,6 @@ mod lenient_input_routes_the_new_core_verbs {
 
     #[test]
     fn mansus_plus_place_routes_to_the_object_role_like_explore() {
-        // ts: script-play.test.ts:348-359
         let (dict, content, state) = ctx();
         let r = parse_player_input(
             "mansus the white door",
@@ -953,14 +931,13 @@ mod lenient_input_routes_the_new_core_verbs {
     }
 }
 
-/// ts: script-play.test.ts:361 — describe 'the game loop'
+/// The game loop.
 mod the_game_loop {
     use super::*;
     use chorus::engine::fold::fold;
 
     #[test]
     fn a_script_becomes_a_playable_game() {
-        // ts: script-play.test.ts:362-380
         let dict = core_dictionary();
         let mut game = Game::from_script(FLYER, dict).unwrap();
         let turn = auto_settle_line(&mut game, "read the manifest").unwrap();
@@ -987,7 +964,6 @@ mod the_game_loop {
 
     #[test]
     fn the_table_only_shows_what_the_inspector_has_met() {
-        // ts: script-play.test.ts:382-397
         let dict = core_dictionary();
         let mut game = Game::from_script(FLYER, dict).unwrap();
         let names = |game: &Game| -> Vec<String> {
@@ -1012,7 +988,6 @@ mod the_game_loop {
 
     #[test]
     fn inspect_reads_a_visible_cards_face_and_respects_the_table() {
-        // ts: script-play.test.ts:399-408
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let face = game.inspect("the manifest");
@@ -1026,7 +1001,7 @@ mod the_game_loop {
 
     #[test]
     fn suggestions_are_concrete_executable_actions() {
-        // ts: script-play.test.ts:410-419 — the pinned s[0] (line 421)
+        // The pinned s[0] (line 421)
         let dict = core_dictionary();
         let game = Game::from_script(FLYER, dict).unwrap();
         let s = game.suggestions().unwrap();
@@ -1040,7 +1015,6 @@ mod the_game_loop {
 
     #[test]
     fn the_log_replays_from_the_script_base_state_state_equals_fold_of_log() {
-        // ts: script-play.test.ts:421-428
         let dict = core_dictionary();
         let mut game = Game::from_script(FLYER, dict).unwrap();
         auto_settle_line(&mut game, "read the manifest").unwrap();
@@ -1048,7 +1022,7 @@ mod the_game_loop {
         let replayed = fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
         let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
         let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
-        // TS `.sort()` = JS default string sort = UTF-16 code-unit order
+        // `.sort()` = JS default string sort = UTF-16 code-unit order
         replayed_names.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
         played_names.sort_by(|a, b| chorus::js::cmp_utf16(a, b));
         assert_eq!(replayed_names, played_names);

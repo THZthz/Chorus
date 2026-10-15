@@ -1,18 +1,17 @@
-//! Port of test/functions.test.ts (27 tests) — T3.7 test package A, file 3/3.
-//! F3 — functions: parametric outcome macros, compile-time expanded (spec
-//! §9.40, plan v0.4 F3). A `functions:` declaration expands at LOAD: every
+//! Functions (27 tests): parametric outcome macros, compile-time expanded
+//! (spec §9.40). A `functions:` declaration expands at LOAD: every
 //! call site becomes its function's body with parameters substituted (AST
 //! splicing + string interpolation), BEFORE the trigger guards and the
 //! endings check run — canonical equals expansion, so the engine and the log
 //! never see a call. Recursion cycles, depth > 8, arity mismatches, op-name
 //! collisions and undeclared `{token}` interpolation are load errors.
 //!
-//! PR3-01: this file is the compileScript→executeStep FULL-CHAIN expansion
-//! verification that W1's direct subset (tests/fn_expand_direct.rs) could not
+//! This file is the compile→execute FULL-CHAIN expansion
+//! verification that the direct subset (tests/fn_expand_direct.rs) could not
 //! cover — the cycle/depth texts (messages.md 行 74–76) are re-checked here
-//! through the real compile path. toThrow patterns are copied CHARACTER FOR
+//! through the real compile path. Error-message patterns are copied CHARACTER FOR
 //! CHARACTER; each test owns a fresh Dictionary with STEW registered
-//! (TEST-10; ts: functions.test.ts:25-26).
+//! (per-test).
 
 mod common;
 
@@ -40,9 +39,9 @@ use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
 use indexmap::IndexMap;
 
-// ---------------------------------------------------------------- rig ----
+// ---------------------------------------------------------------- rig ------
 
-/// ts: functions.test.ts:25-26 — the file-level dict registers STEW (the
+/// The file-level dict registers STEW (the
 /// rig's own verb lexeme; verbs are code-registered, §10).
 fn stew_dict() -> Dictionary {
     let mut d = core_dictionary();
@@ -50,8 +49,8 @@ fn stew_dict() -> Dictionary {
     d
 }
 
-/// ts: functions.test.ts:28-32 `run` — settleStep with the exact idGen
-/// closure `() => `x${firstRecordId}_${++n}``.
+/// settle_step with the exact id-generator
+/// closure: `x{first_record_id}_{n}`, the counter incrementing per minted id.
 fn run(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -81,7 +80,7 @@ fn run(
     .unwrap()
 }
 
-/// ts: functions.test.ts:34-42 `said` — v0.5: NARRATE defers to the
+/// `said` — v0.5: NARRATE defers to the
 /// completion — gather across the COMPLETE rows.
 fn said(r: &ExecResult) -> Vec<String> {
     r.records
@@ -98,18 +97,16 @@ fn said(r: &ExecResult) -> Vec<String> {
         .collect()
 }
 
-// ---------- rig: the plan's flagship pair, verbatim grammar ----------
+// ---------- rig: the plan's flagship pair, verbatim grammar ----------------
 
-/// ts: functions.test.ts:46-50
 const CALL_FUNCTIONS: &str = r#"functions:
   sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
   watch(n) -> IF count(name:SUSPICION) >= n -> (ENDING ARRESTED) ELSE -> (NARRATE "not yet.")
 "#;
 
-/// ts: functions.test.ts:52
 const CALL_RECIPE: &str = "default -> sus(THE_GUARD), watch(3)";
 
-/// ts: functions.test.ts:54-58 — the hand-expanded twin: each call replaced
+/// The hand-expanded twin: each call replaced
 /// by its body with the argument substituted — the expansion-equivalence
 /// oracle.
 const TWIN_RECIPE: &str = concat!(
@@ -117,7 +114,7 @@ const TWIN_RECIPE: &str = concat!(
     "IF count(name:SUSPICION) >= 3 -> (ENDING ARRESTED) ELSE -> (NARRATE \"not yet.\")"
 );
 
-/// ts: functions.test.ts:60-81 rigScript
+/// The rig script text.
 fn rig_script(recipe: &str, functions: &str) -> String {
     format!(
         r#"
@@ -145,7 +142,7 @@ verbs:
     )
 }
 
-/// ts: functions.test.ts:541-549 rigVerb
+/// The rig verb map.
 fn rig_verb(recipes: &[&str]) -> IndexMap<String, VerbContent> {
     [(
         "STEW".to_string(),
@@ -174,7 +171,7 @@ fn rig_verb(recipes: &[&str]) -> IndexMap<String, VerbContent> {
     .collect()
 }
 
-/// ts: functions.test.ts:551-559 world — ANA (actor), THE_GUARD (shadow
+/// World — ANA (actor), THE_GUARD (shadow
 /// target), TOME (secret:1)
 fn world() -> State {
     let mut s = new_state(0);
@@ -225,7 +222,7 @@ fn world() -> State {
     s
 }
 
-/// ts: functions.test.ts:561-568 addSuspicion
+/// Add n SUSPICION pool cards.
 fn add_suspicion(s: &mut State, n: i64) {
     for _ in 0..n {
         let id = format!("w{}", s.entities.len());
@@ -246,8 +243,8 @@ fn add_suspicion(s: &mut State, n: i64) {
     }
 }
 
-/// ts: functions.test.ts:570-577 rawTable — build a parse-level FnTable the
-/// way compileContent's passes do.
+/// Build a parse-level FnTable the
+/// way compile_content's passes do.
 fn raw_table(dict: &Dictionary, defs: &[FunctionDef]) -> FnTable {
     let mut table = FnTable::default();
     for d in defs {
@@ -276,7 +273,7 @@ fn fdef(name: &str, params: &[&str], body: &str) -> FunctionDef {
     }
 }
 
-/// ts: functions.test.ts:173-181 rig — the substitution describe's content:
+/// Rig — the substitution section's content:
 /// watch's body carries ENDING ARRESTED — the endings check runs on expanded
 /// bodies, so the rig declares the table; SUSPICION is the mint target for
 /// ref-position params.
@@ -316,7 +313,7 @@ fn rig(dict: &Dictionary, functions: Vec<FunctionDef>, recipe: &str) -> Compiled
     .unwrap()
 }
 
-/// chain(n) — ts: functions.test.ts:269-274
+/// chain(n)
 fn chain(n: usize) -> Vec<FunctionDef> {
     (0..n)
         .map(|i| {
@@ -334,19 +331,17 @@ fn chain(n: usize) -> Vec<FunctionDef> {
         .collect()
 }
 
-// ---------- expansion equivalence (the string-substitution case included) ----
+// ---------- expansion equivalence (the string-substitution case included) ------
 
-/// ts: functions.test.ts:85-107
 mod expansion_equivalence {
     use super::*;
 
-    /// ts: functions.test.ts:89 `recipeOut` — the compiled recipe's outcome
-    /// ASTs serialized (JSON.stringify == the serde wire form).
+    /// The compiled recipe's outcome
+    /// ASTs serialized (the JSON wire form).
     fn recipe_out(c: &CompiledContent) -> String {
         serde_json::to_string(&c.verbs.get("STEW").unwrap().recipes[0].out).unwrap()
     }
 
-    /// ts: functions.test.ts:91
     #[test]
     fn compiled_recipe_outcomes_are_identical_byte_for_byte() {
         let dict = stew_dict();
@@ -355,7 +350,6 @@ mod expansion_equivalence {
         assert_eq!(recipe_out(&call.content), recipe_out(&twin.content));
     }
 
-    /// ts: functions.test.ts:95
     #[test]
     fn playing_the_call_and_the_twin_produces_byte_identical_records() {
         let dict = stew_dict();
@@ -388,13 +382,11 @@ mod expansion_equivalence {
     }
 }
 
-// ---------- grammar: declaration forms and dispatch ----------
+// ---------- grammar: declaration forms and dispatch ------------------------
 
-/// ts: functions.test.ts:111-168
 mod call_site_dispatch_and_arity {
     use super::*;
 
-    /// ts: functions.test.ts:126-128
     #[test]
     fn arity_mismatch_is_a_load_error_too_few_too_many_and_on_a_parameterless_call() {
         let dict = stew_dict();
@@ -419,7 +411,6 @@ mod call_site_dispatch_and_arity {
         );
     }
 
-    /// ts: functions.test.ts:131-142
     #[test]
     fn unknown_name_in_outcome_position_is_a_compile_error_listing_the_vocabulary() {
         let dict = stew_dict();
@@ -448,7 +439,6 @@ mod call_site_dispatch_and_arity {
         );
     }
 
-    /// ts: functions.test.ts:144-157
     #[test]
     fn declaring_a_function_named_like_an_outcome_op_is_a_compile_error() {
         let dict = stew_dict();
@@ -494,7 +484,6 @@ mod call_site_dispatch_and_arity {
         );
     }
 
-    /// ts: functions.test.ts:159-167
     #[test]
     fn the_content_raw_path_compiles_and_plays_end_to_end_compile_content_is_the_only_entry() {
         let dict = stew_dict();
@@ -513,7 +502,6 @@ mod call_site_dispatch_and_arity {
         assert_eq!(said(&r), ["x is THE_GUARD."]);
     }
 
-    /// ts: functions.test.ts:117-123
     #[test]
     fn a_call_parses_into_an_authored_fn_node_expansion_is_a_separate_pass() {
         let dict = stew_dict();
@@ -535,13 +523,11 @@ mod call_site_dispatch_and_arity {
     }
 }
 
-// ---------- the two substitution mechanisms ----------
+// ---------- the two substitution mechanisms --------------------------------
 
-/// ts: functions.test.ts:172-264
 mod parameter_substitution {
     use super::*;
 
-    /// ts: functions.test.ts:183-191
     #[test]
     fn ref_position_a_param_mints_whatever_prototype_the_call_names() {
         let dict = stew_dict();
@@ -565,7 +551,6 @@ mod parameter_substitution {
         assert_eq!(r.state.by_name.get("SUSPICION").unwrap().len(), 1);
     }
 
-    /// ts: functions.test.ts:193-206
     #[test]
     fn delta_position_the_authored_sign_folds_into_the_call_s_number() {
         let dict = stew_dict();
@@ -600,7 +585,6 @@ mod parameter_substitution {
         );
     }
 
-    /// ts: functions.test.ts:208-216
     #[test]
     fn string_position_paren_less_and_paren_d_narrate_take_a_param_interpolates() {
         let dict = stew_dict();
@@ -618,7 +602,6 @@ mod parameter_substitution {
         assert_eq!(said(&r), ["halt!", "so does THE_GUARD."]);
     }
 
-    /// ts: functions.test.ts:218-238
     #[test]
     fn reserved_tokens_pass_through_an_undeclared_token_is_a_load_error() {
         let dict = stew_dict();
@@ -690,7 +673,6 @@ mod parameter_substitution {
         assert!(prose.is_ok(), "commas inside braces are ordinary prose: {prose:?}");
     }
 
-    /// ts: functions.test.ts:240-254
     #[test]
     fn if_condition_position_watch_3_makes_the_count_threshold_the_call_s_number() {
         let dict = stew_dict();
@@ -718,7 +700,6 @@ mod parameter_substitution {
         assert_eq!(ended.flavour, "melancholy");
     }
 
-    /// ts: functions.test.ts:256-263
     #[test]
     fn a_kind_mismatch_the_ast_can_represent_refuses_the_window_at_runtime_like_any_kind_error() {
         let dict = stew_dict();
@@ -738,13 +719,11 @@ fn assert_refusal_matches(r: &ExecResult, pattern: &str) {
     assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
-// ---------- nesting, recursion, depth ----------
+// ---------- nesting, recursion, depth --------------------------------------
 
-/// ts: functions.test.ts:266-320
 mod nesting_recursion_and_the_depth_cap {
     use super::*;
 
-    /// ts: functions.test.ts:276-289
     #[test]
     fn a_body_calling_a_function_expands_transitively_at_the_call_site_forward_refs_fine() {
         let dict = stew_dict();
@@ -779,7 +758,7 @@ mod nesting_recursion_and_the_depth_cap {
         assert_eq!(r.state.by_name.get("SUSPICION").unwrap().len(), 1);
     }
 
-    /// ts: functions.test.ts:291-301 — mutual recursion names the cycle;
+    /// Mutual recursion names the cycle;
     /// self-recursion names itself (messages.md 行 74, full-chain re-check)
     #[test]
     fn mutual_recursion_is_a_load_error_naming_the_cycle_self_recursion_names_itself() {
@@ -813,7 +792,7 @@ mod nesting_recursion_and_the_depth_cap {
         );
     }
 
-    /// ts: functions.test.ts:303-310 — a depth-8 chain of distinct functions
+    /// A depth-8 chain of distinct functions
     /// loads; depth 9 is a load error (messages.md 行 75, full-chain re-check)
     #[test]
     fn a_depth_8_chain_of_distinct_functions_loads_depth_9_is_a_load_error() {
@@ -845,7 +824,6 @@ mod nesting_recursion_and_the_depth_cap {
         );
     }
 
-    /// ts: functions.test.ts:312-319
     #[test]
     fn nested_call_arity_mismatches_are_load_errors_even_before_any_call_site_runs() {
         let dict = stew_dict();
@@ -867,13 +845,11 @@ mod nesting_recursion_and_the_depth_cap {
     }
 }
 
-// ---------- param shadowing ----------
+// ---------- param shadowing ------------------------------------------------
 
-/// ts: functions.test.ts:322-338
 mod parameter_shadows_an_entity_of_the_same_name {
     use super::*;
 
-    /// ts: functions.test.ts:325
     #[test]
     fn destroy_guard_in_the_body_destroys_the_bound_card_not_the_entity_guard() {
         let dict = stew_dict();
@@ -910,13 +886,11 @@ mod parameter_shadows_an_entity_of_the_same_name {
     }
 }
 
-// ---------- call sites in triggers; expansion before the guards ----------
+// ---------- call sites in triggers; expansion before the guards ------------
 
-/// ts: functions.test.ts:340-459
 mod trigger_call_sites_and_expansion_before_guards {
     use super::*;
 
-    /// ts: functions.test.ts:343-375
     #[test]
     fn a_trigger_outcome_calls_a_function_its_expansion_rides_the_event_record() {
         let dict = stew_dict();
@@ -975,7 +949,6 @@ verbs:
         );
     }
 
-    /// ts: functions.test.ts:377-405
     #[test]
     fn a_role_ref_body_outcome_from_a_trigger_rejects_the_step_at_runtime() {
         let dict = stew_dict();
@@ -1017,7 +990,6 @@ verbs:
         assert_eq!(snap(&c_state), before); // nothing applied, clock unmoved
     }
 
-    /// ts: functions.test.ts:407-421
     #[test]
     fn progress_in_a_body_load_error_from_a_trigger_fine_from_a_recipe() {
         let dict = stew_dict();
@@ -1066,7 +1038,6 @@ verbs:
         );
     }
 
-    /// ts: functions.test.ts:423-434
     #[test]
     fn an_undeclared_ending_id_inside_a_body_is_a_load_error_through_the_expansion() {
         let dict = stew_dict();
@@ -1083,7 +1054,7 @@ verbs:
             r"ENDING 'NOT_DECLARED' is not in the endings table",
         );
         // the same through the TRIGGER path — expansion precedes
-        // checkEndingRefs there too
+        // check_ending_refs there too
         assert_err_msg(
             compile_content(
                 &ContentRaw {
@@ -1104,7 +1075,6 @@ verbs:
         );
     }
 
-    /// ts: functions.test.ts:436-444
     #[test]
     fn guards_see_into_a_nested_if_inside_a_body_progress_in_a_branch_is_still_a_trigger_load_error() {
         let dict = stew_dict();
@@ -1135,7 +1105,6 @@ verbs:
         );
     }
 
-    /// ts: functions.test.ts:446-458
     #[test]
     fn the_count_typo_lint_applies_to_an_expanded_body_condition_on_the_trigger_path_too() {
         let dict = stew_dict();
@@ -1188,13 +1157,11 @@ verbs:
     }
 }
 
-// ---------- IF in a body, end to end ----------
+// ---------- IF in a body, end to end ---------------------------------------
 
-/// ts: functions.test.ts:461-491
 mod if_inside_a_function_body {
     use super::*;
 
-    /// ts: functions.test.ts:466
     #[test]
     fn three_stews_the_else_arm_twice_then_watch_3_arrests_through_its_param() {
         let dict = stew_dict();
@@ -1244,13 +1211,11 @@ mod if_inside_a_function_body {
     }
 }
 
-// ---------- round-trip: the log never sees a call ----------
+// ---------- round-trip: the log never sees a call --------------------------
 
-/// ts: functions.test.ts:493-537
 mod canonical_equals_expansion {
     use super::*;
 
-    /// ts: functions.test.ts:496-523
     #[test]
     fn expanded_outcomes_round_trip_through_jsonl_and_the_fold_no_fn_op_or_call_text_anywhere() {
         let dict = stew_dict();
@@ -1288,7 +1253,6 @@ mod canonical_equals_expansion {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// ts: functions.test.ts:525-536
     #[test]
     fn the_formatter_refuses_authored_form_a_call_node_and_a_parameter_both_throw() {
         let dict = stew_dict();

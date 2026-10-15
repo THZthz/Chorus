@@ -1,19 +1,17 @@
-//! Port of test/engine.test.ts (74 tests) — T3.7 test package A, file 1/3.
-//! Engine acceptance tests — the spec §6.4 READ ladder, REFUSE semantics
+//! Engine acceptance tests (74 tests) — the spec §6.4 READ ladder, REFUSE semantics
 //! (§6.5), time ownership (§9.12), events (§9.16), fold determinism (§7).
 //!
-//! Structure mirrors the TS `describe` blocks one-to-one (plan §5.2: the mod
-//! tree is the audit anchor). Every test builds a FRESH Dictionary (TEST-10:
-//! the vitest per-file isolation becomes per-test isolation — this choice
-//! affects reserved-word collision behavior and must not be shared). toThrow
-//! patterns are copied CHARACTER FOR CHARACTER from the TS regex literals
-//! (TEST-05); state equality goes through the shared `snap()` (law 6); the
-//! TS `run` adapter is `common::settle::settle_step` with the idGen closure
-//! `x{firstRecordId}_{++n}` replicated exactly (the REPLACE sentence
+//! The mod tree groups the behaviors. Every test builds a FRESH Dictionary
+//! (per-test isolation — this choice affects reserved-word collision
+//! behavior and must not be shared). Error-message
+//! patterns are copied CHARACTER FOR CHARACTER from the frozen regex
+//! literals; state equality goes through the shared `snap()` (law 6); the
+//! run adapter is `common::settle::settle_step` with the id-generator closure
+//! `x{first_record_id}_{n}` replicated exactly (the REPLACE sentence
 //! assertions regex-match the minted `#x\d+_1` ids, so the id sequence is
 //! load-bearing).
 //!
-//! TS object-identity assertions (`expect(r.state).toBe(state)`) have no
+//! JS object-identity semantics (`r.state === state`) have no
 //! Rust observable: `execute_step` consumes the State and hands the ORIGINAL
 //! back untouched on a rejection/refusal, so `snap()` equality IS the
 //! semantic content of those checks (noted at each site, never weakened).
@@ -43,25 +41,25 @@ use chorus::engine::fold::{fold, fold_up_to};
 use chorus::engine::store::{load_log, save_log, Log};
 use indexmap::IndexMap;
 
-// ---------------------------------------------------------------- rig ----
+// ---------------------------------------------------------------- rig ------
 
-/// ts: engine.test.ts:21-26 — the file-level fixture. TS shares one
-/// `dict`/`content` across the file; the Rust discipline is a fresh pair per
-/// test (TEST-10), semantically identical because both are immutable.
+/// The file-level fixture: a fresh
+/// `dict`/`content` pair per test,
+/// semantically identical because both are immutable.
 fn rig() -> (Dictionary, CompiledContent) {
     let dict = core_dictionary();
     let content = compile_content(&seed_content(), &dict, &[]).unwrap();
     (dict, content)
 }
 
-/// ts: engine.test.ts:24-26 `setup()`
 fn setup() -> (Dictionary, CompiledContent, State) {
     let (dict, content) = rig();
     (dict, content, seed_state())
 }
 
-/// ts: engine.test.ts:32-36 `runWith` — parse + settleStep with the exact
-/// idGen closure `() => `x${firstRecordId}_${++n}``.
+/// parse + settle_step with the exact
+/// id-generator closure: `x{first_record_id}_{n}`, the counter
+/// incrementing once per minted id.
 fn run_with(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -86,12 +84,12 @@ fn run_with(
     .unwrap()
 }
 
-/// ts: engine.test.ts:28-30 `run(state, src)` — firstRecordId defaults to 1.
+/// first_record_id defaults to 1.
 fn run(content: &CompiledContent, dict: &Dictionary, state: State, src: &str) -> ExecResult {
     run_with(content, dict, state, src, 1)
 }
 
-/// the step literal `{ clock: s.clock ?? { day: 0, halfhour: 0 }, clauses }`.
+/// the step clock defaults to day 0 / halfhour 0 when the sentence omits one.
 fn step_of(s: &Sentence) -> Step {
     Step {
         start_min: None,
@@ -101,14 +99,14 @@ fn step_of(s: &Sentence) -> Step {
     }
 }
 
-/// ts: engine.test.ts:229/236/682/986 temp-log directory (mkdtempSync).
+/// Temp-log directory, unique per process and tag.
 fn tmp_log_dir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("chorus-log-{}-{tag}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
-/// `expect(x).toMatch(re)` over `result.rejected`.
+/// `re` must match `result.rejected`.
 fn assert_rejected(r: &ExecResult, pattern: &str) {
     let msg = r
         .rejected
@@ -118,7 +116,7 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
     assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
-/// `expect(refusal(r)).toMatch(re)` over the settle adapter's refusal probe.
+/// `refusal(r)` matches `re` over the settle adapter's refusal probe.
 fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg = refusal(r)
         .unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
@@ -134,7 +132,7 @@ fn ops(r: &ActionRecord) -> Vec<&str> {
     r.outcomes.iter().map(|o| o.op.as_str()).collect()
 }
 
-/// ts: engine.test.ts:412/421/429 addEntity({...}) fixture shape.
+/// Plain entity fixture shape.
 #[allow(clippy::too_many_arguments)]
 fn plain_card(
     s: &mut State,
@@ -171,9 +169,9 @@ fn container_attrs(container: &str) -> Attrs {
         .collect()
 }
 
-/// A hand-built COMPLETE record the way the TS review-regression literals do
-/// (`{ id, kind: 'complete', trigger: null, tGame, tReal: null, startMin:
-/// null, window: 'fixture', advancedMin: 0, … }`).
+/// A hand-built COMPLETE record the way the review-regression literals do
+/// (id, kind "complete", trigger None, t_game set, t_real/start_min
+/// None, window "fixture", advanced_min 0).
 fn fixture_complete(id: i64, t_game: &str, outcomes: Vec<Outcome>) -> ActionRecord {
     ActionRecord {
         id,
@@ -207,14 +205,13 @@ fn outcome(op: &str, args: Vec<Arg>) -> Outcome {
     }
 }
 
-// ------------------------------------------------------------- ladder ----
+// ------------------------------------------------------------- ladder ------
 
-/// ts: engine.test.ts:38-92 — READ ladder — first match wins, most specific
+/// READ ladder — first match wins, most specific
 /// first (§6.4)
 mod read_ladder {
     use super::*;
 
-    /// ts: engine.test.ts:39
     #[test]
     fn solo_reader_with_knowledge_passes_the_gate_default_narrates() {
         let (dict, content, state) = setup();
@@ -225,7 +222,6 @@ mod read_ladder {
         assert_eq!(r.state.now, 14 * 60 + 60);
     }
 
-    /// ts: engine.test.ts:48
     #[test]
     fn magick_gate_refuses_an_ignorant_reader_no_state_change_no_time_attempt_logged() {
         let (dict, content, state) = setup();
@@ -235,7 +231,7 @@ mod read_ladder {
         assert_eq!(r.records.len(), 1);
         assert_eq!(ops(done(&r).unwrap()), ["REFUSE"]);
         assert_eq!(act(&r).unwrap().advanced_min, 0);
-        // ts: `expect(r.state).toBe(state)` — same object, untouched; the
+        // `r.state === state` — same object, untouched; the
         // Rust observable is value equality through snap
         assert_eq!(snap(&r.state), before);
         assert!(done(&r)
@@ -244,7 +240,6 @@ mod read_ladder {
             .contains("REFUSE(\"The letters swim like minnows.\")"));
     }
 
-    /// ts: engine.test.ts:61
     #[test]
     fn parent_child_reading_fairy_tales_branches_to_bonding_memory() {
         let (dict, content, state) = setup();
@@ -262,7 +257,6 @@ mod read_ladder {
         assert!(r.state.by_name.contains_key("BONDING_MEMORY"));
     }
 
-    /// ts: engine.test.ts:72
     #[test]
     fn two_unrelated_readers_get_the_poorer_outcome_no_spawn() {
         let (dict, content, state) = setup();
@@ -275,7 +269,6 @@ mod read_ladder {
             .all(|o| o.op == "NARRATE"));
     }
 
-    /// ts: engine.test.ts:79
     #[test]
     fn prototype_parameterized_spawn_resolves_into_a_concrete_named_card() {
         let (dict, content, state) = setup();
@@ -307,11 +300,10 @@ mod read_ladder {
     }
 }
 
-/// ts: engine.test.ts:94-115 — slot discipline (§6.1)
+/// Slot discipline (§6.1)
 mod slot_discipline {
     use super::*;
 
-    /// ts: engine.test.ts:95
     #[test]
     fn cardinality_violations_are_rejected_before_anything_applies() {
         let (dict, content, state) = setup();
@@ -325,7 +317,6 @@ mod slot_discipline {
         assert_eq!(r.records.len(), 0);
     }
 
-    /// ts: engine.test.ts:102
     #[test]
     fn slot_discipline_undeclared_roles_are_rejected() {
         let (dict, content, state) = setup();
@@ -334,7 +325,6 @@ mod slot_discipline {
         assert_eq!(r.records.len(), 0);
     }
 
-    /// ts: engine.test.ts:109
     #[test]
     fn slot_discipline_one_card_cannot_fill_a_role_twice() {
         let (dict, content, state) = setup();
@@ -344,11 +334,10 @@ mod slot_discipline {
     }
 }
 
-/// ts: engine.test.ts:117-124 — TALK with ABOUT (§4.3)
+/// TALK with ABOUT (§4.3)
 mod talk_with_about {
     use super::*;
 
-    /// ts: engine.test.ts:118
     #[test]
     fn talking_about_a_secret_idea_spawns_a_plan() {
         let (dict, content, state) = setup();
@@ -363,11 +352,10 @@ mod talk_with_about {
     }
 }
 
-/// ts: engine.test.ts:126-135 — multi-clause steps and time ownership (§9.12)
+/// Multi-clause steps and time ownership (§9.12)
 mod multi_clause_steps {
     use super::*;
 
-    /// ts: engine.test.ts:127
     #[test]
     fn travel_then_read_durations_sum_recipes_listed_in_clause_order() {
         let (dict, content, state) = setup();
@@ -390,11 +378,10 @@ mod multi_clause_steps {
     }
 }
 
-/// ts: engine.test.ts:137-158 — USE_ON rite — aggregate gate, shown hint (§6.4)
+/// USE_ON rite — aggregate gate, shown hint (§6.4)
 mod use_on_rite {
     use super::*;
 
-    /// ts: engine.test.ts:138
     #[test]
     fn one_lantern_starves_the_rite_refuse_state_untouched() {
         let (dict, content, mut state) = setup();
@@ -411,7 +398,6 @@ mod use_on_rite {
         assert_eq!(snap(&r.state), before);
     }
 
-    /// ts: engine.test.ts:148
     #[test]
     fn pooled_lantern_meets_demand_rite_consumed_instruments_destroyed_mark_spawned_into_place() {
         let (dict, content, state) = setup();
@@ -440,11 +426,10 @@ mod use_on_rite {
     }
 }
 
-/// ts: engine.test.ts:160-192 — events — authored triggers and expiries (§6.6, §9.16)
+/// Events — authored triggers and expiries (§6.6, §9.16)
 mod events {
     use super::*;
 
-    /// ts: engine.test.ts:161
     #[test]
     fn crossing_hour_16_fires_dusk_falls_as_its_own_event_row() {
         let (dict, content, state) = setup();
@@ -469,7 +454,6 @@ mod events {
         assert!(r2.state.by_name.contains_key("DREAD"));
     }
 
-    /// ts: engine.test.ts:175
     #[test]
     fn expiry_crossing_destroys_the_card_via_an_expire_event() {
         let (dict, content, mut state) = setup();
@@ -507,11 +491,10 @@ mod events {
     }
 }
 
-/// ts: engine.test.ts:194-250 — fold — state = fold(log), determinism, undo (§7)
+/// Fold — state = fold(log), determinism, undo (§7)
 mod fold_tests {
     use super::*;
 
-    /// ts: engine.test.ts:195
     #[test]
     fn replaying_the_log_from_seed_reproduces_the_played_state_exactly() {
         let (dict, content, state) = setup();
@@ -537,7 +520,6 @@ mod fold_tests {
         assert_eq!(snap(&replayed), snap(&state));
     }
 
-    /// ts: engine.test.ts:218
     #[test]
     fn refused_attempts_replay_as_no_ops() {
         let (dict, content, state) = setup();
@@ -547,7 +529,6 @@ mod fold_tests {
         assert_eq!(snap(&replayed), before);
     }
 
-    /// ts: engine.test.ts:226
     #[test]
     fn jsonl_persistence_round_trips_the_log() {
         let (dict, content, state) = setup();
@@ -561,7 +542,6 @@ mod fold_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// ts: engine.test.ts:241
     #[test]
     fn undo_re_fold_without_the_tail() {
         let (dict, content, state) = setup();
@@ -589,11 +569,10 @@ mod fold_tests {
     }
 }
 
-/// ts: engine.test.ts:252-281 — dictionary is the law (§9.14)
+/// Dictionary is the law (§9.14)
 mod dictionary_is_the_law {
     use super::*;
 
-    /// ts: engine.test.ts:253
     #[test]
     fn spawn_cannot_mint_a_duplicate_name_among_the_living_the_second_window_refuses() {
         let (dict, content, state) = setup();
@@ -614,7 +593,6 @@ mod dictionary_is_the_law {
         assert_eq!(r2.state.by_name.get("BONDING_MEMORY").unwrap().len(), 1);
     }
 
-    /// ts: engine.test.ts:265
     #[test]
     fn names_of_dead_entities_are_reusable_unique_among_the_living() {
         let (dict, content, state) = setup();
@@ -648,11 +626,10 @@ mod dictionary_is_the_law {
     }
 }
 
-/// ts: engine.test.ts:283-382 — review regressions
+/// Review regressions
 mod review_regressions {
     use super::*;
 
-    /// ts: engine.test.ts:284
     #[test]
     fn set_stores_the_given_value_positionally_ref_key_value() {
         let (dict, content, mut state) = setup();
@@ -679,7 +656,6 @@ mod review_regressions {
         );
     }
 
-    /// ts: engine.test.ts:303
     #[test]
     fn set_expires_materializes_expires_at_from_the_record_clock() {
         let (dict, content, mut state) = setup();
@@ -706,7 +682,6 @@ mod review_regressions {
         );
     }
 
-    /// ts: engine.test.ts:322
     #[test]
     fn relation_key_symmetric_edges_share_one_canonical_key_directed_keep_order() {
         let (dict, content, mut state) = setup();
@@ -743,7 +718,6 @@ mod review_regressions {
         );
     }
 
-    /// ts: engine.test.ts:341
     #[test]
     fn fold_clock_a_log_ending_past_an_event_keeps_the_action_end_time() {
         let (dict, content, mut state) = setup();
@@ -763,7 +737,6 @@ mod review_regressions {
         assert_eq!(replayed.now, 17 * 60);
     }
 
-    /// ts: engine.test.ts:351
     #[test]
     fn role_sugar_is_concretized_in_the_log_replay_matches_play_exactly() {
         let (dict, content, state) = setup();
@@ -804,7 +777,6 @@ mod review_regressions {
         );
     }
 
-    /// ts: engine.test.ts:364
     #[test]
     fn steps_cannot_rewind_the_clock() {
         let (dict, content, mut state) = setup();
@@ -814,7 +786,6 @@ mod review_regressions {
         assert_eq!(r.records.len(), 0);
     }
 
-    /// ts: engine.test.ts:372
     #[test]
     fn application_failures_refuse_the_window_instead_of_throwing() {
         let (dict, content, state) = setup();
@@ -829,15 +800,15 @@ mod review_regressions {
         );
         assert_eq!(r2.rejected, None);
         assert_refusal(&r2, r"already in use");
-        // ts: `expect(r2.state).not.toBe(r.state)` — a fresh, distinct value;
+        // `r2.state !== r.state` — a fresh, distinct value;
         // the semantic content is what follows: the second mint never landed
         assert_eq!(r2.state.by_name.get("BONDING_MEMORY").unwrap().len(), 1);
     }
 }
 
-/// ts: engine.test.ts:384-458 — exists(...) recipes — world-scope conditions
-/// (§6.3, CS extantreqs). The TS describe shares one probeDict; the Rust mod
-/// gives each test a fresh one with PROBE registered (TEST-10).
+/// Exists(...) recipes — world-scope conditions
+/// (§6.3, CS extantreqs). Each test gets a fresh dictionary with PROBE
+/// registered.
 mod exists_recipes {
     use super::*;
 
@@ -847,7 +818,7 @@ mod exists_recipes {
         d
     }
 
-    /// ts: engine.test.ts:387-395 probeContent
+    /// probe_content
     fn probe_content(dict: &Dictionary, recipes: Vec<RecipeDef>) -> CompiledContent {
         let mut verbs = IndexMap::new();
         verbs.insert(
@@ -875,7 +846,7 @@ mod exists_recipes {
         .unwrap()
     }
 
-    /// ts: engine.test.ts:396-400 runProbe
+    /// run_probe
     fn run_probe(
         content: &CompiledContent,
         dict: &Dictionary,
@@ -892,7 +863,7 @@ mod exists_recipes {
         settle_step(content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
     }
 
-    /// ts: engine.test.ts:403-406 gate — two recipes, order-dependent: the
+    /// Gate — two recipes, order-dependent: the
     /// gate branch needs a hunter in the world AND no ward anywhere; the
     /// default is the calm world
     fn gate(dict: &Dictionary) -> CompiledContent {
@@ -920,7 +891,6 @@ mod exists_recipes {
         )
     }
 
-    /// ts: engine.test.ts:408
     #[test]
     fn scope_proof_an_unbound_hunter_in_a_far_place_selects_the_exists_and_not_exists_branch() {
         let mut state = seed_state();
@@ -946,7 +916,6 @@ mod exists_recipes {
             .contains("A hunter walks the world."));
     }
 
-    /// ts: engine.test.ts:419
     #[test]
     fn a_ward_anywhere_flips_the_branch_not_exists_fails() {
         let mut state = seed_state();
@@ -973,7 +942,6 @@ mod exists_recipes {
         assert_eq!(act(&r).unwrap().recipes, ["probe.default"]);
     }
 
-    /// ts: engine.test.ts:427
     #[test]
     fn destroyed_cards_stop_existing_the_gate_un_latches_after_the_hunter_dies() {
         let mut state = seed_state();
@@ -994,7 +962,6 @@ mod exists_recipes {
         assert_eq!(act(&r).unwrap().recipes, ["probe.default"]);
     }
 
-    /// ts: engine.test.ts:436
     #[test]
     fn name_form_exists_sees_a_named_card_across_the_map() {
         let mut state = seed_state();
@@ -1031,7 +998,6 @@ mod exists_recipes {
         assert_eq!(act(&r).unwrap().recipes, ["probe.door"]);
     }
 
-    /// ts: engine.test.ts:447
     #[test]
     fn relations_are_untouched_by_exists_evaluation_rel_gates_still_select_as_before() {
         let state = seed_state();
@@ -1064,11 +1030,10 @@ mod exists_recipes {
     }
 }
 
-/// ts: engine.test.ts:460-490 — progress ticks — the processing read-bar (§6.7)
+/// Progress ticks — the processing read-bar (§6.7)
 mod progress_ticks {
     use super::*;
 
-    /// ts: engine.test.ts:461
     #[test]
     fn ticks_record_in_emission_order_touch_no_state_cost_no_extra_time() {
         let (dict, content, state) = setup();
@@ -1093,7 +1058,6 @@ mod progress_ticks {
         assert_eq!(snap(&replayed), snap(&r.state));
     }
 
-    /// ts: engine.test.ts:476
     #[test]
     fn malformed_progress_arity_is_an_application_failure_not_a_silent_no_op() {
         let (dict, content, mut state) = setup();
@@ -1113,7 +1077,6 @@ mod progress_ticks {
         );
     }
 
-    /// ts: engine.test.ts:487
     #[test]
     fn narrate_keeps_exactly_one_string_extras_are_refused_at_parse() {
         let (dict, _content, _state) = setup();
@@ -1124,11 +1087,11 @@ mod progress_ticks {
     }
 }
 
-/// ts: engine.test.ts:492-530 — clock & duration literals
+/// Clock & duration literals
 mod clock_and_duration_literals {
     use super::*;
 
-    /// ts: engine.test.ts:493 — a sub-halfhour action leaves dead air; the
+    /// A sub-halfhour action leaves dead air; the
     /// next step resumes on the tick and the gap fires (§9.28)
     #[test]
     fn a_sub_halfhour_action_leaves_dead_air_the_next_step_resumes_on_the_tick() {
@@ -1192,7 +1155,6 @@ mod clock_and_duration_literals {
         assert_eq!(r2.records[0].t_game, "0:29");
     }
 
-    /// ts: engine.test.ts:520
     #[test]
     fn durations_spill_into_the_next_day() {
         let (dict, content, state) = setup();
@@ -1201,18 +1163,16 @@ mod clock_and_duration_literals {
         assert_eq!(act(&r).unwrap().t_game, "0:44");
     }
 
-    /// ts: engine.test.ts:527
     #[test]
     fn format_duration_renders_zero_as_0m() {
         assert_eq!(format_duration(0).unwrap(), "0m");
     }
 }
 
-/// ts: engine.test.ts:532-542 — record shape (§7)
+/// Record shape (§7)
 mod record_shape {
     use super::*;
 
-    /// ts: engine.test.ts:533
     #[test]
     fn records_carry_sorted_actors_provenance_canonical_sentence() {
         let (dict, content, state) = setup();
@@ -1240,11 +1200,10 @@ mod record_shape {
     }
 }
 
-/// ts: engine.test.ts:544-549 — empty base state fold (fresh world, no content spawns)
+/// Empty base state fold (fresh world, no content spawns)
 mod empty_base_state_fold {
     use super::*;
 
-    /// ts: engine.test.ts:545
     #[test]
     fn fold_of_an_empty_log_returns_the_base_state() {
         let (dict, content, _state) = setup();
@@ -1252,18 +1211,18 @@ mod empty_base_state_fold {
     }
 }
 
-/// ts: engine.test.ts:551-735 — SET deltas and aspect keys (§9.31)
+/// SET deltas and aspect keys (§9.31)
 mod set_deltas_and_aspect_keys {
     use super::*;
 
-    /// ts: engine.test.ts:552-553 — the describe-level rig dict registers TUNE
+    /// The section-level rig dict registers TUNE
     fn tune_dict() -> Dictionary {
         let mut d = core_dictionary();
         d.register_verb("TUNE").unwrap();
         d
     }
 
-    /// ts: engine.test.ts:554-562 counterContent
+    /// counter_content
     fn counter_content(dict: &Dictionary, recipes: Vec<RecipeDef>) -> CompiledContent {
         let mut verbs = IndexMap::new();
         verbs.insert(
@@ -1291,7 +1250,7 @@ mod set_deltas_and_aspect_keys {
         .unwrap()
     }
 
-    /// ts: engine.test.ts:563-567 runTune
+    /// run_tune
     fn run_tune(
         content: &CompiledContent,
         dict: &Dictionary,
@@ -1318,14 +1277,14 @@ mod set_deltas_and_aspect_keys {
         }
     }
 
-    /// the round-trip probe `formatSentence(parseSentence(s), dict) === s`.
+    /// the round-trip probe: re-formatting a parsed sentence reproduces it
+    /// exactly (`format_sentence(parse_sentence(s, dict), dict) == s`).
     fn assert_round_trips(sentence: &str, dict: &Dictionary) {
         let parsed = parse_sentence(sentence, dict).unwrap();
         let formatted = format_sentence(&parsed, Some(dict)).unwrap();
         assert_eq!(formatted, sentence, "sentence must round-trip: {sentence:?}");
     }
 
-    /// ts: engine.test.ts:569
     #[test]
     fn a_signed_value_adds_to_the_attr_missing_is_zero_and_the_log_carries_the_absolute() {
         let (dict, content, state) = setup();
@@ -1358,7 +1317,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:586
     #[test]
     fn decrements_may_go_negative_no_clamping() {
         let (dict, content, state) = setup();
@@ -1377,7 +1335,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:595
     #[test]
     fn aspect_delta_increments_the_aspects_map_an_absolute_aspect_set_writes_it_too() {
         let (dict, content, state) = setup();
@@ -1405,7 +1362,6 @@ mod set_deltas_and_aspect_keys {
         assert_eq!(lang.len(), 1);
     }
 
-    /// ts: engine.test.ts:612
     #[test]
     fn absolute_values_stay_absolute_repeated_casts_write_the_same_literal() {
         let (dict, content, state) = setup();
@@ -1428,7 +1384,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:622
     #[test]
     fn a_role_arg_absolute_set_in_a_multi_clause_step_logs_one_concrete_row_per_card() {
         let (dict, content, state) = setup();
@@ -1502,7 +1457,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:652
     #[test]
     fn a_delta_over_a_role_ref_logs_one_concrete_set_per_card_each_with_its_own_result() {
         let (dict, content, mut state) = setup();
@@ -1546,7 +1500,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:664
     #[test]
     fn fold_of_a_jsonl_saved_delta_log_reproduces_the_played_state() {
         let (dict, content, mut state) = setup();
@@ -1600,7 +1553,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:693
     #[test]
     fn refuse_after_a_delta_set_in_the_same_step_state_untouched_no_time_attempt_logged() {
         let (dict, content, state) = setup();
@@ -1618,7 +1570,7 @@ mod set_deltas_and_aspect_keys {
         assert_eq!(r.rejected, None);
         assert_eq!(ops(done(&r).unwrap()), ["SET", "SET", "REFUSE"]);
         assert_eq!(act(&r).unwrap().advanced_min, 0);
-        // ts: `expect(r.state).toBe(state)` — the deltas ran on the discarded
+        // `r.state === state` — the deltas ran on the discarded
         // draft; snap equality is the Rust observable
         assert_eq!(snap(&r.state), before);
         assert_eq!(
@@ -1628,7 +1580,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:706
     #[test]
     fn a_delta_on_a_non_numeric_entry_refuses_the_window_nothing_applied() {
         let (dict, content, state) = setup();
@@ -1642,7 +1593,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:715
     #[test]
     fn a_delta_on_an_aspect_sub_map_refuses_the_window_the_map_survives() {
         let (dict, content, mut state) = setup();
@@ -1666,7 +1616,6 @@ mod set_deltas_and_aspect_keys {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:725
     #[test]
     fn a_quoted_key_stays_quoted_in_the_concrete_record() {
         let (dict, content, state) = setup();
@@ -1689,7 +1638,7 @@ mod set_deltas_and_aspect_keys {
     }
 }
 
-/// ts: engine.test.ts:737-872 — REPLACE — decay into a successor (§4.4, §9.33)
+/// REPLACE — decay into a successor (§4.4, §9.33)
 mod replace_decay {
     use super::*;
 
@@ -1699,7 +1648,7 @@ mod replace_decay {
         d
     }
 
-    /// ts: engine.test.ts:742-754 decayContent
+    /// decay_content
     fn decay_content(
         dict: &Dictionary,
         out: &str,
@@ -1747,7 +1696,7 @@ mod replace_decay {
         .unwrap()
     }
 
-    /// ts: engine.test.ts:755-759 runDecay
+    /// run_decay
     fn run_decay(
         content: &CompiledContent,
         dict: &Dictionary,
@@ -1771,7 +1720,6 @@ mod replace_decay {
         }
     }
 
-    /// ts: engine.test.ts:761
     #[test]
     fn a_place_contained_card_decays_into_the_prototype_in_the_same_place() {
         let state = seed_state(); // CHALICE sits in HOUSE
@@ -1821,7 +1769,6 @@ mod replace_decay {
         );
     }
 
-    /// ts: engine.test.ts:781
     #[test]
     fn a_carried_card_stays_carried_by_the_same_character() {
         let (dict, content, mut state) = setup();
@@ -1843,7 +1790,6 @@ mod replace_decay {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:790
     #[test]
     fn a_zone_tagged_card_passes_its_zone_to_the_successor_no_container_card() {
         let (dict, content) = rig();
@@ -1892,7 +1838,6 @@ mod replace_decay {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:804
     #[test]
     fn replace_of_an_unbound_role_ref_rejects_the_step_nothing_logged() {
         let (dict, content, state) = setup();
@@ -1948,7 +1893,6 @@ mod replace_decay {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:826
     #[test]
     fn the_old_card_soft_destroys_its_name_is_released_and_reusable() {
         let (dict, content, state) = setup();
@@ -1980,7 +1924,6 @@ mod replace_decay {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:843
     #[test]
     fn a_plain_kind_name_ref_mints_without_a_prototype_everything_clause_less_spawn_accepts() {
         let (dict, content, state) = setup();
@@ -1998,7 +1941,6 @@ mod replace_decay {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:853
     #[test]
     fn collision_with_a_living_entity_the_dying_card_included_rejects_the_whole_step() {
         let (dict, content, state) = setup();
@@ -2016,7 +1958,6 @@ mod replace_decay {
         let _ = (&dict, &content);
     }
 
-    /// ts: engine.test.ts:864
     #[test]
     fn authored_replace_round_trips_the_paren_less_form_is_the_only_form() {
         let (dict, _content, _state) = setup();
@@ -2045,7 +1986,7 @@ mod replace_decay {
     }
 }
 
-/// ts: engine.test.ts:874-998 — authored expiry triggers — `on expire of`
+/// Authored expiry triggers — `on expire of`
 /// (§6.6, §9.32). influence decay: G → E → C → (no trigger: built-in destroy)
 mod authored_expiry_triggers {
     use super::*;
@@ -2054,7 +1995,7 @@ mod authored_expiry_triggers {
         core_dictionary()
     }
 
-    /// ts: engine.test.ts:876-880 waitVerb
+    /// wait_verb
     fn wait_verb() -> VerbContent {
         VerbContent {
             slots: vec![SlotDef {
@@ -2075,7 +2016,7 @@ mod authored_expiry_triggers {
         }
     }
 
-    /// ts: engine.test.ts:882-892 mothContent
+    /// moth_content
     fn moth_content(dict: &Dictionary) -> CompiledContent {
         compile_content(
             &ContentRaw {
@@ -2128,7 +2069,7 @@ mod authored_expiry_triggers {
         .unwrap()
     }
 
-    /// ts: engine.test.ts:893-897 mothBase
+    /// moth_base
     fn moth_base() -> State {
         let mut s = seed_state();
         let mut attrs = container_attrs("house");
@@ -2145,7 +2086,7 @@ mod authored_expiry_triggers {
         s
     }
 
-    /// ts: engine.test.ts:898-902 runMoth
+    /// run_moth
     fn run_moth(
         dict: &Dictionary,
         state: State,
@@ -2162,7 +2103,6 @@ mod authored_expiry_triggers {
         settle_step(&content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
     }
 
-    /// ts: engine.test.ts:904
     #[test]
     fn a_decay_chain_runs_across_successive_waits_then_default_destroys() {
         let dict = moth_dict();
@@ -2229,7 +2169,6 @@ mod authored_expiry_triggers {
         assert!(!state.by_name.contains_key("INFLUENCE_MOTH_C")); // destroyed: released, no successor
     }
 
-    /// ts: engine.test.ts:938
     #[test]
     fn an_authored_time_trigger_and_an_authored_expiry_fire_in_the_same_advance_triggers_first() {
         let (dict, _content, mut state) = setup();
@@ -2308,7 +2247,6 @@ mod authored_expiry_triggers {
         }
     }
 
-    /// ts: engine.test.ts:959
     #[test]
     fn a_colliding_authored_expiry_rejects_the_whole_step_nothing_logged() {
         let (dict, _content, mut state) = setup();
@@ -2340,7 +2278,6 @@ mod authored_expiry_triggers {
         assert_eq!(snap(&r.state), before);
     }
 
-    /// ts: engine.test.ts:975
     #[test]
     fn play_and_fold_agree_on_fired_for_every_event_row_full_state_fold_equality_incl_jsonl() {
         let dict = moth_dict();
@@ -2372,11 +2309,10 @@ mod authored_expiry_triggers {
     }
 }
 
-/// ts: engine.test.ts:1000-1010 — trigger outcome guards (§6.7, §9.34)
+/// Trigger outcome guards (§6.7, §9.34)
 mod trigger_outcome_guards {
     use super::*;
 
-    /// ts: engine.test.ts:1001
     #[test]
     fn progress_is_a_load_time_error_in_both_trigger_forms() {
         let (dict, _c, _s) = setup();
@@ -2412,7 +2348,6 @@ mod trigger_outcome_guards {
         );
     }
 
-    /// ts: engine.test.ts:1006
     #[test]
     fn refuse_is_a_load_time_error_in_both_trigger_forms_events_have_no_step_to_refuse() {
         let (dict, _c, _s) = setup();
@@ -2449,7 +2384,7 @@ mod trigger_outcome_guards {
     }
 }
 
-/// ts: engine.test.ts:1012-1102 — SET expires — every §5.1 duration form
+/// SET expires — every §5.1 duration form
 /// materializes expiresAt (§4.2, §9.36)
 mod set_expires_duration_forms {
     use super::*;
@@ -2460,7 +2395,7 @@ mod set_expires_duration_forms {
         d
     }
 
-    /// ts: engine.test.ts:1017-1025 tuneContent
+    /// tune_content
     fn tune_content(dict: &Dictionary, out: &str) -> CompiledContent {
         let mut verbs = IndexMap::new();
         verbs.insert(
@@ -2494,7 +2429,7 @@ mod set_expires_duration_forms {
         .unwrap()
     }
 
-    /// ts: engine.test.ts:1026-1030 runTune
+    /// run_tune
     fn run_tune(
         content: &CompiledContent,
         dict: &Dictionary,
@@ -2511,12 +2446,11 @@ mod set_expires_duration_forms {
         settle_step(content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
     }
 
-    /// ts: engine.test.ts:1031 — 0:20 = absolute minute 600
+    /// 0:20 = absolute minute 600
     fn at(minutes: i64) -> i64 {
         20 * 30 + minutes
     }
 
-    /// ts: engine.test.ts:1033
     #[test]
     fn quoted_durations_materialize_expires_at() {
         let td = tune_dict();
@@ -2554,7 +2488,6 @@ mod set_expires_duration_forms {
         }
     }
 
-    /// ts: engine.test.ts:1044
     #[test]
     fn bare_duration_literals_are_unchanged_the_lexer_pre_converts_them() {
         let td = tune_dict();
@@ -2601,7 +2534,6 @@ mod set_expires_duration_forms {
         );
     }
 
-    /// ts: engine.test.ts:1063
     #[test]
     fn a_bad_unit_refuses_the_window_nothing_logged_as_state() {
         let state = seed_state();
@@ -2619,7 +2551,6 @@ mod set_expires_duration_forms {
         assert_eq!(r.state.entities["chalice"].attrs.get("expiresAt"), None);
     }
 
-    /// ts: engine.test.ts:1071
     #[test]
     fn end_to_end_a_quoted_expiry_fires_its_authored_on_expire_trigger_at_the_next_crossing() {
         let state = seed_state();
@@ -2727,11 +2658,11 @@ mod set_expires_duration_forms {
     }
 }
 
-/// ts: engine.test.ts:1104-1211 — core verbs STUDY and MANSUS (§4.3, §9.37)
+/// Core verbs STUDY and MANSUS (§4.3, §9.37)
 mod core_verbs_study_mansus {
     use super::*;
 
-    /// ts: engine.test.ts:1109 — the mirroring the spec declares: STUDY
+    /// The mirroring the spec declares: STUDY
     /// copies READ's slots, MANSUS copies EXPLORE's — cardinalities and
     /// queries stay content (§6.1)
     fn verbs_content(dict: &Dictionary) -> CompiledContent {
@@ -2857,7 +2788,7 @@ mod core_verbs_study_mansus {
         .unwrap()
     }
 
-    /// ts: engine.test.ts:1137-1141 world
+    /// World
     fn world() -> State {
         let mut s = seed_state();
         plain_card(
@@ -2872,7 +2803,7 @@ mod core_verbs_study_mansus {
         s
     }
 
-    /// ts: engine.test.ts:1142-1146 runVerb
+    /// run_verb
     fn run_verb(
         content: &CompiledContent,
         dict: &Dictionary,
@@ -2889,7 +2820,6 @@ mod core_verbs_study_mansus {
         settle_step(content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
     }
 
-    /// ts: engine.test.ts:1148
     #[test]
     fn a_canonical_study_sentence_parses_selects_and_executes() {
         let (dict, _content, _s) = setup();
@@ -2909,7 +2839,6 @@ mod core_verbs_study_mansus {
         assert_eq!(format_sentence(&parsed, Some(&dict)).unwrap(), sentence);
     }
 
-    /// ts: engine.test.ts:1159
     #[test]
     fn the_mirrored_grammar_bites_mansus_takes_a_place_not_a_text() {
         let (dict, _content, _s) = setup();
@@ -2923,7 +2852,6 @@ mod core_verbs_study_mansus {
         assert!(act(&r2).unwrap().sentence.contains("ANA MANSUS HOUSE"));
     }
 
-    /// ts: engine.test.ts:1169
     #[test]
     fn untemplated_content_renders_acceptably_recipe_narrates_speak_no_template_line() {
         let (dict, content, _s) = setup();
@@ -2980,7 +2908,6 @@ mod core_verbs_study_mansus {
         let _ = content;
     }
 
-    /// ts: engine.test.ts:1189
     #[test]
     fn the_seed_verbs_pin_the_mirror_in_code_study_read_mansus_explore() {
         let (_dict, content, _s) = setup();
@@ -2996,7 +2923,6 @@ mod core_verbs_study_mansus {
         );
     }
 
-    /// ts: engine.test.ts:1196
     #[test]
     fn a_story_that_does_not_author_the_verbs_rejects_at_the_content_gate() {
         let (dict, content, _s) = setup();

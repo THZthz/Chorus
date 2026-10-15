@@ -1,5 +1,0 @@
-ok 1
-rejected SEIZE is already processing — its station frees at 0:2
-rejected MAGICK BOOK is busy with SEIZE — it frees at 0:2
-ok 1
-ok 4

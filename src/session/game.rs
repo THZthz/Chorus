@@ -1,12 +1,11 @@
-//! Play interface — a text script becomes a playable game. ts: src/ui/play.ts.
-//! Game = script + log; handleLine is the whole turn loop (testable without a
-//! TTY); the Rust REPL (W6's bin/chorus.rs) renders it. examples/play.ts's
-//! entry logic and tui.tsx are NOT ported (plan §1.3).
+//! Play interface — a text script becomes a playable game.
+//! Game = script + log; handle_line is the whole turn loop (testable without a
+//! TTY); the REPL (bin/chorus.rs) renders it.
 //!
-//! Everything the 7 test files anchor (UI-01) survives 1:1: handleLine, undo
-//! (+ turnLengths bookkeeping), wait's ceil-to-halfhour quantization (UI-10),
+//! The full player surface: handle_line, undo
+//! (+ `turn_lengths` bookkeeping), wait's ceil-to-halfhour quantization,
 //! visible/suggestions/story/journal/look/cards/inspect, and BOTH game-over
-//! texts (UI-02: this file speaks the UI notice; the engine's rejected short
+//! texts (this file speaks the UI notice; the engine's rejected short
 //! text stays in engine.rs).
 
 use indexmap::IndexMap;
@@ -30,7 +29,7 @@ use crate::js::{js_trim, Result};
 use super::lenient::{parse_player_input, LenientCtx, ParsedInput};
 use super::render::{ending_notice, flatten_aspects, journal, pretty, prose_lines};
 
-/// ts: src/ui/play.ts:18-21
+/// The kind of turn: an action, an info notice, or an input error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TurnKind {
     Action,
@@ -38,7 +37,7 @@ pub enum TurnKind {
     Error,
 }
 
-/// ts: src/ui/play.ts:18-21
+/// One turn's rendered output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Turn {
     pub kind: TurnKind,
@@ -49,8 +48,8 @@ fn turn(kind: TurnKind, lines: Vec<String>) -> Turn {
     Turn { kind, lines }
 }
 
-/// ts: src/ui/play.ts:23-292 — the fields carry the TS visibility: `base` and
-/// `turn_lengths` are private (the TS `private` fields); log/state/meta/
+/// The game. `base` and
+/// `turn_lengths` are private; log/state/meta/
 /// content/dict are the public surface the tests read.
 pub struct Game {
     pub dict: Dictionary,
@@ -62,19 +61,19 @@ pub struct Game {
     /// the log length at each turn's start — undo truncates to the previous
     /// entry. Turn boundaries are bookkeeping, not log archaeology: a turn may
     /// be [advance…, begin] or a bare advance, and no suffix rule can tell
-    /// them apart once appended (v0.5). ts: play.ts:40-44.
+    /// them apart once appended (v0.5).
     turn_lengths: Vec<usize>,
 }
 
 impl Game {
-    /// ts: src/ui/play.ts:46-49 — `static fromScript(text, dict = coreDictionary())`;
-    /// the default parameter becomes an explicit argument.
+    /// Compile a text script into a Game; the dictionary must be supplied
+    /// explicitly.
     pub fn from_script(text: &str, dict: Dictionary) -> Result<Game> {
         let compiled = compile_script(text, &dict)?;
         Ok(Self::new(dict, compiled.content, compiled.meta, compiled.state))
     }
 
-    /// ts: src/ui/play.ts:31-38 (the private constructor)
+    /// The private constructor.
     fn new(dict: Dictionary, content: CompiledContent, meta: ScriptMeta, base: State) -> Game {
         Game {
             log: Log::new(clone_state(&base)),
@@ -87,7 +86,7 @@ impl Game {
         }
     }
 
-    /// ts: src/ui/play.ts:51-53
+    /// The game title, defaulting to "Untitled".
     #[must_use]
     pub fn title(&self) -> String {
         self.meta
@@ -106,8 +105,7 @@ impl Game {
     }
 
     /// one turn of play — pure enough to drive from tests
-    /// ts: src/ui/play.ts:56-74 (`Result` carries prose rendering's error
-    /// channel, where TS would throw)
+    /// (`Result` carries prose rendering's error channel)
     pub fn handle_line(&mut self, line: &str) -> Result<Turn> {
         let t = js_trim(line);
         if t.is_empty() {
@@ -121,7 +119,6 @@ impl Game {
         let step = match parsed {
             ParsedInput::Ok { step, .. } => step,
             ParsedInput::Fail { error, suggestions } => {
-                // ts: play.ts:62-66
                 let mut lines = vec![error];
                 if !suggestions.is_empty() {
                     lines.push(format!("did you mean: {}?", suggestions.join(", ")));
@@ -129,8 +126,8 @@ impl Game {
                 return Ok(turn(TurnKind::Error, lines));
             }
         };
-        // TS passes `this.state` and executeStep drafts internally; the Rust
-        // engine consumes its input, so the clone IS the draft hand-off
+        // the engine consumes its input state, so the clone IS the draft
+        // hand-off
         let result = execute_step(
             &self.content,
             &self.dict,
@@ -141,7 +138,7 @@ impl Game {
                 id_gen: None,
             },
         )?;
-        // ts: play.ts:68 — a rejection leaves log and state untouched
+        // a rejection leaves log and state untouched
         if let Some(rejected) = result.rejected {
             return Ok(turn(TurnKind::Error, vec![rejected]));
         }
@@ -150,7 +147,7 @@ impl Game {
         for r in &result.records {
             lines.extend(prose_lines(r, &self.content, &self.dict)?);
         }
-        // ts: play.ts:73 — the « … » canonical echo
+        // the « … » canonical echo
         lines.push(String::new());
         lines.push(format!(
             "« {} »",
@@ -172,7 +169,6 @@ impl Game {
     /// player's location; carried cards; contents of an explored (named)
     /// place; and anything the log has named through a role or a
     /// spawn/destroy — a projection over (state, log), never stored.
-    /// ts: src/ui/play.ts:82-107
     pub fn visible(&self) -> Vec<&Entity> {
         let alive: Vec<&Entity> = self
             .state
@@ -252,7 +248,7 @@ impl Game {
         out
     }
 
-    /// what is around the player — ts: src/ui/play.ts:110-122
+    /// what is around the player
     pub fn look(&self) -> Vec<String> {
         let player = self.meta.player.as_ref().and_then(|p| {
             self.state
@@ -290,7 +286,6 @@ impl Game {
     }
 
     /// every visible card — the table the player actually sees
-    /// ts: src/ui/play.ts:125-128
     pub fn cards(&self) -> Vec<String> {
         let lines: Vec<String> = self
             .visible()
@@ -306,9 +301,8 @@ impl Game {
 
     /// a card's face: kind, aspects, where it sits, when it entered play.
     /// Visible cards only — the table has no face-down deck to fish from.
-    /// QUIRK(UI-06/Q11): bare `inspect` (`startsWith('')` always true) shows
+    /// QUIRK(Q11): bare `inspect` (an empty prefix always matches) shows
     /// the first visible card — no test pins it; frozen as-is.
-    /// ts: src/ui/play.ts:132-146
     pub fn inspect(&self, raw_name: &str) -> Vec<String> {
         let q = js_trim(raw_name).to_lowercase().replace('_', " ");
         let table = self.visible();
@@ -334,7 +328,7 @@ impl Game {
                 lines.push(format!("  at: {}", pretty(&container.name)));
             }
         }
-        // ts: play.ts:143 — `if (card.attrs['zone'])` is JS truthiness:
+        // `if (card.attrs['zone'])` is JS truthiness:
         // '' / 0 / false are silent, everything else prints
         if is_truthy(card.attrs.get("zone")) {
             lines.push(format!(
@@ -352,7 +346,7 @@ impl Game {
         lines
     }
 
-    /// the log as prose — ts: src/ui/play.ts:149-152
+    /// the log as prose
     pub fn story(&self) -> Result<Vec<String>> {
         let mut lines = Vec::new();
         for r in &self.log.records {
@@ -364,7 +358,7 @@ impl Game {
         Ok(lines)
     }
 
-    /// the canonical log — ts: src/ui/play.ts:155-157
+    /// the canonical log
     #[must_use]
     pub fn journal(&self) -> Vec<String> {
         let j = journal(&self.log.records);
@@ -377,7 +371,6 @@ impl Game {
 
     /// take back the last turn: truncate the log to where it started and
     /// re-fold (spec §7 — state = fold of the surviving log)
-    /// ts: src/ui/play.ts:161-167
     pub fn undo(&mut self) -> Result<Turn> {
         let Some(length) = self.turn_lengths.pop() else {
             return Ok(turn(TurnKind::Info, vec!["nothing to undo".to_string()]));
@@ -393,7 +386,7 @@ impl Game {
     }
 
     /// the open processing windows, soonest-completing first — the live
-    /// area's "processing:" line (v0.5). ts: src/ui/play.ts:171-178.
+    /// area's "processing:" line (v0.5).
     #[must_use]
     pub fn processing(&self) -> Vec<String> {
         let mut windows: Vec<&OpenWindow> = self.state.windows.values().collect();
@@ -415,8 +408,7 @@ impl Game {
     /// let time pass: advance to the earliest window's end, or one hour when
     /// nothing is in flight (the `wait` button; typing `1:12` does the same).
     /// The clock input is halfhour-quantized, so round the target UP — the
-    /// advance then resolves everything due at or before it. (UI-10)
-    /// ts: src/ui/play.ts:184-192
+    /// advance then resolves everything due at or before it.
     pub fn wait(&mut self) -> Result<Turn> {
         let now = self.state.now;
         // `windows.size > 0 ? Math.min(...) : now + 60` — min of an empty set
@@ -428,7 +420,8 @@ impl Game {
             .map(|w| w.end)
             .min()
             .unwrap_or(now + 60);
-        // Math.ceil(dueAt / 30) * 30 — the manual ceil-division is exact for
+        // ceil to the halfhour — the JS `Math.ceil(dueAt / 30) * 30` spelling;
+        // the manual ceil-division is exact for
         // the non-negative minutes the engine ever holds (i64::div_ceil is
         // still feature-gated on this toolchain)
         let target =
@@ -442,9 +435,9 @@ impl Game {
     /// that fit the slots, those lighting up a non-default recipe first —
     /// every suggestion is lenient-parseable, so typing it just works.
     /// Verbs with an open station and cards locked in a window are excluded
-    /// (they would only reject at the engine, v0.5). The TS `limit = 3`
-    /// default parameter is frozen as [`SUGGEST_LIMIT`].
-    /// ts: src/ui/play.ts:199-291 (`Result` carries eval_pred's error channel)
+    /// (they would only reject at the engine, v0.5). The limit is
+    /// frozen as [`SUGGEST_LIMIT`]
+    /// (`Result` carries eval_pred's error channel).
     pub fn suggestions(&self) -> Result<Vec<String>> {
         const SUGGEST_LIMIT: usize = 3;
         if self.state.ended.is_some() {
@@ -472,8 +465,8 @@ impl Game {
             .values()
             .flat_map(|w| w.locked.iter().map(String::as_str))
             .collect();
-        // ts: play.ts:206 — same-container cards rank first (the Option
-        // equality models the TS `===` over possibly-undefined attrs)
+        // same-container cards rank first (the Option
+        // equality models JS `===` over possibly-undefined attrs)
         let me_container = me.attrs.get("container");
         let rank = |e: &Entity| {
             if e.attrs.get("container") == me_container {
@@ -490,7 +483,7 @@ impl Game {
                 roll: None,
             };
             // a REFUSE gate that matches is a wall, not an invitation
-            // (ts: play.ts:210 — `.some()` over the recipes)
+            // (`.some()` over the recipes)
             for r in &verb.recipes {
                 let Some(w) = &r.when else { continue };
                 if r.out.iter().any(|o| o.op == "REFUSE") {
@@ -502,8 +495,8 @@ impl Game {
             }
             Ok(false)
         };
-        // ts: play.ts:212-221 — the display phrase; bindings hold ids in Rust
-        // (plan §2.6), resolved through the live state here
+        // the display phrase; bindings hold ids,
+        // resolved through the live state here
         let phrase = |display: &str, b: &RoleBindings| -> String {
             let mut parts: Vec<String> = vec![display.to_string()];
             for role in [Role::Object, Role::To, Role::With, Role::At, Role::About] {
@@ -516,7 +509,7 @@ impl Game {
                     .map(|id| match self.state.entities.get(id) {
                         Some(e) => pretty(&e.name),
                         // suggestion bindings are built from living cards below
-                        None => unreachable!("suggestion bindings hold living ids (ts: play.ts:217)"),
+                        None => unreachable!("suggestion bindings hold living ids"),
                     })
                     .collect();
                 parts.push(match role {
@@ -566,7 +559,8 @@ impl Game {
                             && slot.query.as_ref().is_none_or(|q| match_query(e, q))
                     })
                     .collect();
-                // ts: play.ts:238 — `rank(a) - rank(b) || a.name.localeCompare(b.name)`;
+                // rank ascending, then name — the JS comparator
+                // `rank(a) - rank(b) || a.name.localeCompare(b.name)`;
                 // the localeCompare tail is §3.21's frozen approximation
                 // (cmp_ascii_ci — ASCII-lowercase then byte order)
                 let mut pool = pool;
@@ -585,14 +579,14 @@ impl Game {
                 continue;
             }
 
-            // base binding: each role filled to its minimum — ts: play.ts:244-248
+            // base binding: each role filled to its minimum
             let mut base: RoleBindings = IndexMap::new();
             base.insert(Role::Actors, vec![me.id.clone()]);
             for (role_str, pool) in &pools {
                 let Some(slot) = verb.slot_by_role.get(role_str) else {
-                    // pools keys ⊆ slot roles ⊆ slotByRole keys — TS's `!`
-                    // never misses (a TypeError there would crash the same way)
-                    unreachable!("pool role is always a declared slot role (ts: play.ts:247)")
+                    // pool keys ⊆ slot roles ⊆ `slot_by_role` keys — the lookup
+                    // never misses (a miss there would panic the same way)
+                    unreachable!("pool role is always a declared slot role")
                 };
                 let role = Role::from_lower(role_str);
                 if let Some(role) = role {
@@ -604,7 +598,7 @@ impl Game {
                             .collect(),
                     );
                 }
-                // (a typo'd slot role (Q4) would add a TS junk binding key no
+                // (a typo'd slot role (Q4) would add a junk binding key no
                 // predicate or phrase ever reads — skipping it is exact)
             }
             let mut verb_story: Vec<String> = Vec::new();
@@ -615,13 +609,12 @@ impl Game {
             }
 
             // alternative bindings: swap or extend role cards; keep what lights
-            // — ts: play.ts:253-265
             for (role_str, pool) in &pools {
                 let Some(slot) = verb.slot_by_role.get(role_str) else {
-                    unreachable!("pool role is always a declared slot role (ts: play.ts:255)")
+                    unreachable!("pool role is always a declared slot role")
                 };
-                // Math.max(slot.min, Math.min(slot.max, 2)) — TS Infinity (None)
-                // loses to the 2
+                    // cap = max(slot.min, min(slot.max, 2)) — a JS Infinity max
+                    // (None) loses to the 2
                 let cap = std::cmp::max(slot.min, std::cmp::min(slot.max.unwrap_or(2), 2));
                 let role = Role::from_lower(role_str);
                 let base_es: Vec<String> = role
@@ -650,7 +643,6 @@ impl Game {
             story.extend(verb_story);
         }
         // round-robin across verbs so one greedy verb does not own the list
-        // — ts: play.ts:268-282
         let mut by_verb: Vec<Vec<String>> = Vec::new();
         let mut i = 0usize;
         while i < story.len() {
@@ -675,7 +667,6 @@ impl Game {
             }
         }
         // dedupe, keep the lenient-parseable ones, cap at the limit
-        // — ts: play.ts:283-290
         let mut seen: HashSet<String> = HashSet::new();
         let mut out: Vec<String> = Vec::new();
         for s in mixed.into_iter().chain(flavor) {
@@ -691,7 +682,7 @@ impl Game {
     }
 }
 
-/// JS truthiness over `string | number | boolean | undefined` (play.ts:143).
+/// JS truthiness over a JSON primitive or a missing value.
 fn is_truthy(v: Option<&AttrValue>) -> bool {
     match v {
         None => false,                                  // undefined

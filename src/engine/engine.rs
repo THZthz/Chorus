@@ -655,15 +655,17 @@ fn register_windows(
     content: &CompiledContent,
 ) -> Result<()> {
     // a BEGIN row's clauses ride its canonical sentence (law 2 makes that
-    // lossless); a degenerate row with no parseable clauses opens no window.
-    // QUIRK(Q6): the format∘parse round-trip failure SILENTLY opens no
-    // window (the clauses are dropped to empty) — frozen; do NOT turn this
-    // into an error and do NOT pass clauses through memory (both change
-    // behavior on degenerate inputs).
-    let clauses: Vec<Clause> = match parse_sentence(&record.sentence, dict) {
-        Ok(s) => s.clauses,
-        Err(_) => Vec::new(),
-    };
+    // lossless). Q6 (fixed, batch 3): a row whose sentence no longer
+    // re-parses is LOG DRIFT, not an empty window — the failure is loud at
+    // both play time and fold time, like the drift errors above.
+    let clauses: Vec<Clause> = parse_sentence(&record.sentence, dict)
+        .map(|s| s.clauses)
+        .map_err(|e| {
+            ChorusError::new(format!(
+                "begin row {}: the recorded sentence does not re-parse ('{}': {}) — drift",
+                record.id, record.sentence, e.msg
+            ))
+        })?;
     let start_min = match record.start_min {
         Some(m) => m,
         None => abs_min(parse_clock(&record.t_game)?),
@@ -3266,10 +3268,11 @@ mod smoke {
     }
 
     #[test]
-    fn register_windows_roundtrips_the_sentence_and_silently_skips_degenerate_rows() {
-        // Q6: a BEGIN row whose sentence fails to parse opens NO window
+    fn register_windows_roundtrips_the_sentence_and_errors_on_degenerate_rows() {
+        // Q6 (fixed): a BEGIN row whose sentence fails to re-parse is a
+        // loud drift error — it used to silently open no window
         let (dict, content) = rig(vec![("PACE", pace(30, &["NARRATE \"d.\""]))], |_| {});
-        let mut rec = ActionRecord {
+        let rec = ActionRecord {
             id: 7,
             kind: "action".to_string(),
             trigger: None,
@@ -3291,11 +3294,16 @@ mod smoke {
             sentence: "0:0 @ \"unclosed PACE".to_string(),
         };
         let mut st = seed_state();
-        register_windows(&rec, &mut st, &dict, &content).unwrap();
-        assert_eq!(st.windows.len(), 0, "round-trip failure silently opens no window");
+        let e = register_windows(&rec, &mut st, &dict, &content).unwrap_err();
+        assert_eq!(
+            e.msg,
+            "begin row 7: the recorded sentence does not re-parse \
+             ('0:0 @ \"unclosed PACE': unterminated string literal) — drift"
+        );
+        assert_eq!(st.windows.len(), 0, "the error left no window behind");
         // the healthy row: the SAME code path re-parses the canonical sentence
-        rec.sentence = "0:0 @ ANA PACE".to_string();
-        register_windows(&rec, &mut st, &dict, &content).unwrap();
+        let healthy = ActionRecord { sentence: "0:0 @ ANA PACE".to_string(), ..rec };
+        register_windows(&healthy, &mut st, &dict, &content).unwrap();
         assert_eq!(st.windows.len(), 1);
         let w = st.windows.get("7:0").unwrap();
         assert_eq!((w.start, w.end, w.verb.as_str()), (0, 30, "PACE"));

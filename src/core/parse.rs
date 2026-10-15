@@ -1018,14 +1018,18 @@ impl<'a> Parser<'a> {
             };
             return Ok(Arg::AsId { id: idv });
         }
-        // QUIRK(Q3): the param check below returns the WHOLE arg as a param —
-        // which makes a key-param check UNREACHABLE here (dead code,
-        // deliberately absent). DO NOT add a param-key check
-        // and DO NOT "fix" SET's refusal of `SET(myparam = 3)` — it reports
-        // `expected ')', got '='` from the outcome loop, frozen.
-        // NOTE: the bare-param branch IS reachable and lives
-        // right below (the whole arg becomes a placeholder).
+        // The param check below returns the WHOLE arg as a param. A param
+        // followed by `=` reads as a pair KEY — a form only spawn_args
+        // accepts (§9.40's pair face); here it would strand the `=` and
+        // doom the outcome loop with a bare `expected ')', got '='`, so
+        // error here instead with the teach message (Q3). The acceptance
+        // face is UNCHANGED: the spelling was and remains a parse error.
         if self.params.as_ref().is_some_and(|p| p.contains(&v)) {
+            if self.at_punct("=", 1) {
+                return Err(ChorusError::new(param_pair_error(
+                    "key", &v, self.params.as_ref(),
+                )));
+            }
             self.next()?;
             return Ok(Arg::Param {
                 name: v,
@@ -1044,27 +1048,31 @@ impl<'a> Parser<'a> {
             return Ok(Arg::Bool { v: v == "true" });
         }
         if self.at_punct("=", 1) {
-            // §9.40: a parameter as the pair's VALUE replaces the whole pair
-            // (reachable). The KEY check is dead (Q3).
-            // Deliberate asymmetry vs spawn_args: the value token is NOT
-            // consumed here (only key and '=' advance), so
-            // `SET(x, k = p)` leaves `p` in the stream and the outcome loop
-            // reports `expected ')', got 'p'` — frozen behavior.
+            // §9.40 gives a parameter the pair KEY or VALUE face in
+            // spawn_args only (the whole pair is replaced by the
+            // parameter, value token consumed). In generic outcome args a
+            // param as the pair VALUE used to be "returned unconsumed" —
+            // stranding the token for the outcome loop's bare
+            // `expected ')', got 'p'`. Q3's teach: say so directly,
+            // naming the param and the legal forms. The acceptance face
+            // is UNCHANGED: the spelling was and remains a parse error.
             let value_is_param = match self.peek(2) {
                 Some(Tok::Name { v: nv }) => self.params.as_ref().is_some_and(|p| p.contains(nv)),
                 _ => false,
             };
-            self.next()?;
-            self.next()?;
             if value_is_param {
-                if let Some(Tok::Name { v: nv }) = self.peek(0) {
-                    return Ok(Arg::Param {
-                        name: nv.clone(),
-                        sign: None,
-                    });
-                }
-                unreachable!("value_is_param checked the same peek"); // guarded by the peek above
+                let name = match self.peek(2) {
+                    Some(Tok::Name { v: nv }) => nv.clone(),
+                    _ => unreachable!("value_is_param checked the same peek"),
+                };
+                return Err(ChorusError::new(param_pair_error(
+                    "value",
+                    &name,
+                    self.params.as_ref(),
+                )));
             }
+            self.next()?;
+            self.next()?;
             let k = v;
             return Ok(Arg::Pair {
                 k,
@@ -1155,6 +1163,31 @@ pub fn show(t: &Tok) -> String {
     }
 }
 
+/// The Q3 teach error: a parameter used as a `key=value` pair key or value
+/// in generic outcome args. §9.40 pins the pair face on spawn_args (the
+/// whole pair is replaced by the parameter); any other op's args strand
+/// tokens there, so the error names the param, the forms a parameter MAY
+/// take in outcome args, and every param in scope (sorted — the set's
+/// iteration order is random). Acceptance is unchanged: the spelling was
+/// and remains a parse error.
+fn param_pair_error(side: &str, name: &str, params: Option<&HashSet<String>>) -> String {
+    let mut names: Vec<&str> = params
+        .map(|p| p.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    names.sort_unstable();
+    let list = if names.is_empty() {
+        "(none)".to_string()
+    } else {
+        names.join(", ")
+    };
+    format!(
+        "param '{name}' can't be a `key=value` pair {side} in outcome args — a parameter \
+         stands as its own arg (SET(x, {name})), as a signed delta (+{name} / -{name}), or \
+         in a ref/INTO position; only a SPAWN pair takes a param as key or value (the whole \
+         pair is replaced by the parameter); params in scope: {list}"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1167,17 +1200,25 @@ mod tests {
     }
 
     #[test]
-    fn q3_set_refuses_a_param_key_while_spawn_accepts_one() {
+    fn q3_param_pair_key_is_a_teach_error_and_spawn_still_accepts_one() {
         let d = dict();
         let mut params = HashSet::new();
         params.insert("myparam".to_string());
-        // SET(myparam = 3) inside a body: arg() consumes myparam as a param,
-        // then the outcome loop trips on '=' — the frozen error
+        // SET(myparam = 3) inside a body: the param reads as a pair KEY —
+        // rejected as before (acceptance face unchanged), but the error is
+        // the Q3 teach message, not the loop's bare `expected ')', got '='`
         let mut p = Parser::new(lex("SET(myparam = 3)").unwrap(), &d, None, Some(params.clone()));
         let err = p.outcome_list_or_empty().unwrap_err();
-        assert_eq!(err.msg, "expected ')', got '='");
+        assert_eq!(
+            err.msg,
+            "param 'myparam' can't be a `key=value` pair key in outcome args — a parameter \
+             stands as its own arg (SET(x, myparam)), as a signed delta (+myparam / -myparam), \
+             or in a ref/INTO position; only a SPAWN pair takes a param as key or value (the \
+             whole pair is replaced by the parameter); params in scope: myparam"
+        );
         // SPAWN's own arg parse DOES accept the param key (the whole pair becomes
-        // the param, and the value token is consumed) — the frozen asymmetry
+        // the param, and the value token is consumed) — the §9.40 pair face,
+        // untouched by the teach
         let mut p2 = Parser::new(lex("SPAWN X myparam = 3").unwrap(), &d, None, Some(params));
         let out = p2.outcome_list_or_empty().unwrap();
         match &out[0].args[1] {
@@ -1191,18 +1232,21 @@ mod tests {
     }
 
     #[test]
-    fn q3_alive_value_param_in_arg_position_is_returned_unconsumed() {
+    fn q3_param_pair_value_is_a_teach_error_listing_params_sorted() {
         let d = dict();
-        let mut params = HashSet::new();
-        params.insert("p".to_string());
-        // The value-param branch is reachable: a param as the pair's VALUE.
-        // arg() consumes
-        // key and '=' but NOT the param token — the outcome loop then
-        // reports the frozen `expected ')', got 'p'` (asymmetric with
-        // spawn_args, which consumes it)
+        let params: HashSet<String> = ["p", "aa", "b"].iter().map(|s| s.to_string()).collect();
+        // A param as the pair's VALUE: rejected as before (acceptance face
+        // unchanged), but the error is the Q3 teach message, not the loop's
+        // bare `expected ')', got 'p'` — and it lists the scope, sorted
         let mut p = Parser::new(lex("SET(x, k = p)").unwrap(), &d, None, Some(params));
         let err = p.outcome_list_or_empty().unwrap_err();
-        assert_eq!(err.msg, "expected ')', got 'p'");
+        assert_eq!(
+            err.msg,
+            "param 'p' can't be a `key=value` pair value in outcome args — a parameter \
+             stands as its own arg (SET(x, p)), as a signed delta (+p / -p), or in a \
+             ref/INTO position; only a SPAWN pair takes a param as key or value (the whole \
+             pair is replaced by the parameter); params in scope: aa, b, p"
+        );
     }
 
     #[test]

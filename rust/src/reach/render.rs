@@ -149,8 +149,11 @@ pub fn render_report(
     r: &CardReport,
 ) {
     let head = match demand {
-        Some(d) => format!("matching '{d}'"),
-        None => card.to_string(),
+        // ts: tools/reach-cli.ts:56 — `demand ? \`matching '${demand}'\` : name`
+        // — JS truthiness: the EMPTY string is falsy and prints the card name
+        // (wave-5 must-fix-1)
+        Some(d) if !d.is_empty() => format!("matching '{d}'"),
+        _ => card.to_string(),
     };
     let _ = writeln!(
         out,

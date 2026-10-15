@@ -637,9 +637,13 @@ impl<'c> Analyzer<'c> {
         let mut candidates: Vec<CardCandidate> = Vec::new();
         let mut existence = Existence::None;
         let mut demand_match: Option<Entity> = None;
-        let demand_q: Option<Query> = match &opts.demand {
-            Some(d) => Some(parse_query(d)?),
-            None => None,
+        let demand_q: Option<Query> = match opts.demand.as_deref() {
+            // ts: reach.ts:1310 — `opts.demand ? parseQuery(opts.demand) : null`
+            // — JS truthiness: the EMPTY string is falsy, i.e. no demand
+            // (wave-5 must-fix-1; parse_query("") would return an empty query
+            // without erroring and must not enter demand mode)
+            Some(d) if !d.is_empty() => Some(parse_query(d)?),
+            _ => None,
         };
 
         if let Some(dq) = &demand_q {

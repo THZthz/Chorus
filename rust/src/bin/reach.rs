@@ -31,9 +31,14 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usable = args.iter().any(|a| a == "--usable");
     // ts: reach-cli.ts:19-20 — `args[demandIdx + 1]` blind read; a trailing
-    // --demand yields undefined → demand silently vanishes (Q15/CLI-01)
+    // --demand yields undefined → demand silently vanishes (Q15/CLI-01).
+    // JS truthiness (wave-5 must-fix-1): an EMPTY string value is falsy at
+    // every consumer (`!demand` in the usage gate :30, `demand ?` in the
+    // report header :56, `opts.demand ?` in analyzeCard) — normalized to
+    // None here, the Option shape of "not provided".
     let demand_idx = args.iter().position(|a| a == "--demand");
-    let demand: Option<String> = demand_idx.and_then(|i| args.get(i + 1).cloned());
+    let demand: Option<String> =
+        demand_idx.and_then(|i| args.get(i + 1).cloned()).filter(|d| !d.is_empty());
     let mut rest: Vec<String> = Vec::new();
     let mut i = 0usize;
     while i < args.len() {

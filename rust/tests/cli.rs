@@ -85,6 +85,33 @@ fn reach_trailing_demand_vanishes_into_name_mode_q15() {
     assert_eq!(stdout, plain_out, "the vanished demand must not change the output");
 }
 
+/// wave-5 must-fix-1 — `--demand ''`: the EMPTY string is FALSY in JS, so
+/// `!demand` (reach-cli.ts:30) holds and the usage gate exits 2 with the
+/// exact two-line text (Rust used to treat Some("") as a provided demand and
+/// rendered a demand report).
+#[test]
+fn reach_empty_string_demand_is_falsy_usage_exits_2() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "--demand", ""]);
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(
+        stderr,
+        "usage: tsx tools/reach-cli.ts <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       tsx tools/reach-cli.ts <script.txt> --all\n"
+    );
+}
+
+/// wave-5 must-fix-1 — with a card name, `--demand ''` degrades to plain
+/// NAME mode (the falsy demand never reaches analyzeCard/render: the header
+/// prints the card name, the run is the no-demand run).
+#[test]
+fn reach_empty_string_demand_degrades_to_name_mode() {
+    let (plain_code, plain_out, _) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER"]);
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER", "--demand", ""]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(code, plain_code);
+    assert_eq!(stdout, plain_out, "the empty demand must not change the output");
+}
+
 /// CLI-01 — a bad demand query is analyzeCard's uncaught parse error: the
 /// message line and exit 1 are the frozen part (the TS prints a JS stack
 /// after it — the recorded divergence).

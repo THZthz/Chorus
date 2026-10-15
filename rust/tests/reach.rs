@@ -1042,6 +1042,68 @@ fn demand_mode_exports_a_root_per_matching_source_not_just_the_first() {
     assert_eq!(mints, ["BLUE", "RED"]);
 }
 
+/// wave-5 must-fix-1 — JS truthiness on the analyzer side: an EMPTY demand
+/// string is NO demand. ts: reach.ts:1310 `opts.demand ? parseQuery(...) :
+/// null` and reach-cli.ts:56's `demand ? \`matching '${demand}'\` : name` —
+/// `Some("")` must render byte-identical to `demand: None` (the card NAME in
+/// the header, plain name-mode analysis); `parse_query("")` returning an
+/// empty query without erroring would silently enter demand mode instead.
+#[test]
+fn an_empty_string_demand_is_falsy_renders_exactly_like_no_demand() {
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            (
+                "RED".to_string(),
+                PrototypeDef {
+                    kind: "item".to_string(),
+                    aspects: Some(IndexMap::from([(
+                        "tint".to_string(),
+                        AspectVal::Num(1),
+                    )])),
+                    ..PrototypeDef::default()
+                },
+            ),
+            (
+                "BLUE".to_string(),
+                PrototypeDef {
+                    kind: "idea".to_string(),
+                    aspects: Some(IndexMap::from([(
+                        "tint".to_string(),
+                        AspectVal::Num(1),
+                    )])),
+                    ..PrototypeDef::default()
+                },
+            ),
+        ])),
+        triggers: Some(vec![slot_trigger("fall", 2, &["SPAWN BLUE"])]),
+        verbs: IndexMap::from([(
+            "EXPLORE".to_string(),
+            verb(
+                vec![slot("actors", 1, 1, Some("kind:character"))],
+                0,
+                vec![recipe(&["SPAWN RED"])],
+            ),
+        )]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![ana()]);
+    let plain = render_card("s.txt", &content, &state, "ANA", &CardOptions::default());
+    let empty = render_card(
+        "s.txt",
+        &content,
+        &state,
+        "ANA",
+        &CardOptions {
+            demand: Some(String::new()),
+            ..CardOptions::default()
+        },
+    );
+    assert_eq!(empty, plain, "an empty demand string must be no demand at all");
+    // the header carries the card NAME, never `matching ''`
+    assert!(plain.starts_with("s.txt · card ANA\n"), "{plain}");
+}
+
 /// ts: reach.test.ts:557
 #[test]
 fn static_if_guards_on_a_proven_path_render_into_the_guards_list() {

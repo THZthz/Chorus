@@ -5,7 +5,7 @@
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::content::{CompiledContent, CompiledDeck, CompiledTrigger};
-use crate::core::query::{match_query, parse_query, Query};
+use crate::core::query::{match_conjunction, match_query, parse_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
 use crate::error::Result;
 
@@ -14,7 +14,7 @@ use super::census::{
     RawSite, SiteKind, MANY,
 };
 use super::render::pred_text;
-use super::world::{writable_paths, Analyzer, WorldFacts};
+use super::world::{writable_paths, writable_paths_of, Analyzer, WorldFacts};
 
 // ---------------------------------------------------------------------------
 // report types
@@ -299,16 +299,27 @@ impl<'c> WorldFacts<'c> {
         let Some(q) = query else {
             return true;
         };
-        if q.is_empty() {
-            return true;
-        }
-        if self.universe.iter().any(|u| match_query(u, q)) {
+        // §9.49: a DNF can ever match iff ANY group can — each group is the
+        // pre-alternation flat conjunction, so the possibility analysis is
+        // per group; the zero-group query stays vacuous-true
+        q.is_empty() || q.iter().any(|g| self.group_can_ever_match(g))
+    }
+
+    /// The possibility check for ONE conjunction group (the
+    /// pre-§9.49 body, unchanged). No memo is needed: the function is pure
+    /// over fields that are final once the world facts are built.
+    fn group_can_ever_match(&self, group: &[QueryTerm]) -> bool {
+        if self
+            .universe
+            .iter()
+            .any(|u| match_conjunction(u, group))
+        {
             return true;
         }
         if self.opaque_spawn_aspects {
             return true;
         }
-        let paths = writable_paths(q);
+        let paths = writable_paths_of(group);
         if paths.is_empty() {
             return false; // purely structural — the universe is exhaustive
         }

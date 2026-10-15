@@ -117,9 +117,21 @@ pub(crate) fn path_open(path: &[Pred], world: &CardWorld) -> Result<bool> {
 }
 
 /// The writable paths a query's aspect/state thresholds
-/// demand, in SET-key form ('aspect:x' / 'state.x').
-pub(crate) fn writable_paths(query: &[QueryTerm]) -> Vec<String> {
-    query
+/// demand, in SET-key form ('aspect:x' / 'state.x'). The UNION across
+/// alternation groups (§9.49) — this feeds the possibility analysis, where
+/// any single group's demand being pumpable matters.
+pub(crate) fn writable_paths(query: &Query) -> Vec<String> {
+    let mut out = Vec::new();
+    for group in query {
+        out.extend(writable_paths_of(group));
+    }
+    out
+}
+
+/// The writable paths ONE conjunction group demands (the pre-alternation
+/// body, unchanged).
+pub(crate) fn writable_paths_of(group: &[QueryTerm]) -> Vec<String> {
+    group
         .iter()
         .filter_map(|t| match t {
             QueryTerm::Aspect { neg: false, path, .. } => Some(format!("aspect:{path}")),

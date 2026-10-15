@@ -33,7 +33,8 @@ use super::world::{
 /// like exists(X); polarity is ignored on purpose — the check only DEMOTES).
 fn expr_exists_names(v: &ValExpr, acc: &mut IndexSet<String>) {
     if let ValExpr::CountQuery { query } = v {
-        for t in query {
+        // names of ANY group (§9.49); polarity is ignored on purpose
+        for t in query.iter().flatten() {
             if let QueryTerm::Name { name, .. } = t {
                 acc.insert(name.clone());
             }
@@ -57,7 +58,8 @@ pub(crate) fn pred_exists_names(p: &Pred, acc: &mut IndexSet<String>) {
             acc.insert(name.clone());
         }
         Pred::ExistsQuery { query } => {
-            for t in query {
+            // names of ANY group (§9.49); polarity is ignored on purpose
+            for t in query.iter().flatten() {
                 if let QueryTerm::Name { name, .. } = t {
                     acc.insert(name.clone());
                 }

@@ -314,11 +314,14 @@ impl<'a> PredParser<'a> {
         // and the inner text is reconstructed from the source, so its
         // characters must survive; a stray `!` still errors loudly at the
         // parser ("expected comparison op, got '!'"), never silently.
+        // `|` survives the same way (§9.49): a LONE `|` rides verbatim
+        // into the inner query as the group separator; outside a query it
+        // errors loudly at the parser ("expected comparison op, got '|'").
         // (`\d` is ASCII `[0-9]`; offsets are byte offsets, the spans
         // convention.)
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || {
-            Regex::new(r"[A-Za-z_][A-Za-z0-9_.]*|[0-9]+|>=|<=|!=|!|=|>|<|\(|\)|,|:|-")
+            Regex::new(r"[A-Za-z_][A-Za-z0-9_.]*|[0-9]+|>=|<=|!=|!|=|>|<|\(|\)|,|:|-|\|")
         });
         let mut toks = Vec::new();
         let mut spans = Vec::new();

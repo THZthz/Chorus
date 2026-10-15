@@ -130,6 +130,86 @@ fn bare_aspect_term_means_level_ge_1() {
     assert!(!match_query(&ent("a", "character", "A"), &q1));
 }
 
+// ---------- alternation, §9.49 ----------------------------------------------
+
+#[test]
+fn alternation_matches_when_any_group_matches() {
+    let q = parse_query("aspect:ability | aspect:job").unwrap();
+    assert!(match_query(
+        &with_aspects(ent("a", "item", "A"), &[("ability", 1)]),
+        &q
+    ));
+    assert!(match_query(
+        &with_aspects(ent("j", "item", "J"), &[("job", 2)]),
+        &q
+    ));
+    assert!(!match_query(&ent("n", "item", "N"), &q));
+}
+
+#[test]
+fn alternation_binds_loosest_each_side_is_a_conjunction() {
+    // the spec's own example (§4.5/§9.49): ability OR (job AND ritual) —
+    // a card with job but no ritual does not match
+    let q = parse_query("aspect:ability | aspect:job aspect:ritual").unwrap();
+    assert_eq!(q.len(), 2);
+    assert!(match_query(
+        &with_aspects(ent("a", "item", "A"), &[("ability", 1)]),
+        &q
+    ));
+    assert!(match_query(
+        &with_aspects(ent("b", "item", "B"), &[("job", 1), ("ritual", 1)]),
+        &q
+    ));
+    assert!(!match_query(
+        &with_aspects(ent("c", "item", "C"), &[("job", 1)]),
+        &q
+    ));
+}
+
+#[test]
+fn alternation_groups_take_levels_negation_and_sub_aspects() {
+    let q = parse_query("aspect:lore>=6 | -name:SUSPICION aspect:language.latin").unwrap();
+    assert_eq!(q.len(), 2);
+    // group 1: the level threshold
+    assert!(match_query(
+        &with_aspects(ent("l", "text", "L"), &[("lore", 6)]),
+        &q
+    ));
+    assert!(!match_query(
+        &with_aspects(ent("m", "text", "M"), &[("lore", 5)]),
+        &q
+    ));
+    // group 2: per-term negation and a sub-aspect key compose INSIDE the group
+    assert!(match_query(
+        &with_aspects(ent("u", "rite", "U"), &[("language.latin", 1)]),
+        &q
+    ));
+    assert!(!match_query(
+        &with_aspects(ent("s", "rite", "SUSPICION"), &[("language.latin", 1)]),
+        &q
+    )); // the negated name fails the group
+    assert!(!match_query(
+        &with_aspects(ent("g", "rite", "G"), &[("language.greek", 1)]),
+        &q
+    )); // the sub-aspect misses
+}
+
+#[test]
+fn alternation_group_edges_are_parse_errors_a_glued_pipe_is_a_term_error() {
+    // a lone '|' separates groups ONLY as its own whitespace token: a
+    // leading '|', a trailing '|', or an empty middle group is a loud
+    // parse error
+    assert_err_msg(parse_query("| aspect:x"), r"expected a group before '\|'");
+    assert_err_msg(parse_query("aspect:x |"), r"expected a group after '\|'");
+    assert_err_msg(
+        parse_query("aspect:x | | aspect:y"),
+        r"expected a group before '\|'",
+    );
+    // glued into a term's value it rides along and the ATOM grammar
+    // rejects it — never a silent second group
+    assert_err_msg(parse_query("aspect:a|b"), "bad aspect term");
+}
+
 // ---------- condition predicates, §6.3 -------------------------------------
 
 /// The section-level state.
@@ -525,6 +605,44 @@ fn count_query_composes_full_slot_queries_count_role_is_unchanged() {
         &bindings(&[(Role::Actors, &["sus1"])]),
         &s
     )); // role form untouched
+}
+
+#[test]
+fn exists_and_count_inner_queries_take_alternation() {
+    // §9.49's legal homes include the §9.38 inner queries — same parser,
+    // same DNF behavior
+    let mut s = new_state(0);
+    add_entity(&mut s, with_aspects(ent("a", "item", "A"), &[("ability", 1)])).unwrap();
+    add_entity(&mut s, with_aspects(ent("j", "item", "J"), &[("job", 1)])).unwrap();
+    add_entity(
+        &mut s,
+        with_aspects(ent("r", "item", "R"), &[("job", 1), ("ritual", 1)]),
+    )
+    .unwrap();
+    // exists reads the DNF: ability OR job — a matches
+    assert!(ev(
+        &parse_predicate("exists(aspect:ability | aspect:job)").unwrap(),
+        &no_binds(),
+        &s
+    ));
+    // count reads it too: a (ability), j (job), r (job) = 3
+    assert!(ev(
+        &parse_predicate("count(aspect:ability | aspect:job) = 3").unwrap(),
+        &no_binds(),
+        &s
+    ));
+    // no card has ability AND ritual, and nothing levitates → no group matches
+    assert!(!ev(
+        &parse_predicate("exists(aspect:ability aspect:ritual | aspect:levitation)").unwrap(),
+        &no_binds(),
+        &s
+    ));
+    // ability, or job AND ritual: a and r — the lone job card stays out
+    assert!(ev(
+        &parse_predicate("count(aspect:ability | aspect:job aspect:ritual) = 2").unwrap(),
+        &no_binds(),
+        &s
+    ));
 }
 
 #[test]

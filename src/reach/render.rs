@@ -6,7 +6,7 @@
 use std::fmt::Write;
 
 use crate::core::predicate::{Pred, ValExpr};
-use crate::core::query::{QueryTerm, StateOp};
+use crate::core::query::{Query, QueryTerm, StateOp};
 
 use super::paths::{CardReport, Existence, ReachPath};
 
@@ -14,43 +14,51 @@ use super::paths::{CardReport, Existence, ReachPath};
 // rendering static predicates
 // ---------------------------------------------------------------------------
 
-/// Text of one query list: terms space-joined.
-pub(crate) fn query_text(q: &[QueryTerm]) -> String {
+/// Text of one query list: group terms space-joined, groups with ' | '
+/// (§9.49). The design-time diagnostic renderer only — queries never
+/// serialize into the log, so this is not the forbidden canonical printer.
+pub(crate) fn query_text(q: &Query) -> String {
     q.iter()
-        .map(|t| {
-            let neg = if t.neg() { "!" } else { "" };
-            match t {
-                QueryTerm::Kind { kind, .. } => format!("{neg}kind:{kind}"),
-                QueryTerm::Name { name, .. } => format!("{neg}name:{name}"),
-                QueryTerm::Aspect {
-                    path, op, level, ..
-                } => format!(
-                    "{neg}aspect:{path}{}",
-                    match op {
-                        Some(op) => format!("{}{level}", op.as_str()),
-                        None => String::new(),
-                    }
-                ),
-                QueryTerm::State {
-                    neg, key, op, value,
-                } => {
-                    let neg = if *neg { "!" } else { "" };
-                    match op {
-                        StateOp::Bang => format!("{neg}state:!{key}"),
-                        StateOp::Cmp(op) => format!(
-                            "{neg}state.{key}{}{}",
-                            op.as_str(),
-                            value
-                                .as_ref()
-                                .map(|v| v.to_canonical_string())
-                                .unwrap_or_default()
+        .map(|group| {
+            group
+                .iter()
+                .map(|t| {
+                    let neg = if t.neg() { "!" } else { "" };
+                    match t {
+                        QueryTerm::Kind { kind, .. } => format!("{neg}kind:{kind}"),
+                        QueryTerm::Name { name, .. } => format!("{neg}name:{name}"),
+                        QueryTerm::Aspect {
+                            path, op, level, ..
+                        } => format!(
+                            "{neg}aspect:{path}{}",
+                            match op {
+                                Some(op) => format!("{}{level}", op.as_str()),
+                                None => String::new(),
+                            }
                         ),
+                        QueryTerm::State {
+                            neg, key, op, value,
+                        } => {
+                            let neg = if *neg { "!" } else { "" };
+                            match op {
+                                StateOp::Bang => format!("{neg}state:!{key}"),
+                                StateOp::Cmp(op) => format!(
+                                    "{neg}state.{key}{}{}",
+                                    op.as_str(),
+                                    value
+                                        .as_ref()
+                                        .map(|v| v.to_canonical_string())
+                                        .unwrap_or_default()
+                                ),
+                            }
+                        }
                     }
-                }
-            }
+                })
+                .collect::<Vec<String>>()
+                .join(" ")
         })
         .collect::<Vec<String>>()
-        .join(" ")
+        .join(" | ")
 }
 
 /// Text of one static value expression.

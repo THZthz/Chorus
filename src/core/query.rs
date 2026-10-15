@@ -2,6 +2,8 @@
 //! card at a time:
 //!   kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:winter
 //!   name:SUSPICION  -name:SUSPICION   (§9.38: exact-case, like name refs/exists)
+//!   aspect:ability | aspect:job aspect:ritual   (§9.49: `|` separates
+//!   conjunction groups — ability, or job AND ritual)
 
 use std::sync::OnceLock;
 
@@ -119,19 +121,47 @@ impl QueryTerm {
     }
 }
 
-/// A query: the AND of its terms.
-pub type Query = Vec<QueryTerm>;
+/// A query: the OR of its conjunction groups (§9.49 alternation) —
+/// `[[a, b], [c]]` is `(a AND b) OR c`; `|` binds loosest. One group (the
+/// `|`-less form) behaves exactly as the pre-alternation flat conjunction;
+/// the zero-group query (from `''` — the frozen-falsy no-query, guarded at
+/// every home before parsing) stays vacuous-true like the old empty
+/// conjunction. No canonical printer: queries are authored strings, never
+/// serialized and never logged (§9.49).
+pub type Query = Vec<Vec<QueryTerm>>;
 
-/// Terms are `src.trim().split(/\s+/).filter(Boolean)` — collapsed into
-/// "split on runs of DSL whitespace,
-/// keep non-empty" (the same term list results); the whitespace set is the
-/// frozen DSL one (Q8), not Rust's.
+/// The §9.49 grammar: `query := and ( '|' and )*`, `and := term+`,
+/// `term := '-'? atom`. Terms split on runs of the frozen DSL whitespace
+/// (Q8), and a `|` is a GROUP separator only when it stands ALONE as one
+/// of those tokens — glued into a term's value (`aspect:a|b`) it rides
+/// along and the atom's own grammar rejects it loudly (no atom form admits
+/// `|`), never a silent second group. A leading `|`, a trailing `|`, or an
+/// empty group (`| |`) is a parse error.
 pub fn parse_query(src: &str) -> Result<Query> {
-    let mut out = Vec::new();
+    let mut groups: Query = Vec::new();
+    let mut group: Vec<QueryTerm> = Vec::new();
     for term in split_dsl_ws(dsl_trim(src)) {
-        out.push(parse_term(term)?);
+        if term == "|" {
+            if group.is_empty() {
+                return Err(ChorusError::new(format!(
+                    "bad query '{src}' (expected a group before '|' — query := and ('|' and)*)"
+                )));
+            }
+            groups.push(std::mem::take(&mut group));
+        } else {
+            group.push(parse_term(term)?);
+        }
     }
-    Ok(out)
+    if group.is_empty() {
+        if groups.is_empty() {
+            return Ok(groups); // '' — the vacuous zero-group query, unchanged
+        }
+        return Err(ChorusError::new(format!(
+            "bad query '{src}' (expected a group after '|' — query := and ('|' and)*)"
+        )));
+    }
+    groups.push(group);
+    Ok(groups)
 }
 
 /// `split(/\s+/).filter(Boolean)` on the frozen DSL whitespace class;
@@ -285,10 +315,19 @@ fn coerce(v: &str) -> AttrValue {
     AttrValue::Str(v.to_string())
 }
 
-/// Every term must match the entity (each term's `neg` flips its result).
+/// A card matches iff ANY group's terms ALL match (§9.49 DNF). The
+/// zero-group query (from `''`) stays vacuous-true — the empty
+/// conjunction's pre-alternation semantics.
 #[must_use]
-pub fn match_query(e: &Entity, query: &[QueryTerm]) -> bool {
-    query.iter().all(|t| match_term(e, t) != t.neg())
+pub fn match_query(e: &Entity, query: &Query) -> bool {
+    query.is_empty() || query.iter().any(|g| match_conjunction(e, g))
+}
+
+/// Every term of one conjunction group must match (each term's `neg` flips
+/// its result) — the pre-alternation flat-conjunction semantics, one group.
+#[must_use]
+pub(crate) fn match_conjunction(e: &Entity, group: &[QueryTerm]) -> bool {
+    group.iter().all(|t| match_term(e, t) != t.neg())
 }
 
 /// One term against one entity (pre-negation).
@@ -373,7 +412,8 @@ mod tests {
     #[test]
     fn parse_and_match_the_canonical_term_shapes() {
         let q = parse_query("kind:text aspect:secret>=3 state:!sealed -aspect:winter").unwrap();
-        assert_eq!(q.len(), 4);
+        assert_eq!(q.len(), 1); // no '|' — one conjunction group (§9.49)
+        assert_eq!(q[0].len(), 4);
         let e = Entity {
             id: "e1".into(),
             kind: "text".into(),
@@ -405,7 +445,7 @@ mod tests {
     fn name_term_rejects_comparisons_and_defaults_match() {
         assert!(parse_query("name:X>=1").is_err());
         let q = parse_query("aspect:language.latin").unwrap();
-        match &q[0] {
+        match &q[0][0] {
             QueryTerm::Aspect { path, op, level, .. } => {
                 assert_eq!(path, "language.latin");
                 assert_eq!(*op, None);

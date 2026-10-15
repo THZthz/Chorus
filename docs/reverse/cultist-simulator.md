@@ -380,10 +380,10 @@ code comments are ground truth.
 | timetables pressing the player | once-triggers (`State.fired`, §9.29) |
 | `signalEndingFlavour` | `Ending {id, title, flavour}` |
 
-**Needs authoring translation (spec'd in engine v0.3.6 — `text-engine-v0.2.md`
+**Needs authoring translation — IMPLEMENTED (engine v0.3.6, `text-engine-v0.2.md`
 §9.47–50: RUN chains, `on complete` triggers + recipe `aspects`, query
-alternation, `max` — not yet implemented; until the engine lands them, a
-converter inlines)**
+alternation, `max`; commits 3cc1ced §9.49, b1fce1a §9.50, eb350c3 §9.47,
+69b2977 §9.48)**
 
 - **`linked` chains** (needs→discardseason→drawseason→needs; expedition ticks): there
   is no "start another recipe" outcome — inline each chain into one outcome list,

@@ -302,10 +302,20 @@ impl Game {
 
     /// a card's face: kind, aspects, where it sits, when it entered play.
     /// Visible cards only — the table has no face-down deck to fish from.
-    /// QUIRK(Q11): bare `inspect` (an empty prefix always matches) shows
-    /// the first visible card — no test pins it; frozen as-is.
+    /// A bare `inspect` (empty name — the old empty-prefix startswith match
+    /// showed the FIRST visible card, Q11) names the usage and lists the
+    /// table instead; it never guesses a card.
     pub fn inspect(&self, raw_name: &str) -> Vec<String> {
         let q = js_trim(raw_name).to_lowercase().replace('_', " ");
+        if q.is_empty() {
+            // Q11: usage + the card list (the same projection `cards`
+            // prints), not the first visible card
+            let mut lines = vec!["usage: inspect <card name>".to_string()];
+            for c in self.cards() {
+                lines.push(format!("  {c}"));
+            }
+            return lines;
+        }
         let table = self.visible();
         let face = |e: &Entity| e.name.to_lowercase().replace('_', " ");
         let card = table

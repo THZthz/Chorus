@@ -14,9 +14,8 @@
 //!     the script's `script:` directive.
 //!   - the `« … »` canonical echo rides each action turn —
 //!     handle_line's own lines, printed verbatim.
-//!   - QUIRK(Q11): bare `inspect` shows the FIRST visible card
-//!     (an empty prefix always matches) — preserved by
-//!     passing the empty rest string to `Game::inspect`.
+//!   - Q11: bare `inspect` is usage + the card list (Game::inspect's
+//!     empty-name branch) — it never guesses the first visible card.
 //!   - non-TTY runs fine: `IsTerminal` only decides whether the `» ` prompt
 //!     is drawn, so a piped session's stdout is byte-clean (a readline
 //!     prompt would interleave).
@@ -120,8 +119,9 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
         // (`inspector`, `inspect5`, `inspect_x`) means NO boundary and the
         // line falls through to handle_line, exactly as the regex demands
         if rest.is_empty() || rest.starts_with(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
-            // QUIRK(Q11): bare `inspect` shows the first visible card —
-            // an empty prefix always matches — and `inspect  x` trims the rest
+            // Q11: bare `inspect` is usage + the card list (Game::inspect's
+            // empty-name branch) — no first-card guess — and `inspect  x`
+            // trims the rest
             for l in game.inspect(rest.trim()) {
                 emit(out, &l);
             }

@@ -57,7 +57,7 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
         "story",                    // meta → game.story() (empty: the placeholder)
         "frobnicate",               // handle_line → error turn + suggestions
         "inspect the wax cylinder", // inspect prefix, named card
-        "inspect",                  // QUIRK(Q11): bare inspect shows the first visible card
+        "inspect",                  // Q11: bare inspect is usage + the card list
         "inspectorish note",        // \b fails inside a word → handle_line
         "explore the first cabin",  // a real turn (opens a window)
         "wait",                     // meta → game.wait() settles it
@@ -122,4 +122,48 @@ fn push_lines(out: &mut String, lines: &[String]) {
         out.push_str(l);
         out.push('\n');
     }
+}
+
+/// Q11: bare `inspect` names the usage and lists the table — it does NOT
+/// show the first visible card (the old empty-prefix startswith match).
+/// The bin bytes are the library bytes for the same call, and the body's
+/// shape is pinned: usage line first, every following line indented.
+#[test]
+fn bare_inspect_is_usage_plus_the_card_list_never_the_first_card() {
+    let (code, stdout, stderr) = run_repl(NIGHTJAR_SCRIPT, &["inspect", "quit"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stderr, "", "the session must run clean");
+
+    // the library replay of the SAME call
+    use chorus::core::dict::core_dictionary;
+    use chorus::session::game::Game;
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/scripts/the-nightjar-flyer.txt"
+    ))
+    .expect("the nightjar script");
+    let game = Game::from_script(&text, core_dictionary()).expect("the script compiles");
+    let mut expected = banner(
+        &game.title(),
+        &game
+            .content
+            .verbs
+            .keys()
+            .map(|v| v.to_lowercase().replace('_', " "))
+            .collect::<Vec<_>>(),
+    );
+    push_lines(&mut expected, &game.inspect(""));
+    assert_eq!(stdout, expected, "the bin is routing only");
+
+    // the shape: banner (title, verbs), then usage, then the INDENTED list
+    let body: Vec<&str> = expected.lines().skip(2).collect();
+    assert_eq!(body[0], "usage: inspect <card name>");
+    assert!(
+        body.len() > 1,
+        "the nightjar table is non-empty — the list must follow the usage"
+    );
+    assert!(
+        body[1..].iter().all(|l| l.starts_with("  ")),
+        "the card list is indented — a bare card face would be the old first-card guess"
+    );
 }

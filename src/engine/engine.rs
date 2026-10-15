@@ -2183,17 +2183,22 @@ fn resolve_due(
     let mut id = first_record_id;
     loop {
         // due windows in (end, begin_id, clause)
-        // order: a total order with no ties
-        let mut due: Vec<&OpenWindow> =
-            state.windows.values().filter(|w| w.end <= target).collect();
-        due.sort_by(|a, b| {
-            a.end
-                .cmp(&b.end)
-                .then(a.begin_id.cmp(&b.begin_id))
-                .then(a.clause.cmp(&b.clause))
-        });
-        let next_w = due.first().map(|w| (*w).clone());
-        drop(due);
+        // order: a total order with no ties — so the ordered MINIMUM is
+        // exactly the element a full sort-then-first picked, found in one
+        // pass without the per-iteration Vec + sort. Same selection; the
+        // clone stays because the borrow must end before `state` moves
+        // into fire_window.
+        let next_w = state
+            .windows
+            .values()
+            .filter(|w| w.end <= target)
+            .min_by(|a, b| {
+                a.end
+                    .cmp(&b.end)
+                    .then(a.begin_id.cmp(&b.begin_id))
+                    .then(a.clause.cmp(&b.clause))
+            })
+            .cloned();
         let slot_abs = next_slot_after(cursor, target);
         if let Some(w) = next_w {
             if slot_abs.is_none_or(|s| w.end <= s) {

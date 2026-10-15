@@ -13,6 +13,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 
+# plan §4-W5 T5.4 — the four TS tools/ CLI shapes (argv parsing, stdout text
+# and exit codes are the frozen surface; verification 03 CLI-01..05).
+[[bin]]
+name = "reach-scale"
+path = "src/bin/reach-scale.rs"
+
 # plan §2.4 memory constraints (16 GB box): no debug info in dev builds,
 # line tables only for tests (failure backtraces stay locatable, PR2-06).
 [profile.dev]

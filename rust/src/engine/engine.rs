@@ -206,7 +206,9 @@ fn validate_slots(
 
 /// ts: src/engine/engine.ts:114-125. A param ref here means an expansion bug
 /// (§9.40) — the TS throw propagates uncaught through every caller, so the
-/// Rust `Err` does too (never a rejection).
+/// Rust `Err` does too (never a rejection). The one documented merge point
+/// is execute_step's Phase-2 `validate_slots` fold (unreachable input — see
+/// the channel note there).
 pub fn resolve_ref<'a>(state: &'a State, r: &Ref) -> Result<Option<&'a Entity>> {
     match r {
         Ref::Id { id } => Ok(get_alive(state, id)),
@@ -377,6 +379,22 @@ pub fn execute_step(
             ));
         };
         let refs = clause_refs(clause);
+        // Channel note (W3 review should-fix-3): TS splits this error surface
+        // in two — the five reachable validateSlots errors travel the
+        // `{error}` return channel and reject here with the `${verb}: `
+        // prefix (engine.ts:204-205), while resolveRef's param-form throw
+        // (engine.ts:118) finds no try/catch in Phase 2 and escapes
+        // executeStep uncaught (busy_reason/select_recipe do map their throws
+        // to the Err channel — see the `?` below). Rust merges both into one
+        // `Result<ChorusError>` (a plain message by design, js.rs §2.5 —
+        // nothing to split the channels on), so that internal error would
+        // surface as a rejection here instead. Unreachable on every input
+        // path (§9.40): the parser only produces param refs while parsing a
+        // function-body template (parse.ts:60-65) and rejects one after
+        // `kind:` (parse.ts:251), FN expansion substitutes every parameter
+        // before compile, and the lenient/record paths only produce name/id
+        // refs — no caller on either side can build a param-ref clause, so
+        // the fold is observationally identical to TS.
         let bindings = match validate_slots(verb, &refs, &draft) {
             Ok(b) => b,
             Err(e) => return Ok(rejected(format!("{}: {}", clause.verb, e.msg), state_in)),

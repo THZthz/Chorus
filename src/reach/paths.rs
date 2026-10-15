@@ -377,7 +377,14 @@ impl<'c> WorldFacts<'c> {
                     .get(&si)
                     .unwrap_or_else(|| unreachable!("mint_sources entries are always proven"))
                     .clone();
-                out.push((si, sup));
+                let pair = (si, sup);
+                // content may list one name twice in a deck's order (a legal
+                // multiset — only stackable draws consume copies); the old
+                // whole-`proven` scan visited each proven site once, so keep
+                // the indexed candidates unique the same way
+                if out.last() != Some(&pair) {
+                    out.push(pair);
+                }
             }
         }
         out

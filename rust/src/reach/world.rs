@@ -127,6 +127,26 @@ pub(crate) fn writable_paths(query: &[QueryTerm]) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// the structured committability proof — ts: reach.ts:102-106
+// ---------------------------------------------------------------------------
+
+/// ts: reach.ts:102 — `{ name, how }` filler pair.
+#[derive(Debug, Clone)]
+pub struct SlotFiller {
+    pub name: String,
+    pub how: String,
+}
+
+/// ts: reach.ts:102-106 — one filled slot of a verb's committability proof.
+#[derive(Debug, Clone)]
+pub struct SlotProof {
+    pub role: String,
+    pub min: i64,
+    pub query: Option<Query>,
+    pub fillers: Vec<SlotFiller>,
+}
+
+// ---------------------------------------------------------------------------
 // the available-card fact — ts: reach.ts:129-133
 // ---------------------------------------------------------------------------
 
@@ -180,6 +200,14 @@ pub(crate) struct WorldFacts<'c> {
     pub dirty_owners: IndexSet<String>,
     /// world-level notes, copied into every report
     pub notes: Vec<String>,
+    /// verb index → its structured committability proof (proof order)
+    pub committable: IndexMap<usize, Vec<SlotProof>>,
+    /// site arena index → support lines (proof order)
+    pub proven: IndexMap<usize, Vec<String>>,
+    /// bare name → PROVEN sites minting it, in proof order (mintSources)
+    pub mint_sources: IndexMap<String, Vec<usize>>,
+    /// verb index → names its committability proof filled slots with
+    pub fillers: IndexMap<usize, IndexSet<String>>,
 }
 
 impl<'c> WorldFacts<'c> {
@@ -353,6 +381,10 @@ pub(crate) fn compute_world_facts<'c>(
         freeze_dist: INFINITY,
         dirty_owners: IndexSet::new(),
         notes: Vec::new(),
+        committable: IndexMap::new(),
+        proven: IndexMap::new(),
+        mint_sources: IndexMap::new(),
+        fillers: IndexMap::new(),
     };
 
     // ts: reach.ts:672-674 — one avail fact per representative name
@@ -430,9 +462,11 @@ pub(crate) fn compute_world_facts<'c>(
         ));
     }
 
-    // (the fixpoint and the post-fixpoint block are wired by the T5.2/T5.3
-    // commits — this wave state carries the census + risky model + the
-    // avail world only)
+    // ts: reach.ts:1061-1078 — the fixpoint (naive round-robin, REACH-10)
+    super::fixpoint::run_fixpoint(&mut wf);
+
+    // (the post-fixpoint block — universe, dead verbs, deck caps — is wired
+    // by the T5.3 commit)
 
     wf
 }

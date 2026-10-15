@@ -20,6 +20,7 @@
 //! (REACH-03).
 
 pub mod census;
+pub mod fixpoint;
 pub mod world;
 
 pub use world::Analyzer;

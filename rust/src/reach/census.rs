@@ -26,6 +26,30 @@ pub const MANY: i64 = 1_000_000_000;
 /// defer to a completion-time window refusal.
 const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 
+/// ts: reach.ts:1336/1341/1878-1891/1902-1910 — the `'\u0000derived'`
+/// sentinel avail/byName key for derive-mints behind object-mandatory verbs.
+/// Plan §3.11 offered an enum, but the port keeps the literal string: the
+/// three sentinel properties (occupies an avail/byName key; slot queries hit
+/// it via the intact kind/aspect descriptor; `exists(NAME)`/`count(name:)`
+/// gates miss it because no authored name collides) are exactly JS string
+/// identity on this value, and the raw string reproduces even the adversarial
+/// corner where an author names a card with the sentinel itself.
+pub const DERIVED_NAME: &str = "\u{0000}derived";
+
+/// ts: reach.ts:1540-1543 (drawBlindsBare) — a DRAW behind an object-mandatory
+/// verb never serves the BARE name of a deck card whose prototype derives.
+pub(crate) fn draw_blinds_bare(content: &CompiledContent, site: &RawSite, name: &str) -> bool {
+    site.kind == SiteKind::Draw
+        && site.verb.is_some()
+        && object_always(content, site.verb)
+        && content
+            .prototypes
+            .get(name)
+            .and_then(|p| p.derive.as_ref())
+            .and_then(|d| d.name_from.as_deref())
+            == Some("object")
+}
+
 // ---------------------------------------------------------------------------
 // world-static predicate shapes — ts: reach.ts:462-474 — and the authored
 // aspects= pair parse (ts: reach.ts:1099/1549). These live beside the census

@@ -307,7 +307,13 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
         QueryTerm::State { key, op, value, .. } => {
             // `state:key` addresses the state.* attr namespace (§4.2):
             // state:!sealed → attrs['state.sealed']
-            let v = e.attrs.get(&format!("state.{key}"));
+            // (an empty attrs map misses every key — skip the key build,
+            // this term runs once per entity in the match_query scans)
+            let v = if e.attrs.is_empty() {
+                None
+            } else {
+                e.attrs.get(&format!("state.{key}"))
+            };
             match op {
                 // strict inequality against `true`: the string "false", a 0, a missing value all
                 // count as unsealed

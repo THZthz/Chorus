@@ -11,15 +11,22 @@
 /// and stays `<= 2^32 - 2` (2^32-1 ranks as a regular property).
 #[must_use]
 pub fn is_integer_like_key(k: &str) -> bool {
+    integer_like_key_value(k).is_some()
+}
+
+/// [`is_integer_like_key`] plus the parsed value in one scan — the callers
+/// below need the value for the numeric sort, and the judgment is defined BY
+/// the parse, so one pass serves both.
+fn integer_like_key_value(k: &str) -> Option<u64> {
     let bytes = k.as_bytes();
     if bytes.is_empty() || !bytes.iter().all(u8::is_ascii_digit) {
-        return false;
+        return None;
     }
     if bytes.len() > 1 && bytes[0] == b'0' {
-        return false; // leading zero: not canonical
+        return None; // leading zero: not canonical
     }
     // ≤ 10 digits (2^32-2 has 10) and in range → ToUint32 round-trip holds.
-    k.parse::<u64>().is_ok_and(|v| v <= 4_294_967_294)
+    k.parse::<u64>().ok().filter(|v| *v <= 4_294_967_294)
 }
 
 /// The key order every object spread/clone/entries site produces
@@ -30,18 +37,17 @@ pub fn is_integer_like_key(k: &str) -> bool {
 /// (the clone points live in `core/types.rs`).
 #[must_use]
 pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<String> {
-    let mut int_keys: Vec<&String> = m
-        .keys()
-        .filter(|k| is_integer_like_key(k))
-        .collect();
-    int_keys.sort_by(|a, b| {
-        // numeric ascending; both sides are canonical digit strings that fit
-        // u64, so numeric compare on the parsed value is exact
-        let av = a.parse::<u64>().unwrap_or(0);
-        let bv = b.parse::<u64>().unwrap_or(0);
-        av.cmp(&bv)
-    });
-    let mut out: Vec<String> = int_keys.into_iter().cloned().collect();
+    if !m.keys().any(|k| is_integer_like_key(k)) {
+        // no integer-like keys ⇒ the canonical order IS the insertion order
+        // (the reorder only fronts integer-like keys), so the two-pass walk
+        // would re-emit the keys verbatim
+        return m.keys().cloned().collect();
+    }
+    let mut out: Vec<String> = Vec::with_capacity(m.len());
+    for i in integer_keys_in_order(m) {
+        // every index came from this map's key walk; the lookup cannot miss
+        out.push(m.get_index(i).expect("index from the same map's walk").0.clone());
+    }
     for k in m.keys() {
         if !is_integer_like_key(k) {
             out.push(k.clone());
@@ -50,16 +56,43 @@ pub fn ordinary_own_property_keys<V>(m: &indexmap::IndexMap<String, V>) -> Vec<S
     out
 }
 
+/// The integer-like keys' indices of `m`, ascending by numeric value. Keys
+/// are unique canonical digit strings, so the values are distinct and the
+/// sort is total.
+fn integer_keys_in_order<V>(m: &indexmap::IndexMap<String, V>) -> impl Iterator<Item = usize> {
+    let mut ints: Vec<(u64, usize)> = m
+        .keys()
+        .enumerate()
+        .filter_map(|(i, k)| integer_like_key_value(k).map(|v| (v, i)))
+        .collect();
+    ints.sort_unstable_by_key(|(v, _)| *v);
+    ints.into_iter().map(|(_, i)| i)
+}
+
 /// Clone a string-keyed map rebuilding keys in
-/// [`ordinary_own_property_keys`] order (the object-spread semantics).
+/// [`ordinary_own_property_keys`] order (the canonical key-order clone).
+///
+/// Index-partitioned: the order is computed on INDICES (no key-String
+/// churn, no re-lookup per key), and a map with no integer-like keys takes
+/// the plain-clone fast path — the rebuild would be entry-for-entry
+/// identical, and every `Entity::clone`/state clone rides this function.
 #[must_use]
 pub fn clone_map_in_key_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> indexmap::IndexMap<String, V> {
+    let has_int_keys = m.keys().any(|k| is_integer_like_key(k));
+    if !has_int_keys {
+        return m.clone();
+    }
+    let mut plain: Vec<usize> = m
+        .keys()
+        .enumerate()
+        .filter(|(_, k)| !is_integer_like_key(k))
+        .map(|(i, _)| i)
+        .collect();
     let mut out = indexmap::IndexMap::with_capacity(m.len());
-    for k in ordinary_own_property_keys(m) {
-        // every key came from m; the lookup cannot miss
-        if let Some(v) = m.get(&k) {
-            out.insert(k, v.clone());
-        }
+    for i in integer_keys_in_order(m).chain(plain) {
+        // every index came from this map's key walk; the lookup cannot miss
+        let (k, v) = m.get_index(i).expect("index from the same map's walk");
+        out.insert(k.clone(), v.clone());
     }
     out
 }

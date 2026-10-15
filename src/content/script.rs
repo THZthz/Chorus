@@ -581,7 +581,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 decks.push(parse_deck_line(t, ln + 1)?);
             }
             "triggers" => {
-                triggers.push(parse_trigger_line(t, ln + 1, dict)?);
+                triggers.push(parse_trigger_line(t, ln + 1)?);
             }
             "functions" => {
                 functions.push(parse_function_line(t, ln + 1)?);
@@ -667,7 +667,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     let slot = parse_slot_line(grp_text(&m, 1), grp_text(&m, 2), ln + 1)?;
                     v.slots.push(slot);
                 } else if in_recipes && indent >= 6 {
-                    let recipe = parse_recipe_line(t, ln + 1, dict)?;
+                    let recipe = parse_recipe_line(t, ln + 1)?;
                     v.recipes.push(recipe);
                 } else {
                     return Err(ChorusError::new(format!(
@@ -683,8 +683,8 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 
     // §9.14: a name is one card — declared both ways, every SPAWN of the
     // prototype would collide with the living entity (§9.19); fail at load.
-    // `Object.keys` semantics — the canonical order fronts integer-like
-    // keys, so the walk goes through the canonical key order (prototype names are
+    // The canonical order fronts integer-like keys, so the walk goes
+    // through `ordinary_own_property_keys` (prototype names are
     // `\S+`, so "5 is idea" is a real key shape here).
     for name in ordinary_own_property_keys(&prototypes) {
         if entity_names.contains(&name) {
@@ -938,9 +938,8 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
 // trigger lines
 // ---------------------------------------------------------------------------
 
-/// `ln` is the 1-BASED line number. (`_dict` is never read — the trigger
-/// grammar needs no dictionary.)
-fn parse_trigger_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<TriggerDef> {
+/// `ln` is the 1-BASED line number. (the trigger grammar needs no dictionary.)
+fn parse_trigger_line(t: &str, ln: usize) -> Result<TriggerDef> {
     // expiry form: ID on expire of NAME -> OUTCOMES (§6.6, §9.32)
     if let Some(exp) = expire_re().captures(t) {
         return Ok(TriggerDef::Expire(ExpireTriggerDef {
@@ -1135,8 +1134,8 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
     })
 }
 
-/// `ln` is the 1-BASED line number. (`_dict` is never read.)
-fn parse_recipe_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<RecipeDef> {
+/// `ln` is the 1-BASED line number.
+fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     // the ASCII `->` needle aligns byte and
     // UTF-16 unit offsets, so the byte slices carry the same text
     let Some(arrow) = t.find("->") else {

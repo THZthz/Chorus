@@ -128,10 +128,6 @@ pub(crate) struct RawSite<'c> {
     pub verb: Option<usize>,
     /// recipe selection guard (None → default)
     pub when: Option<Pred>,
-    /// Assigned but never read (only `i > 0` feeds shadow_risk at the
-    /// walk_list call); carried as data with no consumer
-    #[allow(dead_code)]
-    pub recipe_index: i64,
     /// an earlier recipe of the same verb exists (first-match may shadow)
     pub shadow_risk: bool,
     /// enclosing IF conditions
@@ -337,7 +333,6 @@ pub(crate) struct RecordCx<'c, 'a> {
     pub owner: &'a str,
     pub verb_idx: Option<usize>,
     pub when: Option<&'a Pred>,
-    pub recipe_index: i64,
     pub shadow_risk: bool,
     pub shadowed: bool,
     pub own_slot: Option<i64>,
@@ -514,7 +509,6 @@ pub(crate) fn collect_sites<'c>(
                 &format!("recipe {} of {}", r.id, verb.name),
                 Some(vi),
                 r.when.as_ref(),
-                i as i64,
                 i > 0,
                 shadowed,
                 &mut census,
@@ -530,7 +524,6 @@ pub(crate) fn collect_sites<'c>(
             &format!("trigger {}", t.id()),
             None,
             None,
-            0,
             false,
             false,
             &mut census,
@@ -557,7 +550,6 @@ fn walk_list<'c, 'a>(
     owner: &'a str,
     verb_idx: Option<usize>,
     when: Option<&'a Pred>,
-    recipe_index: i64,
     shadow_risk: bool,
     shadowed: bool,
     census: &mut Census<'c>,
@@ -575,7 +567,6 @@ fn walk_list<'c, 'a>(
         owner,
         verb_idx,
         when,
-        recipe_index,
         shadow_risk,
         shadowed,
         own_slot,
@@ -808,7 +799,6 @@ fn record_visit<'c, 'a>(
     let owner = cx.owner;
     let verb_idx = cx.verb_idx;
     let when = cx.when;
-    let recipe_index = cx.recipe_index;
     let shadow_risk = cx.shadow_risk;
     let shadowed = cx.shadowed;
     let own_slot = cx.own_slot;
@@ -911,7 +901,6 @@ fn record_visit<'c, 'a>(
             owner: owner.to_string(),
             verb: verb_idx,
             when: when.cloned(),
-            recipe_index,
             shadow_risk,
             path: path.clone(),
             seg,
@@ -951,7 +940,6 @@ fn record_visit<'c, 'a>(
             owner: owner.to_string(),
             verb: verb_idx,
             when: when.cloned(),
-            recipe_index,
             shadow_risk,
             path: path.clone(),
             seg,
@@ -981,7 +969,6 @@ fn record_visit<'c, 'a>(
                 owner: owner.to_string(),
                 verb: verb_idx,
                 when: when.cloned(),
-                recipe_index,
                 shadow_risk,
                 path: path.clone(),
                 seg,

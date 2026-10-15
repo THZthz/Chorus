@@ -163,7 +163,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             // Real escape semantics (Q10, fixed batch 3): the named
             // single-character escapes are the characters themselves (the
             // frozen set, Q8), an unknown escape keeps its literal
-            // next unit (the ECMA-262 `NonEscapeCharacter` rule), and a trailing backslash
+            // next unit (the frozen unknown-escape rule, Q10), and a trailing backslash
             // is unterminated — nothing follows for it to escape.
             let mut j = i + 1;
             let mut out: Vec<u16> = Vec::new();
@@ -225,7 +225,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                 // same start, so text equality is length equality)
                 if units_to_string(&rest[..num_len]) == units_to_string(&rest[..g1_len]) {
                     let dur_text = units_to_string(&rest[..dur_len]);
-                    toks.push(Tok::Dur { v: dur_to_minutes(&dur_text)? });
+                    toks.push(Tok::Dur { v: parse_duration(&dur_text)? });
                     i += dur_len;
                     continue;
                 }
@@ -264,12 +264,6 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
         )));
     }
     Ok(toks)
-}
-
-/// One duration grammar (§5.1): the unit table lives in `clock`'s
-/// parse_duration, shared with the quoted-string expires path (§4.2).
-fn dur_to_minutes(s: &str) -> Result<i64> {
-    parse_duration(s)
 }
 
 #[cfg(test)]
@@ -331,7 +325,7 @@ mod tests {
         // byte-identical under the new semantics
         assert_eq!(lex("\"a\\\"b\"").unwrap(), vec![Tok::Str { v: "a\"b".into() }]);
         // a non-escape letter keeps the literal next unit
-        // (the ECMA-262 `NonEscapeCharacter` rule)
+        // (the frozen unknown-escape rule, Q10)
         assert_eq!(lex(r#""a\qb""#).unwrap(), vec![Tok::Str { v: "aqb".into() }]);
         // unterminated
         let e = lex("\"abc").unwrap_err();

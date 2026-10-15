@@ -2117,13 +2117,11 @@ struct PassResult {
     records: Vec<ActionRecord>,
 }
 
-/// One hoisted expiry snapshot entry: `id`, `name`,
-/// `at`. `name` is never read (fire_slot re-reads the LIVE entity's name);
-/// kept to mirror the snapshot shape.
+/// One hoisted expiry snapshot entry: `id` and `at`. fire_slot re-reads the
+/// LIVE entity's name, so a snapshot name field would be carried data with no
+/// consumer.
 struct Expiring {
     id: String,
-    #[allow(dead_code)]
-    name: String,
     at: i64,
 }
 
@@ -2174,7 +2172,6 @@ fn resolve_due(
         })
         .map(|e| Expiring {
             id: e.id.clone(),
-            name: e.name.clone(),
             at: match e.attrs.get("expiresAt") {
                 Some(AttrValue::Num(n)) => *n,
                 _ => unreachable!("filtered to a number above"),

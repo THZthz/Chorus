@@ -1,10 +1,14 @@
 //! grep gate, Rust form (TEST-12, plan §4-W0 / §5.4): `rand::` must not
-//! appear anywhere under src/core or src/engine — the counter RNG in
-//! core/dice.rs is the ONLY randomness (law 5). The TS originals
-//! (test/dice.test.ts:935-943, test/decks.test.ts:831-838) grep src/ for
-//! `Math.random`; this is the gate skeleton — later waves extend it
-//! (engine-path unwrap/expect, float in the dice path — the vector table
-//! itself is that probe).
+//! appear anywhere under rust/src — the counter RNG in core/dice.rs is the
+//! ONLY randomness (law 5). The TS originals (test/dice.test.ts:935-943,
+//! test/decks.test.ts:831-838) grep src/ for `Math.random`; the W6 收口
+//! (plan §4-W6) finalizes the gate: `rand::` over the WHOLE tree, the
+//! literal `Math.random` absent likewise, and the discarded tui.tsx layer
+//! (ink/react — plan §1.3) confirmed zero-residue. All three, like the
+//! engine-path unwrap/expect gate below, are TEXTUAL scans — the honest
+//! limitations are registered on each test (defanged comments/strings, no
+//! syntax tree; a determined adversary can defeat a grep, and the gate only
+//! ever promised to catch accidents).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,14 +28,20 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-#[test]
-fn no_rand_crate_anywhere_in_core_or_engine_sources() {
+fn rust_sources() -> Vec<PathBuf> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
-    for d in ["core", "engine"] {
-        collect_rs_files(&src.join(d), &mut files);
-    }
-    let offenders: Vec<String> = files
+    collect_rs_files(&src, &mut files);
+    files.sort();
+    files
+}
+
+#[test]
+fn no_rand_crate_anywhere_in_rust_sources() {
+    // W6 定稿: the W0 skeleton scanned core/ + engine/ only; the final gate
+    // is the whole tree (bins included — a CLI reaching for `rand` would be
+    // exactly the law-5 accident this exists to catch).
+    let offenders: Vec<String> = rust_sources()
         .iter()
         .filter(|f| {
             fs::read_to_string(f)
@@ -43,7 +53,60 @@ fn no_rand_crate_anywhere_in_core_or_engine_sources() {
     assert_eq!(
         offenders,
         Vec::<String>::new(),
-        "rand:: must not appear in core/engine sources: {offenders:?}"
+        "rand:: must not appear in rust sources: {offenders:?}"
+    );
+}
+
+/// the TS gate's literal form, mapped: test/dice.test.ts:935-943 /
+/// test/decks.test.ts:831-838 grep the TS src/ for `Math.random`; the Rust
+/// tree must not carry the literal either (outside comments — doc prose
+/// ABOUT the gate is defanged, see [`blank_comments_and_strings`]).
+#[test]
+fn no_math_random_literal_anywhere_in_rust_sources() {
+    let offenders: Vec<String> = rust_sources()
+        .iter()
+        .filter_map(|f| {
+            let text = fs::read_to_string(f).ok()?;
+            let defanged = blank_comments_and_strings(&text);
+            defanged
+                .contains("Math.random")
+                .then(|| f.display().to_string())
+        })
+        .collect();
+    assert_eq!(
+        offenders,
+        Vec::<String>::new(),
+        "Math.random must not appear in rust sources (RNG is core/dice.rs's counter only): {offenders:?}"
+    );
+}
+
+/// tui.tsx 可丢弃清单 zero-residue, formalized (plan §4-W6 acceptance): the
+/// ink/react component layer was ruled out of scope (plan §1.3) and no
+/// equivalent was ever written — this is the standing check that it stays
+/// that way. Scanned after comment/string blanking, so the doc comments
+/// SAYING "the ink/react TUI is not ported" do not trip it, and the reach
+/// CLI's FROZEN usage text (`tsx tools/reach-cli.ts …`, a string literal)
+/// is defanged too.
+#[test]
+fn no_tui_ecosystem_residue_in_rust_sources() {
+    const RESIDUE: [&str; 6] = ["react", "jsx", "tsx", "useState", "useEffect", "ink!"];
+    let offenders: Vec<String> = rust_sources()
+        .iter()
+        .filter_map(|f| {
+            let text = fs::read_to_string(f).ok()?;
+            let defanged = blank_comments_and_strings(&text);
+            let hits: Vec<&str> = RESIDUE
+                .iter()
+                .copied()
+                .filter(|tok| defanged.contains(tok))
+                .collect();
+            (!hits.is_empty()).then(|| format!("{}: {hits:?}", f.display()))
+        })
+        .collect();
+    assert_eq!(
+        offenders,
+        Vec::<String>::new(),
+        "ink/react (tui.tsx) residue found in rust sources: {offenders:?}"
     );
 }
 
@@ -235,8 +298,9 @@ fn no_unwrap_or_expect_outside_cfg_test_paths_under_src() {
     // Textual approximation — documented limitations: (1) a call split
     // across lines (`.unwrap`\n`()`) would slip; (2) block comments are
     // treated as non-nested; (3) pathological lifetimes cannot be confused
-    // with char literals in valid Rust. If drift ever appears, W6's 定稿
-    // upgrades the mechanism — NOT the rule.
+    // with char literals in valid Rust. W6 定稿 keeps the mechanism TEXTUAL
+    // (upgrading to a syntax tree would need a new dependency — rule 6) and
+    // registers the limitations instead; the rule itself is unchanged.
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
     collect_rs_files(&src, &mut files);

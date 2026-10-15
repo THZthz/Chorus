@@ -325,6 +325,7 @@ core set is a default, not a closed wall.
 | `ROLLED`  | total, ctrAfter                 | **engine-written only** (§9.41): the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
 | `DRAW`    | deck [, INTO target]            | draw the next card of a `decks:` declaration (§9.42): paren-less, the deck id is a plain name (a declared-deck check runs at load, over recipes and triggers, IF branches included); INTO is the SPAWN target grammar, and must RESOLVE — a role over empty event bindings or a dead ref rejects the step rather than materializing the card nowhere. With no INTO the mint reuses SPAWN's default (the step's `at` card, else the first actor's `container`; in triggers, where bindings are empty, the card is minted containerless unless an explicit INTO is authored). The deck entry may name a prototype or a declared entity; repeats in the spec weight the draw. The log records the engine-written `DRAWN(<DECK>, <name>)` + the concrete `SPAWN … AS #id` pair — no DRAW ever appears in the log |
 | `DRAWN`   | deck, name                      | **engine-written only** (§9.42): the record of one DRAW — the fold advances that deck's cursor, asserting `name` is exactly what the compiled permutation serves at the cursor (content drift between play and fold fails loud). Authoring one is a load error |
+| `RUN`     | `"recipe-id"` `, …`             | chain the completion (§9.47): walk the candidates in order, pin the first whose `when:` matches the post-outcome draft (lenient, §6.4) and whose `max` (§9.50) is unspent, and open it as a follow-up window on its verb with the parent's bindings; no match — the chain ends silently; zero-concrete (the follow-up's BEGIN row is the only record). In recipe bodies: same verb, load-checked; in `on complete` bodies: cross-verb legal (global id table), the parent's own station is not busy. A second RUN op in one completion rejects the window |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -360,6 +361,11 @@ Slot queries test **one card at a time**. Anything about a *group* (size,
 relations between members, pooled power) is a recipe condition (§6.3) — that
 is deliberate: the UI can grey-out invalid drops from slots alone, while
 group logic stays narrative.
+
+Alternation (v0.3.6, §9.49): `|` separates conjunction groups —
+`aspect:ability | aspect:job aspect:ritual` matches ability, or job AND
+ritual — with every term form unchanged; legal wherever a query parses
+(slots, `exists()`, `count()`).
 
 ---
 
@@ -1740,6 +1746,197 @@ Two invariants keep the mapping safe:
     (the §5.2 round-trip). Output is byte-identical wherever a single exact
     unit fits; minutes that fit no unit (`61m`, `100m`) now render compound
     instead of raw — the one visible rendering change.
+
+### Implementation rulings (v0.3.6, the Cultist Simulator five)
+
+These five rulings close the dossier's "needs authoring translation" list
+(`linked` chains, xtriggers, induces, any-of slots, `maxexecutions`).
+Numbering starts at 47: the implementation already cites a §9.46 (expires
+anchoring / WAIT-row span) that this document has not yet backfilled — 46
+stays reserved for it.
+
+47. **`RUN` — a completion may chain into named follow-up recipes**
+    (§4.4, §6.4, §6.7). New outcome op:
+
+        RUN "recipe-id" [, "recipe-id" …]
+
+    - **Arg form: quoted-string refs.** Recipe ids are lowercase and dotted
+      (`study.recipe0`; minted ids are `<verb>.recipe<i>`) and the lexer's
+      NAME class has no dot, so a bare id is unlexable — the args are
+      quoted-string refs (the `DRAWN` precedent). `RUN` joins the reserved
+      words (§5.1; the ROLL/DRAW precedent for authored ops).
+    - **Semantics: an ordered candidate walk.** When the carrying window's
+      completion applies its outcomes, RUN walks its candidates IN ORDER and
+      pins the FIRST whose `when:` matches the post-outcome draft —
+      evaluated LENIENT, `strict: false`, exactly like selection (§6.4) —
+      and whose `max` budget (§9.50) is not spent; it then opens ONE
+      follow-up window on that recipe's verb with the parent's committed
+      role bindings, beginning at the completion clock. The `when:` IS
+      re-evaluated: CS's linked hand-off is requirement-disambiguated (81
+      all-chance-100 multi-entry routers; dream_router's six; the victory
+      forks), so a pinned-id-no-check rule would make them inexpressible.
+      No candidate matches: nothing opens — the chain ends, silently (that
+      is CS's chain ending, not a refusal).
+    - **Chance is authored around it** — `ROLL` + `IF` in the parent
+      (`IF roll <= 90 -> (RUN "…success") ELSE -> (RUN "…failure")`,
+      §9.41/§9.39). Candidates with IDENTICAL requirements are this form,
+      not the list form: the list walk would always pin the first, so pure
+      chance forks (210 of CS's 335 multi-entry parents) author one RUN
+      per IF arm — one arm evaluates, one RUN applies. A second RUN OP
+      reached in one completion rejects the window (a station holds one
+      window, §6.7); the list is the only multi-candidate shape, and
+      deeper chains author RUN inside the follow-up's own outcomes.
+    - **The guard survives.** The pinned recipe's top-level `REFUSE` still
+      gates, inline against the draft at the parent's completion — a
+      Phase-3-shaped trial (PROGRESS skipped, scratch rng/id consumption
+      discarded, §6.6) whose refusal rejects the PARENT window (§6.7's
+      window-refuse: the COMPLETE row carries the marker, partial effects
+      discarded).
+    - **Concretization: zero-concrete op.** RUN is the first op that logs
+      NOTHING of itself — the follow-up's BEGIN row is the record. The
+      fire result grows an extra-records slot; the follow-up window is
+      inserted after the parent window leaves the open table, is
+      registered through the ONE registration path play and fold share
+      (so the insert and the fold's BEGIN replay cannot drift), and the
+      pass loop picks the new due window up on its next iteration (the
+      `advance_extra` precedent). Content that drops a RUN stops
+      producing follow-up BEGINs in future play; old logs replay
+      untouched.
+    - **Livelock guard.** Cycles are legal (needs→discardseason→drawseason
+      →needs is one and must stay legal), but a cycle of zero-duration
+      follow-ups generates unbounded due work inside one pass: an advance
+      pass that completes more than 1024 windows fails loud — a
+      documented guard with a pinned test, the §9.44 posture.
+    - **Load checks.** In a recipe body every candidate must name a recipe
+      of the PARENT verb (unknown or cross-verb id: load error, IF
+      branches included — the §9.35 walk). In an `on complete` body
+      (§9.48) candidates may cross verbs, which requires GLOBAL recipe-id
+      uniqueness: a cross-verb resolution consults a global id table, and
+      a collision across verbs is a load error.
+    - **Out of slice (reserved)**: CS `linked`-entry `challenges` (21
+      entries, the Exile `long.*` rolls — authorable today as ROLL + IF
+      with the dossier's convention tables) and the 8 inline recipe
+      definitions (compile to ordinary declared recipes);
+      `additional`/`expulsion` never occur in core linked entries
+      (0/1473).
+
+48. **`on complete` — completion triggers on a card; recipe `aspects`**
+    (§6.7, §10; covers CS xtriggers + induces). New entity/prototype
+    trigger line — ID-less, a new home beside the section-scoped,
+    always-ID'd `triggers:` forms:
+
+        on complete [<aspect>] -> ( outcomes )
+
+    and the recipe-line token it gates on (positional, beside
+    `[id] [hidden|shown] [hint] [when] ->`):
+
+        aspects <name> [, <name>]*          # presence list, level 1
+
+    The recipe-line id detector's keyword exclusion grows accordingly:
+    a leading token is an id only when it matches the id class and is not
+    one of `when`, `hidden`, `shown`, `max`, `aspects` (§9.50 for `max`).
+
+    - **Semantics.** When a window completes, AFTER the recipe's own
+      outcomes and BEFORE any RUN: each card bound in the window's
+      committed locked roles — the same set §6.7 makes busy, the
+      player-dropped station card included; deduped (a card bound through
+      two roles fires once); fired in the lock list's order; actors stay
+      free — fires its `on complete` triggers. The bare form fires on
+      every completion binding the card; the aspect form fires iff the
+      completed recipe declares that aspect. Outcomes apply on the draft;
+      a downstream rejection discards the whole completion (law 4/§9.19).
+    - **Deliberate deviations from the other trigger kinds.** Completion
+      triggers produce NO EVENT row and never touch `state.fired`: their
+      outcomes are logged as concrete rows appended to the COMPLETE row's
+      outcome list in fire order (the fold replays them without
+      recomputing gates; play and fold share the firing function — the
+      §9.42 one-serving-function rule). Their bodies see the WINDOW's
+      re-resolved bindings — the empty-bindings rule of slot/expire
+      triggers (§9.42's DRAW-INTO rule) does NOT apply, and the role-free
+      load lint does not run on them. A failure inside the body refuses
+      the WINDOW, not the event triggers' whole-step throw. `REFUSE` in
+      the body is a load error (§9.34).
+    - **RUN inside the body is legal and may cross verbs** (§9.47's global
+      id table). The busy check for such a follow-up EXCLUDES the parent's
+      own window — otherwise a same-verb hand-off would see its own
+      station busy and silently skip forever (an invisible content bug;
+      the ordering hazard is specified away, not left to implementation
+      order). Any OTHER busy station skips the candidate silently. This
+      is what makes CS's `induces job→needs` expressible: a work
+      completion containing the job card hands off to the time verb — a
+      one-shot bootstrap, after which the needs cycle (60 s, 100 % links)
+      keeps the time station resident and later induces correctly
+      suppress.
+    - **The gate's emitter is authored.** An aspect with no declaring
+      recipe never fires. CS's recipe `aspects` cover 71 of its 95 xtrigger
+      events; for the rest the consuming recipe declares what it emits.
+      Where ONE recipe consumes many carriers (CS `translate`, requirements
+      `{text: 1}`, serving ~95 texts), a declaration would cross-fire —
+      the converter SPLITS it into per-carrier `when:`-selected variants,
+      each declaring its language (the 8 `scholar*` events). Six Exile
+      corpse carriers (`remnant`/alzabo, bound nowhere) are out of slice
+      with the rest of `long.*`. The CS value duality needs no mechanism:
+      1517 of 1519 xtrigger values are ELEMENT ids — the trigger lives on
+      the carrier itself (`REPLACE` self) — and the 2 recipe ids are RUN
+      targets.
+    - **`aspects` is content, not state** — it never enters the log;
+      content drift changes which triggers fire in FUTURE play only
+      (§9.30 posture). `ROLL` inside consumes counters normally (§9.41);
+      `ENDING` inside ends the story (§9.35, first wins).
+
+49. **Alternation in the query mini-language** (§4.5). CS verb slots are
+    ANY-OF maps (`work`: ability OR job OR ritual OR desire OR benefactor
+    at level ≥ 1). The query grammar gains top-level alternation over
+    conjunction groups:
+
+        query := and ( '|' and )*        and := term+        term := '-'? atom
+
+    - **Terms are unchanged** — every existing atom form composes inside a
+      group: levels (`aspect:lore>=6`; CS element slots reach 6, recipe
+      requirements 8), sub-aspect keys, attr state, exact-case names, and
+      per-term negation (`-aspect:lunatic` is CS's negative requirement).
+      `|` binds loosest; a leading/trailing `|` or an empty group is a
+      parse error.
+    - **Legal homes**: every §4.5 consumer — slot `query:` strings and the
+      `exists()` / `count()` inner queries (§9.38) — one parser, one
+      behavior. There is deliberately NO canonical printer: queries are
+      authored strings, never serialized and never logged, so the §5.2
+      round-trip does not apply to them.
+    - **Selection stays per-card**: the DNF evaluates against ONE card
+      (the UI's drop-grey-out is unchanged); group logic remains a recipe
+      concern (§4.5's deliberate split). CS `forbidden` maps need no
+      alternation — all 16 multi-key maps are conjunctions of negations,
+      already expressible.
+
+50. **`max N` — recipe execution limits** (§6.4). CS's `maxexecutions`
+    (26 recipes: 25 × max 1, 1 × max 3). New positional recipe-line token:
+
+        max N                              # N ≥ 1, integer
+
+    - **Semantics.** At selection (§6.4's walk) a recipe whose execution
+      count is ≥ N is skipped — the walk continues; `max 1` is the recipe
+      analog of a once-trigger. The same gate applies to RUN's candidate
+      walk (§9.47): an exhausted candidate is simply non-matching.
+    - **The count.** `State.executed: IndexMap<recipe-id, i64>`, cloned
+      like every state field (law 6), maintained by the ONE
+      window-registration path play and fold share: a registered window
+      increments each clause's commit-time recipe id on the draft. A
+      table-refused step opens no window and counts nothing; a window
+      that later refuses still counted (it registered at begin). The fold
+      rebuilds the map through the same registration path from BEGIN
+      rows — selection reads only the state map, never the log (the
+      `fired` precedent, §9.29).
+    - **Interaction.** `hintonly`/`shown` recipes respect `max` the same
+      way (a spent recipe stops being suggested). A max change under an
+      old log changes FUTURE selection only (§9.30 posture).
+
+*Closing note (not a ruling).* The five land as: one outcome op (`RUN`),
+one trigger line + one recipe token (`on complete` / `aspects`), one
+grammar extension (`|`), one recipe token + one State map (`max`). The
+background-tick question (dossier §6) is answered for the slice WITHOUT a
+pump: the `job→needs` induce bootstraps the time loop, and the loop — once
+resident, self-rechaining at 100 % — suppresses later bootstraps exactly as
+CS's does. A true unattended pump remains future work.
 
 ## 10. The script format — a game as one text file
 

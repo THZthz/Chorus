@@ -349,82 +349,79 @@ door decks.
   Seasons with a 60 s Reckoner roll: 10% at 0 Traces, 30% at 1, 70% at 2+; 7 Wounds →
   death). Levers carry "who/what survived" into the next run.
 
-## 6. Mapping onto Chorus
+## 6. Mapping onto Chorus (rewritten 2026-10-15 against the Rust engine)
 
-What the engine survey (`docs/spec/text-engine-v0.2.md`, src/) says — every claim below
-source-verified (§8):
+This section **supersedes the v1 mapping**, which was written against the retired
+TypeScript prototype (`src/engine.ts`) and is obsolete. The engine is now Rust
+(`src/engine/engine.rs`, `src/core/…`), and every "engine gap" the v1 listed has since
+been closed in code. Every claim below was verified against the current source on
+2026-10-15 (same pass as §9); `src/core/types.rs` and the spec sections cited in the
+code comments are ground truth.
 
-**Maps directly**
+**Maps directly (zero engine changes needed)**
 
-| CS | Chorus |
+| CS | Chorus (Rust, verified) |
 |---|---|
-| verb stations + slots | verbs + `slots` with queries (`src/content.ts:14`) |
-| recipe requirements (AND, totals) | recipe `when` predicates: `total(object, aspect:x) >= 2`, quantifiers |
-| negative requirements (absent) | `NOT any(...)`, `aspect:x < 1` |
-| warmup + progress bar | processing window + authored `PROGRESS` ticks |
-| effects (+/− elements) | `SPAWN` / `DESTROY` outcomes |
-| unique cards | names unique among the living (already enforced, and stricter) |
-| card lifetimes / decay | `SET x, expires, Nm` + engine expiry (`src/engine.ts:362`) |
-| periodic seasons / timed world events | repeating & `once` triggers on halfhour slots |
-| hintonly suggestions | `shown`+`hint` recipes, `Game.suggestions()` |
-| followers/cult/social graph | relations + multi-actor `actors` roles |
-| timetables pressing the player | Nightjar-style once-triggers |
+| verb stations (7) + slots | `verbs:` script section + processing windows (§6.7, commit-time recipe snapshot); all 7 lexemes already in `CORE_VERBS`: WORK, DREAM, TALK, EXPLORE, STUDY, WAIT, MANSUS (`dict.rs:13`) |
+| recipe requirements (AND, totals) | recipe `when:` predicates (`total(...) >= 2`, quantifiers) |
+| negative requirements (absent) | negated terms / `< 1` comparisons |
+| warmup + progress bar | `OpenWindow` start/end + authored `PROGRESS` |
+| effects (+/− elements) | `SPAWN` / `DESTROY` / `REPLACE` outcomes (`OUTCOME_OPS`, `dict.rs:80`); `funds:-999` = DESTROY across the situation's bound copies |
+| unique cards | unique-name law (§9.14) |
+| card stacking (3 Dread) | `stackable` declarations + name pools + oldest-named addressing (§9.38) |
+| lifetimes / `decayTo` transforms | `SET x, expires, Nm` + authored `on expire of NAME` triggers (§9.32) — a transform, not just destroy |
+| chance (`linked` rolls, induces) | `ROLL`/`ROLLED` + the seeded `State.rng` counter; each draw lands in the log as `ROLLED(total, ctrAfter)` so the fold replays deterministically (§9.41) — v1's recommended option (b), shipped |
+| `deckeffects` / `internaldeck` | `DRAW`/`DRAWN` + per-deck cursors + `draw_from` exhaustion rules (§9.42) |
+| endings (48) | `ENDING` outcome + `State.ended` (§9.35) |
+| `extantreqs` / `tablereqs` | `exists()` / `count()` predicates over the whole living world (§9.38; `predicate.rs:493`) — the v1 "not expressible" note is obsolete |
+| conditional chains / challenge rolls | `IF`/`ELSE` outcome arms (§9.39) reading the last `ROLL`; strict arms reject the step |
+| hintonly suggestions | `shown` + `hint` recipes |
+| followers/cult/social graph | relations (8 registered types) + multi-actor roles |
+| timetables pressing the player | once-triggers (`State.fired`, §9.29) |
+| `signalEndingFlavour` | `Ending {id, title, flavour}` |
 
-**Not expressible today (add to gaps):** CS's `extantreqs`/`tablereqs` — Chorus
-predicates see **only the step's bound roles + relations** (`PredCtx`, predicate.ts:11),
-there is no world-existential "does a card X exist anywhere" check.
+**Needs authoring translation (spec'd in engine v0.3.6 — `text-engine-v0.2.md`
+§9.47–50: RUN chains, `on complete` triggers + recipe `aspects`, query
+alternation, `max` — not yet implemented; until the engine lands them, a
+converter inlines)**
 
-**Needs authoring idioms (engine as-is)**
+- **`linked` chains** (needs→discardseason→drawseason→needs; expedition ticks): there
+  is no "start another recipe" outcome — inline each chain into one outcome list,
+  rolling every former link with `ROLL` and branching with `IF`. A chain loop becomes
+  one repeating WAIT recipe.
+- **`xtriggers`** (running recipe aspects transform contained cards, e.g.
+  `fatiguing`→fatigue): no compiled hook — each recipe that runs with such aspects
+  authors the REPLACE/SET outcomes itself. Cheap for the slice; the real cost centre
+  of a full 2,084-recipe conversion.
+- **`induces`** (post-recipe chance hook on a card): same inline treatment.
+- **Any-of verb slot** (`ability OR job OR ritual…`): slot queries are conjunctions;
+  gate via `when:` predicates with `any()`/`exists()` — one recipe per entry aspect
+  (v1's idiom stands).
+- **`maxexecutions`** → `SET used` flags + `attr < 1` gates (v1's idiom stands).
 
-- Any-of verb slot (`ability OR job OR ritual…`) → Chorus slot queries are pure
-  conjunctions (query.ts `every(term)`); author one recipe per entry aspect whose `when`
-  checks the others absent, or relax slots and let recipes sort it out.
-- "Time Passes" → a `WAIT` verb with repeating triggers (Nightjar idiom, scaled down).
-- `maxexecutions` → `SET used, 1` flags + `attr < 1` gates.
+**The one remaining engine-side question: the background tick**
 
-**Engine gaps to close before a faithful clone**
+`State.windows` already holds several simultaneous stations, but time advances only
+through player steps (`ADVANCE`/`WAIT`) — there is no auto-tick pump anywhere in
+`src/session`/`src/engine`, and CS's Time-Passes runs unattended. Two routes:
+(a) accept turn-driven time — Time Passes is an explicit repeating WAIT verb (the
+Nightjar model, pure data, enough for the slice); (b) add a small pump that commits
+synthetic WAIT steps for elapsed spans. (b) is a design decision, not a blocker —
+and the v0.3.6 `job→needs` induce (§9.48 + §9.47 cross-verb RUN) makes it moot for
+the slice: the first work-like completion bootstraps the self-rechaining seasonal
+loop, which then suppresses later bootstraps exactly as CS's does.
 
-1. **No arithmetic in outcomes** — `SET` writes literals only (engine.ts:357-361; the
-   one exception is prototype `derive`'s literal subtraction at SPAWN, engine.ts:306,
-   which mints, not increments), so "+1 dread", "funds +2", lore `level+1` are
-   inexpressible; CS's entire economy/counters depend on increments. Needs
-   `SET x, funds, +2` (or a dedicated INCREASE op) — the biggest single gap.
-2. **No RNG** — chance (`linked` rolls, induces, decks) is everywhere in CS (core
-   content hard-codes its probabilities; the `ChallengeArbiter` tables in §2 are the
-   canonical curve). Options: (a) deterministic re-balancing (always-first-chain,
-   fixed outcomes) — playable but not CS; (b) seeded RNG whose draws are recorded as
-   EVENT rows so fold stays deterministic (log format may break, spec §9.30).
-   Recommendation: (b), with the base convention (30/70/90) as the canonical curve.
-3. **No card stacking** — names unique among the living forbids a pile of 3 Dread
-   (CS solves it with stacking singleton + counters); counters must be singleton cards
-   with incremented attrs (depends on gap 1).
-4. **Expiry is destroy-only** — CS `decayTo` transforms (influence → weaker influence,
-   health → fatigue, summons → defunct). The engine's expiry handler constructs a bare
-   DESTROY (engine.ts:533-540) and `TriggerDef` has no expiry hook; needs authorable
-   expiry outcomes.
-5. **No endings** — needs an ending table + post-step detection (desire card at f,
-   `inducesdespair ≥ 3`, damning evidence at court…) and a game-over screen.
-6. **No decks/draws** — even with RNG, needs a deck entity (spec array, weighted
-   repeats, exhaustion, `defaultcard`) as a new prototype idiom.
-7. **No concurrent stations / background tick** — CS runs everything in parallel; Chorus
-   serializes time. Cheapest faithful route: a tick pump that commits synthetic WAIT
-   steps (crossing resolution already spans whole elapsed spans, engine.ts:230-237), or
-   accept turn-driven time and lean on `WAIT` (the Nightjar model).
-8. **New verbs** — CS's seven map to registered lexemes: work→WORK, dream→DREAM,
-   talk→TALK, explore→EXPLORE, study→READ (or register STUDY), time→WAIT,
-   portal.mansus→new registration. `Dictionary.registerVerb` is code-level (§12.4).
+**Scale note.** Core content is 2,084 recipes / 1,566 elements. With the v1 gap list
+closed, both scopes survive in updated form:
 
-**Scale note.** Core content is 2,084 recipes / 1,566 elements — authoring that by hand
-in script format is not realistic. Two viable scopes:
-
-- **Vertical slice (recommended):** one script implementing the loop of §3.5–3.6 —
-  Work/Funds, Time Passes + Seasons (Despair/Visions/Suspicion/Silence/Ambitions),
-  Study with a lore ladder, Dream chain to one Door, Talk with
+- **Vertical slice (recommended):** unchanged in shape — Work/Funds, Time Passes +
+  Seasons (Despair/Visions/Suspicion/Ambitions — Silence is not wired into `needs`,
+  §9-6), Study with a lore ladder, Dream chain to one Door, Talk
   acquaintances→cult→one promotion, one rite + one summon, one desire ending +
-  despair/visions endings. ~100–200 authored recipes; exercises every gap above.
-- **Converter:** a script that compiles CS core JSON → Chorus script files (mechanical
-  mapping is close: recipe→verb recipe, element→prototype, deck→trigger+draws). Only
-  worth it after the engine gaps close, and it would carry copyrighted
+  despair/visions endings. ~100–200 authored recipes, **zero engine changes**.
+- **Converter:** the mechanical mapping is now genuinely close — every CS mechanism
+  has a Chorus landing spot; the cost is the per-recipe inlining of
+  linked/xtriggers/induces above. It would still carry copyrighted
   `label/description` strings — must re-text, not copy.
 
 ## 7. Artifacts
@@ -445,7 +442,7 @@ in script format is not realistic. Two viable scopes:
   Blast radius is narrow: only *quoted-string* values hit the broken regex; bare
   duration literals are converted to minutes by the lexer first, so
   `SET(x, expires, 2halfhour)` works while `SET(x, expires, "2halfhour")` rejects the
-  step.
+  step. *(TS-era; moot since the Rust rewrite.)*
 
 ## 8. Verification audit (2026-10-12)
 
@@ -477,7 +474,9 @@ against `src/` + spec. Headline corrections applied above:
 9. Chorus mapping: `extantreqs`/`tablereqs` are **not** expressible (no
    world-existential predicate — predicates see bound roles only); prototype `derive`
    is the single literal-arithmetic exception to "no outcome math"; the `expires`
-   unit bug only bites quoted strings.
+   unit bug only bites quoted strings. *(Superseded 2026-10-15: all three were
+   TS-prototype findings — the Rust engine shipped `exists()`/`count()`, `SET`
+   deltas, and authored expire triggers; see the §6 rewrite and §9.)*
 
 Remaining unknowns (documented as unknown): the multi-match recipe tie-break (engine
 code, not in data); season rotation order; where "Risen" content lives (likely DLC);

@@ -13,8 +13,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 
-# plan §4-W5 T5.4 — the four TS tools/ CLI shapes (argv parsing, stdout text
-# and exit codes are the frozen surface; verification 03 CLI-01..05).
+# plan §2.1 — the five bin targets. The W6 line REPL (plan §4-W6 T6.1) is
+# new simplified UI; the four tools/ CLI shapes below are the frozen TS
+# surface (argv parsing, stdout text and exit codes; verification 03
+# CLI-01..05).
+[[bin]]
+name = "chorus"
+path = "src/bin/chorus.rs"
+
 [[bin]]
 name = "reach"
 path = "src/bin/reach.rs"

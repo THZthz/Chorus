@@ -52,9 +52,12 @@ pub struct Step {
 /// The log row. The serde field order is pinned: every make*Record
 /// construction site builds the same literal shape, and the `Option`s
 /// WITHOUT `skip_serializing_if` serialize as explicit `null` fields.
-/// `kind` stays a raw String: replay switches on it and ANY other
-/// value falls through to the action branch — the String preserves that
-/// open-world behavior (and JSON round-trips losslessly).
+///
+/// `kind` is deliberately a raw String, not a closed enum: replay switches
+/// on it and ANY unknown value falls through to the action branch. The
+/// open-world row vocabulary is this engine's choice — rows minted by a
+/// newer engine still replay in an older binary instead of failing to
+/// deserialize — and the String round-trips the JSONL losslessly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActionRecord {
     pub id: i64,
@@ -95,10 +98,20 @@ pub struct ExecResult {
 
 /// Execution options: the injected `id_gen` closure rides as
 /// `&mut dyn FnMut`; `None` selects the deterministic default minted inside
-/// [`execute_step`] (§9.3).
+/// [`execute_step`] (§9.3). [`Default`] is a fresh log's options — ids mint
+/// from 1 (an empty log's `next_record_id()`) with no injected gen.
 pub struct ExecOptions<'a> {
     pub first_record_id: i64,
     pub id_gen: Option<&'a mut dyn FnMut() -> String>,
+}
+
+impl Default for ExecOptions<'_> {
+    fn default() -> Self {
+        ExecOptions {
+            first_record_id: 1,
+            id_gen: None,
+        }
+    }
 }
 
 // ---------- role binding & slot validation (§6.1) ----------

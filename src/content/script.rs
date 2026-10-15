@@ -1309,10 +1309,10 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
     let mut warnings: Vec<String> = Vec::new();
     let verbs = &script.content.verbs;
     // raw default recipes carry no id — mirror compile_content's minting.
-    // QUIRK(Q1): the lint mirror mints 1-BASED ids;
-    // the compile side mints 0-based — frozen drift.
+    // Q1 unified: the SAME 0-based mint on both sides (`.recipe<i>`,
+    // §6.4) — the mirror's old 1-based base is retired.
     let recipe_id = |verb: &str, r: &RecipeDef, i: usize| {
-        mint_recipe_id(&verb.to_lowercase(), r.when.as_deref(), i, 1)
+        mint_recipe_id(&verb.to_lowercase(), r.when.as_deref(), i)
     };
 
     // a configured verb nobody can ever succeed with

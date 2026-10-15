@@ -473,9 +473,6 @@ pub fn compile_content(
         }
         let mut recipes = Vec::with_capacity(v.recipes.len());
         for (i, r) in v.recipes.iter().enumerate() {
-            // QUIRK(Q1): the COMPILE side mints 0-based `.recipe<i>` ids
-            // (pinned by the script-play fixture's `study.recipe0`); the lint
-            // mirror mints 1-based — frozen drift.
             // BOTH the id mint and the when parse read `r.when` JS truthiness:
             // '' is FALSY, so a hand-built
             // ContentRaw with when: '' rides as the DEFAULT recipe (id
@@ -488,13 +485,12 @@ pub fn compile_content(
                 Some(w) => Some(parse_predicate(w)?),
                 None => None,
             };
-            // QUIRK(Q1): the COMPILE side mints 0-based `.recipe<i>` ids
-            // (pinned by the script-play fixture's `study.recipe0`); the lint
-            // mirror mints 1-based — frozen drift.
+            // id-less recipes mint the 0-based `.recipe<i>` (§6.4) — the
+            // one mint, shared verbatim by the lint mirror (Q1 unified)
             let id = r
                 .id
                 .clone()
-                .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i, 0));
+                .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
             let mut out = Vec::new();
             for o in &r.out {
                 out.extend(parse_outcome_string(o, dict, &fns)?);
@@ -977,9 +973,12 @@ fn parse_outcome_string(src: &str, dict: &Dictionary, fns: &FnTable) -> Result<V
 /// `base = 1` is the
 /// lint mirror's 1-based `.recipe<i + 1>` (untested but frozen).
 /// Unifying the bases is a behavior change.
-pub(crate) fn mint_recipe_id(verb_lower: &str, when: Option<&str>, i: usize, base: usize) -> String {
+/// The ONE id mint for id-less recipes (§6.4): `<verb>.recipe<i>`, 0-based,
+/// or `<verb>.default` — the compile side and the lint mirror share it
+/// verbatim (Q1 unified: the mirror's old 1-based base is retired).
+pub(crate) fn mint_recipe_id(verb_lower: &str, when: Option<&str>, i: usize) -> String {
     match when {
-        Some(_) => format!("{verb_lower}.recipe{}", i + base),
+        Some(_) => format!("{verb_lower}.recipe{i}"),
         None => format!("{verb_lower}.default"),
     }
 }
@@ -1211,12 +1210,12 @@ mod tests {
     }
 
     #[test]
-    fn recipe_id_mint_keeps_both_frozen_bases() {
-        // QUIRK(Q1): compile 0-based vs lint 1-based, one function
-        assert_eq!(mint_recipe_id("study", Some("x"), 0, 0), "study.recipe0");
-        assert_eq!(mint_recipe_id("study", Some("x"), 3, 1), "study.recipe4");
-        assert_eq!(mint_recipe_id("study", None, 7, 0), "study.default");
-        assert_eq!(mint_recipe_id("study", None, 7, 1), "study.default");
+    fn recipe_id_mint_is_zero_based() {
+        // Q1 unified: the one mint, 0-based (the lint mirror's old 1-based
+        // base is retired)
+        assert_eq!(mint_recipe_id("study", Some("x"), 0), "study.recipe0");
+        assert_eq!(mint_recipe_id("study", Some("x"), 3), "study.recipe3");
+        assert_eq!(mint_recipe_id("study", None, 7), "study.default");
     }
 
     #[test]

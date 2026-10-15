@@ -342,7 +342,7 @@ fn the_showcase_compiles_the_full_script_grammar() {
     assert_eq!(game.content.verbs["STUDY"].duration, 90);
     // the id-less recipe mints a stable id; the shown gate carries its hint (§6.2)
     let study_gate = &game.content.verbs["STUDY"].recipes[0];
-    assert_eq!(study_gate.id, "study.recipe0"); // QUIRK(Q1): the 0-BASED compile-side mint
+    assert_eq!(study_gate.id, "study.recipe0"); // the 0-based mint, shared by compile and lint (Q1 unified)
     assert!(study_gate.shown);
     assert_eq!(study_gate.hint.as_deref(), Some("Whoever studies must read the tongue."));
     let use_on = &game.content.verbs["USE_ON"];

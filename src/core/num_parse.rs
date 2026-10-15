@@ -1,23 +1,27 @@
-//! Authored-integer parsing: the f64 middle step and its saturation tail
-//! (B-22 tracks the middle step itself).
+//! Authored-integer parsing (B-22, fixed): a DIRECT i64 parse of the
+//! integer literals the grammars admit — the authored bytes are the value.
 
-/// Authored integer literals parse through a correctly-rounded f64 middle
-/// step and only then land in the integer domain — a frozen engine choice.
-/// Rust's `str::parse::<f64>` rounds to nearest, ties to even, so a literal
-/// past 2^53 ("9007199254740993") lands on the nearest representable value
-/// (…992) rather than the exact integer (…993, which a direct
-/// `str::parse::<i64>()` would produce). The final f64→i64 `as` conversion
-/// saturates at the i64 bounds; no log pins that region.
+/// Authored integer literals parse directly into `i64` — no f64 middle
+/// step (B-22, fixed batch 3). Spec §10 says `seed:` is "an integer"; the
+/// former detour through `str::parse::<f64>` silently rewrote authored
+/// integers past 2^53 onto the nearest representable value
+/// ("9007199254740993" landed as …992). Now the authored bytes are the
+/// value: `str::parse::<i64>()` is exact through the whole i64 range.
 ///
-/// NaN can only occur for inputs the call sites' regexes already rejected;
-/// it maps to 0 rather than panicking.
+/// The overflow tail is DEFINED: a well-formed literal beyond the i64
+/// range saturates at its sign's bound (`i64::MAX` / `i64::MIN`) — the
+/// engine's documented saturation direction (`abs_min`, `checked_step`).
+/// Malformed input maps to 0; every call site's grammar admits only
+/// `-?[0-9]+`-shaped text, so that branch is defensive, never reachable.
 #[must_use]
-pub fn parse_i64_like_f64(s: &str) -> i64 {
-    let f: f64 = s.parse().unwrap_or(f64::NAN);
-    if f.is_nan() {
-        0
-    } else {
-        f as i64
+pub fn parse_authored_int(s: &str) -> i64 {
+    match s.parse::<i64>() {
+        Ok(v) => v,
+        Err(e) => match e.kind() {
+            std::num::IntErrorKind::PosOverflow => i64::MAX,
+            std::num::IntErrorKind::NegOverflow => i64::MIN,
+            _ => 0,
+        },
     }
 }
 
@@ -26,13 +30,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_i64_like_f64_rounds_like_f64_not_direct_i64() {
-        // direct i64 parse gives …993, the f64 middle step …992
-        assert_eq!(parse_i64_like_f64("9007199254740993"), 9007199254740992);
-        assert_eq!(parse_i64_like_f64("0"), 0);
-        assert_eq!(parse_i64_like_f64("47"), 47);
-        assert_eq!(parse_i64_like_f64("-5"), -5);
-        // > i64 range: saturates at the i64 bounds (no log pins that region)
-        assert_eq!(parse_i64_like_f64("99999999999999999999"), i64::MAX);
+    fn parse_authored_int_is_exact_past_2_53_and_saturates() {
+        // B-22: past 2^53 the authored bytes ARE the value — the f64
+        // middle step (which rounded …993 to …992) is gone
+        assert_eq!(parse_authored_int("9007199254740993"), 9007199254740993);
+        assert_eq!(parse_authored_int("0"), 0);
+        assert_eq!(parse_authored_int("47"), 47);
+        assert_eq!(parse_authored_int("-5"), -5);
+        // > i64 range: saturates at the sign's bound (the defined tail)
+        assert_eq!(parse_authored_int("99999999999999999999"), i64::MAX);
+        assert_eq!(parse_authored_int("-99999999999999999999"), i64::MIN);
     }
 }

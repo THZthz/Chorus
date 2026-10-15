@@ -35,7 +35,7 @@ use crate::core::types::{
     add_entity, new_state, relation_key, AttrValue, Attrs, Aspects, Entity, Relation, State,
 };
 use crate::core::jsonw::ordinary_own_property_keys;
-use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::{grp_opt, grp_text, grp0_start, static_regex};
 use crate::core::text::{js_char_is_ws, js_trim, JS_NON_WS_CLASS, JS_WS_CLASS};
 use crate::error::{ChorusError, Result};
@@ -490,7 +490,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                                 got
                             )));
                         }
-                        meta.seed = Some(parse_i64_like_f64(got));
+                        meta.seed = Some(parse_authored_int(got));
                     }
                     // the clock key: `start` is the only one of the five
                     // that lands here explicitly, and a bad VALUE blames
@@ -806,7 +806,7 @@ fn parse_entity_line(
                 };
                 pairs.insert(
                     grp_text(&sm, 1).to_string(),
-                    parse_i64_like_f64(grp_text(&sm, 2)),
+                    parse_authored_int(grp_text(&sm, 2)),
                 );
             }
             aspects = aspects_from_pairs(&pairs);
@@ -884,7 +884,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
                     };
                     pairs.insert(
                         grp_text(&sm, 1).to_string(),
-                        parse_i64_like_f64(grp_text(&sm, 2)),
+                        parse_authored_int(grp_text(&sm, 2)),
                     );
                 }
                 proto.aspects = Some(aspects_from_pairs(&pairs));
@@ -917,7 +917,7 @@ fn parse_prototype_line(t: &str, ln: usize, dict: &Dictionary) -> Result<(String
                     grp_text(&dm, 1).to_string(),
                     DeriveAspect {
                         from_object_aspect: grp_text(&dm, 2).to_string(),
-                        minus: grp_opt(&dm, 3).map(parse_i64_like_f64).unwrap_or(0),
+                        minus: grp_opt(&dm, 3).map(parse_authored_int).unwrap_or(0),
                     },
                 );
             }
@@ -954,7 +954,7 @@ fn parse_trigger_line(t: &str, ln: usize, _dict: &Dictionary) -> Result<TriggerD
             "line {ln}: triggers expect  ID [once] at (hour|halfhour) N -> OUTCOMES  or  ID on expire of NAME -> OUTCOMES"
         )));
     };
-    let n = parse_i64_like_f64(grp_text(&m, 4));
+    let n = parse_authored_int(grp_text(&m, 4));
     if grp_text(&m, 3) == "hour" && n > 23 {
         return Err(ChorusError::new(format!(
             "line {ln}: trigger hour must be 0..23"
@@ -1117,11 +1117,11 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
             "line {ln}: bad count '{count_spec}' (expected 1, 1..2, 2.., 0..1)"
         )));
     };
-    let min = parse_i64_like_f64(grp_text(&cm, 1));
+    let min = parse_authored_int(grp_text(&cm, 1));
     // max: the upper-bound group when present; a trailing `..` means
     // unbounded (no upper bound); no `..` pins max = min.
     let max = match grp_opt(&cm, 2) {
-        Some(g) => Some(parse_i64_like_f64(g)),
+        Some(g) => Some(parse_authored_int(g)),
         None if count_spec.ends_with("..") => None, // unbounded
         None => Some(min),
     };
@@ -1389,7 +1389,7 @@ pub fn lint_script(text: &str, dict: &Dictionary) -> Result<Vec<String>> {
                 let Some(slot) = slot_of.get(role) else {
                     continue;
                 };
-                let k = parse_i64_like_f64(grp_text(&cap, 3));
+                let k = parse_authored_int(grp_text(&cap, 3));
                 let op = grp_text(&cap, 2);
                 // slot.max: None = unbounded — no finite count is ever over
                 // an absent bound, so the over-max arms are false

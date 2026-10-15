@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::error::{ChorusError, Result};
 
@@ -74,9 +74,8 @@ pub fn parse_clock(s: &str) -> Result<Clock> {
             "bad clock '{s}' (expected \"day:halfhour\")"
         )));
     };
-    // the halfhour goes through the f64 middle step, like a JS `Number()`
-    // coercion (huge literals parse lossy)
-    let halfhour = parse_i64_like_f64(&m[2]);
+    // authored integers parse DIRECTLY (B-22) — no f64 middle step
+    let halfhour = parse_authored_int(&m[2]);
     // the 47 bound written as HALFHOURS_PER_DAY - 1 (same value,
     // self-documenting)
     if halfhour < 0 || halfhour > HALFHOURS_PER_DAY - 1 {
@@ -84,7 +83,7 @@ pub fn parse_clock(s: &str) -> Result<Clock> {
     }
     // day needs no check: `\d+` cannot lex a sign, so day >= 0 always holds
     Ok(Clock {
-        day: parse_i64_like_f64(&m[1]),
+        day: parse_authored_int(&m[1]),
         halfhour,
     })
 }
@@ -118,7 +117,7 @@ pub fn parse_duration(s: &str) -> Result<i64> {
         };
         let whole = m0.as_str();
         joined.push_str(whole);
-        let n = parse_i64_like_f64(&c[1]);
+        let n = parse_authored_int(&c[1]);
         min = min.saturating_add(n.saturating_mul(unit_minutes(&c[2])));
     }
     // any gap between matches (an unmatched span) leaves joined != s →
@@ -199,8 +198,9 @@ mod tests {
         assert_eq!(e.msg, "bad halfhour '2:48' (0..47)");
         let e = parse_clock("2x").unwrap_err();
         assert_eq!(e.msg, "bad clock '2x' (expected \"day:halfhour\")");
-        // f64 middle step: a huge day parses lossy like Number() would
-        assert_eq!(parse_clock("9007199254740993:0").unwrap().day, 9007199254740992);
+        // B-22: authored integers parse EXACTLY — the day is the authored
+        // bytes, no f64 middle step rounding it to …992
+        assert_eq!(parse_clock("9007199254740993:0").unwrap().day, 9007199254740993);
     }
 
     #[test]

@@ -10,7 +10,7 @@
 //! byte-identical to JS.
 
 use crate::core::clock::parse_duration;
-use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::num_parse::parse_authored_int;
 use crate::core::text::js_is_ws;
 use crate::error::{ChorusError, Result};
 
@@ -231,8 +231,8 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                 }
             }
             let num_text = units_to_string(&rest[..num_len]);
-            // through the f64 middle step, like a JS `Number()` coercion
-            toks.push(Tok::Int { v: parse_i64_like_f64(&num_text) });
+            // authored integers parse DIRECTLY (B-22) — the bytes are the value
+            toks.push(Tok::Int { v: parse_authored_int(&num_text) });
             i += num_len;
             continue;
         }

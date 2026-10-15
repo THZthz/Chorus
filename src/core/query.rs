@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::core::types::{aspect_get, Aspects, AspectVal, AttrValue, Entity};
-use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{js_trim, JS_WS_CLASS};
 use crate::error::{ChorusError, Result};
@@ -218,7 +218,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             };
             let op = m.get(2).map(|g| parse_cmp_op(g.as_str()));
             let level = match m.get(3) {
-                Some(g) => parse_i64_like_f64(g.as_str()),
+                Some(g) => parse_authored_int(g.as_str()),
                 None => 1,
             };
             Ok(QueryTerm::Aspect {
@@ -280,7 +280,7 @@ fn coerce(v: &str) -> AttrValue {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = static_regex(&RE, || Regex::new(r"^-?[0-9]+$"));
     if re.is_match(v) {
-        return AttrValue::Num(parse_i64_like_f64(v));
+        return AttrValue::Num(parse_authored_int(v));
     }
     AttrValue::Str(v.to_string())
 }

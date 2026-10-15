@@ -15,7 +15,7 @@ use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::Outcome;
 use crate::core::lexer::Tok;
 use crate::core::types::{aspect_get, relation_alive, Entity, State};
-use crate::core::num_parse::parse_i64_like_f64;
+use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{js_char_is_ws, JS_WS_CLASS};
 use crate::error::{ChorusError, Result};
@@ -567,7 +567,7 @@ impl<'a> PredParser<'a> {
                 key,
             },
             op: parse_cmp_op(op),
-            value: parse_i64_like_f64(&v),
+            value: parse_authored_int(&v),
         })
     }
 
@@ -610,7 +610,7 @@ impl<'a> PredParser<'a> {
         static RE: OnceLock<Regex> = OnceLock::new();
         let int_re = static_regex(&RE, || Regex::new(r"^[0-9]+$"));
         if int_re.is_match(&t) {
-            return Ok(ValExpr::Int { v: parse_i64_like_f64(&t) });
+            return Ok(ValExpr::Int { v: parse_authored_int(&t) });
         }
         if t == "count" {
             self.expect("(")?;

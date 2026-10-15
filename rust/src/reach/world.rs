@@ -585,7 +585,7 @@ fn risky_block(wf: &mut WorldFacts) {
             _ => None,
         })
         .collect();
-    trig_flat.sort_by(|x, y| x.1.cmp(&y.1));
+    trig_flat.sort_by_key(|x| x.1);
     for i in 0..trig_flat.len() {
         for j in (i + 1)..trig_flat.len() {
             if trig_flat[i].1 == trig_flat[j].1 {

@@ -1056,7 +1056,7 @@ fn adversarial_driver(name: &str) -> Result<Played> {
                             id: (*id).to_string(),
                             slot: 5,
                             once: None,
-                            out: vec![format!("SPAWN P_TRIPLE"), format!("SPAWN {name}")],
+                            out: vec!["SPAWN P_TRIPLE".to_string(), format!("SPAWN {name}")],
                         })
                     })
                     .collect::<Vec<_>>(),

@@ -962,37 +962,36 @@ fn record_visit<'c, 'a>(
             derives: false,
             where_: owner.to_string(),
         })
-    } else if let Some(id) = draw {
-        Some(RawSite {
-            kind: SiteKind::Draw,
-            name: id.to_string(),
-            kind_override: None,
-            deck: content.decks.get(id),
-            aspects_json: None,
-            owner: owner.to_string(),
-            verb: verb_idx,
-            when: when.cloned(),
-            recipe_index,
-            shadow_risk,
-            path: path.clone(),
-            seg,
-            pos,
-            segs: segs.clone(),
-            fallback,
-            runtime_gated: false,
-            throw_ops: 0,
-            cap: 0,
-            replace_target: None,
-            killed_in_list: false,
-            dup_risk: false,
-            target_killed_in_list: false,
-            list_gate_mints: IndexSet::new(),
-            list_stack_mints: IndexSet::new(),
+    } else {
+        // (clippy manual_map: Option::map over the drawn deck id)
+        draw.map(|id| RawSite {
+                kind: SiteKind::Draw,
+                name: id.to_string(),
+                kind_override: None,
+                deck: content.decks.get(id),
+                aspects_json: None,
+                owner: owner.to_string(),
+                verb: verb_idx,
+                when: when.cloned(),
+                recipe_index,
+                shadow_risk,
+                path: path.clone(),
+                seg,
+                pos,
+                segs: segs.clone(),
+                fallback,
+                runtime_gated: false,
+                throw_ops: 0,
+                cap: 0,
+                replace_target: None,
+                killed_in_list: false,
+                dup_risk: false,
+                target_killed_in_list: false,
+                list_gate_mints: IndexSet::new(),
+                list_stack_mints: IndexSet::new(),
             derives: false,
             where_: owner.to_string(),
         })
-    } else {
-        None
     };
     let Some(site) = site else {
         return;

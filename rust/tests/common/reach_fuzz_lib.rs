@@ -489,7 +489,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
     // (ts: reach-fuzz-lib.ts:203-220); the Set preserves first-occurrence order
     let mut probes: Vec<Probe> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
-    let mut push_unique = |seen: &mut Vec<String>, name: String| {
+    let push_unique = |seen: &mut Vec<String>, name: String| {
         if !seen.contains(&name) {
             seen.push(name.clone());
         }

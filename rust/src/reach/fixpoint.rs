@@ -112,7 +112,7 @@ impl<'c> WorldFacts<'c> {
                         let fits = slot
                             .query
                             .as_ref()
-                            .map_or(true, |q| match_query(&f.entity, q));
+                            .is_none_or(|q| match_query(&f.entity, q));
                         if !fits {
                             continue;
                         }
@@ -492,9 +492,7 @@ impl<'c> WorldFacts<'c> {
                     return None;
                 }
             }
-            let Some(proofs) = self.committable.get(&vi) else {
-                return None;
-            };
+            let proofs = self.committable.get(&vi)?;
             let verb_name = match self.content.verbs.get_index(vi) {
                 Some((name, _)) => name.clone(),
                 None => unreachable!("verb index {vi} came from content.verbs enumeration"),
@@ -502,9 +500,7 @@ impl<'c> WorldFacts<'c> {
             return Some(slot_proof_lines(&verb_name, proofs));
         }
         // ts: reach.ts:1770-1777 — trigger owner
-        let Some((trig, _)) = self.trig_idx.get(&site.owner) else {
-            return None;
-        };
+        let (trig, _) = self.trig_idx.get(&site.owner)?;
         if let CompiledTrigger::Slot { id, slot, once, .. } = trig {
             let once_note = if *once {
                 " (once: true — still fires its first crossing)"
@@ -669,7 +665,7 @@ pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
                     let fits = slot
                         .query
                         .as_ref()
-                        .map_or(true, |q| match_query(&f.entity, q));
+                        .is_none_or(|q| match_query(&f.entity, q));
                     if fits {
                         return true;
                     }

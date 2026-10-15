@@ -453,14 +453,14 @@ impl<'c> WorldFacts<'c> {
                         }
                     }
                 }
-            } else if let Some((trig, _)) = self.trig_idx.get(&site.owner) {
-                if let CompiledTrigger::Expire { on_expire_of, .. } = trig {
-                    needed.push((
-                        on_expire_of.clone(),
-                        "must be alive and able to expire (the trigger fires only on its expiry)"
-                            .to_string(),
-                    ));
-                }
+            } else if let Some((CompiledTrigger::Expire { on_expire_of, .. }, _)) =
+                self.trig_idx.get(&site.owner)
+            {
+                needed.push((
+                    on_expire_of.clone(),
+                    "must be alive and able to expire (the trigger fires only on its expiry)"
+                        .to_string(),
+                ));
             }
             for (name, how) in needed {
                 let mut sub: Vec<ReachPath> = Vec::new();
@@ -835,7 +835,7 @@ impl<'c> Analyzer<'c> {
                 // site still blocks 'unobtainable'
                 let candidate_exists = facts.census.live.iter().any(|&i| {
                     let s = &facts.census.sites[i];
-                    let verb_alive = s.verb.map_or(true, |v| !facts.dead_verbs.contains(&v));
+                    let verb_alive = s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v));
                     let not_derive_mandated = !(s.derives && object_always(content, s.verb));
                     let serves = if s.kind == SiteKind::Draw {
                         !draw_blinds_bare(content, s, target)
@@ -870,7 +870,7 @@ impl<'c> Analyzer<'c> {
                     // ts: reach.ts:1429-1433 — a dead verb's sites never
                     // produce; they must not negate the derive-drop escape
                     // (seed 91492)
-                    s.verb.map_or(true, |v| !facts.dead_verbs.contains(&v))
+                    s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v))
                         && (if s.kind == SiteKind::Draw {
                             !draw_blinds_bare(content, s, target)
                                 && deck_serves(draw_deck(s), target)
@@ -935,7 +935,7 @@ impl<'c> Analyzer<'c> {
                     let fits = slot
                         .query
                         .as_ref()
-                        .map_or(true, |q| match_query(descriptor, q));
+                        .is_none_or(|q| match_query(descriptor, q));
                     if fits {
                         usable_via.push(format!(
                             "{}.{}{}",

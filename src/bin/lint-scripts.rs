@@ -5,11 +5,10 @@
 //!   cargo run --bin lint-scripts                  # everything under scripts/
 //!   cargo run --bin lint-scripts -- my-game.txt   # or name files
 //!
-//! Frozen quirks: the default file list comes from reading the `scripts`
-//! dir RELATIVE TO THE CWD; a missing scripts dir or a
-//! missing named file is a hard error → exit 1 (contradicting the header
-//! comment's "exit 0" — the CURRENT behavior is what is frozen, message line
-//! plus exit code).
+//! Q15 honesty: the default file list comes from reading the `scripts`
+//! dir RELATIVE TO THE CWD; a missing scripts dir names itself and the cwd
+//! on stderr and exits 1 (warnings advise, exit 0; hard input errors exit 1),
+//! and a missing named file is the same hard-error family.
 
 use chorus::content::script::lint_script;
 use chorus::core::dict::core_dictionary;
@@ -24,7 +23,16 @@ fn main() -> std::process::ExitCode {
         let dir = match std::fs::read_dir("scripts") {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("Error: {e}");
+                // Q15: name what failed and where — the bare io error
+                // ("No such file or directory (os error 2)") never
+                // mentioned the directory. Exit code unchanged (a hard
+                // input error → 1).
+                let cwd = std::env::current_dir()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "<cwd unavailable>".to_string());
+                eprintln!(
+                    "Error: no 'scripts' directory under '{cwd}' ({e}) — run from the repo root or name files: lint-scripts [file.txt ...]"
+                );
                 return std::process::ExitCode::from(1);
             }
         };

@@ -1,7 +1,7 @@
 //! The four CLI bins, exercised as subprocesses — argv parsing (verbatim
 //! including the error texts), stream discipline, exit codes and the Q15
-//! frozen quirks. This file pins the WIRING (real argv → real process):
-//! usage exit 2, the trailing-`--demand` vanish, bad-demand exit 1, fuzz
+//! honesty fixes. This file pins the WIRING (real argv → real process):
+//! usage exit 2, the trailing-`--demand` argv error, bad-demand exit 1, fuzz
 //! flags/streams/exit, the reach-scale `--worker` NameStat interface, and
 //! lint-scripts' constant-0 + missing-input exit 1.
 
@@ -44,15 +44,19 @@ fn reach_usage_exits_2_with_the_exact_text() {
     );
 }
 
-/// Q15 — a trailing `--demand` reads argv[idx+1] = undefined: the
-/// demand silently vanishes and the run degrades to name mode.
+/// Q15 — a trailing `--demand` (no next argv slot) used to read
+/// argv[idx+1] = undefined and silently degrade to name mode; it is now an
+/// argv error: the flag is named, the usage text follows, exit 2 (the
+/// usage gate's family).
 #[test]
-fn reach_trailing_demand_vanishes_into_name_mode_q15() {
-    let (plain_code, plain_out, _) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER"]);
+fn reach_trailing_demand_is_an_argv_error_q15() {
     let (code, stdout, stderr) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER", "--demand"]);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(code, plain_code, "{stderr}");
-    assert_eq!(stdout, plain_out, "the vanished demand must not change the output");
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(
+        stderr,
+        "--demand needs a value: --demand \"<query>\"\nusage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all\n"
+    );
 }
 
 /// `--demand ''`: the EMPTY string is FALSY in JS, so
@@ -147,6 +151,35 @@ fn lint_scripts_missing_input_exits_1() {
     assert_eq!(code, Some(1));
     assert_eq!(stdout, "");
     assert!(stderr.starts_with("Error: "), "{stderr}");
+}
+
+/// Q15 — the default (no-argument) run reads `scripts/` relative to the
+/// cwd; a missing directory NAMES itself and the cwd (the bare io error
+/// never mentioned either). Exit 1 unchanged: a hard input error.
+#[test]
+fn lint_scripts_missing_scripts_dir_names_the_directory() {
+    let dir = std::env::temp_dir().join(format!("chorus-lint-q15-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch cwd");
+    // canonicalized: getcwd() reports the physical path (macOS /var is a
+    // symlink to /private/var) and the bin's message quotes current_dir()
+    let dir = dir.canonicalize().expect("the physical path");
+    let out = Command::new(env!("CARGO_BIN_EXE_lint-scripts"))
+        .current_dir(&dir)
+        .output()
+        .expect("the bin spawns");
+    let _ = std::fs::remove_dir(&dir);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.starts_with(&format!(
+            "Error: no 'scripts' directory under '{}'",
+            dir.display()
+        )),
+        "{stderr}"
+    );
+    assert!(stderr.contains("name files: lint-scripts [file.txt ...]"), "{stderr}");
 }
 
 /// the `--worker i k P R` sharded interface: names `idx % k === i` of a

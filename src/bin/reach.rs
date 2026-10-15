@@ -12,11 +12,10 @@
 //!     `verdict: X (existence: y)` — byte-frozen;
 //!   - the `--all` name set = prototypes ∪ LIVE initial entities ∪
 //!     deck.order (NOT defaultcard), sorted by UTF-16 code-unit order;
-//!   - Q15 current-shape quirks: a trailing `--demand` silently loses
-//!     its value (the next argv slot is absent), a missing card+all+demand
-//!     combination exits 2 with the usage text, and a bad demand query is a
+//!   - argv errors exit 2 with the usage text; a bad demand query is a
 //!     compile-time analyze error exiting 1 (the message line is the frozen
-//!     part).
+//!     part). Q15 honesty: a trailing `--demand` (no value slot) is an argv
+//!     error naming the flag — it used to silently vanish into name mode.
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -30,14 +29,25 @@ fn main() -> ExitCode {
     // argv parsing — frozen surface, byte for byte
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usable = args.iter().any(|a| a == "--usable");
-    // a blind read one past the `--demand` index; a trailing
-    // --demand has no next slot → demand silently vanishes (Q15).
-    // JS truthiness: an EMPTY string value is falsy at
-    // every consumer (the usage gate, the report header, `analyze_card`) —
-    // normalized to None here, the Option shape of "not provided".
+    // a present --demand with no next argv slot is an ARGV ERROR (Q15):
+    // it used to read argv[idx+1] = undefined and silently vanish into
+    // name mode. An EMPTY string value is JS-falsy at every consumer —
+    // it rides as None exactly as before (the usage gate owns that face).
     let demand_idx = args.iter().position(|a| a == "--demand");
-    let demand: Option<String> =
-        demand_idx.and_then(|i| args.get(i + 1).cloned()).filter(|d| !d.is_empty());
+    let demand: Option<String> = match demand_idx {
+        None => None,
+        Some(i) => match args.get(i + 1) {
+            Some(d) if !d.is_empty() => Some(d.clone()),
+            Some(_) => None,
+            None => {
+                eprintln!("--demand needs a value: --demand \"<query>\"");
+                eprintln!(
+                    "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all"
+                );
+                return ExitCode::from(2);
+            }
+        },
+    };
     let mut rest: Vec<String> = Vec::new();
     let mut i = 0usize;
     while i < args.len() {

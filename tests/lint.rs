@@ -393,3 +393,27 @@ fn a_non_lexeme_entity_name_warns_legal_but_every_ref_needs_quotes() {
         "{w:?}"
     );
 }
+
+#[test]
+fn an_unknown_meta_key_is_a_load_error_naming_the_key() {
+    // Q15 fixed: an unknown meta key names itself and lists the five keys.
+    // The old wildcard arm treated anything un-listed as the clock key (so
+    // the next key added to the regex without a match arm would have been
+    // blamed on "bad clock"); unknown keys fell through to the section
+    // error, which never mentioned meta at all. The fixture trips exactly
+    // ONE error — the meta line fires before any section content parses.
+    assert_err_msg(
+        compile("script: Probe\nplayer: MARCH\ntitle: My Game\nentities:\n  MARCH is character\n"),
+        r"line 3: unknown meta key 'title' \(the meta keys are: script, player, goal, start, seed\)",
+    );
+}
+
+#[test]
+fn a_bad_start_value_blames_the_clock_not_the_key() {
+    // Q15's honest-attribution face: the KNOWN clock key keeps its clock
+    // error (correct attribution) — only the un-listed-key path changed.
+    assert_err_msg(
+        compile("script: Probe\nplayer: MARCH\nstart: banana\nentities:\n  MARCH is character\n"),
+        r#"bad clock 'banana' \(expected "day:halfhour"\)"#,
+    );
+}

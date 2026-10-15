@@ -104,7 +104,11 @@ pub struct CompiledScript {
 fn meta_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"^(script|player|goal|start|seed):{JS_WS_CLASS}*(.+)$"))
+        // ANY lowercase identifier keys a meta line — the match arms below
+        // dispatch on it, so an unknown key is RECOGNIZED as a meta attempt
+        // (and named by the unknown-key error, Q15) instead of masquerading
+        // as a section problem. Group 1 stays the key, group 2 the value.
+        Regex::new(&format!(r"^([a-z][a-z0-9_]*):{JS_WS_CLASS}*(.+)$"))
     })
 }
 
@@ -488,11 +492,24 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         }
                         meta.seed = Some(parse_i64_like_f64(got));
                     }
-                    // the else arm: `start` (and only
-                    // `start`, the alternation's last word) falls into
-                    // parse_clock, so a bad value throws the CLOCK error text.
-                    // QUIRK(Q15): misleading attribution, frozen.
-                    _ => meta.start = Some(parse_clock(js_trim(grp_text(&m, 2)))?),
+                    // the clock key: `start` is the only one of the five
+                    // that lands here explicitly, and a bad VALUE blames
+                    // the clock — correct attribution for a known key
+                    // (§10: `start: d:h`).
+                    "start" => meta.start = Some(parse_clock(js_trim(grp_text(&m, 2)))?),
+                    // Q15: an unknown meta key names itself and lists the
+                    // five keys. The old wildcard arm treated anything
+                    // un-listed as the clock key — the next key added to
+                    // the regex without a match arm would have been blamed
+                    // on "bad clock". meta_re demands a value after the
+                    // colon, so this arm can never shadow a bare
+                    // `section:` header (those never match meta_re).
+                    other => {
+                        return Err(ChorusError::new(format!(
+                            "line {}: unknown meta key '{other}' (the meta keys are: script, player, goal, start, seed)",
+                            ln + 1
+                        )));
+                    }
                 }
                 continue;
             }

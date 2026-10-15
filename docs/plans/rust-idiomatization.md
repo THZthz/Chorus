@@ -1,11 +1,14 @@
 # Plan — Rust-idiomatization: retiring the TS-alignment shape (no behavior change by default)
 
-Status: ACTIVE plan — **v3** (2026-10-15): the conclusions of the three
+Status: LANDED — **v3** (2026-10-15): the conclusions of the three
 read-only verification reports (`idiomatization-verification-{A,B,C}.md`)
-are merged; the fix list of §2 Phase 3 is SETTLED. Sits after the v0.4/v0.5
-feature plans, which are landed history. Written after a full-tree
-read-through; file:line claims verified on the day and may drift —
-re-locate before relying on them.
+are merged; the settled fix list of §2 Phase 3 has SHIPPED — phases 1–2
+(the js.rs dissolution, the internal API shapes), batch 1 (Q4, Q5, Q2),
+batch 2 (Q3, Q1, Q11, Q15), batch 3 (Q10, Q6, B-22) and the close-out are
+on main, one commit per item, README's Q-table carrying the final statuses.
+Sits after the v0.4/v0.5 feature plans, which are landed history. Written
+after a full-tree read-through; file:line claims verified on the day and
+may drift — re-locate before relying on them.
 
 **The new ruling this plan implements**: the TS implementation is no longer a
 behavior reference. The normative baseline is `docs/spec/text-engine-v0.2.md`

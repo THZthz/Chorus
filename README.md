@@ -151,36 +151,40 @@ let r = execute_step(&content, &dict, state, step,
 
 ## Appendix: the frozen quirk list (Q1–Q17)
 
-The engine has bugs and inconsistencies that are, by now, behavior: tests pin
-them, logs encode them, and "fixing" one would break byte-identity with every
-recorded log. This repository therefore reproduces each one as-is — the
-source rows implementing each quirk carry a `// QUIRK(<id>):` comment at
-their site (deliberately dead code carries a `// NOTE` instead), and changing
-any of them is a behavior change, not a cleanup.
+The engine had bugs and inconsistencies that were, by now, behavior: tests
+pinned them, logs encoded them, and "fixing" one would break byte-identity
+with every recorded log. The idiomatization plan's phase 3 settled every row:
+the ten approved fixes LANDED (their rows describe the new behavior); the
+rest are annotated no-fix / spec-pinned / implementation note — those keep
+their `// QUIRK(<id>):` comment at the source row (deliberately dead code
+carries a `// NOTE` instead) and stay byte-still.
 
-| # | quirk (frozen, not fixed) | lives at |
-|---|---------------------------|----------|
-| Q1 | recipe ids are 0-based when compiled (`.recipe0`) but 1-based in the lint mirror (`.recipe1`) | `content.rs` / `script.rs` |
+| # | quirk (status after phase 3) | lives at |
+|---|------------------------------|----------|
+| Q1 | FIXED (batch 2): recipe ids are 0-based everywhere — the lint mirror now mints the compile side's ids (`.recipe0`) | `content.rs` / `script.rs` |
 | Q2 | FIXED (batch 1): the predicate tokenizer is a load error on grammar-illegal characters (naming the char and its offset); whitespace stays glue | `predicate.rs` |
-| Q3 | `arg()` cannot read a param key (`SET(myparam = 3)` is a parse error) while SPAWN args support one | `parse.rs` |
+| Q3 | FIXED (batch 2): a param in a `key=value` pair position in outcome args gets the teach error (how a param may stand: bare, signed delta, ref/INTO; only a SPAWN pair takes params) — no more bare `expected ')', got '='` | `parse.rs` |
 | Q4 | FIXED (batch 1): slot roles are validated at load — a typo'd slot is a load error naming the six roles, not a silent never-match | `script.rs` |
 | Q5 | FIXED (batch 1): duplicate declarations are a uniform load error in every section (entities, prototypes, templates, verbs, decks, endings); `ANA`/`ana` case-collide on the minted id `s_ana` and that collision is its own load error | `script.rs` |
-| Q6 | a BEGIN line whose format∘parse round-trip fails silently opens no window | `engine.rs` / `fold.rs` |
-| Q7 | a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved | `engine.rs` |
-| Q8 | JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex uses the explicit JS class | `core/text.rs` `JS_WS_CLASS` |
-| Q9 | `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing (`1halfhour` would mis-lex as `1h`) | `lexer.rs` |
-| Q10 | quoted-string `\X` takes the next character literally (`"\n"` is the letter n); a trailing backslash still throws unterminated | `lexer.rs` |
-| Q11 | bare `inspect` shows the first visible card (`startsWith('')` is always true) | `game.rs`, `bin/chorus.rs` |
-| Q12 | ROLES are soft-reserved in outcome-arg position (`as_role` intercepts before bare refs) but are not reserved words | `parse.rs` |
-| Q13 | aspects are one level deep with last-write-wins flattened keys (`'a.b.c'` lands as `{a:{'b.c':v}}`) | `types.rs` `AspectVal` |
-| Q14 | same-ref comparison errors on a param ref instead of returning false; relation keys trust the engine's `#hex` ids against `\|` collisions | `ref.rs` |
-| Q15 | CLI current shapes: a trailing `--demand` silently vanishes; the linter exits 1 on a missing directory; an unknown meta key is blamed on "bad clock" | `bin/reach.rs`, `bin/lint-scripts.rs`, `script.rs` |
-| Q16 | a `-0` delta formats as `+0`; `SET(x,-0)` can be authored | `format.rs` |
-| Q17 | reach `site_reason`'s empty-init-names branch is reachable (zero-entity scripts are legal), not dead code | `reach/paths.rs` |
+| Q6 | FIXED (batch 3): a BEGIN row whose sentence fails the format∘parse re-parse is a loud play/fold drift error naming the row, the sentence and the parse failure — it no longer silently opens no window | `engine.rs` / `fold.rs` |
+| Q7 | SPEC-PINNED (§9.41): a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved — spec behavior, not a defect | `engine.rs` |
+| Q8 | NO-FIX (verified): JS `\s` ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex keeps the explicit JS class, the engine's frozen choice (the divergence is unreachable from bundled content and the fix has the widest regression surface) | `core/text.rs` `JS_WS_CLASS` |
+| Q9 | IMPLEMENTATION NOTE: the `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing — the behavior itself is spec-pinned (§9.45, `1halfhour` is ONE token) | `lexer.rs` |
+| Q10 | FIXED (batch 3): quoted strings carry real escape semantics — `\n` is a newline, `\t` a tab, `\r`/`\b`/`\f`/`\v`/`\0` likewise, `\"`/`\\` as before, an unknown escape keeps its literal unit; a trailing backslash still throws unterminated | `lexer.rs` |
+| Q11 | FIXED (batch 2): bare `inspect` names the usage and lists the visible table — it never guesses the first card | `game.rs`, `bin/chorus.rs` |
+| Q12 | NO-FIX (refuted): roles soft-reserved in outcome-arg position is §9.40's pinned shadowing order ("before entity names and before role names"), and §5.1's reserved-word list deliberately excludes the role names — the current behavior IS the spec | `parse.rs` |
+| Q13 | NO-FIX (refuted): one-level aspects with last-write-wins flattened dot-keys are §4.2's pinned data model ("weighted principle tags, dot sub-keys") — a nested tree would exceed the spec | `types.rs` `AspectVal` |
+| Q14 | NO-FIX (unreachable): the TS "same-ref errors on a param ref" half died with the port (dead code, never ported); the remaining relation-key half trusts the engine-minted `#hex` ids against `\|` collisions — an input the engine can never produce | `ref.rs` |
+| Q15 | FIXED (batch 2): the CLIs say what failed — a trailing `--demand` requires a value, a missing scripts directory is its own error, an unknown meta key is blamed on the key (not "bad clock") | `bin/reach.rs`, `bin/lint-scripts.rs`, `script.rs` |
+| Q16 | NO-FIX (refuted, vacuous): i64 has no `-0` and the parser already normalizes `-0` to a zero delta; "canonicalizing at parse" is a no-op, and the real alternatives would break §9.31's delta-vs-absolute grammar distinction | `format.rs` |
+| Q17 | NOT A DEFECT: reach `site_reason`'s empty-init-names branch is reachable (zero-entity scripts are legal) — a "not dead code" note, no fix object | `reach/paths.rs` |
 
 Suggestions that were rejected exactly because they would change behavior:
 worklist/event-driven reach fixpoints (the naive round-robin is the only known
 byte-identical schedule), load-time rejection of integer-like keys (use the
-JS `OrdinaryOwnPropertyKeys` key order instead), unifying the recipe-id
-bases, tightening slot-role validation or duplicate-declaration handling, and
-merging the two deliberately different string/pair arg spellings.
+JS `OrdinaryOwnPropertyKeys` key order instead), and merging the two
+deliberately different string/pair arg spellings. The JS-semantics
+conventions are KEPT as this engine's own frozen choices (plan B-18–B-21):
+the exact error-message wordings, `cmp_utf16` collation, the
+`OrdinaryOwnPropertyKeys` key order + `jsjson` escape set, and the
+`cmp_ascii_ci` suggestion sort — each documented at its site.

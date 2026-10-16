@@ -5,12 +5,13 @@
 # old ledgers with three foundations (VIGOR, WITS, YEARNING), no silver, two
 # thin books, and a rite she has no business owning. The design doc for this
 # slice is docs/plans/v0.6-cs-slice.md; the verified mechanics it authorizes are
-# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is the COMPILING
-# SKELETON: the full card inventory, the verbs and their slots, the decks, the
+# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is PHASE A of the
+# authoring: the full card inventory, the verbs and their slots, the decks, the
 # endings, and the card-borne machines (the labor rolls, the whisper decay, the
-# wheel's bootstrap). The 101 recipes are the authoring phases' work (the doc's
-# §4 inventories every one) — each verb below carries only its default, or the
-# one stub another section's load check names, so the file loads today.
+# wheel's bootstrap) are all in, and 39 of the 102 recipes are landed — the
+# doc's §4 groups Work & silver, the Turning, the eight weathers, and market &
+# streets. The study, dream, mansus, talk and rite verbs still carry only their
+# defaults; the later phases land them, and the wheel already runs.
 #
 #   WORK      — labor and the clerk's post    (silver, the labor rolls, the bootstrap)
 #   WAIT      — the wheel                     (THE_TURNING: the season engine, self-rechaining)
@@ -23,15 +24,13 @@
 #   TRAVEL_TO /
 #   LOCATE_AT — the two streets the slice owns
 #
-# Ethics (hard constraint, docs/reverse/cultist-simulator.md ethics note): every
-# label, narration and ending in this file is fresh text written for the slice.
 # Text policy (owner, 2026-10-16): CS strings may be quoted for this
 # engine-validation slice (open-source, non-commercial, game owned); the
-# Hollowmere frame stays. Mechanics/numbers remain dossier-governed facts.
-# structure are reused. The principles (RADIANCE, HUSH), the door (the
-# Bellwood), the rite (the Lifted Lamp), the summon (the Tolling Guest), the
-# desire (the Hunger of Heights), the people and every sentence are this repo's
-# own.
+# Hollowmere frame stays. Mechanics and numbers remain dossier-governed
+# facts, and the slice's own naming is this repo's: the principles (RADIANCE,
+# HUSH), the door (the Bellwood), the rite (the Lifted Lamp), the summon (the
+# Tolling Guest), the desire (the Hunger of Heights), the people and every
+# sentence are the repo's own.
 #
 # Two engine laws this file obeys (both verified by run, 2026-10-15):
 #   1. REPLACE's successor resolves strictly inside trigger bodies — a never-
@@ -230,28 +229,78 @@ endings:
 # the slice's nine verbs. Slot queries use the §9.49 alternation wherever CS's
 # any-of slots demanded it (WORK's entry, the rite's invocation). Recipes are
 # the authoring phases' work (docs/plans/v0.6-cs-slice.md §4 — 102 of them);
-# each verb below carries its default, and WAIT carries the time.turn stub the
-# bootstrap's RUN names at load.
+# Phase A lands 39 of them (WORK, WAIT, ACQUIRE, TRAVEL_TO/LOCATE_AT), and the
+# study, dream, mansus, talk and rite verbs still carry only their defaults.
 verbs:
   WORK:
     # CS's one big any-of entry slot, as alternation: a foundation (intact or
-    # drained — the marker aspects), the guest (uncanny labor), or the
-    # frailty (ruined labor)
+    # drained — the marker aspects), the guest (uncanny labor), the
+    # frailty (ruined labor), or a clerk's post (the bench — G1's work.post
+    # and work.senior work it). Pay is recipe-side, the attr form (§4's
+    # conventions); the drain is card-side — each foundation's `on complete
+    # labor` clause rolls the 30% employment risk (§6.18: CS's die, a
+    # different referent) — and the `job` recipes bootstrap the wheel
+    # (§9.48). First match wins (§6.4): work.frail outranks work.vigor (a
+    # frail body labors ruined even with a living VIGOR bound beside it),
+    # and work.post outranks work.senior on a world check — the two posts
+    # share the one `post` marker aspect (the plan's G1 parenthetical), so
+    # the senior's existence in the world is what disambiguates them.
     actors: 1 kind:character
-    with: 0..1 kind:resource aspect:vigor>=1 | kind:resource aspect:wits>=1 | kind:resource aspect:yearning>=1 | kind:resource aspect:weary>=1 | kind:resource aspect:dim>=1 | kind:resource aspect:pale>=1 | kind:character aspect:bell_voice>=1 | kind:state aspect:frail>=1
+    with: 0..1 kind:resource aspect:vigor>=1 | kind:resource aspect:wits>=1 | kind:resource aspect:yearning>=1 | kind:resource aspect:weary>=1 | kind:resource aspect:dim>=1 | kind:resource aspect:pale>=1 | kind:character aspect:bell_voice>=1 | kind:state aspect:frail>=1 | kind:item aspect:post>=1
     at: 0..1 kind:place
     duration: 1h
     recipes:
+      work.frail when total(with, aspect:frail) >= 1 -> ROLL(1, 10), IF roll <= 3 -> (ENDING THE_BODY_FAILS) ELSE -> (SET(ACTORS, silver, +1), NARRATE "{actors} put the ruined body to work anyway, and the hour takes the wage it always takes. One silver, and the body's account runs shorter by more than that.")
+      work.guest when total(with, aspect:bell_voice) >= 1 -> SET(ACTORS, silver, +3), NARRATE "{actors} keep the ledger open and let the guest do the reading. The foreman pays three silver and asks no questions; the fog, which heard the counting, asks none either."
+      work.vigor aspects labor, job when total(with, aspect:vigor) >= 1 -> SET(ACTORS, silver, +1), ROLL(1, 10), IF roll <= 3 -> (SPAWN MENDING, NARRATE "An hour of honest lifting, and the body answers it: something knits that was not knitting before.") ELSE -> (NARRATE "An hour of honest lifting. The body holds, and the purse is one silver the heavier.")
+      work.weary aspects labor when total(with, aspect:weary) >= 1 -> SET(ACTORS, silver, +1), ROLL(1, 10), IF roll <= 3 AND NOT exists(name:THE_FEVER) -> (SPAWN THE_FEVER, SET(THE_FEVER, expires, 3h), NARRATE "Work on a weary body is work on borrowed wax. By the end of the hour the borrowed part has caught.") ELSE -> (NARRATE "The weary hour earns its one silver and takes nothing it did not bring.")
+      work.wits aspects labor, job when total(with, aspect:wits) >= 1 -> SET(ACTORS, silver, +2), ROLL(1, 10), IF roll <= 3 AND NOT exists(name:THE_CLERKS_POST) AND NOT exists(name:THE_SENIOR_POST) -> (SPAWN THE_CLERKS_POST, NARRATE "The count came out true three runs running, and the clerk's bench puts its post in writing. Two silver for the hour; the post pays better, and expects her by name.") ELSE -> (NARRATE "Two silver for the hour: figures, ledgers, fog. The arithmetic holds.")
+      work.dim aspects labor when total(with, aspect:dim) >= 1 -> SET(ACTORS, silver, +1), NARRATE "{actors} work the dimmed wit like a bad lamp: it gives light enough to count by, and no more."
+      work.yearning aspects labor, job when total(with, aspect:yearning) >= 1 -> SET(ACTORS, silver, +1), ROLL(1, 10), IF roll <= 3 -> (SPAWN GLIMMER, NARRATE "Somewhere in the routine — a handwidth of gilt on a ledger edge — the wanting catches the light, and for once does not let go.") ELSE -> (NARRATE "The yearning works the hour through and collects for it. It does not ask why.")
+      work.pale aspects labor when total(with, aspect:pale) >= 1 -> SET(ACTORS, silver, +1), NARRATE "The pale yearning goes through the motions of an hour's work and collects for them. The motions do not notice the difference."
+      work.post aspects job when total(with, aspect:post) >= 1 AND NOT exists(name:THE_SENIOR_POST) -> SET(ACTORS, silver, +3), ROLL(1, 10), IF roll <= 3 -> (REPLACE THE_CLERKS_POST WITH THE_SENIOR_POST, NARRATE "Three silver, and the bench's senior seat falls to her on a signature. The seal is still wet when the fog takes an interest in her name.") ELSE -> (NARRATE "Three silver for the clerk's hour. The bench keeps the seat it has, and her in it.")
+      work.senior aspects job when total(with, aspect:post) >= 1 -> SET(ACTORS, silver, +4), NARRATE "Four silver for the senior hour. The desk has her name on it now, and the drawers know it."
+      work.beg when NOT (exists(name:VIGOR) OR exists(name:WITS) OR exists(name:YEARNING)) -> ROLL(1, 10), IF roll <= 3 -> (SET(ACTORS, silver, +2), NARRATE "Empty-handed, she begs the fog's own parish, and the parish pays — two silver, and no name taken.") ELSE -> (SET(ACTORS, silver, +1), SPAWN DREAD, NARRATE "One silver, taken as charity. The taking of it sits in the chest like weather coming down.")
       work.default -> NARRATE "{actors} put in an hour, and the hour gives back what it will."
 
   WAIT:
-    # the wheel. time.turn is a stub until the season authoring lands; it must
-    # exist now because the bootstrap's RUN names it (§9.47 load check)
+    # the wheel. time.turn is the needs cycle plus the weather dispatch:
+    # drain one silver (and feed — the hollow days give back the table),
+    # else eat VIGOR into THE_HOLLOW_DAYS, else the body fails; then draw a
+    # weather from the SEASONS deck and hand the cycle to that weather's
+    # recipe as a RUN (§9.47 — one RUN reached per completion; the follow-up
+    # rechains time.turn, and the loop stays resident exactly as CS's
+    # needs → discardseason → drawseason → needs does). All eight weathers
+    # rechain: a weather recipe never ends without its RUN except in a death
+    # arm (the plan's §8/P5 pin). Selection order is load-bearing here: the
+    # weather recipes and their judges are RUN targets (the §9.47 walk goes
+    # by id, never by list position), but a plain player wait must keep
+    # selecting time.turn once the wheel is resident — so time.turn sits
+    # first and wait.default last (first match wins, §6.4) — and every RUN
+    # target's when carries exists(name:THE_TURNING) so a pre-bootstrap wait
+    # can never match one, with the rest of each when true at its hand-off
+    # and distinct from its siblings (the lint's shadow check).
     actors: 1 kind:character
     duration: 1h
     recipes:
-      time.turn when exists(name:THE_TURNING) -> NARRATE "The wheel turns; the weathers are still being cut."
-      default -> NARRATE "{actors} let the fog pass through the room."
+      time.turn when exists(name:THE_TURNING) -> IF actors.attr.silver >= 1 -> (SET(ACTORS, silver, -1), IF exists(name:THE_HOLLOW_DAYS) -> (DESTROY THE_HOLLOW_DAYS, NARRATE "The silver goes out for bread, and the hollow days give back the table they had made of the room.")) ELSE IF exists(name:VIGOR) -> (DESTROY VIGOR, SPAWN THE_HOLLOW_DAYS, NARRATE "No silver for the meal, so the body pays it itself. The hunger moves in and starts calling the room its own.") ELSE -> (ENDING THE_BODY_FAILS), DRAW SEASONS INTO ACTORS, IF exists(name:SEASON_GREY) -> (RUN "season.despair_link") ELSE IF exists(name:SEASON_WHITE) -> (RUN "season.rapture_link") ELSE IF exists(name:SEASON_SHADOW) -> (RUN "season.suspicion_link") ELSE IF exists(name:SEASON_AMBITION) -> (RUN "season.ambition") ELSE IF exists(name:SEASON_SICKLY) -> (RUN "season.sick") ELSE IF exists(name:SEASON_LEAN) -> (RUN "season.rags") ELSE IF exists(name:SEASON_WARM) -> (RUN "season.warm") ELSE -> (RUN "season.quiet")
+      season.despair_link when exists(name:SEASON_GREY) -> DESTROY SEASON_GREY, RUN "despair_judge"
+      despair_judge when exists(name:THE_TURNING) AND count(actors) >= 1 -> IF exists(name:EASE) -> (RUN "despair_abate") ELSE IF exists(name:DREAD) -> (RUN "despair_process") ELSE -> (NARRATE "The grey morning passes over the town like a hand over a lamp, and finds nothing of hers to take.", RUN "time.turn")
+      despair_abate when exists(name:THE_TURNING) AND exists(name:EASE) -> DESTROY EASE, NARRATE "The ease goes to the grey exactly where the grey is thickest, and the morning thins where it was paid.", RUN "time.turn"
+      despair_process when exists(name:THE_TURNING) AND exists(name:DREAD) -> DESTROY DREAD, SPAWN THE_GREY_MARK, NARRATE "The grey morning finds the dread and does what the town does with everything: it files it. Another mark goes into the grey water.", IF count(name:THE_GREY_MARK) >= 3 -> (NARRATE "The fog comes indoors. It knows the rooms; it has been reading the ledgers.", ENDING GREY_WATER) ELSE -> (RUN "time.turn")
+      season.rapture_link when exists(name:SEASON_WHITE) -> DESTROY SEASON_WHITE, RUN "rapture_judge"
+      rapture_judge when exists(name:THE_TURNING) AND count(actors) = 1 -> IF exists(name:RAPTURE) -> (RUN "rapture_process") ELSE -> (NARRATE "The white air rings through the town, clear and high, and passes one restorer's window without stopping.", RUN "time.turn")
+      rapture_process when exists(name:THE_TURNING) AND exists(name:RAPTURE) -> DESTROY RAPTURE, SPAWN THE_BRIGHT_MARK, NARRATE "The white air finds the rapture and sets its seal on it. Another mark goes into the bright book.", IF count(name:THE_BRIGHT_MARK) >= 3 -> (NARRATE "A bell rings, one note too many. She answers it. Nobody else hears it, and that is the last thing that happens in the room.", ENDING BRIGHT_AIR) ELSE -> (RUN "time.turn")
+      season.sick when exists(name:SEASON_SICKLY) -> DESTROY SEASON_SICKLY, IF exists(name:VIGOR) AND NOT exists(name:THE_FEVER) -> (REPLACE VIGOR WITH THE_FEVER, SET(THE_FEVER, expires, 3h), NARRATE "The sickly air goes through the body like a damp draft through a seal, and the fever moves in on a three-hour lease.", RUN "time.turn") ELSE IF exists(name:THE_WEARY_HOUR) AND NOT exists(name:THE_FEVER) -> (REPLACE THE_WEARY_HOUR WITH THE_FEVER, SET(THE_FEVER, expires, 3h), NARRATE "The sickly air finds the weary hour already sitting down, and finishes the job. The fever takes the lease over.", RUN "time.turn") ELSE IF exists(name:THE_FEVER) -> (NARRATE "The sickly air presses on a fever already in residence. The fever declines the help; it needs none.", RUN "time.turn") ELSE -> (NARRATE "There is nothing left in her for the sickness to work with. The body lays down its tenant, and the wheel turns on without her.", ENDING THE_BODY_FAILS)
+      season.suspicion_link when exists(name:SEASON_SHADOW) -> DESTROY SEASON_SHADOW, IF exists(name:NOTORIETY) -> (DESTROY NOTORIETY, SPAWN EVIDENCE, NARRATE "The long shadows do their quiet arithmetic: a name goes from the town's memory into its file.", RUN "suspicion_hunt") ELSE -> (NARRATE "The shadows stretch, find no name worth lengthening, and let the fog close over the street.", RUN "time.turn")
+      suspicion_hunt when exists(name:THE_TURNING) AND count(name:EVIDENCE) >= 1 -> ROLL(1, 10), IF roll > 7 -> (NARRATE "The hunt walks the fog from bell to bell and comes home with its pockets out.") ELSE IF count(name:EVIDENCE) >= 3 -> (SPAWN DREAD, SPAWN DREAD, NARRATE "The file is thick now. The town has read it twice, and both readings keep her up.") ELSE -> (NARRATE "The hunt works the streets with her name in its mouth, and the name is not worth a door knock yet."), RUN "time.turn"
+      season.rags when exists(name:SEASON_LEAN) -> DESTROY SEASON_LEAN, IF actors.attr.silver >= 2 -> (RUN "rags_drain") ELSE -> (RUN "starvation_lean")
+      rags_drain when exists(name:THE_TURNING) AND actors.attr.silver >= 2 -> SET(ACTORS, silver, -2), NARRATE "The lean days go through the purse like frost through a wall: two silver gone, and nothing to show for them but the cold.", RUN "time.turn"
+      starvation_lean when exists(name:THE_TURNING) AND NOT actors.attr.silver >= 2 -> IF exists(name:VIGOR) -> (DESTROY VIGOR, SPAWN THE_HOLLOW_DAYS, NARRATE "The lean days eat the meal itself. The hollow days move in and begin their tenancy.", RUN "time.turn") ELSE -> (NARRATE "There is no meal and no body to eat it with. The body lays down its tenant, and the wheel turns on without her.", ENDING THE_BODY_FAILS)
+      season.ambition when exists(name:SEASON_AMBITION) -> DESTROY SEASON_AMBITION, IF exists(name:THE_HUNGER_OF_HEIGHTS) -> (SPAWN GLIMMER, NARRATE "The ambitious air finds the hunger of heights and feeds it a spoonful of altitude. The roofline looks a little nearer than it did.") ELSE -> (SPAWN WAKEFULNESS, NARRATE "The ambitious air gets into the walls and keeps the town awake with plans it will not share."), RUN "time.turn"
+      season.warm when exists(name:SEASON_WARM) -> DESTROY SEASON_WARM, SPAWN EASE, ROLL(1, 10), IF roll <= 3 -> (SPAWN GLIMMER, NARRATE "A warm day, out of season, in Hollowmere: the ease of it is real, and one shaft of light remembers what light is for.") ELSE -> (NARRATE "A warm day, out of season. The town does not trust it, but the ease is real."), RUN "time.turn"
+      season.quiet when exists(name:SEASON_QUIET) -> DESTROY SEASON_QUIET, NARRATE "A quiet day. The bells ring their rounds, one note too many, and the fog files the difference.", RUN "time.turn"
+      wait.default -> NARRATE "{actors} let the fog pass through the room."
 
   STUDY:
     actors: 1 kind:character
@@ -299,17 +348,35 @@ verbs:
       rite.default -> REFUSE("The lamp will not lift on empty hands.")
 
   ACQUIRE:
+    # the flea market: the trestles stand at one place — buys bind the at
+    # role and the recipes gate on site.market (stock lives at the market,
+    # not in the player's pocket), and the stock is finite (a restock
+    # trigger would have to mint a declared entity, the engine's one
+    # refusal). The broke gate is posted (shown + hint, §6.2) and priced
+    # off the cost aspect; the key's sale is once-only on the sold
+    # flag-aspect — it is the slice's only copy of ways:2, and Hollowmere
+    # does not reprint keys (§4/G8: one guest per key, and the key burns
+    # with the casting). The sold gate speaks before the default, so a
+    # rebuy is refused by name and the bare-trestle default never fires
+    # for stock the player owns.
     actors: 1 kind:character
     object: 1 kind:item
+    at: 0..1 kind:place
     duration: 1halfhour
     recipes:
-      acquire.default -> REFUSE("Nobody in Hollowmere is selling that.")
+      acquire.broke_gate shown hint "The trestles take silver — count yours against the ticket before you reach for it." when object.aspect.cost >= 1 AND at.aspect.site.market >= 1 AND actors.attr.silver < object.aspect.cost -> REFUSE("The stall-keeper turns the ticket over and waits. Silver first; the fog has ruined better credit than yours.")
+      acquire.key when at.aspect.site.market >= 1 AND object.aspect.ways >= 2 AND NOT object.aspect.sold >= 1 -> SET(ACTORS, silver, -3), MOVE OBJECT INTO ACTORS, SET(OBJECT, aspect:sold, 1), NARRATE "Three silver, and the skeleton key changes trays. The stall-keeper does not ask what it opens; in Hollowmere that is manners."
+      acquire.candle when at.aspect.site.market >= 1 AND object.aspect.candle >= 1 -> SET(ACTORS, silver, -1), MOVE OBJECT INTO ACTORS, NARRATE "One silver, one tin candle. The wick smells of churches that have stopped answering."
+      acquire.salve when at.aspect.site.market >= 1 AND object.aspect.salve >= 1 -> SET(ACTORS, silver, -2), MOVE OBJECT INTO ACTORS, NARRATE "Two silver, one pot of grey salve, wrapped in a page of something older than the salve."
+      acquire.sold hidden when object.aspect.sold >= 1 -> REFUSE("The stall-keeper looks from the ticket to your pocket and back. That key went home with you already; there is no second.")
+      acquire.default -> REFUSE("Nothing to buy here — the trestles stand at the flea market, and what they had, they have sold.")
 
   TRAVEL_TO:
     actors: 1 kind:character
     object: 1 kind:place
     duration: 1halfhour
     recipes:
+      travel.unlinked hidden when NOT (rel(north, actors.container, object) OR rel(south, actors.container, object) OR rel(east, actors.container, object) OR rel(west, actors.container, object)) -> REFUSE("Hollowmere owns two streets and one wood, and none of them bend that way — the fog keeps the intervening doors.")
       travel.default -> MOVE ACTORS INTO OBJECT, NARRATE "{actors} walk the fog to {object}."
 
   LOCATE_AT:

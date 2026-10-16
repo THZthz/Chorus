@@ -5,13 +5,16 @@
 # old ledgers with three foundations (VIGOR, WITS, YEARNING), no silver, two
 # thin books, and a rite she has no business owning. The design doc for this
 # slice is docs/plans/v0.6-cs-slice.md; the verified mechanics it authorizes are
-# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is PHASE A of the
+# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is PHASE B of the
 # authoring: the full card inventory, the verbs and their slots, the decks, the
-# endings, and the card-borne machines (the labor rolls, the whisper decay, the
-# wheel's bootstrap) are all in, and 39 of the 102 recipes are landed — the
-# doc's §4 groups Work & silver, the Turning, the eight weathers, and market &
-# streets. The study, dream, mansus, talk and rite verbs still carry only their
-# defaults; the later phases land them, and the wheel already runs.
+# endings, the card-borne machines, and Phase A's 39 recipes (the doc's §4
+# groups Work & silver, the Turning, the eight weathers, market & streets) are
+# joined by 34 more — Study & the lore ladder, Dream & the moods, and the
+# Bellwood crossing. 73 of the 102 recipes are in; the TALK and USE_ON verbs
+# still carry only their defaults, and the later phase lands them. The lore
+# ladder, the desire chain and the door are already playable end to end:
+# books grind to fragments, pairs combine upward, the first lone 6+ read
+# yields THE_WAY_THROUGH, and the Bellwood pays rung-6/18 lore into the hand.
 #
 #   WORK      — labor and the clerk's post    (silver, the labor rolls, the bootstrap)
 #   WAIT      — the wheel                     (THE_TURNING: the season engine, self-rechaining)
@@ -229,8 +232,9 @@ endings:
 # the slice's nine verbs. Slot queries use the §9.49 alternation wherever CS's
 # any-of slots demanded it (WORK's entry, the rite's invocation). Recipes are
 # the authoring phases' work (docs/plans/v0.6-cs-slice.md §4 — 102 of them);
-# Phase A lands 39 of them (WORK, WAIT, ACQUIRE, TRAVEL_TO/LOCATE_AT), and the
-# study, dream, mansus, talk and rite verbs still carry only their defaults.
+# Phase A landed 39 (WORK, WAIT, ACQUIRE, TRAVEL_TO/LOCATE_AT) and Phase B 34
+# more (STUDY, DREAM, MANSUS); the talk and rite verbs still carry only their
+# defaults.
 verbs:
   WORK:
     # CS's one big any-of entry slot, as alternation: a foundation (intact or
@@ -303,20 +307,76 @@ verbs:
       wait.default -> NARRATE "{actors} let the fog pass through the room."
 
   STUDY:
+    # the lore ladder (G4). Order is load-bearing (first match wins, §6.4):
+    # books → pairs → mismatch gate → the Way → lone reads. Combines are
+    # 2+2→6 and 6+6→18 only (§6.16: 6+2 refuses at the mismatch gate); the
+    # book recipes gate on `book` — the marker aspect that keeps a bare
+    # fragment (radiance 2, no book) from ever first-matching them — and
+    # require `count(with) < 1`, so a book bound beside a fragment falls
+    # through to the 2+2 pair: one combine's shortcut, by design. The lone
+    # reads never consume the object (lore pools; only combines burn pairs),
+    # and their inductions are the slice's borrowed 30% (§6.19). The
+    # rung-6 lone reads are bounded `< 18` so the rung-18 reads stay
+    # reachable under first-match-wins — the plan's row pair resolves to
+    # disjoint ranges, and the shadow lint would rightly call the gospel
+    # row dead otherwise. The far-toll spawns are guarded on no toll live
+    # (the tolls are unique, §9.19) and carry the 1 h clock that chains
+    # through the whisper decay (the card-borne clocks above).
     actors: 1 kind:character
     object: 1 kind:text | kind:idea
     with: 0..2 kind:idea
     at: 0..1 kind:place
     duration: 2h
     recipes:
+      study.psalm_book when object.aspect.book >= 1 AND object.aspect.radiance >= 1 AND count(with) < 1 -> DESTROY OBJECT, SPAWN A_CANDLE_PSALM, SPAWN A_CANDLE_PSALM, ROLL(1, 10), IF roll <= 3 -> (SPAWN GLIMMER, NARRATE "The psalm comes apart in her hands the way a psalm should — into light, twice over, and one line of it will not stop shining.") ELSE -> (NARRATE "The psalm comes apart in her hands the way a psalm should — into light, twice over. Two candle-psalms, waiting to be put together again.")
+      study.snow_book when object.aspect.book >= 1 AND object.aspect.hush >= 1 AND count(with) < 1 -> DESTROY OBJECT, SPAWN A_STILL_AIR, SPAWN A_STILL_AIR, ROLL(1, 10), IF roll <= 3 -> (SPAWN DREAD, NARRATE "The pamphlet undoes itself into two sheets of still air, and in the silence between them something moves that was printed nowhere.") ELSE -> (NARRATE "The pamphlet undoes itself into two sheets of still air. Twice the quiet, half the weight; the cold between the pages is the lesson.")
+      study.rad2_pair when object.aspect.radiance = 2 AND total(with, aspect:radiance) = 2 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_LAMPKEEPERS_HOUR, NARRATE "Two small lights read against each other stop being small: the hour when the lampkeepers trim the wicks assembles itself out of the pair and will not go back to being two psalms."
+      study.hush2_pair when object.aspect.hush = 2 AND total(with, aspect:hush) = 2 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_HOARFIELD_LECTIONARY, NARRATE "Two still airs laid together freeze into one: the lectionary the hoarfield reads from, each page a winter the town agreed to forget."
+      study.rad6_pair when object.aspect.radiance = 6 AND total(with, aspect:radiance) = 6 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_GLASS_GOSPEL, NARRATE "Lampkeeper's hour read beside what the Bellwood paid for it: the light doubles, clears, and goes through — the glass gospel, which reads the reader back."
+      study.hush6_pair when object.aspect.hush = 6 AND total(with, aspect:hush) = 6 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_NINE_WINTERS, NARRATE "Lectionary and root-silence, read as one: nine winters in a single binding, and the ninth is still falling."
+      study.mismatch when count(with) >= 1 -> REFUSE("The registers refuse each other. Lore climbs by pairs of a kind — two small lights, two great ones — and by nothing else; six read against two is a quarrel, not a ladder.")
+      study.way max 1 when count(with) < 1 AND (object.aspect.radiance >= 6 OR object.aspect.hush >= 6) AND NOT exists(name:THE_WAY_THROUGH) -> SPAWN THE_WAY_THROUGH, NARRATE "Read alone, the great register opens onto its own subject: for one line the page is a wood, and the wood has a door in it. She marks the place. The Way Through holds, paper-thin, the shape of a knock."
+      study.rad6_lone when count(with) < 1 AND object.aspect.radiance >= 6 AND object.aspect.radiance < 18 -> ROLL(1, 10), IF roll <= 3 AND NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h), NARRATE "An hour with the lampkeepers, and it follows her out: a toll of light, ringing at the edge of hearing, already fading.") ELSE -> (NARRATE "An hour with the lampkeepers' hour. The light keeps its distance, this once, and the room is only a room when she looks up.")
+      study.hush6_lone when count(with) < 1 AND object.aspect.hush >= 6 AND object.aspect.hush < 18 -> ROLL(1, 10), IF roll <= 3 -> (SPAWN DREAD, NARRATE "An hour inside the lectionary's quiet, and the quiet follows her home — not the friendly kind; the kind that listens back.") ELSE IF roll <= 6 AND NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h), NARRATE "The lectionary's stillness rings: one note of it lodges under the day like a toll through fog, and the fog keeps it.") ELSE -> (NARRATE "An hour with the hoarfield lectionary. The winter on the page stays on the page, this once.")
+      study.gospel_lone when count(with) < 1 AND object.aspect.radiance >= 18 -> ROLL(1, 10), IF roll <= 3 -> (SPAWN RAPTURE, IF NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h)), NARRATE "The gospel reads HER — one line of it lands like a hand on the back of the neck, and the vision carries her as far as the roofline: the town from above, small as a ledger. A far toll of it keeps ringing after she comes down.") ELSE -> (IF NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h)), NARRATE "The glass gospel holds her for an hour and gives most of it back. What it keeps is a toll of light, ringing out at the fog, already fading.")
+      study.winters_lone when count(with) < 1 AND object.aspect.hush >= 18 -> ROLL(1, 10), IF roll <= 3 -> (SPAWN DREAD, IF NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h)), NARRATE "Nine winters, read in one sitting: the cold gets into the reading and will not be read back out. It walks her to the door like an usher and stays after. A far toll of bell answers it, once.") ELSE -> (IF NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h)), NARRATE "An hour in the nine winters and the cold keeps its contract: on the page, not in the room. What rings after is only a far toll, thinning into fog.")
+      study.toll_read when object.aspect.toll >= 1 -> DESTROY OBJECT, ROLL(1, 10), IF roll <= 3 -> (SPAWN GLIMMER, NARRATE "She reads the toll the way she reads everything, line by line, and one line of it catches: a gilt edge on the fading note, and it does not let go of her eye.") ELSE -> (NARRATE "She reads the toll out of the air, line by line, until there is nothing left of it to ring. The fog files the ending.")
       study.default -> NARRATE "{actors} study {object}, line by line, and the lines mostly hold still."
 
   DREAM:
+    # moods and the desire chain (G5). The router is ONE recipe — CS's
+    # dream_router (no requirements, the six-slot MOODS deck, exact): the
+    # drawn mood lands in hand as a card, and dreaming ON it is the bound
+    # walk below (CS's station takes any card; its linked recipes read the
+    # table the same way these whens read the bound roles). The moods are
+    # permanent pool cards in this slice (§6.8/§6.9), so no draw-side RUN
+    # dispatch can tell the drawn copy from a held one — the routing stays
+    # on the BOUND cards, where it is exact. Restores use the pinned idiom
+    # (law 1): DESTROY WITH + SPAWN resource:K + SET(K, aspect:k, 1) —
+    # REPLACE into an entity name is refused; the two CURE recipes (mend,
+    # fever) guard their mint on the foundation's name being free, because
+    # a work-weary fever can sit beside a living VIGOR (§9.19's collision,
+    # kept off the arm the way season.sick's guards are). Dreams pool lore
+    # without consuming it; only the desire transforms burn their cards.
     actors: 1 kind:character
     with: 0..2 kind:state | kind:idea | kind:resource
     duration: 1h
     recipes:
-      dream.default -> NARRATE "{actors} sleep without dreaming, and the fog files it away."
+      dream.rest_vigor when count(with) = 1 AND total(with, aspect:weary) >= 1 -> DESTROY WITH, SPAWN resource:VIGOR, SET(VIGOR, aspect:vigor, 1), SPAWN EASE, NARRATE "She sleeps the weary hour against the pillow of itself, and wakes with the body back where the tiredness was — plus an ease it did not have going in."
+      dream.rest_wits when count(with) = 1 AND total(with, aspect:dim) >= 1 -> DESTROY WITH, SPAWN resource:WITS, SET(WITS, aspect:wits, 1), SPAWN EASE, NARRATE "The dimmed wit dreams its figures straight, and by morning the columns add again. Something in the forecourt of the mind has reopened, with an ease about it."
+      dream.rest_yearning when count(with) = 1 AND total(with, aspect:pale) >= 1 -> DESTROY WITH, SPAWN resource:YEARNING, SET(YEARNING, aspect:yearning, 1), SPAWN EASE, NARRATE "The pale yearning sleeps and wakes wanting again — the coat back on the habit, and an ease in the lining it never had before."
+      dream.mend when count(with) = 2 AND total(with, aspect:fever) >= 1 AND total(with, aspect:mending) >= 1 -> DESTROY WITH, IF NOT exists(name:VIGOR) -> (SPAWN resource:VIGOR, SET(VIGOR, aspect:vigor, 1), NARRATE "Mending laid against fever is a paid cure: the burn goes out of the blood and what it leaves behind is the body, restored to its own account. It costs the mending to do it.") ELSE -> (NARRATE "Mending laid against fever is a paid cure: the burn goes out of the blood, and the body — which had never left — takes the cure as simply as a meal. It costs the mending to do it.")
+      dream.fever when count(with) = 1 AND total(with, aspect:fever) >= 1 -> ROLL(1, 10), IF roll <= 7 AND NOT exists(name:VIGOR) -> (DESTROY WITH, SPAWN resource:VIGOR, SET(VIGOR, aspect:vigor, 1), NARRATE "The fever breaks the right way, in sweat and sleep: seven nights in one, and the body takes its vigor back out of the ashes.") ELSE IF roll <= 7 -> (DESTROY WITH, NARRATE "The fever breaks the right way, in sweat and sleep: seven nights in one, and the body — which had kept its vigor through the burn — carries the ashes out with the morning.") ELSE -> (NARRATE "The fever holds its lease through the night. By morning it has not broken, only changed its mind about how.")
+      dream.cleanse when count(with) = 1 AND total(with, aspect:ease) >= 1 AND exists(name:DREAD) -> DESTROY WITH, DESTROY DREAD, SPAWN A_FADING_PEAL, SET(A_FADING_PEAL, expires, 1h), NARRATE "She sleeps on the ease and lets it work: the dread comes out of the chest where the ease goes in, and what the trade rings out is a peal, fading — worth an hour's remembering, and no more."
+      dream.ctr when count(with) = 2 AND total(with, aspect:dread) >= 1 AND total(with, aspect:rapture) >= 1 -> DESTROY WITH, SPAWN A_FADING_PEAL, SET(A_FADING_PEAL, expires, 1h), NARRATE "Dreamed against each other, dread and rapture defuse: neither wins the night, and what they leave is a peal — the sound of two bells agreeing to stop."
+      dream.dread_held when count(with) = 1 AND total(with, aspect:dread) >= 1 -> NARRATE "She dreams on the dread without fighting it, and the dread keeps the night's books in its own hand. Nothing new is owed by morning; nothing is paid down either."
+      dream.rapture_held when count(with) = 1 AND total(with, aspect:rapture) >= 1 -> NARRATE "She dreams on the rapture and the rapture dreams back — the roofline again, a hand's width nearer, doing no harm tonight and learning the way."
+      dream.ease_held when count(with) = 1 AND total(with, aspect:ease) >= 1 -> NARRATE "She sleeps on the ease, and the ease holds the room like a held bell-note: an hour with nothing in it that needs her. The fog, for once, files nothing."
+      dream.toll when count(with) = 1 AND total(with, aspect:toll) >= 1 -> ROLL(1, 10), IF roll <= 3 -> (SPAWN RAPTURE, NARRATE "The toll rings through the sleep, and the sleep answers it: she wakes one note higher, rapt, with the bell still in the room somewhere behind the plaster.") ELSE -> (NARRATE "The toll rings through the sleep all night and the sleep lets it. By morning it is only a bell again, and only the town's.")
+      dream.temptation when count(with) = 1 AND total(with, aspect:wits) >= 1 AND NOT exists(name:THE_PROMISE_OF_HEIGHTS) -> SPAWN THE_PROMISE_OF_HEIGHTS, NARRATE "The wit, dreamed in, maps the town from its own rooftops — and the map stays: a promise of heights, folded small enough to keep in a pocket of the waking world."
+      dream.dedication when total(with, aspect:promise) >= 1 AND total(with, aspect:radiance) >= 2 -> REPLACE THE_PROMISE_OF_HEIGHTS WITH THE_VOW_OF_HEIGHTS, NARRATE "The promise, dreamed against pooled light, stops promising: it is sworn. The vow of heights sits where the promise sat, heavier by exactly what it now costs to break."
+      dream.vow_held when count(with) = 1 AND total(with, aspect:vow) >= 1 -> NARRATE "She sleeps with the vow under the pillow and the vow keeps watch instead of her — a light burning at the stair-head of the night, counting the marks still owed."
+      dream.default -> DRAW MOODS INTO ACTORS, NARRATE "{actors} sleep without dreaming, and the fog deals the night a card: something to carry into the next sleep, or to dream on."
 
   TALK:
     actors: 1 kind:character
@@ -328,11 +388,24 @@ verbs:
       talk.default -> NARRATE "{actors} exchange words with {to}, and the fog takes its customary share."
 
   MANSUS:
+    # the Bellwood crossing (G6). Study's first lone 6+ read yields
+    # THE_WAY_THROUGH (`max 1` — the one-shot); the crossing spends its
+    # companion and draws the BELLWOOD deck — no reset, no defaultcard:
+    # eight rewards and then the draw fails loud (§9.42). The yearning
+    # crossing spends the intact foundation into its pale form (the
+    # Dream-restore brings it back, so the wood is re-enterable); the
+    # guest crossing spends the summon outright (what the 3 h window is
+    # FOR). Locked speaks only at commit (hidden): nobody is told the
+    # wood has a door until a register shows them one.
     actors: 1 kind:character
     object: 1 kind:place
     with: 0..1 kind:resource aspect:yearning>=1 | kind:character aspect:bell_voice>=1
     duration: 1h
     recipes:
+      mansus.locked hidden when NOT exists(name:THE_WAY_THROUGH) -> REFUSE("The wood keeps its door. The fog goes into the trees a long way and comes back unchanged, and so does she.")
+      mansus.enter when exists(name:THE_WAY_THROUGH) AND total(with, aspect:yearning) >= 1 -> DESTROY WITH, SPAWN THE_PALE_YEARNING, DRAW BELLWOOD INTO ACTORS, NARRATE "The Way Through opens on the Bellwood, and the Bellwood wants its toll: the yearning goes out of her at the threshold, pale as coin leaving a palm. Inside, among the bells that are trees, the wood pays for the passage — a card dealt out of the dark."
+      mansus.enter_guest when exists(name:THE_WAY_THROUGH) AND total(with, aspect:bell_voice) >= 1 -> DESTROY WITH, DRAW BELLWOOD INTO ACTORS, NARRATE "The guest carries her through — bell-voice first, the wood parting for its own note — and spends itself doing it. What the wood pays out at the crossing is dealt from the dark."
+      mansus.enter_gate shown hint "The crossing wants a yearning spent, or a guest to carry it." when exists(name:THE_WAY_THROUGH) AND count(with) < 1 -> REFUSE("The Way Through holds and the crossing does not: the wood wants the yearning out of her, or a bell-voiced passenger, before it pays anything at all.")
       mansus.default -> REFUSE("The crossing does not open on a whim.")
 
   USE_ON:

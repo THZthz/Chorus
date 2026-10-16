@@ -5,16 +5,15 @@
 # old ledgers with three foundations (VIGOR, WITS, YEARNING), no silver, two
 # thin books, and a rite she has no business owning. The design doc for this
 # slice is docs/plans/v0.6-cs-slice.md; the verified mechanics it authorizes are
-# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is PHASE B of the
+# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is PHASE C of the
 # authoring: the full card inventory, the verbs and their slots, the decks, the
-# endings, the card-borne machines, and Phase A's 39 recipes (the doc's §4
-# groups Work & silver, the Turning, the eight weathers, market & streets) are
-# joined by 34 more — Study & the lore ladder, Dream & the moods, and the
-# Bellwood crossing. 73 of the 102 recipes are in; the TALK and USE_ON verbs
-# still carry only their defaults, and the later phase lands them. The lore
-# ladder, the desire chain and the door are already playable end to end:
-# books grind to fragments, pairs combine upward, the first lone 6+ read
-# yields THE_WAY_THROUGH, and the Bellwood pays rung-6/18 lore into the hand.
+# endings, the card-borne machines, Phase A's 39 recipes (the doc's §4 groups
+# Work & silver, the Turning, the eight weathers, market & streets), Phase B's
+# 34 (Study & the lore ladder, Dream & the moods, the Bellwood crossing) and
+# Phase C's 29 (the congregation, the Lifted Lamp) — ALL 102 recipes are in,
+# and every loop of §5 plays end to end: work → the wheel; study → lore →
+# dream → the door; talk → the congregation; rite → summon → the desire
+# ascension.
 #
 #   WORK      — labor and the clerk's post    (silver, the labor rolls, the bootstrap)
 #   WAIT      — the wheel                     (THE_TURNING: the season engine, self-rechaining)
@@ -231,10 +230,9 @@ endings:
 # ── what can be done ─────────────────────────────────────────────────────
 # the slice's nine verbs. Slot queries use the §9.49 alternation wherever CS's
 # any-of slots demanded it (WORK's entry, the rite's invocation). Recipes are
-# the authoring phases' work (docs/plans/v0.6-cs-slice.md §4 — 102 of them);
-# Phase A landed 39 (WORK, WAIT, ACQUIRE, TRAVEL_TO/LOCATE_AT) and Phase B 34
-# more (STUDY, DREAM, MANSUS); the talk and rite verbs still carry only their
-# defaults.
+# the authoring phases' work (docs/plans/v0.6-cs-slice.md §4 — 102 of them):
+# Phase A landed 39 (WORK, WAIT, ACQUIRE, TRAVEL_TO/LOCATE_AT), Phase B 34
+# (STUDY, DREAM, MANSUS), Phase C the last 29 (TALK, USE_ON).
 verbs:
   WORK:
     # CS's one big any-of entry slot, as alternation: a foundation (intact or
@@ -330,10 +328,10 @@ verbs:
     recipes:
       study.psalm_book when object.aspect.book >= 1 AND object.aspect.radiance >= 1 AND count(with) < 1 -> DESTROY OBJECT, SPAWN A_CANDLE_PSALM, SPAWN A_CANDLE_PSALM, ROLL(1, 10), IF roll <= 3 -> (SPAWN GLIMMER, NARRATE "The psalm comes apart in her hands the way a psalm should — into light, twice over, and one line of it will not stop shining.") ELSE -> (NARRATE "The psalm comes apart in her hands the way a psalm should — into light, twice over. Two candle-psalms, waiting to be put together again.")
       study.snow_book when object.aspect.book >= 1 AND object.aspect.hush >= 1 AND count(with) < 1 -> DESTROY OBJECT, SPAWN A_STILL_AIR, SPAWN A_STILL_AIR, ROLL(1, 10), IF roll <= 3 -> (SPAWN DREAD, NARRATE "The pamphlet undoes itself into two sheets of still air, and in the silence between them something moves that was printed nowhere.") ELSE -> (NARRATE "The pamphlet undoes itself into two sheets of still air. Twice the quiet, half the weight; the cold between the pages is the lesson.")
-      study.rad2_pair when object.aspect.radiance = 2 AND total(with, aspect:radiance) = 2 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_LAMPKEEPERS_HOUR, NARRATE "Two small lights read against each other stop being small: the hour when the lampkeepers trim the wicks assembles itself out of the pair and will not go back to being two psalms."
-      study.hush2_pair when object.aspect.hush = 2 AND total(with, aspect:hush) = 2 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_HOARFIELD_LECTIONARY, NARRATE "Two still airs laid together freeze into one: the lectionary the hoarfield reads from, each page a winter the town agreed to forget."
-      study.rad6_pair when object.aspect.radiance = 6 AND total(with, aspect:radiance) = 6 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_GLASS_GOSPEL, NARRATE "Lampkeeper's hour read beside what the Bellwood paid for it: the light doubles, clears, and goes through — the glass gospel, which reads the reader back."
-      study.hush6_pair when object.aspect.hush = 6 AND total(with, aspect:hush) = 6 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_NINE_WINTERS, NARRATE "Lectionary and root-silence, read as one: nine winters in a single binding, and the ninth is still falling."
+      study.rad2_pair when object.aspect.radiance = 2 AND total(with, aspect:radiance) = 2 AND count(object) = 1 AND count(with) = 1 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_LAMPKEEPERS_HOUR, NARRATE "Two small lights read against each other stop being small: the hour when the lampkeepers trim the wicks assembles itself out of the pair and will not go back to being two psalms."
+      study.hush2_pair when object.aspect.hush = 2 AND total(with, aspect:hush) = 2 AND count(object) = 1 AND count(with) = 1 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_HOARFIELD_LECTIONARY, NARRATE "Two still airs laid together freeze into one: the lectionary the hoarfield reads from, each page a winter the town agreed to forget."
+      study.rad6_pair when object.aspect.radiance = 6 AND total(with, aspect:radiance) = 6 AND count(object) = 1 AND count(with) = 1 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_GLASS_GOSPEL, NARRATE "Lampkeeper's hour read beside what the Bellwood paid for it: the light doubles, clears, and goes through — the glass gospel, which reads the reader back."
+      study.hush6_pair when object.aspect.hush = 6 AND total(with, aspect:hush) = 6 AND count(object) = 1 AND count(with) = 1 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_NINE_WINTERS, NARRATE "Lectionary and root-silence, read as one: nine winters in a single binding, and the ninth is still falling."
       study.mismatch when count(with) >= 1 -> REFUSE("The registers refuse each other. Lore climbs by pairs of a kind — two small lights, two great ones — and by nothing else; six read against two is a quarrel, not a ladder.")
       study.way max 1 when count(with) < 1 AND (object.aspect.radiance >= 6 OR object.aspect.hush >= 6) AND NOT exists(name:THE_WAY_THROUGH) -> SPAWN THE_WAY_THROUGH, NARRATE "Read alone, the great register opens onto its own subject: for one line the page is a wood, and the wood has a door in it. She marks the place. The Way Through holds, paper-thin, the shape of a knock."
       study.rad6_lone when count(with) < 1 AND object.aspect.radiance >= 6 AND object.aspect.radiance < 18 -> ROLL(1, 10), IF roll <= 3 AND NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h), NARRATE "An hour with the lampkeepers, and it follows her out: a toll of light, ringing at the edge of hearing, already fading.") ELSE -> (NARRATE "An hour with the lampkeepers' hour. The light keeps its distance, this once, and the room is only a room when she looks up.")
@@ -379,12 +377,41 @@ verbs:
       dream.default -> DRAW MOODS INTO ACTORS, NARRATE "{actors} sleep without dreaming, and the fog deals the night a card: something to carry into the next sleep, or to dream on."
 
   TALK:
+    # the congregation (G7). Selection order is the plan's row order (first
+    # match wins, §6.4): the guest's two answers, the disciple's council and
+    # her two business ladders, the posted gates, the promotion and recruit
+    # swaps, meet, the defaults last. Lore pools from the `with` hand only —
+    # `about` is the topic slot (the guest's answer, the disciple's council)
+    # — and talk never consumes what it pools (only rites burn offerings and
+    # only combines burn pairs). Every ladder arm reads total(with), so the
+    # gate and the arithmetic agree on the same cards (the E9 discipline):
+    # the 1→30 / 5→70 / 10→90 convention stands as the literal ROLL(1, 10)
+    # ladder the plan's row spells. The congregation swaps are DESTROY +
+    # SPAWN — the mint lands at the conversationalist's side (SPAWN's
+    # no-INTO default is the first actor's container) — and meet refuses to
+    # double a congregation that exists in ANY form (a non-stackable mint
+    # over a living name is the §9.19 collision, kept off the arm as
+    # everywhere else in this file).
     actors: 1 kind:character
     to: 0..1 kind:character
     with: 0..2 kind:idea
     about: 0..1 kind:idea
     duration: 1halfhour
     recipes:
+      talk.guest_lore when to.aspect.bell_voice >= 1 AND (about.aspect.radiance >= 1 OR about.aspect.hush >= 1) -> NARRATE "She lays the lore out like a question, and the guest answers in its bell's register. The answer is a made thing, shaped like a fact, and it goes on ringing after the words are done — a toll of it keeps sounding at the edge of the room.", IF NOT exists(name:THE_FAR_TOLL) -> (SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h))
+      talk.guest when to.aspect.bell_voice >= 1 -> SPAWN A_TOLLING_MORSEL, NARRATE "Talk sheds the guest the way light sheds sparks: she gathers what falls — a morsel of tolling warmth, worth the keeping while the three hours last."
+      talk.disciple_council when to.aspect.disciple >= 1 AND (about.aspect.radiance >= 1 OR about.aspect.hush >= 1) -> NARRATE "The disciple reads the lore back line by line, and marks the road in it. 'Twelve of the light buys the first mark past the hunger's three,' she says, 'then eighteen for the next, then twenty-four — the two great rungs read together, and the roof of the visible comes off. Six marks. The last costs more than the first five. That is the whole shape of it.'"
+      talk.business_rad when to.aspect.disciple >= 1 AND total(with, aspect:radiance) >= 1 -> ROLL(1, 10), IF total(with, aspect:radiance) >= 10 AND roll <= 9 -> (SET(ACTORS, silver, +2), NARRATE "The disciple knows which ledgers move and which hands sign them, and a pooled light this size opens the way. Two silver cross the table in the congregation's name — the die gave {roll}, and it was kind.") ELSE IF total(with, aspect:radiance) >= 5 AND roll <= 7 -> (SET(ACTORS, silver, +2), NARRATE "The disciple walks the pooled light through the town's locked boxes and two silver come back — {roll}, close enough to the edge to feel the wind off it.") ELSE IF total(with, aspect:radiance) >= 1 AND roll <= 3 -> (SET(ACTORS, silver, +2), NARRATE "A thin hand for this work, and the fog was watching — but the die came up {roll}, small and kind, and two silver cross the table anyway.") ELSE -> (SPAWN NOTORIETY, NARRATE "The business goes wrong the way business does: not loudly, but on the record. The die gave {roll}, and the town's memory gains a line with her shape at the bottom of it.")
+      talk.business_hush when to.aspect.disciple >= 1 AND total(with, aspect:hush) >= 1 AND NOT total(with, aspect:radiance) >= 1 -> ROLL(1, 10), IF total(with, aspect:hush) >= 10 AND roll <= 9 -> (SET(ACTORS, silver, +2), ROLL(1, 10), IF roll <= 3 -> (SPAWN NOTORIETY, NARRATE "The quiet work pays — two silver — and the quiet work leaves marks: the town's memory gains a line with her shape at the bottom of it.") ELSE -> (NARRATE "The quiet work pays — two silver — and this once the fog keeps its notes to itself.")) ELSE IF total(with, aspect:hush) >= 5 AND roll <= 7 -> (SET(ACTORS, silver, +2), ROLL(1, 10), IF roll <= 3 -> (SPAWN NOTORIETY, NARRATE "Two silver out of the still airs, and a mark of it left standing in the town's memory besides.") ELSE -> (NARRATE "Two silver out of the still airs, cleanly done, no marks.")) ELSE IF total(with, aspect:hush) >= 1 AND roll <= 3 -> (SET(ACTORS, silver, +2), ROLL(1, 10), IF roll <= 3 -> (SPAWN NOTORIETY, NARRATE "A thin hand, a small die, two silver — and the hush of the work leaves its mark in the town's memory all the same.") ELSE -> (NARRATE "A thin hand, a small die, two silver, and nobody the wiser.")) ELSE -> (SPAWN NOTORIETY, NARRATE "The still airs close over the business like water. It does not pay, and the town's memory gains a line with her shape at the bottom of it.")
+      talk.business_gate shown hint "Cult business wants lore laid in the hand — pooled, then rolled." when to.aspect.disciple >= 1 AND count(with) < 1 -> REFUSE("The disciple spreads her hands. Business is done with lore in the room — lay some in the hand and ask again.")
+      talk.disciple_default when to.aspect.disciple >= 1 -> NARRATE "The disciple talks of the congregation's business, the town's forgettable weather, and a roofline she has learned not to point at. Bring lore, and she will work it."
+      talk.disciple when to.aspect.believer >= 1 AND total(with, aspect:radiance) >= 7 -> DESTROY TO, SPAWN HALE_THE_DISCIPLE, NARRATE "Seven lights read aloud in the believer's hearing, and something in her finishes a sentence it had been carrying for years. 'Hale,' she says, as if the name had been waiting for the mouth that now says it — the disciple now, bound to the ascent, done with anything smaller."
+      talk.disciple_gate shown hint "The promotion wants pooled radiance — seven or better, laid in the hand." when to.aspect.believer >= 1 AND count(with) < 1 -> REFUSE("The believer listens all the way to the end and shakes her head. Words do not promote; light does — seven pooled, or the congregation stays the size it is.")
+      talk.believer_default when to.aspect.believer >= 1 -> NARRATE "The believer talks the way converts do — halfway to convincing herself, entirely convinced of Hale. Bring light, and she will follow it."
+      talk.recruit when to.aspect.unmet >= 1 AND (total(with, aspect:radiance) >= 1 OR total(with, aspect:hush) >= 1) -> DESTROY TO, SPAWN HALE_THE_BELIEVER, NARRATE "The lore does what courtesy could not: the acquaintance stops being polite. 'Mercy Hale,' she says, as if resuming an acquaintance neither of you had started — believer now, and asking what the light is for."
+      talk.recruit_gate shown hint "The acquaintance wants lore — either register, pooled in the hand." when to.aspect.unmet >= 1 AND count(with) < 1 -> REFUSE("Mercy Hale talks of fog and rents and the bell that rings one note too many, and nothing turns under it. Show her a register — any register — or the conversation stays small.")
+      talk.hale_default when to.aspect.unmet >= 1 -> NARRATE "Mercy Hale is pleasant, guarded, and gone sooner than courtesy requires. She has the look of a woman waiting to be shown something worth showing her."
+      talk.meet when count(to) < 1 AND (total(with, aspect:radiance) >= 1 OR total(with, aspect:hush) >= 1) AND NOT exists(name:MERCY_HALE) AND NOT exists(name:HALE_THE_BELIEVER) AND NOT exists(name:HALE_THE_DISCIPLE) -> SPAWN MERCY_HALE, NARRATE "The lore in her hand is the introduction: a woman at the next table leans over — 'That register. Where did it come from?' Mercy Hale, of the fog-bound parish, and the beginning of a congregation."
       talk.default -> NARRATE "{actors} exchange words with {to}, and the fog takes its customary share."
 
   MANSUS:
@@ -409,15 +436,52 @@ verbs:
       mansus.default -> REFUSE("The crossing does not open on a whim.")
 
   USE_ON:
-    # the Lifted Lamp's three CS slots as roles: invocation in `with`,
-    # offering in `about` (consumed), the desire or its vow in `to`
+    # the Lifted Lamp (G8): the rite's three CS slots as roles — invocation
+    # in `with` (0..3), offering in `about` (consumed), desire in `to`. The
+    # promise rides the `to` slot only so rite.fix_gate can SPEAK at it (the
+    # plan row's own shape: without the promise group the gate dies at slot
+    # placement and the player gets the engine's "does not fit slot 'to'"
+    # where the lore says a refusal). Selection order is the plan's row
+    # order: enablers first, gates after, the default last. The knock
+    # disqualification is pure predicate shape (CS's 25 × knock:-1): every
+    # non-summoning rite carries total(with, aspect:ways) < 1 AND
+    # total(about, aspect:ways) < 1, and the summon alone wants ways ≥ 2 —
+    # via `with` or via the key in `about` (the dossier's OR; the key cannot
+    # ride `with`, which holds no items). The count pins are the E9 fence:
+    # count(with) >= 2 on the summon states that its radiance-6/hush-2 pool
+    # is two distinct cards (no living card carries both; a doubled NAME is
+    # refused upstream by the engine's same-role placement check), and the
+    # lesser pools pin their hand the same way. The offering burns FIRST
+    # (DESTROY ABOUT before the dice): one guest per key, and the 30%
+    # resolves after the offering is already committed. The summon alone
+    # carries CS's desire:-1 (dossier §3.4): the hunger must not sit in the
+    # situation (in `to`, or riding `with`) while anything is called — a
+    # disqualified hand falls through to short_gate's climb voice.
+    # rite.guest_held reads the INVOCATION pool only (count(with) ≥ 2,
+    # radiance ≥ 6, hush ≥ 2) beside a live guest — the plan row's "pools ok"
+    # cannot include the ways arm, because the key burns with the casting:
+    # a re-summon's ways can never be re-presented while the guest it bought
+    # still stands (one key, one guest — §4/G8).
     actors: 1 kind:character
     object: 1 kind:rite
     with: 0..3 kind:idea | kind:character aspect:bell_voice>=1 | kind:state aspect:fever>=1
     about: 0..1 kind:item
-    to: 0..1 kind:idea aspect:vow>=1 | kind:idea aspect:desire>=1
+    to: 0..1 kind:idea aspect:vow>=1 | kind:idea aspect:desire>=1 | kind:idea aspect:promise>=1
     duration: 2h
     recipes:
+      rite.summon when count(with) >= 2 AND total(with, aspect:radiance) >= 6 AND total(with, aspect:hush) >= 2 AND (total(with, aspect:ways) >= 2 OR (count(about) = 1 AND total(about, aspect:ways) >= 2)) AND NOT exists(name:THE_TOLLING_GUEST) AND NOT to.aspect.desire >= 1 AND total(with, aspect:desire) < 1 -> DESTROY ABOUT, ROLL(1, 10), IF roll <= 3 -> (ROLL(1, 10), IF roll <= 7 -> (SPAWN THE_TOLLING_GUEST, SET(THE_TOLLING_GUEST, expires, 3h), SPAWN DREAD, NARRATE "The lamp goes up and the key goes with it — and for one held breath the bell-voice does not answer her. Then it settles, mastered, into a shape she can look at: the Tolling Guest, three hours in the world. The mastering leaves a dread behind, in the room where her nerve used to be.") ELSE -> (NARRATE "The lamp goes up, the key burns, and the bell-voice rings once from somewhere the room does not contain — and goes. The summons failed at its hinge; whatever answered is not coming. The key paid for the lesson.")) ELSE -> (SPAWN THE_TOLLING_GUEST, SET(THE_TOLLING_GUEST, expires, 3h), NARRATE "The lamp goes up and the key goes with it — burnt at the hinge of the crossing, as keys are. A bell rings inside the ringing of the town's, and the Tolling Guest steps through on its own note: three hours in the world, and the fog keeps the door it came by.")
+      rite.summon_gate shown hint "The summon wants ways 2 (the key, in the offering), radiance 6 and hush 2 pooled in the hand." when (total(with, aspect:ways) >= 2 OR total(about, aspect:ways) >= 2) AND (count(with) < 2 OR total(with, aspect:radiance) < 6 OR total(with, aspect:hush) < 2) AND NOT exists(name:THE_TOLLING_GUEST) -> REFUSE("The pool starves: the key is willing and the lamp is lit, but the invocation wants radiance 6 and hush 2 — two cards or better, laid together — before the crossing will hold.")
+      rite.guest_held shown hint "One guest at a time; spend the three hours first." when exists(name:THE_TOLLING_GUEST) AND count(with) >= 2 AND total(with, aspect:radiance) >= 6 AND total(with, aspect:hush) >= 2 -> REFUSE("The guest is already in the room, bell and all. The lamp will not call a second while the first stands in it — spend the three hours; the fog keeps no others.")
+      rite.fix_desire when to.aspect.vow >= 1 AND count(with) >= 1 AND total(with, aspect:radiance) >= 6 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> REPLACE THE_VOW_OF_HEIGHTS WITH THE_HUNGER_OF_HEIGHTS, NARRATE "The vow goes into the lamp and the lamp gives it back finished: not a promise kept but a hunger armed. Three marks of the heights are struck on it, and the roofline — which had been scenery — is a debt now."
+      rite.fix_short shown hint "Fixing the vow wants radiance 6 pooled with it." when to.aspect.vow >= 1 AND total(with, aspect:radiance) < 6 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> REFUSE("The vow takes the lamp's light and does not take fire: six of the radiance, pooled with it, or it stays a promise with better grammar.")
+      rite.fix_gate when to.aspect.promise >= 1 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> REFUSE("The promise wants fixing first — dream it with lore.")
+      rite.ascend_3 when to.aspect.desire >= 1 AND to.aspect.marks >= 5 AND count(with) >= 2 AND total(with, aspect:radiance) >= 24 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> ROLL(1, 10), IF roll <= 9 -> (SET(TO, aspect:marks, +1), IF to.aspect.marks >= 6 -> (NARRATE "The sixth mark goes in the way the last stone goes into an arch — and the roof of the visible, which had been above her all her life, turns out to have been below her all along.", ENDING OVER_THE_ROOF) ELSE -> (NARRATE "The pooled light takes her mark and gives a step of it back. The roofline is close now — close enough to read the bell-metal.")) ELSE -> (SPAWN DREAD, NARRATE "The light gathers, strains — and fails at the last inch. Nothing is lost but the nerve it cost: a dread moves in where the certainty had been, and the hunger keeps its marks to try again.")
+      rite.ascend_2 when to.aspect.desire >= 1 AND to.aspect.marks >= 4 AND count(with) >= 1 AND total(with, aspect:radiance) >= 18 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> ROLL(1, 10), IF roll <= 9 -> (SET(TO, aspect:marks, +1), IF to.aspect.marks >= 6 -> (NARRATE "The sixth mark goes in the way the last stone goes into an arch — and the roof of the visible, which had been above her all her life, turns out to have been below her all along.", ENDING OVER_THE_ROOF) ELSE -> (NARRATE "The eighteenth of the light goes up like a struck bell and comes down a mark: five now, struck deep. One more, at the two great rungs read together, and the roof is a door.")) ELSE -> (SPAWN DREAD, NARRATE "The rite strains and lets go. The hunger keeps its marks and gains a dread — the light was not spent, but the nerve was.")
+      rite.ascend_1 when to.aspect.desire >= 1 AND to.aspect.marks >= 3 AND count(with) >= 1 AND total(with, aspect:radiance) >= 12 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> ROLL(1, 10), IF roll <= 9 -> (SET(TO, aspect:marks, +1), IF to.aspect.marks >= 6 -> (NARRATE "The sixth mark goes in the way the last stone goes into an arch — and the roof of the visible, which had been above her all her life, turns out to have been below her all along.", ENDING OVER_THE_ROOF) ELSE -> (NARRATE "The pooled light takes the hunger's measure and pays the first installment: a fourth mark, struck clean. The roofline is no longer scenery.")) ELSE -> (SPAWN DREAD, NARRATE "The rite strains and lets go. The hunger keeps its marks and gains a dread — the climb refused her this once, and she felt it refuse.")
+      rite.short_gate shown hint "The hunger climbs at radiance 12, then 18, then 24 — pooled in the hand." when to.aspect.desire >= 1 AND total(with, aspect:radiance) < 12 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> REFUSE("The hunger wants a greater light before it will climb: twelve pooled for the first mark past its three, then eighteen, then twenty-four. What is in the hand is not yet a stair.")
+      rite.salve when count(about) = 1 AND total(about, aspect:salve) >= 1 AND count(with) = 1 AND total(with, aspect:fever) >= 1 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> DESTROY ABOUT, DESTROY WITH, IF NOT exists(name:VIGOR) -> (SPAWN resource:VIGOR, SET(VIGOR, aspect:vigor, 1), NARRATE "The salve goes into the lamp and the fever goes into the flame: what comes out of the burn is the body, restored to its own account. The pot pays for the cure and the body takes it.") ELSE -> (NARRATE "The salve goes into the lamp and the fever goes into the flame, and the body — which had kept its vigor through the burn — takes the cure as simply as a meal.")
+      rite.benediction when count(about) = 1 AND count(with) >= 1 AND total(with, aspect:ways) < 1 AND total(about, aspect:ways) < 1 -> DESTROY ABOUT, ROLL(1, 10), IF roll <= 7 -> (SPAWN EASE, SPAWN GLIMMER, NARRATE "The offering burns the way offerings are supposed to: the lamp takes it gently, the room warms by one exact degree, and a shaft of the light remembers what light is for. Ease settles on the hour, and one gilt edge of it stays in the eye.") ELSE -> (SPAWN DREAD, NARRATE "The offering burns wrong — fast, the wrong color, the smoke finding the ceiling first. The room keeps the shape of the smoke long after the draft takes it, and what it leaves in the chest is dread.")
+      rite.lone_flame when count(about) = 1 AND count(with) < 1 AND total(about, aspect:ways) < 1 -> DESTROY ABOUT, NARRATE "She burns the offering alone in the lifted lamp, and the lamp gives back light and nothing else — the flame eats, and the fog files what it eats. The offering is spent on the spending."
       rite.default -> REFUSE("The lamp will not lift on empty hands.")
 
   ACQUIRE:

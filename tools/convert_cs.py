@@ -11,7 +11,7 @@ Inputs (read-only):
   --out    the Chorus script to generate (scripts/cultist-full.txt).
 
 Mapping spec: docs/reverse/cultist-simulator.md §2/§6; grammar:
-docs/spec/text-engine-v0.2.md §4.3/4.4/4.5/6.1/6.3/6.4/6.8/9.31/9.32/9.35/
+docs/spec/text-engine-v0.6.md §4.3/4.4/4.5/6.1/6.3/6.4/6.8/9.31/9.32/9.35/
 9.36/9.38/9.41/9.42/9.47/9.48/9.49/9.50/§10; engine laws: docs/plans/v0.6-cs-slice.md
 §3 (entity mints are impossible — decay targets and restore spawns are
 PROTOTYPES; REPLACE into a prototype is legal in recipe bodies only).
@@ -1396,7 +1396,7 @@ class Converter:
         w("# regenerations from the same core are byte-identical.")
         w("# Source: the CS 2026.1.g core (160 loose JSONs), loaded with the durable")
         w("# copy's lenient-JSON loader. Mapping dossier: docs/reverse/cultist-")
-        w("# simulator.md §2/§6. Grammar: docs/spec/text-engine-v0.2.md. Engine laws:")
+        w("# simulator.md §2/§6. Grammar: docs/spec/text-engine-v0.6.md. Engine laws:")
         w("# docs/plans/v0.6-cs-slice.md §3.")
         w("#")
         w("# Text policy: the owner relaxed the no-quoting rule for this engine-")

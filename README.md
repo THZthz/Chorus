@@ -1,7 +1,8 @@
 # Chorus — a text-only card-game prototype
 
 Cultist Simulator / Book of Hours-shaped, expressed entirely as sentences.
-Spec: [`docs/spec/text-engine-v0.2.md`](docs/spec/text-engine-v0.2.md).
+Spec: [`docs/spec/text-engine-v0.6.md`](docs/spec/text-engine-v0.6.md)
+(rulings & changelog: [`docs/spec/rulings.md`](docs/spec/rulings.md)).
 
 ```
 0:14 @ ANA AT HOUSE READ THE_FORGETTING -> SPAWN CLUE_THE_FORGETTING INTO house AS x1_1, NARRATE("...")

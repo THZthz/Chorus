@@ -6,7 +6,7 @@
 # regenerations from the same core are byte-identical.
 # Source: the CS 2026.1.g core (160 loose JSONs), loaded with the durable
 # copy's lenient-JSON loader. Mapping dossier: docs/reverse/cultist-
-# simulator.md §2/§6. Grammar: docs/spec/text-engine-v0.2.md. Engine laws:
+# simulator.md §2/§6. Grammar: docs/spec/text-engine-v0.6.md. Engine laws:
 # docs/plans/v0.6-cs-slice.md §3.
 #
 # Text policy: the owner relaxed the no-quoting rule for this engine-

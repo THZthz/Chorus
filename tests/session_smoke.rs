@@ -2,6 +2,9 @@
 //! exercised here, all pinned by the acceptance suites:
 //! - lenient: bare-verb default player, multi-word names, role-phrase groups,
 //!   canonical passthrough, suggestion surfaces, case-insensitive names;
+//!   E9's multi-role binding (distinct §9.38 pool copies head-first, the
+//!   too-small-pool refusal, same-role doubling unchanged) and E6's bare
+//!   clock halfhour wrap (the canonical form stays strict);
 //! - render: the ending banner/notice texts, the prose closing line;
 //! - Game: from_script → handle_line → journal/story/look → undo → bogus
 //!   error, visible/inspect projection, suggestions with `s[0]` pinned,
@@ -109,6 +112,340 @@ fn lenient_routes_the_pinned_phrases() {
 
     // 'names resolve case-insensitively (spec §11)'
     assert!(parse_player_input("read THE VANE LEDGER", &ctx).is_ok());
+}
+
+// ------------------------- lenient: E9 multi-role binding -------------------
+
+/// A state with a pooled name: two living THE_PSALM copies (birth order
+/// `psalm_a`, `psalm_b`) plus one THE_CANDLE, so single-mention resolution
+/// has a second name to stay byte-identical on.
+fn pool_world() -> chorus::core::types::State {
+    use chorus::core::types::{add_entity, new_state, AttrValue, Attrs, Entity};
+    let mut s = new_state(0);
+    for (id, kind, name, container, stackable) in [
+        ("house", "place", "HOUSE", None, false),
+        ("ana", "character", "ANA", Some("house"), false),
+        ("psalm_a", "idea", "THE_PSALM", Some("house"), true),
+        ("psalm_b", "idea", "THE_PSALM", Some("house"), true),
+        ("candle", "item", "THE_CANDLE", Some("house"), false),
+    ] {
+        let mut attrs = Attrs::new();
+        if let Some(c) = container {
+            attrs.insert("container".to_string(), AttrValue::Str(c.to_string()));
+        }
+        add_entity(
+            &mut s,
+            Entity {
+                id: id.to_string(),
+                kind: kind.to_string(),
+                name: name.to_string(),
+                aspects: Default::default(),
+                attrs,
+                born_action: None,
+                dead_action: None,
+                stackable,
+            },
+        )
+        .unwrap();
+    }
+    s
+}
+
+fn pool_ctx<'a>(
+    dict: &'a chorus::core::dict::Dictionary,
+    content: &'a chorus::content::content::CompiledContent,
+    state: &'a chorus::core::types::State,
+) -> LenientCtx<'a> {
+    LenientCtx {
+        dict,
+        content,
+        state,
+        player: Some("ANA"),
+    }
+}
+
+#[test]
+fn one_name_in_two_roles_binds_distinct_pool_copies() {
+    // E9 (spec §11): `read the psalm with the psalm` names the pool in two
+    // roles — the object takes the §9.38 head as a name ref exactly as ever,
+    // the with-role takes the NEXT living copy as an #id ref
+    let dict = core_dictionary();
+    let content = chorus::content::content::compile_content(
+        &chorus::content::content::ContentRaw::default(),
+        &dict,
+        &[],
+    )
+    .unwrap();
+    let world = pool_world();
+    let ParsedInput::Ok { step, .. } =
+        parse_player_input("ana read the psalm with the psalm", &pool_ctx(&dict, &content, &world))
+    else {
+        panic!("two copies alive: the self-pair must parse");
+    };
+    let c0 = &step.clauses[0];
+    assert!(
+        matches!(&c0.actors[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "ANA")
+    );
+    assert!(
+        matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_PSALM"),
+        "the first role keeps the head name ref"
+    );
+    assert!(
+        matches!(&c0.with[0], chorus::core::r#ref::Ref::Id { id } if id == "psalm_b"),
+        "the second role binds the next living copy by id"
+    );
+
+    // authored role order is the hand-out order: the WITH phrase first still
+    // leaves the head to the object (it comes first in the sentence)
+    let ParsedInput::Ok { step, .. } = parse_player_input(
+        "ana read the psalm about the candle with the psalm",
+        &pool_ctx(&dict, &content, &world),
+    ) else {
+        panic!("distinct names must parse");
+    };
+    let c0 = &step.clauses[0];
+    assert!(
+        matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { .. }),
+        "object is the head"
+    );
+    assert!(
+        matches!(&c0.with[0], chorus::core::r#ref::Ref::Id { id } if id == "psalm_b"),
+        "the later role still takes the second copy"
+    );
+}
+
+#[test]
+fn a_pool_too_small_for_its_roles_refuses_by_name() {
+    // E9: the refusal — one copy alive, two roles naming it (spec §11)
+    let dict = core_dictionary();
+    let content = chorus::content::content::compile_content(
+        &chorus::content::content::ContentRaw::default(),
+        &dict,
+        &[],
+    )
+    .unwrap();
+    let mut world = pool_world();
+    let dead = world.entities.get_mut("psalm_b").unwrap();
+    dead.dead_action = Some(1);
+    let ParsedInput::Fail { error, suggestions } =
+        parse_player_input("ana read the psalm with the psalm", &pool_ctx(&dict, &content, &world))
+    else {
+        panic!("one copy cannot fill two roles");
+    };
+    assert_eq!(error, "only one 'psalm' — you need two", "{error}");
+    assert!(suggestions.is_empty(), "refusals carry no suggestions");
+
+    // three roles naming a two-copy pool: the third comes up short
+    let world = pool_world();
+    let ParsedInput::Fail { error, .. } = parse_player_input(
+        "ana read the psalm with the psalm about the psalm",
+        &pool_ctx(&dict, &content, &world),
+    ) else {
+        panic!("two copies cannot fill three roles");
+    };
+    assert_eq!(error, "only two 'psalm' — you need three", "{error}");
+}
+
+#[test]
+fn single_mentions_and_same_role_doubles_are_untouched() {
+    // E9's zero-regression surface: a name in one role is the head name ref
+    // (byte-identical), and a name doubled INSIDE one role still binds the
+    // head twice — the engine's same-role placement refusal speaks, not the
+    // lenient binder (spec §11)
+    let dict = core_dictionary();
+    let content = chorus::content::content::compile_content(
+        &chorus::content::content::ContentRaw::default(),
+        &dict,
+        &[],
+    )
+    .unwrap();
+    let world = pool_world();
+    let ParsedInput::Ok { step, .. } =
+        parse_player_input("ana read the psalm with the candle", &pool_ctx(&dict, &content, &world))
+    else {
+        panic!("single mentions must parse");
+    };
+    let c0 = &step.clauses[0];
+    assert!(matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { .. }));
+    assert!(matches!(&c0.with[0], chorus::core::r#ref::Ref::Name { .. }));
+
+    let ParsedInput::Ok { step, .. } =
+        parse_player_input("ana read the psalm the psalm", &pool_ctx(&dict, &content, &world))
+    else {
+        panic!("a doubled name still parses (the engine refuses it)");
+    };
+    let c0 = &step.clauses[0];
+    assert_eq!(c0.objects.len(), 2);
+    assert!(
+        matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_PSALM")
+    );
+    assert!(
+        matches!(&c0.objects[1], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_PSALM"),
+        "same-role doubling re-uses the slot's head claim"
+    );
+}
+
+// ------------------------- lenient: E6 bare-clock wrap ----------------------
+
+#[test]
+fn the_bare_lenient_clock_wraps_halfhour_overflow() {
+    // E6 (spec §11): the lenient front door WRAPS an out-of-range halfhour
+    // field the way durations compose — `0:118` is 118 halfhours = day 2,
+    // halfhour 22 — where the CANONICAL `d:h @` passthrough keeps its frozen
+    // loud `bad halfhour` bound. Per form: lenient wraps, canonical refuses.
+    let dict = core_dictionary();
+    let game = Game::from_script(FLYER, dict).unwrap();
+    let ctx = LenientCtx {
+        dict: &game.dict,
+        content: &game.content,
+        state: &game.state,
+        player: Some("MARCH"),
+    };
+
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:118", &ctx) else {
+        panic!("0:118 must wrap");
+    };
+    assert_eq!(
+        step.clock,
+        Some(chorus::core::types::Clock { day: 2, halfhour: 22 })
+    );
+    assert_eq!(step.start_min, Some((2 * 48 + 22) * 30));
+
+    // 1:49 crosses the day too (1*48 + 49 = 97 halfhours = day 2, halfhour 1)
+    let ParsedInput::Ok { step, .. } = parse_player_input("1:49", &ctx) else {
+        panic!("1:49 must wrap");
+    };
+    assert_eq!(
+        step.clock,
+        Some(chorus::core::types::Clock { day: 2, halfhour: 1 })
+    );
+
+    // the boundary itself folds exactly one day; the legal top of a day is
+    // untouched
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:48", &ctx) else {
+        panic!("0:48 must wrap");
+    };
+    assert_eq!(
+        step.clock,
+        Some(chorus::core::types::Clock { day: 1, halfhour: 0 })
+    );
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:47", &ctx) else {
+        panic!("0:47 is legal");
+    };
+    assert_eq!(
+        step.clock,
+        Some(chorus::core::types::Clock { day: 0, halfhour: 47 })
+    );
+
+    // the canonical passthrough keeps the strict bound — the frozen §5
+    // discipline governs that form
+    let ParsedInput::Fail { error, .. } = parse_player_input("0:118 @ MARCH WAIT", &ctx) else {
+        panic!("the canonical form must refuse");
+    };
+    assert!(error.contains("bad halfhour"), "{error}");
+}
+
+// --------------------- lenient through the engine: the pair plays -----------
+
+/// A two-verb rig for E9 at engine scale: EXPLORE mints two THE_PSALM copies
+/// (a stackable pool), STUDY carries the 2+2 pair recipe that consumes
+/// object and with and mints THE_GREAT_PSALM once.
+const POOL_SCRIPT: &str = "
+script: Pair Rig
+player: ANA
+start: 0:0
+
+entities:
+  HOUSE is place
+  ANA is character at HOUSE
+
+prototypes:
+  THE_PSALM is idea stackable with radiance:2
+  THE_GREAT_PSALM is idea with radiance:6
+
+verbs:
+  EXPLORE:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      default -> SPAWN THE_PSALM, SPAWN THE_PSALM, NARRATE \"The psalm comes apart into light, twice over.\"
+  STUDY:
+    actors: 1 kind:character
+    object: 1 kind:idea
+    with: 0..1 kind:idea
+    duration: 1h
+    recipes:
+      study.pair when count(object) = 1 AND count(with) = 1 AND object.aspect.radiance = 2 AND total(with, aspect:radiance) = 2 -> DESTROY OBJECT, DESTROY WITH, SPAWN THE_GREAT_PSALM, NARRATE \"The pair reads as one.\"
+      study.default -> NARRATE \"{actors} study {object}.\"
+
+templates:
+  EXPLORE says \"{actors} explore.\"
+  STUDY says \"{actors} study {object}.\"
+";
+
+#[test]
+fn the_self_pair_binds_both_copies_and_mints_once() {
+    // E9 at engine scale (spec §11): the lenient self-pair hands the engine
+    // DISTINCT ids — both fragments are consumed, the 6 mints once, and no
+    // stray survives. Under the old head-only binding the pair fired on one
+    // card and left the second copy alive.
+    let dict = core_dictionary();
+    let mut game = Game::from_script(POOL_SCRIPT, dict).unwrap();
+    auto_settle_line(&mut game, "explore").unwrap();
+
+    // two copies alive in birth order before the pair
+    let psalms = &game.state.by_name["THE_PSALM"];
+    assert_eq!(psalms.len(), 2, "the mint deals the pair");
+    let head = psalms[0].clone();
+
+    auto_settle_line(&mut game, "study the psalm with the psalm").unwrap();
+
+    // THE decisive pin: NO living psalm remains — the engine saw two ids
+    let alive = |game: &Game, name: &str| -> usize {
+        game.state
+            .by_name
+            .get(name)
+            .map(|ids| {
+                ids.iter()
+                    .filter(|id| {
+                        game.state
+                            .entities
+                            .get(id.as_str())
+                            .is_some_and(|e| e.dead_action.is_none())
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    };
+    assert_eq!(alive(&game, "THE_PSALM"), 0, "both copies were consumed");
+    assert_eq!(alive(&game, "THE_GREAT_PSALM"), 1, "minted exactly once");
+
+    // the log carries the distinct binding: the begin row's with-role is an
+    // #id ref (not the head's name ref), and it is not the object's id
+    let begin = game
+        .log
+        .records
+        .iter()
+        .find(|r| r.kind == "action" && r.verb == "STUDY")
+        .expect("the pair window began");
+    assert!(
+        matches!(&begin.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_PSALM"),
+        "the first role keeps the head name ref"
+    );
+    match &begin.instruments[0] {
+        chorus::core::r#ref::Ref::Id { id } => {
+            assert_ne!(id, &head, "the second role is NOT the head copy");
+        }
+        other => panic!("the with-role must carry an id ref, got {other:?}"),
+    }
+    // and the canonical sentence shows it (format_ref renders #id)
+    assert!(begin.sentence.contains('#'), "{}", begin.sentence);
+
+    // the mechanic repeats: re-stock and pair the fresh copies off too
+    auto_settle_line(&mut game, "explore").unwrap();
+    auto_settle_line(&mut game, "study the psalm with the psalm").unwrap();
+    assert_eq!(alive(&game, "THE_PSALM"), 0, "the fresh pair binds again");
+    assert_eq!(alive(&game, "THE_GREAT_PSALM"), 2, "one mint per pair");
 }
 
 // -------------------------------- render -----------------------------------

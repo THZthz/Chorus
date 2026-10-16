@@ -143,6 +143,17 @@ fn a_present_silver_purse_still_buys_the_candle() {
 
 /// The verbatim §8 win-walk transcript (plan lines, accepted input only —
 /// the REPL's `journal`/`cards`/`quit` meta words are not game lines).
+/// Re-verified against the E9 lenient fix (2026-10-15): the 0:32 self-pair
+/// now binds DISTINCT pool copies, so BOTH candle psalms go into the
+/// Lampkeeper's Hour and no stray survives — the ≥7 promotion moved past the
+/// first (roll-free) Bellwood crossing to pool the hour with the lost bell
+/// (18+6), with a `talk` spacer bridging the promotion's mint (§8 erratum 5),
+/// and the business ladders pool the hour alone (still the ≥5 tier). The
+/// summon rolled its 30% face and failed at its hinge — the walk never
+/// spends the guest, so the yearning crossings pay for both draws. Both
+/// edited work slots after the 1:38 wits drain bind the dimmed wit
+/// (roll-free, parse-live), leaving the seed-1837 die stream untouched: 41
+/// counters, ascension faces 7, 1, 1.
 const WIN_WALK: &[&str] = &[
     "0:16 study the psalm of candles",
     "0:17 dream with wits",
@@ -155,7 +166,7 @@ const WIN_WALK: &[&str] = &[
     "0:32 study a candle psalm with a candle psalm",
     "0:37 wait",
     "0:39 study the lampkeepers hour",
-    "0:44 talk to hale the believer with the lampkeepers hour a candle psalm",
+    "0:44 mansus the bellwood with the yearning",
     "0:46 work with vigor",
     "1:0 work with wits",
     "1:2 work with wits",
@@ -166,18 +177,17 @@ const WIN_WALK: &[&str] = &[
     "1:12 travel to the flea market",
     "1:14 acquire the skeleton key at the flea market",
     "1:16 travel to the cold water room",
-    "1:17 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "1:18 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "1:19 study the lampkeepers hour",
+    "1:17 talk to hale the believer with the lost bell the lampkeepers hour",
+    "1:19 talk",
+    "1:21 talk to hale the disciple with the lampkeepers hour",
     "1:23 work with wits",
     "1:25 use on the lifted lamp about the skeleton key with the lampkeepers hour a still air",
-    "1:30 talk",
+    "1:27 talk",
     "1:31 work with wits",
     "1:34 study the lampkeepers hour",
     "1:38 work with wits",
-    "1:40 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "1:41 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "1:42 mansus the bellwood with the yearning",
+    "1:40 talk to hale the disciple with the lampkeepers hour",
+    "1:41 talk to hale the disciple with the lampkeepers hour",
     "1:47 talk",
     "2:0 dream with the pale yearning",
     "2:3 talk",
@@ -188,18 +198,18 @@ const WIN_WALK: &[&str] = &[
     "2:15 use on the lifted lamp to the vow of heights with the lampkeepers hour",
     "2:20 talk",
     "2:22 use on the lifted lamp to the hunger of heights with the lost bell",
-    "2:26 work with wits",
+    "2:26 work with the dimmed wit",
     "2:28 study the lampkeepers hour",
-    "2:32 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "2:33 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "2:34 talk to hale the disciple with the lampkeepers hour a candle psalm",
+    "2:32 talk to hale the disciple with the lampkeepers hour",
+    "2:33 talk to hale the disciple with the lampkeepers hour",
+    "2:34 talk to hale the disciple with the lampkeepers hour",
     "2:35 talk",
     "2:37 use on the lifted lamp to the hunger of heights with the lost bell",
-    "2:41 work with wits",
-    "2:43 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "2:44 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "2:45 talk to hale the disciple with the lampkeepers hour a candle psalm",
-    "2:46 talk to hale the disciple with the lampkeepers hour a candle psalm",
+    "2:41 work with the dimmed wit",
+    "2:43 talk to hale the disciple with the lampkeepers hour",
+    "2:44 talk to hale the disciple with the lampkeepers hour",
+    "2:45 talk to hale the disciple with the lampkeepers hour",
+    "2:46 talk to hale the disciple with the lampkeepers hour",
     "3:0 use on the lifted lamp to the hunger of heights with the lost bell the bell heart",
     "3:5 use on the lifted lamp to the hunger of heights with the lost bell the bell heart",
     "3:10 talk",
@@ -338,10 +348,9 @@ fn the_win_walk_replays_to_over_the_roof() {
     );
 
     // the §8 pin — the ascension trail in the journal: the hunger climbs one
-    // rung per rite (ascend_1 at radiance 18, ascend_2 at 18, ascend_3 at the
-    // 18+6 pool), dice 7, 1, 8 at seed 1837 — the Grand 10% never fired on
-    // this replay; and the wheel was turning throughout (the verified walk
-    // logs 42 season draws)
+    // rung per rite (ascend_1 at the lone lost bell's 18, ascend_2 at 18,
+    // ascend_3 at the 18+6 pool), dice 7, 1, 1 at seed 1837 — the Grand 10%
+    // never fired on this replay; and the wheel was turning throughout
     assert_eq!(
         completions(&game, "rite.ascend_1"),
         1,
@@ -360,6 +369,31 @@ fn the_win_walk_replays_to_over_the_roof() {
     assert!(
         sentence_count(&game, "DRAWN(SEASONS, ") >= 3,
         "the wheel must have turned at least three seasons en route"
+    );
+
+    // the E9-at-scale pins: the 0:32 self-pair bound DISTINCT pool copies
+    // (the lenient binder's hand-out — the old head-only binding fired the
+    // pair row on one card and left the second as a stray), so both candle
+    // psalms went into the Lampkeeper's Hour and nothing pooled twice
+    assert_eq!(
+        completions(&game, "study.rad2_pair"),
+        1,
+        "the psalm pair combined once"
+    );
+    assert_eq!(
+        alive_named(&game, "A_CANDLE_PSALM"),
+        0,
+        "no stray: the pair consumed both copies"
+    );
+    assert_eq!(
+        alive_named(&game, "THE_LAMPKEEPERS_HOUR"),
+        1,
+        "the 6 minted exactly once"
+    );
+    assert_eq!(
+        alive_named(&game, "THE_LOST_BELL"),
+        1,
+        "the crossing's draw survives as the promotion's pooled light"
     );
 
     // zero rejections: no authored REFUSE spoke, no completion failed

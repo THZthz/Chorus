@@ -17,11 +17,14 @@ use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::content::content::CompiledContent;
-use crate::core::clock::{abs_min, parse_clock, Clock};
+use crate::core::clock::{
+    abs_min, clock_from_abs_min, parse_clock, Clock, HALFHOURS_PER_DAY, MIN_PER_HALFHOUR,
+};
 use crate::core::dict::Dictionary;
+use crate::core::num_parse::parse_authored_int;
 use crate::core::parse::parse_sentence;
 use crate::core::query::match_query;
-use crate::core::r#ref::{name_ref, Ref};
+use crate::core::r#ref::{id_ref, name_ref, Ref};
 use crate::core::types::{Entity, State};
 use crate::engine::engine::Step;
 use crate::core::regex_util::static_regex;
@@ -182,15 +185,21 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     let mut clock: Option<Clock> = None;
     let mut start_min = ctx.state.now;
     if clock_token_re().is_match(tokens[0]) {
-        match parse_clock(tokens[0]) {
-            Ok(c) => {
-                clock = Some(c);
-                start_min = abs_min(c);
-            }
-            Err(_) => {
-                return fail(format!("bad clock '{}'", tokens[0]), vec![]);
-            }
-        }
+        // E6 (§11): a legal clock parses exactly as the canonical grammar
+        // does; an out-of-range halfhour field WRAPS into whole days
+        // (`wrap_clock`) where the canonical `d:h @` form keeps its frozen
+        // loud bound — the front door is the friendly form, the authored
+        // grammar the strict one. The token shape is `[0-9]+:[0-9]+`, so the
+        // failure arm is i64 overflow alone (absurd literals still refuse).
+        let parsed = match parse_clock(tokens[0]) {
+            Ok(c) => Some(c),
+            Err(_) => wrap_clock(tokens[0]),
+        };
+        let Some(c) = parsed else {
+            return fail(format!("bad clock '{}'", tokens[0]), vec![]);
+        };
+        clock = Some(c);
+        start_min = abs_min(c);
         i = 1;
         // a lone clock is a pure advance — let time pass, resolving every
         // window due by that minute (v0.5). Before this branch existed the
@@ -253,46 +262,76 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         .to_uppercase();
 
     // split the tail into role phrases; bare names before a keyword are
-    // objects
-    let mut groups: [Vec<&str>; 5] = [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()];
-    let mut current = Group::Object;
+    // objects. The phrases keep AUTHORED order — the object group runs from
+    // the verb to the first keyword, and each keyword starts the next group —
+    // because that order is the pool hand-out order: a name filling several
+    // roles of one clause binds distinct §9.38 pool copies head-first
+    // through it (§11, E9).
+    let mut phrases: Vec<(Group, Vec<&str>)> = vec![(Group::Object, Vec::new())];
     for tok in &tokens[verb_index + verb_len..] {
         let low = tok.to_lowercase();
         match Group::from_keyword(&low) {
-            Some(g) => current = g,
-            None => groups[current.index()].push(tok),
+            Some(g) => phrases.push((g, Vec::new())),
+            None => {
+                if let Some(last) = phrases.last_mut() {
+                    last.1.push(tok);
+                }
+            }
         }
     }
 
-    // failures collect in a fixed order: actors, objects,
-    // to, with, THEN at/about (unknown[0] carries the error message)
-    let mut unknown: Vec<String> = Vec::new();
+    // failures collect in sentence order and the FIRST one speaks: an
+    // unknown word takes the suggestion path, a name whose living pool is
+    // smaller than the roles naming it refuses by name (§11, E9)
+    let pools = alive_pools(ctx.state);
+    let mut handed: IndexMap<String, usize> = IndexMap::new();
+    let mut failures: Vec<PhraseFail> = Vec::new();
+
     let actors_raw = &tokens[i..verb_index];
     let mut actors = if !actors_raw.is_empty() {
-        let (r, f) = resolve_group(actors_raw, &names);
-        unknown = f;
+        // the actor list is its own slot: it claims the head for its names
+        let mut claimed_actors: IndexMap<String, usize> = IndexMap::new();
+        let (r, f) = resolve_group(actors_raw, &names, &pools, &mut handed, &mut claimed_actors);
+        failures.extend(f);
         r
     } else {
         player_refs(ctx)
     };
-    let (objects, f) = resolve_group(&groups[Group::Object.index()], &names);
-    unknown.extend(f);
-    let at = resolve_group(&groups[Group::At.index()], &names);
-    let about = resolve_group(&groups[Group::About.index()], &names);
-    let (to_refs, f) = resolve_group(&groups[Group::To.index()], &names);
-    unknown.extend(f);
-    let (mut with_role, f) = resolve_group(&groups[Group::With.index()], &names);
-    unknown.extend(f);
-    unknown.extend(at.1);
-    unknown.extend(about.1); // about/at fail loudly too (§11)
+    // same-group phrases accumulate (`with x … with y` is one role), so the
+    // fixed slots fill exactly as before — only the resolution order changed.
+    // Claims are PER SLOT (a slot claims its copy of a name once; every
+    // mention inside the slot re-uses it), so a doubled name inside one role
+    // still meets the engine's same-role placement refusal — only a name in
+    // several ROLES hands out distinct copies.
+    let mut slot: [Vec<Ref>; 5] = [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+    let mut claimed: [IndexMap<String, usize>; 5] = std::array::from_fn(|_| IndexMap::new());
+    for (g, raw) in &phrases {
+        let (r, f) = resolve_group(raw, &names, &pools, &mut handed, &mut claimed[g.index()]);
+        failures.extend(f);
+        slot[g.index()].extend(r);
+    }
+    let [objects, at, mut with_role, about, to_refs] = slot;
 
-    if !unknown.is_empty() {
-        let word = &unknown[0];
-        let pool: Vec<String> = names.values().map(|v| v.entity.name.clone()).collect();
-        return ParsedInput::Fail {
-            error: format!("I don't know '{word}'"),
-            suggestions: suggest(word, &pool, 3),
-        };
+    if let Some(f) = failures.first() {
+        match f {
+            PhraseFail::Unknown(word) => {
+                let pool: Vec<String> = names.values().map(|v| v.entity.name.clone()).collect();
+                return ParsedInput::Fail {
+                    error: format!("I don't know '{word}'"),
+                    suggestions: suggest(word, &pool, 3),
+                };
+            }
+            PhraseFail::Short { key, needed, have } => {
+                return ParsedInput::Fail {
+                    error: format!(
+                        "only {} '{key}' — you need {}",
+                        count_word(*have),
+                        count_word(*needed)
+                    ),
+                    suggestions: vec![],
+                };
+            }
+        }
     }
 
     // English prefers "talk with quill"; slots say `to` (nightjar) or a second
@@ -352,12 +391,12 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
 
     let clause = crate::core::sentence::Clause {
         actors,
-        at: at.0.first().cloned(),
+        at: at.first().cloned(),
         verb,
         to,
         objects,
         with: with_role,
-        about: about.0.first().cloned(),
+        about: about.first().cloned(),
     };
     ParsedInput::Ok {
         step: Step {
@@ -382,7 +421,8 @@ pub struct NameEntry<'a> {
 /// OLDEST living copy (the head of the `by_name` pool; entities iterate in birth
 /// order). Lenient input has no #id form of its own, so a pool name typed in
 /// prose addresses the oldest; the engine's `resolve_ref` enforces the same rule
-/// on the composed sentence.
+/// on the composed sentence. The single-mention behavior lives here; a name
+/// filling several roles hands out further copies through [`alive_pools`].
 fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
     let mut map: IndexMap<String, NameEntry> = IndexMap::new();
     for e in state.entities.values() {
@@ -398,6 +438,47 @@ fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
     map
 }
 
+/// §9.38: every LIVING copy of each distinct name, in birth order — the same
+/// order the engine's `by_name` pools keep (oldest first). This is the
+/// hand-out order for E9's multi-role binding (§11): the first role naming a
+/// pool addresses the head exactly as ever, each further ROLE takes the next
+/// living copy, and a pool smaller than the roles naming it refuses.
+fn alive_pools(state: &State) -> IndexMap<String, Vec<String>> {
+    let mut map: IndexMap<String, Vec<String>> = IndexMap::new();
+    for e in state.entities.values() {
+        if e.dead_action.is_some() {
+            continue;
+        }
+        map.entry(norm(&e.name)).or_default().push(e.id.clone());
+    }
+    map
+}
+
+/// One failed binding inside a role phrase, in sentence order: an unknown
+/// word (§11's suggestion path) or a name whose living pool has fewer copies
+/// than the clause's roles demand (E9's distinct-binding refusal).
+enum PhraseFail {
+    Unknown(String),
+    Short { key: String, needed: usize, have: usize },
+}
+
+/// Small counts speak as words in the refusal voice ("only one 'x' — you
+/// need two"); anything past nine falls back to digits.
+fn count_word(n: usize) -> String {
+    match n {
+        1 => "one".into(),
+        2 => "two".into(),
+        3 => "three".into(),
+        4 => "four".into(),
+        5 => "five".into(),
+        6 => "six".into(),
+        7 => "seven".into(),
+        8 => "eight".into(),
+        9 => "nine".into(),
+        n => n.to_string(),
+    }
+}
+
 /// Normalize for matching: lowercase,
 /// underscores→spaces, drop articles. The split is `/\s+/` (Q8 class).
 fn norm(name: &str) -> String {
@@ -411,15 +492,29 @@ fn norm(name: &str) -> String {
 }
 
 /// Resolve one role phrase into refs, longest-name-first; the second element
-/// carries the words that resolved to nothing.
-fn resolve_group(raw: &[&str], names: &IndexMap<String, NameEntry>) -> (Vec<Ref>, Vec<String>) {
+/// carries the failed bindings in token order. `handed` counts, per name,
+/// how many SLOTS the clause has already served; a slot's own `claimed` map
+/// fixes its copy on the slot's first mention. The first slot naming a pool
+/// binds the §9.38 head as a name ref — single-mention behavior is
+/// untouched; each further SLOT binds the next living copy as an `#id` ref
+/// (E9), and a pool too small for its slot records a
+/// [`PhraseFail::Short`]. A second mention within the same slot re-uses the
+/// slot's claim, so a doubled name inside one role still meets the engine's
+/// same-role placement refusal.
+fn resolve_group(
+    raw: &[&str],
+    names: &IndexMap<String, NameEntry>,
+    pools: &IndexMap<String, Vec<String>>,
+    handed: &mut IndexMap<String, usize>,
+    claimed: &mut IndexMap<String, usize>,
+) -> (Vec<Ref>, Vec<PhraseFail>) {
     let toks: Vec<&str> = raw
         .iter()
         .copied()
         .filter(|t| !ARTICLES.contains(&t.to_lowercase().as_str()))
         .collect();
     let mut refs: Vec<Ref> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
+    let mut failed: Vec<PhraseFail> = Vec::new();
     let mut j = 0usize;
     while j < toks.len() {
         let mut hit: Option<&NameEntry> = None;
@@ -437,18 +532,57 @@ fn resolve_group(raw: &[&str], names: &IndexMap<String, NameEntry>) -> (Vec<Ref>
             }
             len -= 1;
         }
-        match hit {
-            Some(e) => {
+        if let Some(e) = hit {
+            let key = &e.norm;
+            let idx = match claimed.get(key) {
+                Some(i) => *i,
+                None => {
+                    let k = handed.entry(key.clone()).or_insert(0);
+                    let i = *k;
+                    *k += 1;
+                    claimed.insert(key.clone(), i);
+                    i
+                }
+            };
+            if idx == 0 {
+                // the head, exactly as ever (§9.38)
                 refs.push(name_ref(e.entity.name.clone(), None));
-                j += used;
+            } else {
+                let empty: Vec<String> = Vec::new();
+                let pool = pools.get(key).unwrap_or(&empty);
+                match pool.get(idx) {
+                    Some(id) => refs.push(id_ref(id.clone())),
+                    None => failed.push(PhraseFail::Short {
+                        key: key.clone(),
+                        needed: idx + 1,
+                        have: pool.len(),
+                    }),
+                }
             }
-            None => {
-                failed.push(toks[j].to_string());
-                j += 1;
-            }
+            j += used;
+        } else {
+            failed.push(PhraseFail::Unknown(toks[j].to_string()));
+            j += 1;
         }
     }
     (refs, failed)
+}
+
+/// E6 (§11): the bare lenient clock wraps an out-of-range halfhour field
+/// into whole days the way durations compose (§9.45) — `0:118` is 118
+/// halfhours, day 2 halfhour 22; `1:49` is 97 halfhours, day 2 halfhour 1.
+/// The canonical
+/// `d:h @` passthrough keeps its frozen `bad halfhour` bound: per FORM, the
+/// lenient front door wraps and the authored grammar stays loud. Only
+/// reachable on a `[0-9]+:[0-9]+` token (the `clock_token_re` gate), so the
+/// `None` arm is i64 saturation alone — absurd literals keep today's
+/// `bad clock` refusal.
+fn wrap_clock(tok: &str) -> Option<Clock> {
+    let (day, halfhour) = tok.split_once(':')?;
+    let total = parse_authored_int(day)
+        .checked_mul(HALFHOURS_PER_DAY)?
+        .checked_add(parse_authored_int(halfhour))?;
+    Some(clock_from_abs_min(total.checked_mul(MIN_PER_HALFHOUR)?))
 }
 
 /// The default actor as refs, when set and alive.
@@ -591,5 +725,40 @@ mod tests {
             suggest("paten", &["THE_PATENTEE".to_string()], 3),
             vec!["THE_PATENTEE"] // prefix on the normalized form
         );
+    }
+
+    #[test]
+    fn wrap_clock_folds_halfhour_overflow_into_days() {
+        // E6: the lenient front door wraps, the way durations compose —
+        // 118 halfhours = day 2 halfhour 22, and the day field carries over
+        assert_eq!(
+            wrap_clock("0:118"),
+            Some(Clock { day: 2, halfhour: 22 })
+        );
+        assert_eq!(
+            wrap_clock("1:49"),
+            Some(Clock { day: 2, halfhour: 1 })
+        );
+        // the boundary itself folds exactly one day
+        assert_eq!(
+            wrap_clock("0:48"),
+            Some(Clock { day: 1, halfhour: 0 })
+        );
+        // a legal clock needs no wrap (parse_clock takes it first)
+        assert_eq!(
+            wrap_clock("3:47"),
+            Some(Clock { day: 3, halfhour: 47 })
+        );
+        // absurd literals saturate parse_authored_int and refuse here
+        assert_eq!(wrap_clock("0:99999999999999999999"), None);
+    }
+
+    #[test]
+    fn count_word_speaks_small_counts_as_words() {
+        assert_eq!(count_word(1), "one");
+        assert_eq!(count_word(2), "two");
+        assert_eq!(count_word(3), "three");
+        assert_eq!(count_word(9), "nine");
+        assert_eq!(count_word(10), "10");
     }
 }

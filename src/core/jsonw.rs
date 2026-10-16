@@ -79,7 +79,9 @@ fn integer_keys_in_order<V>(m: &indexmap::IndexMap<String, V>) -> impl Iterator<
 /// the plain-clone fast path — the rebuild would be entry-for-entry
 /// identical, and every `Entity::clone`/state clone rides this function.
 #[must_use]
-pub fn clone_map_in_key_order<V: Clone>(m: &indexmap::IndexMap<String, V>) -> indexmap::IndexMap<String, V> {
+pub fn clone_map_in_key_order<V: Clone>(
+    m: &indexmap::IndexMap<String, V>,
+) -> indexmap::IndexMap<String, V> {
     let has_int_keys = m.keys().any(|k| is_integer_like_key(k));
     if !has_int_keys {
         return m.clone();
@@ -287,41 +289,28 @@ mod tests {
         ]));
         assert_eq!(got, ["4294967293", "4294967294", "4294967295", "x"]);
         // "007" is not canonical — only "7" fronts
-        let got: Vec<String> =
-            canonical_key_order(&map_from(&[("007", 1), ("7", 2)]));
+        let got: Vec<String> = canonical_key_order(&map_from(&[("007", 1), ("7", 2)]));
         assert_eq!(got, ["7", "007"]);
         // > 2^32-2 never fronts, whatever its digits
-        let got: Vec<String> = canonical_key_order(&map_from(&[
-            ("99999999999999999999", 1),
-            ("3", 2),
-        ]));
+        let got: Vec<String> =
+            canonical_key_order(&map_from(&[("99999999999999999999", 1), ("3", 2)]));
         assert_eq!(got, ["3", "99999999999999999999"]);
         // signs and exponents are not canonical numeric
         // strings
-        let got: Vec<String> =
-            canonical_key_order(&map_from(&[("-1", 1), ("1", 2)]));
+        let got: Vec<String> = canonical_key_order(&map_from(&[("-1", 1), ("1", 2)]));
         assert_eq!(got, ["1", "-1"]);
-        let got: Vec<String> =
-            canonical_key_order(&map_from(&[("1e2", 1), ("100", 2)]));
+        let got: Vec<String> = canonical_key_order(&map_from(&[("1e2", 1), ("100", 2)]));
         assert_eq!(got, ["100", "1e2"]);
         // the key-order clone reorders (2,10 to the front) —
         // clone_map_in_key_order is that clone path
-        let got: Vec<String> = clone_map_in_key_order(&map_from(&[
-            ("a", 1),
-            ("10", 2),
-            ("2", 3),
-            ("b", 4),
-        ]))
-        .into_keys()
-        .collect();
+        let got: Vec<String> =
+            clone_map_in_key_order(&map_from(&[("a", 1), ("10", 2), ("2", 3), ("b", 4)]))
+                .into_keys()
+                .collect();
         assert_eq!(got, ["2", "10", "a", "b"]);
         // numeric ascending, not lexicographic
-        let got: Vec<String> = canonical_key_order(&map_from(&[
-            ("10", 1),
-            ("9", 2),
-            ("100", 3),
-            ("2", 4),
-        ]));
+        let got: Vec<String> =
+            canonical_key_order(&map_from(&[("10", 1), ("9", 2), ("100", 3), ("2", 4)]));
         assert_eq!(got, ["2", "9", "10", "100"]);
     }
 
@@ -349,7 +338,9 @@ mod tests {
         // control characters: NUL/b/t/n/f/r short escapes, quote+backslash,
         // other <0x20 as lowercase \u00xx — and DEL (0x7f) RAW at the end
         assert_eq!(
-            jsonw(&Str("a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into())),
+            jsonw(&Str(
+                "a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into()
+            )),
             "\"a\\u0000\\b\\t\\n\\f\\r\\\"\\\\\\u0001\\u000f\\u001f\u{7f}\""
         );
         // non-ASCII (incl. U+2028/U+2029) stays raw
@@ -387,9 +378,6 @@ mod tests {
             ])),
             r#"{"b":2,"d":null}"#
         );
-        assert_eq!(
-            jsonw(&Arr(vec![Int(1), Undefined, Int(2)])),
-            "[1,null,2]"
-        );
+        assert_eq!(jsonw(&Arr(vec![Int(1), Undefined, Int(2)])), "[1,null,2]");
     }
 }

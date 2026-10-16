@@ -93,10 +93,7 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
             Ok(op.num_cmp(l, r))
         }
         Pred::Exists { name } => Ok(world.by_name.contains_key(name)),
-        Pred::ExistsQuery { query } => Ok(world
-            .distinct
-            .iter()
-            .any(|d| match_query(&d.e, query))),
+        Pred::ExistsQuery { query } => Ok(world.distinct.iter().any(|d| match_query(&d.e, query))),
         // preserved as Err (catchable upstream)
         _ => Err(ChorusError::new(
             "internal: evalStatic over a non-static predicate",
@@ -134,8 +131,12 @@ pub(crate) fn writable_paths_of(group: &[QueryTerm]) -> Vec<String> {
     group
         .iter()
         .filter_map(|t| match t {
-            QueryTerm::Aspect { neg: false, path, .. } => Some(format!("aspect:{path}")),
-            QueryTerm::State { neg: false, key, .. } => Some(format!("state.{key}")),
+            QueryTerm::Aspect {
+                neg: false, path, ..
+            } => Some(format!("aspect:{path}")),
+            QueryTerm::State {
+                neg: false, key, ..
+            } => Some(format!("state.{key}")),
             _ => None,
         })
         .collect()
@@ -359,7 +360,8 @@ impl<'c> Analyzer<'c> {
 
     /// The world facts (compute once per (content, initial) pair).
     pub(crate) fn facts(&self) -> &WorldFacts<'c> {
-        self.world.get_or_init(|| compute_world_facts(self.content, self.initial))
+        self.world
+            .get_or_init(|| compute_world_facts(self.content, self.initial))
     }
 }
 
@@ -437,12 +439,7 @@ pub(crate) fn compute_world_facts<'c>(
     let census = collect_sites(content, &wf.init_names, &wf.trig_idx);
     wf.census = census;
     // the SET-written paths
-    wf.set_writes = wf
-        .census
-        .set_sites
-        .iter()
-        .map(|s| s.key.clone())
-        .collect();
+    wf.set_writes = wf.census.set_sites.iter().map(|s| s.key.clone()).collect();
 
     // the risky-trigger demotions (list-level mint
     // risk, same-slot pair rule, cross-slot timing, freeze line)
@@ -468,7 +465,10 @@ pub(crate) fn compute_world_facts<'c>(
         .collect();
     wf.frozen = !risky_triggers.is_empty();
     if wf.frozen {
-        debug_assert!(!risky_triggers.is_empty(), "frozen ⇒ at least one risky trigger");
+        debug_assert!(
+            !risky_triggers.is_empty(),
+            "frozen ⇒ at least one risky trigger"
+        );
         wf.freeze_dist = risky_triggers
             .iter()
             .map(|t| match t {
@@ -722,7 +722,9 @@ fn risky_block(wf: &mut WorldFacts) {
                             }
                             match first_cross_of(o) {
                                 None => false,
-                                Some(fc) => fc < my_first || (fc == my_first && decl_of(o) < my_decl),
+                                Some(fc) => {
+                                    fc < my_first || (fc == my_first && decl_of(o) < my_decl)
+                                }
                             }
                         })
                     })
@@ -741,8 +743,7 @@ fn risky_block(wf: &mut WorldFacts) {
             continue;
         };
         let owner = format!("trigger {id}");
-        let recurring_minter =
-            !once && !mint_set_of(&wf.census, idxs(&by_list, &owner)).is_empty();
+        let recurring_minter = !once && !mint_set_of(&wf.census, idxs(&by_list, &owner)).is_empty();
         if list_blocked(wf, &owner) || recurring_minter {
             first_freeze.push(wf.first_cross(*slot));
         }

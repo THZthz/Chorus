@@ -14,11 +14,11 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::clock::format_duration;
 use crate::core::dict::OUTCOME_OPS;
 use crate::core::predicate::{Pred, ValExpr};
-use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::core::regex_util::static_regex;
+use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::error::{ChorusError, Result};
-use std::sync::OnceLock;
 use regex::Regex;
+use std::sync::OnceLock;
 
 /// One declared function: its parameter names
 /// and its body compiled to a TEMPLATE — an outcome list that may still hold
@@ -185,12 +185,8 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
                 // the call's number; anything else splices through for the
                 // runtime kind error
                 return Ok(match bound {
-                    Arg::Int { v } => Arg::Delta {
-                        v: sign.apply(*v),
-                    },
-                    Arg::Delta { v } => Arg::Delta {
-                        v: sign.apply(*v),
-                    },
+                    Arg::Int { v } => Arg::Delta { v: sign.apply(*v) },
+                    Arg::Delta { v } => Arg::Delta { v: sign.apply(*v) },
                     other => other.clone(),
                 });
             }
@@ -277,9 +273,12 @@ fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<
     let mut out = String::new();
     let mut last = 0;
     for caps in re.captures_iter(s) {
-        let m = caps.get(0).map(|m| (m.start(), m.end())).unwrap_or_else(|| {
-            unreachable!("regex group 0 is always present") // impossible by construction
-        });
+        let m = caps
+            .get(0)
+            .map(|m| (m.start(), m.end()))
+            .unwrap_or_else(|| {
+                unreachable!("regex group 0 is always present") // impossible by construction
+            });
         out.push_str(&s[last..m.0]);
         let whole = &s[m.0..m.1];
         // the capture groups give pre/name/post; both spaced spellings error
@@ -445,7 +444,13 @@ mod tests {
     fn table(name: &str, params: &[&str], body: &str) -> FnTable {
         let d = dict();
         let mut fns = FnTable::default();
-        let body = parse_function_body(body, &d, &fns, &params.iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
+        let body = parse_function_body(
+            body,
+            &d,
+            &fns,
+            &params.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
+        .unwrap();
         fns.by_name.insert(
             name.to_string(),
             FnTemplate {
@@ -468,7 +473,9 @@ mod tests {
         assert_eq!(expanded[0].op, "SPAWN");
         // the param ref spliced into DESTROY's arg position
         match &expanded[1].args[0] {
-            Arg::Ref { r#ref } => assert_eq!(r#ref, &crate::core::r#ref::Ref::Id { id: "x1".into() }),
+            Arg::Ref { r#ref } => {
+                assert_eq!(r#ref, &crate::core::r#ref::Ref::Id { id: "x1".into() })
+            }
             other => panic!("expected ref arg, got {other:?}"),
         }
     }
@@ -509,12 +516,20 @@ mod tests {
     #[test]
     fn delta_sign_folds_into_the_bound_number() {
         let d = dict();
-        let fns = table("BUMP", &["n"], "NARRATE \"+{n}\", SET(level, +n), SET(level, -n)");
+        let fns = table(
+            "BUMP",
+            &["n"],
+            "NARRATE \"+{n}\", SET(level, +n), SET(level, -n)",
+        );
         let body_call = parse_outcomes("BUMP(2)", &d, Some(&fns)).unwrap();
         // +{n} interpolates "+2" into the string; +n/-n fold the authored
         // sign into the call's number
         let expanded = expand_fn_calls(&body_call, &fns).unwrap();
-        match (&expanded[0].args[0], &expanded[1].args[1], &expanded[2].args[1]) {
+        match (
+            &expanded[0].args[0],
+            &expanded[1].args[1],
+            &expanded[2].args[1],
+        ) {
             (Arg::Str { v }, Arg::Delta { v: a }, Arg::Delta { v: b }) => {
                 assert_eq!(v, "+2");
                 assert_eq!(*a, 2);
@@ -535,9 +550,23 @@ mod tests {
             let mut t = FnTable::default();
             let d2 = dict();
             let body = parse_function_body("NARRATE \"x\"", &d2, &t, &[]).unwrap();
-            t.by_name.insert("alpha".into(), FnTemplate { name: "alpha".into(), params: vec![], body });
+            t.by_name.insert(
+                "alpha".into(),
+                FnTemplate {
+                    name: "alpha".into(),
+                    params: vec![],
+                    body,
+                },
+            );
             let body_zeta = parse_function_body("NARRATE \"y\"", &d2, &t, &[]).unwrap();
-            t.by_name.insert("zeta".into(), FnTemplate { name: "zeta".into(), params: vec![], body: body_zeta });
+            t.by_name.insert(
+                "zeta".into(),
+                FnTemplate {
+                    name: "zeta".into(),
+                    params: vec![],
+                    body: body_zeta,
+                },
+            );
             t
         };
         let err = parse_outcomes("count(actors)", &d, Some(&fns2)).unwrap_err();
@@ -552,8 +581,16 @@ mod tests {
         // the INTO target is the param form (bare param name in a body)
         let d2 = dict();
         let mut fns2 = FnTable::default();
-        let body = parse_function_body("SPAWN RUMOUR INTO t", &d2, &fns2, &["t".to_string()]).unwrap();
-        fns2.by_name.insert("M2".into(), FnTemplate { name: "M2".into(), params: vec!["t".into()], body });
+        let body =
+            parse_function_body("SPAWN RUMOUR INTO t", &d2, &fns2, &["t".to_string()]).unwrap();
+        fns2.by_name.insert(
+            "M2".into(),
+            FnTemplate {
+                name: "M2".into(),
+                params: vec!["t".into()],
+                body,
+            },
+        );
         // call with a NUMBER binding — the INTO slot refuses with the exact text
         let call = parse_outcomes("M2(5)", &d2, Some(&fns2)).unwrap();
         let err = expand_fn_calls(&call, &fns2).unwrap_err();

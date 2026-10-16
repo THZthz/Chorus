@@ -4,7 +4,8 @@
 //! Rust: fold(log) must repopulate the played state, and two runs must
 //! produce byte-identical logs under the demo's `x{id}_{++n}` idGen.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::seed::{seed_content, seed_state};
 
@@ -79,7 +80,11 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::error::Resu
         "fold(log) must repopulate exactly the played entity set"
     );
     let clock = clock_from_abs_min(replayed.now);
-    assert_eq!((clock.day, clock.halfhour), (0, 40), "the folded clock is the last step's 0:40");
+    assert_eq!(
+        (clock.day, clock.halfhour),
+        (0, 40),
+        "the folded clock is the last step's 0:40"
+    );
 
     Ok(())
 }
@@ -89,7 +94,8 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::error::Resu
 /// demo idGen's — a different idGen would print differently but fold
 /// identically.
 #[test]
-fn demo_two_runs_are_byte_identical_and_the_x_mint_spelling_is_the_demo_idgen() -> chorus::error::Result<()> {
+fn demo_two_runs_are_byte_identical_and_the_x_mint_spelling_is_the_demo_idgen(
+) -> chorus::error::Result<()> {
     let dict = core_dictionary();
     let content = compile_content(&seed_content(), &dict, &[])?;
     let play = || -> chorus::error::Result<Vec<String>> {
@@ -114,7 +120,10 @@ fn demo_two_runs_are_byte_identical_and_the_x_mint_spelling_is_the_demo_idgen() 
                     clauses: s.clauses,
                     t_real: None,
                 },
-                ExecOptions { first_record_id: id, id_gen: Some(&mut id_gen) },
+                ExecOptions {
+                    first_record_id: id,
+                    id_gen: Some(&mut id_gen),
+                },
             )?;
             state = r.state;
             id += r.records.len() as i64;

@@ -37,7 +37,10 @@ pub(crate) fn query_text(q: &Query) -> String {
                             }
                         ),
                         QueryTerm::State {
-                            neg, key, op, value,
+                            neg,
+                            key,
+                            op,
+                            value,
                         } => {
                             let neg = if *neg { "!" } else { "" };
                             match op {
@@ -180,7 +183,11 @@ pub fn render_report(
         render_path(out, p, 0);
     }
     for c in &r.candidates {
-        let _ = writeln!(out, "  candidate source: {} — guarded ({})", c.via, c.reason);
+        let _ = writeln!(
+            out,
+            "  candidate source: {} — guarded ({})",
+            c.via, c.reason
+        );
     }
     for u in &r.usable_via {
         let _ = writeln!(out, "  bindable via {u}");

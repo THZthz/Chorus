@@ -10,10 +10,10 @@ use std::sync::OnceLock;
 use indexmap::IndexMap;
 use regex::Regex;
 
-use crate::core::types::{aspect_get, Aspects, AspectVal, AttrValue, Entity};
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{dsl_trim, DSL_WS_CLASS};
+use crate::core::types::{aspect_get, AspectVal, Aspects, AttrValue, Entity};
 use crate::error::{ChorusError, Result};
 
 /// A comparison operator: `'>=' | '<=' | '>' | '<' | '=' | '!='`.
@@ -334,7 +334,9 @@ pub(crate) fn match_conjunction(e: &Entity, group: &[QueryTerm]) -> bool {
 fn match_term(e: &Entity, t: &QueryTerm) -> bool {
     match t {
         QueryTerm::Kind { kind, .. } => e.kind == *kind,
-        QueryTerm::Aspect { path, op, level, .. } => {
+        QueryTerm::Aspect {
+            path, op, level, ..
+        } => {
             let Some(v) = aspect_get(e, path) else {
                 return false;
             };
@@ -437,7 +439,9 @@ mod tests {
         let q2 = parse_query("state:sealed").unwrap();
         assert!(!match_query(&e, &q2));
         let mut sealed = e.clone();
-        sealed.attrs.insert("state.sealed".into(), AttrValue::Bool(true));
+        sealed
+            .attrs
+            .insert("state.sealed".into(), AttrValue::Bool(true));
         assert!(match_query(&sealed, &q2));
     }
 
@@ -446,7 +450,9 @@ mod tests {
         assert!(parse_query("name:X>=1").is_err());
         let q = parse_query("aspect:language.latin").unwrap();
         match &q[0][0] {
-            QueryTerm::Aspect { path, op, level, .. } => {
+            QueryTerm::Aspect {
+                path, op, level, ..
+            } => {
                 assert_eq!(path, "language.latin");
                 assert_eq!(*op, None);
                 assert_eq!(*level, 1); // the default when no comparison follows
@@ -462,9 +468,10 @@ mod tests {
         pairs.insert("a".to_string(), 1);
         pairs.insert("a.b".to_string(), 2);
         let out = aspects_from_pairs(&pairs);
-        assert_eq!(out.get("a"), Some(&AspectVal::Sub(
-            IndexMap::from([("b".to_string(), 2)])
-        )));
+        assert_eq!(
+            out.get("a"),
+            Some(&AspectVal::Sub(IndexMap::from([("b".to_string(), 2)])))
+        );
         // 'a.b.c' stores the literal sub-key 'b.c' — no nested tree
         let mut pairs2 = IndexMap::new();
         pairs2.insert("a.b.c".to_string(), 7);

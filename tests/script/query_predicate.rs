@@ -9,17 +9,16 @@
 //! the engine's own invariant (bindings always resolve into the live
 //! state).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use indexmap::IndexMap;
 
 use chorus::core::predicate::{eval_pred, parse_predicate, Pred, PredCtx, RoleBindings};
+use chorus::core::query::aspects_from_pairs;
 use chorus::core::query::{match_query, parse_query};
 use chorus::core::roles::Role;
-use chorus::core::types::{
-    add_entity, new_state, AttrValue, Attrs, Entity, State, Aspects,
-};
-use chorus::core::query::aspects_from_pairs;
+use chorus::core::types::{add_entity, new_state, Aspects, AttrValue, Attrs, Entity, State};
 
 use common::harness::assert_err_msg;
 
@@ -93,14 +92,23 @@ fn no_binds() -> RoleBindings {
 
 #[test]
 fn a_matching_card_passes_every_term() {
-    let q = parse_query("kind:text aspect:secret>=3 aspect:language.latin>=2 state:!sealed -aspect:winter").unwrap();
-    let book = with_aspects(ent("b", "text", "B"), &[("secret", 3), ("language.latin", 2)]);
+    let q = parse_query(
+        "kind:text aspect:secret>=3 aspect:language.latin>=2 state:!sealed -aspect:winter",
+    )
+    .unwrap();
+    let book = with_aspects(
+        ent("b", "text", "B"),
+        &[("secret", 3), ("language.latin", 2)],
+    );
     assert!(match_query(&book, &q));
 }
 
 #[test]
 fn each_term_can_fail_the_card() {
-    let q = parse_query("kind:text aspect:secret>=3 aspect:language.latin>=2 state:!sealed -aspect:winter").unwrap();
+    let q = parse_query(
+        "kind:text aspect:secret>=3 aspect:language.latin>=2 state:!sealed -aspect:winter",
+    )
+    .unwrap();
     assert!(!match_query(&ent("x", "item", "X"), &q)); // kind
     assert!(!match_query(
         &with_aspects(ent("x", "text", "X"), &[("secret", 2)]),
@@ -114,7 +122,10 @@ fn each_term_can_fail_the_card() {
         &q
     )); // negation
     let sealed = with_attrs(
-        with_aspects(ent("x", "text", "X"), &[("secret", 3), ("language.latin", 2)]),
+        with_aspects(
+            ent("x", "text", "X"),
+            &[("secret", 3), ("language.latin", 2)],
+        ),
         &[("state.sealed", AttrValue::Bool(true))],
     );
     assert!(!match_query(&sealed, &q));
@@ -217,12 +228,22 @@ fn cond_state() -> State {
     let mut state = new_state(0);
     add_entity(
         &mut state,
-        with_aspects(ent("ana", "character", "ANA"), &[("occult", 2), ("lantern", 1)]),
+        with_aspects(
+            ent("ana", "character", "ANA"),
+            &[("occult", 2), ("lantern", 1)],
+        ),
     )
     .unwrap();
-    add_entity(&mut state, with_aspects(ent("bertha", "character", "BERTHA"), &[("occult", 0)]))
-        .unwrap();
-    add_entity(&mut state, with_aspects(ent("rite", "rite", "RITE"), &[("demand", 3)])).unwrap();
+    add_entity(
+        &mut state,
+        with_aspects(ent("bertha", "character", "BERTHA"), &[("occult", 0)]),
+    )
+    .unwrap();
+    add_entity(
+        &mut state,
+        with_aspects(ent("rite", "rite", "RITE"), &[("demand", 3)]),
+    )
+    .unwrap();
     state.relations.insert(
         "ana|bertha|parent_child".to_string(),
         chorus::core::types::Relation {
@@ -241,7 +262,11 @@ fn cond_state() -> State {
 fn count_actors_equals_2() {
     let state = cond_state();
     let p = parse_predicate("count(actors) = 2").unwrap();
-    assert!(ev(&p, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
+    assert!(ev(
+        &p,
+        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
+        &state
+    ));
     assert!(!ev(&p, &bindings(&[(Role::Actors, &["ana"])]), &state));
 }
 
@@ -250,9 +275,21 @@ fn rel_parent_child_actors_pairwise_existence() {
     // Symmetric, order-free
     let state = cond_state();
     let p = parse_predicate("rel(parent_child, actors)").unwrap();
-    assert!(ev(&p, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
-    assert!(ev(&p, &bindings(&[(Role::Actors, &["bertha", "ana"])]), &state));
-    assert!(!ev(&p, &bindings(&[(Role::Actors, &["ana", "rite"])]), &state));
+    assert!(ev(
+        &p,
+        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
+        &state
+    ));
+    assert!(ev(
+        &p,
+        &bindings(&[(Role::Actors, &["bertha", "ana"])]),
+        &state
+    ));
+    assert!(!ev(
+        &p,
+        &bindings(&[(Role::Actors, &["ana", "rite"])]),
+        &state
+    ));
 }
 
 #[test]
@@ -261,8 +298,16 @@ fn every_any_quantifiers() {
     let every = parse_predicate("every(actors, aspect:occult >= 2)").unwrap();
     let any = parse_predicate("any(actors, aspect:occult >= 2)").unwrap();
     assert!(ev(&every, &bindings(&[(Role::Actors, &["ana"])]), &state));
-    assert!(!ev(&every, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
-    assert!(ev(&any, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
+    assert!(!ev(
+        &every,
+        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
+        &state
+    ));
+    assert!(ev(
+        &any,
+        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
+        &state
+    ));
     assert!(!ev(&any, &bindings(&[(Role::Actors, &["bertha"])]), &state));
 }
 
@@ -278,7 +323,10 @@ fn aggregate_vs_path_operand() {
     )); // 1 < 3
     assert!(ev(
         &p,
-        &bindings(&[(Role::Actors, &["ana", "bertha"]), (Role::Object, &["rite"])]),
+        &bindings(&[
+            (Role::Actors, &["ana", "bertha"]),
+            (Role::Object, &["rite"])
+        ]),
         &state
     )); // 1+0 < 3
 }
@@ -298,12 +346,18 @@ fn attr_state() -> State {
     add_entity(&mut state, ent("pauper", "character", "PAUPER")).unwrap(); // empty attrs, alive
     add_entity(
         &mut state,
-        with_attrs(ent("priced", "character", "PRICED"), &[("silver", AttrValue::Num(2))]),
+        with_attrs(
+            ent("priced", "character", "PRICED"),
+            &[("silver", AttrValue::Num(2))],
+        ),
     )
     .unwrap();
     add_entity(
         &mut state,
-        with_attrs(ent("ticket", "rite", "TICKET"), &[("seal", AttrValue::Str("wax".into()))]),
+        with_attrs(
+            ent("ticket", "rite", "TICKET"),
+            &[("seal", AttrValue::Str("wax".into()))],
+        ),
     )
     .unwrap();
     add_entity(
@@ -318,20 +372,52 @@ fn attr_state() -> State {
 fn a_missing_attr_on_a_living_card_compares_as_0() {
     let s = attr_state();
     let b = bindings(&[(Role::Actors, &["pauper"])]);
-    assert!(ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &b, &s));
-    assert!(!ev(&parse_predicate("actors.attr.silver >= 3").unwrap(), &b, &s));
-    assert!(ev(&parse_predicate("actors.attr.silver = 0").unwrap(), &b, &s));
-    assert!(!ev(&parse_predicate("actors.attr.silver != 0").unwrap(), &b, &s));
+    assert!(ev(
+        &parse_predicate("actors.attr.silver < 3").unwrap(),
+        &b,
+        &s
+    ));
+    assert!(!ev(
+        &parse_predicate("actors.attr.silver >= 3").unwrap(),
+        &b,
+        &s
+    ));
+    assert!(ev(
+        &parse_predicate("actors.attr.silver = 0").unwrap(),
+        &b,
+        &s
+    ));
+    assert!(!ev(
+        &parse_predicate("actors.attr.silver != 0").unwrap(),
+        &b,
+        &s
+    ));
 }
 
 #[test]
 fn a_present_attr_compares_exactly_as_authored() {
     let s = attr_state();
     let b = bindings(&[(Role::Actors, &["priced"])]);
-    assert!(ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &b, &s)); // 2 < 3
-    assert!(!ev(&parse_predicate("actors.attr.silver >= 3").unwrap(), &b, &s));
-    assert!(ev(&parse_predicate("actors.attr.silver = 2").unwrap(), &b, &s));
-    assert!(ev(&parse_predicate("actors.attr.silver != 0").unwrap(), &b, &s));
+    assert!(ev(
+        &parse_predicate("actors.attr.silver < 3").unwrap(),
+        &b,
+        &s
+    )); // 2 < 3
+    assert!(!ev(
+        &parse_predicate("actors.attr.silver >= 3").unwrap(),
+        &b,
+        &s
+    ));
+    assert!(ev(
+        &parse_predicate("actors.attr.silver = 2").unwrap(),
+        &b,
+        &s
+    ));
+    assert!(ev(
+        &parse_predicate("actors.attr.silver != 0").unwrap(),
+        &b,
+        &s
+    ));
 }
 
 #[test]
@@ -339,7 +425,10 @@ fn the_missing_reads_0_on_both_operands_of_the_broke_gate_shape() {
     let s = attr_state();
     // the slice's gate: a purse-less actor against a cost-1 object — the
     // refusal must fire for the first-time buyer
-    let b = bindings(&[(Role::Actors, &["pauper"]), (Role::Object, &["priced_rite"])]);
+    let b = bindings(&[
+        (Role::Actors, &["pauper"]),
+        (Role::Object, &["priced_rite"]),
+    ]);
     assert!(ev(
         &parse_predicate("actors.attr.silver < object.aspect.cost").unwrap(),
         &b,
@@ -365,10 +454,18 @@ fn the_frozen_edges_still_never_compare() {
     // §9.39 frozen: a missing ASPECT on a bound card reads false — only the
     // attr namespace defaults
     let aspect = bindings(&[(Role::Object, &["ticket"])]);
-    assert!(!ev(&parse_predicate("object.aspect.cost < 3").unwrap(), &aspect, &s));
+    assert!(!ev(
+        &parse_predicate("object.aspect.cost < 3").unwrap(),
+        &aspect,
+        &s
+    ));
     // no bound card at all: the when:-side silent false (and the strict
     // §9.39 rejection below keeps firing inside eval_expr)
-    assert!(!ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &no_binds(), &s));
+    assert!(!ev(
+        &parse_predicate("actors.attr.silver < 3").unwrap(),
+        &no_binds(),
+        &s
+    ));
     // all-dead bindings: the dead-stamp silent false, not a 0-read
     let mut dead = attr_state();
     dead.entities.get_mut("pauper").unwrap().dead_action = Some(1);
@@ -393,7 +490,12 @@ fn strict_keeps_rejecting_an_unbound_role_operand() {
     // when an ALIVE card is bound and the ENTRY is absent
     let s = attr_state();
     let p = parse_predicate("actors.attr.silver < 3").unwrap();
-    let strict = PredCtx { b: &no_binds(), state: &s, strict: true, roll: None };
+    let strict = PredCtx {
+        b: &no_binds(),
+        state: &s,
+        strict: true,
+        roll: None,
+    };
     assert_err_msg(
         eval_pred(&p, &strict).map(|_| ()),
         "operand 'actors.attr.silver' cannot resolve",
@@ -411,7 +513,8 @@ fn group_gate_with_not_any_the_magick_gate_shape() {
         with_aspects(ent("m", "text", "M"), &[("magick", 1)]),
     )
     .unwrap();
-    let p = parse_predicate("object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2)").unwrap();
+    let p = parse_predicate("object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2)")
+        .unwrap();
     assert!(ev(
         &p,
         &bindings(&[(Role::Actors, &["bertha"]), (Role::Object, &["m"])]),
@@ -457,7 +560,11 @@ fn name_form_true_while_the_named_card_is_alive_false_after_destroy() {
     s.entities.get_mut("hunter").unwrap().dead_action = Some(1); // DESTROY stamps dead_action…
     s.by_name.remove("HUNTER"); // …and releases the name (§9.14)
     assert!(!ev(&p, &no_binds(), &s));
-    assert!(ev(&parse_predicate("NOT exists(HUNTER)").unwrap(), &no_binds(), &s));
+    assert!(ev(
+        &parse_predicate("NOT exists(HUNTER)").unwrap(),
+        &no_binds(),
+        &s
+    ));
 }
 
 #[test]
@@ -476,7 +583,11 @@ fn name_form_is_exact_and_never_matches_the_dead_or_the_absent() {
     let mut dead = ent("ghost", "idea", "GHOST");
     dead.dead_action = Some(3);
     add_entity(&mut s, dead).unwrap(); // a dead entity never enters by_name
-    assert!(!ev(&parse_predicate("exists(GHOST)").unwrap(), &no_binds(), &s));
+    assert!(!ev(
+        &parse_predicate("exists(GHOST)").unwrap(),
+        &no_binds(),
+        &s
+    ));
 }
 
 #[test]
@@ -537,7 +648,11 @@ fn query_form_negation_term() {
 #[test]
 fn query_form_state_terms_read_the_state_attr_namespace() {
     let mut s = world();
-    assert!(!ev(&parse_predicate("exists(state:sealed)").unwrap(), &no_binds(), &s));
+    assert!(!ev(
+        &parse_predicate("exists(state:sealed)").unwrap(),
+        &no_binds(),
+        &s
+    ));
     assert!(ev(
         &parse_predicate("exists(-state:sealed)").unwrap(),
         &no_binds(),
@@ -548,7 +663,11 @@ fn query_form_state_terms_read_the_state_attr_namespace() {
         .unwrap()
         .attrs
         .insert("state.sealed".to_string(), AttrValue::Bool(true));
-    assert!(ev(&parse_predicate("exists(state:sealed)").unwrap(), &no_binds(), &s));
+    assert!(ev(
+        &parse_predicate("exists(state:sealed)").unwrap(),
+        &no_binds(),
+        &s
+    ));
     assert!(ev(
         &parse_predicate("exists(kind:rite state:sealed)").unwrap(),
         &no_binds(),
@@ -598,8 +717,16 @@ fn scope_finds_a_card_bound_to_no_role_sitting_in_another_place_than_the_actors(
 #[test]
 fn disambiguation_a_starter_word_without_a_colon_is_a_name_not_a_query() {
     let s = world();
-    assert!(!ev(&parse_predicate("exists(state)").unwrap(), &no_binds(), &s)); // no card named 'state'
-    assert!(!ev(&parse_predicate("exists(kind)").unwrap(), &no_binds(), &s));
+    assert!(!ev(
+        &parse_predicate("exists(state)").unwrap(),
+        &no_binds(),
+        &s
+    )); // no card named 'state'
+    assert!(!ev(
+        &parse_predicate("exists(kind)").unwrap(),
+        &no_binds(),
+        &s
+    ));
 }
 
 #[test]
@@ -625,7 +752,10 @@ fn pool_world() -> State {
     let mut s = new_state(0);
     add_entity(
         &mut s,
-        stackable(with_aspects(ent("sus1", "state", "SUSPICION"), &[("weight", 1)])),
+        stackable(with_aspects(
+            ent("sus1", "state", "SUSPICION"),
+            &[("weight", 1)],
+        )),
     )
     .unwrap();
     add_entity(
@@ -636,7 +766,11 @@ fn pool_world() -> State {
         )),
     )
     .unwrap();
-    add_entity(&mut s, with_aspects(ent("rite", "rite", "RITE"), &[("ritual", 1)])).unwrap();
+    add_entity(
+        &mut s,
+        with_aspects(ent("rite", "rite", "RITE"), &[("ritual", 1)]),
+    )
+    .unwrap();
     s
 }
 
@@ -721,7 +855,11 @@ fn exists_and_count_inner_queries_take_alternation() {
     // §9.49's legal homes include the §9.38 inner queries — same parser,
     // same DNF behavior
     let mut s = new_state(0);
-    add_entity(&mut s, with_aspects(ent("a", "item", "A"), &[("ability", 1)])).unwrap();
+    add_entity(
+        &mut s,
+        with_aspects(ent("a", "item", "A"), &[("ability", 1)]),
+    )
+    .unwrap();
     add_entity(&mut s, with_aspects(ent("j", "item", "J"), &[("job", 1)])).unwrap();
     add_entity(
         &mut s,

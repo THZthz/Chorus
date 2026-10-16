@@ -16,7 +16,8 @@ use chorus::core::sentence::{Arg, Outcome};
 use chorus::core::types::{AspectVal, Clock};
 use chorus::error::Result;
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 use common::harness::assert_err_msg;
 
 /// The bundled
@@ -46,7 +47,10 @@ fn deck_of<'a>(
 }
 
 fn names(deck: &chorus::content::content::CompiledDeck) -> Vec<&str> {
-    deck.order.iter().map(|c: &DeckCard| c.name.as_str()).collect()
+    deck.order
+        .iter()
+        .map(|c: &DeckCard| c.name.as_str())
+        .collect()
 }
 
 #[test]
@@ -105,7 +109,9 @@ fn the_train_is_a_zone_not_a_card_her_cars_carry_it_as_an_attribute() {
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     assert!(!game.state.by_name.contains_key("NIGHTJAR_FLYER"));
-    let zone = Some(&chorus::core::types::AttrValue::Str("NIGHTJAR_FLYER".into()));
+    let zone = Some(&chorus::core::types::AttrValue::Str(
+        "NIGHTJAR_FLYER".into(),
+    ));
     assert_eq!(game.state.entities["s_guard_van"].attrs.get("zone"), zone);
     assert_eq!(game.state.entities["s_firebox"].attrs.get("zone"), zone);
 }
@@ -116,7 +122,11 @@ fn places_sit_on_the_corridor_with_explicit_directions() {
     // direction, and queries find it from either endpoint order
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
-    let south = game.state.relations.get("s_firebox|s_guard_van|south").unwrap();
+    let south = game
+        .state
+        .relations
+        .get("s_firebox|s_guard_van|south")
+        .unwrap();
     assert_eq!(south.type_, "south");
     let south = game
         .state
@@ -140,7 +150,10 @@ fn verb_blocks_compile_slots_durations_and_recipes() {
     assert_eq!(object_slot.min, 1);
     assert_eq!(object_slot.max, Some(1));
     assert_eq!(
-        read.recipes.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        read.recipes
+            .iter()
+            .map(|r| r.id.as_str())
+            .collect::<Vec<_>>(),
         [
             "read.manifest",
             "read.french_gate",
@@ -169,7 +182,9 @@ fn triggers_and_prototypes_compile() {
         .iter()
         .map(|t| match t {
             CompiledTrigger::Slot { id, slot, once, .. } => format!("{id}|{slot}|{once}"),
-            CompiledTrigger::Expire { id, on_expire_of, .. } => {
+            CompiledTrigger::Expire {
+                id, on_expire_of, ..
+            } => {
                 format!("{id}|{on_expire_of}")
             }
             // §9.48: the FLYER carries no `on complete` lines — nothing maps
@@ -199,7 +214,10 @@ fn triggers_and_prototypes_compile() {
     // subset: BRACK is `character with duty:2, nerve:2` — the pin covers
     // only kind + duty
     assert_eq!(brack.kind, "character");
-    assert_eq!(brack.aspects.as_ref().and_then(|a| a.get("duty")), Some(&AspectVal::Num(2)));
+    assert_eq!(
+        brack.aspects.as_ref().and_then(|a| a.get("duty")),
+        Some(&AspectVal::Num(2))
+    );
 }
 
 #[test]
@@ -207,7 +225,7 @@ fn the_v0_4_sections_compile_pools_deck_endings_and_expanded_functions() {
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     assert_eq!(game.content.seed, 1899); // the header's documented, calibrated seed
-    // pools: SUSPICION and the gossip cards are declared stackable
+                                         // pools: SUSPICION and the gossip cards are declared stackable
     for name in ["SUSPICION", "RUMOUR", "HEARSAY", "SCANDAL"] {
         assert!(game.content.stackable_names.contains(name), "{name}");
     }
@@ -216,7 +234,10 @@ fn the_v0_4_sections_compile_pools_deck_endings_and_expanded_functions() {
     let deck = deck_of(&game.content, "RUMOURS");
     assert_eq!(names(deck), ["SCANDAL", "RUMOUR", "RUMOUR", "HEARSAY"]); // permutation at seed 1899
     assert_eq!(
-        deck.order.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(),
+        deck.order
+            .iter()
+            .map(|c| c.kind.as_str())
+            .collect::<Vec<_>>(),
         ["idea", "idea", "idea", "idea"]
     );
     assert_eq!(
@@ -260,7 +281,7 @@ fn the_v0_4_sections_compile_pools_deck_endings_and_expanded_functions() {
     assert_eq!(
         steward.as_deref().unwrap_or(""),
         "A steward will remember MARCH asking after things that are none of an inspector's business."
-    );    // the nerve pool feeds the rude searches' dice
+    ); // the nerve pool feeds the rude searches' dice
     let luggage = explore
         .recipes
         .iter()
@@ -304,13 +325,16 @@ fn the_showcase_compiles_the_full_script_grammar() {
         Some(PrototypeDerive {
             name_from: Some("object".into()),
             aspects: Some(
-                [("hunch", DeriveAspect {
-                    from_object_aspect: "secret".into(),
-                    minus: 1
-                })]
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v))
-                    .collect()
+                [(
+                    "hunch",
+                    DeriveAspect {
+                        from_object_aspect: "secret".into(),
+                        minus: 1
+                    }
+                )]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect()
             ),
         })
     );
@@ -330,11 +354,20 @@ fn the_showcase_compiles_the_full_script_grammar() {
     );
     assert_eq!(game.content.endings["CASE_CLOSED"].flavour, "grand");
     // slot-count vocabulary (§6.1): exact 2, open-ended 2.. and 0..
-    let mansus_actors = game.content.verbs["MANSUS"].slot_by_role.get("actors").unwrap();
+    let mansus_actors = game.content.verbs["MANSUS"]
+        .slot_by_role
+        .get("actors")
+        .unwrap();
     assert_eq!((mansus_actors.min, mansus_actors.max), (2, Some(2)));
-    let work_actors = game.content.verbs["WORK"].slot_by_role.get("actors").unwrap();
+    let work_actors = game.content.verbs["WORK"]
+        .slot_by_role
+        .get("actors")
+        .unwrap();
     assert_eq!((work_actors.min, work_actors.max), (2, None)); // None = Infinity
-    let dream_with = game.content.verbs["DREAM"].slot_by_role.get("with").unwrap();
+    let dream_with = game.content.verbs["DREAM"]
+        .slot_by_role
+        .get("with")
+        .unwrap();
     assert_eq!((dream_with.min, dream_with.max), (0, None));
     // slot queries (§4.5): aspect level, negated aspect, and the state flag
     // (no '|' in either — one alternation group of N terms, §9.49)
@@ -349,7 +382,10 @@ fn the_showcase_compiles_the_full_script_grammar() {
     let study_gate = &game.content.verbs["STUDY"].recipes[0];
     assert_eq!(study_gate.id, "study.recipe0"); // the 0-based mint, shared by compile and lint (Q1 unified)
     assert!(study_gate.shown);
-    assert_eq!(study_gate.hint.as_deref(), Some("Whoever studies must read the tongue."));
+    assert_eq!(
+        study_gate.hint.as_deref(),
+        Some("Whoever studies must read the tongue.")
+    );
     let use_on = &game.content.verbs["USE_ON"];
     let inquest_short = use_on
         .recipes
@@ -375,7 +411,10 @@ fn the_showcase_compiles_the_full_script_grammar() {
         out("USE_ON", "inquest.win"),
         ["PROGRESS", "PROGRESS", "NARRATE", "SPAWN", "REPLACE", "ENDING"] // the win ends the story (§9.35)
     );
-    assert_eq!(out("ACQUIRE", "acquire.claim"), ["SET", "MOVE", "SET", "NARRATE"]);
+    assert_eq!(
+        out("ACQUIRE", "acquire.claim"),
+        ["SET", "MOVE", "SET", "NARRATE"]
+    );
     assert_eq!(out("DREAM", "dream.seal"), ["DRAW", "ADVANCE", "NARRATE"]);
     // REVEAL rides inside the luggage find's taken-branch IF (§9.39): walk arms
     let mut ops: Vec<String> = Vec::new();
@@ -461,9 +500,7 @@ fn expiry_triggers_parse_into_their_own_trigger_form() {
             chorus::content::content::ExpireTriggerDef {
                 id: "decay_moth".into(),
                 on_expire_of: "INFLUENCE_MOTH_G".into(),
-                out: vec![
-                    "REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E".to_string()
-                ],
+                out: vec!["REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E".to_string()],
             }
         )])
     );
@@ -506,7 +543,10 @@ fn bad_expiry_trigger_grammar_fails_loudly() {
         r"triggers expect",
     );
     assert_err_msg(
-        parse_script("triggers:\n  decay_moth expire of MOTH -> SPAWN DREAD\n", &dict),
+        parse_script(
+            "triggers:\n  decay_moth expire of MOTH -> SPAWN DREAD\n",
+            &dict,
+        ),
         r"triggers expect",
     );
     assert_err_msg(
@@ -609,10 +649,20 @@ fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() ->
     // depth: the chain f1..f9
     let mut deep = String::from("functions:\n");
     for i in 1..=9 {
-        deep.push_str(&format!("  f{i} -> {}\n", if i == 9 { "NARRATE \"bottom\"".to_string() } else { format!("f{}()", i + 1) }));
+        deep.push_str(&format!(
+            "  f{i} -> {}\n",
+            if i == 9 {
+                "NARRATE \"bottom\"".to_string()
+            } else {
+                format!("f{}()", i + 1)
+            }
+        ));
     }
     let err = compile_script(&deep, &dict).unwrap_err();
-    assert_eq!(err.msg, "function 'f1' sits 9 calls deep — the nesting cap is 8");
+    assert_eq!(
+        err.msg,
+        "function 'f1' sits 9 calls deep — the nesting cap is 8"
+    );
     Ok(())
 }
 
@@ -621,7 +671,6 @@ fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() ->
 // ---------------------------------------------------------------------------
 
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
-
 
 /// Lenient input routes the new core
 /// verbs (v0.3). Registration is the gate: unregistered verbs fail the
@@ -634,7 +683,9 @@ mod lenient_input_routes_the_new_core_verbs {
 
     /// STUDY (READ's grammar, §4.3) and
     /// MANSUS (EXPLORE's grammar, §4.3) registered on a fresh dictionary.
-    fn verbs_content(dict: &chorus::core::dict::Dictionary) -> chorus::content::content::CompiledContent {
+    fn verbs_content(
+        dict: &chorus::core::dict::Dictionary,
+    ) -> chorus::content::content::CompiledContent {
         let verb = |slots: Vec<SlotDef>, out: &str| VerbContent {
             slots,
             duration: 60,
@@ -704,7 +755,10 @@ mod lenient_input_routes_the_new_core_verbs {
             aspects: Default::default(),
             attrs: {
                 let mut a = Attrs::new();
-                a.insert("container".to_string(), AttrValue::Str(container.to_string()));
+                a.insert(
+                    "container".to_string(),
+                    AttrValue::Str(container.to_string()),
+                );
                 a
             },
             born_action: None,

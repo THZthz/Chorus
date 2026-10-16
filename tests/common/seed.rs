@@ -11,7 +11,7 @@ use chorus::content::content::{
     TriggerDef, VerbContent,
 };
 use chorus::core::types::{
-    add_entity, new_state, relation_key, AspectVal, AttrValue, Attrs, Aspects, Entity, Relation,
+    add_entity, new_state, relation_key, AspectVal, Aspects, AttrValue, Attrs, Entity, Relation,
     State,
 };
 
@@ -370,7 +370,10 @@ pub fn seed_state() -> State {
 
     fn character(s: &mut State, id: &str, name: &str, aspects: Aspects, container: &str) {
         let mut attrs = Attrs::new();
-        attrs.insert("container".to_string(), AttrValue::Str(container.to_string()));
+        attrs.insert(
+            "container".to_string(),
+            AttrValue::Str(container.to_string()),
+        );
         add_entity(
             s,
             Entity {
@@ -414,7 +417,10 @@ pub fn seed_state() -> State {
 
     fn text(s: &mut State, id: &str, name: &str, aspects: Aspects, container: &str) {
         let mut attrs = Attrs::new();
-        attrs.insert("container".to_string(), AttrValue::Str(container.to_string()));
+        attrs.insert(
+            "container".to_string(),
+            AttrValue::Str(container.to_string()),
+        );
         add_entity(
             s,
             Entity {
@@ -449,7 +455,12 @@ pub fn seed_state() -> State {
             ("secret", AspectVal::Num(3)),
             (
                 "language",
-                AspectVal::Sub([("latin", 2i64)].into_iter().map(|(k, v)| (k.to_string(), v)).collect()),
+                AspectVal::Sub(
+                    [("latin", 2i64)]
+                        .into_iter()
+                        .map(|(k, v)| (k.to_string(), v))
+                        .collect(),
+                ),
             ),
         ]
         .into_iter()
@@ -480,7 +491,10 @@ pub fn seed_state() -> State {
 
     fn plain(s: &mut State, id: &str, kind: &str, name: &str, aspects: Aspects, container: &str) {
         let mut attrs = Attrs::new();
-        attrs.insert("container".to_string(), AttrValue::Str(container.to_string()));
+        attrs.insert(
+            "container".to_string(),
+            AttrValue::Str(container.to_string()),
+        );
         add_entity(
             s,
             Entity {
@@ -508,7 +522,14 @@ pub fn seed_state() -> State {
             .collect(),
         "house",
     );
-    plain(&mut s, "chalice", "item", "CHALICE", Aspects::new(), "house");
+    plain(
+        &mut s,
+        "chalice",
+        "item",
+        "CHALICE",
+        Aspects::new(),
+        "house",
+    );
 
     // a clue already in play — the TALK ABOUT topic
     plain(

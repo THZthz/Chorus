@@ -74,7 +74,8 @@ fn main() -> std::process::ExitCode {
         // panic explicit and the grep gate clean
         let json = serde_json::to_string(&stats)
             .unwrap_or_else(|e| panic!("cannot serialize NameStat: {e}"));
-        std::fs::write(&path, json).unwrap_or_else(|e| panic!("cannot write {}: {e}", path.display()));
+        std::fs::write(&path, json)
+            .unwrap_or_else(|e| panic!("cannot write {}: {e}", path.display()));
         return std::process::ExitCode::from(0);
     }
 
@@ -93,10 +94,18 @@ fn main() -> std::process::ExitCode {
     let compile_ms = t0.elapsed().as_secs_f64() * 1000.0;
     println!(
         "content: {} prototypes, {} verbs × 1 recipe (~{} ops), {} decks, {} triggers",
-        world.stats.protos, world.stats.recipes, world.stats.ops, world.stats.decks, world.stats.triggers
+        world.stats.protos,
+        world.stats.recipes,
+        world.stats.ops,
+        world.stats.decks,
+        world.stats.triggers
     );
     println!("build+compile: {:.0} ms", compile_ms);
-    println!("census over {} names on {} workers…", world.names.len(), cores);
+    println!(
+        "census over {} names on {} workers…",
+        world.names.len(),
+        cores
+    );
 
     // the parent shards across worker threads over a channel; every worker
     // rebuilds the full world, matching the child-process topology's output.
@@ -120,7 +129,8 @@ fn main() -> std::process::ExitCode {
     drop(tx);
     // shards flatten in SHARD (index) order, so the summary's verdict histogram
     // (insertion-ordered) sees the names in the same sequence
-    let mut shards: Vec<Option<Vec<reach_scale_lib::NameStat>>> = (0..cores).map(|_| None).collect();
+    let mut shards: Vec<Option<Vec<reach_scale_lib::NameStat>>> =
+        (0..cores).map(|_| None).collect();
     for _ in 0..cores {
         match rx.recv() {
             Ok((i, stats)) => shards[i] = Some(stats),
@@ -132,11 +142,7 @@ fn main() -> std::process::ExitCode {
         }
     }
     let wall = wall_start.elapsed().as_secs_f64();
-    let stats: Vec<reach_scale_lib::NameStat> = shards
-        .into_iter()
-        .flatten()
-        .flatten()
-        .collect();
+    let stats: Vec<reach_scale_lib::NameStat> = shards.into_iter().flatten().flatten().collect();
     println!("\ncensus wall: {:.1} s on {} cores", wall, cores);
     println!("{}", summarize(&stats));
     std::process::ExitCode::from(0)

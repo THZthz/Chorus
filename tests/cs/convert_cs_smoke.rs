@@ -18,9 +18,7 @@
 //! GENERATED FILE carries exactly those totals, so converter drift or a
 //! half-regenerated file fails loudly here.
 
-use chorus::content::script::{
-    compile_script, lint_script_findings, LintFinding, LintSeverity,
-};
+use chorus::content::script::{compile_script, lint_script_findings, LintFinding, LintSeverity};
 use chorus::core::dict::core_dictionary;
 
 /// The bundled conversion, read as text.
@@ -213,20 +211,34 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     // its deterministic .x2 suffix
     for (verb, id) in [
         ("USE_ON", "use_on.grailinduction"),
-        ("TRAVEL_TO", "travel_to.long.executestrategy.assassination.begin"),
+        (
+            "TRAVEL_TO",
+            "travel_to.long.executestrategy.assassination.begin",
+        ),
         ("ACQUIRE", "acquire.ambition"),
         ("LOCATE_AT", "locate_at.suspicion"),
         ("READ", "read.workvictory"),
     ] {
-        let v = compiled.content.verbs.get(verb).expect("carrier configured");
+        let v = compiled
+            .content
+            .verbs
+            .get(verb)
+            .expect("carrier configured");
         assert!(
             v.recipes.iter().any(|r| r.id == id),
             "{id} must be compiled on {verb}"
         );
     }
-    let study = compiled.content.verbs.get("STUDY").expect("STUDY configured");
+    let study = compiled
+        .content
+        .verbs
+        .get("STUDY")
+        .expect("STUDY configured");
     assert!(
-        study.recipes.iter().any(|r| r.id == "study.studyresearchsuccess.x2"),
+        study
+            .recipes
+            .iter()
+            .any(|r| r.id == "study.studyresearchsuccess.x2"),
         "shadowed twins must carry their .x2 suffix"
     );
 }
@@ -281,7 +293,10 @@ fn the_carrier_stations_never_surface_in_suggestions() {
     );
     for s in &suggestions {
         for c in ["read", "travel to", "use on", "acquire", "locate at"] {
-            assert!(!s.starts_with(c), "carrier verb leaked into suggestions: {s}");
+            assert!(
+                !s.starts_with(c),
+                "carrier verb leaked into suggestions: {s}"
+            );
         }
     }
 }
@@ -297,7 +312,11 @@ fn a_typed_carrier_attempt_rejects_at_the_engine() {
     let turn = game
         .handle_line("0:0 @ THE_ASPIRANT READ")
         .expect("the attempt parses; the engine must refuse it");
-    assert_eq!(turn.kind, TurnKind::Error, "the carrier station must not accept");
+    assert_eq!(
+        turn.kind,
+        TurnKind::Error,
+        "the carrier station must not accept"
+    );
     assert!(
         turn.lines
             .iter()

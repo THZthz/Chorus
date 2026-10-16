@@ -25,8 +25,7 @@ impl serde::Serialize for Role {
 impl<'de> serde::Deserialize<'de> for Role {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Role::from_lower(&s)
-            .ok_or_else(|| serde::de::Error::custom(format!("unknown role '{s}'")))
+        Role::from_lower(&s).ok_or_else(|| serde::de::Error::custom(format!("unknown role '{s}'")))
     }
 }
 

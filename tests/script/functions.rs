@@ -14,7 +14,8 @@
 //! CHARACTER; each test owns a fresh Dictionary with STEW registered
 //! (per-test).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::settle::{act, done, refusal, settle_step};
@@ -33,7 +34,7 @@ use chorus::core::parse::{parse_function_body, parse_outcomes, parse_sentence};
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::{Arg, Outcome, Sentence, SentenceKind};
 use chorus::core::types::{
-    add_entity, clone_state, new_state, AspectVal, AttrValue, Attrs, Aspects, Entity, State,
+    add_entity, clone_state, new_state, AspectVal, Aspects, AttrValue, Attrs, Entity, State,
 };
 use chorus::engine::engine::{ActionRecord, ExecResult, Step};
 use chorus::engine::fold::fold;
@@ -71,7 +72,10 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock {
+                day: 0,
+                halfhour: 0,
+            })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -88,12 +92,13 @@ fn said(r: &ExecResult) -> Vec<String> {
         .iter()
         .filter(|x| x.kind == "complete")
         .flat_map(|x| {
-            x.outcomes.iter().filter(|o| o.op == "NARRATE").map(|o| {
-                match o.args.first() {
+            x.outcomes
+                .iter()
+                .filter(|o| o.op == "NARRATE")
+                .map(|o| match o.args.first() {
                     Some(Arg::Str { v }) => v.clone(),
                     _ => "(not a string)".to_string(),
-                }
-            })
+                })
         })
         .collect()
 }
@@ -200,24 +205,32 @@ fn world() -> State {
         "character",
         "ANA",
         Aspects::new(),
-        [("container".to_string(), AttrValue::Str("s_house".to_string()))]
-            .into_iter()
-            .collect(),
+        [(
+            "container".to_string(),
+            AttrValue::Str("s_house".to_string()),
+        )]
+        .into_iter()
+        .collect(),
     );
     card(
         "s_the_guard",
         "character",
         "THE_GUARD",
         Aspects::new(),
-        [("container".to_string(), AttrValue::Str("s_house".to_string()))]
-            .into_iter()
-            .collect(),
+        [(
+            "container".to_string(),
+            AttrValue::Str("s_house".to_string()),
+        )]
+        .into_iter()
+        .collect(),
     );
     card(
         "s_tome",
         "text",
         "TOME",
-        [("secret".to_string(), AspectVal::Num(1))].into_iter().collect(),
+        [("secret".to_string(), AspectVal::Num(1))]
+            .into_iter()
+            .collect(),
         [("container".to_string(), AttrValue::Str("s_ana".to_string()))]
             .into_iter()
             .collect(),
@@ -372,10 +385,7 @@ mod expansion_equivalence {
         // the spawned pool, and the taken watch arm are all there
         assert_eq!(
             said(&ra),
-            [
-                "The conductor's eyes linger on THE_GUARD.",
-                "not yet."
-            ]
+            ["The conductor's eyes linger on THE_GUARD.", "not yet."]
         );
         assert_eq!(ra.state.by_name.get("SUSPICION").unwrap().len(), 1);
         assert_eq!(
@@ -601,7 +611,10 @@ mod parameter_substitution {
             &dict,
             &[],
         );
-        assert!(prose.is_ok(), "commas inside braces are ordinary prose: {prose:?}");
+        assert!(
+            prose.is_ok(),
+            "commas inside braces are ordinary prose: {prose:?}"
+        );
     }
 
     #[test]
@@ -636,7 +649,11 @@ mod parameter_substitution {
         let dict = stew_dict();
         // DESTROY of a value literal would iterate nothing (iteration-style
         // op); SPAWN actually needs its name ref, so the mismatch refuses
-        let c = rig(&dict, vec![fdef("mint", &["card"], "SPAWN card")], "mint(7)");
+        let c = rig(
+            &dict,
+            vec![fdef("mint", &["card"], "SPAWN card")],
+            "mint(7)",
+        );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
         assert_eq!(r.rejected, None);
         assert_refusal_matches(&r, r"SPAWN needs a name ref");
@@ -662,11 +679,18 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef("decay", &["p"], "SPAWN SUSPICION ttl=p, NARRATE \"minted.\"")],
+            vec![fdef(
+                "decay",
+                &["p"],
+                "SPAWN SUSPICION ttl=p, NARRATE \"minted.\"",
+            )],
             "decay(2h)",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
-        assert_eq!(r.rejected, None, "the expansion compiles and runs to completion");
+        assert_eq!(
+            r.rejected, None,
+            "the expansion compiles and runs to completion"
+        );
         assert_refusal_matches(
             &r,
             r"a bare dur arg is not a SPAWN arg shape — a §9\.40 parameter standing in a k=v pair position expands to the caller's whole bound value",
@@ -682,7 +706,11 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef("tag", &["p"], "SPAWN SUSPICION note=p, NARRATE \"minted.\"")],
+            vec![fdef(
+                "tag",
+                &["p"],
+                "SPAWN SUSPICION note=p, NARRATE \"minted.\"",
+            )],
             "tag(\"soon\")",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
@@ -701,7 +729,11 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef("decay", &[], "SPAWN SUSPICION expires 2h, NARRATE \"minted.\"")],
+            vec![fdef(
+                "decay",
+                &[],
+                "SPAWN SUSPICION expires 2h, NARRATE \"minted.\"",
+            )],
             "decay()",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
@@ -716,10 +748,13 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
 }
 
 fn assert_refusal_matches(r: &ExecResult, pattern: &str) {
-    let msg = refusal(r)
-        .unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
+    let msg =
+        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(&msg),
+        "refusal {msg:?} does not match /{pattern}/"
+    );
 }
 
 // ---------- nesting, recursion, depth --------------------------------------
@@ -770,10 +805,7 @@ mod nesting_recursion_and_the_depth_cap {
             compile_content(
                 &ContentRaw {
                     verbs: IndexMap::new(),
-                    functions: Some(vec![
-                        fdef("a", &[], "b()"),
-                        fdef("b", &[], "a()"),
-                    ]),
+                    functions: Some(vec![fdef("a", &[], "b()"), fdef("b", &[], "a()")]),
                     ..ContentRaw::default()
                 },
                 &dict,
@@ -985,10 +1017,11 @@ verbs:
         let before = snap(&c_state);
         let r = run(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1);
         // MOVE cannot proceed with empty bindings (§9.19)
-        assert!(r
-            .rejected
-            .as_deref()
-            .is_some_and(|m| regex::Regex::new(r"unresolvable destination").unwrap().is_match(m)));
+        assert!(r.rejected.as_deref().is_some_and(|m| regex::Regex::new(
+            r"unresolvable destination"
+        )
+        .unwrap()
+        .is_match(m)));
         assert_eq!(r.records.len(), 0);
         assert_eq!(snap(&c_state), before); // nothing applied, clock unmoved
     }
@@ -1002,12 +1035,14 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["tick()"]),
-                    triggers: Some(vec![TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
-                        id: "tock".to_string(),
-                        slot: 2,
-                        once: Some(true),
-                        out: vec!["tick()".to_string()],
-                    })]),
+                    triggers: Some(vec![TriggerDef::Slot(
+                        chorus::content::content::SlotTriggerDef {
+                            id: "tock".to_string(),
+                            slot: 2,
+                            once: Some(true),
+                            out: vec!["tick()".to_string()],
+                        },
+                    )]),
                     functions: Some(vec![tick.clone()]),
                     ..ContentRaw::default()
                 },
@@ -1062,12 +1097,14 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
-                        id: "doom_t".to_string(),
-                        slot: 2,
-                        once: Some(true),
-                        out: vec!["doom()".to_string()],
-                    })]),
+                    triggers: Some(vec![TriggerDef::Slot(
+                        chorus::content::content::SlotTriggerDef {
+                            id: "doom_t".to_string(),
+                            slot: 2,
+                            once: Some(true),
+                            out: vec!["doom()".to_string()],
+                        },
+                    )]),
                     functions: Some(vec![fdef("doom", &[], "ENDING NOT_DECLARED")]),
                     ..ContentRaw::default()
                 },
@@ -1079,7 +1116,8 @@ verbs:
     }
 
     #[test]
-    fn guards_see_into_a_nested_if_inside_a_body_progress_in_a_branch_is_still_a_trigger_load_error() {
+    fn guards_see_into_a_nested_if_inside_a_body_progress_in_a_branch_is_still_a_trigger_load_error(
+    ) {
         let dict = stew_dict();
         // expansion flattens the call, then the recursive guard walks the
         // branch — neither the FN boundary nor the IF boundary may hide a
@@ -1088,12 +1126,14 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
-                        id: "sneak".to_string(),
-                        slot: 2,
-                        once: Some(true),
-                        out: vec!["sneak()".to_string()],
-                    })]),
+                    triggers: Some(vec![TriggerDef::Slot(
+                        chorus::content::content::SlotTriggerDef {
+                            id: "sneak".to_string(),
+                            slot: 2,
+                            once: Some(true),
+                            out: vec!["sneak()".to_string()],
+                        },
+                    )]),
                     functions: Some(vec![fdef(
                         "sneak",
                         &[],
@@ -1115,12 +1155,14 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
-                        id: "linted".to_string(),
-                        slot: 2,
-                        once: Some(true),
-                        out: vec!["watch(3)".to_string()],
-                    })]),
+                    triggers: Some(vec![TriggerDef::Slot(
+                        chorus::content::content::SlotTriggerDef {
+                            id: "linted".to_string(),
+                            slot: 2,
+                            once: Some(true),
+                            out: vec!["watch(3)".to_string()],
+                        },
+                    )]),
                     functions: Some(vec![fdef(
                         "watch",
                         &["n"],
@@ -1139,12 +1181,14 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
-                        id: "roled".to_string(),
-                        slot: 2,
-                        once: Some(true),
-                        out: vec!["watch(3)".to_string()],
-                    })]),
+                    triggers: Some(vec![TriggerDef::Slot(
+                        chorus::content::content::SlotTriggerDef {
+                            id: "roled".to_string(),
+                            slot: 2,
+                            once: Some(true),
+                            out: vec!["watch(3)".to_string()],
+                        },
+                    )]),
                     functions: Some(vec![fdef(
                         "watch",
                         &["n"],
@@ -1236,7 +1280,10 @@ mod canonical_equals_expansion {
         let dump = serde_json::to_string(&all).unwrap();
         let call_text = regex::Regex::new(r"\b(sus|watch)\(").unwrap();
         assert!(!call_text.is_match(&dump), "no call text anywhere: {dump}");
-        assert!(!dump.contains("\"FN\""), "the authored op never reaches a record");
+        assert!(
+            !dump.contains("\"FN\""),
+            "the authored op never reaches a record"
+        );
         for rec in &all {
             // canonical sentences re-parse to themselves (every outcome is concrete)
             let parsed = parse_sentence(&rec.sentence, &dict).unwrap();
@@ -1246,8 +1293,7 @@ mod canonical_equals_expansion {
                 "sentence must round-trip"
             );
         }
-        let dir =
-            std::env::temp_dir().join(format!("chorus-fn-{}-jsonl", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chorus-fn-{}-jsonl", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("log.jsonl");
         save_log(&path, &all).unwrap();

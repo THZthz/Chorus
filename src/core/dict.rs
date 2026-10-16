@@ -56,7 +56,7 @@ pub const RESERVED_WORDS: [&str; 30] = [
     "ROLL",
     "ROLLED", // §9.41: the dice op, and the engine-written record of one (v0.3.4)
     "DRAW",
-    "DRAWN", // §9.42: the deck-draw op, and the engine-written record of one (v0.3.5)
+    "DRAWN",    // §9.42: the deck-draw op, and the engine-written record of one (v0.3.5)
     "RUN", // §9.47: the recipe-chain op — authored, zero-concrete (the follow-up's BEGIN row is the record)
     "COMPLETE", // v0.5: the engine-written completion row of a processing window
     "READ",
@@ -79,24 +79,13 @@ pub const RESERVED_WORDS: [&str; 30] = [
 /// source. Declaration order is load-bearing: the unknown-call error message
 /// (fn_expand) joins it in this order.
 pub const OUTCOME_OPS: [&str; 18] = [
-    "SPAWN",
-    "DESTROY",
-    "REPLACE",
-    "SET",
-    "MOVE",
-    "REVEAL",
-    "ADVANCE",
-    "NARRATE",
-    "PROGRESS",
-    "RELATE",
-    "UNRELATE",
-    "REFUSE",
-    "ENDING",
-    "ROLL",  // authored: ROLL(count, sides[, bonus]) — concretizes to ROLLED (§9.41)
+    "SPAWN", "DESTROY", "REPLACE", "SET", "MOVE", "REVEAL", "ADVANCE", "NARRATE", "PROGRESS",
+    "RELATE", "UNRELATE", "REFUSE", "ENDING",
+    "ROLL",   // authored: ROLL(count, sides[, bonus]) — concretizes to ROLLED (§9.41)
     "ROLLED", // engine-written ONLY: ROLLED(total, ctrAfter) — the fold's counter row (§9.41)
-    "DRAW",  // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§9.42)
-    "DRAWN", // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§9.42)
-    "RUN",   // authored: RUN "recipe-id" [, …] — zero-concrete; the follow-up's BEGIN row is the record (§9.47)
+    "DRAW",   // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§9.42)
+    "DRAWN",  // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§9.42)
+    "RUN", // authored: RUN "recipe-id" [, …] — zero-concrete; the follow-up's BEGIN row is the record (§9.47)
 ];
 
 /// Definition of a relation type: whether its edges are symmetric.
@@ -236,7 +225,10 @@ mod tests {
             Ok(false)
         );
         let err = d.relation_def("nope").unwrap_err();
-        assert_eq!(err.msg, "unknown relation type 'nope' (register it in the dictionary)");
+        assert_eq!(
+            err.msg,
+            "unknown relation type 'nope' (register it in the dictionary)"
+        );
     }
 
     #[test]

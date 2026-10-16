@@ -16,7 +16,8 @@
 //! tests/common/explorer_lib.rs (explorer_world/candidates_for/
 //! WIN_PATH/win_path_states/sampled_walk_states/SCRIPT_TEXT/clause_key).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::explorer_lib::{
     candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth, ExplorerWorld,
@@ -54,25 +55,19 @@ fn check_state_shape(s: &State, content: &CompiledContent) {
             e.name
         );
         if !declared {
-            assert!(
-                !seen.contains(&e.name),
-                "duplicate living name {}",
-                e.name
-            );
+            assert!(!seen.contains(&e.name), "duplicate living name {}", e.name);
         }
         seen.insert(e.name.clone());
         // §9.38: the id is in the name's pool
         assert!(
-            s.by_name.get(&e.name).is_some_and(|pool| pool.contains(&e.id)),
+            s.by_name
+                .get(&e.name)
+                .is_some_and(|pool| pool.contains(&e.id)),
             "{} is not in byName's pool for its name",
             e.name
         );
         if let Some(chorus::core::types::AttrValue::Str(c)) = e.attrs.get("container") {
-            assert!(
-                s.entities.contains_key(c),
-                "{} sits nowhere",
-                e.name
-            );
+            assert!(s.entities.contains_key(c), "{} sits nowhere", e.name);
         }
     }
     for r in s.relations.values() {
@@ -164,13 +159,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
     // state = fold(log): the records alone reproduce the played state (§7) —
     // open windows included
     assert_eq!(
-        snap(&fold(
-            &r.records,
-            &clone_state(pre),
-            &world.dict,
-            &world.content
-        )
-        .unwrap()),
+        snap(&fold(&r.records, &clone_state(pre), &world.dict, &world.content).unwrap()),
         snap(&r.state)
     );
     check_state_shape(&r.state, &world.content);
@@ -180,13 +169,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
 /// one execute_step on a private clone of `state` — the engine passes
 /// `state` by reference and lets execute_step draft internally; the Rust
 /// engine consumes its input, so the clone IS the draft hand-off.
-fn exec_on(
-    world: &ExplorerWorld,
-    state: &State,
-    step: Step,
-    label: &str,
-    tag: &str,
-) -> ExecResult {
+fn exec_on(world: &ExplorerWorld, state: &State, step: Step, label: &str, tag: &str) -> ExecResult {
     execute_step(
         &world.content,
         &world.dict,
@@ -278,10 +261,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
         for refuser in refusers.values().take(4) {
             let partners: Vec<chorus::core::sentence::Clause> = vec![
                 Some(wait_clause.clone()),
-                appliers
-                    .get(&refuser.verb)
-                    .cloned()
-                    .or(any_applier.clone()),
+                appliers.get(&refuser.verb).cloned().or(any_applier.clone()),
             ]
             .into_iter()
             .flatten()
@@ -301,8 +281,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
                     };
                     let r = exec_on(&world, state, step.clone(), label, "atomicity probe");
                     assert_eq!(
-                        r.rejected,
-                        None,
+                        r.rejected, None,
                         "{label}: atomicity probe rejected: {:?}",
                         r.rejected
                     );
@@ -343,8 +322,7 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
     let mut executed = 0usize;
     let mut walk_rejects = 0usize;
     let mut endings = 0usize;
-    let mut snapshots: std::collections::HashMap<usize, String> =
-        std::collections::HashMap::new();
+    let mut snapshots: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
     // the walk may need to undo back to the start
     snapshots.insert(0, snap(&state));
 
@@ -367,8 +345,8 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
             } else {
                 benign
             };
-        let cand = &pick_from[(lcg.next_f64() * pick_from.len() as f64).floor() as usize
-            % pick_from.len()];
+        let cand = &pick_from
+            [(lcg.next_f64() * pick_from.len() as f64).floor() as usize % pick_from.len()];
         let r = common::settle::settle_step(
             &world.content,
             &world.dict,
@@ -397,13 +375,15 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
         // 10th step)
         if i % 10 == 9 {
             assert_eq!(
-                snap(&fold(
-                    &records,
-                    &clone_state(&world.base),
-                    &world.dict,
-                    &world.content
-                )
-                .unwrap()),
+                snap(
+                    &fold(
+                        &records,
+                        &clone_state(&world.base),
+                        &world.dict,
+                        &world.content
+                    )
+                    .unwrap()
+                ),
                 snap(&state)
             );
         }
@@ -426,9 +406,12 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
                 &world.content,
             )
             .unwrap();
-            let expected = snapshots
-                .get(&records.len())
-                .unwrap_or_else(|| panic!("undo through the ending left no snapshot at length {}", records.len()));
+            let expected = snapshots.get(&records.len()).unwrap_or_else(|| {
+                panic!(
+                    "undo through the ending left no snapshot at length {}",
+                    records.len()
+                )
+            });
             assert_eq!(snap(&state), *expected);
             continue;
         }
@@ -511,7 +494,10 @@ fn slash_commands_garbage_and_the_event_guard_never_throw() {
             "unexpected kind for {line:?}"
         );
     }
-    assert_eq!(game.handle_line("0:0 @ EVENT body_found").unwrap().kind, TurnKind::Error);
+    assert_eq!(
+        game.handle_line("0:0 @ EVENT body_found").unwrap().kind,
+        TurnKind::Error
+    );
 
     assert!(!game.look().is_empty());
     assert!(!game.cards().is_empty());

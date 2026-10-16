@@ -13,14 +13,16 @@
 //! shared module tests/common/reach_fuzz_lib.rs —
 //! the same module the bin mounts, so bin and test cannot drift.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::reach_fuzz_lib::run_fuzz_seed;
 
 /// One seed under the DEFAULT bounds (8 steps × 500 states); inconclusive
 /// probes print to the test output, failures fail the test.
 fn assert_seed_sound(seed: u32) {
-    let out = run_fuzz_seed(seed, 8, 500).expect("the fuzz oracle never errors on its own scenarios");
+    let out =
+        run_fuzz_seed(seed, 8, 500).expect("the fuzz oracle never errors on its own scenarios");
     if !out.inconclusive.is_empty() {
         println!("seed {}: {}", seed, out.inconclusive.join("; "));
     }

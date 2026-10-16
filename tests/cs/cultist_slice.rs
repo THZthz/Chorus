@@ -9,7 +9,8 @@
 //! before the fix the missing purse read false and the candle recipe sold
 //! her one silver into debt.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::settle::{act, done, refusal, settle_step};
 
@@ -47,7 +48,10 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock {
+                day: 0,
+                halfhour: 0,
+            })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -105,11 +109,21 @@ fn a_present_silver_purse_still_buys_the_candle() {
         .attrs
         .insert("silver".to_string(), AttrValue::Num(1));
 
-    let r = run(&compiled.content, &dict, state, "0:16 @ WREN ACQUIRE THE_TIN_CANDLE AT THE_FLEA_MARKET");
+    let r = run(
+        &compiled.content,
+        &dict,
+        state,
+        "0:16 @ WREN ACQUIRE THE_TIN_CANDLE AT THE_FLEA_MARKET",
+    );
     assert_eq!(r.rejected, None, "a funded purse passes the broke gate");
     assert_eq!(refusal(&r), None);
     assert_eq!(act(&r).unwrap().recipes, ["acquire.candle"]);
-    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
+    let ops: Vec<&str> = done(&r)
+        .unwrap()
+        .outcomes
+        .iter()
+        .map(|o| o.op.as_str())
+        .collect();
     assert_eq!(ops, ["SET", "MOVE", "NARRATE"]);
 
     let wren = r.state.by_name["WREN"][0].clone();
@@ -221,7 +235,8 @@ fn play(game: &mut Game, lines: &[&str]) {
     for line in lines {
         let turn = game.handle_line(line).unwrap();
         assert_ne!(
-            turn.kind, TurnKind::Error,
+            turn.kind,
+            TurnKind::Error,
             "walk line {line:?} was rejected: {:?}",
             turn.lines
         );
@@ -420,7 +435,11 @@ fn three_grey_marks_end_in_grey_water() {
                       SEASON_GREY, SEASON_GREY, SEASON_GREY, SEASON_GREY, SEASON_GREY";
     let moods_from = "MOODS spec DREAD, RAPTURE, GLIMMER, MENDING, EASE, WAKEFULNESS";
     let moods_to = "MOODS spec DREAD, DREAD, DREAD, DREAD, DREAD, DREAD";
-    let mutated = with_deck(&with_deck(SLICE, seasons_from, seasons_to), moods_from, moods_to);
+    let mutated = with_deck(
+        &with_deck(SLICE, seasons_from, seasons_to),
+        moods_from,
+        moods_to,
+    );
     let mut game = Game::from_script(&mutated, core_dictionary()).unwrap();
 
     // three router draws stock three DREADs (roll-free), the two works build
@@ -435,13 +454,29 @@ fn three_grey_marks_end_in_grey_water() {
             "0:20 dream",
             "0:22 work with wits",
             "0:24 work with vigor",
-            "0:26", "0:28", "0:30", "0:32", "0:34", "0:36", "0:38", "0:40", "0:42", "0:44",
-            "0:46", "1:0", "1:2",
+            "0:26",
+            "0:28",
+            "0:30",
+            "0:32",
+            "0:34",
+            "0:36",
+            "0:38",
+            "0:40",
+            "0:42",
+            "0:44",
+            "0:46",
+            "1:0",
+            "1:2",
         ],
     );
 
     // the melancholy: the third processed dread closes the sky
-    assert_ended(&game, "GREY_WATER", "The Weight of Grey Water", "melancholy");
+    assert_ended(
+        &game,
+        "GREY_WATER",
+        "The Weight of Grey Water",
+        "melancholy",
+    );
     assert_eq!(
         completions(&game, "despair_process"),
         3,
@@ -478,7 +513,11 @@ fn three_rapture_marks_end_in_bright_air() {
                       SEASON_WHITE, SEASON_WHITE, SEASON_WHITE, SEASON_WHITE, SEASON_WHITE";
     let moods_from = "MOODS spec DREAD, RAPTURE, GLIMMER, MENDING, EASE, WAKEFULNESS";
     let moods_to = "MOODS spec RAPTURE, RAPTURE, RAPTURE, RAPTURE, RAPTURE, RAPTURE";
-    let mutated = with_deck(&with_deck(SLICE, seasons_from, seasons_to), moods_from, moods_to);
+    let mutated = with_deck(
+        &with_deck(SLICE, seasons_from, seasons_to),
+        moods_from,
+        moods_to,
+    );
     let mut game = Game::from_script(&mutated, core_dictionary()).unwrap();
 
     play(
@@ -489,8 +528,19 @@ fn three_rapture_marks_end_in_bright_air() {
             "0:20 dream",
             "0:22 work with wits",
             "0:24 work with vigor",
-            "0:26", "0:28", "0:30", "0:32", "0:34", "0:36", "0:38", "0:40", "0:42", "0:44",
-            "0:46", "1:0", "1:2",
+            "0:26",
+            "0:28",
+            "0:30",
+            "0:32",
+            "0:34",
+            "0:36",
+            "0:38",
+            "0:40",
+            "0:42",
+            "0:44",
+            "0:46",
+            "1:0",
+            "1:2",
         ],
     );
 
@@ -542,7 +592,15 @@ fn a_starved_body_fails() {
         &[
             "0:16 work with wits",
             "0:18 work with vigor",
-            "0:20", "0:22", "0:24", "0:26", "0:28", "0:30", "0:32", "0:34", "0:36",
+            "0:20",
+            "0:22",
+            "0:24",
+            "0:26",
+            "0:28",
+            "0:30",
+            "0:32",
+            "0:34",
+            "0:36",
         ],
     );
 
@@ -593,9 +651,15 @@ fn the_wheel_turns_at_least_three_seasons() {
         &[
             "0:16 work with wits",
             "0:18 work with vigor",
-            "0:20", "0:22", "0:24", "0:26", "0:28",
+            "0:20",
+            "0:22",
+            "0:24",
+            "0:26",
+            "0:28",
             "0:30 work with the clerks post",
-            "0:32", "0:34", "0:36",
+            "0:32",
+            "0:34",
+            "0:36",
         ],
     );
 
@@ -647,4 +711,3 @@ fn the_wheel_turns_at_least_three_seasons() {
     );
     assert_eq!(refusals(&game), 0, "the walk accepts every line");
 }
-

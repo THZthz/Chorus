@@ -23,8 +23,8 @@ pub mod render;
 pub mod world;
 
 pub use paths::{
-    analyze_card, CardCandidate, CardOptions, CardReport, CardVerdict, Existence, PathDeck,
-    PathOp, ReachPath, Require,
+    analyze_card, CardCandidate, CardOptions, CardReport, CardVerdict, Existence, PathDeck, PathOp,
+    ReachPath, Require,
 };
 pub use render::{pred_text, render_path, render_report};
 pub use world::Analyzer;

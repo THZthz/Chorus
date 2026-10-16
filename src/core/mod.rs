@@ -10,20 +10,20 @@
 //! keyword. `Role`/`ROLES` live in `roles` and are re-exported by
 //! `sentence`.
 
+pub mod clock;
 pub mod dice;
 pub mod dict;
-pub mod r#ref;
-pub mod clock;
-pub mod query;
-pub mod sentence;
-pub mod predicate;
-pub mod parse;
 pub mod fn_expand;
 pub mod format;
-pub mod lexer;
-pub mod roles;
-pub mod types;
-pub mod text;
 pub mod jsonw;
-pub mod regex_util;
+pub mod lexer;
 pub mod num_parse;
+pub mod parse;
+pub mod predicate;
+pub mod query;
+pub mod r#ref;
+pub mod regex_util;
+pub mod roles;
+pub mod sentence;
+pub mod text;
+pub mod types;

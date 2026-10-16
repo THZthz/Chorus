@@ -139,7 +139,10 @@ pub enum Arg {
     AsId { id: String },
     /// `{ t: 'pair', k, v: string | number | boolean }`
     #[serde(rename = "pair")]
-    Pair { k: String, v: crate::core::types::AttrValue },
+    Pair {
+        k: String,
+        v: crate::core::types::AttrValue,
+    },
     /// `{ t: 'expires', v }` — the SPAWN `expires <duration>` mint modifier
     /// (§4.4, §9.36), a DEDICATED arg shape on purpose: a bare dur/str in
     /// SPAWN args must never be read as the modifier, because a §9.40

@@ -9,7 +9,8 @@
 //! patterns copied CHARACTER FOR CHARACTER from the frozen literals, and
 //! play/fold equality asserted through the shared `snap`.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::settle::{act, done, refusal, settle_step};
@@ -90,7 +91,10 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock {
+                day: 0,
+                halfhour: 0,
+            })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -102,9 +106,7 @@ fn run(
 
 /// The BEGIN row's commit-time recipe ids, clause order.
 fn begin_recipes(r: &ExecResult) -> Vec<String> {
-    act(r)
-        .map(|rec| rec.recipes.clone())
-        .unwrap_or_default()
+    act(r).map(|rec| rec.recipes.clone()).unwrap_or_default()
 }
 
 /// The execution map as entry pairs (insertion order observable).
@@ -195,7 +197,10 @@ fn a_window_that_refuses_at_completion_still_counted() {
     );
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
-    assert_eq!(r.rejected, None, "the BEGIN succeeds — the refusal is deferred");
+    assert_eq!(
+        r.rejected, None,
+        "the BEGIN succeeds — the refusal is deferred"
+    );
     let complete = done(&r).unwrap();
     let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["SPAWN", "REFUSE"]);
@@ -203,7 +208,10 @@ fn a_window_that_refuses_at_completion_still_counted() {
     // the window refused — no TRINKET survives the discarded draft…
     assert!(!r.state.entities.values().any(|e| e.name == "TRINKET"));
     // …but the registration at begin already counted
-    assert_eq!(executed_entries(&r.state), vec![("wait.default".to_string(), 1)]);
+    assert_eq!(
+        executed_entries(&r.state),
+        vec![("wait.default".to_string(), 1)]
+    );
     // play and fold agree through the same registration path
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -337,7 +345,9 @@ fn the_positional_walk_honors_every_token_and_errors_on_strays() {
     // …and the same line with the hint clause interleaved
     let (c2, _) = compile(
         &dict,
-        &verbs_max("      second hidden hint \"twice\" max 3 when count(actors) >= 1 -> NARRATE \"x\""),
+        &verbs_max(
+            "      second hidden hint \"twice\" max 3 when count(actors) >= 1 -> NARRATE \"x\"",
+        ),
     );
     let rs2 = &c2.verbs.get("WAIT").unwrap().recipes;
     assert_eq!(rs2[0].id, "second");
@@ -447,7 +457,10 @@ fn registration_at_begin_counts_while_the_window_is_still_open() {
         s,
         Step {
             start_min: None,
-            clock: Some(Clock { day: 0, halfhour: 0 }),
+            clock: Some(Clock {
+                day: 0,
+                halfhour: 0,
+            }),
             clauses: parsed.clauses,
             t_real: None,
         },

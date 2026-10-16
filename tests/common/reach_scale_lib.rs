@@ -87,15 +87,36 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut rnd = lcg(0xc5);
 
     const KINDS: [&str; 8] = [
-        "item", "text", "idea", "resource", "rite", "state", "place", "character",
+        "item",
+        "text",
+        "idea",
+        "resource",
+        "rite",
+        "state",
+        "place",
+        "character",
     ];
     const ASPECTS: [&str; 12] = [
-        "lantern", "forge", "edge", "winter", "knock", "heart", "grail", "moth", "lore",
-        "ingredient", "tool", "follower",
+        "lantern",
+        "forge",
+        "edge",
+        "winter",
+        "knock",
+        "heart",
+        "grail",
+        "moth",
+        "lore",
+        "ingredient",
+        "tool",
+        "follower",
     ];
     // resources `R1`..`R20`
     let resources: Vec<String> = (1..=20).map(|i| format!("R{i}")).collect();
-    let kinds_non_char: Vec<&str> = KINDS.iter().copied().filter(|k| *k != "character").collect();
+    let kinds_non_char: Vec<&str> = KINDS
+        .iter()
+        .copied()
+        .filter(|k| *k != "character")
+        .collect();
 
     // the prototypes. `kind` for i < 30 is
     // 'character' with NO draw (the else branch never runs).
@@ -234,7 +255,11 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             // widely).
             let a = format!("SPAWN {}", pick_template(ctx.rnd, ctx.hubs));
             let b = format!("SPAWN {}", pick_template(ctx.rnd, ctx.proto_names));
-            out = if ctx.rnd.next_f64() < 0.5 { vec![a, b] } else { vec![b, a] };
+            out = if ctx.rnd.next_f64() < 0.5 {
+                vec![a, b]
+            } else {
+                vec![b, a]
+            };
         } else {
             // the ROLL/IF-exists/when pushes;
             // each guard draw happens before its template's draws
@@ -260,7 +285,10 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             // the three `when` templates are
             // built EAGERLY (all their draws happen), then the pick draws
             if ctx.rnd.next_f64() < 0.25 {
-                let t1 = format!("count(name:{}) >= 1", pick_template(ctx.rnd, ctx.proto_names));
+                let t1 = format!(
+                    "count(name:{}) >= 1",
+                    pick_template(ctx.rnd, ctx.proto_names)
+                );
                 let t2 = format!("exists({})", pick_template(ctx.rnd, ctx.proto_names));
                 let a = ASPECTS[int(ctx.rnd, ASPECTS.len())];
                 let t3 = format!("actors.aspect.{a} >= {}", 1 + int(ctx.rnd, 4) as i64);
@@ -300,7 +328,9 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         }
         // duration picked from the weighted pool [0, 30, 60, 60, 60]
         let durations: [&str; 5] = ["0", "30", "60", "60", "60"];
-        let duration: i64 = durations[int(ctx.rnd, durations.len())].parse().expect("duration literal");
+        let duration: i64 = durations[int(ctx.rnd, durations.len())]
+            .parse()
+            .expect("duration literal");
         verbs_raw.insert(
             name.clone(),
             VerbContent {
@@ -363,14 +393,23 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         id: "t_expiry".to_string(),
         slot: 40,
         once: Some(true),
-        out: vec![format!("SPAWN {}", proto_names[int(&mut rnd, proto_names.len())].clone())],
+        out: vec![format!(
+            "SPAWN {}",
+            proto_names[int(&mut rnd, proto_names.len())].clone()
+        )],
     }));
     triggers.push(TriggerDef::Expire(ExpireTriggerDef {
         id: "t_big".to_string(),
         on_expire_of: "R1".to_string(),
         out: vec![
-            format!("SPAWN {}", proto_names[int(&mut rnd, proto_names.len())].clone()),
-            format!("DESTROY {}", resources[int(&mut rnd, resources.len())].clone()),
+            format!(
+                "SPAWN {}",
+                proto_names[int(&mut rnd, proto_names.len())].clone()
+            ),
+            format!(
+                "DESTROY {}",
+                resources[int(&mut rnd, resources.len())].clone()
+            ),
         ],
     }));
 
@@ -380,7 +419,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut dict = core_dictionary();
     for name in verbs_raw.keys() {
         if !dict.is_verb(name) {
-            dict.register_verb(name).expect("verb registration cannot fail here");
+            dict.register_verb(name)
+                .expect("verb registration cannot fail here");
         }
     }
     let raw = ContentRaw {
@@ -532,7 +572,9 @@ pub fn census(world: &ScaleWorld, names: &[String]) -> Vec<NameStat> {
 pub fn summarize(stats: &[NameStat]) -> String {
     let mut times: Vec<f64> = stats.iter().map(|st| st.ms).collect();
     times.sort_by(|a, b| a.partial_cmp(b).expect("ms values are finite"));
-    let q = |p: f64| -> f64 { times[std::cmp::min(times.len() - 1, (times.len() as f64 * p).floor() as usize)] };
+    let q = |p: f64| -> f64 {
+        times[std::cmp::min(times.len() - 1, (times.len() as f64 * p).floor() as usize)]
+    };
     // `verdicts` is insertion-ordered — order =
     // first occurrence in stats order (the JSON summary prints it)
     let mut verdicts: IndexMap<&str, i64> = IndexMap::new();
@@ -563,4 +605,3 @@ pub fn summarize(stats: &[NameStat]) -> String {
         roots as f64 / stats.len() as f64,
     )
 }
-

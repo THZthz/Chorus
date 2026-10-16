@@ -19,7 +19,7 @@ use crate::error::{ChorusError, Result};
 pub enum Tok {
     Name { v: String },
     Int { v: i64 },
-    Dur { v: i64 },  // minutes
+    Dur { v: i64 }, // minutes
     Str { v: String },
     IdRef { v: String }, // #c7f3 (without '#')
     Punct { v: String },
@@ -56,7 +56,10 @@ impl Tok {
 #[must_use]
 fn is_punct(c: u16) -> bool {
     // ,  ;  :  (  )  @  =  !  >  <  +  -  .
-    matches!(c, 0x2C | 0x3B | 0x3A | 0x28 | 0x29 | 0x40 | 0x3D | 0x21 | 0x3E | 0x3C | 0x2B | 0x2D | 0x2E)
+    matches!(
+        c,
+        0x2C | 0x3B | 0x3A | 0x28 | 0x29 | 0x40 | 0x3D | 0x21 | 0x3E | 0x3C | 0x2B | 0x2D | 0x2E
+    )
 }
 
 /// NAME scan (`/^[A-Za-z_][A-Za-z0-9_]*/`) at `s[i..]`:
@@ -103,7 +106,13 @@ fn scan_digits(s: &[u16], i: usize) -> Option<usize> {
 #[must_use]
 fn scan_dur_unit(s: &[u16], j: usize) -> Option<usize> {
     const HALF: [u16; 8] = [
-        b'h' as u16, b'a' as u16, b'l' as u16, b'f' as u16, b'h' as u16, b'o' as u16, b'u' as u16,
+        b'h' as u16,
+        b'a' as u16,
+        b'l' as u16,
+        b'f' as u16,
+        b'h' as u16,
+        b'o' as u16,
+        b'u' as u16,
         b'r' as u16,
     ];
     if s.len() >= j + 8 && s[j..j + 8] == HALF {
@@ -129,7 +138,9 @@ fn scan_dur(s: &[u16], i: usize) -> Option<(usize, usize)> {
     let mut j = i + first_digits + first_unit;
     // greedy tail: `(?:[0-9]+(?:halfhour|h|m|d))*`
     while let Some(digits) = scan_digits(s, j) {
-        let Some(unit) = scan_dur_unit(s, j + digits) else { break };
+        let Some(unit) = scan_dur_unit(s, j + digits) else {
+            break;
+        };
         j += digits + unit;
     }
     Some((first_digits, j - i))
@@ -155,7 +166,9 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             continue;
         }
         if c == b'-' as u16 && s.get(i + 1) == Some(&(b'>' as u16)) {
-            toks.push(Tok::Punct { v: "->".to_string() });
+            toks.push(Tok::Punct {
+                v: "->".to_string(),
+            });
             i += 2;
             continue;
         }
@@ -194,7 +207,9 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             if j >= s.len() {
                 return Err(ChorusError::new("unterminated string literal"));
             }
-            toks.push(Tok::Str { v: units_to_string(&out) });
+            toks.push(Tok::Str {
+                v: units_to_string(&out),
+            });
             i = j + 1;
             continue;
         }
@@ -225,19 +240,25 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                 // same start, so text equality is length equality)
                 if units_to_string(&rest[..num_len]) == units_to_string(&rest[..g1_len]) {
                     let dur_text = units_to_string(&rest[..dur_len]);
-                    toks.push(Tok::Dur { v: parse_duration(&dur_text)? });
+                    toks.push(Tok::Dur {
+                        v: parse_duration(&dur_text)?,
+                    });
                     i += dur_len;
                     continue;
                 }
             }
             let num_text = units_to_string(&rest[..num_len]);
             // authored integers parse DIRECTLY (B-22) — the bytes are the value
-            toks.push(Tok::Int { v: parse_authored_int(&num_text) });
+            toks.push(Tok::Int {
+                v: parse_authored_int(&num_text),
+            });
             i += num_len;
             continue;
         }
         if let Some(len) = scan_name(&s, i) {
-            toks.push(Tok::Name { v: units_to_string(&s[i..i + len]) });
+            toks.push(Tok::Name {
+                v: units_to_string(&s[i..i + len]),
+            });
             i += len;
             continue;
         }
@@ -252,7 +273,9 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
             }
         }
         if is_punct(c) {
-            toks.push(Tok::Punct { v: units_to_string(&[c]) });
+            toks.push(Tok::Punct {
+                v: units_to_string(&[c]),
+            });
             i += 1;
             continue;
         }
@@ -317,23 +340,44 @@ mod tests {
         // real escape semantics (Q10, batch 3): the named escapes are the
         // characters themselves, an unknown escape keeps the literal next
         // unit, and `\"`/`\\` behave exactly as before
-        assert_eq!(lex(r#""a\nb""#).unwrap(), vec![Tok::Str { v: "a\nb".into() }]);
-        assert_eq!(lex(r#""a\tb""#).unwrap(), vec![Tok::Str { v: "a\tb".into() }]);
+        assert_eq!(
+            lex(r#""a\nb""#).unwrap(),
+            vec![Tok::Str { v: "a\nb".into() }]
+        );
+        assert_eq!(
+            lex(r#""a\tb""#).unwrap(),
+            vec![Tok::Str { v: "a\tb".into() }]
+        );
         // source `"a\\b"` (two backslashes) holds ONE backslash
-        assert_eq!(lex(r#""a\\b""#).unwrap(), vec![Tok::Str { v: "a\\b".into() }]);
+        assert_eq!(
+            lex(r#""a\\b""#).unwrap(),
+            vec![Tok::Str { v: "a\\b".into() }]
+        );
         // `\"` is the escaped quote — the bundled content's only escape,
         // byte-identical under the new semantics
-        assert_eq!(lex("\"a\\\"b\"").unwrap(), vec![Tok::Str { v: "a\"b".into() }]);
+        assert_eq!(
+            lex("\"a\\\"b\"").unwrap(),
+            vec![Tok::Str { v: "a\"b".into() }]
+        );
         // a non-escape letter keeps the literal next unit
         // (the frozen unknown-escape rule, Q10)
-        assert_eq!(lex(r#""a\qb""#).unwrap(), vec![Tok::Str { v: "aqb".into() }]);
+        assert_eq!(
+            lex(r#""a\qb""#).unwrap(),
+            vec![Tok::Str { v: "aqb".into() }]
+        );
         // unterminated
         let e = lex("\"abc").unwrap_err();
         assert_eq!(e.msg, "unterminated string literal");
         // trailing backslash: still unterminated — nothing follows to escape
-        assert_eq!(lex("\"abc\\").unwrap_err().msg, "unterminated string literal");
+        assert_eq!(
+            lex("\"abc\\").unwrap_err().msg,
+            "unterminated string literal"
+        );
         // `\"` does not CLOSE the string either
-        assert_eq!(lex("\"a\\\"").unwrap_err().msg, "unterminated string literal");
+        assert_eq!(
+            lex("\"a\\\"").unwrap_err().msg,
+            "unterminated string literal"
+        );
     }
 
     #[test]

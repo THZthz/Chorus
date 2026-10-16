@@ -12,7 +12,10 @@ use regex::Regex;
 
 use crate::core::dice::splitmix64;
 use crate::core::dict::Dictionary;
-use crate::core::fn_expand::{collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH};
+use crate::core::fn_expand::{
+    collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH,
+};
+use crate::core::jsonw::{canonical_key_order, clone_map_in_key_order};
 use crate::core::parse::{parse_function_body, parse_outcomes};
 use crate::core::predicate::{
     lint_pred, lint_roll_may_bind, lint_trigger_pred, lint_trigger_val_expr_what, lint_val_expr,
@@ -20,11 +23,10 @@ use crate::core::predicate::{
 };
 use crate::core::query::{parse_query, Query};
 use crate::core::r#ref::Ref;
-use crate::core::sentence::{Arg, IfArm, Outcome};
-use crate::core::types::{Aspects, Attrs};
-use crate::core::jsonw::{clone_map_in_key_order, canonical_key_order};
 use crate::core::regex_util::static_regex;
+use crate::core::sentence::{Arg, IfArm, Outcome};
 use crate::core::text::dsl_trim;
+use crate::core::types::{Aspects, Attrs};
 use crate::error::{ChorusError, Result};
 
 // ---------------------------------------------------------------------------
@@ -445,18 +447,22 @@ pub fn compile_content(
     // immediately after their parse, so the guards below walk expanded lists.
     let fns = build_fn_table(raw.functions.as_deref().unwrap_or(&[]), dict)?;
     // §9.38: two derived sets every mint site reads
-    let (stackable_names, stackable_kinds) =
-        collect_stackable(entities, raw.prototypes.as_ref());
+    let (stackable_names, stackable_kinds) = collect_stackable(entities, raw.prototypes.as_ref());
     let mut endings = IndexMap::new();
     for (id, e) in entries_in_key_order(raw.endings.as_ref().unwrap_or(&IndexMap::new())) {
         let re = ending_id_re();
         if !re.is_match(id) {
-            return Err(ChorusError::new(format!("ending '{id}' must be UPPER_SNAKE")));
+            return Err(ChorusError::new(format!(
+                "ending '{id}' must be UPPER_SNAKE"
+            )));
         }
         if e.title.is_empty() || dsl_trim(&e.title).is_empty() {
             return Err(ChorusError::new(format!("ending {id}: needs a title")));
         }
-        let flavour = e.flavour.clone().unwrap_or_else(|| "melancholy".to_string());
+        let flavour = e
+            .flavour
+            .clone()
+            .unwrap_or_else(|| "melancholy".to_string());
         let re = flavour_re();
         if !re.is_match(&flavour) {
             return Err(ChorusError::new(format!(
@@ -536,10 +542,9 @@ pub fn compile_content(
             };
             // id-less recipes mint the 0-based `.recipe<i>` (§6.4) — the
             // one mint, shared verbatim by the lint mirror (Q1 unified)
-            let id = r
-                .id
-                .clone()
-                .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
+            let id =
+                r.id.clone()
+                    .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
             // §9.50: N ≥ 1 — a `max 0` (or negative) can never fire, so it
             // fails loudly at load instead (the script parser checks its own
             // token; this guards the code-level ContentRaw face, like the
@@ -632,9 +637,7 @@ pub fn compile_content(
                         "trigger {tid}: PROGRESS belongs to the completing recipe — completion triggers fire after the outcome list (§9.48)"
                     )
                 } else {
-                    format!(
-                        "trigger {tid}: PROGRESS belongs to verb recipes, not events"
-                    )
+                    format!("trigger {tid}: PROGRESS belongs to verb recipes, not events")
                 }));
             }
             // §9.34: REFUSE aborts a step (§6.5); events have no step to refuse
@@ -1032,7 +1035,10 @@ fn compile_decks(
     for d in raws {
         let re = upper_snake_re();
         if !re.is_match(&d.id) {
-            return Err(ChorusError::new(format!("deck '{}' must be UPPER_SNAKE", d.id)));
+            return Err(ChorusError::new(format!(
+                "deck '{}' must be UPPER_SNAKE",
+                d.id
+            )));
         }
         if dict.reserved.contains(&d.id) {
             return Err(ChorusError::new(format!(
@@ -1044,7 +1050,10 @@ fn compile_decks(
             return Err(ChorusError::new(format!("duplicate deck '{}'", d.id)));
         }
         if d.spec.is_empty() {
-            return Err(ChorusError::new(format!("deck {}: the spec is empty", d.id)));
+            return Err(ChorusError::new(format!(
+                "deck {}: the spec is empty",
+                d.id
+            )));
         }
         let mut entries = Vec::with_capacity(d.spec.len());
         for name in &d.spec {
@@ -1226,7 +1235,10 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
             )));
         }
         if table.by_name.contains_key(&def.name) {
-            return Err(ChorusError::new(format!("duplicate function '{}'", def.name)));
+            return Err(ChorusError::new(format!(
+                "duplicate function '{}'",
+                def.name
+            )));
         }
         for p in &def.params {
             if !fn_ident_re().is_match(p) {
@@ -1342,7 +1354,11 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
             visit(name, &calls_of, &mut color, &mut stack)?;
         }
     }
-    fn depth_of(name: &str, calls_of: &IndexMap<String, IndexSet<String>>, depth: &mut IndexMap<String, u32>) -> u32 {
+    fn depth_of(
+        name: &str,
+        calls_of: &IndexMap<String, IndexSet<String>>,
+        depth: &mut IndexMap<String, u32>,
+    ) -> u32 {
         if let Some(memo) = depth.get(name) {
             return *memo;
         }

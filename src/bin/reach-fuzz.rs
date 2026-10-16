@@ -16,10 +16,10 @@
 // shared files are mounted by path. `reach_fuzz_lib`'s
 // `use super::settle::settle_step` resolves against this crate root, where
 // `settle` is mounted first.
-#[path = "../../tests/common/settle.rs"]
-mod settle;
 #[path = "../../tests/common/reach_fuzz_lib.rs"]
 mod reach_fuzz_lib;
+#[path = "../../tests/common/settle.rs"]
+mod settle;
 
 /// The canonical number grammar for the flag values — trim DSL whitespace,
 /// '' → 0, decimal/hex/±Infinity literals, anything else NaN. (A NaN feeds
@@ -28,10 +28,16 @@ mod reach_fuzz_lib;
 fn parse_canonical_number(s: &str) -> f64 {
     let t: String = {
         let mut chars: Vec<char> = s.chars().collect();
-        while chars.first().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
+        while chars
+            .first()
+            .is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c))
+        {
             chars.remove(0);
         }
-        while chars.last().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
+        while chars
+            .last()
+            .is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c))
+        {
             chars.pop();
         }
         chars.into_iter().collect()
@@ -51,7 +57,10 @@ fn parse_canonical_number(s: &str) -> f64 {
         .or_else(|| t.strip_prefix("-0x"));
     if let Some(h) = hex {
         let sign = if t.starts_with('-') { -1.0 } else { 1.0 };
-        return sign * u64::from_str_radix(h, 16).map(|v| v as f64).unwrap_or(f64::NAN);
+        return sign
+            * u64::from_str_radix(h, 16)
+                .map(|v| v as f64)
+                .unwrap_or(f64::NAN);
     }
     // decimal: optional sign, digits with optional fraction and exponent —
     // anything else is NaN (str::parse would also accept "inf"/"nan", which
@@ -61,7 +70,9 @@ fn parse_canonical_number(s: &str) -> f64 {
         body = rest;
     }
     let is_decimal = !body.is_empty()
-        && body.chars().all(|c| c.is_ascii_digit() || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-');
+        && body.chars().all(|c| {
+            c.is_ascii_digit() || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-'
+        });
     if is_decimal {
         t.parse::<f64>().unwrap_or(f64::NAN)
     } else {
@@ -76,7 +87,11 @@ fn display_number(v: f64) -> String {
     if v.is_nan() {
         "NaN".to_string()
     } else if v.is_infinite() {
-        if v > 0.0 { "Infinity".to_string() } else { "-Infinity".to_string() }
+        if v > 0.0 {
+            "Infinity".to_string()
+        } else {
+            "-Infinity".to_string()
+        }
     } else if v.fract() == 0.0 && v.abs() < 9.007_199_254_740_992e15 {
         format!("{}", v as i64)
     } else {
@@ -90,7 +105,11 @@ fn main() -> std::process::ExitCode {
     let flag = |name: &str, dflt: f64| -> f64 {
         args.iter()
             .position(|a| a == name)
-            .map(|i| args.get(i + 1).map(|v| parse_canonical_number(v)).unwrap_or(f64::NAN))
+            .map(|i| {
+                args.get(i + 1)
+                    .map(|v| parse_canonical_number(v))
+                    .unwrap_or(f64::NAN)
+            })
             .unwrap_or(dflt)
     };
     let seeds = flag("--seeds", 200.0);
@@ -120,11 +139,12 @@ fn main() -> std::process::ExitCode {
         // 3 states for `--states 2.5`. Integer flags, the defaults and NaN
         // (`parse_canonical_number` = `Number`, registered at its definition) are exact;
         // only a fractional flag digs one level shallower here.
-        let out = reach_fuzz_lib::run_fuzz_seed(seed as i32 as u32, steps as usize, states as usize)
-            .unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            });
+        let out =
+            reach_fuzz_lib::run_fuzz_seed(seed as i32 as u32, steps as usize, states as usize)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                });
         worst = worst.max(out.states_seen as f64);
         dup_pushes += out.deduped as f64;
         for f in &out.failures {

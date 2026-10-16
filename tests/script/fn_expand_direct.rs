@@ -13,15 +13,18 @@
 //! test-local template freeze; the compile-side construction sites must
 //! reproduce them exactly).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
 use chorus::core::dict::{core_dictionary, Dictionary};
+use chorus::core::fn_expand::{
+    collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH,
+};
 use chorus::core::format::format_sentence;
-use chorus::core::fn_expand::{collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH};
 use chorus::core::parse::{parse_function_body, parse_outcomes};
 use chorus::core::sentence::{Outcome, Sentence, SentenceKind};
 use chorus::error::{ChorusError, Result};
@@ -48,7 +51,10 @@ fn raw_table(dict: &Dictionary, defs: &[(&str, &[&str], &str)]) -> FnTable {
             body,
             dict,
             &table,
-            &(*params).iter().map(|s| (*s).to_string()).collect::<Vec<_>>(),
+            &(*params)
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect::<Vec<_>>(),
         )
         .unwrap();
         table.by_name.get_mut(*name).unwrap().body = parsed;
@@ -230,7 +236,10 @@ fn delta_position_the_authored_sign_folds_into_the_calls_number() {
     let call = parse_outcomes("bump(2), drop(4)", &dict, Some(&fns)).unwrap();
     let expanded = expand_fn_calls(&call, &fns).unwrap();
     match (&expanded[0].args[2], &expanded[1].args[2]) {
-        (chorus::core::sentence::Arg::Delta { v: plus }, chorus::core::sentence::Arg::Delta { v: minus }) => {
+        (
+            chorus::core::sentence::Arg::Delta { v: plus },
+            chorus::core::sentence::Arg::Delta { v: minus },
+        ) => {
             assert_eq!(*plus, 2);
             assert_eq!(*minus, -4);
         }
@@ -395,7 +404,11 @@ fn content_pass3_guards(table: &FnTable) -> Result<()> {
             visit(name, &calls_of, &mut color, &mut stack)?;
         }
     }
-    fn depth_of(name: &str, calls_of: &IndexMap<String, IndexSet<String>>, memo: &mut HashMap<String, u32>) -> u32 {
+    fn depth_of(
+        name: &str,
+        calls_of: &IndexMap<String, IndexSet<String>>,
+        memo: &mut HashMap<String, u32>,
+    ) -> u32 {
         if let Some(d) = memo.get(name) {
             return *d;
         }
@@ -432,11 +445,11 @@ fn a_depth_8_chain_expands_transitively_depth_9_is_a_load_error() {
     let call = parse_outcomes("f1()", &dict, Some(&eight)).unwrap();
     let expanded = expand_fn_calls(&call, &eight).unwrap();
     assert_eq!(expanded.len(), 1);
-    assert_eq!(
-        fmt_outcomes(&expanded, &dict),
-        " -> NARRATE \"bottom.\""
-    );
+    assert_eq!(fmt_outcomes(&expanded, &dict), " -> NARRATE \"bottom.\"");
     let nine = table_from(&chain_defs(9));
     let err = content_pass3_guards(&nine).unwrap_err();
-    assert_eq!(err.msg, "function 'f1' sits 9 calls deep — the nesting cap is 8");
+    assert_eq!(
+        err.msg,
+        "function 'f1' sits 9 calls deep — the nesting cap is 8"
+    );
 }

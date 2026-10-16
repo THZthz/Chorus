@@ -8,7 +8,8 @@
 //! error assertions go through `assert_err_msg(res, "re")` with the pattern
 //! copied verbatim.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
@@ -22,7 +23,10 @@ use common::harness::{assert_err_msg, assert_json_eq, canonical};
 fn solo_read_with_at_context_bare_ref_shorthand_becomes_spawn() {
     let dict = core_dictionary();
     assert_eq!(
-        canonical("0:14 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT", &dict),
+        canonical(
+            "0:14 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT",
+            &dict
+        ),
         "0:14 @ ANA AT HOUSE READ THE_FORGETTING -> SPAWN CLUE_SECRET_HIDEOUT"
     );
 }
@@ -86,11 +90,17 @@ fn engine_written_expiry_trigger_ids_round_trip() {
     // prints quoted — and reassembles
     let dict = core_dictionary();
     assert_eq!(
-        canonical("1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)", &dict),
+        canonical(
+            "1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)",
+            &dict
+        ),
         "1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)"
     );
     assert_eq!(
-        canonical("1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)", &dict),
+        canonical(
+            "1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)",
+            &dict
+        ),
         "1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)"
     );
 }
@@ -161,7 +171,10 @@ fn aspect_keys_keep_their_prefix_dotted_attr_keys_print_bare() {
         "0:0 @ ANA WAIT -> SET(ANA, aspect:dread, -1)"
     );
     assert_eq!(
-        canonical("0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)", &dict),
+        canonical(
+            "0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)",
+            &dict
+        ),
         "0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)"
     );
     assert_eq!(
@@ -224,8 +237,18 @@ fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
     assert_json_eq(
         serde_json::json!(verbs),
         serde_json::json!([
-            "ACQUIRE", "DREAM", "EXPLORE", "LOCATE_AT", "MANSUS", "READ",
-            "STUDY", "TALK", "TRAVEL_TO", "USE_ON", "WAIT", "WORK",
+            "ACQUIRE",
+            "DREAM",
+            "EXPLORE",
+            "LOCATE_AT",
+            "MANSUS",
+            "READ",
+            "STUDY",
+            "TALK",
+            "TRAVEL_TO",
+            "USE_ON",
+            "WAIT",
+            "WORK",
         ]),
     );
     assert!(dict.is_verb("STUDY"));

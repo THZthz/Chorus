@@ -23,22 +23,22 @@ use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
 use crate::content::content::{
-    collect_stackable, compile_content, mint_recipe_id, CompleteTriggerDef, CompiledContent,
-    ContentRaw, DeclaredEntity, DeriveAspect, DeckRaw, EndingDef, ExpireTriggerDef, FunctionDef,
+    collect_stackable, compile_content, mint_recipe_id, CompiledContent, CompleteTriggerDef,
+    ContentRaw, DeckRaw, DeclaredEntity, DeriveAspect, EndingDef, ExpireTriggerDef, FunctionDef,
     PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
 use crate::core::clock::{abs_min, parse_clock, parse_duration, Clock};
 use crate::core::dict::{Dictionary, KINDS};
-use crate::core::predicate::{parse_predicate, Pred, ValExpr};
-use crate::core::query::{aspects_from_pairs, CmpOp};
-use crate::core::roles::Role;
-use crate::core::types::{
-    add_entity, new_state, relation_key, AttrValue, Attrs, Aspects, Entity, Relation, State,
-};
 use crate::core::jsonw::canonical_key_order;
 use crate::core::num_parse::parse_authored_int;
-use crate::core::regex_util::{grp_opt, grp_text, grp0_start, static_regex};
-use crate::core::text::{is_dsl_ws_char, dsl_trim, DSL_NON_WS_CLASS, DSL_WS_CLASS};
+use crate::core::predicate::{parse_predicate, Pred, ValExpr};
+use crate::core::query::{aspects_from_pairs, CmpOp};
+use crate::core::regex_util::{grp0_start, grp_opt, grp_text, static_regex};
+use crate::core::roles::Role;
+use crate::core::text::{dsl_trim, is_dsl_ws_char, DSL_NON_WS_CLASS, DSL_WS_CLASS};
+use crate::core::types::{
+    add_entity, new_state, relation_key, Aspects, AttrValue, Attrs, Entity, Relation, State,
+};
 use crate::error::{ChorusError, Result};
 
 // ---------------------------------------------------------------------------
@@ -122,10 +122,9 @@ fn seed_re() -> &'static Regex {
 /// Section headers, free-form order.
 fn section_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(
-        &RE,
-        || Regex::new(r"^(entities|prototypes|triggers|endings|verbs|templates|functions|decks):$"),
-    )
+    static_regex(&RE, || {
+        Regex::new(r"^(entities|prototypes|triggers|endings|verbs|templates|functions|decks):$")
+    })
 }
 
 /// `/^([A-Z_]+) says "(.*)"$`
@@ -203,7 +202,9 @@ fn with_re() -> &'static Regex {
 fn deriving_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)deriving{DSL_WS_CLASS}+(.+)$"))
+        Regex::new(&format!(
+            r"(?:^|{DSL_WS_CLASS}+)deriving{DSL_WS_CLASS}+(.+)$"
+        ))
     })
 }
 
@@ -564,12 +565,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         )));
                     };
                     for clause in parse_complete_clauses(t, ln + 1)? {
-                        push_complete(
-                            &mut triggers,
-                            &home,
-                            clause,
-                            &mut complete_ordinal,
-                        );
+                        push_complete(&mut triggers, &home, clause, &mut complete_ordinal);
                     }
                     continue;
                 }
@@ -606,12 +602,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     // §9.48: the line's own `on complete` clauses attach to
                     // the entity just declared, in line order
                     for clause in clauses {
-                        push_complete(
-                            &mut triggers,
-                            &name,
-                            clause,
-                            &mut complete_ordinal,
-                        );
+                        push_complete(&mut triggers, &name, clause, &mut complete_ordinal);
                     }
                 }
             }
@@ -626,12 +617,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                         )));
                     };
                     for clause in parse_complete_clauses(t, ln + 1)? {
-                        push_complete(
-                            &mut triggers,
-                            &home,
-                            clause,
-                            &mut complete_ordinal,
-                        );
+                        push_complete(&mut triggers, &home, clause, &mut complete_ordinal);
                     }
                     continue;
                 }
@@ -802,8 +788,15 @@ pub(crate) struct CompleteClause {
 /// entity/prototype-line clause heads and the trigger's own keywords —
 /// `with` is the load-bearing one (the with-clause scanner works the same
 /// line), the rest keep the vocabulary closed.
-const COMPLETE_ASPECT_BANNED: [&str; 7] =
-    ["with", "at", "in", "on", "complete", "deriving", "stackable"];
+const COMPLETE_ASPECT_BANNED: [&str; 7] = [
+    "with",
+    "at",
+    "in",
+    "on",
+    "complete",
+    "deriving",
+    "stackable",
+];
 
 /// Byte offset of the first TOP-LEVEL `on complete` in `text`, or `None`.
 /// Top-level means paren-depth 0 and outside a string literal — an `on
@@ -836,8 +829,7 @@ fn find_on_complete(text: &str) -> Option<usize> {
                     // the boundary after `on`, then the `complete` token, then
                     // its own boundary (an aspect token or the arrow follows)
                     let after_on = &text[i + "on".len()..];
-                    let ws_run =
-                        after_on.len() - after_on.trim_start_matches(is_dsl_ws_char).len();
+                    let ws_run = after_on.len() - after_on.trim_start_matches(is_dsl_ws_char).len();
                     if let Some(after) = after_on[ws_run..].strip_prefix("complete") {
                         let bounded = after
                             .chars()
@@ -1085,9 +1077,7 @@ fn parse_entity_line(
         // byte offsets order identically to the UTF-16 unit offsets
         if let Some(a) = &at_in {
             let a_start = grp0_start(a);
-            let with_is_first = with_m
-                .as_ref()
-                .is_some_and(|w| grp0_start(w) >= a_start);
+            let with_is_first = with_m.as_ref().is_some_and(|w| grp0_start(w) >= a_start);
             if !with_is_first {
                 container_name = Some(grp_text(a, 1).to_string());
                 rest = &rest[..a_start];
@@ -1154,7 +1144,9 @@ fn parse_prototype_line(
     check_name(name, ln, dict, "prototype name")?;
     let kind = grp_text(&m, 2);
     if !KINDS.contains(&kind) {
-        return Err(ChorusError::new(format!("line {ln}: unknown kind '{kind}'")));
+        return Err(ChorusError::new(format!(
+            "line {ln}: unknown kind '{kind}'"
+        )));
     }
     let mut proto = PrototypeDef {
         kind: kind.to_string(),
@@ -1294,7 +1286,10 @@ fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
         let params: Vec<String> = if params_raw.is_empty() {
             Vec::new()
         } else {
-            params_raw.split(',').map(|s| dsl_trim(s).to_string()).collect()
+            params_raw
+                .split(',')
+                .map(|s| dsl_trim(s).to_string())
+                .collect()
         };
         return Ok(FunctionDef {
             name: grp_text(&m, 1).to_string(),
@@ -1788,10 +1783,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         let mut catch_all: Option<String> = None;
         let mut whens: IndexMap<String, String> = IndexMap::new();
         for (i, r) in verb.recipes.iter().enumerate() {
-            let id = r
-                .id
-                .clone()
-                .unwrap_or_else(|| recipe_id(name, r, i));
+            let id = r.id.clone().unwrap_or_else(|| recipe_id(name, r, i));
             if let Some(ca) = &catch_all {
                 findings.push(LintFinding::error(format!(
                     "recipe {id} ({name}): unreachable — {ca} already matches everything (first match wins, §6.4)"
@@ -1897,7 +1889,12 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     if let Some(functions) = &script.content.functions {
         for f in functions {
             let extra: Vec<&str> = f.params.iter().map(String::as_str).collect();
-            scan_tokens(&mut findings, &format!("function {}", f.name), &f.body, &extra);
+            scan_tokens(
+                &mut findings,
+                &format!("function {}", f.name),
+                &f.body,
+                &extra,
+            );
         }
     }
 

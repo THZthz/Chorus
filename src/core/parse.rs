@@ -15,7 +15,9 @@ use crate::core::fn_expand::{unknown_call_error, FnTable};
 use crate::core::lexer::{lex, Tok};
 use crate::core::predicate::{parse_predicate_toks, parse_value_expr_toks, ValExpr};
 use crate::core::r#ref::Ref;
-use crate::core::sentence::{Arg, Clause, IfArm, IntoTarget, Outcome, Role, Sentence, SentenceKind, Sign};
+use crate::core::sentence::{
+    Arg, Clause, IfArm, IntoTarget, Outcome, Role, Sentence, SentenceKind, Sign,
+};
 use crate::error::{ChorusError, Result};
 
 /// Clause keywords that end the actor/ref scan.
@@ -56,7 +58,12 @@ pub fn parse_function_body(
     fns: &FnTable,
     params: &[String],
 ) -> Result<Vec<Outcome>> {
-    let mut p = Parser::new(lex(src)?, dict, Some(fns), Some(params.iter().cloned().collect()));
+    let mut p = Parser::new(
+        lex(src)?,
+        dict,
+        Some(fns),
+        Some(params.iter().cloned().collect()),
+    );
     let out = p.outcome_list_or_empty()?;
     p.expect_end()?;
     Ok(out)
@@ -105,7 +112,10 @@ impl<'a> Parser<'a> {
     fn expect_punct(&mut self, v: &str) -> Result<()> {
         let t = self.next()?;
         if t.t() != "punct" || t.v_str() != v {
-            return Err(ChorusError::new(format!("expected '{v}', got '{}'", show(&t))));
+            return Err(ChorusError::new(format!(
+                "expected '{v}', got '{}'",
+                show(&t)
+            )));
         }
         Ok(())
     }
@@ -367,7 +377,10 @@ impl<'a> Parser<'a> {
             // but a name is the `expected a ref` error
             return match t {
                 Tok::IdRef { v } => Ok(Ref::Id { id: v }),
-                Tok::Str { v } => Ok(Ref::Name { kind: None, name: v }),
+                Tok::Str { v } => Ok(Ref::Name {
+                    kind: None,
+                    name: v,
+                }),
                 other => Err(ChorusError::new(format!(
                     "expected a ref, got '{}'",
                     show(&other)
@@ -406,7 +419,10 @@ impl<'a> Parser<'a> {
                 name: nv,
             });
         }
-        Ok(Ref::Name { kind: None, name: v })
+        Ok(Ref::Name {
+            kind: None,
+            name: v,
+        })
     }
 
     /// outcome ( "," outcome )*.
@@ -454,7 +470,9 @@ impl<'a> Parser<'a> {
         // bare ref = SPAWN (§4.4)
         Ok(Outcome {
             op: "SPAWN".to_string(),
-            args: vec![Arg::Ref { r#ref: self.ref_()? }],
+            args: vec![Arg::Ref {
+                r#ref: self.ref_()?,
+            }],
             arms: None,
             fallback: None,
             call: None,
@@ -501,7 +519,9 @@ impl<'a> Parser<'a> {
                     "DRAW needs a deck id: DRAW <DECK> [INTO target]",
                 ));
             }
-            let mut draw_args = vec![Arg::Ref { r#ref: self.ref_()? }];
+            let mut draw_args = vec![Arg::Ref {
+                r#ref: self.ref_()?,
+            }];
             if self.at_keyword("INTO") {
                 self.next()?;
                 draw_args.push(Arg::Into {
@@ -654,7 +674,9 @@ impl<'a> Parser<'a> {
             // round-trip too
             return Ok(Outcome {
                 op,
-                args: vec![Arg::Ref { r#ref: self.ref_()? }],
+                args: vec![Arg::Ref {
+                    r#ref: self.ref_()?,
+                }],
                 arms: None,
                 fallback: None,
                 call: None,
@@ -669,7 +691,12 @@ impl<'a> Parser<'a> {
             self.next()?;
             return Ok(Outcome {
                 op,
-                args: vec![target, Arg::Ref { r#ref: self.ref_()? }],
+                args: vec![
+                    target,
+                    Arg::Ref {
+                        r#ref: self.ref_()?,
+                    },
+                ],
                 arms: None,
                 fallback: None,
                 call: None,
@@ -839,16 +866,17 @@ impl<'a> Parser<'a> {
         let mut args: Vec<Arg> = Vec::new();
         loop {
             if self.peek(0).is_none() {
-                return Err(ChorusError::new(format!(
-                    "{syntax} — got none"
-                )));
+                return Err(ChorusError::new(format!("{syntax} — got none")));
             }
             let t = self.next()?;
             let Tok::Str { v } = t else {
                 return Err(ChorusError::new(format!("{syntax} — got {}", show(&t))));
             };
             args.push(Arg::Ref {
-                r#ref: Ref::Name { kind: None, name: v },
+                r#ref: Ref::Name {
+                    kind: None,
+                    name: v,
+                },
             });
             // a comma continues the candidate list only when a QUOTED STRING
             // follows (in the paren'd shell: always) — otherwise the comma is
@@ -933,7 +961,9 @@ impl<'a> Parser<'a> {
                 return Ok(Arg::Role { role });
             }
         }
-        Ok(Arg::Ref { r#ref: self.ref_()? })
+        Ok(Arg::Ref {
+            r#ref: self.ref_()?,
+        })
     }
 
     /// SPAWN ref [INTO target] [AS #id] [expires duration] [k=v …]
@@ -945,7 +975,9 @@ impl<'a> Parser<'a> {
     /// the pair's key OR value replaces the whole pair (these param checks
     /// are LIVE — unlike arg()'s dead key check, Q3).
     fn spawn_args(&mut self) -> Result<Vec<Arg>> {
-        let mut args = vec![Arg::Ref { r#ref: self.ref_()? }];
+        let mut args = vec![Arg::Ref {
+            r#ref: self.ref_()?,
+        }];
         if self.at_keyword("INTO") {
             self.next()?;
             args.push(Arg::Into {
@@ -997,8 +1029,8 @@ impl<'a> Parser<'a> {
                 )));
             };
             self.next()?; // '='
-            // §9.40: a parameter as the pair's key OR value replaces the
-            // whole pair (the LIVE twin of arg()'s dead branch, Q3)
+                          // §9.40: a parameter as the pair's key OR value replaces the
+                          // whole pair (the LIVE twin of arg()'s dead branch, Q3)
             let v_is_param = match self.peek(0) {
                 Some(Tok::Name { v }) => self.params.as_ref().is_some_and(|p| p.contains(v)),
                 _ => false,
@@ -1045,7 +1077,11 @@ impl<'a> Parser<'a> {
                 if self.params.as_ref().is_some_and(|p| p.contains(v)) {
                     return Ok(Arg::Param {
                         name: v.clone(),
-                        sign: Some(if t.v_str() == "-" { Sign::Neg } else { Sign::Pos }),
+                        sign: Some(if t.v_str() == "-" {
+                            Sign::Neg
+                        } else {
+                            Sign::Pos
+                        }),
                     });
                 }
             }
@@ -1120,7 +1156,9 @@ impl<'a> Parser<'a> {
         if self.params.as_ref().is_some_and(|p| p.contains(&v)) {
             if self.at_punct("=", 1) {
                 return Err(ChorusError::new(param_pair_error(
-                    "key", &v, self.params.as_ref(),
+                    "key",
+                    &v,
+                    self.params.as_ref(),
                 )));
             }
             self.next()?;
@@ -1174,7 +1212,8 @@ impl<'a> Parser<'a> {
         }
         // `aspect:` names the aspects map in SET keys (§9.31) — one key
         // token, like the query form (§4.5)
-        if v == "aspect" && self.at_punct(":", 1) && matches!(self.peek(2), Some(Tok::Name { .. })) {
+        if v == "aspect" && self.at_punct(":", 1) && matches!(self.peek(2), Some(Tok::Name { .. }))
+        {
             self.next()?;
             self.next()?;
             let n = self.next()?;
@@ -1199,7 +1238,9 @@ impl<'a> Parser<'a> {
             }
             return Ok(Arg::Key { v: key });
         }
-        Ok(Arg::Ref { r#ref: self.ref_()? })
+        Ok(Arg::Ref {
+            r#ref: self.ref_()?,
+        })
     }
 
     /// The INTO target: param | role | ref.
@@ -1300,7 +1341,12 @@ mod tests {
         // SET(myparam = 3) inside a body: the param reads as a pair KEY —
         // rejected as before (acceptance face unchanged), but the error is
         // the Q3 teach message, not the loop's bare `expected ')', got '='`
-        let mut p = Parser::new(lex("SET(myparam = 3)").unwrap(), &d, None, Some(params.clone()));
+        let mut p = Parser::new(
+            lex("SET(myparam = 3)").unwrap(),
+            &d,
+            None,
+            Some(params.clone()),
+        );
         let err = p.outcome_list_or_empty().unwrap_err();
         assert_eq!(
             err.msg,
@@ -1355,11 +1401,27 @@ mod tests {
         );
         let out = p.outcome_list_or_empty().unwrap();
         let args = &out[0].args;
-        assert_eq!(args[1], Arg::Param { name: "p".into(), sign: None });
+        assert_eq!(
+            args[1],
+            Arg::Param {
+                name: "p".into(),
+                sign: None
+            }
+        );
         assert_eq!(args[2], Arg::Delta { v: 1 });
         assert_eq!(args[3], Arg::Delta { v: -2 });
-        assert_eq!(args[4], Arg::Key { v: "aspect:dread".into() });
-        assert_eq!(args[5], Arg::Key { v: "state.sealed".into() });
+        assert_eq!(
+            args[4],
+            Arg::Key {
+                v: "aspect:dread".into()
+            }
+        );
+        assert_eq!(
+            args[5],
+            Arg::Key {
+                v: "state.sealed".into()
+            }
+        );
         assert_eq!(args[6], Arg::Bool { v: true });
         assert_eq!(args[7], Arg::Dur { v: 60 });
     }
@@ -1379,28 +1441,36 @@ mod tests {
         assert_eq!(o.arms.as_ref().unwrap().len(), 1);
         assert!(o.fallback.is_some());
         // engine-written rows re-parse (law 2)
-        let mut p2 = Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14, 3)").unwrap(), &d, None, None);
+        let mut p2 = Parser::new(
+            lex("1:2 @ COMPLETE READ -> ROLLED(14, 3)").unwrap(),
+            &d,
+            None,
+            None,
+        );
         let s2 = p2.sentence().unwrap();
         assert_eq!(s2.kind, SentenceKind::Complete);
         assert_eq!(s2.outcomes[0].op, "ROLLED");
         assert_eq!(s2.outcomes[0].args[0], Arg::Int { v: 14 });
         assert_eq!(s2.outcomes[0].args[1], Arg::Int { v: 3 });
         // ROLLED arity is pinned
-        let mut p3 = Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14)").unwrap(), &d, None, None);
+        let mut p3 = Parser::new(
+            lex("1:2 @ COMPLETE READ -> ROLLED(14)").unwrap(),
+            &d,
+            None,
+            None,
+        );
         let err = p3.sentence().unwrap_err();
-        assert_eq!(err.msg, "ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)");
+        assert_eq!(
+            err.msg,
+            "ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)"
+        );
     }
 
     #[test]
     fn fn_call_arity_error_is_byte_exact() {
         let d = dict();
         let fns = FnTable::default();
-        let mut p = Parser::new(
-            lex("GIVE(a, b)").unwrap(),
-            &d,
-            Some(&fns),
-            None,
-        );
+        let mut p = Parser::new(lex("GIVE(a, b)").unwrap(), &d, Some(&fns), None);
         let err = p.outcome().unwrap_err();
         assert_eq!(
             err.msg,
@@ -1415,10 +1485,16 @@ mod tests {
         // WAIT followed by a non-dur falls through to the action grammar,
         // whose ref() refuses the reserved token
         let err = p.sentence().unwrap_err();
-        assert_eq!(err.msg, "'WAIT' is reserved and cannot be a name (quote it)");
+        assert_eq!(
+            err.msg,
+            "'WAIT' is reserved and cannot be a name (quote it)"
+        );
         let mut p2 = Parser::new(lex("DRAW(RUMOURS)").unwrap(), &d, None, None);
         let err2 = p2.outcome().unwrap_err();
-        assert_eq!(err2.msg, "DRAW takes the paren-less form: DRAW <DECK> [INTO target]");
+        assert_eq!(
+            err2.msg,
+            "DRAW takes the paren-less form: DRAW <DECK> [INTO target]"
+        );
     }
 
     #[test]

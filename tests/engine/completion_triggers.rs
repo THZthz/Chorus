@@ -15,7 +15,8 @@
 //! (regex-escaped), and play/fold equality asserted through the shared
 //! `snap`.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::settle::{refusal, settle_step};
@@ -95,7 +96,10 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock {
+                day: 0,
+                halfhour: 0,
+            })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -175,7 +179,11 @@ fn a_bare_trigger_fires_and_replaces_self() {
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no EVENT rows");
+    assert_eq!(
+        kind_spine(&r),
+        ["action", "complete", "wait"],
+        "no EVENT rows"
+    );
     // the recipe's own NARRATE first; the trigger's REPLACE logged as its
     // concrete SPAWN+DESTROY pair, appended after
     assert_eq!(ops(&r, 1), ["NARRATE", "SPAWN", "DESTROY"]);
@@ -210,7 +218,11 @@ fn a_prototype_trigger_reaches_its_mints() {
     // completion 1: `spawn` is the default — the mint is born, not bound
     let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
     assert_eq!(r1.rejected, None);
-    assert_eq!(ops(&r1, 1), ["SPAWN"], "the mint is not bound by its own birth");
+    assert_eq!(
+        ops(&r1, 1),
+        ["SPAWN"],
+        "the mint is not bound by its own birth"
+    );
     // completion 2 binds the mint: `hold` matches, the prototype's trigger fires
     let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DREAM SPRITE", 100);
     assert_eq!(r2.rejected, None);
@@ -336,7 +348,11 @@ fn a_card_in_two_roles_fires_once() {
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH WITH HEALTH", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(narrated(&r, 1), ["both", "deduped"], "exactly one firing despite two roles");
+    assert_eq!(
+        narrated(&r, 1),
+        ["both", "deduped"],
+        "exactly one firing despite two roles"
+    );
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -364,7 +380,13 @@ fn fire_order_is_declaration_then_locked_order() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM FIRST_CARD WITH SECOND_CARD", 1);
+    let r = run(
+        &c,
+        &dict,
+        s,
+        "0:0 @ ANA DREAM FIRST_CARD WITH SECOND_CARD",
+        1,
+    );
     assert_eq!(r.rejected, None);
     assert_eq!(
         narrated(&r, 1),
@@ -401,10 +423,22 @@ fn outcomes_append_to_the_complete_row_and_fold_replays_them() {
     let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
     assert_eq!(r.rejected, None);
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"]);
-    assert_eq!(ops(&r, 1), ["NARRATE", "SET", "NARRATE"], "recipe first, trigger appended");
-    assert!(r.state.fired.is_empty(), "completion triggers never touch state.fired");
+    assert_eq!(
+        ops(&r, 1),
+        ["NARRATE", "SET", "NARRATE"],
+        "recipe first, trigger appended"
+    );
+    assert!(
+        r.state.fired.is_empty(),
+        "completion triggers never touch state.fired"
+    );
     // the SET landed (the trigger's effects are real state)
-    let health = r.state.entities.values().find(|e| e.name == "HEALTH").unwrap();
+    let health = r
+        .state
+        .entities
+        .values()
+        .find(|e| e.name == "HEALTH")
+        .unwrap();
     assert_eq!(health.aspects.get("stress"), Some(&AspectVal::Num(2)));
     // fold agrees — the appended rows replay as logged, gates never recomputed
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
@@ -454,7 +488,10 @@ fn run_in_the_body_hands_off_across_verbs() {
         begin_recipes(&r),
         [vec!["work_job".to_string()], vec!["dream_rest".to_string()]]
     );
-    assert_eq!(r.records[2].verb, "DREAM", "the follow-up's verb is the candidate's");
+    assert_eq!(
+        r.records[2].verb, "DREAM",
+        "the follow-up's verb is the candidate's"
+    );
     assert_eq!(refusal(&r), None);
     assert_eq!(
         living_named(&r, "JOB"),
@@ -513,7 +550,11 @@ fn a_busy_station_skips_the_candidate_silently() {
     // STUDY window (2h) holds its station — the body's RUN skips silently
     let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH ; ANA STUDY", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(refusal(&r), None, "a busy station skips, it does not refuse");
+    assert_eq!(
+        refusal(&r),
+        None,
+        "a busy station skips, it does not refuse"
+    );
     assert_eq!(kind_spine(&r), ["action", "complete", "complete", "wait"]);
     assert_eq!(
         begin_recipes(&r),
@@ -560,12 +601,21 @@ fn two_parked_runs_refuse_at_replay_in_list_order() {
     assert_eq!(r.rejected, None);
     assert_eq!(
         refusal(&r),
-        Some("a second RUN in one completion — a station holds one window (§6.7, §9.47)".to_string())
+        Some(
+            "a second RUN in one completion — a station holds one window (§6.7, §9.47)".to_string()
+        )
     );
-    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up survived");
+    assert_eq!(
+        kind_spine(&r),
+        ["action", "complete", "wait"],
+        "no follow-up survived"
+    );
     assert_eq!(ops(&r, 1), ["NARRATE", "REFUSE"]);
     assert_eq!(r.state.executed.get("runner"), Some(&1));
-    assert!(r.state.executed.get("x").is_none(), "the parked first RUN's follow-up died too");
+    assert!(
+        r.state.executed.get("x").is_none(),
+        "the parked first RUN's follow-up died too"
+    );
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -599,7 +649,12 @@ fn a_parked_run_refuses_through_its_candidates_guard() {
         ["NARRATE", "SET", "REFUSE"],
         "the trigger phase ran before the parked RUN's guard"
     );
-    let health = r.state.entities.values().find(|e| e.name == "HEALTH").unwrap();
+    let health = r
+        .state
+        .entities
+        .values()
+        .find(|e| e.name == "HEALTH")
+        .unwrap();
     assert_eq!(
         health.aspects.get("touched"),
         None,
@@ -707,7 +762,11 @@ fn a_failure_inside_a_body_refuses_the_window() {
     let msg = refusal(&r).unwrap_or_else(|| panic!("expected the window refusal"));
     assert!(msg.contains("already in use"), "{msg}");
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"]);
-    assert_eq!(ops(&r, 1), ["REFUSE"], "partial effects discarded — only the marker logs");
+    assert_eq!(
+        ops(&r, 1),
+        ["REFUSE"],
+        "partial effects discarded — only the marker logs"
+    );
     assert_eq!(living_named(&r, "TRINKET"), 0, "the scratch died whole");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -779,7 +838,12 @@ fn refuse_is_a_load_error_and_roll_works() {
     assert_eq!(r.rejected, None);
     assert_eq!(ops(&r, 1), ["NARRATE", "ROLLED", "NARRATE"]);
     assert_eq!(r.records[1].outcomes[1].args[0], Arg::Int { v: total });
-    assert_eq!(r.records[1].outcomes[2].args[0], Arg::Str { v: format!("rolled {total}") });
+    assert_eq!(
+        r.records[1].outcomes[2].args[0],
+        Arg::Str {
+            v: format!("rolled {total}")
+        }
+    );
     assert_eq!(r.state.rng, 1, "the counter consumed one die");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -846,7 +910,10 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             &rig(
                 "  ANA is character at HOUSE
   HOUSE is place",
-                &dream("", "      a aspects when count(actors) >= 1 -> NARRATE \"a\""),
+                &dream(
+                    "",
+                    "      a aspects when count(actors) >= 1 -> NARRATE \"a\"",
+                ),
             ),
             &dict,
         ),
@@ -979,4 +1046,3 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
         "'on complete' needs a preceding entity declaration \\(§9\\.48\\)",
     );
 }
-

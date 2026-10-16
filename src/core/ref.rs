@@ -80,8 +80,8 @@ pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
     match r {
         Ref::Id { id } => Ok(format!("#{id}")),
         Ref::Name { name, .. } => {
-            let safe = safe_name_re().is_match(name)
-                && !dict.is_some_and(|d| d.reserved.contains(name));
+            let safe =
+                safe_name_re().is_match(name) && !dict.is_some_and(|d| d.reserved.contains(name));
             if safe {
                 Ok(name.clone())
             } else {
@@ -134,7 +134,10 @@ mod tests {
     #[test]
     fn format_ref_quotes_unsafe_and_reserved_names_only() {
         let dict = d();
-        assert_eq!(format_ref(&name_ref("RUMOUR", None), None).unwrap(), "RUMOUR");
+        assert_eq!(
+            format_ref(&name_ref("RUMOUR", None), None).unwrap(),
+            "RUMOUR"
+        );
         assert_eq!(
             format_ref(&name_ref("READ", None), Some(&dict)).unwrap(),
             "\"READ\"" // reserved → quoted

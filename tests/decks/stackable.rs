@@ -13,7 +13,8 @@
 //! as a value — `snap()` equality IS the semantic content of those checks
 //! (noted at each site, never weakened).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::seed::seed_state;
@@ -21,8 +22,8 @@ use common::settle::{act, done, refusal, settle_step};
 use common::snap::snap;
 
 use chorus::content::content::{
-    compile_content, CompiledContent, ContentRaw, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef,
-    VerbContent,
+    compile_content, CompiledContent, ContentRaw, PrototypeDef, PrototypeDerive, RecipeDef,
+    SlotDef, VerbContent,
 };
 use chorus::content::script::{compile_script, parse_script};
 use chorus::core::clock::Clock;
@@ -32,7 +33,7 @@ use chorus::core::predicate::{eval_pred, parse_predicate, PredCtx, RoleBindings}
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::Arg;
 use chorus::core::types::{
-    add_entity, clone_state, new_state, Aspects, AspectVal, AttrValue, Attrs, Entity, State,
+    add_entity, clone_state, new_state, AspectVal, Aspects, AttrValue, Attrs, Entity, State,
 };
 use chorus::engine::engine::{ActionRecord, ExecResult, Step};
 use chorus::engine::fold::fold;
@@ -132,7 +133,10 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock {
+                day: 0,
+                halfhour: 0,
+            })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -158,7 +162,10 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(&msg),
+        "refusal {msg:?} does not match /{pattern}/"
+    );
 }
 
 /// Temp log path, unique per process and tag.
@@ -190,9 +197,30 @@ prototypes:
         &dict,
     )
     .unwrap();
-    assert!(parsed.entities.iter().find(|e| e.name == "SUSPICION").unwrap().stackable);
-    assert!(parsed.entities.iter().find(|e| e.name == "WALL").unwrap().stackable);
-    assert!(!parsed.entities.iter().find(|e| e.name == "PLAIN").unwrap().stackable);
+    assert!(
+        parsed
+            .entities
+            .iter()
+            .find(|e| e.name == "SUSPICION")
+            .unwrap()
+            .stackable
+    );
+    assert!(
+        parsed
+            .entities
+            .iter()
+            .find(|e| e.name == "WALL")
+            .unwrap()
+            .stackable
+    );
+    assert!(
+        !parsed
+            .entities
+            .iter()
+            .find(|e| e.name == "PLAIN")
+            .unwrap()
+            .stackable
+    );
     let protos = parsed.content.prototypes.as_ref().unwrap();
     assert!(protos.get("RUMOUR").unwrap().stackable);
     // the absent optional; the Rust `bool` models
@@ -257,7 +285,12 @@ fn three_spawns_stack_the_pool_holds_three_ids_in_birth_order_exists_sees_the_po
     assert!(borns[0] < borns[1]);
     assert!(borns[1] < borns[2]);
     let p = parse_predicate("exists(SUSPICION)").unwrap();
-    let ctx = PredCtx { b: &RoleBindings::new(), state: &r3state, strict: false, roll: None };
+    let ctx = PredCtx {
+        b: &RoleBindings::new(),
+        state: &r3state,
+        strict: false,
+        roll: None,
+    };
     assert!(eval_pred(&p, &ctx).unwrap());
 }
 
@@ -268,7 +301,13 @@ fn the_player_surface_lists_every_copy_inspect_reads_the_oldest() {
         game.handle_line("stew").unwrap();
         game.wait().unwrap(); // v0.5: the spawn lands at the completion
     }
-    assert_eq!(game.cards().into_iter().filter(|l| l.starts_with("SUSPICION")).count(), 3); // cosmetic duplicates OK
+    assert_eq!(
+        game.cards()
+            .into_iter()
+            .filter(|l| l.starts_with("SUSPICION"))
+            .count(),
+        3
+    ); // cosmetic duplicates OK
     let face = game.inspect("suspicion");
     assert_eq!(face[0], "SUSPICION  [state]");
     let oldest_born = game
@@ -296,7 +335,12 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
         // the authored name-addressed destroy LOGS THE NAME (oldest resolved at apply)
         assert_eq!(
             done(&r).unwrap().outcomes[0].args[0],
-            Arg::Ref { r#ref: Ref::Name { kind: None, name: "SUSPICION".into() } }
+            Arg::Ref {
+                r#ref: Ref::Name {
+                    kind: None,
+                    name: "SUSPICION".into()
+                }
+            }
         );
         assert_eq!(
             r.state.by_name.get("SUSPICION").map_or(0, |v| v.len()),
@@ -333,12 +377,17 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "SUSPICION".to_string(),
-                PrototypeDef { kind: "state".into(), ..Default::default() }, // NOT stackable
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "SUSPICION".to_string(),
+                    PrototypeDef {
+                        kind: "state".into(),
+                        ..Default::default()
+                    }, // NOT stackable
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         &core_dictionary(),
@@ -378,12 +427,18 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "CHALICE".to_string(),
-                PrototypeDef { kind: "item".into(), stackable: true, ..Default::default() }, // stackable, but CHALICE lives non-stackable
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "CHALICE".to_string(),
+                    PrototypeDef {
+                        kind: "item".into(),
+                        stackable: true,
+                        ..Default::default()
+                    }, // stackable, but CHALICE lives non-stackable
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         &core_dictionary(),
@@ -437,12 +492,17 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "SUSPICION".to_string(),
-                PrototypeDef { kind: "state".into(), ..Default::default() }, // NOT stackable
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "SUSPICION".to_string(),
+                    PrototypeDef {
+                        kind: "state".into(),
+                        ..Default::default()
+                    }, // NOT stackable
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         &core_dictionary(),
@@ -510,7 +570,13 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
                             query: Some("kind:character".into()),
                             shown: None,
                         },
-                        SlotDef { role: "object".into(), min: 1, max: Some(1), query: None, shown: None },
+                        SlotDef {
+                            role: "object".into(),
+                            min: 1,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
                     ],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -526,17 +592,22 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "RUMOUR".to_string(),
-                PrototypeDef {
-                    kind: "idea".into(),
-                    stackable: true,
-                    derive: Some(PrototypeDerive { name_from: Some("object".into()), aspects: None }),
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "RUMOUR".to_string(),
+                    PrototypeDef {
+                        kind: "idea".into(),
+                        stackable: true,
+                        derive: Some(PrototypeDerive {
+                            name_from: Some("object".into()),
+                            aspects: None,
+                        }),
+                        ..Default::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         &dict,
@@ -596,7 +667,13 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                                 query: Some("kind:character".into()),
                                 shown: None,
                             },
-                            SlotDef { role: "object".into(), min: 1, max: Some(1), query: None, shown: None },
+                            SlotDef {
+                                role: "object".into(),
+                                min: 1,
+                                max: Some(1),
+                                query: None,
+                                shown: None,
+                            },
                         ],
                         duration: 0,
                         recipes: vec![RecipeDef {
@@ -620,7 +697,16 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                     ("HEARSAY", false),
                 ]
                 .into_iter()
-                .map(|(n, st)| (n.to_string(), PrototypeDef { kind: "idea".into(), stackable: st, ..Default::default() }))
+                .map(|(n, st)| {
+                    (
+                        n.to_string(),
+                        PrototypeDef {
+                            kind: "idea".into(),
+                            stackable: st,
+                            ..Default::default()
+                        },
+                    )
+                })
                 .collect(),
             ),
             ..ContentRaw::default()
@@ -635,14 +721,25 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
     let h1 = r1.state.by_name.get("HEARSAY").unwrap()[0].clone();
     assert!(r1.state.entities.get(&h1).unwrap().stackable);
     // the REPLACE successor computes the same way
-    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DECAY CHALICE", r1.records.len() as i64 + 1);
+    let r2 = run(
+        &c,
+        &dict,
+        r1.state,
+        "0:0 @ ANA DECAY CHALICE",
+        r1.records.len() as i64 + 1,
+    );
     assert_eq!(r2.rejected, None);
     let h2 = r2.state.by_name.get("HEARSAY").unwrap()[0].clone();
     assert!(r2.state.entities.get(&h2).unwrap().stackable);
     // replay agreement: snap serializes every entity (flag included), so any
     // play/fold divergence in the recompute shows here — and the fold replays
     // BOTH steps' concrete rows, so x1_1's flag is recomputed from its log too
-    let both: Vec<ActionRecord> = r1.records.iter().chain(r2.records.iter()).cloned().collect();
+    let both: Vec<ActionRecord> = r1
+        .records
+        .iter()
+        .chain(r2.records.iter())
+        .cloned()
+        .collect();
     let replayed = fold(&both, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
 }
@@ -685,7 +782,13 @@ fn two_copies_bind_by_id_set_and_destroy_object_address_each_bound_card() {
         Some(&AspectVal::Num(1))
     );
     assert!(r.state.entities.get(&elder).unwrap().dead_action.is_some());
-    assert!(r.state.entities.get(&younger).unwrap().dead_action.is_some());
+    assert!(r
+        .state
+        .entities
+        .get(&younger)
+        .unwrap()
+        .dead_action
+        .is_some());
     assert!(!r.state.by_name.contains_key("SUSPICION")); // the last copy died: name freed
 }
 
@@ -722,7 +825,10 @@ fn lenient_input_resolves_a_pool_name_to_its_oldest_copy() {
     .unwrap();
     assert_eq!(r.rejected, None);
     assert!(r.state.entities.get(&eldest).unwrap().dead_action.is_some()); // the oldest went
-    assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![younger.clone()]));
+    assert_eq!(
+        r.state.by_name.get("SUSPICION"),
+        Some(&vec![younger.clone()])
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -753,13 +859,32 @@ fn engine_expiry_addresses_by_id_the_younger_expires_and_dies_no_re_fire_later()
     // the engine-written destroy is keyed to the EXPIRING copy: DESTROY #id
     assert_eq!(
         events[0].outcomes[0].args[0],
-        Arg::Ref { r#ref: Ref::Id { id: younger.clone() } }
+        Arg::Ref {
+            r#ref: Ref::Id {
+                id: younger.clone()
+            }
+        }
     );
-    assert!(r.state.entities.get(&younger).unwrap().dead_action.is_some());
+    assert!(r
+        .state
+        .entities
+        .get(&younger)
+        .unwrap()
+        .dead_action
+        .is_some());
     assert_eq!(r.state.entities.get(&eldest).unwrap().dead_action, None); // the elder survives
-    assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![eldest.clone()]));
+    assert_eq!(
+        r.state.by_name.get("SUSPICION"),
+        Some(&vec![eldest.clone()])
+    );
     // later crossings never re-fire: the survivor carries no expires
-    let r2 = run(&content, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 1);
+    let r2 = run(
+        &content,
+        &dict,
+        r.state,
+        "0:2 @ ANA WAIT",
+        r.records.len() as i64 + 1,
+    );
     assert_eq!(r2.rejected, None);
     assert_eq!(r2.records.iter().filter(|x| x.kind == "event").count(), 0);
 }
@@ -790,7 +915,9 @@ fn three_copies_past_their_expires_cross_one_two_slot_advance_oldest_dies_first_
     let dead_ids: Vec<String> = events
         .iter()
         .map(|e| match &e.outcomes[0].args[0] {
-            Arg::Ref { r#ref: Ref::Id { id } } => id.clone(),
+            Arg::Ref {
+                r#ref: Ref::Id { id },
+            } => id.clone(),
             _ => "(not an id ref)".to_string(),
         })
         .collect();
@@ -865,12 +992,18 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                     ],
                 },
             )]),
-            prototypes: Some([(
-                "SUSPICION".to_string(),
-                PrototypeDef { kind: "state".into(), stackable: true, ..Default::default() },
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "SUSPICION".to_string(),
+                    PrototypeDef {
+                        kind: "state".into(),
+                        stackable: true,
+                        ..Default::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         &dict,
@@ -905,10 +1038,19 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
     // the card that died is the ELDER, not the copy whose expires crossed
     assert!(r.state.entities.get(&elder).unwrap().dead_action.is_some());
     assert_eq!(r.state.entities.get(&younger).unwrap().dead_action, None); // the crossing copy still stands
-    assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![younger.clone()]));
+    assert_eq!(
+        r.state.by_name.get("SUSPICION"),
+        Some(&vec![younger.clone()])
+    );
     // the crossing copy is past its expires: it re-fires (§9.32) on the next
     // crossing — and being now the pool's head, the second DESTROY takes IT
-    let r2 = run(&asym, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 3);
+    let r2 = run(
+        &asym,
+        &dict,
+        r.state,
+        "0:2 @ ANA WAIT",
+        r.records.len() as i64 + 3,
+    );
     let triggers: Vec<&str> = r2
         .records
         .iter()
@@ -916,7 +1058,13 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
         .map(|e| e.trigger.as_deref().unwrap())
         .collect();
     assert_eq!(triggers, ["sus_burns"]);
-    assert!(r2.state.entities.get(&younger).unwrap().dead_action.is_some());
+    assert!(r2
+        .state
+        .entities
+        .get(&younger)
+        .unwrap()
+        .dead_action
+        .is_some());
     assert!(!r2.state.by_name.contains_key("SUSPICION"));
 }
 
@@ -938,7 +1086,13 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
                             query: Some("kind:character".into()),
                             shown: None,
                         },
-                        SlotDef { role: "object".into(), min: 1, max: Some(1), query: None, shown: None },
+                        SlotDef {
+                            role: "object".into(),
+                            min: 1,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
                     ],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -954,12 +1108,18 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "SUSPICION".to_string(),
-                PrototypeDef { kind: "state".into(), stackable, ..Default::default() },
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "SUSPICION".to_string(),
+                    PrototypeDef {
+                        kind: "state".into(),
+                        stackable,
+                        ..Default::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         dict,
@@ -978,14 +1138,24 @@ fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
     let pooled_base = clone_state(&pooled);
     let r = run(&c, &dict, pooled, &format!("0:0 @ ANA DECAY #{elder}"), 2);
     assert_eq!(r.rejected, None);
-    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
+    let ops: Vec<&str> = done(&r)
+        .unwrap()
+        .outcomes
+        .iter()
+        .map(|o| o.op.as_str())
+        .collect();
     assert_eq!(ops, ["SPAWN", "DESTROY"]);
     let successor: Vec<String> = r.state.by_name.get("SUSPICION").unwrap().clone();
     assert_eq!(successor.len(), 1);
     assert_ne!(successor[0], elder);
     assert!(r.state.entities.get(&elder).unwrap().dead_action.is_some());
     assert_eq!(
-        r.state.entities.get(&successor[0]).unwrap().attrs.get("container"),
+        r.state
+            .entities
+            .get(&successor[0])
+            .unwrap()
+            .attrs
+            .get("container"),
         Some(&AttrValue::Str("s_house".into())) // place inherited
     );
     assert!(r.state.entities.get(&successor[0]).unwrap().stackable);
@@ -993,7 +1163,13 @@ fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
     let replayed = fold(&r.records, &pooled_base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
     // and the next-oldest (now the only) replaces again just the same
-    let r2 = run(&c, &dict, r.state, &format!("0:0 @ ANA DECAY #{}", successor[0]), r.records.len() as i64 + 2);
+    let r2 = run(
+        &c,
+        &dict,
+        r.state,
+        &format!("0:0 @ ANA DECAY #{}", successor[0]),
+        r.records.len() as i64 + 2,
+    );
     assert_eq!(r2.rejected, None);
     assert_eq!(r2.state.by_name.get("SUSPICION").unwrap().len(), 1);
 }
@@ -1005,12 +1181,18 @@ fn a_non_stackable_replace_onto_a_stackable_pool_still_rejects() {
     let (content, state) = rig(&dict);
     let pooled = stew(&content, &dict, state, 2);
     let elder = pooled.by_name.get("SUSPICION").unwrap()[0].clone();
-    let r = run(&c, &dict, clone_state(&pooled), &format!("0:0 @ ANA DECAY #{elder}"), 3); // the successor's name collides with the pool
+    let r = run(
+        &c,
+        &dict,
+        clone_state(&pooled),
+        &format!("0:0 @ ANA DECAY #{elder}"),
+        3,
+    ); // the successor's name collides with the pool
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
     assert_eq!(r.state.entities.get(&elder).unwrap().dead_action, None); // nothing applied
-    // §9.50: the window registered at begin — the completion-time refusal
-    // still counted (the one delta; nothing else moved, and play/fold agree)
+                                                                         // §9.50: the window registered at begin — the completion-time refusal
+                                                                         // still counted (the one delta; nothing else moved, and play/fold agree)
     assert_eq!(r.state.executed.get("decay.default"), Some(&1));
     let replayed = chorus::engine::fold::fold(&r.records, &pooled, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -1043,18 +1225,27 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
                         hint: None,
                         max: None,
                         aspects: Vec::new(),
-                        out: vec!["DESTROY SUSPICION".to_string(), "REFUSE(\"not yet\")".to_string()],
+                        out: vec![
+                            "DESTROY SUSPICION".to_string(),
+                            "REFUSE(\"not yet\")".to_string(),
+                        ],
                     }],
                 },
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "SUSPICION".to_string(),
-                PrototypeDef { kind: "state".into(), stackable: true, ..Default::default() },
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "SUSPICION".to_string(),
+                    PrototypeDef {
+                        kind: "state".into(),
+                        stackable: true,
+                        ..Default::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         &dict,
@@ -1069,7 +1260,12 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
     let younger = pool[1].clone();
     let r = run(&refuse, &dict, clone_state(&pooled), "0:0 @ ANA CALM", 3);
     assert_eq!(r.rejected, None);
-    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
+    let ops: Vec<&str> = done(&r)
+        .unwrap()
+        .outcomes
+        .iter()
+        .map(|o| o.op.as_str())
+        .collect();
     assert_eq!(ops, ["DESTROY", "REFUSE"]);
     assert_eq!(act(&r).unwrap().advanced_min, 0);
     // `r.state === pooled`: same value, untouched — the destroy ran on the
@@ -1077,7 +1273,10 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
     assert_eq!(snap(&r.state), before);
     // a shallow clone_state would have shared the array: the draft's splice
     // would have dropped the elder from the REAL pool too
-    assert_eq!(pooled.by_name.get("SUSPICION"), Some(&vec![eldest.clone(), younger.clone()]));
+    assert_eq!(
+        pooled.by_name.get("SUSPICION"),
+        Some(&vec![eldest.clone(), younger.clone()])
+    );
     assert_eq!(pooled.entities.get(&eldest).unwrap().dead_action, None);
     assert_eq!(pooled.entities.get(&younger).unwrap().dead_action, None);
 }
@@ -1125,7 +1324,13 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
                             query: Some("kind:character".into()),
                             shown: None,
                         },
-                        SlotDef { role: "object".into(), min: 0, max: Some(1), query: None, shown: None },
+                        SlotDef {
+                            role: "object".into(),
+                            min: 0,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
                     ],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -1233,12 +1438,18 @@ fn gate(dict: &Dictionary) -> CompiledContent {
             )]
             .into_iter()
             .collect(),
-            prototypes: Some([(
-                "SUSPICION".to_string(),
-                PrototypeDef { kind: "state".into(), stackable: true, ..Default::default() },
-            )]
-            .into_iter()
-            .collect()),
+            prototypes: Some(
+                [(
+                    "SUSPICION".to_string(),
+                    PrototypeDef {
+                        kind: "state".into(),
+                        stackable: true,
+                        ..Default::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
             ..ContentRaw::default()
         },
         dict,
@@ -1273,7 +1484,13 @@ fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
         verbs: [(
             "WAIT".to_string(),
             VerbContent {
-                slots: vec![SlotDef { role: "actors".into(), min: 1, max: Some(1), query: None, shown: None }],
+                slots: vec![SlotDef {
+                    role: "actors".into(),
+                    min: 1,
+                    max: Some(1),
+                    query: None,
+                    shown: None,
+                }],
                 duration: 0,
                 recipes: vec![RecipeDef {
                     id: None,
@@ -1300,8 +1517,8 @@ fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
     );
     // the query form compiles — the lint only fences the role-looking typo
     let _ = compile_content(&wait_raw("count(name:DREAD) >= 3"), &dict, &[]); // compiles clean
-    // a comparison glued INSIDE the term would bake 'DREAD>=1' in as the NAME
-    // (a silent 0) — the name: term rejects it at load instead
+                                                                              // a comparison glued INSIDE the term would bake 'DREAD>=1' in as the NAME
+                                                                              // (a silent 0) — the name: term rejects it at load instead
     assert_err_msg(
         compile_content(&wait_raw("count(name:DREAD >= 1) >= 3"), &dict, &[]),
         "bad name term",

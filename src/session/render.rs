@@ -2,13 +2,13 @@
 //! functions over records/state.
 
 use crate::content::content::CompiledContent;
+use crate::core::clock::format_duration;
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
-use crate::core::clock::format_duration;
+use crate::core::r#ref::Ref;
 use crate::core::sentence::Arg;
 use crate::core::types::{Aspects, Ending};
 use crate::engine::engine::ActionRecord;
-use crate::core::r#ref::Ref;
 use crate::error::Result;
 
 /// The canonical journal: one canonical sentence per line.
@@ -145,7 +145,11 @@ pub fn prose_lines(
 }
 
 /// The prose as one string.
-pub fn prose(record: &ActionRecord, content: &CompiledContent, dict: &Dictionary) -> Result<String> {
+pub fn prose(
+    record: &ActionRecord,
+    content: &CompiledContent,
+    dict: &Dictionary,
+) -> Result<String> {
     Ok(prose_lines(record, content, dict)?.join("\n"))
 }
 
@@ -178,7 +182,9 @@ fn interpolate_clause(template: &str, clause: &crate::core::sentence::Clause) ->
         .replace("{actors}", &join_and(&ref_names(&clause.actors)))
         .replace(
             "{object}",
-            ref_names(&clause.objects).first().map_or("—", String::as_str),
+            ref_names(&clause.objects)
+                .first()
+                .map_or("—", String::as_str),
         )
         .replace("{at}", &ref_name(clause.at.as_ref()))
         .replace("{about}", &ref_name(clause.about.as_ref()))
@@ -192,7 +198,9 @@ fn interpolate_record(template: &str, record: &ActionRecord) -> String {
         .replace("{actors}", &join_and(&ref_names(&record.actors)))
         .replace(
             "{object}",
-            ref_names(&record.objects).first().map_or("—", String::as_str),
+            ref_names(&record.objects)
+                .first()
+                .map_or("—", String::as_str),
         )
         .replace("{at}", &ref_name(record.at.as_ref()))
         .replace("{about}", &ref_name(record.about.as_ref()))
@@ -224,7 +232,10 @@ mod tests {
             flavour: "melancholy".into(),
         };
         assert_eq!(ending_banner(&e), "— NO MORE · melancholy —");
-        assert_eq!(ending_notice(&e), "the story has ended — No More (melancholy).");
+        assert_eq!(
+            ending_notice(&e),
+            "the story has ended — No More (melancholy)."
+        );
         let grand = Ending {
             id: "LANTERN_VICTORY".into(),
             title: "The Light in the Ruins".into(),
@@ -232,7 +243,11 @@ mod tests {
         };
         assert_eq!(ending_banner(&grand), "— THE LIGHT IN THE RUINS · grand —");
         // flavour is open lowercase vocabulary — any word renders, no crash
-        let quiet = Ending { id: "QUIET_END".into(), title: "Hush".into(), flavour: "quiet".into() };
+        let quiet = Ending {
+            id: "QUIET_END".into(),
+            title: "Hush".into(),
+            flavour: "quiet".into(),
+        };
         assert_eq!(ending_banner(&quiet), "— HUSH · quiet —");
     }
 

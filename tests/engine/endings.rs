@@ -8,7 +8,8 @@
 //! pinned here — the UI notice full text and the engine rejected
 //! short text — never merged.
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::seed::seed_state;
@@ -137,7 +138,10 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
         .as_deref()
         .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(msg),
+        "rejected {msg:?} does not match /{pattern}/"
+    );
 }
 
 fn ops(rec: &ActionRecord) -> Vec<&str> {
@@ -446,8 +450,12 @@ mod the_ending_outcome_paren_less_round_tripping {
 /// The section-level content
 /// (`['NARRATE("The candle gutters.")', 'ENDING DESPAIR_DEATH']`).
 fn guttering(dict: &Dictionary) -> CompiledContent {
-    compile_content(&wait_content(&["NARRATE(\"The candle gutters.\")", "ENDING DESPAIR_DEATH"]), dict, &[])
-        .unwrap()
+    compile_content(
+        &wait_content(&["NARRATE(\"The candle gutters.\")", "ENDING DESPAIR_DEATH"]),
+        dict,
+        &[],
+    )
+    .unwrap()
 }
 
 mod a_recipe_that_ends_the_story {
@@ -570,7 +578,13 @@ mod a_recipe_that_ends_the_story {
         // would both get past their own checks — the ended guard must precede
         // them
         let mut attempts: Vec<ExecResult> = vec![
-            run(&content, &dict, clone_state(&r1.state), "0:10 @ ANA WAIT", 2),
+            run(
+                &content,
+                &dict,
+                clone_state(&r1.state),
+                "0:10 @ ANA WAIT",
+                2,
+            ),
             run(
                 &content,
                 &dict,
@@ -606,7 +620,7 @@ mod a_recipe_that_ends_the_story {
         for a in &attempts {
             assert_rejected(a, r"the story has ended — No More");
             assert_eq!(a.records.len(), 0); // nothing logged, never a throw
-            // reference identity `a.state === r1.state` — snap equality (untouched)
+                                            // reference identity `a.state === r1.state` — snap equality (untouched)
             assert_eq!(snap(&a.state), snap(&r1.state));
         }
     }
@@ -658,7 +672,10 @@ mod events_may_end_the_game {
             id: "despair".into(),
             slot: 32, // 16:00
             once: None,
-            out: vec!["SPAWN DREAD".to_string(), "ENDING DESPAIR_DEATH".to_string()],
+            out: vec![
+                "SPAWN DREAD".to_string(),
+                "ENDING DESPAIR_DEATH".to_string(),
+            ],
         })]);
         let mut prototypes = IndexMap::new();
         prototypes.insert(
@@ -717,7 +734,7 @@ mod events_may_end_the_game {
             .unwrap()
             .attrs
             .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:30
-        // 14:00 → 16:00, expiry at 15:00
+                                                                       // 14:00 → 16:00, expiry at 15:00
         let r = run(
             &c,
             &dict,
@@ -769,7 +786,7 @@ mod events_may_end_the_game {
             .unwrap()
             .attrs
             .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:30
-        // 14:00 → 15:00 — the expiry crossing
+                                                                       // 14:00 → 15:00 — the expiry crossing
         let r1 = run(&c, &dict, clone_state(&base), "0:28 @ ANA WAIT", 1);
         assert_eq!(
             r1.records
@@ -780,12 +797,13 @@ mod events_may_end_the_game {
         );
         // 15:00 → 16:00 — still past expiresAt
         let r2 = run(&c, &dict, r1.state, "0:30 @ ANA WAIT", 3);
-        assert!(r2
-            .records
-            .iter()
-            .filter(|x| x.kind == "event" && x.trigger.as_deref() == Some("flicker"))
-            .count()
-            >= 1);
+        assert!(
+            r2.records
+                .iter()
+                .filter(|x| x.kind == "event" && x.trigger.as_deref() == Some("flicker"))
+                .count()
+                >= 1
+        );
         assert_eq!(
             r2.state.entities.get("chalice").unwrap().dead_action,
             None // never consumed
@@ -892,7 +910,7 @@ mod the_player_surface {
         assert!(game.state.ended.is_none());
         let turn = game.handle_line("wait").unwrap();
         assert_eq!(turn.kind, TurnKind::Action); // play resumes
-        // v0.5: the ENDING lands when the window completes
+                                                 // v0.5: the ENDING lands when the window completes
         game.wait().unwrap();
         assert_eq!(
             ended_of(&game.state),
@@ -961,12 +979,7 @@ mod the_player_surface {
         let lines = prose_lines(done(&r).unwrap(), &content, &dict).unwrap();
         assert_eq!(lines[lines.len() - 1], "— No More —");
         let plain_r = run(
-            &compile_content(
-                &wait_content(&["NARRATE(\"just waiting.\")"]),
-                &dict,
-                &[],
-            )
-            .unwrap(),
+            &compile_content(&wait_content(&["NARRATE(\"just waiting.\")"]), &dict, &[]).unwrap(),
             &dict,
             seed_state(),
             "0:28 @ ANA WAIT",

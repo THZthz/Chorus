@@ -254,9 +254,10 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
         let Some((_, verb)) = content.verbs.get_index(vi) else {
             unreachable!("verb index {vi} came from content.verbs enumeration");
         };
-        let hopeless = verb.slot_by_role.values().any(|slot| {
-            slot.min > 0 && !wf.can_ever_match(slot.query.as_ref())
-        });
+        let hopeless = verb
+            .slot_by_role
+            .values()
+            .any(|slot| slot.min > 0 && !wf.can_ever_match(slot.query.as_ref()));
         if hopeless {
             wf.dead_verbs.insert(vi);
         }
@@ -309,11 +310,7 @@ impl<'c> WorldFacts<'c> {
     /// pre-§9.49 body, unchanged). No memo is needed: the function is pure
     /// over fields that are final once the world facts are built.
     fn group_can_ever_match(&self, group: &[QueryTerm]) -> bool {
-        if self
-            .universe
-            .iter()
-            .any(|u| match_conjunction(u, group))
-        {
+        if self.universe.iter().any(|u| match_conjunction(u, group)) {
             return true;
         }
         if self.opaque_spawn_aspects {
@@ -467,7 +464,11 @@ impl<'c> WorldFacts<'c> {
                 id: deck.id.clone(),
                 position: pos,
                 defaultcard: pos.is_none(),
-                capacity: if site.cap != MANY { Some(site.cap) } else { None },
+                capacity: if site.cap != MANY {
+                    Some(site.cap)
+                } else {
+                    None
+                },
             });
         }
         // preconditions: the chosen committability
@@ -506,7 +507,11 @@ impl<'c> WorldFacts<'c> {
                     }
                     seen.swap_remove(&name);
                 }
-                path.requires.push(Require { name, how, paths: sub });
+                path.requires.push(Require {
+                    name,
+                    how,
+                    paths: sub,
+                });
             }
         }
         path
@@ -518,9 +523,15 @@ fn initial_decl_line(name: &str, e: &Entity) -> String {
     let aspects = if e.aspects.is_empty() {
         String::new()
     } else {
-        format!(", aspects {}", crate::engine::engine::aspects_to_json(&e.aspects))
+        format!(
+            ", aspects {}",
+            crate::engine::engine::aspects_to_json(&e.aspects)
+        )
     };
-    format!("{name} is declared in the initial entities ({}{aspects})", e.kind)
+    format!(
+        "{name} is declared in the initial entities ({}{aspects})",
+        e.kind
+    )
 }
 
 /// Does the deck carry the target at all?
@@ -605,10 +616,7 @@ pub(crate) fn site_chain(site: &RawSite, target: &str, supports: &[String]) -> V
 }
 
 /// Why a guarded site stays a candidate.
-pub(crate) fn site_reason(
-    site: &RawSite,
-    init_names: &IndexMap<String, &Entity>,
-) -> String {
+pub(crate) fn site_reason(site: &RawSite, init_names: &IndexMap<String, &Entity>) -> String {
     let mut bits: Vec<String> = Vec::new();
     if site.fallback {
         bits.push("ELSE fallback body".to_string());
@@ -626,7 +634,9 @@ pub(crate) fn site_reason(
         );
     }
     if site.throw_ops > 0 {
-        bits.push("a throwing op in this list may discard the whole draft at completion".to_string());
+        bits.push(
+            "a throwing op in this list may discard the whole draft at completion".to_string(),
+        );
     }
     if site.shadow_risk {
         bits.push("an earlier recipe of the same verb may shadow it (first-match)".to_string());
@@ -684,12 +694,17 @@ impl<'c> Analyzer<'c> {
                 if existence != Existence::Proven {
                     existence = Existence::Proven;
                     demand_match = Some((*e).clone());
-                    chain.push(demand_chain_head(&e.name, &e.kind, &e.aspects, opts.demand.as_deref()));
+                    chain.push(demand_chain_head(
+                        &e.name,
+                        &e.kind,
+                        &e.aspects,
+                        opts.demand.as_deref(),
+                    ));
                     match facts.proven_source_for(&e.name) {
                         Some(lines) => chain.extend(lines),
-                        None => unreachable!(
-                            "initNames hit ⇒ provenSourceFor returns the initial line"
-                        ),
+                        None => {
+                            unreachable!("initNames hit ⇒ provenSourceFor returns the initial line")
+                        }
                     }
                 }
                 paths.push(facts.initial_path(&e.name));
@@ -759,7 +774,8 @@ impl<'c> Analyzer<'c> {
                             // the chain shows the REAL
                             // name, never the blinding sentinel
                             let shown = if derived {
-                                "a derived-mint card (name formed from the bound object)".to_string()
+                                "a derived-mint card (name formed from the bound object)"
+                                    .to_string()
                             } else {
                                 name.clone()
                             };
@@ -835,9 +851,7 @@ impl<'c> Analyzer<'c> {
             existence = Existence::Proven;
             match facts.proven_source_for(target) {
                 Some(lines) => chain.extend(lines),
-                None => unreachable!(
-                    "initNames hit ⇒ provenSourceFor returns the initial line"
-                ),
+                None => unreachable!("initNames hit ⇒ provenSourceFor returns the initial line"),
             }
             paths.push(facts.initial_path(target));
         } else {
@@ -866,14 +880,7 @@ impl<'c> Analyzer<'c> {
                     existence = Existence::Proven;
                     chain.extend(site_chain(site, target, sup));
                 }
-                paths.push(facts.path_for(
-                    si,
-                    target,
-                    sup,
-                    0,
-                    &mut IndexSet::new(),
-                    false,
-                ));
+                paths.push(facts.path_for(si, target, sup, 0, &mut IndexSet::new(), false));
             }
             if existence == Existence::None {
                 // no proven path, but a live guarded
@@ -943,10 +950,7 @@ impl<'c> Analyzer<'c> {
             // derived mints can mint names we cannot
             // enumerate; their shape must never be called structurally absent
             let derived_pattern = content.prototypes.iter().any(|(pname, p)| {
-                p.derive
-                    .as_ref()
-                    .and_then(|d| d.name_from.as_deref())
-                    == Some("object")
+                p.derive.as_ref().and_then(|d| d.name_from.as_deref()) == Some("object")
                     && target.starts_with(&format!("{pname}_"))
             });
             if existence == Existence::None && derived_pattern {
@@ -962,9 +966,9 @@ impl<'c> Analyzer<'c> {
         let descriptor: Option<Entity> = match (&demand_match, facts.init_names.get(target)) {
             (Some(d), _) => Some(d.clone()),
             (None, Some(e)) => Some((*e).clone()),
-            (None, None) => facts.proto_of(target).map(|p| {
-                facts.synth(target, &p.kind, Some(p), None)
-            }),
+            (None, None) => facts
+                .proto_of(target)
+                .map(|p| facts.synth(target, &p.kind, Some(p), None)),
         };
         if existence == Existence::Proven && descriptor.is_none() {
             notes.push(format!(
@@ -1055,7 +1059,10 @@ fn demand_chain_head(shown: &str, kind: &str, aspects: &Aspects, demand: Option<
     let aspects_part = if aspects.is_empty() {
         String::new()
     } else {
-        format!(", aspects {}", crate::engine::engine::aspects_to_json(aspects))
+        format!(
+            ", aspects {}",
+            crate::engine::engine::aspects_to_json(aspects)
+        )
     };
     format!(
         "{shown} ({kind}{aspects_part}) satisfies the demand '{}'",

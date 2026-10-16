@@ -136,8 +136,13 @@ fn main() -> ExitCode {
         for name in &sorted {
             // report(n) passes the CAPTURED demand on — `--all --demand q`
             // renders the demand report once per name
-            let r = match analyzer.analyze_card(name, CardOptions { usable, demand: demand.clone() })
-            {
+            let r = match analyzer.analyze_card(
+                name,
+                CardOptions {
+                    usable,
+                    demand: demand.clone(),
+                },
+            ) {
                 Ok(r) => r,
                 Err(e) => return fail(e),
             };
@@ -153,7 +158,13 @@ fn main() -> ExitCode {
         // demand (the demand branch runs first)
         let card = card.map(String::as_str).unwrap_or("");
         let analyzer = Analyzer::new(&content, &state);
-        let r = match analyzer.analyze_card(card, CardOptions { usable, demand: demand.clone() }) {
+        let r = match analyzer.analyze_card(
+            card,
+            CardOptions {
+                usable,
+                demand: demand.clone(),
+            },
+        ) {
             Ok(r) => r,
             Err(e) => return fail(e),
         };

@@ -15,11 +15,11 @@ use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, QueryTerm};
 use crate::core::types::Entity;
 
+use super::census::pred_static;
 use super::census::{
     draw_blinds_bare, draw_deck, mint_stacks, object_always, RawSite, SetSite, SiteKind,
     DERIVED_NAME, MANY,
 };
-use super::census::pred_static;
 use super::world::{
     eval_static, path_open, CardFact, CardWorld, SlotFiller, SlotProof, WorldFacts,
 };
@@ -225,11 +225,8 @@ impl<'c> WorldFacts<'c> {
                     unreachable!("counts keys come from deck.order");
                 };
                 let proto = content.prototypes.get(name);
-                let infinite = deck.reset
-                    || deck
-                        .defaultcard
-                        .as_ref()
-                        .is_some_and(|dc| dc.name == *name);
+                let infinite =
+                    deck.reset || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == *name);
                 // a derive-card drawn behind an
                 // object-mandatory verb mints under the DERIVED name (90936)
                 let blind = draw_blinds_bare(content, &site, name);
@@ -261,7 +258,11 @@ impl<'c> WorldFacts<'c> {
                 if site.cap > deck.order.len() as i64 && !counts.contains_key(&dc.name) {
                     let proto = content.prototypes.get(&dc.name);
                     let blind = draw_blinds_bare(content, &site, &dc.name);
-                    let key = if blind { DERIVED_NAME } else { dc.name.as_str() };
+                    let key = if blind {
+                        DERIVED_NAME
+                    } else {
+                        dc.name.as_str()
+                    };
                     let entity = self.synth(key, &dc.kind, proto, None);
                     let how = format!("{} ← deck {} defaultcard", dc.name, deck.id);
                     self.push(
@@ -285,7 +286,11 @@ impl<'c> WorldFacts<'c> {
         // a derive-mint behind an object-mandatory
         // verb never carries the bare name — register it blinded (90936)
         let blind = site.derives && object_always(content, site.verb);
-        let key = if blind { DERIVED_NAME } else { site.name.as_str() };
+        let key = if blind {
+            DERIVED_NAME
+        } else {
+            site.name.as_str()
+        };
         // KIND-level stackable declarations stack the
         // mint exactly like name-level ones (§9.38, seed 81401)
         let count = if mint_stacks(content, &site.name, site.kind_override.as_deref()) {
@@ -308,14 +313,7 @@ impl<'c> WorldFacts<'c> {
                 .map(|ko| format!(" (kind overridden to {ko})"))
                 .unwrap_or_default(),
         );
-        self.push(
-            key.to_string(),
-            CardFact {
-                entity,
-                count,
-                how,
-            },
-        );
+        self.push(key.to_string(), CardFact { entity, count, how });
     }
 
     /// Whether a site proves this round. Returns the site's
@@ -391,8 +389,12 @@ impl<'c> WorldFacts<'c> {
         // static gate names a card whose only proven producers fire at (or
         // after) the trigger's own first crossing
         if site.verb.is_none() {
-            if let Some((CompiledTrigger::Slot { slot: owner_slot, .. }, owner_decl)) =
-                self.trig_idx.get(&site.owner)
+            if let Some((
+                CompiledTrigger::Slot {
+                    slot: owner_slot, ..
+                },
+                owner_decl,
+            )) = self.trig_idx.get(&site.owner)
             {
                 let my_first_cross = self.first_cross(*owner_slot);
                 let my_decl = owner_decl;
@@ -460,10 +462,11 @@ impl<'c> WorldFacts<'c> {
         // cross-list trigger-vs-recipe mint collision
         // (81915): every window completes at begin+duration ≥ B, so the
         // boundary at B has already fired the trigger or rolled the pass back
-        let verb_duration: Option<i64> = site.verb.map(|vi| match self.content.verbs.get_index(vi) {
-            Some((_, v)) => v.duration,
-            None => unreachable!("verb index {vi} came from content.verbs enumeration"),
-        });
+        let verb_duration: Option<i64> =
+            site.verb.map(|vi| match self.content.verbs.get_index(vi) {
+                Some((_, v)) => v.duration,
+                None => unreachable!("verb index {vi} came from content.verbs enumeration"),
+            });
         if let Some(dur) = verb_duration {
             for (owner2, mints2) in &self.trigger_mint_names {
                 if mints2.is_empty() {
@@ -523,7 +526,10 @@ impl<'c> WorldFacts<'c> {
                 "trigger {id} fires on slot {slot}{once_note} — the clock is unbounded forward"
             )]);
         }
-        let CompiledTrigger::Expire { id, on_expire_of, .. } = trig else {
+        let CompiledTrigger::Expire {
+            id, on_expire_of, ..
+        } = trig
+        else {
             unreachable!("a compiled trigger is either Slot or Expire");
         };
         // expiry trigger: the named card must be
@@ -543,7 +549,13 @@ impl<'c> WorldFacts<'c> {
             });
         let mut expiry_memo: IndexMap<String, bool> = IndexMap::new();
         let expirable = desc.is_some()
-            && expirable_card(self, &world, &mut expiry_memo, on_expire_of, &IndexSet::new());
+            && expirable_card(
+                self,
+                &world,
+                &mut expiry_memo,
+                on_expire_of,
+                &IndexSet::new(),
+            );
         if desc.is_none() || !expirable {
             return None;
         }

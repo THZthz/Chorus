@@ -15,11 +15,10 @@ use chorus::content::content::{
 };
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
-use chorus::reach::{
-    analyze_card, render_report, CardOptions, CardVerdict, Existence,
-};
+use chorus::reach::{analyze_card, render_report, CardOptions, CardVerdict, Existence};
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 /// One fixture entity (id derived from the lowercased name).
 fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
@@ -187,12 +186,22 @@ fn deck_capacity_one_once_trigger_draw_serves_only_order0_deeper_positions_are_n
     };
     let content = compile(&raw);
     let order = content.decks.get("BOX").unwrap().order.clone();
-    let a = analyze_card(&content, &state_with(vec![ana()]), &order[0].name, CardOptions::default())
-        .unwrap();
+    let a = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        &order[0].name,
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(a.verdict, CardVerdict::Obtainable);
     // nothing else can draw, so the deeper position is structurally unserved
-    let b = analyze_card(&content, &state_with(vec![ana()]), &order[1].name, CardOptions::default())
-        .unwrap();
+    let b = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        &order[1].name,
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(b.verdict, CardVerdict::Unobtainable);
 }
 
@@ -253,8 +262,13 @@ fn a_deck_nobody_draws_is_not_a_source() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "A_CARD", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "A_CARD",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
@@ -273,8 +287,13 @@ fn spawn_via_a_default_recipe_on_a_committable_verb_the_chain_names_the_slot_sup
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert!(rep.chain[0].contains("SPAWN mints"));
     assert!(rep
@@ -298,8 +317,13 @@ fn a_role_dependent_when_demotes_to_unproven_never_a_false_unobtainable() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert_eq!(rep.existence, Existence::Candidate);
     assert!(rep.notes.join(" ").contains("guarded"));
@@ -348,8 +372,13 @@ fn an_uncommittable_verb_is_a_dead_producer_structural_absence() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
@@ -376,8 +405,13 @@ fn the_fixpoint_chains_mints_through_slots_deck_card_to_slot_to_second_stage_min
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert!(rep.chain.join("\n").contains("KEY_CARD"));
 }
@@ -397,8 +431,13 @@ fn an_authored_refuse_upstream_kills_the_site_the_apply_loop_stops_there() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
@@ -424,8 +463,13 @@ fn mixture_a_deck_fed_card_satisfies_an_if_exists_guard_gating_a_spawn() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert!(rep.chain.join("\n").contains("SPAWN mints"));
 }
@@ -502,8 +546,13 @@ fn segment_scoping_a_refuse_inside_an_if_arm_does_not_kill_the_outer_list() {
     };
     // THE_BOOK is absent, so the arm never runs and the outer SPAWN applies
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
 }
 
@@ -522,8 +571,13 @@ fn a_top_level_refuse_kills_the_whole_list_earlier_spawns_included() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unobtainable);
 }
 
@@ -542,8 +596,13 @@ fn a_throwing_op_anywhere_in_the_list_demotes_every_site_in_it() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert!(rep.notes.join(" ").contains("throwing op"));
 }
@@ -701,7 +760,13 @@ fn a_pumped_threshold_un_deads_a_verb_slot_no_static_card_could_fill() {
     .unwrap();
     assert_eq!(without.verdict, CardVerdict::Unobtainable);
     // the pump keeps the slot undecided → candidate, never a false unobtainable
-    let with = analyze_card(&compile(&mk(true)), &state, "PILLAR", CardOptions::default()).unwrap();
+    let with = analyze_card(
+        &compile(&mk(true)),
+        &state,
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(with.verdict, CardVerdict::Unproven);
 }
 
@@ -777,7 +842,9 @@ fn an_initial_card_bindable_through_a_committable_verb_slot_is_obtainable_under_
     )
     .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
-    assert!(rep.usable_via.contains(&"READ.object (query matches)".to_string()));
+    assert!(rep
+        .usable_via
+        .contains(&"READ.object (query matches)".to_string()));
 }
 
 #[test]
@@ -825,8 +892,13 @@ fn every_proven_producer_is_exported_a_recipe_and_a_trigger_both_minting_yield_t
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(rep.paths.len(), 2);
     let explore = content.verbs.get("EXPLORE").unwrap();
@@ -884,7 +956,11 @@ fn requires_expands_recursively_a_slot_filler_carries_its_own_provenance() {
     .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(rep.paths.len(), 1);
-    let mut names: Vec<&str> = rep.paths[0].requires.iter().map(|q| q.name.as_str()).collect();
+    let mut names: Vec<&str> = rep.paths[0]
+        .requires
+        .iter()
+        .map(|q| q.name.as_str())
+        .collect();
     names.sort();
     assert_eq!(names, ["ANA", "THE_BOOK"]);
     for q in &rep.paths[0].requires {
@@ -916,8 +992,13 @@ fn requires_chains_through_produced_fillers_deck_card_to_slot_to_second_stage_mi
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PLANT", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PLANT",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(rep.paths.len(), 1);
     let seed_req = rep.paths[0]
@@ -940,10 +1021,7 @@ fn demand_mode_exports_a_root_per_matching_source_not_just_the_first() {
                 "RED".to_string(),
                 PrototypeDef {
                     kind: "item".to_string(),
-                    aspects: Some(IndexMap::from([(
-                        "tint".to_string(),
-                        AspectVal::Num(1),
-                    )])),
+                    aspects: Some(IndexMap::from([("tint".to_string(), AspectVal::Num(1))])),
                     ..PrototypeDef::default()
                 },
             ),
@@ -951,10 +1029,7 @@ fn demand_mode_exports_a_root_per_matching_source_not_just_the_first() {
                 "BLUE".to_string(),
                 PrototypeDef {
                     kind: "idea".to_string(),
-                    aspects: Some(IndexMap::from([(
-                        "tint".to_string(),
-                        AspectVal::Num(1),
-                    )])),
+                    aspects: Some(IndexMap::from([("tint".to_string(), AspectVal::Num(1))])),
                     ..PrototypeDef::default()
                 },
             ),
@@ -1000,10 +1075,7 @@ fn an_empty_string_demand_is_falsy_renders_exactly_like_no_demand() {
                 "RED".to_string(),
                 PrototypeDef {
                     kind: "item".to_string(),
-                    aspects: Some(IndexMap::from([(
-                        "tint".to_string(),
-                        AspectVal::Num(1),
-                    )])),
+                    aspects: Some(IndexMap::from([("tint".to_string(), AspectVal::Num(1))])),
                     ..PrototypeDef::default()
                 },
             ),
@@ -1011,10 +1083,7 @@ fn an_empty_string_demand_is_falsy_renders_exactly_like_no_demand() {
                 "BLUE".to_string(),
                 PrototypeDef {
                     kind: "idea".to_string(),
-                    aspects: Some(IndexMap::from([(
-                        "tint".to_string(),
-                        AspectVal::Num(1),
-                    )])),
+                    aspects: Some(IndexMap::from([("tint".to_string(), AspectVal::Num(1))])),
                     ..PrototypeDef::default()
                 },
             ),
@@ -1043,7 +1112,10 @@ fn an_empty_string_demand_is_falsy_renders_exactly_like_no_demand() {
             ..CardOptions::default()
         },
     );
-    assert_eq!(empty, plain, "an empty demand string must be no demand at all");
+    assert_eq!(
+        empty, plain,
+        "an empty demand string must be no demand at all"
+    );
     // the header carries the card NAME, never `matching ''`
     assert!(plain.starts_with("s.txt · card ANA\n"), "{plain}");
 }
@@ -1092,8 +1164,13 @@ fn guarded_candidate_sources_are_listed_flat_in_candidates_never_as_paths() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let rep = analyze_card(&content, &state_with(vec![ana()]), "PILLAR", CardOptions::default())
-        .unwrap();
+    let rep = analyze_card(
+        &content,
+        &state_with(vec![ana()]),
+        "PILLAR",
+        CardOptions::default(),
+    )
+    .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert_eq!(rep.paths.len(), 0);
     assert!(!rep.candidates.is_empty());
@@ -1140,8 +1217,7 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
     let dict = core_dictionary();
     for seed in 1u32..=60 {
         let sc = common::reach_fuzz_lib::gen_scenario(seed);
-        let content =
-            compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
+        let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
         let mut first = String::new();
         let mut second = String::new();
         for probe in &sc.probes {
@@ -1155,8 +1231,20 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
                     demand: Some(probe.q.clone()),
                 },
             };
-            first.push_str(&render_card("scenario", &content, &sc.initial, &probe.q, &opts));
-            second.push_str(&render_card("scenario", &content, &sc.initial, &probe.q, &opts));
+            first.push_str(&render_card(
+                "scenario",
+                &content,
+                &sc.initial,
+                &probe.q,
+                &opts,
+            ));
+            second.push_str(&render_card(
+                "scenario",
+                &content,
+                &sc.initial,
+                &probe.q,
+                &opts,
+            ));
         }
         assert_eq!(first, second, "seed {seed}: two analyses diverged");
         assert!(!first.is_empty(), "seed {seed}: probes must render");
@@ -1170,8 +1258,7 @@ fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
     let dict = core_dictionary();
     for seed in 1u32..=30 {
         let sc = common::reach_fuzz_lib::gen_scenario(seed);
-        let content =
-            compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
+        let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
         let shared = chorus::reach::Analyzer::new(&content, &sc.initial);
         for probe in &sc.probes {
             let opts = match probe.mode {
@@ -1184,8 +1271,7 @@ fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
                     demand: Some(probe.q.clone()),
                 },
             };
-            let fresh =
-                render_card("scenario", &content, &sc.initial, &probe.q, &opts);
+            let fresh = render_card("scenario", &content, &sc.initial, &probe.q, &opts);
             let mut shared_out = String::new();
             match shared.analyze_card(&probe.q, opts.clone()) {
                 Ok(rep) => {

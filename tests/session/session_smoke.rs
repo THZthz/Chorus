@@ -16,7 +16,8 @@ use chorus::error::Result;
 use chorus::session::game::{Game, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -62,7 +63,9 @@ fn lenient_routes_the_pinned_phrases() {
     let c0 = &step.clauses[0];
     assert_eq!(c0.verb, "WAIT");
     assert_eq!(c0.actors.len(), 1);
-    assert!(matches!(&c0.actors[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "MARCH"));
+    assert!(
+        matches!(&c0.actors[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "MARCH")
+    );
 
     // 'multi-actor and multi-word names resolve'
     let ParsedInput::Ok { step, .. } = parse_player_input("march read the vane ledger", &ctx)
@@ -83,15 +86,27 @@ fn lenient_routes_the_pinned_phrases() {
     };
     let c0 = &step.clauses[0];
     assert_eq!(c0.verb, "USE_ON");
-    assert!(matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_INQUEST"));
-    assert!(matches!(&c0.with[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_MANIFEST"));
-    assert!(matches!(&c0.at, Some(chorus::core::r#ref::Ref::Name { name, .. }) if name == "GUARD_VAN"));
+    assert!(
+        matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_INQUEST")
+    );
+    assert!(
+        matches!(&c0.with[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_MANIFEST")
+    );
+    assert!(
+        matches!(&c0.at, Some(chorus::core::r#ref::Ref::Name { name, .. }) if name == "GUARD_VAN")
+    );
 
     // 'canonical passthrough still works'
     let ParsedInput::Ok { step, .. } = parse_player_input("0:44 @ MARCH WAIT", &ctx) else {
         panic!("passthrough must parse");
     };
-    assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 0, halfhour: 44 }));
+    assert_eq!(
+        step.clock,
+        Some(chorus::core::types::Clock {
+            day: 0,
+            halfhour: 44
+        })
+    );
 
     // 'unknown words get suggestions' — the failed word is 'vane',
     // so the suggestion rides the normalized-prefix path
@@ -99,13 +114,19 @@ fn lenient_routes_the_pinned_phrases() {
     else {
         panic!("'ledgr' must fail");
     };
-    assert!(suggestions.contains(&"THE_VANE_LEDGER".to_string()), "{suggestions:?}");
+    assert!(
+        suggestions.contains(&"THE_VANE_LEDGER".to_string()),
+        "{suggestions:?}"
+    );
 
     // 'verbs get suggestions too'
     let ParsedInput::Fail { suggestions, .. } = parse_player_input("xeplore the car", &ctx) else {
         panic!("'xeplore' must fail");
     };
-    assert!(suggestions.contains(&"explore".to_string()), "{suggestions:?}");
+    assert!(
+        suggestions.contains(&"explore".to_string()),
+        "{suggestions:?}"
+    );
 
     // 'names resolve case-insensitively (spec §11)'
     assert!(parse_player_input("read THE VANE LEDGER", &ctx).is_ok());
@@ -174,15 +195,14 @@ fn one_name_in_two_roles_binds_distinct_pool_copies() {
     )
     .unwrap();
     let world = pool_world();
-    let ParsedInput::Ok { step, .. } =
-        parse_player_input("ana read the psalm with the psalm", &pool_ctx(&dict, &content, &world))
-    else {
+    let ParsedInput::Ok { step, .. } = parse_player_input(
+        "ana read the psalm with the psalm",
+        &pool_ctx(&dict, &content, &world),
+    ) else {
         panic!("two copies alive: the self-pair must parse");
     };
     let c0 = &step.clauses[0];
-    assert!(
-        matches!(&c0.actors[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "ANA")
-    );
+    assert!(matches!(&c0.actors[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "ANA"));
     assert!(
         matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { name, .. } if name == "THE_PSALM"),
         "the first role keeps the head name ref"
@@ -224,9 +244,10 @@ fn a_pool_too_small_for_its_roles_refuses_by_name() {
     let mut world = pool_world();
     let dead = world.entities.get_mut("psalm_b").unwrap();
     dead.dead_action = Some(1);
-    let ParsedInput::Fail { error, suggestions } =
-        parse_player_input("ana read the psalm with the psalm", &pool_ctx(&dict, &content, &world))
-    else {
+    let ParsedInput::Fail { error, suggestions } = parse_player_input(
+        "ana read the psalm with the psalm",
+        &pool_ctx(&dict, &content, &world),
+    ) else {
         panic!("one copy cannot fill two roles");
     };
     assert_eq!(error, "only one 'psalm' — you need two", "{error}");
@@ -257,18 +278,23 @@ fn single_mentions_and_same_role_doubles_are_untouched() {
     )
     .unwrap();
     let world = pool_world();
-    let ParsedInput::Ok { step, .. } =
-        parse_player_input("ana read the psalm with the candle", &pool_ctx(&dict, &content, &world))
-    else {
+    let ParsedInput::Ok { step, .. } = parse_player_input(
+        "ana read the psalm with the candle",
+        &pool_ctx(&dict, &content, &world),
+    ) else {
         panic!("single mentions must parse");
     };
     let c0 = &step.clauses[0];
-    assert!(matches!(&c0.objects[0], chorus::core::r#ref::Ref::Name { .. }));
+    assert!(matches!(
+        &c0.objects[0],
+        chorus::core::r#ref::Ref::Name { .. }
+    ));
     assert!(matches!(&c0.with[0], chorus::core::r#ref::Ref::Name { .. }));
 
-    let ParsedInput::Ok { step, .. } =
-        parse_player_input("ana read the psalm the psalm", &pool_ctx(&dict, &content, &world))
-    else {
+    let ParsedInput::Ok { step, .. } = parse_player_input(
+        "ana read the psalm the psalm",
+        &pool_ctx(&dict, &content, &world),
+    ) else {
         panic!("a doubled name still parses (the engine refuses it)");
     };
     let c0 = &step.clauses[0];
@@ -304,7 +330,10 @@ fn the_bare_lenient_clock_wraps_halfhour_overflow() {
     };
     assert_eq!(
         step.clock,
-        Some(chorus::core::types::Clock { day: 2, halfhour: 22 })
+        Some(chorus::core::types::Clock {
+            day: 2,
+            halfhour: 22
+        })
     );
     assert_eq!(step.start_min, Some((2 * 48 + 22) * 30));
 
@@ -314,7 +343,10 @@ fn the_bare_lenient_clock_wraps_halfhour_overflow() {
     };
     assert_eq!(
         step.clock,
-        Some(chorus::core::types::Clock { day: 2, halfhour: 1 })
+        Some(chorus::core::types::Clock {
+            day: 2,
+            halfhour: 1
+        })
     );
 
     // the boundary itself folds exactly one day; the legal top of a day is
@@ -324,14 +356,20 @@ fn the_bare_lenient_clock_wraps_halfhour_overflow() {
     };
     assert_eq!(
         step.clock,
-        Some(chorus::core::types::Clock { day: 1, halfhour: 0 })
+        Some(chorus::core::types::Clock {
+            day: 1,
+            halfhour: 0
+        })
     );
     let ParsedInput::Ok { step, .. } = parse_player_input("0:47", &ctx) else {
         panic!("0:47 is legal");
     };
     assert_eq!(
         step.clock,
-        Some(chorus::core::types::Clock { day: 0, halfhour: 47 })
+        Some(chorus::core::types::Clock {
+            day: 0,
+            halfhour: 47
+        })
     );
 
     // the canonical passthrough keeps the strict bound — the frozen §5
@@ -481,7 +519,8 @@ fn a_script_becomes_a_playable_game() {
 fn the_table_only_shows_what_the_inspector_has_met() {
     let dict = core_dictionary();
     let mut game = Game::from_script(FLYER, dict).unwrap();
-    let names = |game: &Game| -> Vec<String> { game.visible().iter().map(|e| e.name.clone()).collect() };
+    let names =
+        |game: &Game| -> Vec<String> { game.visible().iter().map(|e| e.name.clone()).collect() };
     let n = names(&game);
     assert!(n.contains(&"THE_GUARD".to_string())); // the archetype you can see
     assert!(!n.contains(&"BRACK".to_string())); // the name is learned by talking
@@ -548,11 +587,17 @@ fn game_over_speaks_both_texts_and_undo_reopens() {
         chorus::core::types::clone_state(&game.state),
         chorus::engine::engine::Step {
             start_min: None,
-            clock: Some(chorus::core::types::Clock { day: 0, halfhour: 44 }),
+            clock: Some(chorus::core::types::Clock {
+                day: 0,
+                halfhour: 44,
+            }),
             clauses: vec![],
             t_real: None,
         },
-        ExecOptions { first_record_id: 99, id_gen: None },
+        ExecOptions {
+            first_record_id: 99,
+            id_gen: None,
+        },
     )
     .unwrap();
     assert_eq!(
@@ -562,7 +607,10 @@ fn game_over_speaks_both_texts_and_undo_reopens() {
     // UI version (the full notice) — the info turn, not execution
     let turn = game.handle_line("wait").unwrap();
     assert_eq!(turn.kind, TurnKind::Info);
-    assert_eq!(turn.lines, vec!["the story has ended — No More (melancholy)."]);
+    assert_eq!(
+        turn.lines,
+        vec!["the story has ended — No More (melancholy)."]
+    );
 
     // undo across the ending step reopens the game — ended derives from the fold
     assert_eq!(game.undo().unwrap().kind, TurnKind::Info);

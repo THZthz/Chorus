@@ -15,9 +15,9 @@
 use indexmap::IndexMap;
 
 use chorus::content::content::{
-    compile_content, CompiledContent, CompiledSlot, ContentRaw, DeclaredEntity, DeckRaw,
-    ExpireTriggerDef, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef, TriggerDef,
-    VerbContent,
+    compile_content, CompiledContent, CompiledSlot, ContentRaw, DeckRaw, DeclaredEntity,
+    ExpireTriggerDef, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef,
+    TriggerDef, VerbContent,
 };
 use chorus::core::clock::{abs_min, clock_from_abs_min, format_clock, next_step_clock};
 use chorus::core::dict::{core_dictionary, Dictionary, CORE_VERBS};
@@ -26,7 +26,8 @@ use chorus::core::query::match_query;
 use chorus::core::r#ref::{id_ref, name_ref, Ref};
 use chorus::core::sentence::{empty_clause, Clause};
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
-#[allow(unused_imports)] // ActionRecord only flows through drive_fuzz_seed (unused in the #[path]-mounted fuzz bin)
+#[allow(unused_imports)]
+// ActionRecord only flows through drive_fuzz_seed (unused in the #[path]-mounted fuzz bin)
 use chorus::engine::engine::{ActionRecord, Step};
 use chorus::error::Result;
 use chorus::lcg::Lcg;
@@ -82,12 +83,20 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
 
 /// CORE_VERBS minus WAIT.
 fn non_wait_verbs() -> Vec<String> {
-    CORE_VERBS.iter().filter(|v| **v != "WAIT").map(|v| (*v).to_string()).collect()
+    CORE_VERBS
+        .iter()
+        .filter(|v| **v != "WAIT")
+        .map(|v| (*v).to_string())
+        .collect()
 }
 
 /// KIND_POOL minus place.
 fn non_char_kinds() -> Vec<String> {
-    KIND_POOL.iter().filter(|k| **k != "place").map(|k| (*k).to_string()).collect()
+    KIND_POOL
+        .iter()
+        .filter(|k| **k != "place")
+        .map(|k| (*k).to_string())
+        .collect()
 }
 
 /// The analyzer-facing probe list rides along; its draws continue on
@@ -121,7 +130,10 @@ fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
         id: format!("s_{}", name.to_lowercase()),
         kind: kind.to_string(),
         name: name.to_string(),
-        aspects: aspects.into_iter().map(|(k, v)| (k, AspectVal::Num(v))).collect(),
+        aspects: aspects
+            .into_iter()
+            .map(|(k, v)| (k, AspectVal::Num(v)))
+            .collect(),
         attrs: IndexMap::new(),
         born_action: Some(0),
         dead_action: None,
@@ -230,7 +242,9 @@ impl Gen<'_> {
             // the template draws left to right — the bound, then the mint
             let bound = 2 + int(self.r, 4 * dice) as i64;
             let p = pick_of(self.r, &self.proto_names);
-            return format!("ROLL({dice}, 6), IF roll >= {bound} -> (SPAWN {p}) ELSE -> (NARRATE \"low\")");
+            return format!(
+                "ROLL({dice}, 6), IF roll >= {bound} -> (SPAWN {p}) ELSE -> (NARRATE \"low\")"
+            );
         }
         if roll < 0.94 && allow_refuse {
             return "REFUSE(\"no\")".to_string();
@@ -297,7 +311,10 @@ pub fn gen_scenario(seed: u32) -> Scenario {
 
     // prototypes — static aspects, stackable, derive mints (up to one)
     let n_protos = 1 + int(&mut r, 3);
-    let proto_names: Vec<String> = ["P1", "P2", "P3"][..n_protos].iter().map(|s| (*s).to_string()).collect();
+    let proto_names: Vec<String> = ["P1", "P2", "P3"][..n_protos]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
     let mut prototypes: IndexMap<String, PrototypeDef> = IndexMap::new();
     let mut derive_done = false;
     for pn in &proto_names {
@@ -422,7 +439,11 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         let n_recipes = 1 + int(ctx.r, 3);
         let mut recipes: Vec<RecipeDef> = Vec::new();
         for i in 0..n_recipes {
-            let when = if ctx.r.next_f64() < 0.4 { Some(ctx.gen_when()) } else { None };
+            let when = if ctx.r.next_f64() < 0.4 {
+                Some(ctx.gen_when())
+            } else {
+                None
+            };
             let n_outs = 1 + int(ctx.r, 4);
             let mut outs: Vec<String> = Vec::new();
             for _ in 0..n_outs {
@@ -438,7 +459,9 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 out: outs,
             });
         }
-        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"]).parse().expect("duration literal");
+        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
+            .parse()
+            .expect("duration literal");
         verbs_raw.insert(
             v.clone(),
             VerbContent {
@@ -567,7 +590,11 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         prototypes: Some(prototypes),
         decks: deck.map(|d| vec![d]),
         // an EMPTY trigger list is absent (None), never an empty vec
-        triggers: if triggers.is_empty() { None } else { Some(triggers) },
+        triggers: if triggers.is_empty() {
+            None
+        } else {
+            Some(triggers)
+        },
         ..ContentRaw::default()
     };
 
@@ -604,7 +631,13 @@ pub fn choose_step<'a>(r: &mut Lcg, steps: &'a [Step]) -> &'a Step {
 
 /// All k-element subsets of `arr`, in combinatorial order.
 fn k_subsets<'a>(arr: &[&'a Entity], k: usize) -> Vec<Vec<&'a Entity>> {
-    fn walk<'a>(arr: &[&'a Entity], k: usize, start: usize, cur: &mut Vec<&'a Entity>, out: &mut Vec<Vec<&'a Entity>>) {
+    fn walk<'a>(
+        arr: &[&'a Entity],
+        k: usize,
+        start: usize,
+        cur: &mut Vec<&'a Entity>,
+        out: &mut Vec<Vec<&'a Entity>>,
+    ) {
         if cur.len() == k {
             out.push(cur.clone());
             return;
@@ -624,7 +657,11 @@ fn k_subsets<'a>(arr: &[&'a Entity], k: usize) -> Vec<Vec<&'a Entity>> {
 pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Vec<Step> {
     let mut out: Vec<Step> = Vec::new();
     let mut min_fills: Vec<Clause> = Vec::new();
-    let alive: Vec<&Entity> = s.entities.values().filter(|e| e.dead_action.is_none()).collect();
+    let alive: Vec<&Entity> = s
+        .entities
+        .values()
+        .filter(|e| e.dead_action.is_none())
+        .collect();
     let clock = next_step_clock(s.now);
     // waits — advance the clock so slot triggers, expiries and completions
     // strike
@@ -719,7 +756,11 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
             }
             per_role.push((
                 slot.role.clone(),
-                if opts.is_empty() { vec![Vec::new()] } else { opts },
+                if opts.is_empty() {
+                    vec![Vec::new()]
+                } else {
+                    opts
+                },
             ));
         }
         if !viable {
@@ -980,7 +1021,10 @@ pub fn sig(s: &State) -> String {
         "{{now={},g={},ended={},e=[{}],r=[{}],f=[{}],d=[{}],w=[{}]}}",
         s.now,
         s.rng,
-        s.ended.as_ref().map(|en| en.id.clone()).unwrap_or_else(|| "null".to_string()),
+        s.ended
+            .as_ref()
+            .map(|en| en.id.clone())
+            .unwrap_or_else(|| "null".to_string()),
         e.join(","),
         r.join(","),
         f.join(","),
@@ -1169,7 +1213,13 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
             // are existential over UNBOUNDED play (repeatable verbs, recurring
             // triggers), so a shallow miss can be horizon, not error.
             if deep.is_none() {
-                deep = Some(explore(&content, &dict, &sc.initial, max_steps + 7, max_states * 20)?);
+                deep = Some(explore(
+                    &content,
+                    &dict,
+                    &sc.initial,
+                    max_steps + 7,
+                    max_states * 20,
+                )?);
             }
             let deep_fw = deep.as_ref().expect("the deep exploration was just seeded");
             let truth_deep = match p.mode {

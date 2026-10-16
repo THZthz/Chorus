@@ -7,7 +7,8 @@
 //!   - the path-export invariants hold at scale
 //!   - a full-name census completes and stays sound
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::reach_scale_lib::{build_cs_scale, census, summarize};
 
@@ -52,7 +53,10 @@ fn cold_vs_warm_the_second_analysis_on_the_same_world_amortizes_the_fixpoint() {
             .expect("warm probes analyze");
     }
     let warm = warm_start.elapsed().as_secs_f64() * 1000.0 / 20.0;
-    assert!(cold > 15.0, "the cold call must actually pay for the world facts (got {cold}ms)");
+    assert!(
+        cold > 15.0,
+        "the cold call must actually pay for the world facts (got {cold}ms)"
+    );
     assert!(
         warm * 3.0 < cold,
         "warm ({warm:.2}ms) must amortize the cold fixpoint ({cold:.1}ms)"
@@ -81,8 +85,13 @@ fn two_independently_built_worlds_produce_byte_identical_reports_cache_purity() 
     // built once, not once per name.
     let analyzer_a = Analyzer::new(&a.content, &a.initial);
     let analyzer_b = Analyzer::new(&b.content, &b.initial);
-    let mut sample: Vec<String> =
-        a.names.iter().enumerate().filter(|(i, _)| i % 25 == 0).map(|(_, n)| n.clone()).collect();
+    let mut sample: Vec<String> = a
+        .names
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % 25 == 0)
+        .map(|(_, n)| n.clone())
+        .collect();
     sample.extend(a.names[a.names.len() - 5..].iter().cloned());
     let mut checked = 0usize;
     for name in &sample {
@@ -136,7 +145,13 @@ fn path_export_invariants_over_a_broad_sample_fuzz_style_at_scale() {
     let world = build_cs_scale(PROTOS, RECIPES);
     let analyzer = Analyzer::new(&world.content, &world.initial);
     let mut checked = 0usize;
-    for name in world.names.iter().enumerate().filter(|(i, _)| i % 7 == 0).map(|(_, n)| n) {
+    for name in world
+        .names
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % 7 == 0)
+        .map(|(_, n)| n)
+    {
         let rep = analyzer
             .analyze_card(name, CardOptions::default())
             .unwrap_or_else(|e| panic!("{name}: {e}"));

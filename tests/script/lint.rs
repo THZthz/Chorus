@@ -7,7 +7,8 @@ use chorus::content::script::{
 };
 use chorus::core::dict::core_dictionary;
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 use common::harness::assert_err_msg;
 
 /// The bundled showcase, read as text (script text = data).
@@ -41,7 +42,9 @@ entities:
     )
 }
 
-fn compile(text: &str) -> Result<chorus::content::script::CompiledScript, chorus::error::ChorusError> {
+fn compile(
+    text: &str,
+) -> Result<chorus::content::script::CompiledScript, chorus::error::ChorusError> {
     let dict = core_dictionary();
     compile_script(text, &dict)
 }
@@ -170,7 +173,9 @@ fn case_colliding_entity_names_are_a_minted_id_collision_load_error() {
     // (`s_{name.to_lowercase()}`), and the second add_entity would silently
     // clobber the first. The id collision is its own load error.
     assert_err_msg(
-        compile(&base("  ana is character at HOUSE\n  ANA is character at HOUSE")),
+        compile(&base(
+            "  ana is character at HOUSE\n  ANA is character at HOUSE",
+        )),
         r"line \d+: minted id 's_ana' already in use \('ana' vs 'ANA'\)",
     );
 }
@@ -221,7 +226,11 @@ verbs:
         &dict,
     )
     .unwrap();
-    assert!(w.iter().any(|x| x.contains("verb READ: declares slots but no recipes")), "{w:?}");
+    assert!(
+        w.iter()
+            .any(|x| x.contains("verb READ: declares slots but no recipes")),
+        "{w:?}"
+    );
 }
 
 #[test]
@@ -244,7 +253,8 @@ verbs:
     )
     .unwrap();
     assert!(
-        w.iter().any(|x| x.contains("read.late") && x.contains("unreachable")),
+        w.iter()
+            .any(|x| x.contains("read.late") && x.contains("unreachable")),
         "{w:?}"
     );
 }

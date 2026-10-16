@@ -12,9 +12,9 @@ use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::core::jsonw::clone_map_in_key_order;
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
-use crate::core::jsonw::clone_map_in_key_order;
 use crate::error::{ChorusError, Result};
 
 /// The mechanics clock: `day` + `halfhour` (re-exported by `clock`).
@@ -71,10 +71,10 @@ impl AttrValue {
 #[must_use]
 pub fn is_truthy(v: Option<&AttrValue>) -> bool {
     match v {
-        None => false,                             // a missing value
-        Some(AttrValue::Str(s)) => !s.is_empty(),  // the empty string
-        Some(AttrValue::Num(n)) => *n != 0,        // zero
-        Some(AttrValue::Bool(b)) => *b,            // false
+        None => false,                            // a missing value
+        Some(AttrValue::Str(s)) => !s.is_empty(), // the empty string
+        Some(AttrValue::Num(n)) => *n != 0,       // zero
+        Some(AttrValue::Bool(b)) => *b,           // false
     }
 }
 
@@ -400,7 +400,8 @@ pub fn aspect_set(e: &mut Entity, path: &str, v: i64) {
     // an existing Num head is REPLACED by a fresh
     // sub-map; a missing head creates one.
     if !matches!(e.aspects.get(head), Some(AspectVal::Sub(_))) {
-        e.aspects.insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
+        e.aspects
+            .insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
     }
     if let Some(AspectVal::Sub(m)) = e.aspects.get_mut(head) {
         m.insert(rest.to_string(), v);
@@ -428,7 +429,10 @@ pub fn relation_key(a: &str, b: &str, type_: &str, symmetric: bool) -> String {
 /// symmetric/directed storage (the double-check is belt-and-braces).
 #[must_use]
 pub fn relation_alive(s: &State, id_a: &str, id_b: &str, type_: &str) -> bool {
-    for k in [format!("{id_a}|{id_b}|{type_}"), format!("{id_b}|{id_a}|{type_}")] {
+    for k in [
+        format!("{id_a}|{id_b}|{type_}"),
+        format!("{id_b}|{id_a}|{type_}"),
+    ] {
         if let Some(r) = s.relations.get(&k) {
             if r.dead_action.is_none() {
                 return true;

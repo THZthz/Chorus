@@ -89,9 +89,8 @@ pub fn load_log(path: &Path) -> Result<Vec<ActionRecord>> {
         if line.is_empty() {
             continue; // filter(Boolean)
         }
-        let record: ActionRecord = serde_json::from_str(line).map_err(|e| {
-            ChorusError::new(format!("{}:{}: {}", path.display(), i + 1, e))
-        })?;
+        let record: ActionRecord = serde_json::from_str(line)
+            .map_err(|e| ChorusError::new(format!("{}:{}: {}", path.display(), i + 1, e)))?;
         out.push(record);
     }
     Ok(out)
@@ -159,8 +158,10 @@ mod tests {
             dead_action: None,
             stackable: false,
         };
-        ana.attrs
-            .insert("container".into(), crate::core::types::AttrValue::Str("house".into()));
+        ana.attrs.insert(
+            "container".into(),
+            crate::core::types::AttrValue::Str("house".into()),
+        );
         crate::core::types::add_entity(&mut s, ana).unwrap();
         s
     }
@@ -174,7 +175,10 @@ mod tests {
             seed(),
             Step {
                 start_min: None,
-                clock: Some(Clock { day: 0, halfhour: 0 }),
+                clock: Some(Clock {
+                    day: 0,
+                    halfhour: 0,
+                }),
                 clauses: parse_sentence("0:0 @ ANA PACE", &dict).unwrap().clauses,
                 t_real: None,
             },
@@ -191,7 +195,10 @@ mod tests {
             r.state,
             Step {
                 start_min: None,
-                clock: Some(Clock { day: 0, halfhour: 1 }),
+                clock: Some(Clock {
+                    day: 0,
+                    halfhour: 1,
+                }),
                 clauses: vec![],
                 t_real: None,
             },
@@ -216,15 +223,15 @@ mod tests {
         let first = fs::read(&path).unwrap();
         // structural facts while we have it: one JSON object per row, \n-terminated
         assert!(first.ends_with(b"\n"));
-        assert_eq!(
-            first.iter().filter(|b| **b == b'\n').count(),
-            records.len()
-        );
+        assert_eq!(first.iter().filter(|b| **b == b'\n').count(), records.len());
         let loaded = load_log(&path).unwrap();
         assert_eq!(loaded, records, "loadLog round-trips every field");
         save_log(&path, &loaded).unwrap();
         let second = fs::read(&path).unwrap();
-        assert_eq!(first, second, "save(load(save(log))) is byte-stable (law 1)");
+        assert_eq!(
+            first, second,
+            "save(load(save(log))) is byte-stable (law 1)"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

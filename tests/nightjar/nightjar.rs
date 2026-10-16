@@ -16,14 +16,15 @@
 //! Object-identity assertions have no Rust observable; snap /
 //! field equality is used at those sites (never weakened).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::explorer_lib::SCRIPT_TEXT;
 
 use chorus::content::script::compile_script;
 use chorus::core::dict::core_dictionary;
-use chorus::engine::fold::fold;
 use chorus::core::text::cmp_utf16;
+use chorus::engine::fold::fold;
 use chorus::session::game::{Game, Turn, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
@@ -59,12 +60,12 @@ fn play(game: &mut Game, lines: &[&str]) -> chorus::error::Result<Vec<Turn>> {
 /// (`WIN_PATH` — the test-local copy; the
 /// explorer lib's is the sweep/walk's own)
 const WIN_PATH: [&str; 9] = [
-    "wait",                          // 22:00 — the body is found
-    "explore the first cabin",       // 23:00 — the solicitor's letter
-    "read the solicitor letter",     // 0:00  — border stop; the telegram lands
-    "explore the firebox",           // 1:00  — the wax cylinder
-    "read the vane ledger",          // 2:00  — read in the same hour it burns
-    "talk with the spiritualist",    // meet Seraphine (the name is learned by talking)
+    "wait",                       // 22:00 — the body is found
+    "explore the first cabin",    // 23:00 — the solicitor's letter
+    "read the solicitor letter",  // 0:00  — border stop; the telegram lands
+    "explore the firebox",        // 1:00  — the wax cylinder
+    "read the vane ledger",       // 2:00  — read in the same hour it burns
+    "talk with the spiritualist", // meet Seraphine (the name is learned by talking)
     "seraphine read the wax cylinder",
     "seraphine read the telegram",
     "use on the inquest with the embezzlement the stolen voice the vienna warning",
@@ -157,8 +158,18 @@ mod the_nightjar_flyer {
         assert_eq!(
             verbs,
             [
-                "ACQUIRE", "DREAM", "EXPLORE", "LOCATE_AT", "MANSUS", "READ", "STUDY", "TALK",
-                "TRAVEL_TO", "USE_ON", "WAIT", "WORK",
+                "ACQUIRE",
+                "DREAM",
+                "EXPLORE",
+                "LOCATE_AT",
+                "MANSUS",
+                "READ",
+                "STUDY",
+                "TALK",
+                "TRAVEL_TO",
+                "USE_ON",
+                "WAIT",
+                "WORK",
             ]
         );
     }
@@ -216,7 +227,8 @@ mod the_nightjar_flyer {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(canonical.contains("PROGRESS(1halfhour,")); // the tick rides the BEGIN row
-        assert!(canonical.contains("SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin")); // the mint the completion
+        assert!(canonical.contains("SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin"));
+        // the mint the completion
     }
 
     #[test]
@@ -265,14 +277,7 @@ mod the_nightjar_flyer {
             .iter()
             .flat_map(|r| r.outcomes.iter().filter(|o| o.op == "ROLLED").map(ints))
             .collect();
-        assert_eq!(
-            rolled,
-            vec![
-                Some((5, 2)),
-                Some((8, 4)),
-                Some((14, 7))
-            ]
-        ); // calibrated against seed 1899
+        assert_eq!(rolled, vec![Some((5, 2)), Some((8, 4)), Some((14, 7))]); // calibrated against seed 1899
         assert_eq!(game.state.rng, 7);
         // F5 — the RUMOURS deck drew twice: once from the patrol trigger
         // (into the guard van), once from the talk recipe (into the dining
@@ -341,7 +346,10 @@ mod the_nightjar_flyer {
         let turn = auto_settle_line(&mut game, "explore the first cabin").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
         assert_eq!(pool_len(&game, "SUSPICION"), before + 1);
-        assert!(turn.lines.join("\n").contains("A steward will remember MARCH"));
+        assert!(turn
+            .lines
+            .join("\n")
+            .contains("A steward will remember MARCH"));
     }
 
     #[test]
@@ -394,7 +402,10 @@ mod the_nightjar_flyer {
         play(&mut game, &["wait", "wait", "wait"]).unwrap(); // to 0:00 — the telegram lands
         let turn = auto_settle_line(&mut game, "read the telegram").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
-        assert!(turn.lines.iter().any(|l| l.starts_with("The words are French")));
+        assert!(turn
+            .lines
+            .iter()
+            .any(|l| l.starts_with("The words are French")));
         assert!(!game.state.by_name.contains_key("THE_VIENNA_WARNING"));
     }
 
@@ -403,7 +414,10 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         let pre = auto_settle_line(&mut game, "explore the first cabin").unwrap();
         assert_eq!(pre.kind, TurnKind::Action);
-        assert!(pre.lines.join("\n").contains("does not open for a piece of paper"));
+        assert!(pre
+            .lines
+            .join("\n")
+            .contains("does not open for a piece of paper"));
         assert!(!game.state.by_name.contains_key("THE_SOLICITOR_LETTER"));
         play(&mut game, &["wait"]).unwrap(); // the body is found; the seal comes down
         let post = auto_settle_line(&mut game, "explore the first cabin").unwrap();
@@ -414,8 +428,8 @@ mod the_nightjar_flyer {
     #[test]
     fn unknown_topics_and_places_fail_loudly_lenient_about_at() {
         let mut game = fresh();
-        let turn = auto_settle_line(&mut game, "talk to seraphine about the lost tracklist")
-            .unwrap();
+        let turn =
+            auto_settle_line(&mut game, "talk to seraphine about the lost tracklist").unwrap();
         assert_eq!(turn.kind, TurnKind::Error);
         assert!(turn.lines.join("\n").contains("I don't know"));
     }
@@ -425,11 +439,15 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         play(
             &mut game,
-            &["wait", "explore the first cabin", "read the solicitor letter"],
+            &[
+                "wait",
+                "explore the first cabin",
+                "read the solicitor letter",
+            ],
         )
         .unwrap();
-        let thin = auto_settle_line(&mut game, "use on the inquest with the disinheritance")
-            .unwrap();
+        let thin =
+            auto_settle_line(&mut game, "use on the inquest with the disinheritance").unwrap();
         assert_eq!(thin.kind, TurnKind::Action);
         assert!(thin.lines.join("\n").contains("wobbles"));
         assert!(!game.state.by_name.contains_key("CONFESSION_OF_QUILL"));
@@ -443,13 +461,17 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         // 21:00 → 21:30 — meet Cole
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the stoker").unwrap().kind,
+            auto_settle_line(&mut game, "talk to the stoker")
+                .unwrap()
+                .kind,
             TurnKind::Action
         );
         assert!(game.state.by_name.contains_key("COLE"));
         // 21:30 → 22:00 — meet Brack; the body is found
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the guard").unwrap().kind,
+            auto_settle_line(&mut game, "talk to the guard")
+                .unwrap()
+                .kind,
             TurnKind::Action
         );
         assert!(game
@@ -536,7 +558,10 @@ mod the_nightjar_flyer {
         play(&mut game, &["wait", "talk to the stoker"]).unwrap(); // the seal idea spawns; meet Cole
         let turn = auto_settle_line(&mut game, "talk to cole about the aether seal").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
-        assert!(turn.lines.join("\n").contains("rake the firebox hot at midnight"));
+        assert!(turn
+            .lines
+            .join("\n")
+            .contains("rake the firebox hot at midnight"));
         let rec = game
             .log
             .records
@@ -557,7 +582,9 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         // meet Brack — RELATE(MARCH, BRACK, neighbor)
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the guard").unwrap().kind,
+            auto_settle_line(&mut game, "talk to the guard")
+                .unwrap()
+                .kind,
             TurnKind::Action
         );
         assert_eq!(
@@ -678,8 +705,7 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         play(&mut game, &WIN_PATH).unwrap();
         let base = base_of(&game);
-        let replayed =
-            fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
+        let replayed = fold(&game.log.records, &base, &game.dict, &game.content).unwrap();
         let mut replayed_names: Vec<&String> = replayed.by_name.keys().collect();
         let mut played_names: Vec<&String> = game.state.by_name.keys().collect();
         // `.sort()` = default string sort = UTF-16 code-unit order

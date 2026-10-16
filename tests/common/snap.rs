@@ -30,9 +30,11 @@
 //! harness.rs. The `allow` lives in this one place.)
 #![allow(dead_code)]
 
-use chorus::core::types::{AspectVal, AttrValue, Aspects, Attrs, Entity, OpenWindow, Relation, State};
 use chorus::core::jsonw::canonical_key_order;
 use chorus::core::text::cmp_utf16;
+use chorus::core::types::{
+    AspectVal, Aspects, AttrValue, Attrs, Entity, OpenWindow, Relation, State,
+};
 
 /// The full-state JSON image — see the module doc for the frozen surface.
 #[must_use]
@@ -44,7 +46,11 @@ pub fn snap(s: &State) -> String {
     );
     root.insert(
         "rels".to_string(),
-        sorted_entries(s.relations.iter().map(|(k, r)| (k.clone(), relation_json(r)))),
+        sorted_entries(
+            s.relations
+                .iter()
+                .map(|(k, r)| (k.clone(), relation_json(r))),
+        ),
     );
     root.insert(
         "byName".to_string(),
@@ -60,13 +66,21 @@ pub fn snap(s: &State) -> String {
     // §9.42: the deck cursors
     root.insert(
         "decks".to_string(),
-        sorted_entries(s.decks.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
+        sorted_entries(
+            s.decks
+                .iter()
+                .map(|(k, v)| (k.clone(), serde_json::json!(v))),
+        ),
     );
     // §9.50: the recipe execution counts — play and fold must rebuild them
     // identically (the same registration path)
     root.insert(
         "executed".to_string(),
-        sorted_entries(s.executed.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
+        sorted_entries(
+            s.executed
+                .iter()
+                .map(|(k, v)| (k.clone(), serde_json::json!(v))),
+        ),
     );
     // §9.34: play and fold must agree on fired too (default string sort)
     let mut fired: Vec<&String> = s.fired.iter().collect();
@@ -102,9 +116,7 @@ where
     v.sort_by(|a, b| cmp_utf16(&a.0, &b.0));
     serde_json::Value::Array(
         v.into_iter()
-            .map(|(k, val)| {
-                serde_json::Value::Array(vec![serde_json::Value::String(k), val])
-            })
+            .map(|(k, val)| serde_json::Value::Array(vec![serde_json::Value::String(k), val]))
             .collect(),
     )
 }

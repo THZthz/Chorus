@@ -9,12 +9,12 @@ use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::content::content::walk_outcomes;
 use crate::content::content::{CompiledContent, CompiledDeck, CompiledTrigger};
 use crate::core::predicate::Pred;
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, Outcome};
 use crate::core::types::Entity;
-use crate::content::content::walk_outcomes;
 
 /// `MANY = 1e9`, the "unbounded copies" sentinel: it feeds the `min(count,
 /// 32)` weight cap, the draw export gate (`cap != MANY` means exportable)
@@ -47,7 +47,8 @@ const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 pub(crate) fn expr_static(v: &crate::core::predicate::ValExpr) -> bool {
     matches!(
         v,
-        crate::core::predicate::ValExpr::Int { .. } | crate::core::predicate::ValExpr::CountQuery { .. }
+        crate::core::predicate::ValExpr::Int { .. }
+            | crate::core::predicate::ValExpr::CountQuery { .. }
     )
 }
 
@@ -75,7 +76,9 @@ pub(crate) fn parse_aspects_json(json: &str) -> crate::error::Result<crate::core
     let v: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| crate::error::ChorusError::new(format!("bad aspects pair: {e}")))?;
     let serde_json::Value::Object(map) = v else {
-        return Err(crate::error::ChorusError::new("bad aspects pair: not an object"));
+        return Err(crate::error::ChorusError::new(
+            "bad aspects pair: not an object",
+        ));
     };
     let mut out = crate::core::types::Aspects::new();
     for (k, val) in map {
@@ -453,11 +456,7 @@ pub(crate) fn object_always(content: &CompiledContent, verb: Option<usize>) -> b
 
 /// A DRAW behind an object-mandatory
 /// verb never serves the BARE name of a deck card whose prototype derives.
-pub(crate) fn draw_blinds_bare(
-    content: &CompiledContent,
-    site: &RawSite,
-    name: &str,
-) -> bool {
+pub(crate) fn draw_blinds_bare(content: &CompiledContent, site: &RawSite, name: &str) -> bool {
     site.kind == SiteKind::Draw
         && site.verb.is_some()
         && object_always(content, site.verb)
@@ -591,10 +590,24 @@ fn walk_list<'c, 'a>(
         if s.kind == SiteKind::Draw && s.deck.is_some() {
             let deck = draw_deck(s);
             for c in &deck.order {
-                add_mint(content, &mut mint_counts, &mut census.non_stack_names, &mut census.collision_names, &c.name, Some(&c.kind));
+                add_mint(
+                    content,
+                    &mut mint_counts,
+                    &mut census.non_stack_names,
+                    &mut census.collision_names,
+                    &c.name,
+                    Some(&c.kind),
+                );
             }
             if let Some(dc) = &deck.defaultcard {
-                add_mint(content, &mut mint_counts, &mut census.non_stack_names, &mut census.collision_names, &dc.name, Some(&dc.kind));
+                add_mint(
+                    content,
+                    &mut mint_counts,
+                    &mut census.non_stack_names,
+                    &mut census.collision_names,
+                    &dc.name,
+                    Some(&dc.kind),
+                );
             }
         } else {
             add_mint(
@@ -713,9 +726,9 @@ fn walk_list<'c, 'a>(
         s.list_stack_mints = Rc::clone(&list_stack_mints);
         s.target_killed_in_list = s.kind == SiteKind::Replace
             && s.replace_target.is_some()
-            && kills
-                .iter()
-                .any(|k| Some(&k.name) == s.replace_target.as_ref() && (k.seg != s.seg || k.pos != s.pos));
+            && kills.iter().any(|k| {
+                Some(&k.name) == s.replace_target.as_ref() && (k.seg != s.seg || k.pos != s.pos)
+            });
         if let Some(cap) = cap_draw {
             s.cap = cap;
         } else {
@@ -757,12 +770,10 @@ fn add_mint(
         non_stack_names.insert(name.to_string());
         collision_names.insert(name.to_string());
     }
-    let e = mint_counts
-        .entry(name.to_string())
-        .or_insert(MintCount {
-            count: 0,
-            all_stack: true,
-        });
+    let e = mint_counts.entry(name.to_string()).or_insert(MintCount {
+        count: 0,
+        all_stack: true,
+    });
     e.count += 1;
     e.all_stack = e.all_stack && stacks;
 }
@@ -860,11 +871,9 @@ fn record_visit<'c, 'a>(
             set_sites.push(SetSite {
                 key,
                 owner: owner.to_string(),
-                verb_name: verb_idx.map(|vi| {
-                    match content.verbs.get_index(vi) {
-                        Some((name, _)) => name.clone(),
-                        None => unreachable!("verb index {vi} came from content.verbs enumeration"),
-                    }
+                verb_name: verb_idx.map(|vi| match content.verbs.get_index(vi) {
+                    Some((name, _)) => name.clone(),
+                    None => unreachable!("verb index {vi} came from content.verbs enumeration"),
                 }),
                 target_name,
                 target_role,
@@ -961,29 +970,29 @@ fn record_visit<'c, 'a>(
     } else {
         // (clippy manual_map: Option::map over the drawn deck id)
         draw.map(|id| RawSite {
-                kind: SiteKind::Draw,
-                name: id.to_string(),
-                kind_override: None,
-                deck: content.decks.get(id),
-                aspects_json: None,
-                owner: owner.to_string(),
-                verb: verb_idx,
-                when: when.cloned(),
-                shadow_risk,
-                path: path.clone(),
-                seg,
-                pos,
-                segs: segs.clone(),
-                fallback,
-                runtime_gated: false,
-                throw_ops: 0,
-                cap: 0,
-                replace_target: None,
-                killed_in_list: false,
-                dup_risk: false,
-                target_killed_in_list: false,
-                list_gate_mints: Rc::new(IndexSet::new()),
-                list_stack_mints: Rc::new(IndexSet::new()),
+            kind: SiteKind::Draw,
+            name: id.to_string(),
+            kind_override: None,
+            deck: content.decks.get(id),
+            aspects_json: None,
+            owner: owner.to_string(),
+            verb: verb_idx,
+            when: when.cloned(),
+            shadow_risk,
+            path: path.clone(),
+            seg,
+            pos,
+            segs: segs.clone(),
+            fallback,
+            runtime_gated: false,
+            throw_ops: 0,
+            cap: 0,
+            replace_target: None,
+            killed_in_list: false,
+            dup_risk: false,
+            target_killed_in_list: false,
+            list_gate_mints: Rc::new(IndexSet::new()),
+            list_stack_mints: Rc::new(IndexSet::new()),
             derives: false,
             where_: owner.to_string(),
         })

@@ -8,9 +8,12 @@
 //! - explorer_lib: the win path plays end-to-end and the sampled walk
 //!   harvests states (LCG 'NIGH' entry).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
-use common::explorer_lib::{candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth};
+use common::explorer_lib::{
+    candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth,
+};
 use common::seed::{seed_content, seed_state};
 use common::settle::{act, done, refusal, settle_step};
 use common::snap::snap;
@@ -27,7 +30,10 @@ use chorus::engine::fold::fold;
 use indexmap::IndexMap;
 
 /// The store.rs test rig's PACE shape: one actor, one 30-minute window.
-fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::content::CompiledContent) {
+fn pace_rig() -> (
+    chorus::core::dict::Dictionary,
+    chorus::content::content::CompiledContent,
+) {
     let mut dict = core_dictionary();
     dict.register_verb("PACE").expect("PACE registers");
     let raw = chorus::content::content::ContentRaw {
@@ -192,7 +198,10 @@ fn settle_completes_the_window_and_act_done_route() {
     assert!(r.rejected.is_none());
     let kinds: Vec<&str> = r.records.iter().map(|x| x.kind.as_str()).collect();
     assert!(kinds.contains(&"action"), "begin row present: {kinds:?}");
-    assert!(kinds.contains(&"complete"), "settled completion present: {kinds:?}");
+    assert!(
+        kinds.contains(&"complete"),
+        "settled completion present: {kinds:?}"
+    );
     // the begin row is the spine; the completion carries the narrate
     assert_eq!(act(&r).unwrap().kind, "action");
     assert_eq!(done(&r).unwrap().kind, "complete");
@@ -267,8 +276,18 @@ fn seed_content_compiles_and_seed_state_carries_the_world() {
         .expect("the seed content compiles against the core dictionary");
     // the twelve-verb core set is authored (§4.3)
     for v in [
-        "READ", "STUDY", "TALK", "TRAVEL_TO", "USE_ON", "WAIT", "WORK", "EXPLORE", "MANSUS",
-        "DREAM", "LOCATE_AT", "ACQUIRE",
+        "READ",
+        "STUDY",
+        "TALK",
+        "TRAVEL_TO",
+        "USE_ON",
+        "WAIT",
+        "WORK",
+        "EXPLORE",
+        "MANSUS",
+        "DREAM",
+        "LOCATE_AT",
+        "ACQUIRE",
     ] {
         assert!(content.verbs.contains_key(v), "{v} compiled");
     }
@@ -291,9 +310,7 @@ fn seed_content_compiles_and_seed_state_carries_the_world() {
         Some(AspectVal::Sub(_))
     ));
     // ANA is BERTHA's parent — the one social edge, under its canonical key
-    assert!(s
-        .relations
-        .contains_key("ana|bertha|parent_child"));
+    assert!(s.relations.contains_key("ana|bertha|parent_child"));
 }
 
 // ---------------------------- explorer_lib ---------------------------------
@@ -338,7 +355,10 @@ fn candidate_generator_offers_the_pinned_probes() {
     // every candidate step carries the front-door clock (§9.28)
     assert_eq!(
         cands[0].step.clock,
-        Some(Clock { day: 0, halfhour: 42 })
+        Some(Clock {
+            day: 0,
+            halfhour: 42
+        })
     );
 }
 
@@ -351,6 +371,10 @@ fn the_sampled_walk_harvests_states_deterministically() {
     assert_eq!(a.len(), b.len());
     for (xa, xb) in a.iter().zip(b.iter()) {
         assert_eq!(xa.0, xb.0, "same labels");
-        assert_eq!(snap(&xa.1), snap(&xb.1), "the LCG 'NIGH' walk is deterministic");
+        assert_eq!(
+            snap(&xa.1),
+            snap(&xb.1),
+            "the LCG 'NIGH' walk is deterministic"
+        );
     }
 }

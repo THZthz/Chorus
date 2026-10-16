@@ -37,7 +37,10 @@ pub fn abs_min(c: Clock) -> i64 {
 /// input is a debug-time contract violation, never runtime behavior.
 #[must_use]
 pub fn clock_from_abs_min(m: i64) -> Clock {
-    debug_assert!(m >= 0, "clock_from_abs_min: negative minute {m} (clocks are non-negative)");
+    debug_assert!(
+        m >= 0,
+        "clock_from_abs_min: negative minute {m} (clocks are non-negative)"
+    );
     let total = m.div_euclid(MIN_PER_HALFHOUR);
     Clock {
         day: total.div_euclid(HALFHOURS_PER_DAY),
@@ -51,9 +54,16 @@ pub fn clock_from_abs_min(m: i64) -> Clock {
 /// dividend).
 #[must_use]
 pub fn next_step_clock(m: i64) -> Clock {
-    debug_assert!(m >= 0, "next_step_clock: negative minute {m} (clocks are non-negative)");
+    debug_assert!(
+        m >= 0,
+        "next_step_clock: negative minute {m} (clocks are non-negative)"
+    );
     let rem = m % MIN_PER_HALFHOUR;
-    clock_from_abs_min(if rem == 0 { m } else { m + MIN_PER_HALFHOUR - rem })
+    clock_from_abs_min(if rem == 0 {
+        m
+    } else {
+        m + MIN_PER_HALFHOUR - rem
+    })
 }
 
 /// The `day:halfhour` rendering of a clock.
@@ -178,29 +188,80 @@ mod tests {
 
     #[test]
     fn clock_round_trips_and_quantizes() {
-        assert_eq!(abs_min(Clock { day: 1, halfhour: 2 }), (48 + 2) * 30);
         assert_eq!(
-            clock_from_abs_min(abs_min(Clock { day: 0, halfhour: 47 })),
-            Clock { day: 0, halfhour: 47 }
+            abs_min(Clock {
+                day: 1,
+                halfhour: 2
+            }),
+            (48 + 2) * 30
         );
-        assert_eq!(clock_from_abs_min(30 * 48 + 30 * 2 + 20), Clock { day: 1, halfhour: 2 });
+        assert_eq!(
+            clock_from_abs_min(abs_min(Clock {
+                day: 0,
+                halfhour: 47
+            })),
+            Clock {
+                day: 0,
+                halfhour: 47
+            }
+        );
+        assert_eq!(
+            clock_from_abs_min(30 * 48 + 30 * 2 + 20),
+            Clock {
+                day: 1,
+                halfhour: 2
+            }
+        );
         // `next_step_clock`: sub-halfhour dead air resumes on the next tick
-        assert_eq!(next_step_clock(0), Clock { day: 0, halfhour: 0 });
-        assert_eq!(next_step_clock(1), Clock { day: 0, halfhour: 1 });
-        assert_eq!(next_step_clock(30), Clock { day: 0, halfhour: 1 });
-        assert_eq!(format_clock(Clock { day: 3, halfhour: 41 }), "3:41");
+        assert_eq!(
+            next_step_clock(0),
+            Clock {
+                day: 0,
+                halfhour: 0
+            }
+        );
+        assert_eq!(
+            next_step_clock(1),
+            Clock {
+                day: 0,
+                halfhour: 1
+            }
+        );
+        assert_eq!(
+            next_step_clock(30),
+            Clock {
+                day: 0,
+                halfhour: 1
+            }
+        );
+        assert_eq!(
+            format_clock(Clock {
+                day: 3,
+                halfhour: 41
+            }),
+            "3:41"
+        );
     }
 
     #[test]
     fn parse_clock_messages_are_byte_exact() {
-        assert_eq!(parse_clock("2:17").unwrap(), Clock { day: 2, halfhour: 17 });
+        assert_eq!(
+            parse_clock("2:17").unwrap(),
+            Clock {
+                day: 2,
+                halfhour: 17
+            }
+        );
         let e = parse_clock("2:48").unwrap_err();
         assert_eq!(e.msg, "bad halfhour '2:48' (0..47)");
         let e = parse_clock("2x").unwrap_err();
         assert_eq!(e.msg, "bad clock '2x' (expected \"day:halfhour\")");
         // B-22: authored integers parse EXACTLY — the day is the authored
         // bytes, no f64 middle step rounding it to …992
-        assert_eq!(parse_clock("9007199254740993:0").unwrap().day, 9007199254740993);
+        assert_eq!(
+            parse_clock("9007199254740993:0").unwrap().day,
+            9007199254740993
+        );
     }
 
     #[test]

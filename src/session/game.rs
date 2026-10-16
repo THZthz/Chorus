@@ -20,11 +20,11 @@ use crate::core::query::match_query;
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
 use crate::core::sentence::Arg;
+use crate::core::text::dsl_trim;
 use crate::core::types::{clone_state, is_truthy, AttrValue, Entity, OpenWindow, State};
 use crate::engine::engine::{execute_step, ExecOptions};
 use crate::engine::fold::fold;
 use crate::engine::store::Log;
-use crate::core::text::dsl_trim;
 use crate::error::Result;
 
 use super::lenient::{parse_player_input, LenientCtx, ParsedInput};
@@ -71,7 +71,12 @@ impl Game {
     /// explicitly.
     pub fn from_script(text: &str, dict: Dictionary) -> Result<Game> {
         let compiled = compile_script(text, &dict)?;
-        Ok(Self::new(dict, compiled.content, compiled.meta, compiled.state))
+        Ok(Self::new(
+            dict,
+            compiled.content,
+            compiled.meta,
+            compiled.state,
+        ))
     }
 
     /// The private constructor.
@@ -177,12 +182,11 @@ impl Game {
             .values()
             .filter(|e| e.dead_action.is_none())
             .collect();
-        let me = self.meta.player.as_ref().and_then(|p| {
-            alive
-                .iter()
-                .copied()
-                .find(|e| &e.name == p)
-        });
+        let me = self
+            .meta
+            .player
+            .as_ref()
+            .and_then(|p| alive.iter().copied().find(|e| &e.name == p));
         let mut named: HashSet<String> = HashSet::new();
         for r in &self.log.records {
             let mut refs: Vec<&Ref> = r
@@ -214,8 +218,7 @@ impl Game {
                             r#ref: Ref::Name { name, .. },
                         }
                         | Arg::Into {
-                            r#ref:
-                                crate::core::sentence::IntoTarget::Ref(Ref::Name { name, .. }),
+                            r#ref: crate::core::sentence::IntoTarget::Ref(Ref::Name { name, .. }),
                         } => {
                             named.insert(name.clone());
                         }
@@ -230,16 +233,16 @@ impl Game {
             let keep = e.kind == "place"
                 || me.is_some_and(|m| e.id == m.id)
                 || e.attrs.get("container") == here
-                || me.is_some_and(|m| {
-                    matches!(e.attrs.get("container"), Some(AttrValue::Str(c)) if *c == m.id)
-                })
+                || me.is_some_and(
+                    |m| matches!(e.attrs.get("container"), Some(AttrValue::Str(c)) if *c == m.id),
+                )
                 || named.contains(&e.name)
                 || match e.attrs.get("container") {
-                    Some(AttrValue::Str(c)) => self
-                        .state
-                        .entities
-                        .get(c)
-                        .is_some_and(|container| container.kind == "place" && named.contains(&container.name)),
+                    Some(AttrValue::Str(c)) => {
+                        self.state.entities.get(c).is_some_and(|container| {
+                            container.kind == "place" && named.contains(&container.name)
+                        })
+                    }
                     _ => false,
                 };
             if keep {
@@ -361,7 +364,10 @@ impl Game {
     pub fn story(&self) -> Result<Vec<String>> {
         let mut lines = Vec::new();
         for r in &self.log.records {
-            lines.push(format!("· {}", prose_lines(r, &self.content, &self.dict)?.join("\n  ")));
+            lines.push(format!(
+                "· {}",
+                prose_lines(r, &self.content, &self.dict)?.join("\n  ")
+            ));
         }
         if lines.is_empty() {
             lines.push("(nothing has happened yet)".to_string());
@@ -435,8 +441,7 @@ impl Game {
         // the manual ceil-division is exact for
         // the non-negative minutes the engine ever holds (i64::div_ceil is
         // still feature-gated on this toolchain)
-        let target =
-            (due_at + MIN_PER_HALFHOUR - 1) / MIN_PER_HALFHOUR * MIN_PER_HALFHOUR;
+        let target = (due_at + MIN_PER_HALFHOUR - 1) / MIN_PER_HALFHOUR * MIN_PER_HALFHOUR;
         let clock = clock_from_abs_min(target);
         let Clock { day, halfhour } = clock;
         self.handle_line(&format!("{day}:{halfhour}"))
@@ -455,12 +460,11 @@ impl Game {
             return Ok(vec![]); // §9.35: nothing left to suggest after the ending
         }
         let alive = self.visible();
-        let me = self.meta.player.as_ref().and_then(|p| {
-            alive
-                .iter()
-                .copied()
-                .find(|e| &e.name == p)
-        });
+        let me = self
+            .meta
+            .player
+            .as_ref()
+            .and_then(|p| alive.iter().copied().find(|e| &e.name == p));
         let Some(me) = me else {
             return Ok(vec![]);
         };
@@ -500,12 +504,7 @@ impl Game {
                 // §9.50: a spent recipe stops being suggested — the same
                 // gate selection applies
                 if let Some(max) = r.max {
-                    if self
-                        .state
-                        .executed
-                        .get(&r.id)
-                        .is_some_and(|&n| n >= max)
-                    {
+                    if self.state.executed.get(&r.id).is_some_and(|&n| n >= max) {
                         continue;
                     }
                 }
@@ -635,8 +634,8 @@ impl Game {
                 let Some(slot) = verb.slot_by_role.get(role_str) else {
                     unreachable!("pool role is always a declared slot role")
                 };
-                    // cap = max(slot.min, min(slot.max, 2)) — an unbounded max
-                    // (None) loses to the 2
+                // cap = max(slot.min, min(slot.max, 2)) — an unbounded max
+                // (None) loses to the 2
                 let cap = std::cmp::max(slot.min, std::cmp::min(slot.max.unwrap_or(2), 2));
                 let role = Role::from_lower(role_str);
                 let base_es: Vec<String> = role
@@ -670,9 +669,7 @@ impl Game {
         while i < story.len() {
             let first_word = story[i].split(' ').next().unwrap_or("").to_string();
             let mut group = Vec::new();
-            while i < story.len()
-                && story[i].split(' ').next().unwrap_or("") == first_word
-            {
+            while i < story.len() && story[i].split(' ').next().unwrap_or("") == first_word {
                 group.push(story[i].clone());
                 i += 1;
             }
@@ -683,7 +680,11 @@ impl Game {
         let mut mixed: Vec<String> = Vec::new();
         while mixed.len() < 64 && by_verb.iter().any(|g| !g.is_empty()) {
             for g in &mut by_verb {
-                if let Some(v) = if g.is_empty() { None } else { Some(g.remove(0)) } {
+                if let Some(v) = if g.is_empty() {
+                    None
+                } else {
+                    Some(g.remove(0))
+                } {
                     mixed.push(v);
                 }
             }
@@ -703,4 +704,3 @@ impl Game {
         Ok(out.into_iter().take(SUGGEST_LIMIT).collect())
     }
 }
-

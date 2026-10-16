@@ -25,10 +25,10 @@ use crate::core::num_parse::parse_authored_int;
 use crate::core::parse::parse_sentence;
 use crate::core::query::match_query;
 use crate::core::r#ref::{id_ref, name_ref, Ref};
-use crate::core::types::{Entity, State};
-use crate::engine::engine::Step;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{dsl_trim, DSL_WS_CLASS};
+use crate::core::types::{Entity, State};
+use crate::engine::engine::Step;
 
 /// The parse context: dictionaries, content, state and the default actor.
 pub struct LenientCtx<'a> {
@@ -114,7 +114,9 @@ impl Group {
 // `\s` → DSL_WS_CLASS, `\d` → ASCII [0-9].
 fn passthrough_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || Regex::new(&format!("^[0-9]+:[0-9]+{DSL_WS_CLASS}@")))
+    static_regex(&RE, || {
+        Regex::new(&format!("^[0-9]+:[0-9]+{DSL_WS_CLASS}@"))
+    })
 }
 
 // `split(/[\s,;]+)/`: the DSL_WS_CLASS
@@ -459,7 +461,11 @@ fn alive_pools(state: &State) -> IndexMap<String, Vec<String>> {
 /// than the clause's roles demand (E9's distinct-binding refusal).
 enum PhraseFail {
     Unknown(String),
-    Short { key: String, needed: usize, have: usize },
+    Short {
+        key: String,
+        needed: usize,
+        have: usize,
+    },
 }
 
 /// Small counts speak as words in the refusal voice ("only one 'x' — you
@@ -717,10 +723,7 @@ mod tests {
         // 'vane ledger' starts with 'vane'
         assert_eq!(suggest("vane", &pool, 3), vec!["THE_VANE_LEDGER"]);
         // no prefix → near (levenshtein ≤ 2) fallback
-        assert_eq!(
-            suggest("ledgr", &["LEDGER".to_string()], 3),
-            vec!["LEDGER"]
-        );
+        assert_eq!(suggest("ledgr", &["LEDGER".to_string()], 3), vec!["LEDGER"]);
         assert_eq!(
             suggest("paten", &["THE_PATENTEE".to_string()], 3),
             vec!["THE_PATENTEE"] // prefix on the normalized form
@@ -733,21 +736,33 @@ mod tests {
         // 118 halfhours = day 2 halfhour 22, and the day field carries over
         assert_eq!(
             wrap_clock("0:118"),
-            Some(Clock { day: 2, halfhour: 22 })
+            Some(Clock {
+                day: 2,
+                halfhour: 22
+            })
         );
         assert_eq!(
             wrap_clock("1:49"),
-            Some(Clock { day: 2, halfhour: 1 })
+            Some(Clock {
+                day: 2,
+                halfhour: 1
+            })
         );
         // the boundary itself folds exactly one day
         assert_eq!(
             wrap_clock("0:48"),
-            Some(Clock { day: 1, halfhour: 0 })
+            Some(Clock {
+                day: 1,
+                halfhour: 0
+            })
         );
         // a legal clock needs no wrap (parse_clock takes it first)
         assert_eq!(
             wrap_clock("3:47"),
-            Some(Clock { day: 3, halfhour: 47 })
+            Some(Clock {
+                day: 3,
+                halfhour: 47
+            })
         );
         // absurd literals saturate parse_authored_int and refuse here
         assert_eq!(wrap_clock("0:99999999999999999999"), None);

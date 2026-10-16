@@ -4,9 +4,9 @@
 //! outcomes.
 
 use crate::core::clock::{format_clock, format_duration};
+use crate::core::dict::Dictionary;
 use crate::core::r#ref::{format_ref, is_safe_name, sort_refs, Ref};
 use crate::core::sentence::{Arg, Clause, IntoTarget, Outcome, Sentence, SentenceKind};
-use crate::core::dict::Dictionary;
 use crate::error::{ChorusError, Result};
 
 /// The canonical spelling of one parsed sentence (spec §5.1).
@@ -252,7 +252,13 @@ pub fn quote(s: &str) -> String {
 #[must_use]
 fn format_trigger_id(id: &str) -> String {
     id.split(':')
-        .map(|seg| if is_safe_name(seg) { seg.to_string() } else { quote(seg) })
+        .map(|seg| {
+            if is_safe_name(seg) {
+                seg.to_string()
+            } else {
+                quote(seg)
+            }
+        })
         .collect::<Vec<_>>()
         .join(":")
 }
@@ -260,8 +266,8 @@ fn format_trigger_id(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::parse::parse_sentence;
     use crate::core::dict::core_dictionary;
+    use crate::core::parse::parse_sentence;
 
     fn dict() -> Dictionary {
         core_dictionary()
@@ -276,7 +282,10 @@ mod tests {
         assert_eq!(out, "ANOTHER, THING AT shelf READ TO book");
         // post-verbal AT canonicalizes pre-verbal (§9.10)
         let s2 = parse_sentence("ANA READ book AT shelf", &d).unwrap();
-        assert_eq!(format_sentence(&s2, Some(&d)).unwrap(), "ANA AT shelf READ book");
+        assert_eq!(
+            format_sentence(&s2, Some(&d)).unwrap(),
+            "ANA AT shelf READ book"
+        );
         // re-parse stability: format(parse(format(parse(x)))) == format(parse(x))
         let s3 = parse_sentence(&out, &d).unwrap();
         assert_eq!(format_sentence(&s3, Some(&d)).unwrap(), out);
@@ -300,8 +309,11 @@ mod tests {
         );
         // ROLLED/DRAWN ride the generic paren'd fallback on purpose — their
         // args format and re-parse (the fold's counter/cursor rows)
-        let s2 =
-            parse_sentence("ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)", &d).unwrap();
+        let s2 = parse_sentence(
+            "ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)",
+            &d,
+        )
+        .unwrap();
         assert_eq!(
             format_sentence(&s2, Some(&d)).unwrap(),
             "ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)"

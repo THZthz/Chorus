@@ -147,11 +147,7 @@ fn walk(
 /// the keyed dedupe: first tag for a clause-set
 /// key wins, insertion order preserved.
 fn push_tag(out: &mut IndexMap<String, Cand>, clock: Clock, tag: &str, clauses: Vec<Clause>) {
-    let key = clauses
-        .iter()
-        .map(clause_key)
-        .collect::<Vec<_>>()
-        .join(";");
+    let key = clauses.iter().map(clause_key).collect::<Vec<_>>().join(";");
     out.entry(key).or_insert_with(|| Cand {
         tag: tag.to_string(),
         step: Step {
@@ -257,12 +253,11 @@ pub fn candidates_for(
         let mut fills: IndexMap<String, Vec<Vec<Ref>>> = IndexMap::new();
         for slot in &verb.slots {
             let mut opts: Vec<Vec<Ref>> = Vec::new();
-            let candidates: Vec<&Entity> =
-                if slot.role == "actors" && !chars.is_empty() {
-                    chars.clone()
-                } else {
-                    pool(slot)
-                };
+            let candidates: Vec<&Entity> = if slot.role == "actors" && !chars.is_empty() {
+                chars.clone()
+            } else {
+                pool(slot)
+            };
             if full {
                 // the whole cardinality space (§6.1): every k-subset in
                 // [min, max] …
@@ -328,11 +323,7 @@ pub fn candidates_for(
                 Some(slot) => {
                     let cover: Vec<&Vec<Ref>> = fills
                         .get(role.as_str())
-                        .map(|opts| {
-                            opts.iter()
-                                .filter(|o| o.len() as i64 >= slot.min)
-                                .collect()
-                        })
+                        .map(|opts| opts.iter().filter(|o| o.len() as i64 >= slot.min).collect())
                         .unwrap_or_default();
                     if cover.is_empty() {
                         viable = false;
@@ -346,9 +337,10 @@ pub fn candidates_for(
             continue;
         }
 
-        let mk = |over: &IndexMap<String, Vec<Ref>>, tag: &str, out: &mut IndexMap<String, Cand>| {
-            push_tag(out, clock, tag, vec![build_clause(&verb.name, over)]);
-        };
+        let mk =
+            |over: &IndexMap<String, Vec<Ref>>, tag: &str, out: &mut IndexMap<String, Cand>| {
+                push_tag(out, clock, tag, vec![build_clause(&verb.name, over)]);
+            };
 
         mk(&min_fill, &format!("{} min-fill", verb.name), &mut out);
         if full {
@@ -372,8 +364,11 @@ pub fn candidates_for(
             }
             // deliberate slot-mismatch probe(s): card(s) that must not fit.
             if let Some(q) = &slot.query {
-                let wrong: Vec<&Entity> =
-                    alive.iter().copied().filter(|e| !match_query(e, q)).collect();
+                let wrong: Vec<&Entity> = alive
+                    .iter()
+                    .copied()
+                    .filter(|e| !match_query(e, q))
+                    .collect();
                 let wrong: Vec<&Entity> = if full {
                     wrong
                 } else {
@@ -416,9 +411,7 @@ pub fn candidates_for(
                     let Some(ref_a) = min_fill.get(a).and_then(|v| v.first()).cloned() else {
                         continue;
                     };
-                    if !verb.slot_by_role.contains_key(a)
-                        || !verb.slot_by_role.contains_key(*b)
-                    {
+                    if !verb.slot_by_role.contains_key(a) || !verb.slot_by_role.contains_key(*b) {
                         continue;
                     }
                     let mut over = min_fill.clone();
@@ -434,11 +427,7 @@ pub fn candidates_for(
             let roles_with_opts: Vec<Role> = ROLES
                 .iter()
                 .copied()
-                .filter(|r| {
-                    fills
-                        .get(r.as_str())
-                        .is_some_and(|opts| !opts.is_empty())
-                })
+                .filter(|r| fills.get(r.as_str()).is_some_and(|opts| !opts.is_empty()))
                 .collect();
             let mut product: usize = 1;
             for r in &roles_with_opts {
@@ -448,7 +437,15 @@ pub fn candidates_for(
             }
             if product <= 3000 && roles_with_opts.len() >= 2 {
                 let mut idx: IndexMap<Role, usize> = IndexMap::new();
-                product_rec(0, &roles_with_opts, &fills, &mut idx, &verb.name, &mut out, clock);
+                product_rec(
+                    0,
+                    &roles_with_opts,
+                    &fills,
+                    &mut idx,
+                    &verb.name,
+                    &mut out,
+                    clock,
+                );
             }
         }
 
@@ -469,12 +466,9 @@ pub fn candidates_for(
     }
 
     // multi-clause and clock-discipline probes.
-    let wait_clauses = parse_sentence(
-        &format!("{} @ {} WAIT", format_clock(clock), player),
-        dict,
-    )
-    .expect("the WAIT probe sentence parses")
-    .clauses;
+    let wait_clauses = parse_sentence(&format!("{} @ {} WAIT", format_clock(clock), player), dict)
+        .expect("the WAIT probe sentence parses")
+        .clauses;
     let mut doubled = wait_clauses.clone();
     doubled.extend(wait_clauses.iter().cloned());
     push_tag(&mut out, clock, "multi-clause", doubled);
@@ -506,12 +500,9 @@ pub fn candidates_for(
     }
     if state.now >= 60 {
         let past = clock_from_abs_min(abs_min(clock) - 60);
-        let rewind = parse_sentence(
-            &format!("{} @ {} WAIT", format_clock(past), player),
-            dict,
-        )
-        .expect("the clock-rewind probe sentence parses")
-        .clauses;
+        let rewind = parse_sentence(&format!("{} @ {} WAIT", format_clock(past), player), dict)
+            .expect("the clock-rewind probe sentence parses")
+            .clauses;
         push_tag(&mut out, clock, "clock rewind", rewind);
     }
     out.into_values().collect()
@@ -605,19 +596,17 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
             .iter()
             .filter(|c| !c.tag.contains("wrong-kind") && c.tag != "clock rewind")
             .collect();
-        let pick_from: Vec<&Cand> =
-            if lcg.next_f64() < 0.2 || benign.is_empty() {
-                cands.iter().collect()
-            } else {
-                benign
-            };
+        let pick_from: Vec<&Cand> = if lcg.next_f64() < 0.2 || benign.is_empty() {
+            cands.iter().collect()
+        } else {
+            benign
+        };
         // multi-clause is always pushed, so the pick space is never empty
         debug_assert!(
             !pick_from.is_empty(),
             "candidates_for always offers at least the multi-clause probe"
         );
-        let pick = ((lcg.next_f64() * pick_from.len() as f64).floor() as usize)
-            % pick_from.len();
+        let pick = ((lcg.next_f64() * pick_from.len() as f64).floor() as usize) % pick_from.len();
         let cand = &pick_from[pick];
         let r = settle_step(
             &world.content,

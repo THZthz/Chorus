@@ -15,8 +15,8 @@ use chorus::content::content::{
     compile_content, ContentRaw, DeckRaw, ExpireTriggerDef, PrototypeDef, PrototypeDerive,
     RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
-use chorus::core::dict::core_dictionary;
 use chorus::core::dice::roll_die;
+use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
 use chorus::reach::{analyze_card, CardOptions, CardVerdict, Existence};
 
@@ -284,11 +284,18 @@ fn s2_expiry_chain_the_expiry_trigger_proves_its_mint() {
                 ),
             ),
         ]),
-        triggers: Some(vec![expire_trigger("paper_to_ash", "PAPER", &["SPAWN ASH"])]),
+        triggers: Some(vec![expire_trigger(
+            "paper_to_ash",
+            "PAPER",
+            &["SPAWN ASH"],
+        )]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let state = state_with(vec![ent("ANA", "character", &[]), ent("PAPER", "item", &[])]);
+    let state = state_with(vec![
+        ent("ANA", "character", &[]),
+        ent("PAPER", "item", &[]),
+    ]);
 
     let ash = analyze(&content, &state, "ASH");
     assert_eq!(ash.verdict, CardVerdict::Obtainable);
@@ -683,10 +690,7 @@ fn s9_gate_death_the_mortal_gate_demotes_to_unproven() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let state = state_with(vec![
-        ent("ANA", "character", &[]),
-        ent("ROPE", "item", &[]),
-    ]);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("ROPE", "item", &[])]);
 
     let goal = analyze(&content, &state, "GOAL");
     assert_eq!(goal.verdict, CardVerdict::Unproven);
@@ -701,32 +705,30 @@ fn s9_gate_death_the_mortal_gate_demotes_to_unproven() {
 /// exists and the analyzer flips to obtainable.
 #[test]
 fn s10_self_filler_collision_selfgated_demotes_until_the_slot_is_optional() {
-    let mk = |with_min: i64| {
-        ContentRaw {
-            prototypes: protos(&[("X", proto("item")), ("GOAL", proto("idea"))]),
-            verbs: IndexMap::from([
-                (
-                    "MAKER".to_string(),
-                    verb(
-                        vec![slot("actors", 1, 1, Some("kind:character"))],
-                        0,
-                        vec![recipe(&["SPAWN X"])],
-                    ),
+    let mk = |with_min: i64| ContentRaw {
+        prototypes: protos(&[("X", proto("item")), ("GOAL", proto("idea"))]),
+        verbs: IndexMap::from([
+            (
+                "MAKER".to_string(),
+                verb(
+                    vec![slot("actors", 1, 1, Some("kind:character"))],
+                    0,
+                    vec![recipe(&["SPAWN X"])],
                 ),
-                (
-                    "SELFMADE".to_string(),
-                    verb(
-                        vec![
-                            slot("actors", 1, 1, Some("kind:character")),
-                            slot("with", with_min, 1, Some("kind:item")),
-                        ],
-                        0,
-                        vec![recipe(&["SPAWN X", "SPAWN GOAL"])],
-                    ),
+            ),
+            (
+                "SELFMADE".to_string(),
+                verb(
+                    vec![
+                        slot("actors", 1, 1, Some("kind:character")),
+                        slot("with", with_min, 1, Some("kind:item")),
+                    ],
+                    0,
+                    vec![recipe(&["SPAWN X", "SPAWN GOAL"])],
                 ),
-            ]),
-            ..ContentRaw::default()
-        }
+            ),
+        ]),
+        ..ContentRaw::default()
     };
     let content = compile(&mk(1));
     let state = state_with(vec![ent("ANA", "character", &[])]);
@@ -752,7 +754,8 @@ fn s10_self_filler_collision_selfgated_demotes_until_the_slot_is_optional() {
 /// 'unobtainable'). Seed search via roll_die exactly like the rig.
 #[test]
 fn s13_roll_guarded_mint_stays_unproven_for_both_seeds() {
-    let mk = |seed: i64| ContentRaw {
+    let mk = |seed: i64| {
+        ContentRaw {
         seed: Some(seed),
         prototypes: protos(&[("PRIZE", proto("item"))]),
         verbs: IndexMap::from([(
@@ -767,6 +770,7 @@ fn s13_roll_guarded_mint_stays_unproven_for_both_seeds() {
             ),
         )]),
         ..ContentRaw::default()
+    }
     };
     let low_seed = (0..).find(|&s| roll_die(s, 0, 6) < 4).unwrap();
     let high_seed = (0..).find(|&s| roll_die(s, 0, 6) >= 4).unwrap();
@@ -844,10 +848,7 @@ fn s14_two_stage_expiry_arming_the_broken_chain_stays_unproven() {
 #[test]
 fn q17_zero_entity_scripts_keep_the_site_reason_branch_reachable() {
     let raw = ContentRaw {
-        prototypes: protos(&[
-            ("PILLAR", proto("item")),
-            ("VISITOR", proto("character")),
-        ]),
+        prototypes: protos(&[("PILLAR", proto("item")), ("VISITOR", proto("character"))]),
         verbs: IndexMap::from([(
             "EXPLORE".to_string(),
             verb(

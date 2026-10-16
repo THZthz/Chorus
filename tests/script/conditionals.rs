@@ -14,7 +14,8 @@
 //! the one `/s` (dotall) flag becomes an inline `(?s)` (the harness's
 //! registered escape adjustment).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::seed::seed_state;
@@ -71,7 +72,10 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock {
+                day: 0,
+                halfhour: 0,
+            })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -112,7 +116,11 @@ struct Extra {
 
 /// A one-verb rig:
 /// INSPECT takes actors 1..2 and an optional object.
-fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus::error::Result<CompiledContent> {
+fn try_inspect_content(
+    dict: &Dictionary,
+    out: &[&str],
+    extra: Extra,
+) -> chorus::error::Result<CompiledContent> {
     compile_content(
         &ContentRaw {
             verbs: [(
@@ -126,7 +134,13 @@ fn try_inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> chorus:
                             query: Some("kind:character".into()),
                             shown: None,
                         },
-                        SlotDef { role: "object".into(), min: 0, max: Some(1), query: None, shown: None },
+                        SlotDef {
+                            role: "object".into(),
+                            min: 0,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
                     ],
                     duration: 0,
                     recipes: vec![RecipeDef {
@@ -173,7 +187,13 @@ fn attune_content(dict: &Dictionary, out: &[&str], duration: i64) -> CompiledCon
                             query: Some("kind:character".into()),
                             shown: None,
                         },
-                        SlotDef { role: "object".into(), min: 1, max: Some(1), query: None, shown: None },
+                        SlotDef {
+                            role: "object".into(),
+                            min: 1,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
                     ],
                     duration,
                     recipes: vec![RecipeDef {
@@ -203,7 +223,11 @@ fn dim_world() -> State {
     let mut s = seed_state();
     let ids: Vec<String> = s.entities.keys().cloned().collect();
     for id in ids {
-        s.entities.get_mut(&id).unwrap().aspects.shift_remove("lantern");
+        s.entities
+            .get_mut(&id)
+            .unwrap()
+            .aspects
+            .shift_remove("lantern");
     }
     s
 }
@@ -213,7 +237,10 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(&msg),
+        "refusal {msg:?} does not match /{pattern}/"
+    );
 }
 
 /// `r.rejected` matches `re`.
@@ -223,7 +250,10 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
         .as_deref()
         .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(msg),
+        "rejected {msg:?} does not match /{pattern}/"
+    );
 }
 
 fn ops(outcomes: &[Outcome]) -> Vec<&str> {
@@ -287,7 +317,10 @@ fn a_nested_else_binds_to_the_nearest_if_greedy() {
     )
     .unwrap();
     assert_eq!(inner[0].fallback, None);
-    let deep = inner[0].arms.as_ref().unwrap()[0].then[0].fallback.as_ref().unwrap();
+    let deep = inner[0].arms.as_ref().unwrap()[0].then[0]
+        .fallback
+        .as_ref()
+        .unwrap();
     assert_eq!(narrated(deep), ["inner else"]);
     let outer = parse_outcomes(
         "IF exists(A) -> (IF exists(B) -> (NARRATE \"in\")) ELSE -> (NARRATE \"outer else\")",
@@ -296,7 +329,10 @@ fn a_nested_else_binds_to_the_nearest_if_greedy() {
     )
     .unwrap();
     assert_eq!(outer[0].arms.as_ref().unwrap()[0].then[0].fallback, None);
-    assert_eq!(narrated(outer[0].fallback.as_ref().unwrap()), ["outer else"]);
+    assert_eq!(
+        narrated(outer[0].fallback.as_ref().unwrap()),
+        ["outer else"]
+    );
 }
 
 #[test]
@@ -304,22 +340,40 @@ fn if_and_else_are_reserved_words_quoted_names_still_parse() {
     let dict = cond_dict();
     assert!(dict.reserved.contains("IF"));
     assert!(dict.reserved.contains("ELSE"));
-    assert_err_msg(parse_sentence("0:0 @ ANA WAIT -> SPAWN IF", &dict), "reserved");
-    assert_eq!(parse_outcomes("SPAWN \"IF\"", &dict, None).unwrap().len(), 1); // the quote is the escape hatch
+    assert_err_msg(
+        parse_sentence("0:0 @ ANA WAIT -> SPAWN IF", &dict),
+        "reserved",
+    );
+    assert_eq!(
+        parse_outcomes("SPAWN \"IF\"", &dict, None).unwrap().len(),
+        1
+    ); // the quote is the escape hatch
 }
 
 #[test]
 fn parse_errors_missing_branch_parens_else_without_if_dangling_else_if_condition_without_arrow() {
     let dict = cond_dict();
-    assert_err_msg(parse_outcomes("IF exists(X) -> SPAWN Y", &dict, None), r"expected '\('"); // bodies require parens
+    assert_err_msg(
+        parse_outcomes("IF exists(X) -> SPAWN Y", &dict, None),
+        r"expected '\('",
+    ); // bodies require parens
     assert_err_msg(
         parse_sentence("0:0 @ ANA WAIT -> SPAWN X ELSE -> (NARRATE \"y\")", &dict),
         "ELSE",
     );
-    assert_err_msg(parse_outcomes("IF exists(X) -> (NARRATE \"a\") ELSE IF", &dict, None), "->");
+    assert_err_msg(
+        parse_outcomes("IF exists(X) -> (NARRATE \"a\") ELSE IF", &dict, None),
+        "->",
+    );
     assert_err_msg(parse_outcomes("IF exists(X)", &dict, None), "->");
-    assert_err_msg(parse_outcomes("IF exists(X), NARRATE \"y\"", &dict, None), "->"); // a comma never splits a condition
-    assert_err_msg(parse_outcomes("IF exists(X) ELSE -> (NARRATE \"y\")", &dict, None), "->");
+    assert_err_msg(
+        parse_outcomes("IF exists(X), NARRATE \"y\"", &dict, None),
+        "->",
+    ); // a comma never splits a condition
+    assert_err_msg(
+        parse_outcomes("IF exists(X) ELSE -> (NARRATE \"y\")", &dict, None),
+        "->",
+    );
 }
 
 #[test]
@@ -352,9 +406,13 @@ fn authored_outcome_strings_must_parse_completely_trailing_tokens_are_load_error
         r"trailing token 'ELSE'",
     );
     assert_eq!(
-        parse_outcomes("IF exists(X) -> (NARRATE \"a\") ELSE -> (NARRATE \"b\")", &dict, None)
-            .unwrap()
-            .len(),
+        parse_outcomes(
+            "IF exists(X) -> (NARRATE \"a\") ELSE -> (NARRATE \"b\")",
+            &dict,
+            None
+        )
+        .unwrap()
+        .len(),
         1 // a complete chain still parses
     );
 }
@@ -433,7 +491,12 @@ fn draft_visibility_set_then_if_reads_the_new_level_not_the_input_state() {
     // the delta logged its concrete absolute (§9.31), taken branch only
     assert_eq!(ops(&done(&r).unwrap().outcomes), ["SET", "NARRATE"]);
     assert_eq!(
-        r.state.entities.get("chalice").unwrap().aspects.get("level"),
+        r.state
+            .entities
+            .get("chalice")
+            .unwrap()
+            .aspects
+            .get("level"),
         Some(&chorus::core::types::AspectVal::Num(2))
     );
 }
@@ -494,17 +557,34 @@ fn an_if_after_a_replace_reads_the_successor_the_expansion_minted() {
             prototypes: Some(
                 [("GHOST", "idea")]
                     .into_iter()
-                    .map(|(n, k)| (n.to_string(), PrototypeDef { kind: k.into(), ..Default::default() }))
+                    .map(|(n, k)| {
+                        (
+                            n.to_string(),
+                            PrototypeDef {
+                                kind: k.into(),
+                                ..Default::default()
+                            },
+                        )
+                    })
                     .collect(),
             ),
             ..Extra::default()
         },
     );
     let base = seed_state();
-    let r = run(&c, &dict, clone_state(&base), "0:0 @ ANA INSPECT RITE_OF_ASCENSION", 1);
+    let r = run(
+        &c,
+        &dict,
+        clone_state(&base),
+        "0:0 @ ANA INSPECT RITE_OF_ASCENSION",
+        1,
+    );
     assert_eq!(r.rejected, None);
     // the expansion's concrete SPAWN+DESTROY pair, then the taken branch — in position
-    assert_eq!(ops(&done(&r).unwrap().outcomes), ["SPAWN", "DESTROY", "NARRATE"]);
+    assert_eq!(
+        ops(&done(&r).unwrap().outcomes),
+        ["SPAWN", "DESTROY", "NARRATE"]
+    );
     assert_eq!(said(&r), ["successor here"]);
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -582,7 +662,13 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
     )
     .unwrap();
     let base = seed_state();
-    let r = run(&c, &dict, clone_state(&base), "0:0 @ ANA INSPECT CHALICE; ANA ATTUNE RITE_OF_ASCENSION", 1);
+    let r = run(
+        &c,
+        &dict,
+        clone_state(&base),
+        "0:0 @ ANA INSPECT CHALICE; ANA ATTUNE RITE_OF_ASCENSION",
+        1,
+    );
     assert_eq!(r.rejected, None);
     assert_eq!(said(&r), ["clause one", "clause two else"]);
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
@@ -602,7 +688,13 @@ fn the_dead_stamp_rule_destroy_object_then_if_reads_the_dead_card_as_absent_sile
     );
     // RITE_OF_ASCENSION carries demand:3 — destroyed earlier in the SAME list,
     // so the condition reads a dead-stamped entity: false, silently (§9.39)
-    let r = run(&c, &dict, seed_state(), "0:0 @ ANA ATTUNE RITE_OF_ASCENSION", 1);
+    let r = run(
+        &c,
+        &dict,
+        seed_state(),
+        "0:0 @ ANA ATTUNE RITE_OF_ASCENSION",
+        1,
+    );
     assert_eq!(r.rejected, None);
     assert_eq!(said(&r), ["gone"]);
 }
@@ -635,7 +727,10 @@ fn the_taken_branch_flattens_in_position_the_untaken_branch_is_gone() {
     let c = concretization_content(&dict);
     let r = run(&c, &dict, seed_state(), "0:0 @ ANA INSPECT CHALICE", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(ops(&done(&r).unwrap().outcomes), ["NARRATE", "PROGRESS", "SPAWN", "NARRATE"]);
+    assert_eq!(
+        ops(&done(&r).unwrap().outcomes),
+        ["NARRATE", "PROGRESS", "SPAWN", "NARRATE"]
+    );
     let all = serde_json::to_string(&r.records).unwrap();
     assert!(!all.contains(r#""IF""#));
     assert!(!all.contains("ELSE"));
@@ -643,7 +738,10 @@ fn the_taken_branch_flattens_in_position_the_untaken_branch_is_gone() {
     // v0.5: a branch-nested PROGRESS defers with the branch — the completion
     // row carries the flattened, taken branch verbatim
     let sentence = &done(&r).unwrap().sentence;
-    assert!(sentence.contains("PROGRESS(1halfhour, \"tick\")"), "{sentence}"); // canonical duration form
+    assert!(
+        sentence.contains("PROGRESS(1halfhour, \"tick\")"),
+        "{sentence}"
+    ); // canonical duration form
     assert!(!sentence.contains("IF "));
 }
 
@@ -664,12 +762,21 @@ fn fold_and_jsonl_equality_replaying_the_flattened_rows_reproduces_play_exactly(
     let state = seed_state();
     let base = clone_state(&state);
     let r1 = run(&c, &dict, state, "0:0 @ ANA INSPECT CHALICE", 1);
-    let quiet = inspect_content(&dict, &["IF exists(NOSUCH_CARD) -> (NARRATE \"no\")"], Extra::default());
+    let quiet = inspect_content(
+        &dict,
+        &["IF exists(NOSUCH_CARD) -> (NARRATE \"no\")"],
+        Extra::default(),
+    );
     let r2 = run(&quiet, &dict, r1.state, "0:0 @ ANA INSPECT CHALICE", 2); // no ELSE: nothing to replay
     assert_eq!(r2.rejected, None);
     assert_eq!(done(&r2).unwrap().outcomes.len(), 0);
     let path = tmp_log_path("flatten");
-    let both: Vec<ActionRecord> = r1.records.iter().chain(r2.records.iter()).cloned().collect();
+    let both: Vec<ActionRecord> = r1
+        .records
+        .iter()
+        .chain(r2.records.iter())
+        .cloned()
+        .collect();
     save_log(&path, &both).unwrap();
     let replayed = fold(&load_log(&path).unwrap(), &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
@@ -691,12 +798,18 @@ fn refuse_inside_a_taken_branch_attempt_logged_effects_discarded_state_untouched
     let state = seed_state();
     let before = snap(&state);
     let base_now = state.now;
-    let r = run(&c, &dict, clone_state(&state), "0:0 @ ANA ATTUNE CHALICE", 1);
+    let r = run(
+        &c,
+        &dict,
+        clone_state(&state),
+        "0:0 @ ANA ATTUNE CHALICE",
+        1,
+    );
     assert_eq!(r.rejected, None); // v0.5: the commit is clean; the REFUSE decides at completion
     assert_eq!(ops(&done(&r).unwrap().outcomes), ["DESTROY", "REFUSE"]);
     assert_eq!(act(&r).unwrap().advanced_min, 60); // the window DID open…
     assert_eq!(r.state.now, base_now + 60); // …and the clock crossed it
-    // `r.state !== state`: the step state genuinely moved (now advanced)
+                                            // `r.state !== state`: the step state genuinely moved (now advanced)
     assert_eq!(snap(&state), before); // the scratch died with the refusal
     let replayed = fold(&r.records, &state, &dict, &c).unwrap(); // replay agrees, effects skipped
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -710,11 +823,18 @@ fn refuse_inside_a_taken_branch_attempt_logged_effects_discarded_state_untouched
 #[test]
 fn an_if_condition_operand_with_no_bound_card_the_window_refuses_at_completion() {
     let dict = cond_dict();
-    let c = inspect_content(&dict, &["IF object.aspect.demand >= 1 -> (NARRATE \"needs\")"], Extra::default());
+    let c = inspect_content(
+        &dict,
+        &["IF object.aspect.demand >= 1 -> (NARRATE \"needs\")"],
+        Extra::default(),
+    );
     let state = seed_state();
     let r = run(&c, &dict, clone_state(&state), "0:0 @ ANA INSPECT", 1); // no object bound: the operand cannot resolve
     assert_eq!(r.rejected, None); // v0.5: strict conditions decide at the completion
-    assert_refusal(&r, r"IF condition: operand 'object\.aspect\.demand' cannot resolve");
+    assert_refusal(
+        &r,
+        r"IF condition: operand 'object\.aspect\.demand' cannot resolve",
+    );
     // the effects are discarded and the window closes — but §9.50: it
     // registered at begin, so a window that later refuses still counted
     // (the one deliberate state delta; everything else is untouched)
@@ -744,7 +864,13 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
                             query: Some("kind:character".into()),
                             shown: None,
                         },
-                        SlotDef { role: "object".into(), min: 0, max: Some(1), query: None, shown: None },
+                        SlotDef {
+                            role: "object".into(),
+                            min: 0,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
                     ],
                     duration: 0,
                     recipes: vec![
@@ -803,13 +929,19 @@ fn count_and_total_over_an_empty_role_read_0_branch_selection_never_a_rejection(
         &["IF count(object) >= 1 -> (NARRATE \"has\") ELSE -> (NARRATE \"none\")"],
         Extra::default(),
     );
-    assert_eq!(said(&run(&count, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)), ["none"]); // object slot unbound
+    assert_eq!(
+        said(&run(&count, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)),
+        ["none"]
+    ); // object slot unbound
     let total = inspect_content(
         &dict,
         &["IF total(object, aspect:demand) >= 1 -> (NARRATE \"has\") ELSE -> (NARRATE \"none\")"],
         Extra::default(),
     );
-    assert_eq!(said(&run(&total, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)), ["none"]);
+    assert_eq!(
+        said(&run(&total, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)),
+        ["none"]
+    );
 }
 
 #[test]
@@ -821,9 +953,18 @@ fn the_documented_guard_for_an_optional_role_count_and_never_rejects() {
         Extra::default(),
     );
     // AND short-circuits before the strict path reads
-    assert_eq!(said(&run(&c, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)), ["no demand"]);
     assert_eq!(
-        said(&run(&c, &dict, seed_state(), "0:0 @ ANA INSPECT RITE_OF_ASCENSION", 1)),
+        said(&run(&c, &dict, seed_state(), "0:0 @ ANA INSPECT", 1)),
+        ["no demand"]
+    );
+    assert_eq!(
+        said(&run(
+            &c,
+            &dict,
+            seed_state(),
+            "0:0 @ ANA INSPECT RITE_OF_ASCENSION",
+            1
+        )),
         ["demands"]
     );
 }
@@ -845,8 +986,20 @@ fn bindings_content(dict: &Dictionary) -> CompiledContent {
 fn count_actors_rel_and_exists_query_bind_against_the_step_and_the_world() {
     let dict = cond_dict();
     let c = bindings_content(&dict);
-    assert_eq!(said(&run(&c, &dict, seed_state(), "0:0 @ ANA, BERTHA INSPECT", 1)), ["kin"]);
-    assert_eq!(said(&run(&c, &dict, dim_world(), "0:0 @ ANA INSPECT", 1)), ["plain"]); // the world form can be false
+    assert_eq!(
+        said(&run(
+            &c,
+            &dict,
+            seed_state(),
+            "0:0 @ ANA, BERTHA INSPECT",
+            1
+        )),
+        ["kin"]
+    );
+    assert_eq!(
+        said(&run(&c, &dict, dim_world(), "0:0 @ ANA INSPECT", 1)),
+        ["plain"]
+    ); // the world form can be false
 }
 
 #[test]
@@ -859,15 +1012,38 @@ fn object_aspect_reads_the_bound_card_the_count_dread_typo_lint_covers_if_condit
     );
     // demand:3
     assert_eq!(
-        said(&run(&d, &dict, seed_state(), "0:0 @ ANA INSPECT RITE_OF_ASCENSION", 1)),
+        said(&run(
+            &d,
+            &dict,
+            seed_state(),
+            "0:0 @ ANA INSPECT RITE_OF_ASCENSION",
+            1
+        )),
         ["demanding"]
     );
-    assert_eq!(said(&run(&d, &dict, seed_state(), "0:0 @ ANA INSPECT CHALICE", 1)), ["modest"]);
+    assert_eq!(
+        said(&run(
+            &d,
+            &dict,
+            seed_state(),
+            "0:0 @ ANA INSPECT CHALICE",
+            1
+        )),
+        ["modest"]
+    );
     assert_err_msg(
-        try_inspect_content(&dict, &["IF count(DREAD) >= 3 -> (NARRATE \"x\")"], Extra::default()),
+        try_inspect_content(
+            &dict,
+            &["IF count(DREAD) >= 3 -> (NARRATE \"x\")"],
+            Extra::default(),
+        ),
         r"count\(\) argument 'DREAD' is neither a role",
     );
-    let _ = try_inspect_content(&dict, &["IF count(name:DREAD) >= 3 -> (NARRATE \"x\")"], Extra::default());
+    let _ = try_inspect_content(
+        &dict,
+        &["IF count(name:DREAD) >= 3 -> (NARRATE \"x\")"],
+        Extra::default(),
+    );
     // compiles clean
 }
 
@@ -885,11 +1061,13 @@ fn slot_triggers(out: &[&str]) -> Vec<TriggerDef> {
 }
 
 fn expiry_trigger(out: &[&str]) -> Vec<TriggerDef> {
-    vec![TriggerDef::Expire(chorus::content::content::ExpireTriggerDef {
-        id: "t".into(),
-        on_expire_of: "CHALICE".into(),
-        out: out.iter().map(|s| (*s).to_string()).collect(),
-    })]
+    vec![TriggerDef::Expire(
+        chorus::content::content::ExpireTriggerDef {
+            id: "t".into(),
+            on_expire_of: "CHALICE".into(),
+            out: out.iter().map(|s| (*s).to_string()).collect(),
+        },
+    )]
 }
 
 #[test]
@@ -900,27 +1078,51 @@ fn path_count_total_rel_every_any_each_named_by_the_error() {
         ..ContentRaw::default()
     };
     assert_err_msg(
-        compile_content(&raw(&["IF object.aspect.duty >= 1 -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF object.aspect.duty >= 1 -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"IF operand object\.aspect\.duty reads a step role",
     );
     assert_err_msg(
-        compile_content(&raw(&["IF object.attr.seats >= 1 -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF object.attr.seats >= 1 -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"IF operand object\.attr\.seats reads a step role",
     );
     assert_err_msg(
-        compile_content(&raw(&["IF count(actors) >= 1 -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF count(actors) >= 1 -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"IF operand count\(actors\) reads a step role",
     );
     assert_err_msg(
-        compile_content(&raw(&["IF total(actors, aspect:nerve) >= 2 -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF total(actors, aspect:nerve) >= 2 -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"IF operand total\(actors, aspect:nerve\) reads a step role",
     );
     assert_err_msg(
-        compile_content(&raw(&["IF rel(parent_child, actors) -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF rel(parent_child, actors) -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"IF operand rel\(parent_child, actors\) reads a step role",
     );
     assert_err_msg(
-        compile_content(&raw(&["IF any(actors, aspect:occult >= 1) -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF any(actors, aspect:occult >= 1) -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"IF operand any\(actors, …\) reads a step role",
     );
 }
@@ -933,20 +1135,28 @@ fn the_check_recurses_into_branch_bodies_and_world_forms_pass() {
         ..ContentRaw::default()
     };
     assert_err_msg(
-        compile_content(&raw(&["IF exists(X) -> (IF count(actors) >= 1 -> (NARRATE \"deep\"))"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF exists(X) -> (IF count(actors) >= 1 -> (NARRATE \"deep\"))"]),
+            &dict,
+            &[],
+        ),
         r"trigger t: IF operand count\(actors\) reads a step role",
     );
     // two IF levels down — the walk must not stop at the first branch
     assert_err_msg(
         compile_content(
-            &raw(&["IF exists(X) -> (IF exists(Y) -> (IF count(actors) >= 1 -> (NARRATE \"deeper\")))"]),
+            &raw(&[
+                "IF exists(X) -> (IF exists(Y) -> (IF count(actors) >= 1 -> (NARRATE \"deeper\")))",
+            ]),
             &dict,
             &[],
         ),
         r"trigger t: IF operand count\(actors\) reads a step role",
     );
     let _ = compile_content(
-        &raw(&["IF exists(X) -> (NARRATE \"ok\") ELSE IF count(name:X) >= 3 -> (NARRATE \"ok too\")"]),
+        &raw(&[
+            "IF exists(X) -> (NARRATE \"ok\") ELSE IF count(name:X) >= 3 -> (NARRATE \"ok too\")",
+        ]),
         &dict,
         &[],
     ); // compiles clean
@@ -960,7 +1170,11 @@ fn expiry_triggers_lint_their_if_conditions_too_same_empty_bindings_argument() {
         ..ContentRaw::default()
     };
     assert_err_msg(
-        compile_content(&raw(&["IF object.aspect.duty >= 1 -> (NARRATE \"x\")"]), &dict, &[]),
+        compile_content(
+            &raw(&["IF object.aspect.duty >= 1 -> (NARRATE \"x\")"]),
+            &dict,
+            &[],
+        ),
         r"trigger t: IF operand object\.aspect\.duty reads a step role",
     );
     assert_err_msg(
@@ -971,7 +1185,11 @@ fn expiry_triggers_lint_their_if_conditions_too_same_empty_bindings_argument() {
         ),
         r"trigger t: IF operand total\(actors, aspect:nerve\) reads a step role",
     );
-    let _ = compile_content(&raw(&["IF count(name:CHALICE) >= 1 -> (NARRATE \"ok\")"]), &dict, &[]);
+    let _ = compile_content(
+        &raw(&["IF count(name:CHALICE) >= 1 -> (NARRATE \"ok\")"]),
+        &dict,
+        &[],
+    );
     // compiles clean
 }
 
@@ -984,25 +1202,50 @@ fn the_recursive_guards_catch_progress_refuse_unknown_ending_nested_in_if_branch
         ..ContentRaw::default()
     };
     assert_err_msg(
-        compile_content(&raw(&["IF exists(X) -> (PROGRESS(30m, \"tick\"))"], None), &dict, &[]),
+        compile_content(
+            &raw(&["IF exists(X) -> (PROGRESS(30m, \"tick\"))"], None),
+            &dict,
+            &[],
+        ),
         "trigger t: PROGRESS belongs to verb recipes, not events",
     );
     assert_err_msg(
-        compile_content(&raw(&["IF exists(X) -> (REFUSE(\"no\"))"], None), &dict, &[]),
+        compile_content(
+            &raw(&["IF exists(X) -> (REFUSE(\"no\"))"], None),
+            &dict,
+            &[],
+        ),
         "trigger t: REFUSE belongs to verb recipes — events have no step to refuse",
     );
     let endings = Some(
-        [("REAL".to_string(), EndingDef { title: "Real".into(), flavour: None })]
-            .into_iter()
-            .collect(),
+        [(
+            "REAL".to_string(),
+            EndingDef {
+                title: "Real".into(),
+                flavour: None,
+            },
+        )]
+        .into_iter()
+        .collect(),
     );
     assert_err_msg(
-        compile_content(&raw(&["IF exists(X) -> (ENDING NOPE)"], endings.clone()), &dict, &[]),
+        compile_content(
+            &raw(&["IF exists(X) -> (ENDING NOPE)"], endings.clone()),
+            &dict,
+            &[],
+        ),
         r"trigger t: ENDING 'NOPE' is not in the endings table",
     );
     // deep nesting: two IF levels down
     assert_err_msg(
-        compile_content(&raw(&["IF exists(X) -> (IF exists(Y) -> (ENDING NOPE))"], endings), &dict, &[]),
+        compile_content(
+            &raw(
+                &["IF exists(X) -> (IF exists(Y) -> (ENDING NOPE))"],
+                endings,
+            ),
+            &dict,
+            &[],
+        ),
         r"ENDING 'NOPE' is not in the endings table",
     );
 }
@@ -1042,7 +1285,15 @@ fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent
             prototypes: Some(
                 [("PARANOIA", "state")]
                     .into_iter()
-                    .map(|(n, k)| (n.to_string(), PrototypeDef { kind: k.into(), ..Default::default() }))
+                    .map(|(n, k)| {
+                        (
+                            n.to_string(),
+                            PrototypeDef {
+                                kind: k.into(),
+                                ..Default::default()
+                            },
+                        )
+                    })
                     .collect(),
             ),
             ..ContentRaw::default()
@@ -1062,7 +1313,9 @@ fn a_slot_trigger_takes_its_if_branch_exists_form_and_the_record_flattens_it() {
             id: "patrol".into(),
             slot: 2,
             once: Some(true),
-            out: vec!["IF exists(HOUSE) -> (SPAWN PARANOIA) ELSE -> (NARRATE \"quiet.\")".to_string()],
+            out: vec![
+                "IF exists(HOUSE) -> (SPAWN PARANOIA) ELSE -> (NARRATE \"quiet.\")".to_string(),
+            ],
         })],
     );
     let state = seed_state();
@@ -1095,19 +1348,23 @@ fn an_expiry_trigger_takes_its_if_branch_count_name_form() {
         })],
     );
     let mut state = seed_state();
-    state
-        .entities
-        .get_mut("chalice")
-        .unwrap()
-        .attrs
-        .insert("expiresAt".to_string(), chorus::core::types::AttrValue::Num(30)); // crosses slot 1 (0:30)
+    state.entities.get_mut("chalice").unwrap().attrs.insert(
+        "expiresAt".to_string(),
+        chorus::core::types::AttrValue::Num(30),
+    ); // crosses slot 1 (0:30)
     let base = clone_state(&state);
     let r = run(&c, &dict, state, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     assert_eq!(event.trigger.as_deref(), Some("chalice_dust"));
     assert_eq!(ops(&event.outcomes), ["DESTROY"]);
-    assert!(r.state.entities.get("chalice").unwrap().dead_action.is_some());
+    assert!(r
+        .state
+        .entities
+        .get("chalice")
+        .unwrap()
+        .dead_action
+        .is_some());
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -1121,7 +1378,10 @@ fn a_trigger_if_whose_condition_is_false_takes_the_else_branch() {
             id: "patrol".into(),
             slot: 2,
             once: None,
-            out: vec!["IF exists(NOSUCH_CARD) -> (SPAWN PARANOIA) ELSE -> (NARRATE \"all quiet.\")".to_string()],
+            out: vec![
+                "IF exists(NOSUCH_CARD) -> (SPAWN PARANOIA) ELSE -> (NARRATE \"all quiet.\")"
+                    .to_string(),
+            ],
         })],
     );
     let r = run(&c, &dict, seed_state(), "0:0 @ ANA WAIT", 1);
@@ -1176,11 +1436,22 @@ fn selection_reads_the_input_state_the_recipe_reads_its_own_spawn_on_the_draft()
         all.extend(r.records);
         cur = r.state;
     }
-    assert_eq!(told, vec![vec!["Nobody notices.".to_string()], vec!["Nobody notices.".to_string()], vec![]]); // the third SPAWN flipped its own IF
+    assert_eq!(
+        told,
+        vec![
+            vec!["Nobody notices.".to_string()],
+            vec!["Nobody notices.".to_string()],
+            vec![]
+        ]
+    ); // the third SPAWN flipped its own IF
     assert_eq!(cur.by_name.get("SUSPICION").unwrap().len(), 3);
     assert_eq!(
         cur.ended,
-        Some(Ending { id: "ARRESTED".into(), title: "Taken".into(), flavour: "melancholy".into() })
+        Some(Ending {
+            id: "ARRESTED".into(),
+            title: "Taken".into(),
+            flavour: "melancholy".into()
+        })
     );
     // game over afterwards
     let over = run(content, &dict, cur, "0:0 @ ANA STEW", id);
@@ -1218,9 +1489,12 @@ fn a_preset_pool_arrests_on_the_first_stew_count_name_is_world_scoped() {
         "s_ana",
         "character",
         "ANA",
-        [("container".to_string(), chorus::core::types::AttrValue::Str("s_house".into()))]
-            .into_iter()
-            .collect(),
+        [(
+            "container".to_string(),
+            chorus::core::types::AttrValue::Str("s_house".into()),
+        )]
+        .into_iter()
+        .collect(),
         false,
     );
     card("w1", "state", "SUSPICION", Attrs::new(), true);

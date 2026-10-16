@@ -16,7 +16,8 @@
 //! back untouched on a rejection/refusal, so `snap()` equality IS the
 //! semantic content of those checks (noted at each site, never weakened).
 
-#[path = "../common/mod.rs"] mod common;
+#[path = "../common/mod.rs"]
+mod common;
 
 use common::harness::assert_err_msg;
 use common::seed::{seed_content, seed_state};
@@ -34,7 +35,7 @@ use chorus::core::parse::parse_sentence;
 use chorus::core::r#ref::{name_ref, Ref};
 use chorus::core::sentence::{Arg, Outcome, Sentence};
 use chorus::core::types::{
-    add_entity, clone_state, new_state, AspectVal, AttrValue, Attrs, Aspects, Entity, State,
+    add_entity, clone_state, new_state, AspectVal, Aspects, AttrValue, Attrs, Entity, State,
 };
 use chorus::engine::engine::{apply_record, ActionRecord, ExecResult, Step};
 use chorus::engine::fold::{fold, fold_up_to};
@@ -93,7 +94,10 @@ fn run(content: &CompiledContent, dict: &Dictionary, state: State, src: &str) ->
 fn step_of(s: &Sentence) -> Step {
     Step {
         start_min: None,
-        clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+        clock: Some(s.clock.unwrap_or(Clock {
+            day: 0,
+            halfhour: 0,
+        })),
         clauses: s.clauses.clone(),
         t_real: None,
     }
@@ -113,15 +117,21 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
         .as_deref()
         .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(msg),
+        "rejected {msg:?} does not match /{pattern}/"
+    );
 }
 
 /// `refusal(r)` matches `re` over the settle adapter's refusal probe.
 fn assert_refusal(r: &ExecResult, pattern: &str) {
-    let msg = refusal(r)
-        .unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
+    let msg =
+        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
+    assert!(
+        re.is_match(&msg),
+        "refusal {msg:?} does not match /{pattern}/"
+    );
 }
 
 fn kinds(records: &[ActionRecord]) -> Vec<&str> {
@@ -164,9 +174,12 @@ fn num_aspect(k: &str, v: i64) -> Aspects {
 }
 
 fn container_attrs(container: &str) -> Attrs {
-    [("container".to_string(), AttrValue::Str(container.to_string()))]
-        .into_iter()
-        .collect()
+    [(
+        "container".to_string(),
+        AttrValue::Str(container.to_string()),
+    )]
+    .into_iter()
+    .collect()
 }
 
 /// A hand-built COMPLETE record like the regression literals in this file
@@ -243,7 +256,12 @@ mod read_ladder {
     #[test]
     fn parent_child_reading_fairy_tales_branches_to_bonding_memory() {
         let (dict, content, state) = setup();
-        let r = run(&content, &dict, state, "0:28 @ ANA, BERTHA READ FAIRY_TALES");
+        let r = run(
+            &content,
+            &dict,
+            state,
+            "0:28 @ ANA, BERTHA READ FAIRY_TALES",
+        );
         assert_eq!(act(&r).unwrap().recipes, ["read.parent_child"]);
         let spawn = &done(&r).unwrap().outcomes[0];
         assert_eq!(spawn.op, "SPAWN");
@@ -260,13 +278,14 @@ mod read_ladder {
     #[test]
     fn two_unrelated_readers_get_the_poorer_outcome_no_spawn() {
         let (dict, content, state) = setup();
-        let r = run(&content, &dict, state, "0:28 @ ANA, MY_FOLLOWER READ FAIRY_TALES");
+        let r = run(
+            &content,
+            &dict,
+            state,
+            "0:28 @ ANA, MY_FOLLOWER READ FAIRY_TALES",
+        );
         assert_eq!(act(&r).unwrap().recipes, ["read.unrelated_pair"]);
-        assert!(done(&r)
-            .unwrap()
-            .outcomes
-            .iter()
-            .all(|o| o.op == "NARRATE"));
+        assert!(done(&r).unwrap().outcomes.iter().all(|o| o.op == "NARRATE"));
     }
 
     #[test]
@@ -320,7 +339,12 @@ mod slot_discipline {
     #[test]
     fn slot_discipline_undeclared_roles_are_rejected() {
         let (dict, content, state) = setup();
-        let r = run(&content, &dict, state, "0:28 @ ANA READ FAIRY_TALES WITH CHALICE");
+        let r = run(
+            &content,
+            &dict,
+            state,
+            "0:28 @ ANA READ FAIRY_TALES WITH CHALICE",
+        );
         assert_rejected(&r, r"does not accept 'with'");
         assert_eq!(r.records.len(), 0);
     }
@@ -476,18 +500,12 @@ mod events {
         }
         assert_eq!(
             ks,
-            [
-                "action", "complete", "complete", "event", "event", "complete", "wait"
-            ]
+            ["action", "complete", "complete", "event", "event", "complete", "wait"]
         );
-        let events: Vec<&ActionRecord> =
-            r.records.iter().filter(|x| x.kind == "event").collect();
+        let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(events[0].trigger.as_deref(), Some("dusk_falls"));
         assert_eq!(events[1].trigger.as_deref(), Some("expire:CHALICE"));
-        assert_eq!(
-            r.state.entities["chalice"].dead_action,
-            Some(events[1].id)
-        );
+        assert_eq!(r.state.entities["chalice"].dead_action, Some(events[1].id));
     }
 }
 
@@ -675,10 +693,12 @@ mod behavior_regressions {
     #[test]
     fn fold_clock_a_log_ending_past_an_event_keeps_the_action_end_time() {
         let (dict, content, mut state) = setup();
-        state.entities.get_mut("chalice").unwrap().attrs.insert(
-            "expiresAt".to_string(),
-            AttrValue::Num(15 * 60),
-        );
+        state
+            .entities
+            .get_mut("chalice")
+            .unwrap()
+            .attrs
+            .insert("expiresAt".to_string(), AttrValue::Num(15 * 60));
         let r = run(
             &content,
             &dict,
@@ -743,7 +763,12 @@ mod behavior_regressions {
     #[test]
     fn application_failures_refuse_the_window_instead_of_throwing() {
         let (dict, content, state) = setup();
-        let r = run(&content, &dict, state, "0:28 @ ANA, BERTHA READ FAIRY_TALES");
+        let r = run(
+            &content,
+            &dict,
+            state,
+            "0:28 @ ANA, BERTHA READ FAIRY_TALES",
+        );
         assert_eq!(r.rejected, None);
         let r2 = run_with(
             &content,
@@ -952,7 +977,9 @@ mod exists_recipes {
             vec![
                 RecipeDef {
                     id: Some("probe.bonded".to_string()),
-                    when: Some("exists(aspect:lantern>=1) AND rel(parent_child, actors)".to_string()),
+                    when: Some(
+                        "exists(aspect:lantern>=1) AND rel(parent_child, actors)".to_string(),
+                    ),
                     shown: None,
                     hint: None,
                     max: None,
@@ -998,9 +1025,10 @@ mod progress_ticks {
         assert_eq!(ops(act(&r).unwrap()), ["PROGRESS", "PROGRESS"]);
         assert_eq!(ops(done(&r).unwrap()), ["DESTROY", "DESTROY", "SPAWN"]);
         assert_eq!(act(&r).unwrap().advanced_min, 180); // the verb's duration only
-        assert!(act(&r).unwrap().sentence.contains(
-            "PROGRESS(1h, \"The circle begins to hum against your palms.\")"
-        ));
+        assert!(act(&r)
+            .unwrap()
+            .sentence
+            .contains("PROGRESS(1h, \"The circle begins to hum against your palms.\")"));
         // the log alone reproduces the played state exactly (ticks are
         // journal-only at fold)
         let replayed = fold(&r.records, &seed_state(), &dict, &content).unwrap();
@@ -1078,7 +1106,7 @@ mod clock_and_duration_literals {
                     slot: 29,
                     once: None,
                     out: vec![
-                        "NARRATE(\"The halfhour chime sings through the frames.\")".to_string(),
+                        "NARRATE(\"The halfhour chime sings through the frames.\")".to_string()
                     ],
                 })]),
                 ..ContentRaw::default()
@@ -1158,7 +1186,13 @@ mod empty_base_state_fold {
     #[test]
     fn fold_of_an_empty_log_returns_the_base_state() {
         let (dict, content, _state) = setup();
-        assert_eq!(fold(&[], &new_state(0), &dict, &content).unwrap().entities.len(), 0);
+        assert_eq!(
+            fold(&[], &new_state(0), &dict, &content)
+                .unwrap()
+                .entities
+                .len(),
+            0
+        );
     }
 }
 
@@ -1218,7 +1252,10 @@ mod set_deltas_and_aspect_keys {
     fn assert_round_trips(sentence: &str, dict: &Dictionary) {
         let parsed = parse_sentence(sentence, dict).unwrap();
         let formatted = format_sentence(&parsed, Some(dict)).unwrap();
-        assert_eq!(formatted, sentence, "sentence must round-trip: {sentence:?}");
+        assert_eq!(
+            formatted, sentence,
+            "sentence must round-trip: {sentence:?}"
+        );
     }
 
     #[test]
@@ -1238,11 +1275,8 @@ mod set_deltas_and_aspect_keys {
             serde_json::to_value(&set.args[2]).unwrap(),
             serde_json::json!({ "t": "int", "v": 2 }) // the record holds the concrete absolute
         );
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("-> SET(ANA, funds, 2)")); // name ref kept, value absolutized
-        // the concrete sentence round-trips
+        assert!(done(&r).unwrap().sentence.contains("-> SET(ANA, funds, 2)")); // name ref kept, value absolutized
+                                                                               // the concrete sentence round-trips
         assert_round_trips(&done(&r).unwrap().sentence.clone(), &td);
         // the next delta applies to the new value
         let r2 = run_with(&c, &td, r.state, "0:21 @ ANA TUNE", 2);
@@ -1264,10 +1298,7 @@ mod set_deltas_and_aspect_keys {
             r.state.entities["ana"].attrs.get("funds"),
             Some(&AttrValue::Num(-3))
         );
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("SET(#ana, funds, -3)"));
+        assert!(done(&r).unwrap().sentence.contains("SET(#ana, funds, -3)"));
         let _ = (&dict, &content);
     }
 
@@ -1287,8 +1318,11 @@ mod set_deltas_and_aspect_keys {
             .sentence
             .contains("SET(#ana, aspect:dread, 1)"));
         // absolute form through the fold path (concrete outcomes replay as-is)
-        let s = parse_sentence("0:0 @ ANA WAIT -> SET(#ana, aspect:language.latin, 2)", &dict)
-            .unwrap();
+        let s = parse_sentence(
+            "0:0 @ ANA WAIT -> SET(#ana, aspect:language.latin, 2)",
+            &dict,
+        )
+        .unwrap();
         let rec = fixture_complete(2, "0:0", s.outcomes);
         apply_record(&rec, &mut r.state, &dict, &content).unwrap();
         let Some(AspectVal::Sub(lang)) = r.state.entities["ana"].aspects.get("language") else {
@@ -1313,10 +1347,7 @@ mod set_deltas_and_aspect_keys {
             r2.state.entities["ana"].attrs.get("funds"),
             Some(&AttrValue::Num(5)) // not 5+5
         );
-        assert!(done(&r2)
-            .unwrap()
-            .sentence
-            .contains("SET(#ana, funds, 5)")); // role concretized (§9.15), value literal
+        assert!(done(&r2).unwrap().sentence.contains("SET(#ana, funds, 5)")); // role concretized (§9.15), value literal
         let _ = (&dict, &content);
     }
 
@@ -1424,9 +1455,10 @@ mod set_deltas_and_aspect_keys {
                 .count(),
             2
         );
-        assert!(done(&r).unwrap().sentence.contains(
-            "SET(#ana, aspect:dread, 3), SET(#bertha, aspect:dread, 1)"
-        ));
+        assert!(done(&r)
+            .unwrap()
+            .sentence
+            .contains("SET(#ana, aspect:dread, 3), SET(#bertha, aspect:dread, 1)"));
         assert_eq!(
             r.state.entities["ana"].aspects.get("dread"),
             Some(&AspectVal::Num(3))
@@ -1453,13 +1485,19 @@ mod set_deltas_and_aspect_keys {
             "funds".to_string(),
             AttrValue::Num(10), // the cards carry different bases
         );
-        state.entities.get_mut("bertha").unwrap().aspects.insert(
-            "dread".to_string(),
-            AspectVal::Num(7),
-        );
+        state
+            .entities
+            .get_mut("bertha")
+            .unwrap()
+            .aspects
+            .insert("dread".to_string(), AspectVal::Num(7));
         let mut id = 1;
         let mut all: Vec<ActionRecord> = Vec::new();
-        for step in ["0:20 @ ANA, BERTHA TUNE", "0:21 @ ANA TUNE", "0:22 @ BERTHA TUNE"] {
+        for step in [
+            "0:20 @ ANA, BERTHA TUNE",
+            "0:21 @ ANA TUNE",
+            "0:22 @ BERTHA TUNE",
+        ] {
             let r = run_with(&c, &td, state, step, id);
             assert_eq!(r.rejected, None);
             all.extend(r.records.clone());
@@ -1667,10 +1705,7 @@ mod replace_decay {
             "sentence {:?} does not match the SPAWN spelling",
             done(&r).unwrap().sentence
         );
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("DESTROY(#chalice)"));
+        assert!(done(&r).unwrap().sentence.contains("DESTROY(#chalice)"));
         let ash_id = &r.state.by_name.get("ASHES").unwrap()[0];
         let ash = &r.state.entities[ash_id];
         assert_eq!(ash.kind, "item");
@@ -1802,9 +1837,7 @@ mod replace_decay {
                     );
                     v
                 },
-                prototypes: Some(
-                    [("ASHES".to_string(), proto("item"))].into_iter().collect(),
-                ),
+                prototypes: Some([("ASHES".to_string(), proto("item"))].into_iter().collect()),
                 ..ContentRaw::default()
             },
             &dd,
@@ -1860,8 +1893,8 @@ mod replace_decay {
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"already in use");
         assert_eq!(r.state.entities["chalice"].dead_action, None); // nothing applied
-        // the ORIGINAL state object still holds the name — the
-        // refusal discards everything, so the returned state carries it too
+                                                                   // the ORIGINAL state object still holds the name — the
+                                                                   // refusal discards everything, so the returned state carries it too
         assert!(r.state.by_name.contains_key("CHALICE"));
         let _ = (&dict, &content);
     }
@@ -1870,14 +1903,14 @@ mod replace_decay {
     fn authored_replace_round_trips_the_paren_less_form_is_the_only_form() {
         let (dict, _content, _state) = setup();
         let dd = decay_dict();
-        let name_form = parse_sentence("0:0 @ ANA DECAY CHALICE -> REPLACE CHALICE WITH ASHES", &dd)
-            .unwrap();
+        let name_form =
+            parse_sentence("0:0 @ ANA DECAY CHALICE -> REPLACE CHALICE WITH ASHES", &dd).unwrap();
         assert_eq!(
             format_sentence(&name_form, Some(&dd)).unwrap(),
             "0:0 @ ANA DECAY CHALICE -> REPLACE CHALICE WITH ASHES"
         );
-        let role_form = parse_sentence("0:0 @ ANA DECAY CHALICE -> REPLACE OBJECT WITH ASHES", &dd)
-            .unwrap();
+        let role_form =
+            parse_sentence("0:0 @ ANA DECAY CHALICE -> REPLACE OBJECT WITH ASHES", &dd).unwrap();
         assert_eq!(
             format_sentence(&role_form, Some(&dd)).unwrap(),
             "0:0 @ ANA DECAY CHALICE -> REPLACE OBJECT WITH ASHES"
@@ -1997,12 +2030,7 @@ mod authored_expiry_triggers {
     }
 
     /// run_moth
-    fn run_moth(
-        dict: &Dictionary,
-        state: State,
-        src: &str,
-        first_record_id: i64,
-    ) -> ExecResult {
+    fn run_moth(dict: &Dictionary, state: State, src: &str, first_record_id: i64) -> ExecResult {
         let s = parse_sentence(src, dict).unwrap();
         let mut n: i64 = 0;
         let mut id_gen = || {
@@ -2010,7 +2038,15 @@ mod authored_expiry_triggers {
             format!("x{first_record_id}_{n}")
         };
         let content = moth_content(dict);
-        settle_step(&content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
+        settle_step(
+            &content,
+            dict,
+            state,
+            step_of(&s),
+            first_record_id,
+            Some(&mut id_gen),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -2062,7 +2098,10 @@ mod authored_expiry_triggers {
                 .unwrap()
                 .id
         };
-        assert_eq!(state.entities["moth_g"].dead_action, Some(stamp("decay_moth_g")));
+        assert_eq!(
+            state.entities["moth_g"].dead_action,
+            Some(stamp("decay_moth_g"))
+        );
         let e = &state.entities[e_id.as_deref().unwrap()];
         assert_eq!(e.aspects, num_aspect("influence", 2)); // plain prototype mint (no derive)
         assert_eq!(
@@ -2116,25 +2155,18 @@ mod authored_expiry_triggers {
             "expiresAt".to_string(),
             AttrValue::Num(16 * 60), // same crossing as dusk (slot 32)
         );
-        let r = run_with(
-            &c,
-            &dict,
-            state,
-            "0:28 @ ANA WAIT; ANA WAIT; ANA WAIT",
-            1,
-        );
+        let r = run_with(&c, &dict, state, "0:28 @ ANA WAIT; ANA WAIT; ANA WAIT", 1);
         assert_eq!(r.rejected, None);
-        let events: Vec<&ActionRecord> =
-            r.records.iter().filter(|x| x.kind == "event").collect();
+        let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(
-            events.iter().map(|x| x.trigger.as_deref()).collect::<Vec<_>>(),
+            events
+                .iter()
+                .map(|x| x.trigger.as_deref())
+                .collect::<Vec<_>>(),
             [Some("dusk_falls"), Some("decay_chalice")] // triggers first
         );
         assert!(events[1].sentence.contains("EVENT decay_chalice"));
-        assert_eq!(
-            r.state.entities["chalice"].dead_action,
-            Some(events[1].id)
-        );
+        assert_eq!(r.state.entities["chalice"].dead_action, Some(events[1].id));
         let rusty = &r.state.by_name.get("RUSTY_CHALICE").unwrap()[0];
         assert_eq!(
             r.state.entities[rusty].attrs.get("container"),
@@ -2169,7 +2201,9 @@ mod authored_expiry_triggers {
                     out: vec!["REPLACE CHALICE WITH CHALICE".to_string()],
                 })]),
                 prototypes: Some(
-                    [("CHALICE".to_string(), proto("item"))].into_iter().collect(),
+                    [("CHALICE".to_string(), proto("item"))]
+                        .into_iter()
+                        .collect(),
                 ),
                 ..ContentRaw::default()
             },
@@ -2177,10 +2211,12 @@ mod authored_expiry_triggers {
             &[],
         )
         .unwrap();
-        state.entities.get_mut("chalice").unwrap().attrs.insert(
-            "expiresAt".to_string(),
-            AttrValue::Num(15 * 60),
-        );
+        state
+            .entities
+            .get_mut("chalice")
+            .unwrap()
+            .attrs
+            .insert("expiresAt".to_string(), AttrValue::Num(15 * 60));
         let before = snap(&state);
         let r = run_with(&c, &dict, state, "0:28 @ ANA WAIT; ANA WAIT", 1);
         assert_rejected(&r, r"already in use");
@@ -2204,11 +2240,16 @@ mod authored_expiry_triggers {
         let dir = tmp_log_dir("moth-jsonl");
         let path = dir.join("log.jsonl");
         save_log(&path, &all).unwrap();
-        let replayed = fold(&load_log(&path).unwrap(), &moth_base(), &dict, &moth_content(&dict))
-            .unwrap();
+        let replayed = fold(
+            &load_log(&path).unwrap(),
+            &moth_base(),
+            &dict,
+            &moth_content(&dict),
+        )
+        .unwrap();
         assert_eq!(snap(&replayed), snap(&state)); // snap includes fired (§9.34)
-        // one fired entry per EVENT row's trigger — authored ids and
-        // expire:<NAME> alike
+                                                   // one fired entry per EVENT row's trigger — authored ids and
+                                                   // expire:<NAME> alike
         let mut fired: Vec<&String> = replayed.fired.iter().collect();
         fired.sort();
         assert_eq!(
@@ -2666,10 +2707,22 @@ verbs:
         let p = pool(&r.state);
         assert_eq!(p.len(), 3, "three fresh copies");
         // birth order: 3h, 1h, unarmed — each copy its own pair
-        assert_eq!(r.state.entities[p[0].as_str()].attrs.get("expires"), Some(&AttrValue::Num(180)));
-        assert_eq!(r.state.entities[p[0].as_str()].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
-        assert_eq!(r.state.entities[p[1].as_str()].attrs.get("expires"), Some(&AttrValue::Num(60)));
-        assert_eq!(r.state.entities[p[1].as_str()].attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
+        assert_eq!(
+            r.state.entities[p[0].as_str()].attrs.get("expires"),
+            Some(&AttrValue::Num(180))
+        );
+        assert_eq!(
+            r.state.entities[p[0].as_str()].attrs.get("expiresAt"),
+            Some(&AttrValue::Num(180))
+        );
+        assert_eq!(
+            r.state.entities[p[1].as_str()].attrs.get("expires"),
+            Some(&AttrValue::Num(60))
+        );
+        assert_eq!(
+            r.state.entities[p[1].as_str()].attrs.get("expiresAt"),
+            Some(&AttrValue::Num(60))
+        );
         assert_eq!(
             r.state.entities[p[2].as_str()].attrs.get("expiresAt"),
             None,
@@ -2684,7 +2737,10 @@ verbs:
             .flat_map(|rec| rec.outcomes.iter().map(|o| format!("{o:?}")))
             .collect();
         let armed_rows = done_rows.iter().filter(|o| o.contains("expiresAt")).count();
-        assert_eq!(armed_rows, 2, "the concrete attrs= pairs carry expiresAt: {done_rows:?}");
+        assert_eq!(
+            armed_rows, 2,
+            "the concrete attrs= pairs carry expiresAt: {done_rows:?}"
+        );
         assert!(
             done_rows.iter().all(|o| !o.contains("Dur")),
             "no authored modifier arg in the log: {done_rows:?}"
@@ -2749,8 +2805,7 @@ verbs:
         assert!(!r1.records.iter().any(|x| x.kind == "event"));
         let r2 = advance(&c, &dict, r1.state, "0:2", 100); // crosses :30 and :60
         assert_eq!(r2.rejected, None);
-        let events: Vec<&ActionRecord> =
-            r2.records.iter().filter(|x| x.kind == "event").collect();
+        let events: Vec<&ActionRecord> = r2.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(events.len(), 1, "one expiry, at the :60 crossing");
         assert_eq!(events[0].trigger.as_deref(), Some("melt"));
         assert_eq!(events[0].t_game, "0:2", "the :60 crossing, not :30");
@@ -2762,13 +2817,7 @@ verbs:
             None,
             "the authored expiry replaced the built-in destroy"
         );
-        let replayed = fold(
-            &[r1.records, r2.records].concat(),
-            &base,
-            &dict,
-            &c,
-        )
-        .unwrap();
+        let replayed = fold(&[r1.records, r2.records].concat(), &base, &dict, &c).unwrap();
         assert_eq!(snap(&replayed), snap(&r2.state));
     }
 
@@ -2790,8 +2839,14 @@ verbs:
         let r = run_with(&c, &dict, s, "0:0 @ ANA DREAM", 1);
         assert_eq!(r.rejected, None);
         let d = &r.state.entities[pool(&r.state)[0].as_str()];
-        assert_eq!(d.attrs.get("container"), Some(&AttrValue::Str("house".to_string())));
-        assert_eq!(d.attrs.get("zone"), Some(&AttrValue::Str("cellar".to_string())));
+        assert_eq!(
+            d.attrs.get("container"),
+            Some(&AttrValue::Str("house".to_string()))
+        );
+        assert_eq!(
+            d.attrs.get("zone"),
+            Some(&AttrValue::Str("cellar".to_string()))
+        );
         assert_eq!(d.attrs.get("expires"), Some(&AttrValue::Num(30)));
         assert_eq!(d.attrs.get("expiresAt"), Some(&AttrValue::Num(30)));
         // the modifier wins over the pair's literal
@@ -2828,13 +2883,7 @@ verbs:
         let r2 = advance(&c, &dict, r1.state, "0:22", 100); // crosses 630
         assert_eq!(r2.rejected, None);
         assert!(r2.records.iter().any(|x| x.kind == "event"));
-        let replayed = fold(
-            &[r1.records, r2.records].concat(),
-            &base,
-            &dict,
-            &c,
-        )
-        .unwrap();
+        let replayed = fold(&[r1.records, r2.records].concat(), &base, &dict, &c).unwrap();
         assert_eq!(snap(&replayed), snap(&r2.state));
     }
 
@@ -2888,7 +2937,10 @@ verbs:
         .unwrap();
         let out = format_sentence(&s, Some(&dict)).unwrap();
         // 90m canonicalizes to the exact single unit 3halfhour (§9.45)
-        assert_eq!(out, "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour");
+        assert_eq!(
+            out,
+            "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour"
+        );
         let s2 = parse_sentence(&out, &dict).unwrap();
         assert_eq!(s2.outcomes, s.outcomes);
         assert_eq!(format_sentence(&s2, Some(&dict)).unwrap(), out);
@@ -2897,22 +2949,12 @@ verbs:
         let s3 = parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires 100m", &dict).unwrap();
         let out3 = format_sentence(&s3, Some(&dict)).unwrap();
         assert_eq!(out3, "0:0 @ ANA DREAM -> SPAWN DREAD expires 1h40m");
-        assert_eq!(
-            parse_sentence(&out3, &dict).unwrap().outcomes,
-            s3.outcomes
-        );
+        assert_eq!(parse_sentence(&out3, &dict).unwrap().outcomes, s3.outcomes);
         // the §9.36 quoted form keeps its string and re-quotes
-        let s4 = parse_sentence(
-            "0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"",
-            &dict,
-        )
-        .unwrap();
+        let s4 = parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"", &dict).unwrap();
         let out4 = format_sentence(&s4, Some(&dict)).unwrap();
         assert_eq!(out4, "0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"");
-        assert_eq!(
-            parse_sentence(&out4, &dict).unwrap().outcomes,
-            s4.outcomes
-        );
+        assert_eq!(parse_sentence(&out4, &dict).unwrap().outcomes, s4.outcomes);
         // the modifier sits after INTO/AS: INTO after the modifier is a
         // parse error (the authored order is pinned)
         assert!(parse_sentence(
@@ -2952,8 +2994,14 @@ verbs:
         // window's end (1:0) — the completion mints there
         let r1 = run_with(&c, &dict, s, "0:0 @ ANA DREAM", 1);
         assert_eq!(r1.rejected, None);
-        assert!(r1.state.windows.is_empty(), "the settle advance closed the window");
-        assert!(!r1.records.iter().any(|x| x.kind == "event"), "no in-pass fire (the snapshot predates the mint, §6.6)");
+        assert!(
+            r1.state.windows.is_empty(),
+            "the settle advance closed the window"
+        );
+        assert!(
+            !r1.records.iter().any(|x| x.kind == "event"),
+            "no in-pass fire (the snapshot predates the mint, §6.6)"
+        );
         assert_eq!(
             r1.state.entities[pool(&r1.state)[0].as_str()]
                 .attrs
@@ -2964,17 +3012,10 @@ verbs:
         // the next advance (now = 1:0) crosses the :90 slot → the fire
         let r2 = advance(&c, &dict, r1.state, "1:2", 200);
         assert_eq!(r2.rejected, None);
-        let events: Vec<&ActionRecord> =
-            r2.records.iter().filter(|x| x.kind == "event").collect();
+        let events: Vec<&ActionRecord> = r2.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].t_game, "0:3", "the :90-minute crossing (halfhour 3) — the first boundary at or after expiresAt that the clock crosses");
-        let replayed = fold(
-            &[r1.records, r2.records].concat(),
-            &base,
-            &dict,
-            &c,
-        )
-        .unwrap();
+        let replayed = fold(&[r1.records, r2.records].concat(), &base, &dict, &c).unwrap();
         assert_eq!(snap(&replayed), snap(&r2.state));
     }
 
@@ -3061,9 +3102,7 @@ mod core_verbs_study_mansus {
                                     hint: None,
                                     max: None,
                                     aspects: Vec::new(),
-                                    out: vec![
-                                        "NARRATE(\"{actors} study {object}.\")".to_string()
-                                    ],
+                                    out: vec!["NARRATE(\"{actors} study {object}.\")".to_string()],
                                 },
                             ],
                         },
@@ -3095,10 +3134,8 @@ mod core_verbs_study_mansus {
                                 hint: None,
                                 max: None,
                                 aspects: Vec::new(),
-                                out: vec![
-                                    "NARRATE(\"{actors} walk the Mansus to {object}.\")"
-                                        .to_string(),
-                                ],
+                                out: vec!["NARRATE(\"{actors} walk the Mansus to {object}.\")"
+                                    .to_string()],
                             }],
                         },
                     ),
@@ -3199,7 +3236,7 @@ mod core_verbs_study_mansus {
                             max: None,
                             aspects: Vec::new(),
                             out: vec![
-                                "NARRATE(\"{actors} walk the Mansus to {object}.\")".to_string(),
+                                "NARRATE(\"{actors} walk the Mansus to {object}.\")".to_string()
                             ],
                         }],
                     },

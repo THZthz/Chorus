@@ -1907,18 +1907,51 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
 }
 
 /// The §9.47 follow-up clause built from the parent window's authored role
-/// refs: actors/objects/with carry their lists; at/about/to keep their 0-or-1
-/// arrays (the log row's shape). The follow-up re-resolves them at its own
-/// completion (§6.7), exactly as any player-begun window does.
-fn refs_to_clause(verb: &str, refs: &IndexMap<Role, Vec<Ref>>) -> Clause {
+/// refs, PROJECTED onto the candidate verb's declared slots: a role the
+/// candidate verb does not declare is dropped (§9.47 — the synthesized clause
+/// must be a shape a player step could produce, and a player step cannot bind
+/// an undeclared role; the dropped cards therefore never lock —
+/// `register_windows` locks what the clause carries). Declared roles inherit
+/// unchanged: actors/objects/with carry their lists; at/about/to keep their
+/// 0-or-1 arrays (the log row's shape). A same-verb candidate declares every
+/// role the parent validated against, so the projection is the identity
+/// there. The follow-up re-resolves the surviving roles at its own completion
+/// (§6.7), exactly as any player-begun window does. The parent window's own
+/// refs and locks are untouched.
+fn refs_to_clause(verb: &CompiledVerb, refs: &IndexMap<Role, Vec<Ref>>) -> Clause {
+    let declared = |role: Role| verb.slot_by_role.contains_key(role.as_str());
     Clause {
-        actors: refs.get(&Role::Actors).cloned().unwrap_or_default(),
-        at: refs.get(&Role::At).and_then(|v| v.first().cloned()),
-        verb: verb.to_string(),
-        to: refs.get(&Role::To).and_then(|v| v.first().cloned()),
-        objects: refs.get(&Role::Object).cloned().unwrap_or_default(),
-        with: refs.get(&Role::With).cloned().unwrap_or_default(),
-        about: refs.get(&Role::About).and_then(|v| v.first().cloned()),
+        actors: if declared(Role::Actors) {
+            refs.get(&Role::Actors).cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        },
+        at: if declared(Role::At) {
+            refs.get(&Role::At).and_then(|v| v.first().cloned())
+        } else {
+            None
+        },
+        verb: verb.name.clone(),
+        to: if declared(Role::To) {
+            refs.get(&Role::To).and_then(|v| v.first().cloned())
+        } else {
+            None
+        },
+        objects: if declared(Role::Object) {
+            refs.get(&Role::Object).cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        },
+        with: if declared(Role::With) {
+            refs.get(&Role::With).cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        },
+        about: if declared(Role::About) {
+            refs.get(&Role::About).and_then(|v| v.first().cloned())
+        } else {
+            None
+        },
     }
 }
 
@@ -2156,8 +2189,9 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // synthesize the follow-up BEGIN — the same shape a player step produces
     // (make_begin_record over one prepared clause): the PINNED CANDIDATE's
     // verb (§9.48: the follow-up may live on another verb than the parent),
-    // the parent window's authored role refs, beginning at the completion
-    // clock. The pinned recipe's PROGRESS ticks ride it, like any BEGIN.
+    // the parent window's authored role refs projected onto that verb's
+    // declared slots (refs_to_clause), beginning at the completion clock. The
+    // pinned recipe's PROGRESS ticks ride it, like any BEGIN.
     let cand_verb = ctx.content.verbs.get(cand_verb_name);
     let cand_verb = match cand_verb {
         Some(v) => v,
@@ -2167,7 +2201,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             )));
         }
     };
-    let clause = refs_to_clause(cand_verb_name, &parent_refs);
+    let clause = refs_to_clause(cand_verb, &parent_refs);
     let progress: Vec<Outcome> = cand
         .out
         .iter()

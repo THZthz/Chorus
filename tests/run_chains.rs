@@ -4,8 +4,12 @@
 //! REFUSE refusing the PARENT window, the second-RUN refusal, the §9.50
 //! max-exhausted candidate skipping, the 1024-window livelock budget, the
 //! load checks (same-verb candidates, trigger homes, the quoted-id arg form,
-//! IF branches included) and the deep chain resolving across passes with
-//! `State.executed` counting every begin.
+//! IF branches included), the deep chain resolving across passes with
+//! `State.executed` counting every begin, and the follow-up clause's
+//! PROJECTION onto the candidate verb's declared roles (§9.47: cross-verb
+//! follow-ups carry only the roles their verb declares — the dropped cards
+//! never lock; the E7 slice shape: the bootstrap with-card stays free through
+//! the self-rechaining wheel and the dream restore lands clean).
 //!
 //! Conventions follow tests/decks.rs + tests/max_executions.rs: a fresh
 //! dictionary per test, error patterns copied CHARACTER FOR CHARACTER from
@@ -26,7 +30,7 @@ use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::format::format_sentence;
 use chorus::core::parse::{parse_outcomes, parse_sentence};
 use chorus::core::sentence::Arg;
-use chorus::core::types::{clone_state, State};
+use chorus::core::types::{clone_state, AttrValue, State};
 use chorus::engine::engine::{execute_step, ExecOptions, ExecResult, Step};
 use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
@@ -567,6 +571,241 @@ fn a_ref_that_dies_mid_window_still_folds_identically() {
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
     assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// Cross-verb projection (§9.47, the E7 fix): a parent holding object/with/at
+/// chains — through the with-card's `on complete` trigger, the one legal
+/// cross-verb home (§9.48) — into a candidate whose verb declares ACTORS
+/// ONLY. The follow-up clause inherits the actor role alone: a player step
+/// cannot bind an undeclared role, so the wholesale shape was never
+/// player-producible. The dropped cards are NOT locked (the same step
+/// re-binds them while the follow-up window is open), the surviving actor
+/// binding re-resolves at the follow-up's own completion, and the
+/// play-inserted and fold-replayed windows land identical. A same-verb
+/// candidate declares every role the parent validated against — the
+/// multi-role pin above proves the projection is the identity there.
+#[test]
+fn a_cross_verb_followup_carries_only_the_roles_the_candidate_declares() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            "  DREAM:\n    actors: 1 kind:character\n    object: 1 kind:text\n    with: 1 kind:item\n    at: 1 kind:place\n    duration: 0m\n    recipes:\n      parent aspects hand when count(actors) >= 1 -> NARRATE \"parent\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      rest when count(actors) >= 1 -> SET(ACTORS, silver, +1), NARRATE \"waited\"",
+            None,
+            Some(
+                "  MAGICK_BOOK is text at HOUSE\n  CHARM is item at HOUSE on complete hand -> (RUN \"rest\")",
+            ),
+        ),
+    );
+    let base = clone_state(&s);
+    let r = run(
+        &c,
+        &dict,
+        s,
+        "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM",
+        1,
+    );
+    assert_eq!(r.rejected, None);
+    assert_eq!(
+        begin_recipes(&r),
+        [vec!["parent".to_string()], vec!["rest".to_string()]]
+    );
+    // the follow-up BEGIN carries ONLY the actor role — object/with/at are
+    // projected away (the candidate verb declares actors only)
+    let begin_rest = &r.records[2];
+    assert_eq!(begin_rest.verb, "WAIT");
+    assert_eq!(begin_rest.actors.len(), 1, "the actor role survives");
+    assert!(begin_rest.objects.is_empty(), "object dropped");
+    assert!(begin_rest.instruments.is_empty(), "with dropped");
+    assert!(begin_rest.at.is_none(), "at dropped");
+    // the open window holds the actor ref and locks NOTHING (actors are
+    // never committed) — the dropped cards are not locked
+    assert_eq!(r.state.windows.len(), 1);
+    let w = r.state.windows.values().next().unwrap();
+    assert_eq!(w.recipe, "rest");
+    assert_eq!(
+        w.refs.get(&chorus::core::roles::Role::Actors).map(Vec::len),
+        Some(1)
+    );
+    for role in [
+        chorus::core::roles::Role::Object,
+        chorus::core::roles::Role::With,
+        chorus::core::roles::Role::At,
+    ] {
+        assert_eq!(
+            w.refs.get(&role).map(Vec::len),
+            Some(0),
+            "{role:?} dropped from the window refs"
+        );
+    }
+    assert!(w.locked.is_empty(), "the dropped cards are not locked");
+    // the busy probe: the same step re-binds every dropped card while the
+    // follow-up window is open (wholesale inheritance refused here: the
+    // with-card was busy with WAIT)
+    let probe = run(
+        &c,
+        &dict,
+        clone_state(&r.state),
+        "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM",
+        100,
+    );
+    assert_eq!(probe.rejected, None, "the dropped cards are free");
+    assert_eq!(refusal(&probe), None);
+    assert_eq!(begin_recipes(&probe), [vec!["parent".to_string()]]);
+    // fold: identical windows and state
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r.state));
+    // …and the surviving actor binding re-resolves at the follow-up's own
+    // completion (the time.turn-reads-actors shape)
+    let r2 = advance(&c, &dict, r.state, "1:0", 200);
+    assert_eq!(r2.rejected, None);
+    let ops: Vec<&str> = r2.records[0]
+        .outcomes
+        .iter()
+        .map(|o| o.op.as_str())
+        .collect();
+    assert_eq!(ops, ["SET", "NARRATE"], "the actor role rode the window");
+    let ana = r2.state.by_name["ANA"][0].clone();
+    assert_eq!(
+        r2.state.entities[ana.as_str()].attrs.get("silver"),
+        Some(&AttrValue::Num(1))
+    );
+}
+
+/// The E7 regression, the slice shape in miniature (§9.47 projection;
+/// docs/plans/v0.6-engine-findings.md E7): a work bootstrap whose with-card
+/// carries the `on complete job` induce (§9.48) chains a self-rechaining
+/// WAIT wheel. Pre-projection every rechained window inherited
+/// `with=VIGOR`: the bootstrap card was busy until the chain died, and a
+/// restored mint re-locked by name. Post-projection the wheel's windows
+/// carry the actor role only: VIGOR is never busy, the wheel drains it, the
+/// dream restore mints it back without a §9.19 rejection, and the next
+/// rechain does not re-lock it.
+#[test]
+fn the_slice_shaped_bootstrap_chain_never_locks_its_with_card() {
+    let dict = run_dict();
+    let text = r#"
+script: Run Chains Rig
+player: ANA
+start: 0:0
+seed: 0
+
+entities:
+  ANA is character at HOUSE
+  HOUSE is place
+  VIGOR is resource with vigor:1 at ANA on complete job -> (IF NOT exists(name:THE_TURNING) -> (SPAWN THE_TURNING, NARRATE "the wheel begins"), RUN "turn")
+
+prototypes:
+  THE_TURNING is state
+  THE_WEARY_HOUR is resource with weary:1
+  THE_HOLLOW_DAYS is state stackable
+
+verbs:
+  WORK:
+    actors: 1 kind:character
+    with: 0..1 kind:resource
+    duration: 0m
+    recipes:
+      work.job aspects job when total(with, aspect:vigor) >= 1 -> NARRATE "worked"
+  WAIT:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      turn when exists(name:THE_TURNING) -> IF count(name:THE_HOLLOW_DAYS) < 1 -> (DESTROY VIGOR, SPAWN THE_WEARY_HOUR, SPAWN THE_HOLLOW_DAYS, NARRATE "eaten") ELSE -> (NARRATE "fasting"), RUN "turn"
+  DREAM:
+    actors: 1 kind:character
+    with: 0..2 kind:resource
+    duration: 0m
+    recipes:
+      dream.rest_vigor when count(with) = 1 AND total(with, aspect:weary) >= 1 -> DESTROY WITH, SPAWN resource:VIGOR, SET(VIGOR, aspect:vigor, 1), NARRATE "restored"
+      dream.default -> NARRATE "sleep"
+"#;
+    let (c, s) = compile(&dict, text);
+    let base = clone_state(&s);
+    // the bootstrap: work with the vigor — its completion spawns the wheel
+    // and chains time.turn's analog cross-verb (§9.48)
+    let r1 = run(&c, &dict, s, "0:0 @ ANA WORK WITH VIGOR", 1);
+    assert_eq!(r1.rejected, None);
+    assert_eq!(
+        begin_recipes(&r1),
+        [vec!["work.job".to_string()], vec!["turn".to_string()]]
+    );
+    // the wheel's BEGIN carries the actor role only — the with-card is
+    // projected away at synthesis
+    let begin_turn = &r1.records[2];
+    assert_eq!(begin_turn.verb, "WAIT");
+    assert_eq!(begin_turn.actors.len(), 1);
+    assert!(begin_turn.instruments.is_empty(), "with dropped");
+    assert_eq!(r1.state.windows.len(), 1);
+    let w1 = r1.state.windows.values().next().unwrap();
+    assert_eq!(w1.recipe, "turn");
+    assert!(w1.locked.is_empty(), "VIGOR is not locked by the wheel");
+    // VIGOR is never busy: the same work re-binds it while the wheel window
+    // is open (pre-projection: "VIGOR is busy with WAIT — it frees at 1:0")
+    let probe1 = run(&c, &dict, r1.state, "0:0 @ ANA WORK WITH VIGOR", 100);
+    assert_eq!(probe1.rejected, None, "VIGOR is free while the wheel runs");
+    assert_eq!(refusal(&probe1), None);
+    // the wheel drains the body at 1:0 and rechains
+    let r2 = advance(&c, &dict, probe1.state, "1:0", 200);
+    assert_eq!(r2.rejected, None);
+    assert!(
+        !r2.state
+            .entities
+            .values()
+            .any(|e| e.name == "VIGOR" && e.dead_action.is_none()),
+        "the wheel ate VIGOR"
+    );
+    assert!(r2
+        .state
+        .entities
+        .values()
+        .any(|e| e.name == "THE_WEARY_HOUR" && e.dead_action.is_none()));
+    assert_eq!(r2.state.windows.len(), 1, "the wheel rechained");
+    assert!(r2.state.windows.values().next().unwrap().locked.is_empty());
+    // the restore: dream.rest_vigor mints VIGOR back — no §9.19 rejection
+    // (a restored mint used to re-lock by name on the next rechain)
+    let r3 = run(
+        &c,
+        &dict,
+        r2.state,
+        "1:0 @ ANA DREAM WITH THE_WEARY_HOUR",
+        300,
+    );
+    assert_eq!(r3.rejected, None);
+    assert_eq!(refusal(&r3), None, "the restore lands clean");
+    assert!(
+        r3.state
+            .entities
+            .values()
+            .any(|e| e.name == "VIGOR" && e.dead_action.is_none()),
+        "VIGOR is restored"
+    );
+    // the next rechain must not re-lock the restored mint: the wheel runs on
+    // and VIGOR binds again immediately
+    let r4 = advance(&c, &dict, r3.state, "2:0", 400);
+    assert_eq!(r4.rejected, None);
+    assert_eq!(r4.state.windows.len(), 1, "still rechaining");
+    assert!(
+        r4.state.windows.values().next().unwrap().locked.is_empty(),
+        "the restored VIGOR is not re-locked by name"
+    );
+    let probe2 = run(&c, &dict, r4.state, "2:0 @ ANA WORK WITH VIGOR", 500);
+    assert_eq!(probe2.rejected, None, "the restored VIGOR is never busy");
+    assert_eq!(refusal(&probe2), None);
+    // the whole walk folds identically, windows included
+    let mut records = r1.records.clone();
+    records.extend(probe1.records.iter().cloned());
+    records.extend(r2.records.iter().cloned());
+    records.extend(r3.records.iter().cloned());
+    records.extend(r4.records.iter().cloned());
+    records.extend(probe2.records.iter().cloned());
+    let replayed = fold(&records, &base, &dict, &c).unwrap();
+    assert_eq!(
+        replayed.windows, probe2.state.windows,
+        "identical OpenWindows"
+    );
+    assert_eq!(snap(&replayed), snap(&probe2.state));
 }
 
 /// The guard trial's scratch never leaks: a gated candidate whose body ROLLs

@@ -325,7 +325,7 @@ core set is a default, not a closed wall.
 | `ROLLED`  | total, ctrAfter                 | **engine-written only** (§9.41): the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
 | `DRAW`    | deck [, INTO target]            | draw the next card of a `decks:` declaration (§9.42): paren-less, the deck id is a plain name (a declared-deck check runs at load, over recipes and triggers, IF branches included); INTO is the SPAWN target grammar, and must RESOLVE — a role over empty event bindings or a dead ref rejects the step rather than materializing the card nowhere. With no INTO the mint reuses SPAWN's default (the step's `at` card, else the first actor's `container`; in triggers, where bindings are empty, the card is minted containerless unless an explicit INTO is authored). The deck entry may name a prototype or a declared entity; repeats in the spec weight the draw. The log records the engine-written `DRAWN(<DECK>, <name>)` + the concrete `SPAWN … AS #id` pair — no DRAW ever appears in the log |
 | `DRAWN`   | deck, name                      | **engine-written only** (§9.42): the record of one DRAW — the fold advances that deck's cursor, asserting `name` is exactly what the compiled permutation serves at the cursor (content drift between play and fold fails loud). Authoring one is a load error |
-| `RUN`     | `"recipe-id"` `, …`             | chain the completion (§9.47): walk the candidates in order, pin the first whose `when:` matches the post-outcome draft (lenient, §6.4) and whose `max` (§9.50) is unspent, and open it as a follow-up window on its verb with the parent's bindings; no match — the chain ends silently; zero-concrete (the follow-up's BEGIN row is the only record). In recipe bodies: same verb, load-checked; in `on complete` bodies: cross-verb legal (global id table), the parent's own station is not busy. A second RUN op in one completion rejects the window |
+| `RUN`     | `"recipe-id"` `, …`             | chain the completion (§9.47): walk the candidates in order, pin the first whose `when:` matches the post-outcome draft (lenient, §6.4) and whose `max` (§9.50) is unspent, and open it as a follow-up window on its verb with the parent's bindings projected onto the candidate verb's declared roles; no match — the chain ends silently; zero-concrete (the follow-up's BEGIN row is the only record). In recipe bodies: same verb, load-checked; in `on complete` bodies: cross-verb legal (global id table), the parent's own station is not busy. A second RUN op in one completion rejects the window |
 | `REFUSE`  | string                          | abort the whole step (§6.5): draft discarded, attempt still logged |
 
 Shorthand: a bare ref in an outcome list means `SPAWN ref` (a **new** entity,
@@ -1779,7 +1779,16 @@ stays reserved for it.
       evaluated LENIENT, `strict: false`, exactly like selection (§6.4) —
       and whose `max` budget (§9.50) is not spent; it then opens ONE
       follow-up window on that recipe's verb with the parent's committed
-      role bindings, beginning at the completion clock. The `when:` IS
+      role refs PROJECTED onto that verb's declared slots: a role the
+      candidate verb does not declare is dropped, so the synthesized clause
+      keeps the same shape a player step could produce (a player cannot
+      bind an undeclared role, and actors survive wherever the candidate
+      declares actors) — a card bound only in a dropped role is carried by
+      no window and so never locks — beginning at the completion clock.
+      The projection happens at synthesis only: the parent window's own
+      refs and locks are untouched, the follow-up's BEGIN row remains the
+      record, and the fold replays it through the one registration path
+      unchanged. The `when:` IS
       re-evaluated: CS's linked hand-off is requirement-disambiguated (81
       all-chance-100 multi-entry routers; dream_router's six; the victory
       forks), so a pinned-id-no-check rule would make them inexpressible.

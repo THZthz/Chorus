@@ -629,7 +629,8 @@ comparisons  >= · <= · > · < · = · !=
 
 v0.2 limits: path operands read `role.aspect.key` and `role.attr.key`
 (numeric attrs); the scalar conditions inside `every`/`any` read **aspects
-only** (`aspect:key >= n`).
+only** (`aspect:key >= n`). A missing numeric attr entry on a bound card
+compares as 0 (§9.39); a missing aspect on a bound card reads false.
 
 Any character this grammar does not use is a **load error**: the predicate
 tokenizer fails naming the character and its offset — the §4.5 terms
@@ -1443,7 +1444,10 @@ Two invariants keep the mapping safe:
       over a role with NO bound card is an unresolvable ref, not a
       selection. The boundary, precisely: counts over anything read 0,
       aggregates 0, world existentials false (these are branch selection,
-      not failures), a missing aspect on a bound card reads false, and a
+      not failures), a missing aspect on a bound card reads false, a missing
+      NUMERIC attr entry on a bound card compares as 0 (the §9.31 SET-delta
+      rule: `attr:x >= 3` fails and `attr:x < 3` holds from missing; a
+      present non-numeric entry still never compares), and a
       card-reading operand over an empty role rejects. A role whose cards
       all died mid-list reads as absent — silent false (the §6.8 dead-stamp
       case): the card existed at the clause's re-resolution, so nothing

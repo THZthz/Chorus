@@ -291,6 +291,123 @@ fn not_binds_tighter_than_and() {
     assert!(ev(&p, &no_binds(), &state));
 }
 
+// ---------- attr paths in comparisons, E1 ----------------------------------
+// A numeric attr entry ABSENT from an ALIVE bound card compares as 0 (the
+// §9.31 SET-delta rule "a missing entry counts as 0" and total()'s
+// unwrap_or(0); script entities mint empty attrs, so a `silver < cost`
+// broke-gate must hold for a first-time buyer). ASPECT paths keep §9.39's
+// frozen missing→false; a role with no bound card and all-dead bindings
+// still never compare.
+
+/// `{ actors: a purse-less character, object: a cost-1 rite }` — the
+/// broke-gate shape, plus a priced purse to pin the present-attr reads.
+fn attr_state() -> State {
+    let mut state = new_state(0);
+    add_entity(&mut state, ent("pauper", "character", "PAUPER")).unwrap(); // empty attrs, alive
+    add_entity(
+        &mut state,
+        with_attrs(ent("priced", "character", "PRICED"), &[("silver", AttrValue::Num(2))]),
+    )
+    .unwrap();
+    add_entity(
+        &mut state,
+        with_attrs(ent("ticket", "rite", "TICKET"), &[("seal", AttrValue::Str("wax".into()))]),
+    )
+    .unwrap();
+    add_entity(
+        &mut state,
+        with_aspects(ent("priced_rite", "rite", "PRICED_RITE"), &[("cost", 1)]),
+    )
+    .unwrap();
+    state
+}
+
+#[test]
+fn a_missing_attr_on_a_living_card_compares_as_0() {
+    let s = attr_state();
+    let b = bindings(&[(Role::Actors, &["pauper"])]);
+    assert!(ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &b, &s));
+    assert!(!ev(&parse_predicate("actors.attr.silver >= 3").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("actors.attr.silver = 0").unwrap(), &b, &s));
+    assert!(!ev(&parse_predicate("actors.attr.silver != 0").unwrap(), &b, &s));
+}
+
+#[test]
+fn a_present_attr_compares_exactly_as_authored() {
+    let s = attr_state();
+    let b = bindings(&[(Role::Actors, &["priced"])]);
+    assert!(ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &b, &s)); // 2 < 3
+    assert!(!ev(&parse_predicate("actors.attr.silver >= 3").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("actors.attr.silver = 2").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("actors.attr.silver != 0").unwrap(), &b, &s));
+}
+
+#[test]
+fn the_missing_reads_0_on_both_operands_of_the_broke_gate_shape() {
+    let s = attr_state();
+    // the slice's gate: a purse-less actor against a cost-1 object — the
+    // refusal must fire for the first-time buyer
+    let b = bindings(&[(Role::Actors, &["pauper"]), (Role::Object, &["priced_rite"])]);
+    assert!(ev(
+        &parse_predicate("actors.attr.silver < object.aspect.cost").unwrap(),
+        &b,
+        &s
+    ));
+    // BOTH sides missing reads 0 < 0, false — and 0 <= 0, true, so the
+    // default provably serves the right operand too
+    assert!(!ev(
+        &parse_predicate("actors.attr.silver < object.attr.price").unwrap(),
+        &b,
+        &s
+    ));
+    assert!(ev(
+        &parse_predicate("object.attr.price <= actors.attr.silver").unwrap(),
+        &b,
+        &s
+    ));
+}
+
+#[test]
+fn the_frozen_edges_still_never_compare() {
+    let s = attr_state();
+    // §9.39 frozen: a missing ASPECT on a bound card reads false — only the
+    // attr namespace defaults
+    let aspect = bindings(&[(Role::Object, &["ticket"])]);
+    assert!(!ev(&parse_predicate("object.aspect.cost < 3").unwrap(), &aspect, &s));
+    // no bound card at all: the when:-side silent false (and the strict
+    // §9.39 rejection below keeps firing inside eval_expr)
+    assert!(!ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &no_binds(), &s));
+    // all-dead bindings: the dead-stamp silent false, not a 0-read
+    let mut dead = attr_state();
+    dead.entities.get_mut("pauper").unwrap().dead_action = Some(1);
+    assert!(!ev(
+        &parse_predicate("actors.attr.silver < 3").unwrap(),
+        &bindings(&[(Role::Actors, &["pauper"])]),
+        &dead
+    ));
+    // a PRESENT non-numeric entry never compares (it is not an absent entry)
+    let sealed = bindings(&[(Role::Actors, &["pauper"]), (Role::Object, &["ticket"])]);
+    assert!(!ev(
+        &parse_predicate("object.attr.seal = 0").unwrap(),
+        &sealed,
+        &s
+    ));
+}
+
+#[test]
+fn strict_keeps_rejecting_an_unbound_role_operand() {
+    // §9.39's asymmetric discipline is untouched: an IF-condition path over
+    // a role with NO bound card rejects the step — the default fires only
+    // when an ALIVE card is bound and the ENTRY is absent
+    let s = attr_state();
+    let p = parse_predicate("actors.attr.silver < 3").unwrap();
+    let strict = PredCtx { b: &no_binds(), state: &s, strict: true, roll: None };
+    assert_err_msg(
+        eval_pred(&p, &strict).map(|_| ()),
+        "operand 'actors.attr.silver' cannot resolve",
+    );
+}
+
 #[test]
 fn group_gate_with_not_any_the_magick_gate_shape() {
     // The standalone-entity binding shape: the magick card rides

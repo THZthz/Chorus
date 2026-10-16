@@ -14,7 +14,7 @@ use crate::core::query::{match_query, parse_cmp_op, parse_query, CmpOp, Query};
 use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::Outcome;
 use crate::core::lexer::Tok;
-use crate::core::types::{aspect_get, relation_alive, Entity, State};
+use crate::core::types::{aspect_get, relation_alive, AttrValue, Entity, State};
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{is_dsl_ws_char, DSL_WS_CLASS};
@@ -819,16 +819,53 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
             Ok(false)
         }
         Pred::Cmp { l, op, r } => {
-            // QUIRK: either operand missing → false (a missing value
-            // never compares)
-            let lv = eval_expr(l, ctx)?;
-            let rv = eval_expr(r, ctx)?;
+            // a numeric attr entry ABSENT from an ALIVE bound card compares
+            // as 0, BOTH operands (cmp_operand — the §9.31 SET-delta rule
+            // and total()'s unwrap_or(0)); every other unresolved operand
+            // still never compares (either side None → false)
+            let lv = cmp_operand(l, ctx)?;
+            let rv = cmp_operand(r, ctx)?;
             Ok(match (lv, rv) {
                 (Some(lv), Some(rv)) => op.num_cmp(lv, rv),
                 _ => false,
             })
         }
     }
+}
+
+/// One `Pred::Cmp` operand read: `eval_expr`, plus the E1 default — a
+/// numeric attr entry ABSENT from an ALIVE bound card compares as 0, so
+/// `attr:x < 3` holds from missing and `attr:x >= 3` fails (§9.31's
+/// SET-delta rule "a missing entry counts as 0" and total()'s
+/// `unwrap_or(0)`; script entities mint empty attrs, so a `silver < cost`
+/// broke-gate holds for a first-time buyer). Everything else keeps
+/// `eval_expr`'s discipline: an ASPECT path stays §9.39-frozen
+/// missing→false ("a missing aspect on a bound card reads false"); a role
+/// with no bound card is the §9.39 unresolvable ref (strict rejects inside
+/// `eval_expr`); all-dead bindings stay silent-false (the dead-stamp rule);
+/// and a PRESENT non-numeric entry never compares.
+fn cmp_operand(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
+    let ValExpr::Path { role, field: PredField::Attr, key } = x else {
+        return eval_expr(x, ctx);
+    };
+    let bound: &[String] = match Role::from_lower(role) {
+        Some(r) => ctx.b.get(&r).map(|v| v.as_slice()).unwrap_or(&[]),
+        None => &[], // an undeclared role binds nothing
+    };
+    let Some(e) = bound
+        .iter()
+        .filter_map(|id| ctx.state.entities.get(id))
+        .find(|e| e.dead_action.is_none())
+    else {
+        // no bindings (§9.39: strict rejects inside eval_expr) or all-dead
+        // (the silent dead-stamp false) — the un-coerced paths
+        return eval_expr(x, ctx);
+    };
+    Ok(match e.attrs.get(key) {
+        Some(AttrValue::Num(n)) => Some(*n),
+        None => Some(0), // the E1 default: absent entry on a living card
+        Some(_) => None, // present non-numeric: unresolved, never compares
+    })
 }
 
 /// Evaluate a scalar condition (missing aspect → false).

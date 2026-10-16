@@ -1,0 +1,333 @@
+# The Bellwood Aspirant — a Cultist-Simulator vertical slice for the Chorus text engine.
+#
+# Hollowmere: a fog-bound cathedral town where the bells ring one note too many
+# and the fog keeps whatever the bells say. The player is WREN, a restorer of
+# old ledgers with three foundations (VIGOR, WITS, YEARNING), no silver, two
+# thin books, and a rite she has no business owning. The design doc for this
+# slice is docs/plans/v0.6-cs-slice.md; the verified mechanics it authorizes are
+# docs/reverse/cultist-simulator.md §2/§3/§5/§6. This file is the COMPILING
+# SKELETON: the full card inventory, the verbs and their slots, the decks, the
+# endings, and the card-borne machines (the labor rolls, the whisper decay, the
+# wheel's bootstrap). The 101 recipes are the authoring phases' work (the doc's
+# §4 inventories every one) — each verb below carries only its default, or the
+# one stub another section's load check names, so the file loads today.
+#
+#   WORK      — labor and the clerk's post    (silver, the labor rolls, the bootstrap)
+#   WAIT      — the wheel                     (THE_TURNING: the season engine, self-rechaining)
+#   STUDY     — the lore ladder               (radiance and hush, three rungs each, the Way)
+#   DREAM     — moods and the desire chain    (the MOODS deck, promise → vow → hunger)
+#   TALK      — the congregation              (Mercy Hale: acquaintance → believer → disciple)
+#   MANSUS    — the Bellwood crossing         (one door, one deck, no reset)
+#   USE_ON    — the Lifted Lamp               (one rite: one summon, the desire ascension)
+#   ACQUIRE   — the flea market               (the skeleton key, tin candles, grey salve)
+#   TRAVEL_TO /
+#   LOCATE_AT — the two streets the slice owns
+#
+# Ethics (hard constraint, docs/reverse/cultist-simulator.md ethics note): every
+# label, narration and ending in this file is fresh text written for the slice.
+# Text policy (owner, 2026-10-16): CS strings may be quoted for this
+# engine-validation slice (open-source, non-commercial, game owned); the
+# Hollowmere frame stays. Mechanics/numbers remain dossier-governed facts.
+# structure are reused. The principles (RADIANCE, HUSH), the door (the
+# Bellwood), the rite (the Lifted Lamp), the summon (the Tolling Guest), the
+# desire (the Hunger of Heights), the people and every sentence are this repo's
+# own.
+#
+# Two engine laws this file obeys (both verified by run, 2026-10-15):
+#   1. REPLACE's successor resolves strictly inside trigger bodies — a never-
+#      alive prototype there bricks every commit on the verb — so every
+#      card-borne transform is DESTROY + SPAWN + SET. Recipes may REPLACE
+#      into prototypes freely (the mint carries the prototype's aspects).
+#   2. Predicates read aspects and attrs, never names: every card a recipe
+#      must recognize inside a bound role carries a one-level marker aspect
+#      (weary, dim, pale, dread, rapture, ease, mending, book, fever, frail,
+#      toll, ...). WAKEFULNESS and GLIMMER stay bare — nothing binds them.
+# The market's stock is finite: what the trestles hold at the start is all
+# Hollowmere has (a restock trigger would have to mint a declared entity,
+# which the engine refuses — the brick this file once shipped).
+#
+# The wheel is the slice's engine-from-a-single-spark. The first completion that
+# binds a job card (VIGOR, the clerk's post) fires its `on complete job` clause:
+# spawn THE_TURNING if absent, then RUN "time.turn" cross-verb (§9.48 — CS's
+# job→needs induce). time.turn drains one silver, draws a weather from the
+# SEASONS deck, and hands the cycle to that weather's recipe; every weather ends
+# by running time.turn again — the dossier's needs → discardseason → drawseason
+# → needs loop, as RUN chains (§9.47). Later bootstraps find THE_TURNING alive,
+# spawn nothing, and are suppressed exactly as CS's are.
+#
+# Time scale: 1 CS second → 1 engine minute (a 60 s action is the 1 h verb
+# duration; a 60 s season cycle is the 1 h WAIT window; the summon's 180 s is
+# the guest's 3 h). Chances are CS-exact: 30% labor and induction rolls, the
+# 90/70/30 cult-business convention, 70% hunt and cure rolls, 90% ascension
+# (Grand-rite 10% failure), the 3-mark death rules.
+#
+# seed: 1837 — chosen so the pinned win path's BELLWOOD draws run THE_LOST_BELL
+# first (draw 1) and THE_BELL_HEART by draw 6, closing radiance 24 as 18 + 6;
+# the dice calibrate in the authoring phases (docs/plans/v0.6-cs-slice.md §8).
+
+script: The Bellwood Aspirant
+player: WREN
+goal: fix a desire and lift it over the roof of the visible — before the grey water, the bright air, or plain mortality takes you
+start: 0:16
+seed: 1837
+
+# ── the two streets and the door ─────────────────────────────────────────
+entities:
+  THE_COLD_WATER_ROOM is place with site.home:1
+  THE_FLEA_MARKET is place with site.market:1
+  THE_BELLWOOD is place with wood:1
+  THE_FLEA_MARKET is south of THE_COLD_WATER_ROOM
+
+  WREN is character at THE_COLD_WATER_ROOM
+
+  # the three foundations — each carries the labor roll (CS's employment
+  # xtrigger: work the foundation, risk the drained form) and VIGOR alone
+  # carries the wheel's bootstrap (CS's job→needs induce, §9.48)
+  VIGOR is resource with vigor:1 at WREN on complete labor -> (ROLL(1, 10), IF roll <= 3 -> (DESTROY VIGOR, SPAWN THE_WEARY_HOUR, SET(THE_WEARY_HOUR, aspect:weary, 1), NARRATE "The hour takes its toll of the body; the body pays in weariness.") ELSE -> (NARRATE "The body holds, this once.")) on complete job -> (IF NOT exists(name:THE_TURNING) -> (SPAWN THE_TURNING, NARRATE "Somewhere below the fog, a wheel begins to turn. The seasons have your scent now."), RUN "time.turn")
+  WITS is resource with wits:1 at WREN on complete labor -> (ROLL(1, 10), IF roll <= 3 -> (DESTROY WITS, SPAWN THE_DIMMED_WIT, SET(THE_DIMMED_WIT, aspect:dim, 1), NARRATE "The figures swim. Something in the forecourt of the mind has closed for repairs.") ELSE -> (NARRATE "The wit holds, this once."))
+  YEARNING is resource with yearning:1 at WREN on complete labor -> (ROLL(1, 10), IF roll <= 3 -> (DESTROY YEARNING, SPAWN THE_PALE_YEARNING, SET(THE_PALE_YEARNING, aspect:pale, 1), NARRATE "The wanting goes out of the wanting. What is left is a habit with its coat still on.") ELSE -> (NARRATE "The yearning holds, this once."))
+
+  # the slice's library: one thin book per principle; each grinds into two
+  # fragments of its principle (the lore ladder's first rung). `book` is the
+  # marker aspect that keeps the book recipes from first-matching fragments
+  THE_PSALM_OF_CANDLES is text with radiance:2, book:1 at THE_COLD_WATER_ROOM
+  THE_SNOW_PAMPHLET is text with hush:2, book:1 at THE_COLD_WATER_ROOM
+
+  # the rite she has no business owning
+  THE_LIFTED_LAMP is rite with ritual:1 at WREN
+
+  # the flea market's stock — finite: the trestles hold one of each, and no
+  # trigger restocks them (minting a declared entity is the engine's one
+  # refusal). The key is the slice's one Knock-card (CS's knock:-1
+  # disqualification lives on the rite's recipes); cost is an aspect read as
+  # a number, sold a flag-aspect — the small consistent vocabulary
+  THE_SKELETON_KEY is item with ways:2, cost:3 at THE_FLEA_MARKET
+  THE_TIN_CANDLE is item stackable with candle:1, cost:1 at THE_FLEA_MARKET
+  THE_GREY_SALVE is item stackable with salve:1, cost:2 at THE_FLEA_MARKET
+
+# ── cards that can come into being ───────────────────────────────────────
+# pools (stackable) everywhere the game can hold two of a kind — the deck
+# livelock rule (§9.44) and CS's Dread-and-Funds reading (§9.38) both want it.
+# Marker aspects (the second engine law, header) sit on every card a recipe
+# must recognize inside a bound role.
+prototypes:
+  # foundations, drained (dream restores them — the verified idiom:
+  # DESTROY WITH + SPAWN resource:K + SET(K, aspect:k, 1))
+  THE_WEARY_HOUR is resource with weary:1
+  THE_DIMMED_WIT is resource with dim:1
+  THE_PALE_YEARNING is resource with pale:1
+
+  # sickness: one fever at a time (guarded spawns); it sours into frailty on
+  # its 3 h clock (CS's affliction 180 s → decrepitude), and frail labor can
+  # lay the body down
+  THE_FEVER is state with fever:1
+  THE_FRAILTY is state stackable with frail:1
+  THE_HOLLOW_DAYS is state stackable
+
+  # the six moods — CS's dream-router deck, same six slots, fresh names.
+  # DREAD keeps its common noun (unprotectable, and the tone wants it); the
+  # four that get bound into dream roles carry marker aspects
+  DREAD is state stackable with dread:1
+  RAPTURE is state stackable with rapture:1
+  EASE is state stackable with ease:1
+  WAKEFULNESS is state stackable
+  GLIMMER is idea stackable
+  MENDING is state stackable with mending:1
+  A_FADING_PEAL is idea stackable
+
+  # the whisper chain — CS's influence decay, two hops instead of four:
+  # the far toll (1 h) → the faint toll (1 h) → wakefulness (permanent)
+  THE_FAR_TOLL is idea with radiance:2, hush:2, toll:1
+  THE_FAINT_TOLL is idea with radiance:2, hush:2, toll:1
+
+  # the lore ladder: fragments pool, rungs double as combine targets
+  # (magnitudes 2 / 6 / 18 — the scale note in the design doc)
+  A_CANDLE_PSALM is idea stackable with radiance:2
+  A_STILL_AIR is idea stackable with hush:2
+  THE_LAMPKEEPERS_HOUR is idea with radiance:6
+  THE_HOARFIELD_LECTIONARY is idea with hush:6
+  THE_GLASS_GOSPEL is idea with radiance:18
+  THE_NINE_WINTERS is idea with hush:18
+  A_TOLLING_MORSEL is idea stackable with radiance:2, toll:1
+
+  # the door and what it pays
+  THE_WAY_THROUGH is idea with ways:1
+  THE_BELL_HEART is idea stackable with radiance:6
+  THE_ROOT_SILENCE is idea stackable with hush:6
+  THE_LOST_BELL is idea stackable with radiance:18
+
+  # the eight weathers (CS's season cards: instant markers, drawn and consumed)
+  SEASON_QUIET is state stackable
+  SEASON_WHITE is state stackable
+  SEASON_GREY is state stackable
+  SEASON_SHADOW is state stackable
+  SEASON_AMBITION is state stackable
+  SEASON_SICKLY is state stackable
+  SEASON_LEAN is state stackable
+  SEASON_WARM is state stackable
+
+  # the city's book-keeping: notoriety and evidence never fade (simplification,
+  # documented); the processed marks are CS's inducesdespair / fascination
+  # counters — three of either is death, exactly
+  NOTORIETY is state stackable
+  EVIDENCE is state stackable
+  THE_GREY_MARK is state stackable
+  THE_BRIGHT_MARK is state stackable
+
+  # the congregation: one recruit line, one promotion (CS's believer ≥1
+  # principle, disciple ≥7 — kept exact)
+  MERCY_HALE is character with hale:1, unmet:1
+  HALE_THE_BELIEVER is character with hale:1, believer:1
+  HALE_THE_DISCIPLE is character with hale:1, disciple:1
+
+  # the summon: a bell-voiced shade, 3 h in the world (CS's 180 s spirit),
+  # decaying to a far toll; it labors, crosses, and answers questions
+  THE_TOLLING_GUEST is character with radiance:6, hush:2, ways:1, bell_voice:1
+
+  # the desire chain: promise (temptation) → vow (dedication) → hunger (the
+  # desire card, born at CS's 3 marks; 6 ends the game)
+  THE_PROMISE_OF_HEIGHTS is idea with promise:1
+  THE_VOW_OF_HEIGHTS is idea with vow:1
+  THE_HUNGER_OF_HEIGHTS is idea with desire:1, marks:3
+
+  # the wheel, resident once spawned; and the clerk's post, which bootstraps
+  # it exactly as VIGOR does (CS: job elements induce needs)
+  THE_TURNING is state
+  THE_CLERKS_POST is item with post:1 on complete job -> (IF NOT exists(name:THE_TURNING) -> (SPAWN THE_TURNING, NARRATE "Somewhere below the fog, a wheel begins to turn. The seasons have your scent now."), RUN "time.turn")
+  THE_SENIOR_POST is item with post:1 on complete job -> (IF NOT exists(name:THE_TURNING) -> (SPAWN THE_TURNING, NARRATE "Somewhere below the fog, a wheel begins to turn. The seasons have your scent now."), RUN "time.turn")
+
+# ── the card-borne clocks ────────────────────────────────────────────────
+# every lifetime is SET x, expires at spawn; every transform is DESTROY +
+# SPAWN + SET (the first engine law: no REPLACE into runtime prototypes from
+# a trigger body — the commit trial resolves the successor strictly).
+# WAKEFULNESS never fades: the chain ends there (simplification, documented).
+triggers:
+  toll_fades on expire of THE_FAR_TOLL -> DESTROY THE_FAR_TOLL, SPAWN THE_FAINT_TOLL, SET(THE_FAINT_TOLL, expires, 1h), NARRATE "The far toll thins to a faint one, the way a bell keeps ringing after the rope has gone still."
+  faint_turns on expire of THE_FAINT_TOLL -> DESTROY THE_FAINT_TOLL, SPAWN WAKEFULNESS, NARRATE "The faint toll settles in the walls and will not finish. You will lie awake counting a bell that is no longer ringing."
+  fever_sours on expire of THE_FEVER -> DESTROY THE_FEVER, SPAWN THE_FRAILTY, NARRATE "The fever breaks the wrong way. What it leaves is not health; it is an arrangement with weakness."
+  guest_fades on expire of THE_TOLLING_GUEST -> IF NOT exists(name:THE_FAR_TOLL) -> (DESTROY THE_TOLLING_GUEST, SPAWN THE_FAR_TOLL, SET(THE_FAR_TOLL, expires, 1h), NARRATE "The guest thins into its own voice, and the voice into a far toll, and the fog files both.") ELSE -> (DESTROY THE_TOLLING_GUEST, NARRATE "The guest thins into its own voice, and the fog — which has heard it before — keeps only the habit of listening.")
+
+# ── what the fog deals ───────────────────────────────────────────────────
+# SEASONS mirrors CS's seasonevents weighting (quiet is common, sickness rare).
+# MOODS is CS's dream-router spec, same six slots. BELLWOOD has neither
+# defaultcard nor reset: the wood gives what it gives, then the draw fails
+# loud (§9.42) — a door that empties.
+decks:
+  SEASONS spec SEASON_QUIET, SEASON_QUIET, SEASON_QUIET, SEASON_WHITE, SEASON_WHITE, SEASON_GREY, SEASON_GREY, SEASON_SHADOW, SEASON_SHADOW, SEASON_AMBITION, SEASON_AMBITION, SEASON_SICKLY, SEASON_LEAN, SEASON_WARM reset
+  MOODS spec DREAD, RAPTURE, GLIMMER, MENDING, EASE, WAKEFULNESS reset
+  BELLWOOD spec THE_BELL_HEART, THE_BELL_HEART, THE_ROOT_SILENCE, THE_ROOT_SILENCE, THE_LOST_BELL, GLIMMER, MENDING, WAKEFULNESS
+
+# ── how it can all end ───────────────────────────────────────────────────
+# four endings, the slice's whole sky: one desire victory and the three
+# melancholies (despair, visions, body). Titles and flavours are fresh.
+endings:
+  OVER_THE_ROOF: "Over the Roof of the Visible" (grand)
+  GREY_WATER: "The Weight of Grey Water" (melancholy)
+  BRIGHT_AIR: "Taken by the Bright Air" (melancholy)
+  THE_BODY_FAILS: "The Body Lays Down Its Tenant" (melancholy)
+
+# ── what can be done ─────────────────────────────────────────────────────
+# the slice's nine verbs. Slot queries use the §9.49 alternation wherever CS's
+# any-of slots demanded it (WORK's entry, the rite's invocation). Recipes are
+# the authoring phases' work (docs/plans/v0.6-cs-slice.md §4 — 102 of them);
+# each verb below carries its default, and WAIT carries the time.turn stub the
+# bootstrap's RUN names at load.
+verbs:
+  WORK:
+    # CS's one big any-of entry slot, as alternation: a foundation (intact or
+    # drained — the marker aspects), the guest (uncanny labor), or the
+    # frailty (ruined labor)
+    actors: 1 kind:character
+    with: 0..1 kind:resource aspect:vigor>=1 | kind:resource aspect:wits>=1 | kind:resource aspect:yearning>=1 | kind:resource aspect:weary>=1 | kind:resource aspect:dim>=1 | kind:resource aspect:pale>=1 | kind:character aspect:bell_voice>=1 | kind:state aspect:frail>=1
+    at: 0..1 kind:place
+    duration: 1h
+    recipes:
+      work.default -> NARRATE "{actors} put in an hour, and the hour gives back what it will."
+
+  WAIT:
+    # the wheel. time.turn is a stub until the season authoring lands; it must
+    # exist now because the bootstrap's RUN names it (§9.47 load check)
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      time.turn when exists(name:THE_TURNING) -> NARRATE "The wheel turns; the weathers are still being cut."
+      default -> NARRATE "{actors} let the fog pass through the room."
+
+  STUDY:
+    actors: 1 kind:character
+    object: 1 kind:text | kind:idea
+    with: 0..2 kind:idea
+    at: 0..1 kind:place
+    duration: 2h
+    recipes:
+      study.default -> NARRATE "{actors} study {object}, line by line, and the lines mostly hold still."
+
+  DREAM:
+    actors: 1 kind:character
+    with: 0..2 kind:state | kind:idea | kind:resource
+    duration: 1h
+    recipes:
+      dream.default -> NARRATE "{actors} sleep without dreaming, and the fog files it away."
+
+  TALK:
+    actors: 1 kind:character
+    to: 0..1 kind:character
+    with: 0..2 kind:idea
+    about: 0..1 kind:idea
+    duration: 1halfhour
+    recipes:
+      talk.default -> NARRATE "{actors} exchange words with {to}, and the fog takes its customary share."
+
+  MANSUS:
+    actors: 1 kind:character
+    object: 1 kind:place
+    with: 0..1 kind:resource aspect:yearning>=1 | kind:character aspect:bell_voice>=1
+    duration: 1h
+    recipes:
+      mansus.default -> REFUSE("The crossing does not open on a whim.")
+
+  USE_ON:
+    # the Lifted Lamp's three CS slots as roles: invocation in `with`,
+    # offering in `about` (consumed), the desire or its vow in `to`
+    actors: 1 kind:character
+    object: 1 kind:rite
+    with: 0..3 kind:idea | kind:character aspect:bell_voice>=1 | kind:state aspect:fever>=1
+    about: 0..1 kind:item
+    to: 0..1 kind:idea aspect:vow>=1 | kind:idea aspect:desire>=1
+    duration: 2h
+    recipes:
+      rite.default -> REFUSE("The lamp will not lift on empty hands.")
+
+  ACQUIRE:
+    actors: 1 kind:character
+    object: 1 kind:item
+    duration: 1halfhour
+    recipes:
+      acquire.default -> REFUSE("Nobody in Hollowmere is selling that.")
+
+  TRAVEL_TO:
+    actors: 1 kind:character
+    object: 1 kind:place
+    duration: 1halfhour
+    recipes:
+      travel.default -> MOVE ACTORS INTO OBJECT, NARRATE "{actors} walk the fog to {object}."
+
+  LOCATE_AT:
+    actors: 1 kind:character
+    object: 1 kind:place
+    duration: 20m
+    recipes:
+      locate.default -> MOVE ACTORS INTO OBJECT, NARRATE "{actors} take up a station at {object} and stay put."
+
+# ── how it reads aloud ───────────────────────────────────────────────────
+templates:
+  WORK says "{actors} work."
+  WAIT says "{actors} wait."
+  STUDY says "{actors} study {object}."
+  DREAM says "{actors} dream."
+  TALK says "{actors} talk with {to}."
+  MANSUS says "{actors} face {object}."
+  USE_ON says "{actors} kindle {object}."
+  ACQUIRE says "{actors} acquire {object}."
+  TRAVEL_TO says "{actors} walk to {object}."
+  LOCATE_AT says "{actors} take up a station at {object}."

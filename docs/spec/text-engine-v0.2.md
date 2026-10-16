@@ -6,6 +6,15 @@ text ("sentences"). Sentences are canonical data: parseable, storable in a
 database, replayable. Rendering (text cards now, drawn cards later) is a
 projection of that data, never the source of truth.
 
+> **Compatibility: none, by design.** Nothing in this document is a stability
+> guarantee — the grammar, the log and script formats, and the API may break
+> at any version boundary (v0.2.2 changed event semantics; v0.2.3 re-scaled
+> the clock). Old logs are not replay contracts: re-author or migrate them
+> yourself; the engine ships no migration path (§9.30). The established
+> architecture is not frozen either: it may be changed when there is need —
+> but the spec must be amended in the same change, so this document always
+> describes the architecture as it actually is.
+
 > v0.2 = v0.1 + implementation rulings (§9.10+). Changes: grammar formalized
 > and reconciled with examples (pre-verbal `AT`, args/arity grammar, reserved
 > words), USE_ON signature fixed, single time model (auto duration + ADVANCE
@@ -1225,7 +1234,9 @@ Two invariants keep the mapping safe:
     across versions — v0.2.3 alone broke every pre-existing log by
     re-scaling `day:hour` to `day:halfhour`. The engine ships no migration
     shims and no version detection; when a change breaks old files,
-    re-author or migrate them by hand.
+    re-author or migrate them by hand. The established architecture is not
+    frozen either: it may be changed when there is need, but the spec must
+    be amended in the same change to describe the architecture as it now is.
 
 ### Implementation rulings (v0.2.5, SET arithmetic)
 

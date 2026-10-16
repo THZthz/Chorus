@@ -142,7 +142,7 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
         return Ok(format!("RUN({})", parts.join(", ")));
     }
     if o.op == "SPAWN" {
-        // pretty form: SPAWN X [INTO Y] [AS #id]
+        // pretty form: SPAWN X [INTO Y] [AS #id] [expires <duration>]
         let mut parts = vec!["SPAWN".to_string()];
         for a in &o.args {
             parts.push(format_arg(a, dict)?);
@@ -219,6 +219,15 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
         Arg::Pair { k, v } => Ok(match v {
             crate::core::types::AttrValue::Str(s) => format!("{k}={}", quote(s)),
             other => format!("{k}={}", other.to_canonical_string()),
+        }),
+        Arg::Expires { v } => Ok(match v {
+            // the SPAWN mint modifier (§4.4, §9.36): keyword restored, the
+            // duration canonicalized per §9.45 so the rendering re-parses
+            crate::core::types::AttrValue::Str(s) => format!("expires {}", quote(s)),
+            crate::core::types::AttrValue::Num(mins) => {
+                format!("expires {}", format_duration(*mins)?)
+            }
+            crate::core::types::AttrValue::Bool(b) => format!("expires {b}"),
         }),
         Arg::Vexpr { .. } => Err(ChorusError::new(
             "a ROLL value expression is authored form only — the log records the computed ROLLED ints (§9.41)",

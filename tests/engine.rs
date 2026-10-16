@@ -1,4 +1,4 @@
-//! Engine acceptance tests (74 tests) — the spec §6.4 READ ladder, REFUSE semantics
+//! Engine acceptance tests (84 tests) — the spec §6.4 READ ladder, REFUSE semantics
 //! (§6.5), time ownership (§9.12), events (§9.16), fold determinism (§7).
 //!
 //! The mod tree groups the behaviors. Every test builds a FRESH Dictionary
@@ -2684,6 +2684,513 @@ mod set_expires_duration_forms {
         assert_eq!(
             snap(&fold(&all, &seed_state(), &td, &c).unwrap()),
             snap(&r2.state)
+        );
+    }
+}
+
+/// The SPAWN `expires <duration>` modifier (§4.4, §9.36, §9.18; the E12
+/// ledger entry): a mint arms its own decay at BIRTH with the SET-expires
+/// pair — one shared write, so the same forms, the same boundary behavior,
+/// the same loud rejection — anchored to the mint clock (`ctx.now`: the
+/// window's START clock inside a completion, §6.7). Each SPAWN arms its own
+/// fresh copy, so a pooled name arms per instance where a following
+/// `SET DREAD, …` would hit the OLDEST pool member (§9.38). The modifier is
+/// authored-sugar only: the pair rides the concrete row's `attrs=`
+/// materialization, so the fold replays byte-identically with no new log
+/// surface.
+mod spawn_expires_modifier {
+    use super::*;
+    use chorus::content::script::compile_script;
+    use chorus::core::clock::parse_clock;
+    use chorus::engine::engine::{execute_step, ExecOptions};
+
+    /// The rig: ANA at HOUSE, a stackable DREAD pool prototype, a plain
+    /// non-pool prototype, and the caller's DREAM verb body.
+    fn rig(recipes: &str, extra_entities: &str, triggers: Option<&str>) -> String {
+        let triggers = match triggers {
+            Some(t) => format!("\ntriggers:\n{t}"),
+            None => String::new(),
+        };
+        format!(
+            "
+script: Spawn Expires Rig
+player: ANA
+start: 0:0
+seed: 0
+
+entities:
+  ANA is character at HOUSE
+  HOUSE is place
+{extra_entities}{triggers}
+prototypes:
+  DREAD is state stackable
+  CHALICE is item
+verbs:
+  DREAM:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+{recipes}
+"
+        )
+    }
+
+    fn compile(dict: &Dictionary, text: &str) -> (CompiledContent, State) {
+        let compiled = compile_script(text, dict).unwrap();
+        (compiled.content, compiled.state)
+    }
+
+    /// The settle adapter with the shared id-generator shape.
+    fn run(
+        content: &CompiledContent,
+        dict: &Dictionary,
+        state: State,
+        src: &str,
+        first: i64,
+    ) -> ExecResult {
+        let s = parse_sentence(src, dict).unwrap();
+        let mut n: i64 = 0;
+        let mut id_gen = || {
+            n += 1;
+            format!("x{first}_{n}")
+        };
+        settle_step(
+            content,
+            dict,
+            state,
+            step_of(&s),
+            first,
+            Some(&mut id_gen),
+        )
+        .unwrap()
+    }
+
+    /// A pure advance (bare clock) with the same id shape.
+    fn advance(
+        content: &CompiledContent,
+        dict: &Dictionary,
+        state: State,
+        clock: &str,
+        first: i64,
+    ) -> ExecResult {
+        let mut n: i64 = 0;
+        let mut id_gen = || {
+            n += 1;
+            format!("x{first}_{n}")
+        };
+        execute_step(
+            content,
+            dict,
+            state,
+            Step {
+                start_min: None,
+                clock: Some(parse_clock(clock).unwrap()),
+                clauses: vec![],
+                t_real: None,
+            },
+            ExecOptions {
+                first_record_id: first,
+                id_gen: Some(&mut id_gen),
+            },
+        )
+        .unwrap()
+    }
+
+    fn pool(state: &State) -> Vec<String> {
+        state.by_name["DREAD"].clone()
+    }
+
+    /// Each SPAWN carries its own modifier, so each fresh copy arms with its
+    /// OWN expiresAt — the oldest-name trap is gone (a `SET DREAD, …` after
+    /// the same list would arm only the pool head, §9.38) — and a plain
+    /// unmodified spawn arms not at all. The concrete row's `attrs=` pair
+    /// carries the materialization (§9.18).
+    #[test]
+    fn each_spawn_arms_its_own_fresh_pooled_copy() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires 3h, SPAWN DREAD expires 1h, SPAWN DREAD, NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let base = clone_state(&s);
+        let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r.rejected, None);
+        let p = pool(&r.state);
+        assert_eq!(p.len(), 3, "three fresh copies");
+        // birth order: 3h, 1h, unarmed — each copy its own pair
+        assert_eq!(r.state.entities[p[0].as_str()].attrs.get("expires"), Some(&AttrValue::Num(180)));
+        assert_eq!(r.state.entities[p[0].as_str()].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
+        assert_eq!(r.state.entities[p[1].as_str()].attrs.get("expires"), Some(&AttrValue::Num(60)));
+        assert_eq!(r.state.entities[p[1].as_str()].attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
+        assert_eq!(
+            r.state.entities[p[2].as_str()].attrs.get("expiresAt"),
+            None,
+            "the plain spawn arms nothing"
+        );
+        // the concrete SPAWN rows carry the pair inside attrs= (§9.18) —
+        // the modifier itself never reaches the log
+        let done_rows: Vec<String> = r
+            .records
+            .iter()
+            .filter(|rec| rec.kind == "complete")
+            .flat_map(|rec| rec.outcomes.iter().map(|o| format!("{o:?}")))
+            .collect();
+        let armed_rows = done_rows.iter().filter(|o| o.contains("expiresAt")).count();
+        assert_eq!(armed_rows, 2, "the concrete attrs= pairs carry expiresAt: {done_rows:?}");
+        assert!(
+            done_rows.iter().all(|o| !o.contains("Dur")),
+            "no authored modifier arg in the log: {done_rows:?}"
+        );
+        // the whole turn folds identically — structural (windows/entities)
+        // and through the shared snap
+        let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+        assert_eq!(replayed.entities, r.state.entities, "identical entities");
+        assert_eq!(snap(&replayed), snap(&r.state));
+    }
+
+    /// The pair is authoritative materialization: JSONL round-trip, then
+    /// fold, land the same armed attrs.
+    #[test]
+    fn the_armed_mint_survives_jsonl_and_refolds_identically() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires 90m, NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let base = clone_state(&s);
+        let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r.rejected, None);
+        let dir = std::env::temp_dir().join(format!("chorus-spawn-expires-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("log.jsonl");
+        save_log(&path, &r.records).unwrap();
+        let loaded = load_log(&path).unwrap();
+        assert_eq!(loaded, r.records);
+        let replayed = fold(&loaded, &base, &dict, &c).unwrap();
+        let p = pool(&r.state);
+        assert_eq!(
+            replayed.entities[p[0].as_str()].attrs.get("expiresAt"),
+            Some(&AttrValue::Num(90))
+        );
+        assert_eq!(snap(&replayed), snap(&r.state));
+    }
+
+    /// An authored `on expire of DREAD` trigger fires at the right minute:
+    /// `expires 45m` from minute 0 crosses no boundary at :30 and fires at
+    /// the :60 crossing (the first halfhour boundary at or after expiresAt
+    /// that the clock actually crosses, §6.6/§9.36's zero rule).
+    #[test]
+    fn expiry_fires_the_on_expire_trigger_at_the_right_minute() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires 45m, NARRATE \"done\"",
+                "",
+                Some("  melt on expire of DREAD -> NARRATE \"the dread melts\""),
+            ),
+        );
+        let base = clone_state(&s);
+        let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r1.rejected, None);
+        // set this pass: resolves at the NEXT advance (§6.6 snapshot)
+        assert!(!r1.records.iter().any(|x| x.kind == "event"));
+        let r2 = advance(&c, &dict, r1.state, "0:2", 100); // crosses :30 and :60
+        assert_eq!(r2.rejected, None);
+        let events: Vec<&ActionRecord> =
+            r2.records.iter().filter(|x| x.kind == "event").collect();
+        assert_eq!(events.len(), 1, "one expiry, at the :60 crossing");
+        assert_eq!(events[0].trigger.as_deref(), Some("melt"));
+        assert_eq!(events[0].t_game, "0:2", "the :60 crossing, not :30");
+        assert!(events[0].sentence.contains("the dread melts"));
+        // §9.32: the authored outcomes replace the built-in destroy entirely
+        // — the NARRATE-only trigger leaves the copy alive to re-fire
+        assert_eq!(
+            r2.state.entities[pool(&r2.state)[0].as_str()].dead_action,
+            None,
+            "the authored expiry replaced the built-in destroy"
+        );
+        let replayed = fold(
+            &[r1.records, r2.records].concat(),
+            &base,
+            &dict,
+            &c,
+        )
+        .unwrap();
+        assert_eq!(snap(&replayed), snap(&r2.state));
+    }
+
+    /// INTO-targeted spawns arm the same way, and an authored `attrs=`
+    /// materialization pair merges beside the modifier (§9.18) — with the
+    /// modifier applied after the merge, so it is authoritative over a
+    /// literal `expiresAt` in the same step's pair.
+    #[test]
+    fn into_targeted_spawns_arm_and_authored_attrs_pairs_merge() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires 30m attrs=\"{\\\"container\\\":\\\"house\\\",\\\"zone\\\":\\\"cellar\\\"}\", SPAWN CHALICE expires 1h attrs=\"{\\\"expiresAt\\\":999}\", NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r.rejected, None);
+        let d = &r.state.entities[pool(&r.state)[0].as_str()];
+        assert_eq!(d.attrs.get("container"), Some(&AttrValue::Str("house".to_string())));
+        assert_eq!(d.attrs.get("zone"), Some(&AttrValue::Str("cellar".to_string())));
+        assert_eq!(d.attrs.get("expires"), Some(&AttrValue::Num(30)));
+        assert_eq!(d.attrs.get("expiresAt"), Some(&AttrValue::Num(30)));
+        // the modifier wins over the pair's literal
+        let ch = &r.state.entities[r.state.by_name["CHALICE"][0].as_str()];
+        assert_eq!(ch.attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
+        assert_eq!(ch.attrs.get("expires"), Some(&AttrValue::Num(60)));
+    }
+
+    /// The zero-duration boundary is SET-expires' own (§9.36): expiresAt =
+    /// the mint clock, firing at the first halfhour boundary at or after
+    /// that minute the clock actually crosses.
+    #[test]
+    fn zero_duration_materializes_the_mint_clock_like_set() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires 0m, NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let base = clone_state(&s);
+        let r1 = run(&c, &dict, s, "0:20 @ ANA DREAM", 1); // absolute minute 600
+        assert_eq!(r1.rejected, None);
+        assert_eq!(
+            r1.state.entities[pool(&r1.state)[0].as_str()]
+                .attrs
+                .get("expiresAt"),
+            Some(&AttrValue::Num(600))
+        );
+        // fires at the first crossed boundary at or after 600 — the :30 slot
+        // of hour 20 (absolute 630) — during the next advance
+        let r2 = advance(&c, &dict, r1.state, "0:22", 100); // crosses 630
+        assert_eq!(r2.rejected, None);
+        assert!(r2.records.iter().any(|x| x.kind == "event"));
+        let replayed = fold(
+            &[r1.records, r2.records].concat(),
+            &base,
+            &dict,
+            &c,
+        )
+        .unwrap();
+        assert_eq!(snap(&replayed), snap(&r2.state));
+    }
+
+    /// A non-duration is the same loud rejection SET-expires gives: the bare
+    /// form cannot even lex into the modifier slot (parse error), the quoted
+    /// form reaches the one duration parser and refuses the window with
+    /// nothing logged as state (§9.36's "2fortnights" precedent).
+    #[test]
+    fn bad_durations_get_the_set_expires_rejections() {
+        let dict = core_dictionary();
+        // a negative bare duration lexes as punct + duration — the modifier
+        // slot rejects it at parse, naming the grammar
+        assert_err_msg(
+            parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires -1h", &dict),
+            "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got '-'",
+        );
+        // a non-duration keyword lands the same way
+        assert_err_msg(
+            parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires NEVER", &dict),
+            "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got 'NEVER'",
+        );
+        // the quoted form is §9.36's string path: a bad unit refuses the
+        // window at application, exactly like SET
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires \"2fortnights\", NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r.rejected, None);
+        assert_refusal(&r, r"bad duration '2fortnights'");
+        assert!(
+            !r.state.by_name.contains_key("DREAD"),
+            "the refused mint never landed"
+        );
+    }
+
+    /// The §5.2 round-trip of the new spelling: the modifier renders
+    /// keyword-restored from the arg shape, canonicalizes its duration per
+    /// §9.45, and re-parses to the identical outcome; quoted forms re-quote.
+    #[test]
+    fn the_new_spelling_round_trips() {
+        let dict = core_dictionary();
+        let s = parse_sentence(
+            "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 90m",
+            &dict,
+        )
+        .unwrap();
+        let out = format_sentence(&s, Some(&dict)).unwrap();
+        // 90m canonicalizes to the exact single unit 3halfhour (§9.45)
+        assert_eq!(out, "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour");
+        let s2 = parse_sentence(&out, &dict).unwrap();
+        assert_eq!(s2.outcomes, s.outcomes);
+        assert_eq!(format_sentence(&s2, Some(&dict)).unwrap(), out);
+        // a compound with no exact single unit decomposes (§9.45) and still
+        // re-parses
+        let s3 = parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires 100m", &dict).unwrap();
+        let out3 = format_sentence(&s3, Some(&dict)).unwrap();
+        assert_eq!(out3, "0:0 @ ANA DREAM -> SPAWN DREAD expires 1h40m");
+        assert_eq!(
+            parse_sentence(&out3, &dict).unwrap().outcomes,
+            s3.outcomes
+        );
+        // the §9.36 quoted form keeps its string and re-quotes
+        let s4 = parse_sentence(
+            "0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"",
+            &dict,
+        )
+        .unwrap();
+        let out4 = format_sentence(&s4, Some(&dict)).unwrap();
+        assert_eq!(out4, "0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"");
+        assert_eq!(
+            parse_sentence(&out4, &dict).unwrap().outcomes,
+            s4.outcomes
+        );
+        // the modifier sits after INTO/AS: INTO after the modifier is a
+        // parse error (the authored order is pinned)
+        assert!(parse_sentence(
+            "0:0 @ ANA DREAM -> SPAWN DREAD expires 30m INTO HOUSE",
+            &dict,
+        )
+        .is_err());
+        // the `key=value` spelling is NOT the modifier (P2-c): the keyword
+        // branch fires before the pair loop, so `expires=2h` is a loud parse
+        // error naming the modifier's grammar — the pair form can never
+        // silently stand in for it
+        assert_err_msg(
+            parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires=2h", &dict),
+            "SPAWN expires takes a §5\\.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got '='",
+        );
+    }
+
+    /// Which clock anchors the mint: the 0m window completes at its begin
+    /// minute, so the degenerate anchor is the begin minute itself — the
+    /// expiry lands at that minute + 30.
+    #[test]
+    fn a_completion_phase_spawn_anchors_to_the_window_start_clock() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN DREAD expires 30m, NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let base = clone_state(&s);
+        let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r1.rejected, None);
+        assert_eq!(
+            r1.state.entities[pool(&r1.state)[0].as_str()]
+                .attrs
+                .get("expiresAt"),
+            Some(&AttrValue::Num(30)),
+            "anchored to the (start == completion) minute, not 30 past a later advance"
+        );
+        let r2 = advance(&c, &dict, r1.state, "0:1", 100);
+        assert_eq!(r2.rejected, None);
+        assert!(r2.records.iter().any(|x| x.kind == "event"), "fires at 0:1");
+        let replayed = fold(
+            &[r1.records, r2.records].concat(),
+            &base,
+            &dict,
+            &c,
+        )
+        .unwrap();
+        assert_eq!(snap(&replayed), snap(&r2.state));
+    }
+
+    /// The anchor inside a REAL completion — a 1h window begun at 0:0, its
+    /// outcomes applying when the settle advance closes it at 1:0 — is the
+    /// window START clock (§6.7, the same clock SET-expires anchors to
+    /// there): `expires 30m` materializes 0:30, never completion+30 (1:30).
+    /// The expiry snapshot predates the mint, so the fire waits for the
+    /// next advance's first crossed boundary at or after 0:30 — the :90
+    /// slot (§6.6).
+    #[test]
+    fn the_anchor_inside_a_real_completion_is_the_window_start() {
+        let dict = core_dictionary();
+        let text = rig(
+            "      d when count(actors) >= 1 -> SPAWN DREAD expires 30m, NARRATE \"done\"",
+            "",
+            None,
+        )
+        .replace("duration: 0m", "duration: 1h");
+        let (c, s) = compile(&dict, &text);
+        let base = clone_state(&s);
+        // the settle adapter: begin at 0:0, then the closing advance to the
+        // window's end (1:0) — the completion mints there
+        let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r1.rejected, None);
+        assert!(r1.state.windows.is_empty(), "the settle advance closed the window");
+        assert!(!r1.records.iter().any(|x| x.kind == "event"), "no in-pass fire (the snapshot predates the mint, §6.6)");
+        assert_eq!(
+            r1.state.entities[pool(&r1.state)[0].as_str()]
+                .attrs
+                .get("expiresAt"),
+            Some(&AttrValue::Num(30)),
+            "window START + 30 (0:30), never completion + 30 (1:30)"
+        );
+        // the next advance (now = 1:0) crosses the :90 slot → the fire
+        let r2 = advance(&c, &dict, r1.state, "1:2", 200);
+        assert_eq!(r2.rejected, None);
+        let events: Vec<&ActionRecord> =
+            r2.records.iter().filter(|x| x.kind == "event").collect();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].t_game, "0:3", "the :90-minute crossing (halfhour 3) — the first boundary at or after expiresAt that the clock crosses");
+        let replayed = fold(
+            &[r1.records, r2.records].concat(),
+            &base,
+            &dict,
+            &c,
+        )
+        .unwrap();
+        assert_eq!(snap(&replayed), snap(&r2.state));
+    }
+
+    /// A non-pooled mint arms exactly the same way (the §9.19 tier where
+    /// `SPAWN X, SET X, expires, …` was already exact — the modifier makes
+    /// it one op).
+    #[test]
+    fn a_non_pool_mint_arms_the_same_way() {
+        let dict = core_dictionary();
+        let (c, s) = compile(
+            &dict,
+            &rig(
+                "      d when count(actors) >= 1 -> SPAWN CHALICE expires 2h, NARRATE \"done\"",
+                "",
+                None,
+            ),
+        );
+        let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+        assert_eq!(r.rejected, None);
+        let id = &r.state.by_name["CHALICE"][0];
+        assert_eq!(
+            r.state.entities[id.as_str()].attrs.get("expiresAt"),
+            Some(&AttrValue::Num(120))
         );
     }
 }

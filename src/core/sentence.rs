@@ -93,8 +93,10 @@ impl Sign {
 /// fields in the declaration order below — `param`'s `sign` omitted when
 /// absent (the canonical undefined-dropping rule). The log only
 /// ever carries the ref/role/int/delta/str/bool/dur/key/into/asId/pair
-/// shapes (vexpr/param are authored-only and expand/roll away), but the
-/// serde impl covers every variant so the model has one representation.
+/// shapes (expires/vexpr/param are authored-only — the modifier rides the
+/// concrete row's attrs= materialization, §9.18 — and expand/roll away),
+/// but the serde impl covers every variant so the model has one
+/// representation.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "t")]
 pub enum Arg {
@@ -138,6 +140,16 @@ pub enum Arg {
     /// `{ t: 'pair', k, v: string | number | boolean }`
     #[serde(rename = "pair")]
     Pair { k: String, v: crate::core::types::AttrValue },
+    /// `{ t: 'expires', v }` — the SPAWN `expires <duration>` mint modifier
+    /// (§4.4, §9.36), a DEDICATED arg shape on purpose: a bare dur/str in
+    /// SPAWN args must never be read as the modifier, because a §9.40
+    /// parameter standing in a `k=v` pair position expands (subst) to the
+    /// caller's whole bound value and can land exactly such a shape there.
+    /// Authored-sugar only — the concrete row materializes the
+    /// `expires`/`expiresAt` pair inside `attrs=` (§9.18), so the log never
+    /// carries one.
+    #[serde(rename = "expires")]
+    Expires { v: crate::core::types::AttrValue },
     /// `{ t: 'vexpr', v }` — ROLL argument (§9.41): a §6.3 value expression.
     /// Authored form only: the log records the computed ROLLED ints.
     #[serde(rename = "vexpr")]
@@ -171,6 +183,7 @@ impl Arg {
             Arg::Into { .. } => "into",
             Arg::AsId { .. } => "asId",
             Arg::Pair { .. } => "pair",
+            Arg::Expires { .. } => "expires",
             Arg::Vexpr { .. } => "vexpr",
             Arg::Param { .. } => "param",
         }

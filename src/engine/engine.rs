@@ -1350,6 +1350,40 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             attrs.shift_remove("container"); // removal keeps the other keys' slots (order-preserving)
         }
     }
+    // the authored mint-decay modifier (§4.4, §9.36): `SPAWN X expires
+    // <duration>` arms the mint at BIRTH with the SET-expires pair — the
+    // same key, the same one duration parser, the same checked arithmetic
+    // (the shared §9.18 helper) — anchored to the application clock
+    // (`ctx.now`: the step clock at the table, the window's START clock
+    // inside a completion, §6.7). Applied AFTER the attrs= merge, the
+    // modifier is authoritative over a literal in an authored same-step
+    // pair; the pair rides the concrete row's attrs= materialization
+    // (§9.18), so the fold replays byte-identically with no new log
+    // surface — the modifier itself is authored-sugar only and never
+    // reaches the log. The DEDICATED arg shape (E12 review) means only the
+    // authored modifier position matches: a §9.40 parameter expanded into a
+    // k=v pair position lands as a BARE Str/Dur here and is rejected below,
+    // never silently read as (or against) the modifier.
+    let expires_arg = args.iter().find_map(|a| match a {
+        Arg::Expires { v } => Some(v.clone()),
+        _ => None,
+    });
+    if let Some(v) = &expires_arg {
+        materialize_expires(&mut attrs, "expires", v, ctx.now, "SPAWN expires")?;
+    }
+    if let Some(a) = args.iter().find(|a| matches!(a, Arg::Str { .. } | Arg::Dur { .. })) {
+        // authored text cannot produce a bare str/dur in SPAWN args (the
+        // modifier is its own shape, pairs are `k=v`), so one of these is
+        // always fn-expansion residue: the caller's bound value spliced for
+        // a whole pair. Previously this dropped the arg INERTLY — the
+        // author's intent silently lost; now it fails loud (§9.19).
+        return Err(ChorusError::new(format!(
+            "SPAWN: a bare {} arg is not a SPAWN arg shape — a §9.40 parameter standing in a k=v \
+             pair position expands to the caller's whole bound value; author the pair value \
+             directly (the expires modifier is its own `expires <duration>` shape, §4.4)",
+            a.tag()
+        )));
+    }
     add_entity(
         ctx.state,
         Entity {
@@ -1594,14 +1628,11 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 };
                 aspect_set($e, path, *n);
             } else {
-                $e.attrs.insert(key.clone(), value.clone());
-                if key == "expires" {
-                    let mins = to_minutes(value)?;
-                    $e.attrs.insert(
-                        "expiresAt".to_string(),
-                        AttrValue::Num(checked_step($ctx.now, mins, "SET expires")),
-                    );
-                }
+                // the attr write + the SET-expires materialization (§4.2,
+                // §9.36) — the write closure shares the SPAWN modifier's
+                // helper (§9.18): the same key test, the same one duration
+                // parser, the same checked arithmetic
+                materialize_expires(&mut $e.attrs, &key, value, $ctx.now, "SET expires")?;
             }
         }};
     }
@@ -1958,7 +1989,11 @@ fn refs_to_clause(verb: &CompiledVerb, refs: &IndexMap<Role, Vec<Ref>>) -> Claus
 /// RUN (§9.47) — a completion may chain into named follow-up recipes. The
 /// carrying window's completion walks its candidates IN ORDER and pins the
 /// FIRST whose `when:` matches the post-outcome draft — evaluated LENIENT,
-/// `strict: false`, exactly like selection (§6.4) — and whose `max` budget
+/// `strict: false`, exactly like selection (§6.4), against the draft AND the
+/// parent window's committed role bindings with the projected clause's own
+/// bindings winning where the candidate verb declares the role (E8: the
+/// cross-verb gate reads the parent situation; same-verb chains are
+/// unchanged) — and whose `max` budget
 /// (§9.50) is not spent; it then opens ONE follow-up window on that recipe
 /// with the parent's committed role bindings, beginning at the completion
 /// clock. Zero-concrete: RUN logs NOTHING of itself — the follow-up's BEGIN
@@ -2098,11 +2133,50 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // requirement-disambiguated (the dream-router shape), so a
         // pinned-id-no-check rule would make them inexpressible. Lenient,
         // exactly like selection (§6.4): `roll` never binds on a `when:`.
+        //
+        // The gate reads the draft AND the hand-off's two binding layers
+        // (§9.47's walk, E8): the PARENT window's committed bindings first,
+        // overlaid with the projected clause's own — where the candidate
+        // verb DECLARES the role the projected binding wins (it is what the
+        // follow-up will carry, resolved against the post-outcome draft,
+        // dead refs dropping like every completion resolution); where the
+        // projection drops the role the parent window's binding stands, so
+        // a cross-verb gate reads the parent situation (the CS linked
+        // semantics). Same-verb chains keep their ordinary matches — the
+        // projection is the identity over the declared roles — but the
+        // declared-role bindings CHANGE SOURCE: they now come from the
+        // projected clause re-resolved against the post-outcome draft, so
+        // a same-verb gate whose bound card the parent's own outcomes
+        // replaced or killed reads the follow-up's truth, not the
+        // begin-time id snapshot. A role the projection drops is
+        // GATE-VISIBLE ONLY: the gate can read it here, but the follow-up
+        // never carries it — an outcome SET over that unbound role expands
+        // to no targets and silently no-ops (the §9.31 role-ref law). The
+        // merged bindings are EVAL CONTEXT ONLY — the synthesized BEGIN row
+        // still carries the projected clause alone (§9.47 concretization).
         let matched = match &cand.when {
             None => true,
             Some(w) => {
+                let cand_verb = match ctx.content.verbs.get(cand_verb_name) {
+                    Some(v) => v,
+                    None => continue, // unresolved drift walks on (§9.30 posture)
+                };
+                let projected = clause_refs(&refs_to_clause(cand_verb, &parent_refs));
+                let mut merged: RoleBindings = ctx.bindings.clone();
+                for role in ROLES {
+                    if !cand_verb.slot_by_role.contains_key(role.as_str()) {
+                        continue; // the projection drops the role: the parent binding stands
+                    }
+                    let mut ids = Vec::new();
+                    for r in &projected[&role] {
+                        if let Some(e) = resolve_ref(ctx.state, r)? {
+                            ids.push(e.id.clone());
+                        }
+                    }
+                    merged.insert(role, ids);
+                }
                 let pctx = PredCtx {
-                    b: &ctx.bindings,
+                    b: &merged,
                     state: ctx.state,
                     strict: false,
                     roll: None,
@@ -2302,7 +2376,37 @@ fn apply_all(outcomes: &[Outcome], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
 /// already minutes — the lexer pre-converts bare duration literals (§5.1)
 /// before SET sees them; quoted strings go through the one duration parser,
 /// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
-/// `expiresAt`.
+/// `expiresAt`. The ONE write both SET (§9.36) and the SPAWN
+/// `expires <duration>` mint modifier (§4.4, §9.18) share: the authored
+/// `expires` attr keeps its form (minutes for bare, the string for quoted,
+/// §9.15) and `expiresAt` lands as `now + minutes` through the checked
+/// stepper — `now` being the application clock (the step clock at the
+/// table, the window's START clock inside a completion, §6.7). SET calls
+/// this with its own `key` (the expires materialization is keyed on the
+/// key being `expires`); the SPAWN modifier calls it with `expires`.
+fn materialize_expires(
+    attrs: &mut Attrs,
+    key: &str,
+    value: &AttrValue,
+    now: i64,
+    what: &str,
+) -> Result<()> {
+    attrs.insert(key.to_string(), value.clone());
+    if key == "expires" {
+        let mins = to_minutes(value)?;
+        attrs.insert(
+            "expiresAt".to_string(),
+            AttrValue::Num(checked_step(now, mins, what)),
+        );
+    }
+    Ok(())
+}
+
+/// The duration-to-minutes read every `expires` write shares: numbers are
+/// already minutes — the lexer pre-converts bare duration literals (§5.1)
+/// before SET sees them; quoted strings go through the one duration parser,
+/// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
+/// `expiresAt` (§9.36, §9.45).
 fn to_minutes(v: &AttrValue) -> Result<i64> {
     match v {
         AttrValue::Num(n) => Ok(*n),

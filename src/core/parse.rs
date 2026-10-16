@@ -936,10 +936,14 @@ impl<'a> Parser<'a> {
         Ok(Arg::Ref { r#ref: self.ref_()? })
     }
 
-    /// SPAWN ref [INTO target] [AS #id] [k=v …]
-    /// (canonical paren-less form). §9.40: a parameter as the pair's key OR
-    /// value replaces the whole pair (these param checks are LIVE —
-    /// unlike arg()'s dead key check, Q3).
+    /// SPAWN ref [INTO target] [AS #id] [expires duration] [k=v …]
+    /// (canonical paren-less form). The authored `expires <duration>`
+    /// modifier (§4.4, §9.36) arms the mint at birth — the engine
+    /// materializes the SET-expires `expires`/`expiresAt` pair inside the
+    /// concrete row's `attrs=` pair (§9.18), so the modifier itself is
+    /// authored-sugar only and never reaches the log. §9.40: a parameter as
+    /// the pair's key OR value replaces the whole pair (these param checks
+    /// are LIVE — unlike arg()'s dead key check, Q3).
     fn spawn_args(&mut self) -> Result<Vec<Arg>> {
         let mut args = vec![Arg::Ref { r#ref: self.ref_()? }];
         if self.at_keyword("INTO") {
@@ -958,6 +962,31 @@ impl<'a> Parser<'a> {
                 )));
             };
             args.push(Arg::AsId { id: v });
+        }
+        if self.at_keyword("expires") {
+            self.next()?;
+            // every §5.1 duration form: the bare literal lexes to minutes
+            // (§9.45 compounds included); the quoted form rides §9.36's
+            // quoted-string path — the engine runs both through the one
+            // duration parser. The DEDICATED arg shape (E12 review): a
+            // §9.40 parameter here is a parse error naming the grammar, so
+            // the modifier can never be reached by substitution, and no
+            // bare dur/str arg is ever mistaken for it at application.
+            let t = self.next()?;
+            match &t {
+                Tok::Dur { v } => args.push(Arg::Expires {
+                    v: crate::core::types::AttrValue::Num(*v),
+                }),
+                Tok::Str { v } => args.push(Arg::Expires {
+                    v: crate::core::types::AttrValue::Str(v.clone()),
+                }),
+                other => {
+                    return Err(ChorusError::new(format!(
+                        "SPAWN expires takes a §5.1 duration (e.g. 2h, 90m, 1halfhour), got '{}'",
+                        show(other)
+                    )));
+                }
+            }
         }
         while self.at_punct("=", 1) {
             let k = self.next()?;

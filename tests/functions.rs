@@ -715,6 +715,78 @@ mod parameter_substitution {
     }
 }
 
+// ---------- the pair-position param vs the SPAWN expires modifier (§4.4, §9.40) ------
+
+/// A §9.40 parameter standing in a SPAWN `k=v` pair position expands to the
+/// caller's WHOLE bound value — a bare Dur/Str arg the SPAWN grammar itself
+/// can never author. The `expires <duration>` mint modifier (§4.4) is its
+/// own dedicated arg shape precisely so such an expansion can never
+/// masquerade as it: the residue is a LOUD application failure (the E12
+/// review's chosen discipline — it used to drop the arg inertly, silently
+/// losing the author's intent).
+mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
+    use super::*;
+
+    /// A DURATION-bound param in a pair position: loud refusal at the
+    /// completion — never a silent arming of the modifier.
+    #[test]
+    fn a_dur_bound_param_in_a_pair_position_refuses_loud_not_arms_expiry() {
+        let dict = stew_dict();
+        let c = rig(
+            &dict,
+            vec![fdef("decay", &["p"], "SPAWN SUSPICION ttl=p, NARRATE \"minted.\"")],
+            "decay(2h)",
+        );
+        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        assert_eq!(r.rejected, None, "the expansion compiles and runs to completion");
+        assert_refusal_matches(
+            &r,
+            r"a bare dur arg is not a SPAWN arg shape — a §9\.40 parameter standing in a k=v pair position expands to the caller's whole bound value",
+        );
+        // nothing landed: no silent mint, no silent arming
+        assert!(!r.state.by_name.contains_key("SUSPICION"));
+    }
+
+    /// A STRING-bound param: the same loud refusal — both inert pre-review
+    /// shapes now name the §9.40 shape instead of dropping silently.
+    #[test]
+    fn a_str_bound_param_in_a_pair_position_refuses_loud_the_same_way() {
+        let dict = stew_dict();
+        let c = rig(
+            &dict,
+            vec![fdef("tag", &["p"], "SPAWN SUSPICION note=p, NARRATE \"minted.\"")],
+            "tag(\"soon\")",
+        );
+        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        assert_eq!(r.rejected, None);
+        assert_refusal_matches(
+            &r,
+            r"a bare str arg is not a SPAWN arg shape — a §9\.40 parameter standing in a k=v pair position expands to the caller's whole bound value",
+        );
+        assert!(!r.state.by_name.contains_key("SUSPICION"));
+    }
+
+    /// The modifier's own shape is untouched by the guard: a body-authored
+    /// `expires <duration>` arms the mint through the same call path.
+    #[test]
+    fn the_modifier_itself_still_arms_through_a_function_body() {
+        let dict = stew_dict();
+        let c = rig(
+            &dict,
+            vec![fdef("decay", &[], "SPAWN SUSPICION expires 2h, NARRATE \"minted.\"")],
+            "decay()",
+        );
+        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        assert_eq!(r.rejected, None);
+        assert_eq!(refusal(&r), None);
+        let id = &r.state.by_name["SUSPICION"][0];
+        assert_eq!(
+            r.state.entities[id.as_str()].attrs.get("expiresAt"),
+            Some(&AttrValue::Num(120))
+        );
+    }
+}
+
 fn assert_refusal_matches(r: &ExecResult, pattern: &str) {
     let msg = refusal(r)
         .unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));

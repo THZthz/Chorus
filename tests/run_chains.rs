@@ -330,6 +330,149 @@ fn the_router_walk_pins_the_first_matching_candidate() {
     );
 }
 
+/// The dream-router shape keyed on the BOUND mood card, end to end (§9.47's
+/// walk + the E8 binding merge): a verb slot binds the mood card, the
+/// follow-up candidate's `when:` reads that role, and the dispatch follows
+/// the mood. The whole turn folds identically — the hand-off bindings are
+/// eval-context only, the BEGIN row carries the projected clause alone
+/// (play-inserted and fold-replayed windows land structurally equal).
+#[test]
+fn the_router_dispatches_on_the_bound_mood_card() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            "  DREAM:\n    actors: 1 kind:character\n    with: 0..1 kind:resource\n    duration: 0m\n    recipes:\n      router when count(actors) >= 1 -> NARRATE \"route\", RUN \"m_dread\", \"m_rapture\", \"m_plain\"\n      m_dread when total(with, aspect:dread) >= 1 -> NARRATE \"dread night\"\n      m_rapture when total(with, aspect:rapture) >= 1 -> NARRATE \"rapture night\"\n      m_plain when count(actors) >= 1 -> NARRATE \"plain night\"",
+            None,
+            Some(
+                "  DREAD_MARK is resource with dread:1 at ANA\n  RAPTURE_MARK is resource with rapture:1 at ANA",
+            ),
+        ),
+    );
+    let base = clone_state(&s);
+    // dream on the dread: the walk pins m_dread — the gate read the BOUND
+    // with-card through the hand-off bindings
+    let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM WITH DREAD_MARK", 1);
+    assert_eq!(r1.rejected, None);
+    assert_eq!(
+        begin_recipes(&r1),
+        [vec!["router".to_string()], vec!["m_dread".to_string()]]
+    );
+    assert_eq!(
+        r1.records[3].outcomes[0].args[0],
+        Arg::Str {
+            v: "dread night".to_string()
+        }
+    );
+    // dream on the rapture: same router, different mood, different dispatch
+    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DREAM WITH RAPTURE_MARK", 100);
+    assert_eq!(r2.rejected, None);
+    assert_eq!(
+        begin_recipes(&r2),
+        [vec!["router".to_string()], vec!["m_rapture".to_string()]]
+    );
+    // the follow-up BEGIN row carries the projected clause alone — the
+    // gate's merged bindings never reach the log
+    let begin = &r2.records[2];
+    assert_eq!(begin.actors.len(), 1);
+    assert_eq!(begin.instruments.len(), 1, "the with role rides");
+    assert_eq!(begin.outcomes.len(), 0, "no PROGRESS, no eval-context leak");
+    // both turns fold identically, windows included
+    let mut records = r1.records.clone();
+    records.extend(r2.records.iter().cloned());
+    let replayed = fold(&records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r2.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r2.state));
+}
+
+/// The cross-verb hand-off (§9.48): the candidate verb declares ACTORS only,
+/// so the projection DROPS the parent's with-card — and the gate still reads
+/// it, through the parent window's committed binding (the E8 merge fills the
+/// dropped roles). This is CS's linked-target-gated-on-the-situation shape.
+#[test]
+fn a_cross_verb_gate_reads_the_parent_situation() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            "  DREAM:\n    actors: 1 kind:character\n    with: 0..1 kind:resource\n    duration: 0m\n    recipes:\n      router aspects hand when count(actors) >= 1 -> NARRATE \"route\"\n  WAIT:\n    actors: 1 kind:character\n    duration: 1h\n    recipes:\n      rest_hot when total(with, aspect:hot) >= 1 -> NARRATE \"hot rest\"\n      rest_plain when count(actors) >= 1 -> NARRATE \"plain rest\"",
+            None,
+            Some(
+                "  EMBER is resource with hot:1 at ANA on complete hand -> (RUN \"rest_hot\", \"rest_plain\")",
+            ),
+        ),
+    );
+    let base = clone_state(&s);
+    let r = run(&c, &dict, s, "0:0 @ ANA DREAM WITH EMBER", 1);
+    assert_eq!(r.rejected, None);
+    // the first candidate's when reads `with` — a role WAIT does not declare
+    // and the projection drops — and still matches on the parent's EMBER
+    assert_eq!(
+        begin_recipes(&r),
+        [vec!["router".to_string()], vec!["rest_hot".to_string()]]
+    );
+    // the follow-up BEGIN carries only the declared actor role, as ever (E7)
+    let begin = &r.records[2];
+    assert_eq!(begin.verb, "WAIT");
+    assert_eq!(begin.actors.len(), 1);
+    assert!(begin.instruments.is_empty(), "with is projected away");
+    // the gate's parent-situation read never reached the log; fold agrees
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
+/// Projected-binding precedence (the E8 behavior change): the parent's own
+/// outcomes DESTROY the bound with-card and mint a fresh same-named copy;
+/// the gate reads the PROJECTED binding — the fresh copy, resolved against
+/// the post-outcome draft (what the follow-up will carry) — not the parent
+/// window's stale pre-outcome id (dead in the draft, a silent miss before
+/// the merge).
+#[test]
+fn the_gate_reads_the_projected_binding_over_the_parent_stale_one() {
+    let dict = run_dict();
+    let (c, s) = compile(
+        &dict,
+        &rig_full(
+            // the re-mint is a kind:NAME SPAWN (an entity name has no
+            // prototype to mint from) whose authored aspects= pair restores
+            // the hot aspect — the fresh copy is the card the follow-up
+            // will carry
+            "  DREAM:\n    actors: 1 kind:character\n    with: 0..1 kind:resource\n    duration: 0m\n    recipes:\n      router when count(actors) >= 1 -> DESTROY WITH, SPAWN resource:EMBER aspects=\"{\\\"hot\\\":1}\", NARRATE \"route\", RUN \"m_high\", \"m_low\"\n      m_high when total(with, aspect:hot) >= 1 -> NARRATE \"high\"\n      m_low when count(actors) >= 1 -> NARRATE \"low\"",
+            None,
+            Some("  EMBER is resource with hot:1 at ANA"),
+        ),
+    );
+    let base = clone_state(&s);
+    let r = run(&c, &dict, s, "0:0 @ ANA DREAM WITH EMBER", 1);
+    assert_eq!(r.rejected, None);
+    assert_eq!(refusal(&r), None, "the re-mint lands clean");
+    // the fresh EMBER carries hot:1 — the projected binding sees it
+    assert_eq!(
+        begin_recipes(&r),
+        [vec!["router".to_string()], vec!["m_high".to_string()]]
+    );
+    assert_eq!(
+        r.records[3].outcomes[0].args[0],
+        Arg::Str {
+            v: "high".to_string()
+        }
+    );
+    // the minted EMBER is a NEW card (the parent consumed the old one): the
+    // re-minted copy is the only living EMBER
+    assert!(r
+        .state
+        .entities
+        .values()
+        .filter(|e| e.name == "EMBER" && e.dead_action.is_none())
+        .count()
+        == 1, "exactly the fresh EMBER lives");
+    // fold symmetry: identical state (the 0m follow-up completed in-pass;
+    // the open-window symmetry is the two pins above)
+    let replayed = fold(&r.records, &base, &dict, &c).unwrap();
+    assert_eq!(snap(&replayed), snap(&r.state));
+}
+
 /// No candidate matches: the chain ends SILENTLY — no follow-up window, no
 /// refusal, no log beyond the parent's own completion.
 #[test]

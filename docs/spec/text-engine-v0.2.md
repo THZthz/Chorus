@@ -180,6 +180,18 @@ projection of that data, never the source of truth.
 > are not replay contracts (§9.30): BEGIN/COMPLETE/WAIT rows, `startMin`
 > and the windows table replace the commit-completes-at-once model.
 >
+> v0.6 = the engine-findings fixes (docs/plans/v0.6-engine-findings.md). The
+> `SPAWN` outcome gains the authored `expires <duration>` modifier (§4.4,
+> §9.36, §9.18): a mint arms its own decay at birth — the SET-expires pair,
+> anchored to the mint clock — so an authored outcome can address the card
+> it just minted even when the name pools (a name ref would hit the OLDEST
+> pool member, §9.38); the modifier is authored-sugar only and rides the
+> concrete row's `attrs=` pair. The RUN candidate walk's `when:` now
+> evaluates against the parent window's committed bindings merged with the
+> projected clause's own, projected winning where the candidate verb
+> declares the role (§9.47) — CS's linked targets gated on the situation
+> contents are expressible again.
+>
 ---
 
 ## 1. Goals
@@ -308,7 +320,7 @@ core set is a default, not a closed wall.
 
 | Operator  | Args (normative)                | Effect                                        |
 |-----------|---------------------------------|-----------------------------------------------|
-| `SPAWN`   | ref [, INTO ref] [, AS #id] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.18) |
+| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.18); the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§9.36), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.18) |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
 | `REPLACE` | ref `WITH` prototype            | decay a card into its successor (§9.33): mint from the prototype into the dying card's **current location** — its `container` (place-contained or character-carried) or, for a zone-tagged card, its `zone` (§10: the grouping has no card, so the tag passes to the successor) — then soft-destroy it — spawn first, then destroy, so the old name is released as usual. Paren-less authored form `REPLACE X WITH Y`; the engine logs the concrete `SPAWN … AS #id` + `DESTROY #id` pair, so there is no REPLACE in the log (§9.33). Prototype derivation (`name from object`) is unavailable — REPLACE has no clause. A name collision with any living entity — the dying card itself included, still alive at spawn time — rejects the whole step (§9.19) |
 | `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`, §9.31); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute (§9.31); `SET x, expires, 2h` also materializes `expiresAt` |
@@ -390,7 +402,11 @@ reflist    = ref { "," ref } ;
 verbo      = VERB ;                              (* must be a verb registered in the dictionary *)
 outcomes   = outcome { "," outcome } ;           (* commas inside ( ) belong to args *)
 outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/ADVANCE/PROGRESS: parens required *)
-           | "SPAWN" ref [ "INTO" target ] [ "AS" "#" id ] { key "=" value }
+           | "SPAWN" ref [ "INTO" target ] [ "AS" "#" id ] [ "expires" duration ] { key "=" value }
+                                                 (* expires: the authored mint-decay modifier (§4.4, §9.36) —
+                                                    any §5.1 duration form, bare or quoted; consumed into the
+                                                    attrs= materialization (§9.18), never logged itself. The bare
+                                                    ref sugar stays one ref — the modifier rides the SPAWN op *)
            | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
            | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
@@ -1145,7 +1161,17 @@ Two invariants keep the mapping safe:
 18. **Concrete outcomes are fully materialized**: role refs are concretized
     to `#id`s, and `SPAWN` gains its engine-written `INTO`, `AS #id`, and
     `aspects=`/`attrs=` JSON pairs — the fold replays from the record alone,
-    never the step context (§5.2, §9.15).
+    never the step context (§5.2, §9.15). The authored `expires <duration>`
+    modifier (§4.4, §9.36) concretizes the same way: the modifier itself is
+    authored-sugar only and never reaches the log — the mint's
+    `expires`/`expiresAt` pair lands INSIDE the concrete row's `attrs=`
+    materialization, so the fold replays byte-identically with no new log
+    surface. The modifier is its own arg shape, deliberately not a sniffed
+    bare value: the `key=value` spelling is NOT the modifier
+    (`SPAWN X expires=2h` is a loud parse error — the modifier is the space
+    form `expires 2h`), and a §9.40 parameter expanded into a pair position
+    lands as a bare value the grammar cannot author and rejects the step
+    loud (§9.19) rather than reading as — or against — the modifier.
 19. **Application failures reject the whole step**: an outcome that cannot
     apply (unresolvable ref, duplicate name among the living, bad op args)
     rejects with nothing logged — unlike `REFUSE`, which always logs its
@@ -1325,7 +1351,14 @@ Two invariants keep the mapping safe:
     clock and so fires at the first halfhour boundary at or after that minute
     that the clock actually crosses (§6.6) — during the setting step itself
     when it crosses one, otherwise during the next advance's span; unchanged
-    from how `"0h"` always behaved.
+    from how `"0h"` always behaved. (Extended by the SPAWN `expires
+    <duration>` modifier, §4.4: the same rule at mint birth — one write
+    shared with SET, so the same forms, the same zero-duration boundary,
+    the same loud rejection of a non-duration — anchored to the MINT
+    clock, `ctx.now`: the step clock at the table, the window's START
+    clock inside a completion (§6.7), a slot/expire trigger's crossing
+    tick — never a follow-up derivation; concretizes inside the `attrs=`
+    pair per §9.18.)
 37. **The core verb set is twelve** (§4.3): `STUDY` (READ's signature —
     `ACTORS STUDY object [AT place]`) and `MANSUS` (EXPLORE's signature —
     `ACTORS MANSUS place`) join the dictionary, so a story authors them with
@@ -1792,6 +1825,24 @@ stays reserved for it.
       re-evaluated: CS's linked hand-off is requirement-disambiguated (81
       all-chance-100 multi-entry routers; dream_router's six; the victory
       forks), so a pinned-id-no-check rule would make them inexpressible.
+      The candidate `when:` evaluates against the post-outcome draft AND
+      the parent window's committed role bindings, MERGED with the
+      projected clause's own — where the candidate verb declares the role
+      the projected binding wins (it is what the follow-up will carry);
+      where the projection drops the role the parent binding stands, so a
+      cross-verb gate reads the parent situation (the CS linked semantics).
+      Same-verb chains keep their ordinary matches — the projection is the
+      identity over the declared roles — but the declared-role bindings
+      CHANGE SOURCE: they now come from the projected clause re-resolved
+      against the post-outcome draft, so a same-verb gate whose bound card
+      the parent's own outcomes replaced or killed reads the follow-up's
+      truth, not the begin-time id snapshot. A role the projection drops is
+      GATE-VISIBLE ONLY: the merged bindings let the candidate `when:` read
+      it, but the follow-up never carries it — an outcome SET over that
+      unbound role expands to no targets and silently no-ops (the §9.31
+      role-ref law), and the dropped cards lock nothing. The merge is
+      eval-context only: the BEGIN row still carries
+      the projected clause alone.
       No candidate matches: nothing opens — the chain ends, silently (that
       is CS's chain ending, not a refusal). Under content drift an
       unresolvable candidate silently continues the walk (the §9.30
@@ -2091,7 +2142,10 @@ sentence is what gets logged (§9.1). Rules:
   goes through the strict parser unchanged (clock defaults to the world
   clock when absent).
 - Otherwise: optional leading `d:h` clock (default: the **next halfhour
-  tick** at or after the world clock, §9.28); the
+  tick** at or after the world clock, §9.28) — an out-of-range halfhour
+  field wraps into whole days the way durations compose (`0:118` = 118
+  halfhours = day 2, halfhour 22; the canonical `d:h @` form keeps its
+  strict `bad halfhour` bound); the
   first dictionary verb token ends the actor list — two-token preposition
   forms like `use on` are recognized; tokens before the verb are actors,
   defaulting to the `player:` character.
@@ -2100,6 +2154,11 @@ sentence is what gets logged (§9.1). Rules:
 - Names resolve case-insensitively, underscores as spaces, articles
   dropped, longest match first (up to 4 tokens) among **alive** entities;
   unknown words fail with suggestions (prefix match, then edit distance ≤ 2).
+  A name named by several roles of one clause binds distinct §9.38 pool
+  copies in birth order — the first role the head, each further role the
+  next living copy, addressed by `#id` — and the line refuses when the
+  living pool is smaller than the roles naming it; a name doubled inside
+  one role still meets the engine's same-role placement refusal.
 - A `with X` phrase whose verb has no `with` slot routes X to the verb's
   real companion slot — `to` when defined and free, else the actors while
   they have room and X fits the slot query; anything else stays in `with`

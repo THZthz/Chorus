@@ -26,11 +26,7 @@ pub fn assert_err_msg<T>(res: chorus::error::Result<T>, pattern: &str) {
     };
     let re = regex::Regex::new(pattern)
         .unwrap_or_else(|e| panic!("harness regex /{pattern}/ failed to compile: {e}"));
-    assert!(
-        re.is_match(&err.msg),
-        "error message {:?} does not match /{pattern}/",
-        err.msg
-    );
+    assert!(re.is_match(&err.msg), "error message {:?} does not match /{pattern}/", err.msg);
 }
 
 /// Deep equality over
@@ -38,10 +34,7 @@ pub fn assert_err_msg<T>(res: chorus::error::Result<T>, pattern: &str) {
 /// (avoid the `Number(1)` vs `1.0` false positive; the record
 /// number surface is all-integer).
 pub fn assert_json_eq(a: serde_json::Value, b: serde_json::Value) {
-    assert_eq!(
-        a, b,
-        "assert_json_eq mismatch:\n  left  = {a}\n  right = {b}"
-    );
+    assert_eq!(a, b, "assert_json_eq mismatch:\n  left  = {a}\n  right = {b}");
 }
 
 /// parse → format → RE-PARSE → re-format must

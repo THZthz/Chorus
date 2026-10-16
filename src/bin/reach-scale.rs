@@ -29,9 +29,7 @@ use reach_scale_lib::{build_cs_scale, census, summarize};
 /// Flag numbers parse to f64 (garbage is NaN) — the flags accept plain
 /// integers (the CLI's own documented interface).
 fn flag(args: &[String], name: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == name)
-        .and_then(|i| args.get(i + 1).cloned())
+    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
 }
 
 fn as_num(v: Option<String>, dflt: f64) -> f64 {
@@ -83,10 +81,7 @@ fn main() -> std::process::ExitCode {
     let n_recipes = as_num(flag(&args, "--recipes"), 2084.0) as usize;
     // the `--cores` default carries the same `Number` semantics too — the default is
     // the CONSERVATIVE cap (see the module header); `--cores` overrides.
-    let default_cores = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .min(4);
+    let default_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).min(4);
     let cores = as_num(flag(&args, "--cores"), default_cores as f64) as usize;
 
     let t0 = std::time::Instant::now();
@@ -101,11 +96,7 @@ fn main() -> std::process::ExitCode {
         world.stats.triggers
     );
     println!("build+compile: {:.0} ms", compile_ms);
-    println!(
-        "census over {} names on {} workers…",
-        world.names.len(),
-        cores
-    );
+    println!("census over {} names on {} workers…", world.names.len(), cores);
 
     // the parent shards across worker threads over a channel; every worker
     // rebuilds the full world, matching the child-process topology's output.

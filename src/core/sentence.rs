@@ -59,9 +59,7 @@ impl<'de> serde::Deserialize<'de> for Sign {
         match v {
             1 => Ok(Sign::Pos),
             -1 => Ok(Sign::Neg),
-            other => Err(serde::de::Error::custom(format!(
-                "sign must be 1 or -1, got {other}"
-            ))),
+            other => Err(serde::de::Error::custom(format!("sign must be 1 or -1, got {other}"))),
         }
     }
 }
@@ -139,10 +137,7 @@ pub enum Arg {
     AsId { id: String },
     /// `{ t: 'pair', k, v: string | number | boolean }`
     #[serde(rename = "pair")]
-    Pair {
-        k: String,
-        v: crate::core::types::AttrValue,
-    },
+    Pair { k: String, v: crate::core::types::AttrValue },
     /// `{ t: 'expires', v }` — the SPAWN `expires <duration>` mint modifier
     /// (§4.4, §9.36), a DEDICATED arg shape on purpose: a bare dur/str in
     /// SPAWN args must never be read as the modifier, because a §9.40
@@ -296,14 +291,7 @@ mod tests {
     fn arg_tags_match_the_wire_discriminator_strings() {
         assert_eq!(Arg::Int { v: 3 }.tag(), "int");
         assert_eq!(Arg::Delta { v: -1 }.tag(), "delta");
-        assert_eq!(
-            Arg::Param {
-                name: "n".into(),
-                sign: Some(Sign::Neg)
-            }
-            .tag(),
-            "param"
-        );
+        assert_eq!(Arg::Param { name: "n".into(), sign: Some(Sign::Neg) }.tag(), "param");
         assert_eq!(Sign::Neg.apply(5), -5);
         assert_eq!(Sign::Pos.as_i64(), 1);
     }

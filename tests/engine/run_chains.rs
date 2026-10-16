@@ -116,10 +116,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -152,10 +149,7 @@ fn advance(
             clauses: vec![],
             t_real: None,
         },
-        ExecOptions {
-            first_record_id,
-            id_gen: Some(&mut id_gen),
-        },
+        ExecOptions { first_record_id, id_gen: Some(&mut id_gen) },
     )
     .unwrap()
 }
@@ -163,11 +157,7 @@ fn advance(
 /// Every action row's commit-time recipe ids, record order — the BEGIN
 /// spine of a turn: [parent…, follow-up…].
 fn begin_recipes(r: &ExecResult) -> Vec<Vec<String>> {
-    r.records
-        .iter()
-        .filter(|rec| rec.kind == "action")
-        .map(|rec| rec.recipes.clone())
-        .collect()
+    r.records.iter().filter(|rec| rec.kind == "action").map(|rec| rec.recipes.clone()).collect()
 }
 
 /// The execution map as entry pairs (insertion order observable).
@@ -200,11 +190,7 @@ fn run_parses_round_trips_and_composes_in_a_list() {
     };
     assert_eq!(narr_a.op, "NARRATE");
     assert_eq!(run.op, "RUN");
-    assert_eq!(
-        run.args.len(),
-        2,
-        "both quoted candidates belong to the RUN"
-    );
+    assert_eq!(run.args.len(), 2, "both quoted candidates belong to the RUN");
     assert_eq!(narr_z.op, "NARRATE");
     // the canonical shell renders re-quoted and re-parses identically
     let out = format_sentence(&s, Some(&dict)).unwrap();
@@ -252,14 +238,8 @@ fn chain_a_to_b_folds_identically_and_play_continues() {
     assert_eq!(r.rejected, None);
     // the spine: begin a · complete a · begin b (the synthesized follow-up) ·
     // complete b · wait
-    assert_eq!(
-        kind_spine(&r),
-        ["action", "complete", "action", "complete", "wait"]
-    );
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["a".to_string()], vec!["b".to_string()]]
-    );
+    assert_eq!(kind_spine(&r), ["action", "complete", "action", "complete", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["a".to_string()], vec!["b".to_string()]]);
     // the follow-up begins AT THE COMPLETION CLOCK (zero-duration verb: 0:0)
     let begin_b = &r.records[2];
     assert_eq!(begin_b.start_min, Some(0));
@@ -273,20 +253,14 @@ fn chain_a_to_b_folds_identically_and_play_continues() {
     let ops: Vec<&str> = done_b.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"], "PROGRESS is journal-only at completion");
     // §9.50: the count rides the ONE registration path — both begins counted
-    assert_eq!(
-        executed_entries(&r.state),
-        vec![("a".to_string(), 1), ("b".to_string(), 1)]
-    );
+    assert_eq!(executed_entries(&r.state), vec![("a".to_string(), 1), ("b".to_string(), 1)]);
     assert!(r.state.windows.is_empty());
     assert_eq!(refusal(&r), None);
     // fold from the log: the play-inserted window and the fold-replayed BEGIN
     // land identical
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
-    assert_eq!(
-        executed_entries(&replayed),
-        vec![("a".to_string(), 1), ("b".to_string(), 1)]
-    );
+    assert_eq!(executed_entries(&replayed), vec![("a".to_string(), 1), ("b".to_string(), 1)]);
     // the records survive JSONL and still fold identically
     let dir = std::env::temp_dir().join(format!("chorus-run-chains-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -328,42 +302,18 @@ fn the_router_walk_pins_the_first_matching_candidate() {
     // completion 1: mood 0→1 — r_high misses, r_low matches
     let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
     assert_eq!(r1.rejected, None);
-    assert_eq!(
-        begin_recipes(&r1),
-        [vec!["router".to_string()], vec!["r_low".to_string()]]
-    );
-    let ops: Vec<&str> = r1.records[3]
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    assert_eq!(begin_recipes(&r1), [vec!["router".to_string()], vec!["r_low".to_string()]]);
+    let ops: Vec<&str> = r1.records[3].outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]);
-    assert_eq!(
-        r1.records[3].outcomes[0].args[0],
-        Arg::Str {
-            v: "low".to_string()
-        }
-    );
+    assert_eq!(r1.records[3].outcomes[0].args[0], Arg::Str { v: "low".to_string() });
     // completion 2: mood 1→2 — the SITUATION changed, so the MATCH changed
     let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DREAM", 100);
     assert_eq!(r2.rejected, None);
-    assert_eq!(
-        begin_recipes(&r2),
-        [vec!["router".to_string()], vec!["r_high".to_string()]]
-    );
-    assert_eq!(
-        r2.records[3].outcomes[0].args[0],
-        Arg::Str {
-            v: "high".to_string()
-        }
-    );
+    assert_eq!(begin_recipes(&r2), [vec!["router".to_string()], vec!["r_high".to_string()]]);
+    assert_eq!(r2.records[3].outcomes[0].args[0], Arg::Str { v: "high".to_string() });
     assert_eq!(
         executed_entries(&r2.state),
-        vec![
-            ("router".to_string(), 2),
-            ("r_low".to_string(), 1),
-            ("r_high".to_string(), 1),
-        ]
+        vec![("router".to_string(), 2), ("r_low".to_string(), 1), ("r_high".to_string(), 1),]
     );
 }
 
@@ -391,29 +341,12 @@ fn the_router_dispatches_on_the_bound_mood_card() {
     // with-card through the hand-off bindings
     let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM WITH DREAD_MARK", 1);
     assert_eq!(r1.rejected, None);
-    assert_eq!(
-        begin_recipes(&r1),
-        [vec!["router".to_string()], vec!["m_dread".to_string()]]
-    );
-    assert_eq!(
-        r1.records[3].outcomes[0].args[0],
-        Arg::Str {
-            v: "dread night".to_string()
-        }
-    );
+    assert_eq!(begin_recipes(&r1), [vec!["router".to_string()], vec!["m_dread".to_string()]]);
+    assert_eq!(r1.records[3].outcomes[0].args[0], Arg::Str { v: "dread night".to_string() });
     // dream on the rapture: same router, different mood, different dispatch
-    let r2 = run(
-        &c,
-        &dict,
-        r1.state,
-        "0:0 @ ANA DREAM WITH RAPTURE_MARK",
-        100,
-    );
+    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DREAM WITH RAPTURE_MARK", 100);
     assert_eq!(r2.rejected, None);
-    assert_eq!(
-        begin_recipes(&r2),
-        [vec!["router".to_string()], vec!["m_rapture".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r2), [vec!["router".to_string()], vec!["m_rapture".to_string()]]);
     // the follow-up BEGIN row carries the projected clause alone — the
     // gate's merged bindings never reach the log
     let begin = &r2.records[2];
@@ -450,10 +383,7 @@ fn a_cross_verb_gate_reads_the_parent_situation() {
     assert_eq!(r.rejected, None);
     // the first candidate's when reads `with` — a role WAIT does not declare
     // and the projection drops — and still matches on the parent's EMBER
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["router".to_string()], vec!["rest_hot".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r), [vec!["router".to_string()], vec!["rest_hot".to_string()]]);
     // the follow-up BEGIN carries only the declared actor role, as ever (E7)
     let begin = &r.records[2];
     assert_eq!(begin.verb, "WAIT");
@@ -491,24 +421,12 @@ fn the_gate_reads_the_projected_binding_over_the_parent_stale_one() {
     assert_eq!(r.rejected, None);
     assert_eq!(refusal(&r), None, "the re-mint lands clean");
     // the fresh EMBER carries hot:1 — the projected binding sees it
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["router".to_string()], vec!["m_high".to_string()]]
-    );
-    assert_eq!(
-        r.records[3].outcomes[0].args[0],
-        Arg::Str {
-            v: "high".to_string()
-        }
-    );
+    assert_eq!(begin_recipes(&r), [vec!["router".to_string()], vec!["m_high".to_string()]]);
+    assert_eq!(r.records[3].outcomes[0].args[0], Arg::Str { v: "high".to_string() });
     // the minted EMBER is a NEW card (the parent consumed the old one): the
     // re-minted copy is the only living EMBER
     assert!(
-        r.state
-            .entities
-            .values()
-            .filter(|e| e.name == "EMBER" && e.dead_action.is_none())
-            .count()
+        r.state.entities.values().filter(|e| e.name == "EMBER" && e.dead_action.is_none()).count()
             == 1,
         "exactly the fresh EMBER lives"
     );
@@ -535,23 +453,10 @@ fn a_chain_with_no_matching_candidate_ends_silently() {
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(
-        kind_spine(&r),
-        ["action", "complete", "wait"],
-        "no follow-up"
-    );
+    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up");
     assert_eq!(refusal(&r), None, "a dead chain is not a refusal");
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
-    assert_eq!(
-        ops,
-        ["NARRATE"],
-        "the COMPLETE row carries no REFUSE marker"
-    );
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["NARRATE"], "the COMPLETE row carries no REFUSE marker");
     assert_eq!(executed_entries(&r.state), vec![("parent".to_string(), 1)]);
     assert!(r.state.windows.is_empty());
     // fold agrees
@@ -581,18 +486,11 @@ fn the_chance_fork_routes_through_its_if_form() {
     assert_eq!(r.rejected, None);
     assert_eq!(refusal(&r), None, "the taken arm's RUN applied cleanly");
     // the parent's COMPLETE carries the ROLLED row; the RUN itself logs nothing
-    let fork_ops: Vec<&str> = r.records[1]
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let fork_ops: Vec<&str> = r.records[1].outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(fork_ops, ["ROLLED"]);
     assert_eq!(r.records[1].outcomes[0].args[0], Arg::Int { v: total });
     // exactly ONE follow-up — the taken arm's candidate
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["fork".to_string()], vec![expected.to_string()]]
-    );
+    assert_eq!(begin_recipes(&r), [vec!["fork".to_string()], vec![expected.to_string()]]);
     assert_eq!(
         executed_entries(&r.state),
         vec![("fork".to_string(), 1), (expected.to_string(), 1),]
@@ -626,17 +524,8 @@ fn a_second_run_op_refuses_the_parent_window() {
             "a second RUN in one completion — a station holds one window (§6.7, §9.47)".to_string()
         )
     );
-    assert_eq!(
-        kind_spine(&r),
-        ["action", "complete", "wait"],
-        "no follow-up opened"
-    );
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up opened");
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["REFUSE"]);
     assert_eq!(executed_entries(&r.state), vec![("greedy".to_string(), 1)]);
     assert!(r.state.windows.is_empty());
@@ -660,44 +549,23 @@ fn the_followup_window_lands_identical_with_multi_role_refs() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(
-        &c,
-        &dict,
-        s,
-        "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM",
-        1,
-    );
+    let r = run(&c, &dict, s, "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["parent".to_string()], vec!["child".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["child".to_string()]]);
     // the follow-up BEGIN carries every parent role, authored-form
     let begin_child = &r.records[2];
     assert_eq!(begin_child.objects.len(), 1, "object rides");
     assert_eq!(begin_child.instruments.len(), 1, "with rides");
     assert!(begin_child.at.is_some(), "at rides");
-    assert_eq!(
-        begin_child.t_game, "0:2",
-        "beginning at the completion clock"
-    );
+    assert_eq!(begin_child.t_game, "0:2", "beginning at the completion clock");
     // the child is STILL OPEN at turn's end (1h duration) — compare the
     // open windows STRUCTURALLY: play-inserted vs fold-replayed
     assert_eq!(r.state.windows.len(), 1);
     let w = r.state.windows.values().next().unwrap();
     assert_eq!(w.recipe, "child");
-    assert_eq!(
-        w.refs.get(&chorus::core::roles::Role::Object).map(Vec::len),
-        Some(1)
-    );
-    assert_eq!(
-        w.refs.get(&chorus::core::roles::Role::With).map(Vec::len),
-        Some(1)
-    );
-    assert_eq!(
-        w.refs.get(&chorus::core::roles::Role::At).map(Vec::len),
-        Some(1)
-    );
+    assert_eq!(w.refs.get(&chorus::core::roles::Role::Object).map(Vec::len), Some(1));
+    assert_eq!(w.refs.get(&chorus::core::roles::Role::With).map(Vec::len), Some(1));
+    assert_eq!(w.refs.get(&chorus::core::roles::Role::At).map(Vec::len), Some(1));
     assert_eq!(w.locked.len(), 3, "object, with and at are committed");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
@@ -706,11 +574,7 @@ fn the_followup_window_lands_identical_with_multi_role_refs() {
     // narrates from its bound object
     let r2 = advance(&c, &dict, r.state, "0:4", 100);
     assert_eq!(r2.rejected, None);
-    let ops: Vec<&str> = r2.records[0]
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let ops: Vec<&str> = r2.records[0].outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]);
 }
 
@@ -735,14 +599,8 @@ fn a_ref_that_dies_mid_window_still_folds_identically() {
     assert_eq!(r.rejected, None);
     // the spine: begin · EVENT (the mid-window destroy) · complete · the
     // follow-up BEGIN · wait
-    assert_eq!(
-        kind_spine(&r),
-        ["action", "event", "complete", "action", "wait"]
-    );
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["parent".to_string()], vec!["child".to_string()]]
-    );
+    assert_eq!(kind_spine(&r), ["action", "event", "complete", "action", "wait"]);
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["child".to_string()]]);
     // the child window is open: refs keep the AUTHORED with-ref, the lock
     // list dropped the dead id
     assert_eq!(r.state.windows.len(), 1);
@@ -754,11 +612,7 @@ fn a_ref_that_dies_mid_window_still_folds_identically() {
         "the authored ref rides"
     );
     assert_eq!(w.locked.len(), 1, "the dead card is not locked");
-    assert!(!r
-        .state
-        .entities
-        .values()
-        .any(|e| e.name == "CHARM" && e.dead_action.is_none()));
+    assert!(!r.state.entities.values().any(|e| e.name == "CHARM" && e.dead_action.is_none()));
     // play-inserted vs fold-replayed: identical OpenWindows
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(replayed.windows, r.state.windows, "identical OpenWindows");
@@ -790,18 +644,9 @@ fn a_cross_verb_followup_carries_only_the_roles_the_candidate_declares() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(
-        &c,
-        &dict,
-        s,
-        "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM",
-        1,
-    );
+    let r = run(&c, &dict, s, "0:0 @ ANA AT HOUSE DREAM MAGICK_BOOK WITH CHARM", 1);
     assert_eq!(r.rejected, None);
-    assert_eq!(
-        begin_recipes(&r),
-        [vec!["parent".to_string()], vec!["rest".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r), [vec!["parent".to_string()], vec!["rest".to_string()]]);
     // the follow-up BEGIN carries ONLY the actor role — object/with/at are
     // projected away (the candidate verb declares actors only)
     let begin_rest = &r.records[2];
@@ -815,10 +660,7 @@ fn a_cross_verb_followup_carries_only_the_roles_the_candidate_declares() {
     assert_eq!(r.state.windows.len(), 1);
     let w = r.state.windows.values().next().unwrap();
     assert_eq!(w.recipe, "rest");
-    assert_eq!(
-        w.refs.get(&chorus::core::roles::Role::Actors).map(Vec::len),
-        Some(1)
-    );
+    assert_eq!(w.refs.get(&chorus::core::roles::Role::Actors).map(Vec::len), Some(1));
     for role in [
         chorus::core::roles::Role::Object,
         chorus::core::roles::Role::With,
@@ -852,17 +694,10 @@ fn a_cross_verb_followup_carries_only_the_roles_the_candidate_declares() {
     // completion (the time.turn-reads-actors shape)
     let r2 = advance(&c, &dict, r.state, "1:0", 200);
     assert_eq!(r2.rejected, None);
-    let ops: Vec<&str> = r2.records[0]
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let ops: Vec<&str> = r2.records[0].outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["SET", "NARRATE"], "the actor role rode the window");
     let ana = r2.state.by_name["ANA"][0].clone();
-    assert_eq!(
-        r2.state.entities[ana.as_str()].attrs.get("silver"),
-        Some(&AttrValue::Num(1))
-    );
+    assert_eq!(r2.state.entities[ana.as_str()].attrs.get("silver"), Some(&AttrValue::Num(1)));
 }
 
 /// The E7 regression, the slice shape in miniature (§9.47 projection;
@@ -919,10 +754,7 @@ verbs:
     // and chains time.turn's analog cross-verb (§9.48)
     let r1 = run(&c, &dict, s, "0:0 @ ANA WORK WITH VIGOR", 1);
     assert_eq!(r1.rejected, None);
-    assert_eq!(
-        begin_recipes(&r1),
-        [vec!["work.job".to_string()], vec!["turn".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r1), [vec!["work.job".to_string()], vec!["turn".to_string()]]);
     // the wheel's BEGIN carries the actor role only — the with-card is
     // projected away at synthesis
     let begin_turn = &r1.records[2];
@@ -942,10 +774,7 @@ verbs:
     let r2 = advance(&c, &dict, probe1.state, "1:0", 200);
     assert_eq!(r2.rejected, None);
     assert!(
-        !r2.state
-            .entities
-            .values()
-            .any(|e| e.name == "VIGOR" && e.dead_action.is_none()),
+        !r2.state.entities.values().any(|e| e.name == "VIGOR" && e.dead_action.is_none()),
         "the wheel ate VIGOR"
     );
     assert!(r2
@@ -957,20 +786,11 @@ verbs:
     assert!(r2.state.windows.values().next().unwrap().locked.is_empty());
     // the restore: dream.rest_vigor mints VIGOR back — no §9.19 rejection
     // (a restored mint used to re-lock by name on the next rechain)
-    let r3 = run(
-        &c,
-        &dict,
-        r2.state,
-        "1:0 @ ANA DREAM WITH THE_WEARY_HOUR",
-        300,
-    );
+    let r3 = run(&c, &dict, r2.state, "1:0 @ ANA DREAM WITH THE_WEARY_HOUR", 300);
     assert_eq!(r3.rejected, None);
     assert_eq!(refusal(&r3), None, "the restore lands clean");
     assert!(
-        r3.state
-            .entities
-            .values()
-            .any(|e| e.name == "VIGOR" && e.dead_action.is_none()),
+        r3.state.entities.values().any(|e| e.name == "VIGOR" && e.dead_action.is_none()),
         "VIGOR is restored"
     );
     // the next rechain must not re-lock the restored mint: the wheel runs on
@@ -993,10 +813,7 @@ verbs:
     records.extend(r4.records.iter().cloned());
     records.extend(probe2.records.iter().cloned());
     let replayed = fold(&records, &base, &dict, &c).unwrap();
-    assert_eq!(
-        replayed.windows, probe2.state.windows,
-        "identical OpenWindows"
-    );
+    assert_eq!(replayed.windows, probe2.state.windows, "identical OpenWindows");
     assert_eq!(snap(&replayed), snap(&probe2.state));
 }
 
@@ -1027,21 +844,13 @@ fn the_guard_trials_rng_and_id_consumption_stay_scratch_only() {
         "the pinned REFUSE rejects the parent window, no follow-up"
     );
     // the parent window refused: COMPLETE carries the marker, no follow-up
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE", "REFUSE"]);
     assert_eq!(executed_entries(&r.state), vec![("parent".to_string(), 1)]);
     assert!(r.state.windows.is_empty());
     // the trial's dice and mint died with the scratch: the counter is
     // UNMOVED and no TRINKET exists (no ids minted into the real state)
-    assert_eq!(
-        r.state.rng, 0,
-        "the trial's ROLL never touched the real counter"
-    );
+    assert_eq!(r.state.rng, 0, "the trial's ROLL never touched the real counter");
     assert!(!r.state.entities.values().any(|e| e.name == "TRINKET"));
     // fold agrees
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
@@ -1066,24 +875,14 @@ fn a_max_exhausted_candidate_is_skipped_by_the_walk() {
     // play 1: `spent` is unspent — the walk pins it
     let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
     assert_eq!(r1.rejected, None);
-    assert_eq!(
-        begin_recipes(&r1),
-        [vec!["parent".to_string()], vec!["spent".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r1), [vec!["parent".to_string()], vec!["spent".to_string()]]);
     // play 2: `spent` is exhausted — the walk continues into `fresh`
     let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DREAM", 100);
     assert_eq!(r2.rejected, None);
-    assert_eq!(
-        begin_recipes(&r2),
-        [vec!["parent".to_string()], vec!["fresh".to_string()]]
-    );
+    assert_eq!(begin_recipes(&r2), [vec!["parent".to_string()], vec!["fresh".to_string()]]);
     assert_eq!(
         executed_entries(&r2.state),
-        vec![
-            ("parent".to_string(), 2),
-            ("spent".to_string(), 1),
-            ("fresh".to_string(), 1),
-        ]
+        vec![("parent".to_string(), 2), ("spent".to_string(), 1), ("fresh".to_string(), 1),]
     );
     // …and a walk whose ONLY candidate is exhausted pins nothing at all
     let (c3, s3) = compile(
@@ -1137,11 +936,7 @@ fn a_zero_duration_run_cycle_trips_the_livelock_budget() {
     );
     // the settle advance rolled back whole: nothing half-logged
     assert!(r.records.is_empty(), "the rejected pass logs nothing");
-    assert_eq!(
-        snap(&r.state),
-        snap(&original),
-        "the original state rides back"
-    );
+    assert_eq!(snap(&r.state), snap(&original), "the original state rides back");
 }
 
 /// The load checks (§9.47): candidates must name recipes of the PARENT verb
@@ -1208,10 +1003,7 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
     );
     // the bare (dotted) id is unlexable — the parse error names the syntax
     assert_err_msg(
-        compile_script(
-            &dream_verb("      a when count(actors) >= 1 -> RUN a"),
-            &dict,
-        ),
+        compile_script(&dream_verb("      a when count(actors) >= 1 -> RUN a"), &dict),
         "RUN takes quoted-string recipe ids: RUN \"id\" \\[, \"id\" …\\] — got a",
     );
     // the empty list is a parse error too
@@ -1265,22 +1057,12 @@ fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {
     // stage 1: a runs [0,60], completes, opens b at the completion clock
     let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
     assert_eq!(r1.rejected, None);
-    assert_eq!(
-        begin_recipes(&r1),
-        [vec!["a".to_string()], vec!["b".to_string()]]
-    );
-    assert_eq!(
-        r1.records[2].start_min,
-        Some(60),
-        "b begins at a's completion clock"
-    );
+    assert_eq!(begin_recipes(&r1), [vec!["a".to_string()], vec!["b".to_string()]]);
+    assert_eq!(r1.records[2].start_min, Some(60), "b begins at a's completion clock");
     assert_eq!(r1.records[2].t_game, "0:2");
     assert_eq!(r1.state.now, 60);
     assert_eq!(r1.state.windows.len(), 1, "b is still processing");
-    assert_eq!(
-        executed_entries(&r1.state),
-        vec![("a".to_string(), 1), ("b".to_string(), 1)]
-    );
+    assert_eq!(executed_entries(&r1.state), vec![("a".to_string(), 1), ("b".to_string(), 1)]);
     // stage 2: b completes at 120 and opens c
     let r2 = advance(&c, &dict, r1.state, "0:4", 100);
     assert_eq!(r2.rejected, None);
@@ -1289,11 +1071,7 @@ fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {
     assert_eq!(r2.records[1].start_min, Some(120));
     assert_eq!(
         executed_entries(&r2.state),
-        vec![
-            ("a".to_string(), 1),
-            ("b".to_string(), 1),
-            ("c".to_string(), 1)
-        ]
+        vec![("a".to_string(), 1), ("b".to_string(), 1), ("c".to_string(), 1)]
     );
     // stage 3: c completes plainly — the chain ends
     let r3 = advance(&c, &dict, r2.state, "0:6", 200);
@@ -1309,10 +1087,6 @@ fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {
     assert_eq!(snap(&replayed), snap(&r3.state));
     assert_eq!(
         executed_entries(&replayed),
-        vec![
-            ("a".to_string(), 1),
-            ("b".to_string(), 1),
-            ("c".to_string(), 1)
-        ]
+        vec![("a".to_string(), 1), ("b".to_string(), 1), ("c".to_string(), 1)]
     );
 }

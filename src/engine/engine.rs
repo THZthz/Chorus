@@ -111,10 +111,7 @@ pub struct ExecOptions<'a> {
 
 impl Default for ExecOptions<'_> {
     fn default() -> Self {
-        ExecOptions {
-            first_record_id: 1,
-            id_gen: None,
-        }
+        ExecOptions { first_record_id: 1, id_gen: None }
     }
 }
 
@@ -221,9 +218,9 @@ fn validate_slots(
 pub fn resolve_ref<'a>(state: &'a State, r: &Ref) -> Result<Option<&'a Entity>> {
     match r {
         Ref::Id { id } => Ok(get_alive(state, id)),
-        Ref::Param { .. } => Err(ChorusError::new(
-            "internal: a function parameter ref survived expansion",
-        )),
+        Ref::Param { .. } => {
+            Err(ChorusError::new("internal: a function parameter ref survived expansion"))
+        }
         // §9.38 pool addressing: a name held by N > 1 living copies addresses
         // the OLDEST copy — the HEAD of the `by_name` pool (insertion order,
         // never id sort)
@@ -258,12 +255,7 @@ fn select_recipe<'a>(
     bindings: &RoleBindings,
     state: &State,
 ) -> Result<Option<&'a CompiledRecipe>> {
-    let ctx = PredCtx {
-        b: bindings,
-        state,
-        strict: false,
-        roll: None,
-    };
+    let ctx = PredCtx { b: bindings, state, strict: false, roll: None };
     for r in &verb.recipes {
         // §9.50: the execution budget — a recipe whose count has reached its
         // `max N` is simply non-matching; the walk continues. The count is
@@ -310,10 +302,7 @@ pub fn execute_step(
     // and nothing is logged — undo past the ending record reopens the game
     // (it derives from the fold, so no special-case is needed)
     if let Some(ended) = &state_in.ended {
-        return Ok(rejected(
-            format!("the story has ended — {}", ended.title),
-            state_in,
-        ));
+        return Ok(rejected(format!("the story has ended — {}", ended.title), state_in));
     }
     // v0.5: the begin minute — start_min wins (a mid-halfhour begin is
     // representable), the quantized clock field is the input syntax.
@@ -321,10 +310,7 @@ pub fn execute_step(
     // Option + unwrap_or_else, never a 0-sentinel.
     let start_min = match step.start_min {
         Some(m) => m,
-        None => abs_min(
-            step.clock
-                .unwrap_or_else(|| clock_from_abs_min(state_in.now)),
-        ),
+        None => abs_min(step.clock.unwrap_or_else(|| clock_from_abs_min(state_in.now))),
     };
     // monotonic mechanics time (§9.5): a step may never begin before now
     if start_min < state_in.now {
@@ -353,10 +339,7 @@ pub fn execute_step(
         }
     }
 
-    let ExecOptions {
-        first_record_id,
-        id_gen,
-    } = opts;
+    let ExecOptions { first_record_id, id_gen } = opts;
 
     // deterministic default mint (§9.3)
     let mut mint: i64 = 0;
@@ -385,11 +368,7 @@ pub fn execute_step(
 
     // a bare clock step is a pure advance — its wait row already moved the clock
     if step.clauses.is_empty() {
-        return Ok(ExecResult {
-            records: advance,
-            state: draft,
-            rejected: None,
-        });
+        return Ok(ExecResult { records: advance, state: draft, rejected: None });
     }
 
     // Phase 2 — validation, busy checks, selection, all against the
@@ -398,10 +377,7 @@ pub fn execute_step(
     let mut prepared: Vec<Prepared> = Vec::new();
     for clause in &step.clauses {
         let Some(verb) = content.verbs.get(&clause.verb) else {
-            return Ok(rejected(
-                format!("{} is not a content verb", clause.verb),
-                state_in,
-            ));
+            return Ok(rejected(format!("{} is not a content verb", clause.verb), state_in));
         };
         let refs = clause_refs(clause);
         // Channel note: the reachable validate_slots errors reject here with
@@ -424,17 +400,9 @@ pub fn execute_step(
             return Ok(rejected(busy, state_in));
         }
         let Some(recipe) = select_recipe(verb, &bindings, &draft)? else {
-            return Ok(rejected(
-                format!("{}: no recipe matched", verb.name),
-                state_in,
-            ));
+            return Ok(rejected(format!("{}: no recipe matched", verb.name), state_in));
         };
-        prepared.push(Prepared {
-            clause,
-            verb,
-            refs,
-            recipe,
-        });
+        prepared.push(Prepared { clause, verb, refs, recipe });
     }
 
     // Phase 3 — the top-level REFUSE pre-pass (v0.5): authored gates reject AT
@@ -518,20 +486,10 @@ pub fn execute_step(
         // the draft and are REUSED next round; fold_up_to's `r.id <
         // upto_exclusive` filter depends on the recycle — never make the id
         // sequence monotonic across the refusal).
-        let mut record = make_begin_record(
-            first_record_id,
-            start_min,
-            &step,
-            &prepared,
-            collected,
-            dict,
-        )?;
+        let mut record =
+            make_begin_record(first_record_id, start_min, &step, &prepared, collected, dict)?;
         record.advanced_min = 0; // §6.5: a refusal collapses the cycle — no window elapses
-        return Ok(ExecResult {
-            records: vec![record],
-            state: state_in,
-            rejected: None,
-        });
+        return Ok(ExecResult { records: vec![record], state: state_in, rejected: None });
     }
 
     // Phase 4 — BEGIN (v0.5): one row per step, one window per clause. No
@@ -548,11 +506,7 @@ pub fn execute_step(
     register_windows(&begin, &mut draft, dict, content)?;
     let mut records = advance;
     records.push(begin);
-    Ok(ExecResult {
-        records,
-        state: draft,
-        rejected: None,
-    })
+    Ok(ExecResult { records, state: draft, rejected: None })
 }
 
 /// Roles a card is COMMITTED to; the
@@ -609,16 +563,11 @@ fn make_begin_record(
     outcomes: Vec<Outcome>,
     dict: &Dictionary,
 ) -> Result<ActionRecord> {
-    let advanced_min = prepared
-        .iter()
-        .fold(0i64, |s, p| s.saturating_add(p.verb.duration));
+    let advanced_min = prepared.iter().fold(0i64, |s, p| s.saturating_add(p.verb.duration));
     let first = prepared.first();
     let mut seen: HashSet<String> = HashSet::new();
     let actors: Vec<Ref> = sort_refs(
-        &prepared
-            .iter()
-            .flat_map(|p| p.clause.actors.iter().cloned())
-            .collect::<Vec<Ref>>(),
+        &prepared.iter().flat_map(|p| p.clause.actors.iter().cloned()).collect::<Vec<Ref>>(),
     )
     .into_iter()
     .filter(|r| {
@@ -689,9 +638,8 @@ fn register_windows(
     // lossless). Q6 (fixed, batch 3): a row whose sentence no longer
     // re-parses is LOG DRIFT, not an empty window — the failure is loud at
     // both play time and fold time, like the drift errors above.
-    let clauses: Vec<Clause> = parse_sentence(&record.sentence, dict)
-        .map(|s| s.clauses)
-        .map_err(|e| {
+    let clauses: Vec<Clause> =
+        parse_sentence(&record.sentence, dict).map(|s| s.clauses).map_err(|e| {
             ChorusError::new(format!(
                 "begin row {}: the recorded sentence does not re-parse ('{}': {}) — drift",
                 record.id, record.sentence, e.msg
@@ -753,11 +701,7 @@ fn register_windows(
 
 /// A rejection result: no records, the input state untouched.
 fn rejected(reason: String, state: State) -> ExecResult {
-    ExecResult {
-        records: Vec::new(),
-        state,
-        rejected: Some(reason),
-    }
+    ExecResult { records: Vec::new(), state, rejected: Some(reason) }
 }
 
 /// Role args → concrete id refs captured
@@ -767,9 +711,7 @@ fn concretize(args: &[Arg], ctx: &ApplyCtx) -> Vec<Arg> {
     for a in args {
         if let Arg::Role { role } = a {
             for id in ctx.bindings.get(role).map(|v| v.as_slice()).unwrap_or(&[]) {
-                out.push(Arg::Ref {
-                    r#ref: id_ref(id.clone()),
-                });
+                out.push(Arg::Ref { r#ref: id_ref(id.clone()) });
             }
         } else {
             out.push(a.clone());
@@ -871,13 +813,7 @@ struct ApplyResult {
 
 /// A `{ op, args }` outcome literal — the only shape that reaches the log.
 fn plain(op: String, args: Vec<Arg>) -> Outcome {
-    Outcome {
-        op,
-        args,
-        arms: None,
-        fallback: None,
-        call: None,
-    }
+    Outcome { op, args, arms: None, fallback: None, call: None }
 }
 
 /// §9.41 {roll} interpolation. A NARRATE string's
@@ -898,9 +834,7 @@ fn rewrite_roll_prose(o: &Outcome, ctx: &ApplyCtx) -> Outcome {
     }
     Outcome {
         op: o.op.clone(),
-        args: vec![Arg::Str {
-            v: s.replace("{roll}", &roll.to_string()),
-        }],
+        args: vec![Arg::Str { v: s.replace("{roll}", &roll.to_string()) }],
         arms: None,
         fallback: None,
         call: None,
@@ -933,10 +867,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 }
                 release_name_entry(ctx.state, &name, &id);
             }
-            Ok(ApplyResult {
-                concrete: vec![plain(o.op.clone(), concrete_args)],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![plain(o.op.clone(), concrete_args)], refused: false })
         }
         "REPLACE" => apply_replace(args, ctx),
         "SET" => apply_set(args, ctx),
@@ -953,18 +884,14 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                         .get(role)
                         .and_then(|v| v.first())
                         .and_then(|id| ctx.state.entities.get(id));
-                    Arg::Into {
-                        r#ref: id_or_self(bound, IntoTarget::Role { role: *role }),
-                    }
+                    Arg::Into { r#ref: id_or_self(bound, IntoTarget::Role { role: *role }) }
                 }
-                into_ref @ IntoTarget::Ref(..) => Arg::Into {
-                    r#ref: into_ref.clone(),
-                },
+                into_ref @ IntoTarget::Ref(..) => Arg::Into { r#ref: into_ref.clone() },
             };
             let dest: Option<String> = match &into_concrete {
-                Arg::Into {
-                    r#ref: IntoTarget::Ref(r#ref),
-                } => resolve_ref(ctx.state, r#ref)?.map(|e| e.id.clone()),
+                Arg::Into { r#ref: IntoTarget::Ref(r#ref) } => {
+                    resolve_ref(ctx.state, r#ref)?.map(|e| e.id.clone())
+                }
                 _ => None,
             };
             let Some(dest) = dest else {
@@ -981,44 +908,30 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             );
             for id in expand(&refs, ctx) {
                 if let Some(e) = ctx.state.entities.get_mut(&id) {
-                    e.attrs
-                        .insert("container".to_string(), AttrValue::Str(dest.clone()));
+                    e.attrs.insert("container".to_string(), AttrValue::Str(dest.clone()));
                 }
             }
             let mut concrete_args = refs;
             concrete_args.push(into_concrete);
-            Ok(ApplyResult {
-                concrete: vec![plain(o.op.clone(), concrete_args)],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![plain(o.op.clone(), concrete_args)], refused: false })
         }
         "REVEAL" => {
             let concrete_args = concretize(args, ctx);
             for id in expand(&concrete_args, ctx) {
                 if let Some(e) = ctx.state.entities.get_mut(&id) {
-                    e.attrs
-                        .insert("state.hidden".to_string(), AttrValue::Bool(false));
+                    e.attrs.insert("state.hidden".to_string(), AttrValue::Bool(false));
                 }
             }
-            Ok(ApplyResult {
-                concrete: vec![plain(o.op.clone(), concrete_args)],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![plain(o.op.clone(), concrete_args)], refused: false })
         }
         "ADVANCE" => {
             let Some(Arg::Dur { v }) = args.first() else {
                 return Err(ChorusError::new("ADVANCE needs a duration"));
             };
             ctx.extra_advance_min = checked_step(ctx.extra_advance_min, *v, "ADVANCE");
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
-        "NARRATE" => Ok(ApplyResult {
-            concrete: vec![rewrite_roll_prose(o, ctx)],
-            refused: false,
-        }),
+        "NARRATE" => Ok(ApplyResult { concrete: vec![rewrite_roll_prose(o, ctx)], refused: false }),
         "PROGRESS" => {
             // §6.7: a read-bar tick — journal-only, no state effect, no time effect
             let ok = matches!(args.first(), Some(Arg::Dur { .. }))
@@ -1026,10 +939,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             if !ok {
                 return Err(ChorusError::new("PROGRESS needs (duration, string)"));
             }
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
         "RELATE" => {
             let refs: Vec<&Ref> = args
@@ -1069,10 +979,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     dead_action: None,
                 },
             );
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
         "UNRELATE" => {
             // §7: stamp, don't erase — undo re-folds
@@ -1099,28 +1006,21 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     rel.dead_action = Some(ctx.record_id);
                 }
             }
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
         "ENDING" => {
             // §9.35: the FIRST ENDING to apply wins;
             // later ones are logged no-ops. Title/flavour resolve here from
             // content — the one code path both play and fold share.
             let id = match args.first() {
-                Some(Arg::Ref {
-                    r#ref: Ref::Name { name, .. },
-                }) => Some(name.clone()),
+                Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.clone()),
                 _ => None,
             };
             let Some(id) = id else {
                 return Err(ChorusError::new("ENDING needs an id: ENDING ENDING_ID"));
             };
             let Some(ending) = ctx.content.endings.get(&id) else {
-                return Err(ChorusError::new(format!(
-                    "ENDING '{id}' is not in the endings table"
-                )));
+                return Err(ChorusError::new(format!("ENDING '{id}' is not in the endings table")));
             };
             if ctx.state.ended.is_none() {
                 ctx.state.ended = Some(Ending {
@@ -1129,15 +1029,9 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     flavour: ending.flavour.clone(),
                 });
             }
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
-        "REFUSE" => Ok(ApplyResult {
-            concrete: vec![o.clone()],
-            refused: true,
-        }),
+        "REFUSE" => Ok(ApplyResult { concrete: vec![o.clone()], refused: true }),
         "ROLL" => apply_roll(args, ctx),
         "ROLLED" => {
             // §9.41, fold side: set the counter,
@@ -1149,10 +1043,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 return Err(ChorusError::new("ROLLED needs (total, ctrAfter)"));
             };
             ctx.state.rng = *ctr_after;
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
         "DRAW" => apply_draw(args, ctx),
         "DRAWN" => {
@@ -1164,12 +1055,8 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             // path here is `apply_record` over a logged row.
             let (deck_name, recorded) = match (args.first(), args.get(1)) {
                 (
-                    Some(Arg::Ref {
-                        r#ref: Ref::Name { name: d, .. },
-                    }),
-                    Some(Arg::Ref {
-                        r#ref: Ref::Name { name: n, .. },
-                    }),
+                    Some(Arg::Ref { r#ref: Ref::Name { name: d, .. } }),
+                    Some(Arg::Ref { r#ref: Ref::Name { name: n, .. } }),
                 ) => (d.clone(), n.clone()),
                 _ => return Err(ChorusError::new("DRAWN needs (deck, name)")),
             };
@@ -1186,13 +1073,8 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     deck.id, expected.name
                 )));
             }
-            ctx.state
-                .decks
-                .insert(deck.id.clone(), checked_step(cursor, 1, "deck cursor"));
-            Ok(ApplyResult {
-                concrete: vec![o.clone()],
-                refused: false,
-            })
+            ctx.state.decks.insert(deck.id.clone(), checked_step(cursor, 1, "deck cursor"));
+            Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
         _ => Err(ChorusError::new(format!("unknown outcome op '{}'", o.op))),
     }
@@ -1205,14 +1087,8 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Arg::Ref { r#ref } => Some(r#ref),
         _ => None,
     });
-    let Some(Ref::Name {
-        name: proto_name,
-        kind: ref_kind,
-    }) = ref_arg
-    else {
-        return Err(ChorusError::new(
-            "SPAWN needs a name ref (prototype or kind:NAME)",
-        ));
+    let Some(Ref::Name { name: proto_name, kind: ref_kind }) = ref_arg else {
+        return Err(ChorusError::new("SPAWN needs a name ref (prototype or kind:NAME)"));
     };
     let proto = ctx.content.prototypes.get(proto_name);
     let kind = match ref_kind {
@@ -1236,11 +1112,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     };
     // derive (`name from object`, §6.4)
     if let Some(derive) = proto.and_then(|p| p.derive.as_ref()) {
-        let obj_id = ctx
-            .bindings
-            .get(&Role::Object)
-            .and_then(|v| v.first())
-            .cloned();
+        let obj_id = ctx.bindings.get(&Role::Object).and_then(|v| v.first()).cloned();
         let obj = obj_id.and_then(|id| ctx.state.entities.get(&id));
         if let Some(obj) = obj {
             if derive.name_from.as_deref() == Some("object") {
@@ -1271,13 +1143,10 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // distinct NON-stackable living name (shared namespace)
     if let Some(pool) = ctx.state.by_name.get(name.as_str()) {
         if !pool.is_empty() {
-            let all_stackable = pool
-                .iter()
-                .all(|pid| ctx.state.entities.get(pid).is_some_and(|e| e.stackable));
+            let all_stackable =
+                pool.iter().all(|pid| ctx.state.entities.get(pid).is_some_and(|e| e.stackable));
             if !is_stack || !all_stackable {
-                return Err(ChorusError::new(format!(
-                    "SPAWN: name '{name}' already in use"
-                )));
+                return Err(ChorusError::new(format!("SPAWN: name '{name}' already in use")));
             }
         }
     }
@@ -1298,11 +1167,9 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     });
     let container: Option<AttrValue> = if let Some(into_ref) = into {
         match into_ref {
-            IntoTarget::Role { role } => ctx
-                .bindings
-                .get(role)
-                .and_then(|v| v.first())
-                .map(|id| AttrValue::Str(id.clone())),
+            IntoTarget::Role { role } => {
+                ctx.bindings.get(role).and_then(|v| v.first()).map(|id| AttrValue::Str(id.clone()))
+            }
             IntoTarget::Ref(r#ref) => {
                 resolve_ref(ctx.state, r#ref)?.map(|e| AttrValue::Str(e.id.clone()))
             }
@@ -1376,10 +1243,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     if let Some(v) = &expires_arg {
         materialize_expires(&mut attrs, "expires", v, ctx.now, "SPAWN expires")?;
     }
-    if let Some(a) = args
-        .iter()
-        .find(|a| matches!(a, Arg::Str { .. } | Arg::Dur { .. }))
-    {
+    if let Some(a) = args.iter().find(|a| matches!(a, Arg::Str { .. } | Arg::Dur { .. })) {
         // authored text cannot produce a bare str/dur in SPAWN args (the
         // modifier is its own shape, pairs are `k=v`), so one of these is
         // always fn-expansion residue: the caller's bound value spliced for
@@ -1407,15 +1271,12 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     )?;
     // concrete outcome: everything a fold needs,
     // nothing from the step context
-    let mut concrete_args: Vec<Arg> = vec![Arg::Ref {
-        r#ref: name_ref(name, Some(kind)),
-    }];
+    let mut concrete_args: Vec<Arg> = vec![Arg::Ref { r#ref: name_ref(name, Some(kind)) }];
     if is_truthy(container.as_ref()) {
         if let Some(c) = &container {
             // `id_ref` over the string-cast value
-            concrete_args.push(Arg::Into {
-                r#ref: IntoTarget::Ref(id_ref(c.to_canonical_string())),
-            });
+            concrete_args
+                .push(Arg::Into { r#ref: IntoTarget::Ref(id_ref(c.to_canonical_string())) });
         }
     }
     concrete_args.push(Arg::AsId { id });
@@ -1428,15 +1289,10 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         });
     }
     if !attrs.is_empty() {
-        concrete_args.push(Arg::Pair {
-            k: "attrs".to_string(),
-            v: AttrValue::Str(attrs_to_json(&attrs)),
-        });
+        concrete_args
+            .push(Arg::Pair { k: "attrs".to_string(), v: AttrValue::Str(attrs_to_json(&attrs)) });
     }
-    Ok(ApplyResult {
-        concrete: vec![plain("SPAWN".to_string(), concrete_args)],
-        refused: false,
-    })
+    Ok(ApplyResult { concrete: vec![plain("SPAWN".to_string(), concrete_args)], refused: false })
 }
 
 /// The REPLACE case: §4.4 REPLACE ref WITH
@@ -1447,9 +1303,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let target_arg = args.first();
     let proto_arg = args.get(1);
     let proto_name = match proto_arg {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        }) => name.clone(),
+        Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => name.clone(),
         _ => {
             return Err(ChorusError::new(
                 "REPLACE needs (ref|ROLE) WITH a prototype or kind:NAME ref",
@@ -1460,9 +1314,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // (`name from object`, §6.4) is unavailable here (§9.33)
     let proto = ctx.content.prototypes.get(&proto_name);
     let kind = match proto_arg {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { kind: Some(k), .. },
-        }) => Some(k.clone()),
+        Some(Arg::Ref { r#ref: Ref::Name { kind: Some(k), .. } }) => Some(k.clone()),
         _ => proto.map(|p| p.kind.clone()),
     };
     let Some(kind) = kind else {
@@ -1487,9 +1339,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         None => Vec::new(),
     };
     if targets.is_empty() {
-        return Err(ChorusError::new(
-            "REPLACE: unresolvable ref (nothing to replace)",
-        ));
+        return Err(ChorusError::new("REPLACE: unresolvable ref (nothing to replace)"));
     }
     let mut concrete: Vec<Outcome> = Vec::new();
     for dying_id in targets {
@@ -1499,9 +1349,8 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // stackable pool
         if let Some(pool) = ctx.state.by_name.get(proto_name.as_str()) {
             if !pool.is_empty() {
-                let all_stackable = pool
-                    .iter()
-                    .all(|pid| ctx.state.entities.get(pid).is_some_and(|e| e.stackable));
+                let all_stackable =
+                    pool.iter().all(|pid| ctx.state.entities.get(pid).is_some_and(|e| e.stackable));
                 if !is_stack || !all_stackable {
                     return Err(ChorusError::new(format!(
                         "REPLACE: name '{proto_name}' already in use"
@@ -1560,13 +1409,10 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             d.dead_action = Some(ctx.record_id);
         }
         release_name_entry(ctx.state, &dying_name, &dying_id);
-        let mut spawn_args: Vec<Arg> = vec![Arg::Ref {
-            r#ref: name_ref(proto_name.clone(), Some(kind.clone())),
-        }];
+        let mut spawn_args: Vec<Arg> =
+            vec![Arg::Ref { r#ref: name_ref(proto_name.clone(), Some(kind.clone())) }];
         if let Some(c) = &container {
-            spawn_args.push(Arg::Into {
-                r#ref: IntoTarget::Ref(id_ref(c.clone())),
-            });
+            spawn_args.push(Arg::Into { r#ref: IntoTarget::Ref(id_ref(c.clone())) });
         }
         spawn_args.push(Arg::AsId { id });
         if !aspects_tpl.is_empty() {
@@ -1578,22 +1424,13 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // always materialize attrs, even when empty (§9.18): the pair pins the
         // mint's location — with no pair the fold would re-add the bound
         // actor's container to a location-less successor
-        spawn_args.push(Arg::Pair {
-            k: "attrs".to_string(),
-            v: AttrValue::Str(attrs_to_json(&attrs)),
-        });
+        spawn_args
+            .push(Arg::Pair { k: "attrs".to_string(), v: AttrValue::Str(attrs_to_json(&attrs)) });
         concrete.push(plain("SPAWN".to_string(), spawn_args));
-        concrete.push(plain(
-            "DESTROY".to_string(),
-            vec![Arg::Ref {
-                r#ref: id_ref(dying_id.clone()),
-            }],
-        ));
+        concrete
+            .push(plain("DESTROY".to_string(), vec![Arg::Ref { r#ref: id_ref(dying_id.clone()) }]));
     }
-    Ok(ApplyResult {
-        concrete,
-        refused: false,
-    })
+    Ok(ApplyResult { concrete, refused: false })
 }
 
 /// The SET case (§4.4 arity: SET(ref, key,
@@ -1605,9 +1442,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     };
     let raw_key: Option<String> = match key_arg {
         Arg::Key { v } | Arg::Str { v } => Some(v.clone()),
-        Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        } => Some(name.clone()),
+        Arg::Ref { r#ref: Ref::Name { name, .. } } => Some(name.clone()),
         _ => None,
     };
     let Some(raw_key) = raw_key else {
@@ -1690,19 +1525,14 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             let ref_concrete: Arg = if targets.len() == 1 && !matches!(ref_arg, Arg::Role { .. }) {
                 ref_arg.clone()
             } else {
-                Arg::Ref {
-                    r#ref: id_ref(id.clone()),
-                }
+                Arg::Ref { r#ref: id_ref(id.clone()) }
             };
             concrete.push(plain(
                 "SET".to_string(),
                 vec![ref_concrete, key_concrete.clone(), Arg::Int { v: next }],
             ));
         }
-        return Ok(ApplyResult {
-            concrete,
-            refused: false,
-        });
+        return Ok(ApplyResult { concrete, refused: false });
     }
     let value: AttrValue = match val_arg {
         Arg::Int { v } => AttrValue::Num(*v),
@@ -1710,9 +1540,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Arg::Bool { v } => AttrValue::Bool(*v),
         Arg::Dur { v } => AttrValue::Num(*v),
         _ => {
-            return Err(ChorusError::new(
-                "SET value must be a string, number, boolean or duration",
-            ))
+            return Err(ChorusError::new("SET value must be a string, number, boolean or duration"))
         }
     };
     let targets = expand(std::slice::from_ref(ref_arg), ctx);
@@ -1733,19 +1561,14 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 plain(
                     "SET".to_string(),
                     vec![
-                        Arg::Ref {
-                            r#ref: id_ref(id.clone()),
-                        },
+                        Arg::Ref { r#ref: id_ref(id.clone()) },
                         key_concrete.clone(),
                         val_arg.clone(),
                     ],
                 )
             })
             .collect();
-        return Ok(ApplyResult {
-            concrete,
-            refused: false,
-        });
+        return Ok(ApplyResult { concrete, refused: false });
     }
     Ok(ApplyResult {
         concrete: vec![plain(
@@ -1778,19 +1601,10 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             };
             (c, s, bonus)
         }
-        _ => {
-            return Err(ChorusError::new(
-                "internal: ROLL arguments must be value expressions",
-            ))
-        }
+        _ => return Err(ChorusError::new("internal: ROLL arguments must be value expressions")),
     };
     let (count, sides, bonus) = {
-        let pctx = PredCtx {
-            b: &ctx.bindings,
-            state: ctx.state,
-            strict: true,
-            roll: ctx.roll,
-        };
+        let pctx = PredCtx { b: &ctx.bindings, state: ctx.state, strict: true, roll: ctx.roll };
         let count = eval_expr(count_v, &pctx)?;
         let sides = eval_expr(sides_v, &pctx)?;
         let bonus = match bonus_v {
@@ -1805,9 +1619,7 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // is vacuous over i64 — the reachable checks are the undefined and range
     // ones; the message texts are frozen either way.)
     let Some(count) = count else {
-        return Err(ChorusError::new(
-            "ROLL: dice count must be an integer >= 0, got nothing",
-        ));
+        return Err(ChorusError::new("ROLL: dice count must be an integer >= 0, got nothing"));
     };
     if count < 0 {
         return Err(ChorusError::new(format!(
@@ -1815,19 +1627,13 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         )));
     }
     let Some(sides) = sides else {
-        return Err(ChorusError::new(
-            "ROLL: sides must be an integer >= 2, got nothing",
-        ));
+        return Err(ChorusError::new("ROLL: sides must be an integer >= 2, got nothing"));
     };
     if sides < 2 {
-        return Err(ChorusError::new(format!(
-            "ROLL: sides must be an integer >= 2, got {sides}"
-        )));
+        return Err(ChorusError::new(format!("ROLL: sides must be an integer >= 2, got {sides}")));
     }
     let Some(bonus) = bonus else {
-        return Err(ChorusError::new(
-            "ROLL: bonus must be an integer, got nothing",
-        ));
+        return Err(ChorusError::new("ROLL: bonus must be an integer, got nothing"));
     };
     let c = ctx.state.rng;
     let mut total = bonus;
@@ -1862,14 +1668,8 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
 /// reaches the log, like ROLL and IF.
 fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let deck_id = match args.first() {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        }) => name.clone(),
-        _ => {
-            return Err(ChorusError::new(
-                "DRAW needs a deck id: DRAW <DECK> [INTO target]",
-            ))
-        }
+        Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => name.clone(),
+        _ => return Err(ChorusError::new("DRAW needs a deck id: DRAW <DECK> [INTO target]")),
     };
     let Some(deck) = ctx.content.decks.get(&deck_id) else {
         return Err(ChorusError::new(format!("DRAW: unknown deck '{deck_id}'")));
@@ -1896,9 +1696,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     "DRAW: INTO target of '{deck_id}' cannot resolve"
                 )));
             };
-            Some(Arg::Into {
-                r#ref: IntoTarget::Ref(id_ref(dest)),
-            })
+            Some(Arg::Into { r#ref: IntoTarget::Ref(id_ref(dest)) })
         }
         None => None,
     };
@@ -1907,12 +1705,9 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // unmoved: the mutation below happens on the draft only after it returns)
     let cursor = ctx.state.decks.get(&deck_id).copied().unwrap_or(0);
     let drawn: DeckCard = draw_from(deck, cursor)?;
-    ctx.state
-        .decks
-        .insert(deck_id.clone(), checked_step(cursor, 1, "deck cursor"));
-    let mut spawn_args: Vec<Arg> = vec![Arg::Ref {
-        r#ref: name_ref(drawn.name.clone(), Some(drawn.kind.clone())),
-    }];
+    ctx.state.decks.insert(deck_id.clone(), checked_step(cursor, 1, "deck cursor"));
+    let mut spawn_args: Vec<Arg> =
+        vec![Arg::Ref { r#ref: name_ref(drawn.name.clone(), Some(drawn.kind.clone())) }];
     if let Some(ic) = into_concrete {
         spawn_args.push(ic);
     }
@@ -1922,19 +1717,12 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let mut concrete = vec![plain(
         "DRAWN".to_string(),
         vec![
-            Arg::Ref {
-                r#ref: name_ref(deck_id, None),
-            },
-            Arg::Ref {
-                r#ref: name_ref(drawn.name, None),
-            },
+            Arg::Ref { r#ref: name_ref(deck_id, None) },
+            Arg::Ref { r#ref: name_ref(drawn.name, None) },
         ],
     )];
     concrete.extend(spawn_concrete);
-    Ok(ApplyResult {
-        concrete,
-        refused: false,
-    })
+    Ok(ApplyResult { concrete, refused: false })
 }
 
 /// The §9.47 follow-up clause built from the parent window's authored role
@@ -2023,10 +1811,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         if let Some(c) = ctx.chain.as_mut() {
             c.deferred.push(o.clone());
         }
-        return Ok(ApplyResult {
-            concrete: Vec::new(),
-            refused: false,
-        });
+        return Ok(ApplyResult { concrete: Vec::new(), refused: false });
     }
     // snapshot the parent-window identity off the chain channel; a None
     // channel is unreachable on every authored path (slot/expire triggers
@@ -2083,9 +1868,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let mut pinned: Option<(&str, &CompiledRecipe)> = None;
     for a in args {
         let id = match a {
-            Arg::Ref {
-                r#ref: Ref::Name { name, .. },
-            } => name,
+            Arg::Ref { r#ref: Ref::Name { name, .. } } => name,
             _ => continue,
         };
         // resolve the candidate's owning verb + recipe
@@ -2113,11 +1896,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // (which is still in the table mid-completion; the same-verb hand-off
         // must not see itself busy)
         if in_complete
-            && ctx
-                .state
-                .windows
-                .values()
-                .any(|w| w.verb == cand_verb_name && w.key != parent_key)
+            && ctx.state.windows.values().any(|w| w.verb == cand_verb_name && w.key != parent_key)
         {
             continue;
         }
@@ -2175,12 +1954,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     }
                     merged.insert(role, ids);
                 }
-                let pctx = PredCtx {
-                    b: &merged,
-                    state: ctx.state,
-                    strict: false,
-                    roll: None,
-                };
+                let pctx = PredCtx { b: &merged, state: ctx.state, strict: false, roll: None };
                 eval_pred(w, &pctx)?
             }
         };
@@ -2193,10 +1967,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let Some((cand_verb_name, cand)) = pinned else {
         // no candidate matches: the chain ends silently — no window, no
         // refusal, no log
-        return Ok(ApplyResult {
-            concrete: Vec::new(),
-            refused: false,
-        });
+        return Ok(ApplyResult { concrete: Vec::new(), refused: false });
     };
     // the guard survives: the pinned recipe's top-level REFUSE gates INLINE
     // against the draft — a Phase-3-shaped trial on a scratch (PROGRESS
@@ -2235,19 +2006,14 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 Err(_) => break, // not a gate — the follow-up's completion owns it
             };
             if res.refused {
-                marker = Some(
-                    res.concrete
-                        .into_iter()
-                        .find(|c| c.op == "REFUSE")
-                        .unwrap_or_else(|| {
-                            plain(
-                                "REFUSE".to_string(),
-                                vec![Arg::Str {
-                                    v: "the follow-up gate refused (§9.47)".to_string(),
-                                }],
-                            )
-                        }),
-                );
+                marker = Some(res.concrete.into_iter().find(|c| c.op == "REFUSE").unwrap_or_else(
+                    || {
+                        plain(
+                            "REFUSE".to_string(),
+                            vec![Arg::Str { v: "the follow-up gate refused (§9.47)".to_string() }],
+                        )
+                    },
+                ));
                 break;
             }
         }
@@ -2255,10 +2021,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     if let Some(marker) = marker {
         // the refusal rejects the PARENT window: the COMPLETE row carries the
         // marker, the partial effects die with the scratch, no follow-up
-        return Ok(ApplyResult {
-            concrete: vec![marker],
-            refused: true,
-        });
+        return Ok(ApplyResult { concrete: vec![marker], refused: true });
     }
     // synthesize the follow-up BEGIN — the same shape a player step produces
     // (make_begin_record over one prepared clause): the PINNED CANDIDATE's
@@ -2276,32 +2039,17 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
     };
     let clause = refs_to_clause(cand_verb, &parent_refs);
-    let progress: Vec<Outcome> = cand
-        .out
-        .iter()
-        .filter(|o| o.op == "PROGRESS")
-        .cloned()
-        .collect();
+    let progress: Vec<Outcome> = cand.out.iter().filter(|o| o.op == "PROGRESS").cloned().collect();
     let step = Step {
         start_min: Some(parent_end),
         clock: None,
         clauses: vec![clause.clone()],
         t_real: None,
     };
-    let prepared = [Prepared {
-        clause: &clause,
-        verb: cand_verb,
-        refs: clause_refs(&clause),
-        recipe: cand,
-    }];
-    let begin = make_begin_record(
-        next_record_id,
-        parent_end,
-        &step,
-        &prepared,
-        progress,
-        ctx.dict,
-    )?;
+    let prepared =
+        [Prepared { clause: &clause, verb: cand_verb, refs: clause_refs(&clause), recipe: cand }];
+    let begin =
+        make_begin_record(next_record_id, parent_end, &step, &prepared, progress, ctx.dict)?;
     if let Some(c) = ctx.chain.as_mut() {
         c.extra_records.push(begin);
     }
@@ -2330,12 +2078,7 @@ fn apply_if(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // immediately, no later arm's condition ever sees a prior arm's
         // effects (scoping the state borrow here is behavior-neutral)
         let chosen = {
-            let pctx = PredCtx {
-                b: &ctx.bindings,
-                state: ctx.state,
-                strict: true,
-                roll: ctx.roll,
-            };
+            let pctx = PredCtx { b: &ctx.bindings, state: ctx.state, strict: true, roll: ctx.roll };
             eval_pred(&arm.when, &pctx)?
         };
         if chosen {
@@ -2344,10 +2087,7 @@ fn apply_if(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     }
     match o.fallback.as_deref() {
         Some(fallback) if !fallback.is_empty() => apply_all(fallback, ctx),
-        _ => Ok(ApplyResult {
-            concrete: Vec::new(),
-            refused: false,
-        }),
+        _ => Ok(ApplyResult { concrete: Vec::new(), refused: false }),
     }
 }
 
@@ -2360,16 +2100,10 @@ fn apply_all(outcomes: &[Outcome], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         let res = apply_outcome(sub, ctx)?;
         concrete.extend(res.concrete);
         if res.refused {
-            return Ok(ApplyResult {
-                concrete,
-                refused: true,
-            });
+            return Ok(ApplyResult { concrete, refused: true });
         }
     }
-    Ok(ApplyResult {
-        concrete,
-        refused: false,
-    })
+    Ok(ApplyResult { concrete, refused: false })
 }
 
 /// `expires` materialization (§4.2): numbers are
@@ -2394,10 +2128,7 @@ fn materialize_expires(
     attrs.insert(key.to_string(), value.clone());
     if key == "expires" {
         let mins = to_minutes(value)?;
-        attrs.insert(
-            "expiresAt".to_string(),
-            AttrValue::Num(checked_step(now, mins, what)),
-        );
+        attrs.insert("expiresAt".to_string(), AttrValue::Num(checked_step(now, mins, what)));
     }
     Ok(())
 }
@@ -2426,12 +2157,7 @@ fn expand(args: &[Arg], ctx: &ApplyCtx) -> Vec<String> {
     for a in args {
         match a {
             Arg::Role { role } => out.extend(
-                ctx.bindings
-                    .get(role)
-                    .map(|v| v.as_slice())
-                    .unwrap_or(&[])
-                    .iter()
-                    .cloned(),
+                ctx.bindings.get(role).map(|v| v.as_slice()).unwrap_or(&[]).iter().cloned(),
             ),
             Arg::Ref { r#ref } => {
                 if let Ok(Some(e)) = resolve_ref(ctx.state, r#ref) {
@@ -2503,11 +2229,7 @@ pub fn apply_record(
         // matters for `expires` is exercised on the real path, where the
         // window exists (this fallback branch is load-bearing for
         // bare-row probes and MUST stay)
-        let w_start = record
-            .window
-            .as_ref()
-            .and_then(|k| state.windows.get(k))
-            .map(|w| w.start);
+        let w_start = record.window.as_ref().and_then(|k| state.windows.get(k)).map(|w| w.start);
         if let Some(k) = &record.window {
             state.windows.shift_remove(k); // removal preserves the remaining keys' insertion order
         }
@@ -2554,9 +2276,7 @@ pub fn apply_record(
     if record.kind == "event" {
         // once-triggers replay as fired (§9.29); a missing trigger name folds
         // as the empty string
-        state
-            .fired
-            .insert(record.trigger.clone().unwrap_or_default());
+        state.fired.insert(record.trigger.clone().unwrap_or_default());
     }
     let start_min = abs_min(parse_clock(&record.t_game)?);
     if record.kind == "event" {
@@ -2658,10 +2378,7 @@ fn resolve_due(
     // and MUST stay.
     let has_due = state_in.windows.values().any(|w| w.end <= to_min);
     if to_min < state_in.now || (to_min == state_in.now && !has_due) {
-        return Ok(PassResult {
-            state: state_in,
-            records: Vec::new(),
-        });
+        return Ok(PassResult { state: state_in, records: Vec::new() });
     }
     let from_min = state_in.now;
     let mut state = state_in;
@@ -2707,10 +2424,7 @@ fn resolve_due(
             .values()
             .filter(|w| w.end <= target)
             .min_by(|a, b| {
-                a.end
-                    .cmp(&b.end)
-                    .then(a.begin_id.cmp(&b.begin_id))
-                    .then(a.clause.cmp(&b.clause))
+                a.end.cmp(&b.end).then(a.begin_id.cmp(&b.begin_id)).then(a.clause.cmp(&b.clause))
             })
             .cloned();
         let slot_abs = next_slot_after(cursor, target);
@@ -2818,10 +2532,8 @@ fn fire_window(
 ) -> Result<FireWindowResult> {
     // the drift guard throws OUT of fire_window (and
     // out of the pass; the caller rejects the step)
-    let recipe = content
-        .verbs
-        .get(&w.verb)
-        .and_then(|v| v.recipes.iter().find(|r| r.id == w.recipe));
+    let recipe =
+        content.verbs.get(&w.verb).and_then(|v| v.recipes.iter().find(|r| r.id == w.recipe));
     let recipe = match recipe {
         Some(r) => r,
         None => {
@@ -2931,12 +2643,7 @@ fn fire_window(
                     continue;
                 };
                 for trig in &content.triggers {
-                    let CompiledTrigger::Complete {
-                        home: trig_home,
-                        aspect,
-                        out,
-                        ..
-                    } = trig
+                    let CompiledTrigger::Complete { home: trig_home, aspect, out, .. } = trig
                     else {
                         continue;
                     };
@@ -2982,11 +2689,8 @@ fn fire_window(
     // handling as the outcome loop above. A refusal here (the inline guard,
     // the second-RUN rule) still rejects the PARENT window.
     if !refused {
-        let deferred: Vec<Outcome> = ctx
-            .chain
-            .as_ref()
-            .map(|c| c.deferred.clone())
-            .unwrap_or_default();
+        let deferred: Vec<Outcome> =
+            ctx.chain.as_ref().map(|c| c.deferred.clone()).unwrap_or_default();
         for o in &deferred {
             match apply_outcome(o, &mut ctx) {
                 Ok(res) => {
@@ -3136,13 +2840,7 @@ fn fire_slot(
     let mut records: Vec<ActionRecord> = Vec::new();
     // authored slot triggers in DECLARATION order
     for trig in &content.triggers {
-        let CompiledTrigger::Slot {
-            id: trig_id,
-            slot,
-            once,
-            out,
-        } = trig
-        else {
+        let CompiledTrigger::Slot { id: trig_id, slot, once, out } = trig else {
             continue; // expiry triggers ride the expiry path below
         };
         if *slot != abs_slot % HALFHOURS_PER_DAY {
@@ -3215,12 +2913,8 @@ fn fire_slot(
                 // to the EXPIRING entity and concretize to DESTROY #id —
                 // under a pool a name-addressed destroy would kill the oldest
                 // copy while the real expiring card re-fires
-                let destroy = plain(
-                    "DESTROY".to_string(),
-                    vec![Arg::Ref {
-                        r#ref: id_ref(exp.id.clone()),
-                    }],
-                );
+                let destroy =
+                    plain("DESTROY".to_string(), vec![Arg::Ref { r#ref: id_ref(exp.id.clone()) }]);
                 let mut outcomes: Vec<Outcome> = Vec::new();
                 {
                     let mut ctx = make_event_ctx(
@@ -3241,13 +2935,7 @@ fn fire_slot(
         // discards it
         state.fired.insert(trigger_id.clone());
         let rid = first_event_id + records.len() as i64;
-        records.push(make_event_record(
-            rid,
-            &trigger_id,
-            abs_slot,
-            outcomes,
-            dict,
-        )?);
+        records.push(make_event_record(rid, &trigger_id, abs_slot, outcomes, dict)?);
     }
     Ok(records)
 }
@@ -3330,10 +3018,7 @@ fn checked_step(a: i64, b: i64, what: &str) -> i64 {
     match a.checked_add(b) {
         Some(v) => v,
         None => {
-            debug_assert!(
-                false,
-                "{what}: i64 overflow {a} + {b} (saturating at the i64 bound)"
-            );
+            debug_assert!(false, "{what}: i64 overflow {a} + {b} (saturating at the i64 bound)");
             i64::MAX
         }
     }
@@ -3351,11 +3036,9 @@ pub(crate) fn aspects_to_json(a: &Aspects) -> String {
             k.clone(),
             match v {
                 AspectVal::Num(n) => Jsonw::Int(*n),
-                AspectVal::Sub(sub) => Jsonw::Obj(
-                    sub.iter()
-                        .map(|(k2, n2)| (k2.clone(), Jsonw::Int(*n2)))
-                        .collect(),
-                ),
+                AspectVal::Sub(sub) => {
+                    Jsonw::Obj(sub.iter().map(|(k2, n2)| (k2.clone(), Jsonw::Int(*n2))).collect())
+                }
             },
         );
     }
@@ -3395,11 +3078,9 @@ fn aspects_from_json(s: &str) -> Result<Aspects> {
 
 fn json_to_aspect_val(v: &serde_json::Value) -> Result<AspectVal> {
     match v {
-        serde_json::Value::Number(n) => {
-            Ok(AspectVal::Num(n.as_i64().ok_or_else(|| {
-                ChorusError::new("bad aspects pair: non-integer number")
-            })?))
-        }
+        serde_json::Value::Number(n) => Ok(AspectVal::Num(
+            n.as_i64().ok_or_else(|| ChorusError::new("bad aspects pair: non-integer number"))?,
+        )),
         serde_json::Value::Object(sub) => {
             let mut m = IndexMap::new();
             for (k, val) in sub {
@@ -3440,15 +3121,11 @@ fn attrs_from_json(s: &str) -> Result<Attrs> {
 fn json_to_attr_value(v: &serde_json::Value) -> Result<AttrValue> {
     match v {
         serde_json::Value::String(s) => Ok(AttrValue::Str(s.clone())),
-        serde_json::Value::Number(n) => {
-            Ok(AttrValue::Num(n.as_i64().ok_or_else(|| {
-                ChorusError::new("bad attrs pair: non-integer number")
-            })?))
-        }
-        serde_json::Value::Bool(b) => Ok(AttrValue::Bool(*b)),
-        _ => Err(ChorusError::new(
-            "bad attrs pair: values must be strings, numbers or booleans",
+        serde_json::Value::Number(n) => Ok(AttrValue::Num(
+            n.as_i64().ok_or_else(|| ChorusError::new("bad attrs pair: non-integer number"))?,
         )),
+        serde_json::Value::Bool(b) => Ok(AttrValue::Bool(*b)),
+        _ => Err(ChorusError::new("bad attrs pair: values must be strings, numbers or booleans")),
     }
 }
 
@@ -3499,10 +3176,7 @@ mod smoke {
             }
             map.insert(name.to_string(), v);
         }
-        let mut raw = ContentRaw {
-            verbs: map,
-            ..ContentRaw::default()
-        };
+        let mut raw = ContentRaw { verbs: map, ..ContentRaw::default() };
         extra(&mut raw);
         let content = compile_content(&raw, &dict, &[]).unwrap();
         (dict, content)
@@ -3543,17 +3217,11 @@ mod smoke {
             state,
             Step {
                 start_min: None,
-                clock: Some(s.clock.unwrap_or(Clock {
-                    day: 0,
-                    halfhour: 0,
-                })),
+                clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
                 clauses: s.clauses,
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: first,
-                id_gen: None,
-            },
+            ExecOptions { first_record_id: first, id_gen: None },
         )
         .unwrap()
     }
@@ -3575,10 +3243,7 @@ mod smoke {
                 clauses: Vec::new(),
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: first,
-                id_gen: None,
-            },
+            ExecOptions { first_record_id: first, id_gen: None },
         )
         .unwrap()
     }
@@ -3597,10 +3262,7 @@ mod smoke {
         // the pass: completion then the wait row
         let adv = advance(&content, &dict, r.state, "0:1", 2);
         assert_eq!(
-            adv.records
-                .iter()
-                .map(|x| x.kind.as_str())
-                .collect::<Vec<_>>(),
+            adv.records.iter().map(|x| x.kind.as_str()).collect::<Vec<_>>(),
             ["complete", "wait"]
         );
         assert_eq!(adv.state.now, 30);
@@ -3665,10 +3327,7 @@ mod smoke {
                 }],
             },
         )];
-        verbs.push((
-            "REL",
-            pace(0, &["UNRELATE(ANA, MAGICK_BOOK, parent_child)"]),
-        ));
+        verbs.push(("REL", pace(0, &["UNRELATE(ANA, MAGICK_BOOK, parent_child)"])));
         let (dict, content) = rig(verbs, |raw| {
             raw.endings = Some(
                 [
@@ -3719,13 +3378,7 @@ mod smoke {
             );
         });
         // the study turn: BEGIN carries only PROGRESS
-        let r = run(
-            &content,
-            &dict,
-            seed_state(),
-            "0:0 @ ANA STUDY MAGICK_BOOK AT HOUSE",
-            1,
-        );
+        let r = run(&content, &dict, seed_state(), "0:0 @ ANA STUDY MAGICK_BOOK AT HOUSE", 1);
         assert_eq!(r.rejected, None, "rejected: {:?}", r.rejected);
         assert!(
             r.records[0].outcomes.iter().all(|o| o.op == "PROGRESS"),
@@ -3749,34 +3402,18 @@ mod smoke {
             ops.remove(0);
         }
         let st = &adv.state;
-        assert_eq!(
-            st.ended.as_ref().unwrap().id,
-            "QUIET_DUSK",
-            "first ENDING wins"
-        );
+        assert_eq!(st.ended.as_ref().unwrap().id, "QUIET_DUSK", "first ENDING wins");
         // SET aspect + delta + str all landed
         let book = st.entities.get("book").unwrap();
         assert_eq!(book.aspects.get("secret"), Some(&AspectVal::Num(3)));
         assert_eq!(book.attrs.get("curse"), Some(&AttrValue::Num(2)));
-        assert_eq!(
-            book.attrs.get("note"),
-            Some(&AttrValue::Str("scribbled".into()))
-        );
-        assert_eq!(
-            book.attrs.get("state.hidden"),
-            Some(&AttrValue::Bool(false))
-        );
-        assert_eq!(
-            book.attrs.get("container"),
-            Some(&AttrValue::Str("ana".into()))
-        );
+        assert_eq!(book.attrs.get("note"), Some(&AttrValue::Str("scribbled".into())));
+        assert_eq!(book.attrs.get("state.hidden"), Some(&AttrValue::Bool(false)));
+        assert_eq!(book.attrs.get("container"), Some(&AttrValue::Str("ana".into())));
         // RELATE landed, UNRELATE (second verb) will stamp it
         assert!(st.relations.contains_key("ana|book|parent_child"));
         // both spawns share the stackable name pool
-        assert_eq!(
-            st.by_name.get("CLUE_SECRET_HIDEOUT").map(|v| v.len()),
-            Some(2)
-        );
+        assert_eq!(st.by_name.get("CLUE_SECRET_HIDEOUT").map(|v| v.len()), Some(2));
         // ADVANCE extended the pass target: 30 (window) + 60 (ADVANCE)
         assert_eq!(adv.state.now, 90);
     }
@@ -3792,13 +3429,7 @@ mod smoke {
                     query: Some("kind:character".into()),
                     shown: None,
                 },
-                SlotDef {
-                    role: "object".into(),
-                    min: 1,
-                    max: Some(1),
-                    query: None,
-                    shown: None,
-                },
+                SlotDef { role: "object".into(), min: 1, max: Some(1), query: None, shown: None },
             ],
             duration: 0,
             recipes: vec![RecipeDef {
@@ -3825,13 +3456,7 @@ mod smoke {
             }],
         };
         let (dict, content) = rig(vec![("LINK", rel_verb), ("UNLINK", unrel_verb)], |_| {});
-        let s1 = run(
-            &content,
-            &dict,
-            seed_state(),
-            "0:0 @ ANA LINK MAGICK_BOOK",
-            1,
-        );
+        let s1 = run(&content, &dict, seed_state(), "0:0 @ ANA LINK MAGICK_BOOK", 1);
         assert_eq!(s1.rejected, None, "{:?}", s1.rejected);
         let c1 = advance(&content, &dict, s1.state, "0:0", 2);
         assert!(c1.state.relations.contains_key("ana|book|parent_child"));
@@ -3839,10 +3464,7 @@ mod smoke {
         assert_eq!(s2.rejected, None, "{:?}", s2.rejected);
         let c2 = advance(&content, &dict, s2.state, "0:0", 6);
         let rel = c2.state.relations.get("ana|book|parent_child").unwrap();
-        assert!(
-            rel.dead_action.is_some(),
-            "UNRELATE stamps, never erases (§7)"
-        );
+        assert!(rel.dead_action.is_some(), "UNRELATE stamps, never erases (§7)");
     }
 
     #[test]
@@ -3894,20 +3516,14 @@ mod smoke {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
-                out: vec![
-                    "ROLL(2, 6)".to_string(),
-                    "NARRATE \"rolled {roll}.\"".to_string(),
-                ],
+                out: vec!["ROLL(2, 6)".to_string(), "NARRATE \"rolled {roll}.\"".to_string()],
             }],
         };
         let (dict, content) = rig(vec![("CAST", roll_verb)], |_| {});
         let seed = content.seed;
         let r = run(&content, &dict, seed_state(), "0:0 @ ANA CAST", 1);
         assert_eq!(r.rejected, None);
-        assert!(
-            r.records[0].outcomes.is_empty(),
-            "ROLL is not PROGRESS — BEGIN carries nothing"
-        );
+        assert!(r.records[0].outcomes.is_empty(), "ROLL is not PROGRESS — BEGIN carries nothing");
         let adv = advance(&content, &dict, r.state, "0:0", 2);
         assert_eq!(adv.rejected, None);
         let complete = adv.records.iter().find(|x| x.kind == "complete").unwrap();
@@ -3969,10 +3585,7 @@ mod smoke {
                     .map(|(n, k)| {
                         (
                             n.to_string(),
-                            PrototypeDef {
-                                kind: k.to_string(),
-                                ..PrototypeDef::default()
-                            },
+                            PrototypeDef { kind: k.to_string(), ..PrototypeDef::default() },
                         )
                     })
                     .collect(),
@@ -3996,20 +3609,14 @@ mod smoke {
         let mut drifted = adv.records.clone();
         for o in &mut drifted[0].outcomes {
             if o.op == "DRAWN" {
-                if let Arg::Ref {
-                    r#ref: Ref::Name { name, .. },
-                } = &mut o.args[1]
-                {
+                if let Arg::Ref { r#ref: Ref::Name { name, .. } } = &mut o.args[1] {
                     *name = "NOSUCH".to_string();
                 }
             }
         }
         let mut bad = new_state(0);
         let err = apply_record(&drifted[0], &mut bad, &dict, &content).unwrap_err();
-        assert!(
-            err.msg.contains("content drift between play and fold"),
-            "{err}"
-        );
+        assert!(err.msg.contains("content drift between play and fold"), "{err}");
     }
 
     #[test]
@@ -4039,10 +3646,7 @@ mod smoke {
             raw.prototypes = Some(
                 [(
                     "PARANOIA".to_string(),
-                    PrototypeDef {
-                        kind: "state".to_string(),
-                        ..PrototypeDef::default()
-                    },
+                    PrototypeDef { kind: "state".to_string(), ..PrototypeDef::default() },
                 )]
                 .into_iter()
                 .collect(),
@@ -4060,15 +3664,8 @@ mod smoke {
         assert_eq!(adv.rejected, None);
         let complete = adv.records.iter().find(|x| x.kind == "complete").unwrap();
         let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
-        assert_eq!(
-            ops,
-            ["SPAWN", "REFUSE"],
-            "only the TAKEN branch is recorded"
-        );
-        assert!(
-            !adv.state.by_name.contains_key("PARANOIA"),
-            "the scratch died with the refusal"
-        );
+        assert_eq!(ops, ["SPAWN", "REFUSE"], "only the TAKEN branch is recorded");
+        assert!(!adv.state.by_name.contains_key("PARANOIA"), "the scratch died with the refusal");
         assert_eq!(adv.state.windows.len(), 0, "…and the window still closed");
         // the fold replays the SPAWN (the refused COMPLETION is a no-op, but
         // the SPAWN is ON the refused row) — so the fold must NOT spawn either
@@ -4115,18 +3712,12 @@ mod smoke {
         );
         assert_eq!(st.windows.len(), 0, "the error left no window behind");
         // the healthy row: the SAME code path re-parses the canonical sentence
-        let healthy = ActionRecord {
-            sentence: "0:0 @ ANA PACE".to_string(),
-            ..rec
-        };
+        let healthy = ActionRecord { sentence: "0:0 @ ANA PACE".to_string(), ..rec };
         register_windows(&healthy, &mut st, &dict, &content).unwrap();
         assert_eq!(st.windows.len(), 1);
         let w = st.windows.get("7:0").unwrap();
         assert_eq!((w.start, w.end, w.verb.as_str()), (0, 30, "PACE"));
-        assert!(
-            w.locked.is_empty(),
-            "actors are never locked (COMMITTED_ROLES exclude actors)"
-        );
+        assert!(w.locked.is_empty(), "actors are never locked (COMMITTED_ROLES exclude actors)");
     }
 
     #[test]
@@ -4161,23 +3752,14 @@ mod smoke {
             },
             Step {
                 start_min: None,
-                clock: Some(Clock {
-                    day: 0,
-                    halfhour: 1,
-                }),
+                clock: Some(Clock { day: 0, halfhour: 1 }),
                 clauses: vec![],
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: 1,
-                id_gen: None,
-            },
+            ExecOptions { first_record_id: 1, id_gen: None },
         )
         .unwrap();
-        assert_eq!(
-            r.rejected.as_deref(),
-            Some("clock 0:1 is before state.now (0:2)")
-        );
+        assert_eq!(r.rejected.as_deref(), Some("clock 0:1 is before state.now (0:2)"));
         // nothing to do (the live to_min == now && !has_due branch)
         let r = advance(&content, &dict, seed_state(), "0:0", 1);
         assert!(
@@ -4189,16 +3771,10 @@ mod smoke {
         );
         // story ended
         let mut ended = seed_state();
-        ended.ended = Some(Ending {
-            id: "E".into(),
-            title: "It is over.".into(),
-            flavour: "calm".into(),
-        });
+        ended.ended =
+            Some(Ending { id: "E".into(), title: "It is over.".into(), flavour: "calm".into() });
         let r = run(&content, &dict, ended, "0:1 @ ANA PACE", 1);
-        assert_eq!(
-            r.rejected.as_deref(),
-            Some("the story has ended — It is over.")
-        );
+        assert_eq!(r.rejected.as_deref(), Some("the story has ended — It is over."));
         // wait-partition fold assertion
         let mut st = new_state(5);
         let err = apply_record(

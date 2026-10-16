@@ -143,10 +143,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -166,15 +163,10 @@ fn drawn_names_of(records: &[ActionRecord]) -> Vec<String> {
     records
         .iter()
         .flat_map(|rec| {
-            rec.outcomes
-                .iter()
-                .filter(|o| o.op == "DRAWN")
-                .map(|o| match o.args.get(1) {
-                    Some(Arg::Ref {
-                        r#ref: Ref::Name { name, .. },
-                    }) => name.clone(),
-                    _ => "(?)".to_string(),
-                })
+            rec.outcomes.iter().filter(|o| o.op == "DRAWN").map(|o| match o.args.get(1) {
+                Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => name.clone(),
+                _ => "(?)".to_string(),
+            })
         })
         .collect()
 }
@@ -191,11 +183,8 @@ fn play_draws(
     let mut records: Vec<ActionRecord> = Vec::new();
     let mut id = 1i64;
     for _ in 0..n {
-        let ExecResult {
-            records: recs,
-            state: st,
-            rejected,
-        } = run(content, dict, state, "0:0 @ ANA WAIT", id);
+        let ExecResult { records: recs, state: st, rejected } =
+            run(content, dict, state, "0:0 @ ANA WAIT", id);
         if let Some(rej) = rejected {
             panic!("unexpected rejection: {rej}");
         }
@@ -219,10 +208,7 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(
-        re.is_match(&msg),
-        "refusal {msg:?} does not match /{pattern}/"
-    );
+    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
 /// `r.rejected` matches `re`.
@@ -232,10 +218,7 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
         .as_deref()
         .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(
-        re.is_match(msg),
-        "rejected {msg:?} does not match /{pattern}/"
-    );
+    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
 // ---------------------------------------------------------------------------
@@ -310,10 +293,7 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
     // neither: the verbatim exhaustion error
     let singles = game.content.decks.get("SINGLES").unwrap();
     let err = draw_from(singles, 1).unwrap_err();
-    assert_eq!(
-        err.msg,
-        "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§9.42)"
-    );
+    assert_eq!(err.msg, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§9.42)");
 }
 
 // ---------------------------------------------------------------------------
@@ -323,11 +303,7 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
 #[test]
 fn same_seed_and_deck_id_the_identical_draw_sequence_across_two_fresh_compiles() {
     let dict = deck_dict();
-    let text = rig(Rig {
-        seed: 0,
-        decks: Some(PLAN_DECK),
-        ..Default::default()
-    });
+    let text = rig(Rig { seed: 0, decks: Some(PLAN_DECK), ..Default::default() });
     let (ca, sa) = compile(&dict, &text);
     let (cb, sb) = compile(&dict, &text);
     let (ra_names, _, _) = play_draws(&ca, &dict, sa, 6);
@@ -342,22 +318,10 @@ fn same_seed_and_deck_id_the_identical_draw_sequence_across_two_fresh_compiles()
 #[test]
 fn different_seed_different_order_seed_pair_0_vs_42_provably_differs() {
     let dict = deck_dict();
-    let (ca, sa) = compile(
-        &dict,
-        &rig(Rig {
-            seed: 0,
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
-    let (cb, sb) = compile(
-        &dict,
-        &rig(Rig {
-            seed: 42,
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
+    let (ca, sa) =
+        compile(&dict, &rig(Rig { seed: 0, decks: Some(PLAN_DECK), ..Default::default() }));
+    let (cb, sb) =
+        compile(&dict, &rig(Rig { seed: 42, decks: Some(PLAN_DECK), ..Default::default() }));
     let (ra, _, _) = play_draws(&ca, &dict, sa, 4);
     let (rb, _, _) = play_draws(&cb, &dict, sb, 4);
     assert_eq!(ra, ["RUMOUR", "HEARSAY", "RUMOUR", "SCANDAL"]); // seed 0
@@ -384,21 +348,9 @@ fn multiset_weighting_intact_a_a_b_serves_a_twice_per_period() {
 #[test]
 fn the_permutation_lives_on_compiledcontent_not_state() {
     let dict = deck_dict();
-    let (c, s) = compile(
-        &dict,
-        &rig(Rig {
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
-    let order: Vec<&str> = c
-        .decks
-        .get("RUMOURS")
-        .unwrap()
-        .order
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
+    let (c, s) = compile(&dict, &rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }));
+    let order: Vec<&str> =
+        c.decks.get("RUMOURS").unwrap().order.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(order, ["RUMOUR", "HEARSAY", "RUMOUR", "SCANDAL"]);
     assert_eq!(s.decks.len(), 0); // cursors only, and none yet
     assert_eq!(s.rng, 0);
@@ -425,16 +377,8 @@ fn draw_into_a_place_lands_the_card_there() {
     );
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
-    let rumour = r
-        .state
-        .entities
-        .values()
-        .find(|e| e.name == "RUMOUR")
-        .unwrap();
-    assert_eq!(
-        rumour.attrs.get("container"),
-        Some(&AttrValue::Str("s_kitchen".into()))
-    );
+    let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
+    assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
 }
 
 #[test]
@@ -452,32 +396,16 @@ fn no_into_the_at_card_default_wins_over_the_actor_container() {
     );
     let at_card = run(&c, &dict, s, "0:0 @ ANA AT KITCHEN SEEK", 1);
     assert_eq!(at_card.rejected, None);
-    let placed = at_card
-        .state
-        .entities
-        .values()
-        .find(|e| e.name == "RUMOUR")
-        .unwrap();
-    assert_eq!(
-        placed.attrs.get("container"),
-        Some(&AttrValue::Str("s_kitchen".into()))
-    );
+    let placed = at_card.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
+    assert_eq!(placed.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
     let placed_container = placed.attrs.get("container").cloned();
     // without AT, the mint goes to the actor's container (ANA is at HOUSE);
     // cursor 1 serves HEARSAY at seed 0 — look up whatever was drawn
     let carried = run(&c, &dict, at_card.state, "0:0 @ ANA SEEK", 2);
     assert_eq!(carried.rejected, None);
     let drawn = &drawn_names(&carried)[0];
-    let second = carried
-        .state
-        .entities
-        .values()
-        .find(|e| &e.name == drawn)
-        .unwrap();
-    assert_eq!(
-        second.attrs.get("container"),
-        Some(&AttrValue::Str("s_house".into()))
-    );
+    let second = carried.state.entities.values().find(|e| &e.name == drawn).unwrap();
+    assert_eq!(second.attrs.get("container"), Some(&AttrValue::Str("s_house".into())));
     assert_ne!(second.attrs.get("container"), placed_container.as_ref());
 }
 
@@ -501,12 +429,7 @@ fn a_trigger_draw_without_into_mints_containerless() {
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     let ops: Vec<&str> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DRAWN", "SPAWN"]);
-    let rumour = r
-        .state
-        .entities
-        .values()
-        .find(|e| e.name == "RUMOUR")
-        .unwrap();
+    let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
     assert_eq!(rumour.attrs.get("container"), None); // the §9.42 empty-bindings note
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -529,16 +452,8 @@ fn a_trigger_draw_with_an_explicit_into_lands_in_the_named_place() {
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
-    let rumour = r
-        .state
-        .entities
-        .values()
-        .find(|e| e.name == "RUMOUR")
-        .unwrap();
-    assert_eq!(
-        rumour.attrs.get("container"),
-        Some(&AttrValue::Str("s_house".into()))
-    );
+    let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
+    assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_house".into())));
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -576,13 +491,7 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
 #[test]
 fn the_record_carries_drawn_then_the_concrete_spawn_and_the_row_round_trips() {
     let dict = deck_dict();
-    let (c, s) = compile(
-        &dict,
-        &rig(Rig {
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
+    let (c, s) = compile(&dict, &rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }));
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
     let rec = done(&r).unwrap();
@@ -593,28 +502,17 @@ fn the_record_carries_drawn_then_the_concrete_spawn_and_the_row_round_trips() {
     assert_eq!(tags, ["ref", "ref"]);
     let (deck_arg, name_arg) = match (&drawn.args[0], &drawn.args[1]) {
         (
-            Arg::Ref {
-                r#ref: Ref::Name { name: d, .. },
-            },
-            Arg::Ref {
-                r#ref: Ref::Name { name: n, .. },
-            },
+            Arg::Ref { r#ref: Ref::Name { name: d, .. } },
+            Arg::Ref { r#ref: Ref::Name { name: n, .. } },
         ) => (d, n),
         _ => unreachable!("tags pinned above"),
     };
     assert_eq!(deck_arg, "RUMOURS");
     assert_eq!(name_arg, "RUMOUR"); // seed 0 serves RUMOUR first
-    assert!(
-        rec.sentence.contains("DRAWN(RUMOURS, RUMOUR)"),
-        "{}",
-        rec.sentence
-    );
+    assert!(rec.sentence.contains("DRAWN(RUMOURS, RUMOUR)"), "{}", rec.sentence);
     assert!(rec.sentence.contains("SPAWN RUMOUR"), "{}", rec.sentence);
     let reparsed = parse_sentence(&rec.sentence, &dict).unwrap();
-    assert_eq!(
-        format_sentence(&reparsed, Some(&dict)).unwrap(),
-        rec.sentence
-    );
+    assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), rec.sentence);
 }
 
 #[test]
@@ -663,14 +561,8 @@ fn the_drawn_parse_format_entry_parses_pins_its_shape_formats_bare() {
         parse_outcomes("DRAWN(RUMOURS, HEARSAY, SCANDAL)", &dict, None),
         "DRAWN takes exactly two name refs",
     );
-    assert_err_msg(
-        parse_outcomes("DRAWN(1, 2)", &dict, None),
-        "DRAWN takes exactly two name refs",
-    );
-    assert_err_msg(
-        parse_outcomes("DRAWN RUMOURS, HEARSAY", &dict, None),
-        "requires parentheses",
-    );
+    assert_err_msg(parse_outcomes("DRAWN(1, 2)", &dict, None), "DRAWN takes exactly two name refs");
+    assert_err_msg(parse_outcomes("DRAWN RUMOURS, HEARSAY", &dict, None), "requires parentheses");
 }
 
 /// Authoring DRAWN is a load error (engine-written
@@ -710,15 +602,9 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
             ..Default::default()
         }]),
         prototypes: Some(
-            [(
-                "RUMOUR".to_string(),
-                PrototypeDef {
-                    kind: "idea".into(),
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect(),
+            [("RUMOUR".to_string(), PrototypeDef { kind: "idea".into(), ..Default::default() })]
+                .into_iter()
+                .collect(),
         ),
         ..ContentRaw::default()
     };
@@ -740,22 +626,13 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
             ..Default::default()
         }]),
         prototypes: Some(
-            [(
-                "RUMOUR".to_string(),
-                PrototypeDef {
-                    kind: "idea".into(),
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect(),
+            [("RUMOUR".to_string(), PrototypeDef { kind: "idea".into(), ..Default::default() })]
+                .into_iter()
+                .collect(),
         ),
         ..ContentRaw::default()
     };
-    assert_err_msg(
-        compile_content(&trigger_raw, &dict, &[]),
-        "trigger t: DRAWN is engine-written",
-    );
+    assert_err_msg(compile_content(&trigger_raw, &dict, &[]), "trigger t: DRAWN is engine-written");
 
     // inside a function body: expansion runs before the lint, so the call
     // site's compile names the recipe
@@ -795,15 +672,9 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
             ..Default::default()
         }]),
         prototypes: Some(
-            [(
-                "RUMOUR".to_string(),
-                PrototypeDef {
-                    kind: "idea".into(),
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect(),
+            [("RUMOUR".to_string(), PrototypeDef { kind: "idea".into(), ..Default::default() })]
+                .into_iter()
+                .collect(),
         ),
         ..ContentRaw::default()
     };
@@ -844,22 +715,13 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
             ..Default::default()
         }]),
         prototypes: Some(
-            [(
-                "RUMOUR".to_string(),
-                PrototypeDef {
-                    kind: "idea".into(),
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect(),
+            [("RUMOUR".to_string(), PrototypeDef { kind: "idea".into(), ..Default::default() })]
+                .into_iter()
+                .collect(),
         ),
         ..ContentRaw::default()
     };
-    assert_err_msg(
-        compile_content(&if_raw, &dict, &[]),
-        "DRAWN is engine-written",
-    );
+    assert_err_msg(compile_content(&if_raw, &dict, &[]), "DRAWN is engine-written");
 }
 
 /// the WAIT-verb base raw
@@ -890,15 +752,9 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
         .into_iter()
         .collect(),
         prototypes: Some(
-            [(
-                "RUMOUR".to_string(),
-                PrototypeDef {
-                    kind: "idea".into(),
-                    ..Default::default()
-                },
-            )]
-            .into_iter()
-            .collect(),
+            [("RUMOUR".to_string(), PrototypeDef { kind: "idea".into(), ..Default::default() })]
+                .into_iter()
+                .collect(),
         ),
         decks: Some(vec![DeckRaw {
             id: "RUMOURS".into(),
@@ -912,24 +768,14 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
 #[test]
 fn draw_without_a_deck_id_with_parens_or_naming_an_unknown_deck_is_a_load_error() {
     let dict = deck_dict();
-    assert_err_msg(
-        compile_content(&draw_base_raw(&["DRAW"]), &dict, &[]),
-        "DRAW needs a deck id",
-    );
-    assert_err_msg(
-        parse_outcomes("DRAW(RUMOURS)", &dict, None),
-        "paren-less form",
-    );
+    assert_err_msg(compile_content(&draw_base_raw(&["DRAW"]), &dict, &[]), "DRAW needs a deck id");
+    assert_err_msg(parse_outcomes("DRAW(RUMOURS)", &dict, None), "paren-less form");
     assert_err_msg(
         compile_content(&draw_base_raw(&["DRAW NOSUCH"]), &dict, &[]),
         "recipe wait\\.default: DRAW 'NOSUCH' is not a declared deck",
     );
     assert_err_msg(
-        compile_content(
-            &draw_base_raw(&["IF exists(HOUSE) -> (DRAW NOSUCH)"]),
-            &dict,
-            &[],
-        ),
+        compile_content(&draw_base_raw(&["IF exists(HOUSE) -> (DRAW NOSUCH)"]), &dict, &[]),
         "DRAW 'NOSUCH' is not a declared deck", // recurses into branches like check_ending_refs
     );
     let trigger_raw = ContentRaw {
@@ -953,10 +799,7 @@ fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names
     assert!(dict.reserved.contains("DRAW"));
     assert!(dict.reserved.contains("DRAWN"));
     assert_err_msg(parse_sentence("0:0 @ ANA WAIT DRAW", &dict), "reserved"); // quote it instead
-    assert_eq!(
-        parse_outcomes("SPAWN \"DRAW\"", &dict, None).unwrap().len(),
-        1
-    ); // the quote is the escape hatch
+    assert_eq!(parse_outcomes("SPAWN \"DRAW\"", &dict, None).unwrap().len(), 1); // the quote is the escape hatch
     for name in ["DRAW", "DRAWN"] {
         let raw = ContentRaw {
             functions: Some(vec![chorus::content::content::FunctionDef {
@@ -966,10 +809,7 @@ fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names
             }]),
             ..ContentRaw::default()
         };
-        assert_err_msg(
-            compile_content(&raw, &dict, &[]),
-            "collides with an outcome op",
-        );
+        assert_err_msg(compile_content(&raw, &dict, &[]), "collides with an outcome op");
     }
 }
 
@@ -980,13 +820,7 @@ fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names
 #[test]
 fn reset_wraps_the_sequence_is_periodic_with_period_len_spec() {
     let dict = deck_dict();
-    let (c, s) = compile(
-        &dict,
-        &rig(Rig {
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
+    let (c, s) = compile(&dict, &rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }));
     let (names, _, _) = play_draws(&c, &dict, s, 5);
     assert_eq!(names, ["RUMOUR", "HEARSAY", "RUMOUR", "SCANDAL", "RUMOUR"]); // draw 5 == draw 1
 }
@@ -1003,10 +837,7 @@ fn defaultcard_forever_past_the_spec_every_draw_serves_the_default() {
         }),
     );
     let (names, _, _) = play_draws(&c, &dict, s, 5);
-    assert_eq!(
-        names,
-        ["RUMOUR", "HEARSAY", "SCANDAL", "HEARSAY", "HEARSAY"]
-    );
+    assert_eq!(names, ["RUMOUR", "HEARSAY", "SCANDAL", "HEARSAY", "HEARSAY"]);
 }
 
 #[test]
@@ -1031,17 +862,11 @@ fn neither_reset_nor_defaultcard_the_draw_fails_nothing_logged_cursor_unmoved() 
     assert_eq!(cur.decks.get("SINGLES"), Some(&2));
     let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", id);
     assert_eq!(r.rejected, None);
-    assert_refusal(
-        &r,
-        "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'",
-    );
+    assert_refusal(&r, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'");
     assert_eq!(r.state.decks.get("SINGLES"), Some(&2)); // cursor unmoved (§9.19 analog)
                                                         // §9.50: the window registered at begin — the completion-time refusal
                                                         // still counted (the one delta; nothing logged but the attempt)
-    assert_eq!(
-        r.state.executed.get("wait.default"),
-        Some(&(cur.executed["wait.default"] + 1))
-    );
+    assert_eq!(r.state.executed.get("wait.default"), Some(&(cur.executed["wait.default"] + 1)));
     let replayed_attempt = fold(&r.records, &cur, &dict, &c).unwrap();
     assert_eq!(snap(&replayed_attempt), snap(&r.state));
     // the fold treats the empty log as the base state: the cursor sits at 2
@@ -1069,12 +894,7 @@ fn a_draw_inside_an_untaken_if_branch_leaves_the_cursor_untouched() {
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]); // the taken branch only
     assert_eq!(r.state.decks.len(), 0);
     // §9.50: the window completed — the step counted (the one snap delta;
@@ -1115,14 +935,9 @@ fn a_failure_after_a_successful_draw_refuses_the_window_draw_and_cursor_discarde
 #[test]
 fn undo_past_a_draw_rebuilds_the_cursor_from_the_fold() {
     let dict = core_dictionary();
-    let mut game = Game::from_script(
-        &rig(Rig {
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-        dict,
-    )
-    .unwrap();
+    let mut game =
+        Game::from_script(&rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }), dict)
+            .unwrap();
     game.handle_line("wait").unwrap();
     game.wait().unwrap();
     game.handle_line("wait").unwrap();
@@ -1163,34 +978,16 @@ fn undo_past_a_draw_rebuilds_the_cursor_from_the_fold() {
 #[test]
 fn two_identical_compiles_agree_play_to_fold_even_mid_deck() {
     let dict = deck_dict();
-    let (ca, sa) = compile(
-        &dict,
-        &rig(Rig {
-            seed: 7,
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
-    let (cb, sb) = compile(
-        &dict,
-        &rig(Rig {
-            seed: 7,
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
+    let (ca, sa) =
+        compile(&dict, &rig(Rig { seed: 7, decks: Some(PLAN_DECK), ..Default::default() }));
+    let (cb, sb) =
+        compile(&dict, &rig(Rig { seed: 7, decks: Some(PLAN_DECK), ..Default::default() }));
     let base_a = clone_state(&sa);
     let base_b = clone_state(&sb);
     let (_, records, state) = play_draws(&ca, &dict, sa, 3);
-    assert_eq!(
-        snap(&fold(&records, &base_a, &dict, &ca).unwrap()),
-        snap(&state)
-    );
+    assert_eq!(snap(&fold(&records, &base_a, &dict, &ca).unwrap()), snap(&state));
     // the same log under a second compile of the SAME content: replays identically
-    assert_eq!(
-        snap(&fold(&records, &base_b, &dict, &cb).unwrap()),
-        snap(&state)
-    );
+    assert_eq!(snap(&fold(&records, &base_b, &dict, &cb).unwrap()), snap(&state));
 }
 
 #[test]
@@ -1198,10 +995,7 @@ fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the
     // wrapped: the PLAN deck resets — 9 draws land the cursor at 9 (two full
     // periods of 4 plus one), so the fold must rebuild a past-the-period cursor
     let mut wrapped = Game::from_script(
-        &rig(Rig {
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
+        &rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }),
         core_dictionary(),
     )
     .unwrap();
@@ -1222,10 +1016,7 @@ fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the
     )
     .unwrap();
     for _ in 0..5 {
-        assert_eq!(
-            defaulted.handle_line("wait").unwrap().kind,
-            TurnKind::Action
-        );
+        assert_eq!(defaulted.handle_line("wait").unwrap().kind, TurnKind::Action);
         defaulted.wait().unwrap();
     }
     assert_eq!(defaulted.state.decks.get("GOSSIP"), Some(&5));
@@ -1251,13 +1042,7 @@ fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the
 #[test]
 fn stackable_deck_entries_pool_two_rumour_draws_a_pool_of_two_living_copies() {
     let dict = deck_dict();
-    let (c, s) = compile(
-        &dict,
-        &rig(Rig {
-            decks: Some(PLAN_DECK),
-            ..Default::default()
-        }),
-    );
+    let (c, s) = compile(&dict, &rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }));
     let (_, _, state) = play_draws(&c, &dict, s, 3); // seed 0: RUMOUR, HEARSAY, RUMOUR
     let pool = state.by_name.get("RUMOUR").unwrap();
     assert_eq!(pool.len(), 2);
@@ -1292,18 +1077,12 @@ fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever(
     for _ in 0..3 {
         let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", 2);
         assert_eq!(r.rejected, None);
-        assert_eq!(
-            refusal(&r).as_deref(),
-            Some("SPAWN: name 'WHISPER' already in use")
-        ); // the documented stuck-state message
+        assert_eq!(refusal(&r).as_deref(), Some("SPAWN: name 'WHISPER' already in use")); // the documented stuck-state message
         assert_eq!(r.state.decks.get("PAIR"), Some(&1)); // stuck forever
                                                          // §9.50: every attempt registers its window (the count climbs by one,
                                                          // identically each retry) while the deck stays pinned — the stuck
                                                          // state is otherwise the same, and play/fold agree on it
-        assert_eq!(
-            r.state.executed.get("wait.default"),
-            Some(&(cur.executed["wait.default"] + 1))
-        );
+        assert_eq!(r.state.executed.get("wait.default"), Some(&(cur.executed["wait.default"] + 1)));
         let replayed = fold(&r.records, &cur, &dict, &c).unwrap();
         assert_eq!(snap(&replayed), snap(&r.state));
     }
@@ -1340,10 +1119,7 @@ fn the_documented_escape_consuming_the_drawn_copy_on_the_same_step_lets_every_se
     }
     assert_eq!(cur.decks.get("PAIR"), Some(&4)); // the cursor advanced every draw
     assert_eq!(
-        cur.entities
-            .values()
-            .filter(|e| e.name == "WHISPER" && e.dead_action.is_none())
-            .count(),
+        cur.entities.values().filter(|e| e.name == "WHISPER" && e.dead_action.is_none()).count(),
         0
     );
     let replayed = fold(&records, &base, &dict, &c).unwrap();
@@ -1358,10 +1134,7 @@ fn the_documented_escape_consuming_the_drawn_copy_on_the_same_step_lets_every_se
 fn an_unknown_spec_entry_is_a_load_error_naming_the_deck_and_the_entry() {
     let dict = deck_dict();
     let err = compile_script(
-        &rig(Rig {
-            decks: Some("RUMOURS spec RUMOUR, NOSUCH"),
-            ..Default::default()
-        }),
+        &rig(Rig { decks: Some("RUMOURS spec RUMOUR, NOSUCH"), ..Default::default() }),
         &dict,
     )
     .unwrap_err();
@@ -1387,10 +1160,7 @@ fn an_unknown_spec_entry_is_a_load_error_naming_the_deck_and_the_entry() {
 fn an_unknown_defaultcard_is_a_load_error_naming_the_deck_and_the_entry() {
     let dict = deck_dict();
     let err = compile_script(
-        &rig(Rig {
-            decks: Some("RUMOURS spec RUMOUR defaultcard NOSUCH"),
-            ..Default::default()
-        }),
+        &rig(Rig { decks: Some("RUMOURS spec RUMOUR defaultcard NOSUCH"), ..Default::default() }),
         &dict,
     )
     .unwrap_err();
@@ -1404,52 +1174,31 @@ fn an_unknown_defaultcard_is_a_load_error_naming_the_deck_and_the_entry() {
 #[test]
 fn an_empty_spec_is_a_load_error_at_parse_and_at_compile() {
     let dict = deck_dict();
-    let err = compile_script(
-        &rig(Rig {
-            decks: Some("EMPTY spec"),
-            ..Default::default()
-        }),
-        &dict,
-    )
-    .unwrap_err();
+    let err = compile_script(&rig(Rig { decks: Some("EMPTY spec"), ..Default::default() }), &dict)
+        .unwrap_err();
     let re = regex::Regex::new("deck EMPTY: the spec is empty").unwrap();
     assert!(re.is_match(&err.msg), "{err}");
     let raw = ContentRaw {
-        decks: Some(vec![DeckRaw {
-            id: "EMPTY".into(),
-            spec: vec![],
-            ..Default::default()
-        }]),
+        decks: Some(vec![DeckRaw { id: "EMPTY".into(), spec: vec![], ..Default::default() }]),
         ..ContentRaw::default()
     };
-    assert_err_msg(
-        compile_content(&raw, &dict, &[]),
-        "deck EMPTY: the spec is empty",
-    );
+    assert_err_msg(compile_content(&raw, &dict, &[]), "deck EMPTY: the spec is empty");
 }
 
 #[test]
 fn deck_ids_must_be_upper_snake_unreserved_and_unique() {
     let dict = deck_dict();
     let err = compile_script(
-        &rig(Rig {
-            decks: Some("gossip spec RUMOUR"),
-            ..Default::default()
-        }),
+        &rig(Rig { decks: Some("gossip spec RUMOUR"), ..Default::default() }),
         &dict,
     )
     .unwrap_err();
     let re = regex::Regex::new("deck 'gossip' must be UPPER_SNAKE").unwrap();
     assert!(re.is_match(&err.msg), "{err}");
 
-    let err = compile_script(
-        &rig(Rig {
-            decks: Some("DRAW spec RUMOUR"),
-            ..Default::default()
-        }),
-        &dict,
-    )
-    .unwrap_err();
+    let err =
+        compile_script(&rig(Rig { decks: Some("DRAW spec RUMOUR"), ..Default::default() }), &dict)
+            .unwrap_err();
     let re = regex::Regex::new("'DRAW' is reserved and cannot be a deck id").unwrap();
     assert!(re.is_match(&err.msg), "{err}");
 
@@ -1485,22 +1234,9 @@ fn a_param_as_the_into_target_expands_from_a_recipe_call() {
     );
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
-    let rumour = r
-        .state
-        .entities
-        .values()
-        .find(|e| e.name == "RUMOUR")
-        .unwrap();
-    assert_eq!(
-        rumour.attrs.get("container"),
-        Some(&AttrValue::Str("s_kitchen".into()))
-    );
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
+    assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DRAWN", "SPAWN"]);
 }
 
@@ -1522,16 +1258,8 @@ fn the_same_function_from_a_trigger_explicit_into_lands_and_replays() {
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
-    let rumour = r
-        .state
-        .entities
-        .values()
-        .find(|e| e.name == "RUMOUR")
-        .unwrap();
-    assert_eq!(
-        rumour.attrs.get("container"),
-        Some(&AttrValue::Str("s_house".into()))
-    );
+    let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
+    assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_house".into())));
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -1642,11 +1370,7 @@ fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
                 .map(|(n, st)| {
                     (
                         n.to_string(),
-                        PrototypeDef {
-                            kind: "idea".into(),
-                            stackable: st,
-                            ..Default::default()
-                        },
+                        PrototypeDef { kind: "idea".into(), stackable: st, ..Default::default() },
                     )
                 })
                 .collect(),
@@ -1673,34 +1397,16 @@ fn a_seed_change_under_an_old_log_the_assertion_names_the_deck_cursor_both_names
     // and where the dice replay past rows from the log alone, a deck's cursor
     // row must re-derive its expectation, so the drifted PAST fails loud
     let dict = deck_dict();
-    let played = compile_content(
-        &drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]),
-        &dict,
-        &[],
-    )
-    .unwrap();
-    let drifted = compile_content(
-        &drift_raw(42, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]),
-        &dict,
-        &[],
-    )
-    .unwrap();
-    let played_names: Vec<&str> = played
-        .decks
-        .get("RUMOURS")
-        .unwrap()
-        .order
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
-    let drifted_names: Vec<&str> = drifted
-        .decks
-        .get("RUMOURS")
-        .unwrap()
-        .order
-        .iter()
-        .map(|e| e.name.as_str())
-        .collect();
+    let played =
+        compile_content(&drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]), &dict, &[])
+            .unwrap();
+    let drifted =
+        compile_content(&drift_raw(42, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]), &dict, &[])
+            .unwrap();
+    let played_names: Vec<&str> =
+        played.decks.get("RUMOURS").unwrap().order.iter().map(|e| e.name.as_str()).collect();
+    let drifted_names: Vec<&str> =
+        drifted.decks.get("RUMOURS").unwrap().order.iter().map(|e| e.name.as_str()).collect();
     assert_ne!(played_names, drifted_names);
     let r = run(&played, &dict, drift_world(), "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
@@ -1715,18 +1421,12 @@ fn a_seed_change_under_an_old_log_the_assertion_names_the_deck_cursor_both_names
 #[test]
 fn a_changed_spec_under_the_same_seed_fires_too_a_removed_deck_says_so() {
     let dict = deck_dict();
-    let played = compile_content(
-        &drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]),
-        &dict,
-        &[],
-    )
-    .unwrap();
-    let respecced = compile_content(
-        &drift_raw(0, &["SCANDAL", "HEARSAY", "RUMOUR", "RUMOUR"]),
-        &dict,
-        &[],
-    )
-    .unwrap();
+    let played =
+        compile_content(&drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]), &dict, &[])
+            .unwrap();
+    let respecced =
+        compile_content(&drift_raw(0, &["SCANDAL", "HEARSAY", "RUMOUR", "RUMOUR"]), &dict, &[])
+            .unwrap();
     let r = run(&played, &dict, drift_world(), "0:0 @ ANA WAIT", 1);
     let err = fold(&r.records, &drift_world(), &dict, &respecced).unwrap_err();
     let re = regex::Regex::new("content drift between play and fold").unwrap();
@@ -1734,12 +1434,9 @@ fn a_changed_spec_under_the_same_seed_fires_too_a_removed_deck_says_so() {
     // a deck that vanished from the compiled content: unreachable through
     // compile_content (the DRAW check pins the id at load), so simulate the
     // drift on the compiled table
-    let mut deckless = compile_content(
-        &drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]),
-        &dict,
-        &[],
-    )
-    .unwrap();
+    let mut deckless =
+        compile_content(&drift_raw(0, &["RUMOUR", "RUMOUR", "HEARSAY", "SCANDAL"]), &dict, &[])
+            .unwrap();
     deckless.decks.shift_remove("RUMOURS");
     let err = fold(&r.records, &drift_world(), &dict, &deckless).unwrap_err();
     let re = regex::Regex::new("deck 'RUMOURS' is not in the compiled decks").unwrap();
@@ -1783,11 +1480,7 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
                 .map(|n| {
                     (
                         n.to_string(),
-                        PrototypeDef {
-                            kind: "idea".into(),
-                            stackable: true,
-                            ..Default::default()
-                        },
+                        PrototypeDef { kind: "idea".into(), stackable: true, ..Default::default() },
                     )
                 })
                 .collect(),
@@ -1840,12 +1533,7 @@ fn refuse_after_a_draw_the_draft_dies_the_cursor_never_moves_the_fold_skips_the_
     let before = snap(&s);
     let r = run(&c, &dict, clone_state(&s), "0:0 @ ANA WAIT", 1);
     assert_eq!(r.rejected, None);
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DRAWN", "SPAWN", "REFUSE"]);
     assert_eq!(act(&r).unwrap().advanced_min, 0);
     // `r.state === state`: the draft was discarded — the input state's

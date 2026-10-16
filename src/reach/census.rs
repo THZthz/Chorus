@@ -76,9 +76,7 @@ pub(crate) fn parse_aspects_json(json: &str) -> crate::error::Result<crate::core
     let v: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| crate::error::ChorusError::new(format!("bad aspects pair: {e}")))?;
     let serde_json::Value::Object(map) = v else {
-        return Err(crate::error::ChorusError::new(
-            "bad aspects pair: not an object",
-        ));
+        return Err(crate::error::ChorusError::new("bad aspects pair: not an object"));
     };
     let mut out = crate::core::types::Aspects::new();
     for (k, val) in map {
@@ -262,9 +260,7 @@ pub(crate) fn spawn_name_ref(o: &Outcome) -> Option<(&str, Option<&str>)> {
         return None;
     }
     match o.args.first() {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { name, kind, .. },
-        }) => Some((name, kind.as_deref())),
+        Some(Arg::Ref { r#ref: Ref::Name { name, kind, .. } }) => Some((name, kind.as_deref())),
         _ => None,
     }
 }
@@ -275,9 +271,7 @@ pub(crate) fn replace_with_ref(o: &Outcome) -> Option<&str> {
         return None;
     }
     match o.args.get(1) {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        }) => Some(name),
+        Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name),
         _ => None,
     }
 }
@@ -288,9 +282,7 @@ pub(crate) fn draw_deck_id(o: &Outcome) -> Option<&str> {
         return None;
     }
     match o.args.first() {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        }) => Some(name),
+        Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name),
         _ => None,
     }
 }
@@ -361,11 +353,7 @@ pub(crate) fn walk_sites<'c>(
     destroyed_by: &mut IndexMap<String, IndexSet<String>>,
 ) -> WalkSitesOutput<'c> {
     let mut st = WalkState::default();
-    let root = WalkFrame {
-        path: Vec::new(),
-        segs: vec![0],
-        fallback: false,
-    };
+    let root = WalkFrame { path: Vec::new(), segs: vec![0], fallback: false };
     let _ = walk_outcomes(
         outs,
         &root,
@@ -396,11 +384,7 @@ pub(crate) fn walk_sites<'c>(
             path.push(arm.when.clone());
             let mut segs = frame.segs.clone();
             segs.push(seg);
-            WalkFrame {
-                path,
-                segs,
-                fallback: false,
-            }
+            WalkFrame { path, segs, fallback: false }
         },
         // the ELSE body: same path, a fresh segment, fallback = true
         &mut |st, frame| {
@@ -408,11 +392,7 @@ pub(crate) fn walk_sites<'c>(
             let seg = st.seg_counter;
             let mut segs = frame.segs.clone();
             segs.push(seg);
-            WalkFrame {
-                path: frame.path.clone(),
-                segs,
-                fallback: true,
-            }
+            WalkFrame { path: frame.path.clone(), segs, fallback: true }
         },
     );
     // walk_sites creates the flags entry for every segment
@@ -449,9 +429,7 @@ pub(crate) fn object_always(content: &CompiledContent, verb: Option<usize>) -> b
     let Some((_, v)) = content.verbs.get_index(vi) else {
         unreachable!("verb index {vi} came from content.verbs enumeration");
     };
-    v.slot_by_role
-        .get("object")
-        .is_some_and(|slot| slot.min >= 1)
+    v.slot_by_role.get("object").is_some_and(|slot| slot.min >= 1)
 }
 
 /// A DRAW behind an object-mandatory
@@ -561,15 +539,7 @@ fn walk_list<'c, 'a>(
 
     // the walk itself; the REFUSE/throwing marking rides
     // inside walk_sites
-    let cx = RecordCx {
-        content,
-        owner,
-        verb_idx,
-        when,
-        shadow_risk,
-        shadowed,
-        own_slot,
-    };
+    let cx = RecordCx { content, owner, verb_idx, when, shadow_risk, shadowed, own_slot };
     let out = walk_sites(out, &cx, &mut census.set_sites, &mut census.destroyed_by);
     let mut st = out.state;
     let sites = &mut st.sites;
@@ -577,11 +547,8 @@ fn walk_list<'c, 'a>(
     let flags = &st.flags;
 
     // segment-scoped REFUSE death + list-wide throwing
-    let dead_segs: IndexSet<usize> = flags
-        .iter()
-        .filter(|(_, f)| f.refused)
-        .map(|(k, _)| *k)
-        .collect();
+    let dead_segs: IndexSet<usize> =
+        flags.iter().filter(|(_, f)| f.refused).map(|(k, _)| *k).collect();
     let throw_ops: i64 = flags.values().map(|f| f.throwing).sum();
 
     // per-name mint counts, duplicates → dup_risk
@@ -630,20 +597,12 @@ fn walk_list<'c, 'a>(
         // kill pairs always collide (1012)
         let e = mint_counts
             .entry(format!("kill:{}", k.name))
-            .or_insert(MintCount {
-                count: 0,
-                all_stack: false,
-            });
+            .or_insert(MintCount { count: 0, all_stack: false });
         e.count += 1;
     }
     let dup_risk = mint_counts.values().any(|e| e.count >= 2 && !e.all_stack);
-    let list_gate_mints: Rc<IndexSet<String>> = Rc::new(
-        mint_counts
-            .iter()
-            .filter(|(_, e)| !e.all_stack)
-            .map(|(n, _)| n.clone())
-            .collect(),
-    );
+    let list_gate_mints: Rc<IndexSet<String>> =
+        Rc::new(mint_counts.iter().filter(|(_, e)| !e.all_stack).map(|(n, _)| n.clone()).collect());
     let mut list_stack_mints: IndexSet<String> = IndexSet::new();
     for s in sites.iter() {
         if s.kind == SiteKind::Draw && s.deck.is_some() {
@@ -655,12 +614,7 @@ fn walk_list<'c, 'a>(
                 stacky(content, &mut list_stack_mints, &dc.name, Some(&dc.kind));
             }
         } else {
-            stacky(
-                content,
-                &mut list_stack_mints,
-                &s.name,
-                s.kind_override.as_deref(),
-            );
+            stacky(content, &mut list_stack_mints, &s.name, s.kind_override.as_deref());
         }
     }
 
@@ -770,10 +724,7 @@ fn add_mint(
         non_stack_names.insert(name.to_string());
         collision_names.insert(name.to_string());
     }
-    let e = mint_counts.entry(name.to_string()).or_insert(MintCount {
-        count: 0,
-        all_stack: true,
-    });
+    let e = mint_counts.entry(name.to_string()).or_insert(MintCount { count: 0, all_stack: true });
     e.count += 1;
     e.all_stack = e.all_stack && stacks;
 }
@@ -827,23 +778,13 @@ fn record_visit<'c, 'a>(
 
     // a name-form first arg kills that name
     let kill_name: Option<&str> = match o.args.first() {
-        Some(Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        }) => Some(name),
+        Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name),
         _ => None,
     };
     if o.op == "DESTROY" || o.op == "REPLACE" {
         if let Some(name) = kill_name {
-            kills.push(Kill {
-                seg,
-                pos,
-                name: name.to_string(),
-                throws: o.op == "REPLACE",
-            });
-            destroyed_by
-                .entry(name.to_string())
-                .or_default()
-                .insert(owner.to_string());
+            kills.push(Kill { seg, pos, name: name.to_string(), throws: o.op == "REPLACE" });
+            destroyed_by.entry(name.to_string()).or_default().insert(owner.to_string());
         }
     }
     if o.op == "SET" {
@@ -851,17 +792,13 @@ fn record_visit<'c, 'a>(
         // ('aspect:X' or an attr); the target tells WHERE it can land
         let key: Option<String> = match o.args.get(1) {
             Some(Arg::Key { v }) | Some(Arg::Str { v }) => Some(v.clone()),
-            Some(Arg::Ref {
-                r#ref: Ref::Name { name, .. },
-            }) => Some(name.clone()),
+            Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.clone()),
             _ => None,
         };
         if let Some(key) = key {
             let target_arg = o.args.first();
             let target_name = match target_arg {
-                Some(Arg::Ref {
-                    r#ref: Ref::Name { name, .. },
-                }) => Some(name.clone()),
+                Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.clone()),
                 _ => None,
             };
             let target_role = match target_arg {
@@ -886,15 +823,9 @@ fn record_visit<'c, 'a>(
             });
         }
     }
-    let aspects_pair = o
-        .args
-        .iter()
-        .find(|a| matches!(a, Arg::Pair { k, .. } if k == "aspects"));
+    let aspects_pair = o.args.iter().find(|a| matches!(a, Arg::Pair { k, .. } if k == "aspects"));
     let aspects_json = match aspects_pair {
-        Some(Arg::Pair {
-            v: crate::core::types::AttrValue::Str(v),
-            ..
-        }) => Some(v.clone()),
+        Some(Arg::Pair { v: crate::core::types::AttrValue::Str(v), .. }) => Some(v.clone()),
         _ => None,
     };
     let spawn = spawn_name_ref(o);
@@ -935,9 +866,7 @@ fn record_visit<'c, 'a>(
         })
     } else if let Some(name) = replace {
         let replace_target = match o.args.first() {
-            Some(Arg::Ref {
-                r#ref: Ref::Name { name, .. },
-            }) => Some(name.clone()),
+            Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.clone()),
             _ => None,
         };
         Some(RawSite {

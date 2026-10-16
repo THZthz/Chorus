@@ -148,9 +148,7 @@ fn recipes_re() -> &'static Regex {
 /// `/^([a-z]+):\s*(.+)$`
 fn slot_role_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r"^([a-z]+):{DSL_WS_CLASS}*(.+)$"))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"^([a-z]+):{DSL_WS_CLASS}*(.+)$")))
 }
 
 /// `/^(\S+)\s+is\s+([A-Za-z_.]+)\b\s*(.*)$/`
@@ -166,18 +164,14 @@ fn entity_re() -> &'static Regex {
 /// `/^of\s+(\S+)$/`
 fn of_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r"^of{DSL_WS_CLASS}+({DSL_NON_WS_CLASS}+)$"))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"^of{DSL_WS_CLASS}+({DSL_NON_WS_CLASS}+)$")))
 }
 
 /// `/^stackable\b\s*/` (a PREFIX match; the matched
 /// text is sliced off `rest`)
 fn stackable_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r"^stackable(?-u:\b){DSL_WS_CLASS}*"))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"^stackable(?-u:\b){DSL_WS_CLASS}*")))
 }
 
 /// `/(?:^|\s+)(?:at|in)\s+(\S+)\s*$/`
@@ -193,19 +187,13 @@ fn at_in_re() -> &'static Regex {
 /// `/(?:^|\s+)with\s+(.+)$/`
 fn with_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)with{DSL_WS_CLASS}+(.+)$"))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)with{DSL_WS_CLASS}+(.+)$")))
 }
 
 /// `/(?:^|\s+)deriving\s+(.+)$/`
 fn deriving_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(
-            r"(?:^|{DSL_WS_CLASS}+)deriving{DSL_WS_CLASS}+(.+)$"
-        ))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)deriving{DSL_WS_CLASS}+(.+)$")))
 }
 
 /// `/^\s*([A-Za-z_][A-Za-z0-9_.]*):(-?\d+)\s*$/`
@@ -282,9 +270,7 @@ fn fn_paren_re() -> &'static Regex {
 fn fn_arrow_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
-        Regex::new(&format!(
-            r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
-        ))
+        Regex::new(&format!(r#"^({DSL_NON_WS_CLASS}+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#))
     })
 }
 
@@ -321,9 +307,7 @@ fn defaultcard_re() -> &'static Regex {
 /// `/(?:^|\s)reset\s*$/` (single `\s`)
 fn reset_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS})reset{DSL_WS_CLASS}*$"))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"(?:^|{DSL_WS_CLASS})reset{DSL_WS_CLASS}*$")))
 }
 
 /// `/^([A-Z][A-Z0-9_]*):\s*"(.+)"(?:\s+\(([a-z]+)\))?$`
@@ -339,11 +323,7 @@ fn ending_re() -> &'static Regex {
 /// `/^(\S+)(?:\s+(.*))?$/`
 fn slot_line_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(
-            r#"^({DSL_NON_WS_CLASS}+)(?:{DSL_WS_CLASS}+(.*))?$"#
-        ))
-    })
+    static_regex(&RE, || Regex::new(&format!(r#"^({DSL_NON_WS_CLASS}+)(?:{DSL_WS_CLASS}+(.*))?$"#)))
 }
 
 /// `/^(\d+)(?:\.\.(\d+)?)?$/`
@@ -367,17 +347,13 @@ fn recipe_id_re() -> &'static Regex {
 /// `/hint\s+"([^"]*)"/`
 fn hint_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r#"hint{DSL_WS_CLASS}+"([^"]*)""#))
-    })
+    static_regex(&RE, || Regex::new(&format!(r#"hint{DSL_WS_CLASS}+"([^"]*)""#)))
 }
 
 /// `/(?:^|\s)when\s+(.+)$/` (single `\s`)
 fn when_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!(r"(?:^|{DSL_WS_CLASS})when{DSL_WS_CLASS}+(.+)$"))
-    })
+    static_regex(&RE, || Regex::new(&format!(r"(?:^|{DSL_WS_CLASS})when{DSL_WS_CLASS}+(.+)$")))
 }
 
 /// The count-gate scan
@@ -788,15 +764,8 @@ pub(crate) struct CompleteClause {
 /// entity/prototype-line clause heads and the trigger's own keywords —
 /// `with` is the load-bearing one (the with-clause scanner works the same
 /// line), the rest keep the vocabulary closed.
-const COMPLETE_ASPECT_BANNED: [&str; 7] = [
-    "with",
-    "at",
-    "in",
-    "on",
-    "complete",
-    "deriving",
-    "stackable",
-];
+const COMPLETE_ASPECT_BANNED: [&str; 7] =
+    ["with", "at", "in", "on", "complete", "deriving", "stackable"];
 
 /// Byte offset of the first TOP-LEVEL `on complete` in `text`, or `None`.
 /// Top-level means paren-depth 0 and outside a string literal — an `on
@@ -831,10 +800,8 @@ fn find_on_complete(text: &str) -> Option<usize> {
                     let after_on = &text[i + "on".len()..];
                     let ws_run = after_on.len() - after_on.trim_start_matches(is_dsl_ws_char).len();
                     if let Some(after) = after_on[ws_run..].strip_prefix("complete") {
-                        let bounded = after
-                            .chars()
-                            .next()
-                            .is_none_or(|n| is_dsl_ws_char(n) || n == '-');
+                        let bounded =
+                            after.chars().next().is_none_or(|n| is_dsl_ws_char(n) || n == '-');
                         if bounded {
                             return Some(i);
                         }
@@ -894,19 +861,11 @@ fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
             let r = r.trim_start_matches(is_dsl_ws_char);
             r.strip_prefix("complete")
         }) else {
-            return Err(ChorusError::new(format!(
-                "line {ln}: expected `{SYNTAX}`, got '{rest}'"
-            )));
+            return Err(ChorusError::new(format!("line {ln}: expected `{SYNTAX}`, got '{rest}'")));
         };
         // the keyword ends at a boundary — an aspect token or the arrow
-        if !after_on
-            .chars()
-            .next()
-            .is_none_or(|c| is_dsl_ws_char(c) || c == '-')
-        {
-            return Err(ChorusError::new(format!(
-                "line {ln}: expected `{SYNTAX}`, got '{rest}'"
-            )));
+        if !after_on.chars().next().is_none_or(|c| is_dsl_ws_char(c) || c == '-') {
+            return Err(ChorusError::new(format!("line {ln}: expected `{SYNTAX}`, got '{rest}'")));
         }
         let mut cur = after_on.trim_start_matches(is_dsl_ws_char);
         // the optional aspect: one bare lowercase name token — DOTTED keys
@@ -935,10 +894,7 @@ fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
         let Some(after_arrow) = cur.strip_prefix("->") else {
             return Err(ChorusError::new(format!(
                 "line {ln}: `on complete` needs `-> ( outcomes )`{}",
-                aspect
-                    .as_ref()
-                    .map(|a| format!(" after aspect '{a}'"))
-                    .unwrap_or_default()
+                aspect.as_ref().map(|a| format!(" after aspect '{a}'")).unwrap_or_default()
             )));
         };
         let body_src = after_arrow.trim_start_matches(is_dsl_ws_char);
@@ -965,10 +921,7 @@ fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
                 "line {ln}: `on complete` needs an outcome list: {SYNTAX}"
             )));
         }
-        clauses.push(CompleteClause {
-            aspect,
-            body: body.to_string(),
-        });
+        clauses.push(CompleteClause { aspect, body: body.to_string() });
         rest = dsl_trim(&body_src[close + 1..]);
     }
 }
@@ -1038,9 +991,7 @@ fn parse_entity_line(
             )));
         }
         let Some(rel) = of_re().captures(rest0) else {
-            return Err(ChorusError::new(format!(
-                "line {ln}: relations expect  A is TYPE of B"
-            )));
+            return Err(ChorusError::new(format!("line {ln}: relations expect  A is TYPE of B")));
         };
         let b = grp_text(&rel, 1);
         check_name(name, ln, dict, "relation endpoint")?;
@@ -1093,10 +1044,7 @@ fn parse_entity_line(
                         dsl_trim(spec)
                     )));
                 };
-                pairs.insert(
-                    grp_text(&sm, 1).to_string(),
-                    parse_authored_int(grp_text(&sm, 2)),
-                );
+                pairs.insert(grp_text(&sm, 1).to_string(), parse_authored_int(grp_text(&sm, 2)));
             }
             aspects = aspects_from_pairs(&pairs);
             rest = &rest[..grp0_start(w)];
@@ -1105,9 +1053,7 @@ fn parse_entity_line(
         break;
     }
     if !dsl_trim(rest).is_empty() {
-        return Err(ChorusError::new(format!(
-            "line {ln}: could not parse entity line '{t}'"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: could not parse entity line '{t}'")));
     }
     entities.push(EntitySpec {
         name: name.to_string(),
@@ -1144,14 +1090,9 @@ fn parse_prototype_line(
     check_name(name, ln, dict, "prototype name")?;
     let kind = grp_text(&m, 2);
     if !KINDS.contains(&kind) {
-        return Err(ChorusError::new(format!(
-            "line {ln}: unknown kind '{kind}'"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: unknown kind '{kind}'")));
     }
-    let mut proto = PrototypeDef {
-        kind: kind.to_string(),
-        ..PrototypeDef::default()
-    };
+    let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };
     let mut rest: &str = grp_text(&m, 3);
     // §9.38: the `stackable` keyword sits before `deriving`/`with` clauses
     if let Some(sm) = stackable_re().find(rest) {
@@ -1165,14 +1106,10 @@ fn parse_prototype_line(
         let deriving_m = deriving_re().captures(rest);
         if let Some(w) = &with_m {
             let w_start = grp0_start(w);
-            let deriving_is_first = deriving_m
-                .as_ref()
-                .is_some_and(|d| grp0_start(d) >= w_start);
+            let deriving_is_first = deriving_m.as_ref().is_some_and(|d| grp0_start(d) >= w_start);
             if !deriving_is_first {
                 if aspects_done {
-                    return Err(ChorusError::new(format!(
-                        "line {ln}: duplicate 'with' clause"
-                    )));
+                    return Err(ChorusError::new(format!("line {ln}: duplicate 'with' clause")));
                 }
                 aspects_done = true;
                 let mut pairs: IndexMap<String, i64> = IndexMap::new();
@@ -1183,10 +1120,8 @@ fn parse_prototype_line(
                             dsl_trim(spec)
                         )));
                     };
-                    pairs.insert(
-                        grp_text(&sm, 1).to_string(),
-                        parse_authored_int(grp_text(&sm, 2)),
-                    );
+                    pairs
+                        .insert(grp_text(&sm, 1).to_string(), parse_authored_int(grp_text(&sm, 2)));
                 }
                 proto.aspects = Some(aspects_from_pairs(&pairs));
                 rest = &rest[..w_start];
@@ -1195,9 +1130,7 @@ fn parse_prototype_line(
         }
         if let Some(dm_all) = &deriving_m {
             if derive_done {
-                return Err(ChorusError::new(format!(
-                    "line {ln}: duplicate 'deriving' clause"
-                )));
+                return Err(ChorusError::new(format!("line {ln}: duplicate 'deriving' clause")));
             }
             derive_done = true;
             rest = &rest[..grp0_start(dm_all)];
@@ -1228,9 +1161,7 @@ fn parse_prototype_line(
         break;
     }
     if !dsl_trim(rest).is_empty() {
-        return Err(ChorusError::new(format!(
-            "line {ln}: could not parse prototype line '{t}'"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: could not parse prototype line '{t}'")));
     }
     Ok((name.to_string(), proto, clause_src.unwrap_or_default()))
 }
@@ -1256,14 +1187,10 @@ fn parse_trigger_line(t: &str, ln: usize) -> Result<TriggerDef> {
     };
     let n = parse_authored_int(grp_text(&m, 4));
     if grp_text(&m, 3) == "hour" && n > 23 {
-        return Err(ChorusError::new(format!(
-            "line {ln}: trigger hour must be 0..23"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: trigger hour must be 0..23")));
     }
     if grp_text(&m, 3) == "halfhour" && n > 47 {
-        return Err(ChorusError::new(format!(
-            "line {ln}: trigger halfhour must be 0..47"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: trigger halfhour must be 0..47")));
     }
     Ok(TriggerDef::Slot(SlotTriggerDef {
         id: grp_text(&m, 1).to_string(),
@@ -1286,10 +1213,7 @@ fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
         let params: Vec<String> = if params_raw.is_empty() {
             Vec::new()
         } else {
-            params_raw
-                .split(',')
-                .map(|s| dsl_trim(s).to_string())
-                .collect()
+            params_raw.split(',').map(|s| dsl_trim(s).to_string()).collect()
         };
         return Ok(FunctionDef {
             name: grp_text(&m, 1).to_string(),
@@ -1307,10 +1231,7 @@ fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
     if let Some(m) = fn_bare_re().captures(t) {
         return Ok(FunctionDef {
             name: grp_text(&m, 1).to_string(),
-            params: split_dsl_ws(grp_text(&m, 2))
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            params: split_dsl_ws(grp_text(&m, 2)).into_iter().map(str::to_string).collect(),
             body: dsl_trim(grp_text(&m, 3)).to_string(),
         });
     }
@@ -1352,23 +1273,12 @@ fn parse_deck_line(t: &str, ln: usize) -> Result<DeckRaw> {
         }
         break;
     }
-    let spec: Vec<String> = rest
-        .split(',')
-        .map(dsl_trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect();
+    let spec: Vec<String> =
+        rest.split(',').map(dsl_trim).filter(|s| !s.is_empty()).map(str::to_string).collect();
     if spec.is_empty() {
-        return Err(ChorusError::new(format!(
-            "line {ln}: deck {id}: the spec is empty"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: deck {id}: the spec is empty")));
     }
-    Ok(DeckRaw {
-        id: id.to_string(),
-        spec,
-        defaultcard,
-        reset,
-    })
+    Ok(DeckRaw { id: id.to_string(), spec, defaultcard, reset })
 }
 
 // ---------------------------------------------------------------------------
@@ -1410,9 +1320,7 @@ fn parse_slot_line(role: &str, rest: &str, ln: usize) -> Result<SlotDef> {
     };
     let trimmed = dsl_trim(rest);
     let Some(m) = slot_line_re().captures(trimmed) else {
-        return Err(ChorusError::new(format!(
-            "line {ln}: bad slot '{role}: {rest}'"
-        )));
+        return Err(ChorusError::new(format!("line {ln}: bad slot '{role}: {rest}'")));
     };
     let count_spec = grp_text(&m, 1);
     let Some(cm) = count_re().captures(count_spec) else {
@@ -1449,10 +1357,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     };
     let lhs = dsl_trim(&t[..arrow]);
     let rhs = dsl_trim(&t[arrow + 2..]);
-    let mut def = RecipeDef {
-        out: vec![rhs.to_string()],
-        ..RecipeDef::default()
-    };
+    let mut def = RecipeDef { out: vec![rhs.to_string()], ..RecipeDef::default() };
     if default_re().is_match(lhs) {
         return Ok(def);
     }
@@ -1585,12 +1490,8 @@ fn is_aspects_member(tok: &str) -> bool {
     let t = tok.strip_suffix(',').unwrap_or(tok);
     !t.is_empty()
         && t.starts_with(|c: char| c.is_ascii_lowercase())
-        && t.chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
-        && !matches!(
-            t,
-            "max" | "when" | "hidden" | "shown" | "hint" | "default" | "aspects"
-        )
+        && t.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
+        && !matches!(t, "max" | "when" | "hidden" | "shown" | "hint" | "default" | "aspects")
 }
 
 // ---------------------------------------------------------------------------
@@ -1616,10 +1517,7 @@ pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
             stackable: e.stackable,
         })
         .collect();
-    let raw = ContentRaw {
-        seed: script.meta.seed,
-        ..script.content
-    };
+    let raw = ContentRaw { seed: script.meta.seed, ..script.content };
     let content = compile_content(&raw, dict, &declared)?;
     let now = match script.meta.start {
         Some(start) => abs_min(start),
@@ -1647,23 +1545,16 @@ pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
         if let Some(container_name) = &e.container_name {
             // resolve the container FIRST (shared borrow ends), so the attrs
             // write below can take the exclusive borrow of state.entities
-            let container_id = state
-                .entities
-                .get(&id_of(container_name))
-                .map(|c| c.id.clone());
+            let container_id = state.entities.get(&id_of(container_name)).map(|c| c.id.clone());
             // the entity was added in the loop above
             let Some(self_e) = state.entities.get_mut(&id_of(&e.name)) else {
                 unreachable!("entity '{}' was added above", e.name);
             };
             if let Some(container_id) = container_id {
-                self_e
-                    .attrs
-                    .insert("container".to_string(), AttrValue::Str(container_id));
+                self_e.attrs.insert("container".to_string(), AttrValue::Str(container_id));
             } else if e.kind == "place" {
                 // a zone: a grouping with no card (§10)
-                self_e
-                    .attrs
-                    .insert("zone".to_string(), AttrValue::Str(container_name.clone()));
+                self_e.attrs.insert("zone".to_string(), AttrValue::Str(container_name.clone()));
             } else {
                 return Err(ChorusError::new(format!(
                     "entity {}: unknown container '{container_name}'",
@@ -1704,9 +1595,7 @@ pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
             .and_then(|pool| pool.first())
             .and_then(|id| state.entities.get(id));
         let Some(p) = p else {
-            return Err(ChorusError::new(format!(
-                "player '{player}' is not a declared entity"
-            )));
+            return Err(ChorusError::new(format!("player '{player}' is not a declared entity")));
         };
         if p.kind != "character" {
             return Err(ChorusError::new(format!(
@@ -1715,11 +1604,7 @@ pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
             )));
         }
     }
-    Ok(CompiledScript {
-        content,
-        state,
-        meta: script.meta,
-    })
+    Ok(CompiledScript { content, state, meta: script.meta })
 }
 
 // ---------------------------------------------------------------------------
@@ -1776,10 +1661,8 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         // (E11 below) reasons over: each declared role's binding count is
         // its slot's min..max at selection time (the same model the
         // count-gate check above uses)
-        let slot_ranges: IndexMap<String, WhenRange> = slot_of
-            .iter()
-            .map(|(role, s)| (role.to_string(), (s.min, s.max)))
-            .collect();
+        let slot_ranges: IndexMap<String, WhenRange> =
+            slot_of.iter().map(|(role, s)| (role.to_string(), (s.min, s.max))).collect();
         let mut catch_all: Option<String> = None;
         let mut whens: IndexMap<String, String> = IndexMap::new();
         for (i, r) in verb.recipes.iter().enumerate() {
@@ -1889,12 +1772,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     if let Some(functions) = &script.content.functions {
         for f in functions {
             let extra: Vec<&str> = f.params.iter().map(String::as_str).collect();
-            scan_tokens(
-                &mut findings,
-                &format!("function {}", f.name),
-                &f.body,
-                &extra,
-            );
+            scan_tokens(&mut findings, &format!("function {}", f.name), &f.body, &extra);
         }
     }
 
@@ -1928,11 +1806,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                     .and_then(|ps| ps.get(entry))
                     .map(|p| p.kind.as_str())
                     .or_else(|| {
-                        script
-                            .entities
-                            .iter()
-                            .find(|e| &e.name == entry)
-                            .map(|e| e.kind.as_str())
+                        script.entities.iter().find(|e| &e.name == entry).map(|e| e.kind.as_str())
                     });
                 if !stackable_names.contains(entry)
                     && !kind.is_some_and(|k| stackable_kinds.contains(k))
@@ -1962,11 +1836,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     }
     fn walk_aspects(writes: &mut IndexSet<String>, a: &Aspects, prefix: &str) {
         for (k, v) in a {
-            let path = if prefix.is_empty() {
-                k.clone()
-            } else {
-                format!("{prefix}.{k}")
-            };
+            let path = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
             add_write(writes, &path);
             // the only non-number shape is the one-level sub-map (Q13), whose
             // leaves are all numbers, so no further recursion is reachable
@@ -2098,10 +1968,7 @@ pub struct LintFinding {
 impl LintFinding {
     /// The pre-E11 finding set (the ERROR class).
     fn error(message: String) -> Self {
-        LintFinding {
-            severity: LintSeverity::Error,
-            message,
-        }
+        LintFinding { severity: LintSeverity::Error, message }
     }
 }
 
@@ -2139,11 +2006,7 @@ type WhenRange = (i64, Option<i64>);
 const NEG_INF: i64 = i64::MIN;
 
 fn range_text(r: &WhenRange) -> String {
-    let lo = if r.0 == NEG_INF {
-        "-∞".to_string()
-    } else {
-        r.0.to_string()
-    };
+    let lo = if r.0 == NEG_INF { "-∞".to_string() } else { r.0.to_string() };
     match r.1 {
         Some(hi) => format!("{lo}..{hi}"),
         None => format!("{lo}..∞"),
@@ -2158,10 +2021,7 @@ fn range_narrow(r: WhenRange, op: CmpOp, k: i64) -> Option<WhenRange> {
         CmpOp::Ge => (r.0.max(k), r.1),
         CmpOp::Gt => (r.0.max(k.saturating_add(1)), r.1),
         CmpOp::Le => (r.0, Some(r.1.map_or(k, |h| h.min(k)))),
-        CmpOp::Lt => (
-            r.0,
-            Some(r.1.map_or(k.saturating_sub(1), |h| h.min(k.saturating_sub(1)))),
-        ),
+        CmpOp::Lt => (r.0, Some(r.1.map_or(k.saturating_sub(1), |h| h.min(k.saturating_sub(1))))),
         CmpOp::Eq => (r.0.max(k), Some(r.1.map_or(k, |h| h.min(k)))),
         CmpOp::Ne => r,
     };
@@ -2252,12 +2112,7 @@ struct WhenCx<'a> {
 
 impl<'a> WhenCx<'a> {
     fn new(slots: &'a IndexMap<String, WhenRange>) -> Self {
-        WhenCx {
-            slots,
-            vars: IndexMap::new(),
-            empty: IndexSet::new(),
-            bound: IndexSet::new(),
-        }
+        WhenCx { slots, vars: IndexMap::new(), empty: IndexSet::new(), bound: IndexSet::new() }
     }
 
     /// The §6.1 domain of one variable: a declared role's slot range; an
@@ -2279,10 +2134,7 @@ impl<'a> WhenCx<'a> {
     }
 
     fn working(&self, var: &WhenVar) -> WhenRange {
-        self.vars
-            .get(var)
-            .copied()
-            .unwrap_or_else(|| self.initial(var))
+        self.vars.get(var).copied().unwrap_or_else(|| self.initial(var))
     }
 
     /// A role's binding state under the current conjunction.
@@ -2300,9 +2152,7 @@ impl<'a> WhenCx<'a> {
     /// contradicts a conjunct that pinned the role empty.
     fn require_bound(&mut self, role: &str) -> Option<String> {
         if self.empty.contains(role) {
-            return Some(format!(
-                "the when requires {role} both empty and bound (§6.3, §9.39)"
-            ));
+            return Some(format!("the when requires {role} both empty and bound (§6.3, §9.39)"));
         }
         self.bound.insert(role.to_string());
         None
@@ -2365,10 +2215,7 @@ fn when_verdict(p: &Pred, neg: bool, cx: &mut WhenCx) -> WhenVerdict {
                 // disjunction: Dead only if BOTH sides are; Always if either is
                 let mut a_cx = cx.clone();
                 let mut b_cx = cx.clone();
-                match (
-                    when_verdict(a, neg, &mut a_cx),
-                    when_verdict(b, neg, &mut b_cx),
-                ) {
+                match (when_verdict(a, neg, &mut a_cx), when_verdict(b, neg, &mut b_cx)) {
                     (WhenVerdict::Dead(ra), WhenVerdict::Dead(_)) => WhenVerdict::Dead(ra),
                     (WhenVerdict::Always, _) | (_, WhenVerdict::Always) => WhenVerdict::Always,
                     _ => WhenVerdict::Unknown,
@@ -2395,10 +2242,7 @@ fn when_verdict(p: &Pred, neg: bool, cx: &mut WhenCx) -> WhenVerdict {
             if neg {
                 return WhenVerdict::Unknown;
             }
-            for role in [Some(role.as_str()), role2.as_deref()]
-                .into_iter()
-                .flatten()
-            {
+            for role in [Some(role.as_str()), role2.as_deref()].into_iter().flatten() {
                 if let WhenVerdict::Dead(reason) =
                     role_bound_verdict(cx, role, "rel(…) needs bound members")
                 {
@@ -2512,9 +2356,7 @@ fn when_cmp(l: &ValExpr, r: &ValExpr, op: CmpOp, neg: bool, cx: &mut WhenCx) -> 
         }
     }
     if let Some(role) = cx.empty.intersection(&cx.bound).next() {
-        return WhenVerdict::Dead(format!(
-            "the when requires {role} both empty and bound (§6.3)"
-        ));
+        return WhenVerdict::Dead(format!("the when requires {role} both empty and bound (§6.3)"));
     }
     if range_all_satisfy(init, op, k) {
         WhenVerdict::Always

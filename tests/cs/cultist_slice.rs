@@ -24,10 +24,7 @@ use chorus::session::game::{Game, TurnKind};
 use chorus::session::render::ending_banner;
 
 /// The bundled v0.6 slice, read as text.
-const SLICE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/scripts/cultist-slice.txt"
-));
+const SLICE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/cultist-slice.txt"));
 
 /// settle_step with the engine's id-generator shape (fresh `x{n}` ids).
 fn run(
@@ -48,10 +45,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -73,9 +67,7 @@ fn the_broke_gate_refuses_a_first_time_buyer_instead_of_selling_her_into_debt() 
     // the finding's exact shape: the entry is ABSENT, not zeroed
     assert_eq!(game.state.entities[wren.as_str()].attrs.get("silver"), None);
 
-    let turn = game
-        .handle_line("acquire the tin candle at the flea market")
-        .unwrap();
+    let turn = game.handle_line("acquire the tin candle at the flea market").unwrap();
     assert_eq!(turn.kind, TurnKind::Action);
     let lines = turn.lines.join("\n");
     assert!(
@@ -118,20 +110,12 @@ fn a_present_silver_purse_still_buys_the_candle() {
     assert_eq!(r.rejected, None, "a funded purse passes the broke gate");
     assert_eq!(refusal(&r), None);
     assert_eq!(act(&r).unwrap().recipes, ["acquire.candle"]);
-    let ops: Vec<&str> = done(&r)
-        .unwrap()
-        .outcomes
-        .iter()
-        .map(|o| o.op.as_str())
-        .collect();
+    let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["SET", "MOVE", "NARRATE"]);
 
     let wren = r.state.by_name["WREN"][0].clone();
     let candle = r.state.by_name["THE_TIN_CANDLE"][0].clone();
-    assert_eq!(
-        r.state.entities[wren.as_str()].attrs.get("silver"),
-        Some(&AttrValue::Num(0))
-    );
+    assert_eq!(r.state.entities[wren.as_str()].attrs.get("silver"), Some(&AttrValue::Num(0)));
     assert_eq!(
         r.state.entities[candle.as_str()].attrs.get("container"),
         Some(&AttrValue::Str("s_wren".into()))
@@ -234,12 +218,7 @@ const WIN_WALK: &[&str] = &[
 fn play(game: &mut Game, lines: &[&str]) {
     for line in lines {
         let turn = game.handle_line(line).unwrap();
-        assert_ne!(
-            turn.kind,
-            TurnKind::Error,
-            "walk line {line:?} was rejected: {:?}",
-            turn.lines
-        );
+        assert_ne!(turn.kind, TurnKind::Error, "walk line {line:?} was rejected: {:?}", turn.lines);
     }
 }
 
@@ -261,11 +240,7 @@ fn with_deck(text: &str, from: &str, to: &str) -> String {
 /// How many log records carry `needle` in their canonical sentence (the
 /// journal's own lines: concrete outcomes render on the record's sentence).
 fn sentence_count(game: &Game, needle: &str) -> usize {
-    game.log
-        .records
-        .iter()
-        .filter(|r| r.sentence.contains(needle))
-        .count()
+    game.log.records.iter().filter(|r| r.sentence.contains(needle)).count()
 }
 
 /// How many COMPLETE records fired `recipe`.
@@ -280,11 +255,7 @@ fn completions(game: &Game, recipe: &str) -> usize {
 /// How many log records REFUSEd anywhere (an authored gate speaking or a
 /// completion-time failure).
 fn refusals(game: &Game) -> usize {
-    game.log
-        .records
-        .iter()
-        .filter(|r| r.outcomes.iter().any(|o| o.op == "REFUSE"))
-        .count()
+    game.log.records.iter().filter(|r| r.outcomes.iter().any(|o| o.op == "REFUSE")).count()
 }
 
 /// How many LIVING entities answer to `name` (a name whose every copy died
@@ -296,10 +267,7 @@ fn alive_named(game: &Game, name: &str) -> usize {
         .map(|ids| {
             ids.iter()
                 .filter(|id| {
-                    game.state
-                        .entities
-                        .get(id.as_str())
-                        .is_some_and(|e| e.dead_action.is_none())
+                    game.state.entities.get(id.as_str()).is_some_and(|e| e.dead_action.is_none())
                 })
                 .count()
         })
@@ -313,10 +281,7 @@ fn assert_ended(game: &Game, id: &str, title: &str, flavour: &str) {
     assert_eq!(ended.id, id);
     assert_eq!(ended.title, title);
     assert_eq!(ended.flavour, flavour);
-    assert_eq!(
-        ending_banner(&ended),
-        format!("— {} · {} —", title.to_uppercase(), flavour)
-    );
+    assert_eq!(ending_banner(&ended), format!("— {} · {} —", title.to_uppercase(), flavour));
 }
 
 /// After the ending, further input is refused: the §9.35 notice instead of
@@ -326,10 +291,7 @@ fn assert_further_input_rejected(game: &mut Game, next_line: &str) {
     let turn = game.handle_line(next_line).unwrap();
     assert_eq!(turn.kind, TurnKind::Info);
     let lines = turn.lines.join("\n");
-    assert!(
-        lines.contains("the story has ended"),
-        "the notice must speak: {lines}"
-    );
+    assert!(lines.contains("the story has ended"), "the notice must speak: {lines}");
     assert_eq!(game.log.records.len(), records_before);
 }
 
@@ -346,12 +308,7 @@ fn the_win_walk_replays_to_over_the_roof() {
     play(&mut game, WIN_WALK);
 
     // the grand ending, with the banner text the status area shows
-    assert_ended(
-        &game,
-        "OVER_THE_ROOF",
-        "Over the Roof of the Visible",
-        "grand",
-    );
+    assert_ended(&game, "OVER_THE_ROOF", "Over the Roof of the Visible", "grand");
 
     // the sixth mark is ON the hunger card (SET(TO, aspect:marks) — the
     // hunger's counter is an aspect, §3's inventory)
@@ -366,16 +323,8 @@ fn the_win_walk_replays_to_over_the_roof() {
     // rung per rite (ascend_1 at the lone lost bell's 18, ascend_2 at 18,
     // ascend_3 at the 18+6 pool), dice 7, 1, 1 at seed 1837 — the Grand 10%
     // never fired on this replay; and the wheel was turning throughout
-    assert_eq!(
-        completions(&game, "rite.ascend_1"),
-        1,
-        "the first climb (marks 3 -> 4)"
-    );
-    assert_eq!(
-        completions(&game, "rite.ascend_2"),
-        1,
-        "the second climb (marks 4 -> 5)"
-    );
+    assert_eq!(completions(&game, "rite.ascend_1"), 1, "the first climb (marks 3 -> 4)");
+    assert_eq!(completions(&game, "rite.ascend_2"), 1, "the second climb (marks 4 -> 5)");
     assert_eq!(
         completions(&game, "rite.ascend_3"),
         1,
@@ -390,21 +339,9 @@ fn the_win_walk_replays_to_over_the_roof() {
     // (the lenient binder's hand-out — the old head-only binding fired the
     // pair row on one card and left the second as a stray), so both candle
     // psalms went into the Lampkeeper's Hour and nothing pooled twice
-    assert_eq!(
-        completions(&game, "study.rad2_pair"),
-        1,
-        "the psalm pair combined once"
-    );
-    assert_eq!(
-        alive_named(&game, "A_CANDLE_PSALM"),
-        0,
-        "no stray: the pair consumed both copies"
-    );
-    assert_eq!(
-        alive_named(&game, "THE_LAMPKEEPERS_HOUR"),
-        1,
-        "the 6 minted exactly once"
-    );
+    assert_eq!(completions(&game, "study.rad2_pair"), 1, "the psalm pair combined once");
+    assert_eq!(alive_named(&game, "A_CANDLE_PSALM"), 0, "no stray: the pair consumed both copies");
+    assert_eq!(alive_named(&game, "THE_LAMPKEEPERS_HOUR"), 1, "the 6 minted exactly once");
     assert_eq!(
         alive_named(&game, "THE_LOST_BELL"),
         1,
@@ -435,11 +372,7 @@ fn three_grey_marks_end_in_grey_water() {
                       SEASON_GREY, SEASON_GREY, SEASON_GREY, SEASON_GREY, SEASON_GREY";
     let moods_from = "MOODS spec DREAD, RAPTURE, GLIMMER, MENDING, EASE, WAKEFULNESS";
     let moods_to = "MOODS spec DREAD, DREAD, DREAD, DREAD, DREAD, DREAD";
-    let mutated = with_deck(
-        &with_deck(SLICE, seasons_from, seasons_to),
-        moods_from,
-        moods_to,
-    );
+    let mutated = with_deck(&with_deck(SLICE, seasons_from, seasons_to), moods_from, moods_to);
     let mut game = Game::from_script(&mutated, core_dictionary()).unwrap();
 
     // three router draws stock three DREADs (roll-free), the two works build
@@ -471,22 +404,13 @@ fn three_grey_marks_end_in_grey_water() {
     );
 
     // the melancholy: the third processed dread closes the sky
-    assert_ended(
-        &game,
-        "GREY_WATER",
-        "The Weight of Grey Water",
-        "melancholy",
-    );
+    assert_ended(&game, "GREY_WATER", "The Weight of Grey Water", "melancholy");
     assert_eq!(
         completions(&game, "despair_process"),
         3,
         "three grey mornings must each process one dread"
     );
-    assert_eq!(
-        alive_named(&game, "THE_GREY_MARK"),
-        3,
-        "three grey marks stand at the ending"
-    );
+    assert_eq!(alive_named(&game, "THE_GREY_MARK"), 3, "three grey marks stand at the ending");
     assert_eq!(
         sentence_count(&game, "DRAWN(MOODS, DREAD)"),
         3,
@@ -513,11 +437,7 @@ fn three_rapture_marks_end_in_bright_air() {
                       SEASON_WHITE, SEASON_WHITE, SEASON_WHITE, SEASON_WHITE, SEASON_WHITE";
     let moods_from = "MOODS spec DREAD, RAPTURE, GLIMMER, MENDING, EASE, WAKEFULNESS";
     let moods_to = "MOODS spec RAPTURE, RAPTURE, RAPTURE, RAPTURE, RAPTURE, RAPTURE";
-    let mutated = with_deck(
-        &with_deck(SLICE, seasons_from, seasons_to),
-        moods_from,
-        moods_to,
-    );
+    let mutated = with_deck(&with_deck(SLICE, seasons_from, seasons_to), moods_from, moods_to);
     let mut game = Game::from_script(&mutated, core_dictionary()).unwrap();
 
     play(
@@ -550,11 +470,7 @@ fn three_rapture_marks_end_in_bright_air() {
         3,
         "three white airs must each process one rapture"
     );
-    assert_eq!(
-        alive_named(&game, "THE_BRIGHT_MARK"),
-        3,
-        "three bright marks stand at the ending"
-    );
+    assert_eq!(alive_named(&game, "THE_BRIGHT_MARK"), 3, "three bright marks stand at the ending");
     assert_eq!(
         sentence_count(&game, "DRAWN(MOODS, RAPTURE)"),
         3,
@@ -604,25 +520,12 @@ fn a_starved_body_fails() {
         ],
     );
 
-    assert_ended(
-        &game,
-        "THE_BODY_FAILS",
-        "The Body Lays Down Its Tenant",
-        "melancholy",
-    );
+    assert_ended(&game, "THE_BODY_FAILS", "The Body Lays Down Its Tenant", "melancholy");
     // the LEAN shape itself: two starvation leans — the first eats VIGOR
     // into the hollow days ("the lean days eat the meal itself"), the last
     // finds no meal and no body
-    assert_eq!(
-        completions(&game, "season.rags"),
-        2,
-        "two lean days must reach the rags gate"
-    );
-    assert_eq!(
-        completions(&game, "starvation_lean"),
-        2,
-        "both penniless leans must starve"
-    );
+    assert_eq!(completions(&game, "season.rags"), 2, "two lean days must reach the rags gate");
+    assert_eq!(completions(&game, "starvation_lean"), 2, "both penniless leans must starve");
     assert_eq!(
         sentence_count(&game, "The lean days eat the meal itself"),
         1,
@@ -679,10 +582,7 @@ fn the_wheel_turns_at_least_three_seasons() {
         .collect();
     weathers.sort();
     weathers.dedup();
-    assert!(
-        weathers.len() >= 3,
-        "three distinct weathers must complete: {weathers:?}"
-    );
+    assert!(weathers.len() >= 3, "three distinct weathers must complete: {weathers:?}");
 
     // the rechain: time.turn completed once per cycle, and the WAIT station
     // holds an open window right now — the loop never stopped being resident
@@ -699,11 +599,7 @@ fn the_wheel_turns_at_least_three_seasons() {
     // clerk's post) neither spawned a second wheel nor slipped an extra turn
     // past the busy station: four wheel cycles, four draws, no more
     assert_eq!(completions(&game, "work.vigor"), 1, "the bootstrap");
-    assert_eq!(
-        completions(&game, "work.post"),
-        1,
-        "a second job completion must have happened"
-    );
+    assert_eq!(completions(&game, "work.post"), 1, "a second job completion must have happened");
     assert_eq!(
         sentence_count(&game, "SPAWN THE_TURNING INTO"),
         1,

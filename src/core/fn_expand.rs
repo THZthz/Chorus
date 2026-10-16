@@ -150,20 +150,12 @@ fn expand_list(
             });
         } else {
             let args = match fn_ {
-                Some(_) => o
-                    .args
-                    .iter()
-                    .map(|a| subst_arg(a, fn_, bind))
-                    .collect::<Result<Vec<Arg>>>()?,
+                Some(_) => {
+                    o.args.iter().map(|a| subst_arg(a, fn_, bind)).collect::<Result<Vec<Arg>>>()?
+                }
                 None => o.args.clone(),
             };
-            out.push(Outcome {
-                op: o.op.clone(),
-                args,
-                arms: None,
-                fallback: None,
-                call: None,
-            });
+            out.push(Outcome { op: o.op.clone(), args, arms: None, fallback: None, call: None });
         }
     }
     Ok(out)
@@ -196,13 +188,9 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
             // §9.41: a ROLL argument is a value expression; a body template
             // may carry a param operand inside it (`ROLL(n, 6)`), substituted
             // by the same rule as IF-condition cmp operands
-            Ok(Arg::Vexpr {
-                v: subst_expr(v, fn_.unwrap_or("?"), bind)?,
-            })
+            Ok(Arg::Vexpr { v: subst_expr(v, fn_.unwrap_or("?"), bind)? })
         }
-        Arg::Ref {
-            r#ref: crate::core::r#ref::Ref::Param { name },
-        } => {
+        Arg::Ref { r#ref: crate::core::r#ref::Ref::Param { name } } => {
             // whole-ref position: the bound arg splices in as-is — a ref or a
             // role ref behaves exactly like the same text authored at the
             // call site; a value literal lands where a ref belongs and is
@@ -237,9 +225,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
             }
         }
         Arg::Str { v } => match fn_ {
-            Some(fn_name) => Ok(Arg::Str {
-                v: subst_string(v, fn_name, bind)?,
-            }),
+            Some(fn_name) => Ok(Arg::Str { v: subst_string(v, fn_name, bind)? }),
             None => Ok(a.clone()),
         },
         _ => Ok(a.clone()),
@@ -273,12 +259,9 @@ fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<
     let mut out = String::new();
     let mut last = 0;
     for caps in re.captures_iter(s) {
-        let m = caps
-            .get(0)
-            .map(|m| (m.start(), m.end()))
-            .unwrap_or_else(|| {
-                unreachable!("regex group 0 is always present") // impossible by construction
-            });
+        let m = caps.get(0).map(|m| (m.start(), m.end())).unwrap_or_else(|| {
+            unreachable!("regex group 0 is always present") // impossible by construction
+        });
         out.push_str(&s[last..m.0]);
         let whole = &s[m.0..m.1];
         // the capture groups give pre/name/post; both spaced spellings error
@@ -359,20 +342,16 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
 /// terms take none — the grammar already rejected them at parse.
 fn subst_pred(p: &Pred, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<Pred> {
     match p {
-        Pred::And(a, b) => Ok(Pred::And(
-            Box::new(subst_pred(a, fn_, bind)?),
-            Box::new(subst_pred(b, fn_, bind)?),
-        )),
-        Pred::Or(a, b) => Ok(Pred::Or(
-            Box::new(subst_pred(a, fn_, bind)?),
-            Box::new(subst_pred(b, fn_, bind)?),
-        )),
+        Pred::And(a, b) => {
+            Ok(Pred::And(Box::new(subst_pred(a, fn_, bind)?), Box::new(subst_pred(b, fn_, bind)?)))
+        }
+        Pred::Or(a, b) => {
+            Ok(Pred::Or(Box::new(subst_pred(a, fn_, bind)?), Box::new(subst_pred(b, fn_, bind)?)))
+        }
         Pred::Not(a) => Ok(Pred::Not(Box::new(subst_pred(a, fn_, bind)?))),
-        Pred::Cmp { l, op, r } => Ok(Pred::Cmp {
-            l: subst_expr(l, fn_, bind)?,
-            op: *op,
-            r: subst_expr(r, fn_, bind)?,
-        }),
+        Pred::Cmp { l, op, r } => {
+            Ok(Pred::Cmp { l: subst_expr(l, fn_, bind)?, op: *op, r: subst_expr(r, fn_, bind)? })
+        }
         // Rel/Every/Any/Exists/ExistsQuery carry no parameters
         _ => Ok(p.clone()),
     }
@@ -516,20 +495,12 @@ mod tests {
     #[test]
     fn delta_sign_folds_into_the_bound_number() {
         let d = dict();
-        let fns = table(
-            "BUMP",
-            &["n"],
-            "NARRATE \"+{n}\", SET(level, +n), SET(level, -n)",
-        );
+        let fns = table("BUMP", &["n"], "NARRATE \"+{n}\", SET(level, +n), SET(level, -n)");
         let body_call = parse_outcomes("BUMP(2)", &d, Some(&fns)).unwrap();
         // +{n} interpolates "+2" into the string; +n/-n fold the authored
         // sign into the call's number
         let expanded = expand_fn_calls(&body_call, &fns).unwrap();
-        match (
-            &expanded[0].args[0],
-            &expanded[1].args[1],
-            &expanded[2].args[1],
-        ) {
+        match (&expanded[0].args[0], &expanded[1].args[1], &expanded[2].args[1]) {
             (Arg::Str { v }, Arg::Delta { v: a }, Arg::Delta { v: b }) => {
                 assert_eq!(v, "+2");
                 assert_eq!(*a, 2);
@@ -550,22 +521,12 @@ mod tests {
             let mut t = FnTable::default();
             let d2 = dict();
             let body = parse_function_body("NARRATE \"x\"", &d2, &t, &[]).unwrap();
-            t.by_name.insert(
-                "alpha".into(),
-                FnTemplate {
-                    name: "alpha".into(),
-                    params: vec![],
-                    body,
-                },
-            );
+            t.by_name
+                .insert("alpha".into(), FnTemplate { name: "alpha".into(), params: vec![], body });
             let body_zeta = parse_function_body("NARRATE \"y\"", &d2, &t, &[]).unwrap();
             t.by_name.insert(
                 "zeta".into(),
-                FnTemplate {
-                    name: "zeta".into(),
-                    params: vec![],
-                    body: body_zeta,
-                },
+                FnTemplate { name: "zeta".into(), params: vec![], body: body_zeta },
             );
             t
         };
@@ -583,14 +544,8 @@ mod tests {
         let mut fns2 = FnTable::default();
         let body =
             parse_function_body("SPAWN RUMOUR INTO t", &d2, &fns2, &["t".to_string()]).unwrap();
-        fns2.by_name.insert(
-            "M2".into(),
-            FnTemplate {
-                name: "M2".into(),
-                params: vec!["t".into()],
-                body,
-            },
-        );
+        fns2.by_name
+            .insert("M2".into(), FnTemplate { name: "M2".into(), params: vec!["t".into()], body });
         // call with a NUMBER binding — the INTO slot refuses with the exact text
         let call = parse_outcomes("M2(5)", &d2, Some(&fns2)).unwrap();
         let err = expand_fn_calls(&call, &fns2).unwrap_err();
@@ -680,20 +635,14 @@ mod tests {
         // direct subst_arg check of the sign rule
         let mut bind = IndexMap::new();
         bind.insert("n".to_string(), Arg::Int { v: 4 });
-        let a = Arg::Param {
-            name: "n".into(),
-            sign: Some(Sign::Neg),
-        };
+        let a = Arg::Param { name: "n".into(), sign: Some(Sign::Neg) };
         match subst_arg(&a, Some("f"), &mut bind).unwrap() {
             Arg::Delta { v } => assert_eq!(v, -4),
             other => panic!("expected delta, got {other:?}"),
         }
         // a non-numeric binding splices through for the runtime kind error
         bind.insert("s".to_string(), Arg::Str { v: "x".into() });
-        let a2 = Arg::Param {
-            name: "s".into(),
-            sign: Some(Sign::Pos),
-        };
+        let a2 = Arg::Param { name: "s".into(), sign: Some(Sign::Pos) };
         match subst_arg(&a2, Some("f"), &mut bind).unwrap() {
             Arg::Str { v } => assert_eq!(v, "x"),
             other => panic!("expected splice-through, got {other:?}"),

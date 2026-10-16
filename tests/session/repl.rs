@@ -82,12 +82,7 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
     let title = game.title();
     let mut expected = banner(
         &title,
-        &game
-            .content
-            .verbs
-            .keys()
-            .map(|v| v.to_lowercase().replace('_', " "))
-            .collect::<Vec<_>>(),
+        &game.content.verbs.keys().map(|v| v.to_lowercase().replace('_', " ")).collect::<Vec<_>>(),
     );
     for line in inputs {
         let trimmed = line.trim();
@@ -111,10 +106,7 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
             }
         }
     }
-    assert_eq!(
-        stdout, expected,
-        "the bin is routing only — the library is the behavior"
-    );
+    assert_eq!(stdout, expected, "the bin is routing only — the library is the behavior");
 }
 
 fn push_lines(out: &mut String, lines: &[String]) {
@@ -145,12 +137,7 @@ fn bare_inspect_is_usage_plus_the_card_list_never_the_first_card() {
     let game = Game::from_script(&text, core_dictionary()).expect("the script compiles");
     let mut expected = banner(
         &game.title(),
-        &game
-            .content
-            .verbs
-            .keys()
-            .map(|v| v.to_lowercase().replace('_', " "))
-            .collect::<Vec<_>>(),
+        &game.content.verbs.keys().map(|v| v.to_lowercase().replace('_', " ")).collect::<Vec<_>>(),
     );
     push_lines(&mut expected, &game.inspect(""));
     assert_eq!(stdout, expected, "the bin is routing only");
@@ -158,10 +145,7 @@ fn bare_inspect_is_usage_plus_the_card_list_never_the_first_card() {
     // the shape: banner (title, verbs), then usage, then the INDENTED list
     let body: Vec<&str> = expected.lines().skip(2).collect();
     assert_eq!(body[0], "usage: inspect <card name>");
-    assert!(
-        body.len() > 1,
-        "the nightjar table is non-empty — the list must follow the usage"
-    );
+    assert!(body.len() > 1, "the nightjar table is non-empty — the list must follow the usage");
     assert!(
         body[1..].iter().all(|l| l.starts_with("  ")),
         "the card list is indented — a bare card face would be the old first-card guess"

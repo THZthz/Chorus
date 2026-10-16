@@ -60,9 +60,7 @@ fn check_state_shape(s: &State, content: &CompiledContent) {
         seen.insert(e.name.clone());
         // §9.38: the id is in the name's pool
         assert!(
-            s.by_name
-                .get(&e.name)
-                .is_some_and(|pool| pool.contains(&e.id)),
+            s.by_name.get(&e.name).is_some_and(|pool| pool.contains(&e.id)),
             "{} is not in byName's pool for its name",
             e.name
         );
@@ -88,10 +86,7 @@ fn check_records(records: &[ActionRecord], world: &ExplorerWorld) {
         // itself
         let s = parse_sentence(&rec.sentence, &world.dict)
             .unwrap_or_else(|e| panic!("record sentence does not parse: {}: {e}", rec.sentence));
-        assert_eq!(
-            format_sentence(&s, Some(&world.dict)).unwrap(),
-            rec.sentence
-        );
+        assert_eq!(format_sentence(&s, Some(&world.dict)).unwrap(), rec.sentence);
         // prose rendering must never error on a committed record
         prose_lines(rec, &world.content, &world.dict)
             .unwrap_or_else(|e| panic!("prose_lines threw on {}: {e}", rec.sentence));
@@ -136,10 +131,7 @@ fn check_step(pre: &State, r: &ExecResult, step: &Step, world: &ExplorerWorld) -
     let waits: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "wait").collect();
     assert!(waits.len() <= 1);
     if waits.len() == 1 {
-        assert_eq!(
-            r.state.now,
-            waits[0].start_min.unwrap_or(0) + waits[0].advanced_min
-        );
+        assert_eq!(r.state.now, waits[0].start_min.unwrap_or(0) + waits[0].advanced_min);
     } else {
         assert_eq!(r.state.now, pre.now); // beginning at now moves nothing
     }
@@ -175,10 +167,7 @@ fn exec_on(world: &ExplorerWorld, state: &State, step: Step, label: &str, tag: &
         &world.dict,
         clone_state(state),
         step,
-        ExecOptions {
-            first_record_id: 1,
-            id_gen: None,
-        },
+        ExecOptions { first_record_id: 1, id_gen: None },
     )
     .unwrap_or_else(|e| panic!("engine threw at {label} on [{tag}]: {e}"))
 }
@@ -202,13 +191,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
             indexmap::IndexMap::new();
         let mut appliers: indexmap::IndexMap<String, chorus::core::sentence::Clause> =
             indexmap::IndexMap::new();
-        for cand in candidates_for(
-            &world.content,
-            &world.dict,
-            state,
-            &world.player,
-            Depth::Full,
-        ) {
+        for cand in candidates_for(&world.content, &world.dict, state, &world.player, Depth::Full) {
             total += 1;
             let verb_name = cand.tag.split(' ').next().unwrap_or("").to_string();
             if world.content.verbs.contains_key(&verb_name) {
@@ -267,10 +250,9 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
             .flatten()
             .collect();
             for partner in partners {
-                for clauses in [
-                    vec![refuser.clone(), partner.clone()],
-                    vec![partner, refuser.clone()],
-                ] {
+                for clauses in
+                    [vec![refuser.clone(), partner.clone()], vec![partner, refuser.clone()]]
+                {
                     total += 1;
                     atomicity_probes += 1;
                     let step = Step {
@@ -327,24 +309,15 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
     snapshots.insert(0, snap(&state));
 
     for i in 0..800 {
-        let cands = candidates_for(
-            &world.content,
-            &world.dict,
-            &state,
-            &world.player,
-            Depth::Sampled,
-        );
+        let cands =
+            candidates_for(&world.content, &world.dict, &state, &world.player, Depth::Sampled);
         // mostly walk the well-formed space; keep a 20% budget for error probes
         let benign: Vec<&common::explorer_lib::Cand> = cands
             .iter()
             .filter(|c| !c.tag.contains("wrong-kind") && c.tag != "clock rewind")
             .collect();
         let pick_from: Vec<&common::explorer_lib::Cand> =
-            if lcg.next_f64() < 0.2 || benign.is_empty() {
-                cands.iter().collect()
-            } else {
-                benign
-            };
+            if lcg.next_f64() < 0.2 || benign.is_empty() { cands.iter().collect() } else { benign };
         let cand = &pick_from
             [(lcg.next_f64() * pick_from.len() as f64).floor() as usize % pick_from.len()];
         let r = common::settle::settle_step(
@@ -376,13 +349,8 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
         if i % 10 == 9 {
             assert_eq!(
                 snap(
-                    &fold(
-                        &records,
-                        &clone_state(&world.base),
-                        &world.dict,
-                        &world.content
-                    )
-                    .unwrap()
+                    &fold(&records, &clone_state(&world.base), &world.dict, &world.content)
+                        .unwrap()
                 ),
                 snap(&state)
             );
@@ -395,39 +363,20 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
         // meaningful.
         if state.ended.is_some() {
             endings += 1;
-            let len = turn_lengths
-                .pop()
-                .expect("turn_lengths never empties (seeded [0])");
+            let len = turn_lengths.pop().expect("turn_lengths never empties (seeded [0])");
             records.truncate(len);
-            state = fold(
-                &records,
-                &clone_state(&world.base),
-                &world.dict,
-                &world.content,
-            )
-            .unwrap();
+            state = fold(&records, &clone_state(&world.base), &world.dict, &world.content).unwrap();
             let expected = snapshots.get(&records.len()).unwrap_or_else(|| {
-                panic!(
-                    "undo through the ending left no snapshot at length {}",
-                    records.len()
-                )
+                panic!("undo through the ending left no snapshot at length {}", records.len())
             });
             assert_eq!(snap(&state), *expected);
             continue;
         }
         // §7 undo: drop the last turn, re-fold, compare
         if i % 37 == 36 && records.len() > 1 {
-            let len = turn_lengths
-                .pop()
-                .expect("turn_lengths never empties (seeded [0])");
+            let len = turn_lengths.pop().expect("turn_lengths never empties (seeded [0])");
             records.truncate(len);
-            state = fold(
-                &records,
-                &clone_state(&world.base),
-                &world.dict,
-                &world.content,
-            )
-            .unwrap();
+            state = fold(&records, &clone_state(&world.base), &world.dict, &world.content).unwrap();
             let expected = snapshots
                 .get(&records.len())
                 .unwrap_or_else(|| panic!("undo to length {} left no snapshot", records.len()));
@@ -445,13 +394,8 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
     let path = dir.join("log.jsonl");
     save_log(&path, &records).unwrap();
     let replay_ok = snap(
-        &fold(
-            &load_log(&path).unwrap(),
-            &clone_state(&world.base),
-            &world.dict,
-            &world.content,
-        )
-        .unwrap(),
+        &fold(&load_log(&path).unwrap(), &clone_state(&world.base), &world.dict, &world.content)
+            .unwrap(),
     ) == snap(&state);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(replay_ok);
@@ -494,10 +438,7 @@ fn slash_commands_garbage_and_the_event_guard_never_throw() {
             "unexpected kind for {line:?}"
         );
     }
-    assert_eq!(
-        game.handle_line("0:0 @ EVENT body_found").unwrap().kind,
-        TurnKind::Error
-    );
+    assert_eq!(game.handle_line("0:0 @ EVENT body_found").unwrap().kind, TurnKind::Error);
 
     assert!(!game.look().is_empty());
     assert!(!game.cards().is_empty());
@@ -512,9 +453,7 @@ fn the_guard_a_player_typed_event_sentence_is_rejected_nothing_logged() {
     let world = explorer_world();
     let mut game = Game::from_script(common::explorer_lib::SCRIPT_TEXT, world.dict).unwrap();
     let before = game.log.records.len();
-    let turn = game
-        .handle_line("0:0 @ EVENT body_found -> SPAWN DREAD")
-        .unwrap();
+    let turn = game.handle_line("0:0 @ EVENT body_found -> SPAWN DREAD").unwrap();
     assert_eq!(turn.kind, TurnKind::Error);
     assert_eq!(game.log.records.len(), before);
 }

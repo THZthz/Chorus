@@ -84,10 +84,7 @@ fn rig(
         }
         map.insert(name.to_string(), v);
     }
-    let mut raw = ContentRaw {
-        verbs: map,
-        ..ContentRaw::default()
-    };
+    let mut raw = ContentRaw { verbs: map, ..ContentRaw::default() };
     extra(&mut raw);
     let content = compile_content(&raw, &dict, &[]).unwrap();
     (dict, content)
@@ -109,10 +106,7 @@ fn seed() -> State {
     };
     let base = |container: &str| {
         let mut a = Attrs::new();
-        a.insert(
-            "container".to_string(),
-            AttrValue::Str(container.to_string()),
-        );
+        a.insert("container".to_string(), AttrValue::Str(container.to_string()));
         a
     };
     add_entity(&mut s, card("house", "place", "HOUSE", Attrs::new())).unwrap();
@@ -158,17 +152,11 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
-        ExecOptions {
-            first_record_id: first,
-            id_gen: None,
-        },
+        ExecOptions { first_record_id: first, id_gen: None },
     )
     .unwrap()
 }
@@ -191,10 +179,7 @@ fn run_clock(
             clauses: vec![],
             t_real: None,
         },
-        ExecOptions {
-            first_record_id: first,
-            id_gen: None,
-        },
+        ExecOptions { first_record_id: first, id_gen: None },
     )
     .unwrap()
 }
@@ -268,13 +253,7 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
     );
     let state = seed();
     let r1 = run(&content, &dict, state, "0:0 @ ANA SLOW", 1); // [0,90]
-    let r2 = run(
-        &content,
-        &dict,
-        r1.state,
-        "0:0 @ BERTHA FAST",
-        r1.records.len() as i64 + 1,
-    ); // [0,30]
+    let r2 = run(&content, &dict, r1.state, "0:0 @ BERTHA FAST", r1.records.len() as i64 + 1); // [0,30]
     let adv = run_clock(
         &content,
         &dict,
@@ -286,11 +265,8 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
     // scenario: anchor-advance-chronological (frozen expectation) — FAST closes at
     // 30 (before the halfhour mark), SLOW at 90 (before the ninety mark) —
     // completions lead, same-minute events follow.
-    let shapes: Vec<(Option<&str>, Option<&str>)> = adv
-        .records
-        .iter()
-        .map(|r| (Some(r.kind.as_str()), r.trigger.as_deref()))
-        .collect();
+    let shapes: Vec<(Option<&str>, Option<&str>)> =
+        adv.records.iter().map(|r| (Some(r.kind.as_str()), r.trigger.as_deref())).collect();
     assert_eq!(
         shapes,
         vec![
@@ -306,13 +282,8 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
     let ids: Vec<i64> = adv.records.iter().map(|r| r.id).collect();
     let first = (r1.records.len() + r2.records.len()) as i64 + 1;
     assert_eq!(ids, vec![first, first + 1, first + 2, first + 3, first + 4]);
-    let replayed = replay_all(
-        &[&r1.records, &r2.records, &adv.records],
-        &seed(),
-        &dict,
-        &content,
-    )
-    .unwrap();
+    let replayed =
+        replay_all(&[&r1.records, &r2.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
@@ -335,17 +306,9 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     let r2 = run(&content, &dict, r1.state, "0:0 @ ANA PACE_B", 2); // beginId 2
     let adv = run_clock(&content, &dict, r2.state, "0:1", 3);
     assert_eq!(adv.rejected, None);
-    let closes: Vec<Option<&str>> = adv
-        .records
-        .iter()
-        .filter(|r| r.kind == "complete")
-        .map(|r| r.trigger.as_deref())
-        .collect();
-    assert_eq!(
-        closes,
-        vec![Some("PACE_A"), Some("PACE_B")],
-        "beginId 1 before 2"
-    );
+    let closes: Vec<Option<&str>> =
+        adv.records.iter().filter(|r| r.kind == "complete").map(|r| r.trigger.as_deref()).collect();
+    assert_eq!(closes, vec![Some("PACE_A"), Some("PACE_B")], "beginId 1 before 2");
     // (b) clause tie-break: ONE step, durations 30 + 0 → windows [0,30] and
     // [30,30]; same end, same beginId → clause 0 before clause 1
     let (dict, content) = rig(
@@ -363,17 +326,11 @@ fn due_window_ties_break_by_begin_id_then_clause() {
         seed(),
         Step {
             start_min: None,
-            clock: Some(Clock {
-                day: 0,
-                halfhour: 0,
-            }),
+            clock: Some(Clock { day: 0, halfhour: 0 }),
             clauses: s.clauses,
             t_real: None,
         },
-        ExecOptions {
-            first_record_id: 1,
-            id_gen: None,
-        },
+        ExecOptions { first_record_id: 1, id_gen: None },
     )
     .unwrap();
     assert_eq!(r.rejected, None);
@@ -383,17 +340,9 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     assert_eq!(windows, vec![(0, 30), (30, 30)]);
     let adv = run_clock(&content, &dict, r.state, "0:1", r.records.len() as i64 + 1);
     assert_eq!(adv.rejected, None);
-    let closes: Vec<Option<&str>> = adv
-        .records
-        .iter()
-        .filter(|r| r.kind == "complete")
-        .map(|r| r.trigger.as_deref())
-        .collect();
-    assert_eq!(
-        closes,
-        vec![Some("PACE_A"), Some("PACE_Z")],
-        "clause 0 before 1"
-    );
+    let closes: Vec<Option<&str>> =
+        adv.records.iter().filter(|r| r.kind == "complete").map(|r| r.trigger.as_deref()).collect();
+    assert_eq!(closes, vec![Some("PACE_A"), Some("PACE_Z")], "clause 0 before 1");
     let replayed = replay_all(&[&r.records, &adv.records], &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
@@ -446,10 +395,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
         raw.prototypes = Some(
             [(
                 "PARANOIA".to_string(),
-                PrototypeDef {
-                    kind: "state".to_string(),
-                    ..PrototypeDef::default()
-                },
+                PrototypeDef { kind: "state".to_string(), ..PrototypeDef::default() },
             )]
             .into_iter()
             .collect(),
@@ -463,10 +409,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
     assert_eq!(adv.rejected, None);
     // scenario: anchor-on-expire-first-match (frozen expectation) — the first
     // authored match only, the un-authored name takes the built-in
-    assert_eq!(
-        triggers(&adv.records),
-        [Some("decay_first"), Some("expire:DUST"), None]
-    );
+    assert_eq!(triggers(&adv.records), [Some("decay_first"), Some("expire:DUST"), None]);
     // the first-match event row carries the AUTHORED id as its trigger and
     // its outcomes (the built-in row carries the DESTROY #id)
     let decay = &adv.records[0];
@@ -533,13 +476,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     // slot-2 crossing (minute 60) fires it — at the END of the walk, after
     // any due windows (none here)
     let pre_adv2 = clone_state(&adv1.state);
-    let adv2 = run_clock(
-        &content,
-        &dict,
-        adv1.state,
-        "0:2",
-        adv1.records.len() as i64 + 1 + 10,
-    );
+    let adv2 = run_clock(&content, &dict, adv1.state, "0:2", adv1.records.len() as i64 + 1 + 10);
     assert_eq!(adv2.rejected, None);
     assert_eq!(kinds(&adv2.records), ["event", "wait"]);
     assert_eq!(adv2.records[0].trigger.as_deref(), Some("expire:EGG"));
@@ -560,12 +497,7 @@ fn refuse_discards_advance_and_recycles_ids() {
     let (dict, content) = rig(
         vec![
             verb_of("SEEDV", vec![actor_slot()], 30, &["NARRATE \"planted.\""]),
-            verb_of(
-                "GATE",
-                vec![actor_slot()],
-                30,
-                &["REFUSE(\"not without a lantern.\")"],
-            ),
+            verb_of("GATE", vec![actor_slot()], 30, &["REFUSE(\"not without a lantern.\")"]),
         ],
         |_| {},
     );
@@ -576,15 +508,9 @@ fn refuse_discards_advance_and_recycles_ids() {
     // the refused step at 0:1 WOULD have closed the window first (complete +
     // wait), but the whole pass dies with the refusal
     let r2 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
-    assert_eq!(
-        r2.rejected, None,
-        "a refusal is a logged result, not a rejection"
-    );
+    assert_eq!(r2.rejected, None, "a refusal is a logged result, not a rejection");
     assert_eq!(r2.records.len(), 1);
-    assert_eq!(
-        r2.records[0].id, 2,
-        "a refusal row reuses the pass's firstRecordId"
-    );
+    assert_eq!(r2.records[0].id, 2, "a refusal row reuses the pass's firstRecordId");
     assert_eq!(r2.records[0].advanced_min, 0, "§6.5: no window elapses");
     assert_eq!(outcome_ops(&r2.records[0]), ["REFUSE"]);
     assert!(
@@ -596,17 +522,11 @@ fn refuse_discards_advance_and_recycles_ids() {
     assert_eq!(snap(&r2.state), snap(&r1.state));
     // id recycle: the SAME attempt again mints the SAME id
     let r3 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
-    assert_eq!(
-        r3.records[0].id, 2,
-        "a recycled id mints identically on replay"
-    );
+    assert_eq!(r3.records[0].id, 2, "a recycled id mints identically on replay");
     // a real advance now closes the still-open window with ids 2,3
     let begin_only_state = clone_state(&r1.state);
     let adv = run_clock(&content, &dict, r1.state, "0:1", 2);
-    assert_eq!(
-        adv.records.iter().map(|r| r.id).collect::<Vec<_>>(),
-        vec![2, 3]
-    );
+    assert_eq!(adv.records.iter().map(|r| r.id).collect::<Vec<_>>(), vec![2, 3]);
     assert_eq!(adv.state.windows.len(), 0);
     assert_eq!(adv.state.now, 30);
     // law 1 + fold_up_to: folding everything matches the played state; folding
@@ -621,10 +541,7 @@ fn refuse_discards_advance_and_recycles_ids() {
         }
         st
     };
-    assert_eq!(
-        snap(&replay(&full, &base, &dict, &content).unwrap()),
-        snap(&played)
-    );
+    assert_eq!(snap(&replay(&full, &base, &dict, &content).unwrap()), snap(&played));
     let undone = fold_up_to(&full, &new_state(0), &dict, &content, 2).unwrap();
     assert_eq!(undone.windows.len(), 1);
     assert_eq!(undone.now, 0);
@@ -638,10 +555,8 @@ fn refuse_discards_advance_and_recycles_ids() {
 /// values below are the fold of that scenario's log (frozen).
 #[test]
 fn wait_is_the_only_clock_mover_and_must_partition_time() {
-    let (dict, content) = rig(
-        vec![verb_of("PACE", vec![actor_slot()], 30, &["NARRATE \"d.\""])],
-        |_| {},
-    );
+    let (dict, content) =
+        rig(vec![verb_of("PACE", vec![actor_slot()], 30, &["NARRATE \"d.\""])], |_| {});
     let r = run(&content, &dict, seed(), "0:0 @ ANA PACE", 1);
     let adv = run_clock(&content, &dict, r.state, "0:1", 2);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
@@ -667,11 +582,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     drifted_wait.start_min = Some(10);
     let mut st = fold(&begin_complete, &new_state(0), &dict, &content).unwrap();
     let err = apply_record(&drifted_wait, &mut st, &dict, &content).unwrap_err();
-    assert!(
-        err.msg
-            .contains("wait row 3 starts at 0:0 but the folded clock reads 0"),
-        "{err}"
-    );
+    assert!(err.msg.contains("wait row 3 starts at 0:0 but the folded clock reads 0"), "{err}");
     // the tGame fallback for window-less COMPLETE rows (fold probes):
     // startMin anchors to absMin(parseClock(tGame)) when no window exists
     let bare_complete = ActionRecord {
@@ -693,12 +604,8 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
         outcomes: vec![chorus::core::sentence::Outcome {
             op: "SET".to_string(),
             args: vec![
-                Arg::Ref {
-                    r#ref: chorus::core::r#ref::name_ref("MAGICK_BOOK", None),
-                },
-                Arg::Key {
-                    v: "expires".to_string(),
-                },
+                Arg::Ref { r#ref: chorus::core::r#ref::name_ref("MAGICK_BOOK", None) },
+                Arg::Key { v: "expires".to_string() },
                 Arg::Dur { v: 30 },
             ],
             arms: None,
@@ -712,10 +619,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     apply_record(&bare_complete, &mut st, &dict, &content).unwrap();
     // scenario: anchor-wait-partition (frozen expectation, folded) — 0:5 = day 0,
     // halfhour 5 = minute 150; 150 + 30 = 180
-    assert_eq!(
-        st.entities["book"].attrs.get("expiresAt"),
-        Some(&AttrValue::Num(180))
-    );
+    assert_eq!(st.entities["book"].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
 }
 
 /// §3.14 row 5 — a completion that cannot apply refuses ONLY that window:
@@ -725,20 +629,10 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
 /// failure (frozen expectation: [complete(REFUSE), wait]).
 #[test]
 fn window_completion_failure_refuses_only_that_window() {
-    let (dict, content) = rig(
-        vec![verb_of(
-            "BAD",
-            vec![actor_slot()],
-            30,
-            &["SPAWN NOSUCH_PROTOTYPE"],
-        )],
-        |_| {},
-    );
+    let (dict, content) =
+        rig(vec![verb_of("BAD", vec![actor_slot()], 30, &["SPAWN NOSUCH_PROTOTYPE"])], |_| {});
     let r = run(&content, &dict, seed(), "0:0 @ ANA BAD", 1);
-    assert_eq!(
-        r.rejected, None,
-        "the BEGIN succeeds — the failure is deferred"
-    );
+    assert_eq!(r.rejected, None, "the BEGIN succeeds — the failure is deferred");
     assert_eq!(r.state.windows.len(), 1);
     let adv = run_clock(&content, &dict, r.state, "0:1", 2);
     assert_eq!(adv.rejected, None, "the pass did NOT roll back");
@@ -748,11 +642,7 @@ fn window_completion_failure_refuses_only_that_window() {
     assert!(
         matches!(&complete.outcomes[0].args[0], Arg::Str { v } if v.contains("NOSUCH_PROTOTYPE"))
     );
-    assert_eq!(
-        adv.state.windows.len(),
-        0,
-        "the window is gone — no retry loop"
-    );
+    assert_eq!(adv.state.windows.len(), 0, "the window is gone — no retry loop");
     assert_eq!(adv.state.now, 30);
     // a second advance is healthy
     let adv_state = clone_state(&adv.state);
@@ -773,19 +663,11 @@ fn window_completion_failure_refuses_only_that_window() {
 #[test]
 fn advance_extension_lands_in_the_wait_span() {
     let (dict, content) = rig(
-        vec![verb_of(
-            "HATCH",
-            vec![actor_slot()],
-            30,
-            &["ADVANCE(1h)", "NARRATE \"warm.\""],
-        )],
+        vec![verb_of("HATCH", vec![actor_slot()], 30, &["ADVANCE(1h)", "NARRATE \"warm.\""])],
         |_| {},
     );
     let r = run(&content, &dict, seed(), "0:0 @ ANA HATCH", 1);
-    assert_eq!(
-        r.records[0].advanced_min, 30,
-        "advancedMin is the window length, not the advance"
-    );
+    assert_eq!(r.records[0].advanced_min, 30, "advancedMin is the window length, not the advance");
     let adv = run_clock(&content, &dict, r.state, "0:1", 2);
     assert_eq!(adv.rejected, None);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
@@ -796,21 +678,11 @@ fn advance_extension_lands_in_the_wait_span() {
     assert_eq!(adv.state.now, 90);
     // zero-duration verb: due exactly at its begin minute (the complement of
     // the branch where a window's end minute is still in the future)
-    let (dict, content) = rig(
-        vec![verb_of(
-            "FLASH",
-            vec![actor_slot()],
-            0,
-            &["NARRATE \"zap.\""],
-        )],
-        |_| {},
-    );
+    let (dict, content) =
+        rig(vec![verb_of("FLASH", vec![actor_slot()], 0, &["NARRATE \"zap.\""])], |_| {});
     let r = run(&content, &dict, seed(), "0:0 @ ANA FLASH", 1);
     let adv = run_clock(&content, &dict, r.state, "0:0", 2);
-    assert_eq!(
-        adv.rejected, None,
-        "a due window makes the zero-span pass meaningful"
-    );
+    assert_eq!(adv.rejected, None, "a due window makes the zero-span pass meaningful");
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     assert_eq!(adv.records[1].advanced_min, 0);
     assert_eq!(adv.state.now, 0);
@@ -858,54 +730,28 @@ fn stations_and_committed_locks_gate_phase_two() {
             out: vec!["NARRATE \"touched.\"".to_string()],
         }],
     };
-    let (dict, content) = rig(
-        vec![("SEIZE".to_string(), seize), ("TOUCH".to_string(), touch)],
-        |_| {},
-    );
+    let (dict, content) =
+        rig(vec![("SEIZE".to_string(), seize), ("TOUCH".to_string(), touch)], |_| {});
     let r1 = run(&content, &dict, seed(), "0:0 @ ANA SEIZE MAGICK_BOOK", 1);
     assert_eq!(r1.state.windows.len(), 1);
     // station exclusivity — same verb cannot open a second window
-    let r2 = run(
-        &content,
-        &dict,
-        clone_state(&r1.state),
-        "0:0 @ BERTHA SEIZE",
-        3,
-    );
+    let r2 = run(&content, &dict, clone_state(&r1.state), "0:0 @ BERTHA SEIZE", 3);
     assert_eq!(
         r2.rejected.as_deref(),
         Some("SEIZE is already processing — its station frees at 0:2")
     );
     assert!(r2.records.is_empty());
     // committed card busy (as object of another verb); actors stay free
-    let r3 = run(
-        &content,
-        &dict,
-        clone_state(&r1.state),
-        "0:0 @ ANA TOUCH MAGICK_BOOK",
-        3,
-    );
-    assert_eq!(
-        r3.rejected.as_deref(),
-        Some("MAGICK BOOK is busy with SEIZE — it frees at 0:2")
-    );
-    let r4 = run(
-        &content,
-        &dict,
-        clone_state(&r1.state),
-        "0:0 @ BERTHA TOUCH",
-        3,
-    );
+    let r3 = run(&content, &dict, clone_state(&r1.state), "0:0 @ ANA TOUCH MAGICK_BOOK", 3);
+    assert_eq!(r3.rejected.as_deref(), Some("MAGICK BOOK is busy with SEIZE — it frees at 0:2"));
+    let r4 = run(&content, &dict, clone_state(&r1.state), "0:0 @ BERTHA TOUCH", 3);
     assert_eq!(r4.rejected, None, "the actor is never locked");
     assert_eq!(r4.state.windows.len(), 2, "two stations run in parallel");
     // locks release the moment a pass resolves their window: the explicit
     // future clock advances first (closing SEIZE), then begins TOUCH
     let r5 = run(&content, &dict, r1.state, "1:0 @ ANA TOUCH MAGICK_BOOK", 3);
     assert_eq!(r5.rejected, None);
-    assert_eq!(
-        r5.records[0].kind, "complete",
-        "the SEIZE window closed en route"
-    );
+    assert_eq!(r5.records[0].kind, "complete", "the SEIZE window closed en route");
 }
 
 /// §3.14 row 10 — interleaved windows fold byte-for-byte: two overlapping
@@ -923,13 +769,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     );
     let r1 = run(&content, &dict, seed(), "0:0 @ ANA PACE_A", 1); // [0,60]
     let r1_state = clone_state(&r1.state);
-    let r2 = run(
-        &content,
-        &dict,
-        r1.state,
-        "0:0 @ ANA PACE_B",
-        r1.records.len() as i64 + 1,
-    ); // [0,30]
+    let r2 = run(&content, &dict, r1.state, "0:0 @ ANA PACE_B", r1.records.len() as i64 + 1); // [0,30]
     assert_eq!(r2.rejected, None);
     assert_eq!(r2.state.windows.len(), 2);
     assert_eq!(r2.state.now, 0);
@@ -946,11 +786,7 @@ fn overlapping_windows_fold_and_survive_a_jsonl_roundtrip() {
     // byte identity: re-saving the loaded log reproduces the same bytes
     let path2 = dir.join("log2.jsonl");
     chorus::engine::store::save_log(&path2, &loaded).unwrap();
-    assert_eq!(
-        bytes,
-        std::fs::read(&path2).unwrap(),
-        "law 1 within one implementation"
-    );
+    assert_eq!(bytes, std::fs::read(&path2).unwrap(), "law 1 within one implementation");
     let replayed = fold(&loaded, &seed(), &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&r2.state));
     assert_eq!(replayed.windows.len(), 2);
@@ -993,18 +829,11 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
     let base = clone_state(&state);
     let r1 = run(&content, &dict, state, "0:0 @ ANA SEIZE MAGICK_BOOK", 1);
     assert_eq!(r1.state.windows.len(), 1);
-    assert!(r1
-        .state
-        .windows
-        .values()
-        .any(|w| w.locked.iter().any(|id| id == "book")));
+    assert!(r1.state.windows.values().any(|w| w.locked.iter().any(|id| id == "book")));
     let adv = run_clock(&content, &dict, r1.state, "1:0", 2);
     assert_eq!(adv.rejected, None);
     // the expiry event fired at slot 1 (minute 30) while the card was locked
-    assert_eq!(
-        adv.records[0].trigger.as_deref(),
-        Some("expire:MAGICK_BOOK")
-    );
+    assert_eq!(adv.records[0].trigger.as_deref(), Some("expire:MAGICK_BOOK"));
     assert!(adv.state.entities["book"].dead_action.is_some());
     // the completion dropped the dead ref: SET found no targets (concretized
     // per-card → none), DESTROY concretized to an empty row
@@ -1065,10 +894,7 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     let pre = clone_state(&adv.state);
     let adv2 = run_clock(&content, &dict, adv.state, "1:4", 10); // walk 60 → 1560
     let t2: Vec<Option<&str>> = adv2.records.iter().map(|r| r.trigger.as_deref()).collect();
-    assert!(
-        t2.contains(&Some("mark")),
-        "non-once refires per crossing: {t2:?}"
-    );
+    assert!(t2.contains(&Some("mark")), "non-once refires per crossing: {t2:?}");
     assert!(!t2.contains(&Some("once_dusk")), "once means once (§9.29)");
     assert_eq!(adv2.state.now, 1560);
     let replayed = replay(&adv2.records, &pre, &dict, &content).unwrap();
@@ -1091,10 +917,7 @@ mod input_surface {
             .as_deref()
             .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
         let re = regex::Regex::new(pattern).unwrap();
-        assert!(
-            re.is_match(msg),
-            "rejected {msg:?} does not match /{pattern}/"
-        );
+        assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
     }
 
     #[test]
@@ -1116,10 +939,7 @@ mod input_surface {
         let adv = run_clock(&g, &dict, state, "0:1", r.records.len() as i64 + 1);
         assert_eq!(adv.rejected, None);
         assert_eq!(
-            adv.records
-                .iter()
-                .map(|x| x.kind.as_str())
-                .collect::<Vec<_>>(),
+            adv.records.iter().map(|x| x.kind.as_str()).collect::<Vec<_>>(),
             ["wait"] // the PACE_A window is not due yet
         );
         assert_eq!(adv.state.now, 30);
@@ -1131,10 +951,7 @@ mod input_surface {
             (r.records.len() + adv.records.len()) as i64 + 1,
         );
         assert_eq!(
-            adv2.records
-                .iter()
-                .map(|x| x.kind.as_str())
-                .collect::<Vec<_>>(),
+            adv2.records.iter().map(|x| x.kind.as_str()).collect::<Vec<_>>(),
             ["complete", "wait"] // due at minute 60
         );
         assert_eq!(adv2.state.windows.len(), 0);
@@ -1143,12 +960,7 @@ mod input_surface {
     #[test]
     fn beginning_at_a_mid_halfhour_minute_is_representable_and_folds_exactly() {
         let (dict, c) = rig(
-            vec![verb_of(
-                "NAP",
-                vec![actor_slot()],
-                20,
-                &["NARRATE \"twenty minutes.\""],
-            )],
+            vec![verb_of("NAP", vec![actor_slot()], 20, &["NARRATE \"twenty minutes.\""])],
             |_| {},
         );
         let mut state = seed();
@@ -1169,9 +981,6 @@ mod input_surface {
         let w = r2.state.windows.values().next().expect("one open window");
         assert_eq!(w.start, 30);
         assert_eq!(w.end, 50);
-        assert_eq!(
-            snap(&fold(&r2.records, &adv_state, &dict, &c).unwrap()),
-            snap(&r2.state)
-        );
+        assert_eq!(snap(&fold(&r2.records, &adv_state, &dict, &c).unwrap()), snap(&r2.state));
     }
 }

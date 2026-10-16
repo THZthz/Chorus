@@ -39,10 +39,7 @@ fn opts<'a, 'b>(
         }
         None => None,
     };
-    ExecOptions {
-        first_record_id,
-        id_gen: g,
-    }
+    ExecOptions { first_record_id, id_gen: g }
 }
 
 /// run one step, then a pure advance closing every window it left open.
@@ -61,13 +58,7 @@ pub fn settle_step(
     // `execute_step` consumes it, so the untouched copy is returned instead.
     let rollback = state.clone();
     let mut id_gen = id_gen;
-    let first = execute_step(
-        content,
-        dict,
-        state,
-        step,
-        opts(first_record_id, &mut id_gen),
-    )?;
+    let first = execute_step(content, dict, state, step, opts(first_record_id, &mut id_gen))?;
     if first.rejected.is_some() || first.state.windows.is_empty() {
         return Ok(first);
     }
@@ -84,29 +75,16 @@ pub fn settle_step(
         content,
         dict,
         first.state,
-        Step {
-            start_min: Some(end),
-            clock: None,
-            clauses: vec![],
-            t_real: None,
-        },
+        Step { start_min: Some(end), clock: None, clauses: vec![], t_real: None },
         opts(first_record_id + first.records.len() as i64, &mut id_gen),
     )?;
     if let Some(rejected) = pass.rejected {
         // the turn rolls back whole (§9.19)
-        return Ok(ExecResult {
-            records: vec![],
-            state: rollback,
-            rejected: Some(rejected),
-        });
+        return Ok(ExecResult { records: vec![], state: rollback, rejected: Some(rejected) });
     }
     let mut records = first.records;
     records.extend(pass.records);
-    Ok(ExecResult {
-        records,
-        state: pass.state,
-        rejected: None,
-    })
+    Ok(ExecResult { records, state: pass.state, rejected: None })
 }
 
 /// the BEGIN row of a settled turn — the record the pre-v0.5 tests indexed as
@@ -114,10 +92,7 @@ pub fn settle_step(
 /// completion; the begin row is its spine). Falls back to the last record.
 #[must_use]
 pub fn act(r: &ExecResult) -> Option<&ActionRecord> {
-    r.records
-        .iter()
-        .find(|x| x.kind == "action")
-        .or_else(|| r.records.last())
+    r.records.iter().find(|x| x.kind == "action").or_else(|| r.records.last())
 }
 
 /// the COMPLETE row of a settled turn — where the recipe's real outcomes
@@ -125,10 +100,7 @@ pub fn act(r: &ExecResult) -> Option<&ActionRecord> {
 /// record (a refused turn has no completion; its REFUSE rides the BEGIN).
 #[must_use]
 pub fn done(r: &ExecResult) -> Option<&ActionRecord> {
-    r.records
-        .iter()
-        .find(|x| x.kind == "complete")
-        .or_else(|| r.records.last())
+    r.records.iter().find(|x| x.kind == "complete").or_else(|| r.records.last())
 }
 
 /// the refusal reason of a turn — an authored gate (REFUSE on the BEGIN row)

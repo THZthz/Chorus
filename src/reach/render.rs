@@ -27,21 +27,14 @@ pub(crate) fn query_text(q: &Query) -> String {
                     match t {
                         QueryTerm::Kind { kind, .. } => format!("{neg}kind:{kind}"),
                         QueryTerm::Name { name, .. } => format!("{neg}name:{name}"),
-                        QueryTerm::Aspect {
-                            path, op, level, ..
-                        } => format!(
+                        QueryTerm::Aspect { path, op, level, .. } => format!(
                             "{neg}aspect:{path}{}",
                             match op {
                                 Some(op) => format!("{}{level}", op.as_str()),
                                 None => String::new(),
                             }
                         ),
-                        QueryTerm::State {
-                            neg,
-                            key,
-                            op,
-                            value,
-                        } => {
+                        QueryTerm::State { neg, key, op, value } => {
                             let neg = if *neg { "!" } else { "" };
                             match op {
                                 StateOp::Bang => format!("{neg}state:!{key}"),
@@ -116,18 +109,8 @@ pub fn render_path(out: &mut String, p: &ReachPath, depth: usize) {
     };
     // the literal text carries backticks and the
     // `${PROTO}_${OBJECT}` shape verbatim — those exact characters are emitted
-    let derived = if p.derived_name {
-        " (derived-mint name — `${PROTO}_${OBJECT}`)"
-    } else {
-        ""
-    };
-    let _ = writeln!(
-        out,
-        "{pad}· {} '{}'{derived}{deck} — via {}",
-        p.op.as_str(),
-        p.mints,
-        p.via
-    );
+    let derived = if p.derived_name { " (derived-mint name — `${PROTO}_${OBJECT}`)" } else { "" };
+    let _ = writeln!(out, "{pad}· {} '{}'{derived}{deck} — via {}", p.op.as_str(), p.mints, p.via);
     for g in &p.guards {
         let _ = writeln!(out, "{pad}    guard: {g}");
     }
@@ -164,11 +147,8 @@ pub fn render_report(
         Some(d) if !d.is_empty() => format!("matching '{d}'"),
         _ => card.to_string(),
     };
-    let _ = writeln!(
-        out,
-        "{file} · card {head}{}",
-        if usable { "  [usable semantics]" } else { "" }
-    );
+    let _ =
+        writeln!(out, "{file} · card {head}{}", if usable { "  [usable semantics]" } else { "" });
     let _ = writeln!(
         out,
         "  verdict: {}  (existence: {})",
@@ -183,11 +163,7 @@ pub fn render_report(
         render_path(out, p, 0);
     }
     for c in &r.candidates {
-        let _ = writeln!(
-            out,
-            "  candidate source: {} — guarded ({})",
-            c.via, c.reason
-        );
+        let _ = writeln!(out, "  candidate source: {} — guarded ({})", c.via, c.reason);
     }
     for u in &r.usable_via {
         let _ = writeln!(out, "  bindable via {u}");

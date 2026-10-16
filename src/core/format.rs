@@ -33,20 +33,14 @@ pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String
             parts.push(span);
         }
         SentenceKind::Action => {
-            let clauses = s
-                .clauses
-                .iter()
-                .map(|c| format_clause(c, dict))
-                .collect::<Result<Vec<_>>>()?;
+            let clauses =
+                s.clauses.iter().map(|c| format_clause(c, dict)).collect::<Result<Vec<_>>>()?;
             parts.push(clauses.join("; "));
         }
     }
     if !s.outcomes.is_empty() {
-        let outs = s
-            .outcomes
-            .iter()
-            .map(|o| format_outcome(o, dict))
-            .collect::<Result<Vec<_>>>()?;
+        let outs =
+            s.outcomes.iter().map(|o| format_outcome(o, dict)).collect::<Result<Vec<_>>>()?;
         parts.push("->".to_string());
         parts.push(outs.join(", "));
     }
@@ -57,10 +51,8 @@ pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String
 /// TO, objects (sorted), WITH (sorted), ABOUT.
 fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
     let mut parts: Vec<String> = Vec::new();
-    let actors = sort_refs(&c.actors)
-        .iter()
-        .map(|r| format_ref(r, dict))
-        .collect::<Result<Vec<_>>>()?;
+    let actors =
+        sort_refs(&c.actors).iter().map(|r| format_ref(r, dict)).collect::<Result<Vec<_>>>()?;
     parts.push(actors.join(", "));
     if let Some(at) = &c.at {
         parts.push("AT".to_string());
@@ -79,10 +71,8 @@ fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
         parts.push(objects.join(", "));
     }
     if !c.with.is_empty() {
-        let with = sort_refs(&c.with)
-            .iter()
-            .map(|r| format_ref(r, dict))
-            .collect::<Result<Vec<_>>>()?;
+        let with =
+            sort_refs(&c.with).iter().map(|r| format_ref(r, dict)).collect::<Result<Vec<_>>>()?;
         parts.push("WITH".to_string());
         parts.push(with.join(", "));
     }
@@ -131,12 +121,8 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
             .args
             .iter()
             .map(|a| match a {
-                Arg::Ref {
-                    r#ref: Ref::Name { name, .. },
-                } => Ok(quote(name)),
-                _ => Err(ChorusError::new(
-                    "a RUN candidate is a quoted-string recipe id (§9.47)",
-                )),
+                Arg::Ref { r#ref: Ref::Name { name, .. } } => Ok(quote(name)),
+                _ => Err(ChorusError::new("a RUN candidate is a quoted-string recipe id (§9.47)")),
             })
             .collect::<Result<Vec<_>>>()?;
         return Ok(format!("RUN({})", parts.join(", ")));
@@ -176,20 +162,13 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
         };
         return Ok(format!("ENDING {id}"));
     }
-    let args = o
-        .args
-        .iter()
-        .map(|a| format_arg(a, dict))
-        .collect::<Result<Vec<_>>>()?;
+    let args = o.args.iter().map(|a| format_arg(a, dict)).collect::<Result<Vec<_>>>()?;
     Ok(format!("{}({})", o.op, args.join(", ")))
 }
 
 /// Comma-joined args.
 fn format_args(args: &[Arg], dict: Option<&Dictionary>) -> Result<String> {
-    let parts = args
-        .iter()
-        .map(|a| format_arg(a, dict))
-        .collect::<Result<Vec<_>>>()?;
+    let parts = args.iter().map(|a| format_arg(a, dict)).collect::<Result<Vec<_>>>()?;
     Ok(parts.join(", "))
 }
 
@@ -252,13 +231,7 @@ pub fn quote(s: &str) -> String {
 #[must_use]
 fn format_trigger_id(id: &str) -> String {
     id.split(':')
-        .map(|seg| {
-            if is_safe_name(seg) {
-                seg.to_string()
-            } else {
-                quote(seg)
-            }
-        })
+        .map(|seg| if is_safe_name(seg) { seg.to_string() } else { quote(seg) })
         .collect::<Vec<_>>()
         .join(":")
 }
@@ -282,10 +255,7 @@ mod tests {
         assert_eq!(out, "ANOTHER, THING AT shelf READ TO book");
         // post-verbal AT canonicalizes pre-verbal (§9.10)
         let s2 = parse_sentence("ANA READ book AT shelf", &d).unwrap();
-        assert_eq!(
-            format_sentence(&s2, Some(&d)).unwrap(),
-            "ANA AT shelf READ book"
-        );
+        assert_eq!(format_sentence(&s2, Some(&d)).unwrap(), "ANA AT shelf READ book");
         // re-parse stability: format(parse(format(parse(x)))) == format(parse(x))
         let s3 = parse_sentence(&out, &d).unwrap();
         assert_eq!(format_sentence(&s3, Some(&d)).unwrap(), out);
@@ -309,11 +279,8 @@ mod tests {
         );
         // ROLLED/DRAWN ride the generic paren'd fallback on purpose — their
         // args format and re-parse (the fold's counter/cursor rows)
-        let s2 = parse_sentence(
-            "ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)",
-            &d,
-        )
-        .unwrap();
+        let s2 =
+            parse_sentence("ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)", &d).unwrap();
         assert_eq!(
             format_sentence(&s2, Some(&d)).unwrap(),
             "ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)"

@@ -63,12 +63,7 @@ fn stackable(mut e: Entity) -> Entity {
 
 /// strict/roll unset (when:-style evaluation).
 fn ctx<'a>(b: &'a RoleBindings, state: &'a State) -> PredCtx<'a> {
-    PredCtx {
-        b,
-        state,
-        strict: false,
-        roll: None,
-    }
+    PredCtx { b, state, strict: false, roll: None }
 }
 
 /// Role → bound ids, insertion order kept.
@@ -96,10 +91,7 @@ fn a_matching_card_passes_every_term() {
         "kind:text aspect:secret>=3 aspect:language.latin>=2 state:!sealed -aspect:winter",
     )
     .unwrap();
-    let book = with_aspects(
-        ent("b", "text", "B"),
-        &[("secret", 3), ("language.latin", 2)],
-    );
+    let book = with_aspects(ent("b", "text", "B"), &[("secret", 3), ("language.latin", 2)]);
     assert!(match_query(&book, &q));
 }
 
@@ -110,10 +102,7 @@ fn each_term_can_fail_the_card() {
     )
     .unwrap();
     assert!(!match_query(&ent("x", "item", "X"), &q)); // kind
-    assert!(!match_query(
-        &with_aspects(ent("x", "text", "X"), &[("secret", 2)]),
-        &q
-    )); // level
+    assert!(!match_query(&with_aspects(ent("x", "text", "X"), &[("secret", 2)]), &q)); // level
     assert!(!match_query(
         &with_aspects(
             ent("x", "text", "X"),
@@ -122,10 +111,7 @@ fn each_term_can_fail_the_card() {
         &q
     )); // negation
     let sealed = with_attrs(
-        with_aspects(
-            ent("x", "text", "X"),
-            &[("secret", 3), ("language.latin", 2)],
-        ),
+        with_aspects(ent("x", "text", "X"), &[("secret", 3), ("language.latin", 2)]),
         &[("state.sealed", AttrValue::Bool(true))],
     );
     assert!(!match_query(&sealed, &q));
@@ -134,10 +120,7 @@ fn each_term_can_fail_the_card() {
 #[test]
 fn bare_aspect_term_means_level_ge_1() {
     let q1 = parse_query("aspect:lantern").unwrap();
-    assert!(match_query(
-        &with_aspects(ent("a", "character", "A"), &[("lantern", 1)]),
-        &q1
-    ));
+    assert!(match_query(&with_aspects(ent("a", "character", "A"), &[("lantern", 1)]), &q1));
     assert!(!match_query(&ent("a", "character", "A"), &q1));
 }
 
@@ -146,14 +129,8 @@ fn bare_aspect_term_means_level_ge_1() {
 #[test]
 fn alternation_matches_when_any_group_matches() {
     let q = parse_query("aspect:ability | aspect:job").unwrap();
-    assert!(match_query(
-        &with_aspects(ent("a", "item", "A"), &[("ability", 1)]),
-        &q
-    ));
-    assert!(match_query(
-        &with_aspects(ent("j", "item", "J"), &[("job", 2)]),
-        &q
-    ));
+    assert!(match_query(&with_aspects(ent("a", "item", "A"), &[("ability", 1)]), &q));
+    assert!(match_query(&with_aspects(ent("j", "item", "J"), &[("job", 2)]), &q));
     assert!(!match_query(&ent("n", "item", "N"), &q));
 }
 
@@ -163,18 +140,9 @@ fn alternation_binds_loosest_each_side_is_a_conjunction() {
     // a card with job but no ritual does not match
     let q = parse_query("aspect:ability | aspect:job aspect:ritual").unwrap();
     assert_eq!(q.len(), 2);
-    assert!(match_query(
-        &with_aspects(ent("a", "item", "A"), &[("ability", 1)]),
-        &q
-    ));
-    assert!(match_query(
-        &with_aspects(ent("b", "item", "B"), &[("job", 1), ("ritual", 1)]),
-        &q
-    ));
-    assert!(!match_query(
-        &with_aspects(ent("c", "item", "C"), &[("job", 1)]),
-        &q
-    ));
+    assert!(match_query(&with_aspects(ent("a", "item", "A"), &[("ability", 1)]), &q));
+    assert!(match_query(&with_aspects(ent("b", "item", "B"), &[("job", 1), ("ritual", 1)]), &q));
+    assert!(!match_query(&with_aspects(ent("c", "item", "C"), &[("job", 1)]), &q));
 }
 
 #[test]
@@ -182,27 +150,16 @@ fn alternation_groups_take_levels_negation_and_sub_aspects() {
     let q = parse_query("aspect:lore>=6 | -name:SUSPICION aspect:language.latin").unwrap();
     assert_eq!(q.len(), 2);
     // group 1: the level threshold
-    assert!(match_query(
-        &with_aspects(ent("l", "text", "L"), &[("lore", 6)]),
-        &q
-    ));
-    assert!(!match_query(
-        &with_aspects(ent("m", "text", "M"), &[("lore", 5)]),
-        &q
-    ));
+    assert!(match_query(&with_aspects(ent("l", "text", "L"), &[("lore", 6)]), &q));
+    assert!(!match_query(&with_aspects(ent("m", "text", "M"), &[("lore", 5)]), &q));
     // group 2: per-term negation and a sub-aspect key compose INSIDE the group
-    assert!(match_query(
-        &with_aspects(ent("u", "rite", "U"), &[("language.latin", 1)]),
-        &q
-    ));
+    assert!(match_query(&with_aspects(ent("u", "rite", "U"), &[("language.latin", 1)]), &q));
     assert!(!match_query(
         &with_aspects(ent("s", "rite", "SUSPICION"), &[("language.latin", 1)]),
         &q
     )); // the negated name fails the group
-    assert!(!match_query(
-        &with_aspects(ent("g", "rite", "G"), &[("language.greek", 1)]),
-        &q
-    )); // the sub-aspect misses
+    assert!(!match_query(&with_aspects(ent("g", "rite", "G"), &[("language.greek", 1)]), &q));
+    // the sub-aspect misses
 }
 
 #[test]
@@ -212,10 +169,7 @@ fn alternation_group_edges_are_parse_errors_a_glued_pipe_is_a_term_error() {
     // parse error
     assert_err_msg(parse_query("| aspect:x"), r"expected a group before '\|'");
     assert_err_msg(parse_query("aspect:x |"), r"expected a group after '\|'");
-    assert_err_msg(
-        parse_query("aspect:x | | aspect:y"),
-        r"expected a group before '\|'",
-    );
+    assert_err_msg(parse_query("aspect:x | | aspect:y"), r"expected a group before '\|'");
     // glued into a term's value it rides along and the ATOM grammar
     // rejects it — never a silent second group
     assert_err_msg(parse_query("aspect:a|b"), "bad aspect term");
@@ -228,22 +182,12 @@ fn cond_state() -> State {
     let mut state = new_state(0);
     add_entity(
         &mut state,
-        with_aspects(
-            ent("ana", "character", "ANA"),
-            &[("occult", 2), ("lantern", 1)],
-        ),
+        with_aspects(ent("ana", "character", "ANA"), &[("occult", 2), ("lantern", 1)]),
     )
     .unwrap();
-    add_entity(
-        &mut state,
-        with_aspects(ent("bertha", "character", "BERTHA"), &[("occult", 0)]),
-    )
-    .unwrap();
-    add_entity(
-        &mut state,
-        with_aspects(ent("rite", "rite", "RITE"), &[("demand", 3)]),
-    )
-    .unwrap();
+    add_entity(&mut state, with_aspects(ent("bertha", "character", "BERTHA"), &[("occult", 0)]))
+        .unwrap();
+    add_entity(&mut state, with_aspects(ent("rite", "rite", "RITE"), &[("demand", 3)])).unwrap();
     state.relations.insert(
         "ana|bertha|parent_child".to_string(),
         chorus::core::types::Relation {
@@ -262,11 +206,7 @@ fn cond_state() -> State {
 fn count_actors_equals_2() {
     let state = cond_state();
     let p = parse_predicate("count(actors) = 2").unwrap();
-    assert!(ev(
-        &p,
-        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
-        &state
-    ));
+    assert!(ev(&p, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
     assert!(!ev(&p, &bindings(&[(Role::Actors, &["ana"])]), &state));
 }
 
@@ -275,21 +215,9 @@ fn rel_parent_child_actors_pairwise_existence() {
     // Symmetric, order-free
     let state = cond_state();
     let p = parse_predicate("rel(parent_child, actors)").unwrap();
-    assert!(ev(
-        &p,
-        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
-        &state
-    ));
-    assert!(ev(
-        &p,
-        &bindings(&[(Role::Actors, &["bertha", "ana"])]),
-        &state
-    ));
-    assert!(!ev(
-        &p,
-        &bindings(&[(Role::Actors, &["ana", "rite"])]),
-        &state
-    ));
+    assert!(ev(&p, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
+    assert!(ev(&p, &bindings(&[(Role::Actors, &["bertha", "ana"])]), &state));
+    assert!(!ev(&p, &bindings(&[(Role::Actors, &["ana", "rite"])]), &state));
 }
 
 #[test]
@@ -298,16 +226,8 @@ fn every_any_quantifiers() {
     let every = parse_predicate("every(actors, aspect:occult >= 2)").unwrap();
     let any = parse_predicate("any(actors, aspect:occult >= 2)").unwrap();
     assert!(ev(&every, &bindings(&[(Role::Actors, &["ana"])]), &state));
-    assert!(!ev(
-        &every,
-        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
-        &state
-    ));
-    assert!(ev(
-        &any,
-        &bindings(&[(Role::Actors, &["ana", "bertha"])]),
-        &state
-    ));
+    assert!(!ev(&every, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
+    assert!(ev(&any, &bindings(&[(Role::Actors, &["ana", "bertha"])]), &state));
     assert!(!ev(&any, &bindings(&[(Role::Actors, &["bertha"])]), &state));
 }
 
@@ -316,17 +236,10 @@ fn aggregate_vs_path_operand() {
     // Total(actors, …) < object.aspect.demand
     let state = cond_state();
     let p = parse_predicate("total(actors, aspect:lantern) < object.aspect.demand").unwrap();
+    assert!(ev(&p, &bindings(&[(Role::Actors, &["ana"]), (Role::Object, &["rite"])]), &state)); // 1 < 3
     assert!(ev(
         &p,
-        &bindings(&[(Role::Actors, &["ana"]), (Role::Object, &["rite"])]),
-        &state
-    )); // 1 < 3
-    assert!(ev(
-        &p,
-        &bindings(&[
-            (Role::Actors, &["ana", "bertha"]),
-            (Role::Object, &["rite"])
-        ]),
+        &bindings(&[(Role::Actors, &["ana", "bertha"]), (Role::Object, &["rite"])]),
         &state
     )); // 1+0 < 3
 }
@@ -346,25 +259,16 @@ fn attr_state() -> State {
     add_entity(&mut state, ent("pauper", "character", "PAUPER")).unwrap(); // empty attrs, alive
     add_entity(
         &mut state,
-        with_attrs(
-            ent("priced", "character", "PRICED"),
-            &[("silver", AttrValue::Num(2))],
-        ),
+        with_attrs(ent("priced", "character", "PRICED"), &[("silver", AttrValue::Num(2))]),
     )
     .unwrap();
     add_entity(
         &mut state,
-        with_attrs(
-            ent("ticket", "rite", "TICKET"),
-            &[("seal", AttrValue::Str("wax".into()))],
-        ),
+        with_attrs(ent("ticket", "rite", "TICKET"), &[("seal", AttrValue::Str("wax".into()))]),
     )
     .unwrap();
-    add_entity(
-        &mut state,
-        with_aspects(ent("priced_rite", "rite", "PRICED_RITE"), &[("cost", 1)]),
-    )
-    .unwrap();
+    add_entity(&mut state, with_aspects(ent("priced_rite", "rite", "PRICED_RITE"), &[("cost", 1)]))
+        .unwrap();
     state
 }
 
@@ -372,52 +276,20 @@ fn attr_state() -> State {
 fn a_missing_attr_on_a_living_card_compares_as_0() {
     let s = attr_state();
     let b = bindings(&[(Role::Actors, &["pauper"])]);
-    assert!(ev(
-        &parse_predicate("actors.attr.silver < 3").unwrap(),
-        &b,
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("actors.attr.silver >= 3").unwrap(),
-        &b,
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("actors.attr.silver = 0").unwrap(),
-        &b,
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("actors.attr.silver != 0").unwrap(),
-        &b,
-        &s
-    ));
+    assert!(ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &b, &s));
+    assert!(!ev(&parse_predicate("actors.attr.silver >= 3").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("actors.attr.silver = 0").unwrap(), &b, &s));
+    assert!(!ev(&parse_predicate("actors.attr.silver != 0").unwrap(), &b, &s));
 }
 
 #[test]
 fn a_present_attr_compares_exactly_as_authored() {
     let s = attr_state();
     let b = bindings(&[(Role::Actors, &["priced"])]);
-    assert!(ev(
-        &parse_predicate("actors.attr.silver < 3").unwrap(),
-        &b,
-        &s
-    )); // 2 < 3
-    assert!(!ev(
-        &parse_predicate("actors.attr.silver >= 3").unwrap(),
-        &b,
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("actors.attr.silver = 2").unwrap(),
-        &b,
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("actors.attr.silver != 0").unwrap(),
-        &b,
-        &s
-    ));
+    assert!(ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &b, &s)); // 2 < 3
+    assert!(!ev(&parse_predicate("actors.attr.silver >= 3").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("actors.attr.silver = 2").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("actors.attr.silver != 0").unwrap(), &b, &s));
 }
 
 #[test]
@@ -425,27 +297,12 @@ fn the_missing_reads_0_on_both_operands_of_the_broke_gate_shape() {
     let s = attr_state();
     // the slice's gate: a purse-less actor against a cost-1 object — the
     // refusal must fire for the first-time buyer
-    let b = bindings(&[
-        (Role::Actors, &["pauper"]),
-        (Role::Object, &["priced_rite"]),
-    ]);
-    assert!(ev(
-        &parse_predicate("actors.attr.silver < object.aspect.cost").unwrap(),
-        &b,
-        &s
-    ));
+    let b = bindings(&[(Role::Actors, &["pauper"]), (Role::Object, &["priced_rite"])]);
+    assert!(ev(&parse_predicate("actors.attr.silver < object.aspect.cost").unwrap(), &b, &s));
     // BOTH sides missing reads 0 < 0, false — and 0 <= 0, true, so the
     // default provably serves the right operand too
-    assert!(!ev(
-        &parse_predicate("actors.attr.silver < object.attr.price").unwrap(),
-        &b,
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("object.attr.price <= actors.attr.silver").unwrap(),
-        &b,
-        &s
-    ));
+    assert!(!ev(&parse_predicate("actors.attr.silver < object.attr.price").unwrap(), &b, &s));
+    assert!(ev(&parse_predicate("object.attr.price <= actors.attr.silver").unwrap(), &b, &s));
 }
 
 #[test]
@@ -454,18 +311,10 @@ fn the_frozen_edges_still_never_compare() {
     // §9.39 frozen: a missing ASPECT on a bound card reads false — only the
     // attr namespace defaults
     let aspect = bindings(&[(Role::Object, &["ticket"])]);
-    assert!(!ev(
-        &parse_predicate("object.aspect.cost < 3").unwrap(),
-        &aspect,
-        &s
-    ));
+    assert!(!ev(&parse_predicate("object.aspect.cost < 3").unwrap(), &aspect, &s));
     // no bound card at all: the when:-side silent false (and the strict
     // §9.39 rejection below keeps firing inside eval_expr)
-    assert!(!ev(
-        &parse_predicate("actors.attr.silver < 3").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(!ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &no_binds(), &s));
     // all-dead bindings: the dead-stamp silent false, not a 0-read
     let mut dead = attr_state();
     dead.entities.get_mut("pauper").unwrap().dead_action = Some(1);
@@ -476,11 +325,7 @@ fn the_frozen_edges_still_never_compare() {
     ));
     // a PRESENT non-numeric entry never compares (it is not an absent entry)
     let sealed = bindings(&[(Role::Actors, &["pauper"]), (Role::Object, &["ticket"])]);
-    assert!(!ev(
-        &parse_predicate("object.attr.seal = 0").unwrap(),
-        &sealed,
-        &s
-    ));
+    assert!(!ev(&parse_predicate("object.attr.seal = 0").unwrap(), &sealed, &s));
 }
 
 #[test]
@@ -490,12 +335,7 @@ fn strict_keeps_rejecting_an_unbound_role_operand() {
     // when an ALIVE card is bound and the ENTRY is absent
     let s = attr_state();
     let p = parse_predicate("actors.attr.silver < 3").unwrap();
-    let strict = PredCtx {
-        b: &no_binds(),
-        state: &s,
-        strict: true,
-        roll: None,
-    };
+    let strict = PredCtx { b: &no_binds(), state: &s, strict: true, roll: None };
     assert_err_msg(
         eval_pred(&p, &strict).map(|_| ()),
         "operand 'actors.attr.silver' cannot resolve",
@@ -508,18 +348,10 @@ fn group_gate_with_not_any_the_magick_gate_shape() {
     // the bindings alone; the Rust id-handle model
     // needs it in the state — same id, semantics unchanged.
     let mut state = cond_state();
-    add_entity(
-        &mut state,
-        with_aspects(ent("m", "text", "M"), &[("magick", 1)]),
-    )
-    .unwrap();
+    add_entity(&mut state, with_aspects(ent("m", "text", "M"), &[("magick", 1)])).unwrap();
     let p = parse_predicate("object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2)")
         .unwrap();
-    assert!(ev(
-        &p,
-        &bindings(&[(Role::Actors, &["bertha"]), (Role::Object, &["m"])]),
-        &state
-    )); // nobody knows
+    assert!(ev(&p, &bindings(&[(Role::Actors, &["bertha"]), (Role::Object, &["m"])]), &state)); // nobody knows
     assert!(!ev(
         &p,
         &bindings(&[(Role::Actors, &["ana", "bertha"]), (Role::Object, &["m"])]),
@@ -560,69 +392,34 @@ fn name_form_true_while_the_named_card_is_alive_false_after_destroy() {
     s.entities.get_mut("hunter").unwrap().dead_action = Some(1); // DESTROY stamps dead_action…
     s.by_name.remove("HUNTER"); // …and releases the name (§9.14)
     assert!(!ev(&p, &no_binds(), &s));
-    assert!(ev(
-        &parse_predicate("NOT exists(HUNTER)").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(ev(&parse_predicate("NOT exists(HUNTER)").unwrap(), &no_binds(), &s));
 }
 
 #[test]
 fn name_form_is_exact_and_never_matches_the_dead_or_the_absent() {
     let mut s = world();
-    assert!(!ev(
-        &parse_predicate("exists(hunter)").unwrap(),
-        &no_binds(),
-        &s
-    )); // case-exact, like by_name
-    assert!(!ev(
-        &parse_predicate("exists(THE_SEALED_DOOR)").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(!ev(&parse_predicate("exists(hunter)").unwrap(), &no_binds(), &s)); // case-exact, like by_name
+    assert!(!ev(&parse_predicate("exists(THE_SEALED_DOOR)").unwrap(), &no_binds(), &s));
     let mut dead = ent("ghost", "idea", "GHOST");
     dead.dead_action = Some(3);
     add_entity(&mut s, dead).unwrap(); // a dead entity never enters by_name
-    assert!(!ev(
-        &parse_predicate("exists(GHOST)").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(!ev(&parse_predicate("exists(GHOST)").unwrap(), &no_binds(), &s));
 }
 
 #[test]
 fn query_form_aspect_threshold() {
     let s = world();
-    assert!(ev(
-        &parse_predicate("exists(aspect:hunter>=1)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("exists(aspect:hunter >= 3)").unwrap(),
-        &no_binds(),
-        &s
-    )); // spaces tighten to >=3
-    assert!(!ev(
-        &parse_predicate("exists(aspect:secret)").unwrap(),
-        &no_binds(),
-        &s
-    )); // bare term = level >= 1
+    assert!(ev(&parse_predicate("exists(aspect:hunter>=1)").unwrap(), &no_binds(), &s));
+    assert!(!ev(&parse_predicate("exists(aspect:hunter >= 3)").unwrap(), &no_binds(), &s)); // spaces tighten to >=3
+    assert!(!ev(&parse_predicate("exists(aspect:secret)").unwrap(), &no_binds(), &s));
+    // bare term = level >= 1
 }
 
 #[test]
 fn query_form_kind_aspect_conjunction() {
     let s = world();
-    assert!(ev(
-        &parse_predicate("exists(kind:rite aspect:ritual>=1)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("exists(kind:rite aspect:ritual>=2)").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(ev(&parse_predicate("exists(kind:rite aspect:ritual>=1)").unwrap(), &no_binds(), &s));
+    assert!(!ev(&parse_predicate("exists(kind:rite aspect:ritual>=2)").unwrap(), &no_binds(), &s));
     assert!(!ev(
         &parse_predicate("exists(kind:character aspect:ritual>=1)").unwrap(),
         &no_binds(),
@@ -633,56 +430,26 @@ fn query_form_kind_aspect_conjunction() {
 #[test]
 fn query_form_negation_term() {
     let s = world();
-    assert!(!ev(
-        &parse_predicate("exists(kind:rite -aspect:ritual)").unwrap(),
-        &no_binds(),
-        &s
-    )); // the only rite has ritual
-    assert!(ev(
-        &parse_predicate("exists(-aspect:ritual)").unwrap(),
-        &no_binds(),
-        &s
-    )); // the hunter lacks it
+    assert!(!ev(&parse_predicate("exists(kind:rite -aspect:ritual)").unwrap(), &no_binds(), &s)); // the only rite has ritual
+    assert!(ev(&parse_predicate("exists(-aspect:ritual)").unwrap(), &no_binds(), &s));
+    // the hunter lacks it
 }
 
 #[test]
 fn query_form_state_terms_read_the_state_attr_namespace() {
     let mut s = world();
-    assert!(!ev(
-        &parse_predicate("exists(state:sealed)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("exists(-state:sealed)").unwrap(),
-        &no_binds(),
-        &s
-    )); // nobody is sealed
+    assert!(!ev(&parse_predicate("exists(state:sealed)").unwrap(), &no_binds(), &s));
+    assert!(ev(&parse_predicate("exists(-state:sealed)").unwrap(), &no_binds(), &s)); // nobody is sealed
     s.entities
         .get_mut("rite")
         .unwrap()
         .attrs
         .insert("state.sealed".to_string(), AttrValue::Bool(true));
-    assert!(ev(
-        &parse_predicate("exists(state:sealed)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("exists(kind:rite state:sealed)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("exists(kind:character state:sealed)").unwrap(),
-        &no_binds(),
-        &s
-    )); // hunter unsealed
-    assert!(ev(
-        &parse_predicate("exists(-state:sealed)").unwrap(),
-        &no_binds(),
-        &s
-    )); // …but still matches the negation
+    assert!(ev(&parse_predicate("exists(state:sealed)").unwrap(), &no_binds(), &s));
+    assert!(ev(&parse_predicate("exists(kind:rite state:sealed)").unwrap(), &no_binds(), &s));
+    assert!(!ev(&parse_predicate("exists(kind:character state:sealed)").unwrap(), &no_binds(), &s)); // hunter unsealed
+    assert!(ev(&parse_predicate("exists(-state:sealed)").unwrap(), &no_binds(), &s));
+    // …but still matches the negation
 }
 
 #[test]
@@ -717,16 +484,8 @@ fn scope_finds_a_card_bound_to_no_role_sitting_in_another_place_than_the_actors(
 #[test]
 fn disambiguation_a_starter_word_without_a_colon_is_a_name_not_a_query() {
     let s = world();
-    assert!(!ev(
-        &parse_predicate("exists(state)").unwrap(),
-        &no_binds(),
-        &s
-    )); // no card named 'state'
-    assert!(!ev(
-        &parse_predicate("exists(kind)").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(!ev(&parse_predicate("exists(state)").unwrap(), &no_binds(), &s)); // no card named 'state'
+    assert!(!ev(&parse_predicate("exists(kind)").unwrap(), &no_binds(), &s));
 }
 
 #[test]
@@ -752,10 +511,7 @@ fn pool_world() -> State {
     let mut s = new_state(0);
     add_entity(
         &mut s,
-        stackable(with_aspects(
-            ent("sus1", "state", "SUSPICION"),
-            &[("weight", 1)],
-        )),
+        stackable(with_aspects(ent("sus1", "state", "SUSPICION"), &[("weight", 1)])),
     )
     .unwrap();
     add_entity(
@@ -766,11 +522,7 @@ fn pool_world() -> State {
         )),
     )
     .unwrap();
-    add_entity(
-        &mut s,
-        with_aspects(ent("rite", "rite", "RITE"), &[("ritual", 1)]),
-    )
-    .unwrap();
+    add_entity(&mut s, with_aspects(ent("rite", "rite", "RITE"), &[("ritual", 1)])).unwrap();
     s
 }
 
@@ -788,51 +540,20 @@ fn name_matches_exactly_case_exact_like_exists() {
 #[test]
 fn name_composes_with_other_terms_and_negation_composes_at_the_term_level() {
     let s = pool_world();
-    assert!(ev(
-        &parse_predicate("exists(kind:state name:SUSPICION)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("exists(kind:rite name:SUSPICION)").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("exists(-name:SUSPICION)").unwrap(),
-        &no_binds(),
-        &s
-    )); // the rite
-    assert!(!ev(
-        &parse_predicate("exists(kind:state -name:SUSPICION)").unwrap(),
-        &no_binds(),
-        &s
-    )); // both copies match
+    assert!(ev(&parse_predicate("exists(kind:state name:SUSPICION)").unwrap(), &no_binds(), &s));
+    assert!(!ev(&parse_predicate("exists(kind:rite name:SUSPICION)").unwrap(), &no_binds(), &s));
+    assert!(ev(&parse_predicate("exists(-name:SUSPICION)").unwrap(), &no_binds(), &s)); // the rite
+    assert!(!ev(&parse_predicate("exists(kind:state -name:SUSPICION)").unwrap(), &no_binds(), &s));
+    // both copies match
 }
 
 #[test]
 fn count_name_x_counts_every_living_copy_count_neg_name_x_counts_the_rest() {
     let s = pool_world();
-    assert!(ev(
-        &parse_predicate("count(name:SUSPICION) = 2").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(!ev(
-        &parse_predicate("count(name:SUSPICION) >= 3").unwrap(),
-        &no_binds(),
-        &s
-    ));
-    assert!(ev(
-        &parse_predicate("count(-name:SUSPICION) = 1").unwrap(),
-        &no_binds(),
-        &s
-    )); // the rite only
-    assert!(ev(
-        &parse_predicate("count(name:RITE) = 1").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(ev(&parse_predicate("count(name:SUSPICION) = 2").unwrap(), &no_binds(), &s));
+    assert!(!ev(&parse_predicate("count(name:SUSPICION) >= 3").unwrap(), &no_binds(), &s));
+    assert!(ev(&parse_predicate("count(-name:SUSPICION) = 1").unwrap(), &no_binds(), &s)); // the rite only
+    assert!(ev(&parse_predicate("count(name:RITE) = 1").unwrap(), &no_binds(), &s));
 }
 
 #[test]
@@ -855,23 +576,11 @@ fn exists_and_count_inner_queries_take_alternation() {
     // §9.49's legal homes include the §9.38 inner queries — same parser,
     // same DNF behavior
     let mut s = new_state(0);
-    add_entity(
-        &mut s,
-        with_aspects(ent("a", "item", "A"), &[("ability", 1)]),
-    )
-    .unwrap();
+    add_entity(&mut s, with_aspects(ent("a", "item", "A"), &[("ability", 1)])).unwrap();
     add_entity(&mut s, with_aspects(ent("j", "item", "J"), &[("job", 1)])).unwrap();
-    add_entity(
-        &mut s,
-        with_aspects(ent("r", "item", "R"), &[("job", 1), ("ritual", 1)]),
-    )
-    .unwrap();
+    add_entity(&mut s, with_aspects(ent("r", "item", "R"), &[("job", 1), ("ritual", 1)])).unwrap();
     // exists reads the DNF: ability OR job — a matches
-    assert!(ev(
-        &parse_predicate("exists(aspect:ability | aspect:job)").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(ev(&parse_predicate("exists(aspect:ability | aspect:job)").unwrap(), &no_binds(), &s));
     // count reads it too: a (ability), j (job), r (job) = 3
     assert!(ev(
         &parse_predicate("count(aspect:ability | aspect:job) = 3").unwrap(),
@@ -898,11 +607,7 @@ fn count_with_a_non_role_non_query_argument_is_a_parse_shaped_role() {
     // role), evaluates to 0 — which is why compile_content rejects it (see
     // Lint tests)
     let s = pool_world();
-    assert!(ev(
-        &parse_predicate("count(DREAD) = 0").unwrap(),
-        &no_binds(),
-        &s
-    ));
+    assert!(ev(&parse_predicate("count(DREAD) = 0").unwrap(), &no_binds(), &s));
 }
 
 #[test]
@@ -911,14 +616,8 @@ fn a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_na
     // glue-tightening turns 'SUSPICION >= 1' into the single token
     // 'SUSPICION>=1'; as a name that matches nothing (silent 0)
     assert_err_msg(parse_query("name:SUSPICION>=1"), "bad name term");
-    assert_err_msg(
-        parse_predicate("count(name:SUSPICION >= 1) >= 1"),
-        "bad name term",
-    );
-    assert_err_msg(
-        parse_predicate("exists(name:SUSPICION >= 1)"),
-        "bad name term",
-    );
+    assert_err_msg(parse_predicate("count(name:SUSPICION >= 1) >= 1"), "bad name term");
+    assert_err_msg(parse_predicate("exists(name:SUSPICION >= 1)"), "bad name term");
     // total() never accepted the query form — now it says so instead of
     // failing with a cryptic `expected ','`
     assert_err_msg(

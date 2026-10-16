@@ -1,0 +1,3 @@
+# All per-construct width heuristics (struct literals, calls, chains, arrays,
+# if-else) use max_width, so an expression stays on one line whenever it fits.
+use_small_heuristics = "Max"

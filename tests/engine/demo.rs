@@ -58,10 +58,7 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::error::Resu
                 clauses: s.clauses,
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: id,
-                id_gen: Some(&mut id_gen),
-            },
+            ExecOptions { first_record_id: id, id_gen: Some(&mut id_gen) },
         )?;
         if let Some(rejected) = r.rejected {
             panic!("demo step rejected: {rejected}");
@@ -80,11 +77,7 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::error::Resu
         "fold(log) must repopulate exactly the played entity set"
     );
     let clock = clock_from_abs_min(replayed.now);
-    assert_eq!(
-        (clock.day, clock.halfhour),
-        (0, 40),
-        "the folded clock is the last step's 0:40"
-    );
+    assert_eq!((clock.day, clock.halfhour), (0, 40), "the folded clock is the last step's 0:40");
 
     Ok(())
 }
@@ -120,10 +113,7 @@ fn demo_two_runs_are_byte_identical_and_the_x_mint_spelling_is_the_demo_idgen(
                     clauses: s.clauses,
                     t_real: None,
                 },
-                ExecOptions {
-                    first_record_id: id,
-                    id_gen: Some(&mut id_gen),
-                },
+                ExecOptions { first_record_id: id, id_gen: Some(&mut id_gen) },
             )?;
             state = r.state;
             id += r.records.len() as i64;

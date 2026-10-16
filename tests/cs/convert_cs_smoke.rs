@@ -22,10 +22,7 @@ use chorus::content::script::{compile_script, lint_script_findings, LintFinding,
 use chorus::core::dict::core_dictionary;
 
 /// The bundled conversion, read as text.
-const FULL: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/scripts/cultist-full.txt"
-));
+const FULL: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/cultist-full.txt"));
 
 const EXPECTED_RECIPES: usize = 2080 + 294 + 5 + 1; // emitted + alt/run copies + 5 carrier REFUSE walls + the MANSUS default
 const EXPECTED_VERBS: usize = 12; // 7 CS stations + READ TRAVEL_TO USE_ON ACQUIRE LOCATE_AT
@@ -95,58 +92,33 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     // dead-marker twins (E11) — every one an `.x2` id flagged by the
     // never-matching-`when` detector
     let findings = lint_script_findings(FULL, &dict).expect("lint runs on a compiling script");
-    let warnings: Vec<&LintFinding> = findings
-        .iter()
-        .filter(|f| f.severity == LintSeverity::Warning)
-        .collect();
-    let errors: Vec<&LintFinding> = findings
-        .iter()
-        .filter(|f| f.severity == LintSeverity::Error)
-        .collect();
+    let warnings: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.severity == LintSeverity::Warning).collect();
+    let errors: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.severity == LintSeverity::Error).collect();
     assert!(
         errors.is_empty(),
         "lint must have 0 errors, got {}:\n{}",
         errors.len(),
-        errors
-            .iter()
-            .map(|f| f.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
+        errors.iter().map(|f| f.message.as_str()).collect::<Vec<_>>().join("\n")
     );
     assert_eq!(
         warnings.len(),
         EXPECTED_MARKERS + EXPECTED_CS_DEAD + EXPECTED_CONVERTER_INDUCED,
         "the never-matching-when warning count drifted:\n{}",
-        warnings
-            .iter()
-            .map(|f| f.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
+        warnings.iter().map(|f| f.message.as_str()).collect::<Vec<_>>().join("\n")
     );
-    let markers = warnings
-        .iter()
-        .filter(|f| f.message.contains(".x2"))
-        .count();
+    let markers = warnings.iter().filter(|f| f.message.contains(".x2")).count();
     // the NOT-alt families split on the pinned total's aspect: the
     // society-family contradictions are CS-dead, the summoned-family ones
     // are converter-induced (stacked NOT(parent) of mutually exclusive
     // parents — see the const doc above)
-    let cs_dead = warnings
-        .iter()
-        .filter(|f| f.message.contains("pins total(with, aspect:society)"))
-        .count();
-    let converter_induced = warnings
-        .iter()
-        .filter(|f| f.message.contains("pins total(with, aspect:summoned)"))
-        .count();
-    assert_eq!(
-        markers, EXPECTED_MARKERS,
-        "the .x2 dead-marker twins drifted"
-    );
-    assert_eq!(
-        cs_dead, EXPECTED_CS_DEAD,
-        "the society-family (genuinely CS-dead) count drifted"
-    );
+    let cs_dead =
+        warnings.iter().filter(|f| f.message.contains("pins total(with, aspect:society)")).count();
+    let converter_induced =
+        warnings.iter().filter(|f| f.message.contains("pins total(with, aspect:summoned)")).count();
+    assert_eq!(markers, EXPECTED_MARKERS, "the .x2 dead-marker twins drifted");
+    assert_eq!(cs_dead, EXPECTED_CS_DEAD, "the society-family (genuinely CS-dead) count drifted");
     assert_eq!(
         converter_induced, EXPECTED_CONVERTER_INDUCED,
         "the summoned-family (converter-induced) count drifted"
@@ -155,21 +127,12 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
         markers + cs_dead + converter_induced,
         warnings.len(),
         "every warning must be one of the three accounted families:\n{}",
-        warnings
-            .iter()
-            .map(|f| f.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
+        warnings.iter().map(|f| f.message.as_str()).collect::<Vec<_>>().join("\n")
     );
 
     // census: recipes over the twelve configured verbs
     assert_eq!(compiled.content.verbs.len(), EXPECTED_VERBS);
-    let recipes: usize = compiled
-        .content
-        .verbs
-        .values()
-        .map(|v| v.recipes.len())
-        .sum();
+    let recipes: usize = compiled.content.verbs.values().map(|v| v.recipes.len()).sum();
     assert_eq!(recipes, EXPECTED_RECIPES, "compiled recipe count drifted");
 
     // census: decks, endings, declared world, prototypes
@@ -196,10 +159,7 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     // the wheel's entry is wired: needs is a compiled recipe of WAIT, and
     // the job/ingredient bootstrap RUN targets resolve to it
     let wait = compiled.content.verbs.get("WAIT").expect("WAIT configured");
-    assert!(
-        wait.recipes.iter().any(|r| r.id == "wait.needs"),
-        "wait.needs must be compiled"
-    );
+    assert!(wait.recipes.iter().any(|r| r.id == "wait.needs"), "wait.needs must be compiled");
     assert!(
         wait.recipes.iter().any(|r| r.id == "wait.discardseason"),
         "wait.discardseason must be compiled"
@@ -211,34 +171,17 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     // its deterministic .x2 suffix
     for (verb, id) in [
         ("USE_ON", "use_on.grailinduction"),
-        (
-            "TRAVEL_TO",
-            "travel_to.long.executestrategy.assassination.begin",
-        ),
+        ("TRAVEL_TO", "travel_to.long.executestrategy.assassination.begin"),
         ("ACQUIRE", "acquire.ambition"),
         ("LOCATE_AT", "locate_at.suspicion"),
         ("READ", "read.workvictory"),
     ] {
-        let v = compiled
-            .content
-            .verbs
-            .get(verb)
-            .expect("carrier configured");
-        assert!(
-            v.recipes.iter().any(|r| r.id == id),
-            "{id} must be compiled on {verb}"
-        );
+        let v = compiled.content.verbs.get(verb).expect("carrier configured");
+        assert!(v.recipes.iter().any(|r| r.id == id), "{id} must be compiled on {verb}");
     }
-    let study = compiled
-        .content
-        .verbs
-        .get("STUDY")
-        .expect("STUDY configured");
+    let study = compiled.content.verbs.get("STUDY").expect("STUDY configured");
     assert!(
-        study
-            .recipes
-            .iter()
-            .any(|r| r.id == "study.studyresearchsuccess.x2"),
+        study.recipes.iter().any(|r| r.id == "study.studyresearchsuccess.x2"),
         "shadowed twins must carry their .x2 suffix"
     );
 }
@@ -287,16 +230,10 @@ fn the_carrier_stations_never_surface_in_suggestions() {
 
     let game = Game::from_script(FULL, core_dictionary()).unwrap();
     let suggestions = game.suggestions().unwrap();
-    assert!(
-        !suggestions.is_empty(),
-        "the seven stations must still suggest at game start"
-    );
+    assert!(!suggestions.is_empty(), "the seven stations must still suggest at game start");
     for s in &suggestions {
         for c in ["read", "travel to", "use on", "acquire", "locate at"] {
-            assert!(
-                !s.starts_with(c),
-                "carrier verb leaked into suggestions: {s}"
-            );
+            assert!(!s.starts_with(c), "carrier verb leaked into suggestions: {s}");
         }
     }
 }
@@ -312,15 +249,9 @@ fn a_typed_carrier_attempt_rejects_at_the_engine() {
     let turn = game
         .handle_line("0:0 @ THE_ASPIRANT READ")
         .expect("the attempt parses; the engine must refuse it");
-    assert_eq!(
-        turn.kind,
-        TurnKind::Error,
-        "the carrier station must not accept"
-    );
+    assert_eq!(turn.kind, TurnKind::Error, "the carrier station must not accept");
     assert!(
-        turn.lines
-            .iter()
-            .any(|l| l.contains("does not fit slot 'actors' of READ")),
+        turn.lines.iter().any(|l| l.contains("does not fit slot 'actors' of READ")),
         "the rejection must name the guarded slot: {:?}",
         turn.lines
     );

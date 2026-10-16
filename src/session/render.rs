@@ -14,11 +14,7 @@ use crate::error::Result;
 /// The canonical journal: one canonical sentence per line.
 #[must_use]
 pub fn journal(records: &[ActionRecord]) -> String {
-    records
-        .iter()
-        .map(|r| r.sentence.clone())
-        .collect::<Vec<_>>()
-        .join("\n")
+    records.iter().map(|r| r.sentence.clone()).collect::<Vec<_>>().join("\n")
 }
 
 /// the status-area banner once the story has ended: — NO MORE · melancholy —
@@ -80,10 +76,7 @@ pub fn prose_lines(
 ) -> Result<Vec<String>> {
     let mut lines: Vec<String> = Vec::new();
     if record.kind == "wait" {
-        return Ok(vec![format!(
-            "  (+{}) time passes.",
-            format_duration(record.advanced_min)?
-        )]);
+        return Ok(vec![format!("  (+{}) time passes.", format_duration(record.advanced_min)?)]);
     }
     if record.kind == "action" {
         let s = parse_sentence(&record.sentence, dict)?;
@@ -121,16 +114,10 @@ pub fn prose_lines(
     // `ENDING <id>` outcome is already visible there). A REFUSED step's ending
     // was discarded with the whole draft (§6.5), so it never gets the line.
     let refused = record.outcomes.iter().any(|o| o.op == "REFUSE");
-    let ending = if refused {
-        None
-    } else {
-        record.outcomes.iter().find(|o| o.op == "ENDING")
-    };
+    let ending = if refused { None } else { record.outcomes.iter().find(|o| o.op == "ENDING") };
     if let Some(ending) = ending {
         let id = match ending.args.first() {
-            Some(Arg::Ref {
-                r#ref: Ref::Name { name, .. },
-            }) => Some(name.clone()),
+            Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.clone()),
             _ => None,
         };
         let def = id.as_deref().and_then(|id| content.endings.get(id));
@@ -180,12 +167,7 @@ fn ref_names(rs: &[Ref]) -> Vec<String> {
 fn interpolate_clause(template: &str, clause: &crate::core::sentence::Clause) -> String {
     template
         .replace("{actors}", &join_and(&ref_names(&clause.actors)))
-        .replace(
-            "{object}",
-            ref_names(&clause.objects)
-                .first()
-                .map_or("—", String::as_str),
-        )
+        .replace("{object}", ref_names(&clause.objects).first().map_or("—", String::as_str))
         .replace("{at}", &ref_name(clause.at.as_ref()))
         .replace("{about}", &ref_name(clause.about.as_ref()))
         .replace("{to}", &ref_name(clause.to.as_ref()))
@@ -196,12 +178,7 @@ fn interpolate_clause(template: &str, clause: &crate::core::sentence::Clause) ->
 fn interpolate_record(template: &str, record: &ActionRecord) -> String {
     template
         .replace("{actors}", &join_and(&ref_names(&record.actors)))
-        .replace(
-            "{object}",
-            ref_names(&record.objects)
-                .first()
-                .map_or("—", String::as_str),
-        )
+        .replace("{object}", ref_names(&record.objects).first().map_or("—", String::as_str))
         .replace("{at}", &ref_name(record.at.as_ref()))
         .replace("{about}", &ref_name(record.about.as_ref()))
         .replace("{to}", &ref_name(record.to.as_ref()))
@@ -213,11 +190,7 @@ fn join_and(names: &[String]) -> String {
     if names.len() <= 1 {
         return names.first().cloned().unwrap_or_default();
     }
-    format!(
-        "{} and {}",
-        names[..names.len() - 1].join(", "),
-        names[names.len() - 1]
-    )
+    format!("{} and {}", names[..names.len() - 1].join(", "), names[names.len() - 1])
 }
 
 #[cfg(test)]
@@ -232,10 +205,7 @@ mod tests {
             flavour: "melancholy".into(),
         };
         assert_eq!(ending_banner(&e), "— NO MORE · melancholy —");
-        assert_eq!(
-            ending_notice(&e),
-            "the story has ended — No More (melancholy)."
-        );
+        assert_eq!(ending_notice(&e), "the story has ended — No More (melancholy).");
         let grand = Ending {
             id: "LANTERN_VICTORY".into(),
             title: "The Light in the Ruins".into(),
@@ -243,11 +213,8 @@ mod tests {
         };
         assert_eq!(ending_banner(&grand), "— THE LIGHT IN THE RUINS · grand —");
         // flavour is open lowercase vocabulary — any word renders, no crash
-        let quiet = Ending {
-            id: "QUIET_END".into(),
-            title: "Hush".into(),
-            flavour: "quiet".into(),
-        };
+        let quiet =
+            Ending { id: "QUIET_END".into(), title: "Hush".into(), flavour: "quiet".into() };
         assert_eq!(ending_banner(&quiet), "— HUSH · quiet —");
     }
 
@@ -265,9 +232,6 @@ mod tests {
         assert_eq!(flatten_aspects(&a), ["secret 4", "tome.cylinder 1"]);
         assert_eq!(join_and(&[]), "");
         assert_eq!(join_and(&["A".to_string()]), "A");
-        assert_eq!(
-            join_and(&["A".to_string(), "B".to_string(), "C".to_string()]),
-            "A, B and C"
-        );
+        assert_eq!(join_and(&["A".to_string(), "B".to_string(), "C".to_string()]), "A, B and C");
     }
 }

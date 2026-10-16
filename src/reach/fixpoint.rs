@@ -93,12 +93,8 @@ impl<'c> WorldFacts<'c> {
         let Some((_name, v)) = self.content.verbs.get_index(verb_idx) else {
             unreachable!("verb index {verb_idx} came from content.verbs enumeration");
         };
-        let slots: Vec<CompiledSlot> = v
-            .slot_by_role
-            .values()
-            .filter(|s| s.min > 0)
-            .cloned()
-            .collect();
+        let slots: Vec<CompiledSlot> =
+            v.slot_by_role.values().filter(|s| s.min > 0).cloned().collect();
         if slots.is_empty() {
             // an empty proof is TRUTHY: the verb
             // commits with no slot requirements
@@ -112,10 +108,7 @@ impl<'c> WorldFacts<'c> {
                 let mut list: Vec<CandInst> = Vec::new();
                 for facts in self.avail.values() {
                     for f in facts {
-                        let fits = slot
-                            .query
-                            .as_ref()
-                            .is_none_or(|q| match_query(&f.entity, q));
+                        let fits = slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q));
                         if !fits {
                             continue;
                         }
@@ -247,32 +240,17 @@ impl<'c> WorldFacts<'c> {
                 );
                 self.push(
                     key.to_string(),
-                    CardFact {
-                        entity,
-                        count: if infinite { MANY } else { *n },
-                        how,
-                    },
+                    CardFact { entity, count: if infinite { MANY } else { *n }, how },
                 );
             }
             if let Some(dc) = &deck.defaultcard {
                 if site.cap > deck.order.len() as i64 && !counts.contains_key(&dc.name) {
                     let proto = content.prototypes.get(&dc.name);
                     let blind = draw_blinds_bare(content, &site, &dc.name);
-                    let key = if blind {
-                        DERIVED_NAME
-                    } else {
-                        dc.name.as_str()
-                    };
+                    let key = if blind { DERIVED_NAME } else { dc.name.as_str() };
                     let entity = self.synth(key, &dc.kind, proto, None);
                     let how = format!("{} ← deck {} defaultcard", dc.name, deck.id);
-                    self.push(
-                        key.to_string(),
-                        CardFact {
-                            entity,
-                            count: MANY,
-                            how,
-                        },
-                    );
+                    self.push(key.to_string(), CardFact { entity, count: MANY, how });
                 }
             }
             return;
@@ -286,26 +264,15 @@ impl<'c> WorldFacts<'c> {
         // a derive-mint behind an object-mandatory
         // verb never carries the bare name — register it blinded (90936)
         let blind = site.derives && object_always(content, site.verb);
-        let key = if blind {
-            DERIVED_NAME
-        } else {
-            site.name.as_str()
-        };
+        let key = if blind { DERIVED_NAME } else { site.name.as_str() };
         // KIND-level stackable declarations stack the
         // mint exactly like name-level ones (§9.38, seed 81401)
-        let count = if mint_stacks(content, &site.name, site.kind_override.as_deref()) {
-            MANY
-        } else {
-            1
-        };
+        let count =
+            if mint_stacks(content, &site.name, site.kind_override.as_deref()) { MANY } else { 1 };
         let entity = self.synth(key, &kind, proto, None);
         let how = format!(
             "{} {} by {}{}",
-            if site.kind == SiteKind::Replace {
-                "REPLACE"
-            } else {
-                "SPAWN"
-            },
+            if site.kind == SiteKind::Replace { "REPLACE" } else { "SPAWN" },
             site.name,
             site.where_,
             site.kind_override
@@ -349,9 +316,7 @@ impl<'c> WorldFacts<'c> {
         let other_killers = killers.iter().filter(|o| **o != site.owner).count();
         let self_safe = site.kind == SiteKind::Replace
             && site.replace_target.is_some()
-            && self
-                .avail
-                .contains_key(site.replace_target.as_deref().unwrap_or(""))
+            && self.avail.contains_key(site.replace_target.as_deref().unwrap_or(""))
             && other_killers == 0
             && !site.target_killed_in_list;
         if site.throw_ops - i64::from(self_safe) > 0 {
@@ -379,22 +344,15 @@ impl<'c> WorldFacts<'c> {
                 pred_exists_names(p, &mut gated_names);
             }
         }
-        if gated_names
-            .iter()
-            .any(|n| self.census.destroyed_by.contains_key(n))
-        {
+        if gated_names.iter().any(|n| self.census.destroyed_by.contains_key(n)) {
             return None;
         }
         // gate-timing (seed 40449): a SLOT trigger's
         // static gate names a card whose only proven producers fire at (or
         // after) the trigger's own first crossing
         if site.verb.is_none() {
-            if let Some((
-                CompiledTrigger::Slot {
-                    slot: owner_slot, ..
-                },
-                owner_decl,
-            )) = self.trig_idx.get(&site.owner)
+            if let Some((CompiledTrigger::Slot { slot: owner_slot, .. }, owner_decl)) =
+                self.trig_idx.get(&site.owner)
             {
                 let my_first_cross = self.first_cross(*owner_slot);
                 let my_decl = owner_decl;
@@ -424,8 +382,7 @@ impl<'c> WorldFacts<'c> {
                         && !site.list_gate_mints.contains(n)
                         && sources.is_some_and(|v| !v.is_empty())
                         && sources.is_some_and(|v| {
-                            v.iter()
-                                .all(|&src| dead_at_my_firing(&self.census.sites[src]))
+                            v.iter().all(|&src| dead_at_my_firing(&self.census.sites[src]))
                         })
                 });
                 if gate_unsatisfiable_at_firing {
@@ -526,10 +483,7 @@ impl<'c> WorldFacts<'c> {
                 "trigger {id} fires on slot {slot}{once_note} — the clock is unbounded forward"
             )]);
         }
-        let CompiledTrigger::Expire {
-            id, on_expire_of, ..
-        } = trig
-        else {
+        let CompiledTrigger::Expire { id, on_expire_of, .. } = trig else {
             unreachable!("a compiled trigger is either Slot or Expire");
         };
         // expiry trigger: the named card must be
@@ -537,41 +491,23 @@ impl<'c> WorldFacts<'c> {
         // seed-100625 rule; `visiting` cuts arming cycles (the seed-41247
         // self-arming check is subsumed), and the memo caches only cycle-free
         // (top-level) verdicts.
-        let desc: Option<Entity> = self
-            .init_names
-            .get(on_expire_of)
-            .map(|e| (*e).clone())
-            .or_else(|| {
-                self.avail
-                    .get(on_expire_of)
-                    .and_then(|list| list.first())
-                    .map(|f| f.entity.clone())
+        let desc: Option<Entity> =
+            self.init_names.get(on_expire_of).map(|e| (*e).clone()).or_else(|| {
+                self.avail.get(on_expire_of).and_then(|list| list.first()).map(|f| f.entity.clone())
             });
         let mut expiry_memo: IndexMap<String, bool> = IndexMap::new();
         let expirable = desc.is_some()
-            && expirable_card(
-                self,
-                &world,
-                &mut expiry_memo,
-                on_expire_of,
-                &IndexSet::new(),
-            );
+            && expirable_card(self, &world, &mut expiry_memo, on_expire_of, &IndexSet::new());
         if desc.is_none() || !expirable {
             return None;
         }
         self.notes.push(format!(
             "expiry trigger {id} reaches its body only while a living '{on_expire_of}' can expire"
         ));
-        let available = if self.init_names.contains_key(on_expire_of) {
-            "initial"
-        } else {
-            "produced"
-        };
-        let writable_suffix = if self.init_names.contains_key(on_expire_of) {
-            ""
-        } else {
-            " or minted"
-        };
+        let available =
+            if self.init_names.contains_key(on_expire_of) { "initial" } else { "produced" };
+        let writable_suffix =
+            if self.init_names.contains_key(on_expire_of) { "" } else { " or minted" };
         Some(vec![format!(
             "trigger {id} fires on the expiry of {on_expire_of} (available: {available}; expires writable{writable_suffix})"
         )])
@@ -598,12 +534,7 @@ pub(crate) fn slot_proof_lines(verb_name: &str, proofs: &[SlotProof]) -> Vec<Str
                 whos.insert(f.how.clone());
             }
             let whos: Vec<String> = whos.into_iter().take(3).collect();
-            format!(
-                "{verb_name} committable: {} ×{} ← {}",
-                pf.role,
-                pf.min,
-                whos.join(", ")
-            )
+            format!("{verb_name} committable: {} ×{} ← {}", pf.role, pf.min, whos.join(", "))
         })
         .collect()
 }
@@ -687,10 +618,7 @@ pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
                     if slot.min == 0 {
                         continue;
                     }
-                    let fits = slot
-                        .query
-                        .as_ref()
-                        .is_none_or(|q| match_query(&f.entity, q));
+                    let fits = slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q));
                     if fits {
                         return true;
                     }
@@ -740,10 +668,7 @@ fn owner_armable(
 /// The arming SET's role target must bind a card
 /// whose descriptor fits the role's slot query.
 fn role_slot_fits(wf: &WorldFacts, s: &SetSite, role: &str, d: &Entity) -> bool {
-    let v = s
-        .verb_name
-        .as_deref()
-        .and_then(|vn| wf.content.verbs.get(vn));
+    let v = s.verb_name.as_deref().and_then(|vn| wf.content.verbs.get(vn));
     let slot = v.and_then(|v| v.slot_by_role.get(role));
     match slot {
         Some(slot) => match &slot.query {
@@ -768,24 +693,12 @@ fn expirable_card(
     if visiting.contains(card_name) {
         return false; // arming cycle — cannot bootstrap
     }
-    let next: IndexSet<String> = visiting
-        .iter()
-        .cloned()
-        .chain(std::iter::once(card_name.to_string()))
-        .collect();
-    let d: Option<Entity> = wf
-        .init_names
-        .get(card_name)
-        .map(|e| (*e).clone())
-        .or_else(|| {
-            wf.avail
-                .get(card_name)
-                .and_then(|list| list.first())
-                .map(|f| f.entity.clone())
-        });
-    let mut result = d
-        .as_ref()
-        .is_some_and(|de| de.attrs.contains_key("expires"));
+    let next: IndexSet<String> =
+        visiting.iter().cloned().chain(std::iter::once(card_name.to_string())).collect();
+    let d: Option<Entity> = wf.init_names.get(card_name).map(|e| (*e).clone()).or_else(|| {
+        wf.avail.get(card_name).and_then(|list| list.first()).map(|f| f.entity.clone())
+    });
+    let mut result = d.as_ref().is_some_and(|de| de.attrs.contains_key("expires"));
     if !result {
         result = wf.census.set_sites.iter().any(|s| {
             (s.key == "expires" || s.key == "expiresAt")

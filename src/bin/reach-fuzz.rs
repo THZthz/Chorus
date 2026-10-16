@@ -28,16 +28,10 @@ mod settle;
 fn parse_canonical_number(s: &str) -> f64 {
     let t: String = {
         let mut chars: Vec<char> = s.chars().collect();
-        while chars
-            .first()
-            .is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c))
-        {
+        while chars.first().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
             chars.remove(0);
         }
-        while chars
-            .last()
-            .is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c))
-        {
+        while chars.last().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
             chars.pop();
         }
         chars.into_iter().collect()
@@ -51,16 +45,11 @@ fn parse_canonical_number(s: &str) -> f64 {
     if t == "-Infinity" {
         return f64::NEG_INFINITY;
     }
-    let hex = t
-        .strip_prefix("0x")
-        .or_else(|| t.strip_prefix("+0x"))
-        .or_else(|| t.strip_prefix("-0x"));
+    let hex =
+        t.strip_prefix("0x").or_else(|| t.strip_prefix("+0x")).or_else(|| t.strip_prefix("-0x"));
     if let Some(h) = hex {
         let sign = if t.starts_with('-') { -1.0 } else { 1.0 };
-        return sign
-            * u64::from_str_radix(h, 16)
-                .map(|v| v as f64)
-                .unwrap_or(f64::NAN);
+        return sign * u64::from_str_radix(h, 16).map(|v| v as f64).unwrap_or(f64::NAN);
     }
     // decimal: optional sign, digits with optional fraction and exponent —
     // anything else is NaN (str::parse would also accept "inf"/"nan", which
@@ -105,11 +94,7 @@ fn main() -> std::process::ExitCode {
     let flag = |name: &str, dflt: f64| -> f64 {
         args.iter()
             .position(|a| a == name)
-            .map(|i| {
-                args.get(i + 1)
-                    .map(|v| parse_canonical_number(v))
-                    .unwrap_or(f64::NAN)
-            })
+            .map(|i| args.get(i + 1).map(|v| parse_canonical_number(v)).unwrap_or(f64::NAN))
             .unwrap_or(dflt)
     };
     let seeds = flag("--seeds", 200.0);

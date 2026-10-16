@@ -211,9 +211,7 @@ pub fn parse_predicate_toks(
         } else if depth == 0 {
             if let Tok::Name { v } = t {
                 if v == "ELSE" {
-                    return Err(ChorusError::new(
-                        "an IF needs '-> ( outcomes )' before 'ELSE'",
-                    ));
+                    return Err(ChorusError::new("an IF needs '-> ( outcomes )' before 'ELSE'"));
                 }
             }
         }
@@ -228,14 +226,7 @@ pub fn parse_predicate_toks(
     let PredView { src, toks, spans } = pred_view_from_toks(slice)?;
     // `allow_roll`: `roll` (§9.41) is an outcome-list operand — an IF condition
     // may read the list's dice; a `when:` line (the string front-end) may not
-    let parser = PredParser {
-        toks,
-        spans,
-        pos: 0,
-        src,
-        params,
-        allow_roll: true,
-    };
+    let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true };
     let pred = parser.parse()?;
     Ok((pred, end))
 }
@@ -244,14 +235,7 @@ pub fn parse_predicate_toks(
 /// (§9.41): the ROLL argument grammar — one grammar, three front-ends.
 pub fn parse_value_expr_toks(toks: &[Tok], params: Option<&HashSet<String>>) -> Result<ValExpr> {
     let PredView { src, toks, spans } = pred_view_from_toks(toks)?;
-    let parser = PredParser {
-        toks,
-        spans,
-        pos: 0,
-        src,
-        params,
-        allow_roll: true,
-    };
+    let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true };
     parser.parse_value_expr()
 }
 
@@ -278,19 +262,13 @@ pub fn pred_view_from_toks(toks: &[Tok]) -> Result<PredView> {
             Tok::Int { v } => v.to_string(),
             Tok::Punct { v } => v.clone(),
             Tok::Str { .. } => {
-                return Err(ChorusError::new(
-                    "an IF condition cannot contain a string literal",
-                ))
+                return Err(ChorusError::new("an IF condition cannot contain a string literal"))
             }
             Tok::Dur { .. } => {
-                return Err(ChorusError::new(
-                    "an IF condition cannot contain a duration literal",
-                ))
+                return Err(ChorusError::new("an IF condition cannot contain a duration literal"))
             }
             Tok::IdRef { .. } => {
-                return Err(ChorusError::new(
-                    "an IF condition cannot contain a #id literal",
-                ))
+                return Err(ChorusError::new("an IF condition cannot contain a #id literal"))
             }
         };
         if !spans.is_empty() && end_word.is_match(&src) && start_word.is_match(&text) {
@@ -300,11 +278,7 @@ pub fn pred_view_from_toks(toks: &[Tok]) -> Result<PredView> {
         src.push_str(&text);
         ptoks.push(text);
     }
-    Ok(PredView {
-        src,
-        toks: ptoks,
-        spans,
-    })
+    Ok(PredView { src, toks: ptoks, spans })
 }
 
 /// The recursive-descent predicate parser.
@@ -381,14 +355,7 @@ impl<'a> PredParser<'a> {
                 }
             }
         }
-        Ok(PredParser {
-            toks,
-            spans,
-            pos: 0,
-            src: src.to_string(),
-            params,
-            allow_roll,
-        })
+        Ok(PredParser { toks, spans, pos: 0, src: src.to_string(), params, allow_roll })
     }
 
     fn peek(&self) -> Option<&String> {
@@ -518,11 +485,7 @@ impl<'a> PredParser<'a> {
         self.expect(",")?;
         let cond = self.scalar_cond()?;
         self.expect(")")?;
-        Ok(if kind == "every" {
-            Pred::Every { role, cond }
-        } else {
-            Pred::Any { role, cond }
-        })
+        Ok(if kind == "every" { Pred::Every { role, cond } } else { Pred::Any { role, cond } })
     }
 
     /// exists(NAME): an ALIVE entity bears the
@@ -552,10 +515,7 @@ impl<'a> PredParser<'a> {
             // not structure (the replacement keeps only the captured op)
             static CMP: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&CMP, || {
-                Regex::new(&format!(
-                    r"{}(>=|<=|!=|=|>|<){}",
-                    DSL_WS_CLASS, DSL_WS_CLASS
-                ))
+                Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", DSL_WS_CLASS, DSL_WS_CLASS))
             });
             let query = parse_query(&re.replace_all(&inner, "$1"))?;
             return Ok(Pred::ExistsQuery { query });
@@ -566,9 +526,7 @@ impl<'a> PredParser<'a> {
                 inner.trim()
             )));
         }
-        Ok(Pred::Exists {
-            name: self.toks[first].clone(),
-        })
+        Ok(Pred::Exists { name: self.toks[first].clone() })
     }
 
     /// A query-term starter at token i:
@@ -590,9 +548,7 @@ impl<'a> PredParser<'a> {
         let key = self.dotted_name()?;
         let op_tok = self.next()?;
         let Some(op) = CMP_OPS.iter().find(|o| **o == op_tok) else {
-            return Err(ChorusError::new(format!(
-                "expected comparison op, got '{op_tok}'"
-            )));
+            return Err(ChorusError::new(format!("expected comparison op, got '{op_tok}'")));
         };
         let v = self.next()?;
         // ASCII digits only
@@ -604,10 +560,7 @@ impl<'a> PredParser<'a> {
             )));
         }
         Ok(ScalarCond {
-            path: ScalarPath {
-                field: PredField::Aspect,
-                key,
-            },
+            path: ScalarPath { field: PredField::Aspect, key },
             op: parse_cmp_op(op),
             value: parse_authored_int(&v),
         })
@@ -618,16 +571,10 @@ impl<'a> PredParser<'a> {
         let l = self.val_expr()?;
         let op_tok = self.next()?;
         let Some(op) = CMP_OPS.iter().find(|o| **o == op_tok) else {
-            return Err(ChorusError::new(format!(
-                "expected comparison op, got '{op_tok}'"
-            )));
+            return Err(ChorusError::new(format!("expected comparison op, got '{op_tok}'")));
         };
         let r = self.val_expr()?;
-        Ok(Pred::Cmp {
-            l,
-            op: parse_cmp_op(op),
-            r,
-        })
+        Ok(Pred::Cmp { l, op: parse_cmp_op(op), r })
     }
 
     /// One operand: param | roll | int | count/total | role.field.key path.
@@ -652,9 +599,7 @@ impl<'a> PredParser<'a> {
         static RE: OnceLock<Regex> = OnceLock::new();
         let int_re = static_regex(&RE, || Regex::new(r"^[0-9]+$"));
         if int_re.is_match(&t) {
-            return Ok(ValExpr::Int {
-                v: parse_authored_int(&t),
-            });
+            return Ok(ValExpr::Int { v: parse_authored_int(&t) });
         }
         if t == "count" {
             self.expect("(")?;
@@ -679,10 +624,7 @@ impl<'a> PredParser<'a> {
                 let inner = self.src[self.spans[first].0..self.spans[close].0].to_string();
                 static CMP: OnceLock<Regex> = OnceLock::new();
                 let re = static_regex(&CMP, || {
-                    Regex::new(&format!(
-                        r"{}(>=|<=|!=|=|>|<){}",
-                        DSL_WS_CLASS, DSL_WS_CLASS
-                    ))
+                    Regex::new(&format!(r"{}(>=|<=|!=|=|>|<){}", DSL_WS_CLASS, DSL_WS_CLASS))
                 });
                 let query = parse_query(&re.replace_all(&inner, "$1"))?;
                 return Ok(ValExpr::CountQuery { query });
@@ -716,9 +658,7 @@ impl<'a> PredParser<'a> {
                 return Err(ChorusError::new(format!("bad path '{t}'")));
             }
             let Some(field) = PredField::from_name(parts[1]) else {
-                return Err(ChorusError::new(format!(
-                    "expected aspect|attr in path '{t}'"
-                )));
+                return Err(ChorusError::new(format!("expected aspect|attr in path '{t}'")));
             };
             return Ok(ValExpr::Path {
                 role: parts[0].to_string(),
@@ -735,11 +675,7 @@ impl<'a> PredParser<'a> {
         };
         self.expect(".")?; // the second dot of role.field.key (split-token shape, §9.39)
         let key = self.dotted_name()?;
-        Ok(ValExpr::Path {
-            role: t,
-            field,
-            key,
-        })
+        Ok(ValExpr::Path { role: t, field, key })
     }
 
     /// A dotted name consumed as one logical lexeme.
@@ -845,12 +781,9 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
             // re-check is the same belt-and-braces `resolve_ref` wears. Under
             // pools (§9.38) the existential is ANY living copy of the name.
             match ctx.state.by_name.get(name) {
-                Some(pool) => Ok(pool.iter().any(|id| {
-                    ctx.state
-                        .entities
-                        .get(id)
-                        .is_some_and(|e| e.dead_action.is_none())
-                })),
+                Some(pool) => Ok(pool
+                    .iter()
+                    .any(|id| ctx.state.entities.get(id).is_some_and(|e| e.dead_action.is_none()))),
                 None => Ok(false),
             }
         }
@@ -892,22 +825,15 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
 /// `eval_expr`); all-dead bindings stay silent-false (the dead-stamp rule);
 /// and a PRESENT non-numeric entry never compares.
 fn cmp_operand(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
-    let ValExpr::Path {
-        role,
-        field: PredField::Attr,
-        key,
-    } = x
-    else {
+    let ValExpr::Path { role, field: PredField::Attr, key } = x else {
         return eval_expr(x, ctx);
     };
     let bound: &[String] = match Role::from_lower(role) {
         Some(r) => ctx.b.get(&r).map(|v| v.as_slice()).unwrap_or(&[]),
         None => &[], // an undeclared role binds nothing
     };
-    let Some(e) = bound
-        .iter()
-        .filter_map(|id| ctx.state.entities.get(id))
-        .find(|e| e.dead_action.is_none())
+    let Some(e) =
+        bound.iter().filter_map(|id| ctx.state.entities.get(id)).find(|e| e.dead_action.is_none())
     else {
         // no bindings (§9.39: strict rejects inside eval_expr) or all-dead
         // (the silent dead-stamp false) — the un-coerced paths
@@ -968,9 +894,9 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
         ValExpr::Total { role, path } => {
             // reduce along role_cards order; saturating add — only absurd
             // magnitudes overflow, and no log pins their sums
-            let sum = role_cards(ctx, role).iter().fold(0i64, |sum, e| {
-                sum.saturating_add(aspect_get(e, path).unwrap_or(0))
-            });
+            let sum = role_cards(ctx, role)
+                .iter()
+                .fold(0i64, |sum, e| sum.saturating_add(aspect_get(e, path).unwrap_or(0)));
             Ok(Some(sum))
         }
         ValExpr::Path { role, field, key } => {
@@ -1019,11 +945,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
 /// `ROLES` joined with ', ' (the ROLE_LIST message text).
 #[must_use]
 pub fn role_list() -> String {
-    ROLES
-        .iter()
-        .map(|r| r.as_str())
-        .collect::<Vec<_>>()
-        .join(", ")
+    ROLES.iter().map(|r| r.as_str()).collect::<Vec<_>>().join(", ")
 }
 
 /// count()/total() arguments must be a
@@ -1220,12 +1142,7 @@ mod tests {
         let _ = state.entities.insert("a2".into(), e2.clone());
         let mut bindings = RoleBindings::new();
         bindings.insert(Role::Actors, vec!["a1".into(), "a2".into()]);
-        let ctx = PredCtx {
-            b: &bindings,
-            state: &state,
-            strict: false,
-            roll: None,
-        };
+        let ctx = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
         // count(actors)=2 holds, any(occult>=2) holds (a1:3) → NOT any fails:
         // the conjunction is FALSE
         assert!(!eval_pred(&p, &ctx).unwrap());
@@ -1246,12 +1163,7 @@ mod tests {
         let p2 = parse_predicate("any(actors, aspect:x >= 1)").unwrap();
         let mut state = new_state(0);
         let bindings = RoleBindings::new();
-        let ctx = PredCtx {
-            b: &bindings,
-            state: &state,
-            strict: false,
-            roll: None,
-        };
+        let ctx = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
         assert!(eval_pred(&p, &ctx).unwrap());
         assert!(!eval_pred(&p2, &ctx).unwrap());
         // all-dead bindings read false silently, never a strict throw
@@ -1260,22 +1172,12 @@ mod tests {
         let _ = state.entities.insert("d1".into(), dead);
         let mut bindings2 = RoleBindings::new();
         bindings2.insert(Role::Object, vec!["d1".into()]);
-        let ctx2 = PredCtx {
-            b: &bindings2,
-            state: &state,
-            strict: true,
-            roll: None,
-        };
+        let ctx2 = PredCtx { b: &bindings2, state: &state, strict: true, roll: None };
         let p3 = parse_predicate("object.aspect.x >= 1").unwrap();
         assert!(!eval_pred(&p3, &ctx2).unwrap());
         // strict + ZERO bindings → the exact rejection message
         let bindings3 = RoleBindings::new();
-        let ctx3 = PredCtx {
-            b: &bindings3,
-            state: &state,
-            strict: true,
-            roll: None,
-        };
+        let ctx3 = PredCtx { b: &bindings3, state: &state, strict: true, roll: None };
         let e = eval_pred(&p3, &ctx3).unwrap_err();
         assert_eq!(
             e.msg,
@@ -1289,41 +1191,20 @@ mod tests {
         let pq = parse_predicate("exists(aspect:occult >= 2)").unwrap();
         let pc = parse_predicate("count(aspect:occult >= 2) = 1").unwrap();
         let mut state = new_state(0);
-        let mut door = ent(
-            "x1",
-            "THE_SEALED_DOOR",
-            "place",
-            Aspects::new(),
-            Attrs::new(),
-        );
+        let mut door = ent("x1", "THE_SEALED_DOOR", "place", Aspects::new(), Attrs::new());
         door.aspects.insert("occult".into(), AspectVal::Num(5));
         // `by_name` pool drives exists(NAME)
         let _ = state.entities.insert("x1".into(), door.clone());
-        let _ = state
-            .by_name
-            .insert("THE_SEALED_DOOR".into(), vec!["x1".into()]);
+        let _ = state.by_name.insert("THE_SEALED_DOOR".into(), vec!["x1".into()]);
         let bindings = RoleBindings::new();
-        let ctx = PredCtx {
-            b: &bindings,
-            state: &state,
-            strict: false,
-            roll: None,
-        };
+        let ctx = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
         assert!(eval_pred(&p, &ctx).unwrap());
         assert!(eval_pred(&pq, &ctx).unwrap());
         assert!(eval_pred(&pc, &ctx).unwrap());
         // dead entity: exists(NAME) false, count drops it (rebuild the ctx
         // after the mutation to end the shared borrow)
-        let _ = state
-            .entities
-            .get_mut("x1")
-            .map(|e| e.dead_action = Some(3));
-        let ctx = PredCtx {
-            b: &bindings,
-            state: &state,
-            strict: false,
-            roll: None,
-        };
+        let _ = state.entities.get_mut("x1").map(|e| e.dead_action = Some(3));
+        let ctx = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
         assert!(!eval_pred(&p, &ctx).unwrap());
         assert!(!eval_pred(&pc, &ctx).unwrap());
     }
@@ -1334,10 +1215,7 @@ mod tests {
         // error naming the character and its offset — formerly the `@`
         // silently vanished (`aspect:x >= @3` ≡ `aspect:x>=3`).
         let e = parse_predicate("count(actors) @>= 2").unwrap_err();
-        assert_eq!(
-            e.msg,
-            "illegal character '@' at offset 14 in predicate 'count(actors) @>= 2'"
-        );
+        assert_eq!(e.msg, "illegal character '@' at offset 14 in predicate 'count(actors) @>= 2'");
         // whitespace stays glue (§6.3's only skip): the spaced form parses
         // identical to the tight one
         let p1 = parse_predicate("count(actors) >= 2").unwrap();
@@ -1353,10 +1231,7 @@ mod tests {
             panic!("expected ExistsQuery, got {pq:?}");
         };
         let mut door = ent("d1", "DOOR", "place", Aspects::new(), Attrs::new());
-        door.attrs.insert(
-            "state.sealed".into(),
-            crate::core::types::AttrValue::Bool(true),
-        );
+        door.attrs.insert("state.sealed".into(), crate::core::types::AttrValue::Bool(true));
         assert!(!match_query(&door, &query));
         // a stray `!` outside a query is still a loud parse error
         let e2 = parse_predicate("count(actors) ! 2").unwrap_err();
@@ -1442,22 +1317,12 @@ mod tests {
         let (pred, _) = parse_predicate_toks(&toks, None).unwrap();
         let bindings = RoleBindings::new();
         let mut state = new_state(0);
-        let ctx_none = PredCtx {
-            b: &bindings,
-            state: &state,
-            strict: false,
-            roll: None,
-        };
+        let ctx_none = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
         assert_eq!(
             eval_pred(&pred, &ctx_none).unwrap_err().msg,
             "'roll' is unbound — no ROLL has run in this outcome list before this point"
         );
-        let ctx_some = PredCtx {
-            b: &bindings,
-            state: &state,
-            strict: false,
-            roll: Some(4),
-        };
+        let ctx_some = PredCtx { b: &bindings, state: &state, strict: false, roll: Some(4) };
         assert!(eval_pred(&pred, &ctx_some).unwrap());
         let _ = &mut state; // keep mut binding honest
     }

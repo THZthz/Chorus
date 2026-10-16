@@ -51,10 +51,7 @@ fn raw_table(dict: &Dictionary, defs: &[(&str, &[&str], &str)]) -> FnTable {
             body,
             dict,
             &table,
-            &(*params)
-                .iter()
-                .map(|s| (*s).to_string())
-                .collect::<Vec<_>>(),
+            &(*params).iter().map(|s| (*s).to_string()).collect::<Vec<_>>(),
         )
         .unwrap();
         table.by_name.get_mut(*name).unwrap().body = parsed;
@@ -134,10 +131,7 @@ fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
     let a = format_sentence(&as_sentence(&expanded[..2]), Some(&dict)).unwrap();
     let b = format_sentence(&as_sentence(&twin[..2]), Some(&dict)).unwrap();
     assert_eq!(a, b);
-    assert_eq!(
-        a,
-        " -> SPAWN SUSPICION, NARRATE \"The conductor's eyes linger on THE_GUARD.\""
-    );
+    assert_eq!(a, " -> SPAWN SUSPICION, NARRATE \"The conductor's eyes linger on THE_GUARD.\"");
 }
 
 // ---------- grammar: call-site dispatch and arity (§9.40,
@@ -148,10 +142,7 @@ fn a_call_parses_into_an_authored_fn_node_expansion_is_a_separate_pass() {
     let dict = core_dictionary();
     let table = raw_table(
         &dict,
-        &[
-            ("one", &["x"], "NARRATE \"x is {x}.\""),
-            ("zero", &[], "NARRATE \"none.\""),
-        ],
+        &[("one", &["x"], "NARRATE \"x is {x}.\""), ("zero", &[], "NARRATE \"none.\"")],
     );
     let out = parse_outcomes("one(THE_GUARD), zero()", &dict, Some(&table)).unwrap();
     assert_json_eq_ops(&out, &["FN", "FN"]);
@@ -170,10 +161,7 @@ fn arity_mismatch_is_a_load_error_too_few_too_many_and_parameterless() {
     let dict = core_dictionary();
     let table = raw_table(
         &dict,
-        &[
-            ("one", &["x"], "NARRATE \"x is {x}.\""),
-            ("zero", &[], "NARRATE \"none.\""),
-        ],
+        &[("one", &["x"], "NARRATE \"x is {x}.\""), ("zero", &[], "NARRATE \"none.\"")],
     );
     assert_err_msg(
         parse_outcomes("one()", &dict, Some(&table)),
@@ -200,20 +188,14 @@ fn unknown_name_in_outcome_position_is_a_compile_error_listing_the_vocabulary() 
     // with functions declared, they are listed too (declaration order)
     let table = raw_table(
         &dict,
-        &[
-            ("one", &["x"], "NARRATE \"x is {x}.\""),
-            ("zero", &[], "NARRATE \"none.\""),
-        ],
+        &[("one", &["x"], "NARRATE \"x is {x}.\""), ("zero", &[], "NARRATE \"none.\"")],
     );
     assert_err_msg(
         parse_outcomes("mystery(3)", &dict, Some(&table)),
         r"unknown 'mystery\(\.\.\.\)' in outcome position.*declared functions: one, zero",
     );
     // predicate helpers get the forgotten-IF hint
-    assert_err_msg(
-        parse_outcomes("exists(X) -> (NARRATE \"a\")", &dict, None),
-        "IF keyword",
-    );
+    assert_err_msg(parse_outcomes("exists(X) -> (NARRATE \"a\")", &dict, None), "IF keyword");
 }
 
 // ---------- the two substitution mechanisms (§9.40,
@@ -265,10 +247,7 @@ fn reserved_tokens_pass_through_undeclared_or_spaced_braces_are_load_errors() {
     // commas/quotes inside braces are ordinary prose
     let dict = core_dictionary();
     // {actors} survives expansion
-    let ok = raw_table(
-        &dict,
-        &[("witness", &["who"], "NARRATE \"{actors} saw {who}.\"")],
-    );
+    let ok = raw_table(&dict, &[("witness", &["who"], "NARRATE \"{actors} saw {who}.\"")]);
     let call = parse_outcomes("witness(THE_GUARD)", &dict, Some(&ok)).unwrap();
     let expanded = expand_fn_calls(&call, &ok).unwrap();
     match &expanded[0].args[0] {
@@ -297,10 +276,7 @@ fn reserved_tokens_pass_through_undeclared_or_spaced_braces_are_load_errors() {
         r"'\{ actors \}' in a body string names neither a parameter",
     );
     // commas inside braces are ordinary prose — expands clean
-    let prose = raw_table(
-        &dict,
-        &[("prose", &["x"], "NARRATE \"the set { a, b } holds {x}\"")],
-    );
+    let prose = raw_table(&dict, &[("prose", &["x"], "NARRATE \"the set { a, b } holds {x}\"")]);
     let call = parse_outcomes("prose(THE_GUARD)", &dict, Some(&prose)).unwrap();
     let expanded = expand_fn_calls(&call, &prose).unwrap();
     match &expanded[0].args[0] {
@@ -317,11 +293,8 @@ fn reserved_tokens_pass_through_undeclared_or_spaced_braces_are_load_errors() {
 fn chain_defs(n: usize) -> Vec<(String, Vec<String>, String)> {
     (0..n)
         .map(|i| {
-            let body = if i + 1 < n {
-                format!("f{}()", i + 2)
-            } else {
-                "NARRATE \"bottom.\"".to_string()
-            };
+            let body =
+                if i + 1 < n { format!("f{}()", i + 2) } else { "NARRATE \"bottom.\"".to_string() };
             (format!("f{}", i + 1), vec![], body)
         })
         .collect()
@@ -331,18 +304,10 @@ fn table_from(defs: &[(String, Vec<String>, String)]) -> FnTable {
     let dict = core_dictionary();
     let refs: Vec<(&str, Vec<&str>, &str)> = defs
         .iter()
-        .map(|(n, p, b)| {
-            (
-                n.as_str(),
-                p.iter().map(|s| s.as_str()).collect(),
-                b.as_str(),
-            )
-        })
+        .map(|(n, p, b)| (n.as_str(), p.iter().map(|s| s.as_str()).collect(), b.as_str()))
         .collect();
-    let slices: Vec<(&str, &[&str], &str)> = refs
-        .iter()
-        .map(|(n, p, b)| (*n, p.as_slice(), *b))
-        .collect();
+    let slices: Vec<(&str, &[&str], &str)> =
+        refs.iter().map(|(n, p, b)| (*n, p.as_slice(), *b)).collect();
     raw_table(&dict, &slices)
 }
 
@@ -448,8 +413,5 @@ fn a_depth_8_chain_expands_transitively_depth_9_is_a_load_error() {
     assert_eq!(fmt_outcomes(&expanded, &dict), " -> NARRATE \"bottom.\"");
     let nine = table_from(&chain_defs(9));
     let err = content_pass3_guards(&nine).unwrap_err();
-    assert_eq!(
-        err.msg,
-        "function 'f1' sits 9 calls deep — the nesting cap is 8"
-    );
+    assert_eq!(err.msg, "function 'f1' sits 9 calls deep — the nesting cap is 8");
 }

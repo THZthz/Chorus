@@ -22,9 +22,7 @@ pub struct Lcg {
 impl Lcg {
     #[must_use]
     pub fn new(seed: u32) -> Self {
-        Lcg {
-            s: seed ^ 0x9e37_79b9,
-        }
+        Lcg { s: seed ^ 0x9e37_79b9 }
     }
 
     #[must_use]

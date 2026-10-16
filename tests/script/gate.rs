@@ -41,11 +41,7 @@ fn no_rand_crate_anywhere_in_rust_sources() {
     // exactly the law-5 accident this exists to catch).
     let offenders: Vec<String> = rust_sources()
         .iter()
-        .filter(|f| {
-            fs::read_to_string(f)
-                .map(|text| text.contains("rand::"))
-                .unwrap_or(false)
-        })
+        .filter(|f| fs::read_to_string(f).map(|text| text.contains("rand::")).unwrap_or(false))
         .map(|f| f.display().to_string())
         .collect();
     assert_eq!(
@@ -66,9 +62,7 @@ fn no_math_random_literal_anywhere_in_rust_sources() {
         .filter_map(|f| {
             let text = fs::read_to_string(f).ok()?;
             let defanged = blank_comments_and_strings(&text);
-            defanged
-                .contains("Math.random")
-                .then(|| f.display().to_string())
+            defanged.contains("Math.random").then(|| f.display().to_string())
         })
         .collect();
     assert_eq!(
@@ -92,11 +86,8 @@ fn no_tui_ecosystem_residue_in_rust_sources() {
         .filter_map(|f| {
             let text = fs::read_to_string(f).ok()?;
             let defanged = blank_comments_and_strings(&text);
-            let hits: Vec<&str> = RESIDUE
-                .iter()
-                .copied()
-                .filter(|tok| defanged.contains(tok))
-                .collect();
+            let hits: Vec<&str> =
+                RESIDUE.iter().copied().filter(|tok| defanged.contains(tok)).collect();
             (!hits.is_empty()).then(|| format!("{}: {hits:?}", f.display()))
         })
         .collect();

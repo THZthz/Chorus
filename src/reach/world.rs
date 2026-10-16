@@ -56,16 +56,11 @@ pub(crate) struct DistEntry {
 fn eval_expr_static(v: &ValExpr, world: &CardWorld) -> Result<i64> {
     match v {
         ValExpr::Int { v } => Ok(*v),
-        ValExpr::CountQuery { query } => Ok(world
-            .distinct
-            .iter()
-            .filter(|d| match_query(&d.e, query))
-            .map(|d| d.w)
-            .sum()),
+        ValExpr::CountQuery { query } => {
+            Ok(world.distinct.iter().filter(|d| match_query(&d.e, query)).map(|d| d.w).sum())
+        }
         // preserved as Err (catchable upstream)
-        _ => Err(ChorusError::new(
-            "internal: evalExprStatic over a non-static operand",
-        )),
+        _ => Err(ChorusError::new("internal: evalExprStatic over a non-static operand")),
     }
 }
 
@@ -95,9 +90,7 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
         Pred::Exists { name } => Ok(world.by_name.contains_key(name)),
         Pred::ExistsQuery { query } => Ok(world.distinct.iter().any(|d| match_query(&d.e, query))),
         // preserved as Err (catchable upstream)
-        _ => Err(ChorusError::new(
-            "internal: evalStatic over a non-static predicate",
-        )),
+        _ => Err(ChorusError::new("internal: evalStatic over a non-static predicate")),
     }
 }
 
@@ -131,12 +124,8 @@ pub(crate) fn writable_paths_of(group: &[QueryTerm]) -> Vec<String> {
     group
         .iter()
         .filter_map(|t| match t {
-            QueryTerm::Aspect {
-                neg: false, path, ..
-            } => Some(format!("aspect:{path}")),
-            QueryTerm::State {
-                neg: false, key, ..
-            } => Some(format!("state.{key}")),
+            QueryTerm::Aspect { neg: false, path, .. } => Some(format!("aspect:{path}")),
+            QueryTerm::State { neg: false, key, .. } => Some(format!("state.{key}")),
             _ => None,
         })
         .collect()
@@ -302,17 +291,10 @@ impl<'c> WorldFacts<'c> {
                     f.entity.name.clone(),
                     by_name.get(&f.entity.name).copied().unwrap_or(0) + w,
                 );
-                distinct.push(DistEntry {
-                    e: f.entity.clone(),
-                    w,
-                });
+                distinct.push(DistEntry { e: f.entity.clone(), w });
             }
         }
-        let cache = Rc::new(CardWorld {
-            ver: self.avail_ver,
-            by_name,
-            distinct,
-        });
+        let cache = Rc::new(CardWorld { ver: self.avail_ver, by_name, distinct });
         self.flat_cache = Some(Rc::clone(&cache));
         cache
     }
@@ -351,17 +333,12 @@ pub struct Analyzer<'c> {
 impl<'c> Analyzer<'c> {
     #[must_use]
     pub fn new(content: &'c CompiledContent, initial: &'c State) -> Self {
-        Analyzer {
-            content,
-            initial,
-            world: OnceLock::new(),
-        }
+        Analyzer { content, initial, world: OnceLock::new() }
     }
 
     /// The world facts (compute once per (content, initial) pair).
     pub(crate) fn facts(&self) -> &WorldFacts<'c> {
-        self.world
-            .get_or_init(|| compute_world_facts(self.content, self.initial))
+        self.world.get_or_init(|| compute_world_facts(self.content, self.initial))
     }
 }
 
@@ -465,10 +442,7 @@ pub(crate) fn compute_world_facts<'c>(
         .collect();
     wf.frozen = !risky_triggers.is_empty();
     if wf.frozen {
-        debug_assert!(
-            !risky_triggers.is_empty(),
-            "frozen ⇒ at least one risky trigger"
-        );
+        debug_assert!(!risky_triggers.is_empty(), "frozen ⇒ at least one risky trigger");
         wf.freeze_dist = risky_triggers
             .iter()
             .map(|t| match t {
@@ -543,9 +517,7 @@ fn risky_block(wf: &mut WorldFacts) {
     let mut risky: IndexMap<String, bool> = IndexMap::new();
     for (owner, sites) in &by_list {
         let names = mint_set_of(&wf.census, sites);
-        let val = names
-            .iter()
-            .any(|n| wf.init_names.get(n).is_some_and(|e| !e.stackable));
+        let val = names.iter().any(|n| wf.init_names.get(n).is_some_and(|e| !e.stackable));
         risky.insert(owner.clone(), val);
     }
 
@@ -553,10 +525,7 @@ fn risky_block(wf: &mut WorldFacts) {
     let mut trig_by_slot: IndexMap<i64, Vec<String>> = IndexMap::new();
     for t in &wf.content.triggers {
         if let CompiledTrigger::Slot { id, slot, .. } = t {
-            trig_by_slot
-                .entry(*slot)
-                .or_default()
-                .push(format!("trigger {id}"));
+            trig_by_slot.entry(*slot).or_default().push(format!("trigger {id}"));
         }
     }
 
@@ -669,9 +638,7 @@ fn risky_block(wf: &mut WorldFacts) {
         if risky.get(owner) == Some(&true) {
             return true;
         }
-        idxs(&by_list, owner)
-            .iter()
-            .any(|&i| wf.census.sites[i].dup_risk)
+        idxs(&by_list, owner).iter().any(|&i| wf.census.sites[i].dup_risk)
     };
 
     // deterministic-throw freeze (seeds 2876, 10388)
@@ -712,10 +679,8 @@ fn risky_block(wf: &mut WorldFacts) {
         }
         let deterministic = self_killed
             || replaces.iter().any(|s| {
-                wf.census
-                    .destroyed_by
-                    .get(s.replace_target.as_deref().unwrap_or(""))
-                    .is_some_and(|set| {
+                wf.census.destroyed_by.get(s.replace_target.as_deref().unwrap_or("")).is_some_and(
+                    |set| {
                         set.iter().any(|o| {
                             if *o == owner {
                                 return false;
@@ -727,7 +692,8 @@ fn risky_block(wf: &mut WorldFacts) {
                                 }
                             }
                         })
-                    })
+                    },
+                )
             });
         if deterministic {
             throw_frozen.insert(owner);

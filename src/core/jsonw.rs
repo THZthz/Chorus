@@ -86,12 +86,8 @@ pub fn clone_map_in_key_order<V: Clone>(
     if !has_int_keys {
         return m.clone();
     }
-    let plain: Vec<usize> = m
-        .keys()
-        .enumerate()
-        .filter(|(_, k)| !is_integer_like_key(k))
-        .map(|(i, _)| i)
-        .collect();
+    let plain: Vec<usize> =
+        m.keys().enumerate().filter(|(_, k)| !is_integer_like_key(k)).map(|(i, _)| i).collect();
     let mut out = indexmap::IndexMap::with_capacity(m.len());
     for i in integer_keys_in_order(m).chain(plain) {
         let Some((k, v)) = m.get_index(i) else {
@@ -251,10 +247,7 @@ mod tests {
         // integer-like keys ascend to the front ("0","5","12"), the rest keep
         // insertion order ("container","0123") — exactly the clone order
         // pinned for `SET(x,"5",true)` then clone
-        assert_eq!(
-            canonical_key_order(&m),
-            ["0", "5", "12", "container", "0123"]
-        );
+        assert_eq!(canonical_key_order(&m), ["0", "5", "12", "container", "0123"]);
         let cloned = clone_map_in_key_order(&m);
         let keys: Vec<String> = cloned.keys().cloned().collect();
         assert_eq!(keys, ["0", "5", "12", "container", "0123"]);
@@ -338,9 +331,7 @@ mod tests {
         // control characters: NUL/b/t/n/f/r short escapes, quote+backslash,
         // other <0x20 as lowercase \u00xx — and DEL (0x7f) RAW at the end
         assert_eq!(
-            jsonw(&Str(
-                "a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into()
-            )),
+            jsonw(&Str("a\u{0}\u{8}\t\n\u{c}\r\"\\\u{1}\u{f}\u{1f}\u{7f}".into())),
             "\"a\\u0000\\b\\t\\n\\f\\r\\\"\\\\\\u0001\\u000f\\u001f\u{7f}\""
         );
         // non-ASCII (incl. U+2028/U+2029) stays raw
@@ -355,10 +346,7 @@ mod tests {
             r#"{"n":9007199254740992}"#
         );
         // arrays, the empty object, nested sub-keys
-        assert_eq!(
-            jsonw(&Arr(vec![Bool(true), Bool(false), Null, Int(0)])),
-            "[true,false,null,0]"
-        );
+        assert_eq!(jsonw(&Arr(vec![Bool(true), Bool(false), Null, Int(0)])), "[true,false,null,0]");
         assert_eq!(jsonw(&Obj(vec![])), "{}");
         assert_eq!(
             jsonw(&Obj(vec![(

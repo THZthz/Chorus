@@ -58,12 +58,7 @@ pub fn parse_function_body(
     fns: &FnTable,
     params: &[String],
 ) -> Result<Vec<Outcome>> {
-    let mut p = Parser::new(
-        lex(src)?,
-        dict,
-        Some(fns),
-        Some(params.iter().cloned().collect()),
-    );
+    let mut p = Parser::new(lex(src)?, dict, Some(fns), Some(params.iter().cloned().collect()));
     let out = p.outcome_list_or_empty()?;
     p.expect_end()?;
     Ok(out)
@@ -85,13 +80,7 @@ impl<'a> Parser<'a> {
         fns: Option<&'a FnTable>,
         params: Option<HashSet<String>>,
     ) -> Parser<'a> {
-        Parser {
-            toks,
-            pos: 0,
-            dict,
-            fns,
-            params,
-        }
+        Parser { toks, pos: 0, dict, fns, params }
     }
 
     fn peek(&self, o: usize) -> Option<&Tok> {
@@ -112,10 +101,7 @@ impl<'a> Parser<'a> {
     fn expect_punct(&mut self, v: &str) -> Result<()> {
         let t = self.next()?;
         if t.t() != "punct" || t.v_str() != v {
-            return Err(ChorusError::new(format!(
-                "expected '{v}', got '{}'",
-                show(&t)
-            )));
+            return Err(ChorusError::new(format!("expected '{v}', got '{}'", show(&t))));
         }
         Ok(())
     }
@@ -269,10 +255,7 @@ impl<'a> Parser<'a> {
     /// Error unless the token stream is fully consumed.
     pub fn expect_end(&mut self) -> Result<()> {
         if let Some(t) = self.peek(0) {
-            return Err(ChorusError::new(format!(
-                "unexpected trailing token '{}'",
-                show(t)
-            )));
+            return Err(ChorusError::new(format!("unexpected trailing token '{}'", show(t))));
         }
         Ok(())
     }
@@ -377,14 +360,8 @@ impl<'a> Parser<'a> {
             // but a name is the `expected a ref` error
             return match t {
                 Tok::IdRef { v } => Ok(Ref::Id { id: v }),
-                Tok::Str { v } => Ok(Ref::Name {
-                    kind: None,
-                    name: v,
-                }),
-                other => Err(ChorusError::new(format!(
-                    "expected a ref, got '{}'",
-                    show(&other)
-                ))),
+                Tok::Str { v } => Ok(Ref::Name { kind: None, name: v }),
+                other => Err(ChorusError::new(format!("expected a ref, got '{}'", show(&other)))),
             };
         };
         if self.params.as_ref().is_some_and(|p| p.contains(&v)) {
@@ -414,15 +391,9 @@ impl<'a> Parser<'a> {
                     "'{nv}' is reserved and cannot be a name (quote it)"
                 )));
             }
-            return Ok(Ref::Name {
-                kind: Some(v),
-                name: nv,
-            });
+            return Ok(Ref::Name { kind: Some(v), name: nv });
         }
-        Ok(Ref::Name {
-            kind: None,
-            name: v,
-        })
+        Ok(Ref::Name { kind: None, name: v })
     }
 
     /// outcome ( "," outcome )*.
@@ -470,9 +441,7 @@ impl<'a> Parser<'a> {
         // bare ref = SPAWN (§4.4)
         Ok(Outcome {
             op: "SPAWN".to_string(),
-            args: vec![Arg::Ref {
-                r#ref: self.ref_()?,
-            }],
+            args: vec![Arg::Ref { r#ref: self.ref_()? }],
             arms: None,
             fallback: None,
             call: None,
@@ -492,9 +461,7 @@ impl<'a> Parser<'a> {
         // ENDING is paren-less only: its id is a plain name, never an arg
         // list (§9.35)
         if op == "ENDING" && self.at_punct("(", 0) {
-            return Err(ChorusError::new(
-                "ENDING takes the paren-less form: ENDING ENDING_ID",
-            ));
+            return Err(ChorusError::new("ENDING takes the paren-less form: ENDING ENDING_ID"));
         }
         // ROLL is paren-only, and its args are NOT the generic arg grammar:
         // they are §6.3 value expressions, parsed by a depth-aware Tok scan
@@ -515,26 +482,14 @@ impl<'a> Parser<'a> {
                 ));
             }
             if self.peek(0).is_none() {
-                return Err(ChorusError::new(
-                    "DRAW needs a deck id: DRAW <DECK> [INTO target]",
-                ));
+                return Err(ChorusError::new("DRAW needs a deck id: DRAW <DECK> [INTO target]"));
             }
-            let mut draw_args = vec![Arg::Ref {
-                r#ref: self.ref_()?,
-            }];
+            let mut draw_args = vec![Arg::Ref { r#ref: self.ref_()? }];
             if self.at_keyword("INTO") {
                 self.next()?;
-                draw_args.push(Arg::Into {
-                    r#ref: self.ref_target()?,
-                });
+                draw_args.push(Arg::Into { r#ref: self.ref_target()? });
             }
-            return Ok(Outcome {
-                op,
-                args: draw_args,
-                arms: None,
-                fallback: None,
-                call: None,
-            });
+            return Ok(Outcome { op, args: draw_args, arms: None, fallback: None, call: None });
         }
         // RUN is the recipe-chain op (§9.47): `RUN "id" [, "id" …]` — the
         // args are QUOTED-STRING refs only (recipe ids are lowercase and
@@ -576,23 +531,14 @@ impl<'a> Parser<'a> {
             if op == "DRAWN" {
                 for a in args.iter_mut() {
                     if let Arg::Str { v } = a {
-                        *a = Arg::Ref {
-                            r#ref: Ref::Name {
-                                kind: None,
-                                name: v.clone(),
-                            },
-                        };
+                        *a = Arg::Ref { r#ref: Ref::Name { kind: None, name: v.clone() } };
                     }
                 }
                 let two_names = matches!(
                     (args.first(), args.get(1)),
                     (
-                        Some(Arg::Ref {
-                            r#ref: Ref::Name { .. }
-                        }),
-                        Some(Arg::Ref {
-                            r#ref: Ref::Name { .. }
-                        })
+                        Some(Arg::Ref { r#ref: Ref::Name { .. } }),
+                        Some(Arg::Ref { r#ref: Ref::Name { .. } })
                     )
                 );
                 if args.len() != 2 || !two_names {
@@ -605,21 +551,13 @@ impl<'a> Parser<'a> {
             // parameter in the string position is allowed — it binds to the
             // call's string at expansion
             if op == "NARRATE" {
-                let one_str = matches!(
-                    args.first(),
-                    Some(Arg::Str { .. }) | Some(Arg::Param { .. })
-                );
+                let one_str =
+                    matches!(args.first(), Some(Arg::Str { .. }) | Some(Arg::Param { .. }));
                 if args.len() != 1 || !one_str {
                     return Err(ChorusError::new("NARRATE takes exactly one string"));
                 }
             }
-            return Ok(Outcome {
-                op,
-                args,
-                arms: None,
-                fallback: None,
-                call: None,
-            });
+            return Ok(Outcome { op, args, arms: None, fallback: None, call: None });
         }
         if op == "SPAWN" {
             return Ok(Outcome {
@@ -636,10 +574,7 @@ impl<'a> Parser<'a> {
                 if self.params.as_ref().is_some_and(|p| p.contains(v)) {
                     return Ok(Outcome {
                         op,
-                        args: vec![Arg::Param {
-                            name: v.clone(),
-                            sign: None,
-                        }],
+                        args: vec![Arg::Param { name: v.clone(), sign: None }],
                         arms: None,
                         fallback: None,
                         call: None,
@@ -674,9 +609,7 @@ impl<'a> Parser<'a> {
             // round-trip too
             return Ok(Outcome {
                 op,
-                args: vec![Arg::Ref {
-                    r#ref: self.ref_()?,
-                }],
+                args: vec![Arg::Ref { r#ref: self.ref_()? }],
                 arms: None,
                 fallback: None,
                 call: None,
@@ -691,12 +624,7 @@ impl<'a> Parser<'a> {
             self.next()?;
             return Ok(Outcome {
                 op,
-                args: vec![
-                    target,
-                    Arg::Ref {
-                        r#ref: self.ref_()?,
-                    },
-                ],
+                args: vec![target, Arg::Ref { r#ref: self.ref_()? }],
                 arms: None,
                 fallback: None,
                 call: None,
@@ -708,16 +636,8 @@ impl<'a> Parser<'a> {
                 return Err(ChorusError::new("MOVE expects INTO"));
             }
             self.next()?;
-            args.push(Arg::Into {
-                r#ref: self.ref_target()?,
-            });
-            return Ok(Outcome {
-                op,
-                args,
-                arms: None,
-                fallback: None,
-                call: None,
-            });
+            args.push(Arg::Into { r#ref: self.ref_target()? });
+            return Ok(Outcome { op, args, arms: None, fallback: None, call: None });
         }
         Err(ChorusError::new(format!("{op} requires parentheses")))
     }
@@ -727,9 +647,7 @@ impl<'a> Parser<'a> {
     fn fn_call(&mut self) -> Result<Outcome> {
         let name_tok = self.next()?;
         let Tok::Name { v: name } = name_tok else {
-            return Err(ChorusError::new(
-                "internal: function dispatch on a non-name token",
-            ));
+            return Err(ChorusError::new("internal: function dispatch on a non-name token"));
         };
         let params = match self.fns.and_then(|f| f.by_name.get(&name)) {
             Some(tpl) => tpl.params.clone(),
@@ -759,13 +677,7 @@ impl<'a> Parser<'a> {
                 got = args.len()
             )));
         }
-        Ok(Outcome {
-            op: "FN".to_string(),
-            call: Some(name),
-            args,
-            arms: None,
-            fallback: None,
-        })
+        Ok(Outcome { op: "FN".to_string(), call: Some(name), args, arms: None, fallback: None })
     }
 
     /// IF pred -> ( outcomes ) { ELSE IF … } [ELSE …]
@@ -825,9 +737,7 @@ impl<'a> Parser<'a> {
         let mut args: Vec<Arg> = Vec::new();
         if !self.at_punct(")", 0) {
             loop {
-                args.push(Arg::Vexpr {
-                    v: self.roll_arg_expr()?,
-                });
+                args.push(Arg::Vexpr { v: self.roll_arg_expr()? });
                 if self.at_punct(",", 0) {
                     self.next()?;
                     continue;
@@ -842,13 +752,7 @@ impl<'a> Parser<'a> {
                 n = args.len()
             )));
         }
-        Ok(Outcome {
-            op: "ROLL".to_string(),
-            args,
-            arms: None,
-            fallback: None,
-            call: None,
-        })
+        Ok(Outcome { op: "ROLL".to_string(), args, arms: None, fallback: None, call: None })
     }
 
     /// RUN "id" [, "id" …] (§9.47): every
@@ -872,12 +776,7 @@ impl<'a> Parser<'a> {
             let Tok::Str { v } = t else {
                 return Err(ChorusError::new(format!("{syntax} — got {}", show(&t))));
             };
-            args.push(Arg::Ref {
-                r#ref: Ref::Name {
-                    kind: None,
-                    name: v,
-                },
-            });
+            args.push(Arg::Ref { r#ref: Ref::Name { kind: None, name: v } });
             // a comma continues the candidate list only when a QUOTED STRING
             // follows (in the paren'd shell: always) — otherwise the comma is
             // the outcome list's separator and the next outcome takes it
@@ -898,13 +797,7 @@ impl<'a> Parser<'a> {
         if paren {
             self.expect_punct(")")?;
         }
-        Ok(Outcome {
-            op: "RUN".to_string(),
-            args,
-            arms: None,
-            fallback: None,
-            call: None,
-        })
+        Ok(Outcome { op: "RUN".to_string(), args, arms: None, fallback: None, call: None })
     }
 
     /// One balanced ROLL argument: Toks up to the
@@ -949,10 +842,7 @@ impl<'a> Parser<'a> {
         if let Some(Tok::Name { v }) = &t {
             if self.params.as_ref().is_some_and(|p| p.contains(v)) {
                 self.next()?;
-                return Ok(Arg::Param {
-                    name: v.clone(),
-                    sign: None,
-                });
+                return Ok(Arg::Param { name: v.clone(), sign: None });
             }
         }
         if let Some(Tok::Name { v }) = &t {
@@ -961,9 +851,7 @@ impl<'a> Parser<'a> {
                 return Ok(Arg::Role { role });
             }
         }
-        Ok(Arg::Ref {
-            r#ref: self.ref_()?,
-        })
+        Ok(Arg::Ref { r#ref: self.ref_()? })
     }
 
     /// SPAWN ref [INTO target] [AS #id] [expires duration] [k=v …]
@@ -975,14 +863,10 @@ impl<'a> Parser<'a> {
     /// the pair's key OR value replaces the whole pair (these param checks
     /// are LIVE — unlike arg()'s dead key check, Q3).
     fn spawn_args(&mut self) -> Result<Vec<Arg>> {
-        let mut args = vec![Arg::Ref {
-            r#ref: self.ref_()?,
-        }];
+        let mut args = vec![Arg::Ref { r#ref: self.ref_()? }];
         if self.at_keyword("INTO") {
             self.next()?;
-            args.push(Arg::Into {
-                r#ref: self.ref_target()?,
-            });
+            args.push(Arg::Into { r#ref: self.ref_target()? });
         }
         if self.at_keyword("AS") {
             self.next()?;
@@ -1006,12 +890,12 @@ impl<'a> Parser<'a> {
             // bare dur/str arg is ever mistaken for it at application.
             let t = self.next()?;
             match &t {
-                Tok::Dur { v } => args.push(Arg::Expires {
-                    v: crate::core::types::AttrValue::Num(*v),
-                }),
-                Tok::Str { v } => args.push(Arg::Expires {
-                    v: crate::core::types::AttrValue::Str(v.clone()),
-                }),
+                Tok::Dur { v } => {
+                    args.push(Arg::Expires { v: crate::core::types::AttrValue::Num(*v) })
+                }
+                Tok::Str { v } => {
+                    args.push(Arg::Expires { v: crate::core::types::AttrValue::Str(v.clone()) })
+                }
                 other => {
                     return Err(ChorusError::new(format!(
                         "SPAWN expires takes a §5.1 duration (e.g. 2h, 90m, 1halfhour), got '{}'",
@@ -1047,16 +931,10 @@ impl<'a> Parser<'a> {
             };
             if let Some(p_name) = param_name {
                 self.next()?; // consumes the value token (even when the KEY was the param)
-                args.push(Arg::Param {
-                    name: p_name,
-                    sign: None,
-                });
+                args.push(Arg::Param { name: p_name, sign: None });
                 continue;
             }
-            args.push(Arg::Pair {
-                k: key,
-                v: self.value_token()?,
-            });
+            args.push(Arg::Pair { k: key, v: self.value_token()? });
         }
         Ok(args)
     }
@@ -1077,18 +955,12 @@ impl<'a> Parser<'a> {
                 if self.params.as_ref().is_some_and(|p| p.contains(v)) {
                     return Ok(Arg::Param {
                         name: v.clone(),
-                        sign: Some(if t.v_str() == "-" {
-                            Sign::Neg
-                        } else {
-                            Sign::Pos
-                        }),
+                        sign: Some(if t.v_str() == "-" { Sign::Neg } else { Sign::Pos }),
                     });
                 }
             }
             if n.t() == "dur" {
-                return Err(ChorusError::new(
-                    "deltas are integers only (no duration deltas)",
-                ));
+                return Err(ChorusError::new("deltas are integers only (no duration deltas)"));
             }
             let Tok::Int { v } = n else {
                 return Err(ChorusError::new(format!(
@@ -1097,9 +969,7 @@ impl<'a> Parser<'a> {
                     show(&n)
                 )));
             };
-            return Ok(Arg::Delta {
-                v: if t.v_str() == "-" { -v } else { v },
-            });
+            return Ok(Arg::Delta { v: if t.v_str() == "-" { -v } else { v } });
         }
         match t {
             Tok::Str { v } => {
@@ -1116,9 +986,7 @@ impl<'a> Parser<'a> {
             }
             Tok::IdRef { v } => {
                 self.next()?;
-                Ok(Arg::Ref {
-                    r#ref: Ref::Id { id: v },
-                })
+                Ok(Arg::Ref { r#ref: Ref::Id { id: v } })
             }
             Tok::Name { v } => self.name_arg(v),
             other => Err(ChorusError::new(format!(
@@ -1132,9 +1000,7 @@ impl<'a> Parser<'a> {
     fn name_arg(&mut self, v: String) -> Result<Arg> {
         if v == "INTO" {
             self.next()?;
-            return Ok(Arg::Into {
-                r#ref: self.ref_target()?,
-            });
+            return Ok(Arg::Into { r#ref: self.ref_target()? });
         }
         if v == "AS" {
             self.next()?;
@@ -1155,17 +1021,10 @@ impl<'a> Parser<'a> {
         // face is UNCHANGED: the spelling was and remains a parse error.
         if self.params.as_ref().is_some_and(|p| p.contains(&v)) {
             if self.at_punct("=", 1) {
-                return Err(ChorusError::new(param_pair_error(
-                    "key",
-                    &v,
-                    self.params.as_ref(),
-                )));
+                return Err(ChorusError::new(param_pair_error("key", &v, self.params.as_ref())));
             }
             self.next()?;
-            return Ok(Arg::Param {
-                name: v,
-                sign: None,
-            });
+            return Ok(Arg::Param { name: v, sign: None });
         }
         let role = as_role(&v);
         if let Some(role) = role {
@@ -1205,10 +1064,7 @@ impl<'a> Parser<'a> {
             self.next()?;
             self.next()?;
             let k = v;
-            return Ok(Arg::Pair {
-                k,
-                v: self.value_token()?,
-            });
+            return Ok(Arg::Pair { k, v: self.value_token()? });
         }
         // `aspect:` names the aspects map in SET keys (§9.31) — one key
         // token, like the query form (§4.5)
@@ -1238,9 +1094,7 @@ impl<'a> Parser<'a> {
             }
             return Ok(Arg::Key { v: key });
         }
-        Ok(Arg::Ref {
-            r#ref: self.ref_()?,
-        })
+        Ok(Arg::Ref { r#ref: self.ref_()? })
     }
 
     /// The INTO target: param | role | ref.
@@ -1278,10 +1132,7 @@ impl<'a> Parser<'a> {
                     Ok(AttrValue::Str(v))
                 }
             }
-            other => Err(ChorusError::new(format!(
-                "expected a value, got '{}'",
-                show(&other)
-            ))),
+            other => Err(ChorusError::new(format!("expected a value, got '{}'", show(&other)))),
         }
     }
 }
@@ -1305,15 +1156,10 @@ pub fn show(t: &Tok) -> String {
 /// iteration order is random). Acceptance is unchanged: the spelling was
 /// and remains a parse error.
 fn param_pair_error(side: &str, name: &str, params: Option<&HashSet<String>>) -> String {
-    let mut names: Vec<&str> = params
-        .map(|p| p.iter().map(String::as_str).collect())
-        .unwrap_or_default();
+    let mut names: Vec<&str> =
+        params.map(|p| p.iter().map(String::as_str).collect()).unwrap_or_default();
     names.sort_unstable();
-    let list = if names.is_empty() {
-        "(none)".to_string()
-    } else {
-        names.join(", ")
-    };
+    let list = if names.is_empty() { "(none)".to_string() } else { names.join(", ") };
     format!(
         "param '{name}' can't be a `key=value` pair {side} in outcome args — a parameter \
          stands as its own arg (SET(x, {name})), as a signed delta (+{name} / -{name}), or \
@@ -1341,12 +1187,7 @@ mod tests {
         // SET(myparam = 3) inside a body: the param reads as a pair KEY —
         // rejected as before (acceptance face unchanged), but the error is
         // the Q3 teach message, not the loop's bare `expected ')', got '='`
-        let mut p = Parser::new(
-            lex("SET(myparam = 3)").unwrap(),
-            &d,
-            None,
-            Some(params.clone()),
-        );
+        let mut p = Parser::new(lex("SET(myparam = 3)").unwrap(), &d, None, Some(params.clone()));
         let err = p.outcome_list_or_empty().unwrap_err();
         assert_eq!(
             err.msg,
@@ -1401,27 +1242,11 @@ mod tests {
         );
         let out = p.outcome_list_or_empty().unwrap();
         let args = &out[0].args;
-        assert_eq!(
-            args[1],
-            Arg::Param {
-                name: "p".into(),
-                sign: None
-            }
-        );
+        assert_eq!(args[1], Arg::Param { name: "p".into(), sign: None });
         assert_eq!(args[2], Arg::Delta { v: 1 });
         assert_eq!(args[3], Arg::Delta { v: -2 });
-        assert_eq!(
-            args[4],
-            Arg::Key {
-                v: "aspect:dread".into()
-            }
-        );
-        assert_eq!(
-            args[5],
-            Arg::Key {
-                v: "state.sealed".into()
-            }
-        );
+        assert_eq!(args[4], Arg::Key { v: "aspect:dread".into() });
+        assert_eq!(args[5], Arg::Key { v: "state.sealed".into() });
         assert_eq!(args[6], Arg::Bool { v: true });
         assert_eq!(args[7], Arg::Dur { v: 60 });
     }
@@ -1441,29 +1266,17 @@ mod tests {
         assert_eq!(o.arms.as_ref().unwrap().len(), 1);
         assert!(o.fallback.is_some());
         // engine-written rows re-parse (law 2)
-        let mut p2 = Parser::new(
-            lex("1:2 @ COMPLETE READ -> ROLLED(14, 3)").unwrap(),
-            &d,
-            None,
-            None,
-        );
+        let mut p2 =
+            Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14, 3)").unwrap(), &d, None, None);
         let s2 = p2.sentence().unwrap();
         assert_eq!(s2.kind, SentenceKind::Complete);
         assert_eq!(s2.outcomes[0].op, "ROLLED");
         assert_eq!(s2.outcomes[0].args[0], Arg::Int { v: 14 });
         assert_eq!(s2.outcomes[0].args[1], Arg::Int { v: 3 });
         // ROLLED arity is pinned
-        let mut p3 = Parser::new(
-            lex("1:2 @ COMPLETE READ -> ROLLED(14)").unwrap(),
-            &d,
-            None,
-            None,
-        );
+        let mut p3 = Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14)").unwrap(), &d, None, None);
         let err = p3.sentence().unwrap_err();
-        assert_eq!(
-            err.msg,
-            "ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)"
-        );
+        assert_eq!(err.msg, "ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)");
     }
 
     #[test]
@@ -1485,16 +1298,10 @@ mod tests {
         // WAIT followed by a non-dur falls through to the action grammar,
         // whose ref() refuses the reserved token
         let err = p.sentence().unwrap_err();
-        assert_eq!(
-            err.msg,
-            "'WAIT' is reserved and cannot be a name (quote it)"
-        );
+        assert_eq!(err.msg, "'WAIT' is reserved and cannot be a name (quote it)");
         let mut p2 = Parser::new(lex("DRAW(RUMOURS)").unwrap(), &d, None, None);
         let err2 = p2.outcome().unwrap_err();
-        assert_eq!(
-            err2.msg,
-            "DRAW takes the paren-less form: DRAW <DECK> [INTO target]"
-        );
+        assert_eq!(err2.msg, "DRAW takes the paren-less form: DRAW <DECK> [INTO target]");
     }
 
     #[test]
@@ -1504,12 +1311,6 @@ mod tests {
         params.insert("n".to_string());
         let mut p = Parser::new(lex("SET(x, -n)").unwrap(), &d, None, Some(params));
         let out = p.outcome_list_or_empty().unwrap();
-        assert_eq!(
-            out[0].args[1],
-            Arg::Param {
-                name: "n".into(),
-                sign: Some(Sign::Neg)
-            }
-        );
+        assert_eq!(out[0].args[1], Arg::Param { name: "n".into(), sign: Some(Sign::Neg) });
     }
 }

@@ -23,10 +23,7 @@ use common::harness::{assert_err_msg, assert_json_eq, canonical};
 fn solo_read_with_at_context_bare_ref_shorthand_becomes_spawn() {
     let dict = core_dictionary();
     assert_eq!(
-        canonical(
-            "0:14 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT",
-            &dict
-        ),
+        canonical("0:14 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT", &dict),
         "0:14 @ ANA AT HOUSE READ THE_FORGETTING -> SPAWN CLUE_SECRET_HIDEOUT"
     );
 }
@@ -68,17 +65,11 @@ fn event_sentence() {
     // SPAWN stays pretty …but the paren form parses equally
     let dict = core_dictionary();
     assert_eq!(
-        canonical(
-            "0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE(\"The lamps come on.\")",
-            &dict
-        ),
+        canonical("0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE(\"The lamps come on.\")", &dict),
         "0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\""
     );
     assert_eq!(
-        canonical(
-            "0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\"",
-            &dict
-        ),
+        canonical("0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\"", &dict),
         "0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\""
     );
 }
@@ -90,17 +81,11 @@ fn engine_written_expiry_trigger_ids_round_trip() {
     // prints quoted — and reassembles
     let dict = core_dictionary();
     assert_eq!(
-        canonical(
-            "1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)",
-            &dict
-        ),
+        canonical("1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)", &dict),
         "1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)"
     );
     assert_eq!(
-        canonical(
-            "1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)",
-            &dict
-        ),
+        canonical("1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)", &dict),
         "1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)"
     );
 }
@@ -171,10 +156,7 @@ fn aspect_keys_keep_their_prefix_dotted_attr_keys_print_bare() {
         "0:0 @ ANA WAIT -> SET(ANA, aspect:dread, -1)"
     );
     assert_eq!(
-        canonical(
-            "0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)",
-            &dict
-        ),
+        canonical("0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)", &dict),
         "0:0 @ ANA WAIT -> SET(ANA, aspect:language.latin, 2)"
     );
     assert_eq!(
@@ -218,10 +200,7 @@ fn unregistered_verbs_are_rejected_at_the_actors_verb_boundary() {
 fn names_colliding_with_verbs_must_be_quoted() {
     let dict = core_dictionary();
     assert_err_msg(parse_sentence("0:0 @ READ TALK ABOUT X", &dict), "reserved");
-    assert_eq!(
-        canonical("0:0 @ \"READ\" TALK ABOUT X", &dict),
-        "0:0 @ \"READ\" TALK ABOUT X"
-    );
+    assert_eq!(canonical("0:0 @ \"READ\" TALK ABOUT X", &dict), "0:0 @ \"READ\" TALK ABOUT X");
 }
 
 // ---------- the core verb set is twelve, §4.3 v0.3 -------------------------
@@ -254,10 +233,7 @@ fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
     assert!(dict.is_verb("STUDY"));
     assert!(dict.is_verb("MANSUS"));
     assert_err_msg(parse_sentence("0:0 @ STUDY READ X", &dict), "reserved");
-    assert_err_msg(
-        parse_sentence("0:0 @ ANA WAIT -> SPAWN MANSUS", &dict),
-        "reserved",
-    );
+    assert_err_msg(parse_sentence("0:0 @ ANA WAIT -> SPAWN MANSUS", &dict), "reserved");
 }
 
 #[test]
@@ -265,10 +241,7 @@ fn the_new_verbs_round_trip_like_the_old_ones() {
     // (§5.1); post-verbal AT canonicalizes
     // pre-verbal for the new verbs too (§9.10)
     let dict = core_dictionary();
-    assert_eq!(
-        canonical("0:14 @ ANA STUDY THE_MANIFEST", &dict),
-        "0:14 @ ANA STUDY THE_MANIFEST"
-    );
+    assert_eq!(canonical("0:14 @ ANA STUDY THE_MANIFEST", &dict), "0:14 @ ANA STUDY THE_MANIFEST");
     assert_eq!(
         canonical("0:14 @ ANA STUDY THE_MANIFEST AT HOUSE", &dict),
         "0:14 @ ANA AT HOUSE STUDY THE_MANIFEST"

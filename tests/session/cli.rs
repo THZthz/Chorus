@@ -84,10 +84,7 @@ fn reach_empty_string_demand_degrades_to_name_mode() {
     let (code, stdout, stderr) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER", "--demand", ""]);
     assert_eq!(code, Some(0), "{stderr}");
     assert_eq!(code, plain_code);
-    assert_eq!(
-        stdout, plain_out,
-        "the empty demand must not change the output"
-    );
+    assert_eq!(stdout, plain_out, "the empty demand must not change the output");
 }
 
 /// a bad demand query is an uncaught parse error: the
@@ -108,12 +105,8 @@ fn reach_bad_demand_exits_1_with_the_query_error() {
 /// fast run); progress/summary on stdout; exit 0 with no failures.
 #[test]
 fn reach_fuzz_flags_streams_and_exit_zero_when_sound() {
-    let (code, stdout, _stderr) = run(
-        "reach-fuzz",
-        &[
-            "--seeds", "3", "--from", "1", "--steps", "2", "--states", "60",
-        ],
-    );
+    let (code, stdout, _stderr) =
+        run("reach-fuzz", &["--seeds", "3", "--from", "1", "--steps", "2", "--states", "60"]);
     assert_eq!(code, Some(0), "{stdout}");
     // the summary line — the `×`/`≤` text is the frozen shape (the seconds
     // field is timing)
@@ -131,12 +124,8 @@ fn reach_fuzz_flags_streams_and_exit_zero_when_sound() {
 /// the per-50 progress line — `… 50/50 seeds, …`.
 #[test]
 fn reach_fuzz_progress_line_every_50_seeds() {
-    let (code, stdout, _stderr) = run(
-        "reach-fuzz",
-        &[
-            "--seeds", "50", "--from", "1", "--steps", "1", "--states", "20",
-        ],
-    );
+    let (code, stdout, _stderr) =
+        run("reach-fuzz", &["--seeds", "50", "--from", "1", "--steps", "1", "--states", "20"]);
     assert_eq!(code, Some(0), "{stdout}");
     assert!(stdout.contains("… 50/50 seeds, 0 failures"), "{stdout}");
 }
@@ -147,10 +136,7 @@ fn reach_fuzz_progress_line_every_50_seeds() {
 fn lint_scripts_is_clean_on_the_bundled_script_and_exits_zero() {
     let (code, stdout, stderr) = run("lint-scripts", &[SCRIPT]);
     assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(
-        stdout,
-        "scripts/the-nightjar-flyer.txt: clean\n\n1 file(s), 0 finding(s)\n"
-    );
+    assert_eq!(stdout, "scripts/the-nightjar-flyer.txt: clean\n\n1 file(s), 0 finding(s)\n");
 }
 
 /// a missing input is an uncaught throw: exit 1 (the header's "exit
@@ -183,16 +169,10 @@ fn lint_scripts_missing_scripts_dir_names_the_directory() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), "");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.starts_with(&format!(
-            "Error: no 'scripts' directory under '{}'",
-            dir.display()
-        )),
+        stderr.starts_with(&format!("Error: no 'scripts' directory under '{}'", dir.display())),
         "{stderr}"
     );
-    assert!(
-        stderr.contains("name files: lint-scripts [file.txt ...]"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("name files: lint-scripts [file.txt ...]"), "{stderr}");
 }
 
 /// the `--worker i k P R` sharded interface: names `idx % k === i` of a
@@ -211,15 +191,7 @@ fn reach_scale_worker_shard_and_namestat_interface() {
     let arr = stats.as_array().expect("a JSON array of NameStat");
     assert!(!arr.is_empty(), "shard 1 of 3 over 20 protos is non-empty");
     // the frozen key ORDER
-    const FIELDS: [&str; 7] = [
-        "name",
-        "ms",
-        "verdict",
-        "existence",
-        "roots",
-        "nodes",
-        "depth",
-    ];
+    const FIELDS: [&str; 7] = ["name", "ms", "verdict", "existence", "roots", "nodes", "depth"];
     for st in arr {
         let obj = st.as_object().expect("an object");
         let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
@@ -235,9 +207,7 @@ fn reach_scale_worker_shard_and_namestat_interface() {
         .filter(|(idx, _)| idx % 3 == 1)
         .map(|(_, n)| n.clone())
         .collect();
-    let worker_names: Vec<String> = arr
-        .iter()
-        .map(|st| st["name"].as_str().expect("name").to_string())
-        .collect();
+    let worker_names: Vec<String> =
+        arr.iter().map(|st| st["name"].as_str().expect("name").to_string()).collect();
     assert_eq!(worker_names, mine);
 }

@@ -72,10 +72,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -92,13 +89,10 @@ fn said(r: &ExecResult) -> Vec<String> {
         .iter()
         .filter(|x| x.kind == "complete")
         .flat_map(|x| {
-            x.outcomes
-                .iter()
-                .filter(|o| o.op == "NARRATE")
-                .map(|o| match o.args.first() {
-                    Some(Arg::Str { v }) => v.clone(),
-                    _ => "(not a string)".to_string(),
-                })
+            x.outcomes.iter().filter(|o| o.op == "NARRATE").map(|o| match o.args.first() {
+                Some(Arg::Str { v }) => v.clone(),
+                _ => "(not a string)".to_string(),
+            })
         })
         .collect()
 }
@@ -205,35 +199,21 @@ fn world() -> State {
         "character",
         "ANA",
         Aspects::new(),
-        [(
-            "container".to_string(),
-            AttrValue::Str("s_house".to_string()),
-        )]
-        .into_iter()
-        .collect(),
+        [("container".to_string(), AttrValue::Str("s_house".to_string()))].into_iter().collect(),
     );
     card(
         "s_the_guard",
         "character",
         "THE_GUARD",
         Aspects::new(),
-        [(
-            "container".to_string(),
-            AttrValue::Str("s_house".to_string()),
-        )]
-        .into_iter()
-        .collect(),
+        [("container".to_string(), AttrValue::Str("s_house".to_string()))].into_iter().collect(),
     );
     card(
         "s_tome",
         "text",
         "TOME",
-        [("secret".to_string(), AspectVal::Num(1))]
-            .into_iter()
-            .collect(),
-        [("container".to_string(), AttrValue::Str("s_ana".to_string()))]
-            .into_iter()
-            .collect(),
+        [("secret".to_string(), AspectVal::Num(1))].into_iter().collect(),
+        [("container".to_string(), AttrValue::Str("s_ana".to_string()))].into_iter().collect(),
     );
     s
 }
@@ -266,11 +246,7 @@ fn raw_table(dict: &Dictionary, defs: &[FunctionDef]) -> FnTable {
     for d in defs {
         table.by_name.insert(
             d.name.clone(),
-            FnTemplate {
-                name: d.name.clone(),
-                params: d.params.clone(),
-                body: vec![],
-            },
+            FnTemplate { name: d.name.clone(), params: d.params.clone(), body: vec![] },
         );
     }
     for d in defs {
@@ -313,10 +289,7 @@ fn rig(dict: &Dictionary, functions: Vec<FunctionDef>, recipe: &str) -> Compiled
             endings: Some(
                 [(
                     "ARRESTED".to_string(),
-                    EndingDef {
-                        title: "Taken by the constabulary".to_string(),
-                        flavour: None,
-                    },
+                    EndingDef { title: "Taken by the constabulary".to_string(), flavour: None },
                 )]
                 .into_iter()
                 .collect(),
@@ -333,16 +306,9 @@ fn rig(dict: &Dictionary, functions: Vec<FunctionDef>, recipe: &str) -> Compiled
 fn chain(n: usize) -> Vec<FunctionDef> {
     (0..n)
         .map(|i| {
-            let body = if i + 1 < n {
-                format!("f{}()", i + 2)
-            } else {
-                "NARRATE \"bottom.\"".to_string()
-            };
-            FunctionDef {
-                name: format!("f{}", i + 1),
-                params: vec![],
-                body,
-            }
+            let body =
+                if i + 1 < n { format!("f{}()", i + 2) } else { "NARRATE \"bottom.\"".to_string() };
+            FunctionDef { name: format!("f{}", i + 1), params: vec![], body }
         })
         .collect()
 }
@@ -383,10 +349,7 @@ mod expansion_equivalence {
         );
         // and the substitution really did land: the interpolated spelling,
         // the spawned pool, and the taken watch arm are all there
-        assert_eq!(
-            said(&ra),
-            ["The conductor's eyes linger on THE_GUARD.", "not yet."]
-        );
+        assert_eq!(said(&ra), ["The conductor's eyes linger on THE_GUARD.", "not yet."]);
         assert_eq!(ra.state.by_name.get("SUSPICION").unwrap().len(), 1);
         assert_eq!(
             snap(&fold(&ra.records, &call_state, &dict, &call.content).unwrap()),
@@ -472,19 +435,12 @@ mod parameter_substitution {
     #[test]
     fn ref_position_a_param_mints_whatever_prototype_the_call_names() {
         let dict = stew_dict();
-        let c = rig(
-            &dict,
-            vec![fdef("mint", &["card"], "SPAWN card")],
-            "mint(SUSPICION)",
-        );
+        let c = rig(&dict, vec![fdef("mint", &["card"], "SPAWN card")], "mint(SUSPICION)");
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
         assert_eq!(r.rejected, None);
         let spawn = &done(&r).unwrap().outcomes[0];
         assert_eq!(spawn.op, "SPAWN");
-        let Arg::Ref {
-            r#ref: Ref::Name { name, kind },
-        } = &spawn.args[0]
-        else {
+        let Arg::Ref { r#ref: Ref::Name { name, kind } } = &spawn.args[0] else {
             panic!("expected a name ref, got {:?}", spawn.args[0]);
         };
         assert_eq!(name, "SUSPICION");
@@ -520,10 +476,7 @@ mod parameter_substitution {
                 serde_json::json!({ "t": "int", "v": -1 }),
             ]
         );
-        assert_eq!(
-            r.state.entities["s_tome"].aspects.get("secret"),
-            Some(&AspectVal::Num(-1))
-        );
+        assert_eq!(r.state.entities["s_tome"].aspects.get("secret"), Some(&AspectVal::Num(-1)));
     }
 
     #[test]
@@ -531,11 +484,7 @@ mod parameter_substitution {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef(
-                "cry",
-                &["msg", "who"],
-                "NARRATE msg, NARRATE(\"so does {who}.\")",
-            )],
+            vec![fdef("cry", &["msg", "who"], "NARRATE msg, NARRATE(\"so does {who}.\")")],
             "cry(\"halt!\", THE_GUARD)",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
@@ -611,10 +560,7 @@ mod parameter_substitution {
             &dict,
             &[],
         );
-        assert!(
-            prose.is_ok(),
-            "commas inside braces are ordinary prose: {prose:?}"
-        );
+        assert!(prose.is_ok(), "commas inside braces are ordinary prose: {prose:?}");
     }
 
     #[test]
@@ -649,11 +595,7 @@ mod parameter_substitution {
         let dict = stew_dict();
         // DESTROY of a value literal would iterate nothing (iteration-style
         // op); SPAWN actually needs its name ref, so the mismatch refuses
-        let c = rig(
-            &dict,
-            vec![fdef("mint", &["card"], "SPAWN card")],
-            "mint(7)",
-        );
+        let c = rig(&dict, vec![fdef("mint", &["card"], "SPAWN card")], "mint(7)");
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
         assert_eq!(r.rejected, None);
         assert_refusal_matches(&r, r"SPAWN needs a name ref");
@@ -679,18 +621,11 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef(
-                "decay",
-                &["p"],
-                "SPAWN SUSPICION ttl=p, NARRATE \"minted.\"",
-            )],
+            vec![fdef("decay", &["p"], "SPAWN SUSPICION ttl=p, NARRATE \"minted.\"")],
             "decay(2h)",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
-        assert_eq!(
-            r.rejected, None,
-            "the expansion compiles and runs to completion"
-        );
+        assert_eq!(r.rejected, None, "the expansion compiles and runs to completion");
         assert_refusal_matches(
             &r,
             r"a bare dur arg is not a SPAWN arg shape — a §9\.40 parameter standing in a k=v pair position expands to the caller's whole bound value",
@@ -706,11 +641,7 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef(
-                "tag",
-                &["p"],
-                "SPAWN SUSPICION note=p, NARRATE \"minted.\"",
-            )],
+            vec![fdef("tag", &["p"], "SPAWN SUSPICION note=p, NARRATE \"minted.\"")],
             "tag(\"soon\")",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
@@ -729,11 +660,7 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         let dict = stew_dict();
         let c = rig(
             &dict,
-            vec![fdef(
-                "decay",
-                &[],
-                "SPAWN SUSPICION expires 2h, NARRATE \"minted.\"",
-            )],
+            vec![fdef("decay", &[], "SPAWN SUSPICION expires 2h, NARRATE \"minted.\"")],
             "decay()",
         );
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
@@ -751,10 +678,7 @@ fn assert_refusal_matches(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(
-        re.is_match(&msg),
-        "refusal {msg:?} does not match /{pattern}/"
-    );
+    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
 // ---------- nesting, recursion, depth --------------------------------------
@@ -834,11 +758,7 @@ mod nesting_recursion_and_the_depth_cap {
         let dict = stew_dict();
         let verb = rig_verb(&["f1()"]);
         let eight = compile_content(
-            &ContentRaw {
-                verbs: verb.clone(),
-                functions: Some(chain(8)),
-                ..ContentRaw::default()
-            },
+            &ContentRaw { verbs: verb.clone(), functions: Some(chain(8)), ..ContentRaw::default() },
             &dict,
             &[],
         )
@@ -847,11 +767,7 @@ mod nesting_recursion_and_the_depth_cap {
         assert_eq!(said(&r), ["bottom."]);
         assert_err_msg(
             compile_content(
-                &ContentRaw {
-                    verbs: verb,
-                    functions: Some(chain(9)),
-                    ..ContentRaw::default()
-                },
+                &ContentRaw { verbs: verb, functions: Some(chain(9)), ..ContentRaw::default() },
                 &dict,
                 &[],
             ),
@@ -961,27 +877,17 @@ verbs:
         let c_state = clone_state(&c.state);
         let r = run(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1);
         assert_eq!(r.rejected, None);
-        let event = r
-            .records
-            .iter()
-            .find(|x| x.kind == "event")
-            .expect("the patrol event");
+        let event = r.records.iter().find(|x| x.kind == "event").expect("the patrol event");
         assert_eq!(event.trigger.as_deref(), Some("patrol"));
         // the trigger's narration reads straight off the EVENT row's outcomes
-        let narrate = event
-            .outcomes
-            .iter()
-            .find(|o| o.op == "NARRATE")
-            .expect("the NARRATE outcome");
+        let narrate =
+            event.outcomes.iter().find(|o| o.op == "NARRATE").expect("the NARRATE outcome");
         let Arg::Str { v } = &narrate.args[0] else {
             panic!("NARRATE arg is a string");
         };
         assert_eq!(v, "The conductor's eyes linger on THE_GUARD.");
         assert_eq!(r.state.by_name.get("SUSPICION").unwrap().len(), 1);
-        assert_eq!(
-            snap(&fold(&r.records, &c_state, &dict, &c.content).unwrap()),
-            snap(&r.state)
-        );
+        assert_eq!(snap(&fold(&r.records, &c_state, &dict, &c.content).unwrap()), snap(&r.state));
     }
 
     #[test]
@@ -1246,15 +1152,9 @@ mod if_inside_a_function_body {
         assert_eq!(ended.title, "Taken by the constabulary");
         assert_eq!(ended.flavour, "melancholy");
         let over = run(&c.content, &dict, cur, "0:0 @ ANA STEW", id);
-        assert!(over
-            .rejected
-            .as_deref()
-            .is_some_and(|m| m.contains("the story has ended")));
+        assert!(over.rejected.as_deref().is_some_and(|m| m.contains("the story has ended")));
         // and the whole run folds back identically
-        assert_eq!(
-            snap(&fold(&all, &c_state, &dict, &c.content).unwrap()),
-            snap(&over.state)
-        );
+        assert_eq!(snap(&fold(&all, &c_state, &dict, &c.content).unwrap()), snap(&over.state));
     }
 }
 
@@ -1280,10 +1180,7 @@ mod canonical_equals_expansion {
         let dump = serde_json::to_string(&all).unwrap();
         let call_text = regex::Regex::new(r"\b(sus|watch)\(").unwrap();
         assert!(!call_text.is_match(&dump), "no call text anywhere: {dump}");
-        assert!(
-            !dump.contains("\"FN\""),
-            "the authored op never reaches a record"
-        );
+        assert!(!dump.contains("\"FN\""), "the authored op never reaches a record");
         for rec in &all {
             // canonical sentences re-parse to themselves (every outcome is concrete)
             let parsed = parse_sentence(&rec.sentence, &dict).unwrap();
@@ -1326,10 +1223,7 @@ mod canonical_equals_expansion {
             clauses: vec![],
             outcomes: vec![Outcome {
                 op: "SPAWN".to_string(),
-                args: vec![Arg::Param {
-                    name: "x".to_string(),
-                    sign: None,
-                }],
+                args: vec![Arg::Param { name: "x".to_string(), sign: None }],
                 arms: None,
                 fallback: None,
                 call: None,

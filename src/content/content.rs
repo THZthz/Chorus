@@ -452,30 +452,19 @@ pub fn compile_content(
     for (id, e) in entries_in_key_order(raw.endings.as_ref().unwrap_or(&IndexMap::new())) {
         let re = ending_id_re();
         if !re.is_match(id) {
-            return Err(ChorusError::new(format!(
-                "ending '{id}' must be UPPER_SNAKE"
-            )));
+            return Err(ChorusError::new(format!("ending '{id}' must be UPPER_SNAKE")));
         }
         if e.title.is_empty() || dsl_trim(&e.title).is_empty() {
             return Err(ChorusError::new(format!("ending {id}: needs a title")));
         }
-        let flavour = e
-            .flavour
-            .clone()
-            .unwrap_or_else(|| "melancholy".to_string());
+        let flavour = e.flavour.clone().unwrap_or_else(|| "melancholy".to_string());
         let re = flavour_re();
         if !re.is_match(&flavour) {
             return Err(ChorusError::new(format!(
                 "ending {id}: flavour must be a lowercase word, got '{flavour}'"
             )));
         }
-        endings.insert(
-            id.to_string(),
-            CompiledEnding {
-                title: e.title.clone(),
-                flavour,
-            },
-        );
+        endings.insert(id.to_string(), CompiledEnding { title: e.title.clone(), flavour });
     }
     // §9.42: the deck table — spec entries resolve against prototypes +
     // declared entities, then the seed-fixed permutation is derived
@@ -542,18 +531,14 @@ pub fn compile_content(
             };
             // id-less recipes mint the 0-based `.recipe<i>` (§6.4) — the
             // one mint, shared verbatim by the lint mirror (Q1 unified)
-            let id =
-                r.id.clone()
-                    .unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
+            let id = r.id.clone().unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
             // §9.50: N ≥ 1 — a `max 0` (or negative) can never fire, so it
             // fails loudly at load instead (the script parser checks its own
             // token; this guards the code-level ContentRaw face, like the
             // slot max<min check above)
             if let Some(m) = r.max {
                 if m < 1 {
-                    return Err(ChorusError::new(format!(
-                        "verb {name}: recipe {id} has max < 1"
-                    )));
+                    return Err(ChorusError::new(format!("verb {name}: recipe {id} has max < 1")));
                 }
             }
             let mut out = Vec::new();
@@ -913,9 +898,7 @@ fn check_ending_refs(
             return Ok(());
         }
         let id = match o.args.first() {
-            Some(Arg::Ref {
-                r#ref: Ref::Name { name, .. },
-            }) => Some(name.as_str()),
+            Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.as_str()),
             _ => None,
         };
         if !id.is_some_and(|id| endings.contains_key(id)) {
@@ -941,9 +924,7 @@ fn check_deck_refs(
             return Ok(());
         }
         let id = match o.args.first() {
-            Some(Arg::Ref {
-                r#ref: Ref::Name { name, .. },
-            }) => Some(name.as_str()),
+            Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.as_str()),
             _ => None,
         };
         if !id.is_some_and(|id| decks.contains_key(id)) {
@@ -969,9 +950,7 @@ fn check_run_refs(where_: &str, out: &[Outcome], verb: &CompiledVerb) -> Result<
         }
         for a in &o.args {
             let id = match a {
-                Arg::Ref {
-                    r#ref: Ref::Name { name, .. },
-                } => name,
+                Arg::Ref { r#ref: Ref::Name { name, .. } } => name,
                 _ => {
                     return Err(ChorusError::new(format!(
                         "{where_}: RUN takes quoted-string recipe ids: RUN \"id\" [, \"id\" …]"
@@ -1016,16 +995,10 @@ fn compile_decks(
     // SPAWN would mint)
     let resolve = |deck: &str, what: &str, name: &str| -> Result<DeckCard> {
         if let Some(proto) = prototypes.get(name) {
-            return Ok(DeckCard {
-                name: name.to_string(),
-                kind: proto.kind.clone(),
-            });
+            return Ok(DeckCard { name: name.to_string(), kind: proto.kind.clone() });
         }
         if let Some(kind) = entity_kinds.get(name) {
-            return Ok(DeckCard {
-                name: name.to_string(),
-                kind: (*kind).to_string(),
-            });
+            return Ok(DeckCard { name: name.to_string(), kind: (*kind).to_string() });
         }
         Err(ChorusError::new(format!(
             "deck {deck}: {what} '{name}' is neither a declared prototype nor an entity"
@@ -1035,10 +1008,7 @@ fn compile_decks(
     for d in raws {
         let re = upper_snake_re();
         if !re.is_match(&d.id) {
-            return Err(ChorusError::new(format!(
-                "deck '{}' must be UPPER_SNAKE",
-                d.id
-            )));
+            return Err(ChorusError::new(format!("deck '{}' must be UPPER_SNAKE", d.id)));
         }
         if dict.reserved.contains(&d.id) {
             return Err(ChorusError::new(format!(
@@ -1050,10 +1020,7 @@ fn compile_decks(
             return Err(ChorusError::new(format!("duplicate deck '{}'", d.id)));
         }
         if d.spec.is_empty() {
-            return Err(ChorusError::new(format!(
-                "deck {}: the spec is empty",
-                d.id
-            )));
+            return Err(ChorusError::new(format!("deck {}: the spec is empty", d.id)));
         }
         let mut entries = Vec::with_capacity(d.spec.len());
         for name in &d.spec {
@@ -1069,12 +1036,7 @@ fn compile_decks(
             .collect();
         decks.insert(
             d.id.clone(),
-            CompiledDeck {
-                id: d.id.clone(),
-                order,
-                defaultcard,
-                reset: d.reset,
-            },
+            CompiledDeck { id: d.id.clone(), order, defaultcard, reset: d.reset },
         );
     }
     Ok(decks)
@@ -1129,9 +1091,7 @@ pub fn permute_positions(n: usize, seed: i64, deck_id: &str) -> Vec<usize> {
 pub fn draw_from(deck: &CompiledDeck, cursor: i64) -> Result<DeckCard> {
     if cursor < 0 {
         debug_assert!(false, "negative deck cursor {cursor} is unreachable");
-        return Err(ChorusError::new(format!(
-            "internal: negative deck cursor {cursor}"
-        )));
+        return Err(ChorusError::new(format!("internal: negative deck cursor {cursor}")));
     }
     if cursor < deck.order.len() as i64 {
         return Ok(deck.order[cursor as usize].clone());
@@ -1235,10 +1195,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
             )));
         }
         if table.by_name.contains_key(&def.name) {
-            return Err(ChorusError::new(format!(
-                "duplicate function '{}'",
-                def.name
-            )));
+            return Err(ChorusError::new(format!("duplicate function '{}'", def.name)));
         }
         for p in &def.params {
             if !fn_ident_re().is_match(p) {
@@ -1266,11 +1223,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
         }
         table.by_name.insert(
             def.name.clone(),
-            FnTemplate {
-                name: def.name.clone(),
-                params: def.params.clone(),
-                body: Vec::new(),
-            },
+            FnTemplate { name: def.name.clone(), params: def.params.clone(), body: Vec::new() },
         );
     }
     // pass 2 — bodies (nested-call arity checks against the declared params)
@@ -1280,10 +1233,7 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
         let body = match parse_function_body(&def.body, dict, &table, &def.params) {
             Ok(b) => b,
             Err(err) => {
-                return Err(ChorusError::new(format!(
-                    "function '{}': {}",
-                    def.name, err.msg
-                )))
+                return Err(ChorusError::new(format!("function '{}': {}", def.name, err.msg)))
             }
         };
         // pass 1 inserted it
@@ -1402,10 +1352,7 @@ mod tests {
         assert_eq!(permute_positions(7, -3, "NEG"), vec![4, 0, 2, 6, 3, 1, 5]);
         let deck = CompiledDeck {
             id: "SINGLES".into(),
-            order: vec![DeckCard {
-                name: "HEARSAY".into(),
-                kind: "idea".into(),
-            }],
+            order: vec![DeckCard { name: "HEARSAY".into(), kind: "idea".into() }],
             defaultcard: None,
             reset: false,
         };
@@ -1431,10 +1378,8 @@ mod tests {
         m.insert("container".to_string(), 1);
         m.insert("5".to_string(), 2);
         m.insert("0".to_string(), 3);
-        let got: Vec<(&str, i64)> = entries_in_key_order(&m)
-            .into_iter()
-            .map(|(k, v)| (k, *v))
-            .collect();
+        let got: Vec<(&str, i64)> =
+            entries_in_key_order(&m).into_iter().map(|(k, v)| (k, *v)).collect();
         assert_eq!(got, [("0", 3), ("5", 2), ("container", 1)]);
     }
 

@@ -38,19 +38,10 @@ use indexmap::IndexMap;
 
 fn endings_table() -> IndexMap<String, EndingDef> {
     [
-        (
-            "DESPAIR_DEATH",
-            EndingDef {
-                title: "No More".into(),
-                flavour: None,
-            },
-        ),
+        ("DESPAIR_DEATH", EndingDef { title: "No More".into(), flavour: None }),
         (
             "LANTERN_VICTORY",
-            EndingDef {
-                title: "The Light in the Ruins".into(),
-                flavour: Some("grand".into()),
-            },
+            EndingDef { title: "The Light in the Ruins".into(), flavour: Some("grand".into()) },
         ),
     ]
     .into_iter()
@@ -118,10 +109,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(chorus::core::types::Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(chorus::core::types::Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -138,10 +126,7 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
         .as_deref()
         .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(
-        re.is_match(msg),
-        "rejected {msg:?} does not match /{pattern}/"
-    );
+    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
 fn ops(rec: &ActionRecord) -> Vec<&str> {
@@ -309,28 +294,13 @@ mod the_endings_script_section {
             let mut endings = IndexMap::new();
             endings.insert(
                 id.to_string(),
-                EndingDef {
-                    title: title.to_string(),
-                    flavour: flavour.map(str::to_string),
-                },
+                EndingDef { title: title.to_string(), flavour: flavour.map(str::to_string) },
             );
-            ContentRaw {
-                endings: Some(endings),
-                ..ContentRaw::default()
-            }
+            ContentRaw { endings: Some(endings), ..ContentRaw::default() }
         };
-        assert_err_msg(
-            compile_content(&ending("nope", "x", None), &dict, &[]),
-            r"UPPER_SNAKE",
-        );
-        assert_err_msg(
-            compile_content(&ending("NOPE", "", None), &dict, &[]),
-            r"needs a title",
-        );
-        assert_err_msg(
-            compile_content(&ending("NOPE", "   ", None), &dict, &[]),
-            r"needs a title",
-        );
+        assert_err_msg(compile_content(&ending("nope", "x", None), &dict, &[]), r"UPPER_SNAKE");
+        assert_err_msg(compile_content(&ending("NOPE", "", None), &dict, &[]), r"needs a title");
+        assert_err_msg(compile_content(&ending("NOPE", "   ", None), &dict, &[]), r"needs a title");
         assert_err_msg(
             compile_content(&ending("NOPE", "x", Some("Grand")), &dict, &[]),
             r"lowercase word",
@@ -340,12 +310,8 @@ mod the_endings_script_section {
     #[test]
     fn two_scripts_compiled_side_by_side_keep_separate_ending_tables_no_bleed() {
         let dict = core_dictionary();
-        let a = compile_script("endings:\n  ONLY_A: \"A Title\"\n", &dict)
-            .unwrap()
-            .content;
-        let b = compile_script("endings:\n  ONLY_B: \"B Title\"\n", &dict)
-            .unwrap()
-            .content;
+        let a = compile_script("endings:\n  ONLY_A: \"A Title\"\n", &dict).unwrap().content;
+        let b = compile_script("endings:\n  ONLY_B: \"B Title\"\n", &dict).unwrap().content;
         assert!(a.endings.contains_key("ONLY_A"));
         assert!(!a.endings.contains_key("ONLY_B"));
         assert!(!b.endings.contains_key("ONLY_A"));
@@ -380,10 +346,7 @@ mod the_endings_script_section {
                     endings: Some(
                         [(
                             "ONLY_A".to_string(),
-                            EndingDef {
-                                title: "A Title".into(),
-                                flavour: None,
-                            },
+                            EndingDef { title: "A Title".into(), flavour: None },
                         )]
                         .into_iter()
                         .collect(),
@@ -412,10 +375,7 @@ mod the_ending_outcome_paren_less_round_tripping {
             chorus::core::sentence::Outcome {
                 op: "ENDING".into(),
                 args: vec![Arg::Ref {
-                    r#ref: Ref::Name {
-                        kind: None,
-                        name: "DESPAIR_DEATH".into(),
-                    }
+                    r#ref: Ref::Name { kind: None, name: "DESPAIR_DEATH".into() }
                 }],
                 arms: None,
                 fallback: None,
@@ -428,10 +388,7 @@ mod the_ending_outcome_paren_less_round_tripping {
         );
         // quoted ids round-trip too (an id that collides with a reserved word)
         let q = parse_sentence("0:0 @ ANA WAIT -> ENDING \"WAIT\"", &dict).unwrap();
-        assert_eq!(
-            format_sentence(&q, Some(&dict)).unwrap(),
-            "0:0 @ ANA WAIT -> ENDING \"WAIT\""
-        );
+        assert_eq!(format_sentence(&q, Some(&dict)).unwrap(), "0:0 @ ANA WAIT -> ENDING \"WAIT\"");
     }
 
     #[test]
@@ -489,9 +446,7 @@ mod a_recipe_that_ends_the_story {
         let r = run(&content, &dict, state, "0:28 @ ANA WAIT", 1);
         let rec = done(&r).unwrap();
         assert!(rec.outcomes.iter().any(|o| o.op == "ENDING"));
-        assert!(rec
-            .sentence
-            .contains("-> NARRATE \"The candle gutters.\", ENDING DESPAIR_DEATH"));
+        assert!(rec.sentence.contains("-> NARRATE \"The candle gutters.\", ENDING DESPAIR_DEATH"));
         assert_eq!(
             format_sentence(&parse_sentence(&rec.sentence, &dict).unwrap(), Some(&dict)).unwrap(),
             rec.sentence
@@ -531,13 +486,7 @@ mod a_recipe_that_ends_the_story {
         // reference identity `r2.state === r1.state` — execute_step hands
         // the ORIGINAL back untouched on a rejection, so snap equality IS the
         // semantic content of the check
-        let r2 = run(
-            &content,
-            &dict,
-            clone_state(&r1.state),
-            "0:30 @ ANA WAIT",
-            2,
-        );
+        let r2 = run(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT", 2);
         assert_rejected(&r2, r"the story has ended — No More");
         assert_eq!(r2.records.len(), 0);
         assert_eq!(snap(&r2.state), before);
@@ -578,20 +527,8 @@ mod a_recipe_that_ends_the_story {
         // would both get past their own checks — the ended guard must precede
         // them
         let mut attempts: Vec<ExecResult> = vec![
-            run(
-                &content,
-                &dict,
-                clone_state(&r1.state),
-                "0:10 @ ANA WAIT",
-                2,
-            ),
-            run(
-                &content,
-                &dict,
-                clone_state(&r1.state),
-                "0:30 @ ANA WAIT; ANA WAIT",
-                2,
-            ),
+            run(&content, &dict, clone_state(&r1.state), "0:10 @ ANA WAIT", 2),
+            run(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT; ANA WAIT", 2),
         ];
         // an EVENT-typed sentence reaches execute_step with zero clauses
         // (canonical passthrough)
@@ -603,17 +540,13 @@ mod a_recipe_that_ends_the_story {
                 clone_state(&r1.state),
                 Step {
                     start_min: None,
-                    clock: Some(ev.clock.unwrap_or(chorus::core::types::Clock {
-                        day: 0,
-                        halfhour: 0,
-                    })),
+                    clock: Some(
+                        ev.clock.unwrap_or(chorus::core::types::Clock { day: 0, halfhour: 0 }),
+                    ),
                     clauses: ev.clauses,
                     t_real: None,
                 },
-                ExecOptions {
-                    first_record_id: 2,
-                    id_gen: None,
-                },
+                ExecOptions { first_record_id: 2, id_gen: None },
             )
             .unwrap(),
         );
@@ -632,13 +565,7 @@ mod a_recipe_that_ends_the_story {
         let state = seed_state();
         let r1 = run(&content, &dict, state, "0:28 @ ANA WAIT", 1);
         // rejected; nothing logged
-        let r2 = run(
-            &content,
-            &dict,
-            clone_state(&r1.state),
-            "0:30 @ ANA WAIT",
-            2,
-        );
+        let r2 = run(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT", 2);
         assert_eq!(r2.records.len(), 0);
         let dir = std::env::temp_dir().join(format!("chorus-endings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -672,18 +599,12 @@ mod events_may_end_the_game {
             id: "despair".into(),
             slot: 32, // 16:00
             once: None,
-            out: vec![
-                "SPAWN DREAD".to_string(),
-                "ENDING DESPAIR_DEATH".to_string(),
-            ],
+            out: vec!["SPAWN DREAD".to_string(), "ENDING DESPAIR_DEATH".to_string()],
         })]);
         let mut prototypes = IndexMap::new();
         prototypes.insert(
             "DREAD".to_string(),
-            PrototypeDef {
-                kind: "state".into(),
-                ..PrototypeDef::default()
-            },
+            PrototypeDef { kind: "state".into(), ..PrototypeDef::default() },
         );
         raw.prototypes = Some(prototypes);
         let c = compile_content(&raw, &dict, &[]).unwrap();
@@ -691,11 +612,7 @@ mod events_may_end_the_game {
         // 15:00 → 16:00, crossing slot 32
         let r = run(&c, &dict, state, "0:30 @ ANA WAIT", 1);
         assert_eq!(r.rejected, None);
-        let event = r
-            .records
-            .iter()
-            .find(|x| x.kind == "event")
-            .expect("the trigger fired");
+        let event = r.records.iter().find(|x| x.kind == "event").expect("the trigger fired");
         assert_eq!(event.trigger.as_deref(), Some("despair"));
         assert!(event.outcomes.iter().any(|o| o.op == "ENDING"));
         assert_eq!(
@@ -735,24 +652,11 @@ mod events_may_end_the_game {
             .attrs
             .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:30
                                                                        // 14:00 → 16:00, expiry at 15:00
-        let r = run(
-            &c,
-            &dict,
-            clone_state(&base),
-            "0:28 @ ANA WAIT; ANA WAIT",
-            1,
-        );
+        let r = run(&c, &dict, clone_state(&base), "0:28 @ ANA WAIT; ANA WAIT", 1);
         assert_eq!(r.rejected, None);
-        let event = r
-            .records
-            .iter()
-            .find(|x| x.kind == "event")
-            .expect("the expiry fired");
+        let event = r.records.iter().find(|x| x.kind == "event").expect("the expiry fired");
         assert_eq!(event.trigger.as_deref(), Some("the_lights_go_out"));
-        assert_eq!(
-            r.state.entities.get("chalice").unwrap().dead_action,
-            Some(event.id)
-        );
+        assert_eq!(r.state.entities.get("chalice").unwrap().dead_action, Some(event.id));
         assert_eq!(
             ended_of(&r.state),
             Ending {
@@ -888,10 +792,7 @@ mod the_player_surface {
         let n_records = game.log.records.len();
         let turn = game.handle_line("wait").unwrap();
         assert_eq!(turn.kind, TurnKind::Info);
-        assert_eq!(
-            turn.lines,
-            vec![ending_notice(game.state.ended.as_ref().unwrap())]
-        );
+        assert_eq!(turn.lines, vec![ending_notice(game.state.ended.as_ref().unwrap())]);
         assert_eq!(game.log.records.len(), n_records); // nothing logged
         assert_eq!(game.suggestions().unwrap(), Vec::<String>::new());
     }

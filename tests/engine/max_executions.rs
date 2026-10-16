@@ -91,10 +91,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock {
-                day: 0,
-                halfhour: 0,
-            })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -197,10 +194,7 @@ fn a_window_that_refuses_at_completion_still_counted() {
     );
     let base = clone_state(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
-    assert_eq!(
-        r.rejected, None,
-        "the BEGIN succeeds — the refusal is deferred"
-    );
+    assert_eq!(r.rejected, None, "the BEGIN succeeds — the refusal is deferred");
     let complete = done(&r).unwrap();
     let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["SPAWN", "REFUSE"]);
@@ -208,10 +202,7 @@ fn a_window_that_refuses_at_completion_still_counted() {
     // the window refused — no TRINKET survives the discarded draft…
     assert!(!r.state.entities.values().any(|e| e.name == "TRINKET"));
     // …but the registration at begin already counted
-    assert_eq!(
-        executed_entries(&r.state),
-        vec![("wait.default".to_string(), 1)]
-    );
+    assert_eq!(executed_entries(&r.state), vec![("wait.default".to_string(), 1)]);
     // play and fold agree through the same registration path
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -311,10 +302,7 @@ fn max_zero_and_negative_are_load_errors_and_max_is_a_keyword_not_an_id() {
         .collect(),
         ..ContentRaw::default()
     };
-    assert_err_msg(
-        compile_content(&raw, &dict, &[]),
-        "verb WAIT: recipe wait.default has max < 1",
-    );
+    assert_err_msg(compile_content(&raw, &dict, &[]), "verb WAIT: recipe wait.default has max < 1");
 }
 
 /// The positional walk never drops a token: `hidden|shown` and `max N`
@@ -457,17 +445,11 @@ fn registration_at_begin_counts_while_the_window_is_still_open() {
         s,
         Step {
             start_min: None,
-            clock: Some(Clock {
-                day: 0,
-                halfhour: 0,
-            }),
+            clock: Some(Clock { day: 0, halfhour: 0 }),
             clauses: parsed.clauses,
             t_real: None,
         },
-        ExecOptions {
-            first_record_id: 1,
-            id_gen: Some(&mut id_gen),
-        },
+        ExecOptions { first_record_id: 1, id_gen: Some(&mut id_gen) },
     )
     .unwrap();
     assert_eq!(r.rejected, None);

@@ -72,9 +72,7 @@ fn int(r: &mut Lcg, n: usize) -> usize {
 /// the stream aligned).
 fn pick_template(r: &mut Lcg, arr: &[String]) -> String {
     let i = int(r, arr.len());
-    arr.get(i)
-        .cloned()
-        .unwrap_or_else(|| "undefined".to_string())
+    arr.get(i).cloned().unwrap_or_else(|| "undefined".to_string())
 }
 
 fn str_vec(vs: &[&str]) -> Vec<String> {
@@ -86,16 +84,8 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
 pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut rnd = lcg(0xc5);
 
-    const KINDS: [&str; 8] = [
-        "item",
-        "text",
-        "idea",
-        "resource",
-        "rite",
-        "state",
-        "place",
-        "character",
-    ];
+    const KINDS: [&str; 8] =
+        ["item", "text", "idea", "resource", "rite", "state", "place", "character"];
     const ASPECTS: [&str; 12] = [
         "lantern",
         "forge",
@@ -112,11 +102,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     ];
     // resources `R1`..`R20`
     let resources: Vec<String> = (1..=20).map(|i| format!("R{i}")).collect();
-    let kinds_non_char: Vec<&str> = KINDS
-        .iter()
-        .copied()
-        .filter(|k| *k != "character")
-        .collect();
+    let kinds_non_char: Vec<&str> = KINDS.iter().copied().filter(|k| *k != "character").collect();
 
     // the prototypes. `kind` for i < 30 is
     // 'character' with NO draw (the else branch never runs).
@@ -145,13 +131,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         let stackable = rnd.next_f64() >= 0.24;
         protos.insert(
             id,
-            PrototypeDef {
-                kind,
-                stackable,
-                aspects: Some(aspects),
-                attrs: None,
-                derive: None,
-            },
+            PrototypeDef { kind, stackable, aspects: Some(aspects), attrs: None, derive: None },
         );
     }
 
@@ -255,11 +235,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             // widely).
             let a = format!("SPAWN {}", pick_template(ctx.rnd, ctx.hubs));
             let b = format!("SPAWN {}", pick_template(ctx.rnd, ctx.proto_names));
-            out = if ctx.rnd.next_f64() < 0.5 {
-                vec![a, b]
-            } else {
-                vec![b, a]
-            };
+            out = if ctx.rnd.next_f64() < 0.5 { vec![a, b] } else { vec![b, a] };
         } else {
             // the ROLL/IF-exists/when pushes;
             // each guard draw happens before its template's draws
@@ -278,17 +254,12 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             if ctx.rnd.next_f64() < 0.1 {
                 let g = pick_template(ctx.rnd, ctx.proto_names);
                 let p = pick_template(ctx.rnd, ctx.proto_names);
-                out.push(format!(
-                    "IF exists({g}) -> (SPAWN {p}) ELSE -> (NARRATE \"nested\")"
-                ));
+                out.push(format!("IF exists({g}) -> (SPAWN {p}) ELSE -> (NARRATE \"nested\")"));
             }
             // the three `when` templates are
             // built EAGERLY (all their draws happen), then the pick draws
             if ctx.rnd.next_f64() < 0.25 {
-                let t1 = format!(
-                    "count(name:{}) >= 1",
-                    pick_template(ctx.rnd, ctx.proto_names)
-                );
+                let t1 = format!("count(name:{}) >= 1", pick_template(ctx.rnd, ctx.proto_names));
                 let t2 = format!("exists({})", pick_template(ctx.rnd, ctx.proto_names));
                 let a = ASPECTS[int(ctx.rnd, ASPECTS.len())];
                 let t3 = format!("actors.aspect.{a} >= {}", 1 + int(ctx.rnd, 4) as i64);
@@ -328,9 +299,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         }
         // duration picked from the weighted pool [0, 30, 60, 60, 60]
         let durations: [&str; 5] = ["0", "30", "60", "60", "60"];
-        let duration: i64 = durations[int(ctx.rnd, durations.len())]
-            .parse()
-            .expect("duration literal");
+        let duration: i64 =
+            durations[int(ctx.rnd, durations.len())].parse().expect("duration literal");
         verbs_raw.insert(
             name.clone(),
             VerbContent {
@@ -366,12 +336,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             None
         };
         let reset = rnd.next_f64() < 0.8;
-        decks.push(DeckRaw {
-            id: format!("D{}", i + 1),
-            spec,
-            defaultcard,
-            reset,
-        });
+        decks.push(DeckRaw { id: format!("D{}", i + 1), spec, defaultcard, reset });
     }
 
     // 8 season slot triggers + the expiry
@@ -393,23 +358,14 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         id: "t_expiry".to_string(),
         slot: 40,
         once: Some(true),
-        out: vec![format!(
-            "SPAWN {}",
-            proto_names[int(&mut rnd, proto_names.len())].clone()
-        )],
+        out: vec![format!("SPAWN {}", proto_names[int(&mut rnd, proto_names.len())].clone())],
     }));
     triggers.push(TriggerDef::Expire(ExpireTriggerDef {
         id: "t_big".to_string(),
         on_expire_of: "R1".to_string(),
         out: vec![
-            format!(
-                "SPAWN {}",
-                proto_names[int(&mut rnd, proto_names.len())].clone()
-            ),
-            format!(
-                "DESTROY {}",
-                resources[int(&mut rnd, resources.len())].clone()
-            ),
+            format!("SPAWN {}", proto_names[int(&mut rnd, proto_names.len())].clone()),
+            format!("DESTROY {}", resources[int(&mut rnd, resources.len())].clone()),
         ],
     }));
 
@@ -419,8 +375,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut dict = core_dictionary();
     for name in verbs_raw.keys() {
         if !dict.is_verb(name) {
-            dict.register_verb(name)
-                .expect("verb registration cannot fail here");
+            dict.register_verb(name).expect("verb registration cannot fail here");
         }
     }
     let raw = ContentRaw {
@@ -528,11 +483,7 @@ fn depth_of(p: &ReachPath, d: usize) -> usize {
 
 /// The require-tree node count (recursive).
 fn nodes_of(p: &ReachPath) -> usize {
-    1 + p
-        .requires
-        .iter()
-        .map(|r| r.paths.iter().map(nodes_of).sum::<usize>())
-        .sum::<usize>()
+    1 + p.requires.iter().map(|r| r.paths.iter().map(nodes_of).sum::<usize>()).sum::<usize>()
 }
 
 /// One `analyze_card` per name; `ms` is
@@ -582,10 +533,7 @@ pub fn summarize(stats: &[NameStat]) -> String {
         *verdicts.entry(st.verdict.as_str()).or_insert(0) += 1;
     }
     let verdicts_json = {
-        let parts: Vec<String> = verdicts
-            .iter()
-            .map(|(k, v)| format!("\"{k}\":{v}"))
-            .collect();
+        let parts: Vec<String> = verdicts.iter().map(|(k, v)| format!("\"{k}\":{v}")).collect();
         format!("{{{}}}", parts.join(","))
     };
     let total: f64 = times.iter().sum();

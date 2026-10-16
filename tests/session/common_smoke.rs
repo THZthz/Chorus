@@ -30,10 +30,7 @@ use chorus::engine::fold::fold;
 use indexmap::IndexMap;
 
 /// The store.rs test rig's PACE shape: one actor, one 30-minute window.
-fn pace_rig() -> (
-    chorus::core::dict::Dictionary,
-    chorus::content::content::CompiledContent,
-) {
+fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::content::CompiledContent) {
     let mut dict = core_dictionary();
     dict.register_verb("PACE").expect("PACE registers");
     let raw = chorus::content::content::ContentRaw {
@@ -79,8 +76,7 @@ fn solo(name: &str) -> State {
         dead_action: None,
         stackable: false,
     };
-    e.attrs
-        .insert("container".into(), AttrValue::Str("house".into()));
+    e.attrs.insert("container".into(), AttrValue::Str("house".into()));
     add_entity(&mut s, e).expect("fixture entity");
     s
 }
@@ -159,12 +155,7 @@ fn snap_matches_play_and_fold_through_a_settled_step() {
         &content,
         &dict,
         state,
-        Step {
-            start_min: None,
-            clock: sentence.clock,
-            clauses: sentence.clauses,
-            t_real: None,
-        },
+        Step { start_min: None, clock: sentence.clock, clauses: sentence.clauses, t_real: None },
         1,
         None,
     )
@@ -185,12 +176,7 @@ fn settle_completes_the_window_and_act_done_route() {
         &content,
         &dict,
         solo("ANA"),
-        Step {
-            start_min: None,
-            clock: sentence.clock,
-            clauses: sentence.clauses,
-            t_real: None,
-        },
+        Step { start_min: None, clock: sentence.clock, clauses: sentence.clauses, t_real: None },
         1,
         None,
     )
@@ -198,10 +184,7 @@ fn settle_completes_the_window_and_act_done_route() {
     assert!(r.rejected.is_none());
     let kinds: Vec<&str> = r.records.iter().map(|x| x.kind.as_str()).collect();
     assert!(kinds.contains(&"action"), "begin row present: {kinds:?}");
-    assert!(
-        kinds.contains(&"complete"),
-        "settled completion present: {kinds:?}"
-    );
+    assert!(kinds.contains(&"complete"), "settled completion present: {kinds:?}");
     // the begin row is the spine; the completion carries the narrate
     assert_eq!(act(&r).unwrap().kind, "action");
     assert_eq!(done(&r).unwrap().kind, "complete");
@@ -249,12 +232,7 @@ fn refusal_reads_the_authored_gate_and_the_turn_rolls_back() {
         &content,
         &dict,
         clone_state(&base),
-        Step {
-            start_min: None,
-            clock: sentence.clock,
-            clauses: sentence.clauses,
-            t_real: None,
-        },
+        Step { start_min: None, clock: sentence.clock, clauses: sentence.clauses, t_real: None },
         1,
         None,
     )
@@ -300,15 +278,9 @@ fn seed_content_compiles_and_seed_state_carries_the_world() {
     let ana = &s.entities["ana"];
     assert!(matches!(ana.aspects.get("occult"), Some(AspectVal::Num(2))));
     // the study card's self-named aspect (§9.14 reserved-lexeme dodge)
-    assert!(matches!(
-        s.entities["study"].aspects.get("study"),
-        Some(AspectVal::Num(1))
-    ));
+    assert!(matches!(s.entities["study"].aspects.get("study"), Some(AspectVal::Num(1))));
     // the pale lady carries a sub-map aspect (Q13 flat model)
-    assert!(matches!(
-        s.entities["pale"].aspects.get("language"),
-        Some(AspectVal::Sub(_))
-    ));
+    assert!(matches!(s.entities["pale"].aspects.get("language"), Some(AspectVal::Sub(_))));
     // ANA is BERTHA's parent — the one social edge, under its canonical key
     assert!(s.relations.contains_key("ana|bertha|parent_child"));
 }
@@ -325,13 +297,7 @@ fn the_win_path_plays_end_to_end_through_lenient_input() {
     // the case is closed: the story ended through the inquest
     assert!(states.last().unwrap().1.ended.is_some());
     // and the fold of the whole path reproduces the final state byte-for-byte
-    let replayed = fold(
-        &records,
-        &clone_state(&world.base),
-        &world.dict,
-        &world.content,
-    )
-    .unwrap();
+    let replayed = fold(&records, &clone_state(&world.base), &world.dict, &world.content).unwrap();
     assert_eq!(snap(&replayed), snap(&states.last().unwrap().1));
 }
 
@@ -340,26 +306,15 @@ const WIN_LEN: usize = 10; // 'start' + 9 WIN_PATH lines
 #[test]
 fn candidate_generator_offers_the_pinned_probes() {
     let world = explorer_world();
-    let cands = candidates_for(
-        &world.content,
-        &world.dict,
-        &world.base,
-        &world.player,
-        Depth::Sampled,
-    );
+    let cands =
+        candidates_for(&world.content, &world.dict, &world.base, &world.player, Depth::Sampled);
     let tags: Vec<&str> = cands.iter().map(|c| c.tag.as_str()).collect();
     assert!(tags.contains(&"multi-clause"));
     assert!(tags.iter().any(|t| t.ends_with(" min-fill")));
     assert!(tags.iter().any(|t| t.contains("wrong-kind")));
     assert!(tags.iter().all(|t| *t != "clock rewind"), "now < 60");
     // every candidate step carries the front-door clock (§9.28)
-    assert_eq!(
-        cands[0].step.clock,
-        Some(Clock {
-            day: 0,
-            halfhour: 42
-        })
-    );
+    assert_eq!(cands[0].step.clock, Some(Clock { day: 0, halfhour: 42 }));
 }
 
 #[test]
@@ -371,10 +326,6 @@ fn the_sampled_walk_harvests_states_deterministically() {
     assert_eq!(a.len(), b.len());
     for (xa, xb) in a.iter().zip(b.iter()) {
         assert_eq!(xa.0, xb.0, "same labels");
-        assert_eq!(
-            snap(&xa.1),
-            snap(&xb.1),
-            "the LCG 'NIGH' walk is deterministic"
-        );
+        assert_eq!(snap(&xa.1), snap(&xb.1), "the LCG 'NIGH' walk is deterministic");
     }
 }

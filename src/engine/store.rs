@@ -34,10 +34,7 @@ pub struct Log {
 
 impl Log {
     pub fn new(initial_state: State) -> Log {
-        Log {
-            records: Vec::new(),
-            initial_state,
-        }
+        Log { records: Vec::new(), initial_state }
     }
 
     /// The next record id: one past the last appended record.
@@ -158,10 +155,7 @@ mod tests {
             dead_action: None,
             stackable: false,
         };
-        ana.attrs.insert(
-            "container".into(),
-            crate::core::types::AttrValue::Str("house".into()),
-        );
+        ana.attrs.insert("container".into(), crate::core::types::AttrValue::Str("house".into()));
         crate::core::types::add_entity(&mut s, ana).unwrap();
         s
     }
@@ -175,17 +169,11 @@ mod tests {
             seed(),
             Step {
                 start_min: None,
-                clock: Some(Clock {
-                    day: 0,
-                    halfhour: 0,
-                }),
+                clock: Some(Clock { day: 0, halfhour: 0 }),
                 clauses: parse_sentence("0:0 @ ANA PACE", &dict).unwrap().clauses,
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: 1,
-                id_gen: None,
-            },
+            ExecOptions { first_record_id: 1, id_gen: None },
         )
         .unwrap();
         records.extend(r.records);
@@ -195,17 +183,11 @@ mod tests {
             r.state,
             Step {
                 start_min: None,
-                clock: Some(Clock {
-                    day: 0,
-                    halfhour: 1,
-                }),
+                clock: Some(Clock { day: 0, halfhour: 1 }),
                 clauses: vec![],
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: records.len() as i64 + 1,
-                id_gen: None,
-            },
+            ExecOptions { first_record_id: records.len() as i64 + 1, id_gen: None },
         )
         .unwrap();
         records.extend(r2.records);
@@ -228,10 +210,7 @@ mod tests {
         assert_eq!(loaded, records, "loadLog round-trips every field");
         save_log(&path, &loaded).unwrap();
         let second = fs::read(&path).unwrap();
-        assert_eq!(
-            first, second,
-            "save(load(save(log))) is byte-stable (law 1)"
-        );
+        assert_eq!(first, second, "save(load(save(log))) is byte-stable (law 1)");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -242,9 +221,7 @@ mod tests {
         let a = play_two_turns();
         let b = play_two_turns();
         let to_lines = |rs: &[ActionRecord]| -> Vec<String> {
-            rs.iter()
-                .map(|r| serde_json::to_string(r).unwrap())
-                .collect()
+            rs.iter().map(|r| serde_json::to_string(r).unwrap()).collect()
         };
         assert_eq!(to_lines(&a), to_lines(&b));
     }

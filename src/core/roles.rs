@@ -61,14 +61,8 @@ impl Role {
 
 /// Declaration order is load-bearing: it feeds `ROLE_LIST` and the lint
 /// messages that join it.
-pub const ROLES: [Role; 6] = [
-    Role::Actors,
-    Role::Object,
-    Role::With,
-    Role::At,
-    Role::About,
-    Role::To,
-];
+pub const ROLES: [Role; 6] =
+    [Role::Actors, Role::Object, Role::With, Role::At, Role::About, Role::To];
 
 #[cfg(test)]
 mod tests {

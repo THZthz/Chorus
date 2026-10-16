@@ -44,14 +44,8 @@ pub struct LenientCtx<'a> {
 /// discriminates the two variants).
 #[derive(Debug, Clone)]
 pub enum ParsedInput {
-    Ok {
-        step: Step,
-        canonical: String,
-    },
-    Fail {
-        error: String,
-        suggestions: Vec<String>,
-    },
+    Ok { step: Step, canonical: String },
+    Fail { error: String, suggestions: Vec<String> },
 }
 
 impl ParsedInput {
@@ -63,10 +57,7 @@ impl ParsedInput {
 }
 
 fn fail(error: impl Into<String>, suggestions: Vec<String>) -> ParsedInput {
-    ParsedInput::Fail {
-        error: error.into(),
-        suggestions,
-    }
+    ParsedInput::Fail { error: error.into(), suggestions }
 }
 
 /// Articles dropped during normalization.
@@ -114,9 +105,7 @@ impl Group {
 // `\s` → DSL_WS_CLASS, `\d` → ASCII [0-9].
 fn passthrough_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    static_regex(&RE, || {
-        Regex::new(&format!("^[0-9]+:[0-9]+{DSL_WS_CLASS}@"))
-    })
+    static_regex(&RE, || Regex::new(&format!("^[0-9]+:[0-9]+{DSL_WS_CLASS}@")))
 }
 
 // `split(/[\s,;]+)/`: the DSL_WS_CLASS
@@ -164,18 +153,12 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
                     canonical: trimmed.to_string(),
                 }
             }
-            Err(e) => ParsedInput::Fail {
-                error: e.msg,
-                suggestions: vec![],
-            },
+            Err(e) => ParsedInput::Fail { error: e.msg, suggestions: vec![] },
         };
     }
 
     // split and drop the empties (the filter(Boolean) shape)
-    let tokens: Vec<&str> = token_split_re()
-        .split(trimmed)
-        .filter(|t| !t.is_empty())
-        .collect();
+    let tokens: Vec<&str> = token_split_re().split(trimmed).filter(|t| !t.is_empty()).collect();
     if tokens.is_empty() {
         return fail("empty input", vec![]);
     }
@@ -209,12 +192,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         // verb-suggestion path.
         if i >= tokens.len() {
             return ParsedInput::Ok {
-                step: Step {
-                    start_min: Some(start_min),
-                    clock,
-                    clauses: vec![],
-                    t_real: None,
-                },
+                step: Step { start_min: Some(start_min), clock, clauses: vec![], t_real: None },
                 canonical: trimmed.to_string(),
             };
         }
@@ -234,10 +212,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         if ROLE_KEYWORDS.contains(&tokens[j].to_lowercase().as_str()) {
             break;
         }
-        let next = tokens
-            .get(j + 1)
-            .map(|t| t.to_uppercase())
-            .unwrap_or_default();
+        let next = tokens.get(j + 1).map(|t| t.to_uppercase()).unwrap_or_default();
         let joined = format!("{up}_{next}");
         if ctx.dict.is_verb(&joined) {
             verb_index = Some(j);
@@ -250,18 +225,12 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         return ParsedInput::Fail {
             error: format!(
                 "no verb found — try one of: {}",
-                verbs
-                    .iter()
-                    .map(|v| v.replace('_', " "))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                verbs.iter().map(|v| v.replace('_', " ")).collect::<Vec<_>>().join(", ")
             ),
             suggestions: suggest_verb(tokens[i], &verbs, 3),
         };
     };
-    let verb = tokens[verb_index..verb_index + verb_len]
-        .join("_")
-        .to_uppercase();
+    let verb = tokens[verb_index..verb_index + verb_len].join("_").to_uppercase();
 
     // split the tail into role phrases; bare names before a keyword are
     // objects. The phrases keep AUTHORED order — the object group runs from
@@ -371,11 +340,8 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
                 // one is kept too — the removed sets coincide either way.
                 to = Some(with_role.remove(0));
             } else if let Some(actors_slot) = verb_def.slot_by_role.get("actors") {
-                let fitting: Vec<Ref> = with_role
-                    .iter()
-                    .filter(|r| fits(r, "actors"))
-                    .cloned()
-                    .collect();
+                let fitting: Vec<Ref> =
+                    with_role.iter().filter(|r| fits(r, "actors")).cloned().collect();
                 // actors.len() + fitting.len() <= actors_slot.max
                 // (an unbounded max never bounds: Option None)
                 let under_max = match actors_slot.max {
@@ -401,12 +367,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         about: about.first().cloned(),
     };
     ParsedInput::Ok {
-        step: Step {
-            start_min: Some(start_min),
-            clock,
-            clauses: vec![clause],
-            t_real: None,
-        },
+        step: Step { start_min: Some(start_min), clock, clauses: vec![clause], t_real: None },
         canonical: String::new(),
     }
 }
@@ -432,10 +393,7 @@ fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
             continue;
         }
         let key = norm(&e.name);
-        map.entry(key.clone()).or_insert(NameEntry {
-            entity: e,
-            norm: key,
-        });
+        map.entry(key.clone()).or_insert(NameEntry { entity: e, norm: key });
     }
     map
 }
@@ -461,11 +419,7 @@ fn alive_pools(state: &State) -> IndexMap<String, Vec<String>> {
 /// than the clause's roles demand (E9's distinct-binding refusal).
 enum PhraseFail {
     Unknown(String),
-    Short {
-        key: String,
-        needed: usize,
-        have: usize,
-    },
+    Short { key: String, needed: usize, have: usize },
 }
 
 /// Small counts speak as words in the refusal voice ("only one 'x' — you
@@ -514,11 +468,8 @@ fn resolve_group(
     handed: &mut IndexMap<String, usize>,
     claimed: &mut IndexMap<String, usize>,
 ) -> (Vec<Ref>, Vec<PhraseFail>) {
-    let toks: Vec<&str> = raw
-        .iter()
-        .copied()
-        .filter(|t| !ARTICLES.contains(&t.to_lowercase().as_str()))
-        .collect();
+    let toks: Vec<&str> =
+        raw.iter().copied().filter(|t| !ARTICLES.contains(&t.to_lowercase().as_str())).collect();
     let mut refs: Vec<Ref> = Vec::new();
     let mut failed: Vec<PhraseFail> = Vec::new();
     let mut j = 0usize;
@@ -596,13 +547,8 @@ fn player_refs(ctx: &LenientCtx) -> Vec<Ref> {
     let Some(player) = ctx.player else {
         return vec![];
     };
-    let e = ctx
-        .state
-        .entities
-        .values()
-        .find(|e| e.dead_action.is_none() && e.name == player);
-    e.map(|e| vec![name_ref(e.name.clone(), None)])
-        .unwrap_or_default()
+    let e = ctx.state.entities.values().find(|e| e.dead_action.is_none() && e.name == player);
+    e.map(|e| vec![name_ref(e.name.clone(), None)]).unwrap_or_default()
 }
 
 // ---------- suggestions ----------
@@ -617,11 +563,7 @@ fn suggest(word: &str, pool: &[String], limit: usize) -> Vec<String> {
     let starts: Vec<&(&String, String)> =
         normed.iter().filter(|(_, n)| n.starts_with(&w)).collect();
     if !starts.is_empty() {
-        return starts
-            .into_iter()
-            .take(limit)
-            .map(|(p, _)| (*p).clone())
-            .collect();
+        return starts.into_iter().take(limit).map(|(p, _)| (*p).clone()).collect();
     }
     normed
         .iter()
@@ -653,11 +595,7 @@ fn suggest_verb(word: &str, verbs: &[String], limit: usize) -> Vec<String> {
         .filter(|(_, whole, first)| whole.starts_with(&w) || first.starts_with(&w))
         .collect();
     if !starts.is_empty() {
-        return starts
-            .into_iter()
-            .take(limit)
-            .map(|(v, ..)| show(v))
-            .collect();
+        return starts.into_iter().take(limit).map(|(v, ..)| show(v)).collect();
     }
     normed
         .iter()
@@ -734,36 +672,12 @@ mod tests {
     fn wrap_clock_folds_halfhour_overflow_into_days() {
         // E6: the lenient front door wraps, the way durations compose —
         // 118 halfhours = day 2 halfhour 22, and the day field carries over
-        assert_eq!(
-            wrap_clock("0:118"),
-            Some(Clock {
-                day: 2,
-                halfhour: 22
-            })
-        );
-        assert_eq!(
-            wrap_clock("1:49"),
-            Some(Clock {
-                day: 2,
-                halfhour: 1
-            })
-        );
+        assert_eq!(wrap_clock("0:118"), Some(Clock { day: 2, halfhour: 22 }));
+        assert_eq!(wrap_clock("1:49"), Some(Clock { day: 2, halfhour: 1 }));
         // the boundary itself folds exactly one day
-        assert_eq!(
-            wrap_clock("0:48"),
-            Some(Clock {
-                day: 1,
-                halfhour: 0
-            })
-        );
+        assert_eq!(wrap_clock("0:48"), Some(Clock { day: 1, halfhour: 0 }));
         // a legal clock needs no wrap (parse_clock takes it first)
-        assert_eq!(
-            wrap_clock("3:47"),
-            Some(Clock {
-                day: 3,
-                halfhour: 47
-            })
-        );
+        assert_eq!(wrap_clock("3:47"), Some(Clock { day: 3, halfhour: 47 }));
         // absurd literals saturate parse_authored_int and refuse here
         assert_eq!(wrap_clock("0:99999999999999999999"), None);
     }

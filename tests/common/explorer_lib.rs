@@ -34,10 +34,8 @@ use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 use super::settle::settle_step;
 
 /// The script text is DATA: embedded by path, never precompiled.
-pub const SCRIPT_TEXT: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/scripts/the-nightjar-flyer.txt"
-));
+pub const SCRIPT_TEXT: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/the-nightjar-flyer.txt"));
 
 /// The world bundle: the dictionary, the compiled script's
 /// `content`/`base`/`meta`, and the player name. `meta` rides
@@ -56,11 +54,7 @@ pub struct ExplorerWorld {
 pub fn explorer_world() -> ExplorerWorld {
     let dict = core_dictionary();
     let compiled = compile_script(SCRIPT_TEXT, &dict).expect("the nightjar flyer compiles");
-    let player = compiled
-        .meta
-        .player
-        .clone()
-        .unwrap_or_else(|| "MARCH".to_string());
+    let player = compiled.meta.player.clone().unwrap_or_else(|| "MARCH".to_string());
     ExplorerWorld {
         dict,
         content: compiled.content,
@@ -150,12 +144,7 @@ fn push_tag(out: &mut IndexMap<String, Cand>, clock: Clock, tag: &str, clauses: 
     let key = clauses.iter().map(clause_key).collect::<Vec<_>>().join(";");
     out.entry(key).or_insert_with(|| Cand {
         tag: tag.to_string(),
-        step: Step {
-            start_min: None,
-            clock: Some(clock),
-            clauses,
-            t_real: None,
-        },
+        step: Step { start_min: None, clock: Some(clock), clauses, t_real: None },
     });
 }
 
@@ -194,12 +183,7 @@ fn product_rec(
             };
             over.insert(r.as_str().to_string(), v);
         }
-        push_tag(
-            out,
-            clock,
-            &format!("{verb_name} product"),
-            vec![build_clause(verb_name, &over)],
-        );
+        push_tag(out, clock, &format!("{verb_name} product"), vec![build_clause(verb_name, &over)]);
         return;
     }
     let r = roles[i];
@@ -223,23 +207,11 @@ pub fn candidates_for(
 ) -> Vec<Cand> {
     let full = depth == Depth::Full;
     let clock = next_step_clock(state.now); // the front door's rule (§9.28)
-    let alive: Vec<&Entity> = state
-        .entities
-        .values()
-        .filter(|e| e.dead_action.is_none())
-        .collect();
-    let chars: Vec<&Entity> = alive
-        .iter()
-        .copied()
-        .filter(|e| e.kind == "character")
-        .collect();
+    let alive: Vec<&Entity> = state.entities.values().filter(|e| e.dead_action.is_none()).collect();
+    let chars: Vec<&Entity> = alive.iter().copied().filter(|e| e.kind == "character").collect();
     let pool = |slot: &CompiledSlot| -> Vec<&Entity> {
         match &slot.query {
-            Some(q) => alive
-                .iter()
-                .copied()
-                .filter(|e| match_query(e, q))
-                .collect(),
+            Some(q) => alive.iter().copied().filter(|e| match_query(e, q)).collect(),
             None => alive.clone(),
         }
     };
@@ -253,11 +225,8 @@ pub fn candidates_for(
         let mut fills: IndexMap<String, Vec<Vec<Ref>>> = IndexMap::new();
         for slot in &verb.slots {
             let mut opts: Vec<Vec<Ref>> = Vec::new();
-            let candidates: Vec<&Entity> = if slot.role == "actors" && !chars.is_empty() {
-                chars.clone()
-            } else {
-                pool(slot)
-            };
+            let candidates: Vec<&Entity> =
+                if slot.role == "actors" && !chars.is_empty() { chars.clone() } else { pool(slot) };
             if full {
                 // the whole cardinality space (§6.1): every k-subset in
                 // [min, max] …
@@ -286,17 +255,11 @@ pub fn candidates_for(
                     opts.push(vec![name_ref(e.name.clone(), None)]);
                 }
                 // an actors slot max >= 2 — unbounded (None) passes
-                let actors_roomy = verb
-                    .slot_by_role
-                    .get("actors")
-                    .is_some_and(|s| s.max.is_none_or(|m| m >= 2));
+                let actors_roomy =
+                    verb.slot_by_role.get("actors").is_some_and(|s| s.max.is_none_or(|m| m >= 2));
                 if slot.role == "actors" && actors_roomy && chars.len() >= 2 {
                     opts.push(
-                        chars
-                            .iter()
-                            .take(2)
-                            .map(|e| name_ref(e.name.clone(), None))
-                            .collect(),
+                        chars.iter().take(2).map(|e| name_ref(e.name.clone(), None)).collect(),
                     );
                 }
                 if slot.role == "with" && candidates.len() >= 2 {
@@ -355,36 +318,19 @@ pub fn candidates_for(
                 for opt in opts {
                     let mut over = min_fill.clone();
                     over.insert(role.as_str().to_string(), opt.clone());
-                    mk(
-                        &over,
-                        &format!("{} {}={}", verb.name, role.as_str(), opt.len()),
-                        &mut out,
-                    );
+                    mk(&over, &format!("{} {}={}", verb.name, role.as_str(), opt.len()), &mut out);
                 }
             }
             // deliberate slot-mismatch probe(s): card(s) that must not fit.
             if let Some(q) = &slot.query {
-                let wrong: Vec<&Entity> = alive
-                    .iter()
-                    .copied()
-                    .filter(|e| !match_query(e, q))
-                    .collect();
-                let wrong: Vec<&Entity> = if full {
-                    wrong
-                } else {
-                    wrong.into_iter().take(1).collect()
-                };
+                let wrong: Vec<&Entity> =
+                    alive.iter().copied().filter(|e| !match_query(e, q)).collect();
+                let wrong: Vec<&Entity> =
+                    if full { wrong } else { wrong.into_iter().take(1).collect() };
                 for w in wrong {
                     let mut over = min_fill.clone();
-                    over.insert(
-                        role.as_str().to_string(),
-                        vec![name_ref(w.name.clone(), None)],
-                    );
-                    mk(
-                        &over,
-                        &format!("{} {}=wrong-kind", verb.name, role.as_str()),
-                        &mut out,
-                    );
+                    over.insert(role.as_str().to_string(), vec![name_ref(w.name.clone(), None)]);
+                    mk(&over, &format!("{} {}=wrong-kind", verb.name, role.as_str()), &mut out);
                 }
             }
             // §6.7: a role takes DISTINCT cards — the same card twice in one
@@ -394,11 +340,7 @@ pub fn candidates_for(
                 if let Some(first) = first {
                     let mut over = min_fill.clone();
                     over.insert(role.as_str().to_string(), vec![first.clone(), first]);
-                    mk(
-                        &over,
-                        &format!("{} {}=dupe", verb.name, role.as_str()),
-                        &mut out,
-                    );
+                    mk(&over, &format!("{} {}=dupe", verb.name, role.as_str()), &mut out);
                 }
             }
         }
@@ -416,11 +358,7 @@ pub fn candidates_for(
                     }
                     let mut over = min_fill.clone();
                     over.insert(b.to_string(), vec![ref_a]);
-                    mk(
-                        &over,
-                        &format!("{} {}/{}=shared", verb.name, a, b),
-                        &mut out,
-                    );
+                    mk(&over, &format!("{} {}/{}=shared", verb.name, a, b), &mut out);
                 }
             }
             // small verbs: the full cartesian product of role options.
@@ -437,15 +375,7 @@ pub fn candidates_for(
             }
             if product <= 3000 && roles_with_opts.len() >= 2 {
                 let mut idx: IndexMap<Role, usize> = IndexMap::new();
-                product_rec(
-                    0,
-                    &roles_with_opts,
-                    &fills,
-                    &mut idx,
-                    &verb.name,
-                    &mut out,
-                    clock,
-                );
+                product_rec(0, &roles_with_opts, &fills, &mut idx, &verb.name, &mut out, clock);
             }
         }
 
@@ -535,9 +465,9 @@ fn parse_playerish(world: &ExplorerWorld, line: &str, state: &State) -> Result<S
         },
     ) {
         ParsedInput::Ok { step, .. } => Ok(step),
-        ParsedInput::Fail { error, .. } => Err(ChorusError::new(format!(
-            "win path line not parseable: '{line}': {error}"
-        ))),
+        ParsedInput::Fail { error, .. } => {
+            Err(ChorusError::new(format!("win path line not parseable: '{line}': {error}")))
+        }
     }
 }
 
@@ -556,9 +486,7 @@ pub fn win_path_states(world: &ExplorerWorld) -> Result<PathStates> {
         let step = parse_playerish(world, line, &state)?;
         let r = settle_step(&world.content, &world.dict, state, step, id, None)?;
         if let Some(rejected) = r.rejected {
-            return Err(ChorusError::new(format!(
-                "win path broke at '{line}': {rejected}"
-            )));
+            return Err(ChorusError::new(format!("win path broke at '{line}': {rejected}")));
         }
         let n = r.records.len();
         records.extend(r.records);
@@ -585,22 +513,14 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
     let mut i = 0usize;
     while i < 500 && states.len() < 10 {
         i += 1;
-        let cands = candidates_for(
-            &world.content,
-            &world.dict,
-            &state,
-            &world.player,
-            Depth::Sampled,
-        );
+        let cands =
+            candidates_for(&world.content, &world.dict, &state, &world.player, Depth::Sampled);
         let benign: Vec<&Cand> = cands
             .iter()
             .filter(|c| !c.tag.contains("wrong-kind") && c.tag != "clock rewind")
             .collect();
-        let pick_from: Vec<&Cand> = if lcg.next_f64() < 0.2 || benign.is_empty() {
-            cands.iter().collect()
-        } else {
-            benign
-        };
+        let pick_from: Vec<&Cand> =
+            if lcg.next_f64() < 0.2 || benign.is_empty() { cands.iter().collect() } else { benign };
         // multi-clause is always pushed, so the pick space is never empty
         debug_assert!(
             !pick_from.is_empty(),
@@ -608,14 +528,7 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
         );
         let pick = ((lcg.next_f64() * pick_from.len() as f64).floor() as usize) % pick_from.len();
         let cand = &pick_from[pick];
-        let r = settle_step(
-            &world.content,
-            &world.dict,
-            state,
-            cand.step.clone(),
-            id,
-            None,
-        )?;
+        let r = settle_step(&world.content, &world.dict, state, cand.step.clone(), id, None)?;
         // any rejection returns the untouched input state (settle rolls back
         // whole), so the assignment is exact on every branch
         state = r.state;
@@ -630,16 +543,9 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
         // ending step so the harvest keeps exercising real play and reaches
         // later hours
         if state.ended.is_some() {
-            let len = turn_lengths
-                .pop()
-                .expect("turn_lengths never empties (seeded [0])");
+            let len = turn_lengths.pop().expect("turn_lengths never empties (seeded [0])");
             records.truncate(len);
-            state = fold(
-                &records,
-                &clone_state(&world.base),
-                &world.dict,
-                &world.content,
-            )?;
+            state = fold(&records, &clone_state(&world.base), &world.dict, &world.content)?;
             continue;
         }
         executed += 1;

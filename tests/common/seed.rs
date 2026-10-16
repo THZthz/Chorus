@@ -370,10 +370,7 @@ pub fn seed_state() -> State {
 
     fn character(s: &mut State, id: &str, name: &str, aspects: Aspects, container: &str) {
         let mut attrs = Attrs::new();
-        attrs.insert(
-            "container".to_string(),
-            AttrValue::Str(container.to_string()),
-        );
+        attrs.insert("container".to_string(), AttrValue::Str(container.to_string()));
         add_entity(
             s,
             Entity {
@@ -394,13 +391,10 @@ pub fn seed_state() -> State {
         &mut s,
         "ana",
         "ANA",
-        [
-            ("occult", AspectVal::Num(2)),
-            ("lantern", AspectVal::Num(1)),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect(),
+        [("occult", AspectVal::Num(2)), ("lantern", AspectVal::Num(1))]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
         "house",
     );
     character(&mut s, "bertha", "BERTHA", Aspects::new(), "house");
@@ -408,19 +402,13 @@ pub fn seed_state() -> State {
         &mut s,
         "follower",
         "MY_FOLLOWER",
-        [("lantern", AspectVal::Num(2))]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+        [("lantern", AspectVal::Num(2))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         "house",
     );
 
     fn text(s: &mut State, id: &str, name: &str, aspects: Aspects, container: &str) {
         let mut attrs = Attrs::new();
-        attrs.insert(
-            "container".to_string(),
-            AttrValue::Str(container.to_string()),
-        );
+        attrs.insert("container".to_string(), AttrValue::Str(container.to_string()));
         add_entity(
             s,
             Entity {
@@ -441,10 +429,7 @@ pub fn seed_state() -> State {
         &mut s,
         "forgetting",
         "THE_FORGETTING",
-        [("secret", AspectVal::Num(4))]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+        [("secret", AspectVal::Num(4))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         "house",
     );
     text(
@@ -456,10 +441,7 @@ pub fn seed_state() -> State {
             (
                 "language",
                 AspectVal::Sub(
-                    [("latin", 2i64)]
-                        .into_iter()
-                        .map(|(k, v)| (k.to_string(), v))
-                        .collect(),
+                    [("latin", 2i64)].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
                 ),
             ),
         ]
@@ -472,29 +454,20 @@ pub fn seed_state() -> State {
         &mut s,
         "fairy",
         "FAIRY_TALES",
-        [("tender", AspectVal::Num(1))]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+        [("tender", AspectVal::Num(1))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         "house",
     );
     text(
         &mut s,
         "magick",
         "MAGICK_BOOK",
-        [("magick", AspectVal::Num(1))]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+        [("magick", AspectVal::Num(1))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         "study",
     );
 
     fn plain(s: &mut State, id: &str, kind: &str, name: &str, aspects: Aspects, container: &str) {
         let mut attrs = Attrs::new();
-        attrs.insert(
-            "container".to_string(),
-            AttrValue::Str(container.to_string()),
-        );
+        attrs.insert("container".to_string(), AttrValue::Str(container.to_string()));
         add_entity(
             s,
             Entity {
@@ -516,20 +489,10 @@ pub fn seed_state() -> State {
         "rite",
         "rite",
         "RITE_OF_ASCENSION",
-        [("demand", AspectVal::Num(3))]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+        [("demand", AspectVal::Num(3))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         "house",
     );
-    plain(
-        &mut s,
-        "chalice",
-        "item",
-        "CHALICE",
-        Aspects::new(),
-        "house",
-    );
+    plain(&mut s, "chalice", "item", "CHALICE", Aspects::new(), "house");
 
     // a clue already in play — the TALK ABOUT topic
     plain(
@@ -537,10 +500,7 @@ pub fn seed_state() -> State {
         "clue_hideout",
         "idea",
         "CLUE_SECRET_HIDEOUT",
-        [("secret", AspectVal::Num(1))]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
+        [("secret", AspectVal::Num(1))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         "house",
     );
 

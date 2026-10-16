@@ -71,12 +71,7 @@ impl Game {
     /// explicitly.
     pub fn from_script(text: &str, dict: Dictionary) -> Result<Game> {
         let compiled = compile_script(text, &dict)?;
-        Ok(Self::new(
-            dict,
-            compiled.content,
-            compiled.meta,
-            compiled.state,
-        ))
+        Ok(Self::new(dict, compiled.content, compiled.meta, compiled.state))
     }
 
     /// The private constructor.
@@ -95,10 +90,7 @@ impl Game {
     /// The game title, defaulting to "Untitled".
     #[must_use]
     pub fn title(&self) -> String {
-        self.meta
-            .title
-            .clone()
-            .unwrap_or_else(|| "Untitled".to_string())
+        self.meta.title.clone().unwrap_or_else(|| "Untitled".to_string())
     }
 
     fn lenient_ctx(&self) -> LenientCtx<'_> {
@@ -139,10 +131,7 @@ impl Game {
             &self.dict,
             clone_state(&self.state),
             step,
-            ExecOptions {
-                first_record_id: self.log.next_record_id(),
-                id_gen: None,
-            },
+            ExecOptions { first_record_id: self.log.next_record_id(), id_gen: None },
         )?;
         // a rejection leaves log and state untouched
         if let Some(rejected) = result.rejected {
@@ -157,12 +146,7 @@ impl Game {
         lines.push(String::new());
         lines.push(format!(
             "« {} »",
-            result
-                .records
-                .iter()
-                .map(|r| r.sentence.clone())
-                .collect::<Vec<_>>()
-                .join(" | ")
+            result.records.iter().map(|r| r.sentence.clone()).collect::<Vec<_>>().join(" | ")
         ));
         self.log.append_all(result.records);
         self.state = result.state;
@@ -176,25 +160,14 @@ impl Game {
     /// place; and anything the log has named through a role or a
     /// spawn/destroy — a projection over (state, log), never stored.
     pub fn visible(&self) -> Vec<&Entity> {
-        let alive: Vec<&Entity> = self
-            .state
-            .entities
-            .values()
-            .filter(|e| e.dead_action.is_none())
-            .collect();
-        let me = self
-            .meta
-            .player
-            .as_ref()
-            .and_then(|p| alive.iter().copied().find(|e| &e.name == p));
+        let alive: Vec<&Entity> =
+            self.state.entities.values().filter(|e| e.dead_action.is_none()).collect();
+        let me =
+            self.meta.player.as_ref().and_then(|p| alive.iter().copied().find(|e| &e.name == p));
         let mut named: HashSet<String> = HashSet::new();
         for r in &self.log.records {
-            let mut refs: Vec<&Ref> = r
-                .actors
-                .iter()
-                .chain(r.objects.iter())
-                .chain(r.instruments.iter())
-                .collect();
+            let mut refs: Vec<&Ref> =
+                r.actors.iter().chain(r.objects.iter()).chain(r.instruments.iter()).collect();
             if let Some(at) = &r.at {
                 refs.push(at);
             }
@@ -214,9 +187,7 @@ impl Game {
                     // INTO targets name a destination, not a discovery — keep
                     // them out (the `{ role }` into-target shape is skipped)
                     match a {
-                        Arg::Ref {
-                            r#ref: Ref::Name { name, .. },
-                        }
+                        Arg::Ref { r#ref: Ref::Name { name, .. } }
                         | Arg::Into {
                             r#ref: crate::core::sentence::IntoTarget::Ref(Ref::Name { name, .. }),
                         } => {
@@ -255,10 +226,7 @@ impl Game {
     /// what is around the player
     pub fn look(&self) -> Vec<String> {
         let player = self.meta.player.as_ref().and_then(|p| {
-            self.state
-                .entities
-                .values()
-                .find(|e| e.dead_action.is_none() && &e.name == p)
+            self.state.entities.values().find(|e| e.dead_action.is_none() && &e.name == p)
         });
         let Some(player) = player else {
             return vec!["(no player character — open the cards view)".to_string()];
@@ -268,10 +236,8 @@ impl Game {
             Some(AttrValue::Str(c)) => self.state.entities.get(c),
             _ => None,
         };
-        let mut lines = vec![format!(
-            "You are at {}.",
-            place.map_or("nowhere", |p| p.name.as_str())
-        )];
+        let mut lines =
+            vec![format!("You are at {}.", place.map_or("nowhere", |p| p.name.as_str()))];
         let things: Vec<&Entity> = self
             .state
             .entities
@@ -291,11 +257,8 @@ impl Game {
 
     /// every visible card — the table the player actually sees
     pub fn cards(&self) -> Vec<String> {
-        let lines: Vec<String> = self
-            .visible()
-            .iter()
-            .map(|e| format!("{}  [{}]", e.name, e.kind))
-            .collect();
+        let lines: Vec<String> =
+            self.visible().iter().map(|e| format!("{}  [{}]", e.name, e.kind)).collect();
         if lines.is_empty() {
             vec!["(no cards)".to_string()]
         } else {
@@ -347,9 +310,7 @@ impl Game {
         if is_truthy(card.attrs.get("zone")) {
             lines.push(format!(
                 "  zone: {}",
-                card.attrs
-                    .get("zone")
-                    .map_or(String::new(), |v| v.to_canonical_string())
+                card.attrs.get("zone").map_or(String::new(), |v| v.to_canonical_string())
             ));
         }
         if let Some(n) = card.born_action {
@@ -364,10 +325,7 @@ impl Game {
     pub fn story(&self) -> Result<Vec<String>> {
         let mut lines = Vec::new();
         for r in &self.log.records {
-            lines.push(format!(
-                "· {}",
-                prose_lines(r, &self.content, &self.dict)?.join("\n  ")
-            ));
+            lines.push(format!("· {}", prose_lines(r, &self.content, &self.dict)?.join("\n  ")));
         }
         if lines.is_empty() {
             lines.push("(nothing has happened yet)".to_string());
@@ -393,12 +351,7 @@ impl Game {
             return Ok(turn(TurnKind::Info, vec!["nothing to undo".to_string()]));
         };
         self.log.truncate(length);
-        self.state = fold(
-            &self.log.records,
-            &clone_state(&self.base),
-            &self.dict,
-            &self.content,
-        )?;
+        self.state = fold(&self.log.records, &clone_state(&self.base), &self.dict, &self.content)?;
         Ok(turn(TurnKind::Info, vec!["undone.".to_string()]))
     }
 
@@ -430,13 +383,7 @@ impl Game {
         let now = self.state.now;
         // `windows.size > 0 ? Math.min(...) : now + 60` — min of an empty set
         // is None, which lands on the same now + 60 arm
-        let due_at = self
-            .state
-            .windows
-            .values()
-            .map(|w| w.end)
-            .min()
-            .unwrap_or(now + 60);
+        let due_at = self.state.windows.values().map(|w| w.end).min().unwrap_or(now + 60);
         // ceil to the halfhour — the `ceil(dueAt / 30) * 30` spelling;
         // the manual ceil-division is exact for
         // the non-negative minutes the engine ever holds (i64::div_ceil is
@@ -460,26 +407,15 @@ impl Game {
             return Ok(vec![]); // §9.35: nothing left to suggest after the ending
         }
         let alive = self.visible();
-        let me = self
-            .meta
-            .player
-            .as_ref()
-            .and_then(|p| alive.iter().copied().find(|e| &e.name == p));
+        let me =
+            self.meta.player.as_ref().and_then(|p| alive.iter().copied().find(|e| &e.name == p));
         let Some(me) = me else {
             return Ok(vec![]);
         };
-        let busy_verbs: HashSet<&str> = self
-            .state
-            .windows
-            .values()
-            .map(|w| w.verb.as_str())
-            .collect();
-        let busy_cards: HashSet<&str> = self
-            .state
-            .windows
-            .values()
-            .flat_map(|w| w.locked.iter().map(String::as_str))
-            .collect();
+        let busy_verbs: HashSet<&str> =
+            self.state.windows.values().map(|w| w.verb.as_str()).collect();
+        let busy_cards: HashSet<&str> =
+            self.state.windows.values().flat_map(|w| w.locked.iter().map(String::as_str)).collect();
         // same-container cards rank first (the Option
         // equality models strict equality over possibly-missing attrs)
         let me_container = me.attrs.get("container");
@@ -491,12 +427,7 @@ impl Game {
             }
         };
         let lights = |verb: &CompiledVerb, bindings: &RoleBindings| -> Result<bool> {
-            let p = PredCtx {
-                b: bindings,
-                state: &self.state,
-                strict: false,
-                roll: None,
-            };
+            let p = PredCtx { b: bindings, state: &self.state, strict: false, roll: None };
             // a REFUSE gate that matches is a wall, not an invitation
             // (`.some()` over the recipes)
             for r in &verb.recipes {
@@ -555,11 +486,7 @@ impl Game {
             if actors_slot.min < 1 {
                 continue;
             }
-            if actors_slot
-                .query
-                .as_ref()
-                .is_some_and(|q| !match_query(me, q))
-            {
+            if actors_slot.query.as_ref().is_some_and(|q| !match_query(me, q)) {
                 continue;
             }
             let display = verb.name.to_lowercase().replace('_', " ");
@@ -638,11 +565,8 @@ impl Game {
                 // (None) loses to the 2
                 let cap = std::cmp::max(slot.min, std::cmp::min(slot.max.unwrap_or(2), 2));
                 let role = Role::from_lower(role_str);
-                let base_es: Vec<String> = role
-                    .as_ref()
-                    .and_then(|r| base.get(r))
-                    .cloned()
-                    .unwrap_or_default();
+                let base_es: Vec<String> =
+                    role.as_ref().and_then(|r| base.get(r)).cloned().unwrap_or_default();
                 for e in pool {
                     if base_es.iter().any(|x| x == &e.id) {
                         continue;
@@ -680,11 +604,7 @@ impl Game {
         let mut mixed: Vec<String> = Vec::new();
         while mixed.len() < 64 && by_verb.iter().any(|g| !g.is_empty()) {
             for g in &mut by_verb {
-                if let Some(v) = if g.is_empty() {
-                    None
-                } else {
-                    Some(g.remove(0))
-                } {
+                if let Some(v) = if g.is_empty() { None } else { Some(g.remove(0)) } {
                     mixed.push(v);
                 }
             }

@@ -144,18 +144,12 @@ fn toks_json(toks: &[Tok]) -> serde_json::Value {
 fn lexes_as_one_dur_token_a_dur_re_regression_would_split_it() {
     // The `halfhour|h|m|d` alternation order is
     // load-bearing (Q9); no unit → still an int
-    assert_json_eq(
-        toks_json(&lex("1h30m").unwrap()),
-        serde_json::json!([{ "t": "dur", "v": 90 }]),
-    );
+    assert_json_eq(toks_json(&lex("1h30m").unwrap()), serde_json::json!([{ "t": "dur", "v": 90 }]));
     assert_json_eq(
         toks_json(&lex("1d2h30m").unwrap()),
         serde_json::json!([{ "t": "dur", "v": 1590 }]),
     );
-    assert_json_eq(
-        toks_json(&lex("12").unwrap()),
-        serde_json::json!([{ "t": "int", "v": 12 }]),
-    );
+    assert_json_eq(toks_json(&lex("12").unwrap()), serde_json::json!([{ "t": "int", "v": 12 }]));
 }
 
 #[test]
@@ -164,10 +158,7 @@ fn canonicalizes_in_an_outcome_list_and_round_trips() {
     // single unit: 1h30m → 3halfhour
     let dict = core_dictionary();
     assert_eq!(
-        canonical(
-            "0:16 @ EVENT dusk_falls -> PROGRESS(1h30m, \"tick\")",
-            &dict
-        ),
+        canonical("0:16 @ EVENT dusk_falls -> PROGRESS(1h30m, \"tick\")", &dict),
         "0:16 @ EVENT dusk_falls -> PROGRESS(3halfhour, \"tick\")"
     );
 }

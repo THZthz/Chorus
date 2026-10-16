@@ -12,17 +12,12 @@ mod common;
 use common::harness::assert_err_msg;
 
 /// The bundled showcase, read as text (script text = data).
-const FLYER: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/scripts/the-nightjar-flyer.txt"
-));
+const FLYER: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/the-nightjar-flyer.txt"));
 
 /// The bundled CS slice — the second hand-authored script; like the flyer
 /// it must lint with ZERO findings of either class.
-const SLICE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/scripts/cultist-slice.txt"
-));
+const SLICE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/cultist-slice.txt"));
 
 /// The shared base script. Byte-shape
 /// preserved (leading newline, section order) because line numbers flow into
@@ -84,18 +79,9 @@ fn player_must_name_a_declared_character() {
 fn reserved_words_cannot_be_names() {
     // (§5.1)
     assert_err_msg(compile(&base("  TO is place")), r"'TO' is a reserved word");
-    assert_err_msg(
-        compile(&base("  WITH is character at HOUSE")),
-        r"'WITH' is a reserved word",
-    );
-    assert_err_msg(
-        compile(&base("  MARCH is parent_child of TO")),
-        r"'TO' is a reserved word",
-    );
-    assert_err_msg(
-        compile(&base("prototypes:\n  IF is idea")),
-        r"'IF' is a reserved word",
-    );
+    assert_err_msg(compile(&base("  WITH is character at HOUSE")), r"'WITH' is a reserved word");
+    assert_err_msg(compile(&base("  MARCH is parent_child of TO")), r"'TO' is a reserved word");
+    assert_err_msg(compile(&base("prototypes:\n  IF is idea")), r"'IF' is a reserved word");
     // non-lexeme names are legal — §9.42's unsafe-name corner, quote every ref
     assert!(compile(&base("  X-Y is item")).is_ok());
 }
@@ -137,9 +123,7 @@ fn duplicate_prototype_declarations_are_a_load_error_not_last_write_wins() {
     // error — both lines are individually legal (no slot typo to double-fire
     // into Q4's check).
     assert_err_msg(
-        compile(&base(
-            "prototypes:\n  SPARK is idea\n  SPARK is idea with secret:1",
-        )),
+        compile(&base("prototypes:\n  SPARK is idea\n  SPARK is idea with secret:1")),
         r"line \d+: duplicate prototype 'SPARK'",
     );
 }
@@ -173,9 +157,7 @@ fn case_colliding_entity_names_are_a_minted_id_collision_load_error() {
     // (`s_{name.to_lowercase()}`), and the second add_entity would silently
     // clobber the first. The id collision is its own load error.
     assert_err_msg(
-        compile(&base(
-            "  ana is character at HOUSE\n  ANA is character at HOUSE",
-        )),
+        compile(&base("  ana is character at HOUSE\n  ANA is character at HOUSE")),
         r"line \d+: minted id 's_ana' already in use \('ana' vs 'ANA'\)",
     );
 }
@@ -226,11 +208,7 @@ verbs:
         &dict,
     )
     .unwrap();
-    assert!(
-        w.iter()
-            .any(|x| x.contains("verb READ: declares slots but no recipes")),
-        "{w:?}"
-    );
+    assert!(w.iter().any(|x| x.contains("verb READ: declares slots but no recipes")), "{w:?}");
 }
 
 #[test]
@@ -252,11 +230,7 @@ verbs:
         &dict,
     )
     .unwrap();
-    assert!(
-        w.iter()
-            .any(|x| x.contains("read.late") && x.contains("unreachable")),
-        "{w:?}"
-    );
+    assert!(w.iter().any(|x| x.contains("read.late") && x.contains("unreachable")), "{w:?}");
 }
 
 #[test]
@@ -279,8 +253,7 @@ verbs:
     )
     .unwrap();
     assert!(
-        w.iter()
-            .any(|x| x.contains("read.second") && x.contains("shadowed by read.first")),
+        w.iter().any(|x| x.contains("read.second") && x.contains("shadowed by read.first")),
         "{w:?}"
     );
 }
@@ -377,21 +350,9 @@ triggers:
         &dict,
     )
     .unwrap();
-    assert!(
-        w.iter()
-            .any(|x| x.contains("read.default") && x.contains("{bject}")),
-        "{w:?}"
-    );
-    assert!(
-        !w.iter()
-            .any(|x| x.contains("function sus") && x.contains("{louder}")),
-        "{w:?}"
-    ); // params are known in bodies
-    assert!(
-        w.iter()
-            .any(|x| x.contains("trigger dusk") && x.contains("{louder}")),
-        "{w:?}"
-    );
+    assert!(w.iter().any(|x| x.contains("read.default") && x.contains("{bject}")), "{w:?}");
+    assert!(!w.iter().any(|x| x.contains("function sus") && x.contains("{louder}")), "{w:?}"); // params are known in bodies
+    assert!(w.iter().any(|x| x.contains("trigger dusk") && x.contains("{louder}")), "{w:?}");
 }
 
 #[test]
@@ -417,11 +378,7 @@ verbs:
         &dict,
     )
     .unwrap();
-    assert!(
-        w.iter()
-            .any(|x| x.contains("deck POST: entry LETTER is not stackable")),
-        "{w:?}"
-    );
+    assert!(w.iter().any(|x| x.contains("deck POST: entry LETTER is not stackable")), "{w:?}");
 }
 
 #[test]
@@ -443,22 +400,14 @@ verbs:
         &dict,
     )
     .unwrap();
-    assert!(
-        w.iter()
-            .any(|x| x.contains("aspect 'ocult' is queried but never declared")),
-        "{w:?}"
-    );
+    assert!(w.iter().any(|x| x.contains("aspect 'ocult' is queried but never declared")), "{w:?}");
 }
 
 #[test]
 fn a_non_lexeme_entity_name_warns_legal_but_every_ref_needs_quotes() {
     let dict = core_dictionary();
     let w = lint_script(&base("  X-Y is item with weight:1"), &dict).unwrap();
-    assert!(
-        w.iter()
-            .any(|x| x.contains("entity 'X-Y': not a name lexeme")),
-        "{w:?}"
-    );
+    assert!(w.iter().any(|x| x.contains("entity 'X-Y': not a name lexeme")), "{w:?}");
 }
 
 #[test]
@@ -495,10 +444,7 @@ fn findings_for(extra: &str) -> Vec<LintFinding> {
 }
 
 fn warnings_of(findings: &[LintFinding]) -> Vec<&LintFinding> {
-    findings
-        .iter()
-        .filter(|f| f.severity == LintSeverity::Warning)
-        .collect()
+    findings.iter().filter(|f| f.severity == LintSeverity::Warning).collect()
 }
 
 /// The converter's dead-marker shape (E11): on an `actors` slot of 1..1,
@@ -533,10 +479,7 @@ verbs:
             && warnings[0].message.contains("count(actors) < 1"),
         "{findings:?}"
     );
-    assert!(
-        findings.iter().all(|f| !f.message.contains("work.sat")),
-        "{findings:?}"
-    );
+    assert!(findings.iter().all(|f| !f.message.contains("work.sat")), "{findings:?}");
     assert!(
         findings.iter().all(|f| f.severity == LintSeverity::Warning),
         "the marker fixtures must not trip the pre-existing ERROR class: {findings:?}"
@@ -549,14 +492,7 @@ verbs:
 #[test]
 fn every_negation_spelling_of_a_slot_forced_count_is_dead() {
     let dict = core_dictionary();
-    for (op, k) in [
-        (">=", 0),
-        (">=", 1),
-        ("=", 1),
-        ("<=", 1),
-        ("<", 2),
-        (">", 0),
-    ] {
+    for (op, k) in [(">=", 0), (">=", 1), ("=", 1), ("<=", 1), ("<", 2), (">", 0)] {
         let text = base(&format!(
             "
 verbs:
@@ -569,11 +505,7 @@ verbs:
         ));
         let findings = lint_script_findings(&text, &dict).unwrap();
         let warnings = warnings_of(&findings);
-        assert_eq!(
-            warnings.len(),
-            1,
-            "NOT (count(actors) {op} {k}): {findings:?}"
-        );
+        assert_eq!(warnings.len(), 1, "NOT (count(actors) {op} {k}): {findings:?}");
         assert!(warnings[0].message.contains("work.mark"), "{findings:?}");
     }
 }
@@ -601,10 +533,7 @@ verbs:
             && warnings[0].message.contains("count(object) >= 1"),
         "{findings:?}"
     );
-    assert!(
-        findings.iter().all(|f| !f.message.contains("read.noobj")),
-        "{findings:?}"
-    );
+    assert!(findings.iter().all(|f| !f.message.contains("read.noobj")), "{findings:?}");
 }
 
 /// Same-variable contradictions inside one conjunction: disjoint pins on one
@@ -660,12 +589,7 @@ verbs:
     );
     let warnings = warnings_of(&findings);
     assert_eq!(warnings.len(), 2, "{findings:?}");
-    assert!(
-        warnings
-            .iter()
-            .all(|w| w.message.contains("both empty and bound")),
-        "{findings:?}"
-    );
+    assert!(warnings.iter().all(|w| w.message.contains("both empty and bound")), "{findings:?}");
 }
 
 /// OR branches are independent worlds: dead only when EVERY branch is dead;
@@ -688,10 +612,7 @@ verbs:
     let warnings = warnings_of(&findings);
     assert_eq!(warnings.len(), 1, "{findings:?}");
     assert!(warnings[0].message.contains("talk.dead"), "{findings:?}");
-    assert!(
-        findings.iter().all(|f| !f.message.contains("talk.taut")),
-        "{findings:?}"
-    );
+    assert!(findings.iter().all(|f| !f.message.contains("talk.taut")), "{findings:?}");
     assert!(
         findings.iter().all(|f| f.severity == LintSeverity::Warning),
         "the OR fixtures must not trip the pre-existing ERROR class: {findings:?}"

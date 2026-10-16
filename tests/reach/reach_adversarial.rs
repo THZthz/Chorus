@@ -70,11 +70,7 @@ fn slot(role: &str, min: i64, max: i64, query: Option<&str>) -> SlotDef {
 }
 
 fn verb(slots: Vec<SlotDef>, duration: i64, recipes: Vec<RecipeDef>) -> VerbContent {
-    VerbContent {
-        slots,
-        duration,
-        recipes,
-    }
+    VerbContent { slots, duration, recipes }
 }
 
 fn recipe(out: &[&str]) -> RecipeDef {
@@ -102,19 +98,11 @@ fn recipe_when(when: &str, out: &[&str]) -> RecipeDef {
 }
 
 fn proto(kind: &str) -> PrototypeDef {
-    PrototypeDef {
-        kind: kind.to_string(),
-        ..PrototypeDef::default()
-    }
+    PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() }
 }
 
 fn protos(entries: &[(&str, PrototypeDef)]) -> Option<IndexMap<String, PrototypeDef>> {
-    Some(
-        entries
-            .iter()
-            .map(|(n, p)| ((*n).to_string(), p.clone()))
-            .collect(),
-    )
+    Some(entries.iter().map(|(n, p)| ((*n).to_string(), p.clone())).collect())
 }
 
 fn slot_trigger(id: &str, slot: i64, out: &[&str]) -> TriggerDef {
@@ -156,16 +144,8 @@ fn analyze_usable(
     state: &State,
     target: &str,
 ) -> chorus::reach::CardReport {
-    analyze_card(
-        content,
-        state,
-        target,
-        CardOptions {
-            usable: true,
-            ..CardOptions::default()
-        },
-    )
-    .unwrap()
+    analyze_card(content, state, target, CardOptions { usable: true, ..CardOptions::default() })
+        .unwrap()
 }
 
 fn analyze_demand(
@@ -177,10 +157,7 @@ fn analyze_demand(
         content,
         state,
         "",
-        CardOptions {
-            demand: Some(demand.to_string()),
-            ..CardOptions::default()
-        },
+        CardOptions { demand: Some(demand.to_string()), ..CardOptions::default() },
     )
     .unwrap()
 }
@@ -231,11 +208,7 @@ fn s1_parallel_windows_the_mint_chains_into_the_slot_and_stays_usable() {
             ),
             (
                 "WAIT".to_string(),
-                verb(
-                    vec![slot("actors", 1, 1, Some("kind:character"))],
-                    30,
-                    vec![recipe(&[])],
-                ),
+                verb(vec![slot("actors", 1, 1, Some("kind:character"))], 30, vec![recipe(&[])]),
             ),
         ]),
         ..ContentRaw::default()
@@ -249,10 +222,7 @@ fn s1_parallel_windows_the_mint_chains_into_the_slot_and_stays_usable() {
     assert_eq!(card.verdict, CardVerdict::Obtainable);
     assert_eq!(card.existence, Existence::Proven);
     assert!(card.chain.join("\n").contains("FORGE"));
-    assert!(card
-        .usable_via
-        .iter()
-        .any(|v| v.starts_with("INSPECT.object")));
+    assert!(card.usable_via.iter().any(|v| v.starts_with("INSPECT.object")));
     let lamp = analyze_usable(&content, &state, "LAMP");
     assert_eq!(lamp.verdict, CardVerdict::Obtainable);
 }
@@ -277,25 +247,14 @@ fn s2_expiry_chain_the_expiry_trigger_proves_its_mint() {
             ),
             (
                 "WAIT".to_string(),
-                verb(
-                    vec![slot("actors", 1, 1, Some("kind:character"))],
-                    30,
-                    vec![recipe(&[])],
-                ),
+                verb(vec![slot("actors", 1, 1, Some("kind:character"))], 30, vec![recipe(&[])]),
             ),
         ]),
-        triggers: Some(vec![expire_trigger(
-            "paper_to_ash",
-            "PAPER",
-            &["SPAWN ASH"],
-        )]),
+        triggers: Some(vec![expire_trigger("paper_to_ash", "PAPER", &["SPAWN ASH"])]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let state = state_with(vec![
-        ent("ANA", "character", &[]),
-        ent("PAPER", "item", &[]),
-    ]);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("PAPER", "item", &[])]);
 
     let ash = analyze(&content, &state, "ASH");
     assert_eq!(ash.verdict, CardVerdict::Obtainable);
@@ -464,10 +423,8 @@ fn s5_derive_of_derive_the_chained_names_are_candidate_never_unobtainable() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
-    let state = state_with(vec![
-        ent("ANA", "character", &[]),
-        ent("THE_BOOK", "item", &[("secret", 2)]),
-    ]);
+    let state =
+        state_with(vec![ent("ANA", "character", &[]), ent("THE_BOOK", "item", &[("secret", 2)])]);
 
     let d1 = analyze(&content, &state, "RUMOUR_THE_BOOK");
     assert_eq!(d1.verdict, CardVerdict::Unproven);
@@ -515,11 +472,7 @@ fn s6_deck_reset_and_defaultcard_with_the_non_stackable_freeze_nuance() {
             ]),
             verbs: IndexMap::from([(
                 "WAIT".to_string(),
-                verb(
-                    vec![slot("actors", 1, 1, Some("kind:character"))],
-                    30,
-                    vec![recipe(&[])],
-                ),
+                verb(vec![slot("actors", 1, 1, Some("kind:character"))], 30, vec![recipe(&[])]),
             )]),
             ..ContentRaw::default()
         }
@@ -620,11 +573,7 @@ fn s8_same_slot_triple_triggers_with_overlapping_mint_names_demote_in_both_order
             triggers: Some(triggers),
             verbs: IndexMap::from([(
                 "WAIT".to_string(),
-                verb(
-                    vec![slot("actors", 1, 1, Some("kind:character"))],
-                    30,
-                    vec![recipe(&[])],
-                ),
+                verb(vec![slot("actors", 1, 1, Some("kind:character"))], 30, vec![recipe(&[])]),
             )]),
             ..ContentRaw::default()
         }
@@ -655,11 +604,7 @@ fn s8_same_slot_triple_triggers_with_overlapping_mint_names_demote_in_both_order
         ]),
         verbs: IndexMap::from([(
             "WAIT".to_string(),
-            verb(
-                vec![slot("actors", 1, 1, Some("kind:character"))],
-                30,
-                vec![recipe(&[])],
-            ),
+            verb(vec![slot("actors", 1, 1, Some("kind:character"))], 30, vec![recipe(&[])]),
         )]),
         ..ContentRaw::default()
     };
@@ -795,11 +740,7 @@ fn s14_two_stage_expiry_arming_the_broken_chain_stays_unproven() {
     let mk = |with_armer: bool| {
         let mut verbs = IndexMap::from([(
             "WAIT".to_string(),
-            verb(
-                vec![slot("actors", 1, 1, Some("kind:character"))],
-                30,
-                vec![recipe(&[])],
-            ),
+            verb(vec![slot("actors", 1, 1, Some("kind:character"))], 30, vec![recipe(&[])]),
         )]);
         if with_armer {
             verbs.insert(
@@ -821,10 +762,7 @@ fn s14_two_stage_expiry_arming_the_broken_chain_stays_unproven() {
             ..ContentRaw::default()
         }
     };
-    let state = state_with(vec![
-        ent("ANA", "character", &[]),
-        ent("CRATE", "item", &[]),
-    ]);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("CRATE", "item", &[])]);
 
     // dead chain: t_grand is a live site, so the verdict is unproven (guarded,
     // NOT structurally absent)

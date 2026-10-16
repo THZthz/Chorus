@@ -26,16 +26,8 @@ pub const CORE_VERBS: [&str; 12] = [
 ];
 
 /// Noun classes, spec §4.1.
-pub const KINDS: [&str; 8] = [
-    "character",
-    "place",
-    "item",
-    "text",
-    "idea",
-    "state",
-    "rite",
-    "resource",
-];
+pub const KINDS: [&str; 8] =
+    ["character", "place", "item", "text", "idea", "state", "rite", "resource"];
 
 /// The reserved list: 18 keywords + every
 /// CORE_VERB appended (spelled out; a unit test below pins the tail equal to
@@ -162,14 +154,10 @@ impl Dictionary {
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || Regex::new(r"^[A-Z][A-Z0-9_]*$"));
         if !re.is_match(lexeme) {
-            return Err(ChorusError::new(format!(
-                "{what} '{lexeme}' must be UPPER_SNAKE"
-            )));
+            return Err(ChorusError::new(format!("{what} '{lexeme}' must be UPPER_SNAKE")));
         }
         if self.verbs.contains(lexeme) {
-            return Err(ChorusError::new(format!(
-                "{what} '{lexeme}' collides with a verb"
-            )));
+            return Err(ChorusError::new(format!("{what} '{lexeme}' collides with a verb")));
         }
         Ok(())
     }
@@ -206,29 +194,17 @@ mod tests {
     #[test]
     fn reserved_words_tail_is_core_verbs_and_core_dict_registers_clean() {
         // the appended CORE_VERBS tail, pinned so the double-write cannot drift
-        assert_eq!(
-            RESERVED_WORDS[RESERVED_WORDS.len() - CORE_VERBS.len()..],
-            CORE_VERBS
-        );
+        assert_eq!(RESERVED_WORDS[RESERVED_WORDS.len() - CORE_VERBS.len()..], CORE_VERBS);
         let d = core_dictionary();
         assert_eq!(d.verbs.len(), CORE_VERBS.len());
         assert!(d.is_verb("READ"));
         assert!(d.is_op("SPAWN"));
         assert!(!d.is_op("READ")); // verbs are not ops
         assert!(d.reserved.contains("IF"));
-        assert_eq!(
-            d.relation_def("parent_child").map(|def| def.symmetric),
-            Ok(true)
-        );
-        assert_eq!(
-            d.relation_def("parent_of").map(|def| def.symmetric),
-            Ok(false)
-        );
+        assert_eq!(d.relation_def("parent_child").map(|def| def.symmetric), Ok(true));
+        assert_eq!(d.relation_def("parent_of").map(|def| def.symmetric), Ok(false));
         let err = d.relation_def("nope").unwrap_err();
-        assert_eq!(
-            err.msg,
-            "unknown relation type 'nope' (register it in the dictionary)"
-        );
+        assert_eq!(err.msg, "unknown relation type 'nope' (register it in the dictionary)");
     }
 
     #[test]

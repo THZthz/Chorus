@@ -274,9 +274,8 @@ pub fn add_entity(s: &mut State, e: Entity) -> Result<()> {
             if !pool.is_empty() {
                 // the whole pool must be stackable; a missing
                 // entity reads as non-stackable
-                let existing_stackable = pool
-                    .iter()
-                    .all(|id| s.entities.get(id).is_some_and(|x| x.stackable));
+                let existing_stackable =
+                    pool.iter().all(|id| s.entities.get(id).is_some_and(|x| x.stackable));
                 if !e.stackable || !existing_stackable {
                     return Err(ChorusError::new(format!(
                         "duplicate name '{}' among alive entities",
@@ -400,8 +399,7 @@ pub fn aspect_set(e: &mut Entity, path: &str, v: i64) {
     // an existing Num head is REPLACED by a fresh
     // sub-map; a missing head creates one.
     if !matches!(e.aspects.get(head), Some(AspectVal::Sub(_))) {
-        e.aspects
-            .insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
+        e.aspects.insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
     }
     if let Some(AspectVal::Sub(m)) = e.aspects.get_mut(head) {
         m.insert(rest.to_string(), v);
@@ -429,10 +427,7 @@ pub fn relation_key(a: &str, b: &str, type_: &str, symmetric: bool) -> String {
 /// symmetric/directed storage (the double-check is belt-and-braces).
 #[must_use]
 pub fn relation_alive(s: &State, id_a: &str, id_b: &str, type_: &str) -> bool {
-    for k in [
-        format!("{id_a}|{id_b}|{type_}"),
-        format!("{id_b}|{id_a}|{type_}"),
-    ] {
+    for k in [format!("{id_a}|{id_b}|{type_}"), format!("{id_b}|{id_a}|{type_}")] {
         if let Some(r) = s.relations.get(&k) {
             if r.dead_action.is_none() {
                 return true;

@@ -28,12 +28,7 @@ pub fn fold_up_to(
     content: &CompiledContent,
     upto_exclusive: i64,
 ) -> Result<State> {
-    fold_iter(
-        records.iter().filter(|r| r.id < upto_exclusive),
-        base,
-        dict,
-        content,
-    )
+    fold_iter(records.iter().filter(|r| r.id < upto_exclusive), base, dict, content)
 }
 
 /// The shared replay loop; `fold_up_to` feeds it the filtered iterator

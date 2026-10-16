@@ -86,26 +86,10 @@ pub enum StateOp {
 /// (see CmpOp — queries never reach the log).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum QueryTerm {
-    Kind {
-        neg: bool,
-        kind: String,
-    },
-    Aspect {
-        neg: bool,
-        path: String,
-        op: Option<CmpOp>,
-        level: i64,
-    },
-    State {
-        neg: bool,
-        key: String,
-        op: StateOp,
-        value: Option<AttrValue>,
-    },
-    Name {
-        neg: bool,
-        name: String,
-    },
+    Kind { neg: bool, kind: String },
+    Aspect { neg: bool, path: String, op: Option<CmpOp>, level: i64 },
+    State { neg: bool, key: String, op: StateOp, value: Option<AttrValue> },
+    Name { neg: bool, name: String },
 }
 
 impl QueryTerm {
@@ -202,10 +186,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
     let field = &term[..colon];
     let rest = &term[colon + 1..];
     match field {
-        "kind" => Ok(QueryTerm::Kind {
-            neg,
-            kind: rest.to_string(),
-        }),
+        "kind" => Ok(QueryTerm::Kind { neg, kind: rest.to_string() }),
         "name" => {
             if rest.is_empty() {
                 return Err(ChorusError::new(format!(
@@ -223,10 +204,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
                     "bad name term '{raw}' (name:X is an exact-case match — put the comparison outside: count(name:X) >= 1)"
                 )));
             }
-            Ok(QueryTerm::Name {
-                neg,
-                name: rest.to_string(),
-            })
+            Ok(QueryTerm::Name { neg, name: rest.to_string() })
         }
         "aspect" => {
             // `\s` is the frozen class (Q8), `-?\d+`
@@ -251,12 +229,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
                 Some(g) => parse_authored_int(g.as_str()),
                 None => 1,
             };
-            Ok(QueryTerm::Aspect {
-                neg,
-                path: path.as_str().to_string(),
-                op,
-                level,
-            })
+            Ok(QueryTerm::Aspect { neg, path: path.as_str().to_string(), op, level })
         }
         "state" => {
             // the same `\s` treatment; `(.+)` is
@@ -334,9 +307,7 @@ pub(crate) fn match_conjunction(e: &Entity, group: &[QueryTerm]) -> bool {
 fn match_term(e: &Entity, t: &QueryTerm) -> bool {
     match t {
         QueryTerm::Kind { kind, .. } => e.kind == *kind,
-        QueryTerm::Aspect {
-            path, op, level, ..
-        } => {
+        QueryTerm::Aspect { path, op, level, .. } => {
             let Some(v) = aspect_get(e, path) else {
                 return false;
             };
@@ -350,11 +321,7 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
             // state:!sealed → attrs['state.sealed']
             // (an empty attrs map misses every key — skip the key build,
             // this term runs once per entity in the match_query scans)
-            let v = if e.attrs.is_empty() {
-                None
-            } else {
-                e.attrs.get(&format!("state.{key}"))
-            };
+            let v = if e.attrs.is_empty() { None } else { e.attrs.get(&format!("state.{key}")) };
             match op {
                 // strict inequality against `true`: the string "false", a 0, a missing value all
                 // count as unsealed
@@ -439,9 +406,7 @@ mod tests {
         let q2 = parse_query("state:sealed").unwrap();
         assert!(!match_query(&e, &q2));
         let mut sealed = e.clone();
-        sealed
-            .attrs
-            .insert("state.sealed".into(), AttrValue::Bool(true));
+        sealed.attrs.insert("state.sealed".into(), AttrValue::Bool(true));
         assert!(match_query(&sealed, &q2));
     }
 
@@ -450,9 +415,7 @@ mod tests {
         assert!(parse_query("name:X>=1").is_err());
         let q = parse_query("aspect:language.latin").unwrap();
         match &q[0][0] {
-            QueryTerm::Aspect {
-                path, op, level, ..
-            } => {
+            QueryTerm::Aspect { path, op, level, .. } => {
                 assert_eq!(path, "language.latin");
                 assert_eq!(*op, None);
                 assert_eq!(*level, 1); // the default when no comparison follows
@@ -468,10 +431,7 @@ mod tests {
         pairs.insert("a".to_string(), 1);
         pairs.insert("a.b".to_string(), 2);
         let out = aspects_from_pairs(&pairs);
-        assert_eq!(
-            out.get("a"),
-            Some(&AspectVal::Sub(IndexMap::from([("b".to_string(), 2)])))
-        );
+        assert_eq!(out.get("a"), Some(&AspectVal::Sub(IndexMap::from([("b".to_string(), 2)]))));
         // 'a.b.c' stores the literal sub-key 'b.c' — no nested tree
         let mut pairs2 = IndexMap::new();
         pairs2.insert("a.b.c".to_string(), 7);

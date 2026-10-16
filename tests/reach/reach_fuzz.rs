@@ -26,12 +26,7 @@ fn assert_seed_sound(seed: u32) {
     if !out.inconclusive.is_empty() {
         println!("seed {}: {}", seed, out.inconclusive.join("; "));
     }
-    assert!(
-        out.failures.is_empty(),
-        "seed {}: {}",
-        seed,
-        out.failures.join("\n")
-    );
+    assert!(out.failures.is_empty(), "seed {}: {}", seed, out.failures.join("\n"));
 }
 
 macro_rules! fuzz_seed {

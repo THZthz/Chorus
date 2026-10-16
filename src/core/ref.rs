@@ -57,14 +57,8 @@ pub fn is_safe_name(name: &str) -> bool {
 #[must_use]
 pub fn name_ref(name: impl Into<String>, kind: Option<String>) -> Ref {
     match kind {
-        Some(kind) => Ref::Name {
-            kind: Some(kind),
-            name: name.into(),
-        },
-        None => Ref::Name {
-            kind: None,
-            name: name.into(),
-        },
+        Some(kind) => Ref::Name { kind: Some(kind), name: name.into() },
+        None => Ref::Name { kind: None, name: name.into() },
     }
 }
 
@@ -134,19 +128,13 @@ mod tests {
     #[test]
     fn format_ref_quotes_unsafe_and_reserved_names_only() {
         let dict = d();
-        assert_eq!(
-            format_ref(&name_ref("RUMOUR", None), None).unwrap(),
-            "RUMOUR"
-        );
+        assert_eq!(format_ref(&name_ref("RUMOUR", None), None).unwrap(), "RUMOUR");
         assert_eq!(
             format_ref(&name_ref("READ", None), Some(&dict)).unwrap(),
             "\"READ\"" // reserved → quoted
         );
         // QUIRK: only `"` is escaped into \" — backslashes stay raw
-        assert_eq!(
-            format_ref(&name_ref("a\"b\\c", None), None).unwrap(),
-            "\"a\\\"b\\c\""
-        );
+        assert_eq!(format_ref(&name_ref("a\"b\\c", None), None).unwrap(), "\"a\\\"b\\c\"");
         assert_eq!(format_ref(&id_ref("c7f3"), None).unwrap(), "#c7f3");
         // param refs never format
         assert!(format_ref(&Ref::Param { name: "n".into() }, None).is_err());
@@ -154,12 +142,7 @@ mod tests {
 
     #[test]
     fn sort_refs_uses_utf16_order_and_is_stable() {
-        let refs = vec![
-            name_ref("b", None),
-            id_ref("2"),
-            name_ref("a", None),
-            name_ref("b", None),
-        ];
+        let refs = vec![name_ref("b", None), id_ref("2"), name_ref("a", None), name_ref("b", None)];
         let sorted = sort_refs(&refs);
         let keys: Vec<String> = sorted.iter().map(ref_sort_key).collect();
         // "#2" sorts before names (its key carries '#', U+0023 < 'A')

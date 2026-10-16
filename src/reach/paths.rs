@@ -432,12 +432,8 @@ impl<'c> WorldFacts<'c> {
         derived: bool,
     ) -> ReachPath {
         let site = &self.census.sites[si];
-        let mut guards: Vec<String> = site
-            .path
-            .iter()
-            .filter(|p| pred_static(p))
-            .map(pred_text)
-            .collect();
+        let mut guards: Vec<String> =
+            site.path.iter().filter(|p| pred_static(p)).map(pred_text).collect();
         if let Some(when) = &site.when {
             if pred_static(when) {
                 guards.push(pred_text(when));
@@ -464,11 +460,7 @@ impl<'c> WorldFacts<'c> {
                 id: deck.id.clone(),
                 position: pos,
                 defaultcard: pos.is_none(),
-                capacity: if site.cap != MANY {
-                    Some(site.cap)
-                } else {
-                    None
-                },
+                capacity: if site.cap != MANY { Some(site.cap) } else { None },
             });
         }
         // preconditions: the chosen committability
@@ -507,11 +499,7 @@ impl<'c> WorldFacts<'c> {
                     }
                     seen.swap_remove(&name);
                 }
-                path.requires.push(Require {
-                    name,
-                    how,
-                    paths: sub,
-                });
+                path.requires.push(Require { name, how, paths: sub });
             }
         }
         path
@@ -523,24 +511,15 @@ fn initial_decl_line(name: &str, e: &Entity) -> String {
     let aspects = if e.aspects.is_empty() {
         String::new()
     } else {
-        format!(
-            ", aspects {}",
-            crate::engine::engine::aspects_to_json(&e.aspects)
-        )
+        format!(", aspects {}", crate::engine::engine::aspects_to_json(&e.aspects))
     };
-    format!(
-        "{name} is declared in the initial entities ({}{aspects})",
-        e.kind
-    )
+    format!("{name} is declared in the initial entities ({}{aspects})", e.kind)
 }
 
 /// Does the deck carry the target at all?
 pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
     deck.order.iter().any(|c| c.name == target)
-        || deck
-            .defaultcard
-            .as_ref()
-            .is_some_and(|dc| dc.name == target)
+        || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target)
 }
 
 /// Does `cap` total draws suffice to serve `target`?
@@ -553,11 +532,7 @@ pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool
             if deck.reset {
                 return false;
             }
-            if !deck
-                .defaultcard
-                .as_ref()
-                .is_some_and(|dc| dc.name == target)
-            {
+            if !deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target) {
                 return false;
             }
             cap > deck.order.len() as i64
@@ -595,11 +570,7 @@ pub(crate) fn site_chain(site: &RawSite, target: &str, supports: &[String]) -> V
     } else {
         lines.push(format!(
             "{} mints '{}' — {}",
-            if site.kind == SiteKind::Replace {
-                "REPLACE"
-            } else {
-                "SPAWN"
-            },
+            if site.kind == SiteKind::Replace { "REPLACE" } else { "SPAWN" },
             target,
             site.where_
         ));
@@ -804,14 +775,10 @@ impl<'c> Analyzer<'c> {
                 // derive; any of these keeps 'none' unprovable
                 let matches_somewhere = facts.universe.iter().any(|u| match_query(u, dq));
                 let write_paths = writable_paths(dq);
-                let pumps: Vec<&String> = write_paths
-                    .iter()
-                    .filter(|p| facts.set_writes.contains(*p))
-                    .collect();
-                let derives: Vec<&String> = write_paths
-                    .iter()
-                    .filter(|p| facts.derive_paths.contains(*p))
-                    .collect();
+                let pumps: Vec<&String> =
+                    write_paths.iter().filter(|p| facts.set_writes.contains(*p)).collect();
+                let derives: Vec<&String> =
+                    write_paths.iter().filter(|p| facts.derive_paths.contains(*p)).collect();
                 for p in &pumps {
                     let owners: Vec<&str> = facts
                         .census
@@ -966,9 +933,9 @@ impl<'c> Analyzer<'c> {
         let descriptor: Option<Entity> = match (&demand_match, facts.init_names.get(target)) {
             (Some(d), _) => Some(d.clone()),
             (None, Some(e)) => Some((*e).clone()),
-            (None, None) => facts
-                .proto_of(target)
-                .map(|p| facts.synth(target, &p.kind, Some(p), None)),
+            (None, None) => {
+                facts.proto_of(target).map(|p| facts.synth(target, &p.kind, Some(p), None))
+            }
         };
         if existence == Existence::Proven && descriptor.is_none() {
             notes.push(format!(
@@ -981,10 +948,7 @@ impl<'c> Analyzer<'c> {
                     continue;
                 }
                 for slot in &verb.slots {
-                    let fits = slot
-                        .query
-                        .as_ref()
-                        .is_none_or(|q| match_query(descriptor, q));
+                    let fits = slot.query.as_ref().is_none_or(|q| match_query(descriptor, q));
                     if fits {
                         usable_via.push(format!(
                             "{}.{}{}",
@@ -1028,14 +992,8 @@ impl<'c> Analyzer<'c> {
                 };
                 if serves {
                     let reason = site_reason(s, &facts.init_names);
-                    notes.push(format!(
-                        "candidate source: {} — guarded ({})",
-                        s.where_, reason
-                    ));
-                    candidates.push(CardCandidate {
-                        via: s.where_.clone(),
-                        reason,
-                    });
+                    notes.push(format!("candidate source: {} — guarded ({})", s.where_, reason));
+                    candidates.push(CardCandidate { via: s.where_.clone(), reason });
                 }
             }
         }
@@ -1059,15 +1017,9 @@ fn demand_chain_head(shown: &str, kind: &str, aspects: &Aspects, demand: Option<
     let aspects_part = if aspects.is_empty() {
         String::new()
     } else {
-        format!(
-            ", aspects {}",
-            crate::engine::engine::aspects_to_json(aspects)
-        )
+        format!(", aspects {}", crate::engine::engine::aspects_to_json(aspects))
     };
-    format!(
-        "{shown} ({kind}{aspects_part}) satisfies the demand '{}'",
-        demand.unwrap_or("")
-    )
+    format!("{shown} ({kind}{aspects_part}) satisfies the demand '{}'", demand.unwrap_or(""))
 }
 
 /// The module-level entry (a fresh world per call — a fresh [`Analyzer`] is

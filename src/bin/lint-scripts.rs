@@ -90,10 +90,7 @@ fn main() -> std::process::ExitCode {
             continue;
         }
         findings += linted.len();
-        warnings += linted
-            .iter()
-            .filter(|f| f.severity == LintSeverity::Warning)
-            .count();
+        warnings += linted.iter().filter(|f| f.severity == LintSeverity::Warning).count();
         println!("{file}:");
         for f in &linted {
             match f.severity {

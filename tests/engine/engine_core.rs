@@ -74,15 +74,7 @@ fn run_with(
         n += 1;
         format!("x{first_record_id}_{n}") // unique across steps: keyed by record id
     };
-    settle_step(
-        content,
-        dict,
-        state,
-        step_of(&s),
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
+    settle_step(content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
 }
 
 /// first_record_id defaults to 1.
@@ -94,10 +86,7 @@ fn run(content: &CompiledContent, dict: &Dictionary, state: State, src: &str) ->
 fn step_of(s: &Sentence) -> Step {
     Step {
         start_min: None,
-        clock: Some(s.clock.unwrap_or(Clock {
-            day: 0,
-            halfhour: 0,
-        })),
+        clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
         clauses: s.clauses.clone(),
         t_real: None,
     }
@@ -117,10 +106,7 @@ fn assert_rejected(r: &ExecResult, pattern: &str) {
         .as_deref()
         .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(
-        re.is_match(msg),
-        "rejected {msg:?} does not match /{pattern}/"
-    );
+    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
 /// `refusal(r)` matches `re` over the settle adapter's refusal probe.
@@ -128,10 +114,7 @@ fn assert_refusal(r: &ExecResult, pattern: &str) {
     let msg =
         refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
     let re = regex::Regex::new(pattern).unwrap();
-    assert!(
-        re.is_match(&msg),
-        "refusal {msg:?} does not match /{pattern}/"
-    );
+    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
 fn kinds(records: &[ActionRecord]) -> Vec<&str> {
@@ -174,12 +157,7 @@ fn num_aspect(k: &str, v: i64) -> Aspects {
 }
 
 fn container_attrs(container: &str) -> Attrs {
-    [(
-        "container".to_string(),
-        AttrValue::Str(container.to_string()),
-    )]
-    .into_iter()
-    .collect()
+    [("container".to_string(), AttrValue::Str(container.to_string()))].into_iter().collect()
 }
 
 /// A hand-built COMPLETE record like the regression literals in this file
@@ -209,13 +187,7 @@ fn fixture_complete(id: i64, t_game: &str, outcomes: Vec<Outcome>) -> ActionReco
 }
 
 fn outcome(op: &str, args: Vec<Arg>) -> Outcome {
-    Outcome {
-        op: op.to_string(),
-        args,
-        arms: None,
-        fallback: None,
-        call: None,
-    }
+    Outcome { op: op.to_string(), args, arms: None, fallback: None, call: None }
 }
 
 // ------------------------------------------------------------- ladder ------
@@ -247,28 +219,17 @@ mod read_ladder {
         // `r.state === state` — same object, untouched; the
         // Rust observable is value equality through snap
         assert_eq!(snap(&r.state), before);
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("REFUSE(\"The letters swim like minnows.\")"));
+        assert!(done(&r).unwrap().sentence.contains("REFUSE(\"The letters swim like minnows.\")"));
     }
 
     #[test]
     fn parent_child_reading_fairy_tales_branches_to_bonding_memory() {
         let (dict, content, state) = setup();
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA, BERTHA READ FAIRY_TALES",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA, BERTHA READ FAIRY_TALES");
         assert_eq!(act(&r).unwrap().recipes, ["read.parent_child"]);
         let spawn = &done(&r).unwrap().outcomes[0];
         assert_eq!(spawn.op, "SPAWN");
-        let Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        } = &spawn.args[0]
-        else {
+        let Arg::Ref { r#ref: Ref::Name { name, .. } } = &spawn.args[0] else {
             panic!("SPAWN's first arg is a name ref, got {:?}", spawn.args[0]);
         };
         assert_eq!(name, "BONDING_MEMORY");
@@ -278,12 +239,7 @@ mod read_ladder {
     #[test]
     fn two_unrelated_readers_get_the_poorer_outcome_no_spawn() {
         let (dict, content, state) = setup();
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA, MY_FOLLOWER READ FAIRY_TALES",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA, MY_FOLLOWER READ FAIRY_TALES");
         assert_eq!(act(&r).unwrap().recipes, ["read.unrelated_pair"]);
         assert!(done(&r).unwrap().outcomes.iter().all(|o| o.op == "NARRATE"));
     }
@@ -294,10 +250,7 @@ mod read_ladder {
         let r = run(&content, &dict, state, "0:28 @ ANA READ THE_FORGETTING");
         assert_eq!(act(&r).unwrap().recipes, ["read.secret"]);
         let spawn = &done(&r).unwrap().outcomes[0];
-        let Arg::Ref {
-            r#ref: Ref::Name { name, .. },
-        } = &spawn.args[0]
-        else {
+        let Arg::Ref { r#ref: Ref::Name { name, .. } } = &spawn.args[0] else {
             panic!("SPAWN's first arg is a name ref, got {:?}", spawn.args[0]);
         };
         assert_eq!(name, "CLUE_THE_FORGETTING");
@@ -312,10 +265,7 @@ mod read_ladder {
             Some(&AspectVal::Num(2)) // 4 - 2
         );
         // v0.5: the completion row mints
-        assert_eq!(
-            r.state.entities[minted].born_action,
-            Some(done(&r).unwrap().id)
-        );
+        assert_eq!(r.state.entities[minted].born_action, Some(done(&r).unwrap().id));
     }
 }
 
@@ -326,12 +276,7 @@ mod slot_discipline {
     #[test]
     fn cardinality_violations_are_rejected_before_anything_applies() {
         let (dict, content, state) = setup();
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA, BERTHA, MY_FOLLOWER READ FAIRY_TALES",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA, BERTHA, MY_FOLLOWER READ FAIRY_TALES");
         assert_rejected(&r, r"'actors' takes 1\.\.2");
         assert_eq!(r.records.len(), 0);
     }
@@ -339,12 +284,7 @@ mod slot_discipline {
     #[test]
     fn slot_discipline_undeclared_roles_are_rejected() {
         let (dict, content, state) = setup();
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA READ FAIRY_TALES WITH CHALICE",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA READ FAIRY_TALES WITH CHALICE");
         assert_rejected(&r, r"does not accept 'with'");
         assert_eq!(r.records.len(), 0);
     }
@@ -389,10 +329,7 @@ mod multi_clause_steps {
             state,
             "0:28 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ THE_FORGETTING",
         );
-        assert_eq!(
-            act(&r).unwrap().recipes,
-            ["travel_to.default", "read.secret"]
-        );
+        assert_eq!(act(&r).unwrap().recipes, ["travel_to.default", "read.secret"]);
         assert_eq!(act(&r).unwrap().advanced_min, 120);
         assert_eq!(
             r.state.entities["ana"].attrs.get("container"),
@@ -411,12 +348,7 @@ mod use_on_rite {
         let (dict, content, mut state) = setup();
         state.now = 14 * 60;
         let before = snap(&state);
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA AT HOUSE USE_ON RITE_OF_ASCENSION",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA AT HOUSE USE_ON RITE_OF_ASCENSION");
         assert_eq!(ops(done(&r).unwrap()), ["REFUSE"]);
         assert_eq!(r.state.now, 14 * 60);
         assert_eq!(snap(&r.state), before);
@@ -433,14 +365,8 @@ mod use_on_rite {
         );
         assert_eq!(r.rejected, None);
         // v0.5: the completion row consumes
-        assert_eq!(
-            r.state.entities["rite"].dead_action,
-            Some(done(&r).unwrap().id)
-        );
-        assert_eq!(
-            r.state.entities["chalice"].dead_action,
-            Some(done(&r).unwrap().id)
-        );
+        assert_eq!(r.state.entities["rite"].dead_action, Some(done(&r).unwrap().id));
+        assert_eq!(r.state.entities["chalice"].dead_action, Some(done(&r).unwrap().id));
         let mark = &r.state.by_name.get("MARK_OF_ASCENSION").unwrap()[0];
         assert_eq!(
             r.state.entities[mark].attrs.get("container"),
@@ -464,17 +390,10 @@ mod events {
         }
         assert_eq!(kinds1, ["action", "complete", "wait"]); // v0.5 turn shape
         let r2 = run(&content, &dict, r1.state, "0:30 @ ANA WAIT"); // crosses 16 → dusk
-        let event = r2
-            .records
-            .iter()
-            .find(|x| x.kind == "event")
-            .expect("the dusk event row");
+        let event = r2.records.iter().find(|x| x.kind == "event").expect("the dusk event row");
         assert_eq!(event.trigger.as_deref(), Some("dusk_falls"));
         assert_eq!(event.t_game, "0:32");
-        assert!(r2
-            .records
-            .iter()
-            .any(|x| x.kind == "action" && !x.sentence.is_empty()));
+        assert!(r2.records.iter().any(|x| x.kind == "action" && !x.sentence.is_empty()));
         assert!(r2.state.by_name.contains_key("DREAD"));
     }
 
@@ -498,10 +417,7 @@ mod events {
         if ks.first() == Some(&"wait") {
             ks.remove(0); // bridge
         }
-        assert_eq!(
-            ks,
-            ["action", "complete", "complete", "event", "event", "complete", "wait"]
-        );
+        assert_eq!(ks, ["action", "complete", "complete", "event", "event", "complete", "wait"]);
         let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(events[0].trigger.as_deref(), Some("dusk_falls"));
         assert_eq!(events[1].trigger.as_deref(), Some("expire:CHALICE"));
@@ -575,14 +491,8 @@ mod fold_tests {
         let mut all = r1.records.clone();
         all.extend(r2.records.clone());
         // drop turn 2
-        let undone = fold_up_to(
-            &all,
-            &seed_state(),
-            &dict,
-            &content,
-            r1.records.len() as i64 + 1,
-        )
-        .unwrap();
+        let undone =
+            fold_up_to(&all, &seed_state(), &dict, &content, r1.records.len() as i64 + 1).unwrap();
         assert_eq!(snap(&undone), snapshot_after_one);
     }
 }
@@ -610,12 +520,8 @@ mod dictionary_is_the_law {
             vec![outcome(
                 "SPAWN",
                 vec![
-                    Arg::Ref {
-                        r#ref: name_ref("CHALICE", Some("item".to_string())),
-                    },
-                    Arg::AsId {
-                        id: "new_chalice".to_string(),
-                    },
+                    Arg::Ref { r#ref: name_ref("CHALICE", Some("item".to_string())) },
+                    Arg::AsId { id: "new_chalice".to_string() },
                 ],
             )],
         );
@@ -637,12 +543,8 @@ mod behavior_regressions {
             vec![outcome(
                 "SET",
                 vec![
-                    Arg::Ref {
-                        r#ref: name_ref("CHALICE", None),
-                    },
-                    Arg::Key {
-                        v: "state.sealed".to_string(),
-                    },
+                    Arg::Ref { r#ref: name_ref("CHALICE", None) },
+                    Arg::Key { v: "state.sealed".to_string() },
                     Arg::Bool { v: true },
                 ],
             )],
@@ -665,27 +567,16 @@ mod behavior_regressions {
         relate("RELATE(BERTHA, ANA, parent_child)", 1, &mut state);
         relate("RELATE(BERTHA, ANA, parent_of)", 2, &mut state);
         let keys: Vec<&String> = state.relations.keys().collect();
-        let parent_child: Vec<&str> = keys
-            .iter()
-            .filter(|k| k.contains("parent_child"))
-            .map(|k| k.as_str())
-            .collect();
+        let parent_child: Vec<&str> =
+            keys.iter().filter(|k| k.contains("parent_child")).map(|k| k.as_str()).collect();
         assert_eq!(parent_child, ["ana|bertha|parent_child"]); // one canonical edge
         let keys: Vec<&String> = state.relations.keys().collect();
-        let parent_of: Vec<&str> = keys
-            .iter()
-            .filter(|k| k.contains("parent_of"))
-            .map(|k| k.as_str())
-            .collect();
+        let parent_of: Vec<&str> =
+            keys.iter().filter(|k| k.contains("parent_of")).map(|k| k.as_str()).collect();
         assert_eq!(parent_of, ["bertha|ana|parent_of"]); // directed, as stored
         relate("UNRELATE(ANA, BERTHA, parent_child)", 3, &mut state);
         assert_eq!(
-            state
-                .relations
-                .values()
-                .find(|r| r.type_ == "parent_child")
-                .unwrap()
-                .dead_action,
+            state.relations.values().find(|r| r.type_ == "parent_child").unwrap().dead_action,
             Some(3)
         );
     }
@@ -714,27 +605,16 @@ mod behavior_regressions {
     #[test]
     fn role_sugar_is_concretized_in_the_log_replay_matches_play_exactly() {
         let (dict, content, state) = setup();
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA, BERTHA TRAVEL_TO VILLA; MY_FOLLOWER WAIT",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA, BERTHA TRAVEL_TO VILLA; MY_FOLLOWER WAIT");
         assert_eq!(r.rejected, None);
         // the recorded MOVE must name ANA and BERTHA, not ACTORS
-        let move_outcome = done(&r)
-            .unwrap()
-            .outcomes
-            .iter()
-            .find(|o| o.op == "MOVE")
-            .expect("the MOVE outcome");
+        let move_outcome =
+            done(&r).unwrap().outcomes.iter().find(|o| o.op == "MOVE").expect("the MOVE outcome");
         let mut ids: Vec<&str> = move_outcome
             .args
             .iter()
             .filter_map(|a| match a {
-                Arg::Ref {
-                    r#ref: Ref::Id { id },
-                } => Some(id.as_str()),
+                Arg::Ref { r#ref: Ref::Id { id } } => Some(id.as_str()),
                 _ => None,
             })
             .collect();
@@ -763,12 +643,7 @@ mod behavior_regressions {
     #[test]
     fn application_failures_refuse_the_window_instead_of_throwing() {
         let (dict, content, state) = setup();
-        let r = run(
-            &content,
-            &dict,
-            state,
-            "0:28 @ ANA, BERTHA READ FAIRY_TALES",
-        );
+        let r = run(&content, &dict, state, "0:28 @ ANA, BERTHA READ FAIRY_TALES");
         assert_eq!(r.rejected, None);
         let r2 = run_with(
             &content,
@@ -814,15 +689,7 @@ mod exists_recipes {
                 recipes,
             },
         );
-        compile_content(
-            &ContentRaw {
-                verbs,
-                ..ContentRaw::default()
-            },
-            dict,
-            &[],
-        )
-        .unwrap()
+        compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
     }
 
     /// Gate — two recipes, order-dependent: the
@@ -876,10 +743,7 @@ mod exists_recipes {
         let r = run_with(&c, &pd, state, "0:28 @ ANA PROBE", 1);
         assert_eq!(r.rejected, None);
         assert_eq!(act(&r).unwrap().recipes, ["probe.hunted"]);
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("A hunter walks the world."));
+        assert!(done(&r).unwrap().sentence.contains("A hunter walks the world."));
     }
 
     #[test]
@@ -1041,17 +905,9 @@ mod progress_ticks {
         let rec = fixture_complete(
             1,
             "0:28",
-            vec![outcome(
-                "PROGRESS",
-                vec![Arg::Str {
-                    v: "no duration".to_string(),
-                }],
-            )],
+            vec![outcome("PROGRESS", vec![Arg::Str { v: "no duration".to_string() }])],
         );
-        assert_err_msg(
-            apply_record(&rec, &mut state, &dict, &content),
-            r"PROGRESS needs",
-        );
+        assert_err_msg(apply_record(&rec, &mut state, &dict, &content), r"PROGRESS needs");
     }
 
     #[test]
@@ -1126,10 +982,7 @@ mod clock_and_duration_literals {
         assert_eq!(r2.rejected, None);
         // v0.5: the chime crosses inside the advance that leads the step,
         // before the BEGIN — the quantized dead air is a logged wait row now
-        assert_eq!(
-            kinds(&r2.records),
-            ["event", "wait", "action", "complete", "wait"]
-        );
+        assert_eq!(kinds(&r2.records), ["event", "wait", "action", "complete", "wait"]);
         assert_eq!(r2.records[0].trigger.as_deref(), Some("the_chime"));
         assert_eq!(r2.records[0].t_game, "0:29");
     }
@@ -1173,9 +1026,7 @@ mod record_shape {
         assert_eq!(actors, ["ANA", "BERTHA"]);
         assert_eq!(rec.verb, "TALK");
         assert_eq!(rec.t_game, "0:28");
-        assert!(rec
-            .sentence
-            .starts_with("0:28 @ ANA, BERTHA AT DINING_HALL TALK"));
+        assert!(rec.sentence.starts_with("0:28 @ ANA, BERTHA AT DINING_HALL TALK"));
     }
 }
 
@@ -1186,13 +1037,7 @@ mod empty_base_state_fold {
     #[test]
     fn fold_of_an_empty_log_returns_the_base_state() {
         let (dict, content, _state) = setup();
-        assert_eq!(
-            fold(&[], &new_state(0), &dict, &content)
-                .unwrap()
-                .entities
-                .len(),
-            0
-        );
+        assert_eq!(fold(&[], &new_state(0), &dict, &content).unwrap().entities.len(), 0);
     }
 }
 
@@ -1224,15 +1069,7 @@ mod set_deltas_and_aspect_keys {
                 recipes,
             },
         );
-        compile_content(
-            &ContentRaw {
-                verbs,
-                ..ContentRaw::default()
-            },
-            dict,
-            &[],
-        )
-        .unwrap()
+        compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
     }
 
     fn recipe(out: &[&str]) -> RecipeDef {
@@ -1252,10 +1089,7 @@ mod set_deltas_and_aspect_keys {
     fn assert_round_trips(sentence: &str, dict: &Dictionary) {
         let parsed = parse_sentence(sentence, dict).unwrap();
         let formatted = format_sentence(&parsed, Some(dict)).unwrap();
-        assert_eq!(
-            formatted, sentence,
-            "sentence must round-trip: {sentence:?}"
-        );
+        assert_eq!(formatted, sentence, "sentence must round-trip: {sentence:?}");
     }
 
     #[test]
@@ -1280,10 +1114,7 @@ mod set_deltas_and_aspect_keys {
         assert_round_trips(&done(&r).unwrap().sentence.clone(), &td);
         // the next delta applies to the new value
         let r2 = run_with(&c, &td, r.state, "0:21 @ ANA TUNE", 2);
-        assert_eq!(
-            r2.state.entities["ana"].attrs.get("funds"),
-            Some(&AttrValue::Num(4))
-        );
+        assert_eq!(r2.state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(4)));
         let _ = (&dict, &content);
     }
 
@@ -1294,10 +1125,7 @@ mod set_deltas_and_aspect_keys {
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, funds, -3)"])]);
         let r = run_with(&c, &td, state, "0:20 @ ANA TUNE", 1);
         assert_eq!(r.rejected, None);
-        assert_eq!(
-            r.state.entities["ana"].attrs.get("funds"),
-            Some(&AttrValue::Num(-3))
-        );
+        assert_eq!(r.state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(-3)));
         assert!(done(&r).unwrap().sentence.contains("SET(#ana, funds, -3)"));
         let _ = (&dict, &content);
     }
@@ -1309,20 +1137,11 @@ mod set_deltas_and_aspect_keys {
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, aspect:dread, +1)"])]);
         let mut r = run_with(&c, &td, state, "0:20 @ ANA TUNE", 1);
         assert_eq!(r.rejected, None);
-        assert_eq!(
-            r.state.entities["ana"].aspects.get("dread"),
-            Some(&AspectVal::Num(1))
-        );
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("SET(#ana, aspect:dread, 1)"));
+        assert_eq!(r.state.entities["ana"].aspects.get("dread"), Some(&AspectVal::Num(1)));
+        assert!(done(&r).unwrap().sentence.contains("SET(#ana, aspect:dread, 1)"));
         // absolute form through the fold path (concrete outcomes replay as-is)
-        let s = parse_sentence(
-            "0:0 @ ANA WAIT -> SET(#ana, aspect:language.latin, 2)",
-            &dict,
-        )
-        .unwrap();
+        let s =
+            parse_sentence("0:0 @ ANA WAIT -> SET(#ana, aspect:language.latin, 2)", &dict).unwrap();
         let rec = fixture_complete(2, "0:0", s.outcomes);
         apply_record(&rec, &mut r.state, &dict, &content).unwrap();
         let Some(AspectVal::Sub(lang)) = r.state.entities["ana"].aspects.get("language") else {
@@ -1338,10 +1157,7 @@ mod set_deltas_and_aspect_keys {
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, funds, 5)"])]);
         let r = run_with(&c, &td, state, "0:20 @ ANA TUNE", 1);
-        assert_eq!(
-            r.state.entities["ana"].attrs.get("funds"),
-            Some(&AttrValue::Num(5))
-        );
+        assert_eq!(r.state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(5)));
         let r2 = run_with(&c, &td, r.state, "0:21 @ ANA TUNE", 2);
         assert_eq!(
             r2.state.entities["ana"].attrs.get("funds"),
@@ -1390,37 +1206,19 @@ mod set_deltas_and_aspect_keys {
             &[],
         )
         .unwrap();
-        let r = run_with(
-            &c,
-            &td,
-            state,
-            "0:20 @ ANA TUNE THE_FORGETTING; BERTHA TUNE FAIRY_TALES",
-            1,
-        );
+        let r =
+            run_with(&c, &td, state, "0:20 @ ANA TUNE THE_FORGETTING; BERTHA TUNE FAIRY_TALES", 1);
         assert_eq!(r.rejected, None);
         // each clause's OBJECT becomes its own id row — the role itself never
         // reaches the log, so the fold needs no per-clause attribution
-        let sets: Vec<&String> = r
-            .records
-            .iter()
-            .filter(|x| x.kind == "complete")
-            .map(|x| &x.sentence)
-            .collect();
+        let sets: Vec<&String> =
+            r.records.iter().filter(|x| x.kind == "complete").map(|x| &x.sentence).collect();
         assert!(sets[0].contains("SET(#forgetting, searched, 1)"));
         assert!(sets[1].contains("SET(#fairy, searched, 1)"));
         // §7: the records alone reproduce the played state
-        assert_eq!(
-            snap(&fold(&r.records, &seed_state(), &td, &c).unwrap()),
-            snap(&r.state)
-        );
-        assert_eq!(
-            r.state.entities["forgetting"].attrs.get("searched"),
-            Some(&AttrValue::Num(1))
-        );
-        assert_eq!(
-            r.state.entities["fairy"].attrs.get("searched"),
-            Some(&AttrValue::Num(1))
-        );
+        assert_eq!(snap(&fold(&r.records, &seed_state(), &td, &c).unwrap()), snap(&r.state));
+        assert_eq!(r.state.entities["forgetting"].attrs.get("searched"), Some(&AttrValue::Num(1)));
+        assert_eq!(r.state.entities["fairy"].attrs.get("searched"), Some(&AttrValue::Num(1)));
         let _ = (&dict, &content);
     }
 
@@ -1446,27 +1244,13 @@ mod set_deltas_and_aspect_keys {
         );
         let r = run_with(&c, &td, state, "0:20 @ ANA, BERTHA TUNE", 1);
         assert_eq!(r.rejected, None);
-        assert_eq!(
-            done(&r)
-                .unwrap()
-                .outcomes
-                .iter()
-                .filter(|o| o.op == "SET")
-                .count(),
-            2
-        );
+        assert_eq!(done(&r).unwrap().outcomes.iter().filter(|o| o.op == "SET").count(), 2);
         assert!(done(&r)
             .unwrap()
             .sentence
             .contains("SET(#ana, aspect:dread, 3), SET(#bertha, aspect:dread, 1)"));
-        assert_eq!(
-            r.state.entities["ana"].aspects.get("dread"),
-            Some(&AspectVal::Num(3))
-        );
-        assert_eq!(
-            r.state.entities["bertha"].aspects.get("dread"),
-            Some(&AspectVal::Num(1))
-        );
+        assert_eq!(r.state.entities["ana"].aspects.get("dread"), Some(&AspectVal::Num(3)));
+        assert_eq!(r.state.entities["bertha"].aspects.get("dread"), Some(&AspectVal::Num(1)));
         let _ = (&dict, &content);
     }
 
@@ -1476,10 +1260,7 @@ mod set_deltas_and_aspect_keys {
         let td = tune_dict();
         let c = counter_content(
             &td,
-            vec![recipe(&[
-                "SET(ACTORS, funds, +2)",
-                "SET(ACTORS, aspect:dread, +1)",
-            ])],
+            vec![recipe(&["SET(ACTORS, funds, +2)", "SET(ACTORS, aspect:dread, +1)"])],
         );
         state.entities.get_mut("bertha").unwrap().attrs.insert(
             "funds".to_string(),
@@ -1493,33 +1274,17 @@ mod set_deltas_and_aspect_keys {
             .insert("dread".to_string(), AspectVal::Num(7));
         let mut id = 1;
         let mut all: Vec<ActionRecord> = Vec::new();
-        for step in [
-            "0:20 @ ANA, BERTHA TUNE",
-            "0:21 @ ANA TUNE",
-            "0:22 @ BERTHA TUNE",
-        ] {
+        for step in ["0:20 @ ANA, BERTHA TUNE", "0:21 @ ANA TUNE", "0:22 @ BERTHA TUNE"] {
             let r = run_with(&c, &td, state, step, id);
             assert_eq!(r.rejected, None);
             all.extend(r.records.clone());
             state = r.state;
             id += r.records.len() as i64;
         }
-        assert_eq!(
-            state.entities["ana"].attrs.get("funds"),
-            Some(&AttrValue::Num(4))
-        );
-        assert_eq!(
-            state.entities["ana"].aspects.get("dread"),
-            Some(&AspectVal::Num(2))
-        );
-        assert_eq!(
-            state.entities["bertha"].attrs.get("funds"),
-            Some(&AttrValue::Num(14))
-        );
-        assert_eq!(
-            state.entities["bertha"].aspects.get("dread"),
-            Some(&AspectVal::Num(9))
-        );
+        assert_eq!(state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(4)));
+        assert_eq!(state.entities["ana"].aspects.get("dread"), Some(&AspectVal::Num(2)));
+        assert_eq!(state.entities["bertha"].attrs.get("funds"), Some(&AttrValue::Num(14)));
+        assert_eq!(state.entities["bertha"].aspects.get("dread"), Some(&AspectVal::Num(9)));
         let dir = tmp_log_dir("delta-jsonl");
         let path = dir.join("log.jsonl");
         save_log(&path, &all).unwrap();
@@ -1585,9 +1350,7 @@ mod set_deltas_and_aspect_keys {
         assert_refusal(&r, r"non-numeric");
         assert_eq!(
             r.state.entities["ana"].aspects.get("language"),
-            Some(&AspectVal::Sub(
-                [("french".to_string(), 2)].into_iter().collect()
-            )) // survives
+            Some(&AspectVal::Sub([("french".to_string(), 2)].into_iter().collect())) // survives
         );
         let _ = (&dict, &content);
     }
@@ -1600,14 +1363,8 @@ mod set_deltas_and_aspect_keys {
         // 'about' is a reserved role word
         let r = run_with(&c, &td, state, "0:20 @ ANA TUNE", 1);
         assert_eq!(r.rejected, None);
-        assert_eq!(
-            r.state.entities["ana"].attrs.get("about"),
-            Some(&AttrValue::Num(5))
-        );
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("SET(#ana, \"about\", 5)"));
+        assert_eq!(r.state.entities["ana"].attrs.get("about"), Some(&AttrValue::Num(5)));
+        assert!(done(&r).unwrap().sentence.contains("SET(#ana, \"about\", 5)"));
         // the record must round-trip: unquoted it would re-parse as the about ROLE
         assert_round_trips(&done(&r).unwrap().sentence.clone(), &td);
         let _ = (&dict, &content);
@@ -1663,11 +1420,7 @@ mod replace_decay {
             },
         );
         compile_content(
-            &ContentRaw {
-                verbs,
-                prototypes: Some(prototypes),
-                ..ContentRaw::default()
-            },
+            &ContentRaw { verbs, prototypes: Some(prototypes), ..ContentRaw::default() },
             dict,
             &[],
         )
@@ -1675,10 +1428,7 @@ mod replace_decay {
     }
 
     fn proto(kind: &str) -> PrototypeDef {
-        PrototypeDef {
-            kind: kind.to_string(),
-            ..PrototypeDef::default()
-        }
+        PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() }
     }
 
     #[test]
@@ -1715,16 +1465,10 @@ mod replace_decay {
             Some(&AttrValue::Str("house".to_string())) // inherits the dying card's place
         );
         assert_eq!(ash.born_action, Some(done(&r).unwrap().id));
-        assert_eq!(
-            r.state.entities["chalice"].dead_action,
-            Some(done(&r).unwrap().id)
-        );
+        assert_eq!(r.state.entities["chalice"].dead_action, Some(done(&r).unwrap().id));
         assert!(!r.state.by_name.contains_key("CHALICE"));
         // the fold replays the pair exactly
-        assert_eq!(
-            snap(&fold(&r.records, &seed_state(), &dd, &c).unwrap()),
-            snap(&r.state)
-        );
+        assert_eq!(snap(&fold(&r.records, &seed_state(), &dd, &c).unwrap()), snap(&r.state));
     }
 
     #[test]
@@ -1753,15 +1497,12 @@ mod replace_decay {
         let (dict, content) = rig();
         let dd = decay_dict();
         let mut base = seed_state();
+        base.entities.get_mut("chalice").unwrap().attrs.shift_remove("container");
         base.entities
             .get_mut("chalice")
             .unwrap()
             .attrs
-            .shift_remove("container");
-        base.entities.get_mut("chalice").unwrap().attrs.insert(
-            "zone".to_string(),
-            AttrValue::Str("NIGHTJAR_FLYER".to_string()),
-        );
+            .insert("zone".to_string(), AttrValue::Str("NIGHTJAR_FLYER".to_string()));
         let mut protos = IndexMap::new();
         protos.insert("ASHES".to_string(), proto("item"));
         let c = decay_content(&dd, "REPLACE OBJECT WITH ASHES", protos);
@@ -1778,21 +1519,15 @@ mod replace_decay {
         let played = clone_state(&r.state);
         let fold_base = {
             let mut b = seed_state();
+            b.entities.get_mut("chalice").unwrap().attrs.shift_remove("container");
             b.entities
                 .get_mut("chalice")
                 .unwrap()
                 .attrs
-                .shift_remove("container");
-            b.entities.get_mut("chalice").unwrap().attrs.insert(
-                "zone".to_string(),
-                AttrValue::Str("NIGHTJAR_FLYER".to_string()),
-            );
+                .insert("zone".to_string(), AttrValue::Str("NIGHTJAR_FLYER".to_string()));
             b
         };
-        assert_eq!(
-            snap(&fold(&r.records, &fold_base, &dd, &c).unwrap()),
-            snap(&played)
-        );
+        assert_eq!(snap(&fold(&r.records, &fold_base, &dd, &c).unwrap()), snap(&played));
         let _ = (&dict, &content);
     }
 
@@ -1875,10 +1610,7 @@ mod replace_decay {
         let crumbs_id = &r.state.by_name.get("CRUMBS").unwrap()[0];
         let crumbs = &r.state.entities[crumbs_id];
         assert_eq!(crumbs.kind, "item");
-        assert_eq!(
-            crumbs.attrs.get("container"),
-            Some(&AttrValue::Str("house".to_string()))
-        );
+        assert_eq!(crumbs.attrs.get("container"), Some(&AttrValue::Str("house".to_string())));
         let _ = (&dict, &content);
     }
 
@@ -2038,15 +1770,7 @@ mod authored_expiry_triggers {
             format!("x{first_record_id}_{n}")
         };
         let content = moth_content(dict);
-        settle_step(
-            &content,
-            dict,
-            state,
-            step_of(&s),
-            first_record_id,
-            Some(&mut id_gen),
-        )
-        .unwrap()
+        settle_step(&content, dict, state, step_of(&s), first_record_id, Some(&mut id_gen)).unwrap()
     }
 
     #[test]
@@ -2063,32 +1787,20 @@ mod authored_expiry_triggers {
             assert_eq!(r.rejected, None);
             all_records.extend(r.records.clone());
             triggers.extend(
-                r.records
-                    .iter()
-                    .filter(|x| x.kind == "event")
-                    .map(|x| x.trigger.clone().unwrap()),
+                r.records.iter().filter(|x| x.kind == "event").map(|x| x.trigger.clone().unwrap()),
             );
             state = r.state;
             if e_id.is_none() {
-                e_id = state
-                    .by_name
-                    .get("INFLUENCE_MOTH_E")
-                    .and_then(|v| v.first().cloned());
+                e_id = state.by_name.get("INFLUENCE_MOTH_E").and_then(|v| v.first().cloned());
             }
             if c_id.is_none() {
-                c_id = state
-                    .by_name
-                    .get("INFLUENCE_MOTH_C")
-                    .and_then(|v| v.first().cloned());
+                c_id = state.by_name.get("INFLUENCE_MOTH_C").and_then(|v| v.first().cloned());
             }
             id += r.records.len() as i64;
         }
         // G decayed into E, E into C, then C expired with no trigger →
         // built-in destroy
-        assert_eq!(
-            triggers,
-            ["decay_moth_g", "decay_moth_e", "expire:INFLUENCE_MOTH_C"]
-        );
+        assert_eq!(triggers, ["decay_moth_g", "decay_moth_e", "expire:INFLUENCE_MOTH_C"]);
         // v0.5: every stamp lands on the completion row that did the work —
         // derive the ids from the log instead of hardcoding them
         let stamp = |trigger: &str| -> i64 {
@@ -2098,10 +1810,7 @@ mod authored_expiry_triggers {
                 .unwrap()
                 .id
         };
-        assert_eq!(
-            state.entities["moth_g"].dead_action,
-            Some(stamp("decay_moth_g"))
-        );
+        assert_eq!(state.entities["moth_g"].dead_action, Some(stamp("decay_moth_g")));
         let e = &state.entities[e_id.as_deref().unwrap()];
         assert_eq!(e.aspects, num_aspect("influence", 2)); // plain prototype mint (no derive)
         assert_eq!(
@@ -2159,10 +1868,7 @@ mod authored_expiry_triggers {
         assert_eq!(r.rejected, None);
         let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(
-            events
-                .iter()
-                .map(|x| x.trigger.as_deref())
-                .collect::<Vec<_>>(),
+            events.iter().map(|x| x.trigger.as_deref()).collect::<Vec<_>>(),
             [Some("dusk_falls"), Some("decay_chalice")] // triggers first
         );
         assert!(events[1].sentence.contains("EVENT decay_chalice"));
@@ -2176,17 +1882,11 @@ mod authored_expiry_triggers {
     }
 
     fn proto_state() -> PrototypeDef {
-        PrototypeDef {
-            kind: "state".to_string(),
-            ..PrototypeDef::default()
-        }
+        PrototypeDef { kind: "state".to_string(), ..PrototypeDef::default() }
     }
 
     fn proto(kind: &str) -> PrototypeDef {
-        PrototypeDef {
-            kind: kind.to_string(),
-            ..PrototypeDef::default()
-        }
+        PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() }
     }
 
     #[test]
@@ -2200,11 +1900,7 @@ mod authored_expiry_triggers {
                     on_expire_of: "CHALICE".to_string(),
                     out: vec!["REPLACE CHALICE WITH CHALICE".to_string()],
                 })]),
-                prototypes: Some(
-                    [("CHALICE".to_string(), proto("item"))]
-                        .into_iter()
-                        .collect(),
-                ),
+                prototypes: Some([("CHALICE".to_string(), proto("item"))].into_iter().collect()),
                 ..ContentRaw::default()
             },
             &dict,
@@ -2240,13 +1936,8 @@ mod authored_expiry_triggers {
         let dir = tmp_log_dir("moth-jsonl");
         let path = dir.join("log.jsonl");
         save_log(&path, &all).unwrap();
-        let replayed = fold(
-            &load_log(&path).unwrap(),
-            &moth_base(),
-            &dict,
-            &moth_content(&dict),
-        )
-        .unwrap();
+        let replayed =
+            fold(&load_log(&path).unwrap(), &moth_base(), &dict, &moth_content(&dict)).unwrap();
         assert_eq!(snap(&replayed), snap(&state)); // snap includes fired (§9.34)
                                                    // one fired entry per EVENT row's trigger — authored ids and
                                                    // expire:<NAME> alike
@@ -2371,15 +2062,7 @@ mod set_expires_duration_forms {
                 }],
             },
         );
-        compile_content(
-            &ContentRaw {
-                verbs,
-                ..ContentRaw::default()
-            },
-            dict,
-            &[],
-        )
-        .unwrap()
+        compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
     }
 
     /// 0:20 = absolute minute 600
@@ -2414,10 +2097,7 @@ mod set_expires_duration_forms {
             );
             // the log keeps the authored quoted string and round-trips (§9.15)
             assert!(
-                done(&r)
-                    .unwrap()
-                    .sentence
-                    .contains(&format!("-> SET(CHALICE, expires, {lit})")),
+                done(&r).unwrap().sentence.contains(&format!("-> SET(CHALICE, expires, {lit})")),
                 "lit {lit}: {}",
                 done(&r).unwrap().sentence
             );
@@ -2441,10 +2121,7 @@ mod set_expires_duration_forms {
         );
         // the log stores the pre-converted minutes; canonical output prefers
         // the shorter unit (§5.1)
-        assert!(done(&r)
-            .unwrap()
-            .sentence
-            .contains("-> SET(CHALICE, expires, 1h)"));
+        assert!(done(&r).unwrap().sentence.contains("-> SET(CHALICE, expires, 1h)"));
         // quoted and bare materialize the same engine fact — identical
         // expiresAt. The authored `expires` attr itself keeps its authored
         // form: minutes for bare, the string for quoted
@@ -2464,10 +2141,7 @@ mod set_expires_duration_forms {
             rq.state.entities["chalice"].attrs.get("expires"),
             Some(&AttrValue::Str("2halfhour".to_string()))
         );
-        assert_eq!(
-            r.state.entities["chalice"].attrs.get("expires"),
-            Some(&AttrValue::Num(60))
-        );
+        assert_eq!(r.state.entities["chalice"].attrs.get("expires"), Some(&AttrValue::Num(60)));
     }
 
     #[test]
@@ -2549,10 +2223,7 @@ mod set_expires_duration_forms {
                 prototypes: Some(
                     [(
                         "RUSTY_CHALICE".to_string(),
-                        PrototypeDef {
-                            kind: "item".to_string(),
-                            ..PrototypeDef::default()
-                        },
+                        PrototypeDef { kind: "item".to_string(), ..PrototypeDef::default() },
                     )]
                     .into_iter()
                     .collect(),
@@ -2567,19 +2238,9 @@ mod set_expires_duration_forms {
         assert_eq!(r1.rejected, None);
         // set this pass: resolves at the NEXT advance (§6.6 snapshot)
         assert!(!r1.records.iter().any(|x| x.kind == "event"));
-        let r2 = run_with(
-            &c,
-            &td,
-            r1.state,
-            "0:30 @ ANA WAIT",
-            1 + r1.records.len() as i64,
-        ); // crosses slot 31 (0:31)
+        let r2 = run_with(&c, &td, r1.state, "0:30 @ ANA WAIT", 1 + r1.records.len() as i64); // crosses slot 31 (0:31)
         assert_eq!(r2.rejected, None);
-        let event = r2
-            .records
-            .iter()
-            .find(|x| x.kind == "event")
-            .expect("the melt_chalice event");
+        let event = r2.records.iter().find(|x| x.kind == "event").expect("the melt_chalice event");
         assert_eq!(event.trigger.as_deref(), Some("melt_chalice"));
         assert!(event.sentence.contains("EVENT melt_chalice"));
         assert_eq!(r2.state.entities["chalice"].dead_action, Some(event.id));
@@ -2591,10 +2252,7 @@ mod set_expires_duration_forms {
         // play and fold agree through the quoted path too (§9.34)
         let mut all = r1.records.clone();
         all.extend(r2.records.clone());
-        assert_eq!(
-            snap(&fold(&all, &seed_state(), &td, &c).unwrap()),
-            snap(&r2.state)
-        );
+        assert_eq!(snap(&fold(&all, &seed_state(), &td, &c).unwrap()), snap(&r2.state));
     }
 }
 
@@ -2673,10 +2331,7 @@ verbs:
                 clauses: vec![],
                 t_real: None,
             },
-            ExecOptions {
-                first_record_id: first,
-                id_gen: Some(&mut id_gen),
-            },
+            ExecOptions { first_record_id: first, id_gen: Some(&mut id_gen) },
         )
         .unwrap()
     }
@@ -2715,10 +2370,7 @@ verbs:
             r.state.entities[p[0].as_str()].attrs.get("expiresAt"),
             Some(&AttrValue::Num(180))
         );
-        assert_eq!(
-            r.state.entities[p[1].as_str()].attrs.get("expires"),
-            Some(&AttrValue::Num(60))
-        );
+        assert_eq!(r.state.entities[p[1].as_str()].attrs.get("expires"), Some(&AttrValue::Num(60)));
         assert_eq!(
             r.state.entities[p[1].as_str()].attrs.get("expiresAt"),
             Some(&AttrValue::Num(60))
@@ -2737,10 +2389,7 @@ verbs:
             .flat_map(|rec| rec.outcomes.iter().map(|o| format!("{o:?}")))
             .collect();
         let armed_rows = done_rows.iter().filter(|o| o.contains("expiresAt")).count();
-        assert_eq!(
-            armed_rows, 2,
-            "the concrete attrs= pairs carry expiresAt: {done_rows:?}"
-        );
+        assert_eq!(armed_rows, 2, "the concrete attrs= pairs carry expiresAt: {done_rows:?}");
         assert!(
             done_rows.iter().all(|o| !o.contains("Dur")),
             "no authored modifier arg in the log: {done_rows:?}"
@@ -2839,14 +2488,8 @@ verbs:
         let r = run_with(&c, &dict, s, "0:0 @ ANA DREAM", 1);
         assert_eq!(r.rejected, None);
         let d = &r.state.entities[pool(&r.state)[0].as_str()];
-        assert_eq!(
-            d.attrs.get("container"),
-            Some(&AttrValue::Str("house".to_string()))
-        );
-        assert_eq!(
-            d.attrs.get("zone"),
-            Some(&AttrValue::Str("cellar".to_string()))
-        );
+        assert_eq!(d.attrs.get("container"), Some(&AttrValue::Str("house".to_string())));
+        assert_eq!(d.attrs.get("zone"), Some(&AttrValue::Str("cellar".to_string())));
         assert_eq!(d.attrs.get("expires"), Some(&AttrValue::Num(30)));
         assert_eq!(d.attrs.get("expiresAt"), Some(&AttrValue::Num(30)));
         // the modifier wins over the pair's literal
@@ -2873,9 +2516,7 @@ verbs:
         let r1 = run_with(&c, &dict, s, "0:20 @ ANA DREAM", 1); // absolute minute 600
         assert_eq!(r1.rejected, None);
         assert_eq!(
-            r1.state.entities[pool(&r1.state)[0].as_str()]
-                .attrs
-                .get("expiresAt"),
+            r1.state.entities[pool(&r1.state)[0].as_str()].attrs.get("expiresAt"),
             Some(&AttrValue::Num(600))
         );
         // fires at the first crossed boundary at or after 600 — the :30 slot
@@ -2918,10 +2559,7 @@ verbs:
         let r = run_with(&c, &dict, s, "0:0 @ ANA DREAM", 1);
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"bad duration '2fortnights'");
-        assert!(
-            !r.state.by_name.contains_key("DREAD"),
-            "the refused mint never landed"
-        );
+        assert!(!r.state.by_name.contains_key("DREAD"), "the refused mint never landed");
     }
 
     /// The §5.2 round-trip of the new spelling: the modifier renders
@@ -2930,17 +2568,11 @@ verbs:
     #[test]
     fn the_new_spelling_round_trips() {
         let dict = core_dictionary();
-        let s = parse_sentence(
-            "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 90m",
-            &dict,
-        )
-        .unwrap();
+        let s =
+            parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 90m", &dict).unwrap();
         let out = format_sentence(&s, Some(&dict)).unwrap();
         // 90m canonicalizes to the exact single unit 3halfhour (§9.45)
-        assert_eq!(
-            out,
-            "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour"
-        );
+        assert_eq!(out, "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour");
         let s2 = parse_sentence(&out, &dict).unwrap();
         assert_eq!(s2.outcomes, s.outcomes);
         assert_eq!(format_sentence(&s2, Some(&dict)).unwrap(), out);
@@ -2957,11 +2589,8 @@ verbs:
         assert_eq!(parse_sentence(&out4, &dict).unwrap().outcomes, s4.outcomes);
         // the modifier sits after INTO/AS: INTO after the modifier is a
         // parse error (the authored order is pinned)
-        assert!(parse_sentence(
-            "0:0 @ ANA DREAM -> SPAWN DREAD expires 30m INTO HOUSE",
-            &dict,
-        )
-        .is_err());
+        assert!(parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires 30m INTO HOUSE", &dict,)
+            .is_err());
         // the `key=value` spelling is NOT the modifier (P2-c): the keyword
         // branch fires before the pair loop, so `expires=2h` is a loud parse
         // error naming the modifier's grammar — the pair form can never
@@ -2994,18 +2623,13 @@ verbs:
         // window's end (1:0) — the completion mints there
         let r1 = run_with(&c, &dict, s, "0:0 @ ANA DREAM", 1);
         assert_eq!(r1.rejected, None);
-        assert!(
-            r1.state.windows.is_empty(),
-            "the settle advance closed the window"
-        );
+        assert!(r1.state.windows.is_empty(), "the settle advance closed the window");
         assert!(
             !r1.records.iter().any(|x| x.kind == "event"),
             "no in-pass fire (the snapshot predates the mint, §6.6)"
         );
         assert_eq!(
-            r1.state.entities[pool(&r1.state)[0].as_str()]
-                .attrs
-                .get("expiresAt"),
+            r1.state.entities[pool(&r1.state)[0].as_str()].attrs.get("expiresAt"),
             Some(&AttrValue::Num(30)),
             "window START + 30 (0:30), never completion + 30 (1:30)"
         );
@@ -3282,10 +2906,7 @@ mod core_verbs_study_mansus {
         // registration puts STUDY/MANSUS in the dictionary (they parse, they
         // are reserved); content that never declares them refuses cleanly
         let unauthored = compile_content(
-            &ContentRaw {
-                verbs: IndexMap::new(),
-                ..ContentRaw::default()
-            },
+            &ContentRaw { verbs: IndexMap::new(), ..ContentRaw::default() },
             &dict,
             &[],
         )

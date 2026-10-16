@@ -39,10 +39,7 @@ fn auto_settle_line(game: &mut Game, line: &str) -> chorus::error::Result<Turn> 
     let t = game.handle_line(line)?;
     let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
         let settle = game.wait()?;
-        Turn {
-            kind: TurnKind::Action,
-            lines: [t.lines, settle.lines].concat(),
-        }
+        Turn { kind: TurnKind::Action, lines: [t.lines, settle.lines].concat() }
     } else {
         t
     };
@@ -85,9 +82,7 @@ fn ints(o: &chorus::core::sentence::Outcome) -> Option<(i64, i64)> {
 /// The DRAWN name (arg 1's name ref).
 fn drawn_name(o: &chorus::core::sentence::Outcome) -> String {
     match o.args.get(1) {
-        Some(Arg::Ref {
-            r#ref: chorus::core::r#ref::Ref::Name { name, .. },
-        }) => name.clone(),
+        Some(Arg::Ref { r#ref: chorus::core::r#ref::Ref::Name { name, .. } }) => name.clone(),
         _ => "(?)".to_string(),
     }
 }
@@ -121,9 +116,7 @@ mod the_nightjar_flyer {
             },
         );
         assert!(r.is_ok());
-        let ParsedInput::Ok { step, .. } = r else {
-            unreachable!()
-        };
+        let ParsedInput::Ok { step, .. } = r else { unreachable!() };
         let c = &step.clauses[0];
         assert_eq!(c.verb, "TALK");
         assert!(
@@ -240,18 +233,10 @@ mod the_nightjar_flyer {
             assert!(game.state.by_name.contains_key(clue), "{clue}");
         }
         assert!(game.state.by_name.contains_key("CONFESSION_OF_QUILL"));
-        let inquest = game
-            .log
-            .records
-            .iter()
-            .find(|r| r.verb == "USE_ON")
-            .expect("the inquest ran");
+        let inquest =
+            game.log.records.iter().find(|r| r.verb == "USE_ON").expect("the inquest ran");
         assert_eq!(inquest.recipes, ["inquest.win"]);
-        assert!(game
-            .log
-            .records
-            .iter()
-            .any(|r| r.trigger.as_deref() == Some("border_stop")));
+        assert!(game.log.records.iter().any(|r| r.trigger.as_deref() == Some("border_stop")));
         assert!(game
             .log
             .records
@@ -286,12 +271,7 @@ mod the_nightjar_flyer {
             .log
             .records
             .iter()
-            .flat_map(|r| {
-                r.outcomes
-                    .iter()
-                    .filter(|o| o.op == "DRAWN")
-                    .map(drawn_name)
-            })
+            .flat_map(|r| r.outcomes.iter().filter(|o| o.op == "DRAWN").map(drawn_name))
             .collect();
         assert_eq!(drawn, ["SCANDAL", "RUMOUR"]); // the seed-fixed permutation, in order
         assert!(game.state.by_name.contains_key("RUMOUR"));
@@ -346,10 +326,7 @@ mod the_nightjar_flyer {
         let turn = auto_settle_line(&mut game, "explore the first cabin").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
         assert_eq!(pool_len(&game, "SUSPICION"), before + 1);
-        assert!(turn
-            .lines
-            .join("\n")
-            .contains("A steward will remember MARCH"));
+        assert!(turn.lines.join("\n").contains("A steward will remember MARCH"));
     }
 
     #[test]
@@ -373,22 +350,12 @@ mod the_nightjar_flyer {
         let ended = game.state.ended.as_ref().expect("watch(3) ended the story");
         assert_eq!(ended.id, "OFF_THE_FLYER");
         assert_eq!(ended.flavour, "melancholy");
-        let actions: Vec<&ActionRecord> = game
-            .log
-            .records
-            .iter()
-            .filter(|r| r.kind == "action")
-            .collect();
+        let actions: Vec<&ActionRecord> =
+            game.log.records.iter().filter(|r| r.kind == "action").collect();
         let last = actions[actions.len() - 1];
         assert!(last.recipes.iter().any(|r| r == "explore.searched"));
         // v0.5: the ENDING lands at the completion
-        let last_complete = game
-            .log
-            .records
-            .iter()
-            .rev()
-            .find(|r| r.kind == "complete")
-            .unwrap();
+        let last_complete = game.log.records.iter().rev().find(|r| r.kind == "complete").unwrap();
         assert!(last_complete.outcomes.iter().any(|o| o.op == "ENDING"));
         // undo reopens the story — `ended` derives from the fold (§9.35)
         assert_eq!(game.undo().unwrap().kind, TurnKind::Info);
@@ -402,10 +369,7 @@ mod the_nightjar_flyer {
         play(&mut game, &["wait", "wait", "wait"]).unwrap(); // to 0:00 — the telegram lands
         let turn = auto_settle_line(&mut game, "read the telegram").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
-        assert!(turn
-            .lines
-            .iter()
-            .any(|l| l.starts_with("The words are French")));
+        assert!(turn.lines.iter().any(|l| l.starts_with("The words are French")));
         assert!(!game.state.by_name.contains_key("THE_VIENNA_WARNING"));
     }
 
@@ -414,10 +378,7 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         let pre = auto_settle_line(&mut game, "explore the first cabin").unwrap();
         assert_eq!(pre.kind, TurnKind::Action);
-        assert!(pre
-            .lines
-            .join("\n")
-            .contains("does not open for a piece of paper"));
+        assert!(pre.lines.join("\n").contains("does not open for a piece of paper"));
         assert!(!game.state.by_name.contains_key("THE_SOLICITOR_LETTER"));
         play(&mut game, &["wait"]).unwrap(); // the body is found; the seal comes down
         let post = auto_settle_line(&mut game, "explore the first cabin").unwrap();
@@ -437,15 +398,7 @@ mod the_nightjar_flyer {
     #[test]
     fn an_inquest_on_a_hunch_or_on_empty_hands_refuses() {
         let mut game = fresh();
-        play(
-            &mut game,
-            &[
-                "wait",
-                "explore the first cabin",
-                "read the solicitor letter",
-            ],
-        )
-        .unwrap();
+        play(&mut game, &["wait", "explore the first cabin", "read the solicitor letter"]).unwrap();
         let thin =
             auto_settle_line(&mut game, "use on the inquest with the disinheritance").unwrap();
         assert_eq!(thin.kind, TurnKind::Action);
@@ -461,42 +414,25 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         // 21:00 → 21:30 — meet Cole
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the stoker")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "talk to the stoker").unwrap().kind,
             TurnKind::Action
         );
         assert!(game.state.by_name.contains_key("COLE"));
         // 21:30 → 22:00 — meet Brack; the body is found
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the guard")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "talk to the guard").unwrap().kind,
             TurnKind::Action
         );
-        assert!(game
-            .log
-            .records
-            .iter()
-            .any(|r| r.trigger.as_deref() == Some("body_found")));
+        assert!(game.log.records.iter().any(|r| r.trigger.as_deref() == Some("body_found")));
         assert!(game.state.by_name.contains_key("THE_LATE_LORD"));
         // 22:00 → 22:30 — meet Seraphine
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the spiritualist")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "talk to the spiritualist").unwrap().kind,
             TurnKind::Action
         );
         // 22:30 → 23:30
-        assert_eq!(
-            auto_settle_line(&mut game, "wait").unwrap().kind,
-            TurnKind::Action
-        );
-        assert!(game
-            .log
-            .records
-            .iter()
-            .any(|r| r.trigger.as_deref() == Some("night_porter")));
+        assert_eq!(auto_settle_line(&mut game, "wait").unwrap().kind, TurnKind::Action);
+        assert!(game.log.records.iter().any(|r| r.trigger.as_deref() == Some("night_porter")));
     }
 
     #[test]
@@ -505,11 +441,7 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         play(&mut game, &["wait"]).unwrap(); // day 0, hour 22 — body_found fires
         assert_eq!(
-            game.log
-                .records
-                .iter()
-                .filter(|r| r.trigger.as_deref() == Some("body_found"))
-                .count(),
+            game.log.records.iter().filter(|r| r.trigger.as_deref() == Some("body_found")).count(),
             1
         );
         // jump a day ahead in ONE step: the once-trigger must neither re-fire
@@ -522,19 +454,11 @@ mod the_nightjar_flyer {
         assert_eq!(jump.kind, TurnKind::Action);
         // once means once
         assert_eq!(
-            game.log
-                .records
-                .iter()
-                .filter(|r| r.trigger.as_deref() == Some("body_found"))
-                .count(),
+            game.log.records.iter().filter(|r| r.trigger.as_deref() == Some("body_found")).count(),
             1
         );
         assert_eq!(
-            game.log
-                .records
-                .iter()
-                .filter(|r| r.trigger.as_deref() == Some("lord_tended"))
-                .count(),
+            game.log.records.iter().filter(|r| r.trigger.as_deref() == Some("lord_tended")).count(),
             1
         );
         assert!(!game.state.by_name.contains_key("THE_LATE_LORD"));
@@ -558,10 +482,7 @@ mod the_nightjar_flyer {
         play(&mut game, &["wait", "talk to the stoker"]).unwrap(); // the seal idea spawns; meet Cole
         let turn = auto_settle_line(&mut game, "talk to cole about the aether seal").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
-        assert!(turn
-            .lines
-            .join("\n")
-            .contains("rake the firebox hot at midnight"));
+        assert!(turn.lines.join("\n").contains("rake the firebox hot at midnight"));
         let rec = game
             .log
             .records
@@ -572,9 +493,7 @@ mod the_nightjar_flyer {
         assert!(
             matches!(&rec.to, Some(chorus::core::r#ref::Ref::Name { name, .. }) if name == "COLE")
         );
-        assert!(rec
-            .sentence
-            .contains("MARCH TALK TO COLE ABOUT THE_AETHER_SEAL"));
+        assert!(rec.sentence.contains("MARCH TALK TO COLE ABOUT THE_AETHER_SEAL"));
     }
 
     #[test]
@@ -582,15 +501,11 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         // meet Brack — RELATE(MARCH, BRACK, neighbor)
         assert_eq!(
-            auto_settle_line(&mut game, "talk to the guard")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "talk to the guard").unwrap().kind,
             TurnKind::Action
         );
         assert_eq!(
-            auto_settle_line(&mut game, "march, brack work at the firebox")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "march, brack work at the firebox").unwrap().kind,
             TurnKind::Action
         );
         // the load copy + the shift's wage
@@ -601,16 +516,12 @@ mod the_nightjar_flyer {
             Some(&chorus::core::types::AttrValue::Num(2))
         );
         assert_eq!(
-            auto_settle_line(&mut game, "locate_at the firebox")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "locate_at the firebox").unwrap().kind,
             TurnKind::Action
         );
         // to 1:00 — the tunnel severs the crew door
         auto_settle_line(&mut game, "wait").unwrap();
-        assert!(game.state.relations["s_firebox|s_guard_van|south"]
-            .dead_action
-            .is_some());
+        assert!(game.state.relations["s_firebox|s_guard_van|south"].dead_action.is_some());
         let blocked = auto_settle_line(&mut game, "travel to the guard van").unwrap();
         assert_eq!(blocked.kind, TurnKind::Action);
         assert!(blocked.lines.join("\n").contains("does not bend"));
@@ -618,20 +529,14 @@ mod the_nightjar_flyer {
         auto_settle_line(&mut game, "wait").unwrap();
         // to 4:30 — dawn_watch relinks the corridor
         auto_settle_line(&mut game, "wait").unwrap();
-        assert!(game.state.relations["s_firebox|s_guard_van|south"]
-            .dead_action
-            .is_none());
+        assert!(game.state.relations["s_firebox|s_guard_van|south"].dead_action.is_none());
         assert_eq!(
-            auto_settle_line(&mut game, "travel to the guard van")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "travel to the guard van").unwrap().kind,
             TurnKind::Action
         );
         // ACQUIRE: a cost that can go below zero — exactly once per ticket (§9.31)
         assert_eq!(
-            auto_settle_line(&mut game, "acquire the claim ticket")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "acquire the claim ticket").unwrap().kind,
             TurnKind::Action
         );
         assert_eq!(
@@ -649,33 +554,22 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         play(
             &mut game,
-            &[
-                "wait",
-                "explore the firebox",
-                "read the wax cylinder",
-                "read the vane ledger",
-            ],
+            &["wait", "explore the firebox", "read the wax cylinder", "read the vane ledger"],
         )
         .unwrap();
         // the derive prototype minted
         assert!(game.state.by_name.contains_key("HUNCH_THE_VANE_LEDGER"));
         // playing the cylinder unsealed the seal idea, so it fits the dream slot
         assert_eq!(
-            auto_settle_line(&mut game, "dream with the aether seal")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
             TurnKind::Action
         );
         assert_eq!(
-            auto_settle_line(&mut game, "dream with the aether seal")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
             TurnKind::Action
         );
         assert_eq!(
-            auto_settle_line(&mut game, "dream with the aether seal")
-                .unwrap()
-                .kind,
+            auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
             TurnKind::Action
         );
         // the seed-fixed permutation served VOID, PORTENT, PORTENT —
@@ -687,17 +581,9 @@ mod the_nightjar_flyer {
         assert_eq!(dry.kind, TurnKind::Action);
         // …where the exhausted deck fails loud — the completion row refuses
         // (§9.19 analog)
-        let last_complete = game
-            .log
-            .records
-            .iter()
-            .rev()
-            .find(|r| r.kind == "complete")
-            .unwrap();
+        let last_complete = game.log.records.iter().rev().find(|r| r.kind == "complete").unwrap();
         assert!(last_complete.outcomes.iter().any(|o| o.op == "REFUSE"));
-        assert!(regex::Regex::new(r"exhausted")
-            .unwrap()
-            .is_match(&game.journal().join("\n")));
+        assert!(regex::Regex::new(r"exhausted").unwrap().is_match(&game.journal().join("\n")));
     }
 
     #[test]

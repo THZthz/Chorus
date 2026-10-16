@@ -83,20 +83,12 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
 
 /// CORE_VERBS minus WAIT.
 fn non_wait_verbs() -> Vec<String> {
-    CORE_VERBS
-        .iter()
-        .filter(|v| **v != "WAIT")
-        .map(|v| (*v).to_string())
-        .collect()
+    CORE_VERBS.iter().filter(|v| **v != "WAIT").map(|v| (*v).to_string()).collect()
 }
 
 /// KIND_POOL minus place.
 fn non_char_kinds() -> Vec<String> {
-    KIND_POOL
-        .iter()
-        .filter(|k| **k != "place")
-        .map(|k| (*k).to_string())
-        .collect()
+    KIND_POOL.iter().filter(|k| **k != "place").map(|k| (*k).to_string()).collect()
 }
 
 /// The analyzer-facing probe list rides along; its draws continue on
@@ -130,10 +122,7 @@ fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
         id: format!("s_{}", name.to_lowercase()),
         kind: kind.to_string(),
         name: name.to_string(),
-        aspects: aspects
-            .into_iter()
-            .map(|(k, v)| (k, AspectVal::Num(v)))
-            .collect(),
+        aspects: aspects.into_iter().map(|(k, v)| (k, AspectVal::Num(v))).collect(),
         attrs: IndexMap::new(),
         born_action: Some(0),
         dead_action: None,
@@ -311,18 +300,13 @@ pub fn gen_scenario(seed: u32) -> Scenario {
 
     // prototypes — static aspects, stackable, derive mints (up to one)
     let n_protos = 1 + int(&mut r, 3);
-    let proto_names: Vec<String> = ["P1", "P2", "P3"][..n_protos]
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
+    let proto_names: Vec<String> =
+        ["P1", "P2", "P3"][..n_protos].iter().map(|s| (*s).to_string()).collect();
     let mut prototypes: IndexMap<String, PrototypeDef> = IndexMap::new();
     let mut derive_done = false;
     for pn in &proto_names {
         let kind = pick_of(&mut r, &non_char_kinds());
-        let mut p = PrototypeDef {
-            kind,
-            ..PrototypeDef::default()
-        };
+        let mut p = PrototypeDef { kind, ..PrototypeDef::default() };
         // key draw, then value draw
         if r.next_f64() < 0.6 {
             let key = pick_str(&mut r, &ASPECTS);
@@ -336,10 +320,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         }
         // short-circuit: no draw once derive is done
         if !derive_done && r.next_f64() < 0.25 {
-            p.derive = Some(PrototypeDerive {
-                name_from: Some("object".to_string()),
-                aspects: None,
-            });
+            p.derive =
+                Some(PrototypeDerive { name_from: Some("object".to_string()), aspects: None });
             derive_done = true;
         }
         prototypes.insert(pn.clone(), p);
@@ -357,18 +339,10 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             spec.push(pick_of(&mut r, &deck_names));
         }
         // draw order — the defaultcard condition draw, then the reset
-        let defaultcard = if r.next_f64() < 0.4 {
-            Some(pick_of(&mut r, &deck_names))
-        } else {
-            None
-        };
+        let defaultcard =
+            if r.next_f64() < 0.4 { Some(pick_of(&mut r, &deck_names)) } else { None };
         let reset = r.next_f64() < 0.3;
-        Some(DeckRaw {
-            id: "D1".to_string(),
-            spec,
-            defaultcard,
-            reset,
-        })
+        Some(DeckRaw { id: "D1".to_string(), spec, defaultcard, reset })
     } else {
         None
     };
@@ -439,11 +413,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         let n_recipes = 1 + int(ctx.r, 3);
         let mut recipes: Vec<RecipeDef> = Vec::new();
         for i in 0..n_recipes {
-            let when = if ctx.r.next_f64() < 0.4 {
-                Some(ctx.gen_when())
-            } else {
-                None
-            };
+            let when = if ctx.r.next_f64() < 0.4 { Some(ctx.gen_when()) } else { None };
             let n_outs = 1 + int(ctx.r, 4);
             let mut outs: Vec<String> = Vec::new();
             for _ in 0..n_outs {
@@ -459,17 +429,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 out: outs,
             });
         }
-        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
-            .parse()
-            .expect("duration literal");
-        verbs_raw.insert(
-            v.clone(),
-            VerbContent {
-                slots,
-                duration,
-                recipes,
-            },
-        );
+        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"]).parse().expect("duration literal");
+        verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes });
     }
 
     // triggers
@@ -486,20 +447,11 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             let mut pool = vec!["ANA".to_string()];
             pool.extend(ctx.others.iter().cloned());
             let target = pick_of(ctx.r, &pool);
-            triggers.push(TriggerDef::Expire(ExpireTriggerDef {
-                id,
-                on_expire_of: target,
-                out,
-            }));
+            triggers.push(TriggerDef::Expire(ExpireTriggerDef { id, on_expire_of: target, out }));
         } else {
             let slot = int(ctx.r, 48) as i64;
             let once = ctx.r.next_f64() < 0.4;
-            triggers.push(TriggerDef::Slot(SlotTriggerDef {
-                id,
-                slot,
-                once: Some(once),
-                out,
-            }));
+            triggers.push(TriggerDef::Slot(SlotTriggerDef { id, slot, once: Some(once), out }));
         }
     }
 
@@ -537,10 +489,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         }
     }
     for name in seen {
-        probes.push(Probe {
-            mode: ProbeMode::Name,
-            q: name,
-        });
+        probes.push(Probe { mode: ProbeMode::Name, q: name });
     }
     // first derive-bearing prototype, in insertion order
     let derive_proto = proto_names
@@ -549,16 +498,10 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         .cloned();
     if let Some(dp) = derive_proto {
         for n in &others {
-            probes.push(Probe {
-                mode: ProbeMode::Name,
-                q: format!("{dp}_{n}"),
-            });
+            probes.push(Probe { mode: ProbeMode::Name, q: format!("{dp}_{n}") });
         }
     }
-    probes.push(Probe {
-        mode: ProbeMode::Name,
-        q: "GHOST".to_string(),
-    });
+    probes.push(Probe { mode: ProbeMode::Name, q: "GHOST".to_string() });
     probes.push(Probe {
         mode: ProbeMode::Demand,
         q: format!("aspect:a>={}", 1 + int(&mut r, 3) as i64),
@@ -590,11 +533,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         prototypes: Some(prototypes),
         decks: deck.map(|d| vec![d]),
         // an EMPTY trigger list is absent (None), never an empty vec
-        triggers: if triggers.is_empty() {
-            None
-        } else {
-            Some(triggers)
-        },
+        triggers: if triggers.is_empty() { None } else { Some(triggers) },
         ..ContentRaw::default()
     };
 
@@ -657,20 +596,13 @@ fn k_subsets<'a>(arr: &[&'a Entity], k: usize) -> Vec<Vec<&'a Entity>> {
 pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Vec<Step> {
     let mut out: Vec<Step> = Vec::new();
     let mut min_fills: Vec<Clause> = Vec::new();
-    let alive: Vec<&Entity> = s
-        .entities
-        .values()
-        .filter(|e| e.dead_action.is_none())
-        .collect();
+    let alive: Vec<&Entity> = s.entities.values().filter(|e| e.dead_action.is_none()).collect();
     let clock = next_step_clock(s.now);
     // waits — advance the clock so slot triggers, expiries and completions
     // strike
     for ahead in [0usize, 1, 2, 12, 24, 48] {
-        let begin = if ahead == 0 {
-            clock
-        } else {
-            clock_from_abs_min(abs_min(clock) + ahead as i64 * 30)
-        };
+        let begin =
+            if ahead == 0 { clock } else { clock_from_abs_min(abs_min(clock) + ahead as i64 * 30) };
         let parsed = parse_sentence(&format!("{} @ ANA WAIT", format_clock(begin)), dict)
             .expect("the WAIT probe parses");
         out.push(Step {
@@ -754,14 +686,8 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
                 viable = false;
                 break;
             }
-            per_role.push((
-                slot.role.clone(),
-                if opts.is_empty() {
-                    vec![Vec::new()]
-                } else {
-                    opts
-                },
-            ));
+            per_role
+                .push((slot.role.clone(), if opts.is_empty() { vec![Vec::new()] } else { opts }));
         }
         if !viable {
             continue;
@@ -823,12 +749,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
     while i < min_fills.len() && i < 3 {
         let mut clauses = vec![min_fills[i].clone()];
         clauses.extend(wait_clause.iter().cloned());
-        out.push(Step {
-            start_min: None,
-            clock: Some(clock),
-            clauses,
-            t_real: None,
-        });
+        out.push(Step { start_min: None, clock: Some(clock), clauses, t_real: None });
         let mut j = i + 1;
         while j < min_fills.len() && j < 3 {
             out.push(Step {
@@ -890,10 +811,8 @@ fn json_of_aspect(v: &AspectVal) -> String {
 fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> String {
     let mut keys: Vec<(&String, &AspectVal)> = pairs.collect();
     keys.sort_by(|a, b| chorus::core::text::cmp_utf16(a.0, b.0));
-    let parts: Vec<String> = keys
-        .into_iter()
-        .map(|(k, v)| format!("{k}={}", json_of_aspect(v)))
-        .collect();
+    let parts: Vec<String> =
+        keys.into_iter().map(|(k, v)| format!("{k}={}", json_of_aspect(v))).collect();
     format!("{{{}}}", parts.join(","))
 }
 
@@ -964,13 +883,7 @@ pub fn sig(s: &State) -> String {
         .values()
         .filter(|rel| rel.dead_action.is_none())
         .map(|rel| {
-            [
-                name_of(&rel.a),
-                name_of(&rel.b),
-                rel.type_.clone(),
-                rel.value.to_string(),
-            ]
-            .join(",")
+            [name_of(&rel.a), name_of(&rel.b), rel.type_.clone(), rel.value.to_string()].join(",")
         })
         .collect();
     let mut r = r;
@@ -1021,10 +934,7 @@ pub fn sig(s: &State) -> String {
         "{{now={},g={},ended={},e=[{}],r=[{}],f=[{}],d=[{}],w=[{}]}}",
         s.now,
         s.rng,
-        s.ended
-            .as_ref()
-            .map(|en| en.id.clone())
-            .unwrap_or_else(|| "null".to_string()),
+        s.ended.as_ref().map(|en| en.id.clone()).unwrap_or_else(|| "null".to_string()),
         e.join(","),
         r.join(","),
         f.join(","),
@@ -1128,13 +1038,7 @@ pub fn explore(
             queue.push_back((res.state, steps + 1));
         }
     }
-    Ok(Forward {
-        ever_names,
-        ever_desc,
-        states_seen,
-        deduped,
-        capped,
-    })
+    Ok(Forward { ever_names, ever_desc, states_seen, deduped, capped })
 }
 
 // ---------- the differential property ----------
@@ -1166,13 +1070,8 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
     for p in &sc.probes {
         let rep = match p.mode {
             ProbeMode::Name => analyzer.analyze_card(&p.q, CardOptions::default())?,
-            ProbeMode::Demand => analyzer.analyze_card(
-                "",
-                CardOptions {
-                    usable: false,
-                    demand: Some(p.q.clone()),
-                },
-            )?,
+            ProbeMode::Demand => analyzer
+                .analyze_card("", CardOptions { usable: false, demand: Some(p.q.clone()) })?,
         };
         // path-export invariants: a proven verdict MUST come with at least one
         // exported path, and (name mode) every exported root must mint the
@@ -1213,13 +1112,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
             // are existential over UNBOUNDED play (repeatable verbs, recurring
             // triggers), so a shallow miss can be horizon, not error.
             if deep.is_none() {
-                deep = Some(explore(
-                    &content,
-                    &dict,
-                    &sc.initial,
-                    max_steps + 7,
-                    max_states * 20,
-                )?);
+                deep = Some(explore(&content, &dict, &sc.initial, max_steps + 7, max_states * 20)?);
             }
             let deep_fw = deep.as_ref().expect("the deep exploration was just seeded");
             let truth_deep = match p.mode {
@@ -1301,11 +1194,5 @@ pub fn drive_fuzz_seed(seed: u32, k: usize, attempt_cap: usize) -> Result<FuzzRu
         id += n;
         applied += 1;
     }
-    Ok(FuzzRun {
-        base,
-        records,
-        final_state: state,
-        applied,
-        attempts,
-    })
+    Ok(FuzzRun { base, records, final_state: state, applied, attempts })
 }

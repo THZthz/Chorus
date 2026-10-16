@@ -9,9 +9,13 @@
 //! 2,380 compiled recipes over the TWELVE configured verbs (7 CS stations +
 //! 5 carrier verbs carrying the 464 rehomed non-station recipes, hidden),
 //! 104 decks (67 CS decks + 37 internaldecks), 48 endings — plus one engine
-//! step proving the WAIT station's wheel entry actually fires, and two
-//! surface checks proving the carrier stations never reach the player
-//! (no suggestions; a typed attempt rejects at the guarded actors slot).
+//! step proving the WAIT station's wheel entry actually fires, one decay
+//! step proving the wheel's starvation mint arms at birth (the E12
+//! recipe-spawn half: `SPAWN HUNGER expires 1h` → expiresAt at the mint,
+//! the authored `exp_hunger` DESTROY+SPAWN chain at the expiry crossing,
+//! fold-identical), and two surface checks proving the carrier stations
+//! never reach the player (no suggestions; a typed attempt rejects at the
+//! guarded actors slot).
 //!
 //! The counts are the converter's coverage-report numbers (its own asserts
 //! account every input recipe/element/deck/ending); this side pins that the
@@ -63,6 +67,28 @@ const EXPECTED_PROTOTYPES: usize = 1463; // minted cards + the 330 isAspect carr
 const EXPECTED_MARKERS: usize = 36;
 const EXPECTED_CS_DEAD: usize = 24;
 const EXPECTED_CONVERTER_INDUCED: usize = 16;
+
+/// The E12 recipe-spawn half, armed (findings ledger): every recipe-effect
+/// spawn of a CS lifetime bearer rides the authored `SPAWN X expires <dur>`
+/// modifier — the fresh copy arms at birth, per instance, pooled or not.
+/// The converter dedupes the armed SITES per (recipe, element) and asserts
+/// that count itself (497 over 114 elements); the GENERATED FILE carries one
+/// modifier per minted copy — 582 instances on 446 recipe lines (the sites
+/// weighted by effect magnitude, re-emitted on alt/run copies) — and that
+/// file-visible count is what pins here. The deck-entry half stays
+/// E12-ledgered (159 lifetime bearers served from decks; DRAW has no
+/// expires arg — converter-side assert, nothing file-visible changes).
+const EXPECTED_ARMED_MINTS: usize = 582;
+
+/// Armed mint instances in a generated file: `SPAWN <NAME> expires <dur>`
+/// outcomes on recipe lines (the SET-form `, expires, ` of the on-expire /
+/// on-complete trigger bodies and the header comments never match).
+fn count_armed_mints(text: &str) -> usize {
+    text.lines()
+        .filter(|l| l.contains("SPAWN ") && !l.trim_start().starts_with('#'))
+        .map(|l| l.matches(" expires ").count())
+        .sum()
+}
 
 #[test]
 fn the_converted_core_loads_lints_clean_and_matches_the_census() {
@@ -161,6 +187,18 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     // determinism: the converter's fixed seed rode into the content
     assert_eq!(compiled.content.seed, 1837);
 
+    // E12 recipe-spawn half: the armed mints (see EXPECTED_ARMED_MINTS), and
+    // one of them on the actual playable starvation path the wheel falls to
+    assert_eq!(
+        count_armed_mints(FULL),
+        EXPECTED_ARMED_MINTS,
+        "the armed-mint instance count drifted"
+    );
+    assert!(
+        FULL.contains("-> DESTROY HEALTH, SPAWN HUNGER expires 1h,"),
+        "the starvation mint (wait.alt.starvation) must arm at birth"
+    );
+
     // the wheel's entry is wired: needs is a compiled recipe of WAIT, and
     // the job/ingredient bootstrap RUN targets resolve to it
     let wait = compiled.content.verbs.get("WAIT").expect("WAIT configured");
@@ -258,6 +296,80 @@ fn the_carrier_stations_never_surface_in_suggestions() {
             assert!(!s.starts_with(c), "carrier verb leaked into suggestions: {s}");
         }
     }
+}
+
+/// The decay economy, played (the E12 recipe-spawn half hands-on): the bare
+/// WAIT wheel falls through to `wait.alt.starvation` (no funds anywhere in
+/// the world), whose HUNGER mint is ARMED at birth — `expiresAt` = the
+/// window's START clock + the authored 60 minutes — and the authored
+/// `exp_hunger` on-expire chain (DESTROY + SPAWN DECREPITUDE, the CS
+/// decayTo) fires at the first halfhour boundary at or after `expiresAt`.
+/// The whole played log folds back to the identical state.
+#[test]
+fn the_starvation_mint_arms_at_birth_and_its_decay_chain_fires() {
+    use chorus::content::script::compile_script;
+    use chorus::core::dict::core_dictionary;
+    use chorus::core::types::{clone_state, AttrValue};
+    use chorus::engine::fold::fold;
+    use chorus::session::game::{Game, TurnKind};
+
+    let dict = core_dictionary();
+    let mut game = Game::from_script(FULL, dict.clone()).unwrap();
+
+    game.handle_line("0:0 @ THE_ASPIRANT WAIT").unwrap();
+    game.handle_line("0:2").unwrap(); // wait.needs completes; the starvation window opens at 0:2
+    let turn = game.handle_line("0:4").unwrap(); // starvation completes; HUNGER mints ARMED
+    assert_ne!(turn.kind, TurnKind::Error);
+
+    let hunger = game.state.by_name.get("HUNGER").expect("HUNGER minted")[0].clone();
+    let card = &game.state.entities[hunger.as_str()];
+    assert_eq!(
+        card.attrs.get("expires"),
+        Some(&AttrValue::Num(60)),
+        "the authored 1h lifetime rides the mint"
+    );
+    assert_eq!(
+        card.attrs.get("expiresAt"),
+        Some(&AttrValue::Num(120)),
+        "expiresAt = the window's START clock (minute 60) + 60 authored minutes"
+    );
+
+    // the next pass crosses minute 150 — the first halfhour boundary at or
+    // after expiresAt(120) — and the authored decay chain runs
+    let turn = game.handle_line("0:5").unwrap();
+    assert_ne!(turn.kind, TurnKind::Error);
+    let events: Vec<_> = game
+        .log
+        .records
+        .iter()
+        .filter(|r| r.kind == "event")
+        .collect();
+    assert_eq!(events.len(), 1, "exactly one expiry event");
+    assert_eq!(events[0].trigger.as_deref(), Some("exp_hunger"));
+    assert!(
+        game.state
+            .by_name
+            .get("HUNGER")
+            .is_none_or(|v| v.is_empty()),
+        "the expired HUNGER copy is destroyed"
+    );
+    assert_eq!(
+        game.state.by_name.get("DECREPITUDE").map(|v| v.len()),
+        Some(1),
+        "the decay chain spawns DECREPITUDE"
+    );
+
+    // fold: the played log replays to the identical state (entities, the
+    // lock table, the clock, the dice counter, the deck cursors, execution
+    // counts)
+    let base = clone_state(&compile_script(FULL, &dict).unwrap().state);
+    let replayed = fold(&game.log.records, &base, &dict, &game.content).unwrap();
+    assert_eq!(replayed.entities, game.state.entities, "fold: entities");
+    assert_eq!(replayed.windows, game.state.windows, "fold: windows");
+    assert_eq!(replayed.now, game.state.now, "fold: now");
+    assert_eq!(replayed.rng, game.state.rng, "fold: rng");
+    assert_eq!(replayed.decks, game.state.decks, "fold: decks");
+    assert_eq!(replayed.executed, game.state.executed, "fold: executed");
 }
 
 /// A carrier verb typed by hand rejects at the engine — the guarded actors

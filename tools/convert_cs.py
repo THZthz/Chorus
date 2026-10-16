@@ -12,7 +12,7 @@ Inputs (read-only):
 
 Mapping spec: docs/reverse/cultist-simulator.md §2/§6; grammar:
 docs/spec/text-engine-v0.2.md §4.3/4.4/4.5/6.1/6.3/6.4/6.8/9.31/9.32/9.35/
-9.38/9.41/9.42/9.47/9.48/9.49/9.50/§10; engine laws: docs/plans/v0.6-cs-slice.md
+9.36/9.38/9.41/9.42/9.47/9.48/9.49/9.50/§10; engine laws: docs/plans/v0.6-cs-slice.md
 §3 (entity mints are impossible — decay targets and restore spawns are
 PROTOTYPES; REPLACE into a prototype is legal in recipe bodies only).
 
@@ -389,14 +389,14 @@ class Converter:
         self.n_carrier = Counter()       # actionid -> rehomed recipe count
         self.n_twins = Counter()         # verb -> shadowed twins emitted hidden
         self.n_aspect_cards = 0          # isAspect prototypes emitted
-        # lifetime arming (P1-2): every lifetime-bearer mint instance ends in
-        # armed (authored SET expires after a non-stackable mint, where the
-        # §9.19 name law pins the ref to the fresh copy) or E12-ledgered
-        # (stackable pool mints and deck draws are unaddressable — findings E12)
+        # lifetime arming (P1-2): every lifetime-bearer recipe-effect mint is
+        # ARMED — the authored `SPAWN X expires <dur>` modifier (§4.4/§9.36;
+        # findings E12's spawn-modifier half) materializes expiresAt at the
+        # mint, per copy, so pooled names arm per instance. Deck draws stay
+        # E12-LEDGERED (DRAW has no expires arg — findings E12's open half).
         self.n_armed = 0
-        self.n_e12_spawns = 0
         self.n_e12_deck = 0
-        self.e12_seen = set()            # (csid, element) spawn sites counted once
+        self.armed_seen = set()          # (csid, element) armed sites counted once
 
         # deterministic name mangling (asserted injective / collision-free)
         self.elname = {}
@@ -1034,32 +1034,24 @@ class Converter:
         return build(0)
 
     def lifetime_arm(self, rid, k, name):
-        """Lifetime bookkeeping for one authored mint of element `k` (P1-2).
-        Tier (a): a NON-stackable bearer's mint is armed — `SET name, expires`
-        rides right after its SPAWN, and the §9.19 name-collision law (a
-        second live copy rejects the step) pins the name ref to the fresh
-        mint. Tier (b): a stackable pool mint is unaddressable — the name
-        would hit the OLDEST pool member (§9.38), and the grammar has no
-        authored handle on the card an outcome just minted (SPAWN's AS #id is
-        engine-written only) — so the instance is ledgered under findings
-        E12, never faked. Sites count once per (recipe, element); alt/run
-        copies share the parent's csid."""
+        """Lifetime bookkeeping for one authored mint of element `k` (P1-2):
+        the authored `expires <duration>` SPAWN modifier (§4.4/§9.36 — the
+        engine's E12 spawn-modifier fix) rides every lifetime bearer's SPAWN,
+        so the fresh copy arms at BIRTH with the SET-expires pair. Each SPAWN
+        arms its own mint — pooled names arm per instance (the §9.38
+        oldest-name trap never applies) and the old SET-after-SPAWN shape's
+        §9.19 non-stackable pin is not needed; the modifier composes with
+        INTO and is authoritative over any literal expiresAt in the same
+        step's attrs= pairs. Sites count once per (recipe, element); alt/run
+        copies share the parent's csid. Deck draws cannot ride the modifier
+        (SPAWN-shaped by design) and stay E12-ledgered."""
         lt = self.lifetime_of.get(k)
         if lt is None:
-            return []
-        home = self.decl[k][0]
-        if home != "entity":
-            if (rid, k) not in self.e12_seen:
-                self.e12_seen.add((rid, k))
-                self.n_e12_spawns += 1
-                self.lose("E12: recipe effect spawns a stackable lifetime bearer — "
-                          "the mint is unaddressable, expires never armed (findings E12)",
-                          f"{rid}:{k}")
-            return []
-        if (rid, k) not in self.e12_seen:
-            self.e12_seen.add((rid, k))
+            return ""
+        if (rid, k) not in self.armed_seen:
+            self.armed_seen.add((rid, k))
             self.n_armed += 1
-        return [f"SET {name}, expires, {fmt_duration(lt)}"]
+        return f" expires {fmt_duration(lt)}"
 
     def outcome_body(self, verb, r, is_copy=False):
         rid = r["id"]
@@ -1073,9 +1065,9 @@ class Converter:
                 continue
             name = self.elname[k]
             if v > 0:
+                mod = self.lifetime_arm(rid, k, name)
                 for _ in range(v):
-                    outs.append(f"SPAWN {name}")
-                    outs.extend(self.lifetime_arm(rid, k, name))
+                    outs.append(f"SPAWN {name}{mod}")
             elif v <= -99:
                 self.lose("sweep-style mass consume (|v| ≥ 99; no pool-wide destroy)",
                           f"{rid}:{k}:{v}")
@@ -1462,7 +1454,12 @@ class Converter:
         w("#              an `on expire` DESTROY+SPAWN+SET chain (never REPLACE from a")
         w("#              trigger — the trigger-body law); without a decayTo the")
         w("#              engine's built-in destroy-by-id expiry stands (the §9.38-")
-        w("#              safe path under pools).")
+        w("#              safe path under pools). Recipe-effect mints of lifetime")
+        w("#              bearers arm at birth via the authored `SPAWN X expires")
+        w("#              <dur>` modifier (§4.4/§9.36 — each fresh copy its own")
+        w("#              decay, pooled or not; findings E12's spawn-modifier half);")
+        w("#              deck-drawn lifetime bearers stay un-armed (DRAW has no")
+        w("#              expires arg — findings E12's open half).")
         w("#   chains     linked → RUN ladders: ROLL(1,100)+IF arms with a fresh roll")
         w("#              per entry; one RUN op per completion (§9.47), so CS's")
         w("#              parallel additional-alts + linked chain collapse into the")
@@ -1609,12 +1606,12 @@ class Converter:
               f"{len(carr)} actionids: {carr}")
         print(f"           shadowed twins emitted hidden (.x2): "
               f"{sum(self.n_twins.values())} {dict(sorted(self.n_twins.items()))}")
-        print(f"           lifetime-bearer mints: {self.n_armed} armed (authored SET "
-              f"expires after a non-stackable mint) + "
-              f"{self.n_e12_spawns} recipe-effect sites and {self.n_e12_deck} deck "
-              f"entries E12-ledgered (stackable pools and deck draws are "
-              f"unaddressable — findings E12); the {len(self.expire_triggers)} "
-              f"on-expire chains arm via their own triggers")
+        print(f"           lifetime-bearer mints: {self.n_armed} recipe-effect sites "
+              f"armed at the mint (authored `SPAWN … expires <dur>` modifier — "
+              f"each copy arms its own decay, pooled or not) + {self.n_e12_deck} "
+              f"deck entries E12-ledgered (DRAW has no expires arg — findings "
+              f"E12); the {len(self.expire_triggers)} on-expire chains arm via "
+              f"their own trigger bodies")
         print(f"decks    : {len(self.decks)} input = {self.n_real_decks} declared + "
               f"{len(self.decks) - self.n_real_decks} dropped; "
               f"+ {self.n_internal_decks} internaldecks declared")
@@ -1657,6 +1654,13 @@ class Converter:
             "non-structural element skip — a convenience skip crept in"
         assert self.n_real_decks + (len(self.decks) - self.n_real_decks) == len(self.decks) == 67
         assert len(self.endingname) == len(self.endings) == 48, "ending census broken"
+        # the E12 lifetime split (findings ledger): every recipe-effect spawn
+        # of a lifetime bearer armed at the mint (the SPAWN expires modifier);
+        # the deck-entry half stays open (DRAW has no expires arg)
+        assert self.n_armed == 497, \
+            "armed recipe-effect spawn sites drifted (E12 spawn-modifier half)"
+        assert self.n_e12_deck == 159, \
+            "E12-ledgered deck entries drifted (E12 open half: deck draws)"
         print()
         print(f"census OK: elements {len(self.elements)} = "
               f"{self.n_entities}+{self.n_prototypes}+{sum(self.el_skip.values())} "

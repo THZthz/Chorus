@@ -32,7 +32,10 @@ pub mod session;
 pub mod prelude {
     // content — a script text becomes a world + logic
     pub use crate::content::content::{compile_content, CompiledContent, ContentRaw};
-    pub use crate::content::script::{compile_script, lint_script, CompiledScript, ScriptMeta};
+    pub use crate::content::script::{
+        compile_script, lint_script, lint_script_findings, CompiledScript, LintFinding,
+        LintSeverity, ScriptMeta,
+    };
     // core — the dictionary and the state types
     pub use crate::core::dict::{core_dictionary, Dictionary};
     pub use crate::core::types::{Entity, State};

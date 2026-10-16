@@ -2,7 +2,8 @@
 //! smoke for the tools/convert_cs.py output. The script is GENERATED DATA:
 //! embedded with include_str! and compiled fresh per test (compile_script is
 //! pure). This pins the acceptance bar of the converter: the full core
-//! LOADS, lints clean (0 findings), and the census is accounted —
+//! LOADS, lints with 0 errors and exactly the converter's deliberate
+//! dead-marker warnings (E11 — pinned below), and the census is accounted —
 //! 1,566 elements (declared entities + prototypes; the one structural skip,
 //! `credits.loc.zh-hans.`, lives in the converter, not the script),
 //! 2,380 compiled recipes over the TWELVE configured verbs (7 CS stations +
@@ -17,7 +18,9 @@
 //! GENERATED FILE carries exactly those totals, so converter drift or a
 //! half-regenerated file fails loudly here.
 
-use chorus::content::script::{compile_script, lint_script};
+use chorus::content::script::{
+    compile_script, lint_script_findings, LintFinding, LintSeverity,
+};
 use chorus::core::dict::core_dictionary;
 
 /// The bundled conversion, read as text.
@@ -33,6 +36,34 @@ const EXPECTED_ENDINGS: usize = 48;
 const EXPECTED_ENTITIES: usize = 102 + 2; // declared cards + THE_CITY + THE_ASPIRANT
 const EXPECTED_PROTOTYPES: usize = 1463; // minted cards + the 330 isAspect carriers (no echo prototype — the aspect cards write every vocabulary key)
 
+/// E11's warning tolerance on the generated core, pinned as a composition.
+/// First, 36 DELIBERATE dead-marker twins: the converter emits CS's
+/// requirement-less station recipes data-dead under `NOT (count(actors)
+/// <op> <k>)` whens (the header's "twins" convention — CS cannot fire them
+/// either), every one an `.x2` id on one of the five stations whose
+/// `actors` slot takes exactly 1. Second, the NOT-alt total contradictions
+/// (all TALK, none `.x2`), split by WHICH side is dead — the contradiction
+/// in both is `apply_alt_gates`' NOT(parent-requirements) conjunct stacked
+/// against a `total(with, aspect:X)` pin, but the two families are NOT the
+/// same honesty claim (E12-style accounting). 24 are GENUINELY CS-DEAD
+/// (society family: `society >= 1` vs a NOT-alt pinning it < 1) — the
+/// recipe's own positive requirement contradicts its naming parent's
+/// precondition (`talktofollower` runs only under `society < 1`), so even
+/// CS's alt routing can never reach it. 16 are CONVERTER-INDUCED (summoned
+/// family: `summoned >= 1` vs a NOT-alt pinning it < 1) — the recipe's own
+/// requirements are satisfiable, but it is the fallback alt of TWO MUTUALLY
+/// EXCLUSIVE parents (`talktofollower` {summoned:-1} and `talktospirit`
+/// {summoned:1}), and the converter conjoins one NOT(parent) per naming
+/// parent (convert_cs.py apply_alt_gates) — either parent alone satisfies
+/// the target, the stacked negations never do: a routing fidelity loss the
+/// port carries, not CS deadness. Any drift (a regenerated file, a
+/// converter change, a detector change, a new spelling) fails loudly here.
+/// The hand-authored scripts carry none (tests/lint.rs pins them
+/// 0-warning).
+const EXPECTED_MARKERS: usize = 36;
+const EXPECTED_CS_DEAD: usize = 24;
+const EXPECTED_CONVERTER_INDUCED: usize = 16;
+
 #[test]
 fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     let dict = core_dictionary();
@@ -40,14 +71,75 @@ fn the_converted_core_loads_lints_clean_and_matches_the_census() {
     // load: the whole file compiles
     let compiled = compile_script(FULL, &dict).expect("cultist-full.txt must compile");
 
-    // lint: zero findings (dead recipes, shadowed whens, unwritten aspect
-    // reads, unstackable deck entries, non-lexeme names)
-    let warnings = lint_script(FULL, &dict).expect("lint runs on a compiling script");
+    // lint: 0 errors; the only warnings are the converter's deliberate
+    // dead-marker twins (E11) — every one an `.x2` id flagged by the
+    // never-matching-`when` detector
+    let findings = lint_script_findings(FULL, &dict).expect("lint runs on a compiling script");
+    let warnings: Vec<&LintFinding> = findings
+        .iter()
+        .filter(|f| f.severity == LintSeverity::Warning)
+        .collect();
+    let errors: Vec<&LintFinding> = findings
+        .iter()
+        .filter(|f| f.severity == LintSeverity::Error)
+        .collect();
     assert!(
-        warnings.is_empty(),
-        "lint must be clean, got {} findings:\n{}",
+        errors.is_empty(),
+        "lint must have 0 errors, got {}:\n{}",
+        errors.len(),
+        errors
+            .iter()
+            .map(|f| f.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
         warnings.len(),
-        warnings.join("\n")
+        EXPECTED_MARKERS + EXPECTED_CS_DEAD + EXPECTED_CONVERTER_INDUCED,
+        "the never-matching-when warning count drifted:\n{}",
+        warnings
+            .iter()
+            .map(|f| f.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let markers = warnings
+        .iter()
+        .filter(|f| f.message.contains(".x2"))
+        .count();
+    // the NOT-alt families split on the pinned total's aspect: the
+    // society-family contradictions are CS-dead, the summoned-family ones
+    // are converter-induced (stacked NOT(parent) of mutually exclusive
+    // parents — see the const doc above)
+    let cs_dead = warnings
+        .iter()
+        .filter(|f| f.message.contains("pins total(with, aspect:society)"))
+        .count();
+    let converter_induced = warnings
+        .iter()
+        .filter(|f| f.message.contains("pins total(with, aspect:summoned)"))
+        .count();
+    assert_eq!(
+        markers, EXPECTED_MARKERS,
+        "the .x2 dead-marker twins drifted"
+    );
+    assert_eq!(
+        cs_dead, EXPECTED_CS_DEAD,
+        "the society-family (genuinely CS-dead) count drifted"
+    );
+    assert_eq!(
+        converter_induced, EXPECTED_CONVERTER_INDUCED,
+        "the summoned-family (converter-induced) count drifted"
+    );
+    assert_eq!(
+        markers + cs_dead + converter_induced,
+        warnings.len(),
+        "every warning must be one of the three accounted families:\n{}",
+        warnings
+            .iter()
+            .map(|f| f.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 
     // census: recipes over the twelve configured verbs

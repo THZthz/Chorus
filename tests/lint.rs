@@ -2,7 +2,9 @@
 //! discipline: error upgrades (things that used to compile and detonate
 //! later) and the lint layer (warnings that never throw).
 
-use chorus::content::script::{compile_script, lint_script};
+use chorus::content::script::{
+    compile_script, lint_script, lint_script_findings, LintFinding, LintSeverity,
+};
 use chorus::core::dict::core_dictionary;
 
 mod common;
@@ -12,6 +14,13 @@ use common::harness::assert_err_msg;
 const FLYER: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/scripts/the-nightjar-flyer.txt"
+));
+
+/// The bundled CS slice — the second hand-authored script; like the flyer
+/// it must lint with ZERO findings of either class.
+const SLICE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/scripts/cultist-slice.txt"
 ));
 
 /// The shared base script. Byte-shape
@@ -191,6 +200,12 @@ fn the_bundled_showcase_lints_clean() {
 }
 
 #[test]
+fn the_bundled_slice_lints_clean() {
+    let dict = core_dictionary();
+    assert_eq!(lint_script(SLICE, &dict).unwrap(), Vec::<String>::new());
+}
+
+#[test]
 fn a_verb_with_slots_but_no_recipes() {
     let dict = core_dictionary();
     let w = lint_script(
@@ -284,6 +299,48 @@ verbs:
         "{w:?}"
     );
     assert!(!w.iter().any(|x| x.contains("talk.duo")), "{w:?}"); // = 2 is satisfiable
+}
+
+/// `!=` is the count-gate alternation's sixth op, and its arm used to be
+/// missing — any authored `count(role) != k` hit the unreachable and
+/// aborted the whole lint run (exit 101) instead of reporting. The arm:
+/// dead only when the slot's WHOLE range is the excluded value; a partial
+/// exclusion (or any other slot value) is satisfiable and silent.
+#[test]
+fn a_count_neq_excluding_the_whole_slot_range_is_an_error_not_a_panic() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            "
+verbs:
+  TALK:
+    actors: 1..2 kind:character
+    duration: 30m
+    recipes:
+      talk.solo when count(actors) != 1 -> NARRATE \"a.\"
+      talk.duo when count(actors) != 2 -> NARRATE \"b.\"
+  WORK:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      work.alone when count(actors) != 1 -> NARRATE \"c.\"
+      work.drift when count(actors) != 3 -> NARRATE \"d.\"
+",
+        ),
+        &dict,
+    )
+    .unwrap();
+    // the 1..1 slot minus the excluded 1 is EMPTY → dead
+    assert!(
+        w.iter()
+            .any(|x| x.contains("work.alone") && x.contains("count(actors) != 1 can never hold")),
+        "{w:?}"
+    );
+    // partial exclusions on 1..2 keep the other value → satisfiable
+    assert!(!w.iter().any(|x| x.contains("talk.solo")), "{w:?}");
+    assert!(!w.iter().any(|x| x.contains("talk.duo")), "{w:?}");
+    // excluding a value the slot never takes is vacuous → satisfiable
+    assert!(!w.iter().any(|x| x.contains("work.drift")), "{w:?}");
 }
 
 #[test]
@@ -416,4 +473,265 @@ fn a_bad_start_value_blames_the_clock_not_the_key() {
         compile("script: Probe\nplayer: MARCH\nstart: banana\nentities:\n  MARCH is character\n"),
         r#"bad clock 'banana' \(expected "day:halfhour"\)"#,
     );
+}
+
+// ---------------------------------------------------------------------------
+// E11 — the never-matching-`when` detector (the WARNING class)
+// ---------------------------------------------------------------------------
+
+fn findings_for(extra: &str) -> Vec<LintFinding> {
+    let dict = core_dictionary();
+    lint_script_findings(&base(extra), &dict).unwrap()
+}
+
+fn warnings_of(findings: &[LintFinding]) -> Vec<&LintFinding> {
+    findings
+        .iter()
+        .filter(|f| f.severity == LintSeverity::Warning)
+        .collect()
+}
+
+/// The converter's dead-marker shape (E11): on an `actors` slot of 1..1,
+/// `NOT (count(actors) >= 1)` is false for every §6.6 selection binding —
+/// the inner atom holds in every window, so the negation never does. The
+/// satisfiable negation beside it (`NOT (count(actors) = 1)` over 1..2:
+/// satisfiable through the slot's other value) stays silent — the detector
+/// complements exact verdicts only. (The fixtures use slot-TRUE inner atoms
+/// throughout: a slot-dead inner atom is the pre-existing count-gate
+/// ERROR's territory, negation or not.)
+#[test]
+fn a_negated_count_gate_the_slot_forces_always_true_is_a_warning() {
+    let findings = findings_for(
+        "
+verbs:
+  TALK:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      talk.mark when NOT (count(actors) >= 1) -> NARRATE \"dead.\"
+  WORK:
+    actors: 1..2 kind:character
+    duration: 1h
+    recipes:
+      work.sat when NOT (count(actors) = 1) -> NARRATE \"fine.\"
+",
+    );
+    let warnings = warnings_of(&findings);
+    assert_eq!(warnings.len(), 1, "{findings:?}");
+    assert!(
+        warnings[0].message.contains("talk.mark")
+            && warnings[0].message.contains("count(actors) < 1"),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().all(|f| !f.message.contains("work.sat")),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().all(|f| f.severity == LintSeverity::Warning),
+        "the marker fixtures must not trip the pre-existing ERROR class: {findings:?}"
+    );
+}
+
+/// All six op spellings the converter's marker convention emits (`NOT
+/// (count(actors) <op> <k>)` with the inner atom slot-forced true) are the
+/// same single warning.
+#[test]
+fn every_negation_spelling_of_a_slot_forced_count_is_dead() {
+    let dict = core_dictionary();
+    for (op, k) in [
+        (">=", 0),
+        (">=", 1),
+        ("=", 1),
+        ("<=", 1),
+        ("<", 2),
+        (">", 0),
+    ] {
+        let text = base(&format!(
+            "
+verbs:
+  WORK:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      work.mark when NOT (count(actors) {op} {k}) -> NARRATE \"dead.\"
+"
+        ));
+        let findings = lint_script_findings(&text, &dict).unwrap();
+        let warnings = warnings_of(&findings);
+        assert_eq!(
+            warnings.len(),
+            1,
+            "NOT (count(actors) {op} {k}): {findings:?}"
+        );
+        assert!(warnings[0].message.contains("work.mark"), "{findings:?}");
+    }
+}
+
+/// A slot the verb does not declare binds nothing (§6.6 — validate_slots
+/// refuses any ref to it), so its count is exactly 0: `>= 1` is dead, and
+/// its negation is silently always-true.
+#[test]
+fn a_count_over_a_role_the_verb_never_binds_warns_and_its_negation_does_not() {
+    let findings = findings_for(
+        "
+verbs:
+  READ:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      read.obj when count(object) >= 1 -> NARRATE \"dead.\"
+      read.noobj when NOT (count(object) >= 1) -> NARRATE \"fine.\"
+",
+    );
+    let warnings = warnings_of(&findings);
+    assert_eq!(warnings.len(), 1, "{findings:?}");
+    assert!(
+        warnings[0].message.contains("read.obj")
+            && warnings[0].message.contains("count(object) >= 1"),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().all(|f| !f.message.contains("read.noobj")),
+        "{findings:?}"
+    );
+}
+
+/// Same-variable contradictions inside one conjunction: disjoint pins on one
+/// count, disjoint pins on one total — either side alone is satisfiable;
+/// together they admit no value (§6.3).
+#[test]
+fn disjoint_pins_on_one_count_or_total_are_warnings() {
+    let findings = findings_for(
+        "
+  LEDGER is text with secret:1
+
+verbs:
+  READ:
+    actors: 1..2 kind:character
+    object: 0..1 kind:text
+    duration: 1h
+    recipes:
+      read.count when count(actors) <= 1 AND count(actors) >= 2 -> NARRATE \"dead.\"
+      read.total when total(object, aspect:secret) >= 1 AND total(object, aspect:secret) < 1 -> NARRATE \"dead too.\"
+",
+    );
+    let warnings = warnings_of(&findings);
+    assert_eq!(warnings.len(), 2, "{findings:?}");
+    assert!(
+        warnings
+            .iter()
+            .all(|w| w.message.contains("read.count") || w.message.contains("read.total")),
+        "{findings:?}"
+    );
+}
+
+/// The emptiness coupling: a conjunct that pins a role empty (`NOT
+/// (count(with) >= 1)`, `count(object) = 0`) against one that needs the
+/// role bound (`total(with, …) >= 1`, a positive `object.aspect.…` path) is
+/// the `NOT (count(actors) >= 1) AND total(with, …) >= 1` family the E11
+/// ruling names — dead even though neither atom is.
+#[test]
+fn a_when_requiring_a_role_both_empty_and_bound_is_a_warning() {
+    let findings = findings_for(
+        "
+  LEDGER is text with secret:1
+
+verbs:
+  READ:
+    actors: 1 kind:character
+    object: 0..1 kind:text
+    with: 0..1 kind:text
+    duration: 1h
+    recipes:
+      read.total when NOT (count(with) >= 1) AND total(with, aspect:secret) >= 1 -> NARRATE \"dead.\"
+      read.path when count(object) = 0 AND object.aspect.secret >= 1 -> NARRATE \"dead too.\"
+",
+    );
+    let warnings = warnings_of(&findings);
+    assert_eq!(warnings.len(), 2, "{findings:?}");
+    assert!(
+        warnings
+            .iter()
+            .all(|w| w.message.contains("both empty and bound")),
+        "{findings:?}"
+    );
+}
+
+/// OR branches are independent worlds: dead only when EVERY branch is dead;
+/// a tautology (either branch always true) is silent. (NOT-wrapped branches
+/// with slot-true inner atoms — the old count-gate ERROR scans the inner
+/// atom and must stay silent here.)
+#[test]
+fn an_or_is_dead_only_when_every_branch_is_dead() {
+    let findings = findings_for(
+        "
+verbs:
+  TALK:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      talk.dead when NOT (count(actors) >= 1) OR NOT (count(actors) = 1) -> NARRATE \"dead.\"
+      talk.taut when NOT (count(object) >= 1) OR NOT (count(actors) >= 1) -> NARRATE \"fine.\"
+",
+    );
+    let warnings = warnings_of(&findings);
+    assert_eq!(warnings.len(), 1, "{findings:?}");
+    assert!(warnings[0].message.contains("talk.dead"), "{findings:?}");
+    assert!(
+        findings.iter().all(|f| !f.message.contains("talk.taut")),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().all(|f| f.severity == LintSeverity::Warning),
+        "the OR fixtures must not trip the pre-existing ERROR class: {findings:?}"
+    );
+}
+
+/// The documented soundness boundary: world reads have no model at load, so
+/// even an immediate `exists(A) AND NOT exists(A)` stays silent, as does the
+/// pool form `count(name:…)` — catching those needs a world, not a grammar.
+#[test]
+fn world_reads_stay_unknown_even_when_paternally_contradictory() {
+    let findings = findings_for(
+        "
+verbs:
+  TALK:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      talk.world when exists(GHOST) AND NOT exists(GHOST) -> NARRATE \"a.\"
+      talk.pool when count(name:GHOST) = 5 AND count(name:GHOST) = 1 -> NARRATE \"b.\"
+",
+    );
+    assert!(warnings_of(&findings).is_empty(), "{findings:?}");
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+/// The two-class design (E11): today's finding set keeps its ERROR class
+/// (the shadowed-when check here), the new detector is the WARNING class.
+#[test]
+fn the_classes_split_errors_keep_todays_findings_warnings_are_the_detector() {
+    let findings = findings_for(
+        "
+verbs:
+  TALK:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      talk.first when count(actors) = 1 -> NARRATE \"a.\"
+      talk.second when count(actors) = 1 -> NARRATE \"b.\"
+      talk.mark when NOT (count(actors) >= 1) -> NARRATE \"dead.\"
+",
+    );
+    let shadowed = findings
+        .iter()
+        .find(|f| f.message.contains("talk.second"))
+        .unwrap_or_else(|| panic!("the shadowed-when finding must exist: {findings:?}"));
+    assert_eq!(shadowed.severity, LintSeverity::Error);
+    let marked = findings
+        .iter()
+        .find(|f| f.message.contains("talk.mark"))
+        .unwrap_or_else(|| panic!("the never-matching-when warning must exist: {findings:?}"));
+    assert_eq!(marked.severity, LintSeverity::Warning);
 }

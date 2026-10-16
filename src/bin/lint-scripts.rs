@@ -1,6 +1,19 @@
-//! Lint bundled scripts: the load-time warnings of lint_script (§10's
-//! "fail loudly", warn-loudly sibling). Exit code stays 0: warnings advise,
-//! compile errors are `compile_script`'s job.
+//! Lint bundled scripts: the load-time findings of lint_script (§10's
+//! "fail loudly", warn-loudly sibling), now severity-classified (E11):
+//!
+//!   - ERROR — the pre-existing finding set (dead recipes, shadowed whens,
+//!     count gates the slot cardinality forbids, unknown template tokens,
+//!     unwritten aspect reads, unstackable deck entries, non-lexeme names).
+//!     Errors keep today's behavior: counted in the finding total, and the
+//!     exit code discipline is unchanged (constant 0 for findings — compile
+//!     errors are `compile_script`'s job, hard input errors exit 1).
+//!   - WARNING — a recipe whose `when` is PROVABLY never-matching (false for
+//!     every §6.6 selection binding; E11). Warnings print `[warning]` with
+//!     the recipe id + reason and never fail the exit: a dead `when` is
+//!     sometimes the point — cultist-full.txt carries 76 warnings, pinned as
+//!     a composition in tests/convert_cs_smoke.rs (36 deliberate dead-marker
+//!     twins under `NOT (count(actors) …)` whens, plus 24 genuinely-CS-dead
+//!     and 16 converter-induced NOT-alt total contradictions on TALK).
 //!
 //!   cargo run --bin lint-scripts                  # everything under scripts/
 //!   cargo run --bin lint-scripts -- my-game.txt   # or name files
@@ -10,7 +23,7 @@
 //! on stderr and exits 1 (warnings advise, exit 0; hard input errors exit 1),
 //! and a missing named file is the same hard-error family.
 
-use chorus::content::script::lint_script;
+use chorus::content::script::{lint_script_findings, LintSeverity};
 use chorus::core::dict::core_dictionary;
 
 fn main() -> std::process::ExitCode {
@@ -55,6 +68,7 @@ fn main() -> std::process::ExitCode {
     };
 
     let mut findings = 0usize;
+    let mut warnings = 0usize;
     for file in &files {
         let text = match std::fs::read_to_string(file) {
             Ok(t) => t,
@@ -64,23 +78,40 @@ fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::from(1);
             }
         };
-        let warnings = match lint_script(&text, &dict) {
-            Ok(w) => w,
+        let linted = match lint_script_findings(&text, &dict) {
+            Ok(f) => f,
             Err(e) => {
                 eprintln!("Error: {e}");
                 return std::process::ExitCode::from(1);
             }
         };
-        if warnings.is_empty() {
+        if linted.is_empty() {
             println!("{file}: clean");
             continue;
         }
-        findings += warnings.len();
+        findings += linted.len();
+        warnings += linted
+            .iter()
+            .filter(|f| f.severity == LintSeverity::Warning)
+            .count();
         println!("{file}:");
-        for w in &warnings {
-            println!("  - {w}");
+        for f in &linted {
+            match f.severity {
+                // the ERROR class keeps today's line shape exactly
+                LintSeverity::Error => println!("  - {}", f.message),
+                LintSeverity::Warning => println!("  - [warning] {}", f.message),
+            }
         }
     }
-    println!("\n{} file(s), {} finding(s)", files.len(), findings);
+    if warnings > 0 {
+        println!(
+            "\n{} file(s), {} finding(s), {} warning(s) — warnings advise, the exit code stays 0",
+            files.len(),
+            findings,
+            warnings
+        );
+    } else {
+        println!("\n{} file(s), {} finding(s)", files.len(), findings);
+    }
     std::process::ExitCode::SUCCESS
 }

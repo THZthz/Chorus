@@ -4,7 +4,9 @@
 //! naive round-robin committability/provenance fixpoint + `site_proven`),
 //! `paths.rs` (the mint universe, dead verbs, deck caps and the per-card
 //! report), `render.rs` (predicate/proof/chain/reason text + the CLI's
-//! stdout shapes), plus the two campaign engines the bins and the test
+//! stdout shapes), `world_report.rs` (the `--world` global dashboard — the
+//! world-static facts re-rendered, zero new analysis), plus the two campaign
+//! engines the bins and the test
 //! suite share: `fuzz.rs` (seeded differential campaigns) and `scale.rs`
 //! (the CS-scale synthetic world; spec §13.3).
 //!
@@ -26,6 +28,7 @@ pub mod paths;
 pub mod render;
 pub mod scale;
 pub mod world;
+pub mod world_report;
 
 pub use paths::{
     analyze_card, CardCandidate, CardOptions, CardReport, CardVerdict, Existence, PathDeck, PathOp,
@@ -33,3 +36,4 @@ pub use paths::{
 };
 pub use render::{pred_text, render_path, render_report};
 pub use world::Analyzer;
+pub use world_report::{world_report, WorldReport};

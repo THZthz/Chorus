@@ -30,7 +30,8 @@ fn run(bin: &str, args: &[&str]) -> (Option<i32>, String, String) {
 const SCRIPT: &str = "scripts/the-nightjar-flyer.txt";
 
 /// The usage gate: no card, no --all, no
-/// --demand → exit 2, the two-line usage text on stderr, stdout empty.
+/// --demand, no --world → exit 2, the two-line usage text on stderr, stdout
+/// empty.
 #[test]
 fn reach_usage_exits_2_with_the_exact_text() {
     let (code, stdout, stderr) = run("reach", &[SCRIPT]);
@@ -38,7 +39,7 @@ fn reach_usage_exits_2_with_the_exact_text() {
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all\n"
+        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all\n"
     );
 }
 
@@ -53,7 +54,7 @@ fn reach_trailing_demand_is_an_argv_error_q15() {
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "--demand needs a value: --demand \"<query>\"\nusage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all\n"
+        "--demand needs a value: --demand \"<query>\"\nusage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all\n"
     );
 }
 
@@ -68,7 +69,7 @@ fn reach_empty_string_demand_is_falsy_usage_exits_2() {
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all\n"
+        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all\n"
     );
 }
 

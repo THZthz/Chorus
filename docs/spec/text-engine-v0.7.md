@@ -41,6 +41,8 @@ projection of that data, never the source of truth.
 
 22. **v0.7.3** — the layout convergence, zero grammar/log/script change: the oversized modules split along their seams (`engine.rs` → `engine/{record,validate,exec,outcomes,advance,replay}`; `content/script.rs` → `content/script/{parse,decls,verbblock,complete,load,lint,when_dead}`; `predicate.rs` → `predicate` + `pred_parse`/`pred_lint`; `parse.rs` → `parse/{mod,outcome}`), the `engine::engine` / `content::content` inception shapes dissolved into flat module APIs, the fuzz/scale campaign engines and the settle adapter moved from `tests/common` into the crate (`reach::fuzz`, `reach::scale`, `engine::settle` — §13.1's no-engine claim now scoped to the five seam modules, §13.3 amended), and two interface bytes changed: the unresolvable-table hint names the typed word (`cards`) instead of a button number (§11), and `lint-scripts` with no arguments reads its files in sorted order. Everything else is comment/code organization; the acceptance suite pins the behavior throughout.
 
+23. **v0.7.4** — the reach fixpoint learned completion triggers and the analyzer gained a `--world` dashboard (§13.1): a `site_proven` support arm proves a mint owned by an `on complete` clause when its home card is obtainable — completion is arrangeable, the aspect filter lands in the support line, not the verdict, and the frozen rule does not apply — fixing a panic (exit 101) that took `reach` down on completion-only producers; and a sixth seam module, `world_report`, re-renders the post-fixpoint world facts (census counts, freeze line, dead verbs with their killing slots, deck caps, collision names, destroyed-by, the SET pump map, refused owners, notes) into one byte-identical-across-runs dashboard that wins over `--all`/card/demand, the reach usage first line gaining `[--world]` as the one sanctioned argv-surface byte change; no grammar/log/script change.
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -1838,7 +1840,7 @@ format, or play semantics.
 
 `src/reach/` answers "can the player obtain card X?" STATICALLY, over
 (compiled content, initial state) — design-time analysis: no engine, no
-mutation, deterministic. Five seam modules (the analyzer proper — none of
+mutation, deterministic. Six seam modules (the analyzer proper — none of
 them imports the engine; the `fuzz` / `scale` campaign modules that share
 the directory are §13.3's differential layer, and they are the only reach
 files allowed to):
@@ -1864,7 +1866,13 @@ files allowed to):
   schedule-dependent and a worklist or event-driven rewrite CAN change
   the output — such rewrites are forbidden. Slot support models roles as
   distinct `name#copy` instances (first-fit over availability order);
-  expiry-arming recurses with cycle guards.
+  expiry-arming recurses with cycle guards. Completion triggers prove the
+  same generous way: the body is arrangeable exactly when the home card is
+  obtainable (initial or produced — a window binding it can always be
+  begun), the aspect form's completed-recipe filter lands in the support
+  line, not the verdict, and no freeze condition applies (a completion
+  firing is scheduled by the window that binds the home, not by the slot
+  clock).
 - **paths** — the post-fixpoint report: dead verbs are derived here, along
   with the mint universe (aspect values
   there are bounds, not facts), deck caps derived from proven once-trigger
@@ -1880,13 +1888,39 @@ files allowed to):
 - **render** — the report text, byte-frozen (4-space indent steps,
   `path i/n:`, `verdict: X (existence: y)`); design-time predicate/query
   spelling, not the canonical printer.
+- **world_report** — the `--world` global dashboard: one whole-world
+  report over the facts census/world/fixpoint/paths already computed —
+  ZERO new analysis, every section a re-render of post-fixpoint fields.
+  Sections, each omitted whole when its data is empty (overview and
+  freeze always render): the overview (live/refused site counts,
+  verb/prototype/deck counts, trigger counts by the three kinds); the
+  freeze line (frozen, the bounded freeze distance in first-crossing
+  minutes, the risky owners by name); dead verbs, each with the first
+  min>0 slot whose query can never match — the very predicate that
+  condemned the verb — rendered in the design-time spelling; deck caps
+  from proven draws (`MANY` renders unbounded); the collision names; the
+  destroyed-by map (name → the owners that destroy/replace it); the SET
+  pump map (set sites grouped by key → owners, annotated refused /
+  shadowed / non-static path); the refused-site owners; and the world
+  notes. Determinism is the contract: every section walks
+  IndexMap/IndexSet insertion order (content order underneath) and
+  nothing sorts or rehashes, so two runs over the same (compiled
+  content, initial state) render byte-identical text.
 
-CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"]`, or
-`reach <script> --all` (prototypes ∪ LIVE initial entities ∪
+CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"] [--world]`,
+or `reach <script> --all` (prototypes ∪ LIVE initial entities ∪
 `deck.order` — not `defaultcard` — in UTF-16 order; `--all` wins over an
-explicit card). Argv errors exit 2 with the usage; compile/analyze errors
-exit 1 (stderr only); a trailing `--demand` with no value is an argv error
-naming the flag. `reach-fuzz` differentially fuzzes the analyzer against
+explicit card), or `reach <script> --world` — the dashboard needs only
+the script and wins over `--all`, an explicit card, and a demand (`reach
+--world` with no script is the argv error). The usage text's first line
+gains `[--world]`: the one sanctioned byte change to the frozen
+argv-error surface, its three usage pins updated in the same change.
+A card minted only by `on complete` clauses reports like any other — its
+provenance chain names the engine-minted `complete:{home}` trigger id —
+and the analyzer never rejects a script for owning one. Argv errors exit
+2 with the usage; compile/analyze errors exit 1 (stderr only); a
+trailing `--demand` with no value is an argv error naming the flag.
+`reach-fuzz` differentially fuzzes the analyzer against
 the real engine's settle (`--seeds/--steps/--states/--from`, defaults
 200/7/400/1; FAIL and soft-inconclusive lines on stderr, progress and the
 summary on stdout; exit 1 iff a failure; failing seeds printed

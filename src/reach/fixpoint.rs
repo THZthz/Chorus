@@ -382,8 +382,37 @@ impl<'c> WorldFacts<'c> {
                 "trigger {id} fires on slot {slot}{once_note} — the clock is unbounded forward"
             )]);
         }
+        if let CompiledTrigger::Complete { id, home, aspect, .. } = trig {
+            // §6.7: the body applies when a window completes binding a
+            // living card whose CURRENT name is `home`, so the trigger is
+            // arrangeable exactly when the home card is obtainable (the
+            // expiry_support desc-lookup shape); unobtainable → the trigger
+            // never fires and the site stays unproven (the candidate
+            // ladder).
+            if !complete_home_obtainable(self, home) {
+                return None;
+            }
+            // NO freeze condition: the frozen rule (seed 296) only suppresses
+            // facts that must land before a risky slot trigger's first
+            // crossing — duration>0 recipe completions and slot-trigger
+            // firings. A completion firing is scheduled by the window that
+            // binds the home card, not by the slot clock (§6.7) — the same
+            // arrangeability the gate-timing (seed 40449) and owner_armable
+            // Complete arms already grant. The aspect form's extra filter
+            // (the completed recipe must declare the aspect — advance.rs's
+            // `recipe.aspects` match) is arrangeable the same way, so it
+            // only sharpens the line's wording, not the verdict.
+            let aspect_note = if let Some(a) = aspect {
+                format!(" and declares the '{a}' aspect")
+            } else {
+                String::new()
+            };
+            return Some(vec![format!(
+                "trigger {id} fires when a window completes binding '{home}' — completion is arrangeable (begin a duration>0 window that binds the home card{aspect_note})"
+            )]);
+        }
         let CompiledTrigger::Expire { id, on_expire_of, .. } = trig else {
-            unreachable!("a compiled trigger is either Slot or Expire");
+            unreachable!("a compiled trigger is either Slot, Expire or Complete");
         };
         // expiry trigger — see expiry_support
         let initial = expiry_support(self, &world, on_expire_of)?;
@@ -542,6 +571,15 @@ fn expiry_support(wf: &WorldFacts, world: &CardWorld, on_expire_of: &str) -> Opt
     Some(wf.init_names.contains_key(on_expire_of))
 }
 
+/// The completion trigger's provability gate (§6.7): the body applies when
+/// a window completes binding a living card whose CURRENT name is the
+/// trigger's `home`, so the trigger is arrangeable exactly when the home
+/// card is obtainable — an initial entity, or any produced fact (the same
+/// desc-lookup shape as expiry_support).
+fn complete_home_obtainable(wf: &WorldFacts, home: &str) -> bool {
+    wf.init_names.get(home).is_some() || wf.avail.get(home).is_some_and(|facts| !facts.is_empty())
+}
+
 /// The display lines of a verb's structured
 /// committability proof (byte-identical to the pre-structure format).
 fn slot_proof_lines(verb_name: &str, proofs: &[SlotProof]) -> Vec<String> {
@@ -657,8 +695,9 @@ fn self_arm(wf: &WorldFacts, owner: &str, card_name: &str) -> bool {
 }
 
 /// The owner's arming chain: verbs are checked above;
-/// slot triggers fire unconditionally; an expiry trigger needs its own card
-/// expirable.
+/// slot triggers fire unconditionally; a completion trigger is arrangeable
+/// (§6.7 — begin a window binding its home card); an expiry trigger needs
+/// its own card expirable.
 fn owner_armable(
     wf: &WorldFacts,
     world: &CardWorld,

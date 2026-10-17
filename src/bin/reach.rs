@@ -5,7 +5,8 @@
 //!
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt THE_WAX_CYLINDER [--usable]
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --all
-//!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --demand "aspect:secret >= 3"
+//!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --demand "aspect:secret>=3"
+//!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --world
 //!
 //! Frozen surface:
 //!   - stdout text incl. render_path's 4-space indent steps, `path i/n:`,
@@ -16,6 +17,8 @@
 //!     compile-time analyze error exiting 1 (the message line is the frozen
 //!     part). Q15 honesty: a trailing `--demand` (no value slot) is an argv
 //!     error naming the flag — it used to silently vanish into name mode.
+//!   - `--world` renders the whole-world dashboard (reach::world_report) and
+//!     wins over --all / a card name / a demand; it needs only the script.
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -23,6 +26,7 @@ use std::process::ExitCode;
 use chorus::content::script::{compile_script, CompiledScript};
 use chorus::core::dict::core_dictionary;
 use chorus::core::text::cmp_utf16;
+use chorus::reach::world_report::{self, world_report};
 use chorus::reach::{render_report, Analyzer, CardOptions};
 
 fn main() -> ExitCode {
@@ -42,16 +46,22 @@ fn main() -> ExitCode {
             None => {
                 eprintln!("--demand needs a value: --demand \"<query>\"");
                 eprintln!(
-                    "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all"
+                    "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all"
                 );
                 return ExitCode::from(2);
             }
         },
     };
     let mut rest: Vec<String> = Vec::new();
+    let mut world = false;
     let mut i = 0usize;
     while i < args.len() {
         if args[i] == "--usable" {
+            i += 1;
+            continue;
+        }
+        if args[i] == "--world" {
+            world = true;
             i += 1;
             continue;
         }
@@ -65,19 +75,21 @@ fn main() -> ExitCode {
     let file: Option<&String> = rest.first();
     let card: Option<&String> = rest.get(1);
     let all = rest.iter().any(|a| a == "--all");
-    // the usage gate: a present file AND (a card OR --all OR a demand),
-    // with the frozen string truthiness; the text (two lines) is exact. An EMPTY
-    // argv element is falsy for the file slot and the card slot alike.
+    // the usage gate: a present file AND (a card OR --all OR a demand OR
+    // --world), with the frozen string truthiness; the text (two lines) is
+    // exact. An EMPTY argv element is falsy for the file slot and the card
+    // slot alike. `reach --world` with no script falls through here — the
+    // dashboard needs the file too.
     let file = match file {
         Some(f)
             if !f.is_empty()
-                && (all || card.is_some_and(|c| !c.is_empty()) || demand.is_some()) =>
+                && (all || world || card.is_some_and(|c| !c.is_empty()) || demand.is_some()) =>
         {
             f
         }
         _ => {
             eprintln!(
-                "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"]\n       reach <script.txt> --all"
+                "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all"
             );
             return ExitCode::from(2);
         }
@@ -103,9 +115,10 @@ fn main() -> ExitCode {
     };
     let CompiledScript { content, state, .. } = compiled;
 
-    // the branch ORDER is the frozen behavior: --all
-    // wins over an explicit card name; a lone --demand reports once (the
-    // target is ignored by the analyzer under demand).
+    // the branch ORDER is the frozen behavior: --world wins over everything
+    // (the dashboard is target-free — no card, no --all walk, no demand);
+    // --all wins over an explicit card name; a lone --demand reports once
+    // (the target is ignored by the analyzer under demand).
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     let fail = |e: chorus::error::ChorusError| -> ExitCode {
@@ -114,6 +127,18 @@ fn main() -> ExitCode {
         eprintln!("Error: {e}");
         ExitCode::from(1)
     };
+    if world {
+        // one Analyzer, one world, zero per-card work — the sections are the
+        // post-fixpoint facts re-rendered (reach::world_report)
+        let r = world_report(&content, &state);
+        let mut buf = String::new();
+        world_report::render_report(&mut buf, file, &r);
+        if out.write_all(buf.as_bytes()).is_err() {
+            return ExitCode::from(1);
+        }
+        let _ = out.flush();
+        return ExitCode::from(0);
+    }
     if all {
         // prototypes ∪ live initial entities ∪
         // deck.order (NOT defaultcard); insertion set,

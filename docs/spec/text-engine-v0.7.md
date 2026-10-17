@@ -41,9 +41,11 @@ projection of that data, never the source of truth.
 
 22. **v0.7.3** — the layout convergence, zero grammar/log/script change: the oversized modules split along their seams (`engine.rs` → `engine/{record,validate,exec,outcomes,advance,replay}`; `content/script.rs` → `content/script/{parse,decls,verbblock,complete,load,lint,when_dead}`; `predicate.rs` → `predicate` + `pred_parse`/`pred_lint`; `parse.rs` → `parse/{mod,outcome}`), the `engine::engine` / `content::content` inception shapes dissolved into flat module APIs, the fuzz/scale campaign engines and the settle adapter moved from `tests/common` into the crate (`reach::fuzz`, `reach::scale`, `engine::settle` — §13.1's no-engine claim now scoped to the five seam modules, §13.3 amended), and two interface bytes changed: the unresolvable-table hint names the typed word (`cards`) instead of a button number (§11), and `lint-scripts` with no arguments reads its files in sorted order. Everything else is comment/code organization; the acceptance suite pins the behavior throughout.
 
-23. **v0.7.4** — the reach fixpoint learned completion triggers and the analyzer gained a `--world` dashboard (§13.1): a `site_proven` support arm proves a mint owned by an `on complete` clause when its home card is obtainable — completion is arrangeable, the aspect filter lands in the support line, not the verdict, and the frozen rule does not apply — fixing a panic (exit 101) that took `reach` down on completion-only producers; and a sixth seam module, `world_report`, re-renders the post-fixpoint world facts (census counts, freeze line, dead verbs with their killing slots, deck caps, collision names, destroyed-by, the SET pump map, refused owners, notes) into one byte-identical-across-runs dashboard that wins over `--all`/card/demand, the reach usage first line gaining `[--world]` as the one sanctioned argv-surface byte change; no grammar/log/script change.
+23. **v0.7.4** — the interface convergence (the acceptance layer only; no log/grammar change except where noted): the advance pass CLOSES at an ENDING instead of running on (§4.4 — completions and slots after the ending no longer fire; the clock stops where the story did), one step may advance at most seven days (§6.6 — a giant day field is a loud rejection, not an unbounded walk), and a slot-count rejection names its verb once instead of twice. The shipped REPL prints what the engine already knew — the goal, the clock, the open stations, the try row of typeable suggestions, `help`, `look`'s exits and carrying — and the lenient front door resolves what its own suggestions suggest (underscored/uppercase spellings, unique name-words, slot-fit disambiguation, `says`-template prose aliases, full-line verb corrections) while refusing outcome arrows instead of dropping them. `scripts/the-nightjar-flyer.txt`'s acceptance path is the honest seven-command win (the older nine-command path closed the inquest at 6:30, after Vienna, and only "won" while endings rode along).
 
-24. **v0.7.5** — the reach fuzz generator v2 and the analyzer's diagnostic faces (§13.1/§13.3): the generator's scenario space now covers the full trigger face (slot, expiry and completion triggers with their §6.7 aspect gates), RUN candidates (a recipe body may RUN only the same verb's strictly earlier recipes; a completion body draws from the global duration>0 table) and §6.4 recipe `aspects` — its draw order re-banded and declared VERSIONED, not frozen, so recorded campaign runs reproduce only against the generator version that produced them, and the seed suite pins determinism (same seed ⇒ the same outcome, failures printed) instead of soundness, whose open complete-arm over-generosity (seed 41 among seeds 1–50) stays the campaign's ledger for the coming tightening; and the demotion guards converged on one `site_ladder` pass whose failing rungs yield structured `CardBlocker`s (`site_proven` its `.ok()` face), surfaced as `reach --why` (the per-card blocker table) and `--verb "<NAME>"` (the settled-facts verb report), world notes converging on the named card's report, the usage first line gaining `[--why] [--verb "<NAME>"]` as the sanctioned argv byte change; no grammar/log/script change.
+24. **v0.7.5** — the reach fixpoint learned completion triggers and the analyzer gained a `--world` dashboard (§13.1): a `site_proven` support arm proves a mint owned by an `on complete` clause when its home card is obtainable — completion is arrangeable, the aspect filter lands in the support line, not the verdict, and the frozen rule does not apply — fixing a panic (exit 101) that took `reach` down on completion-only producers; and a sixth seam module, `world_report`, re-renders the post-fixpoint world facts (census counts, freeze line, dead verbs with their killing slots, deck caps, collision names, destroyed-by, the SET pump map, refused owners, notes) into one byte-identical-across-runs dashboard that wins over `--all`/card/demand, the reach usage first line gaining `[--world]` as the one sanctioned argv-surface byte change; no grammar/log/script change.
+
+25. **v0.7.6** — the reach fuzz generator v2 and the analyzer's diagnostic faces (§13.1/§13.3): the generator's scenario space now covers the full trigger face (slot, expiry and completion triggers with their §6.7 aspect gates), RUN candidates (a recipe body may RUN only the same verb's strictly earlier recipes; a completion body draws from the global duration>0 table) and §6.4 recipe `aspects` — its draw order re-banded and declared VERSIONED, not frozen, so recorded campaign runs reproduce only against the generator version that produced them, and the seed suite pins determinism (same seed ⇒ the same outcome, failures printed) instead of soundness, whose open complete-arm over-generosity (seed 41 among seeds 1–50) stays the campaign's ledger for the coming tightening; and the demotion guards converged on one `site_ladder` pass whose failing rungs yield structured `CardBlocker`s (`site_proven` its `.ok()` face), surfaced as `reach --why` (the per-card blocker table) and `--verb "<NAME>"` (the settled-facts verb report), world notes converging on the named card's report, the usage first line gaining `[--why] [--verb "<NAME>"]` as the sanctioned argv byte change; no grammar/log/script change.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -241,7 +243,7 @@ contributes no template line; its recipe NARRATEs still speak.
 | `PROGRESS`| duration, string                | a read-bar tick: authored progress text at `duration` into the processing window (§6.7); journal-only, no state or time effect |
 | `RELATE`  | ref, ref, type [, int]          | create a relation edge between two cards      |
 | `UNRELATE`| ref, ref, type                  | remove a relation edge                        |
-| `ENDING`  | id                              | end the story: sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — outcomes apply and the clock advances, the ending rides along. An action ENDING outranks an event ENDING within one advance (the action's outcomes apply before its events); a REFUSE later in the same step discards the ending with the whole draft (§6.5). Post-ending steps are rejected before validation, nothing logged, the message naming the ending's title; the fold itself never enforces game-over (it trusts logged rows) — the rejection lives in the step executor only |
+| `ENDING`  | id                              | end the story: sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — the ending's OWN completion still applies its whole outcome list (an ADVANCE extension it carries counts, §6.6). Within one advance pass the story's ENDING closes the pass: an action's own advance finishes, but an EVENT ending (a trigger's or a completion's) stops the pass AT THAT MINUTE — the wait row's span ends there, later due completions and slots do not fire, and the clock does not run past the story (v0.7.4: the ending used to ride along while later completions still landed — an ending after the ending made a loss print a second, winning banner). A REFUSE later in the same step discards the ending with the whole draft (§6.5); a REFUSE later in the same step discards the ending with the whole draft (§6.5). Post-ending steps are rejected before validation, nothing logged, the message naming the ending's title; the fold itself never enforces game-over (it trusts logged rows) — the rejection lives in the step executor only |
 | `IF`      | cond `->` `(` outcomes `)` { `ELSE IF` cond `->` `(` outcomes `)` } [ `ELSE` `->` `(` outcomes `)` ] | branching (§6.8, §6.3): arms evaluate in order against the draft, first true condition wins, `ELSE` is the default, no true arm and no `ELSE` applies nothing; the log records only the TAKEN branch's outcomes, flattened in position — no IF ever appears in the log |
 | `ROLL`    | count, sides [, bonus]          | roll dice: paren-only; each argument is a §6.3 value expression (`3`, `total(actors, aspect:nerve)`, `count(name:X)`, `object.aspect.dc`, …). Rolls `count` dice of `sides` faces plus `bonus`, consuming exactly `count` rng counters; binds `roll` for the rest of the outcome list. The log records the engine-written `ROLLED(<total>, <ctrAfter>)` — no ROLL ever appears in the log. `sides` < 2 or `count` < 0 reject the whole step (§9.2); `count` = 0 is legal (total = bonus, counter unmoved); an argument expression that cannot resolve (a missing aspect over its bound role) rejects the step rather than silently rolling nothing |
 | `ROLLED`  | total, ctrAfter                 | **engine-written only**: the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
@@ -1022,7 +1024,7 @@ starting exactly at `now` is a loud log-drift error, §7). A bare advance to
 the current minute with nothing due is rejected outright (`nothing to do —
 the clock already reads d:h (commit an action, or name a later minute to
 wait)`) rather than idling — idling is what `wait`
-(§11) is for. One pass is atomic (§9.2); expiries created
+(§11) is for. One pass is atomic (§9.2); one step may advance the clock at most SEVEN DAYS — the pass walks every halfhour it crosses (recurring triggers fire on each), so a giant day field is a loud rejection ("more than 7 days ahead"), not an unbounded walk (v0.7.4). Expiries created
 by the pass resolve at the next one.
 
 **Why there is no lock-flag machinery beyond the windows table**: the
@@ -1762,29 +1764,59 @@ sentence is what gets logged (§9.1). Rules:
   speaks: an unknown word takes the suggestion path, a pool too small the
   refusal.
 
-**The interface shows its options outright**: the REPL banner prints the
-title and the script's configured verbs (lowercased, underscores spaced),
-and the
-meta views are typed words, not number buttons — `look` (player's container
-+ contents), `cards` (the visible table), `inspect <name>` (a card's face:
-kind, aspects, whereabouts, provenance — visible cards only, exact
-face-name match then prefix; a bare `inspect` prints the usage and the
-table, never guessing a card), `journal` (canonical), `story` (prose),
-`undo`, `wait`, `quit` — backed by
-`Game::look/cards/inspect/journal/story/undo/wait/processing`. Bare `wait`
-is the time-passing control — advance to the earliest open window's end (or
-now + one hour when nothing is in flight), ceil-quantized to the halfhour —
-NOT the WAIT verb: the collision is recorded, not accidental, and the verb
-stays reachable as `march wait` or canonical input. `suggestions()` (the
-try row) is `Game` API the shipped REPL does not print: verb × card
-bindings that fit the slots — those lighting a non-default non-REFUSE
-recipe first, flavor bindings (which would run a default, or reject — a
-spent `max` recipe lands here too) appended after — every entry
-lenient-parseable, none after the ending,
-verbs with an open station and cards locked in a window excluded, the list
-capped at 3; candidate pools rank same-container cards first, ties in the
-frozen
-name order (ASCII-lowercase, then byte order).
+**The interface shows its options outright** (v0.7.4): the line REPL opens
+with `Game::banner` — the title, the script's `goal:` line (`§ …`, the
+deadline is part of the game), a status line (`you are MARCH · at GUARD VAN ·
+day 0, 21:00` — the player's clock is the same minute rendered as day +
+time-of-day), `here:` (the cards sharing the place, pool copies grouped
+`×N`), the **try row** (`suggestions()`, below), the configured verbs, and
+the way to `help`. After every turn — play, `wait`, `undo` — `after_turn`
+prints the clock with the stations still processing (`now: day 0, 22:00 ·
+processing: explore until 23:00`, open windows in due order) and a fresh
+try row with `wait` appended while anything is cooking; the turn that ends
+the story gets the one line that says so (`undo` reopens, `quit` leaves),
+printed once — later turns answer with the plain notice. The meta views are typed words — `look`
+(place + clock, cards here, **exits** read off the living direction
+relations the same way `rel(<dir>, …)` gates travel, what the player
+carries, the processing stations), `cards` (the visible table, copies
+grouped), `inspect <name>` (a card's face; a card that left play says
+"no longer in play (left play at action N)"; a bare `inspect` prints the
+usage and the table, never guessing a card), `journal` (canonical),
+`story` (prose), `undo` (names what it took back — `undone: « … »` or
+`undone: the wait`), `wait`, `help`, `quit`. A piped session echoes every
+line as `» line` (the stand-in for a TTY's prompt + typing; on a TTY the
+`» ` prompt is drawn instead and input is not echoed).
+`suggestions()` (the try row) is `Game` API the REPL prints: verb × card
+bindings that fit the slots — multi-person verbs name their companions
+before the verb (`march the guard work`), verbs lighting a non-default
+non-REFUSE recipe first, flavor bindings appended after — every entry
+lenient-parseable and typeable verbatim (lowercase display names), the
+list capped at 3; candidate pools rank same-container cards first, ties in
+the frozen name order (ASCII-lowercase, then byte order). Verbs with an
+open station and cards locked in a window are excluded; `recipe_lights`
+skips REFUSE recipes and spent `max` recipes (they land in flavor), and a
+REFUSED action prints the verb's authored `shown` hints under the refusal.
+
+**Lenient input meets its own suggestions** (v0.7.4): name runs normalize
+with the same key the tables use — `MARCH READ THE_MANIFEST`, `the vane
+ledger` and `read ledger` (a unique name-word) all resolve; when a word is
+ambiguous among several names, the one fitting the verb's slot query wins
+(`guard` is THE GUARD to `talk`, GUARD VAN to `explore`), and a unique fit
+resolves, otherwise the word fails with display-form suggestions (`did you
+mean: the vane ledger?`) — prefix, name-words containing it, then
+edit distance ≤ 2, per word. A misspelled verb suggests the whole line with
+the verb corrected (`xeplore the car` → `explore the car`). Each verb's
+`says` template may donate a prose alias — the first word standing alone
+before a placeholder or a full stop (`{actors} question {to}.` →
+`question` is TALK, `search` is EXPLORE, `convene` is USE_ON) — unless the
+word prefixes a registered two-token verb (`use` never aliases: `use on`
+is USE_ON), is a registered verb itself, or a role keyword. A bare name
+after a verb with no object slot goes to the first companion slot every
+item fits (`question the guard` → `talk to THE_GUARD`). Input carrying an
+outcome arrow (`->`) is refused: outcomes are the log's grammar, not the
+player's — nothing is silently dropped. An unknown word that names a card
+no longer in play says so, and one naming an unminted prototype says the
+table has nobody by that name yet.
 
 **The table is a projection, not the world** (`Game::visible()`): places, the
 player, cards sharing the player's location, cards the player carries, the

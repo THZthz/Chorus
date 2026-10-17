@@ -41,14 +41,18 @@ fn play(game: &mut Game, lines: &[&str]) -> chorus::error::Result<Vec<Turn>> {
 
 /// (`WIN_PATH` — the test-local copy; the
 /// explorer lib's is the sweep/walk's own)
-const WIN_PATH: [&str; 9] = [
-    "wait",                       // 22:00 — the body is found
-    "explore the first cabin",    // 23:00 — the solicitor's letter
-    "read the solicitor letter",  // 0:00  — border stop; the telegram lands
-    "explore the firebox",        // 1:00  — the wax cylinder
-    "read the vane ledger",       // 2:00  — read in the same hour it burns
-    "talk with the spiritualist", // meet Seraphine (the name is learned by talking)
-    "seraphine read the wax cylinder",
+// 22:00 the body is found and the ledger is on the table; 22:00→23:00 the
+// embezzlement (motive); 23:00→0:00 the wax cylinder, and the border stop
+// lands the telegram; 0:00→1:00 the stolen voice (means), the tunnel closes
+// behind; 1:00→1:30 meet Seraphine (the name is learned by talking);
+// 1:30→2:30 the Vienna warning (opportunity); 2:30→4:00 CASE_CLOSED (the
+// inquest takes ninety minutes).
+const WIN_PATH: [&str; 7] = [
+    "wait",
+    "read the vane ledger",
+    "explore the firebox",
+    "read the wax cylinder",
+    "talk with the spiritualist",
     "seraphine read the telegram",
     "use on the inquest with the embezzlement the stolen voice the vienna warning",
 ];
@@ -204,9 +208,14 @@ mod the_nightjar_flyer {
             .cloned()
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(canonical.contains("PROGRESS(1halfhour,")); // the tick rides the BEGIN row
-        assert!(canonical.contains("SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin"));
-        // the mint the completion
+        // the tick rides the BEGIN row; the echo is the player's own BEGIN
+        // row only — the mint rode the completion, which the journal keeps
+        assert!(canonical.contains("PROGRESS(1halfhour,"));
+        assert!(!canonical.contains("SPAWN THE_SOLICITOR_LETTER"));
+        assert!(game
+            .journal()
+            .join("\n")
+            .contains("SPAWN THE_SOLICITOR_LETTER INTO #s_first_cabin"));
     }
 
     #[test]
@@ -221,6 +230,10 @@ mod the_nightjar_flyer {
         let inquest =
             game.log.records.iter().find(|r| r.verb == "USE_ON").expect("the inquest ran");
         assert_eq!(inquest.recipes, ["inquest.win"]);
+        // the inquest closed at 4:00, two hours before Vienna: the grand
+        // ending is the story's end (§4.4)
+        let ended = game.state.ended.as_ref().expect("the story ended");
+        assert_eq!((ended.id.as_str(), ended.flavour.as_str()), ("CASE_CLOSED", "grand"));
         assert!(game.log.records.iter().any(|r| r.trigger.as_deref() == Some("border_stop")));
         assert!(game
             .log
@@ -235,20 +248,22 @@ mod the_nightjar_flyer {
         let mut game = fresh();
         play(&mut game, &WIN_PATH).unwrap();
         // F1 — the SUSPICION pool is present: the 22:30 rounds landed the middle
-        // tier under seed 1899; the cabin's own patrol roll now resolves at
-        // the window's close — after the rounds — and lands the pass-by tier
+        // tier under seed 1899 (the seven-command path never searches the
+        // cabin, so no patrol roll follows)
         assert_eq!(pool_len(&game, "SUSPICION"), 1);
-        // F4 — three ROLLED rows (conductor's rounds, cabin patrol, firebox
-        // find — v0.5 completion order), the counter landing where play left
-        // it. P0 ANCHOR: asserted value-for-value in this file.
+        // the §6.4 derive prototype minted off the ledger read
+        assert!(game.state.by_name.contains_key("HUNCH_THE_VANE_LEDGER"));
+        // F4 — two ROLLED rows (conductor's rounds, then the firebox find —
+        // v0.5 completion order), the counter landing where play left it.
+        // P0 ANCHOR: asserted value-for-value in this file.
         let rolled: Vec<Option<(i64, i64)>> = game
             .log
             .records
             .iter()
             .flat_map(|r| r.outcomes.iter().filter(|o| o.op == "ROLLED").map(ints))
             .collect();
-        assert_eq!(rolled, vec![Some((5, 2)), Some((8, 4)), Some((14, 7))]); // calibrated against seed 1899
-        assert_eq!(game.state.rng, 7);
+        assert_eq!(rolled, vec![Some((5, 2)), Some((11, 5))]); // calibrated against seed 1899
+        assert_eq!(game.state.rng, 5);
         // F5 — the RUMOURS deck drew twice: once from the patrol trigger
         // (into the guard van), once from the talk recipe (into the dining
         // car). P0 ANCHOR (the deck order pinned in this file).
@@ -291,13 +306,11 @@ mod the_nightjar_flyer {
         let said = narrate.map(|o| &o.args[0]);
         let ok = matches!(said, Some(Arg::Str { v }) if v.contains("we all read the same card: the lord is dead"));
         assert!(ok, "said = {said:?}");
-        // the escalation never tripped — but the inquest's grand ending now
-        // lands at the window's close, one crossing after the vienna quiet
-        // night: first ENDING wins (§4.4), and the train gets there first
+        // the escalation never tripped, and the inquest's window closed at
+        // 4:00 — before Vienna: the grand ending ends the story (§4.4)
         let ended = game.state.ended.as_ref().expect("the story ended");
-        assert_eq!(ended.id, "QUIET_NIGHT");
-        assert_eq!(ended.flavour, "melancholy");
-        // the inquest still won the case
+        assert_eq!(ended.id, "CASE_CLOSED");
+        assert_eq!(ended.flavour, "grand");
         assert!(game.state.by_name.contains_key("CONFESSION_OF_QUILL"));
     }
 
@@ -421,8 +434,8 @@ mod the_nightjar_flyer {
     }
 
     #[test]
-    fn once_triggers_fire_exactly_once_and_the_lord_expires_into_his_successor() {
-        // (§6.6)
+    fn once_triggers_fire_exactly_once_and_the_night_ends_at_vienna() {
+        // (§6.6, §4.4)
         let mut game = fresh();
         play(&mut game, &["wait"]).unwrap(); // day 0, hour 22 — body_found fires
         assert_eq!(
@@ -430,11 +443,10 @@ mod the_nightjar_flyer {
             1
         );
         // jump a day ahead in ONE step: the once-trigger must neither re-fire
-        // nor reject — and the lord's 1-day `expires` crosses on the way, so
-        // the authored `on expire` trigger replaces him (REPLACE, §6.6-§4.4).
-        // The span also crosses the vienna ending (§4.4) — the ending rides
-        // along: the pass that fired it runs to its full target, and play
-        // stops after.
+        // nor reject. The span crosses the vienna ending (§4.4): the advance
+        // pass CLOSES at that halfhour — the lord's 1-day `expires` lies
+        // beyond it and never crosses (the `on expire` REPLACE mechanic is
+        // pinned on scratch content in tests/engine/expiry.rs).
         let jump = auto_settle_line(&mut game, "2:0 @ MARCH WAIT").unwrap();
         assert_eq!(jump.kind, TurnKind::Action);
         // once means once
@@ -442,14 +454,19 @@ mod the_nightjar_flyer {
             game.log.records.iter().filter(|r| r.trigger.as_deref() == Some("body_found")).count(),
             1
         );
+        let ended = game.state.ended.as_ref().expect("the flyer reached vienna en route");
+        assert_eq!(ended.id, "QUIET_NIGHT");
+        // the clock stopped where the story did — 6:00, not the asked-for day 2
         assert_eq!(
-            game.log.records.iter().filter(|r| r.trigger.as_deref() == Some("lord_tended")).count(),
-            1
+            game.state.now,
+            chorus::core::clock::abs_min(chorus::core::clock::Clock { day: 1, halfhour: 12 })
         );
-        assert!(!game.state.by_name.contains_key("THE_LATE_LORD"));
-        assert!(game.state.by_name.contains_key("THE_TENDED_LORD"));
-        // the flyer reached vienna en route
-        assert!(game.state.ended.is_some());
+        assert!(game.state.by_name.contains_key("THE_LATE_LORD"));
+        assert!(!game.state.by_name.contains_key("THE_TENDED_LORD"));
+        // nothing executes after the ending: time itself refuses to pass
+        let after = game.handle_line("3:0").unwrap();
+        assert_eq!(after.kind, TurnKind::Info);
+        assert!(after.lines[0].starts_with("the story has ended"));
     }
 
     #[test]
@@ -534,7 +551,7 @@ mod the_nightjar_flyer {
     }
 
     #[test]
-    fn dreaming_draws_the_dreams_deck_until_it_runs_dry() {
+    fn dreaming_draws_the_dreams_deck_and_the_night_ends_before_it_runs_dry() {
         // (§4.4, §6.4)
         let mut game = fresh();
         play(
@@ -545,30 +562,30 @@ mod the_nightjar_flyer {
         // the derive prototype minted
         assert!(game.state.by_name.contains_key("HUNCH_THE_VANE_LEDGER"));
         // playing the cylinder unsealed the seal idea, so it fits the dream slot
-        assert_eq!(
-            auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
-            TurnKind::Action
-        );
-        assert_eq!(
-            auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
-            TurnKind::Action
-        );
-        assert_eq!(
-            auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
-            TurnKind::Action
-        );
+        for _ in 0..3 {
+            assert_eq!(
+                auto_settle_line(&mut game, "dream with the aether seal").unwrap().kind,
+                TurnKind::Action
+            );
+        }
         // the seed-fixed permutation served VOID, PORTENT, PORTENT —
         // stackable pools. P0 ANCHOR, asserted in this file.
         assert_eq!(pool_len(&game, "PORTENT"), 2);
         assert_eq!(pool_len(&game, "VOID"), 1);
-        // v0.5: the draw decides at the completion…
+        // the fourth dream begins at 5:30 and would draw the exhausted
+        // deck's refusal at its 6:30 close — but the settle's advance crosses
+        // Vienna at 6:00 and CLOSES there (§4.4): the window stays open,
+        // unfired, and the deck never runs dry tonight (the exhaustion
+        // refusal itself is pinned in tests/decks)
         let dry = auto_settle_line(&mut game, "dream with the aether seal").unwrap();
         assert_eq!(dry.kind, TurnKind::Action);
-        // …where the exhausted deck fails loud — the completion row refuses
-        // (§9.2 analog)
-        let last_complete = game.log.records.iter().rev().find(|r| r.kind == "complete").unwrap();
-        assert!(last_complete.outcomes.iter().any(|o| o.op == "REFUSE"));
-        assert!(regex::Regex::new(r"exhausted").unwrap().is_match(&game.journal().join("\n")));
+        let ended = game.state.ended.as_ref().expect("vienna rode the same turn");
+        assert_eq!(ended.id, "QUIET_NIGHT");
+        assert!(
+            game.state.windows.values().any(|w| w.verb == "DREAM"),
+            "the fourth dream never completed"
+        );
+        assert!(!game.journal().join("\n").contains("exhausted"));
     }
 
     #[test]

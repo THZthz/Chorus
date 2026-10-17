@@ -440,15 +440,18 @@ pub fn candidates_for(
 
 // ------------------------ state sources ------------------------------------
 
-/// The canonical win path through the Nightjar Flyer (nine commands).
-pub const WIN_PATH: [&str; 9] = [
+/// The canonical win path through the Nightjar Flyer: seven commands, each
+/// settled before the next (the REPL player types `wait` between them). The
+/// inquest's ninety-minute window must CLOSE before Vienna (6:00) — this
+/// path closes it at 4:00; the older nine-command path with the cabin
+/// detour closes it at 6:00 exactly and wins too (completions precede
+/// same-minute events).
+pub const WIN_PATH: [&str; 7] = [
     "wait",
-    "explore the first cabin",
-    "read the solicitor letter",
-    "explore the firebox",
     "read the vane ledger",
+    "explore the firebox",
+    "read the wax cylinder",
     "talk with the spiritualist", // meet Seraphine — the name is learned by talking
-    "seraphine read the wax cylinder",
     "seraphine read the telegram",
     "use on the inquest with the embezzlement the stolen voice the vienna warning",
 ];

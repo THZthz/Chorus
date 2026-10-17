@@ -31,10 +31,12 @@ all pinned by the acceptance suite):
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
 - `src/error.rs` / `src/lcg.rs` — the single error channel; the deterministic campaign-side RNG
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
-- `tests/` — 770 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
+- `tests/` — 774 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
-  winnable in 9 commands)
+  the acceptance path wins in seven actions with a `wait` after each — the
+  inquest's ninety-minute window must close before Vienna at 6:00, and the
+  goal line says so)
 
 ## Play
 
@@ -45,66 +47,78 @@ cargo run --bin chorus -- my-game.txt
 
 ```
 ── Murder on the Nightjar Flyer ──
+§ unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna, where the Flyer arrives at six
+you are MARCH · at GUARD VAN · day 0, 21:00
+here: THE GUARD · THE INQUEST
+try: read the manifest · talk to the guard · explore dining car
 verbs: read · talk · explore · use on · travel to · wait · study · work · mansus · locate at · dream · acquire
-look
-You are at GUARD_VAN.
-  THE_GUARD  [character]
-  THE_INQUEST  [rite]
-read the manifest
-MARCH read THE_MANIFEST.
-
-« 0:42 @ MARCH READ THE_MANIFEST »
-talk with the guard
-MARCH question THE_GUARD.
+type `help` for how to play
+» look
+You are at GUARD VAN — day 0, 21:00.
+  THE GUARD  [character]
+  THE INQUEST  [rite]
+exits: north — LUGGAGE VAN · south — FIREBOX
+carrying: THE MANIFEST
+» talk to the guard
+MARCH question THE GUARD.
 
 « 0:42 @ MARCH TALK TO THE_GUARD »
-wait
+now: day 0, 21:00 · processing: talk until 21:30
+try: read the manifest · explore dining car · explore firebox · wait
+» wait
 "Brack. Railway security," he says, and the white gloves settle. "They wired
 ahead about an inspector. The company seal is in my van — and somebody's
 hands have been on it."
   (+1halfhour) time passes.
-
-« 0:43 @ COMPLETE TALK -> DESTROY(THE_GUARD), SPAWN BRACK INTO #s_guard_van AS #e4_1 … »
-inspect brack
+now: day 0, 21:30
+try: read the manifest · talk to brack · explore dining car
+» inspect brack
 BRACK  [character]
   duty 2 · nerve 2
   at: GUARD VAN
   entered play at action 2
 ```
 
-The session opens with the script's title and its verb vocabulary. The
-player types English-ish text (`read the manifest`, `explore the firebox`,
-`talk with the guard`); the engine assigns the clock, resolves names fuzzily
-(case, articles, underscores), echoes the canonical sentence it executed in
-`« … »`, and suggests corrections on a miss. `session::game`'s
-`suggestions()` — a state-driven `try:` row of concrete executable actions,
-refreshed every turn — is headless `Game` API (§11); the line REPL does not
-print it. The night keeps score, as the steward's line above hints —
+The session opens with the script's title, its `goal:` line, where and when
+you stand, who shares the place, a `try:` row of actions you can type as
+shown, and the verb vocabulary; `help` explains the grammar in the game's
+own words. The player types English-ish text (`read the manifest`, `explore
+the firebox`, `question the guard`); the engine assigns the clock, resolves
+names fuzzily (case, articles, underscores, a single distinctive word), picks
+the card that fits the verb when a word is ambiguous, echoes the canonical
+sentence it executed in `« … »`, and on a miss suggests a corrected line to
+type back. People go BEFORE the verb — `seraphine read the telegram`,
+`march brack work` — and the try row shows that shape whenever a verb needs
+company. The night keeps score, as the steward's line above hints —
 careless searches and the conductor's rounds stack SUSPICION — a pool, not a
 card — and three copies make the case leave the train. Strict canonical
 sentences (`0:20 @ MARCH WAIT`) pass through unchanged. Characters you have
 not talked to appear as archetypes (`THE GUARD`) — the name is learned by
-meeting them — and the corridor has directions: places sit on a table laid
-out by `north`/`south`/`east`/`west` links, and a travel verb only reaches
-the next car. The meta views (`look`, `cards`, `story`, `journal`, `undo`,
-`wait`, `quit`) are one-word commands, and `inspect <card>` prints any card
-in play.
+meeting them — and the corridor has directions: `look` lists the exits, laid
+out by the script's `north`/`south`/`east`/`west` links, and a travel verb
+only reaches the next car. The meta views (`look`, `cards`, `inspect <card>`,
+`story`, `journal`, `undo`, `wait`, `help`, `quit`) are one-word commands.
+In a terminal the `» ` prompt is drawn; a piped session echoes each line
+instead, so transcripts read like the one above.
 
 Committed actions **process** over their verb's duration as *parallel
 stations*: committing an action opens a processing window — the verb and
 its placed cards are locked until it closes, authored `PROGRESS` ticks
 describe what is happening inside it, and outcomes (consume / mutate /
-mint) land when the window completes. Several stations run at once; time
-passes only when you advance it (type a clock like `1:30`, or press
-wait), which resolves due completions and the timetable in one
-deterministic pass:
+mint) land when the window completes. The `now:` line after a turn shows
+the clock and what is cooking until when; several stations run at once; time
+passes only when you advance it (type `wait`, or a clock like `1:4`), which
+resolves due completions and the timetable in one deterministic pass — and
+the night ends where the story does (an ending closes the pass):
 
 ```
-read the manifest
-MARCH read THE_MANIFEST.
+» read the manifest
+MARCH read THE MANIFEST.
 
 « 0:42 @ MARCH READ THE_MANIFEST »
-wait
+now: day 0, 21:00 · processing: read until 22:00
+try: talk to the guard · explore dining car · march the guard work at firebox · wait
+» wait
 The passenger manifest, first class: the lord Vane, his wife Verity, a
 secretary named Quill, a spiritualist trading as Seraphine. Crew of two on
 the sheet — a guard and a stoker. Six strangers and a dead man, once the cry
@@ -112,8 +126,8 @@ goes up.
 A cry from the first cabin. Lord Vane lies behind his own aether-seal,
 unrobbed, unwounded, and entirely dead.
   (+1h) time passes.
-
-« 0:44 @ COMPLETE READ -> NARRATE "…" | 0:44 @ EVENT body_found -> … »
+now: day 0, 22:00
+try: read the manifest · talk to the guard · explore dining car
 ```
 
 ## Script format
@@ -150,7 +164,7 @@ verbs:
 ## Run
 
 ```sh
-cargo test                # 770 acceptance tests
+cargo test                # 774 acceptance tests
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```

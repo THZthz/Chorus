@@ -215,7 +215,10 @@ fn the_player_surface_lists_every_copy_inspect_reads_the_oldest() {
         game.handle_line("stew").unwrap();
         game.wait().unwrap(); // v0.5: the spawn lands at the completion
     }
-    assert_eq!(game.cards().into_iter().filter(|l| l.starts_with("SUSPICION")).count(), 3); // cosmetic duplicates OK
+    // the table groups a pool's copies into one row with its count (§11)
+    let rows: Vec<String> =
+        game.cards().into_iter().filter(|l| l.starts_with("SUSPICION")).collect();
+    assert_eq!(rows, vec!["SUSPICION  [state] ×3".to_string()]);
     let face = game.inspect("suspicion");
     assert_eq!(face[0], "SUSPICION  [state]");
     let oldest_born = game

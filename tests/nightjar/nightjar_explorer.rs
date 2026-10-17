@@ -277,7 +277,7 @@ fn the_exhaustive_verb_x_fill_space_at_every_sweep_state_keeps_the_invariants() 
     }
     // coverage floors: the sweep must actually be sweeping
     assert!(states.len() >= WIN_PATH.len() + 1 + 4);
-    assert!(total > 30000, "total = {total}");
+    assert!(total > 25000, "total = {total}");
     assert!(applied > 12000, "applied = {applied}");
     assert!(refused > 2000, "refused = {refused}");
     assert!(rejected > 8000, "rejected = {rejected}");

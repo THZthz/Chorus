@@ -127,6 +127,7 @@ pub(super) fn resolve_due(
                          follow-ups is spinning (§6.7)"
                     )));
                 }
+                let w_end = w.end;
                 let fired = fire_window(content, dict, state, &w, id, id_gen)?;
                 state = fired.state;
                 records.push(fired.record);
@@ -140,6 +141,16 @@ pub(super) fn resolve_due(
                 // slot-(<m) events fire after it in the same pass, §6.6)
                 if fired.advance_extra > 0 {
                     target = checked_step(target, fired.advance_extra, "advance extension");
+                }
+                // §4.4: the story ended inside this completion — the pass
+                // closes at its minute (the completion's own ADVANCE
+                // extension still counts: it is part of the application).
+                // Nothing further fires; later due windows and slots wait for
+                // a night that will not come (undo past the ending reopens
+                // them)
+                if state.ended.is_some() {
+                    target = checked_step(w_end, fired.advance_extra, "advance extension");
+                    break;
                 }
                 continue;
             }
@@ -159,6 +170,13 @@ pub(super) fn resolve_due(
             id += slot_records.len() as i64;
             records.extend(slot_records);
             cursor = slot_abs;
+            // §4.4: an ending fired at this halfhour — the pass closes here;
+            // later slots and still-open windows wait for a night that will
+            // not come (undo past the ending reopens them)
+            if state.ended.is_some() {
+                target = slot_abs;
+                break;
+            }
             continue;
         }
         break;

@@ -7,6 +7,8 @@
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --all
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --demand "aspect:secret>=3"
 //!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --world
+//!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt THE_WAX_CYLINDER --why
+//!   cargo run --bin reach -- scripts/the-nightjar-flyer.txt --verb WORK
 //!
 //! Frozen surface:
 //!   - stdout text incl. render_path's 4-space indent steps, `path i/n:`,
@@ -19,6 +21,21 @@
 //!     error naming the flag — it used to silently vanish into name mode.
 //!   - `--world` renders the whole-world dashboard (reach::world_report) and
 //!     wins over --all / a card name / a demand; it needs only the script.
+//!   - the usage first line carries `[--why] [--verb "<NAME>"]` with the
+//!     diagnostic faces — the one sanctioned argv-surface byte change of
+//!     that wave (the --world precedent), its three usage pins in
+//!     tests/session/cli.rs updated in the same change.
+//!
+//! Diagnostic faces (§13.1):
+//!   - `--why` appends one `— why` section per card report (card mode and
+//!     --all alike): every live unproven serving site with its owner and the
+//!     ladder's first blocker. Without it the output is byte-identical.
+//!   - `--verb <NAME>` renders the verb report; it wins over --all, an
+//!     explicit card and a demand (the --world precedent — one dedicated,
+//!     target-free face), and `--why` does not apply to it. A `--verb` with
+//!     no value slot is the argv error (exit 2); an EMPTY value is falsy
+//!     (the demand truthiness) and never opens the usage gate; an unknown
+//!     verb name is the analyze error (exit 1).
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -26,6 +43,7 @@ use std::process::ExitCode;
 use chorus::content::script::{compile_script, CompiledScript};
 use chorus::core::dict::core_dictionary;
 use chorus::core::text::cmp_utf16;
+use chorus::reach::render::{render_verb, render_why};
 use chorus::reach::world_report::{self, world_report};
 use chorus::reach::{render_report, Analyzer, CardOptions};
 
@@ -33,6 +51,7 @@ fn main() -> ExitCode {
     // argv parsing — frozen surface, byte for byte
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usable = args.iter().any(|a| a == "--usable");
+    let why = args.iter().any(|a| a == "--why");
     // a present --demand with no next argv slot is an ARGV ERROR (Q15):
     // it used to read argv[idx+1] = undefined and silently vanish into
     // name mode. An EMPTY string value is falsy at every consumer —
@@ -46,7 +65,25 @@ fn main() -> ExitCode {
             None => {
                 eprintln!("--demand needs a value: --demand \"<query>\"");
                 eprintln!(
-                    "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all"
+                    "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all"
+                );
+                return ExitCode::from(2);
+            }
+        },
+    };
+    // `--verb <NAME>` parses like `--demand` (value flag; Q15 honesty): a
+    // present --verb with no next argv slot is the argv error; an EMPTY
+    // value is falsy (the frozen truthiness) and never opens the usage gate.
+    let verb_idx = args.iter().position(|a| a == "--verb");
+    let verb: Option<String> = match verb_idx {
+        None => None,
+        Some(i) => match args.get(i + 1) {
+            Some(v) if !v.is_empty() => Some(v.clone()),
+            Some(_) => None,
+            None => {
+                eprintln!("--verb needs a value: --verb \"<NAME>\"");
+                eprintln!(
+                    "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all"
                 );
                 return ExitCode::from(2);
             }
@@ -56,7 +93,7 @@ fn main() -> ExitCode {
     let mut world = false;
     let mut i = 0usize;
     while i < args.len() {
-        if args[i] == "--usable" {
+        if args[i] == "--usable" || args[i] == "--why" {
             i += 1;
             continue;
         }
@@ -69,6 +106,10 @@ fn main() -> ExitCode {
             i += 2; // the flag and its value are both consumed
             continue;
         }
+        if args[i] == "--verb" {
+            i += 2; // the flag and its value are both consumed
+            continue;
+        }
         rest.push(args[i].clone());
         i += 1;
     }
@@ -76,20 +117,24 @@ fn main() -> ExitCode {
     let card: Option<&String> = rest.get(1);
     let all = rest.iter().any(|a| a == "--all");
     // the usage gate: a present file AND (a card OR --all OR a demand OR
-    // --world), with the frozen string truthiness; the text (two lines) is
-    // exact. An EMPTY argv element is falsy for the file slot and the card
-    // slot alike. `reach --world` with no script falls through here — the
-    // dashboard needs the file too.
+    // --world OR a verb), with the frozen string truthiness; the text (two
+    // lines) is exact. An EMPTY argv element is falsy for the file slot and
+    // the card slot alike. `reach --world` with no script falls through
+    // here — the dashboard needs the file too.
     let file = match file {
         Some(f)
             if !f.is_empty()
-                && (all || world || card.is_some_and(|c| !c.is_empty()) || demand.is_some()) =>
+                && (all
+                    || world
+                    || verb.is_some()
+                    || card.is_some_and(|c| !c.is_empty())
+                    || demand.is_some()) =>
         {
             f
         }
         _ => {
             eprintln!(
-                "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all"
+                "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all"
             );
             return ExitCode::from(2);
         }
@@ -139,6 +184,24 @@ fn main() -> ExitCode {
         let _ = out.flush();
         return ExitCode::from(0);
     }
+    if let Some(name) = &verb {
+        // --verb wins over --all, an explicit card and a demand (the --world
+        // precedent: one dedicated, target-free face — §13.1); --why does
+        // not apply to it. An unknown verb name is the analyze error
+        // (exit 1, stderr only).
+        let analyzer = Analyzer::new(&content, &state);
+        let Some(vr) = analyzer.verb_report(name) else {
+            eprintln!("Error: no verb '{name}'");
+            return ExitCode::from(1);
+        };
+        let mut buf = String::new();
+        render_verb(&mut buf, file, &vr);
+        if out.write_all(buf.as_bytes()).is_err() {
+            return ExitCode::from(1);
+        }
+        let _ = out.flush();
+        return ExitCode::from(0);
+    }
     if all {
         // prototypes ∪ live initial entities ∪
         // deck.order (NOT defaultcard); insertion set,
@@ -168,6 +231,11 @@ fn main() -> ExitCode {
                 };
             let mut buf = String::new();
             render_report(&mut buf, file, name, demand.as_deref(), usable, &r);
+            if why {
+                // the --why section rides AFTER the report — without the flag
+                // this face is byte-identical to the frozen output
+                render_why(&mut buf, file, name, &analyzer.card_blockers(name));
+            }
             if out.write_all(buf.as_bytes()).is_err() {
                 return ExitCode::from(1);
             }
@@ -184,6 +252,9 @@ fn main() -> ExitCode {
         };
         let mut buf = String::new();
         render_report(&mut buf, file, card, demand.as_deref(), usable, &r);
+        if why {
+            render_why(&mut buf, file, card, &analyzer.card_blockers(card));
+        }
         if out.write_all(buf.as_bytes()).is_err() {
             return ExitCode::from(1);
         }

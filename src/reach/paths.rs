@@ -1,6 +1,11 @@
 //! Path export and the per-card report. The universe/dead-verbs/
 //! deck-cap block finalizes the world facts after the fixpoint; [`analyze_card`]
-//! folds the target-specific verdict, chain, path trees and notes on top.
+//! folds the target-specific verdict, chain, path trees and notes on top —
+//! notes under the convergence rule (a note naming a card rides only on
+//! that name's report). The diagnostic faces live here too: [`Analyzer::card_blockers`]
+//! (the `--why` table — the fixpoint ladder's Err side over the live
+//! unproven serving sites) and [`Analyzer::verb_report`] (the `--verb`
+//! report — the settled facts about one verb, zero new analysis).
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -13,7 +18,10 @@ use super::census::{
     draw_blinds_bare, draw_deck, object_always, parse_aspects_json, site_aspects, RawSite,
     SiteKind, DERIVED_NAME, MANY,
 };
-use super::render::{demand_chain_head, initial_decl_line, pred_text, site_chain, site_reason};
+use super::fixpoint::{slot_proof_lines, CardBlocker, SiteBlocker, SiteOp};
+use super::render::{
+    demand_chain_head, initial_decl_line, pred_text, query_text, site_chain, site_reason,
+};
 use super::world::{
     pred_static, writable_paths, writable_paths_of, Analyzer, CardFact, WorldFacts,
 };
@@ -499,8 +507,9 @@ impl<'c> WorldFacts<'c> {
     }
 }
 
-/// Does the deck carry the target at all?
-fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
+/// Does the deck carry the target at all? (`pub(crate)`: the `--why`
+/// table's serving predicate shares it.)
+pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
     deck.order.iter().any(|c| c.name == target)
         || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target)
 }
@@ -532,7 +541,12 @@ impl<'c> Analyzer<'c> {
     /// calls. `target` is ignored under `demand`.
     pub fn analyze_card(&self, target: &str, opts: CardOptions) -> Result<CardReport> {
         let facts = self.facts();
-        let mut notes: Vec<String> = facts.notes.clone();
+        // note convergence (§13.1 revision): a world note that NAMES a card
+        // rides only on that name's report — `facts.notes` is no longer
+        // copied wholesale into every card (the nightjar expiry note used to
+        // ride on all 44 --all reports). Notes pushed BELOW (per-report
+        // candidate/demand/derive notes) are unaffected.
+        let mut notes: Vec<String> = world_notes_for(facts, target);
         let mut chain: Vec<String> = Vec::new();
         let mut paths: Vec<ReachPath> = Vec::new();
         let mut candidates: Vec<CardCandidate> = Vec::new();
@@ -607,6 +621,195 @@ impl<'c> Analyzer<'c> {
             candidates,
             usable_via,
             notes,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// the --why table and the --verb report (both over the settled facts)
+// ---------------------------------------------------------------------------
+
+/// One slot of the `--verb` report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerbSlotRow {
+    pub role: String,
+    pub min: i64,
+    /// design-time spelling; `None` = the slot binds anything
+    pub query: Option<String>,
+}
+
+/// One mint site's ladder verdict inside a recipe row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SiteVerdict {
+    Proven,
+    /// the ladder's first blocker — the same [`CardBlocker`] the `--why`
+    /// table reports
+    Unproven(CardBlocker),
+}
+
+/// One mint site of a recipe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerbSiteRow {
+    pub op: SiteOp,
+    /// spawn/replace: the minted name; draw: the deck id
+    pub name: String,
+    pub verdict: SiteVerdict,
+}
+
+/// One recipe line of the `--verb` report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerbRecipeRow {
+    pub id: String,
+    /// design-time spelling; `None` = the default (no authored `when`)
+    pub when: Option<String>,
+    /// any live site of this recipe may be shadowed by an earlier recipe
+    pub shadow_risk: bool,
+    /// the live mint sites, census walk order (refused sites are excluded —
+    /// they can never apply)
+    pub sites: Vec<VerbSiteRow>,
+}
+
+/// The `--verb` report: everything the settled facts already hold about one
+/// verb — duration, slots, the committability proof (the proof lines are
+/// `slot_proof_lines`' own output) and the per-recipe mint-site verdicts.
+/// ZERO new analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerbReport {
+    pub verb: String,
+    /// the window length in minutes
+    pub duration: i64,
+    /// `slot_by_role` order (the commit semantics — last def per role wins)
+    pub slots: Vec<VerbSlotRow>,
+    pub committable: bool,
+    /// a min>0 slot's query can never match (`facts.dead_verbs`)
+    pub dead: bool,
+    pub proofs: Vec<String>,
+    pub recipes: Vec<VerbRecipeRow>,
+}
+
+impl<'c> Analyzer<'c> {
+    /// The `--why` table: every live unproven site serving `target` with the
+    /// ladder's FIRST blocker — the very pass `site_proven` runs, over the
+    /// read-only world rebuild. Serving is `analyze_name`'s candidate-scan
+    /// predicate (draws unblinded and deck-carried, other sites minting the
+    /// bare name; dead verbs' sites and derive-mandated mints excluded);
+    /// proven sites never enter the table.
+    #[must_use]
+    pub fn card_blockers(&self, target: &str) -> Vec<SiteBlocker> {
+        let facts = self.facts();
+        let world = facts.build_world();
+        let mut out: Vec<SiteBlocker> = Vec::new();
+        for &i in &facts.census.live {
+            if facts.proven.contains_key(&i) {
+                continue;
+            }
+            let s = &facts.census.sites[i];
+            let verb_alive = s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v));
+            let not_derive_mandated = !(s.derives && object_always(facts.content, s.verb));
+            let serves = if s.kind == SiteKind::Draw {
+                !draw_blinds_bare(facts.content, s, target) && deck_serves(draw_deck(s), target)
+            } else {
+                s.name == target
+            };
+            if !(verb_alive && not_derive_mandated && serves) {
+                continue;
+            }
+            // post-fixpoint convergence: an unproven site's ladder is Err
+            let (res, _) = facts.site_ladder(i, &world);
+            if let Err(blocker) = res {
+                out.push(SiteBlocker {
+                    owner: s.owner.clone(),
+                    op: match s.kind {
+                        SiteKind::Spawn => SiteOp::Spawn,
+                        SiteKind::Replace => SiteOp::Replace,
+                        SiteKind::Draw => SiteOp::Draw,
+                    },
+                    name: s.name.clone(),
+                    blocker,
+                });
+            } else {
+                debug_assert!(false, "unproven site proved in the --why pass (schedule drift)");
+            }
+        }
+        out
+    }
+
+    /// The `--verb` report over the facts already computed — zero new
+    /// analysis. `None` when no verb bears the name (the CLI's analyze
+    /// error, exit 1 like a bad demand).
+    #[must_use]
+    pub fn verb_report(&self, name: &str) -> Option<VerbReport> {
+        let facts = self.facts();
+        let vi = facts.content.verbs.get_index_of(name)?;
+        let v = facts.content.verbs.get(name)?;
+        let world = facts.build_world();
+        let slots: Vec<VerbSlotRow> = v
+            .slot_by_role
+            .values()
+            .map(|s| VerbSlotRow {
+                role: s.role.clone(),
+                min: s.min,
+                query: s.query.as_ref().map(query_text),
+            })
+            .collect();
+        let committable = facts.committable.contains_key(&vi);
+        let dead = facts.dead_verbs.contains(&vi);
+        let proofs = match facts.committable.get(&vi) {
+            Some(proofs) => slot_proof_lines(name, proofs),
+            None => Vec::new(),
+        };
+        let mut recipes: Vec<VerbRecipeRow> = Vec::new();
+        for r in &v.recipes {
+            let owner = format!("recipe {} of {}", r.id, v.name);
+            let mut sites: Vec<VerbSiteRow> = Vec::new();
+            let mut shadow_risk = false;
+            for &i in &facts.census.live {
+                let s = &facts.census.sites[i];
+                if s.owner != owner {
+                    continue;
+                }
+                shadow_risk |= s.shadow_risk;
+                let verdict = if facts.proven.contains_key(&i) {
+                    SiteVerdict::Proven
+                } else {
+                    // post-fixpoint convergence: an unproven site's ladder is Err
+                    let (res, _) = facts.site_ladder(i, &world);
+                    match res {
+                        Err(blocker) => SiteVerdict::Unproven(blocker),
+                        Ok(_) => {
+                            debug_assert!(
+                                false,
+                                "unproven site proved in the --verb pass (schedule drift)"
+                            );
+                            SiteVerdict::Unproven(CardBlocker::UnknownGuard)
+                        }
+                    }
+                };
+                sites.push(VerbSiteRow {
+                    op: match s.kind {
+                        SiteKind::Spawn => SiteOp::Spawn,
+                        SiteKind::Replace => SiteOp::Replace,
+                        SiteKind::Draw => SiteOp::Draw,
+                    },
+                    name: s.name.clone(),
+                    verdict,
+                });
+            }
+            recipes.push(VerbRecipeRow {
+                id: r.id.clone(),
+                when: r.when.as_ref().map(pred_text),
+                shadow_risk,
+                sites,
+            });
+        }
+        Some(VerbReport {
+            verb: v.name.clone(),
+            duration: v.duration,
+            slots,
+            committable,
+            dead,
+            proofs,
+            recipes,
         })
     }
 }
@@ -899,6 +1102,36 @@ fn analyze_name(
         }
     }
     existence
+}
+
+/// The world-level notes a report targeting `target` carries (the note
+/// convergence rule, §13.1 revision): a note that NAMES a card — a token of
+/// the text equal to a known card name — rides only on THAT name's report;
+/// a note naming no card stays global. Tokens are maximal
+/// `[A-Za-z0-9_]` runs, so an `A_B`-form name only matches itself whole
+/// (underscores are name characters; every other character — quote, comma,
+/// parenthesis, em dash — is a boundary). Known card names are the
+/// post-fixpoint universe's names (initial ∪ prototypes ∪ deck cards ∪
+/// spawn mints); the derive sentinel never tokenizes.
+fn world_notes_for(facts: &WorldFacts, target: &str) -> Vec<String> {
+    facts.notes.iter().filter(|n| note_rides_on(n, facts, target)).cloned().collect()
+}
+
+/// Does `note` ride on a report targeting `target`? True when the note
+/// names `target`, or names no card at all (global); false when it names
+/// only other cards.
+fn note_rides_on(note: &str, facts: &WorldFacts, target: &str) -> bool {
+    let mut names_other = false;
+    for tok in note.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+        if !facts.universe.iter().any(|e| e.name == tok) {
+            continue;
+        }
+        if tok == target {
+            return true;
+        }
+        names_other = true;
+    }
+    !names_other
 }
 
 /// The (b) usability lines: every committable verb slot the descriptor fits.

@@ -1,7 +1,10 @@
 //! Text rendering: static predicate text for path-export guards, the
 //! proof/chain/reason display strings that ride inside the report, and the
 //! CLI's stdout shapes frozen byte for byte: render_path's 4-space indent
-//! steps, `path i/n:` and `verdict: X (existence: y)`.
+//! steps, `path i/n:` and `verdict: X (existence: y)`. Beside the frozen
+//! faces sit the two diagnostic reports: `render_why` (the `--why` section)
+//! and `render_verb` (the `--verb` report) — their bytes are pinned by the
+//! tests/reach suite.
 
 use std::fmt::Write;
 
@@ -12,7 +15,8 @@ use crate::core::query::{Query, QueryTerm, StateOp};
 use crate::core::types::Entity;
 
 use super::census::{draw_deck, RawSite, SiteKind, MANY};
-use super::paths::{CardReport, Existence, ReachPath};
+use super::fixpoint::{SiteBlocker, SiteOp};
+use super::paths::{CardReport, Existence, ReachPath, SiteVerdict, VerbReport};
 
 // ---------------------------------------------------------------------------
 // rendering static predicates
@@ -252,6 +256,90 @@ pub fn render_path(out: &mut String, p: &ReachPath, depth: usize) {
             render_path(out, sub, depth + 2);
         }
     }
+}
+
+/// The `--why` section: the target's live unproven serving sites, each with
+/// its owner and the ladder's first blocker. Appended AFTER the per-card
+/// report when the CLI carries `--why` (without it, nothing here renders —
+/// the frozen output is byte-identical). A proven card (or one whose every
+/// live serving site is proven) renders the one-line empty face.
+pub fn render_why(out: &mut String, file: &str, card: &str, blockers: &[SiteBlocker]) {
+    let _ = writeln!(out, "{file} · card {card} — why");
+    if blockers.is_empty() {
+        let _ = writeln!(out, "  (no blocked candidate sites)");
+        return;
+    }
+    for b in blockers {
+        let site = match b.op {
+            SiteOp::Draw => format!("{} deck {}", b.op.as_str(), b.name),
+            SiteOp::Spawn | SiteOp::Replace => format!("{} '{}'", b.op.as_str(), b.name),
+        };
+        let _ = writeln!(out, "  · {site} — {}: {}", b.owner, b.blocker.as_str());
+    }
+}
+
+/// The `--verb` report: one title line, then duration, slots, the
+/// committability verdict with its proof lines (`slot_proof_lines`' own
+/// text), and one line per recipe — id, `when`, the shadow_risk flag and
+/// the mint-site verdicts (`; `-joined). All data is the settled facts
+/// re-rendered.
+pub fn render_verb(out: &mut String, file: &str, r: &VerbReport) {
+    let _ = writeln!(out, "{file} · verb {}", r.verb);
+    let _ = writeln!(out, "  duration: {} min", r.duration);
+    if !r.slots.is_empty() {
+        let _ = writeln!(out, "  slots:");
+        for s in &r.slots {
+            let query = match &s.query {
+                Some(q) => format!(" — {q}"),
+                None => " — no query — binds anything".to_string(),
+            };
+            let _ = writeln!(out, "  · {} ×{}{query}", s.role, s.min);
+        }
+    }
+    if r.committable {
+        let _ = writeln!(out, "  committable: yes");
+        for p in &r.proofs {
+            let _ = writeln!(out, "  · {p}");
+        }
+    } else if r.dead {
+        let _ = writeln!(out, "  committable: no — dead (a min>0 slot's query can never match)");
+    } else {
+        let _ = writeln!(out, "  committable: no");
+    }
+    if !r.recipes.is_empty() {
+        let _ = writeln!(out, "  recipes:");
+        for rec in &r.recipes {
+            let when = match &rec.when {
+                Some(w) => format!("when: {w}"),
+                None => "when: none".to_string(),
+            };
+            let shadow = if rec.shadow_risk { ", shadow_risk" } else { "" };
+            let sites = if rec.sites.is_empty() {
+                "no live mint site".to_string()
+            } else {
+                rec.sites
+                    .iter()
+                    .map(|s| {
+                        let site = match s.op {
+                            SiteOp::Draw => format!("{} deck {}", s.op.as_str(), s.name),
+                            SiteOp::Spawn | SiteOp::Replace => {
+                                format!("{} '{}'", s.op.as_str(), s.name)
+                            }
+                        };
+                        match &s.verdict {
+                            SiteVerdict::Proven => format!("{site}: proven"),
+                            SiteVerdict::Unproven(b) => {
+                                format!("{site}: unproven — {}", b.as_str())
+                            }
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join("; ")
+            };
+            let _ = writeln!(out, "  · {} ({when}{shadow}) — {sites}", rec.id);
+        }
+    }
+    out.push('\n');
 }
 
 /// One card's report block (the CLI calls this

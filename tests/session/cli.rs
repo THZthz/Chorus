@@ -39,7 +39,7 @@ fn reach_usage_exits_2_with_the_exact_text() {
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all\n"
+        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"
     );
 }
 
@@ -54,7 +54,7 @@ fn reach_trailing_demand_is_an_argv_error_q15() {
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "--demand needs a value: --demand \"<query>\"\nusage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all\n"
+        "--demand needs a value: --demand \"<query>\"\nusage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"
     );
 }
 
@@ -69,7 +69,7 @@ fn reach_empty_string_demand_is_falsy_usage_exits_2() {
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--world]\n       reach <script.txt> --all\n"
+        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"
     );
 }
 
@@ -119,13 +119,24 @@ fn reach_fuzz_flags_streams_and_exit_zero_when_sound() {
     assert!(!stdout.contains("seeds, 0 failures\n"), "{stdout}");
 }
 
-/// the per-50 progress line — `… 50/50 seeds, …`.
+/// the per-50 progress line — `… 50/50 seeds, …` — plus the generator-v2
+/// failure-set pin: over seeds 1..=50 under these bounds the campaign fails
+/// on EXACTLY seed 41 (the known complete-arm over-generosity the generator
+/// v2 exposed — an OBTAINABLE verdict the exhaustive exploration refutes).
+/// Wave 3 tightens the arm and this set must narrow back to empty; a larger
+/// set is a regression, a different seed a generator or analyzer drift. The
+/// FAIL lines ride stderr (the bin's stream discipline); exit 1 iff the set
+/// is non-empty.
 #[test]
 fn reach_fuzz_progress_line_every_50_seeds() {
-    let (code, stdout, _stderr) =
+    let (code, stdout, stderr) =
         run("reach-fuzz", &["--seeds", "50", "--from", "1", "--steps", "1", "--states", "20"]);
-    assert_eq!(code, Some(0), "{stdout}");
-    assert!(stdout.contains("… 50/50 seeds, 0 failures"), "{stdout}");
+    assert_eq!(code, Some(1), "{stdout}{stderr}");
+    assert!(stdout.contains("… 50/50 seeds, 1 failures"), "{stdout}");
+    assert_eq!(stdout.lines().last(), Some("failing seeds: 41"), "{stdout}");
+    let fails: Vec<&str> = stderr.lines().filter(|l| l.starts_with("FAIL seed ")).collect();
+    assert_eq!(fails.len(), 1, "{stderr}");
+    assert!(fails[0].starts_with("FAIL seed 41: "), "{stderr}");
 }
 
 /// A clean bundled script: exit 0 (warnings advise), the

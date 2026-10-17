@@ -43,6 +43,8 @@ projection of that data, never the source of truth.
 
 23. **v0.7.4** — the reach fixpoint learned completion triggers and the analyzer gained a `--world` dashboard (§13.1): a `site_proven` support arm proves a mint owned by an `on complete` clause when its home card is obtainable — completion is arrangeable, the aspect filter lands in the support line, not the verdict, and the frozen rule does not apply — fixing a panic (exit 101) that took `reach` down on completion-only producers; and a sixth seam module, `world_report`, re-renders the post-fixpoint world facts (census counts, freeze line, dead verbs with their killing slots, deck caps, collision names, destroyed-by, the SET pump map, refused owners, notes) into one byte-identical-across-runs dashboard that wins over `--all`/card/demand, the reach usage first line gaining `[--world]` as the one sanctioned argv-surface byte change; no grammar/log/script change.
 
+24. **v0.7.5** — the reach fuzz generator v2 and the analyzer's diagnostic faces (§13.1/§13.3): the generator's scenario space now covers the full trigger face (slot, expiry and completion triggers with their §6.7 aspect gates), RUN candidates (a recipe body may RUN only the same verb's strictly earlier recipes; a completion body draws from the global duration>0 table) and §6.4 recipe `aspects` — its draw order re-banded and declared VERSIONED, not frozen, so recorded campaign runs reproduce only against the generator version that produced them, and the seed suite pins determinism (same seed ⇒ the same outcome, failures printed) instead of soundness, whose open complete-arm over-generosity (seed 41 among seeds 1–50) stays the campaign's ledger for the coming tightening; and the demotion guards converged on one `site_ladder` pass whose failing rungs yield structured `CardBlocker`s (`site_proven` its `.ok()` face), surfaced as `reach --why` (the per-card blocker table) and `--verb "<NAME>"` (the settled-facts verb report), world notes converging on the named card's report, the usage first line gaining `[--why] [--verb "<NAME>"]` as the sanctioned argv byte change; no grammar/log/script change.
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -1872,7 +1874,13 @@ files allowed to):
   begun), the aspect form's completed-recipe filter lands in the support
   line, not the verdict, and no freeze condition applies (a completion
   firing is scheduled by the window that binds the home, not by the slot
-  clock).
+  clock). Every demotion guard yields its structured verdict as it fires:
+  `site_ladder` is ONE pass over the rungs in evaluation order, each
+  failing guard producing its `CardBlocker` (judgment and reason are the
+  same computation — no post-hoc re-derivation); `site_proven` is the
+  ladder's `.ok()` face and the `--why` diagnostics its Err face, so the
+  demotion rules have one home. New rungs append at the ladder tail;
+  existing rungs stay stable.
 - **paths** — the post-fixpoint report: dead verbs are derived here, along
   with the mint universe (aspect values
   there are bounds, not facts), deck caps derived from proven once-trigger
@@ -1884,10 +1892,21 @@ files allowed to):
   (also bindable into a committable verb slot), `demand` (a §4.5 query
   matched against the actual mint descriptors, target ignored). Verdicts
   tier obtainable / unobtainable / unproven / unusable × existence
-  proven / candidate / none.
+  proven / candidate / none. The diagnostic faces live here too, both
+  over the settled facts with ZERO new analysis: `card_blockers` (the
+  `--why` table — the ladder's Err side over every live unproven site
+  serving the target, the same pass `site_proven` runs) and
+  `verb_report` (one verb's duration, slots, committability proof and
+  per-recipe mint-site verdicts). World notes converge: a note that NAMES
+  a card — a maximal `[A-Za-z0-9_]` token equal to a post-fixpoint
+  universe name (initial ∪ prototypes ∪ deck cards ∪ spawn mints; the
+  derive sentinel cannot tokenize) — rides only on THAT name's report; a
+  note naming no card stays global.
 - **render** — the report text, byte-frozen (4-space indent steps,
   `path i/n:`, `verdict: X (existence: y)`); design-time predicate/query
-  spelling, not the canonical printer.
+  spelling, not the canonical printer. Beside the frozen faces sit the
+  two diagnostic renderers (`render_why`, `render_verb`); their bytes are
+  pinned by the test suite, not frozen.
 - **world_report** — the `--world` global dashboard: one whole-world
   report over the facts census/world/fixpoint/paths already computed —
   ZERO new analysis, every section a re-render of post-fixpoint fields.
@@ -1907,14 +1926,28 @@ files allowed to):
   nothing sorts or rehashes, so two runs over the same (compiled
   content, initial state) render byte-identical text.
 
-CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"] [--world]`,
+CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"] [--why]
+[--verb "<NAME>"] [--world]`,
 or `reach <script> --all` (prototypes ∪ LIVE initial entities ∪
 `deck.order` — not `defaultcard` — in UTF-16 order; `--all` wins over an
 explicit card), or `reach <script> --world` — the dashboard needs only
 the script and wins over `--all`, an explicit card, and a demand (`reach
 --world` with no script is the argv error). The usage text's first line
-gains `[--world]`: the one sanctioned byte change to the frozen
-argv-error surface, its three usage pins updated in the same change.
+gained `[--world]` and now gains `[--why] [--verb "<NAME>"]`: sanctioned
+byte changes to the frozen argv-error surface, each landing with its
+three usage pins updated in the same change. `--why` appends one
+`— why` section to each card report (card mode and `--all` alike):
+every live unproven site serving the card, with its owner and the
+ladder's FIRST blocker — without the flag the output is byte-identical,
+and a card whose every serving site is proven renders the one-line empty
+face. `--verb <NAME>` renders one verb's report (duration, slots,
+committability verdict with its proof lines, per-recipe mint-site
+verdicts — the settled facts re-rendered, zero new analysis); it wins
+over `--all`, an explicit card and a demand (the `--world` precedent —
+one dedicated, target-free face), `--why` does not apply to it, a
+`--verb` with no value slot is the argv error, an EMPTY value is falsy
+(the demand truthiness), and an unknown verb name is the analyze error
+(exit 1).
 A card minted only by `on complete` clauses reports like any other — its
 provenance chain names the engine-minted `complete:{home}` trigger id —
 and the analyzer never rejects a script for owning one. Argv errors exit
@@ -1929,6 +1962,23 @@ full 1,566 × 2,084 world) on worker threads — at most
 `min(available_parallelism, 4)` workers by default, each rebuilding the
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats.
+
+The fuzz generator (`gen_scenario`, v2) builds one random script per
+seed over the FULL trigger face — slot, expiry and completion triggers
+(the complete form drawing its home and its optional §6.7 aspect gate) —
+plus §6.7 RUN candidates (a recipe body may RUN only the same verb's
+strictly earlier recipes, acyclic by construction; a completion body
+draws from the global table of duration>0 recipes, bounding every
+completion-fed chain to one hop per advance) and §6.4 recipe `aspects`
+presence lists. The generator's draw order is deliberate (every
+short-circuit and evaluation-order choice carries an inline note) but
+VERSIONED, not frozen: the v2 space added the completion/RUN/aspects
+draws, re-banded the outcome-op table (RUN's 0.10 width funded by SET,
+ROLL and NARRATE; every other op keeps its exact v1 width) and moved the
+trigger-kind roll ahead of the body draws, so scenario streams differ
+across generator versions by design. What stays pinned is purity: the
+generator is a pure function of its seed — the same seed builds the same
+scenario, draw for draw, under ONE version.
 
 ### 13.2 The script lint
 
@@ -1971,3 +2021,5 @@ and scale campaign engines are library modules (`reach::fuzz`,
 the bins and the test suite import one implementation. `lcg` (crate root)
 is the deterministic campaign-side RNG those modules draw from —
 deliberately NOT the engine's randomness, which is §4.4's counter alone.
+Recorded campaign runs are reproducible only against the generator
+version that produced them.

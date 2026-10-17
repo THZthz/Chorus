@@ -1,13 +1,17 @@
 //! Differential-fuzz machinery: gen_scenario + the
-//! LCG + the frozen action selector. The selector and its caller discipline
-//! are the frozen surface: they must stay
-//! bit-identical draw for draw — that identity is the
-//! precondition for reproducing every recorded fuzz run at all.
+//! LCG + the frozen action selector. The selector (`choose_step`) and its
+//! caller discipline (`drive_fuzz_seed`) remain the frozen surface: they
+//! must stay bit-identical draw for draw.
 //!
-//! `gen_scenario` keeps the frozen rng draw order (every short-circuit and
-//! evaluation-order choice is deliberate — see the inline draw-order notes),
-//! because recorded runs are only reproducible while scenario construction
-//! is draw-for-draw identical.
+//! `gen_scenario`'s draw order is deliberate (every short-circuit and
+//! evaluation-order choice carries an inline draw-order note) but VERSIONED,
+//! not frozen: the v2 scenario space added completion triggers, RUN
+//! candidates and recipe `aspects` bands, re-banding several thresholds and
+//! reordering the trigger-kind roll ahead of the body draws. Every recorded
+//! fuzz run taken before v2 is therefore NOT reproducible seed-for-seed;
+//! reproduce against the pre-v2 generator. What stays pinned is that the
+//! generator is a pure function of its seed — the same seed builds the same
+//! scenario, draw for draw, under ONE version.
 //!
 //! (Shared test lib discipline: the `allow` lives in this one place.)
 #![allow(dead_code)]
@@ -15,9 +19,9 @@
 use indexmap::IndexMap;
 
 use crate::content::{
-    compile_content, CompiledContent, CompiledSlot, ContentRaw, DeckRaw, DeclaredEntity,
-    ExpireTriggerDef, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef,
-    TriggerDef, VerbContent,
+    compile_content, CompiledContent, CompiledSlot, CompleteTriggerDef, ContentRaw, DeckRaw,
+    DeclaredEntity, ExpireTriggerDef, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef,
+    SlotTriggerDef, TriggerDef, VerbContent,
 };
 use crate::core::clock::{abs_min, clock_from_abs_min, format_clock, next_step_clock};
 use crate::core::dict::{core_dictionary, Dictionary, CORE_VERBS};
@@ -132,12 +136,18 @@ fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
 
 /// The scenario's mutable build context — the rng handle plus the local
 /// tables every generator step draws against, threaded explicitly.
+/// `run_targets` is the §6.7 RUN candidate table for the op currently being
+/// built: inside the recipe loop it holds the SAME verb's already-built
+/// recipe ids (strictly earlier — a recipe-body RUN chain lowers the index
+/// every hop, so it is acyclic by construction), and for completion-trigger
+/// bodies the global duration>0 table (see the trigger loop).
 struct Gen<'a> {
     r: &'a mut Lcg,
     others: Vec<String>,
     proto_names: Vec<String>,
     has_house: bool,
     has_deck: bool,
+    run_targets: Vec<String>,
 }
 
 impl Gen<'_> {
@@ -146,10 +156,34 @@ impl Gen<'_> {
         int(self.r, 4) as i64
     }
 
-    /// The outcome-op generator. Every branch guard's draw happens EXACTLY
-    /// where the guard evaluates it (short-circuits included) — the draw
-    /// order is frozen.
-    fn op(&mut self, allow_refuse: bool) -> String {
+    /// The outcome-op generator (v2 bands). The RUN band's insertion
+    /// re-banded every later threshold — the widths below, with the funding
+    /// called out; the pre-v2 recorded streams do not line up against this
+    /// table:
+    ///
+    /// | op      | v2 band         | v1 band         |
+    /// |---------|-----------------|-----------------|
+    /// | SPAWN   | [0.00, 0.22)    | [0.00, 0.22)    |
+    /// | RUN     | [0.22, 0.32)    | —               |
+    /// | REPLACE | [0.32, 0.42)    | [0.22, 0.32)    |
+    /// | DRAW    | [0.42, 0.52)    | [0.32, 0.42)    |
+    /// | SET     | [0.52, 0.64)    | [0.42, 0.56) −0.02 |
+    /// | DESTROY | [0.64, 0.70)    | [0.56, 0.62)    |
+    /// | MOVE    | [0.70, 0.78)    | [0.62, 0.70)    |
+    /// | IF      | [0.78, 0.86)    | [0.70, 0.78)    |
+    /// | ROLL    | [0.86, 0.94)    | [0.78, 0.90) −0.04 |
+    /// | REFUSE  | [0.94, 0.98)    | [0.90, 0.94)    |
+    /// | NARRATE | [0.98, 1.00]    | [0.94, 1.00) −0.04 |
+    ///
+    /// The 0.10 RUN band is funded by SET −0.02, ROLL −0.04, NARRATE −0.04;
+    /// every other op keeps its exact v1 width. `allow_run` gates the RUN
+    /// band: verb recipes and completion-trigger bodies are the RUN-legal
+    /// homes — a slot/expire body's RUN is a load error (§6.7,
+    /// compile.rs's event guard) — and `allow_refuse` keeps doing duty for
+    /// the REFUSE band. Every branch guard's draw happens EXACTLY where the
+    /// guard evaluates it (short-circuits included) — the draw order is
+    /// deliberate and the generator is a pure function of its seed.
+    fn op(&mut self, allow_refuse: bool, allow_run: bool) -> String {
         let roll = self.r.next_f64();
         if roll < 0.22 {
             let pn = pick_of(self.r, &self.proto_names);
@@ -166,17 +200,26 @@ impl Gen<'_> {
             };
             return format!("SPAWN {kind_override}{pn}{into}");
         }
-        if roll < 0.32 && !self.others.is_empty() {
+        // RUN (§6.7): the candidates live in run_targets — the same verb's
+        // earlier recipes inside the recipe loop, the global duration>0
+        // table for completion bodies. Falls through DRAW-FREE when the
+        // home is not RUN-legal or no candidate exists yet (the empty-table
+        // check is the (free) right operand of the &&).
+        if roll < 0.32 && allow_run && !self.run_targets.is_empty() {
+            let target = pick_of(self.r, &self.run_targets);
+            return format!("RUN \"{target}\"");
+        }
+        if roll < 0.42 && !self.others.is_empty() {
             let a = pick_of(self.r, &self.others);
             let b = pick_of(self.r, &self.proto_names);
             return format!("REPLACE {a} WITH {b}");
         }
         // the deck check draws nothing; a deckless world
         // falls through to the SET branch
-        if roll < 0.42 && self.has_deck {
+        if roll < 0.52 && self.has_deck {
             return "DRAW D1".to_string();
         }
-        if roll < 0.56 {
+        if roll < 0.64 {
             let tgt = pick_str(self.r, &["ACTORS", "OBJECT", "ANA", "BERTHA"]);
             // the "expires" condition draw ALWAYS happens (it precedes the
             // key pick) even when the key is not added
@@ -200,14 +243,14 @@ impl Gen<'_> {
             };
             return format!("SET({tgt}, {key}, {val})");
         }
-        if roll < 0.62 && !self.others.is_empty() {
+        if roll < 0.70 && !self.others.is_empty() {
             let t = pick_of(self.r, &self.others);
             return format!("DESTROY {t}");
         }
-        if roll < 0.70 && self.has_house {
+        if roll < 0.78 && self.has_house {
             return "MOVE ANA INTO HOUSE".to_string();
         }
-        if roll < 0.78 {
+        if roll < 0.86 {
             let mut xs = self.others.clone();
             xs.extend(self.proto_names.iter().cloned());
             xs.push("ANA".to_string());
@@ -226,7 +269,7 @@ impl Gen<'_> {
             };
             return format!("IF exists({x}) -> ({inner})");
         }
-        if roll < 0.90 {
+        if roll < 0.94 {
             let dice = if self.r.next_f64() < 0.3 { 2 } else { 1 };
             // the template draws left to right — the bound, then the mint
             let bound = 2 + int(self.r, 4 * dice) as i64;
@@ -235,7 +278,7 @@ impl Gen<'_> {
                 "ROLL({dice}, 6), IF roll >= {bound} -> (SPAWN {p}) ELSE -> (NARRATE \"low\")"
             );
         }
-        if roll < 0.94 && allow_refuse {
+        if roll < 0.98 && allow_refuse {
             return "REFUSE(\"no\")".to_string();
         }
         "NARRATE \"beat\"".to_string()
@@ -354,6 +397,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         proto_names: proto_names.clone(),
         has_house,
         has_deck: deck.is_some(),
+        run_targets: Vec::new(),
     };
 
     let mut verbs_raw: IndexMap<String, VerbContent> = IndexMap::new();
@@ -379,6 +423,9 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             }],
         },
     );
+    // the global §6.7 completion-side RUN candidate table — every recipe id
+    // of the duration>0 verbs, collected as the build loop finishes each verb
+    let mut global_run_targets: Vec<String> = Vec::new();
     for v in &verbs {
         let mut slots: Vec<SlotDef> = vec![SlotDef {
             role: "actors".to_string(),
@@ -414,10 +461,25 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         let mut recipes: Vec<RecipeDef> = Vec::new();
         for i in 0..n_recipes {
             let when = if ctx.r.next_f64() < 0.4 { Some(ctx.gen_when()) } else { None };
+            // §6.4 recipe-line `aspects` presence list (NEW draw, p=0.15,
+            // single name) — the emitter gate the §6.7 `on complete
+            // <aspect>` trigger reads on the completed recipe. Draw order:
+            // when gate → aspects gate → n_outs.
+            let aspects =
+                if ctx.r.next_f64() < 0.15 { vec![pick_str(ctx.r, &ASPECTS)] } else { Vec::new() };
+            // §6.7 RUN candidates: the same verb's recipes built SO FAR —
+            // strictly earlier ids only, so a recipe-body RUN chain lowers
+            // the recipe index every hop and cannot cycle (r0 sees an empty
+            // table and cannot carry RUN). This threading is the
+            // minimal-perturbation option: the RUN band draws its target
+            // from the prefix the build loop already produced, with no
+            // post-hoc pass over the finished verbs and no extra draws
+            // outside op's own band.
+            ctx.run_targets = recipes.iter().filter_map(|r| r.id.clone()).collect();
             let n_outs = 1 + int(ctx.r, 4);
             let mut outs: Vec<String> = Vec::new();
             for _ in 0..n_outs {
-                outs.push(ctx.op(true));
+                outs.push(ctx.op(true, true));
             }
             recipes.push(RecipeDef {
                 id: Some(format!("{}.r{}", v.to_lowercase(), i)),
@@ -425,35 +487,81 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 shown: None,
                 hint: None,
                 max: None,
-                aspects: Vec::new(),
+                aspects,
                 out: outs,
             });
         }
         let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
             .parse()
             .unwrap_or_else(|e| panic!("duration literal: {e}"));
+        // §6.7 completion-side RUN candidates: only recipes of duration>0
+        // verbs join the global table. A complete-trigger RUN onto a
+        // zero-duration recipe whose windows lock the trigger's home card
+        // re-fires the gate forever INSIDE one advance pass and trips the
+        // engine's §6.7 livelock budget (a hard ChorusError, which would
+        // abort the oracle run instead of reporting a differential) — the
+        // duration>0 filter bounds every completion-fed chain to one hop
+        // per 30-minute advance, far under the 1024-completion budget.
+        if duration > 0 {
+            global_run_targets.extend(recipes.iter().filter_map(|r| r.id.clone()));
+        }
         verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes });
     }
+    // from here the RUN-legal bodies are the completion triggers; the table
+    // switches to the global duration>0 candidates (the §6.7 global recipe
+    // resolution)
+    ctx.run_targets = global_run_targets;
 
-    // triggers
+    // triggers (v2: the KIND roll now precedes the body draws — it decides
+    // the body's RUN legality and the complete form's home/aspect draws;
+    // v1 drew the body first and banded kind as <0.25 expire / else slot).
+    // Kind bands: Complete [0.00, 0.25) NEW · Expire [0.25, 0.45) (was
+    // [0.00, 0.25)) · Slot [0.45, 1.00].
     let n_triggers = 1 + int(ctx.r, 3);
     let mut triggers: Vec<TriggerDef> = Vec::new();
     for i in 0..n_triggers {
-        let n_out = 1 + int(ctx.r, 2);
-        let mut out: Vec<String> = Vec::new();
-        for _ in 0..n_out {
-            out.push(ctx.op(false)); // events cannot REFUSE (§6.7)
-        }
+        let kind = ctx.r.next_f64();
         let id = format!("t{i}");
-        if ctx.r.next_f64() < 0.25 {
-            let mut pool = vec!["ANA".to_string()];
-            pool.extend(ctx.others.iter().cloned());
-            let target = pick_of(ctx.r, &pool);
-            triggers.push(TriggerDef::Expire(ExpireTriggerDef { id, on_expire_of: target, out }));
+        if kind < 0.25 {
+            // §6.7 completion trigger (`on complete [<aspect>]`): home is a
+            // pool/proto NAME — the gate matches a locked card's CURRENT
+            // name, which is how a prototype's trigger reaches its mints.
+            // The aspect gate draws 0.5 (draw order: home pick → aspect
+            // gate → aspect pick → n_out → ops); the body is drawn
+            // RUN-legal, REFUSE stays banned (§6.6/§6.7).
+            let mut pool = ctx.others.clone();
+            pool.extend(ctx.proto_names.iter().cloned());
+            let home = pick_of(ctx.r, &pool);
+            let aspect =
+                if ctx.r.next_f64() < 0.5 { Some(pick_str(ctx.r, &ASPECTS)) } else { None };
+            let n_out = 1 + int(ctx.r, 2);
+            let mut out: Vec<String> = Vec::new();
+            for _ in 0..n_out {
+                out.push(ctx.op(false, true));
+            }
+            triggers.push(TriggerDef::Complete(CompleteTriggerDef { id, home, aspect, out }));
         } else {
-            let slot = int(ctx.r, 48) as i64;
-            let once = ctx.r.next_f64() < 0.4;
-            triggers.push(TriggerDef::Slot(SlotTriggerDef { id, slot, once: Some(once), out }));
+            let n_out = 1 + int(ctx.r, 2);
+            let mut out: Vec<String> = Vec::new();
+            for _ in 0..n_out {
+                // events cannot REFUSE (§6.7) and cannot RUN (the event
+                // guard is a load error) — both bands fall through draw-free
+                out.push(ctx.op(false, false));
+            }
+            if kind < 0.45 {
+                let mut pool = vec!["ANA".to_string()];
+                pool.extend(ctx.others.iter().cloned());
+                let target = pick_of(ctx.r, &pool);
+                triggers.push(TriggerDef::Expire(ExpireTriggerDef {
+                    id,
+                    on_expire_of: target,
+                    out,
+                }));
+            } else {
+                let slot = int(ctx.r, 48) as i64;
+                let once = ctx.r.next_f64() < 0.4;
+                triggers.push(TriggerDef::Slot(SlotTriggerDef { id, slot, once: Some(once), out }));
+            }
         }
     }
 

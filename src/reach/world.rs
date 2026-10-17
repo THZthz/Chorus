@@ -4,7 +4,8 @@
 //! `Analyzer<'c>` holding `(content, initial)` suffices, with a
 //! lazily-computed [`WorldFacts`]. The world-static predicate CLASSIFIERS
 //! (`pred_static`/`expr_static`) and EVALUATORS
-//! (`eval_static`/`path_open`/`writable_paths`) live here — the shape tests
+//! (`eval_static`/`path_open_first_failure`/`writable_paths`) live here — the
+//! shape tests
 //! and the evaluators must agree variant for variant, so they share one
 //! home; census.rs imports pred_static for its site tagging
 //! (runtime_gated / path_non_static).
@@ -121,16 +122,20 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
     }
 }
 
-/// Every condition on the path must be static AND true
-/// against the current known world; anything else demotes the site.
-pub(crate) fn path_open(path: &[Pred], world: &CardWorld) -> Result<bool> {
+/// The path-open walk, reporting its evidence: the FIRST path
+/// condition that is not a static truth (non-static, or static and false) —
+/// `Some(p)` demotes exactly when the old boolean `path_open` returned
+/// false. The fixpoint's ladder hands the predicate to the design-time
+/// renderer, so the PathClosed blocker and the demotion verdict come from
+/// this ONE pass; there is no second evaluation to drift away from.
+pub(crate) fn path_open_first_failure<'p>(path: &'p [Pred], world: &CardWorld) -> Option<&'p Pred> {
     for p in path {
-        if pred_static(p) && eval_static(p, world)? {
+        if pred_static(p) && eval_static_ok(p, world) {
             continue;
         }
-        return Ok(false);
+        return Some(p);
     }
-    Ok(true)
+    None
 }
 
 /// `eval_static` with the internal-throw guard: the non-static operands sit
@@ -243,7 +248,10 @@ pub(crate) struct WorldFacts<'c> {
     pub freeze_dist: i64,
     /// owners whose every draft is refused at completion
     pub dirty_owners: IndexSet<String>,
-    /// world-level notes, copied into every report
+    /// world-level notes, converging on the named card's report (the
+    /// §13.1 revision: a note naming a card rides only on THAT name's
+    /// report; name-free notes ride on every report — the filter is
+    /// `paths::world_notes_for`, applied per analyze_card)
     pub notes: Vec<String>,
     /// verb index → its structured committability proof (proof order)
     pub committable: IndexMap<usize, Vec<SlotProof>>,
@@ -319,6 +327,17 @@ impl<'c> WorldFacts<'c> {
                 return Rc::clone(cache);
             }
         }
+        let cache = Rc::new(self.build_world());
+        self.flat_cache = Some(Rc::clone(&cache));
+        cache
+    }
+
+    /// The cache rebuild `cards_of` performs, factored out: the read-only
+    /// form the post-fixpoint diagnostics use (`&self` cannot install the
+    /// rebuilt snapshot). The build is a pure function of `avail`, so this
+    /// is observationally identical to a warm `cards_of` after the fixpoint
+    /// settles.
+    pub(crate) fn build_world(&self) -> CardWorld {
         let mut by_name: IndexMap<String, i64> = IndexMap::new();
         let mut distinct: Vec<DistEntry> = Vec::new();
         for list in self.avail.values() {
@@ -331,9 +350,7 @@ impl<'c> WorldFacts<'c> {
                 distinct.push(DistEntry { e: f.entity.clone(), w });
             }
         }
-        let cache = Rc::new(CardWorld { ver: self.avail_ver, by_name, distinct });
-        self.flat_cache = Some(Rc::clone(&cache));
-        cache
+        CardWorld { ver: self.avail_ver, by_name, distinct }
     }
 
     /// Add one available-card fact under its name (the `push` mechanics).

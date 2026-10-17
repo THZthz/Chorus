@@ -12,7 +12,10 @@
 //! both zero new analysis, both deterministic), `cost.rs` (the `--cost`
 //! face — the cost/count reading of the settled facts: minimum verb
 //! applications, minimum clock minutes, the copies bound; zero new
-//! analysis, a lower-bound planning estimate stated as such), `midgame.rs`
+//! analysis, a lower-bound planning estimate stated as such), `bridge.rs`
+//! (the lint bridge — the settled facts surfaced as the §13.2 lint's
+//! WARNING-class findings for `bin/lint-scripts --reach`; zero new
+//! analysis), `midgame.rs`
 //! (the `--from-state` replay entry — the engine's own fold over a JSONL
 //! log), plus the two campaign
 //! engines the bins and the test
@@ -30,6 +33,7 @@
 //! their content.verbs insertion index; every insertion-ordered Map/Set is
 //! an IndexMap/IndexSet.
 
+pub mod bridge;
 pub mod census;
 pub mod cost;
 pub mod export;
@@ -42,6 +46,7 @@ pub mod scale;
 pub mod world;
 pub mod world_report;
 
+pub use bridge::reach_findings;
 pub use midgame::replay_state;
 pub use paths::{
     analyze_card, CardCandidate, CardOptions, CardReport, CardVerdict, Existence, PathDeck, PathOp,

@@ -51,6 +51,7 @@ projection of that data, never the source of truth.
 27. **v0.7.8** — the analyzer's machine-readable exits (§13.1): a seventh seam module, `export`, landing `--json` and `--graph` with ZERO new analysis over the settled facts and the usage line byte-frozen (documented in the bin module's docs and §13.1 — no sanctioned argv byte change this wave). `--json` is the per-card report envelope (`file`/`demand`/`usable` around `report`; the `serde::Serialize` derives ride the paths.rs report types — derive only, no logic — keys in declaration order, the report enums as their `as_str` strings, pretty and deterministic), `--why --json` merges the blocker table into the envelope as a `why` array of the very strings `render_why` prints (without the flag the key is absent), and `--all --json` is one array in the walk order; `--world`/`--verb`/`--graph` ignore the flag. `--graph` renders the whole-content mint dependency graph as Graphviz DOT — the universe ∪ initial card names (kind-annotated) plus owner boxes; every proven site contributes owner → mints through the analyzer's OWN bare-name serving predicate: a blinded derive-mint's site contributes no edge at all (the same blind filter `record_mint_source` applies to the requires side, whose filler edges therefore never route through a source that never mints), and a draw serves only what `facts.deck_cap` — the freeze model's value — reaches, judged per name by `served_by_cap` (the raw site cap never read; seed 81401's frozen-cap shape pinned with the analyzer's own verdicts, both directions); mints → requires carry the slot fillers and destroyed-by rides dashed; nodes sort by id, edges by (src, dst, label), under `cmp_utf16` with duplicates collapsed — two runs byte-identical. Face priority world > graph > verb > all > card/demand. 808 tests green (+13); the eight text faces byte-identical throughout; no grammar/log/script change.
 28. **v0.7.9** — the reach analyzer's two bounded-time faces (§13.1): `--by <minute>` keys every time-keyed judgment on one horizon (`min(freeze_dist, M − now + 1)` — `INFINITY` unbounded, the +1 turning "fired by minute M" into the freeze model's strict `first_cross < horizon`; every rule reads `WorldFacts::horizon`, never the raw bound) — slot-trigger provenance beyond the window demotes to candidate (`TriggerBeyondBy`), duration>0 recipes demote at any finite horizon (`BeyondByDuration`, the unfrozen spelling of the seed-296 rule), trigger-held deck caps and the expiry-arming recursion follow the horizon, and expiry/complete triggers are untouched by M directly (arranged, not timed; the head gains `  [by minute N]`); and `--from-state <log.jsonl>` rebuilds the analysis initial world by the engine's own fold (`reach::midgame::replay_state` = `load_log` + `fold`, §7 — a third engine-importing reach file beside fuzz/scale, zero session/engine edits), modeling the fired set (spent once triggers never fire again — `AlreadyFired`; their past mints ride the replayed entities) and non-reset deck cursors (draws serve `[cursor, cursor + cap)` through `deck_serves_cap`, the graph face's predicate too — one serving predicate, one home — and `add_product`'s same window; identity at cursor 0), leaving open windows/executed-map/rng read-but-unmodeled under a name-free fidelity note on every replayed report, and refusing ended logs. The bound and replay mark live on the Analyzer host; the default face is byte-identical throughout (the usage line stays frozen, the export precedent). 816 tests green (+8: tests/reach/reach_timing.rs — the byte-pinned two-state slot trigger, freeze×M tightening, duration×by, the engine-run→log→fold replay pin, and the graph-vs-card serving pin); the eight text faces byte-identical throughout; no grammar/log/script change.
 29. **v0.7.10** — the analyzer's cost/count face (§13.1): an eighth seam module, `cost`, landing `--cost` with ZERO new analysis over the settled facts and the usage line byte-frozen (the export precedent). The per-card `— cost` section (card mode and `--all` alike, appended after `--why`) answers three questions over the proven provenance DAG (`facts.proven_sources` — the `mint_sources` candidates under the chain's own serving predicate, the deck-cap test folded in): minimum verb applications (recipe hops 1, trigger hops 0, initial 0 — memoized, depth-backstopped, tie-broken in proof order, the cheapest witness chain on one line) with the lower-bound honesty stated on every costed report; minimum clock minutes (recipe hops = the verb's duration, slot hops = `first_cross`, arranged expiry/complete hops 0; a frozen world's note caps the clock); and the copies bound from `avail` (`MANY` → `unbounded`, a count past the flatten weight cap → `N+ (world cap)`). Expiry/complete hops cost 0 with the arranged note (fillers recur); a non-proven target renders the one-line exclusion face. Composes with `--usable`/`--why`/`--all`/`--by`/`--from-state`; kept out of `--json` and ignored under `--demand` (documented). 825 tests green (+9: tests/reach/reach_cost.rs — the equality-pinned chain fixture, the 0-applications trigger faces, the deck-multiplicity/defaultcard copies, the replay cursor pin, the `--by` bound, and the CLI composition faces); the eight text faces byte-identical throughout; no grammar/log/script change.
+30. **v0.7.11** — the lint bridge (§13.1 → §13.2): a ninth seam module, `bridge`, landing `bin/lint-scripts --reach` — the reach analyzer's global-dynamic findings surfaced as WARNING-class lint findings with ZERO new analysis over the settled facts, the default invocation byte-frozen (verified against a HEAD-compiled bin; the exit code stays constant 0 — the §13.2 rule). `--reach` (anywhere in the arguments, combinable with named files; the sole-argument invocation still reads the default `scripts/` list) appends six owner-addressed finding families in a fixed class order, every walk an insertion order, deduplicated per owner: dead verbs (`dead_verbs`, the killing slot walked the way the `--world` dead-verbs row walks it); self-gated lists (live unproven sites re-run through `site_ladder` over the read-only world rebuild — the `--why` pass's own ladder, no re-derivation — only the `SelfGated` rung surfaced); risky owners (`risky_owners`); deck-cap cursor freezes (a live draw whose census cap froze below `MANY` on a repeatable owner — a once trigger's single draw is its design, not a smell); the frozen world (`frozen` + `freeze_dist` — the boundary minute `now + freeze_dist` with the risky slot triggers standing on it, exactly the argmin owners of `freeze_dist`'s own min over the risky slot triggers' first crossings, the minute the `--world` freeze line renders); and REFUSE-doomed sites (the refused census, owners named). Every finding reuses the lint's own `LintFinding`/`LintSeverity` types (zero lint edits), prints `[reach]`-prefixed in the one stream, and the summary names the two layers separately. 829 tests green (+4: tests/reach/reach_bridge.rs — the all-six-classes byte-exact fixture, the two-run determinism pin, the clean-world face, and the bin face: the `--reach` stream byte-pinned beside the unchanged default invocation and the sole-argument fallback); no grammar/log/script change.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -1879,7 +1880,7 @@ format, or play semantics.
 
 `src/reach/` answers "can the player obtain card X?" STATICALLY, over
 (compiled content, initial state) — design-time analysis: no engine, no
-mutation, deterministic. Eight seam modules (the analyzer proper — none
+mutation, deterministic. Nine seam modules (the analyzer proper — none
 of them imports the engine; the `fuzz` / `scale` campaign modules that
 share the directory are §13.3's differential layer, `midgame` composes
 the engine's own replay entry for the `--from-state` face (§7), and they
@@ -2057,6 +2058,27 @@ are the only reach files allowed to):
   and is ignored under `--demand` (the demand match's provenance is
   not costed) — documented, not rejected; the usage line stays
   byte-frozen.
+- **bridge** — the lint seam (§13.2): the settled facts re-rendered as
+  WARNING-class findings for `bin/lint-scripts --reach`, ZERO new analysis
+  (a ninth seam module beside `cost`). One `Analyzer` per script; six
+  finding families in a fixed class order, every walk an IndexMap/IndexSet
+  insertion order, deduplicated per owner, every finding owner-addressed
+  (reach has no line numbers) and WARNING-class (a design smell, never an
+  error): dead verbs (`dead_verbs`, the killing slot walked exactly the way
+  the `--world` dead-verbs row walks it — the same `build_post_fixpoint`
+  hopeless predicate); self-gated lists (live unproven sites re-run through
+  `site_ladder` over the read-only world rebuild — the `--why` pass's own
+  ladder, no re-derivation — with only the `SelfGated` rung surfaced);
+  risky owners (`risky_owners`); deck-cap cursor freezes (a live draw whose
+  census cap froze below `MANY` on a repeatable owner — a once trigger's
+  single draw is its design, not a smell); the frozen world (`frozen` +
+  `freeze_dist` — the boundary minute `now + freeze_dist` with the risky
+  slot triggers standing on it, exactly the argmin owners of
+  `freeze_dist`'s own min over the risky slot triggers' first crossings,
+  the very minute the `--world` freeze line renders); and REFUSE-doomed
+  sites (the refused census, owners named — the world note carries the
+  count). The findings reuse the lint's own `LintFinding` type, so the bin
+  prints one uniform stream.
 
 The two bounded-time faces key the SAME settled facts on one horizon
 (`WorldFacts::horizon`) instead of adding analysis. `--by <minute>`
@@ -2203,12 +2225,27 @@ scenario, draw for draw, under ONE version.
   what keeps the warning sound: `exists`/`count(<query>)` world reads,
   `every`, non-integer comparisons and the cross-verb RUN re-evaluation
   stay Unknown.
+- **WARNING (the reach bridge)** — `--reach` appends the reach analyzer's
+  global-dynamic findings (§13.1's `bridge` module) to the same stream,
+  each line `[reach]`-prefixed so the two layers read apart and the
+  summary naming them separately: six WARNING-class families over the
+  settled WorldFacts, zero new analysis — dead verbs, self-gated lists,
+  risky owners, deck-cap cursor freezes (a once trigger's single draw is
+  its design), the frozen world (the boundary minute and the risky slot
+  triggers standing on it — the argmin owners of `freeze_dist`'s min),
+  and REFUSE-doomed sites. Owner-addressed (the per-site lint's line
+  numbers have no reach counterpart), deduplicated per owner,
+  deterministic (insertion-order walks — two runs byte-identical). A reach
+  finding is advisory by the same rule — it never changes the exit code —
+  and without the flag the output is byte-identical to the pre-bridge bin.
 
 Errors are counted, warnings advise; findings never change the exit code
 (constant 0 — a dead `when` is sometimes the point); compile errors remain
 `compile_script`'s hard failure and unreadable input exits 1. The bin
 defaults to every `scripts/*.txt` relative to the CWD (a missing dir names
-itself and the cwd, exit 1).
+itself and the cwd, exit 1). `--reach` may sit anywhere in the arguments
+and composes with the default list and named files alike (the
+sole-argument invocation still reads the default list).
 
 ### 13.3 The bins
 

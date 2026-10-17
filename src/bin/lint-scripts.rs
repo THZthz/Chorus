@@ -17,18 +17,34 @@
 //!
 //!   cargo run --bin lint-scripts                  # everything under scripts/
 //!   cargo run --bin lint-scripts -- my-game.txt   # or name files
+//!   cargo run --bin lint-scripts -- --reach       # + the reach-bridge layer
+//!
+//! `--reach` (anywhere in the arguments, combinable with named files)
+//! appends the lint bridge's findings (§13.1 → §13.2): the reach analyzer
+//! run over that script's compiled (content, initial) — ONE `Analyzer` per
+//! script, so on cultist-full-scale scripts the flag adds a moment of
+//! analysis — re-rendered as WARNING-class design smells the per-site lint
+//! cannot see (dead verbs, self-gated lists, risky owners, frozen deck
+//! cursors, the freeze boundary, REFUSE-doomed sites). Each line prints
+//! prefixed `[reach]` so the two layers read apart in the one stream; the
+//! summary names them separately. A reach finding is advisory by the §13.2
+//! rule — it never changes the exit code — and without the flag the output
+//! is byte-identical to the pre-bridge bin.
 //!
 //! Q15 honesty: the default file list comes from reading the `scripts`
 //! dir RELATIVE TO THE CWD; a missing scripts dir names itself and the cwd
 //! on stderr and exits 1 (warnings advise, exit 0; hard input errors exit 1),
 //! and a missing named file is the same hard-error family.
 
-use chorus::content::script::{lint_script_findings, LintSeverity};
+use chorus::content::script::{compile_script, lint_script_findings, LintFinding, LintSeverity};
 use chorus::core::dict::core_dictionary;
+use chorus::reach::reach_findings;
 
 fn main() -> std::process::ExitCode {
     let dict = core_dictionary();
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let reach = args.iter().any(|a| a == "--reach");
+    args.retain(|a| a != "--reach");
     let files: Vec<String> = if !args.is_empty() {
         args
     } else {
@@ -72,6 +88,7 @@ fn main() -> std::process::ExitCode {
 
     let mut findings = 0usize;
     let mut warnings = 0usize;
+    let mut reach_findings_count = 0usize;
     for file in &files {
         let text = match std::fs::read_to_string(file) {
             Ok(t) => t,
@@ -88,12 +105,28 @@ fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::from(1);
             }
         };
-        if linted.is_empty() {
+        // the bridge layer: the lint only runs on scripts that already
+        // compile (lint_script_findings compiles internally), so this cannot
+        // fail for a file that reached here — the error arm keeps the bin's
+        // hard-error discipline anyway
+        let bridged: Vec<LintFinding> = if reach {
+            match compile_script(&text, &dict) {
+                Ok(cs) => reach_findings(&cs.content, &cs.state),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    return std::process::ExitCode::from(1);
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        if linted.is_empty() && bridged.is_empty() {
             println!("{file}: clean");
             continue;
         }
         findings += linted.len();
         warnings += linted.iter().filter(|f| f.severity == LintSeverity::Warning).count();
+        reach_findings_count += bridged.len();
         println!("{file}:");
         for f in &linted {
             match f.severity {
@@ -102,8 +135,20 @@ fn main() -> std::process::ExitCode {
                 LintSeverity::Warning => println!("  - [warning] {}", f.message),
             }
         }
+        // the bridge's WARNINGs, marked so the two layers read apart
+        for f in &bridged {
+            println!("  - [reach] {}", f.message);
+        }
     }
-    if warnings > 0 {
+    if reach_findings_count > 0 {
+        println!(
+            "\n{} file(s), {} finding(s), {} warning(s), {} reach finding(s) — warnings and reach findings advise, the exit code stays 0",
+            files.len(),
+            findings,
+            warnings,
+            reach_findings_count
+        );
+    } else if warnings > 0 {
         println!(
             "\n{} file(s), {} finding(s), {} warning(s) — warnings advise, the exit code stays 0",
             files.len(),

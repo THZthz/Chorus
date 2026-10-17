@@ -119,24 +119,22 @@ fn reach_fuzz_flags_streams_and_exit_zero_when_sound() {
     assert!(!stdout.contains("seeds, 0 failures\n"), "{stdout}");
 }
 
-/// the per-50 progress line — `… 50/50 seeds, …` — plus the generator-v2
+/// the per-50 progress line — `… 50/50 seeds, …` — plus the post-Wave-3
 /// failure-set pin: over seeds 1..=50 under these bounds the campaign fails
-/// on EXACTLY seed 41 (the known complete-arm over-generosity the generator
-/// v2 exposed — an OBTAINABLE verdict the exhaustive exploration refutes).
-/// Wave 3 tightens the arm and this set must narrow back to empty; a larger
-/// set is a regression, a different seed a generator or analyzer drift. The
-/// FAIL lines ride stderr (the bin's stream discipline); exit 1 iff the set
-/// is non-empty.
+/// on NOTHING. The set held exactly {41} while the Complete arm was
+/// over-generous ("home obtainable ⇒ the window is arrangeable"); the Wave-3
+/// tightening (window witness + aspect gate + completion-draft atomicity)
+/// narrowed it to empty — exit 0, no FAIL lines, no `failing seeds:` line.
+/// A non-empty set after this pin is a regression (a new false OBTAINABLE
+/// class), a different seed a generator or analyzer drift.
 #[test]
 fn reach_fuzz_progress_line_every_50_seeds() {
     let (code, stdout, stderr) =
         run("reach-fuzz", &["--seeds", "50", "--from", "1", "--steps", "1", "--states", "20"]);
-    assert_eq!(code, Some(1), "{stdout}{stderr}");
-    assert!(stdout.contains("… 50/50 seeds, 1 failures"), "{stdout}");
-    assert_eq!(stdout.lines().last(), Some("failing seeds: 41"), "{stdout}");
-    let fails: Vec<&str> = stderr.lines().filter(|l| l.starts_with("FAIL seed ")).collect();
-    assert_eq!(fails.len(), 1, "{stderr}");
-    assert!(fails[0].starts_with("FAIL seed 41: "), "{stderr}");
+    assert_eq!(code, Some(0), "{stdout}{stderr}");
+    assert!(stdout.contains("… 50/50 seeds, 0 failures"), "{stdout}");
+    assert!(!stdout.contains("failing seeds:"), "{stdout}");
+    assert!(!stderr.contains("FAIL seed "), "{stderr}");
 }
 
 /// A clean bundled script: exit 0 (warnings advise), the

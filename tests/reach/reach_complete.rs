@@ -1,15 +1,22 @@
 //! Completion triggers (`on complete`, §6.7) in the reach analyzer: the
-//! `site_proven` Complete arm. The contract mirrors the Expire arm's
-//! generosity: the trigger is arrangeable exactly when its home card is
-//! obtainable (initial or produced) — a window completing the binding is
-//! player-schedulable, so nothing else gates the site. The support lines
-//! here are byte-frozen (the render contract).
+//! `site_proven` Complete arm under the Wave-3 tightened model. The Wave-1
+//! arm ("home obtainable ⇒ the window is arrangeable") was over-generous —
+//! the fuzz generator v2 exposed three classes of false OBTAINABLE, and the
+//! arm now demands a CONSTRUCTIBLE completion: a committable verb whose
+//! committed-role slots can lock the home (the window rung), under a
+//! selectable completable recipe that declares the aspect (the aspect
+//! rung), with the body's mints colliding with nothing the completion draft
+//! holds (the draft rung). The support lines here are byte-frozen (the
+//! render contract).
 
 use std::process::Command;
 
 use indexmap::IndexMap;
 
-use chorus::content::{compile_content, CompleteTriggerDef, ContentRaw, PrototypeDef, TriggerDef};
+use chorus::content::{
+    compile_content, CompleteTriggerDef, ContentRaw, PrototypeDef, RecipeDef, SlotDef, TriggerDef,
+    VerbContent,
+};
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
 use chorus::reach::{analyze_card, CardOptions, CardVerdict, Existence};
@@ -60,19 +67,61 @@ fn complete_trigger(home: &str, aspect: Option<&str>) -> TriggerDef {
     })
 }
 
+/// The Wave-3 window witness, as a raw verb (a core-dictionary name): the
+/// committed `object` slot
+/// accepts the home (no query), the recipe is selectable, completable, and
+/// (optionally) declares an aspect. NO duration condition exists — the
+/// engine completes duration-0 windows like any other.
+fn binder_verb(aspects: Vec<String>) -> (String, VerbContent) {
+    (
+        "WORK".to_string(),
+        VerbContent {
+            slots: vec![
+                SlotDef {
+                    role: "actors".to_string(),
+                    min: 1,
+                    max: Some(1),
+                    query: Some("kind:character".to_string()),
+                    shown: None,
+                },
+                SlotDef {
+                    role: "object".to_string(),
+                    min: 1,
+                    max: Some(1),
+                    query: None,
+                    shown: None,
+                },
+            ],
+            duration: 30,
+            recipes: vec![RecipeDef {
+                id: Some("work.r0".to_string()),
+                when: None,
+                shown: None,
+                hint: None,
+                max: None,
+                aspects,
+                out: vec![],
+            }],
+        },
+    )
+}
+
 fn mint_fixture(aspect: Option<&str>) -> ContentRaw {
     ContentRaw {
         prototypes: Some(IndexMap::from([
             ("HOME_CARD".to_string(), proto("item")),
             ("X_CARD".to_string(), proto("item")),
         ])),
+        verbs: IndexMap::from([binder_verb(aspect.map(str::to_string).into_iter().collect())]),
         triggers: Some(vec![complete_trigger("HOME_CARD", aspect)]),
         ..ContentRaw::default()
     }
 }
 
-/// The happy path: an INITIAL home card makes the completion trigger
-/// arrangeable, so its mint proves — and the support line is byte-exact.
+/// The happy path: an INITIAL home card is lockable by the committable verb
+/// under its completable recipe, so the completion trigger proves — and the
+/// support line is byte-exact (the window witness names verb, slot and
+/// recipe).
 #[test]
 fn a_complete_trigger_on_an_initial_home_proves_its_mint_with_the_exact_support_line() {
     let content = compile(&mint_fixture(None));
@@ -84,7 +133,7 @@ fn a_complete_trigger_on_an_initial_home_proves_its_mint_with_the_exact_support_
         rep.chain,
         vec![
             "SPAWN mints 'X_CARD' — trigger complete:HOME_CARD".to_string(),
-            "  · trigger complete:HOME_CARD fires when a window completes binding 'HOME_CARD' — completion is arrangeable (begin a duration>0 window that binds the home card)"
+            "  · trigger complete:HOME_CARD fires when a window completes binding 'HOME_CARD' — completion is arrangeable (commit WORK locking 'HOME_CARD' in its object slot; recipe work.r0 completes the window)"
                 .to_string(),
         ]
     );
@@ -92,9 +141,8 @@ fn a_complete_trigger_on_an_initial_home_proves_its_mint_with_the_exact_support_
 
 /// The aspect form (`on complete <aspect>`): the engine fires it only when
 /// the completed recipe DECLARES the aspect (advance.rs matches
-/// `recipe.aspects`), so the filter belongs in the support line — the
-/// arrangeability argument is unchanged (begin a window whose recipe
-/// carries the aspect).
+/// `recipe.aspects`), so the witness pair must be a recipe carrying it —
+/// the support line names that recipe.
 #[test]
 fn an_aspect_complete_trigger_carries_the_filter_in_its_exact_support_line() {
     let content = compile(&mint_fixture(Some("labor")));
@@ -105,7 +153,7 @@ fn an_aspect_complete_trigger_carries_the_filter_in_its_exact_support_line() {
         rep.chain,
         vec![
             "SPAWN mints 'X_CARD' — trigger complete:HOME_CARD".to_string(),
-            "  · trigger complete:HOME_CARD fires when a window completes binding 'HOME_CARD' — completion is arrangeable (begin a duration>0 window that binds the home card and declares the 'labor' aspect)"
+            "  · trigger complete:HOME_CARD fires when a window completes binding 'HOME_CARD' — completion is arrangeable (commit WORK locking 'HOME_CARD' in its object slot; recipe work.r0 completes the window and declares the 'labor' aspect)"
                 .to_string(),
         ]
     );
@@ -123,6 +171,27 @@ fn a_complete_trigger_whose_home_is_unobtainable_stays_unproven_candidate() {
     assert_eq!(rep.existence, Existence::Candidate);
 }
 
+/// The window rung fires when no committable verb can lock the home: the
+/// same fixture MINUS the binder verb. The support line's arrangeability
+/// claim is gone; the trigger's mint demotes (Wave-3 tightening: a home
+/// obtainable on its own is NOT arrangeability).
+#[test]
+fn a_complete_trigger_without_any_home_locking_verb_stays_unproven() {
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+        ])),
+        triggers: Some(vec![complete_trigger("HOME_CARD", None)]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
+    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Unproven);
+    assert_eq!(rep.existence, Existence::Candidate);
+}
+
 /// A PRODUCED home works too: once the fixpoint proves the home card's own
 /// mint (here a slot trigger), the avail lookup arms the completion trigger
 /// — the expiry_support desc-lookup shape, second branch.
@@ -133,6 +202,7 @@ fn a_complete_trigger_on_a_produced_home_proves_after_the_home_is_proven() {
             ("HOME_CARD".to_string(), proto("item")),
             ("X_CARD".to_string(), proto("item")),
         ])),
+        verbs: IndexMap::from([binder_verb(vec![])]),
         triggers: Some(vec![
             TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "seed".to_string(),
@@ -156,7 +226,9 @@ fn a_complete_trigger_on_a_produced_home_proves_after_the_home_is_proven() {
 
 /// The integration smoke: the cultist slice's THE_TURNING is minted ONLY by
 /// `on complete` clauses (VIGOR#2's `on complete job`, the two posts'), and
-/// the probe must now prove it — exit 0, OBTAINABLE, the byte-exact aspect
+/// the probe must still prove it — the tightened window witness resolves to
+/// WORK's `with` slot (0..1: an optional fill the player includes) under
+/// work.vigor (aspects labor, job), exit 0, OBTAINABLE, the byte-exact
 /// support line — and `--all` must sweep the whole slice without a panic.
 #[test]
 fn cultist_slice_the_turning_proves_via_its_complete_triggers_and_all_exits_0() {
@@ -170,7 +242,7 @@ fn cultist_slice_the_turning_proves_via_its_complete_triggers_and_all_exits_0() 
     assert!(out.contains("verdict: OBTAINABLE"), "{out}");
     assert!(
         out.contains(
-            "trigger complete:VIGOR#2 fires when a window completes binding 'VIGOR' — completion is arrangeable (begin a duration>0 window that binds the home card and declares the 'job' aspect)"
+            "trigger complete:VIGOR#2 fires when a window completes binding 'VIGOR' — completion is arrangeable (commit WORK locking 'VIGOR' in its with slot; recipe work.vigor completes the window and declares the 'job' aspect)"
         ),
         "{out}"
     );

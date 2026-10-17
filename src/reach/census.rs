@@ -40,8 +40,9 @@ const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 
 /// Whether the op demotes its whole outcome list: a throwing op, or a DRAW
 /// with an INTO clause (the drawn-into move is the same unresolvable-target
-/// throw).
-fn op_throws(o: &Outcome) -> bool {
+/// throw). `pub(crate)`: the fixpoint's completion-draft walk reuses the
+/// same throw classification (a completion error refuses the window).
+pub(crate) fn op_throws(o: &Outcome) -> bool {
     THROWING_OPS.contains(&o.op.as_str())
         || (o.op == "DRAW" && o.args.iter().any(|a| matches!(a, Arg::Into { .. })))
 }
@@ -113,6 +114,10 @@ pub(crate) struct RawSite<'c> {
     pub owner: String,
     /// the owning verb's content.verbs index (None for trigger-owned sites)
     pub verb: Option<usize>,
+    /// the owning recipe's index within its verb (None for trigger-owned
+    /// sites) — the completion-draft rung re-derives the completing recipe
+    /// from it (the owner string is display-only)
+    pub recipe: Option<usize>,
     /// recipe selection guard (None → default)
     pub when: Option<Pred>,
     /// an earlier recipe of the same verb exists (first-match may shadow)
@@ -304,6 +309,7 @@ pub(crate) struct WalkState<'c> {
 pub(crate) struct ListCx<'a> {
     pub owner: &'a str,
     pub verb_idx: Option<usize>,
+    pub recipe_idx: Option<usize>,
     pub when: Option<&'a Pred>,
     pub shadow_risk: bool,
     pub shadowed: bool,
@@ -317,6 +323,7 @@ pub(crate) struct RecordCx<'c, 'a> {
     pub content: &'c CompiledContent,
     pub owner: &'a str,
     pub verb_idx: Option<usize>,
+    pub recipe_idx: Option<usize>,
     pub when: Option<&'a Pred>,
     pub shadow_risk: bool,
     pub shadowed: bool,
@@ -466,6 +473,7 @@ pub(crate) fn collect_sites<'c>(
                 ListCx {
                     owner: &format!("recipe {} of {}", r.id, verb.name),
                     verb_idx: Some(vi),
+                    recipe_idx: Some(i),
                     when: r.when.as_ref(),
                     shadow_risk: i > 0,
                     shadowed,
@@ -483,6 +491,7 @@ pub(crate) fn collect_sites<'c>(
             ListCx {
                 owner: &trigger_owner(t.id()),
                 verb_idx: None,
+                recipe_idx: None,
                 when: None,
                 shadow_risk: false,
                 shadowed: false,
@@ -523,6 +532,7 @@ fn walk_list<'c, 'a>(
         content,
         owner: list_cx.owner,
         verb_idx: list_cx.verb_idx,
+        recipe_idx: list_cx.recipe_idx,
         when: list_cx.when,
         shadow_risk: list_cx.shadow_risk,
         shadowed: list_cx.shadowed,
@@ -878,6 +888,7 @@ fn base_site<'c>(
         aspects_json: None,
         owner: owner.clone(),
         verb: cx.verb_idx,
+        recipe: cx.recipe_idx,
         when: cx.when.cloned(),
         shadow_risk: cx.shadow_risk,
         path: frame.path.clone(),

@@ -11,7 +11,10 @@ use std::process::Command;
 use indexmap::IndexMap;
 
 use chorus::content::script::compile_script;
-use chorus::content::{compile_content, CompleteTriggerDef, ContentRaw, PrototypeDef, TriggerDef};
+use chorus::content::{
+    compile_content, CompleteTriggerDef, ContentRaw, PrototypeDef, RecipeDef, SlotDef, TriggerDef,
+    VerbContent,
+};
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, Entity};
 use chorus::reach::fixpoint::CardBlocker;
@@ -251,6 +254,164 @@ fn why_table_names_the_missing_completion_home() {
         "why.txt · card HOME_GEM — why\n  · SPAWN 'HOME_GEM' — trigger complete:NO_SUCH_HOME: \
          the completion trigger fires only when a window completes binding 'NO_SUCH_HOME' — \
          'NO_SUCH_HOME' is not obtainable, so the trigger never fires\n"
+    );
+}
+
+/// The Wave-3 completion rungs, as their own ContentRaw fixtures (the
+/// ladder tail's three new demotions — each pinned byte-exact):
+/// CompleteWindowUnbindable (a home no verb can lock), and
+/// CompleteAspectUnreachable + CompleteDraftCollision on a binder fixture.
+#[test]
+fn why_table_names_the_wave3_completion_rungs() {
+    use chorus::core::types::AspectVal;
+    let dict = core_dictionary();
+    let ent = |name: &str, kind: &str, aspects: &[(&str, i64)]| -> Entity {
+        let mut a: IndexMap<String, AspectVal> = IndexMap::new();
+        for (k, v) in aspects {
+            a.insert((*k).to_string(), AspectVal::Num(*v));
+        }
+        Entity {
+            id: format!("s_{}", name.to_lowercase()),
+            kind: kind.to_string(),
+            name: name.to_string(),
+            aspects: a,
+            attrs: IndexMap::new(),
+            born_action: Some(0),
+            dead_action: None,
+            stackable: false,
+        }
+    };
+    let mut state = new_state(0);
+    add_entity(&mut state, ent("ANA", "character", &[])).expect("fixture entity");
+    add_entity(&mut state, ent("LOCKED_HOME", "item", &[])).expect("fixture entity");
+
+    // ① the window rung: the home is obtainable, but the content has no
+    // verb with a committed-role slot at all — no window can ever lock it.
+    let unbindable = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            (
+                "HOME_GEM".to_string(),
+                PrototypeDef { kind: "item".to_string(), ..Default::default() },
+            ),
+            ("X_GEM".to_string(), PrototypeDef { kind: "item".to_string(), ..Default::default() }),
+        ])),
+        triggers: Some(vec![TriggerDef::Complete(CompleteTriggerDef {
+            id: "complete:LOCKED_HOME".to_string(),
+            home: "LOCKED_HOME".to_string(),
+            aspect: None,
+            out: vec!["SPAWN X_GEM".to_string()],
+        })]),
+        ..ContentRaw::default()
+    };
+    let content = compile_content(&unbindable, &dict, &[]).expect("fixture compiles");
+    let analyzer = Analyzer::new(&content, &state);
+    let mut out = String::new();
+    render_why(&mut out, "why.txt", "X_GEM", &analyzer.card_blockers("X_GEM"));
+    assert_eq!(
+        out,
+        "why.txt · card X_GEM — why\n  · SPAWN 'X_GEM' — trigger complete:LOCKED_HOME: \
+         no committable verb can lock 'LOCKED_HOME' under a completable recipe — no window \
+         completing the binding exists, so the trigger never fires\n"
+    );
+
+    // ② the aspect rung + ③ the draft rung, on one binder fixture: WORK
+    // locks LOCKED_HOME via its object slot (kind:item — ANA does not fit,
+    // so the lock is forced) under completable work.r0, which declares no
+    // aspect and mints the draft name the trigger body mints too.
+    let binder = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            (
+                "HOME_GEM".to_string(),
+                PrototypeDef { kind: "item".to_string(), ..Default::default() },
+            ),
+            ("X_GEM".to_string(), PrototypeDef { kind: "item".to_string(), ..Default::default() }),
+        ])),
+        verbs: IndexMap::from([(
+            "WORK".to_string(),
+            VerbContent {
+                slots: vec![
+                    SlotDef {
+                        role: "actors".to_string(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some("kind:character".to_string()),
+                        shown: None,
+                    },
+                    SlotDef {
+                        role: "object".to_string(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some("kind:item".to_string()),
+                        shown: None,
+                    },
+                ],
+                duration: 30,
+                recipes: vec![RecipeDef {
+                    id: Some("work.r0".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: vec![],
+                    out: vec!["SPAWN X_GEM".to_string()],
+                }],
+            },
+        )]),
+        triggers: Some(vec![TriggerDef::Complete(CompleteTriggerDef {
+            id: "complete:LOCKED_HOME".to_string(),
+            home: "LOCKED_HOME".to_string(),
+            aspect: Some("labor".to_string()),
+            out: vec!["SPAWN X_GEM".to_string()],
+        })]),
+        ..ContentRaw::default()
+    };
+    let content = compile_content(&binder, &dict, &[]).expect("fixture compiles");
+    let analyzer = Analyzer::new(&content, &state);
+    // ② the aspect rung: work.r0 is a selectable completable lock-binder,
+    // but it declares no 'labor' — the filter never passes.
+    let mut out = String::new();
+    render_why(&mut out, "why.txt", "X_GEM", &analyzer.card_blockers("X_GEM"));
+    assert_eq!(
+        out,
+        "why.txt · card X_GEM — why\n  · SPAWN 'X_GEM' — trigger complete:LOCKED_HOME: \
+         the completed recipe must declare the 'labor' aspect, and no selectable completable \
+         recipe of any verb that can lock 'LOCKED_HOME' declares it — the filter never passes\n"
+    );
+
+    // ③ the draft rung: drop the aspect gate — now the pair survives ① and
+    // ② but the completion draft already holds X_GEM (work.r0's own mint),
+    // so the body's X_GEM mint refuses the whole scratch. The recipe's site
+    // demotes the same way (the completing recipe's own contamination).
+    let binder_no_aspect = ContentRaw {
+        prototypes: binder.prototypes.clone(),
+        verbs: {
+            let mut v = binder.verbs.clone();
+            if let Some((_, verb)) = v.iter_mut().next() {
+                verb.recipes[0].aspects = Vec::new();
+            }
+            v
+        },
+        triggers: Some(vec![TriggerDef::Complete(CompleteTriggerDef {
+            id: "complete:LOCKED_HOME".to_string(),
+            home: "LOCKED_HOME".to_string(),
+            aspect: None,
+            out: vec!["SPAWN X_GEM".to_string()],
+        })]),
+        ..ContentRaw::default()
+    };
+    let content = compile_content(&binder_no_aspect, &dict, &[]).expect("fixture compiles");
+    let analyzer = Analyzer::new(&content, &state);
+    let mut out = String::new();
+    render_why(&mut out, "why.txt", "X_GEM", &analyzer.card_blockers("X_GEM"));
+    assert_eq!(
+        out,
+        "why.txt · card X_GEM — why\n  · SPAWN 'X_GEM' — recipe work.r0 of WORK: \
+         the completion draft already holds 'X_GEM' (the locked home card, the completing \
+         recipe's own mints, or a sibling trigger's mint) — the body's mint refuses the draft \
+         and the whole completion is discarded\n  · SPAWN 'X_GEM' — trigger complete:LOCKED_HOME: \
+         the completion draft already holds 'X_GEM' (the locked home card, the completing \
+         recipe's own mints, or a sibling trigger's mint) — the body's mint refuses the draft \
+         and the whole completion is discarded\n"
     );
 }
 

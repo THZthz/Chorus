@@ -13,18 +13,23 @@
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::content::walk_outcomes;
 use crate::content::{CompiledSlot, CompiledTrigger};
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, QueryTerm};
+use crate::core::r#ref::Ref;
+use crate::core::roles::Role;
+use crate::core::sentence::{Arg, IntoTarget};
 use crate::core::types::Entity;
 
 use super::census::{
-    draw_blinds_bare, draw_deck, mint_stacks, object_always, site_mints, RawSite, SetSite,
-    SiteKind, DERIVED_NAME, MANY,
+    draw_blinds_bare, draw_deck, mint_stacks, object_always, op_throws, site_mints, trigger_owner,
+    RawSite, SetSite, SiteKind, DERIVED_NAME, MANY,
 };
 use super::render::pred_text;
 use super::world::{
-    eval_static_ok, pred_static, CardFact, CardWorld, SlotFiller, SlotProof, WorldFacts,
+    eval_static_ok, path_open_first_failure, pred_static, CardFact, CardWorld, SlotFiller,
+    SlotProof, WorldFacts,
 };
 
 // ---------------------------------------------------------------------------
@@ -387,6 +392,19 @@ impl<'c> WorldFacts<'c> {
                 };
                 return (Err(CardBlocker::VerbNotCommittable { verb: verb_name }), None);
             };
+            // completion-draft atomicity for the recipe's OWN mints (§6.7):
+            // the outcomes land on the completion draft, and a complete
+            // trigger that fires on this window and refuses discards the
+            // whole scratch — the recipe's mints included. When every
+            // completion of this verb force-locks such a trigger's home, the
+            // recipe's completion always refuses and its mints never land
+            // (fuzz seed 162: travel_to.r0's P3 against the t1 body's own
+            // P3 mint).
+            if let Some(ri) = site.recipe {
+                if let Some(name) = self.completion_contaminated(world, vi, ri) {
+                    return (Err(CardBlocker::CompleteDraftCollision { name }), None);
+                }
+            }
             let verb_name = match self.content.verbs.get_index(vi) {
                 Some((name, _)) => name.clone(),
                 None => unreachable!("verb index {vi} came from content.verbs enumeration"),
@@ -411,32 +429,70 @@ impl<'c> WorldFacts<'c> {
             );
         }
         if let CompiledTrigger::Complete { id, home, aspect, .. } = trig {
-            // §6.7: the body applies when a window completes binding a
-            // living card whose CURRENT name is `home`, so the trigger is
-            // arrangeable exactly when the home card is obtainable (the
-            // expiry_support desc-lookup shape); unobtainable → the trigger
-            // never fires and the site stays unproven (the candidate
-            // ladder).
-            if !complete_home_obtainable(self, home) {
+            // The tightened §6.7 model (Wave 3): "home obtainable" alone was
+            // over-generous — the fuzz campaign's three classes of false
+            // OBTAINABLE. The trigger is provable only when a completion
+            // firing it is CONSTRUCTIBLE, in three rungs:
+            //
+            // ① the window witness — a committable verb whose committed-role
+            //   slots can lock the home card, under a recipe that completes
+            //   (selectable, no decided REFUSE, no deterministic
+            //   completion-time error, no unconditional mint collision);
+            // ② the aspect gate — the completed recipe must DECLARE the
+            //   trigger's aspect (advance.rs matches `recipe.aspects`), so a
+            //   selectable completable recipe must carry it;
+            // ③ the completion draft — the window refusal is atomic (the
+            //   whole scratch dies with any refusal), so the body's
+            //   non-stackable mints must not collide with the draft's
+            //   occupants: the locked home itself, the completing recipe's
+            //   own mints, or a same-home sibling trigger's mints.
+            let Some(desc) = self.complete_home_desc(home) else {
                 return (Err(CardBlocker::CompleteHomeMissing { home: home.clone() }), None);
+            };
+            let pairs = self.complete_window_pairs(world, &desc);
+            if pairs.is_empty() {
+                return (Err(CardBlocker::CompleteWindowUnbindable { home: home.clone() }), None);
             }
-            // NO freeze condition: the frozen rule (seed 296) only suppresses
-            // facts that must land before a risky slot trigger's first
-            // crossing — duration>0 recipe completions and slot-trigger
-            // firings. A completion firing is scheduled by the window that
-            // binds the home card, not by the slot clock (§6.7) — the same
-            // arrangeability the gate-timing (seed 40449) and owner_armable
-            // Complete arms already grant. The aspect form's extra filter
-            // (the completed recipe must declare the aspect — advance.rs's
-            // `recipe.aspects` match) is arrangeable the same way, so it
-            // only sharpens the line's wording, not the verdict.
+            let mut pairs = pairs;
+            if let Some(a) = aspect {
+                pairs.retain(|&(vi, ri)| {
+                    let (_, v) = match self.content.verbs.get_index(vi) {
+                        Some((n, v)) => (n, v),
+                        None => unreachable!("verb index {vi} came from content.verbs enumeration"),
+                    };
+                    v.recipes[ri].aspects.iter().any(|x| x == a)
+                });
+                if pairs.is_empty() {
+                    return (
+                        Err(CardBlocker::CompleteAspectUnreachable {
+                            home: home.clone(),
+                            aspect: a.clone(),
+                        }),
+                        None,
+                    );
+                }
+            }
+            if let Some(name) =
+                self.complete_draft_collision(world, &pairs, home, desc.stackable, site)
+            {
+                return (Err(CardBlocker::CompleteDraftCollision { name }), None);
+            }
+            // The first surviving witness renders the line (deterministic:
+            // verbs in content.verbs order, recipes in declaration order).
+            let (vi, ri) = pairs[0];
+            let (verb_name, v) = match self.content.verbs.get_index(vi) {
+                Some((n, v)) => (n, v),
+                None => unreachable!("verb index {vi} came from content.verbs enumeration"),
+            };
+            let role = self.locking_role(vi, &desc).map(|r| r.as_str()).unwrap_or("object");
             let aspect_note = if let Some(a) = aspect {
                 format!(" and declares the '{a}' aspect")
             } else {
                 String::new()
             };
             return (Ok(vec![format!(
-                "trigger {id} fires when a window completes binding '{home}' — completion is arrangeable (begin a duration>0 window that binds the home card{aspect_note})"
+                "trigger {id} fires when a window completes binding '{home}' — completion is arrangeable (commit {verb_name} locking '{home}' in its {role} slot; recipe {} completes the window{aspect_note})",
+                v.recipes[ri].id
             )]), None);
         }
         let CompiledTrigger::Expire { id, on_expire_of, .. } = trig else {
@@ -512,6 +568,21 @@ pub enum CardBlocker {
     /// owner tail — completion trigger (§6.7): the home card is not
     /// obtainable, so the trigger is never arrangeable.
     CompleteHomeMissing { home: String },
+    /// owner tail — completion trigger, the window rung: no committable
+    /// verb has a committed-role slot that can lock the home card under a
+    /// completable recipe, so no window completing the binding exists.
+    CompleteWindowUnbindable { home: String },
+    /// owner tail — completion trigger, the aspect rung: the completed
+    /// recipe must declare the aspect (advance.rs matches `recipe.aspects`),
+    /// and no selectable completable recipe of any home-locking verb
+    /// declares it — the filter never passes.
+    CompleteAspectUnreachable { home: String, aspect: String },
+    /// owner tail — completion trigger / completing recipe, the draft rung:
+    /// the completion refusal is atomic (the whole scratch dies with any
+    /// refusal), and a mint collides with a name the completion draft
+    /// already holds — the locked home, the completing recipe's own mints,
+    /// or a sibling trigger's mints — so the mint never lands.
+    CompleteDraftCollision { name: String },
     /// the site's owner is not in the trigger index — defensively unreachable
     /// (mirrors `site_reason`'s "unknown guard" fallback).
     UnknownGuard,
@@ -570,6 +641,15 @@ impl CardBlocker {
             ),
             CardBlocker::CompleteHomeMissing { home } => format!(
                 "the completion trigger fires only when a window completes binding '{home}' — '{home}' is not obtainable, so the trigger never fires"
+            ),
+            CardBlocker::CompleteWindowUnbindable { home } => format!(
+                "no committable verb can lock '{home}' under a completable recipe — no window completing the binding exists, so the trigger never fires"
+            ),
+            CardBlocker::CompleteAspectUnreachable { home, aspect } => format!(
+                "the completed recipe must declare the '{aspect}' aspect, and no selectable completable recipe of any verb that can lock '{home}' declares it — the filter never passes"
+            ),
+            CardBlocker::CompleteDraftCollision { name } => format!(
+                "the completion draft already holds '{name}' (the locked home card, the completing recipe's own mints, or a sibling trigger's mint) — the body's mint refuses the draft and the whole completion is discarded"
             ),
             CardBlocker::UnknownGuard => "unknown guard".to_string(),
         }
@@ -766,13 +846,374 @@ fn expiry_support(wf: &WorldFacts, world: &CardWorld, on_expire_of: &str) -> Opt
     Some(wf.init_names.contains_key(on_expire_of))
 }
 
-/// The completion trigger's provability gate (§6.7): the body applies when
-/// a window completes binding a living card whose CURRENT name is the
-/// trigger's `home`, so the trigger is arrangeable exactly when the home
-/// card is obtainable — an initial entity, or any produced fact (the same
-/// desc-lookup shape as expiry_support).
-fn complete_home_obtainable(wf: &WorldFacts, home: &str) -> bool {
-    wf.init_names.get(home).is_some() || wf.avail.get(home).is_some_and(|facts| !facts.is_empty())
+// ---------------------------------------------------------------------------
+// the completion-trigger model (§6.7) — the Wave-3 tightening
+// ---------------------------------------------------------------------------
+
+/// The committed roles whose bindings a window locks at commit — engine
+/// exec.rs's COMMITTED_ROLES. The actors stay free (a player is never
+/// locked), so an actors-only verb can never arrange the binding.
+const COMMITTED_ROLES: [Role; 5] = [Role::Object, Role::With, Role::At, Role::About, Role::To];
+
+impl<'c> WorldFacts<'c> {
+    /// The home card's static descriptor — the expiry_support desc-lookup
+    /// shape: the initial representative, else the first avail fact. Its
+    /// presence is the old `complete_home_obtainable` verdict; its
+    /// kind/aspect body feeds the slot-binding rungs.
+    fn complete_home_desc(&self, home: &str) -> Option<Entity> {
+        self.init_names.get(home).map(|e| (*e).clone()).or_else(|| {
+            self.avail.get(home).and_then(|facts| facts.first()).map(|f| f.entity.clone())
+        })
+    }
+
+    /// Can this committed-role slot lock a card with `desc`? The slot must
+    /// accept one copy (max >= 1, query fits) and its min must be
+    /// satisfiable AROUND the home: `slot.min` distinct matching instances
+    /// must exist with the home among them (the same instance-counting as
+    /// `slot_support`'s candidate lists). A 0..1 slot accepts an optional
+    /// fill, so the player can still include the home in the clause — the
+    /// lock is arrangeable.
+    fn slot_can_lock(&self, slot: &CompiledSlot, desc: &Entity) -> bool {
+        if slot.max.is_some_and(|max| max < 1) {
+            return false;
+        }
+        if !slot.query.as_ref().is_none_or(|q| match_query(desc, q)) {
+            return false;
+        }
+        if slot.min <= 1 {
+            return true;
+        }
+        // min >= 2: the home is one of >= min DISTINCT matching instances
+        let mut pool = 0i64;
+        for facts in self.avail.values() {
+            for f in facts {
+                if slot.query.as_ref().is_none_or(|q| match_query(&f.entity, q)) {
+                    pool += if f.entity.stackable {
+                        std::cmp::min(f.count, SLOT_CANDIDATE_CAP)
+                    } else {
+                        1
+                    };
+                }
+            }
+        }
+        pool >= slot.min
+    }
+
+    /// The first committed role whose slot can lock `desc` (the support
+    /// line's witness; COMMITTED_ROLES order keeps it deterministic).
+    fn locking_role(&self, vi: usize, desc: &Entity) -> Option<Role> {
+        let (_, v) = self.content.verbs.get_index(vi)?;
+        COMMITTED_ROLES.into_iter().find(|role| {
+            v.slot_by_role.get(role.as_str()).is_some_and(|slot| self.slot_can_lock(slot, desc))
+        })
+    }
+
+    /// Whether EVERY world descriptor fitting one of the verb's committed
+    /// slots is named `home` — that slot force-locks a home-named card on
+    /// every commit, so EVERY completion of the verb fires the home's
+    /// (aspect-permitting) triggers. `desc` is the home's own descriptor; it
+    /// must fit the slot too (an unobtainable home cannot be locked).
+    fn verb_force_locks(&self, vi: usize, world: &CardWorld, home: &str, desc: &Entity) -> bool {
+        let Some((_, v)) = self.content.verbs.get_index(vi) else {
+            unreachable!("verb index {vi} came from content.verbs enumeration");
+        };
+        COMMITTED_ROLES.into_iter().any(|role| {
+            let Some(slot) = v.slot_by_role.get(role.as_str()) else {
+                return false;
+            };
+            if slot.max.is_some_and(|max| max < 1) {
+                return false;
+            }
+            if !slot.query.as_ref().is_none_or(|q| match_query(desc, q)) {
+                return false;
+            }
+            world
+                .distinct
+                .iter()
+                .filter(|d| slot.query.as_ref().is_none_or(|q| match_query(&d.e, q)))
+                .all(|d| d.e.name == home)
+        })
+    }
+
+    /// The non-stackable names an owner's live, path-open, non-fallback,
+    /// not-killed-in-list sites put on a completion draft (a stackable mint
+    /// never refuses a draft, §9.2; a draw contributes its deterministic
+    /// first served position — the analyzed world's deck cursor starts at 0,
+    /// and a refused draft never advanced it).
+    fn owner_draft_names(&self, world: &CardWorld, owner: &str) -> IndexSet<String> {
+        let mut out: IndexSet<String> = IndexSet::new();
+        for &i in &self.census.live {
+            let s = &self.census.sites[i];
+            if s.owner != owner || s.fallback || s.killed_in_list {
+                continue;
+            }
+            if path_open_first_failure(&s.path, world).is_some() {
+                continue; // roll/role-gated or statically false: not unconditional
+            }
+            if s.kind == SiteKind::Draw && s.deck.is_some() {
+                let deck = draw_deck(s);
+                if s.cap >= 1 {
+                    if let Some(c) = deck.order.first() {
+                        if !mint_stacks(self.content, &c.name, Some(c.kind.as_str())) {
+                            out.insert(c.name.clone());
+                        }
+                    }
+                }
+            } else if !mint_stacks(self.content, &s.name, s.kind_override.as_deref()) {
+                out.insert(s.name.clone());
+            }
+        }
+        out
+    }
+
+    /// The completing recipe's first-application draft, or None when the
+    /// recipe deterministically refuses its window (the trigger phase never
+    /// runs). `Some(names)` carries the non-stackable names the draft holds
+    /// when the trigger phase begins.
+    ///
+    /// The verdict has three parts:
+    /// (a) selectability — first-match (§6.4): an earlier when-less recipe
+    ///     shadows permanently, and an earlier static-true `when` always
+    ///     matches first; a static-false `when` of this recipe never matches;
+    /// (b) the always-applying outcome walk — a decided REFUSE, or a
+    ///     throwing op whose name targets cannot resolve against the world
+    ///     (an application ERROR is not a gate at the table: exec.rs's
+    ///     `table_gate_trial` defers it to the completion, where it refuses
+    ///     the window);
+    /// (c) unconditional mint collisions — a non-stackable mint (or the
+    ///     deterministic first draw) colliding with a living initial card or
+    ///     a sibling unconditional mint; and an unconditional draw whose
+    ///     deck can never durably serve (the census froze its cap to 0).
+    ///
+    /// Roll/role-gated ops sit out every part: they can fail this
+    /// application, and the window-refuse retry is existential.
+    fn recipe_draft(&self, world: &CardWorld, vi: usize, ri: usize) -> Option<IndexSet<String>> {
+        let (_, v) = self.content.verbs.get_index(vi)?;
+        let r = v.recipes.get(ri)?;
+        // (a) selectability
+        if v.recipes[..ri].iter().any(|rr| rr.when.is_none()) {
+            return None; // an earlier when-less recipe shadows permanently
+        }
+        if let Some(w) = &r.when {
+            if pred_static(w) {
+                if !eval_static_ok(w, world) {
+                    return None; // never matches
+                }
+                if v.recipes[..ri].iter().any(|rr| {
+                    rr.when.as_ref().is_some_and(|we| pred_static(we) && eval_static_ok(we, world))
+                }) {
+                    return None; // an earlier static-true when always beats it
+                }
+            }
+        }
+        // (b) the always-applying walk
+        let mut decided = false;
+        let root: Vec<Pred> = Vec::new();
+        let _ = walk_outcomes(
+            &r.out,
+            &root,
+            &mut (),
+            &mut |_st, o, path| {
+                if !path.iter().all(|p| pred_static(p) && eval_static_ok(p, world)) {
+                    return Ok(()); // can fail this application — no decision
+                }
+                if o.op == "REFUSE" {
+                    decided = true;
+                    return Ok(());
+                }
+                if op_throws(o) {
+                    // MOVE/RELATE/UNRELATE/REPLACE target the FIRST arg;
+                    // DRAW's INTO clause targets the second. A name that
+                    // cannot resolve at completion errors there and refuses
+                    // the window; role targets ride the window's bindings.
+                    let skips: usize = if o.op == "DRAW" { 1 } else { 0 };
+                    for a in o.args.iter().skip(skips) {
+                        let ok = match a {
+                            Arg::Ref { r#ref: Ref::Name { name, .. } } => {
+                                world.by_name.contains_key(name)
+                            }
+                            Arg::Role { .. } => true,
+                            Arg::Into { r#ref } => match r#ref {
+                                IntoTarget::Role { .. } => true,
+                                IntoTarget::Ref(Ref::Name { name, .. }) => {
+                                    world.by_name.contains_key(name)
+                                }
+                                IntoTarget::Ref(_) => false,
+                            },
+                            _ => true,
+                        };
+                        if !ok {
+                            decided = true;
+                        }
+                    }
+                }
+                Ok(())
+            },
+            &mut |_st, arm, path| {
+                let mut p = path.clone();
+                p.push(arm.when.clone());
+                p
+            },
+            &mut |_st, path| path.clone(),
+        );
+        if decided {
+            return None;
+        }
+        // (c) the first-application draft from the census sites
+        let owner = format!("recipe {} of {}", r.id, v.name);
+        let mut draft: IndexSet<String> = IndexSet::new();
+        for &i in &self.census.live {
+            let s = &self.census.sites[i];
+            if s.owner != owner || s.fallback || s.killed_in_list {
+                continue;
+            }
+            if path_open_first_failure(&s.path, world).is_some() {
+                continue; // roll/role-gated or statically false: not unconditional
+            }
+            // the site's draft mint: a draw contributes its deterministic
+            // first served position; anything else mints its own name
+            let (stacks, mint) = if s.kind == SiteKind::Draw && s.deck.is_some() {
+                let deck = draw_deck(s);
+                if s.cap < 1 {
+                    return None; // the draw throws on every application
+                }
+                let c = deck.order.first()?;
+                (mint_stacks(self.content, &c.name, Some(c.kind.as_str())), c.name.clone())
+            } else {
+                (mint_stacks(self.content, &s.name, s.kind_override.as_deref()), s.name.clone())
+            };
+            if !stacks {
+                // a non-stackable draft name colliding with a sibling mint
+                // or a living initial card refuses the first application
+                if draft.contains(&mint) || self.init_names.get(&mint).is_some_and(|e| !e.stackable)
+                {
+                    return None;
+                }
+                draft.insert(mint);
+            }
+        }
+        Some(draft)
+    }
+
+    /// ① the window witnesses: every (verb, recipe) pair with the verb
+    /// committable and able to lock a card with `desc` in a committed-role
+    /// slot, and the recipe completable (a first application reaching the
+    /// trigger phase). NO duration condition applies: the engine registers
+    /// and completes duration-0 windows exactly like duration>0 ones
+    /// (`register_windows` filters nothing; the next advance closes them).
+    fn complete_window_pairs(&self, world: &CardWorld, desc: &Entity) -> Vec<(usize, usize)> {
+        let mut out = Vec::new();
+        for (&vi, _) in &self.committable {
+            if self.locking_role(vi, desc).is_none() {
+                continue;
+            }
+            let Some((_, v)) = self.content.verbs.get_index(vi) else {
+                unreachable!("verb index {vi} came from content.verbs enumeration");
+            };
+            for ri in 0..v.recipes.len() {
+                if self.recipe_draft(world, vi, ri).is_some() {
+                    out.push((vi, ri));
+                }
+            }
+        }
+        out
+    }
+
+    /// ③ the draft rung for the trigger site: the body's unconditional
+    /// non-stackable mints against the draft occupants — the locked home
+    /// itself, the completing recipe's first-application mints, and the
+    /// same-home sibling triggers' mints. Siblings fire in the same
+    /// completion phase (one refusal discards the whole scratch, so both
+    /// must succeed regardless of declaration order); a sibling is
+    /// aspect-compatible when its aspect is absent or the pair's recipe
+    /// declares it.
+    fn complete_draft_collision(
+        &self,
+        world: &CardWorld,
+        pairs: &[(usize, usize)],
+        home: &str,
+        home_stackable: bool,
+        site: &RawSite<'_>,
+    ) -> Option<String> {
+        let self_mints = self.owner_draft_names(world, &site.owner);
+        // the trigger fires BECAUSE a living locked card is named `home` —
+        // minting `home` refuses every firing
+        if !home_stackable && self_mints.contains(home) {
+            return Some(home.to_string());
+        }
+        for &(vi, ri) in pairs {
+            let (_, v) = self.content.verbs.get_index(vi)?;
+            let r = &v.recipes[ri];
+            let mut forbidden: IndexSet<String> = IndexSet::new();
+            if !home_stackable {
+                forbidden.insert(home.to_string());
+            }
+            if let Some(draft) = self.recipe_draft(world, vi, ri) {
+                forbidden.extend(draft);
+            }
+            for t in &self.content.triggers {
+                let CompiledTrigger::Complete { home: h2, aspect: a2, .. } = t else {
+                    continue;
+                };
+                if h2 != home || trigger_owner(t.id()) == site.owner {
+                    continue;
+                }
+                if a2.as_ref().is_none_or(|a| r.aspects.contains(a)) {
+                    forbidden.extend(self.owner_draft_names(world, &trigger_owner(t.id())));
+                }
+            }
+            if let Some(n) = self_mints.iter().find(|n| forbidden.contains(*n)) {
+                return Some(n.clone());
+            }
+        }
+        None
+    }
+
+    /// The completing recipe's own contamination rung: a complete trigger
+    /// whose home every commit of the verb force-locks fires on EVERY
+    /// completion of this recipe (the aspect gate permitting); when its body
+    /// mints a name the draft already holds, the window refuses and the
+    /// recipe's outcomes die with the scratch — the recipe's mints never
+    /// land (fuzz seed 162: travel_to.r0's P3 against the t1 body's own
+    /// P3 mint, the home force-locked by the verb's only text-fitting slot).
+    fn completion_contaminated(&self, world: &CardWorld, vi: usize, ri: usize) -> Option<String> {
+        if !self.content.triggers.iter().any(|t| matches!(t, CompiledTrigger::Complete { .. })) {
+            return None;
+        }
+        let (_, v) = self.content.verbs.get_index(vi)?;
+        let r = &v.recipes[ri];
+        // the force-locked homes first (the cheap scan): nothing locked
+        // means the player can complete without firing any trigger
+        let mut locked: Vec<(String, String, Entity)> = Vec::new();
+        for t in &self.content.triggers {
+            let CompiledTrigger::Complete { id, home, aspect, .. } = t else {
+                continue;
+            };
+            if aspect.as_ref().is_some_and(|a| !r.aspects.contains(a)) {
+                continue; // the gate never passes on this recipe's completions
+            }
+            let Some(desc) = self.complete_home_desc(home) else {
+                continue; // an unobtainable home cannot be locked
+            };
+            if self.verb_force_locks(vi, world, home, &desc) {
+                locked.push((home.clone(), trigger_owner(id), desc));
+            }
+        }
+        if locked.is_empty() {
+            return None;
+        }
+        let mut draft = self.recipe_draft(world, vi, ri)?;
+        for (home, owner, desc) in locked {
+            if !desc.stackable {
+                draft.insert(home);
+            }
+            let body = self.owner_draft_names(world, &owner);
+            if let Some(n) = body.iter().find(|n| draft.contains(*n)) {
+                return Some(n.clone());
+            }
+        }
+        None
+    }
 }
 
 /// The display lines of a verb's structured

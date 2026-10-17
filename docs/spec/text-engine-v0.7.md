@@ -47,6 +47,8 @@ projection of that data, never the source of truth.
 
 25. **v0.7.6** — the reach fuzz generator v2 and the analyzer's diagnostic faces (§13.1/§13.3): the generator's scenario space now covers the full trigger face (slot, expiry and completion triggers with their §6.7 aspect gates), RUN candidates (a recipe body may RUN only the same verb's strictly earlier recipes; a completion body draws from the global duration>0 table) and §6.4 recipe `aspects` — its draw order re-banded and declared VERSIONED, not frozen, so recorded campaign runs reproduce only against the generator version that produced them, and the seed suite pins determinism (same seed ⇒ the same outcome, failures printed) instead of soundness, whose open complete-arm over-generosity (seed 41 among seeds 1–50) stays the campaign's ledger for the coming tightening; and the demotion guards converged on one `site_ladder` pass whose failing rungs yield structured `CardBlocker`s (`site_proven` its `.ok()` face), surfaced as `reach --why` (the per-card blocker table) and `--verb "<NAME>"` (the settled-facts verb report), world notes converging on the named card's report, the usage first line gaining `[--why] [--verb "<NAME>"]` as the sanctioned argv byte change; no grammar/log/script change.
 
+26. **v0.7.7** — the reach Complete arm tightened from "home obtainable ⇒ the window is arrangeable" to a constructible completion (§13.1): the window rung (a committable verb's committed-role slot binds the home — no duration condition, duration-0 windows complete like any other — under a completable recipe: selectable under first-match, no decided REFUSE, no deterministic completion-time error, no unconditional mint collision), the aspect rung (the binder recipe must declare the trigger's aspect), and the draft rung (the completion refusal is atomic, so the trigger body's mints must miss the locked home, the completing recipe's mints and same-home sibling mints — and a recipe whose verb force-locks such a home demotes symmetrically); three new `CardBlocker` rungs surface in `--why`. The differential campaign's 22 failures over 14 seeds (the generator-v2 ledger) resolve to zero with none opening the other direction; no grammar/log/script change; complete-mint support lines re-render with the named witness (a sanctioned default-report byte change).
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -1900,11 +1902,31 @@ files allowed to):
   schedule-dependent and a worklist or event-driven rewrite CAN change
   the output — such rewrites are forbidden. Slot support models roles as
   distinct `name#copy` instances (first-fit over availability order);
-  expiry-arming recurses with cycle guards. Completion triggers prove the
-  same generous way: the body is arrangeable exactly when the home card is
-  obtainable (initial or produced — a window binding it can always be
-  begun), the aspect form's completed-recipe filter lands in the support
-  line, not the verdict, and no freeze condition applies (a completion
+  expiry-arming recurses with cycle guards. Completion triggers prove only
+  when a firing completion is CONSTRUCTIBLE, in three rungs appended at the
+  ladder tail. The window rung: some committable verb's committed-role slot
+  (the committed roles lock; actors never do — no duration condition, the
+  engine registering and completing duration-0 windows like any other) must
+  bind the home descriptor (max ≥ 1, query fit, min satisfiable around the
+  home) under a COMPLETABLE recipe — selectable under first-match (no
+  earlier when-less recipe, no earlier static-true `when` always beating
+  it), with no decided REFUSE, no deterministic completion-time error on
+  the always-applying path (an application ERROR defers from the table to
+  the completion and refuses the window; a census-frozen draw cap of 0
+  never durably serves), and no unconditional non-stackable mint colliding
+  with a living initial card or a sibling mint (roll/role-gated ops sit out
+  every part — the window-refuse retry is existential). The aspect rung:
+  the aspect form requires such a binder recipe to DECLARE the aspect
+  (§6.7 matches the committed recipe's `aspects`). The draft rung: the
+  completion refusal is atomic — the whole scratch dies with any refusal —
+  so the body's unconditional non-stackable mints must miss the draft
+  occupants (the locked home itself, the completing recipe's
+  first-application mints, and same-home aspect-compatible sibling
+  triggers' mints); symmetrically, a completing recipe whose verb
+  force-locks such a trigger's home (a committed slot whose every world fit
+  is named the home) demotes when the body mints a draft name — its own
+  mints die with the scratch. The first surviving (verb, recipe) witness
+  renders the support line; no freeze condition applies (a completion
   firing is scheduled by the window that binds the home, not by the slot
   clock). Every demotion guard yields its structured verdict as it fires:
   `site_ladder` is ONE pass over the rungs in evaluation order, each

@@ -50,6 +50,7 @@ projection of that data, never the source of truth.
 26. **v0.7.7** — the reach Complete arm tightened from "home obtainable ⇒ the window is arrangeable" to a constructible completion (§13.1): the window rung (a committable verb's committed-role slot binds the home — no duration condition, duration-0 windows complete like any other — under a completable recipe: selectable under first-match, no decided REFUSE, no deterministic completion-time error, no unconditional mint collision), the aspect rung (the binder recipe must declare the trigger's aspect), and the draft rung (the completion refusal is atomic, and the rung is existential over the (verb, recipe) witnesses — one clean pair's completion draft lets the body's mints land, the occupancy being that pair's own, only every pair dirty demotes — and a recipe whose verb force-locks such a home by a min≥1 committed slot demotes symmetrically); three new `CardBlocker` rungs surface in `--why`. The differential campaign's 22 failures over 14 seeds (the generator-v2 ledger) resolve to zero with none opening the other direction; no grammar/log/script change; complete-mint support lines re-render with the named witness (a sanctioned default-report byte change).
 27. **v0.7.8** — the analyzer's machine-readable exits (§13.1): a seventh seam module, `export`, landing `--json` and `--graph` with ZERO new analysis over the settled facts and the usage line byte-frozen (documented in the bin module's docs and §13.1 — no sanctioned argv byte change this wave). `--json` is the per-card report envelope (`file`/`demand`/`usable` around `report`; the `serde::Serialize` derives ride the paths.rs report types — derive only, no logic — keys in declaration order, the report enums as their `as_str` strings, pretty and deterministic), `--why --json` merges the blocker table into the envelope as a `why` array of the very strings `render_why` prints (without the flag the key is absent), and `--all --json` is one array in the walk order; `--world`/`--verb`/`--graph` ignore the flag. `--graph` renders the whole-content mint dependency graph as Graphviz DOT — the universe ∪ initial card names (kind-annotated) plus owner boxes; every proven site contributes owner → mints through the analyzer's OWN bare-name serving predicate: a blinded derive-mint's site contributes no edge at all (the same blind filter `record_mint_source` applies to the requires side, whose filler edges therefore never route through a source that never mints), and a draw serves only what `facts.deck_cap` — the freeze model's value — reaches, judged per name by `served_by_cap` (the raw site cap never read; seed 81401's frozen-cap shape pinned with the analyzer's own verdicts, both directions); mints → requires carry the slot fillers and destroyed-by rides dashed; nodes sort by id, edges by (src, dst, label), under `cmp_utf16` with duplicates collapsed — two runs byte-identical. Face priority world > graph > verb > all > card/demand. 808 tests green (+13); the eight text faces byte-identical throughout; no grammar/log/script change.
 28. **v0.7.9** — the reach analyzer's two bounded-time faces (§13.1): `--by <minute>` keys every time-keyed judgment on one horizon (`min(freeze_dist, M − now + 1)` — `INFINITY` unbounded, the +1 turning "fired by minute M" into the freeze model's strict `first_cross < horizon`; every rule reads `WorldFacts::horizon`, never the raw bound) — slot-trigger provenance beyond the window demotes to candidate (`TriggerBeyondBy`), duration>0 recipes demote at any finite horizon (`BeyondByDuration`, the unfrozen spelling of the seed-296 rule), trigger-held deck caps and the expiry-arming recursion follow the horizon, and expiry/complete triggers are untouched by M directly (arranged, not timed; the head gains `  [by minute N]`); and `--from-state <log.jsonl>` rebuilds the analysis initial world by the engine's own fold (`reach::midgame::replay_state` = `load_log` + `fold`, §7 — a third engine-importing reach file beside fuzz/scale, zero session/engine edits), modeling the fired set (spent once triggers never fire again — `AlreadyFired`; their past mints ride the replayed entities) and non-reset deck cursors (draws serve `[cursor, cursor + cap)` through `deck_serves_cap`, the graph face's predicate too — one serving predicate, one home — and `add_product`'s same window; identity at cursor 0), leaving open windows/executed-map/rng read-but-unmodeled under a name-free fidelity note on every replayed report, and refusing ended logs. The bound and replay mark live on the Analyzer host; the default face is byte-identical throughout (the usage line stays frozen, the export precedent). 816 tests green (+8: tests/reach/reach_timing.rs — the byte-pinned two-state slot trigger, freeze×M tightening, duration×by, the engine-run→log→fold replay pin, and the graph-vs-card serving pin); the eight text faces byte-identical throughout; no grammar/log/script change.
+29. **v0.7.10** — the analyzer's cost/count face (§13.1): an eighth seam module, `cost`, landing `--cost` with ZERO new analysis over the settled facts and the usage line byte-frozen (the export precedent). The per-card `— cost` section (card mode and `--all` alike, appended after `--why`) answers three questions over the proven provenance DAG (`facts.proven_sources` — the `mint_sources` candidates under the chain's own serving predicate, the deck-cap test folded in): minimum verb applications (recipe hops 1, trigger hops 0, initial 0 — memoized, depth-backstopped, tie-broken in proof order, the cheapest witness chain on one line) with the lower-bound honesty stated on every costed report; minimum clock minutes (recipe hops = the verb's duration, slot hops = `first_cross`, arranged expiry/complete hops 0; a frozen world's note caps the clock); and the copies bound from `avail` (`MANY` → `unbounded`, a count past the flatten weight cap → `N+ (world cap)`). Expiry/complete hops cost 0 with the arranged note (fillers recur); a non-proven target renders the one-line exclusion face. Composes with `--usable`/`--why`/`--all`/`--by`/`--from-state`; kept out of `--json` and ignored under `--demand` (documented). 825 tests green (+9: tests/reach/reach_cost.rs — the equality-pinned chain fixture, the 0-applications trigger faces, the deck-multiplicity/defaultcard copies, the replay cursor pin, the `--by` bound, and the CLI composition faces); the eight text faces byte-identical throughout; no grammar/log/script change.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -1878,11 +1879,11 @@ format, or play semantics.
 
 `src/reach/` answers "can the player obtain card X?" STATICALLY, over
 (compiled content, initial state) — design-time analysis: no engine, no
-mutation, deterministic. Seven seam modules (the analyzer proper — none of
-them imports the engine; the `fuzz` / `scale` campaign modules that share
-the directory are §13.3's differential layer, `midgame` composes the
-engine's own replay entry for the `--from-state` face (§7), and they are
-the only reach files allowed to):
+mutation, deterministic. Eight seam modules (the analyzer proper — none
+of them imports the engine; the `fuzz` / `scale` campaign modules that
+share the directory are §13.3's differential layer, `midgame` composes
+the engine's own replay entry for the `--from-state` face (§7), and they
+are the only reach files allowed to):
 
 - **census** — every SPAWN/REPLACE/DRAW site over recipes, all three
   trigger kinds, decks, prototypes and initial entities. IF-branch
@@ -2023,6 +2024,39 @@ the only reach files allowed to):
   node id, edge lines by (src, dst, label), both under `cmp_utf16` with
   exact duplicates collapsed — two runs over the same (compiled content,
   initial state) render byte-identical text.
+- **cost** — the `--cost` face: the cost/count reading of the settled
+  facts, ZERO new analysis (an eighth seam module beside `export`).
+  Three answers over the PROVEN provenance DAG (`facts.proven_sources`
+  — the `mint_sources` candidates under the chain's OWN serving
+  predicate, the deck-cap test folded in — with the `fillers` split
+  `path_for` renders): **minimum verb applications** — the memoized
+  shortest path where a recipe-owned proven site costs 1 (one
+  application, its fillers in hand), a trigger-owned proven site costs
+  0 (slot triggers are the clock's; expiry/complete triggers are
+  ARRANGED — costed 0 with a note, their required fillers still
+  recurring), initial entities cost 0, depth-backstopped like
+  `path_for` (12), tie-break stable (the first proven source in proof
+  order — the chain's own first-fit), reported with the cheapest
+  witness chain on one line; **minimum clock minutes** — the same DAG
+  under the clock weights (recipe hops = the verb's duration, slot
+  hops = `first_cross`, arranged hops 0); **copies bound** — the max
+  simultaneous copies the settled world supports from `avail`'s
+  counts (`MANY` → `unbounded`; a count past `FLATTEN_WEIGHT_CAP` →
+  `{sum}+ (world cap)` — `cards_of`'s bookkeeping cannot count past
+  the cap, so the figure is a floor). The number is a LOWER-BOUND
+  planning estimate and every costed report says so: it assumes each
+  needed recipe applies once with its fillers in hand, and gate
+  timing / the anti-monotone count gates are honored only through
+  provenness (a site they kill is never a proven source). A frozen
+  world's note says the freeze boundary caps the clock. The face
+  composes with `--usable`/`--why`/`--all` and the bounded-time faces
+  (the `--by` window bounds the DAG — only sites proven inside it
+  participate, and a note says so; `--from-state` anchors for free —
+  same facts, the clock re-anchoring with the replayed minute and the
+  deck windows shrinking with the cursor); it stays out of `--json`
+  and is ignored under `--demand` (the demand match's provenance is
+  not costed) — documented, not rejected; the usage line stays
+  byte-frozen.
 
 The two bounded-time faces key the SAME settled facts on one horizon
 (`WorldFacts::horizon`) instead of adding analysis. `--by <minute>`
@@ -2072,7 +2106,15 @@ three usage pins updated in the same change. `--why` appends one
 every live unproven site serving the card, with its owner and the
 ladder's FIRST blocker — without the flag the output is byte-identical,
 and a card whose every serving site is proven renders the one-line empty
-face. `--verb <NAME>` renders one verb's report (duration, slots,
+face. `--cost` appends one `— cost` section to each card report (card
+mode and `--all` alike, after `--why`): the three answers — minimum
+applications with its witness chain, minimum minutes, the copies bound —
+with the lower-bound honesty stated on every costed report, and a
+target with no proven DAG rendering the one-line exclusion face. It
+composes with `--usable`, `--why`, `--all` and the bounded-time faces,
+stays out of `--json` and is ignored under `--demand` (documented, not
+rejected); it opens no usage gate and the usage line stays byte-frozen.
+`--verb <NAME>` renders one verb's report (duration, slots,
 committability verdict with its proof lines, per-recipe mint-site
 verdicts — the settled facts re-rendered, zero new analysis); it wins
 over `--all`, an explicit card and a demand (the `--world` precedent —

@@ -9,9 +9,12 @@
 //! world-static facts re-rendered, zero new analysis), `export.rs` (the
 //! machine-readable exits: `--json` — the per-card report envelope, and
 //! `--graph` — the whole-content mint dependency graph as Graphviz DOT;
-//! both zero new analysis, both deterministic), `midgame.rs` (the
-//! `--from-state` replay entry — the engine's own fold over a JSONL log),
-//! plus the two campaign
+//! both zero new analysis, both deterministic), `cost.rs` (the `--cost`
+//! face — the cost/count reading of the settled facts: minimum verb
+//! applications, minimum clock minutes, the copies bound; zero new
+//! analysis, a lower-bound planning estimate stated as such), `midgame.rs`
+//! (the `--from-state` replay entry — the engine's own fold over a JSONL
+//! log), plus the two campaign
 //! engines the bins and the test
 //! suite share: `fuzz.rs` (seeded differential campaigns) and `scale.rs`
 //! (the CS-scale synthetic world; spec §13.3).
@@ -28,6 +31,7 @@
 //! an IndexMap/IndexSet.
 
 pub mod census;
+pub mod cost;
 pub mod export;
 pub mod fixpoint;
 pub mod fuzz;

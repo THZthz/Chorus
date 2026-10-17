@@ -79,6 +79,23 @@
 //!   - `--why` appends one `— why` section per card report (card mode and
 //!     --all alike): every live unproven serving site with its owner and the
 //!     ladder's first blocker. Without it the output is byte-identical.
+//!   - `--cost` appends one `— cost` section per card report (card mode and
+//!     --all alike, after `--why`): the cost/count reading of the settled
+//!     facts — minimum verb applications over the proven provenance DAG
+//!     (recipe hops 1, trigger hops 0, initial 0 — a LOWER-BOUND planning
+//!     estimate, the cheapest witness chain on one line), the minimum clock
+//!     minutes (recipe hops = the verb's window, slot-trigger hops = the
+//!     first crossing), and the copies bound from `avail` (`MANY` →
+//!     `unbounded`, a count past the flatten weight cap → `N+ (world cap)`).
+//!     A target with no proven DAG renders the one-line exclusion face (the
+//!     candidate sources are named by the report above). Composes with
+//!     --usable / --why / --all and the bounded-time faces (the --by window
+//!     and the --from-state replay bound the DAG through the same settled
+//!     facts; a --by note says the window bounds it). Kept OUT of --json
+//!     (the envelope carries no cost data), and IGNORED under --demand (the
+//!     demand match's provenance is not costed) — documented, not rejected.
+//!     --cost does not open the usage gate; the usage line stays byte-frozen
+//!     (the export precedent).
 //!   - `--verb <NAME>` renders the verb report; it wins over --all, an
 //!     explicit card and a demand (the --world precedent — one dedicated,
 //!     target-free face), and `--why` does not apply to it. A `--verb` with
@@ -92,6 +109,7 @@ use std::process::ExitCode;
 use chorus::content::script::{compile_script, CompiledScript};
 use chorus::core::dict::core_dictionary;
 use chorus::core::text::cmp_utf16;
+use chorus::reach::cost::{cost_report, render_cost};
 use chorus::reach::export::{card_export, graph_dot, render_json, render_json_array};
 use chorus::reach::fixpoint::SiteBlocker;
 use chorus::reach::midgame::replay_state;
@@ -104,6 +122,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usable = args.iter().any(|a| a == "--usable");
     let why = args.iter().any(|a| a == "--why");
+    let cost = args.iter().any(|a| a == "--cost");
     // a present --demand with no next argv slot is an ARGV ERROR (Q15):
     // it used to read argv[idx+1] = undefined and silently vanish into
     // name mode. An EMPTY string value is falsy at every consumer —
@@ -192,7 +211,7 @@ fn main() -> ExitCode {
     let mut json = false;
     let mut i = 0usize;
     while i < args.len() {
-        if args[i] == "--usable" || args[i] == "--why" {
+        if args[i] == "--usable" || args[i] == "--why" || args[i] == "--cost" {
             i += 1;
             continue;
         }
@@ -442,6 +461,11 @@ fn main() -> ExitCode {
                 // this face is byte-identical to the frozen output
                 render_why(&mut buf, file, name, &analyzer.card_blockers(name));
             }
+            if cost && demand.is_none() {
+                // the --cost section rides AFTER --why; under --demand it is
+                // documented-ignored (the demand match is not costed)
+                render_cost(&mut buf, file, name, &cost_report(&analyzer, name));
+            }
             if out.write_all(buf.as_bytes()).is_err() {
                 return ExitCode::from(1);
             }
@@ -478,6 +502,11 @@ fn main() -> ExitCode {
         render_report_by(&mut buf, file, card, demand.as_deref(), usable, by, &r);
         if why {
             render_why(&mut buf, file, card, &analyzer.card_blockers(card));
+        }
+        if cost && demand.is_none() {
+            // the --cost section rides AFTER --why; under --demand it is
+            // documented-ignored (the demand match is not costed)
+            render_cost(&mut buf, file, card, &cost_report(&analyzer, card));
         }
         if out.write_all(buf.as_bytes()).is_err() {
             return ExitCode::from(1);

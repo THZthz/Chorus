@@ -130,6 +130,60 @@ fn an_op_plays_from_a_slot_trigger_and_an_on_complete_body() {
 }
 
 #[test]
+fn an_op_plays_from_an_on_expire_trigger() {
+    // the third trigger kind rides the same compile_trigger expansion walk
+    // as the slot and completion kinds above — the pin is coverage, not a
+    // new mechanism: an authored `on expire of NAME` clause calls an op and
+    // the crossing fires the body, expanded
+    let script = r#"
+script: The Expire Op Proof
+player: ROWAN
+start: 0:0
+
+entities:
+  HOUSE is place
+  ROWAN is character at HOUSE
+  THE_ICE is item at HOUSE
+
+ops:
+  MELT -> DESTROY THE_ICE, NARRATE "the ice melts away."
+
+triggers:
+  melt_ice on expire of THE_ICE -> MELT()
+
+verbs:
+  PRIME:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      default -> SET(THE_ICE, expires, 30m)
+  WATCH:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      default -> NARRATE "the watch passes."
+"#;
+    let mut game = Game::from_script(script, core_dictionary()).unwrap();
+    // prime (0:00→1:00) SETs expires 30m from the completion's now — 1:30,
+    // beyond the pass that turn already walked. watch (1:00→2:00) crosses
+    // 1:30: the authored trigger replaces the built-in destroy with the
+    // op's body
+    auto_settle_line(&mut game, "prime").unwrap();
+    assert!(game.state.by_name.contains_key("THE_ICE"), "no crossing yet");
+    auto_settle_line(&mut game, "watch").unwrap();
+    let event = game
+        .log
+        .records
+        .iter()
+        .find(|r| r.trigger.as_deref() == Some("melt_ice"))
+        .expect("the expiry crossing fired the authored trigger");
+    let ops: Vec<_> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
+    assert_eq!(ops, ["DESTROY", "NARRATE"], "the op body, expanded: {:?}", event.outcomes);
+    assert!(!game.state.by_name.contains_key("THE_ICE"), "the op's DESTROY applied");
+    assert!(game.journal().join("\n").contains("the ice melts away."));
+}
+
+#[test]
 fn ops_compose_with_ops_and_functions() {
     let mut game = Game::from_script(OP_SCRIPT, core_dictionary()).unwrap();
     // SIMMER calls CHAIN, which calls MAYBE_BREAK (an IF inside an op body)
@@ -153,6 +207,46 @@ fn ops_compose_with_ops_and_functions() {
         t2.lines
     );
     assert!(t2.lines.iter().any(|l| l.contains("bump.")), "{:?}", t2.lines);
+}
+
+#[test]
+fn ops_resolve_forward_references_regardless_of_section_order() {
+    // ops: and functions: declare ONE flat namespace and the combined table
+    // builds names first, bodies second (functions.rs build_call_tables), so
+    // a body's references resolve regardless of section order: the ops:
+    // section here comes FIRST and calls into a later functions: section,
+    // and LOUD calls LOUDER — an op declared after its caller
+    let script = r#"
+script: The Forward Proof
+player: ROWAN
+start: 0:0
+
+entities:
+  HOUSE is place
+  ROWAN is character at HOUSE
+  THE_COOK is character at HOUSE
+
+ops:
+  LOUD(who) -> whisper(who), LOUDER(who)
+  LOUDER(who) -> NARRATE "{who} boils over."
+
+functions:
+  whisper who -> NARRATE "{who} mutters."
+
+verbs:
+  PROD:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      default -> LOUD(THE_COOK)
+"#;
+    let mut game = Game::from_script(script, core_dictionary()).unwrap();
+    let t = auto_settle_line(&mut game, "prod").unwrap();
+    assert_eq!(t.kind, TurnKind::Action, "{:?}", t.lines);
+    // both forward references expanded: the later-declared function and the
+    // later-declared op spliced in call order
+    assert!(t.lines.iter().any(|l| l.contains("THE_COOK mutters.")), "{:?}", t.lines);
+    assert!(t.lines.iter().any(|l| l.contains("THE_COOK boils over.")), "{:?}", t.lines);
 }
 
 #[test]
@@ -401,6 +495,45 @@ fn ending_and_run_checks_see_through_op_bodies() {
 }
 
 #[test]
+fn the_deck_check_sees_through_op_bodies() {
+    let dict = core_dictionary();
+    // DRAW's deck membership (§4.4): an undeclared deck id inside a body is
+    // the call site's own load error — the recipe face ...
+    assert_err_msg(
+        compile_script(
+            "ops:\n  DEAL -> DRAW NOWHERE\nverbs:\n  TOUCH:\n    actors: 1 kind:character\n    duration: 0m\n    recipes:\n      default -> DEAL()\n",
+            &dict,
+        ),
+        r"recipe touch\.default: DRAW 'NOWHERE' is not a declared deck \(decks:\)",
+    );
+    // ... and the trigger face — the same post-expansion walk over both
+    // homes (named-ref membership checks run on the expanded lists)
+    assert_err_msg(
+        compile_script(
+            "triggers:\n  dusk at halfhour 1 -> DEAL()\nops:\n  DEAL -> DRAW NOWHERE\n",
+            &dict,
+        ),
+        r"trigger dusk: DRAW 'NOWHERE' is not a declared deck \(decks:\)",
+    );
+}
+
+#[test]
+fn the_trigger_roll_lint_sees_through_op_bodies() {
+    let dict = core_dictionary();
+    // the §4.4 role-free ROLL rule for event triggers: the expanded list is
+    // walked, so a slot trigger reaches a role-dependent ROLL through an op
+    // body exactly as if authored at the trigger (the direct form is pinned
+    // in tests/dice/dice.rs)
+    assert_err_msg(
+        compile_script(
+            "ops:\n  GAMBLE -> ROLL(count(actors), 6)\ntriggers:\n  dusk at halfhour 1 -> GAMBLE()\n",
+            &dict,
+        ),
+        r"trigger dusk: ROLL argument count\(actors\) reads a step role — trigger bindings are empty, it would always be 0; use count\(<query>\) \(e\.g\. count\(name:actors\)\)",
+    );
+}
+
+#[test]
 fn an_unknown_call_lists_declared_ops_in_the_vocabulary() {
     let dict = core_dictionary();
     assert_err_msg(
@@ -458,6 +591,61 @@ verbs:
     assert!(!t.lines.iter().any(|l| l.contains("glows")), "{:?}", t.lines);
     let t2 = auto_settle_line(&mut game, "glow").unwrap();
     assert!(t2.lines.iter().any(|l| l.contains("ROWAN glows.")), "{:?}", t2.lines);
+}
+
+#[test]
+fn a_zero_arg_op_referenced_bare_is_spawn_sugar_and_fails_like_spawn() {
+    // the closing pin of the bare-sugar rule, for a ZERO-arg op: bare
+    // `BUMP` is never a call — it is SPAWN sugar even with the op declared,
+    // and with no entity or prototype named BUMP the sugar fails the way
+    // any SPAWN of an unknown name does: the load is clean (mint names
+    // resolve at runtime, §4.4) and the step refuses loudly at play. Only
+    // `BUMP()` is the call.
+    let script = r#"
+script: The Bare Zero Proof
+player: ROWAN
+start: 0:0
+
+entities:
+  HOUSE is place
+  ROWAN is character at HOUSE
+
+ops:
+  BUMP -> NARRATE "bump."
+
+verbs:
+  KNOCK:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      default -> BUMP
+  THUMP:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      default -> BUMP()
+"#;
+    let mut game = Game::from_script(script, core_dictionary()).unwrap();
+    // the bare face: SPAWN sugar of an undeclared name — the load is clean
+    // and the sugar fails loudly at play, the SPAWN-shaped way: the window
+    // refuses (§6.5's attempt-logged face), the op never ran
+    let t = auto_settle_line(&mut game, "knock").unwrap();
+    assert_eq!(t.kind, TurnKind::Action, "{:?}", t.lines);
+    assert!(
+        t.lines.iter().any(|l| l.contains("SPAWN BUMP: no kind (prototype or kind:NAME required)")),
+        "{:?}",
+        t.lines
+    );
+    assert!(!t.lines.iter().any(|l| l.contains("bump.")), "{:?}", t.lines);
+    assert!(
+        game.log.records.iter().all(|r| r.outcomes.iter().all(|o| o.op != "SPAWN")),
+        "the sugar's spawn never landed: {:?}",
+        game.log.records
+    );
+    // the paren'd face is the call
+    let t2 = auto_settle_line(&mut game, "thump").unwrap();
+    assert_eq!(t2.kind, TurnKind::Action, "{:?}", t2.lines);
+    assert!(t2.lines.iter().any(|l| l.contains("bump.")), "{:?}", t2.lines);
 }
 
 #[test]

@@ -31,7 +31,7 @@ all pinned by the acceptance suite):
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
 - `src/error.rs` / `src/lcg.rs` — the single error channel; the deterministic campaign-side RNG
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
-- `tests/` — 815 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
+- `tests/` — 820 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   the acceptance path wins in seven actions with a `wait` after each — the
@@ -173,7 +173,7 @@ verbs:
 ## Run
 
 ```sh
-cargo test                # 815 acceptance tests
+cargo test                # 820 acceptance tests
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```

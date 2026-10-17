@@ -1790,7 +1790,10 @@ Rules:
   arity is a load error naming the op, the expected count, and the actual
   count — nested sites included, the wrapping body's name prefixed); this
   op-grade check is deliberately NOT retro-fitted onto functions. An op
-  body may call other ops and functions alike; a FUNCTION body may never
+  body may call other ops and functions alike; `ops:` and `functions:`
+  declare one flat namespace that builds names first and bodies second, so a
+  body's references resolve regardless of section order — a function or op
+  declared after its caller is legal. A FUNCTION body may never
   call an op — a specific load error ("functions expand at load before ops
   exist"), not a generic unknown-call. Recursion (op→op) is a load error
   naming the cycle, over the same colored DFS the functions use; the depth

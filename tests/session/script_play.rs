@@ -499,8 +499,9 @@ fn direct_compile_content_with_entities_resolves_deck_entries_and_stackable() {
 }
 
 /// The frozen guard texts: the cycle/depth/undeclared
-/// guards fire through the REAL compile path (content.rs build_fn_table),
-/// with the exact texts pre-frozen by tests/fn_expand_direct.rs.
+/// guards fire through the REAL compile path (functions.rs build_call_tables,
+/// the combined fn+op table build), with the exact texts pre-frozen by
+/// tests/fn_expand_direct.rs.
 #[test]
 fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() -> Result<()> {
     let dict = core_dictionary();

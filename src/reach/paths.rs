@@ -43,7 +43,12 @@ pub struct CardOptions {
 
 /// The verdict tier, surfaced as the report strings
 /// `obtainable` / `unobtainable` / `unproven` / `unusable`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The `Serialize` derive (the `--json` face) renames each variant to its
+/// [`CardVerdict::as_str`] spelling — the JSON strings equal the report
+/// strings, never the Rust variant names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CardVerdict {
     Obtainable,
     Unobtainable,
@@ -65,7 +70,11 @@ impl CardVerdict {
 
 /// The existence tier (report strings `proven` / `candidate` / `none`)
 /// before usable is folded in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The `Serialize` derive renames each variant to its
+/// [`Existence::as_str`] spelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Existence {
     Proven,
     Candidate,
@@ -84,8 +93,13 @@ impl Existence {
 }
 
 /// The path op tag.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The `Serialize` derive renames each variant to its [`PathOp::as_str`]
+/// spelling (`initial` lower-case, the site ops upper-case).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum PathOp {
+    #[serde(rename = "initial")]
     Initial,
     Spawn,
     Replace,
@@ -106,7 +120,7 @@ impl PathOp {
 
 /// DRAW only: where the card sits in the seed-fixed
 /// permutation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct PathDeck {
     pub id: String,
     pub position: Option<usize>,
@@ -115,7 +129,7 @@ pub struct PathDeck {
 }
 
 /// One prerequisite card with its own provenance.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Require {
     pub name: String,
     pub how: String,
@@ -123,7 +137,7 @@ pub struct Require {
 }
 
 /// One node of an exported acquisition path.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ReachPath {
     /// display owner: `recipe work.r0 of WORK`, `trigger t3`,
     /// or `initial entity X`
@@ -143,14 +157,22 @@ pub struct ReachPath {
 }
 
 /// A guarded source that keeps existence at `candidate`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CardCandidate {
     pub via: String,
     pub reason: String,
 }
 
 /// The per-card report.
-#[derive(Debug, Clone)]
+///
+/// The `Serialize` derive is the `--json` face (reach::export): the JSON
+/// keys are the fields in declaration order (target / verdict / existence /
+/// chain / paths / candidates / usable_via / notes — the text report's own
+/// section order), the enums serialize as their `as_str` strings, and every
+/// field is JSON-native (`String`/`bool`/`Option`/scalars/`Vec` — no
+/// `IndexMap`, no `Entity`), so the bytes are deterministic and the derive
+/// needs nothing beyond serde itself.
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CardReport {
     pub target: String,
     pub verdict: CardVerdict,
@@ -517,7 +539,9 @@ pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
 /// Does `cap` total draws suffice to serve `target`?
 /// order positions need cap > idx; the defaultcard needs the cursor to pass
 /// the order's end; reset only makes the sequence periodic (seed 74985).
-fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool {
+/// (`pub(crate)`: the `--graph` face's draw-edge filter shares it — one
+/// serving predicate, one home.)
+pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool {
     match deck.order.iter().position(|c| c.name == target) {
         Some(idx) => cap > idx as i64,
         None => {

@@ -21,10 +21,28 @@
 //!     error naming the flag — it used to silently vanish into name mode.
 //!   - `--world` renders the whole-world dashboard (reach::world_report) and
 //!     wins over --all / a card name / a demand; it needs only the script.
+//!   - `--graph` renders the whole-content mint dependency graph as Graphviz
+//!     DOT (reach::export::graph_dot — nodes = universe ∪ initial card names
+//!     plus proven-site owners, edges = proven mints / requires /
+//!     destroyed-by kills, sorted under cmp_utf16 so two runs are
+//!     byte-identical). It needs only the script and wins over --verb /
+//!     --all / a card name / a demand, losing only to --world.
+//!   - `--json` rides the card faces (`<CARD> --json`, `--all --json`,
+//!     `--demand "<q>" --json`): the per-card report as pretty JSON —
+//!     reach::export's envelope {file, demand, usable, report} with the
+//!     report fields in declaration order and the enums as their as_str
+//!     strings. `--why --json` MERGES the blocker table into the envelope
+//!     as a `why` array (each blocker `CardBlocker::as_str`'s own text);
+//!     without --why the key is absent. `--all --json` is one JSON array in
+//!     the --all walk order. --json is ignored by --world, --verb and
+//!     --graph (their faces stay their text/DOT selves); error faces (usage
+//!     exit 2, analyze exit 1) are unchanged.
 //!   - the usage first line carries `[--why] [--verb "<NAME>"]` with the
 //!     diagnostic faces — the one sanctioned argv-surface byte change of
 //!     that wave (the --world precedent), its three usage pins in
-//!     tests/session/cli.rs updated in the same change.
+//!     tests/session/cli.rs updated in the same change. The export flags
+//!     deliberately do NOT touch the usage line (it is byte-pinned); they
+//!     are documented here and in §13.1.
 //!
 //! Diagnostic faces (§13.1):
 //!   - `--why` appends one `— why` section per card report (card mode and
@@ -43,6 +61,8 @@ use std::process::ExitCode;
 use chorus::content::script::{compile_script, CompiledScript};
 use chorus::core::dict::core_dictionary;
 use chorus::core::text::cmp_utf16;
+use chorus::reach::export::{card_export, graph_dot, render_json, render_json_array};
+use chorus::reach::fixpoint::SiteBlocker;
 use chorus::reach::render::{render_verb, render_why};
 use chorus::reach::world_report::{self, world_report};
 use chorus::reach::{render_report, Analyzer, CardOptions};
@@ -91,6 +111,8 @@ fn main() -> ExitCode {
     };
     let mut rest: Vec<String> = Vec::new();
     let mut world = false;
+    let mut graph = false;
+    let mut json = false;
     let mut i = 0usize;
     while i < args.len() {
         if args[i] == "--usable" || args[i] == "--why" {
@@ -99,6 +121,16 @@ fn main() -> ExitCode {
         }
         if args[i] == "--world" {
             world = true;
+            i += 1;
+            continue;
+        }
+        if args[i] == "--graph" {
+            graph = true;
+            i += 1;
+            continue;
+        }
+        if args[i] == "--json" {
+            json = true;
             i += 1;
             continue;
         }
@@ -117,15 +149,16 @@ fn main() -> ExitCode {
     let card: Option<&String> = rest.get(1);
     let all = rest.iter().any(|a| a == "--all");
     // the usage gate: a present file AND (a card OR --all OR a demand OR
-    // --world OR a verb), with the frozen string truthiness; the text (two
-    // lines) is exact. An EMPTY argv element is falsy for the file slot and
-    // the card slot alike. `reach --world` with no script falls through
-    // here — the dashboard needs the file too.
+    // --world OR --graph OR a verb), with the frozen string truthiness; the
+    // text (two lines) is exact. An EMPTY argv element is falsy for the file
+    // slot and the card slot alike. `reach --world` / `reach --graph` with
+    // no script fall through here — both need the file too.
     let file = match file {
         Some(f)
             if !f.is_empty()
                 && (all
                     || world
+                    || graph
                     || verb.is_some()
                     || card.is_some_and(|c| !c.is_empty())
                     || demand.is_some()) =>
@@ -162,8 +195,11 @@ fn main() -> ExitCode {
 
     // the branch ORDER is the frozen behavior: --world wins over everything
     // (the dashboard is target-free — no card, no --all walk, no demand);
-    // --all wins over an explicit card name; a lone --demand reports once
-    // (the target is ignored by the analyzer under demand).
+    // --graph is the second target-free face (the whole-content mint graph,
+    // script only — it loses only to --world); --all wins over an explicit
+    // card name; a lone --demand reports once (the target is ignored by the
+    // analyzer under demand). `--json` is a modifier on the card faces
+    // only: --world/--verb/--graph ignore it.
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     let fail = |e: chorus::error::ChorusError| -> ExitCode {
@@ -178,6 +214,16 @@ fn main() -> ExitCode {
         let r = world_report(&content, &state);
         let mut buf = String::new();
         world_report::render_report(&mut buf, file, &r);
+        if out.write_all(buf.as_bytes()).is_err() {
+            return ExitCode::from(1);
+        }
+        let _ = out.flush();
+        return ExitCode::from(0);
+    }
+    if graph {
+        // the whole-content mint dependency graph as Graphviz DOT
+        // (reach::export::graph_dot — deterministic, cmp_utf16-sorted)
+        let buf = graph_dot(&content, &state);
         if out.write_all(buf.as_bytes()).is_err() {
             return ExitCode::from(1);
         }
@@ -221,6 +267,45 @@ fn main() -> ExitCode {
         let mut sorted: Vec<String> = names.into_iter().collect();
         sorted.sort_by(|a, b| cmp_utf16(a, b));
         let analyzer = Analyzer::new(&content, &state);
+        if json {
+            // the array face: one envelope per name in the --all walk
+            // order, rendered once (the analyze error face is unchanged —
+            // the parse error fires on the FIRST card, before any byte is
+            // written, exactly like the incremental text walk)
+            let mut reports: Vec<chorus::reach::CardReport> = Vec::new();
+            let mut blocked: Vec<Vec<SiteBlocker>> = Vec::new();
+            for name in &sorted {
+                let r = match analyzer
+                    .analyze_card(name, CardOptions { usable, demand: demand.clone() })
+                {
+                    Ok(r) => r,
+                    Err(e) => return fail(e),
+                };
+                if why {
+                    blocked.push(analyzer.card_blockers(name));
+                }
+                reports.push(r);
+            }
+            let envs: Vec<_> = reports
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    card_export(
+                        file,
+                        demand.as_deref(),
+                        usable,
+                        r,
+                        if why { Some(&blocked[i]) } else { None },
+                    )
+                })
+                .collect();
+            let buf = render_json_array(&envs);
+            if out.write_all(buf.as_bytes()).is_err() {
+                return ExitCode::from(1);
+            }
+            let _ = out.flush();
+            return ExitCode::from(0);
+        }
         for name in &sorted {
             // report(n) passes the CAPTURED demand on — `--all --demand q`
             // renders the demand report once per name
@@ -250,6 +335,18 @@ fn main() -> ExitCode {
             Ok(r) => r,
             Err(e) => return fail(e),
         };
+        if json {
+            // the single-object face; `--why --json` merges the blocker
+            // table into the envelope (render_why's rows, as_str text)
+            let blockers = if why { Some(analyzer.card_blockers(card)) } else { None };
+            let env = card_export(file, demand.as_deref(), usable, &r, blockers.as_deref());
+            let buf = render_json(&env);
+            if out.write_all(buf.as_bytes()).is_err() {
+                return ExitCode::from(1);
+            }
+            let _ = out.flush();
+            return ExitCode::from(0);
+        }
         let mut buf = String::new();
         render_report(&mut buf, file, card, demand.as_deref(), usable, &r);
         if why {

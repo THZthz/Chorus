@@ -5,7 +5,10 @@
 //! `paths.rs` (the mint universe, dead verbs, deck caps and the per-card
 //! report), `render.rs` (predicate/proof/chain/reason text + the CLI's
 //! stdout shapes), `world_report.rs` (the `--world` global dashboard — the
-//! world-static facts re-rendered, zero new analysis), plus the two campaign
+//! world-static facts re-rendered, zero new analysis), `export.rs` (the
+//! machine-readable exits: `--json` — the per-card report envelope, and
+//! `--graph` — the whole-content mint dependency graph as Graphviz DOT;
+//! both zero new analysis, both deterministic), plus the two campaign
 //! engines the bins and the test
 //! suite share: `fuzz.rs` (seeded differential campaigns) and `scale.rs`
 //! (the CS-scale synthetic world; spec §13.3).
@@ -22,6 +25,7 @@
 //! an IndexMap/IndexSet.
 
 pub mod census;
+pub mod export;
 pub mod fixpoint;
 pub mod fuzz;
 pub mod paths;

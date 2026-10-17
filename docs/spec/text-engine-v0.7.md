@@ -48,6 +48,7 @@ projection of that data, never the source of truth.
 25. **v0.7.6** — the reach fuzz generator v2 and the analyzer's diagnostic faces (§13.1/§13.3): the generator's scenario space now covers the full trigger face (slot, expiry and completion triggers with their §6.7 aspect gates), RUN candidates (a recipe body may RUN only the same verb's strictly earlier recipes; a completion body draws from the global duration>0 table) and §6.4 recipe `aspects` — its draw order re-banded and declared VERSIONED, not frozen, so recorded campaign runs reproduce only against the generator version that produced them, and the seed suite pins determinism (same seed ⇒ the same outcome, failures printed) instead of soundness, whose open complete-arm over-generosity (seed 41 among seeds 1–50) stays the campaign's ledger for the coming tightening; and the demotion guards converged on one `site_ladder` pass whose failing rungs yield structured `CardBlocker`s (`site_proven` its `.ok()` face), surfaced as `reach --why` (the per-card blocker table) and `--verb "<NAME>"` (the settled-facts verb report), world notes converging on the named card's report, the usage first line gaining `[--why] [--verb "<NAME>"]` as the sanctioned argv byte change; no grammar/log/script change.
 
 26. **v0.7.7** — the reach Complete arm tightened from "home obtainable ⇒ the window is arrangeable" to a constructible completion (§13.1): the window rung (a committable verb's committed-role slot binds the home — no duration condition, duration-0 windows complete like any other — under a completable recipe: selectable under first-match, no decided REFUSE, no deterministic completion-time error, no unconditional mint collision), the aspect rung (the binder recipe must declare the trigger's aspect), and the draft rung (the completion refusal is atomic, and the rung is existential over the (verb, recipe) witnesses — one clean pair's completion draft lets the body's mints land, the occupancy being that pair's own, only every pair dirty demotes — and a recipe whose verb force-locks such a home by a min≥1 committed slot demotes symmetrically); three new `CardBlocker` rungs surface in `--why`. The differential campaign's 22 failures over 14 seeds (the generator-v2 ledger) resolve to zero with none opening the other direction; no grammar/log/script change; complete-mint support lines re-render with the named witness (a sanctioned default-report byte change).
+27. **v0.7.8** — the analyzer's machine-readable exits (§13.1): a seventh seam module, `export`, landing `--json` and `--graph` with ZERO new analysis over the settled facts and the usage line byte-frozen (documented in the bin module's docs and §13.1 — no sanctioned argv byte change this wave). `--json` is the per-card report envelope (`file`/`demand`/`usable` around `report`; the `serde::Serialize` derives ride the paths.rs report types — derive only, no logic — keys in declaration order, the report enums as their `as_str` strings, pretty and deterministic), `--why --json` merges the blocker table into the envelope as a `why` array of the very strings `render_why` prints (without the flag the key is absent), and `--all --json` is one array in the walk order; `--world`/`--verb`/`--graph` ignore the flag. `--graph` renders the whole-content mint dependency graph as Graphviz DOT — the universe ∪ initial card names (kind-annotated) plus owner boxes; every proven site contributes owner → mints through the analyzer's OWN bare-name serving predicate: a blinded derive-mint's site contributes no edge at all (the same blind filter `record_mint_source` applies to the requires side, whose filler edges therefore never route through a source that never mints), and a draw serves only what `facts.deck_cap` — the freeze model's value — reaches, judged per name by `served_by_cap` (the raw site cap never read; seed 81401's frozen-cap shape pinned with the analyzer's own verdicts, both directions); mints → requires carry the slot fillers and destroyed-by rides dashed; nodes sort by id, edges by (src, dst, label), under `cmp_utf16` with duplicates collapsed — two runs byte-identical. Face priority world > graph > verb > all > card/demand. 808 tests green (+13); the eight text faces byte-identical throughout; no grammar/log/script change.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -1876,7 +1877,7 @@ format, or play semantics.
 
 `src/reach/` answers "can the player obtain card X?" STATICALLY, over
 (compiled content, initial state) — design-time analysis: no engine, no
-mutation, deterministic. Six seam modules (the analyzer proper — none of
+mutation, deterministic. Seven seam modules (the analyzer proper — none of
 them imports the engine; the `fuzz` / `scale` campaign modules that share
 the directory are §13.3's differential layer, and they are the only reach
 files allowed to):
@@ -1986,6 +1987,38 @@ files allowed to):
   IndexMap/IndexSet insertion order (content order underneath) and
   nothing sorts or rehashes, so two runs over the same (compiled
   content, initial state) render byte-identical text.
+- **export** — the machine-readable exits, both ZERO new analysis over
+  the settled facts. `--json` serializes the per-card `CardReport`
+  inside the text head's meta envelope (`file` / `demand` / `usable`
+  around `report`): the `serde::Serialize` derives live on the paths.rs
+  report types (derives only, no logic), so the JSON keys are the fields
+  in declaration order (the text report's own section order) and the
+  report enums serialize as their `as_str` strings — never the Rust
+  variant names; serialization is deterministic (struct order, `Vec`
+  order, no maps). `--why` MERGES the blocker table into the envelope as
+  a `why` array, each row's blocker `CardBlocker::as_str`'s own text —
+  the very string `render_why` prints; without the flag the key is
+  absent, mirroring the text face rendering nothing. `--graph` renders
+  the whole-content mint dependency graph as Graphviz DOT: nodes are the
+  universe ∪ initial card names (kind-annotated ellipses; first
+  occurrence wins the kind) plus one box per distinct site owner string.
+  Every PROVEN site contributes its edges through the analyzer's OWN
+  bare-name serving predicate (`analyze_name`'s — the graph re-derives
+  no analysis of its own): a derive-mint behind an object-mandatory verb
+  never mints the bare name (12320), so its site contributes no edge at
+  all — its `requires` fillers ride mints it never produces, exactly the
+  blind filter `record_mint_source` applies to the requires side — and a
+  draw serves a name only when it is not derive-blinded and
+  `facts.deck_cap` can reach it: the freeze model's value, rewritten to
+  0/1 for trigger-held draws after the fixpoint (seed 81401's shape),
+  judged per name by `served_by_cap` — one serving predicate, one home
+  (the site's raw cap is never read). `mints → requires` edges carry the
+  verb's slot fillers (or an expiry trigger's named card — the same
+  split `path_for` renders), and `census.destroyed_by` the dashed
+  `destroys` kill edges. Determinism is the contract: node lines sort by
+  node id, edge lines by (src, dst, label), both under `cmp_utf16` with
+  exact duplicates collapsed — two runs over the same (compiled content,
+  initial state) render byte-identical text.
 
 CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"] [--why]
 [--verb "<NAME>"] [--world]`,
@@ -2008,7 +2041,17 @@ over `--all`, an explicit card and a demand (the `--world` precedent —
 one dedicated, target-free face), `--why` does not apply to it, a
 `--verb` with no value slot is the argv error, an EMPTY value is falsy
 (the demand truthiness), and an unknown verb name is the analyze error
-(exit 1).
+(exit 1). `--graph` needs only the script and wins over `--verb`, `--all`,
+an explicit card and a demand, losing only to `--world` — the face
+priority is world > graph > verb > all > card/demand. `--json` rides the
+card faces only (`<CARD> --json`; `--all --json` one JSON array in the
+walk order; `--demand "<q>" --json` the envelope with the query in
+`demand`), `--why --json` merging the blocker table into the envelope;
+`--world`, `--verb` and `--graph` ignore it — their faces stay their
+text and DOT selves. The export flags deliberately do NOT touch the
+usage line (the argv-error surface stays byte-frozen, the two-line
+usage text above verbatim); they are documented in the reach bin
+module's docs and here.
 A card minted only by `on complete` clauses reports like any other — its
 provenance chain names the engine-minted `complete:{home}` trigger id —
 and the analyzer never rejects a script for owning one. Argv errors exit

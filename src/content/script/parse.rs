@@ -10,13 +10,15 @@ use regex::Regex;
 
 use super::complete::{find_on_complete, parse_complete_clauses, push_complete};
 use super::decls::{
-    parse_deck_line, parse_ending_line, parse_entity_line, parse_function_line,
+    parse_deck_line, parse_ending_line, parse_entity_line, parse_function_line, parse_op_line,
     parse_prototype_line, parse_trigger_line,
 };
 use super::types::{EntitySpec, RelationSpec, Script, ScriptMeta};
 use super::verbblock::{parse_recipe_line, parse_slot_line};
 use crate::content::DeckRaw;
-use crate::content::{ContentRaw, EndingDef, FunctionDef, PrototypeDef, TriggerDef, VerbContent};
+use crate::content::{
+    ContentRaw, EndingDef, FunctionDef, OpDef, PrototypeDef, TriggerDef, VerbContent,
+};
 use crate::core::clock::{parse_clock, parse_duration};
 use crate::core::dict::Dictionary;
 use crate::core::jsonw::canonical_key_order;
@@ -56,6 +58,7 @@ enum Section {
     Verbs,
     Templates,
     Functions,
+    Ops,
     Decks,
 }
 
@@ -72,6 +75,7 @@ impl Section {
             "verbs" => Some(Section::Verbs),
             "templates" => Some(Section::Templates),
             "functions" => Some(Section::Functions),
+            "ops" => Some(Section::Ops),
             "decks" => Some(Section::Decks),
             _ => None,
         }
@@ -117,6 +121,9 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut verbs: IndexMap<String, VerbContent> = IndexMap::new();
     let mut decks: Vec<DeckRaw> = Vec::new();
     let mut functions: Vec<FunctionDef> = Vec::new();
+    // §10 (v0.7.7): the script's `ops:` declarations, section order — the
+    // record the call-table build reads (functions.rs)
+    let mut ops: Vec<OpDef> = Vec::new();
     // §4.1 (v0.7.5): the script's `kinds:` declarations, section order — the
     // record the loader's compile half re-registers (compile_parsed)
     let mut kinds: IndexSet<String> = IndexSet::new();
@@ -330,6 +337,9 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
             Section::Functions => {
                 functions.push(parse_function_line(t, ln + 1)?);
             }
+            Section::Ops => {
+                ops.push(parse_op_line(t, ln + 1)?);
+            }
             Section::Endings => {
                 let (id, ending) = parse_ending_line(t, ln + 1)?;
                 if endings.contains_key(&id) {
@@ -449,6 +459,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
             templates: Some(templates),
             endings: Some(endings),
             functions: Some(functions),
+            ops: Some(ops),
             decks: Some(decks),
         },
         entities,

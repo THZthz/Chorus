@@ -47,6 +47,8 @@ projection of that data, never the source of truth.
 
 25. **v0.7.6** — the vocabulary convergence, verb-side, closing the last open question the script format left (§12 #4): the `verbs:` block now DECLARES lexemes, not just configures them. An indent-2 `VERB:` header is accepted for any UPPER_SNAKE name; the load registers unknown lexemes into its effective dictionary — register-if-unknown on the per-load clone, the v0.7.5 `kinds:` discipline, so recompiling one text against one dictionary stays idempotent — and the whole §5.1 nameable grammar applies at that registration: never a reserved word (`EVENT:` fails loud naming the lexeme; the "reserved words cannot be registered" claim is now enforced, the core verbs exempt as reserved-by-being-a-verb), and never a declared entity or prototype name — one order-independent cross-check over the whole load rejects the overlap in either section order, instead of the section-order luck a growing reserved set implied. Declaration is not playability: the config block (§6.1) makes the verb playable, the "is not a content verb" step gate and the template/compile gates stay as backstops, and `CompiledScript` hands the extended dictionary to `Game`, so a declared verb types, suggests, renders in the banner/help and re-parses in the fold. Duplicate headers stay the uniform load error (core lexemes included); the reach fuzz alphabet takes the declared verbs too (a scenario carries its own effective dictionary); `lint-scripts` lints each file against a fresh core dictionary. No log format change.
 
+26. **v0.7.7** — the ops convergence: script-defined outcome operators. A new `ops:` top-level section (§10) declares named, parameterized bodies of outcomes callable in ANY outcome position — recipes, all three trigger kinds, IF arms, other op bodies — written and read exactly like a built-in op call (`ENCHANT(ROWAN)`), while §4.4's built-in table stays closed. The mechanism is deliberately the functions' mechanism (§10, v0.3.3): a call expands into its body AT LOAD through the same pass, so the engine, the log and the fold never see a call, and every existing outcome guard — ENDING and DRAW membership, RUN's recipe scoping, the trigger ban sweep (an op body carrying ADVANCE into a slot trigger is caught), the dice lints (ROLLED/DRAWN in a body are the call site's load error), the braced-token check over every declared body called or not — stays sound by construction, because expansion lands in the authored-outcome world the guards already walk. What makes an op more than a renamed function: the OP namespace (UPPER_SNAKE; never a built-in op, a reserved word — declared verbs included, the ops table building after the load's verb registration — a duplicate, or a functions name, the fn grammar admitting UPPER names so the namespaces are checked against each other; deliberately NOT reserved — a prototype may be named like an op, a bare `ENCHANT` stays SPAWN sugar and only `ENCHANT(` is the call), op-grade call checking (arity at every call site — wrong arity is a load error naming the op, the expected and the actual count, nested sites included; deliberately NOT retro-fitted onto functions, the asymmetry documented), and the composition rules (an op may call ops and functions; a FUNCTION body calling an op is the specific load error — functions expand at load before ops exist — and op→op recursion names the cycle over the shared DFS with the functions' depth cap of 8, op hops only). The load carries ONE call table (`FnTable` gains the ops map, disjoint by the collision check) threaded exactly where the function table already went — no new plumbing below the load, zero log/format change; `unknown 'NAME(…)'` errors teach declared ops too, and the lint scans op bodies like function bodies (an op body's raw SET writes count; the lint still never sees through a call site — §13.2). Pinned: a played op step's JSONL carries no op name anywhere and folds byte-identically; a mint reachable only through an op call is proven (the reach 'none' verdict cannot appear); recompiling one ops script against one dictionary stays idempotent (ops are load-time state, never dictionary state). Four phase-2 review minors ride along: the dead `played` binding deleted from tests/script/verbs.rs; the lint-isolation CLI test strengthened so file two USES file one's verb (exit 1 alone and combined, the declaring file clean — the identical-files version could not distinguish per-file dictionaries from a shared one); the two stale doc claims ("play behaves identically", "the engine and the log never read the dictionary's word lists") scoped to the mechanics — a declared verb does change the typing/suggestion surface, and the fold's sentence re-parse reads the dictionary's verb list; and a deck-id-vs-declared-verb pin (the deck reserved check sees registered lexemes). Tests +22 = 815 green. Gates: bundled scripts unchanged (cultist-full's 76 warnings pinned, slice and flyer clean, exit 0); clippy --all-targets clean; fmt clean.
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -306,6 +308,12 @@ uppercase) — and expands to that role's bound cards (`DESTROY WITH`,
 to a `functions:` declaration and expands to its body AT LOAD — one vocabulary,
 two namespaces of convenience: functions are not ops (§4.4's table is closed),
 declaring one named like an op is a load error (§10).
+
+**Declared ops head one too** (v0.7.7): `OP(arg, …)` dispatches to an `ops:`
+declaration and expands to its body AT LOAD through the same pass — the
+built-in table above stays closed, and the log never carries an op name (the
+§10 op rules cover the name rules, the per-call-site arity rule, and the
+composition rules, including the ban on calling an op from a function body).
 
 **Operator internals.**
 
@@ -1603,6 +1611,9 @@ functions:
   sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
   watch(n) -> IF count(name:SUSPICION) >= n -> (ENDING ARRESTED)
 
+ops:                                   # script-defined outcome operators (§10, v0.7.7):
+  ENCHANT(who) -> SET(who, aspect:charmed, 1), NARRATE "{who} glows."   # callable like a built-in op
+
 decks:
   RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset
 
@@ -1753,6 +1764,40 @@ Rules:
   guards and the endings check run AFTER expansion, so a body's PROGRESS/
   REFUSE or an undeclared ENDING id is a load error exactly as if authored
   at the call site.
+- **Script op lines** (v0.7.7): `NAME(params…) -> OUTCOMES` under `ops:` —
+  the same three accepted head forms as functions (`NAME(p, …) ->`, `NAME ->`,
+  bare `NAME p … ->`) and the same body grammar (one source line, outcome
+  list, `{param}` interpolation with the exact-spelling rule, `IF`, `ROLL`,
+  `DRAW`, any built-in op, function calls). A declared op is a named,
+  parameterized body of outcomes callable in ANY outcome position — recipes,
+  all three trigger kinds, IF arms, other op bodies — written and read
+  exactly like a built-in op call: `ENCHANT(ROWAN)`. A call expands at load
+  by the same pass functions use; the engine and the log never see a call,
+  and §4.4's built-in table stays closed — which is why every load guard
+  (ENDING membership, DRAW decks, RUN scoping, the trigger ban sweep, the
+  dice lints) sees through op bodies by construction: the guards run
+  post-expansion, on the body the call became. Name rules: an op name is
+  UPPER_SNAKE, and it may be none of — a built-in op (the table is closed),
+  a reserved word (declared verbs included: the ops table builds after the
+  load's verb registration, so a script's own lexemes are as taken as
+  built-ins), a duplicate op, or a declared function's name (the
+  function-name grammar admits UPPER names, so the two namespaces are
+  checked against each other — not case-disjoint by construction). Op names
+  are deliberately NOT added to `reserved`: calls only ever parse in
+  outcome position, so a prototype or entity may legitimately be named like
+  an op — a bare `ENCHANT` in an outcome list stays SPAWN sugar; only
+  `ENCHANT(` is the call. Arity is checked at EVERY call site at load (wrong
+  arity is a load error naming the op, the expected count, and the actual
+  count — nested sites included, the wrapping body's name prefixed); this
+  op-grade check is deliberately NOT retro-fitted onto functions. An op
+  body may call other ops and functions alike; a FUNCTION body may never
+  call an op — a specific load error ("functions expand at load before ops
+  exist"), not a generic unknown-call. Recursion (op→op) is a load error
+  naming the cycle, over the same colored DFS the functions use; the depth
+  cap is the functions' 8, counting op→op hops only (a function's graph is
+  already acyclic and capped by its own build, so function calls are leaves
+  of the op graph). The `unknown 'NAME(…)'` error teaches declared ops as
+  part of the outcome vocabulary.
 - **Deck lines** (§4.4): `ID spec NAME[, NAME…] [defaultcard NAME] [reset]`
   (the trailing clauses in either order). The id is UPPER_SNAKE, unreserved,
   and unique. Spec entries are prototype/entity NAMES only — repeats weight
@@ -2033,7 +2078,11 @@ Errors are counted, warnings advise; findings never change the exit code
 (constant 0 — a dead `when` is sometimes the point); compile errors remain
 `compile_script`'s hard failure and unreadable input exits 1. The bin
 defaults to every `scripts/*.txt` relative to the CWD (a missing dir names
-itself and the cwd, exit 1).
+itself and the cwd, exit 1). Script op bodies (§10, v0.7.7) are scanned
+like function bodies — an op body's raw `SET(…, aspect:x)` counts as a
+write and its braced tokens get the same typo scan — but the lint never
+sees through a CALL SITE: a recipe line reading `BOOST(OBJECT)` contributes
+no finding itself, the write is counted once from the declared op body.
 
 ### 13.3 The bins
 

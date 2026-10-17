@@ -15,8 +15,12 @@ use crate::error::{ChorusError, Result};
 /// The load-effective dictionary: the caller's dictionary plus the script's
 /// `kinds:` declarations (§4.1, v0.7.5) and its `verbs:` declarations
 /// (§4.3, v0.7.6), declaration order preserved. Vocabulary is load-time
-/// state only — the engine and the log never read the dictionary's word
-/// lists — so the augmentation rides a per-load CLONE and the caller's
+/// state — the MECHANICS never read the word lists (verb lookup is
+/// content-driven), but the SENTENCES do: the play surface parses typed
+/// input and prints canonical text against this dictionary, and the fold
+/// re-parses every recorded sentence with it (exec's format∘parse gate),
+/// which is why a declared verb must be registered here and not merely
+/// compiled. The augmentation rides a per-load CLONE, so the caller's
 /// dictionary is left untouched: loading the same text twice against one
 /// dictionary stays idempotent, and `Game::from_script` keeps owning its
 /// dictionary verbatim. Verbs register IF-UNKNOWN: a lexeme already present

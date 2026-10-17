@@ -222,12 +222,13 @@ impl Game {
     /// Compile a text script into a Game; the dictionary must be supplied
     /// explicitly. The Game carries the LOAD-EFFECTIVE dictionary back
     /// (§4.1/§4.3): the supplied one plus the script's `kinds:` and `verbs:`
-    /// declarations — relation types are unchanged and the engine reads
-    /// neither the kinds nor the verb word lists at runtime (verb lookup is
-    /// content-driven), so play behaves identically; the field just stays
-    /// honest about the vocabulary the script loaded under, and it is what
-    /// makes a script-declared verb typeable, suggestable, and re-parseable
-    /// in the fold (v0.7.6).
+    /// declarations — relation types are unchanged, and the MECHANICS never
+    /// read the word lists at runtime (verb lookup is content-driven), but
+    /// the play SURFACE does change with the vocabulary: the sentence
+    /// parser, the lenient input, the suggestions and the banner read this
+    /// dictionary per call (§11) — which is exactly what makes a
+    /// script-declared verb typeable, suggestable, and re-parseable in the
+    /// fold (v0.7.6).
     pub fn from_script(text: &str, dict: Dictionary) -> Result<Game> {
         let compiled = compile_script(text, &dict)?;
         Ok(Self::new(compiled.dict, compiled.content, compiled.meta, compiled.state))

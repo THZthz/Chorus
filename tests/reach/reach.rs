@@ -1181,3 +1181,47 @@ verbs:
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert!(rep.chain.iter().any(|l| l.contains("SPAWN mints 'BAD_OMEN'")), "{:?}", rep.chain);
 }
+
+/// v0.7.7 — an op call is a producer the census sees: the ONLY SPAWN site of
+/// PILLAR sits inside a declared op body, which expands into the recipe at
+/// load — so the 'none' verdict must NOT appear (if ops did not expand, the
+/// compiled recipe would hold no SPAWN site and PILLAR would read
+/// structurally unobtainable).
+#[test]
+fn a_mint_reachable_only_through_an_op_call_is_proven_not_none() {
+    let dict = core_dictionary();
+    let text = "
+script: Op Reach
+start: 0:0
+
+entities:
+  ROWAN is character
+
+prototypes:
+  PILLAR is item stackable
+
+ops:
+  RAISE -> PILLAR
+
+verbs:
+  EXPLORE:
+    actors: 1 kind:character
+    recipes:
+      default -> RAISE()
+";
+    let compiled = chorus::content::script::compile_script(text, &dict).unwrap();
+    let rep = chorus::reach::analyze_card(
+        &compiled.content,
+        &compiled.state,
+        &compiled.dict,
+        "PILLAR",
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert!(
+        rep.chain.iter().any(|l| l.contains("SPAWN mints 'PILLAR'")),
+        "the op body's SPAWN is a root: {:?}",
+        rep.chain
+    );
+}

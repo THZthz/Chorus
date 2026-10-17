@@ -92,7 +92,6 @@ fn a_script_declared_verb_registers_plays_suggests_and_round_trips() {
         "{:?}",
         game.log.records
     );
-    let played = game.log.records.len();
     let guard_id = &game.state.by_name["THE_GUARD"][0];
     assert!(
         game.state.entities[guard_id].aspects.get("broken").is_some(),
@@ -107,7 +106,6 @@ fn a_script_declared_verb_registers_plays_suggests_and_round_trips() {
     assert_eq!(game.log.records.len(), base, "undo reaches the pristine log");
     let guard_id = &game.state.by_name["THE_GUARD"][0];
     assert!(game.state.entities[guard_id].aspects.get("broken").is_none());
-    let _ = played;
 }
 
 #[test]
@@ -226,6 +224,30 @@ fn redeclaring_a_core_verb_configures_it_and_still_rejects_duplicates() {
     assert_err_msg(
         compile_script("verbs:\n  READ:\n  READ:\n", &dict),
         "line 3: duplicate verb declaration 'READ'",
+    );
+}
+
+#[test]
+fn a_deck_id_named_like_a_declared_verb_is_a_load_error() {
+    // registration grows `reserved`, and the deck-id check reads it — so the
+    // id-vs-verb face of the same rule holds: a deck may not take a declared
+    // verb lexeme's name (deck.rs's reserved check sees the extended set)
+    let dict = core_dictionary();
+    assert_err_msg(
+        compile_script(
+            "verbs:\n  SHOUT:\n    recipes:\n      default -> NARRATE \"ho.\"\ndecks:\n  SHOUT spec ANYTHING\n",
+            &dict,
+        ),
+        r"'SHOUT' is reserved and cannot be a deck id",
+    );
+    // ... in either section order (the deck table compiles after the
+    // registration, whichever way the file lists them)
+    assert_err_msg(
+        compile_script(
+            "decks:\n  SHOUT spec ANYTHING\nverbs:\n  SHOUT:\n    recipes:\n      default -> NARRATE \"ho.\"\n",
+            &dict,
+        ),
+        r"'SHOUT' is reserved and cannot be a deck id",
     );
 }
 

@@ -270,6 +270,16 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             scan_tokens(&mut findings, &format!("function {}", f.name), &f.body, &extra);
         }
     }
+    // op bodies get the same template-token scan as function bodies (§10,
+    // v0.7.7). The lint never sees through a CALL SITE — a recipe line
+    // reading `BOOST(OBJECT)` contributes no finding itself (§13.2's note);
+    // the writes are counted from the declared bodies further below.
+    if let Some(ops) = &script.content.ops {
+        for o in ops {
+            let extra: Vec<&str> = o.params.iter().map(String::as_str).collect();
+            scan_tokens(&mut findings, &format!("op {}", o.name), &o.body, &extra);
+        }
+    }
 
     // the §10 livelock rule: deck entries should be stackable (or consumed
     // and renamed on the same step) — served twice while a copy lives, the
@@ -395,6 +405,13 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     if let Some(functions) = &script.content.functions {
         for f in functions {
             scan_writes(&mut writes, &f.body);
+        }
+    }
+    // op bodies count as writers exactly like function bodies — the raw
+    // `SET(…, aspect:x)` inside a declared op body is a write (§10, v0.7.7)
+    if let Some(ops) = &script.content.ops {
+        for o in ops {
+            scan_writes(&mut writes, &o.body);
         }
     }
     for r in &reads {

@@ -10,6 +10,7 @@ mod functions;
 mod gate;
 mod kinds;
 mod lint;
+mod ops;
 mod query_predicate;
 mod sentence;
 mod verbs;

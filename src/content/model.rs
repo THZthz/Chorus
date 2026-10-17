@@ -177,6 +177,15 @@ pub struct FunctionDef {
     pub body: String,
 }
 
+/// An `ops:` declaration (§10, v0.7.7): a script-defined outcome operator.
+/// Structurally a [`FunctionDef`] — the same head grammar, the same
+/// template shape, the same expansion pass — but it joins the OP namespace:
+/// an UPPER_SNAKE name callable exactly like a built-in op, arity-checked
+/// at every call site, and legal to call from other op bodies (a function
+/// body may never call one). The load keeps the two tables disjoint by a
+/// name-collision check (§10).
+pub type OpDef = FunctionDef;
+
 /// A deck declaration (§4.4).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DeckRaw {
@@ -212,6 +221,10 @@ pub struct ContentRaw {
     /// parametric outcome macros (§10) — declaration order matters for
     /// error reports only
     pub functions: Option<Vec<FunctionDef>>,
+    /// script-defined outcome operators (§10, v0.7.7) — the same record
+    /// shape as `functions`, a different table; declaration order matters
+    /// for error reports only
+    pub ops: Option<Vec<OpDef>>,
     /// deck declarations (§4.4) — order matters for error reports only
     pub decks: Option<Vec<DeckRaw>>,
 }

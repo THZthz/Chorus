@@ -1,6 +1,7 @@
 //! The content compiler: [`compile_content`] turns a [`ContentRaw`] into a
 //! [`CompiledContent`] — parsing every query/predicate/outcome body once,
-//! running the §10 function-table expansion and the load-time lints
+//! running the §10 call-table expansion (functions AND script ops) and the
+//! load-time lints
 //! (§6.3 dice, §4.4 ref checks), so nothing malformed reaches the engine.
 
 use std::sync::OnceLock;
@@ -9,7 +10,7 @@ use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
 use super::deck::compile_decks;
-use super::functions::{build_fn_table, parse_outcome_string};
+use super::functions::{build_call_tables, parse_outcome_string};
 use super::model::*;
 use crate::core::dict::Dictionary;
 use crate::core::fn_expand::FnTable;
@@ -83,10 +84,11 @@ pub fn compile_content(
     dict: &Dictionary,
     entities: &[DeclaredEntity],
 ) -> Result<CompiledContent> {
-    // §10 FIRST, before any verb/trigger body parses: build the function
-    // table — call sites dispatch against it and expand
+    // §10 FIRST, before any verb/trigger body parses: build the combined
+    // call table (functions AND script ops, v0.7.7) — call sites dispatch
+    // against it and expand
     // immediately after their parse, so the guards below walk expanded lists.
-    let fns = build_fn_table(raw.functions.as_deref().unwrap_or(&[]), dict)?;
+    let fns = build_call_tables(raw, dict)?;
     // §4.2: two derived sets every mint site reads
     let (stackable_names, stackable_kinds) = collect_stackable(entities, raw.prototypes.as_ref());
     let endings = compile_endings(raw.endings.as_ref())?;

@@ -1,12 +1,13 @@
 //! The outcome-side grammar of the sentence parser (spec §4.4, §6.8, §10):
 //! the op dispatch, the generic paren'd arg list, the dedicated paren-less
-//! op forms (SPAWN / NARRATE / REPLACE / MOVE / DRAW / ENDING), IF/FN
-//! calls, ROLL's value-expression args, and RUN. A second `impl Parser`
+//! op forms (SPAWN / NARRATE / REPLACE / MOVE / DRAW / ENDING), IF, calls
+//! to declared functions and script ops, ROLL's value-expression args, and
+//! RUN. A second `impl Parser`
 //! block — the token primitives (`peek`/`next`/`at_punct`/`at_keyword`),
 //! `ref_`, and the §10 parameter scope (`is_param`/`param_at`) live in the
 //! parent module.
 
-use crate::core::fn_expand::unknown_call_error;
+use crate::core::fn_expand::{unknown_call_error, CallKind, FnTemplate};
 use crate::core::lexer::Tok;
 use crate::core::predicate::{parse_predicate_toks, parse_value_expr_toks, ValExpr};
 use crate::core::r#ref::Ref;
@@ -48,8 +49,11 @@ impl Parser<'_> {
 
     /// outcome = OPERATOR "(" args ")" | ref (bare
     /// ref = SPAWN, §4.4). IF (§6.8) is intercepted before op dispatch. A
-    /// declared function's NAME( dispatches to a call BEFORE op parsing
-    /// (§10); an unknown NAME( is a compile error listing the vocabulary.
+    /// declared function's or script op's NAME( dispatches to a call BEFORE
+    /// op parsing (§10 — functions first, then ops; the build's collision
+    /// check keeps the two tables disjoint); inside a function body an op
+    /// call is the §10 composition ban, a specific load error; an unknown
+    /// NAME( is a compile error listing the vocabulary.
     pub(super) fn outcome(&mut self) -> Result<Outcome> {
         let t = self.peek(0).cloned();
         if let Some(Tok::Name { v }) = &t {
@@ -59,8 +63,19 @@ impl Parser<'_> {
         }
         if let Some(Tok::Name { v }) = &t {
             if self.at_punct("(", 1) {
-                if self.fns.is_some_and(|f| f.by_name.contains_key(v)) {
-                    return self.fn_call();
+                if let Some((tpl, kind)) = self.fns.and_then(|f| f.resolve(v)) {
+                    match kind {
+                        CallKind::Function => return self.call_outcome(tpl, kind),
+                        // §10 (v0.7.7): a function body may not call a script
+                        // op — fn bodies parse before the op bodies exist, so
+                        // the call could never expand there
+                        CallKind::Op if !self.ops_call => {
+                            return Err(ChorusError::new(format!(
+                                "op '{v}' cannot be called from a function body — functions expand at load before ops exist"
+                            )));
+                        }
+                        CallKind::Op => return self.call_outcome(tpl, kind),
+                    }
                 }
                 if !self.dict.is_op(v) {
                     return Err(ChorusError::new(unknown_call_error(v, self.fns)));
@@ -262,23 +277,20 @@ impl Parser<'_> {
         Ok(Outcome::concrete("MOVE", args))
     }
 
-    /// NAME(arg, …): a call to a declared function
-    /// (§10). Arity is checked HERE, a load error.
-    fn fn_call(&mut self) -> Result<Outcome> {
-        let name_tok = self.next()?;
-        let Tok::Name { v: name } = name_tok else {
-            return Err(ChorusError::new("internal: function dispatch on a non-name token"));
-        };
-        let params = match self.fns.and_then(|f| f.by_name.get(&name)) {
-            Some(tpl) => tpl.params.clone(),
-            // the dispatch guard checked `by_name.contains_key(name)` above;
-            // unreachable
-            None => unreachable!("fn_call dispatched on a name absent from FnTable"),
-        };
+    /// NAME(arg, …): a call to a declared function or script op
+    /// (§10). Arity is checked HERE, a load error — for both kinds, worded
+    /// by kind (`function 'f'` / `op 'OP'`). Both dispatch to the same FN
+    /// call node: expansion resolves it through [`FnTable::resolve`], and
+    /// the log never sees either (calls expand at load).
+    fn call_outcome(&mut self, tpl: &FnTemplate, kind: CallKind) -> Result<Outcome> {
+        self.next()?; // the call name (the dispatch peeked it)
+        let name = tpl.name.as_str();
+        let params = &tpl.params;
         let args = self.paren_args()?;
         if args.len() != params.len() {
             return Err(ChorusError::new(format!(
-                "function '{name}' expects {n} argument(s){list}, got {got}",
+                "{word} '{name}' expects {n} argument(s){list}, got {got}",
+                word = kind.word(),
                 n = params.len(),
                 list = if !params.is_empty() {
                     format!(" ({})", params.join(", "))

@@ -23,6 +23,14 @@ use super::validate::{
     Prepared, COMMITTED_ROLES,
 };
 
+/// minutes in a day (48 halfhours of 30)
+const MIN_PER_DAY: i64 = 48 * 30;
+
+/// §6.6: the farthest one step may advance the clock — seven days. The
+/// advance pass is linear in the halfhours crossed, so this bounds a single
+/// step's work; nothing in a real log comes near it.
+const MAX_ADVANCE_MIN: i64 = 7 * MIN_PER_DAY;
+
 /// The four-phase step (§6.6). Only the Phase-4 `register_windows` can
 /// hard-error (the verb-drift throw) — every other failure is a `rejected`
 /// result by design.
@@ -54,6 +62,23 @@ pub fn execute_step(
             format!(
                 "clock {} is before state.now ({}:{})",
                 format_clock(clock_from_abs_min(start_min)),
+                now.day,
+                now.halfhour
+            ),
+            state_in,
+        ));
+    }
+    // §6.6: one step may advance the clock at most MAX_ADVANCE_MIN ahead —
+    // the pass walks every halfhour it crosses (recurring triggers fire on
+    // each), so an absurd clock (`9999999999:1`) would otherwise spin for
+    // days of CPU and unbounded memory; a legitimate night never needs more
+    if start_min - state_in.now > MAX_ADVANCE_MIN {
+        let now = clock_from_abs_min(state_in.now);
+        return Ok(rejected(
+            format!(
+                "clock {} is more than {} days ahead of state.now ({}:{}) — advance in shorter steps",
+                format_clock(clock_from_abs_min(start_min)),
+                MAX_ADVANCE_MIN / MIN_PER_DAY,
                 now.day,
                 now.halfhour
             ),
@@ -127,9 +152,10 @@ pub fn execute_step(
         // `kind:`, FN expansion substitutes every parameter
         // before compile, and the lenient/record paths only produce name/id
         // refs — no caller can build a param-ref clause.
+        // validate_slots' messages each name the verb themselves — no prefix
         let bindings = match validate_slots(verb, &refs, &draft) {
             Ok(b) => b,
-            Err(e) => return Ok(rejected(format!("{}: {}", clause.verb, e.msg), state_in)),
+            Err(e) => return Ok(rejected(e.msg, state_in)),
         };
         if let Some(busy) = busy_reason(&draft, &clause.verb, &refs)? {
             return Ok(rejected(busy, state_in));

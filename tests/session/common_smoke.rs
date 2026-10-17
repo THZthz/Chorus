@@ -9,7 +9,7 @@
 //!   harvests states (LCG 'NIGH' entry).
 
 use crate::common::explorer_lib::{
-    candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth,
+    candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth, WIN_PATH,
 };
 use crate::common::seed::{seed_content, seed_state};
 use crate::common::snap::snap;
@@ -298,7 +298,7 @@ fn the_win_path_plays_end_to_end_through_lenient_input() {
     assert_eq!(snap(&replayed), snap(&states.last().unwrap().1));
 }
 
-const WIN_LEN: usize = 10; // 'start' + 9 WIN_PATH lines
+const WIN_LEN: usize = WIN_PATH.len() + 1; // 'start' + one snapshot per WIN_PATH line
 
 #[test]
 fn candidate_generator_offers_the_pinned_probes() {

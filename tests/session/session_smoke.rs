@@ -86,13 +86,14 @@ fn lenient_routes_the_pinned_phrases() {
     else {
         panic!("'ledgr' must fail");
     };
-    assert!(suggestions.contains(&"THE_VANE_LEDGER".to_string()), "{suggestions:?}");
+    assert!(suggestions.contains(&"the vane ledger".to_string()), "{suggestions:?}"); // typeable form
 
-    // 'verbs get suggestions too'
+    // 'verbs get suggestions too' — the whole line with the verb corrected,
+    // so the suggestion can be typed back as it stands
     let ParsedInput::Fail { suggestions, .. } = parse_player_input("xeplore the car", &ctx) else {
         panic!("'xeplore' must fail");
     };
-    assert!(suggestions.contains(&"explore".to_string()), "{suggestions:?}");
+    assert!(suggestions.contains(&"explore the car".to_string()), "{suggestions:?}");
 
     // 'names resolve case-insensitively (spec §11)'
     assert!(parse_player_input("read THE VANE LEDGER", &ctx).is_ok());
@@ -195,7 +196,7 @@ fn a_pool_too_small_for_its_roles_refuses_by_name() {
     let mut world = pool_world();
     let dead = world.entities.get_mut("psalm_b").unwrap();
     dead.dead_action = Some(1);
-    let ParsedInput::Fail { error, suggestions } =
+    let ParsedInput::Fail { error, suggestions, .. } =
         parse_player_input("ana read the psalm with the psalm", &pool_ctx(&dict, &content, &world))
     else {
         panic!("one copy cannot fill two roles");
@@ -458,7 +459,7 @@ fn inspect_reads_a_visible_cards_face() {
     let dict = core_dictionary();
     let game = Game::from_script(FLYER, dict).unwrap();
     let face = game.inspect("the manifest");
-    assert_eq!(face[0], "THE_MANIFEST  [text]");
+    assert_eq!(face[0], "THE MANIFEST  [text]");
     assert!(face.join("\n").contains("manifest 1"));
     assert!(face.join("\n").contains("at: MARCH"));
     // the sealed cabin's contents are not on the table yet
@@ -485,15 +486,15 @@ fn suggestions_are_concrete_executable_actions() {
         );
         assert!(parsed.is_ok(), "suggestion must parse: {line}");
     }
-    assert_eq!(s[0], "read THE MANIFEST");
+    assert_eq!(s[0], "read the manifest");
 }
 
 #[test]
 fn processing_lists_open_windows_soonest_first_begin_id_on_ties() {
     // the processing view (§11): open windows sort by end minute, ties
     // broken by begin_id (commit order); each line reads
-    // "<verb display> — until <day>:<halfhour>" with the verb lowercased,
-    // underscores spaced.
+    // "<verb display> until <hh:mm>" with the verb lowercased, underscores
+    // spaced, the end in the player's clock.
     let dict = core_dictionary();
     let mut game = Game::from_script(PROCESSING_SCRIPT, dict).unwrap();
     assert!(game.processing().is_empty(), "nothing committed, nothing processing");
@@ -508,11 +509,26 @@ fn processing_lists_open_windows_soonest_first_begin_id_on_ties() {
     assert_eq!(
         game.processing(),
         vec![
-            "dream — until 0:2".to_string(),
-            "use on — until 0:2".to_string(),
-            "study — until 0:4".to_string(),
+            "dream until 01:00".to_string(),
+            "use on until 01:00".to_string(),
+            "study until 02:00".to_string(),
         ]
     );
+}
+
+#[test]
+fn an_absurd_clock_jump_refuses_instead_of_walking_halfhours_forever() {
+    // §6.6: the advance pass crosses every halfhour in its span (recurring
+    // triggers fire on each) — a giant day field must be a loud refusal, not
+    // an unbounded walk
+    let dict = core_dictionary();
+    let mut game = Game::from_script(FLYER, dict).unwrap();
+    for line in ["9999999999:1", "100000:1", "9999999999:1 @ MARCH WAIT"] {
+        let t = game.handle_line(line).unwrap();
+        assert_eq!(t.kind, TurnKind::Error, "{line}");
+        assert!(t.lines[0].contains("more than 7 days ahead"), "{line}: {:?}", t.lines);
+        assert_eq!(game.state.now, 1260, "the clock never moved");
+    }
 }
 
 #[test]

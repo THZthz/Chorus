@@ -30,6 +30,8 @@ use crate::core::text::{dsl_trim, DSL_WS_CLASS};
 use crate::core::types::{Entity, State};
 use crate::engine::Step;
 
+use super::render::{display_name, pretty};
+
 /// The parse context: dictionaries, content, state and the default actor.
 pub struct LenientCtx<'a> {
     pub dict: &'a Dictionary,
@@ -40,12 +42,14 @@ pub struct LenientCtx<'a> {
 }
 
 /// Success carries the parsed [`Step`]; failure
-/// carries the error message and a suggestion pool ([`ParsedInput::is_ok`]
-/// discriminates the two variants).
+/// carries the error message, a suggestion pool (typeable display forms —
+/// `the vane ledger`, `read the manifest`) and an optional hint line (why a
+/// name did not resolve: gone from play, not yet on the table).
+/// [`ParsedInput::is_ok`] discriminates the two variants.
 #[derive(Debug, Clone)]
 pub enum ParsedInput {
     Ok { step: Step },
-    Fail { error: String, suggestions: Vec<String> },
+    Fail { error: String, suggestions: Vec<String>, hint: Option<String> },
 }
 
 impl ParsedInput {
@@ -57,7 +61,7 @@ impl ParsedInput {
 }
 
 fn fail(error: impl Into<String>, suggestions: Vec<String>) -> ParsedInput {
-    ParsedInput::Fail { error: error.into(), suggestions }
+    ParsedInput::Fail { error: error.into(), suggestions, hint: None }
 }
 
 /// Articles dropped during normalization.
@@ -89,6 +93,17 @@ impl Group {
             Group::With => 2,
             Group::About => 3,
             Group::To => 4,
+        }
+    }
+
+    /// The slot role this group fills (§6.1's role names).
+    fn role(self) -> &'static str {
+        match self {
+            Group::Object => "object",
+            Group::At => "at",
+            Group::With => "with",
+            Group::About => "about",
+            Group::To => "to",
         }
     }
 
@@ -136,9 +151,18 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         return fail("empty input", vec![]);
     }
 
-    // canonical passthrough: clock-prefixed or containing an outcome arrow
-    // (the raw parser message surfaces on failure)
-    if passthrough_re().is_match(trimmed) || trimmed.contains("->") {
+    // an outcome arrow is the LOG's grammar, not the player's: a typed
+    // `-> DESTROY X` has no step field to land in, and silently dropping it
+    // would answer a cheat with a success echo — refuse it outright
+    if trimmed.contains("->") {
+        return fail(
+            "outcomes are the engine's to write — type the action only (`0:42 @ MARCH WAIT`, or just `wait`)",
+            vec![],
+        );
+    }
+    // canonical passthrough: clock-prefixed (the raw parser message
+    // surfaces on failure)
+    if passthrough_re().is_match(trimmed) {
         return match parse_sentence(trimmed, ctx.dict) {
             Ok(s) => {
                 // v0.5: the begin minute — an explicit clock starts there;
@@ -200,10 +224,13 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         }
     }
 
-    // find the verb: single token ('READ') or two-token preposition form
-    // ('use on' → USE_ON)
+    // find the verb: single token ('READ'), two-token preposition form
+    // ('use on' → USE_ON), or the verb's own prose word (`search` for
+    // EXPLORE — see [`template_aliases`])
+    let aliases = template_aliases(ctx);
     let mut verb_index: Option<usize> = None;
     let mut verb_len = 1usize;
+    let mut alias_verb: Option<String> = None;
     for j in i..tokens.len() {
         let up = tokens[j].to_uppercase();
         if ctx.dict.is_verb(&up) {
@@ -221,18 +248,52 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
             verb_len = 2;
             break;
         }
+        if let Some(v) = aliases.get(&tokens[j].to_lowercase()) {
+            verb_index = Some(j);
+            verb_len = 1;
+            alias_verb = Some(v.clone());
+            break;
+        }
     }
     let Some(verb_index) = verb_index else {
         let verbs: Vec<String> = ctx.dict.verbs.iter().map(|v| v.to_lowercase()).collect();
+        // the first token with a near-verb names the typo; the suggestion is
+        // the WHOLE line with that token corrected, so it can be typed back
+        let mut lines: Vec<String> = Vec::new();
+        for (j, tok) in tokens.iter().enumerate().skip(i) {
+            let near = suggest_verb(tok, &verbs, 3);
+            if near.is_empty() {
+                continue;
+            }
+            for v in near {
+                let mut fixed: Vec<&str> = tokens[i..].to_vec();
+                fixed[j - i] = &v;
+                lines.push(fixed.join(" ").to_lowercase());
+            }
+            break;
+        }
         return fail(
             format!(
                 "no verb found — try one of: {}",
                 verbs.iter().map(|v| v.replace('_', " ")).collect::<Vec<_>>().join(", ")
             ),
-            suggest_verb(tokens[i], &verbs, 3),
+            lines,
         );
     };
-    let verb = tokens[verb_index..verb_index + verb_len].join("_").to_uppercase();
+    let verb = match alias_verb {
+        Some(v) => v,
+        None => tokens[verb_index..verb_index + verb_len].join("_").to_uppercase(),
+    };
+    let verb_def = ctx.content.verbs.get(&verb);
+    // a role's slot query, as a preference the name resolver consults when
+    // a word is ambiguous (`guard` is THE_GUARD to TALK and GUARD_VAN to
+    // EXPLORE)
+    let prefer_for = |role: &str| -> Box<dyn Fn(&Entity) -> bool + '_> {
+        match verb_def.and_then(|v| v.slot_by_role.get(role)).and_then(|s| s.query.as_ref()) {
+            Some(q) => Box::new(move |e: &Entity| match_query(e, q)),
+            None => Box::new(|_: &Entity| true),
+        }
+    };
 
     // split the tail into role phrases; bare names before a keyword are
     // objects. The phrases keep AUTHORED order — the object group runs from
@@ -263,7 +324,15 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     let mut actors = if !actors_raw.is_empty() {
         // the actor list is its own slot: it claims the head for its names
         let mut claimed_actors: IndexMap<String, usize> = IndexMap::new();
-        let (r, f) = resolve_group(actors_raw, &names, &pools, &mut handed, &mut claimed_actors);
+        let (r, f) = resolve_group(
+            actors_raw,
+            &names,
+            &pools,
+            &mut handed,
+            &mut claimed_actors,
+            "actors",
+            &*prefer_for("actors"),
+        );
         failures.extend(f);
         r
     } else {
@@ -278,17 +347,41 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     let mut slot: [Vec<Ref>; 5] = [Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()];
     let mut claimed: [IndexMap<String, usize>; 5] = std::array::from_fn(|_| IndexMap::new());
     for (g, raw) in &phrases {
-        let (r, f) = resolve_group(raw, &names, &pools, &mut handed, &mut claimed[g.index()]);
+        let prefer = prefer_for(g.role());
+        let (r, f) = resolve_group(
+            raw,
+            &names,
+            &pools,
+            &mut handed,
+            &mut claimed[g.index()],
+            g.role(),
+            &*prefer,
+        );
         failures.extend(f);
         slot[g.index()].extend(r);
     }
-    let [objects, at, mut with_role, about, to_refs] = slot;
+    let [objects, at, with_role, about, to_refs] = slot;
 
     if let Some(f) = failures.first() {
         match f {
-            PhraseFail::Unknown(word) => {
-                let pool: Vec<String> = names.values().map(|v| v.entity.name.clone()).collect();
-                return fail(format!("I don't know '{word}'"), suggest(word, &pool, 3));
+            PhraseFail::Unknown { word, role } => {
+                // names that fit the slot first (`talk to the gaurd` wants a
+                // someone, not GUARD VAN); the whole table when none do
+                let prefer = prefer_for(role);
+                let fitting: Vec<String> = names
+                    .values()
+                    .filter(|v| prefer(v.entity))
+                    .map(|v| v.entity.name.clone())
+                    .collect();
+                // names that fit the slot only: a suggestion that cannot be
+                // typed back (`guard van` for `talk to …`) is worse than none
+                // — the hint names what happened when there is one to name
+                let suggestions = suggest(word, &fitting, 3);
+                return ParsedInput::Fail {
+                    error: format!("I don't know '{word}'"),
+                    suggestions,
+                    hint: unknown_name_hint(word, ctx),
+                };
             }
             PhraseFail::Short { key, needed, have } => {
                 return fail(
@@ -303,34 +396,55 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         }
     }
 
+    // the `fits` probe: does a ref satisfy a slot's query? `by_name` pools
+    // hold living ids with the oldest first (§4.2), so a name ref probes the
+    // pool HEAD
+    let fits = |r: &Ref, role: &str| -> bool {
+        let Some(verb_def) = verb_def else { return false };
+        let Some(slot) = verb_def.slot_by_role.get(role) else {
+            return false;
+        };
+        let id = match r {
+            Ref::Name { name, .. } => ctx.state.by_name.get(name).and_then(|pool| pool.first()),
+            Ref::Id { id } => Some(id),
+            Ref::Param { .. } => None,
+        };
+        let Some(id) = id else {
+            return false;
+        };
+        let Some(e) = ctx.state.entities.get(id) else {
+            return false;
+        };
+        slot.query.as_ref().is_none_or(|q| match_query(e, q))
+    };
+    let [mut objects, mut at, mut with_role, mut about, mut to_refs] =
+        [objects, at, with_role, about, to_refs];
+    // a bare name after a verb with NO object slot (`question the guard`,
+    // `talk the aether seal`) goes to the first companion slot every item
+    // fits — to, at, about, with in that order
+    if let Some(verb_def) = verb_def {
+        if !objects.is_empty() && !verb_def.slot_by_role.contains_key("object") {
+            let home = ["to", "at", "about", "with"]
+                .into_iter()
+                .find(|role| objects.iter().all(|r| fits(r, role)));
+            if let Some(role) = home {
+                let moved = std::mem::take(&mut objects);
+                match role {
+                    "to" => to_refs.splice(0..0, moved),
+                    "at" => at.splice(0..0, moved),
+                    "about" => about.splice(0..0, moved),
+                    _ => with_role.splice(0..0, moved),
+                };
+            }
+        }
+    }
     // English prefers "talk with quill"; slots say `to` (nightjar) or a second
     // actor (forgotten-house) — route 'with' content to the verb's real slot,
     // but only where the entity fits (§6 slot queries); anything that does not
     // fit stays in `with` so the engine rejects the phrasing the player typed
     let mut to = to_refs.first().cloned();
-    if let Some(verb_def) = ctx.content.verbs.get(&verb) {
+    if let Some(verb_def) = verb_def {
         if !with_role.is_empty() && !verb_def.slot_by_role.contains_key("with") {
-            // the `fits` probe: `by_name` pools hold
-            // living ids with the oldest first (§4.2), so a name ref probes
-            // the pool HEAD
-            let fits = |r: &Ref, role: &str| -> bool {
-                let Some(slot) = verb_def.slot_by_role.get(role) else {
-                    return false;
-                };
-                let id = match r {
-                    Ref::Name { name, .. } => {
-                        ctx.state.by_name.get(name).and_then(|pool| pool.first())
-                    }
-                    _ => None,
-                };
-                let Some(id) = id else {
-                    return false;
-                };
-                let Some(e) = ctx.state.entities.get(id) else {
-                    return false;
-                };
-                slot.query.as_ref().is_none_or(|q| match_query(e, q))
-            };
             if to.is_none() && fits(&with_role[0], "to") {
                 // structural (PartialEq) equality is exact here:
                 // the kept set is `with_role` filtered by `fits`, and
@@ -408,7 +522,7 @@ fn living_name_maps(
 /// word (§11's suggestion path) or a name whose living pool has fewer copies
 /// than the clause's roles demand (E9's distinct-binding refusal).
 enum PhraseFail {
-    Unknown(String),
+    Unknown { word: String, role: &'static str },
     Short { key: String, needed: usize, have: usize },
 }
 
@@ -451,12 +565,14 @@ fn norm(name: &str) -> String {
 /// [`PhraseFail::Short`]. A second mention within the same slot re-uses the
 /// slot's claim, so a doubled name inside one role still meets the engine's
 /// same-role placement refusal.
-fn resolve_group(
+fn resolve_group<'a>(
     raw: &[&str],
-    names: &IndexMap<String, NameEntry>,
+    names: &'a IndexMap<String, NameEntry<'a>>,
     pools: &IndexMap<String, Vec<String>>,
     handed: &mut IndexMap<String, usize>,
     claimed: &mut IndexMap<String, usize>,
+    role: &'static str,
+    prefer: &dyn Fn(&Entity) -> bool,
 ) -> (Vec<Ref>, Vec<PhraseFail>) {
     let toks: Vec<&str> =
         raw.iter().copied().filter(|t| !ARTICLES.contains(&t.to_lowercase().as_str())).collect();
@@ -468,13 +584,36 @@ fn resolve_group(
         let mut used = 0usize;
         let mut len = std::cmp::min(MAX_NAME_WORDS, toks.len() - j);
         while len >= 1 {
-            let key = toks[j..j + len].join(" ").to_lowercase();
+            // the typed run normalizes like the names do (§11: case,
+            // underscores, articles) — `THE_MANIFEST` and `the manifest`
+            // are one key
+            let key = norm(&toks[j..j + len].join(" "));
             if let Some(e) = names.get(&key) {
                 hit = Some(e);
                 used = len;
                 break;
             }
             len -= 1;
+        }
+        // an exact name that does not fit the slot yields to a unique
+        // fitting name containing the word (`explore guard` → GUARD VAN,
+        // not THE GUARD); no exact name at all falls back to a unique
+        // containing name (`read ledger` → THE VANE LEDGER)
+        if hit.is_none_or(|e| !prefer(e.entity)) {
+            let word = norm(toks[j]);
+            if !word.is_empty() {
+                let containing: Vec<&NameEntry> =
+                    names.values().filter(|e| e.norm.split(' ').any(|w| w == word)).collect();
+                let fitting: Vec<&NameEntry> =
+                    containing.iter().copied().filter(|e| prefer(e.entity)).collect();
+                // (a lone containing name that does not fit stays
+                // unresolved — the engine's kind refusal would only confuse
+                // where the hint "X is no longer in play" explains)
+                if fitting.len() == 1 {
+                    hit = Some(fitting[0]);
+                    used = 1;
+                }
+            }
         }
         if let Some(e) = hit {
             let key = &e.norm;
@@ -505,7 +644,7 @@ fn resolve_group(
             }
             j += used;
         } else {
-            failed.push(PhraseFail::Unknown(toks[j].to_string()));
+            failed.push(PhraseFail::Unknown { word: toks[j].to_string(), role });
             j += 1;
         }
     }
@@ -557,15 +696,101 @@ fn suggest_scan<D: Clone>(entries: &[(D, Vec<String>)], w: &str, limit: usize) -
         .collect()
 }
 
-/// Suggest close names: prefix matches first, then levenshtein ≤ 2.
+/// Suggest close names in their typeable display form (`the vane ledger`):
+/// prefix matches first, then names containing the word, then levenshtein
+/// ≤ 2.
 fn suggest(word: &str, pool: &[String], limit: usize) -> Vec<String> {
     let w = norm(word);
     if w.is_empty() {
         return vec![];
     }
     let entries: Vec<(String, Vec<String>)> =
-        pool.iter().map(|p| (p.clone(), vec![norm(p)])).collect();
-    suggest_scan(&entries, &w, limit)
+        pool.iter().map(|p| (display_name(p), vec![norm(p)])).collect();
+    let found = suggest_scan(&entries, &w, limit);
+    if !found.is_empty() {
+        return found;
+    }
+    // a word of the name, exact or one typo off (`ledgr` → the vane ledger)
+    for near in [0usize, 2] {
+        let hits: Vec<String> = entries
+            .iter()
+            .filter(|(_, keys)| {
+                keys.iter().any(|k| k.split(' ').any(|part| levenshtein(part, &w) <= near))
+            })
+            .take(limit)
+            .map(|(d, _)| d.clone())
+            .collect();
+        if !hits.is_empty() {
+            return hits;
+        }
+    }
+    vec![]
+}
+
+/// The verbs' own prose words as aliases: a `says` template whose first
+/// word stands alone before a placeholder or the full stop (`{actors}
+/// search {object}.`, `{actors} question {to}.`) teaches that word as the
+/// verb (`search` → EXPLORE, `question` → TALK); a longer phrase (`take up
+/// a station at`) teaches nothing — its first word would mislead. Registered
+/// verbs always win over an alias.
+fn template_aliases(ctx: &LenientCtx) -> IndexMap<String, String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = static_regex(&RE, || Regex::new(r"^\{actors\} ([a-z]+)(?: \{[a-z]+\}|\.|$)"));
+    let mut out: IndexMap<String, String> = IndexMap::new();
+    for (verb, tpl) in &ctx.content.templates {
+        let Some(m) = re.captures(tpl) else { continue };
+        let word = m[1].to_lowercase();
+        let starts_compound =
+            ctx.dict.verbs.iter().any(|v| v.starts_with(&format!("{}_", word.to_uppercase())));
+        if ctx.dict.is_verb(&word.to_uppercase())
+            || starts_compound
+            || ROLE_KEYWORDS.contains(&word.as_str())
+            || out.contains_key(&word)
+        {
+            continue;
+        }
+        out.insert(word, verb.clone());
+    }
+    out
+}
+
+/// Why an unknown word did not resolve, when the table can say: the name
+/// belonged to a card that left play, or to a prototype nothing has minted
+/// yet (an unmet passenger the manifest named).
+fn unknown_name_hint(word: &str, ctx: &LenientCtx) -> Option<String> {
+    let w = norm(word);
+    if w.is_empty() {
+        return None;
+    }
+    let contains = |name: &str| norm(name).split(' ').any(|part| part == w);
+    if let Some(gone) =
+        ctx.state.entities.values().find(|e| e.dead_action.is_some() && contains(&e.name))
+    {
+        // a card that left play in the same action another arrived in its
+        // place (the masked passenger who gave a name, the lord who became
+        // a body) names its successor — the old title is not a death
+        let successor = gone.dead_action.and_then(|at| {
+            ctx.state.entities.values().find(|e| {
+                e.dead_action.is_none()
+                    && e.born_action == Some(at)
+                    && e.attrs.get("container") == gone.attrs.get("container")
+            })
+        });
+        return Some(match successor {
+            Some(next) => format!(
+                "{} is no longer in play — {} stands there now",
+                pretty(&gone.name),
+                pretty(&next.name)
+            ),
+            None => format!("{} is no longer in play", pretty(&gone.name)),
+        });
+    }
+    if ctx.content.prototypes.keys().any(|name| contains(name)) {
+        return Some(format!(
+            "nobody on the table answers to '{word}' yet — `look` shows who is here"
+        ));
+    }
+    None
 }
 
 /// Like suggest(), but multi-word verbs
@@ -640,14 +865,17 @@ mod tests {
         ];
         // prefix hits win: this is the script-play 'read the vane ledgr' shape
         // — the failed word is 'vane' (the multi-word scan ate 'ledgr'), and
-        // 'vane ledger' starts with 'vane'
-        assert_eq!(suggest("vane", &pool, 3), vec!["THE_VANE_LEDGER"]);
+        // 'vane ledger' starts with 'vane'; suggestions print the TYPEABLE
+        // display form
+        assert_eq!(suggest("vane", &pool, 3), vec!["the vane ledger"]);
         // no prefix → near (levenshtein ≤ 2) fallback
-        assert_eq!(suggest("ledgr", &["LEDGER".to_string()], 3), vec!["LEDGER"]);
+        assert_eq!(suggest("ledgr", &["LEDGER".to_string()], 3), vec!["ledger"]);
         assert_eq!(
             suggest("paten", &["THE_PATENTEE".to_string()], 3),
-            vec!["THE_PATENTEE"] // prefix on the normalized form
+            vec!["the patentee"] // prefix on the normalized form
         );
+        // a non-prefix word still lands when it is one of the name's words
+        assert_eq!(suggest("ledger", &pool, 3), vec!["the vane ledger"]);
     }
 
     #[test]

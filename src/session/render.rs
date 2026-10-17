@@ -2,7 +2,7 @@
 //! functions over records/state.
 
 use crate::content::CompiledContent;
-use crate::core::clock::format_duration;
+use crate::core::clock::{format_duration, HALFHOURS_PER_DAY, MIN_PER_HALFHOUR};
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
 use crate::core::r#ref::Ref;
@@ -33,6 +33,23 @@ pub fn ending_notice(e: &Ending) -> String {
 #[must_use]
 pub fn pretty(name: &str) -> String {
     name.replace('_', " ")
+}
+
+/// The player's clock: `day 0, 21:00` from absolute minutes — the
+/// canonical `d:h` form (48 halfhours a day) is the log's spelling, this
+/// is the one a reader keeps time by.
+#[must_use]
+pub fn clock_text(abs_min: i64) -> String {
+    let per_day = HALFHOURS_PER_DAY * MIN_PER_HALFHOUR;
+    format!("day {}, {}", abs_min.div_euclid(per_day), hhmm(abs_min))
+}
+
+/// The time of day alone: `21:00`.
+#[must_use]
+pub fn hhmm(abs_min: i64) -> String {
+    let per_day = HALFHOURS_PER_DAY * MIN_PER_HALFHOUR;
+    let m = abs_min.rem_euclid(per_day);
+    format!("{:02}:{:02}", m / 60, m % 60)
 }
 
 /// the display form of a registered verb lexeme (§11's banner list): USE_ON
@@ -142,22 +159,22 @@ pub fn prose(
     Ok(prose_lines(record, content, dict)?.join("\n"))
 }
 
-/// A lone ref: name / #id / the em dash fallback
+/// A lone ref: the name's display form / #id / the em dash fallback
 /// (param refs are authored-only and never reach a record)
 fn ref_name(r: Option<&Ref>) -> String {
     match r {
-        Some(Ref::Name { name, .. }) => name.clone(),
+        Some(Ref::Name { name, .. }) => pretty(name),
         Some(Ref::Id { id }) => format!("#{id}"),
         _ => "—".to_string(),
     }
 }
 
-/// Refs inside a list render names / #ids (a param
+/// Refs inside a list render display names / #ids (a param
 /// ref yields its name).
 fn ref_names(rs: &[Ref]) -> Vec<String> {
     rs.iter()
         .map(|r| match r {
-            Ref::Name { name, .. } | Ref::Param { name } => name.clone(),
+            Ref::Name { name, .. } | Ref::Param { name } => pretty(name),
             Ref::Id { id } => format!("#{id}"),
         })
         .collect()
@@ -242,6 +259,14 @@ mod tests {
         let quiet =
             Ending { id: "QUIET_END".into(), title: "Hush".into(), flavour: "quiet".into() };
         assert_eq!(ending_banner(&quiet), "— HUSH · quiet —");
+    }
+
+    #[test]
+    fn clock_text_speaks_day_and_time_of_day() {
+        assert_eq!(clock_text(0), "day 0, 00:00");
+        assert_eq!(clock_text(42 * 30), "day 0, 21:00");
+        assert_eq!(clock_text(48 * 30 + 12 * 30), "day 1, 06:00");
+        assert_eq!(hhmm(42 * 30 + 20), "21:20");
     }
 
     #[test]

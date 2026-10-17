@@ -184,8 +184,10 @@ impl Game {
             }
             for o in &r.outcomes {
                 for a in &o.args {
-                    // INTO targets name a destination, not a discovery — keep
-                    // them out (the `{ role }` into-target shape is skipped)
+                    // outcome refs AND INTO destinations join the named set
+                    // — a place something was sent to is a place the player
+                    // has heard of (§11); only the `{ role }` into-target
+                    // shape is skipped (it names no card)
                     match a {
                         Arg::Ref { r#ref: Ref::Name { name, .. } }
                         | Arg::Into {
@@ -510,7 +512,7 @@ impl Game {
                     .collect();
                 // rank ascending, then name — the frozen comparator:
                 // rank ascending, ties broken by `cmp_ascii_ci`
-                // (§3.21's frozen name order — ASCII-lowercase then byte order)
+                // (§11's frozen name order — ASCII-lowercase then byte order)
                 let mut pool = pool;
                 pool.sort_by(|a, b| {
                     rank(a)

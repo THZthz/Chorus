@@ -176,7 +176,7 @@ fn validate_slots(
                 role.as_str()
             )));
         }
-        // §2.6.2: the bindings store IDS — mid-list DESTROY must be visible
+        // §6.8: the bindings store IDS — mid-list DESTROY must be visible
         // to every later read through entities.get (dead-stamp semantics)
         let mut placed: HashSet<String> = HashSet::new();
         let mut ids: Vec<String> = Vec::with_capacity(provided.len());
@@ -854,11 +854,11 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         "DESTROY" => {
             let concrete_args = concretize(args, ctx);
             for id in expand(&concrete_args, ctx) {
-                // stamp + release on the CURRENT entity (§2.6.1: entities are
-                // never removed, so the id always resolves)
+                // stamp + release on the CURRENT entity (§7's soft destroy:
+                // entities are never removed, so the id always resolves)
                 let name = match ctx.state.entities.get(&id) {
                     Some(e) => e.name.clone(),
-                    None => continue, // unreachable under §2.6.1
+                    None => continue, // unreachable under §7's soft destroy
                 };
                 if let Some(e) = ctx.state.entities.get_mut(&id) {
                     e.dead_action = Some(ctx.record_id);
@@ -1366,7 +1366,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // container / zone ride off the dying card's CURRENT attrs
         let (container, zone, dying_name) = {
             let Some(dying) = ctx.state.entities.get(&dying_id) else {
-                continue; // unreachable under §2.6.1
+                continue; // unreachable under §7's soft destroy
             };
             let container = match dying.attrs.get("container") {
                 Some(AttrValue::Str(s)) => Some(s.clone()),
@@ -1488,7 +1488,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         for id in &targets {
             let cur: Option<i64> = {
                 let Some(e) = ctx.state.entities.get(id) else {
-                    continue; // unreachable under §2.6.1
+                    continue; // unreachable under §7's soft destroy
                 };
                 if let Some(path) = aspect_path {
                     // raw entry, not `aspect_get`: a sub-map must REFUSE the
@@ -2147,7 +2147,7 @@ fn to_minutes(v: &AttrValue) -> Result<i64> {
 }
 
 /// Resolve ref/role args to entity IDS
-/// (role refs expand across the binding). §2.6.3: the ids come back (not
+/// (role refs expand across the binding). §6.8: the ids come back (not
 /// live entity handles) and each caller re-gets the entity,
 /// so a mid-list DESTROY is seen by every later read (dead-stamp rule).
 /// Role bindings push ALL their ids (dead ones included); name/id refs

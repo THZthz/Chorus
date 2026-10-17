@@ -1821,8 +1821,9 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     }
 
     // aspect reads with no writer anywhere — a typo'd aspect silently never
-    // matches (aspects are an open vocabulary, so this is a warning, not an
-    // error)
+    // matches. ERROR severity (the pre-E11 finding set, §13.2): aspects are
+    // an open vocabulary, but a read nothing ever writes is dead content
+    // either way
     let mut reads: IndexSet<String> = IndexSet::new();
     let mut writes: IndexSet<String> = IndexSet::new();
     fn add_write(writes: &mut IndexSet<String>, path: &str) {

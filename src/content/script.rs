@@ -1359,6 +1359,16 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     let rhs = dsl_trim(&t[arrow + 2..]);
     let mut def = RecipeDef { out: vec![rhs.to_string()], ..RecipeDef::default() };
     if default_re().is_match(lhs) {
+        // §6.4: `default` is the whole shape — a trailing token is a load
+        // error, never a silently dropped modifier (`default max 2` and
+        // `default when …` used to compile as a bare default, the author's
+        // cap or condition gone without a trace)
+        let rest = dsl_trim(&lhs["default".len()..]);
+        if !rest.is_empty() {
+            return Err(ChorusError::new(format!(
+                "line {ln}: `default` takes no modifiers — got '{rest}' (a default recipe is `default -> OUTCOMES`; a conditional one is `[id] [when COND] -> OUTCOMES`, §6.4)"
+            )));
+        }
         return Ok(def);
     }
     let tokens = split_dsl_ws(lhs);

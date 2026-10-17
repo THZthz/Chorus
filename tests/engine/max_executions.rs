@@ -359,6 +359,20 @@ fn the_positional_walk_honors_every_token_and_errors_on_strays() {
         ),
         "line 20: unexpected 'hint' before '->'",
     );
+    // `default` is the whole shape (§6.4): a trailing keyword used to be
+    // silently dropped — `default max 2` compiled as a bare default and the
+    // cap was gone without a trace; `default when …` lost its condition
+    assert_err_msg(
+        compile_script(&verbs_max("      default max 2 -> NARRATE \"x\""), &dict),
+        "line 20: `default` takes no modifiers — got 'max 2'",
+    );
+    assert_err_msg(
+        compile_script(
+            &verbs_max("      default when count(actors) >= 1 -> NARRATE \"x\""),
+            &dict,
+        ),
+        "line 20: `default` takes no modifiers — got 'when count\\(actors\\) >= 1'",
+    );
 }
 
 /// The CS shape (25 × max 1, 1 × max 3): three runs fine, the fourth skipped.

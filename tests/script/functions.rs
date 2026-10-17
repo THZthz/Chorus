@@ -270,6 +270,15 @@ fn fdef(name: &str, params: &[&str], body: &str) -> FunctionDef {
 /// bodies, so the rig declares the table; SUSPICION is the mint target for
 /// ref-position params.
 fn rig(dict: &Dictionary, functions: Vec<FunctionDef>, recipe: &str) -> CompiledContent {
+    rig_result(dict, functions, recipe).unwrap()
+}
+
+/// The rig's compile as a Result — for the load-error assertions.
+fn rig_result(
+    dict: &Dictionary,
+    functions: Vec<FunctionDef>,
+    recipe: &str,
+) -> Result<CompiledContent, chorus::error::ChorusError> {
     compile_content(
         &ContentRaw {
             verbs: rig_verb(&[recipe]),
@@ -299,7 +308,6 @@ fn rig(dict: &Dictionary, functions: Vec<FunctionDef>, recipe: &str) -> Compiled
         dict,
         &[],
     )
-    .unwrap()
 }
 
 /// chain(n)
@@ -672,6 +680,29 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
             Some(&AttrValue::Num(120))
         );
     }
+}
+
+/// §10: braced tokens are checked for EVERY declared body at load, called or
+/// not — expansion runs the same check only for the bodies a call reaches, so
+/// a `{ x }` or `{typo}` in a function nobody calls used to load clean.
+#[test]
+fn a_never_called_body_fails_its_token_checks_at_load() {
+    let dict = stew_dict();
+    assert_err_msg(
+        rig_result(&dict, vec![fdef("ghost", &["x"], "NARRATE \"{ x } waits\"")], "NARRATE \"x\""),
+        r"function 'ghost': '\{ x \}' in a body string names neither a parameter of 'ghost' nor a reserved token",
+    );
+    assert_err_msg(
+        rig_result(&dict, vec![fdef("ghost", &["x"], "NARRATE \"{typo} waits\"")], "NARRATE \"x\""),
+        r"function 'ghost': '\{typo\}' in a body string names neither a parameter of 'ghost' nor a reserved token",
+    );
+    // a declared param and the reserved tokens pass, in IF arms too
+    assert!(rig_result(
+        &dict,
+        vec![fdef("ghost", &["x"], "IF exists(X) -> (NARRATE \"{x} and {actors}\")")],
+        "NARRATE \"x\""
+    )
+    .is_ok());
 }
 
 fn assert_refusal_matches(r: &ExecResult, pattern: &str) {

@@ -1038,6 +1038,18 @@ fn the_recursive_guards_catch_progress_refuse_unknown_ending_nested_in_if_branch
         compile_content(&raw(&["IF exists(X) -> (REFUSE(\"no\"))"], None), &dict, &[]),
         "trigger t: REFUSE belongs to verb recipes — events have no step to refuse",
     );
+    // §6.6: ADVANCE stretches the pass a completion rides; the event kinds
+    // own no pass, so it used to apply, log, and drop its duration silently
+    // on both play and fold — now the same load-error family as PROGRESS/
+    // REFUSE/RUN, nested arms included
+    assert_err_msg(
+        compile_content(&raw(&["IF exists(X) -> (ADVANCE(1h))"], None), &dict, &[]),
+        "trigger t: ADVANCE belongs to verb recipes — events own no advance pass to stretch",
+    );
+    assert_err_msg(
+        compile_content(&raw(&["ADVANCE(1h)"], None), &dict, &[]),
+        "trigger t: ADVANCE belongs to verb recipes — events own no advance pass to stretch",
+    );
     let endings = Some(
         [("REAL".to_string(), EndingDef { title: "Real".into(), flavour: None })]
             .into_iter()
@@ -1212,7 +1224,7 @@ verbs:
     actors: 1 kind:character
     duration: 0m
     recipes:
-      default when count(name:SUSPICION) < 3 -> SPAWN SUSPICION, IF count(name:SUSPICION) >= 3 -> (ENDING ARRESTED) ELSE -> (NARRATE "Nobody notices.")
+      when count(name:SUSPICION) < 3 -> SPAWN SUSPICION, IF count(name:SUSPICION) >= 3 -> (ENDING ARRESTED) ELSE -> (NARRATE "Nobody notices.")
 "#;
 
 #[test]
@@ -1228,7 +1240,7 @@ fn selection_reads_the_input_state_the_recipe_reads_its_own_spawn_on_the_draft()
     for _ in 0..3 {
         let r = run(content, &dict, cur, "0:0 @ ANA STEW", id);
         assert_eq!(r.rejected, None);
-        assert_eq!(act(&r).unwrap().recipes, ["stew.default"]); // the `when count < 3` recipe keeps firing on input state
+        assert_eq!(act(&r).unwrap().recipes, ["stew.recipe0"]); // the `when count < 3` recipe keeps firing on input state
         told.push(said(&r));
         id += r.records.len() as i64;
         all.extend(r.records);

@@ -934,6 +934,16 @@ impl<'a> Parser<'a> {
                 args.push(Arg::Param { name: p_name, sign: None });
                 continue;
             }
+            // §4.4: the only SPAWN pairs are the engine-written aspects=/attrs=
+            // materialization — apply reads no other key, so any other
+            // authored pair would vanish silently at apply (no error, no log
+            // trace); fail loud at parse instead. The decay modifier is the
+            // `expires <duration>` shape above, never a pair.
+            if key != "aspects" && key != "attrs" {
+                return Err(ChorusError::new(format!(
+                    "SPAWN: unknown pair key '{key}' — the only SPAWN pairs are the engine-written aspects=/attrs= materialization (§4.4); authored decay is the `expires <duration>` modifier"
+                )));
+            }
             args.push(Arg::Pair { k: key, v: self.value_token()? });
         }
         Ok(args)

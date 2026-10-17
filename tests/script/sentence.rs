@@ -142,6 +142,20 @@ fn backslash_bearing_names_round_trip_losslessly() {
 }
 
 #[test]
+fn spawn_rejects_unknown_pair_keys_loud() {
+    // §4.4: the only SPAWN pairs are the engine-written aspects=/attrs=
+    // materialization — any other key used to parse as an inert pair that
+    // apply dropped without a trace (no error, no log)
+    let dict = core_dictionary();
+    assert_err_msg(
+        parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD ttl=2h", &dict),
+        "SPAWN: unknown pair key 'ttl' — the only SPAWN pairs are the engine-written aspects=/attrs= materialization",
+    );
+    // the engine-written pairs still parse (the fold's input)
+    assert!(parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD AS #d1 attrs=\"{}\"", &dict).is_ok());
+}
+
+#[test]
 fn role_refs_in_outcomes_render_uppercase() {
     // (MOVE ACTORS INTO OBJECT)
     let dict = core_dictionary();

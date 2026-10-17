@@ -37,6 +37,7 @@ projection of that data, never the source of truth.
 18. **v0.6** — the engine-findings fixes: the authored `SPAWN … expires <duration>` modifier arming decay at mint; the RUN candidate walk's `when:` evaluated against the parent window's committed bindings overlaid by the projected clause.
 19. **v0.7** — the coverage convergence (spec-side only; no grammar/log/script/API change): the document brought level with the shipped Rust crate — the v0.5 record model written into §5.1/§6.6/§7/§9.2 (WAIT rows own the clock; four record kinds; `startMin`/`window`), the turn-boundary undo stated (§7/§11), the play interface rewritten to the shipped line REPL (§11), the tooling layer documented (§13: the reach analyzer, the script lint, the bins), and the port's frozen wire/collation/escape semantics recorded (§4.2, §4.4, §5.1, §7).
 20. **v0.7.1** — one escape discipline: ref formatting now doubles `\` like every other quoted form, closing the `a\b` round-trip hole (§5.1); a log holding such a name re-formats differently (§9.2, no compatibility).
+21. **v0.7.2** — the loud-fail sweep, five silent-drop corners made load errors: a trailing token after `default` (`default max 2`, `default when …` — §6.4/§10), an unknown `k=v` pair key on SPAWN (§4.4/§5.1), `ADVANCE` in a slot/expire trigger's outcomes (§6.6/§6.7/§10), an empty or unknown `kind:` in any query (§4.5/§6.1), and a mis-spelled braced token in a never-called function body (§10). No log format change; scripts that leaned on a dropped token now fail to load, naming it.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -223,13 +224,13 @@ contributes no template line; its recipe NARRATEs still speak.
 
 | Operator  | Args (normative)                | Effect                                        |
 |-----------|---------------------------------|-----------------------------------------------|
-| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2); the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first halfhour boundary at or after that minute that the clock actually crosses |
+| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error (v0.7.2; it used to parse as an inert pair that apply dropped without a trace); the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first halfhour boundary at or after that minute that the clock actually crosses |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
 | `REPLACE` | ref `WITH` prototype            | decay a card into its successor: mint from the prototype into the dying card's **current location** — its `container` (place-contained or character-carried) or, for a zone-tagged card, its `zone` (§10: the grouping has no card, so the tag passes to the successor) — then soft-destroy it — spawn first, then destroy, so the old name is released as usual. Paren-less authored form `REPLACE X WITH Y`; the engine logs the concrete `SPAWN … AS #id` + `DESTROY #id` pair, so there is no REPLACE in the log. Prototype derivation (`name from object`) is unavailable — REPLACE has no clause. A name collision with any living entity — the dying card itself included, still alive at spawn time — rejects the whole step (§9.2); revised for pools: a stackable successor may share a stackable pool, so `REPLACE X WITH X` succeeds — append-then-pop, the pool never dips, and the next pool op addresses the next-oldest. A replaced place's children keep pointing at the dead place id; re-parenting them is the author's job. REPLACE always writes the `attrs=` pair, even empty — the pair is the authoritative materialization (§9.2), so the fold cannot grow a location the mint never had |
 | `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute: a missing entry counts as 0, results may go negative (no clamping — a counter may read below zero), adding to a non-numeric entry is an application failure (§9.2), and a delta over a role ref applies per bound card, logging one concrete SET per card (`#id`s, each with its own result); deltas apply to the draft, so a later REFUSE in the same step discards them whole (§6.5). `SET x, expires, 2h` also materializes `expiresAt` (§4.2) |
 | `MOVE`    | ref, INTO ref                   | relocate (place→actor, actor→place)           |
 | `REVEAL`  | ref                             | unlock hidden text / mark discovered          |
-| `ADVANCE` | duration (`2h`, `90m`, `1d`)    | authored extra time shift (§6.6)             |
+| `ADVANCE` | duration (`2h`, `90m`, `1d`)    | authored extra time shift (§6.6) — verb recipes and `on complete` bodies only; in a slot/expire trigger it is a load error (§6.6) |
 | `NARRATE` | string                          | journal line only; raw template stored, interpolated at render |
 | `PROGRESS`| duration, string                | a read-bar tick: authored progress text at `duration` into the processing window (§6.7); journal-only, no state or time effect |
 | `RELATE`  | ref, ref, type [, int]          | create a relation edge between two cards      |
@@ -328,8 +329,10 @@ kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:wi
 name:SUSPICION  -name:SUSPICION        (§4.5: exact-case, like name refs and exists)
 ```
 
-- `kind:` — exactly one kind (an empty value parses and matches nothing —
-  every other term rejects an empty value)
+- `kind:` — exactly one of the §4.1 KINDS; an empty or unknown kind is a
+  parse error wherever a query parses — slots, `exists()`, `count()`
+  (v0.7.2: `kind:txet` used to compile and silently never match, the one
+  term whose typo was inert)
 - `aspect:path[>=|<=|>|<|!=|=]level` — principle match: all six comparators,
   levels may be negative; bare `aspect:x` = level ≥ 1
 - `state:key[=|!]value` — attr match against the `state.*` namespace
@@ -409,7 +412,9 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
                                                     pair loop, so the pair spelling can never silently stand
                                                     in for the modifier), and a function parameter expanded
                                                     into a pair position lands as a bare value the grammar
-                                                    rejects loud (§9.2) *)
+                                                    rejects loud (§9.2). The pair loop itself admits only the
+                                                    engine-written `aspects=`/`attrs=` keys — any other key is
+                                                    a parse error (v0.7.2) *)
            | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
            | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
@@ -615,7 +620,8 @@ role  := "actors" | "object" | "with" | "at" | "about" | "to"   (* §4.3's six r
 count := int [ ".." [ int ] ]                    (* "1", "2", "1..2", "2..", "0..1" *)
 ```
 
-A slot with `max < min` is a compile error.
+A slot with `max < min` is a compile error, and so is a slot query naming
+an empty or unknown kind (§4.5).
 
 A slot key outside the six-role vocabulary is a load error naming the valid
 roles (§10's "failing loudly at load time") — never a slot that compiles and
@@ -782,7 +788,8 @@ script line := [id] ["hidden" | "shown" ["hint" «"text"»]] ["when" cond]
                   anywhere but FIRST (a leading token matching the id class
                   is the id) — the grammar above shows the conventional
                   order; `when` is last before `->`; `default` is its own
-                  whole shape *)
+                  whole shape — a trailing token after it is a load error
+                  (v0.7.2) *)
 ```
 
 **Execution limits — `max N`** (N ≥ 1, integer). At selection a recipe whose
@@ -942,9 +949,10 @@ declaration order wins; there is no compile-time existence check on NAME
 (decay targets are often spawned at runtime — a wrong name is an inert
 trigger, not a load error). REFUSE in any trigger outcome is a load-time
 error (an event has no step to refuse; §6.7); an authored `ADVANCE` there is
-load-legal but silently INERT — an event owns no advance pass, so the op
-applies, rides the EVENT row, and its duration is dropped on both play and
-fold; and the fired set is written
+a load-time error too (v0.7.2) — an event owns no advance pass to stretch,
+so the extension could only have been dropped (it used to apply, ride the
+EVENT row, and vanish on both play and fold); a completion trigger fires
+inside a pass and keeps ADVANCE (§6.7); and the fired set is written
 by exactly one rule in both paths — one entry per EVENT row's trigger
 (authored id or `expire:<NAME>`).
 
@@ -1023,7 +1031,9 @@ and an event has neither — so `REFUSE` in any trigger outcome (all three kinds
 is a load-time error (§6.6). `RUN` belongs to verb recipes as well: authored
 in a slot/expire trigger's outcomes it is a load-time error — an event has
 no window to chain from (`on complete` bodies fire inside one, so they are
-the exempt kind, above).
+the exempt kind, above) — and so does `ADVANCE`, which can only stretch the
+pass a completion rides: in the two event kinds it is a load error, in an
+`on complete` body it extends the pass (v0.7.2).
 
 `PROGRESS(duration, string)` is journal-only, like `NARRATE`: no state
 effect, no time effect, raw template stored and interpolated at render
@@ -1596,8 +1606,9 @@ Rules:
   otherwise sit in any order around each other, `when` last before `->`,
   and `hint "…"` may appear with or without
   `shown`/`hidden`. `default` is its own whole shape — first token and
-  nothing else parses after it (a trailing `max N` on a `default` line is
-  silently dropped).
+  nothing else: a trailing token (`default max 2`, `default when …`) is a
+  load error naming it (v0.7.2; it used to be silently dropped, the cap or
+  condition gone without a trace).
   `max N` (N ≥ 1) caps executions (§6.4); `aspects` lists the
   presence-emitted aspects that gate `on complete` triggers (§6.7).
 - **Trigger lines** — two section-scoped forms plus one card-carried kind:
@@ -1624,8 +1635,9 @@ Rules:
     window completes binding the card (§6.7), optionally only for
     completions of recipes declaring `aspect`.
   `REFUSE` in any trigger outcome of any kind is a load-time error (§6.6),
-  and so is `RUN` in the two event kinds (an event has no window to chain
-  from, §6.7; `on complete` bodies fire inside one and are the exempt kind).
+  and so are `RUN` and `ADVANCE` in the two event kinds (an event has no
+  window to chain from and no pass to stretch, §6.6/§6.7; `on complete`
+  bodies fire inside one and are the exempt kind).
 - **Function lines**: `NAME(params…) -> OUTCOMES` — parametric
   outcome macros. Params are comma-separated identifiers in parens, bare
   space-separated identifiers without them, or absent (an empty `()` is the
@@ -1645,8 +1657,9 @@ Rules:
   a condition operand lands as its MINUTE COUNT (a number), and one bound
   at a signed delta position folds the `+`/`-` into the bound number.
   A braced token is spelled exactly: `{ x }` with inner spaces is the
-  undeclared-token load error even when `x` is a declared parameter (the
-  check runs when a call expands the body).
+  undeclared-token load error even when `x` is a declared parameter (checked
+  at load for every declared body, called or not — v0.7.2; expansion used
+  to check only the bodies a call reached).
   `{param}` interpolates AT EXPANSION to the
   call-site arg's canonical spelling; the reserved tokens `{actors}`
   `{object}` `{with}` `{at}` `{about}` `{to}` `{roll}` are never

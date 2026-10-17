@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 use indexmap::IndexMap;
 use regex::Regex;
 
+use crate::core::dict::KINDS;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{dsl_trim, DSL_WS_CLASS};
@@ -186,7 +187,24 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
     let field = &term[..colon];
     let rest = &term[colon + 1..];
     match field {
-        "kind" => Ok(QueryTerm::Kind { neg, kind: rest.to_string() }),
+        "kind" => {
+            // §4.5/§6.1: a kind is one of the §4.1 KINDS — an empty or unknown
+            // kind could only ever match nothing, and "a slot that compiles
+            // and silently never matches" is exactly what load errors exist
+            // for (a `kind:txet` typo used to be inert)
+            if rest.is_empty() {
+                return Err(ChorusError::new(format!(
+                    "bad kind term '{raw}' (expected kind:<KIND>)"
+                )));
+            }
+            if !KINDS.contains(&rest) {
+                return Err(ChorusError::new(format!(
+                    "bad kind term '{raw}' (unknown kind '{rest}' — expected one of {})",
+                    KINDS.join(", ")
+                )));
+            }
+            Ok(QueryTerm::Kind { neg, kind: rest.to_string() })
+        }
         "name" => {
             if rest.is_empty() {
                 return Err(ChorusError::new(format!(

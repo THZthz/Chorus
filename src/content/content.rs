@@ -13,7 +13,7 @@ use regex::Regex;
 use crate::core::dice::splitmix64;
 use crate::core::dict::Dictionary;
 use crate::core::fn_expand::{
-    collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH,
+    check_body_tokens, collect_fn_calls, expand_fn_calls, FnTable, FnTemplate, MAX_FN_DEPTH,
 };
 use crate::core::jsonw::{canonical_key_order, clone_map_in_key_order};
 use crate::core::parse::{parse_function_body, parse_outcomes};
@@ -647,6 +647,17 @@ pub fn compile_content(
                     "trigger {tid}: RUN belongs to verb recipes — events have no window to chain from"
                 )));
             }
+            // §6.6/§6.7: ADVANCE stretches the advance pass a window
+            // completion rides (the completion ctx's extra_advance_min feeds
+            // the pass target); the event kinds own no pass, so the extension
+            // could only be dropped — it used to apply, log, and vanish on
+            // both play and fold. A completion trigger fires inside a pass
+            // and keeps ADVANCE.
+            if o.op == "ADVANCE" && !is_complete {
+                return Err(ChorusError::new(format!(
+                    "trigger {tid}: ADVANCE belongs to verb recipes — events own no advance pass to stretch"
+                )));
+            }
             Ok(())
         })?;
         // §6.3: event bindings are empty, so a role-dependent operand in a
@@ -1238,7 +1249,14 @@ fn build_fn_table(defs: &[FunctionDef], dict: &Dictionary) -> Result<FnTable> {
         };
         // pass 1 inserted it
         match table.by_name.get_mut(&def.name) {
-            Some(tpl) => tpl.body = body,
+            Some(tpl) => {
+                tpl.body = body;
+                // §10: every declared body's braced tokens are checked at
+                // load, called or not — expansion runs the same check only
+                // for the bodies a call reaches, so a never-called `{ x }`
+                // or `{typo}` used to load clean
+                check_body_tokens(tpl)?;
+            }
             None => unreachable!("pass 1 inserted '{}'", def.name),
         }
     }

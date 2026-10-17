@@ -409,6 +409,29 @@ fn outcomes_append_to_the_complete_row_and_fold_replays_them() {
 
 // ------------------------------------------------------------ RUN in body ----
 
+/// ADVANCE inside the body stays legal — a completion trigger fires inside
+/// the pass its window's completion rides, so the extension reaches the
+/// pass target (the two event kinds reject ADVANCE at load, §6.6: they own
+/// no pass to stretch).
+#[test]
+fn advance_in_the_body_stays_legal_and_stretches_the_pass() {
+    let dict = core_dictionary();
+    let verbs = &format!(
+        "  WORK:\n    actors: 1 kind:character\n    object: 1 kind:resource\n    duration: 0m\n    recipes:\n      work_job when count(object) >= 1 -> NARRATE \"worked\"\n{}",
+        dream("", "      dream_rest when count(actors) >= 1 -> NARRATE \"dreamed\"")
+    );
+    let entities = "  ANA is character at HOUSE
+  HOUSE is place
+  JOB is resource
+  on complete -> (ADVANCE(1h), NARRATE \"the job drags on\")";
+    let (c, s) = compile(&dict, &rig(entities, verbs));
+    let r = run(&c, &dict, s, "0:0 @ ANA WORK JOB", 1);
+    assert_eq!(r.rejected, None, "ADVANCE in an on complete body compiles and runs");
+    // the wait row closing the pass spans the authored extension
+    let wait = r.records.iter().find(|x| x.kind == "wait").expect("the pass ends in a wait row");
+    assert_eq!(wait.advanced_min, 60, "the completion's ADVANCE stretched the pass by 1h");
+}
+
 /// RUN inside the body hands off across verbs (the job→needs bootstrap
 /// shape): a WORK completion binding the JOB card opens a DREAM window
 /// through the global recipe table. The follow-up consumes the carrier (the

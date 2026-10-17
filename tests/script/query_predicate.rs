@@ -611,6 +611,23 @@ fn count_with_a_non_role_non_query_argument_is_a_parse_shaped_role() {
 }
 
 #[test]
+fn kind_terms_reject_empty_and_unknown_kinds_at_parse() {
+    // §4.5/§6.1: a kind is one of the §4.1 KINDS — `kind:` and `kind:txet`
+    // used to parse and silently never match (the one slot query term whose
+    // typo was inert; name:/aspect:/state: already rejected empties)
+    assert_err_msg(parse_query("kind:"), "bad kind term 'kind:' \\(expected kind:<KIND>\\)");
+    assert_err_msg(
+        parse_query("kind:txet"),
+        "bad kind term 'kind:txet' \\(unknown kind 'txet' — expected one of character, place, item, text, idea, state, rite, resource\\)",
+    );
+    // the embedded forms ride the same parser
+    assert_err_msg(parse_predicate("exists(kind:txet)"), "bad kind term");
+    assert_err_msg(parse_predicate("count(-kind:txet) >= 1"), "bad kind term");
+    assert!(parse_query("kind:text").is_ok());
+    assert!(parse_query("-kind:rite aspect:ritual>=1").is_ok());
+}
+
+#[test]
 fn a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_name() {
     // (§4.5) — the exists()/count()
     // glue-tightening turns 'SUSPICION >= 1' into the single token

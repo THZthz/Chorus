@@ -241,21 +241,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
 /// spelling (`{ x }`, `{ actors }`) never rewrites. Commas/quotes inside
 /// braces are ordinary prose.
 fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<String> {
-    // `\{(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*)\}`
-    // with the frozen whitespace class (Q8)
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = static_regex(&RE, || {
-        // the whitespace classes are CAPTURE GROUPS (pre = group 1, post = group 3)
-        let mut pat = String::from("\\{("); // regex \{(
-        pat.push_str(crate::core::text::DSL_WS_CLASS);
-        pat.push_str("*)");
-        pat.push_str("([A-Za-z_][A-Za-z0-9_]*)");
-        pat.push('(');
-        pat.push_str(crate::core::text::DSL_WS_CLASS);
-        pat.push_str("*)\\}"); // )}
-
-        Regex::new(&pat)
-    });
+    let re = brace_token_re();
     let mut out = String::new();
     let mut last = 0;
     for caps in re.captures_iter(s) {
@@ -284,6 +270,68 @@ fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<
     }
     out.push_str(&s[last..]);
     Ok(out)
+}
+
+/// `\{(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*)\}` with the frozen whitespace class
+/// (Q8); the whitespace runs are CAPTURE GROUPS (pre = group 1, name = group
+/// 2, post = group 3) so a spaced spelling is detectable, not just unmatched.
+fn brace_token_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    static_regex(&RE, || {
+        let mut pat = String::from("\\{("); // regex \{(
+        pat.push_str(crate::core::text::DSL_WS_CLASS);
+        pat.push_str("*)");
+        pat.push_str("([A-Za-z_][A-Za-z0-9_]*)");
+        pat.push('(');
+        pat.push_str(crate::core::text::DSL_WS_CLASS);
+        pat.push_str("*)\\}"); // )}
+        Regex::new(&pat)
+    })
+}
+
+/// The load-time token check of ONE declared body, called or not (§10):
+/// every braced token in every string arg — IF arms and fallbacks included —
+/// must be spelled exactly and name a parameter or a reserved token. The same
+/// regex and the same error as `subst_string`, with nothing substituted.
+/// Expansion runs its check only for the bodies a call reaches, so without
+/// this a never-called body would bake a `{ x }` or `{typo}` silently.
+pub fn check_body_tokens(tpl: &FnTemplate) -> Result<()> {
+    fn walk(list: &[Outcome], fn_: &str, params: &[String]) -> Result<()> {
+        for o in list {
+            for a in &o.args {
+                if let Arg::Str { v } = a {
+                    check_string_tokens(v, fn_, params)?;
+                }
+            }
+            if let Some(arms) = &o.arms {
+                for arm in arms {
+                    walk(&arm.then, fn_, params)?;
+                }
+            }
+            if let Some(fb) = &o.fallback {
+                walk(fb, fn_, params)?;
+            }
+        }
+        Ok(())
+    }
+    walk(&tpl.body, &tpl.name, &tpl.params)
+}
+
+fn check_string_tokens(s: &str, fn_: &str, params: &[String]) -> Result<()> {
+    for caps in brace_token_re().captures_iter(s) {
+        let whole = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+        let pre = caps.get(1).map(|g| g.as_str()).unwrap_or_default();
+        let name = caps.get(2).map(|g| g.as_str()).unwrap_or_default();
+        let post = caps.get(3).map(|g| g.as_str()).unwrap_or_default();
+        if !pre.is_empty() || !post.is_empty() {
+            return Err(undeclared_token_error(fn_, whole));
+        }
+        if FN_RESERVED_TOKENS.contains(&name) || params.iter().any(|p| p == name) {
+            continue;
+        }
+        return Err(undeclared_token_error(fn_, whole));
+    }
+    Ok(())
 }
 
 /// The undeclared-interpolation load error:

@@ -9,7 +9,7 @@ from the game files, the IL, the wiki, and this repo's source.
    JSON** under `cultistsimulator_Data\StreamingAssets\content\core` (160 files,
    3,007,452 bytes ≈ 3.0 MB), plus `SecretHistories.Main.dll` for engine constants.
 2. **The Fandom wiki** and Weather Factory blog posts (mechanics rules).
-3. **The Chorus spec** (`docs/spec/text-engine-v0.6.md`) for the capability map.
+3. **The Chorus spec** (`docs/spec/text-engine-v0.7.md`) for the capability map.
 
 > Ethics note: this document records *mechanics, schemas and numbers* — facts about how
 > the game works, fine to re-implement. The game's label/description strings and art are
@@ -380,7 +380,7 @@ code comments are ground truth.
 | timetables pressing the player | once-triggers (`State.fired`, §6.6) |
 | `signalEndingFlavour` | `Ending {id, title, flavour}` |
 
-**Needs authoring translation — IMPLEMENTED (engine v0.3.6, `text-engine-v0.6.md`
+**Needs authoring translation — IMPLEMENTED (engine v0.3.6, `text-engine-v0.7.md`
 §6.7/§4.5/§6.4: RUN chains, `on complete` triggers + recipe `aspects`, query
 alternation, `max`; commits 3cc1ced §4.5, b1fce1a §6.4, eb350c3 §6.7,
 69b2977 §6.7)**

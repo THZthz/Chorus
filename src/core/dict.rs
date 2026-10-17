@@ -1,4 +1,4 @@
-//! L1 Dictionary (spec §4, §9.14 reserved words,
+//! L1 Dictionary (spec §4, §5.1 reserved words,
 //! §4.4 normative outcome arities).
 
 use std::sync::OnceLock;
@@ -44,12 +44,12 @@ pub const RESERVED_WORDS: [&str; 30] = [
     "OR",
     "NOT",
     "IF",
-    "ELSE", // §9.39: conditional outcome lists (v0.3.2)
+    "ELSE", // §6.8: conditional outcome lists (v0.3.2)
     "ROLL",
-    "ROLLED", // §9.41: the dice op, and the engine-written record of one (v0.3.4)
+    "ROLLED", // §4.4: the dice op, and the engine-written record of one (v0.3.4)
     "DRAW",
-    "DRAWN",    // §9.42: the deck-draw op, and the engine-written record of one (v0.3.5)
-    "RUN", // §9.47: the recipe-chain op — authored, zero-concrete (the follow-up's BEGIN row is the record)
+    "DRAWN",    // §4.4: the deck-draw op, and the engine-written record of one (v0.3.5)
+    "RUN", // §4.4: the recipe-chain op — authored, zero-concrete (the follow-up's BEGIN row is the record)
     "COMPLETE", // v0.5: the engine-written completion row of a processing window
     "READ",
     "STUDY",
@@ -73,11 +73,11 @@ pub const RESERVED_WORDS: [&str; 30] = [
 pub const OUTCOME_OPS: [&str; 18] = [
     "SPAWN", "DESTROY", "REPLACE", "SET", "MOVE", "REVEAL", "ADVANCE", "NARRATE", "PROGRESS",
     "RELATE", "UNRELATE", "REFUSE", "ENDING",
-    "ROLL",   // authored: ROLL(count, sides[, bonus]) — concretizes to ROLLED (§9.41)
-    "ROLLED", // engine-written ONLY: ROLLED(total, ctrAfter) — the fold's counter row (§9.41)
-    "DRAW",   // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§9.42)
-    "DRAWN",  // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§9.42)
-    "RUN", // authored: RUN "recipe-id" [, …] — zero-concrete; the follow-up's BEGIN row is the record (§9.47)
+    "ROLL",   // authored: ROLL(count, sides[, bonus]) — concretizes to ROLLED (§4.4)
+    "ROLLED", // engine-written ONLY: ROLLED(total, ctrAfter) — the fold's counter row (§4.4)
+    "DRAW",   // authored: DRAW <DECK> [INTO target] — concretizes to DRAWN+SPAWN (§4.4)
+    "DRAWN",  // engine-written ONLY: DRAWN(<DECK>, <name>) — the fold's cursor row (§4.4)
+    "RUN", // authored: RUN "recipe-id" [, …] — zero-concrete; the follow-up's BEGIN row is the record (§4.4)
 ];
 
 /// Definition of a relation type: whether its edges are symmetric.
@@ -149,7 +149,7 @@ impl Dictionary {
     }
 
     /// Reserved words cannot be registered as names/verbs
-    /// (spec §5.1, §9.14).
+    /// (spec §5.1).
     fn assert_nameable(&self, lexeme: &str, what: &str) -> Result<()> {
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || Regex::new(r"^[A-Z][A-Z0-9_]*$"));

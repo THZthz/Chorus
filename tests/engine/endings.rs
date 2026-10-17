@@ -1,5 +1,5 @@
 //! Endings (25 tests) — the ENDING outcome, the `endings:` script section, and game-over
-//! discipline (spec §9.35): first ENDING in a step wins; the step completes
+//! discipline (spec §4.4): first ENDING in a step wins; the step completes
 //! normally; steps on an ended state are rejected with nothing logged; time
 //! triggers and authored expiries may ENDING (the CS despair-death shape);
 //! undo reopens the game because `ended` derives from the fold.
@@ -393,7 +393,7 @@ mod the_ending_outcome_paren_less_round_tripping {
 
     #[test]
     fn the_paren_form_is_a_parse_error_paren_less_only() {
-        // (§9.35)
+        // (§4.4)
         let dict = core_dictionary();
         assert_err_msg(
             parse_sentence("0:0 @ ANA WAIT -> ENDING(DESPAIR_DEATH)", &dict),
@@ -402,7 +402,7 @@ mod the_ending_outcome_paren_less_round_tripping {
     }
 }
 
-// ---------- a recipe that ends the story (§9.35) ---------------------------
+// ---------- a recipe that ends the story (§4.4) ---------------------------
 
 /// The section-level content
 /// (`['NARRATE("The candle gutters.")', 'ENDING DESPAIR_DEATH']`).
@@ -523,7 +523,7 @@ mod a_recipe_that_ends_the_story {
         let state = seed_state();
         let r1 = run(&content, &dict, state, "0:28 @ ANA WAIT", 1);
         assert!(r1.state.ended.is_some());
-        // a stale clock (would be a §9.5 rejection) and a multi-clause step
+        // a stale clock (would be a §9.2 rejection) and a multi-clause step
         // would both get past their own checks — the ended guard must precede
         // them
         let mut attempts: Vec<ExecResult> = vec![
@@ -585,7 +585,7 @@ mod a_recipe_that_ends_the_story {
     }
 }
 
-// ---------- events may end the game (§9.35) --------------------------------
+// ---------- events may end the game (§4.4) --------------------------------
 
 mod events_may_end_the_game {
     use super::*;
@@ -630,10 +630,10 @@ mod events_may_end_the_game {
 
     #[test]
     fn an_authored_expiry_trigger_may_ending_and_must_consume_the_card_itself() {
-        // (§9.32)
+        // (§6.6)
         let dict = core_dictionary();
         let mut raw = wait_content(&["NARRATE(\"{actors} wait.\")"]);
-        // the authored outcomes replace the built-in destroy entirely (§9.32),
+        // the authored outcomes replace the built-in destroy entirely (§6.6),
         // so the despair-death author destroys the dying card explicitly
         raw.triggers = Some(vec![TriggerDef::Expire(ExpireTriggerDef {
             id: "the_lights_go_out".into(),
@@ -673,7 +673,7 @@ mod events_may_end_the_game {
 
     #[test]
     fn an_authored_expiry_trigger_that_does_not_destroy_its_card_re_fires() {
-        // (§9.32, §9.35)
+        // (§6.6, §4.4)
         let dict = core_dictionary();
         let mut raw = wait_content(&["NARRATE(\"{actors} wait.\")"]);
         // the authored outcomes replace the built-in destroy entirely — forget

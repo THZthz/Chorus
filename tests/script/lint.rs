@@ -82,7 +82,7 @@ fn reserved_words_cannot_be_names() {
     assert_err_msg(compile(&base("  WITH is character at HOUSE")), r"'WITH' is a reserved word");
     assert_err_msg(compile(&base("  MARCH is parent_child of TO")), r"'TO' is a reserved word");
     assert_err_msg(compile(&base("prototypes:\n  IF is idea")), r"'IF' is a reserved word");
-    // non-lexeme names are legal — §9.42's unsafe-name corner, quote every ref
+    // non-lexeme names are legal — §10's unsafe-name corner, quote every ref
     assert!(compile(&base("  X-Y is item")).is_ok());
 }
 
@@ -152,7 +152,7 @@ fn a_repeated_verb_header_is_a_load_error_not_a_silent_reset() {
 
 #[test]
 fn case_colliding_entity_names_are_a_minted_id_collision_load_error() {
-    // Q5's fourth half: names are case-exact (§9.14), so 'ana'/'ANA' pass
+    // Q5's fourth half: names are case-exact (§5.1), so 'ana'/'ANA' pass
     // the name dedup — but both mint the script id s_ana
     // (`s_{name.to_lowercase()}`), and the second add_entity would silently
     // clobber the first. The id collision is its own load error.

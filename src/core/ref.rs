@@ -1,4 +1,4 @@
-//! Refs (spec §5.1, §9.14). Canonical output is the
+//! Refs (spec §5.1). Canonical output is the
 //! bare name (unique among the living); `kind:NAME` and `#id` are accepted
 //! input sugar; reserved words and unsafe names must be quoted strings.
 //! The module is `core::r#ref` in Rust (`ref` is a keyword).
@@ -34,7 +34,7 @@ pub enum Ref {
     #[serde(rename = "id")]
     Id { id: String },
     /// `{ form: 'param', name }` — F3 authored-only: a function parameter
-    /// standing in a whole-ref position (§9.40); calls expand at load, so
+    /// standing in a whole-ref position (§10); calls expand at load, so
     /// this never formats, resolves, or round-trips.
     #[serde(rename = "param")]
     Param { name: String },
@@ -85,7 +85,7 @@ pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
             }
         }
         Ref::Param { .. } => Err(ChorusError::new(
-            "a function parameter is authored form only — calls expand at load (§9.40)",
+            "a function parameter is authored form only — calls expand at load (§10)",
         )),
     }
 }

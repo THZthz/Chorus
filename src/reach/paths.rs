@@ -300,14 +300,14 @@ impl<'c> WorldFacts<'c> {
         let Some(q) = query else {
             return true;
         };
-        // §9.49: a DNF can ever match iff ANY group can — each group is the
+        // §4.5: a DNF can ever match iff ANY group can — each group is the
         // pre-alternation flat conjunction, so the possibility analysis is
         // per group; the zero-group query stays vacuous-true
         q.is_empty() || q.iter().any(|g| self.group_can_ever_match(g))
     }
 
     /// The possibility check for ONE conjunction group (the
-    /// pre-§9.49 body, unchanged). No memo is needed: the function is pure
+    /// pre-§4.5 body, unchanged). No memo is needed: the function is pure
     /// over fields that are final once the world facts are built.
     fn group_can_ever_match(&self, group: &[QueryTerm]) -> bool {
         if self.universe.iter().any(|u| match_conjunction(u, group)) {

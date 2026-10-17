@@ -79,7 +79,7 @@ pub fn expand_fn_calls(out: &[Outcome], fns: &FnTable) -> Result<Vec<Outcome>> {
 /// into its message.
 pub const FN_RESERVED_TOKENS: [&str; 7] = ["actors", "object", "with", "at", "about", "to", "roll"];
 
-/// Nesting cap for legitimate chains (§9.40):
+/// Nesting cap for legitimate chains (§10):
 /// depth(f) = 1 + max(depth of its callees), a body with no calls is depth 1
 /// — depth 9 is a load error (rejected over the call graph at content load).
 pub const MAX_FN_DEPTH: u32 = 8;
@@ -185,7 +185,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
             Ok(bound.clone())
         }
         Arg::Vexpr { v } => {
-            // §9.41: a ROLL argument is a value expression; a body template
+            // §4.4: a ROLL argument is a value expression; a body template
             // may carry a param operand inside it (`ROLL(n, 6)`), substituted
             // by the same rule as IF-condition cmp operands
             Ok(Arg::Vexpr { v: subst_expr(v, fn_.unwrap_or("?"), bind)? })

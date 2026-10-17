@@ -54,7 +54,7 @@ pub fn settle_step(
     id_gen: Option<&mut dyn FnMut() -> String>,
 ) -> Result<ExecResult> {
     // The clone is the rollback leg: on a refused settle advance the ORIGINAL
-    // (never-mutated) `state` argument rides back (§9.19) — Rust
+    // (never-mutated) `state` argument rides back (§9.2) — Rust
     // `execute_step` consumes it, so the untouched copy is returned instead.
     let rollback = state.clone();
     let mut id_gen = id_gen;
@@ -79,7 +79,7 @@ pub fn settle_step(
         opts(first_record_id + first.records.len() as i64, &mut id_gen),
     )?;
     if let Some(rejected) = pass.rejected {
-        // the turn rolls back whole (§9.19)
+        // the turn rolls back whole (§9.2)
         return Ok(ExecResult { records: vec![], state: rollback, rejected: Some(rejected) });
     }
     let mut records = first.records;
@@ -104,7 +104,7 @@ pub fn done(r: &ExecResult) -> Option<&ActionRecord> {
 }
 
 /// the refusal reason of a turn — an authored gate (REFUSE on the BEGIN row)
-/// or a completion-time failure (REFUSE on the COMPLETE row, §9.19's
+/// or a completion-time failure (REFUSE on the COMPLETE row, §9.2's
 /// completion analog); None when the turn did not refuse. A REFUSE without a
 /// string argument yields `Some("")` (the empty-string fallback).
 #[must_use]

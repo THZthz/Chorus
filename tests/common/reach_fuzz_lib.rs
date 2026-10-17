@@ -697,7 +697,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
             match r {
                 Ref::Id { id } => id.clone(),
                 Ref::Name { name, .. } => id_of(name),
-                Ref::Param { .. } => unreachable!("param refs never reach candidates (§9.40)"),
+                Ref::Param { .. } => unreachable!("param refs never reach candidates (§10)"),
             }
         };
         let mut combos: Vec<IndexMap<String, Vec<Ref>>> = vec![IndexMap::new()];

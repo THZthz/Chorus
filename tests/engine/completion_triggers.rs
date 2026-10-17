@@ -1,5 +1,5 @@
 //! `on complete` — completion triggers on a card, and the recipe `aspects`
-//! token that gates them (spec §9.48): the bare/aspect forms and the authored
+//! token that gates them (spec §6.7): the bare/aspect forms and the authored
 //! emitter gate, the scope (the window's committed locked roles — actors
 //! stay free, unbound cards never fire), the dedupe and the fire order
 //! (declaration order per card, locked order across cards), the logging
@@ -36,7 +36,7 @@ use chorus::engine::store::{load_log, save_log};
 
 // ---------------------------------------------------------------- rigs ------
 
-/// The rig: the caller writes the whole entities block (§9.48 lines are
+/// The rig: the caller writes the whole entities block (§6.7 lines are
 /// entity-scoped, so the tests place the `on complete` lines themselves) and
 /// the verbs block; prototypes are optional.
 fn rig_full(entities: &str, verbs: &str, prototypes: Option<&str>) -> String {
@@ -362,7 +362,7 @@ fn fire_order_is_declaration_then_locked_order() {
 
 // -------------------------------------------------------------- logging ------
 
-/// The §9.48 logging deviation: the trigger's concrete outcomes append to
+/// The §6.7 logging deviation: the trigger's concrete outcomes append to
 /// the COMPLETE row after the recipe's own — no EVENT row anywhere, no
 /// `state.fired` entries — and the fold replays the appended list without
 /// recomputing gates (structural + snap equality, JSONL included).
@@ -540,7 +540,7 @@ fn two_parked_runs_refuse_at_replay_in_list_order() {
     assert_eq!(
         refusal(&r),
         Some(
-            "a second RUN in one completion — a station holds one window (§6.7, §9.47)".to_string()
+            "a second RUN in one completion — a station holds one window (§6.7)".to_string()
         )
     );
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up survived");
@@ -690,7 +690,7 @@ fn a_failure_inside_a_body_refuses_the_window() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// REFUSE authored in an `on complete` body is a load error (§9.34 in the
+/// REFUSE authored in an `on complete` body is a load error (§6.6 in the
 /// new home); PROGRESS likewise. And ROLL inside the body works — the dice
 /// consume counters normally, {roll} rewrites, the fold replays the ROLLED.
 #[test]
@@ -707,7 +707,7 @@ fn refuse_is_a_load_error_and_roll_works() {
             ),
             &dict,
         ),
-        "trigger complete:HEALTH: REFUSE belongs to verb recipes — a completion trigger cannot refuse the completion it fires in \\(§9\\.34, §9\\.48\\)",
+        "trigger complete:HEALTH: REFUSE belongs to verb recipes — a completion trigger cannot refuse the completion it fires in \\(§6\\.6, §6\\.7\\)",
     );
     assert_err_msg(
         compile_script(
@@ -734,7 +734,7 @@ fn refuse_is_a_load_error_and_roll_works() {
             ),
             &dict,
         ),
-        "trigger complete:HEALTH: PROGRESS belongs to the completing recipe — completion triggers fire after the outcome list \\(§9\\.48\\)",
+        "trigger complete:HEALTH: PROGRESS belongs to the completing recipe — completion triggers fire after the outcome list \\(§6\\.7\\)",
     );
     // ROLL inside: deterministic from the seed, ROLLED logged, {roll} rewritten
     let (c, s) = compile(
@@ -789,7 +789,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             &two_verbs("      collide when count(actors) >= 1 -> NARRATE \"work collide\""),
             &dict,
         ),
-        "recipe id 'collide' is declared by both verb WORK and verb DREAM — on-complete RUN resolution needs globally unique recipe ids \\(§9\\.47, §9\\.48\\)",
+        "recipe id 'collide' is declared by both verb WORK and verb DREAM — on-complete RUN resolution needs globally unique recipe ids \\(§6\\.7\\)",
     );
     // an unknown candidate resolves nowhere — load error
     assert_err_msg(
@@ -803,7 +803,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
             &dict,
         ),
-        "trigger complete:HEALTH: RUN 'nope' does not name a compiled recipe — on-complete candidates resolve against the global recipe table \\(§9\\.47, §9\\.48\\)",
+        "trigger complete:HEALTH: RUN 'nope' does not name a compiled recipe — on-complete candidates resolve against the global recipe table \\(§6\\.7\\)",
     );
     // both positional orders parse: `max` before `aspects` and after
     compile(
@@ -845,7 +845,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
         ),
     );
-    // the §9.35/§9.42 declared-checks walk completion bodies like any other
+    // the §4.4/§4.4 declared-checks walk completion bodies like any other
     // trigger home: an undeclared ENDING id is a load error, a declared one
     // compiles, and a DRAW of an unknown deck too
     assert_err_msg(
@@ -910,7 +910,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
             &dict,
         ),
-        "bad aspect 'language\\.' — a dotted aspect name cannot end at its dot \\(§9\\.48\\)",
+        "bad aspect 'language\\.' — a dotted aspect name cannot end at its dot \\(§10\\)",
     );
     // a wide-space boundary before `on` splits exactly like an ASCII one
     // (U+3000 and U+FEFF are both in the frozen whitespace class)
@@ -940,7 +940,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
             &dict,
         ),
-        "aspect 'with' is a reserved clause keyword \\(§9\\.48\\)",
+        "aspect 'with' is a reserved clause keyword \\(§10\\)",
     );
     // a standalone `on complete` with no preceding declaration is a load error
     assert_err_msg(
@@ -953,6 +953,6 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
             &dict,
         ),
-        "'on complete' needs a preceding entity declaration \\(§9\\.48\\)",
+        "'on complete' needs a preceding entity declaration \\(§10\\)",
     );
 }

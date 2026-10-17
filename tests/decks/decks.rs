@@ -1,5 +1,5 @@
 //! Decks — seed-fixed permutation draws + the DRAW
-//! op (spec §9.42): the four permutation vectors
+//! op (spec §4.4): the four permutation vectors
 //! (computed independently in python3), the drawFrom three-rule
 //! probe re-proved through a COMPILED deck, and play-side draw sequences, INTO placement, the
 //! DRAWN+SPAWN concretization, exhaustion through the engine, cursor
@@ -293,11 +293,11 @@ fn compiled_deck_draws_obey_the_three_rules_below_period_reset_wrap_defaultcard_
     // neither: the verbatim exhaustion error
     let singles = game.content.decks.get("SINGLES").unwrap();
     let err = draw_from(singles, 1).unwrap_err();
-    assert_eq!(err.msg, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§9.42)");
+    assert_eq!(err.msg, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§4.4)");
 }
 
 // ---------------------------------------------------------------------------
-// the permutation (§9.42): pure in (seed, deck id), positions shuffled
+// the permutation (§4.4): pure in (seed, deck id), positions shuffled
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -355,11 +355,11 @@ fn the_permutation_lives_on_compiledcontent_not_state() {
     assert_eq!(s.decks.len(), 0); // cursors only, and none yet
     assert_eq!(s.rng, 0);
     let (_, _, after_state) = play_draws(&c, &dict, s, 4);
-    assert_eq!(after_state.rng, 0); // decks never touch the dice counter (§9.42)
+    assert_eq!(after_state.rng, 0); // decks never touch the dice counter (§4.4)
 }
 
 // ---------------------------------------------------------------------------
-// the DRAW op (§9.42): INTO placement and the SPAWN defaults
+// the DRAW op (§4.4): INTO placement and the SPAWN defaults
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -430,7 +430,7 @@ fn a_trigger_draw_without_into_mints_containerless() {
     let ops: Vec<&str> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DRAWN", "SPAWN"]);
     let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
-    assert_eq!(rumour.attrs.get("container"), None); // the §9.42 empty-bindings note
+    assert_eq!(rumour.attrs.get("container"), None); // the §4.4 empty-bindings note
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -476,7 +476,7 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
     assert_eq!(r.rejected, None);
     assert_refusal(&r, r"INTO target of 'RUMOURS' cannot resolve");
     assert_eq!(r.state.decks.get("RUMOURS"), None); // the scratch died with the refusal
-                                                    // §9.50: the window registered at begin — a window that later refuses
+                                                    // §6.4: the window registered at begin — a window that later refuses
                                                     // still counted (the one deliberate delta; the cursor scratch died with
                                                     // it, and play/fold agree on exactly that state)
     assert_eq!(r.state.executed.get("wait.default"), Some(&1));
@@ -485,7 +485,7 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
 }
 
 // ---------------------------------------------------------------------------
-// DRAWN+SPAWN concretization (§9.42): two rows, round-trip, guards
+// DRAWN+SPAWN concretization (§4.4): two rows, round-trip, guards
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -814,7 +814,7 @@ fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names
 }
 
 // ---------------------------------------------------------------------------
-// exhaustion (§9.42): reset wraps, defaultcard forever, neither rejects
+// exhaustion (§4.4): reset wraps, defaultcard forever, neither rejects
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -863,8 +863,8 @@ fn neither_reset_nor_defaultcard_the_draw_fails_nothing_logged_cursor_unmoved() 
     let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", id);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'");
-    assert_eq!(r.state.decks.get("SINGLES"), Some(&2)); // cursor unmoved (§9.19 analog)
-                                                        // §9.50: the window registered at begin — the completion-time refusal
+    assert_eq!(r.state.decks.get("SINGLES"), Some(&2)); // cursor unmoved (§9.2 analog)
+                                                        // §6.4: the window registered at begin — the completion-time refusal
                                                         // still counted (the one delta; nothing logged but the attempt)
     assert_eq!(r.state.executed.get("wait.default"), Some(&(cur.executed["wait.default"] + 1)));
     let replayed_attempt = fold(&r.records, &cur, &dict, &c).unwrap();
@@ -897,7 +897,7 @@ fn a_draw_inside_an_untaken_if_branch_leaves_the_cursor_untouched() {
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]); // the taken branch only
     assert_eq!(r.state.decks.len(), 0);
-    // §9.50: the window completed — the step counted (the one snap delta;
+    // §6.4: the window completed — the step counted (the one snap delta;
     // the untaken branch consumed no draw, §6.7)
     assert_eq!(r.state.executed.get("wait.default"), Some(&1));
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
@@ -924,7 +924,7 @@ fn a_failure_after_a_successful_draw_refuses_the_window_draw_and_cursor_discarde
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "MOVE: unresolvable destination");
     assert_eq!(r.state.decks.len(), 0);
-    // §9.50: the window registered at begin — the completion-time refusal
+    // §6.4: the window registered at begin — the completion-time refusal
     // still counted (the one delta; neither the mint nor the cursor survived)
     assert_eq!(r.state.executed.get("wait.default"), Some(&1));
     let replayed = fold(&r.records, &s, &dict, &c).unwrap();
@@ -1036,7 +1036,7 @@ fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the
 }
 
 // ---------------------------------------------------------------------------
-// decks compose with stackable pools (§9.38 x §9.42); the livelock rule
+// decks compose with stackable pools (§4.2 x §4.4); the livelock rule
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1056,7 +1056,7 @@ fn stackable_deck_entries_pool_two_rumour_draws_a_pool_of_two_living_copies() {
 
 #[test]
 fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever() {
-    // the authoring rule (§9.42): deck entries should be STACKABLE, or be
+    // the authoring rule (§10): deck entries should be STACKABLE, or be
     // consumed/renamed on the same step — a non-stackable entry whose previous
     // copy still lives makes every subsequent serve of that entry fail
     // identically (cursor never advances on rejection), pinning the deck shut
@@ -1079,7 +1079,7 @@ fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever(
         assert_eq!(r.rejected, None);
         assert_eq!(refusal(&r).as_deref(), Some("SPAWN: name 'WHISPER' already in use")); // the documented stuck-state message
         assert_eq!(r.state.decks.get("PAIR"), Some(&1)); // stuck forever
-                                                         // §9.50: every attempt registers its window (the count climbs by one,
+                                                         // §6.4: every attempt registers its window (the count climbs by one,
                                                          // identically each retry) while the deck stays pinned — the stuck
                                                          // state is otherwise the same, and play/fold agree on it
         assert_eq!(r.state.executed.get("wait.default"), Some(&(cur.executed["wait.default"] + 1)));
@@ -1127,7 +1127,7 @@ fn the_documented_escape_consuming_the_drawn_copy_on_the_same_step_lets_every_se
 }
 
 // ---------------------------------------------------------------------------
-// load-time deck validation (§10, §9.42)
+// load-time deck validation (§10, §4.4)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1215,7 +1215,7 @@ fn deck_ids_must_be_upper_snake_unreserved_and_unique() {
 }
 
 // ---------------------------------------------------------------------------
-// DRAW inside function bodies (§9.40 x §9.42)
+// DRAW inside function bodies (§10 x §4.4)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1288,7 +1288,7 @@ fn a_param_as_the_deck_id_expands_and_passes_the_deck_check_at_the_call_site() {
 fn a_role_into_expanded_into_a_trigger_rejects_at_runtime() {
     // guards stay load-time for the DECK id only; the INTO role resolves at
     // runtime like every ref position — and in a trigger nothing binds, so
-    // the draw refuses to materialize nowhere (§9.42's stricter INTO)
+    // the draw refuses to materialize nowhere (§4.4's stricter INTO)
     let dict = deck_dict();
     let (c, s) = compile(
         &dict,
@@ -1305,7 +1305,7 @@ fn a_role_into_expanded_into_a_trigger_rejects_at_runtime() {
     let before = snap(&s);
     let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
     assert_rejected(&r, "INTO target of 'RUMOURS' cannot resolve");
-    assert_eq!(r.records.len(), 0); // §9.19: the whole step rejects
+    assert_eq!(r.records.len(), 0); // §9.2: the whole step rejects
                                     // `state === before` (identity): on a rejection the input state's value
                                     // rides back untouched (identity → snap equality)
     assert_eq!(snap(&r.state), before);
@@ -1334,7 +1334,7 @@ fn a_function_body_drawing_with_progress_after_it_still_trips_the_progress_guard
 }
 
 // ---------------------------------------------------------------------------
-// content drift (§9.42): the DRAWN assertion fires instead of silent divergence
+// content drift (§4.4): the DRAWN assertion fires instead of silent divergence
 // ---------------------------------------------------------------------------
 
 fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
@@ -1393,7 +1393,7 @@ fn drift_world() -> State {
 
 #[test]
 fn a_seed_change_under_an_old_log_the_assertion_names_the_deck_cursor_both_names() {
-    // §9.30 asymmetry, decks edition: a seed change shifts every FUTURE draw —
+    // §9.2 asymmetry, decks edition: a seed change shifts every FUTURE draw —
     // and where the dice replay past rows from the log alone, a deck's cursor
     // row must re-derive its expectation, so the drifted PAST fails loud
     let dict = deck_dict();

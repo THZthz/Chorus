@@ -2,7 +2,7 @@
 //! exercised here, all pinned by the acceptance suites:
 //! - lenient: bare-verb default player, multi-word names, role-phrase groups,
 //!   canonical passthrough, suggestion surfaces, case-insensitive names;
-//!   E9's multi-role binding (distinct §9.38 pool copies head-first, the
+//!   E9's multi-role binding (distinct §4.2 pool copies head-first, the
 //!   too-small-pool refusal, same-role doubling unchanged) and E6's bare
 //!   clock halfhour wrap (the canonical form stays strict);
 //! - Game: from_script → handle_line → journal/story/look → undo → bogus
@@ -166,7 +166,7 @@ fn pool_ctx<'a>(
 #[test]
 fn one_name_in_two_roles_binds_distinct_pool_copies() {
     // E9 (spec §11): `read the psalm with the psalm` names the pool in two
-    // roles — the object takes the §9.38 head as a name ref exactly as ever,
+    // roles — the object takes the §4.2 head as a name ref exactly as ever,
     // the with-role takes the NEXT living copy as an #id ref
     let dict = core_dictionary();
     let content = chorus::content::content::compile_content(

@@ -1,10 +1,10 @@
 //! Conditionals (36 tests): IF / ELSE IF / ELSE in
-//! outcome lists (spec §6.8, §9.39). Branch selection runs
+//! outcome lists (spec §6.8, §6.8). Branch selection runs
 //! against the DRAFT (earlier outcomes in the same list are visible to later
 //! IFs); first true branch wins; the log records only the taken branch's
 //! outcomes, flattened in position — the record never contains an IF op.
 //! Asymmetric failure discipline: a condition operand that cannot resolve
-//! rejects the step (§9.19) where a `when:` predicate would read false. The
+//! rejects the step (§9.2) where a `when:` predicate would read false. The
 //! trigger guards and the endings check recurse into branch bodies;
 //! role-dependent operands in trigger IF conditions are a load-time error.
 //!
@@ -251,7 +251,7 @@ fn tmp_log_path(tag: &str) -> std::path::PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// IF / ELSE IF / ELSE grammar (§5.1, §9.39)
+// IF / ELSE IF / ELSE grammar (§5.1, §6.8)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -354,7 +354,7 @@ fn authored_outcome_strings_must_parse_completely_trailing_tokens_are_load_error
     );
     // v0.3.3: a name followed by '(' in outcome position is now a function-call
     // dispatch — an undeclared one is a compile error listing the vocabulary,
-    // with a forgotten-IF hint for the predicate helpers (§9.40)
+    // with a forgotten-IF hint for the predicate helpers (§10)
     assert_err_msg(
         parse_outcomes("exists(X) -> (NARRATE \"a\")", &dict, None),
         // the frozen pattern carries the /s (dotall) flag — inline (?s) here
@@ -373,7 +373,7 @@ fn authored_outcome_strings_must_parse_completely_trailing_tokens_are_load_error
 }
 
 // ---------------------------------------------------------------------------
-// branch selection against the draft (§9.39)
+// branch selection against the draft (§6.8)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -443,7 +443,7 @@ fn draft_visibility_set_then_if_reads_the_new_level_not_the_input_state() {
     let r = run(&c, &dict, seed_state(), "0:0 @ ANA ATTUNE CHALICE", 1); // CHALICE carries no level aspect
     assert_eq!(r.rejected, None);
     assert_eq!(said(&r), ["then — the draft"]);
-    // the delta logged its concrete absolute (§9.31), taken branch only
+    // the delta logged its concrete absolute (§4.4), taken branch only
     assert_eq!(ops(&done(&r).unwrap().outcomes), ["SET", "NARRATE"]);
     assert_eq!(
         r.state.entities.get("chalice").unwrap().aspects.get("level"),
@@ -622,14 +622,14 @@ fn the_dead_stamp_rule_destroy_object_then_if_reads_the_dead_card_as_absent_sile
         0,
     );
     // RITE_OF_ASCENSION carries demand:3 — destroyed earlier in the SAME list,
-    // so the condition reads a dead-stamped entity: false, silently (§9.39)
+    // so the condition reads a dead-stamped entity: false, silently (§6.3)
     let r = run(&c, &dict, seed_state(), "0:0 @ ANA ATTUNE RITE_OF_ASCENSION", 1);
     assert_eq!(r.rejected, None);
     assert_eq!(said(&r), ["gone"]);
 }
 
 // ---------------------------------------------------------------------------
-// concretization — the record never contains an IF op (§9.39)
+// concretization — the record never contains an IF op (§6.8)
 // ---------------------------------------------------------------------------
 
 /// The section-level content (PARANOIA
@@ -741,7 +741,7 @@ fn an_if_condition_operand_with_no_bound_card_the_window_refuses_at_completion()
     let r = run(&c, &dict, clone_state(&state), "0:0 @ ANA INSPECT", 1); // no object bound: the operand cannot resolve
     assert_eq!(r.rejected, None); // v0.5: strict conditions decide at the completion
     assert_refusal(&r, r"IF condition: operand 'object\.aspect\.demand' cannot resolve");
-    // the effects are discarded and the window closes — but §9.50: it
+    // the effects are discarded and the window closes — but §6.4: it
     // registered at begin, so a window that later refuses still counted
     // (the one deliberate state delta; everything else is untouched)
     assert_eq!(r.state.executed.get("inspect.default"), Some(&1));
@@ -861,7 +861,7 @@ fn the_documented_guard_for_an_optional_role_count_and_never_rejects() {
 }
 
 // ---------------------------------------------------------------------------
-// IF conditions in recipes read the step bindings (§9.39)
+// IF conditions in recipes read the step bindings (§6.8)
 // ---------------------------------------------------------------------------
 
 /// The section-level content.
@@ -909,7 +909,7 @@ fn object_aspect_reads_the_bound_card_the_count_dread_typo_lint_covers_if_condit
 }
 
 // ---------------------------------------------------------------------------
-// role-dependent operands in trigger IF conditions are load errors (§9.39)
+// role-dependent operands in trigger IF conditions are load errors (§6.3)
 // ---------------------------------------------------------------------------
 
 fn slot_triggers(out: &[&str]) -> Vec<TriggerDef> {
@@ -1059,7 +1059,7 @@ fn the_recursive_guards_catch_progress_refuse_unknown_ending_nested_in_if_branch
 }
 
 // ---------------------------------------------------------------------------
-// IF inside working triggers (§9.39, world-form conditions)
+// IF inside working triggers (§6.8, world-form conditions)
 // ---------------------------------------------------------------------------
 
 fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent {

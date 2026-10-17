@@ -1,5 +1,5 @@
 //! Stackable cards (21 tests): multiple
-//! same-name instances (spec §9.38). Declared with `stackable`
+//! same-name instances (spec §4.2). Declared with `stackable`
 //! on entity/prototype lines; the name becomes a POOL of living copies
 //! addressed oldest-first; engine-written expiry destroys go by id while
 //! authored name-addressed outcomes hit the oldest.
@@ -170,7 +170,7 @@ fn tmp_log_path(tag: &str) -> std::path::PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// the stackable keyword (§9.38, §10)
+// the stackable keyword (§4.2, §10)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -237,7 +237,7 @@ fn the_keyword_must_sit_before_with_deriving_anything_else_fails_the_line() {
 }
 
 // ---------------------------------------------------------------------------
-// spawn pools and oldest-copy addressing (§9.38)
+// spawn pools and oldest-copy addressing (§4.2)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -301,7 +301,7 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
         id += r.records.len() as i64;
     }
     assert!(!cur.by_name.contains_key("SUSPICION"));
-    // the freed name accepts a non-stackable mint again (§9.14, among the living)
+    // the freed name accepts a non-stackable mint again (§5.1, among the living)
     let plain = compile_content(
         &ContentRaw {
             verbs: [(
@@ -393,7 +393,7 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
     let r = run(&poke, &dict, clone_state(&state), "0:0 @ ANA ACQUIRE", 1);
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
-    // §9.50: the window registered at begin — the completion-time refusal
+    // §6.4: the window registered at begin — the completion-time refusal
     // still counted (the one delta; nothing else moved, and play/fold agree)
     assert_eq!(r.state.executed.get("acquire.default"), Some(&1));
     let replayed = chorus::engine::fold::fold(&r.records, &state, &dict, &poke).unwrap();
@@ -664,7 +664,7 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
 }
 
 // ---------------------------------------------------------------------------
-// slot bindings hold same-named copies individually (§9.38)
+// slot bindings hold same-named copies individually (§4.2)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -736,7 +736,7 @@ fn lenient_input_resolves_a_pool_name_to_its_oldest_copy() {
 }
 
 // ---------------------------------------------------------------------------
-// expiry under a pool (§9.38)
+// expiry under a pool (§4.2)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -893,7 +893,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
     let younger = pool[1].clone();
     let mut pooled = pooled;
     // the YOUNGER carries the expires. The stews cost no time, so the wait's
-    // event span reaches back to 0:0 (§9.28 dead air): expiresAt 60 (slot 2)
+    // event span reaches back to 0:0 (§6.6 dead air): expiresAt 60 (slot 2)
     // crosses exactly once during the 0:1 wait
     pooled
         .entities
@@ -915,7 +915,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
     assert!(r.state.entities.get(&elder).unwrap().dead_action.is_some());
     assert_eq!(r.state.entities.get(&younger).unwrap().dead_action, None); // the crossing copy still stands
     assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![younger.clone()]));
-    // the crossing copy is past its expires: it re-fires (§9.32) on the next
+    // the crossing copy is past its expires: it re-fires (§6.6) on the next
     // crossing — and being now the pool's head, the second DESTROY takes IT
     let r2 = run(&asym, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 3);
     let triggers: Vec<&str> = r2
@@ -930,7 +930,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
 }
 
 // ---------------------------------------------------------------------------
-// REPLACE X WITH X succeeds for stackables (§9.38)
+// REPLACE X WITH X succeeds for stackables (§4.2)
 // ---------------------------------------------------------------------------
 
 fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
@@ -1006,7 +1006,7 @@ fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
         Some(&AttrValue::Str("s_house".into())) // place inherited
     );
     assert!(r.state.entities.get(&successor[0]).unwrap().stackable);
-    // the fold replays the concrete SPAWN+DESTROY pair exactly (§9.33)
+    // the fold replays the concrete SPAWN+DESTROY pair exactly (§4.4)
     let replayed = fold(&r.records, &pooled_base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
     // and the next-oldest (now the only) replaces again just the same
@@ -1032,7 +1032,7 @@ fn a_non_stackable_replace_onto_a_stackable_pool_still_rejects() {
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
     assert_eq!(r.state.entities.get(&elder).unwrap().dead_action, None); // nothing applied
-                                                                         // §9.50: the window registered at begin — the completion-time refusal
+                                                                         // §6.4: the window registered at begin — the completion-time refusal
                                                                          // still counted (the one delta; nothing else moved, and play/fold agree)
     assert_eq!(r.state.executed.get("decay.default"), Some(&1));
     let replayed = chorus::engine::fold::fold(&r.records, &pooled, &dict, &c).unwrap();
@@ -1226,7 +1226,7 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
 }
 
 // ---------------------------------------------------------------------------
-// counting the pool: count(<query>) (§9.38)
+// counting the pool: count(<query>) (§4.5)
 // ---------------------------------------------------------------------------
 
 fn gate(dict: &Dictionary) -> CompiledContent {

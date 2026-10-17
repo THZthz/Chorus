@@ -124,7 +124,7 @@ fn bare_aspect_term_means_level_ge_1() {
     assert!(!match_query(&ent("a", "character", "A"), &q1));
 }
 
-// ---------- alternation, §9.49 ----------------------------------------------
+// ---------- alternation, §4.5 ----------------------------------------------
 
 #[test]
 fn alternation_matches_when_any_group_matches() {
@@ -136,7 +136,7 @@ fn alternation_matches_when_any_group_matches() {
 
 #[test]
 fn alternation_binds_loosest_each_side_is_a_conjunction() {
-    // the spec's own example (§4.5/§9.49): ability OR (job AND ritual) —
+    // the spec's own example (§4.5/§4.5): ability OR (job AND ritual) —
     // a card with job but no ritual does not match
     let q = parse_query("aspect:ability | aspect:job aspect:ritual").unwrap();
     assert_eq!(q.len(), 2);
@@ -246,9 +246,9 @@ fn aggregate_vs_path_operand() {
 
 // ---------- attr paths in comparisons, E1 ----------------------------------
 // A numeric attr entry ABSENT from an ALIVE bound card compares as 0 (the
-// §9.31 SET-delta rule "a missing entry counts as 0" and total()'s
+// §4.4 SET-delta rule "a missing entry counts as 0" and total()'s
 // unwrap_or(0); script entities mint empty attrs, so a `silver < cost`
-// broke-gate must hold for a first-time buyer). ASPECT paths keep §9.39's
+// broke-gate must hold for a first-time buyer). ASPECT paths keep §6.3's
 // frozen missing→false; a role with no bound card and all-dead bindings
 // still never compare.
 
@@ -308,12 +308,12 @@ fn the_missing_reads_0_on_both_operands_of_the_broke_gate_shape() {
 #[test]
 fn the_frozen_edges_still_never_compare() {
     let s = attr_state();
-    // §9.39 frozen: a missing ASPECT on a bound card reads false — only the
+    // §6.3 frozen: a missing ASPECT on a bound card reads false — only the
     // attr namespace defaults
     let aspect = bindings(&[(Role::Object, &["ticket"])]);
     assert!(!ev(&parse_predicate("object.aspect.cost < 3").unwrap(), &aspect, &s));
     // no bound card at all: the when:-side silent false (and the strict
-    // §9.39 rejection below keeps firing inside eval_expr)
+    // §6.3 rejection below keeps firing inside eval_expr)
     assert!(!ev(&parse_predicate("actors.attr.silver < 3").unwrap(), &no_binds(), &s));
     // all-dead bindings: the dead-stamp silent false, not a 0-read
     let mut dead = attr_state();
@@ -330,7 +330,7 @@ fn the_frozen_edges_still_never_compare() {
 
 #[test]
 fn strict_keeps_rejecting_an_unbound_role_operand() {
-    // §9.39's asymmetric discipline is untouched: an IF-condition path over
+    // §6.3's asymmetric discipline is untouched: an IF-condition path over
     // a role with NO bound card rejects the step — the default fires only
     // when an ALIVE card is bound and the ENTRY is absent
     let s = attr_state();
@@ -390,7 +390,7 @@ fn name_form_true_while_the_named_card_is_alive_false_after_destroy() {
     let p = parse_predicate("exists(HUNTER)").unwrap();
     assert!(ev(&p, &no_binds(), &s)); // no roles bound at all
     s.entities.get_mut("hunter").unwrap().dead_action = Some(1); // DESTROY stamps dead_action…
-    s.by_name.remove("HUNTER"); // …and releases the name (§9.14)
+    s.by_name.remove("HUNTER"); // …and releases the name (§5.1)
     assert!(!ev(&p, &no_binds(), &s));
     assert!(ev(&parse_predicate("NOT exists(HUNTER)").unwrap(), &no_binds(), &s));
 }
@@ -502,7 +502,7 @@ fn composability_and_parse_errors() {
     assert_err_msg(parse_predicate("exists(TWO WORDS)"), "takes one name");
 }
 
-// ---------- the name: query term and count(<query>), §9.38
+// ---------- the name: query term and count(<query>), §4.5
 // ---------------------------------------------------------------------------
 
 /// A two-copy SUSPICION pool plus an
@@ -573,7 +573,7 @@ fn count_query_composes_full_slot_queries_count_role_is_unchanged() {
 
 #[test]
 fn exists_and_count_inner_queries_take_alternation() {
-    // §9.49's legal homes include the §9.38 inner queries — same parser,
+    // §4.5's legal homes include the §4.5 inner queries — same parser,
     // same DNF behavior
     let mut s = new_state(0);
     add_entity(&mut s, with_aspects(ent("a", "item", "A"), &[("ability", 1)])).unwrap();
@@ -612,7 +612,7 @@ fn count_with_a_non_role_non_query_argument_is_a_parse_shaped_role() {
 
 #[test]
 fn a_comparison_inside_a_name_term_is_a_load_error_it_would_silently_bake_the_name() {
-    // (§9.38) — the exists()/count()
+    // (§4.5) — the exists()/count()
     // glue-tightening turns 'SUSPICION >= 1' into the single token
     // 'SUSPICION>=1'; as a name that matches nothing (silent 0)
     assert_err_msg(parse_query("name:SUSPICION>=1"), "bad name term");

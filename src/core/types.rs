@@ -93,7 +93,7 @@ pub struct Entity {
     pub attrs: Attrs,
     pub born_action: Option<i64>,
     pub dead_action: Option<i64>,
-    /// minted from a `stackable` declaration (§9.38): the name may be held by
+    /// minted from a `stackable` declaration (§4.2): the name may be held by
     /// several living copies. Every mint site computes it from the compiled
     /// stackable sets; the fold recomputes it identically from the logged ref.
     pub stackable: bool,
@@ -133,7 +133,7 @@ pub struct Relation {
     pub dead_action: Option<i64>,
 }
 
-/// A story's ending (§9.35): set by the first
+/// A story's ending (§4.4): set by the first
 /// ENDING outcome to apply; play and fold resolve through the same
 /// `apply_outcome` path.
 #[derive(Debug, Clone, PartialEq)]
@@ -166,8 +166,8 @@ pub struct OpenWindow {
 #[derive(Debug)]
 pub struct State {
     pub entities: IndexMap<String, Entity>,
-    /// name -> living ids in birth order (head = OLDEST copy, §9.38 pool
-    /// addressing); unique-name law for non-stackable names still holds (§9.14).
+    /// name -> living ids in birth order (head = OLDEST copy, §4.2 pool
+    /// addressing); unique-name law for non-stackable names still holds (§5.1).
     /// Outer map std-HashMap (no order-observable iteration
     /// over it anywhere); the pool vectors ARE the order.
     pub by_name: HashMap<String, Vec<String>>,
@@ -178,22 +178,22 @@ pub struct State {
     pub relations: IndexMap<String, Relation>,
     /// engine clock, absolute minutes since day 0, tick 0
     pub now: i64,
-    /// once-triggers that have fired (spec §9.29); rebuilt by fold from EVENT rows
+    /// once-triggers that have fired (spec §6.6); rebuilt by fold from EVENT rows
     pub fired: IndexSet<String>,
-    /// the ending once told (spec §9.35); None until an ENDING outcome applies,
+    /// the ending once told (spec §4.4); None until an ENDING outcome applies,
     /// cleared naturally when the fold no longer reaches its record (undo)
     pub ended: Option<Ending>,
-    /// §9.41: the seeded-RNG counter — how many die values the whole history
+    /// §4.4: the seeded-RNG counter — how many die values the whole history
     /// has consumed. Play consumes counters ON THE DRAFT inside the ROLL
     /// outcome; the fold lands the same spot from the concrete
     /// `ROLLED(<total>, <ctrAfter>)` row (law 3).
     pub rng: i64,
-    /// §9.42: deck cursors — for each deck id, how many cards it has served.
+    /// §4.4: deck cursors — for each deck id, how many cards it has served.
     pub decks: IndexMap<String, i64>,
-    /// §9.50: recipe execution counts — recipe id → registered windows.
+    /// §6.4: recipe execution counts — recipe id → registered windows.
     /// Maintained by the ONE window-registration path play and fold share;
     /// selection reads only this map, never the log (the `fired`
-    /// precedent, §9.29).
+    /// precedent, §6.6).
     pub executed: IndexMap<String, i64>,
     /// v0.5: the open processing windows (§6.7) — the lock table.
     pub windows: IndexMap<String, OpenWindow>,
@@ -221,16 +221,16 @@ impl Clone for State {
     // a discarded draft can never mutate real state (law 6 comments below);
     // the dict-valued copies go through the canonical key order (see Entity::clone).
     fn clone(&self) -> Self {
-        // law 6 (§9.38): the pool ARRAYS are deep-copied — a shallow map
+        // law 6 (§4.2): the pool ARRAYS are deep-copied — a shallow map
         // clone would share arrays, so a discarded draft's pool destroy would
         // mutate real state
         let mut by_name = HashMap::with_capacity(self.by_name.len());
         for (k, v) in &self.by_name {
             by_name.insert(k.clone(), v.clone());
         }
-        // law 6 (§9.42): cursors are copied — a discarded draft's draws must
+        // law 6 (§4.4): cursors are copied — a discarded draft's draws must
         // not move the real deck
-        // law 6 (§9.50): execution counts are copied — a discarded draft's
+        // law 6 (§6.4): execution counts are copied — a discarded draft's
         // window registrations must not spend the real budget
         // law 6 (v0.5): windows are copied ENTRY-BY-ENTRY — `locked` is an
         // array a discarded draft must not share with the real state;
@@ -263,7 +263,7 @@ fn clone_aspects(a: &Aspects) -> Aspects {
     clone_map_in_key_order(a)
 }
 
-/// §9.14 + §9.38: names are unique among the
+/// §5.1 + §4.2: names are unique among the
 /// living — except stackable mints, which append to the pool. A stackable
 /// mint may not collide with a DISTINCT non-stackable living name (shared
 /// namespace); checking the existing members for stackability is exact
@@ -296,7 +296,7 @@ pub fn add_entity(s: &mut State, e: Entity) -> Result<()> {
     Ok(())
 }
 
-/// §9.14/§9.38 name release on death: remove
+/// §5.1/§4.2 name release on death: remove
 /// the id from the name's pool; the name only frees when the LAST copy dies.
 pub fn release_name(s: &mut State, e: &Entity) {
     release_name_entry(s, &e.name, &e.id);
@@ -318,7 +318,7 @@ pub fn release_name_entry(s: &mut State, name: &str, id: &str) {
     }
 }
 
-/// Oldest living copy bearing a name (§9.38
+/// Oldest living copy bearing a name (§4.2
 /// pool addressing: a name ref with N > 1 living copies addresses the HEAD
 /// of its pool — never id-string order).
 #[must_use]
@@ -359,7 +359,7 @@ pub enum AspectEntry<'a> {
 /// Raw aspect entry by dotted path
 /// (`secret`, `language.latin`; missing → None). Unlike [`aspect_get`] this
 /// surfaces sub-maps, so a delta can refuse instead of silently clobbering
-/// one (§9.31). Only the FIRST dot splits (QUIRK Q13: 'a.b.c' addresses the
+/// one (§4.4). Only the FIRST dot splits (QUIRK Q13: 'a.b.c' addresses the
 /// sub-map key 'b.c').
 #[must_use]
 pub fn aspect_entry<'a>(e: &'a Entity, path: &str) -> Option<AspectEntry<'a>> {

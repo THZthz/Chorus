@@ -1,5 +1,5 @@
 //! Functions (27 tests): parametric outcome macros, compile-time expanded
-//! (spec §9.40). A `functions:` declaration expands at LOAD: every
+//! (spec §10). A `functions:` declaration expands at LOAD: every
 //! call site becomes its function's body with parameters substituted (AST
 //! splicing + string interpolation), BEFORE the trigger guards and the
 //! endings check run — canonical equals expansion, so the engine and the log
@@ -462,7 +462,7 @@ mod parameter_substitution {
         let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
         assert_eq!(r.rejected, None);
         // secret starts at 1: +2 → 3, then −4 → −1; the log carries computed
-        // absolutes (§9.31)
+        // absolutes (§4.4)
         let values: Vec<serde_json::Value> = done(&r)
             .unwrap()
             .outcomes
@@ -602,9 +602,9 @@ mod parameter_substitution {
     }
 }
 
-// ---------- the pair-position param vs the SPAWN expires modifier (§4.4, §9.40) ------
+// ---------- the pair-position param vs the SPAWN expires modifier (§4.4, §10) ------
 
-/// A §9.40 parameter standing in a SPAWN `k=v` pair position expands to the
+/// A §10 parameter standing in a SPAWN `k=v` pair position expands to the
 /// caller's WHOLE bound value — a bare Dur/Str arg the SPAWN grammar itself
 /// can never author. The `expires <duration>` mint modifier (§4.4) is its
 /// own dedicated arg shape precisely so such an expansion can never
@@ -628,14 +628,14 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         assert_eq!(r.rejected, None, "the expansion compiles and runs to completion");
         assert_refusal_matches(
             &r,
-            r"a bare dur arg is not a SPAWN arg shape — a §9\.40 parameter standing in a k=v pair position expands to the caller's whole bound value",
+            r"a bare dur arg is not a SPAWN arg shape — a §10 parameter standing in a k=v pair position expands to the caller's whole bound value",
         );
         // nothing landed: no silent mint, no silent arming
         assert!(!r.state.by_name.contains_key("SUSPICION"));
     }
 
     /// A STRING-bound param: the same loud refusal — both inert pre-review
-    /// shapes now name the §9.40 shape instead of dropping silently.
+    /// shapes now name the §10 shape instead of dropping silently.
     #[test]
     fn a_str_bound_param_in_a_pair_position_refuses_loud_the_same_way() {
         let dict = stew_dict();
@@ -648,7 +648,7 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
         assert_eq!(r.rejected, None);
         assert_refusal_matches(
             &r,
-            r"a bare str arg is not a SPAWN arg shape — a §9\.40 parameter standing in a k=v pair position expands to the caller's whole bound value",
+            r"a bare str arg is not a SPAWN arg shape — a §10 parameter standing in a k=v pair position expands to the caller's whole bound value",
         );
         assert!(!r.state.by_name.contains_key("SUSPICION"));
     }
@@ -922,7 +922,7 @@ verbs:
         let c_state = clone_state(&c.state);
         let before = snap(&c_state);
         let r = run(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1);
-        // MOVE cannot proceed with empty bindings (§9.19)
+        // MOVE cannot proceed with empty bindings (§9.2)
         assert!(r.rejected.as_deref().is_some_and(|m| regex::Regex::new(
             r"unresolvable destination"
         )

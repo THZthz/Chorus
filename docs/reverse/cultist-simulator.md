@@ -367,23 +367,23 @@ code comments are ground truth.
 | negative requirements (absent) | negated terms / `< 1` comparisons |
 | warmup + progress bar | `OpenWindow` start/end + authored `PROGRESS` |
 | effects (+/− elements) | `SPAWN` / `DESTROY` / `REPLACE` outcomes (`OUTCOME_OPS`, `dict.rs:80`); `funds:-999` = DESTROY across the situation's bound copies |
-| unique cards | unique-name law (§9.14) |
-| card stacking (3 Dread) | `stackable` declarations + name pools + oldest-named addressing (§9.38) |
-| lifetimes / `decayTo` transforms | `SET x, expires, Nm` + authored `on expire of NAME` triggers (§9.32) — a transform, not just destroy |
-| chance (`linked` rolls, induces) | `ROLL`/`ROLLED` + the seeded `State.rng` counter; each draw lands in the log as `ROLLED(total, ctrAfter)` so the fold replays deterministically (§9.41) — v1's recommended option (b), shipped |
-| `deckeffects` / `internaldeck` | `DRAW`/`DRAWN` + per-deck cursors + `draw_from` exhaustion rules (§9.42) |
-| endings (48) | `ENDING` outcome + `State.ended` (§9.35) |
-| `extantreqs` / `tablereqs` | `exists()` / `count()` predicates over the whole living world (§9.38; `predicate.rs:493`) — the v1 "not expressible" note is obsolete |
-| conditional chains / challenge rolls | `IF`/`ELSE` outcome arms (§9.39) reading the last `ROLL`; strict arms reject the step |
+| unique cards | unique-name law (§5.1) |
+| card stacking (3 Dread) | `stackable` declarations + name pools + oldest-named addressing (§4.2) |
+| lifetimes / `decayTo` transforms | `SET x, expires, Nm` + authored `on expire of NAME` triggers (§6.6) — a transform, not just destroy |
+| chance (`linked` rolls, induces) | `ROLL`/`ROLLED` + the seeded `State.rng` counter; each draw lands in the log as `ROLLED(total, ctrAfter)` so the fold replays deterministically (§4.4) — v1's recommended option (b), shipped |
+| `deckeffects` / `internaldeck` | `DRAW`/`DRAWN` + per-deck cursors + `draw_from` exhaustion rules (§4.4) |
+| endings (48) | `ENDING` outcome + `State.ended` (§4.4) |
+| `extantreqs` / `tablereqs` | `exists()` / `count()` predicates over the whole living world (§4.5; `predicate.rs:493`) — the v1 "not expressible" note is obsolete |
+| conditional chains / challenge rolls | `IF`/`ELSE` outcome arms (§6.8) reading the last `ROLL`; strict arms reject the step |
 | hintonly suggestions | `shown` + `hint` recipes |
 | followers/cult/social graph | relations (8 registered types) + multi-actor roles |
-| timetables pressing the player | once-triggers (`State.fired`, §9.29) |
+| timetables pressing the player | once-triggers (`State.fired`, §6.6) |
 | `signalEndingFlavour` | `Ending {id, title, flavour}` |
 
 **Needs authoring translation — IMPLEMENTED (engine v0.3.6, `text-engine-v0.6.md`
-§9.47–50: RUN chains, `on complete` triggers + recipe `aspects`, query
-alternation, `max`; commits 3cc1ced §9.49, b1fce1a §9.50, eb350c3 §9.47,
-69b2977 §9.48)**
+§6.7/§4.5/§6.4: RUN chains, `on complete` triggers + recipe `aspects`, query
+alternation, `max`; commits 3cc1ced §4.5, b1fce1a §6.4, eb350c3 §6.7,
+69b2977 §6.7)**
 
 - **`linked` chains** (needs→discardseason→drawseason→needs; expedition ticks): there
   is no "start another recipe" outcome — inline each chain into one outcome list,
@@ -407,7 +407,7 @@ through player steps (`ADVANCE`/`WAIT`) — there is no auto-tick pump anywhere 
 (a) accept turn-driven time — Time Passes is an explicit repeating WAIT verb (the
 Nightjar model, pure data, enough for the slice); (b) add a small pump that commits
 synthetic WAIT steps for elapsed spans. (b) is a design decision, not a blocker —
-and the v0.3.6 `job→needs` induce (§9.48 + §9.47 cross-verb RUN) makes it moot for
+and the v0.3.6 `job→needs` induce (§6.7 cross-verb RUN) makes it moot for
 the slice: the first work-like completion bootstraps the self-rechaining seasonal
 loop, which then suppresses later bootstraps exactly as CS's does.
 

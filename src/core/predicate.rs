@@ -1,5 +1,5 @@
 //! Condition predicates for recipe `when` (spec
-//! §6.3). The SAME grammar serves the IF conditions of outcome lists (§9.39):
+//! §6.3). The SAME grammar serves the IF conditions of outcome lists (§6.8):
 //! `parse_predicate` string-parses `when:` lines; `parse_predicate_toks`
 //! parses an IF condition out of the SENTENCE token stream. One grammar, two
 //! front-ends — no duplicated semantics.
@@ -30,11 +30,11 @@ pub type RoleBindings = IndexMap<Role, Vec<String>>;
 pub struct PredCtx<'a> {
     pub b: &'a RoleBindings,
     pub state: &'a State,
-    /// §9.39 asymmetric failure discipline: IF conditions evaluate STRICTLY —
-    /// a path operand whose role has no bound card REJECTS the step (§9.19),
+    /// §6.3 asymmetric failure discipline: IF conditions evaluate STRICTLY —
+    /// a path operand whose role has no bound card REJECTS the step (§9.2),
     /// where a `when:` predicate would silently read false.
     pub strict: bool,
-    /// §9.41: the apply context's per-clause dice binding — the last ROLL of
+    /// §4.4: the apply context's per-clause dice binding — the last ROLL of
     /// this outcome list, last-wins. Absent during recipe `when:` selection
     /// and at fold.
     pub roll: Option<i64>,
@@ -116,7 +116,7 @@ pub enum ValExpr {
     Count {
         role: String,
     },
-    /// §9.38: count over the whole living world (any §4.5 query)
+    /// §4.5: count over the whole living world (any §4.5 query)
     CountQuery {
         query: Query,
     },
@@ -130,12 +130,12 @@ pub enum ValExpr {
         key: String,
     },
     /// F3 authored-only: a function parameter standing in a cmp operand
-    /// (§9.40); expansion replaces it with the call's number — it never
+    /// (§10); expansion replaces it with the call's number — it never
     /// reaches evaluation.
     Param {
         name: String,
     },
-    /// §9.41: the per-clause dice binding from the APPLY context. Parses only
+    /// §4.4: the per-clause dice binding from the APPLY context. Parses only
     /// in the Tok front-end (IF conditions, ROLL args).
     Roll,
 }
@@ -184,7 +184,7 @@ pub fn parse_predicate(src: &str) -> Result<Pred> {
 }
 
 /// Parse one IF condition out of the
-/// SENTENCE token stream (§9.39) and report where it ended. Returns
+/// SENTENCE token stream (§6.8) and report where it ended. Returns
 /// `(pred, end)` where `end` is the number of Toks consumed, i.e. the index
 /// of the `->` arrow in the given slice.
 pub fn parse_predicate_toks(
@@ -224,7 +224,7 @@ pub fn parse_predicate_toks(
         return Err(ChorusError::new("an IF needs a condition before '->'"));
     }
     let PredView { src, toks, spans } = pred_view_from_toks(slice)?;
-    // `allow_roll`: `roll` (§9.41) is an outcome-list operand — an IF condition
+    // `allow_roll`: `roll` (§4.4) is an outcome-list operand — an IF condition
     // may read the list's dice; a `when:` line (the string front-end) may not
     let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true };
     let pred = parser.parse()?;
@@ -232,7 +232,7 @@ pub fn parse_predicate_toks(
 }
 
 /// ONE standalone value expression
-/// (§9.41): the ROLL argument grammar — one grammar, three front-ends.
+/// (§4.4): the ROLL argument grammar — one grammar, three front-ends.
 pub fn parse_value_expr_toks(toks: &[Tok], params: Option<&HashSet<String>>) -> Result<ValExpr> {
     let PredView { src, toks, spans } = pred_view_from_toks(toks)?;
     let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true };
@@ -240,7 +240,7 @@ pub fn parse_value_expr_toks(toks: &[Tok], params: Option<&HashSet<String>>) -> 
 }
 
 /// Sentence Toks → this parser's own
-/// token alphabet (§9.39). Word-adjacent lexemes are space-separated so they
+/// token alphabet (§6.8). Word-adjacent lexemes are space-separated so they
 /// cannot merge; everything else glues exactly as the string grammar expects
 /// (`aspect:hunter>=1`, `state:!sealed`, dotted paths, `-aspect:winter`).
 /// The glued-string + span shape is load-bearing: the inner-query
@@ -320,7 +320,7 @@ impl<'a> PredParser<'a> {
         // and the inner text is reconstructed from the source, so its
         // characters must survive; a stray `!` still errors loudly at the
         // parser ("expected comparison op, got '!'"), never silently.
-        // `|` survives the same way (§9.49): a LONE `|` rides verbatim
+        // `|` survives the same way (§4.5): a LONE `|` rides verbatim
         // into the inner query as the group separator; outside a query it
         // errors loudly at the parser ("expected comparison op, got '|'").
         // (`\d` is ASCII `[0-9]`; offsets are byte offsets, the spans
@@ -400,7 +400,7 @@ impl<'a> PredParser<'a> {
         Ok(p)
     }
 
-    /// One full value expression (§9.41 ROLL
+    /// One full value expression (§4.4 ROLL
     /// args): the §6.3 operand grammar, all tokens consumed.
     fn parse_value_expr(mut self) -> Result<ValExpr> {
         let v = self.val_expr()?;
@@ -530,7 +530,7 @@ impl<'a> PredParser<'a> {
     }
 
     /// A query-term starter at token i:
-    /// kind:/aspect:/state:/name: or a leading `-` (§4.5, §9.38).
+    /// kind:/aspect:/state:/name: or a leading `-` (§4.5).
     fn query_starter_at(&self, i: usize) -> bool {
         let Some(head) = self.toks.get(i) else {
             return false;
@@ -580,18 +580,18 @@ impl<'a> PredParser<'a> {
     /// One operand: param | roll | int | count/total | role.field.key path.
     fn val_expr(&mut self) -> Result<ValExpr> {
         let t = self.next()?;
-        // F3 (§9.40): a bare parameter name is a param operand — expansion
+        // F3 (§10): a bare parameter name is a param operand — expansion
         // binds it to the call's number.
         if self.params.is_some_and(|p| p.contains(&t)) {
             return Ok(ValExpr::Param { name: t });
         }
-        // §9.41: the dice operand — Tok front-ends only. A `when:` line
+        // §4.4: the dice operand — Tok front-ends only. A `when:` line
         // parses through the string front-end, where selection provably runs
         // before any outcome could have rolled.
         if t == "roll" {
             if !self.allow_roll {
                 return Err(ChorusError::new(
-                    "'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§9.41)",
+                    "'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§4.4)",
                 ));
             }
             return Ok(ValExpr::Roll);
@@ -603,7 +603,7 @@ impl<'a> PredParser<'a> {
         }
         if t == "count" {
             self.expect("(")?;
-            // §9.38: count(role) vs count(<query>) — a query-term starter
+            // §4.5: count(role) vs count(<query>) — a query-term starter
             // decides, mirroring exists(); the paren'd arg is consumed
             // balanced regardless
             if self.query_starter_at(self.pos) {
@@ -636,7 +636,7 @@ impl<'a> PredParser<'a> {
         if t == "total" {
             self.expect("(")?;
             // total pools a bound ROLE's aspects — the query form is
-            // deliberately not offered (§9.38): fail with the rule
+            // deliberately not offered (§4.5): fail with the rule
             if self.query_starter_at(self.pos) {
                 return Err(ChorusError::new(
                     "total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))",
@@ -673,7 +673,7 @@ impl<'a> PredParser<'a> {
                 "expected aspect|attr after '{t}.', got '{field_tok}'"
             )));
         };
-        self.expect(".")?; // the second dot of role.field.key (split-token shape, §9.39)
+        self.expect(".")?; // the second dot of role.field.key (split-token shape, §6.8)
         let key = self.dotted_name()?;
         Ok(ValExpr::Path { role: t, field, key })
     }
@@ -693,7 +693,7 @@ impl<'a> PredParser<'a> {
 // ---------- evaluation ----------
 
 /// A role's bound cards, ALIVE only
-/// (§9.39 draft reads). Reads the CURRENT entities through the id handles:
+/// (§6.3 draft reads). Reads the CURRENT entities through the id handles:
 /// a dead-stamped entity reads as absent mid-list —
 /// `DESTROY OBJECT` then `IF object.aspect.x` is a silent false.
 fn role_cards<'a>(ctx: &PredCtx<'a>, role: &str) -> Vec<&'a Entity> {
@@ -777,9 +777,9 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
             Ok(cards.iter().any(|e| scalar_ok(e, cond)))
         }
         Pred::Exists { name } => {
-            // `by_name` holds ALIVE entities only (§9.14); the `dead_action`
+            // `by_name` holds ALIVE entities only (§5.1); the `dead_action`
             // re-check is the same belt-and-braces `resolve_ref` wears. Under
-            // pools (§9.38) the existential is ANY living copy of the name.
+            // pools (§4.2) the existential is ANY living copy of the name.
             match ctx.state.by_name.get(name) {
                 Some(pool) => Ok(pool
                     .iter()
@@ -800,7 +800,7 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
         }
         Pred::Cmp { l, op, r } => {
             // a numeric attr entry ABSENT from an ALIVE bound card compares
-            // as 0, BOTH operands (cmp_operand — the §9.31 SET-delta rule
+            // as 0, BOTH operands (cmp_operand — the §4.4 SET-delta rule
             // and total()'s unwrap_or(0)); every other unresolved operand
             // still never compares (either side None → false)
             let lv = cmp_operand(l, ctx)?;
@@ -815,13 +815,13 @@ pub fn eval_pred(p: &Pred, ctx: &PredCtx) -> Result<bool> {
 
 /// One `Pred::Cmp` operand read: `eval_expr`, plus the E1 default — a
 /// numeric attr entry ABSENT from an ALIVE bound card compares as 0, so
-/// `attr:x < 3` holds from missing and `attr:x >= 3` fails (§9.31's
+/// `attr:x < 3` holds from missing and `attr:x >= 3` fails (§4.4's
 /// SET-delta rule "a missing entry counts as 0" and total()'s
 /// `unwrap_or(0)`; script entities mint empty attrs, so a `silver < cost`
 /// broke-gate holds for a first-time buyer). Everything else keeps
-/// `eval_expr`'s discipline: an ASPECT path stays §9.39-frozen
+/// `eval_expr`'s discipline: an ASPECT path stays §6.3-frozen
 /// missing→false ("a missing aspect on a bound card reads false"); a role
-/// with no bound card is the §9.39 unresolvable ref (strict rejects inside
+/// with no bound card is the §6.3 unresolvable ref (strict rejects inside
 /// `eval_expr`); all-dead bindings stay silent-false (the dead-stamp rule);
 /// and a PRESENT non-numeric entry never compares.
 fn cmp_operand(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
@@ -835,7 +835,7 @@ fn cmp_operand(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
     let Some(e) =
         bound.iter().filter_map(|id| ctx.state.entities.get(id)).find(|e| e.dead_action.is_none())
     else {
-        // no bindings (§9.39: strict rejects inside eval_expr) or all-dead
+        // no bindings (§6.3: strict rejects inside eval_expr) or all-dead
         // (the silent dead-stamp false) — the un-coerced paths
         return eval_expr(x, ctx);
     };
@@ -871,7 +871,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
     match x {
         ValExpr::Int { v } => Ok(Some(*v)),
         ValExpr::Roll => {
-            // §9.41: unbound in a taken branch is a step rejection (§9.19) —
+            // §4.4: unbound in a taken branch is a step rejection (§9.2) —
             // never a silent false or an implicit 0
             match ctx.roll {
                 Some(roll) => Ok(Some(roll)),
@@ -916,8 +916,8 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
                     PredField::Attr => number_attr(e, key),
                 }),
                 None => {
-                    // §9.39: an IF condition names a CARD that is not there —
-                    // an unresolvable ref, a step rejection (§9.19) — but ONLY
+                    // §6.3: an IF condition names a CARD that is not there —
+                    // an unresolvable ref, a step rejection (§9.2) — but ONLY
                     // when the role has NO bindings at all; all-dead bindings
                     // read false silently (the dead-stamp rule)
                     if ctx.strict && bound.is_empty() {
@@ -931,7 +931,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
             }
         }
         ValExpr::Param { name } => {
-            // expansion (§9.40) replaces every param before compile finishes;
+            // expansion (§10) replaces every param before compile finishes;
             // this is a defensive tripwire, never a gameplay path
             Err(ChorusError::new(format!(
                 "internal: unresolved function parameter '{name}' was evaluated"
@@ -940,7 +940,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
     }
 }
 
-// ---------- load-time argument lint (§9.38) ----------
+// ---------- load-time argument lint (§4.5) ----------
 
 /// `ROLES` joined with ', ' (the ROLE_LIST message text).
 #[must_use]
@@ -1034,7 +1034,7 @@ pub fn lint_trigger_val_expr_what(where_: &str, x: &ValExpr, what: &str) -> Resu
             "{where_}: {what} {role}.{field}.{key} reads a step role — trigger bindings are empty, it would always be false; use world forms (exists(…), count(name:…))",
             field = field.as_str()
         ))),
-        // `Int` / `CountQuery` are world forms; `roll` (§9.41) reads the list's
+        // `Int` / `CountQuery` are world forms; `roll` (§4.4) reads the list's
         // own dice, not a role
         _ => Ok(()),
     }
@@ -1045,7 +1045,7 @@ pub fn lint_trigger_val_expr(where_: &str, x: &ValExpr) -> Result<()> {
     lint_trigger_val_expr_what(where_, x, "IF operand")
 }
 
-// ---------- §9.41 compile-time may-bind lint for the `roll` operand ----------
+// ---------- §4.4 compile-time may-bind lint for the `roll` operand ----------
 
 /// Does this predicate read the `roll`
 /// operand anywhere?
@@ -1059,7 +1059,7 @@ fn pred_uses_roll(p: &Pred) -> bool {
     }
 }
 
-/// Best-effort may-bind analysis (§9.41,
+/// Best-effort may-bind analysis (§4.4,
 /// false NEGATIVES allowed). The scan walks each list linearly, descending
 /// into IF branch bodies; a ROLL seen anywhere earlier makes later references
 /// lint-clean.
@@ -1080,7 +1080,7 @@ fn walk_roll_may_bind(where_: &str, list: &[Outcome], bound: bool) -> Result<boo
                 for arm in arms {
                     if pred_uses_roll(&arm.when) && !may_bind {
                         return Err(ChorusError::new(format!(
-                            "{where_}: 'roll' is read but no ROLL can have run before it in this outcome list — author a ROLL earlier in the list (the dice binding is per list/clause, §9.41)"
+                            "{where_}: 'roll' is read but no ROLL can have run before it in this outcome list — author a ROLL earlier in the list (the dice binding is per list/clause, §4.4)"
                         )));
                     }
                 }
@@ -1305,7 +1305,7 @@ mod tests {
         let e = parse_predicate("roll >= 3").unwrap_err();
         assert_eq!(
             e.msg,
-            "'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§9.41)"
+            "'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§4.4)"
         );
         // Tok front-end allows it
         let toks = vec![

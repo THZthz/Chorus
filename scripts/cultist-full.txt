@@ -39,8 +39,8 @@
 #              existentials and corrupt the extantreq gates. Cards never
 #              minted anywhere and unique:true are declared entities;
 #              everything minted at runtime, deck-spec members, and
-#              lifetime bearers are stackable PROTOTYPES (the §9.19 mint-
-#              collision law and the §9.44 deck livelock rule outrank CS's
+#              lifetime bearers are stackable PROTOTYPES (the §9.2 mint-
+#              collision law and the §10 deck livelock rule outrank CS's
 #              unique:true; flips are counted in the report).
 #   carriers   the five non-station lexemes (READ TRAVEL_TO USE_ON ACQUIRE
 #              LOCATE_AT) carry every non-station CS actionid, hidden,
@@ -59,19 +59,19 @@
 #              never-matching when (CS cannot fire them either), while
 #              requirement-less carrier recipes get an always-true one
 #              (carriers are RUN-addressed; a never-when would end CS-live
-#              chains, §9.47).
+#              chains, §6.7).
 #   decay      1 CS second → 1 engine minute. A lifetime with a decayTo is
 #              an `on expire` DESTROY+SPAWN+SET chain (never REPLACE from a
 #              trigger — the trigger-body law); without a decayTo the
-#              engine's built-in destroy-by-id expiry stands (the §9.38-
+#              engine's built-in destroy-by-id expiry stands (the §4.2-
 #              safe path under pools). Recipe-effect mints of lifetime
 #              bearers arm at birth via the authored `SPAWN X expires
-#              <dur>` modifier (§4.4/§9.36 — each fresh copy its own
+#              <dur>` modifier (§4.4/§4.2 — each fresh copy its own
 #              decay, pooled or not; findings E12's spawn-modifier half);
 #              deck-drawn lifetime bearers stay un-armed (DRAW has no
 #              expires arg — findings E12's open half).
 #   chains     linked → RUN ladders: ROLL(1,100)+IF arms with a fresh roll
-#              per entry; one RUN op per completion (§9.47), so CS's
+#              per entry; one RUN op per completion (§6.7), so CS's
 #              parallel additional-alts + linked chain collapse into the
 #              arms of ONE ladder (alts first, linked last as fallback).
 #              Each arm RUNs a candidate list of its own entry plus every
@@ -87,7 +87,7 @@
 #              aspect-borne hooks (CS carries some on isAspect elements,
 #              e.g. job/ingredient → needs) distribute onto every card
 #              declaring the aspect. Recipes declare `aspects` = their own
-#              running aspects + positive requirement keys (§9.48).
+#              running aspects + positive requirement keys (§6.7).
 #
 # The feature-loss list (emitted-with-loss and dropped-feature counts —
 # distinct from skips) and the structural-skip tables are in the
@@ -4023,7 +4023,7 @@ verbs:
     with: 0..1
     duration: 1h
     recipes:
-      # carrier station — chain-addressed only (§9.47): the guarded
+      # carrier station — chain-addressed only (§6.7): the guarded
       # actors slot matches no character, so this verb is never
       # suggested and a typed attempt rejects; RUN projections do
       # not re-check slot queries. Every recipe is hidden.
@@ -4058,7 +4058,7 @@ verbs:
     with: 0..1
     duration: 10m
     recipes:
-      # carrier station — chain-addressed only (§9.47): the guarded
+      # carrier station — chain-addressed only (§6.7): the guarded
       # actors slot matches no character, so this verb is never
       # suggested and a typed attempt rejects; RUN projections do
       # not re-check slot queries. Every recipe is hidden.
@@ -4336,7 +4336,7 @@ verbs:
     with: 0..1
     duration: 30m
     recipes:
-      # carrier station — chain-addressed only (§9.47): the guarded
+      # carrier station — chain-addressed only (§6.7): the guarded
       # actors slot matches no character, so this verb is never
       # suggested and a typed attempt rejects; RUN projections do
       # not re-check slot queries. Every recipe is hidden.
@@ -4443,7 +4443,7 @@ verbs:
     with: 0..1
     duration: 10m
     recipes:
-      # carrier station — chain-addressed only (§9.47): the guarded
+      # carrier station — chain-addressed only (§6.7): the guarded
       # actors slot matches no character, so this verb is never
       # suggested and a typed attempt rejects; RUN projections do
       # not re-check slot queries. Every recipe is hidden.
@@ -4546,7 +4546,7 @@ verbs:
     with: 0..1
     duration: 1h
     recipes:
-      # carrier station — chain-addressed only (§9.47): the guarded
+      # carrier station — chain-addressed only (§6.7): the guarded
       # actors slot matches no character, so this verb is never
       # suggested and a typed attempt rejects; RUN projections do
       # not re-check slot queries. Every recipe is hidden.

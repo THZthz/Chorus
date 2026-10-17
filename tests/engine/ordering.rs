@@ -116,7 +116,7 @@ fn seed() -> State {
     s
 }
 
-/// An item inserted with an `expiresAt` attr (the §9.36 materialized form —
+/// An item inserted with an `expiresAt` attr (the §4.2 materialized form —
 /// tests write the engine fact directly).
 fn expiring_item(s: &mut State, id: &str, name: &str, at: i64) {
     let mut attrs = Attrs::new();
@@ -161,7 +161,7 @@ fn run(
     .unwrap()
 }
 
-/// A lone clock token is a pure advance — no sentence to parse (§9.28).
+/// A lone clock token is a pure advance — no sentence to parse (§6.6).
 fn run_clock(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -196,7 +196,7 @@ fn replay(
 }
 
 /// The whole-history replay: folding a mid-window slice (advance rows only)
-/// skips the BEGINs whose registration the completions presuppose — §9.50
+/// skips the BEGINs whose registration the completions presuppose — §6.4
 /// gives the BEGIN a durable effect (the execution count rides registration),
 /// so a slice must carry its own BEGINs for the fold to land the same state.
 fn replay_all(
@@ -420,7 +420,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
     assert!(
         matches!(&builtin.outcomes[0].args[0], Arg::Ref { r#ref: Ref::Id { id } } if id == "dust")
     );
-    // fired carries exactly the two event triggers (§9.34)
+    // fired carries exactly the two event triggers (§6.6)
     let mut fired: Vec<&String> = adv.state.fired.iter().collect();
     fired.sort();
     let mut expect: Vec<&str> = vec!["decay_first", "expire:DUST"];
@@ -895,7 +895,7 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     let adv2 = run_clock(&content, &dict, adv.state, "1:4", 10); // walk 60 → 1560
     let t2: Vec<Option<&str>> = adv2.records.iter().map(|r| r.trigger.as_deref()).collect();
     assert!(t2.contains(&Some("mark")), "non-once refires per crossing: {t2:?}");
-    assert!(!t2.contains(&Some("once_dusk")), "once means once (§9.29)");
+    assert!(!t2.contains(&Some("once_dusk")), "once means once (§6.6)");
     assert_eq!(adv2.state.now, 1560);
     let replayed = replay(&adv2.records, &pre, &dict, &content).unwrap();
     assert_eq!(snap(&replayed), snap(&adv2.state));

@@ -1,8 +1,8 @@
 //! Slot-query mini-language (spec §4.5). Tests ONE
 //! card at a time:
 //!   kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:winter
-//!   name:SUSPICION  -name:SUSPICION   (§9.38: exact-case, like name refs/exists)
-//!   aspect:ability | aspect:job aspect:ritual   (§9.49: `|` separates
+//!   name:SUSPICION  -name:SUSPICION   (§4.5: exact-case, like name refs/exists)
+//!   aspect:ability | aspect:job aspect:ritual   (§4.5: `|` separates
 //!   conjunction groups — ability, or job AND ritual)
 
 use std::sync::OnceLock;
@@ -105,16 +105,16 @@ impl QueryTerm {
     }
 }
 
-/// A query: the OR of its conjunction groups (§9.49 alternation) —
+/// A query: the OR of its conjunction groups (§4.5 alternation) —
 /// `[[a, b], [c]]` is `(a AND b) OR c`; `|` binds loosest. One group (the
 /// `|`-less form) behaves exactly as the pre-alternation flat conjunction;
 /// the zero-group query (from `''` — the frozen-falsy no-query, guarded at
 /// every home before parsing) stays vacuous-true like the old empty
 /// conjunction. No canonical printer: queries are authored strings, never
-/// serialized and never logged (§9.49).
+/// serialized and never logged (§4.5).
 pub type Query = Vec<Vec<QueryTerm>>;
 
-/// The §9.49 grammar: `query := and ( '|' and )*`, `and := term+`,
+/// The §4.5 grammar: `query := and ( '|' and )*`, `and := term+`,
 /// `term := '-'? atom`. Terms split on runs of the frozen DSL whitespace
 /// (Q8), and a `|` is a GROUP separator only when it stands ALONE as one
 /// of those tokens — glued into a term's value (`aspect:a|b`) it rides
@@ -193,7 +193,7 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
                     "bad name term '{raw}' (expected name:<NAME>)"
                 )));
             }
-            // exact-case, like name refs and exists(NAME) (§9.38). A
+            // exact-case, like name refs and exists(NAME) (§4.5). A
             // comparison is meaningless on a name — and the count()/exists()
             // glue-tightening would silently bake `X>=1` in as the NAME (a
             // silent 0), so reject it loudly (any of `<>=!` in the value).
@@ -288,7 +288,7 @@ fn coerce(v: &str) -> AttrValue {
     AttrValue::Str(v.to_string())
 }
 
-/// A card matches iff ANY group's terms ALL match (§9.49 DNF). The
+/// A card matches iff ANY group's terms ALL match (§4.5 DNF). The
 /// zero-group query (from `''`) stays vacuous-true — the empty
 /// conjunction's pre-alternation semantics.
 #[must_use]
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn parse_and_match_the_canonical_term_shapes() {
         let q = parse_query("kind:text aspect:secret>=3 state:!sealed -aspect:winter").unwrap();
-        assert_eq!(q.len(), 1); // no '|' — one conjunction group (§9.49)
+        assert_eq!(q.len(), 1); // no '|' — one conjunction group (§4.5)
         assert_eq!(q[0].len(), 4);
         let e = Entity {
             id: "e1".into(),

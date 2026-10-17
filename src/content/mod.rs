@@ -1,5 +1,5 @@
 //! The content layer: `script.rs` is the line-segment script parser +
-//! load-time lint; `content.rs` is the compiler (and hosts the §9.42 deck
+//! load-time lint; `content.rs` is the compiler (and hosts the §4.4 deck
 //! machinery).
 
 // the clippy "inception" shape (`content::content`) is deliberate — the

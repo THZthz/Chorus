@@ -50,7 +50,7 @@ impl Tok {
 }
 
 /// PUNCT. '+'/'-' are punct so a signed SET value
-/// (+1/-2, §9.31) lexes as sign + int ('->' is matched before the punct set,
+/// (+1/-2, §4.4) lexes as sign + int ('->' is matched before the punct set,
 /// so the minus is unambiguous); '.' is punct for dotted SET keys (§5.1
 /// dotted names: `state.sealed`, `aspect:language.latin`).
 #[must_use]
@@ -220,7 +220,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
         }
         if (b'0' as u16..=b'9' as u16).contains(&c) {
             // a duration only when the whole number is
-            // the duration's digits ('1halfhour' and compound '1h30m' (§9.45)
+            // the duration's digits ('1halfhour' and compound '1h30m' (§5.1)
             // are one token; '12' alone stays an int)
             let rest = &s[i..];
             let num_len = scan_digits(rest, 0).unwrap_or_else(|| {

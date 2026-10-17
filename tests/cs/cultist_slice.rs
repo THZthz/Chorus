@@ -284,7 +284,7 @@ fn assert_ended(game: &Game, id: &str, title: &str, flavour: &str) {
     assert_eq!(ending_banner(&ended), format!("— {} · {} —", title.to_uppercase(), flavour));
 }
 
-/// After the ending, further input is refused: the §9.35 notice instead of
+/// After the ending, further input is refused: the §4.4 notice instead of
 /// execution, nothing new logged.
 fn assert_further_input_rejected(game: &mut Game, next_line: &str) {
     let records_before = game.log.records.len();
@@ -544,7 +544,7 @@ fn a_starved_body_fails() {
 /// bootstrap and time.turn completed at every cycle; THE_TURNING spawned
 /// exactly once; and a SECOND job completion (the clerk's post worked) that
 /// spawns nothing and whose bootstrap RUN skips on the busy station — the
-/// §9.48 suppression, asserted by the draw cadence: four turns, four draws,
+/// §6.7 suppression, asserted by the draw cadence: four turns, four draws,
 /// no extra.
 #[test]
 fn the_wheel_turns_at_least_three_seasons() {

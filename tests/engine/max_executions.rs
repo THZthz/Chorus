@@ -1,4 +1,4 @@
-//! `max N` — recipe execution limits (spec §9.50): the
+//! `max N` — recipe execution limits (spec §6.4): the
 //! positional script token and its keyword exclusion, the
 //! `State.executed` map maintained by the ONE window-registration path
 //! play and fold share, the selection gate (an exhausted recipe is simply
@@ -114,7 +114,7 @@ fn executed_entries(s: &chorus::core::types::State) -> Vec<(String, i64)> {
 // ------------------------------------------------------------- the gate -----
 
 /// A `max 1` recipe runs once; the second selection attempt skips it and
-/// the walk continues into the next matching recipe (§9.50).
+/// the walk continues into the next matching recipe (§6.4).
 #[test]
 fn max_one_runs_once_then_the_walk_skips_it() {
     let dict = max_dict();
@@ -141,7 +141,7 @@ fn max_one_runs_once_then_the_walk_skips_it() {
     );
 }
 
-/// A table-refused attempt opens no window and counts nothing (§9.50): the
+/// A table-refused attempt opens no window and counts nothing (§6.4): the
 /// gate recipe stays selectable, and once its `when` stops matching the
 /// retry succeeds.
 #[test]
@@ -179,7 +179,7 @@ fn a_table_refused_attempt_consumes_nothing() {
 }
 
 /// A window that begins then refuses at completion DOES consume the budget
-/// — it registered at begin (§9.50). The REFUSE that only decides inside an
+/// — it registered at begin (§6.4). The REFUSE that only decides inside an
 /// IF branch belongs to the completion (§6.7); the partial effects are
 /// discarded, the window closes, the count stays.
 #[test]
@@ -209,7 +209,7 @@ fn a_window_that_refuses_at_completion_still_counted() {
 }
 
 /// Fold replay of a budget-consuming log rebuilds `State.executed`
-/// identically (the §9.29 fired precedent — selection reads only the state
+/// identically (the §6.6 fired precedent — selection reads only the state
 /// map, never the log), and a subsequent play step FROM the folded state
 /// gates the same way.
 #[test]
@@ -236,7 +236,7 @@ fn fold_replay_rebuilds_executed_and_the_gate_still_gates() {
 }
 
 /// `max N` parses positionally; `max` is a KEYWORD, never a leading recipe
-/// id (§9.50 — §9.48 will add `aspects` to the same exclusion). N ≥ 1: a
+/// id (§6.4 — §6.7 will add `aspects` to the same exclusion). N ≥ 1: a
 /// `max 0` or negative is a load error, in the script and in hand-built
 /// content alike.
 #[test]
@@ -392,7 +392,7 @@ fn max_three_runs_three_then_skips() {
     );
 }
 
-/// A spent recipe stops being suggested (§9.50's hintonly/shown note): the
+/// A spent recipe stops being suggested (§6.4's hintonly/shown note): the
 /// suggestion walk applies the same gate selection does, so the binding that
 /// lit the spent recipe drops out of the story suggestions (a lit verb ranks
 /// before a flavor-only one).
@@ -421,7 +421,7 @@ fn a_spent_recipe_stops_being_suggested() {
 
 /// The count rides the ONE registration path: a BEGIN whose window is still
 /// OPEN has already spent the budget — registration at begin, completion
-/// later (§9.50: a window that later refuses still counted).
+/// later (§6.4: a window that later refuses still counted).
 #[test]
 fn registration_at_begin_counts_while_the_window_is_still_open() {
     use chorus::engine::engine::{execute_step, ExecOptions};

@@ -236,7 +236,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     // objects. The phrases keep AUTHORED order — the object group runs from
     // the verb to the first keyword, and each keyword starts the next group —
     // because that order is the pool hand-out order: a name filling several
-    // roles of one clause binds distinct §9.38 pool copies head-first
+    // roles of one clause binds distinct §4.2 pool copies head-first
     // through it (§11, E9).
     let mut phrases: Vec<(Group, Vec<&str>)> = vec![(Group::Object, Vec::new())];
     for tok in &tokens[verb_index + verb_len..] {
@@ -313,7 +313,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     if let Some(verb_def) = ctx.content.verbs.get(&verb) {
         if !with_role.is_empty() && !verb_def.slot_by_role.contains_key("with") {
             // the `fits` probe: `by_name` pools hold
-            // living ids with the oldest first (§9.38), so a name ref probes
+            // living ids with the oldest first (§4.2), so a name ref probes
             // the pool HEAD
             let fits = |r: &Ref, role: &str| -> bool {
                 let Some(slot) = verb_def.slot_by_role.get(role) else {
@@ -380,7 +380,7 @@ pub struct NameEntry<'a> {
     pub norm: String,
 }
 
-/// §9.38: one entry per distinct name — the
+/// §4.2: one entry per distinct name — the
 /// OLDEST living copy (the head of the `by_name` pool; entities iterate in birth
 /// order). Lenient input has no #id form of its own, so a pool name typed in
 /// prose addresses the oldest; the engine's `resolve_ref` enforces the same rule
@@ -398,7 +398,7 @@ fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
     map
 }
 
-/// §9.38: every LIVING copy of each distinct name, in birth order — the same
+/// §4.2: every LIVING copy of each distinct name, in birth order — the same
 /// order the engine's `by_name` pools keep (oldest first). This is the
 /// hand-out order for E9's multi-role binding (§11): the first role naming a
 /// pool addresses the head exactly as ever, each further ROLE takes the next
@@ -455,7 +455,7 @@ fn norm(name: &str) -> String {
 /// carries the failed bindings in token order. `handed` counts, per name,
 /// how many SLOTS the clause has already served; a slot's own `claimed` map
 /// fixes its copy on the slot's first mention. The first slot naming a pool
-/// binds the §9.38 head as a name ref — single-mention behavior is
+/// binds the §4.2 head as a name ref — single-mention behavior is
 /// untouched; each further SLOT binds the next living copy as an `#id` ref
 /// (E9), and a pool too small for its slot records a
 /// [`PhraseFail::Short`]. A second mention within the same slot re-uses the
@@ -502,7 +502,7 @@ fn resolve_group(
                 }
             };
             if idx == 0 {
-                // the head, exactly as ever (§9.38)
+                // the head, exactly as ever (§4.2)
                 refs.push(name_ref(e.entity.name.clone(), None));
             } else {
                 let empty: Vec<String> = Vec::new();
@@ -526,7 +526,7 @@ fn resolve_group(
 }
 
 /// E6 (§11): the bare lenient clock wraps an out-of-range halfhour field
-/// into whole days the way durations compose (§9.45) — `0:118` is 118
+/// into whole days the way durations compose (§5.1) — `0:118` is 118
 /// halfhours, day 2 halfhour 22; `1:49` is 97 halfhours, day 2 halfhour 1.
 /// The canonical
 /// `d:h @` passthrough keeps its frozen `bad halfhour` bound: per FORM, the

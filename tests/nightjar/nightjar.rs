@@ -308,7 +308,7 @@ mod the_nightjar_flyer {
         assert!(ok, "said = {said:?}");
         // the escalation never tripped — but the inquest's grand ending now
         // lands at the window's close, one crossing after the vienna quiet
-        // night: first ENDING wins (§9.35), and the train gets there first
+        // night: first ENDING wins (§4.4), and the train gets there first
         let ended = game.state.ended.as_ref().expect("the story ended");
         assert_eq!(ended.id, "QUIET_NIGHT");
         assert_eq!(ended.flavour, "melancholy");
@@ -357,7 +357,7 @@ mod the_nightjar_flyer {
         // v0.5: the ENDING lands at the completion
         let last_complete = game.log.records.iter().rev().find(|r| r.kind == "complete").unwrap();
         assert!(last_complete.outcomes.iter().any(|o| o.op == "ENDING"));
-        // undo reopens the story — `ended` derives from the fold (§9.35)
+        // undo reopens the story — `ended` derives from the fold (§4.4)
         assert_eq!(game.undo().unwrap().kind, TurnKind::Info);
         assert!(game.state.ended.is_none());
     }
@@ -437,7 +437,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn once_triggers_fire_exactly_once_and_the_lord_expires_into_his_successor() {
-        // (§9.29, §9.32)
+        // (§6.6, §6.6)
         let mut game = fresh();
         play(&mut game, &["wait"]).unwrap(); // day 0, hour 22 — body_found fires
         assert_eq!(
@@ -446,8 +446,8 @@ mod the_nightjar_flyer {
         );
         // jump a day ahead in ONE step: the once-trigger must neither re-fire
         // nor reject — and the lord's 1-day `expires` crosses on the way, so
-        // the authored `on expire` trigger replaces him (REPLACE, §9.32-§9.33).
-        // The span also crosses the vienna ending (§9.35) — the ending rides
+        // the authored `on expire` trigger replaces him (REPLACE, §6.6-§4.4).
+        // The span also crosses the vienna ending (§4.4) — the ending rides
         // along: the pass that fired it runs to its full target, and play
         // stops after.
         let jump = auto_settle_line(&mut game, "2:0 @ MARCH WAIT").unwrap();
@@ -534,7 +534,7 @@ mod the_nightjar_flyer {
             auto_settle_line(&mut game, "travel to the guard van").unwrap().kind,
             TurnKind::Action
         );
-        // ACQUIRE: a cost that can go below zero — exactly once per ticket (§9.31)
+        // ACQUIRE: a cost that can go below zero — exactly once per ticket (§4.4)
         assert_eq!(
             auto_settle_line(&mut game, "acquire the claim ticket").unwrap().kind,
             TurnKind::Action
@@ -550,7 +550,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn dreaming_draws_the_dreams_deck_until_it_runs_dry() {
-        // (§9.42, §9.23)
+        // (§4.4, §6.4)
         let mut game = fresh();
         play(
             &mut game,
@@ -580,7 +580,7 @@ mod the_nightjar_flyer {
         let dry = auto_settle_line(&mut game, "dream with the aether seal").unwrap();
         assert_eq!(dry.kind, TurnKind::Action);
         // …where the exhausted deck fails loud — the completion row refuses
-        // (§9.19 analog)
+        // (§9.2 analog)
         let last_complete = game.log.records.iter().rev().find(|r| r.kind == "complete").unwrap();
         assert!(last_complete.outcomes.iter().any(|o| o.op == "REFUSE"));
         assert!(regex::Regex::new(r"exhausted").unwrap().is_match(&game.journal().join("\n")));

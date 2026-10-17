@@ -78,7 +78,7 @@ fn fmt_outcomes(out: &[Outcome], dict: &Dictionary) -> String {
 }
 
 // ---------- expansion equivalence: call site === hand-expanded twin
-// ---------- (§9.40, direct subset) -----------------------------------------
+// ---------- (§10, direct subset) -----------------------------------------
 
 #[test]
 fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
@@ -134,7 +134,7 @@ fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
     assert_eq!(a, " -> SPAWN SUSPICION, NARRATE \"The conductor's eyes linger on THE_GUARD.\"");
 }
 
-// ---------- grammar: call-site dispatch and arity (§9.40,
+// ---------- grammar: call-site dispatch and arity (§10,
 // ---------- direct subset) ------------------------------------------------
 
 #[test]
@@ -198,7 +198,7 @@ fn unknown_name_in_outcome_position_is_a_compile_error_listing_the_vocabulary() 
     assert_err_msg(parse_outcomes("exists(X) -> (NARRATE \"a\")", &dict, None), "IF keyword");
 }
 
-// ---------- the two substitution mechanisms (§9.40,
+// ---------- the two substitution mechanisms (§10,
 // ---------- direct subset) ------------------------------------------------
 
 #[test]
@@ -285,7 +285,7 @@ fn reserved_tokens_pass_through_undeclared_or_spaced_braces_are_load_errors() {
     }
 }
 
-// ---------- nesting, recursion cycles, and the depth cap (§9.40;
+// ---------- nesting, recursion cycles, and the depth cap (§10;
 // ---------- guards mirror content.rs) --------------------------------------
 
 /// F1 → … → fn, the tail

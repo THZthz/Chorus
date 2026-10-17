@@ -1,4 +1,4 @@
-//! Seeded counter RNG — the engine's ONLY randomness (spec §9.41; law 5:
+//! Seeded counter RNG — the engine's ONLY randomness (spec §4.4; law 5:
 //! no RNG anywhere outside this mechanism). Sampling is
 //! counter-based and pure: die i of a roll at counter c is
 //!

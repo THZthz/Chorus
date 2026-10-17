@@ -1,7 +1,7 @@
 //! Recursive-descent sentence parser
 //! (spec §5.1). The one semantic decision point: where the actor list ends
 //! and the verb begins. That needs the verb registry (both are uppercase
-//! tokens), so the parser consults the Dictionary (spec §9.14).
+//! tokens), so the parser consults the Dictionary (spec §5.1).
 //!
 //! The function-macro layer (FnTemplate/FnTable) and the compile-
 //! time expansion live in [`crate::core::fn_expand`] (the seam types —
@@ -50,7 +50,7 @@ pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Re
 }
 
 /// Parse one function BODY into its template
-/// (§9.40): parameters are active, nested calls become FN nodes, NOTHING
+/// (§10): parameters are active, nested calls become FN nodes, NOTHING
 /// expands yet.
 pub fn parse_function_body(
     src: &str,
@@ -319,7 +319,7 @@ impl<'a> Parser<'a> {
         }
 
         // post-verbal AT is accepted as input sugar, canonicalized
-        // pre-verbal (§9.10)
+        // pre-verbal (§5.1)
         if self.at_keyword("AT") {
             self.next()?;
             let place = self.ref_()?;
@@ -349,7 +349,7 @@ impl<'a> Parser<'a> {
 
     /// ref = name | kind ":" name | "#" id | string
     /// (§5.1). Names in the dictionary's reserved set (keywords AND verb
-    /// lexemes) must be quoted. §9.40: inside a function body a bare
+    /// lexemes) must be quoted. §10: inside a function body a bare
     /// parameter is a ref-position placeholder (a param shadows any
     /// entity/role name); a parameter after `kind:` is refused — params
     /// substitute WHOLE refs.
@@ -415,9 +415,9 @@ impl<'a> Parser<'a> {
     }
 
     /// outcome = OPERATOR "(" args ")" | ref (bare
-    /// ref = SPAWN, §4.4). IF (§9.39) is intercepted before op dispatch. A
+    /// ref = SPAWN, §4.4). IF (§6.8) is intercepted before op dispatch. A
     /// declared function's NAME( dispatches to a call BEFORE op parsing
-    /// (§9.40); an unknown NAME( is a compile error listing the vocabulary.
+    /// (§10); an unknown NAME( is a compile error listing the vocabulary.
     fn outcome(&mut self) -> Result<Outcome> {
         let t = self.peek(0).cloned();
         if let Some(Tok::Name { v }) = &t {
@@ -459,7 +459,7 @@ impl<'a> Parser<'a> {
             ));
         }
         // ENDING is paren-less only: its id is a plain name, never an arg
-        // list (§9.35)
+        // list (§4.4)
         if op == "ENDING" && self.at_punct("(", 0) {
             return Err(ChorusError::new("ENDING takes the paren-less form: ENDING ENDING_ID"));
         }
@@ -473,7 +473,7 @@ impl<'a> Parser<'a> {
             }
             return self.roll_outcome();
         }
-        // DRAW is paren-less only (§9.42): the deck id is a plain ref; the
+        // DRAW is paren-less only (§4.4): the deck id is a plain ref; the
         // INTO target is the SPAWN grammar
         if op == "DRAW" {
             if self.at_punct("(", 0) {
@@ -491,7 +491,7 @@ impl<'a> Parser<'a> {
             }
             return Ok(Outcome { op, args: draw_args, arms: None, fallback: None, call: None });
         }
-        // RUN is the recipe-chain op (§9.47): `RUN "id" [, "id" …]` — the
+        // RUN is the recipe-chain op (§4.4): `RUN "id" [, "id" …]` — the
         // args are QUOTED-STRING refs only (recipe ids are lowercase and
         // dotted; the lexer's NAME class has no dot, so a bare id is
         // unlexable — the DRAWN precedent). The paren'd canonical shell that
@@ -511,7 +511,7 @@ impl<'a> Parser<'a> {
                 }
             }
             self.expect_punct(")")?;
-            // ROLLED is the engine-written record of a ROLL (§9.41): the
+            // ROLLED is the engine-written record of a ROLL (§4.4): the
             // parse entry exists so concrete rows re-parse, arity pinned
             if op == "ROLLED" {
                 let two_ints = matches!(
@@ -524,7 +524,7 @@ impl<'a> Parser<'a> {
                     ));
                 }
             }
-            // DRAWN is the engine-written record of a DRAW (§9.42): an unsafe
+            // DRAWN is the engine-written record of a DRAW (§4.4): an unsafe
             // spelling formats re-quoted — a quoted string IS a name ref
             // (ref()'s rule), so coerce before the shape check or the
             // recorded row would not re-parse (law 2)
@@ -547,7 +547,7 @@ impl<'a> Parser<'a> {
                     ));
                 }
             }
-            // NARRATE's canonical form is a single string (§4.4); §9.40: a
+            // NARRATE's canonical form is a single string (§4.4); §10: a
             // parameter in the string position is allowed — it binds to the
             // call's string at expansion
             if op == "NARRATE" {
@@ -605,7 +605,7 @@ impl<'a> Parser<'a> {
             });
         }
         if op == "ENDING" {
-            // ENDING id (§9.35): a plain ref-form id, so quoted ids
+            // ENDING id (§4.4): a plain ref-form id, so quoted ids
             // round-trip too
             return Ok(Outcome {
                 op,
@@ -643,7 +643,7 @@ impl<'a> Parser<'a> {
     }
 
     /// NAME(arg, …): a call to a declared function
-    /// (§9.40). Arity is checked HERE, a load error.
+    /// (§10). Arity is checked HERE, a load error.
     fn fn_call(&mut self) -> Result<Outcome> {
         let name_tok = self.next()?;
         let Tok::Name { v: name } = name_tok else {
@@ -681,7 +681,7 @@ impl<'a> Parser<'a> {
     }
 
     /// IF pred -> ( outcomes ) { ELSE IF … } [ELSE …]
-    /// (§9.39). The ELSE chain is consumed greedily INSIDE this node — the
+    /// (§6.8). The ELSE chain is consumed greedily INSIDE this node — the
     /// `,`-loop of outcome_list must not strand an ELSE.
     fn if_outcome(&mut self) -> Result<Outcome> {
         self.next()?; // IF
@@ -729,7 +729,7 @@ impl<'a> Parser<'a> {
     }
 
     /// ROLL(<count-expr>, <sides-expr>[, <bonus-expr>])
-    /// (§9.41). Each argument is consumed as a BALANCED Tok unit up to the
+    /// (§4.4). Each argument is consumed as a BALANCED Tok unit up to the
     /// depth-0 `,` (or the closing `)`), then parsed with the SAME §6.3
     /// value-expression grammar the IF cmp operands use.
     fn roll_outcome(&mut self) -> Result<Outcome> {
@@ -755,7 +755,7 @@ impl<'a> Parser<'a> {
         Ok(Outcome { op: "ROLL".to_string(), args, arms: None, fallback: None, call: None })
     }
 
-    /// RUN "id" [, "id" …] (§9.47): every
+    /// RUN "id" [, "id" …] (§4.4): every
     /// candidate is a quoted string — coerced to a name ref (the DRAWN
     /// coercion, so the arg shape matches the log-ref rule); a bare or dotted
     /// id is a parse error naming the syntax, and an empty list is one too.
@@ -833,7 +833,7 @@ impl<'a> Parser<'a> {
         parse_value_expr_toks(slice, self.params.as_ref())
     }
 
-    /// §9.40: a parameter wins before the role check
+    /// §10: a parameter wins before the role check
     /// (a param may shadow a role name inside a body exactly as it shadows
     /// an entity name); QUIRK(Q12): the role check intercepts BEFORE any
     /// bare-ref fallback — the soft-reservation order is load-bearing.
@@ -856,10 +856,10 @@ impl<'a> Parser<'a> {
 
     /// SPAWN ref [INTO target] [AS #id] [expires duration] [k=v …]
     /// (canonical paren-less form). The authored `expires <duration>`
-    /// modifier (§4.4, §9.36) arms the mint at birth — the engine
+    /// modifier (§4.4, §4.2) arms the mint at birth — the engine
     /// materializes the SET-expires `expires`/`expiresAt` pair inside the
-    /// concrete row's `attrs=` pair (§9.18), so the modifier itself is
-    /// authored-sugar only and never reaches the log. §9.40: a parameter as
+    /// concrete row's `attrs=` pair (§6.6), so the modifier itself is
+    /// authored-sugar only and never reaches the log. §10: a parameter as
     /// the pair's key OR value replaces the whole pair (these param checks
     /// are LIVE — unlike arg()'s dead key check, Q3).
     fn spawn_args(&mut self) -> Result<Vec<Arg>> {
@@ -882,10 +882,10 @@ impl<'a> Parser<'a> {
         if self.at_keyword("expires") {
             self.next()?;
             // every §5.1 duration form: the bare literal lexes to minutes
-            // (§9.45 compounds included); the quoted form rides §9.36's
+            // (§5.1 compounds included); the quoted form rides §4.2's
             // quoted-string path — the engine runs both through the one
             // duration parser. The DEDICATED arg shape (E12 review): a
-            // §9.40 parameter here is a parse error naming the grammar, so
+            // §10 parameter here is a parse error naming the grammar, so
             // the modifier can never be reached by substitution, and no
             // bare dur/str arg is ever mistaken for it at application.
             let t = self.next()?;
@@ -913,7 +913,7 @@ impl<'a> Parser<'a> {
                 )));
             };
             self.next()?; // '='
-                          // §9.40: a parameter as the pair's key OR value replaces the
+                          // §10: a parameter as the pair's key OR value replaces the
                           // whole pair (the LIVE twin of arg()'s dead branch, Q3)
             let v_is_param = match self.peek(0) {
                 Some(Tok::Name { v }) => self.params.as_ref().is_some_and(|p| p.contains(v)),
@@ -944,8 +944,8 @@ impl<'a> Parser<'a> {
         let Some(t) = self.peek(0).cloned() else {
             return Err(ChorusError::new("unexpected end of outcome args"));
         };
-        // signed SET value (§9.31): '+'/'-' int is a delta on the entry's
-        // current value. §9.40: the magnitude may be a parameter — the sign
+        // signed SET value (§4.4): '+'/'-' int is a delta on the entry's
+        // current value. §10: the magnitude may be a parameter — the sign
         // is carried on the placeholder and folded into the call's number at
         // expansion.
         if t.t() == "punct" && (t.v_str() == "+" || t.v_str() == "-") {
@@ -1015,7 +1015,7 @@ impl<'a> Parser<'a> {
         }
         // The param check below returns the WHOLE arg as a param. A param
         // followed by `=` reads as a pair KEY — a form only spawn_args
-        // accepts (§9.40's pair face); here it would strand the `=` and
+        // accepts (§10's pair face); here it would strand the `=` and
         // doom the outcome loop with a bare `expected ')', got '='`, so
         // error here instead with the teach message (Q3). The acceptance
         // face is UNCHANGED: the spelling was and remains a parse error.
@@ -1038,7 +1038,7 @@ impl<'a> Parser<'a> {
             return Ok(Arg::Bool { v: v == "true" });
         }
         if self.at_punct("=", 1) {
-            // §9.40 gives a parameter the pair KEY or VALUE face in
+            // §10 gives a parameter the pair KEY or VALUE face in
             // spawn_args only (the whole pair is replaced by the
             // parameter, value token consumed). In generic outcome args a
             // param as the pair VALUE used to be "returned unconsumed" —
@@ -1066,7 +1066,7 @@ impl<'a> Parser<'a> {
             let k = v;
             return Ok(Arg::Pair { k, v: self.value_token()? });
         }
-        // `aspect:` names the aspects map in SET keys (§9.31) — one key
+        // `aspect:` names the aspects map in SET keys (§4.4) — one key
         // token, like the query form (§4.5)
         if v == "aspect" && self.at_punct(":", 1) && matches!(self.peek(2), Some(Tok::Name { .. }))
         {
@@ -1149,7 +1149,7 @@ pub fn show(t: &Tok) -> String {
 }
 
 /// The Q3 teach error: a parameter used as a `key=value` pair key or value
-/// in generic outcome args. §9.40 pins the pair face on spawn_args (the
+/// in generic outcome args. §10 pins the pair face on spawn_args (the
 /// whole pair is replaced by the parameter); any other op's args strand
 /// tokens there, so the error names the param, the forms a parameter MAY
 /// take in outcome args, and every param in scope (sorted — the set's
@@ -1197,7 +1197,7 @@ mod tests {
              whole pair is replaced by the parameter); params in scope: myparam"
         );
         // SPAWN's own arg parse DOES accept the param key (the whole pair becomes
-        // the param, and the value token is consumed) — the §9.40 pair face,
+        // the param, and the value token is consumed) — the §10 pair face,
         // untouched by the teach
         let mut p2 = Parser::new(lex("SPAWN X myparam = 3").unwrap(), &d, None, Some(params));
         let out = p2.outcome_list_or_empty().unwrap();

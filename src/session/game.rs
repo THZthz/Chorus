@@ -109,7 +109,7 @@ impl Game {
         if t.is_empty() {
             return Ok(turn(TurnKind::Info, vec![]));
         }
-        // game-over (§9.35): the notice instead of execution; undo still reopens
+        // game-over (§4.4): the notice instead of execution; undo still reopens
         if let Some(ended) = self.state.ended.clone() {
             return Ok(turn(TurnKind::Info, vec![ending_notice(&ended)]));
         }
@@ -404,7 +404,7 @@ impl Game {
     pub fn suggestions(&self) -> Result<Vec<String>> {
         const SUGGEST_LIMIT: usize = 3;
         if self.state.ended.is_some() {
-            return Ok(vec![]); // §9.35: nothing left to suggest after the ending
+            return Ok(vec![]); // §4.4: nothing left to suggest after the ending
         }
         let alive = self.visible();
         let me =
@@ -432,7 +432,7 @@ impl Game {
             // (`.some()` over the recipes)
             for r in &verb.recipes {
                 let Some(w) = &r.when else { continue };
-                // §9.50: a spent recipe stops being suggested — the same
+                // §6.4: a spent recipe stops being suggested — the same
                 // gate selection applies
                 if let Some(max) = r.max {
                     if self.state.executed.get(&r.id).is_some_and(|&n| n >= max) {

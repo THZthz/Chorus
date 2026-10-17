@@ -1,4 +1,4 @@
-//! L3 projection (spec §5.3, §6.7, §8, §9.35). Pure
+//! L3 projection (spec §5.3, §6.7, §8, §4.4). Pure
 //! functions over records/state.
 
 use crate::content::content::CompiledContent;
@@ -109,7 +109,7 @@ pub fn prose_lines(
             _ => {}
         }
     }
-    // §9.35: a step that ends the story closes with its ending line — first
+    // §4.4: a step that ends the story closes with its ending line — first
     // ENDING wins, mirroring the state rule; the journal stays canonical (the
     // `ENDING <id>` outcome is already visible there). A REFUSED step's ending
     // was discarded with the whole draft (§6.5), so it never gets the line.

@@ -277,7 +277,7 @@ fn seed_content_compiles_and_seed_state_carries_the_world() {
     assert_eq!(s.entities.len(), 15);
     let ana = &s.entities["ana"];
     assert!(matches!(ana.aspects.get("occult"), Some(AspectVal::Num(2))));
-    // the study card's self-named aspect (§9.14 reserved-lexeme dodge)
+    // the study card's self-named aspect (§5.1 reserved-lexeme dodge)
     assert!(matches!(s.entities["study"].aspects.get("study"), Some(AspectVal::Num(1))));
     // the pale lady carries a sub-map aspect (Q13 flat model)
     assert!(matches!(s.entities["pale"].aspects.get("language"), Some(AspectVal::Sub(_))));
@@ -313,7 +313,7 @@ fn candidate_generator_offers_the_pinned_probes() {
     assert!(tags.iter().any(|t| t.ends_with(" min-fill")));
     assert!(tags.iter().any(|t| t.contains("wrong-kind")));
     assert!(tags.iter().all(|t| *t != "clock rewind"), "now < 60");
-    // every candidate step carries the front-door clock (§9.28)
+    // every candidate step carries the front-door clock (§6.6)
     assert_eq!(cands[0].step.clock, Some(Clock { day: 0, halfhour: 42 }));
 }
 

@@ -1,5 +1,5 @@
 //! Dice — seeded dice, the ROLL op, the `roll`
-//! binding, tiers via IF (spec §9.41). Includes the pinned
+//! binding, tiers via IF (spec §4.4). Includes the pinned
 //! RNG vectors (3 raw splitmix64 values + the 27-row (seed, counter, sides)
 //! → die table, all computed independently in python3) and
 //! the die range / d2 coverage probe, plus determinism
@@ -345,7 +345,7 @@ fn die_values_stay_in_1_to_sides_and_every_value_of_a_d2_occurs() {
 }
 
 // ---------------------------------------------------------------------------
-// determinism (§9.41): the dice are a pure function of (seed, counter)
+// determinism (§4.4): the dice are a pure function of (seed, counter)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -378,7 +378,7 @@ fn the_meta_seed_lands_in_content_default_is_0_a_bad_seed_is_a_load_error() {
 }
 
 // ---------------------------------------------------------------------------
-// the ROLL op: expression args and tier selection (§9.41)
+// the ROLL op: expression args and tier selection (§4.4)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -540,7 +540,7 @@ fn a_roll_inside_an_untaken_branch_consumes_nothing() {
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]);
     assert_eq!(r.state.rng, 0);
-    // §9.50: the window completed — the step counted (the one snap delta;
+    // §6.4: the window completed — the step counted (the one snap delta;
     // the untaken branch's ROLL never ran)
     assert_eq!(r.state.executed.get("inspect.default"), Some(&1));
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
@@ -564,7 +564,7 @@ fn a_failing_later_outcome_after_a_successful_roll_refuses_the_window() {
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "sides must be an integer >= 2");
     assert_eq!(state.rng, 0);
-    // §9.50: the window registered at begin — the completion-time refusal
+    // §6.4: the window registered at begin — the completion-time refusal
     // still counted (the one delta; the scratch counter died with it)
     assert_eq!(r.state.executed.get("inspect.default"), Some(&1));
     // fold agreement: a REFUSE row is a state no-op, so the counter stays put
@@ -587,7 +587,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
     assert_eq!(rs.rejected, None);
     assert_refusal(&rs, "sides must be an integer >= 2");
     assert_eq!(state.rng, 0);
-    // §9.50: the window registered at begin — the completion-time refusal
+    // §6.4: the window registered at begin — the completion-time refusal
     // still counted (the one delta)
     assert_eq!(rs.state.executed.get("inspect.default"), Some(&1));
     let base = clone_for_snap(&state);
@@ -631,7 +631,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
     let rn = run(&neg, &dict, clone_for_snap(&s2), "0:0 @ ANA INSPECT", 1);
     assert_eq!(rn.rejected, None);
     assert_refusal(&rn, "dice count must be an integer >= 0");
-    // §9.50: registered at begin — the refusal still counted
+    // §6.4: registered at begin — the refusal still counted
     assert_eq!(rn.state.executed.get("inspect.default"), Some(&1));
     let replayed_neg = fold(&rn.records, &s2, &dict, &neg).unwrap();
     assert_eq!(snap(&replayed_neg), snap(&rn.state));
@@ -642,7 +642,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
 }
 
 // ---------------------------------------------------------------------------
-// the roll binding (§9.41): last-wins, per-clause, unbound = rejection
+// the roll binding (§4.4): last-wins, per-clause, unbound = rejection
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -804,7 +804,7 @@ fn roll_as_a_roll_argument_with_no_prior_roll_refuses_the_window_at_runtime() {
 fn a_narrate_in_a_later_clause_keeps_the_roll_literal_the_binding_resets_per_clause() {
     // clause one rolls and its NARRATE rewrites; clause two's NARRATE runs
     // after the per-clause reset with no ROLL of its own — the token stays
-    // literal text in the journal (documented §9.41 ruling)
+    // literal text in the journal (documented §4.4 ruling)
     let dict = dice_dict();
     let c = compile_content(
         &ContentRaw {
@@ -883,7 +883,7 @@ fn when_predicates_cannot_read_roll_if_conditions_can() {
 }
 
 // ---------------------------------------------------------------------------
-// compile lint: roll without a provable prior ROLL is a load error (§9.41)
+// compile lint: roll without a provable prior ROLL is a load error (§4.4)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -927,7 +927,7 @@ fn no_false_positive_for_a_branch_hidden_prior_roll() {
 }
 
 // ---------------------------------------------------------------------------
-// {roll} interpolation (§9.41): rewritten at execution, load-fixed elsewhere
+// {roll} interpolation (§4.4): rewritten at execution, load-fixed elsewhere
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1000,7 +1000,7 @@ fn roll_in_progress_or_refuse_strings_is_a_load_error() {
 }
 
 // ---------------------------------------------------------------------------
-// ROLLED (§9.41): engine-written, parse+format round-trip, fold sets rng
+// ROLLED (§4.4): engine-written, parse+format round-trip, fold sets rng
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1097,7 +1097,7 @@ fn fold_sets_state_rng_from_the_row_and_nothing_else() {
 }
 
 // ---------------------------------------------------------------------------
-// REFUSE after ROLL (§9.41): play and fold agree the counter is unmoved
+// REFUSE after ROLL (§4.4): play and fold agree the counter is unmoved
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1129,7 +1129,7 @@ fn refuse_after_roll_zero_time_attempt_logged_counter_unmoved_in_play_and_fold()
 }
 
 // ---------------------------------------------------------------------------
-// undo reconstruction (§9.41): the counter rebuilds from the folded log
+// undo reconstruction (§4.4): the counter rebuilds from the folded log
 // ---------------------------------------------------------------------------
 
 fn undo_script() -> String {
@@ -1257,7 +1257,7 @@ fn undo_to_mid_log_keep_playing_the_counter_resumes_from_the_fold() {
 }
 
 // ---------------------------------------------------------------------------
-// triggers roll (§9.41): slot and expiry events may ROLL and tier on roll
+// triggers roll (§4.4): slot and expiry events may ROLL and tier on roll
 // ---------------------------------------------------------------------------
 
 /// Returns the compile `Result`
@@ -1482,7 +1482,7 @@ fn trigger_rolls_replay_through_saved_jsonl_rows() {
 }
 
 // ---------------------------------------------------------------------------
-// functions with dice (§9.41 x §9.40): ROLL and roll-tiers inside bodies
+// functions with dice (§4.4 x §10): ROLL and roll-tiers inside bodies
 // ---------------------------------------------------------------------------
 
 fn fn_script(extra: &str) -> String {
@@ -1564,7 +1564,7 @@ fn the_same_function_called_from_a_trigger_rolls_and_replays_through_the_event_r
 }
 
 // ---------------------------------------------------------------------------
-// seed drift and hygiene (§9.30, §9.41)
+// seed drift and hygiene (§9.2, §4.4)
 // ---------------------------------------------------------------------------
 
 #[test]

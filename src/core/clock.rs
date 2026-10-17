@@ -1,4 +1,4 @@
-//! Clock & durations (spec §5.1, §9.5). (day,
+//! Clock & durations (spec §5.1, §9.2). (day,
 //! halfhour) is raw mechanics time: the clock ticks in halfhours (0..47 per
 //! day, each 30 minutes) while the engine tracks absolute minutes, so 20m
 //! offsets stay exact.
@@ -46,7 +46,7 @@ pub fn clock_from_abs_min(m: i64) -> Clock {
 }
 
 /// The earliest startable step clock at or
-/// after absolute minute m (§9.28): sub-halfhour actions leave the rest of
+/// after absolute minute m (§6.6): sub-halfhour actions leave the rest of
 /// the tick as dead air. `%` is the truncated remainder (same sign as the
 /// dividend).
 #[must_use]
@@ -96,7 +96,7 @@ fn unit_minutes(unit: &str) -> i64 {
 
 /// Duration literal grammar: one or more
 /// `int ("halfhour" | "h" | "m" | "d")` pairs (§5.1); compounds like `1h30m`
-/// sum their pairs (§9.45). The unit alternation order `halfhour|h|m|d` is
+/// sum their pairs (§5.1). The unit alternation order `halfhour|h|m|d` is
 /// LOAD-BEARING (Q9): the regex crate is leftmost-first —
 /// and `h` before `halfhour` would split `1halfhour` into `1h`+`alfhour`.
 pub fn parse_duration(s: &str) -> Result<i64> {

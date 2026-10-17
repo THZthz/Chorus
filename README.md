@@ -167,16 +167,16 @@ carries a `// NOTE` instead) and stay byte-still.
 | Q4 | FIXED (batch 1): slot roles are validated at load — a typo'd slot is a load error naming the six roles, not a silent never-match | `script.rs` |
 | Q5 | FIXED (batch 1): duplicate declarations are a uniform load error in every section (entities, prototypes, templates, verbs, decks, endings); `ANA`/`ana` case-collide on the minted id `s_ana` and that collision is its own load error | `script.rs` |
 | Q6 | FIXED (batch 3): a BEGIN row whose sentence fails the format∘parse re-parse is a loud play/fold drift error naming the row, the sentence and the parse failure — it no longer silently opens no window | `engine.rs` / `fold.rs` |
-| Q7 | SPEC-PINNED (§9.41): a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved — spec behavior, not a defect | `engine.rs` |
+| Q7 | SPEC-PINNED (§4.4): a REFUSED step's NARRATE carries the rehearsed dice numbers; the counter never moved — spec behavior, not a defect | `engine.rs` |
 | Q8 | NO-FIX (verified): the DSL `\s` class ≠ Rust `\s` (`\uFEFF`, `\u{85}`) — every regex keeps the explicit frozen class, the engine's frozen choice (the divergence is unreachable from bundled content and the fix has the widest regression surface) | `core/text.rs` `DSL_WS_CLASS` |
-| Q9 | IMPLEMENTATION NOTE: the `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing — the behavior itself is spec-pinned (§9.45, `1halfhour` is ONE token) | `lexer.rs` |
+| Q9 | IMPLEMENTATION NOTE: the `DUR_RE` alternation order `halfhour\|h\|m\|d` is load-bearing — the behavior itself is spec-pinned (§5.1, `1halfhour` is ONE token) | `lexer.rs` |
 | Q10 | FIXED (batch 3): quoted strings carry real escape semantics — `\n` is a newline, `\t` a tab, `\r`/`\b`/`\f`/`\v`/`\0` likewise, `\"`/`\\` as before, an unknown escape keeps its literal unit; a trailing backslash still throws unterminated | `lexer.rs` |
 | Q11 | FIXED (batch 2): bare `inspect` names the usage and lists the visible table — it never guesses the first card | `game.rs`, `bin/chorus.rs` |
-| Q12 | NO-FIX (refuted): roles soft-reserved in outcome-arg position is §9.40's pinned shadowing order ("before entity names and before role names"), and §5.1's reserved-word list deliberately excludes the role names — the current behavior IS the spec | `parse.rs` |
+| Q12 | NO-FIX (refuted): roles soft-reserved in outcome-arg position is §10's pinned shadowing order ("before entity names and before role names"), and §5.1's reserved-word list deliberately excludes the role names — the current behavior IS the spec | `parse.rs` |
 | Q13 | NO-FIX (refuted): one-level aspects with last-write-wins flattened dot-keys are §4.2's pinned data model ("weighted principle tags, dot sub-keys") — a nested tree would exceed the spec | `types.rs` `AspectVal` |
 | Q14 | NO-FIX (unreachable): the TS "same-ref errors on a param ref" half died with the port (dead code, never ported); the remaining relation-key half trusts the engine-minted `#hex` ids against `\|` collisions — an input the engine can never produce | `ref.rs` |
 | Q15 | FIXED (batch 2): the CLIs say what failed — a trailing `--demand` requires a value, a missing scripts directory is its own error, an unknown meta key is blamed on the key (not "bad clock") | `bin/reach.rs`, `bin/lint-scripts.rs`, `script.rs` |
-| Q16 | NO-FIX (refuted, vacuous): i64 has no `-0` and the parser already normalizes `-0` to a zero delta; "canonicalizing at parse" is a no-op, and the real alternatives would break §9.31's delta-vs-absolute grammar distinction | `format.rs` |
+| Q16 | NO-FIX (refuted, vacuous): i64 has no `-0` and the parser already normalizes `-0` to a zero delta; "canonicalizing at parse" is a no-op, and the real alternatives would break §4.4's delta-vs-absolute grammar distinction | `format.rs` |
 | Q17 | NOT A DEFECT: reach `site_reason`'s empty-init-names branch is reachable (zero-entity scripts are legal) — a "not dead code" note, no fix object | `reach/paths.rs` |
 
 Suggestions that were rejected exactly because they would change behavior:

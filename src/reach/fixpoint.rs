@@ -33,7 +33,7 @@ use super::world::{
 /// like exists(X); polarity is ignored on purpose — the check only DEMOTES).
 fn expr_exists_names(v: &ValExpr, acc: &mut IndexSet<String>) {
     if let ValExpr::CountQuery { query } = v {
-        // names of ANY group (§9.49); polarity is ignored on purpose
+        // names of ANY group (§4.5); polarity is ignored on purpose
         for t in query.iter().flatten() {
             if let QueryTerm::Name { name, .. } = t {
                 acc.insert(name.clone());
@@ -58,7 +58,7 @@ pub(crate) fn pred_exists_names(p: &Pred, acc: &mut IndexSet<String>) {
             acc.insert(name.clone());
         }
         Pred::ExistsQuery { query } => {
-            // names of ANY group (§9.49); polarity is ignored on purpose
+            // names of ANY group (§4.5); polarity is ignored on purpose
             for t in query.iter().flatten() {
                 if let QueryTerm::Name { name, .. } = t {
                     acc.insert(name.clone());
@@ -266,7 +266,7 @@ impl<'c> WorldFacts<'c> {
         let blind = site.derives && object_always(content, site.verb);
         let key = if blind { DERIVED_NAME } else { site.name.as_str() };
         // KIND-level stackable declarations stack the
-        // mint exactly like name-level ones (§9.38, seed 81401)
+        // mint exactly like name-level ones (§4.2, seed 81401)
         let count =
             if mint_stacks(content, &site.name, site.kind_override.as_deref()) { MANY } else { 1 };
         let entity = self.synth(key, &kind, proto, None);
@@ -363,7 +363,7 @@ impl<'c> WorldFacts<'c> {
                     match self.trig_idx.get(&src.owner) {
                         None => true,
                         Some((CompiledTrigger::Expire { .. }, _)) => false, // arrangeable
-                        // §9.48: a completion trigger mints when some window
+                        // §6.7: a completion trigger mints when some window
                         // completes binding its home card — not statically
                         // timed, so its mints are never "dead at my firing"
                         Some((CompiledTrigger::Complete { .. }, _)) => false,
@@ -655,7 +655,7 @@ fn owner_armable(
     match wf.trig_idx.get(owner) {
         None => true,
         Some((CompiledTrigger::Slot { .. }, _)) => true,
-        // §9.48: a completion trigger fires whenever a window completes
+        // §6.7: a completion trigger fires whenever a window completes
         // binding its home card — treated as arrangeable, the generous
         // (sound-for-'none') side
         Some((CompiledTrigger::Complete { .. }, _)) => true,

@@ -75,7 +75,7 @@ pub struct ActionRecord {
     pub advanced_min: i64, // BEGIN: window length; wait: the span; else 0
     /// v0.5 — exact minutes: BEGIN = begin minute, wait = span start. The
     /// quantized tGame cannot carry mid-halfhour minutes, and fold must land
-    /// them exactly (expires anchoring, §9.46)
+    /// them exactly (expires anchoring, §4.4)
     #[serde(rename = "startMin")]
     pub start_min: Option<i64>,
     /// v0.5 — COMPLETE rows only: the window key they close
@@ -87,7 +87,7 @@ pub struct ActionRecord {
     pub at: Option<Ref>,
     pub about: Option<Ref>,
     pub to: Option<Ref>,
-    pub outcomes: Vec<Outcome>, // concrete: ids minted, sugar resolved (§9.15)
+    pub outcomes: Vec<Outcome>, // concrete: ids minted, sugar resolved (§9.2)
     pub recipes: Vec<String>,   // BEGIN: fired recipe ids, clause order; COMPLETE: the one recipe
     pub sentence: String,       // canonical, lossless
 }
@@ -102,7 +102,7 @@ pub struct ExecResult {
 
 /// Execution options: the injected `id_gen` closure rides as
 /// `&mut dyn FnMut`; `None` selects the deterministic default minted inside
-/// [`execute_step`] (§9.3). [`Default`] is a fresh log's options — ids mint
+/// [`execute_step`] (§9.1). [`Default`] is a fresh log's options — ids mint
 /// from 1 (an empty log's `next_record_id()`) with no injected gen.
 pub struct ExecOptions<'a> {
     pub first_record_id: i64,
@@ -211,7 +211,7 @@ fn validate_slots(
 
 /// Resolve a ref to a LIVING entity (`None` = dead, unknown, or kind
 /// mismatch). A param ref here means an expansion bug
-/// (§9.40) — the error propagates uncaught through every caller (never a
+/// (§10) — the error propagates uncaught through every caller (never a
 /// rejection). The one documented merge point
 /// is execute_step's Phase-2 `validate_slots` fold (unreachable input — see
 /// the channel note there).
@@ -221,7 +221,7 @@ pub fn resolve_ref<'a>(state: &'a State, r: &Ref) -> Result<Option<&'a Entity>> 
         Ref::Param { .. } => {
             Err(ChorusError::new("internal: a function parameter ref survived expansion"))
         }
-        // §9.38 pool addressing: a name held by N > 1 living copies addresses
+        // §4.2 pool addressing: a name held by N > 1 living copies addresses
         // the OLDEST copy — the HEAD of the `by_name` pool (insertion order,
         // never id sort)
         Ref::Name { name, kind } => {
@@ -257,12 +257,12 @@ fn select_recipe<'a>(
 ) -> Result<Option<&'a CompiledRecipe>> {
     let ctx = PredCtx { b: bindings, state, strict: false, roll: None };
     for r in &verb.recipes {
-        // §9.50: the execution budget — a recipe whose count has reached its
+        // §6.4: the execution budget — a recipe whose count has reached its
         // `max N` is simply non-matching; the walk continues. The count is
-        // read from the state map only (§9.29 posture), so a max change
-        // under an old log shifts FUTURE selection only (§9.30).
+        // read from the state map only (§6.6 posture), so a max change
+        // under an old log shifts FUTURE selection only (§9.2).
         //
-        // §9.50, the multi-clause draft-lag: selection reads ONE post-advance
+        // §6.4, the multi-clause draft-lag: selection reads ONE post-advance
         // draft for every clause of the step, while registration (and the
         // count it carries) lands in Phase 4 — so two clauses of one step can
         // both pin the same max-1 recipe (count +2). Permitted by the
@@ -298,7 +298,7 @@ pub fn execute_step(
     step: Step,
     opts: ExecOptions,
 ) -> Result<ExecResult> {
-    // game-over (§9.35): once the story has ended nothing further executes,
+    // game-over (§4.4): once the story has ended nothing further executes,
     // and nothing is logged — undo past the ending record reopens the game
     // (it derives from the fold, so no special-case is needed)
     if let Some(ended) = &state_in.ended {
@@ -312,7 +312,7 @@ pub fn execute_step(
         Some(m) => m,
         None => abs_min(step.clock.unwrap_or_else(|| clock_from_abs_min(state_in.now))),
     };
-    // monotonic mechanics time (§9.5): a step may never begin before now
+    // monotonic mechanics time (§9.2): a step may never begin before now
     if start_min < state_in.now {
         let now = clock_from_abs_min(state_in.now);
         return Ok(rejected(
@@ -341,7 +341,7 @@ pub fn execute_step(
 
     let ExecOptions { first_record_id, id_gen } = opts;
 
-    // deterministic default mint (§9.3)
+    // deterministic default mint (§9.1)
     let mut mint: i64 = 0;
     let mut default_gen = move || {
         mint += 1;
@@ -356,7 +356,7 @@ pub fn execute_step(
     // minute resolves first — due windows in (end, begin_id, clause) order,
     // slot events at each crossed halfhour, completions before same-minute
     // events. Atomic with the whole step: any rejection below discards the
-    // pass — nothing logged, clock unmoved (§9.19).
+    // pass — nothing logged, clock unmoved (§9.2).
     let draft = clone_state(&state_in);
     let (mut draft, advance) =
         match resolve_due(content, dict, draft, start_min, first_record_id, id_gen) {
@@ -387,7 +387,7 @@ pub fn execute_step(
         // map their errors to the Err channel — see the `?` below). Merging
         // both into one `Result<ChorusError>` means that internal error would
         // surface as a rejection here instead. Unreachable on every input
-        // path (§9.40): the parser only produces param refs while parsing a
+        // path (§10): the parser only produces param refs while parsing a
         // function-body template and rejects one after
         // `kind:`, FN expansion substitutes every parameter
         // before compile, and the lenient/record paths only produce name/id
@@ -409,7 +409,7 @@ pub fn execute_step(
     // THE TABLE, not after the window. The trial runs on a scratch draft; only
     // a REFUSE is decisive here — an application ERROR defers to completion
     // (the state will have changed by then; the window refuses there, the
-    // completion analog of §9.19). The trial's dice and spawns die with it.
+    // completion analog of §9.2). The trial's dice and spawns die with it.
     let mut scratch = clone_state(&draft);
     let mut smint: i64 = 0;
     let mut scratch_gen = move || {
@@ -436,7 +436,7 @@ pub fn execute_step(
         // the trial.
         let gate: Result<bool> = (|| {
             for p in &prepared {
-                // §9.41: the dice binding is PER CLAUSE — a roll in clause one
+                // §4.4: the dice binding is PER CLAUSE — a roll in clause one
                 // is not visible to clause two's conditions
                 sctx.roll = None;
                 let mut rebound = RoleBindings::new();
@@ -454,9 +454,9 @@ pub fn execute_step(
                     // an IF is opaque to the gate check: its branches —
                     // including any REFUSE inside them — belong to the
                     // completion, where the world the window imagined actually
-                    // exists (§9.39 v0.5). RUN likewise belongs to the
+                    // exists (§6.8 v0.5). RUN likewise belongs to the
                     // completion: its candidate walk and inline guard run
-                    // there (§9.47), and a no-match chain ends silently, so
+                    // there (§6.7), and a no-match chain ends silently, so
                     // there is nothing to gate at the table.
                     if outcome.op == "IF" || outcome.op == "RUN" {
                         continue;
@@ -670,7 +670,7 @@ fn register_windows(
         }
         let key = format!("{}:{}", record.id, ci);
         let recipe = record.recipes.get(ci).cloned().unwrap_or_default();
-        // §9.50: the count rides the ONE registration path play and fold
+        // §6.4: the count rides the ONE registration path play and fold
         // share — a registered window increments its clause's commit-time
         // recipe id ON THE DRAFT. A table-refused step opens no window and
         // counts nothing (execute_step returns before Phase 4); a window
@@ -705,7 +705,7 @@ fn rejected(reason: String, state: State) -> ExecResult {
 }
 
 /// Role args → concrete id refs captured
-/// from the draft bindings (§9.15: the log never contains sugar)
+/// from the draft bindings (§9.2: the log never contains sugar)
 fn concretize(args: &[Arg], ctx: &ApplyCtx) -> Vec<Arg> {
     let mut out: Vec<Arg> = Vec::new();
     for a in args {
@@ -720,7 +720,7 @@ fn concretize(args: &[Arg], ctx: &ApplyCtx) -> Vec<Arg> {
     out
 }
 
-/// §9.38: the mint's stackability from its
+/// §4.2: the mint's stackability from its
 /// RESOLVED name+kind — a NAME declared stackable, or a KIND carrying a
 /// stackable declaration. Concrete SPAWN rows always carry the resolved
 /// `kind:K`, so the fold recomputes from the same (name, kind) pair: play
@@ -754,7 +754,7 @@ struct ApplyCtx<'a> {
     record_id: i64,
     id_gen: &'a mut dyn FnMut() -> String,
     extra_advance_min: i64,
-    /// §9.41: the per-clause dice binding — the last ROLL of THIS clause's
+    /// §4.4: the per-clause dice binding — the last ROLL of THIS clause's
     /// outcome list (last-wins, rebinds on a second ROLL). Lives on the apply
     /// context, never on State: a REFUSE discards the draft along with it, so
     /// a refused step's dice never moved the real counter. Reset per clause of
@@ -762,7 +762,7 @@ struct ApplyCtx<'a> {
     /// expansion is compile-time, so expanded bodies read the caller's list
     /// binding naturally.
     roll: Option<i64>,
-    /// §9.47: the completion-time chain channel — the parent window's
+    /// §6.7: the completion-time chain channel — the parent window's
     /// identity plus the sink for the follow-up BEGIN. Some exactly inside
     /// fire_window's outcome loop; None at every other application site
     /// (events, the fold, the Phase-3 table trial — RUN never applies there:
@@ -771,13 +771,13 @@ struct ApplyCtx<'a> {
     chain: Option<ChainCtx>,
 }
 
-/// The §9.47 chain channel (see [`ApplyCtx::chain`]): the parent window's
+/// The §6.7 chain channel (see [`ApplyCtx::chain`]): the parent window's
 /// identity the RUN arm needs (its verb names the candidate list, its end
 /// clock is the follow-up's begin, its authored refs become the follow-up
 /// clause), the one-RUN-per-completion detector, and the sink the synthesized
 /// follow-up BEGIN rides to fire_window.
 ///
-/// §9.48 extends the channel for completion triggers: `parent_key` excludes
+/// §6.7 extends the channel for completion triggers: `parent_key` excludes
 /// the parent's own window from the follow-up busy check, `deferring` parks
 /// recipe-body RUN ops (a completion fires `on complete` triggers AFTER the
 /// recipe's own outcomes and BEFORE any RUN), `in_complete` marks the
@@ -792,14 +792,14 @@ struct ChainCtx {
     /// the follow-up BEGIN's record id — the COMPLETE row's id + 1
     next_record_id: i64,
     /// a second RUN op reached in one completion refuses the parent window
-    /// (§9.47: a station holds one window)
+    /// (§6.7: a station holds one window)
     run_taken: bool,
     extra_records: Vec<ActionRecord>,
-    /// §9.48: recipe-body RUN ops park here (in outcome order) while the
+    /// §6.7: recipe-body RUN ops park here (in outcome order) while the
     /// completion's `on complete` triggers fire, then replay
     deferring: bool,
     deferred: Vec<Outcome>,
-    /// §9.48: inside the completion-trigger phase — candidates resolve
+    /// §6.7: inside the completion-trigger phase — candidates resolve
     /// against the global recipe table (cross-verb legal) and any busy
     /// station other than the parent's own window skips the candidate
     in_complete: bool,
@@ -807,7 +807,7 @@ struct ChainCtx {
 
 /// What one outcome application produced.
 struct ApplyResult {
-    concrete: Vec<Outcome>, // what the log stores: ids minted, sugar resolved, deltas computed (§9.15, §9.31)
+    concrete: Vec<Outcome>, // what the log stores: ids minted, sugar resolved, deltas computed (§9.2, §4.4)
     refused: bool,
 }
 
@@ -816,7 +816,7 @@ fn plain(op: String, args: Vec<Arg>) -> Outcome {
     Outcome { op, args, arms: None, fallback: None, call: None }
 }
 
-/// §9.41 {roll} interpolation. A NARRATE string's
+/// §4.4 {roll} interpolation. A NARRATE string's
 /// `{roll}` token is rewritten AT EXECUTION, so the concrete row carries the
 /// number — the journal never re-derives dice. QUIRK(Q7): a NARRATE in
 /// a REFUSED step is journal-visible WITH its number even though the counter
@@ -862,8 +862,8 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 };
                 if let Some(e) = ctx.state.entities.get_mut(&id) {
                     e.dead_action = Some(ctx.record_id);
-                    // names are unique among the LIVING (§9.14): the name
-                    // frees only when the LAST pool copy dies (§9.38)
+                    // names are unique among the LIVING (§5.1): the name
+                    // frees only when the LAST pool copy dies (§4.2)
                 }
                 release_name_entry(ctx.state, &name, &id);
             }
@@ -1009,7 +1009,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             Ok(ApplyResult { concrete: vec![o.clone()], refused: false })
         }
         "ENDING" => {
-            // §9.35: the FIRST ENDING to apply wins;
+            // §4.4: the FIRST ENDING to apply wins;
             // later ones are logged no-ops. Title/flavour resolve here from
             // content — the one code path both play and fold share.
             let id = match args.first() {
@@ -1034,7 +1034,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         "REFUSE" => Ok(ApplyResult { concrete: vec![o.clone()], refused: true }),
         "ROLL" => apply_roll(args, ctx),
         "ROLLED" => {
-            // §9.41, fold side: set the counter,
+            // §4.4, fold side: set the counter,
             // nothing else (the total is journal data; replay never re-derives
             // a die, law 3). Play never applies this op: authored ROLLED is a
             // load error, so the only path here is `apply_record` over a logged
@@ -1047,7 +1047,7 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
         "DRAW" => apply_draw(args, ctx),
         "DRAWN" => {
-            // §9.42, fold side: advance the cursor,
+            // §4.4, fold side: advance the cursor,
             // ASSERTING the recorded name is exactly what the compiled
             // permutation serves at that cursor (play and fold share
             // `draw_from`, so only content drift can disagree). Play never
@@ -1062,14 +1062,14 @@ fn apply_outcome(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             };
             let Some(deck) = ctx.content.decks.get(&deck_name) else {
                 return Err(ChorusError::new(format!(
-                    "DRAWN: deck '{deck_name}' is not in the compiled decks — content drift between play and fold (§9.42)"
+                    "DRAWN: deck '{deck_name}' is not in the compiled decks — content drift between play and fold (§4.4)"
                 )));
             };
             let cursor = ctx.state.decks.get(&deck.id).copied().unwrap_or(0);
             let expected = draw_from(deck, cursor)?; // throws loud on a drifted-away exhaustion rule
             if expected.name != recorded {
                 return Err(ChorusError::new(format!(
-                    "DRAWN: deck '{}' draw #{cursor} recorded '{recorded}' but the compiled deck serves '{}' — content drift between play and fold (§9.42)",
+                    "DRAWN: deck '{}' draw #{cursor} recorded '{recorded}' but the compiled deck serves '{}' — content drift between play and fold (§4.4)",
                     deck.id, expected.name
                 )));
             }
@@ -1132,13 +1132,13 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             }
         }
     }
-    // §9.38: the flag comes from the mint's RESOLVED name+kind declaration
+    // §4.2: the flag comes from the mint's RESOLVED name+kind declaration
     // (not the authored ref's form — the concrete row always carries the
     // resolved kind, and the fold must recompute the same flag) and applies
     // to whatever name the mint ends up carrying (derived names stack when
     // the prototype is declared stackable)
     let is_stack = mint_is_stackable(ctx.content, proto_name, Some(&kind));
-    // §9.14 + §9.38: a non-stackable mint demands a free name; a stackable
+    // §5.1 + §4.2: a non-stackable mint demands a free name; a stackable
     // mint stacks with its own kind of pool but may not collide with a
     // distinct NON-stackable living name (shared namespace)
     if let Some(pool) = ctx.state.by_name.get(name.as_str()) {
@@ -1195,7 +1195,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     // fold-time reconstruction: a recorded SPAWN
     // (asId present) may carry materialized aspects/attrs as JSON pairs —
     // prefer them over derive. An explicit attrs= pair is authoritative
-    // (§9.18): it already carries the mint's location (container and/or
+    // (§6.6): it already carries the mint's location (container and/or
     // zone), so a mint with no location must not grow one from the replay
     // bindings.
     let aspects_arg = args.iter().find_map(|a| match a {
@@ -1222,18 +1222,18 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             attrs.shift_remove("container"); // removal keeps the other keys' slots (order-preserving)
         }
     }
-    // the authored mint-decay modifier (§4.4, §9.36): `SPAWN X expires
+    // the authored mint-decay modifier (§4.4, §4.2): `SPAWN X expires
     // <duration>` arms the mint at BIRTH with the SET-expires pair — the
     // same key, the same one duration parser, the same checked arithmetic
-    // (the shared §9.18 helper) — anchored to the application clock
+    // (the shared §6.6 helper) — anchored to the application clock
     // (`ctx.now`: the step clock at the table, the window's START clock
     // inside a completion, §6.7). Applied AFTER the attrs= merge, the
     // modifier is authoritative over a literal in an authored same-step
     // pair; the pair rides the concrete row's attrs= materialization
-    // (§9.18), so the fold replays byte-identically with no new log
+    // (§6.6), so the fold replays byte-identically with no new log
     // surface — the modifier itself is authored-sugar only and never
     // reaches the log. The DEDICATED arg shape (E12 review) means only the
-    // authored modifier position matches: a §9.40 parameter expanded into a
+    // authored modifier position matches: a §10 parameter expanded into a
     // k=v pair position lands as a BARE Str/Dur here and is rejected below,
     // never silently read as (or against) the modifier.
     let expires_arg = args.iter().find_map(|a| match a {
@@ -1248,9 +1248,9 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // modifier is its own shape, pairs are `k=v`), so one of these is
         // always fn-expansion residue: the caller's bound value spliced for
         // a whole pair. Previously this dropped the arg INERTLY — the
-        // author's intent silently lost; now it fails loud (§9.19).
+        // author's intent silently lost; now it fails loud (§9.2).
         return Err(ChorusError::new(format!(
-            "SPAWN: a bare {} arg is not a SPAWN arg shape — a §9.40 parameter standing in a k=v \
+            "SPAWN: a bare {} arg is not a SPAWN arg shape — a §10 parameter standing in a k=v \
              pair position expands to the caller's whole bound value; author the pair value \
              directly (the expires modifier is its own `expires <duration>` shape, §4.4)",
             a.tag()
@@ -1298,7 +1298,7 @@ fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
 /// The REPLACE case: §4.4 REPLACE ref WITH
 /// prototype — mint from the prototype into the dying card's CURRENT
 /// container, then soft-destroy it. The log carries the concrete SPAWN+
-/// DESTROY pair, so the fold replays it exactly (§9.33).
+/// DESTROY pair, so the fold replays it exactly (§4.4).
 fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let target_arg = args.first();
     let proto_arg = args.get(1);
@@ -1311,7 +1311,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         }
     };
     // plain prototype mint — REPLACE has no clause, so prototype derivation
-    // (`name from object`, §6.4) is unavailable here (§9.33)
+    // (`name from object`, §6.4) is unavailable here (§4.4)
     let proto = ctx.content.prototypes.get(&proto_name);
     let kind = match proto_arg {
         Some(Arg::Ref { r#ref: Ref::Name { kind: Some(k), .. } }) => Some(k.clone()),
@@ -1322,7 +1322,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             "REPLACE {proto_name}: no kind (prototype or kind:NAME required)"
         )));
     };
-    // §9.38: same computation as SPAWN — the RESOLVED name+kind, so the
+    // §4.2: same computation as SPAWN — the RESOLVED name+kind, so the
     // fold's recompute from the concrete SPAWN row agrees (a stackable
     // successor may share the dying card's name: REPLACE X WITH X succeeds —
     // spawn appends, destroy pops)
@@ -1345,7 +1345,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     for dying_id in targets {
         // spawn happens while the dying card is still alive, so a
         // non-stackable successor's name collides with any living holder —
-        // whole-step rejection (§9.33); a stackable successor may share a
+        // whole-step rejection (§4.4); a stackable successor may share a
         // stackable pool
         if let Some(pool) = ctx.state.by_name.get(proto_name.as_str()) {
             if !pool.is_empty() {
@@ -1421,7 +1421,7 @@ fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 v: AttrValue::Str(aspects_to_json(&aspects_tpl)),
             });
         }
-        // always materialize attrs, even when empty (§9.18): the pair pins the
+        // always materialize attrs, even when empty (§6.6): the pair pins the
         // mint's location — with no pair the fold would re-add the bound
         // actor's container to a location-less successor
         spawn_args
@@ -1449,11 +1449,11 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         return Err(ChorusError::new("SET key must be a name or string"));
     };
     // an `aspect:` prefix names the aspects map (§4.2); every other key is an
-    // attr (§9.31)
+    // attr (§4.4)
     let aspect_path = raw_key.strip_prefix("aspect:");
     let key = aspect_path.map_or(raw_key.clone(), |p| p.to_string());
     // the concrete key keeps its authored form: a quoted key must stay quoted
-    // or the record stops round-tripping (§9.15)
+    // or the record stops round-tripping (§9.2)
     let key_concrete: Arg = match key_arg {
         Arg::Str { .. } => key_arg.clone(),
         Arg::Ref { .. } if aspect_path.is_none() => key_arg.clone(),
@@ -1472,15 +1472,15 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 aspect_set($e, path, *n);
             } else {
                 // the attr write + the SET-expires materialization (§4.2,
-                // §9.36) — the write closure shares the SPAWN modifier's
-                // helper (§9.18): the same key test, the same one duration
+                // §4.2) — the write closure shares the SPAWN modifier's
+                // helper (§6.6): the same key test, the same one duration
                 // parser, the same checked arithmetic
                 materialize_expires(&mut $e.attrs, &key, value, $ctx.now, "SET expires")?;
             }
         }};
     }
     if let Arg::Delta { v: delta } = val_arg {
-        // signed value (§9.31): add to the entry's current number (missing = 0,
+        // signed value (§4.4): add to the entry's current number (missing = 0,
         // negative results allowed) and log the CONCRETE ABSOLUTE result — the
         // fold replays literals and never redoes arithmetic
         let targets = expand(std::slice::from_ref(ref_arg), ctx);
@@ -1492,7 +1492,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 };
                 if let Some(path) = aspect_path {
                     // raw entry, not `aspect_get`: a sub-map must REFUSE the
-                    // delta, not count as missing and be clobbered (§9.31
+                    // delta, not count as missing and be clobbered (§4.4
                     // non-numeric rule)
                     match aspect_entry(e, path) {
                         Some(AspectEntry::Num(n)) => Some(n),
@@ -1521,7 +1521,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             if let Some(e) = ctx.state.entities.get_mut(id) {
                 write!(ctx, e, &AttrValue::Num(next));
             }
-            // one concrete SET per card, so replay needs no step context (§9.15)
+            // one concrete SET per card, so replay needs no step context (§9.2)
             let ref_concrete: Arg = if targets.len() == 1 && !matches!(ref_arg, Arg::Role { .. }) {
                 ref_arg.clone()
             } else {
@@ -1549,7 +1549,7 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             write!(ctx, e, &value);
         }
     }
-    // §9.15: the log never contains sugar — a ROLE arg must not reach the
+    // §9.2: the log never contains sugar — a ROLE arg must not reach the
     // record (the fold rebuilds whole-record bindings, so over a multi-clause
     // step it would attribute the role to the wrong clause). One concrete SET
     // per card, exactly like the delta path above; name and kind refs replay
@@ -1579,14 +1579,14 @@ fn apply_set(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// ROLL (§9.41), the engine's ONLY
+/// ROLL (§4.4), the engine's ONLY
 /// randomness. The args are §6.3 value expressions evaluated against this
 /// clause's bindings and the DRAFT (strictly: a path over an unbound role
 /// rejects the step, like an IF condition). A roll of m dice consumes exactly
 /// m counter values c .. c+m-1; the concrete row carries the total AND the
 /// counter after, so the fold lands the counter without deriving anything
 /// (law 3). count = 0 is legal (total = bonus, counter unmoved); sides < 2 or
-/// count < 0 reject the step (§9.19 — nothing logged, clock unmoved).
+/// count < 0 reject the step (§9.2 — nothing logged, clock unmoved).
 fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let (count_v, sides_v, bonus_v) = match (args.first(), args.get(1), args.get(2)) {
         (Some(Arg::Vexpr { v: c }), Some(Arg::Vexpr { v: s }), b) => {
@@ -1613,7 +1613,7 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         };
         (count, sides, bonus)
     };
-    // one strict discipline for all three operands (§9.39's rule, applied to
+    // one strict discipline for all three operands (§6.3's rule, applied to
     // dice): an operand that cannot resolve — a missing aspect/attr over its
     // role — rejects the step, never a silent 0-dice roll. (`Number.isInteger`
     // is vacuous over i64 — the reachable checks are the undefined and range
@@ -1656,14 +1656,14 @@ fn apply_roll(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// The DRAW case (§9.42): draw the deck's
+/// The DRAW case (§4.4): draw the deck's
 /// next card. The deck table lives on compiled content (the permutation is
 /// pure in seed+id, law 5); the cursor lives on State and advances ON THE
 /// DRAFT here — a later failure or REFUSE discards it with the whole draft
 /// (law 4). Concretizes to TWO rows: the engine-written `DRAWN(<deck>,
 /// <name>)` (the fold's cursor row, carrying the SPEC entry name so its
 /// assertion reads the permutation) followed by the standard concrete SPAWN —
-/// which owns every mint rule (prototype aspects/derive, §9.38 stackability,
+/// which owns every mint rule (prototype aspects/derive, §4.2 stackability,
 /// materialization pairs), so DRAW adds none of its own. Authored DRAW never
 /// reaches the log, like ROLL and IF.
 fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
@@ -1678,7 +1678,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Arg::Into { r#ref } => Some(r#ref),
         _ => None,
     });
-    // §9.42: DRAW's INTO must RESOLVE — a role over empty event bindings or
+    // §4.4: DRAW's INTO must RESOLVE — a role over empty event bindings or
     // an unresolvable ref would otherwise materialize the card nowhere,
     // silently. (SPAWN's own INTO stays lenient; a trigger that wants a DRAWN
     // card lands it with an explicit INTO — event bindings are empty, so the
@@ -1701,7 +1701,7 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         None => None,
     };
     // serve + advance the cursor; `draw_from` throws on an exhausted deck with
-    // neither `reset` nor `defaultcard` — §9.19 (nothing logged, cursor
+    // neither `reset` nor `defaultcard` — §9.2 (nothing logged, cursor
     // unmoved: the mutation below happens on the draft only after it returns)
     let cursor = ctx.state.decks.get(&deck_id).copied().unwrap_or(0);
     let drawn: DeckCard = draw_from(deck, cursor)?;
@@ -1725,9 +1725,9 @@ fn apply_draw(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     Ok(ApplyResult { concrete, refused: false })
 }
 
-/// The §9.47 follow-up clause built from the parent window's authored role
+/// The §6.7 follow-up clause built from the parent window's authored role
 /// refs, PROJECTED onto the candidate verb's declared slots: a role the
-/// candidate verb does not declare is dropped (§9.47 — the synthesized clause
+/// candidate verb does not declare is dropped (§6.7 — the synthesized clause
 /// must be a shape a player step could produce, and a player step cannot bind
 /// an undeclared role; the dropped cards therefore never lock —
 /// `register_windows` locks what the clause carries). Declared roles inherit
@@ -1774,7 +1774,7 @@ fn refs_to_clause(verb: &CompiledVerb, refs: &IndexMap<Role, Vec<Ref>>) -> Claus
     }
 }
 
-/// RUN (§9.47) — a completion may chain into named follow-up recipes. The
+/// RUN (§6.7) — a completion may chain into named follow-up recipes. The
 /// carrying window's completion walks its candidates IN ORDER and pins the
 /// FIRST whose `when:` matches the post-outcome draft — evaluated LENIENT,
 /// `strict: false`, exactly like selection (§6.4), against the draft AND the
@@ -1782,7 +1782,7 @@ fn refs_to_clause(verb: &CompiledVerb, refs: &IndexMap<Role, Vec<Ref>>) -> Claus
 /// bindings winning where the candidate verb declares the role (E8: the
 /// cross-verb gate reads the parent situation; same-verb chains are
 /// unchanged) — and whose `max` budget
-/// (§9.50) is not spent; it then opens ONE follow-up window on that recipe
+/// (§6.4) is not spent; it then opens ONE follow-up window on that recipe
 /// with the parent's committed role bindings, beginning at the completion
 /// clock. Zero-concrete: RUN logs NOTHING of itself — the follow-up's BEGIN
 /// row (synthesized here through the player-step record shape, registered by
@@ -1794,7 +1794,7 @@ fn refs_to_clause(verb: &CompiledVerb, refs: &IndexMap<Role, Vec<Ref>>) -> Claus
 /// SECOND RUN op reached in one completion refuses the parent window at that
 /// outcome (a station holds one window).
 ///
-/// §9.48: a RUN reached inside an `on complete` body (the chain's
+/// §6.7: a RUN reached inside an `on complete` body (the chain's
 /// `in_complete` phase) resolves candidates against the GLOBAL recipe table
 /// — cross-verb legal — and any busy station other than the parent's own
 /// window skips the candidate silently (a same-verb hand-off must not see
@@ -1805,7 +1805,7 @@ fn refs_to_clause(verb: &CompiledVerb, refs: &IndexMap<Role, Vec<Ref>>) -> Claus
 /// parked ops replay in list order afterwards.
 fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     let args = &o.args;
-    // §9.48: a recipe-body RUN during the deferral window parks here — not
+    // §6.7: a recipe-body RUN during the deferral window parks here — not
     // yet REACHED (the one-chain-slot detector stays untouched), zero-concrete
     if ctx.chain.as_ref().is_some_and(|c| c.deferring) {
         if let Some(c) = ctx.chain.as_mut() {
@@ -1829,7 +1829,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             ),
             None => {
                 return Err(ChorusError::new(
-                    "internal: RUN applied outside a window completion (§9.47)",
+                    "internal: RUN applied outside a window completion (§6.7)",
                 ))
             }
         };
@@ -1838,7 +1838,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
             concrete: vec![plain(
                 "REFUSE".to_string(),
                 vec![Arg::Str {
-                    v: "a second RUN in one completion — a station holds one window (§6.7, §9.47)"
+                    v: "a second RUN in one completion — a station holds one window (§6.7)"
                         .to_string(),
                 }],
             )],
@@ -1855,15 +1855,15 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Some(v) => v,
         None => {
             return Err(ChorusError::new(format!(
-                "internal: RUN's parent verb '{parent_verb_name}' left the compiled content (§9.47)"
+                "internal: RUN's parent verb '{parent_verb_name}' left the compiled content (§6.7)"
             )));
         }
     };
     // the candidate walk IN ORDER. Recipe-body candidates were load-checked
-    // against this very list (§9.47's walk), so an unresolved id is impossible
+    // against this very list (§6.7's walk), so an unresolved id is impossible
     // in compiled content — skip rather than throw, keeping that invariant's
     // failure shape silent instead of a masked drift error. Completion-trigger
-    // candidates (§9.48) were load-checked against the GLOBAL table, which the
+    // candidates (§6.7) were load-checked against the GLOBAL table, which the
     // collision guard keeps unambiguous; resolution consults it here.
     let mut pinned: Option<(&str, &CompiledRecipe)> = None;
     for a in args {
@@ -1873,7 +1873,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         };
         // resolve the candidate's owning verb + recipe
         let (cand_verb_name, cand): (&str, &CompiledRecipe) = if in_complete {
-            // §9.48: the global table owns the id (the collision guard keeps
+            // §6.7: the global table owns the id (the collision guard keeps
             // it unambiguous)
             let Some(vn) = ctx.content.recipe_verbs.get(id.as_str()) else {
                 continue;
@@ -1891,7 +1891,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                 None => continue,
             }
         };
-        // §9.48: a busy follow-up station skips the candidate silently —
+        // §6.7: a busy follow-up station skips the candidate silently —
         // every open window on the candidate's verb EXCEPT the parent's own
         // (which is still in the table mid-completion; the same-verb hand-off
         // must not see itself busy)
@@ -1900,9 +1900,9 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         {
             continue;
         }
-        // §9.50: the execution budget — an exhausted candidate is simply
+        // §6.4: the execution budget — an exhausted candidate is simply
         // non-matching; the walk continues. Read from the draft's state map
-        // (§9.29 posture), which already carries the parent's own begin.
+        // (§6.6 posture), which already carries the parent's own begin.
         if let Some(max) = cand.max {
             if ctx.state.executed.get(&cand.id).is_some_and(|&n| n >= max) {
                 continue;
@@ -1914,7 +1914,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // exactly like selection (§6.4): `roll` never binds on a `when:`.
         //
         // The gate reads the draft AND the hand-off's two binding layers
-        // (§9.47's walk, E8): the PARENT window's committed bindings first,
+        // (§6.7's walk, E8): the PARENT window's committed bindings first,
         // overlaid with the projected clause's own — where the candidate
         // verb DECLARES the role the projected binding wins (it is what the
         // follow-up will carry, resolved against the post-outcome draft,
@@ -1930,15 +1930,15 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         // begin-time id snapshot. A role the projection drops is
         // GATE-VISIBLE ONLY: the gate can read it here, but the follow-up
         // never carries it — an outcome SET over that unbound role expands
-        // to no targets and silently no-ops (the §9.31 role-ref law). The
+        // to no targets and silently no-ops (the §4.4 role-ref law). The
         // merged bindings are EVAL CONTEXT ONLY — the synthesized BEGIN row
-        // still carries the projected clause alone (§9.47 concretization).
+        // still carries the projected clause alone (§6.7 concretization).
         let matched = match &cand.when {
             None => true,
             Some(w) => {
                 let cand_verb = match ctx.content.verbs.get(cand_verb_name) {
                     Some(v) => v,
-                    None => continue, // unresolved drift walks on (§9.30 posture)
+                    None => continue, // unresolved drift walks on (§9.2 posture)
                 };
                 let projected = clause_refs(&refs_to_clause(cand_verb, &parent_refs));
                 let mut merged: RoleBindings = ctx.bindings.clone();
@@ -2010,7 +2010,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
                     || {
                         plain(
                             "REFUSE".to_string(),
-                            vec![Arg::Str { v: "the follow-up gate refused (§9.47)".to_string() }],
+                            vec![Arg::Str { v: "the follow-up gate refused (§6.7)".to_string() }],
                         )
                     },
                 ));
@@ -2025,7 +2025,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     }
     // synthesize the follow-up BEGIN — the same shape a player step produces
     // (make_begin_record over one prepared clause): the PINNED CANDIDATE's
-    // verb (§9.48: the follow-up may live on another verb than the parent),
+    // verb (§6.7: the follow-up may live on another verb than the parent),
     // the parent window's authored role refs projected onto that verb's
     // declared slots (refs_to_clause), beginning at the completion clock. The
     // pinned recipe's PROGRESS ticks ride it, like any BEGIN.
@@ -2034,7 +2034,7 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
         Some(v) => v,
         None => {
             return Err(ChorusError::new(format!(
-                "internal: RUN's candidate verb '{cand_verb_name}' left the compiled content (§9.47, §9.48)"
+                "internal: RUN's candidate verb '{cand_verb_name}' left the compiled content (§6.7)"
             )));
         }
     };
@@ -2059,15 +2059,15 @@ fn apply_run(o: &Outcome, ctx: &mut ApplyCtx) -> Result<ApplyResult> {
     })
 }
 
-/// §9.39 IF / ELSE IF / ELSE in an outcome
+/// §6.8 IF / ELSE IF / ELSE in an outcome
 /// list. Arms evaluate in order against the DRAFT (this list's earlier
 /// outcomes — SET, SPAWN, DESTROY — are visible to later IFs, unlike recipe
 /// selection which reads the input state); the first true condition wins;
 /// ELSE is the default; no true arm and no ELSE applies nothing, without
-/// error. Concretization follows the SET-delta precedent (§9.31): the log
+/// error. Concretization follows the SET-delta precedent (§4.4): the log
 /// records ONLY the taken branch's outcomes, flattened in position — the
 /// record never contains an IF op, and the untaken branches are authored
-/// discipline the log cannot recover. Conditions evaluate STRICTLY (§9.19):
+/// discipline the log cannot recover. Conditions evaluate STRICTLY (§9.2):
 /// an operand that cannot resolve — a path over a role with no bound card,
 /// F4's unbound `roll` — rejects the whole step, where a `when:` predicate
 /// would have read false.
@@ -2110,10 +2110,10 @@ fn apply_all(outcomes: &[Outcome], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
 /// already minutes — the lexer pre-converts bare duration literals (§5.1)
 /// before SET sees them; quoted strings go through the one duration parser,
 /// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
-/// `expiresAt`. The ONE write both SET (§9.36) and the SPAWN
-/// `expires <duration>` mint modifier (§4.4, §9.18) share: the authored
+/// `expiresAt`. The ONE write both SET (§4.2) and the SPAWN
+/// `expires <duration>` mint modifier (§4.4, §6.6) share: the authored
 /// `expires` attr keeps its form (minutes for bare, the string for quoted,
-/// §9.15) and `expiresAt` lands as `now + minutes` through the checked
+/// §9.2) and `expiresAt` lands as `now + minutes` through the checked
 /// stepper — `now` being the application clock (the step clock at the
 /// table, the window's START clock inside a completion, §6.7). SET calls
 /// this with its own `key` (the expires materialization is keyed on the
@@ -2137,7 +2137,7 @@ fn materialize_expires(
 /// already minutes — the lexer pre-converts bare duration literals (§5.1)
 /// before SET sees them; quoted strings go through the one duration parser,
 /// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
-/// `expiresAt` (§9.36, §9.45).
+/// `expiresAt` (§4.2, §5.1).
 fn to_minutes(v: &AttrValue) -> Result<i64> {
     match v {
         AttrValue::Num(n) => Ok(*n),
@@ -2220,7 +2220,7 @@ pub fn apply_record(
     // closed its window), then apply outcomes anchored to the window's START
     // clock read from the windows table — the same source play used, so SET
     // expires and friends replay identically (the completion clock on tGame
-    // never feeds mechanics, §9.46)
+    // never feeds mechanics, §6.7)
     if record.kind == "complete" {
         // the window SHOULD be registered by the turn's BEGIN row (fold
         // rebuilds it first); a row closing an unknown window is tolerated
@@ -2264,7 +2264,7 @@ pub fn apply_record(
             apply_outcome(o, &mut ctx)?;
         }
         // ADVANCE replayed here only touches the inert `extra_advance_min` — the
-        // extension lives in the wait row's span (§9.46 replay safety)
+        // extension lives in the wait row's span (§4.4 replay safety)
         return Ok(());
     }
     // refused: state no-op, clock untouched (§6.5) — this guard ALSO covers
@@ -2274,7 +2274,7 @@ pub fn apply_record(
     }
     // events don't own the clock — only wait rows move it (§7, v0.5)
     if record.kind == "event" {
-        // once-triggers replay as fired (§9.29); a missing trigger name folds
+        // once-triggers replay as fired (§6.6); a missing trigger name folds
         // as the empty string
         state.fired.insert(record.trigger.clone().unwrap_or_default());
     }
@@ -2335,7 +2335,7 @@ fn fold_bindings(record: &ActionRecord, state: &State) -> Result<RoleBindings> {
     Ok(b)
 }
 
-// ---------- events & completions: the advance pass (§6.6, §6.7, §9.16) ----------
+// ---------- events & completions: the advance pass (§6.6, §6.7, §6.6) ----------
 
 /// The advance pass result: the rewritten state plus the records minted.
 struct PassResult {
@@ -2354,7 +2354,7 @@ struct Expiring {
 /// v0.5 — advance the world from `state.now` to `to_min` in ONE atomic pass.
 /// Candidates merge chronologically: due windows close at their `end` (ordered
 /// by end, then begin_id, then clause — a total order with no ties); authored
-/// slot triggers and expiries fire at each crossed halfhour (§9.16 order:
+/// slot triggers and expiries fire at each crossed halfhour (§6.6 order:
 /// triggers in declaration order, then expiries from the hoisted snapshot).
 /// A completion at minute m fires BEFORE slot-m events. The pass ends with one
 /// WAIT row — the only record that moves the clock — spanning exactly
@@ -2404,7 +2404,7 @@ fn resolve_due(
     let mut cursor = from_min;
     let mut target = to_min;
     let mut id = first_record_id;
-    // §9.47's livelock guard: window completions COUNTED per advance pass.
+    // §6.7's livelock guard: window completions COUNTED per advance pass.
     // Cycles are legal (needs→discardseason→drawseason→needs stays legal) —
     // the budget only bounds the unbounded case, a cycle of ZERO-DURATION
     // follow-ups generating due work inside one pass. The counter is
@@ -2432,18 +2432,18 @@ fn resolve_due(
             if slot_abs.is_none_or(|s| w.end <= s) {
                 completions += 1;
                 if completions > WINDOW_COMPLETION_BUDGET {
-                    // loud, per §9.44's posture: the throw rejects the whole
-                    // step — nothing logged, clock unmoved (§9.19)
+                    // loud, per §10's posture: the throw rejects the whole
+                    // step — nothing logged, clock unmoved (§9.2)
                     return Err(ChorusError::new(format!(
                         "livelock guard: the advance pass completed {completions} windows — \
                          over the {WINDOW_COMPLETION_BUDGET} budget; a RUN cycle of zero-duration \
-                         follow-ups is spinning (§9.47)"
+                         follow-ups is spinning (§6.7)"
                     )));
                 }
                 let fired = fire_window(content, dict, state, &w, id, id_gen)?;
                 state = fired.state;
                 records.push(fired.record);
-                // §9.47: the synthesized follow-up BEGINs ride after the
+                // §6.7: the synthesized follow-up BEGINs ride after the
                 // parent's COMPLETE row and own their record ids
                 id += 1 + fired.extra_records.len() as i64;
                 records.extend(fired.extra_records);
@@ -2458,7 +2458,7 @@ fn resolve_due(
             }
         }
         if let Some(slot_abs) = slot_abs {
-            // `fire_slot` speaks in halfhour INDICES (§9.16: slot = abs % 48,
+            // `fire_slot` speaks in halfhour INDICES (§6.6: slot = abs % 48,
             // minute = abs * 30); the walk speaks in minutes
             let slot_records = fire_slot(
                 content,
@@ -2483,7 +2483,7 @@ fn resolve_due(
 
 /// The first halfhour boundary strictly
 /// after `cursor`, or None past `target` — the (from, to] crossing rule of
-/// §9.28, one boundary at a time
+/// §6.6, one boundary at a time
 fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
     debug_assert!(
         cursor >= 0,
@@ -2498,9 +2498,9 @@ fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
     }
 }
 
-/// §9.47's livelock budget: an advance pass that completes MORE than this
+/// §6.7's livelock budget: an advance pass that completes MORE than this
 /// many windows fails loud (a documented guard with a pinned test, the
-/// §9.44 posture). Per-pass, stateless, fold-unaffected.
+/// §10 posture). Per-pass, stateless, fold-unaffected.
 const WINDOW_COMPLETION_BUDGET: i64 = 1024;
 
 /// Close one window: re-resolve its
@@ -2511,12 +2511,12 @@ const WINDOW_COMPLETION_BUDGET: i64 = 1024;
 /// partial effects are discarded with the scratch, the attempt is logged with
 /// a REFUSE marker (the fold's existing no-op rule), and the window still
 /// closes — a pass that rolled back would leave the window retrying forever
-/// (§9.19's completion analog).
+/// (§9.2's completion analog).
 struct FireWindowResult {
     state: State,
     record: ActionRecord,
     advance_extra: i64,
-    /// §9.47: the synthesized follow-up BEGIN rows (at most one — a second
+    /// §6.7: the synthesized follow-up BEGIN rows (at most one — a second
     /// RUN op refuses the window), logged AFTER the parent's COMPLETE row;
     /// their windows are already inserted into `state`.
     extra_records: Vec<ActionRecord>,
@@ -2565,10 +2565,10 @@ fn fire_window(
         id_gen,
         extra_advance_min: 0,
         roll: None,
-        // §9.47: the chain channel — the parent-window identity the RUN arm
+        // §6.7: the chain channel — the parent-window identity the RUN arm
         // walks against (its verb names the candidate list, its end clock is
         // the follow-up's begin, its authored refs become the follow-up
-        // clause). §9.48: recipe-body RUN ops DEFER while the completion's
+        // clause). §6.7: recipe-body RUN ops DEFER while the completion's
         // `on complete` triggers fire — a completion applies the recipe's own
         // outcomes, then the triggers, then any RUN.
         chain: Some(ChainCtx {
@@ -2609,7 +2609,7 @@ fn fire_window(
             }
         }
     }
-    // §9.48: the completion-trigger phase — the window's committed locked
+    // §6.7: the completion-trigger phase — the window's committed locked
     // cards (the §6.7 busy set, actors free; deduped, a card bound through
     // two roles fires once; in locked order) fire their authored
     // `on complete` triggers, bare ones always and aspect-gated ones iff the
@@ -2684,7 +2684,7 @@ fn fire_window(
             c.in_complete = false;
         }
     }
-    // §9.48/§9.47: the recipe's own RUN ops — parked while the triggers
+    // §6.7: the recipe's own RUN ops — parked while the triggers
     // fired — replay now, in list order, under the same window-refuse
     // handling as the outcome loop above. A refusal here (the inline guard,
     // the second-RUN rule) still rejects the PARENT window.
@@ -2717,11 +2717,11 @@ fn fire_window(
     // the parent leaves the open table FIRST (removal preserves the remaining
     // keys' insertion order) — the follow-up's registration sees the station
     // free of its parent (§6.7; the busy check proper is apply_run's, with
-    // the parent's own window excluded, §9.48)
+    // the parent's own window excluded, §6.7)
     out.windows.shift_remove(&w.key);
     if !refused {
-        // §9.47: each follow-up registers through the ONE registration path
-        // play and fold share — the §9.50 count and the window land
+        // §6.7: each follow-up registers through the ONE registration path
+        // play and fold share — the §6.4 count and the window land
         // identically on both paths, so the fold's BEGIN replay cannot drift
         // from the play-side insert. A refused parent takes its follow-up
         // with it (no follow-up on a window-refuse).
@@ -2827,7 +2827,7 @@ fn make_wait_record(
 
 /// Fire one crossed halfhour: authored
 /// triggers (declaration order) first, then expiries from the pass's snapshot
-/// — §9.16 order, unchanged (§6.6).
+/// — §6.6 order, unchanged (§6.6).
 fn fire_slot(
     content: &CompiledContent,
     dict: &Dictionary,
@@ -2847,7 +2847,7 @@ fn fire_slot(
             continue;
         }
         if *once && state.fired.contains(trig_id) {
-            continue; // §9.29: once means once
+            continue; // §6.6: once means once
         }
         let mut outcomes: Vec<Outcome> = Vec::new();
         {
@@ -2877,12 +2877,12 @@ fn fire_slot(
             Some(e) if e.dead_action.is_none() => e.name.clone(),
             _ => continue,
         };
-        // an authored `on expire of NAME` trigger (§9.32) replaces the
+        // an authored `on expire of NAME` trigger (§6.6) replaces the
         // built-in destroy; FIRST match in declaration order wins. Its
         // outcomes ARE the event record's outcomes (record.trigger = the
         // authored id). An outcome that cannot apply throws — the whole step
-        // is rejected (§9.19).
-        // §9.38 pool asymmetry (documented ruling): the trigger matches by
+        // is rejected (§9.2).
+        // §4.2 pool asymmetry (documented ruling): the trigger matches by
         // NAME, so a crossing fires it no matter WHICH copy carries the
         // expires — but its name-addressed outcomes resolve per the pool rule
         // (the OLDEST copy), which under a pool may not be the crossing card.
@@ -2931,7 +2931,7 @@ fn fire_slot(
             }
         };
         // play marks fired exactly as the fold's `apply_record` does — one entry
-        // per EVENT row's trigger (§9.34); on the draft, so a rejection
+        // per EVENT row's trigger (§6.6); on the draft, so a rejection
         // discards it
         state.fired.insert(trigger_id.clone());
         let rid = first_event_id + records.len() as i64;

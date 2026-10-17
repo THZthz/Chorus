@@ -152,7 +152,7 @@ fn triggers_and_prototypes_compile() {
             CompiledTrigger::Expire { id, on_expire_of, .. } => {
                 format!("{id}|{on_expire_of}")
             }
-            // §9.48: the FLYER carries no `on complete` lines — nothing maps
+            // §6.7: the FLYER carries no `on complete` lines — nothing maps
             CompiledTrigger::Complete { .. } => String::new(),
         })
         .collect();
@@ -242,8 +242,8 @@ fn the_showcase_compiles_the_full_script_grammar() {
     // (§4–§10 sweep)
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
-    // entity lines: stackable (§9.38) on the resource kind (§4.1), plus a
-    // symmetric relation (§4.2) and a derive prototype (§6.4, §9.23)
+    // entity lines: stackable (§4.2) on the resource kind (§4.1), plus a
+    // symmetric relation (§4.2) and a derive prototype (§6.4, §6.4)
     let funds = game.state.entities.get("s_funds").unwrap();
     assert_eq!(funds.kind, "resource");
     assert!(funds.stackable);
@@ -265,12 +265,12 @@ fn the_showcase_compiles_the_full_script_grammar() {
         })
     );
     assert_eq!(hunch.aspects, Some(aspects(&[("aether", 1)])));
-    // the bare deck line: no defaultcard, no reset (§9.42)
+    // the bare deck line: no defaultcard, no reset (§10)
     let dreams = deck_of(&game.content, "DREAMS");
     assert_eq!(names(dreams), ["VOID", "PORTENT", "PORTENT"]); // permutation at seed 1899
     assert!(dreams.defaultcard.is_none());
     assert!(!dreams.reset);
-    // the ending table: explicit flavour, grand flavour, and the default (§9.35)
+    // the ending table: explicit flavour, grand flavour, and the default (§4.4)
     assert_eq!(
         game.content.endings.get("QUIET_NIGHT"),
         Some(&CompiledEnding {
@@ -287,13 +287,13 @@ fn the_showcase_compiles_the_full_script_grammar() {
     let dream_with = game.content.verbs["DREAM"].slot_by_role.get("with").unwrap();
     assert_eq!((dream_with.min, dream_with.max), (0, None));
     // slot queries (§4.5): aspect level, negated aspect, and the state flag
-    // (no '|' in either — one alternation group of N terms, §9.49)
+    // (no '|' in either — one alternation group of N terms, §4.5)
     let work_at = game.content.verbs["WORK"].slot_by_role.get("at").unwrap();
     assert_eq!(work_at.query.as_ref().unwrap().len(), 1);
     assert_eq!(work_at.query.as_ref().unwrap()[0].len(), 2);
     assert_eq!(dream_with.query.as_ref().unwrap().len(), 1);
     assert_eq!(dream_with.query.as_ref().unwrap()[0].len(), 3);
-    // compound durations (§9.45): 1h30m in a verb config and a PROGRESS tick
+    // compound durations (§5.1): 1h30m in a verb config and a PROGRESS tick
     assert_eq!(game.content.verbs["STUDY"].duration, 90);
     // the id-less recipe mints a stable id; the shown gate carries its hint (§6.2)
     let study_gate = &game.content.verbs["STUDY"].recipes[0];
@@ -319,11 +319,11 @@ fn the_showcase_compiles_the_full_script_grammar() {
     };
     assert_eq!(
         out("USE_ON", "inquest.win"),
-        ["PROGRESS", "PROGRESS", "NARRATE", "SPAWN", "REPLACE", "ENDING"] // the win ends the story (§9.35)
+        ["PROGRESS", "PROGRESS", "NARRATE", "SPAWN", "REPLACE", "ENDING"] // the win ends the story (§4.4)
     );
     assert_eq!(out("ACQUIRE", "acquire.claim"), ["SET", "MOVE", "SET", "NARRATE"]);
     assert_eq!(out("DREAM", "dream.seal"), ["DRAW", "ADVANCE", "NARRATE"]);
-    // REVEAL rides inside the luggage find's taken-branch IF (§9.39): walk arms
+    // REVEAL rides inside the luggage find's taken-branch IF (§6.8): walk arms
     let mut ops: Vec<String> = Vec::new();
     let luggage = game.content.verbs["EXPLORE"]
         .recipes
@@ -373,7 +373,7 @@ fn templates_compile() {
 
 #[test]
 fn expiry_triggers_parse_into_their_own_trigger_form() {
-    // (§9.32)
+    // (§6.6)
     let dict = core_dictionary();
     let script = parse_script(
         "triggers:\n  decay_moth on expire of INFLUENCE_MOTH_G -> REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E\n",

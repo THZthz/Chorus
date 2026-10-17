@@ -1,12 +1,12 @@
-//! `RUN` — recipe chaining (spec §9.47): the a→b hand-off with fold/JSONL
+//! `RUN` — recipe chaining (spec §6.7): the a→b hand-off with fold/JSONL
 //! equality and continue-playing, the `when:`-disambiguated dream router, the
 //! silent chain end, the ROLL+IF chance fork, the pinned recipe's top-level
-//! REFUSE refusing the PARENT window, the second-RUN refusal, the §9.50
+//! REFUSE refusing the PARENT window, the second-RUN refusal, the §6.4
 //! max-exhausted candidate skipping, the 1024-window livelock budget, the
 //! load checks (same-verb candidates, trigger homes, the quoted-id arg form,
 //! IF branches included), the deep chain resolving across passes with
 //! `State.executed` counting every begin, and the follow-up clause's
-//! PROJECTION onto the candidate verb's declared roles (§9.47: cross-verb
+//! PROJECTION onto the candidate verb's declared roles (§6.7: cross-verb
 //! follow-ups carry only the roles their verb declares — the dropped cards
 //! never lock; the E7 slice shape: the bootstrap with-card stays free through
 //! the self-rechaining wheel and the dream restore lands clean).
@@ -252,7 +252,7 @@ fn chain_a_to_b_folds_identically_and_play_continues() {
     let done_b = &r.records[3];
     let ops: Vec<&str> = done_b.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"], "PROGRESS is journal-only at completion");
-    // §9.50: the count rides the ONE registration path — both begins counted
+    // §6.4: the count rides the ONE registration path — both begins counted
     assert_eq!(executed_entries(&r.state), vec![("a".to_string(), 1), ("b".to_string(), 1)]);
     assert!(r.state.windows.is_empty());
     assert_eq!(refusal(&r), None);
@@ -286,7 +286,7 @@ fn chain_a_to_b_folds_identically_and_play_continues() {
 /// The dream-router shape: one RUN with `when:`-disambiguated candidates —
 /// the walk pins the FIRST match against the post-outcome draft, so the
 /// match changes when the situation changes (a pinned-id-no-check rule would
-/// make this inexpressible, §9.47).
+/// make this inexpressible, §6.7).
 #[test]
 fn the_router_walk_pins_the_first_matching_candidate() {
     let dict = run_dict();
@@ -317,7 +317,7 @@ fn the_router_walk_pins_the_first_matching_candidate() {
     );
 }
 
-/// The dream-router shape keyed on the BOUND mood card, end to end (§9.47's
+/// The dream-router shape keyed on the BOUND mood card, end to end (§6.7's
 /// walk + the E8 binding merge): a verb slot binds the mood card, the
 /// follow-up candidate's `when:` reads that role, and the dispatch follows
 /// the mood. The whole turn folds identically — the hand-off bindings are
@@ -361,7 +361,7 @@ fn the_router_dispatches_on_the_bound_mood_card() {
     assert_eq!(snap(&replayed), snap(&r2.state));
 }
 
-/// The cross-verb hand-off (§9.48): the candidate verb declares ACTORS only,
+/// The cross-verb hand-off (§6.7): the candidate verb declares ACTORS only,
 /// so the projection DROPS the parent's with-card — and the gate still reads
 /// it, through the parent window's committed binding (the E8 merge fills the
 /// dropped roles). This is CS's linked-target-gated-on-the-situation shape.
@@ -464,7 +464,7 @@ fn a_chain_with_no_matching_candidate_ends_silently() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// The chance fork (§9.47's authoring shape): ROLL + IF with one RUN per arm
+/// The chance fork (§6.7's authoring shape): ROLL + IF with one RUN per arm
 /// — identical-requirements candidates route through the IF form, since the
 /// list walk would always pin the first. Exactly one arm evaluates, one RUN
 /// applies, deterministically from the seed.
@@ -521,7 +521,7 @@ fn a_second_run_op_refuses_the_parent_window() {
     assert_eq!(
         refusal(&r),
         Some(
-            "a second RUN in one completion — a station holds one window (§6.7, §9.47)".to_string()
+            "a second RUN in one completion — a station holds one window (§6.7)".to_string()
         )
     );
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up opened");
@@ -619,9 +619,9 @@ fn a_ref_that_dies_mid_window_still_folds_identically() {
     assert_eq!(snap(&replayed), snap(&r.state));
 }
 
-/// Cross-verb projection (§9.47, the E7 fix): a parent holding object/with/at
+/// Cross-verb projection (§6.7, the E7 fix): a parent holding object/with/at
 /// chains — through the with-card's `on complete` trigger, the one legal
-/// cross-verb home (§9.48) — into a candidate whose verb declares ACTORS
+/// cross-verb home (§6.7) — into a candidate whose verb declares ACTORS
 /// ONLY. The follow-up clause inherits the actor role alone: a player step
 /// cannot bind an undeclared role, so the wholesale shape was never
 /// player-producible. The dropped cards are NOT locked (the same step
@@ -700,14 +700,14 @@ fn a_cross_verb_followup_carries_only_the_roles_the_candidate_declares() {
     assert_eq!(r2.state.entities[ana.as_str()].attrs.get("silver"), Some(&AttrValue::Num(1)));
 }
 
-/// The E7 regression, the slice shape in miniature (§9.47 projection;
+/// The E7 regression, the slice shape in miniature (§6.7 projection;
 /// docs/plans/v0.6-engine-findings.md E7): a work bootstrap whose with-card
-/// carries the `on complete job` induce (§9.48) chains a self-rechaining
+/// carries the `on complete job` induce (§6.7) chains a self-rechaining
 /// WAIT wheel. Pre-projection every rechained window inherited
 /// `with=VIGOR`: the bootstrap card was busy until the chain died, and a
 /// restored mint re-locked by name. Post-projection the wheel's windows
 /// carry the actor role only: VIGOR is never busy, the wheel drains it, the
-/// dream restore mints it back without a §9.19 rejection, and the next
+/// dream restore mints it back without a §9.2 rejection, and the next
 /// rechain does not re-lock it.
 #[test]
 fn the_slice_shaped_bootstrap_chain_never_locks_its_with_card() {
@@ -751,7 +751,7 @@ verbs:
     let (c, s) = compile(&dict, text);
     let base = clone_state(&s);
     // the bootstrap: work with the vigor — its completion spawns the wheel
-    // and chains time.turn's analog cross-verb (§9.48)
+    // and chains time.turn's analog cross-verb (§6.7)
     let r1 = run(&c, &dict, s, "0:0 @ ANA WORK WITH VIGOR", 1);
     assert_eq!(r1.rejected, None);
     assert_eq!(begin_recipes(&r1), [vec!["work.job".to_string()], vec!["turn".to_string()]]);
@@ -784,7 +784,7 @@ verbs:
         .any(|e| e.name == "THE_WEARY_HOUR" && e.dead_action.is_none()));
     assert_eq!(r2.state.windows.len(), 1, "the wheel rechained");
     assert!(r2.state.windows.values().next().unwrap().locked.is_empty());
-    // the restore: dream.rest_vigor mints VIGOR back — no §9.19 rejection
+    // the restore: dream.rest_vigor mints VIGOR back — no §9.2 rejection
     // (a restored mint used to re-lock by name on the next rechain)
     let r3 = run(&c, &dict, r2.state, "1:0 @ ANA DREAM WITH THE_WEARY_HOUR", 300);
     assert_eq!(r3.rejected, None);
@@ -820,7 +820,7 @@ verbs:
 /// The guard trial's scratch never leaks: a gated candidate whose body ROLLs
 /// and SPAWNs before its top-level REFUSE consumes the SCRATCH's rng counters
 /// and mints into the SCRATCH only — the real draft's counter stays pinned
-/// and no entity lands (§9.47's Phase-3-shaped trial).
+/// and no entity lands (§6.7's Phase-3-shaped trial).
 #[test]
 fn the_guard_trials_rng_and_id_consumption_stay_scratch_only() {
     let dict = run_dict();
@@ -858,7 +858,7 @@ fn the_guard_trials_rng_and_id_consumption_stay_scratch_only() {
     assert_eq!(replayed.rng, 0);
 }
 
-/// A max-exhausted candidate is simply non-matching (§9.50): the walk skips
+/// A max-exhausted candidate is simply non-matching (§6.4): the walk skips
 /// it to the next candidate — and to NONE when nothing is left.
 #[test]
 fn a_max_exhausted_candidate_is_skipped_by_the_walk() {
@@ -906,7 +906,7 @@ fn a_max_exhausted_candidate_is_skipped_by_the_walk() {
     );
 }
 
-/// The livelock guard (§9.47/§9.44): two zero-duration recipes RUN-ing each
+/// The livelock guard (§6.7/§10): two zero-duration recipes RUN-ing each
 /// other generate unbounded due work inside one pass — the pass fails LOUD
 /// at the 1024 budget, and the throw rejects the whole step (nothing logged,
 /// the original state rides back untouched).
@@ -931,7 +931,7 @@ fn a_zero_duration_run_cycle_trips_the_livelock_budget() {
     assert!(
         rejected.contains("livelock guard")
             && rejected.contains("1024")
-            && rejected.contains("§9.47"),
+            && rejected.contains("§6.7"),
         "{rejected}"
     );
     // the settle advance rolled back whole: nothing half-logged
@@ -939,7 +939,7 @@ fn a_zero_duration_run_cycle_trips_the_livelock_budget() {
     assert_eq!(snap(&r.state), snap(&original), "the original state rides back");
 }
 
-/// The load checks (§9.47): candidates must name recipes of the PARENT verb
+/// The load checks (§6.7): candidates must name recipes of the PARENT verb
 /// (unknown and cross-verb ids are load errors), IF branches included; RUN
 /// is a load error inside slot and expire triggers (events have no window);
 /// the bare/dotted id and the empty list are parse errors.
@@ -957,12 +957,12 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
     // unknown id, top level
     assert_err_msg(
         compile_script(&dream_verb("      a when count(actors) >= 1 -> RUN \"nope\""), &dict),
-        "recipe a: RUN 'nope' does not name a recipe of verb DREAM — unknown and cross-verb ids are load errors \\(§9\\.47\\)",
+        "recipe a: RUN 'nope' does not name a recipe of verb DREAM — unknown and cross-verb ids are load errors \\(§6\\.7\\)",
     );
     // cross-verb id: wait.default belongs to WAIT, not DREAM
     assert_err_msg(
         compile_script(&dream_verb("      a when count(actors) >= 1 -> RUN \"wait.default\""), &dict),
-        "recipe a: RUN 'wait.default' does not name a recipe of verb DREAM — unknown and cross-verb ids are load errors \\(§9\\.47\\)",
+        "recipe a: RUN 'wait.default' does not name a recipe of verb DREAM — unknown and cross-verb ids are load errors \\(§6\\.7\\)",
     );
     // IF branches included — an untaken branch hides nothing at load
     assert_err_msg(
@@ -1046,7 +1046,7 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
 }
 
 /// The deep chain a→b→c — RUN inside the follow-up — resolves ACROSS passes
-/// (each window opens at its parent's completion clock), and §9.50 counts
+/// (each window opens at its parent's completion clock), and §6.4 counts
 /// every begin on both paths.
 #[test]
 fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {

@@ -52,7 +52,7 @@ pub struct ScriptMeta {
     pub player: Option<String>,
     pub goal: Option<String>,
     pub start: Option<Clock>,
-    /// §9.41: the dice seed (default 0) — the run's whole dice sequence is a
+    /// §4.4: the dice seed (default 0) — the run's whole dice sequence is a
     /// pure function of (seed, rng counter)
     pub seed: Option<i64>,
 }
@@ -62,7 +62,7 @@ pub struct ScriptMeta {
 pub struct EntitySpec {
     pub name: String,
     pub kind: String,
-    /// §9.38: `NAME is KIND stackable …` — this line's card may share its name
+    /// §4.2: `NAME is KIND stackable …` — this line's card may share its name
     pub stackable: bool,
     pub aspects: Aspects,
     pub container_name: Option<String>,
@@ -236,7 +236,7 @@ fn derive_re() -> &'static Regex {
     })
 }
 
-/// Expiry form (§6.6, §9.32).
+/// Expiry form (§6.6, §6.6).
 fn expire_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
@@ -430,13 +430,13 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut entity_names: IndexSet<String> = IndexSet::new();
     // minted script id (`s_{name.to_lowercase()}`) → the name holding it
     let mut minted_ids: IndexMap<String, String> = IndexMap::new();
-    // §9.48: per-home clause ordinal for the minted trigger ids
+    // §6.7: per-home clause ordinal for the minted trigger ids
     let mut complete_ordinal: IndexMap<String, usize> = IndexMap::new();
-    // §9.48: the last declared prototype NAME — a standalone `on complete`
+    // §10: the last declared prototype NAME — a standalone `on complete`
     // line in prototypes: attaches to it
     let mut last_prototype: Option<String> = None;
 
-    /// Push one parsed clause as a completion trigger under `home` (§9.48).
+    /// Push one parsed clause as a completion trigger under `home` (§10).
     fn push_complete(
         triggers: &mut Vec<TriggerDef>,
         home: &str,
@@ -477,7 +477,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     "player" => meta.player = Some(dsl_trim(grp_text(&m, 2)).to_string()),
                     "goal" => meta.goal = Some(dsl_trim(grp_text(&m, 2)).to_string()),
                     "seed" => {
-                        // §9.41: integer seed, XORed with the rng counter as a
+                        // §4.4: integer seed, XORed with the rng counter as a
                         // 64-bit value. The message is constructed IN PLACE at
                         // this throw site.
                         let got = dsl_trim(grp_text(&m, 2));
@@ -530,13 +530,13 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 
         match sec.as_str() {
             "entities" => {
-                // §9.48: a standalone `on complete` line attaches to the
+                // §10: a standalone `on complete` line attaches to the
                 // most recently declared entity — multiple lines per entity
                 // are legal and fire in declaration order
                 if find_on_complete(t) == Some(0) {
                     let Some(home) = entities.last().map(|e| e.name.clone()) else {
                         return Err(ChorusError::new(format!(
-                            "line {}: 'on complete' needs a preceding entity declaration (§9.48)",
+                            "line {}: 'on complete' needs a preceding entity declaration (§10)",
                             ln + 1
                         )));
                     };
@@ -549,7 +549,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 let clauses = parse_entity_line(t, ln + 1, dict, &mut entities, &mut relations)?;
                 // duplicate entity declarations share one s_<name> id and
                 // would silently overwrite — a load error, not a
-                // last-write-wins (§9.14). Names are case-exact (§9.14), so
+                // last-write-wins (§5.1). Names are case-exact (§5.1), so
                 // the name check is case-sensitive — but the minted id is
                 // not (`s_{name.to_lowercase()}`, the compile-side id
                 // scheme), so a second check pins id uniqueness: ANA/ana
@@ -575,7 +575,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     }
                     entity_names.insert(name.clone());
                     minted_ids.insert(minted, name.clone());
-                    // §9.48: the line's own `on complete` clauses attach to
+                    // §10: the line's own `on complete` clauses attach to
                     // the entity just declared, in line order
                     for clause in clauses {
                         push_complete(&mut triggers, &name, clause, &mut complete_ordinal);
@@ -583,12 +583,12 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 }
             }
             "prototypes" => {
-                // §9.48: a standalone `on complete` line attaches to the most
+                // §10: a standalone `on complete` line attaches to the most
                 // recently declared prototype
                 if find_on_complete(t) == Some(0) {
                     let Some(home) = last_prototype.clone() else {
                         return Err(ChorusError::new(format!(
-                            "line {}: 'on complete' needs a preceding prototype declaration (§9.48)",
+                            "line {}: 'on complete' needs a preceding prototype declaration (§10)",
                             ln + 1
                         )));
                     };
@@ -717,8 +717,8 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
         }
     }
 
-    // §9.14: a name is one card — declared both ways, every SPAWN of the
-    // prototype would collide with the living entity (§9.19); fail at load.
+    // §5.1: a name is one card — declared both ways, every SPAWN of the
+    // prototype would collide with the living entity (§9.2); fail at load.
     // The canonical order fronts integer-like keys, so the walk goes
     // through `canonical_key_order` (prototype names are
     // `\S+`, so "5 is idea" is a real key shape here).
@@ -748,10 +748,10 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 }
 
 // ---------------------------------------------------------------------------
-// completion-trigger clauses (§9.48)
+// completion-trigger clauses (§10)
 // ---------------------------------------------------------------------------
 
-/// One parsed `on complete [<aspect>] -> ( body )` clause (§9.48). The body
+/// One parsed `on complete [<aspect>] -> ( body )` clause (§10). The body
 /// is the RAW outcome text inside the parens — compiled like every trigger
 /// body (function expansion, the load guards) in `compile_content`.
 #[derive(Debug, Clone)]
@@ -760,7 +760,7 @@ pub(crate) struct CompleteClause {
     pub body: String,
 }
 
-/// The clause keywords an aspect name may not collide with (§9.48): the
+/// The clause keywords an aspect name may not collide with (§10): the
 /// entity/prototype-line clause heads and the trigger's own keywords —
 /// `with` is the load-bearing one (the with-clause scanner works the same
 /// line), the rest keep the vocabulary closed.
@@ -870,7 +870,7 @@ fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
         let mut cur = after_on.trim_start_matches(is_dsl_ws_char);
         // the optional aspect: one bare lowercase name token — DOTTED keys
         // included, the exact class the recipe `aspects` list declares (the
-        // gate matches the full dotted key, §9.48)
+        // gate matches the full dotted key, §10)
         let mut aspect: Option<String> = None;
         let name_end = cur
             .chars()
@@ -880,12 +880,12 @@ fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
             let tok = &cur[..name_end];
             if COMPLETE_ASPECT_BANNED.contains(&tok) {
                 return Err(ChorusError::new(format!(
-                    "line {ln}: aspect '{tok}' is a reserved clause keyword (§9.48)"
+                    "line {ln}: aspect '{tok}' is a reserved clause keyword (§10)"
                 )));
             }
             if tok.ends_with('.') {
                 return Err(ChorusError::new(format!(
-                    "line {ln}: bad aspect '{tok}' — a dotted aspect name cannot end at its dot (§9.48)"
+                    "line {ln}: bad aspect '{tok}' — a dotted aspect name cannot end at its dot (§10)"
                 )));
             }
             aspect = Some(tok.to_string());
@@ -926,7 +926,7 @@ fn parse_complete_clauses(src: &str, ln: usize) -> Result<Vec<CompleteClause>> {
     }
 }
 
-/// The engine-minted completion-trigger id (§9.48): `complete:{home}` for the
+/// The engine-minted completion-trigger id (§6.7): `complete:{home}` for the
 /// first clause authored on a home, `complete:{home}#n` from the second on —
 /// deterministic and unique, shaped like the engine-written `expire:{name}`
 /// id. The id surfaces in load errors only: completion triggers log no EVENT
@@ -948,7 +948,7 @@ fn mint_complete_id(home: &str, ordinals: &mut IndexMap<String, usize>) -> Strin
 /// §5.1: reserved words cannot be names — as a
 /// declaration they would make every unquoted ref in clauses parse as the
 /// keyword, so fail at load. (Non-lexeme names like `X-Y` are legal but
-/// quota every ref — linted, not errored: §9.42's unsafe-name corner.)
+/// quota every ref — linted, not errored: §4.4's unsafe-name corner.)
 fn check_name(name: &str, ln: usize, dict: &Dictionary, what: &str) -> Result<()> {
     if dict.reserved.contains(name) {
         return Err(ChorusError::new(format!(
@@ -959,7 +959,7 @@ fn check_name(name: &str, ln: usize, dict: &Dictionary, what: &str) -> Result<()
 }
 
 /// `ln` is the 1-BASED line number (the caller adds one). Returns the line's
-/// `on complete` clauses (§9.48) for the caller to attach to the declared
+/// `on complete` clauses (§10) for the caller to attach to the declared
 /// entity — they are stripped from the line BEFORE the with/at-in clause walk
 /// so the clause scanners never see (and eat) the clause region or an aspect
 /// named like a clause keyword.
@@ -970,7 +970,7 @@ fn parse_entity_line(
     entities: &mut Vec<EntitySpec>,
     relations: &mut Vec<RelationSpec>,
 ) -> Result<Vec<CompleteClause>> {
-    // §9.48: trailing `on complete …` clauses split off first
+    // §10: trailing `on complete …` clauses split off first
     let (base, clause_src) = match find_on_complete(t) {
         Some(at) => (&t[..at], Some(parse_complete_clauses(&t[at..], ln)?)),
         None => (t, None),
@@ -987,7 +987,7 @@ fn parse_entity_line(
     if dict.relation_types.contains_key(second) {
         if clause_src.is_some() {
             return Err(ChorusError::new(format!(
-                "line {ln}: a relation line cannot carry `on complete` clauses (§9.48)"
+                "line {ln}: a relation line cannot carry `on complete` clauses (§10)"
             )));
         }
         let Some(rel) = of_re().captures(rest0) else {
@@ -1011,7 +1011,7 @@ fn parse_entity_line(
         )));
     }
     let mut rest: &str = rest0;
-    // §9.38: the `stackable` keyword sits before `with`/`at`/`in` clauses
+    // §4.2: the `stackable` keyword sits before `with`/`at`/`in` clauses
     let mut stackable = false;
     if let Some(sm) = stackable_re().find(rest) {
         stackable = true;
@@ -1070,7 +1070,7 @@ fn parse_entity_line(
 // ---------------------------------------------------------------------------
 
 /// `ln` is the 1-BASED line number. Returns (name, prototype, the line's
-/// `on complete` clauses (§9.48) — stripped BEFORE the deriving/with walk,
+/// `on complete` clauses (§10) — stripped BEFORE the deriving/with walk,
 /// exactly like the entity line).
 fn parse_prototype_line(
     t: &str,
@@ -1094,7 +1094,7 @@ fn parse_prototype_line(
     }
     let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };
     let mut rest: &str = grp_text(&m, 3);
-    // §9.38: the `stackable` keyword sits before `deriving`/`with` clauses
+    // §4.2: the `stackable` keyword sits before `deriving`/`with` clauses
     if let Some(sm) = stackable_re().find(rest) {
         proto.stackable = true;
         rest = &rest[sm.end()..];
@@ -1172,7 +1172,7 @@ fn parse_prototype_line(
 
 /// `ln` is the 1-BASED line number. (the trigger grammar needs no dictionary.)
 fn parse_trigger_line(t: &str, ln: usize) -> Result<TriggerDef> {
-    // expiry form: ID on expire of NAME -> OUTCOMES (§6.6, §9.32)
+    // expiry form: ID on expire of NAME -> OUTCOMES (§6.6, §6.6)
     if let Some(exp) = expire_re().captures(t) {
         return Ok(TriggerDef::Expire(ExpireTriggerDef {
             id: grp_text(&exp, 1).to_string(),
@@ -1201,7 +1201,7 @@ fn parse_trigger_line(t: &str, ln: usize) -> Result<TriggerDef> {
 }
 
 // ---------------------------------------------------------------------------
-// function lines (§9.40, §10)
+// function lines (§10, §10)
 // ---------------------------------------------------------------------------
 
 /// `NAME(param, …) -> OUTCOMES` (or the bare form
@@ -1241,12 +1241,12 @@ fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
 }
 
 // ---------------------------------------------------------------------------
-// deck lines (§9.42, §10)
+// deck lines (§10)
 // ---------------------------------------------------------------------------
 
 /// `ID spec NAME, … [defaultcard NAME] [reset]`.
 /// Grammar only: entry/defaultcard resolution against prototypes + entities,
-/// duplicate ids and the permutation are `compile_content`'s (§9.42). The
+/// duplicate ids and the permutation are `compile_content`'s (§4.4). The
 /// trailing clauses may sit in either order (stripped from the end until
 /// neither matches); `defaultcard`/`reset` are keywords, not spec entries.
 /// `ln` is the 1-BASED line number.
@@ -1282,7 +1282,7 @@ fn parse_deck_line(t: &str, ln: usize) -> Result<DeckRaw> {
 }
 
 // ---------------------------------------------------------------------------
-// ending lines (§9.35, §10)
+// ending lines (§4.4, §10)
 // ---------------------------------------------------------------------------
 
 /// `ID: "Title" (flavour)` — flavour optional,
@@ -1364,7 +1364,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     let tokens = split_dsl_ws(lhs);
     let mut i = 0usize;
     if let Some(tok0) = tokens.first() {
-        // §9.50/§9.48: `max` and `aspects` are keywords — a leading `max N`
+        // §6.4/§10: `max` and `aspects` are keywords — a leading `max N`
         // or `aspects NAME, …` must never parse as a recipe id
         if recipe_id_re().is_match(tok0)
             && *tok0 != "when"
@@ -1377,10 +1377,10 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
             i += 1;
         }
     }
-    // §9.50: the positional walk — `hidden|shown` and `max N` compose in any
+    // §6.4: the positional walk — `hidden|shown` and `max N` compose in any
     // order around the regex-extracted clauses (N ≥ 1: a `max 0` or negative
     // is a load error — such a recipe could never fire, so it fails loudly
-    // instead). §9.48 adds the `aspects NAME, …` presence list to the same
+    // instead). §10 adds the `aspects NAME, …` presence list to the same
     // walk — both orders around `max` parse. `hint "…"` and `when COND` are
     // matched on the lhs BELOW, so their tokens stay on the stream: the walk
     // jumps the hint's span by byte offset, and a token left at the cursor
@@ -1411,7 +1411,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
                 i += 1;
             }
             Some(tok) if *tok == "aspects" => {
-                // §9.48: `aspects <name> [, <name>]*` — the presence list an
+                // §10: `aspects <name> [, <name>]*` — the presence list an
                 // `on complete <aspect>` gate reads. The whitespace split
                 // leaves each separator comma riding its member token; every
                 // member but the last must end in one, so `aspects a max 1`
@@ -1481,7 +1481,7 @@ fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     Ok(def)
 }
 
-/// An `aspects` list member after the whitespace split (§9.48): a lowercase
+/// An `aspects` list member after the whitespace split (§10): a lowercase
 /// name with an optional trailing separator comma. The positional keywords
 /// are excluded, so a list never swallows `max`/`when`/…, and a dotted
 /// sub-aspect (`language.latin`) is one member — the exact class the
@@ -1501,12 +1501,12 @@ fn is_aspects_member(tok: &str) -> bool {
 /// `compile_script(text, dict)` → `{ content, state, meta }`.
 pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
     let script = parse_script(text, dict)?;
-    // §9.41: the meta `seed:` rides into the compiled content — every die is
+    // §4.4: the meta `seed:` rides into the compiled content — every die is
     // a pure function of (seed, counter), so the sequence is fixed at load.
-    // The deck permutations (§9.42) are keyed on the same seed. Declared
+    // The deck permutations (§4.4) are keyed on the same seed. Declared
     // entities ride along so deck spec entries may name plain entity lines
     // too. The entities go in ONCE (with
-    // their stackability flags) — compile_content builds the §9.38 sets
+    // their stackability flags) — compile_content builds the §4.2 sets
     // from them.
     let declared: Vec<DeclaredEntity> = script
         .entities
@@ -1744,7 +1744,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
 
     // template tokens: {actors} {object} {with} {at} {about} {to} {roll} — a
     // typo renders literally at render time (§5.3); function bodies also
-    // interpolate their params (§9.40)
+    // interpolate their params (§10)
     let known: Vec<&str> = ROLE_NAMES.iter().copied().chain(["roll"]).collect();
     let scan_tokens = |findings: &mut Vec<LintFinding>, where_: &str, s: &str, extra: &[&str]| {
         for cap in template_token_re().captures_iter(s) {
@@ -1778,7 +1778,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
 
     // the §10 livelock rule: deck entries should be stackable (or consumed
     // and renamed on the same step) — served twice while a copy lives, the
-    // second spawn name-collides and rejects the step (§9.19)
+    // second spawn name-collides and rejects the step (§9.2)
     let declared: Vec<DeclaredEntity> = script
         .entities
         .iter()
@@ -1913,12 +1913,12 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         }
     }
 
-    // non-lexeme names are legal (§9.42's unsafe-name corner) but every ref
+    // non-lexeme names are legal (§4.4's unsafe-name corner) but every ref
     // to them must be quoted — say so at load
     for e in &script.entities {
         if !name_lexeme_re().is_match(&e.name) {
             findings.push(LintFinding::error(format!(
-                "entity '{}': not a name lexeme — every ref to it must be quoted (§5.1, §9.42)",
+                "entity '{}': not a name lexeme — every ref to it must be quoted (§5.1, §4.4)",
                 e.name
             )));
         }
@@ -2152,7 +2152,7 @@ impl<'a> WhenCx<'a> {
     /// contradicts a conjunct that pinned the role empty.
     fn require_bound(&mut self, role: &str) -> Option<String> {
         if self.empty.contains(role) {
-            return Some(format!("the when requires {role} both empty and bound (§6.3, §9.39)"));
+            return Some(format!("the when requires {role} both empty and bound (§6.3)"));
         }
         self.bound.insert(role.to_string());
         None
@@ -2184,7 +2184,7 @@ fn typed_var(x: &ValExpr) -> Option<WhenVar> {
 /// Deliberately NOT caught (the documented boundary): world reads —
 /// `exists(...)` and the `count(<query>)` pool form — stay `Unknown` (no
 /// world model, so `exists(A) AND NOT exists(A)` passes silently);
-/// `every(...)` is `Unknown` (vacuously true over an empty role, §9.39);
+/// `every(...)` is `Unknown` (vacuously true over an empty role, §6.3);
 /// non-int comparisons (`count(a) > object.attr.seats`) are `Unknown`; and
 /// the E7 RUN corner — a cross-verb RUN candidate re-evaluates its when
 /// against the PARENT's committed bindings (refs_to_clause), outside the
@@ -2224,7 +2224,7 @@ fn when_verdict(p: &Pred, neg: bool, cx: &mut WhenCx) -> WhenVerdict {
         }
         Pred::Cmp { l, r, op } => when_cmp(l, r, *op, neg, cx),
         Pred::Any { role, .. } => {
-            // any(...) is false over an empty role (§9.39) — a positive atom
+            // any(...) is false over an empty role (§6.3) — a positive atom
             // proves the role bound; negated it proves nothing
             if neg {
                 return WhenVerdict::Unknown;
@@ -2232,7 +2232,7 @@ fn when_verdict(p: &Pred, neg: bool, cx: &mut WhenCx) -> WhenVerdict {
             role_bound_verdict(cx, role, "any(…) needs a bound member")
         }
         Pred::Every { .. } => {
-            // every(...) is VACUOUSLY TRUE over an empty role (§9.39) — no
+            // every(...) is VACUOUSLY TRUE over an empty role (§6.3) — no
             // static verdict either way (the documented boundary)
             WhenVerdict::Unknown
         }
@@ -2262,7 +2262,7 @@ fn when_verdict(p: &Pred, neg: bool, cx: &mut WhenCx) -> WhenVerdict {
 fn role_bound_verdict(cx: &mut WhenCx, role: &str, why: &str) -> WhenVerdict {
     match cx.role_bound(role) {
         RoleBound::PinnedEmpty => WhenVerdict::Dead(format!(
-            "the when requires {role} both empty and bound — this clause needs a bound card, another pinned it empty ({why}, §6.3, §9.39)"
+            "the when requires {role} both empty and bound — this clause needs a bound card, another pinned it empty ({why}, §6.3)"
         )),
         RoleBound::NeverBinds => WhenVerdict::Dead(format!(
             "{role} never binds — the verb declares no slot for it (or a 0..0 slot), so this clause is always false ({why}, §6.6)"
@@ -2278,11 +2278,11 @@ fn role_bound_verdict(cx: &mut WhenCx, role: &str, why: &str) -> WhenVerdict {
 /// One cmp leaf, polarity applied. The statically-decidable core: a typed
 /// variable vs an int literal (either operand order). A path operand reads
 /// the role's first bound card — unresolvable over an empty role reads
-/// FALSE in the when-discipline (§9.39) — so a positive path atom also
+/// FALSE in the when-discipline (§6.3) — so a positive path atom also
 /// proves its role bound.
 fn when_cmp(l: &ValExpr, r: &ValExpr, op: CmpOp, neg: bool, cx: &mut WhenCx) -> WhenVerdict {
     // positive path atoms prove the role bound (the dead-stamp/unresolvable
-    // rule reads false over an empty role, §9.39); a negated path atom is
+    // rule reads false over an empty role, §6.3); a negated path atom is
     // satisfiable via the empty role and undecidable otherwise
     if !neg {
         for x in [l, r] {

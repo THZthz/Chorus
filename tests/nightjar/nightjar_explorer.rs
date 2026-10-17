@@ -44,7 +44,7 @@ fn check_state_shape(s: &State, content: &CompiledContent) {
         if e.dead_action.is_some() {
             continue;
         }
-        // §9.38: a name the content declares stackable is a pool — duplicate
+        // §4.2: a name the content declares stackable is a pool — duplicate
         // living copies (SUSPICION, the RUMOURS deck's gossip) are legal; the
         // card's own flag must agree with the declaration, or the mint lied
         let declared =
@@ -58,7 +58,7 @@ fn check_state_shape(s: &State, content: &CompiledContent) {
             assert!(!seen.contains(&e.name), "duplicate living name {}", e.name);
         }
         seen.insert(e.name.clone());
-        // §9.38: the id is in the name's pool
+        // §4.2: the id is in the name's pool
         assert!(
             s.by_name.get(&e.name).is_some_and(|pool| pool.contains(&e.id)),
             "{} is not in byName's pool for its name",
@@ -355,7 +355,7 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
                 snap(&state)
             );
         }
-        // §9.35 ending-awareness: a careless walk stacks SUSPICION, and
+        // §4.4 ending-awareness: a careless walk stacks SUSPICION, and
         // watch(3) — the escalation the conductor's rounds and the
         // searched-again recipe both call — ends the story when the pool
         // reaches three. Undo through the ending step (it derives from the

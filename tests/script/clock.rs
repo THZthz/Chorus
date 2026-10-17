@@ -1,4 +1,4 @@
-//! Clock & duration unit tests — spec §5.1 grammar, §9.45 compound durations.
+//! Clock & duration unit tests — spec §5.1 grammar, §5.1 compound durations.
 //!
 //! Conventions: one `#[test]` per behavior; a FRESH Dictionary per test;
 //! error assertions go through `assert_err_msg(res, "re")`; value equality
@@ -57,7 +57,7 @@ fn single_5_1_units() {
 
 #[test]
 fn compound_literals_sum_their_unit_pairs() {
-    // (§9.45)
+    // (§5.1)
     assert_eq!(parse_duration("1h30m").unwrap(), 90);
     assert_eq!(parse_duration("2halfhour15m").unwrap(), 75);
     assert_eq!(parse_duration("1d2h30m").unwrap(), 1590);
@@ -85,7 +85,7 @@ fn prefers_the_shortest_exact_single_unit() {
 
 #[test]
 fn decomposes_only_when_no_single_unit_fits() {
-    // (§9.45)
+    // (§5.1)
     assert_eq!(format_duration(45).unwrap(), "45m");
     assert_eq!(format_duration(100).unwrap(), "1h40m");
     assert_eq!(format_duration(1441).unwrap(), "1d1m");
@@ -122,7 +122,7 @@ fn format_parse_is_the_identity() {
 }
 
 // ---------- compound literals through the lexer and sentence pipeline
-// ---------- compound durations (§9.45) -------------------------------------
+// ---------- compound durations (§5.1) -------------------------------------
 
 /// `lex(src)` tokens as JSON: `[{ t, v }]` —
 /// `v` is a NUMBER for int/dur tokens, a string for the rest (the frozen

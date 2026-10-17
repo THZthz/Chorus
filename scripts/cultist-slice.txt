@@ -49,11 +49,11 @@
 #
 # The wheel is the slice's engine-from-a-single-spark. The first completion that
 # binds a job card (VIGOR, the clerk's post) fires its `on complete job` clause:
-# spawn THE_TURNING if absent, then RUN "time.turn" cross-verb (§9.48 — CS's
+# spawn THE_TURNING if absent, then RUN "time.turn" cross-verb (§6.7 — CS's
 # job→needs induce). time.turn drains one silver, draws a weather from the
 # SEASONS deck, and hands the cycle to that weather's recipe; every weather ends
 # by running time.turn again — the dossier's needs → discardseason → drawseason
-# → needs loop, as RUN chains (§9.47). Later bootstraps find THE_TURNING alive,
+# → needs loop, as RUN chains (§6.7). Later bootstraps find THE_TURNING alive,
 # spawn nothing, and are suppressed exactly as CS's are.
 #
 # Time scale: 1 CS second → 1 engine minute (a 60 s action is the 1 h verb
@@ -83,7 +83,7 @@ entities:
 
   # the three foundations — each carries the labor roll (CS's employment
   # xtrigger: work the foundation, risk the drained form) and VIGOR alone
-  # carries the wheel's bootstrap (CS's job→needs induce, §9.48)
+  # carries the wheel's bootstrap (CS's job→needs induce, §6.7)
   VIGOR is resource with vigor:1 at WREN on complete labor -> (ROLL(1, 10), IF roll <= 3 -> (DESTROY VIGOR, SPAWN THE_WEARY_HOUR, SET(THE_WEARY_HOUR, aspect:weary, 1), NARRATE "The hour takes its toll of the body; the body pays in weariness.") ELSE -> (NARRATE "The body holds, this once.")) on complete job -> (IF NOT exists(name:THE_TURNING) -> (SPAWN THE_TURNING, NARRATE "Somewhere below the fog, a wheel begins to turn. The seasons have your scent now."), RUN "time.turn")
   WITS is resource with wits:1 at WREN on complete labor -> (ROLL(1, 10), IF roll <= 3 -> (DESTROY WITS, SPAWN THE_DIMMED_WIT, SET(THE_DIMMED_WIT, aspect:dim, 1), NARRATE "The figures swim. Something in the forecourt of the mind has closed for repairs.") ELSE -> (NARRATE "The wit holds, this once."))
   YEARNING is resource with yearning:1 at WREN on complete labor -> (ROLL(1, 10), IF roll <= 3 -> (DESTROY YEARNING, SPAWN THE_PALE_YEARNING, SET(THE_PALE_YEARNING, aspect:pale, 1), NARRATE "The wanting goes out of the wanting. What is left is a habit with its coat still on.") ELSE -> (NARRATE "The yearning holds, this once."))
@@ -108,7 +108,7 @@ entities:
 
 # ── cards that can come into being ───────────────────────────────────────
 # pools (stackable) everywhere the game can hold two of a kind — the deck
-# livelock rule (§9.44) and CS's Dread-and-Funds reading (§9.38) both want it.
+# livelock rule (§10) and CS's Dread-and-Funds reading (§4.2) both want it.
 # Marker aspects (the second engine law, header) sit on every card a recipe
 # must recognize inside a bound role.
 prototypes:
@@ -212,7 +212,7 @@ triggers:
 # SEASONS mirrors CS's seasonevents weighting (quiet is common, sickness rare).
 # MOODS is CS's dream-router spec, same six slots. BELLWOOD has neither
 # defaultcard nor reset: the wood gives what it gives, then the draw fails
-# loud (§9.42) — a door that empties.
+# loud (§4.4) — a door that empties.
 decks:
   SEASONS spec SEASON_QUIET, SEASON_QUIET, SEASON_QUIET, SEASON_WHITE, SEASON_WHITE, SEASON_GREY, SEASON_GREY, SEASON_SHADOW, SEASON_SHADOW, SEASON_AMBITION, SEASON_AMBITION, SEASON_SICKLY, SEASON_LEAN, SEASON_WARM reset
   MOODS spec DREAD, RAPTURE, GLIMMER, MENDING, EASE, WAKEFULNESS reset
@@ -228,7 +228,7 @@ endings:
   THE_BODY_FAILS: "The Body Lays Down Its Tenant" (melancholy)
 
 # ── what can be done ─────────────────────────────────────────────────────
-# the slice's nine verbs. Slot queries use the §9.49 alternation wherever CS's
+# the slice's nine verbs. Slot queries use the §4.5 alternation wherever CS's
 # any-of slots demanded it (WORK's entry, the rite's invocation). Recipes are
 # the authoring phases' work (docs/plans/v0.6-cs-slice.md §4 — 102 of them):
 # Phase A landed 39 (WORK, WAIT, ACQUIRE, TRAVEL_TO/LOCATE_AT), Phase B 34
@@ -242,7 +242,7 @@ verbs:
     # conventions); the drain is card-side — each foundation's `on complete
     # labor` clause rolls the 30% employment risk (§6.18: CS's die, a
     # different referent) — and the `job` recipes bootstrap the wheel
-    # (§9.48). First match wins (§6.4): work.frail outranks work.vigor (a
+    # (§6.7). First match wins (§6.4): work.frail outranks work.vigor (a
     # frail body labors ruined even with a living VIGOR bound beside it),
     # and work.post outranks work.senior on a world check — the two posts
     # share the one `post` marker aspect (the plan's G1 parenthetical), so
@@ -270,12 +270,12 @@ verbs:
     # drain one silver (and feed — the hollow days give back the table),
     # else eat VIGOR into THE_HOLLOW_DAYS, else the body fails; then draw a
     # weather from the SEASONS deck and hand the cycle to that weather's
-    # recipe as a RUN (§9.47 — one RUN reached per completion; the follow-up
+    # recipe as a RUN (§6.7 — one RUN reached per completion; the follow-up
     # rechains time.turn, and the loop stays resident exactly as CS's
     # needs → discardseason → drawseason → needs does). All eight weathers
     # rechain: a weather recipe never ends without its RUN except in a death
     # arm (the plan's §8/P5 pin). Selection order is load-bearing here: the
-    # weather recipes and their judges are RUN targets (the §9.47 walk goes
+    # weather recipes and their judges are RUN targets (the §6.7 walk goes
     # by id, never by list position), but a plain player wait must keep
     # selecting time.turn once the wheel is resident — so time.turn sits
     # first and wait.default last (first match wins, §6.4) — and every RUN
@@ -318,7 +318,7 @@ verbs:
     # reachable under first-match-wins — the plan's row pair resolves to
     # disjoint ranges, and the shadow lint would rightly call the gospel
     # row dead otherwise. The far-toll spawns are guarded on no toll live
-    # (the tolls are unique, §9.19) and carry the 1 h clock that chains
+    # (the tolls are unique, §9.2) and carry the 1 h clock that chains
     # through the whisper decay (the card-borne clocks above).
     actors: 1 kind:character
     object: 1 kind:text | kind:idea
@@ -353,7 +353,7 @@ verbs:
     # (law 1): DESTROY WITH + SPAWN resource:K + SET(K, aspect:k, 1) —
     # REPLACE into an entity name is refused; the two CURE recipes (mend,
     # fever) guard their mint on the foundation's name being free, because
-    # a work-weary fever can sit beside a living VIGOR (§9.19's collision,
+    # a work-weary fever can sit beside a living VIGOR (§9.2's collision,
     # kept off the arm the way season.sick's guards are). Dreams pool lore
     # without consuming it; only the desire transforms burn their cards.
     actors: 1 kind:character
@@ -390,7 +390,7 @@ verbs:
     # SPAWN — the mint lands at the conversationalist's side (SPAWN's
     # no-INTO default is the first actor's container) — and meet refuses to
     # double a congregation that exists in ANY form (a non-stackable mint
-    # over a living name is the §9.19 collision, kept off the arm as
+    # over a living name is the §9.2 collision, kept off the arm as
     # everywhere else in this file).
     actors: 1 kind:character
     to: 0..1 kind:character
@@ -418,7 +418,7 @@ verbs:
     # the Bellwood crossing (G6). Study's first lone 6+ read yields
     # THE_WAY_THROUGH (`max 1` — the one-shot); the crossing spends its
     # companion and draws the BELLWOOD deck — no reset, no defaultcard:
-    # eight rewards and then the draw fails loud (§9.42). The yearning
+    # eight rewards and then the draw fails loud (§4.4). The yearning
     # crossing spends the intact foundation into its pale form (the
     # Dream-restore brings it back, so the wood is re-enterable); the
     # guest crossing spends the summon outright (what the 3 h window is

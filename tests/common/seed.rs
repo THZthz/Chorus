@@ -357,7 +357,7 @@ pub fn seed_state() -> State {
     }
 
     place(&mut s, "house", "HOUSE", None);
-    // v0.3: not 'STUDY' — the verb lexeme is reserved (§9.14)
+    // v0.3: not 'STUDY' — the verb lexeme is reserved (§5.1)
     place(&mut s, "study", "THE_STUDY", Some("house"));
     s.entities
         .get_mut("study")

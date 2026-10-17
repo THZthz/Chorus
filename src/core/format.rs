@@ -1,4 +1,4 @@
-//! Canonical serializer (spec §5.1, §9.6, §9.10, §9.14, §9.15).
+//! Canonical serializer (spec §5.1, §4.3, §9.2).
 //! Format(parse(x)) is the canonical form: actors sorted,
 //! pre-verbal AT, bare-name refs (re-quoted when unsafe/reserved), concrete
 //! outcomes.
@@ -89,29 +89,29 @@ fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
 fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
     if o.op == "IF" {
         return Err(ChorusError::new(
-            "an IF outcome is authored form only — the log records the taken branch (§9.39)",
+            "an IF outcome is authored form only — the log records the taken branch (§6.8)",
         ));
     }
     if o.op == "FN" {
         return Err(ChorusError::new(
-            "a function call is authored form only — calls expand at load (§9.40)",
+            "a function call is authored form only — calls expand at load (§10)",
         ));
     }
     if o.op == "ROLL" {
         return Err(ChorusError::new(
-            "a ROLL is authored form only — the log records the engine-written ROLLED result (§9.41)",
+            "a ROLL is authored form only — the log records the engine-written ROLLED result (§4.4)",
         ));
     }
     if o.op == "DRAW" {
         return Err(ChorusError::new(
-            "a DRAW is authored form only — the log records the engine-written DRAWN+SPAWN rows (§9.42)",
+            "a DRAW is authored form only — the log records the engine-written DRAWN+SPAWN rows (§4.4)",
         ));
     }
-    // ROLLED (§9.41) and DRAWN (§9.42) ride the generic paren'd fallback on
+    // ROLLED (§4.4) and DRAWN (§4.4) ride the generic paren'd fallback on
     // purpose: their args format and re-parse — `ROLLED(14, 3)` is two plain
     // ints, `DRAWN(RUMOURS, HEARSAY)` two plain name refs
     if o.op == "RUN" {
-        // §9.47: the ids render RE-QUOTED in the paren'd shell — recipe ids
+        // §4.4: the ids render RE-QUOTED in the paren'd shell — recipe ids
         // are dotted (`study.recipe0`), and a bare dotted spelling would
         // re-parse as a SET key (the generic name path), never back into a
         // RUN candidate. RUN is zero-concrete (the follow-up's BEGIN row is
@@ -122,7 +122,7 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
             .iter()
             .map(|a| match a {
                 Arg::Ref { r#ref: Ref::Name { name, .. } } => Ok(quote(name)),
-                _ => Err(ChorusError::new("a RUN candidate is a quoted-string recipe id (§9.47)")),
+                _ => Err(ChorusError::new("a RUN candidate is a quoted-string recipe id (§4.4)")),
             })
             .collect::<Result<Vec<_>>>()?;
         return Ok(format!("RUN({})", parts.join(", ")));
@@ -154,7 +154,7 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
         return Ok(format!("REPLACE {target} WITH {proto}"));
     }
     if o.op == "ENDING" {
-        // canonical paren-less form: ENDING id (§9.35) — the id round-trips
+        // canonical paren-less form: ENDING id (§4.4) — the id round-trips
         // as a name ref
         let id = match o.args.first() {
             Some(a) => format_arg(a, dict)?,
@@ -184,12 +184,12 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
             v.to_string()
         } else {
             format!("+{v}")
-        }), // signed args print with their sign (§9.31); -0 → +0 (Q16: the
+        }), // signed args print with their sign (§4.4); -0 → +0 (Q16: the
             // sign branch is explicit on the integer domain)
         Arg::Str { v } => Ok(quote(v)),
         Arg::Bool { v } => Ok(v.to_string()),
         Arg::Dur { v } => format_duration(*v),
-        Arg::Key { v } => Ok(v.clone()), // plain, dotted and aspect:-prefixed keys print bare (§9.31)
+        Arg::Key { v } => Ok(v.clone()), // plain, dotted and aspect:-prefixed keys print bare (§4.4)
         Arg::Into { r#ref } => Ok(match r#ref {
             IntoTarget::Role { role } => format!("INTO {}", role.as_str().to_uppercase()),
             IntoTarget::Ref(r#ref) => format!("INTO {}", format_ref(r#ref, dict)?),
@@ -200,8 +200,8 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
             other => format!("{k}={}", other.to_canonical_string()),
         }),
         Arg::Expires { v } => Ok(match v {
-            // the SPAWN mint modifier (§4.4, §9.36): keyword restored, the
-            // duration canonicalized per §9.45 so the rendering re-parses
+            // the SPAWN mint modifier (§4.4, §4.2): keyword restored, the
+            // duration canonicalized per §5.1 so the rendering re-parses
             crate::core::types::AttrValue::Str(s) => format!("expires {}", quote(s)),
             crate::core::types::AttrValue::Num(mins) => {
                 format!("expires {}", format_duration(*mins)?)
@@ -209,10 +209,10 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
             crate::core::types::AttrValue::Bool(b) => format!("expires {b}"),
         }),
         Arg::Vexpr { .. } => Err(ChorusError::new(
-            "a ROLL value expression is authored form only — the log records the computed ROLLED ints (§9.41)",
+            "a ROLL value expression is authored form only — the log records the computed ROLLED ints (§4.4)",
         )),
         Arg::Param { .. } => Err(ChorusError::new(
-            "a function parameter is authored form only — calls expand at load (§9.40)",
+            "a function parameter is authored form only — calls expand at load (§10)",
         )),
     }
 }
@@ -253,7 +253,7 @@ mod tests {
         let s = parse_sentence("THING, ANOTHER READ TO book AT shelf", &d).unwrap();
         let out = format_sentence(&s, Some(&d)).unwrap();
         assert_eq!(out, "ANOTHER, THING AT shelf READ TO book");
-        // post-verbal AT canonicalizes pre-verbal (§9.10)
+        // post-verbal AT canonicalizes pre-verbal (§5.1)
         let s2 = parse_sentence("ANA READ book AT shelf", &d).unwrap();
         assert_eq!(format_sentence(&s2, Some(&d)).unwrap(), "ANA AT shelf READ book");
         // re-parse stability: format(parse(format(parse(x)))) == format(parse(x))

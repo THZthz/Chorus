@@ -15,7 +15,7 @@ use super::paths::{CardReport, Existence, ReachPath};
 // ---------------------------------------------------------------------------
 
 /// Text of one query list: group terms space-joined, groups with ' | '
-/// (§9.49). The design-time diagnostic renderer only — queries never
+/// (§4.5). The design-time diagnostic renderer only — queries never
 /// serialize into the log, so this is not the forbidden canonical printer.
 pub(crate) fn query_text(q: &Query) -> String {
     q.iter()

@@ -12,7 +12,7 @@ pub use crate::core::roles::{Role, ROLES};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Clause {
     pub actors: Vec<Ref>, // unordered set; canonical form is sorted
-    pub at: Option<Ref>,  // pre-verbal in canonical form (§9.10)
+    pub at: Option<Ref>,  // pre-verbal in canonical form (§5.1)
     pub verb: String,
     pub to: Option<Ref>,
     pub objects: Vec<Ref>,
@@ -92,7 +92,7 @@ impl Sign {
 /// absent (the canonical undefined-dropping rule). The log only
 /// ever carries the ref/role/int/delta/str/bool/dur/key/into/asId/pair
 /// shapes (expires/vexpr/param are authored-only — the modifier rides the
-/// concrete row's attrs= materialization, §9.18 — and expand/roll away),
+/// concrete row's attrs= materialization, §6.6 — and expand/roll away),
 /// but the serde impl covers every variant so the model has one
 /// representation.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -111,7 +111,7 @@ pub enum Arg {
     #[serde(rename = "int")]
     Int { v: i64 },
     /// `{ t: 'delta', v }` — signed SET value (+1/-2), applied to the
-    /// current entry (§9.31)
+    /// current entry (§4.4)
     #[serde(rename = "delta")]
     Delta { v: i64 },
     /// `{ t: 'str', v }`
@@ -123,7 +123,7 @@ pub enum Arg {
     /// `{ t: 'dur', v }` — minutes
     #[serde(rename = "dur")]
     Dur { v: i64 },
-    /// `{ t: 'key', v }` — SET key: `level`, `state.sealed`, `aspect:dread` (§9.31)
+    /// `{ t: 'key', v }` — SET key: `level`, `state.sealed`, `aspect:dread` (§4.4)
     #[serde(rename = "key")]
     Key { v: String },
     /// `{ t: 'into', ref: Ref | { role } }`
@@ -139,21 +139,21 @@ pub enum Arg {
     #[serde(rename = "pair")]
     Pair { k: String, v: crate::core::types::AttrValue },
     /// `{ t: 'expires', v }` — the SPAWN `expires <duration>` mint modifier
-    /// (§4.4, §9.36), a DEDICATED arg shape on purpose: a bare dur/str in
-    /// SPAWN args must never be read as the modifier, because a §9.40
+    /// (§4.4, §4.2), a DEDICATED arg shape on purpose: a bare dur/str in
+    /// SPAWN args must never be read as the modifier, because a §10
     /// parameter standing in a `k=v` pair position expands (subst) to the
     /// caller's whole bound value and can land exactly such a shape there.
     /// Authored-sugar only — the concrete row materializes the
-    /// `expires`/`expiresAt` pair inside `attrs=` (§9.18), so the log never
+    /// `expires`/`expiresAt` pair inside `attrs=` (§6.6), so the log never
     /// carries one.
     #[serde(rename = "expires")]
     Expires { v: crate::core::types::AttrValue },
-    /// `{ t: 'vexpr', v }` — ROLL argument (§9.41): a §6.3 value expression.
+    /// `{ t: 'vexpr', v }` — ROLL argument (§4.4): a §6.3 value expression.
     /// Authored form only: the log records the computed ROLLED ints.
     #[serde(rename = "vexpr")]
     Vexpr { v: ValExpr },
     /// `{ t: 'param', name, sign? }` — F3 authored-only: a function parameter
-    /// standing in an arg position (§9.40); `sign` carries the +/- of a delta
+    /// standing in an arg position (§10); `sign` carries the +/- of a delta
     /// position (`+n`). Calls expand at load — the engine and the log never
     /// see one.
     #[serde(rename = "param")]
@@ -188,10 +188,10 @@ impl Arg {
     }
 }
 
-/// One IF/ELSE IF arm (§9.39): a condition
+/// One IF/ELSE IF arm (§6.8): a condition
 /// and its paren'd outcome body. Serde derives exist only so [`Outcome`]
 /// (whose `arms` field holds these) has one representation — IF outcomes are
-/// authored form only and never reach the log (§9.39), so the wire shape of
+/// authored form only and never reach the log (§6.8), so the wire shape of
 /// this type is unobservable.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IfArm {
@@ -208,7 +208,7 @@ pub struct IfArm {
 pub struct Outcome {
     pub op: String,
     pub args: Vec<Arg>,
-    /// op 'IF' only (§9.39): the arms in source order, ELSE IF chain consumed
+    /// op 'IF' only (§6.8): the arms in source order, ELSE IF chain consumed
     /// greedily INSIDE the node. Authored form only — evaluation flattens the
     /// TAKEN branch's outcomes into the record position; the log never
     /// contains an IF op.
@@ -217,7 +217,7 @@ pub struct Outcome {
     /// the ELSE body, or None when authored without one (no true arm → nothing)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback: Option<Vec<Outcome>>,
-    /// op 'FN' only (§9.40, F3): the declared function this authored call
+    /// op 'FN' only (§10, F3): the declared function this authored call
     /// invokes. Authored form only — calls expand at load time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<String>,

@@ -108,7 +108,7 @@ pub(crate) fn path_open(path: &[Pred], world: &CardWorld) -> Result<bool> {
 
 /// The writable paths a query's aspect/state thresholds
 /// demand, in SET-key form ('aspect:x' / 'state.x'). The UNION across
-/// alternation groups (§9.49) — this feeds the possibility analysis, where
+/// alternation groups (§4.5) — this feeds the possibility analysis, where
 /// any single group's demand being pumpable matters.
 pub(crate) fn writable_paths(query: &Query) -> Vec<String> {
     let mut out = Vec::new();

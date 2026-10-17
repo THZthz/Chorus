@@ -59,9 +59,9 @@ pub struct RecipeDef {
     /// gates default hidden (§6.2)
     pub shown: Option<bool>,
     pub hint: Option<String>,
-    /// §9.50: the execution limit (`max N`, N ≥ 1) — None = unlimited
+    /// §6.4: the execution limit (`max N`, N ≥ 1) — None = unlimited
     pub max: Option<i64>,
-    /// §9.48: the `aspects` presence list (`aspects <name> [, <name>]*`) —
+    /// §6.7: the `aspects` presence list (`aspects <name> [, <name>]*`) —
     /// content only, never logged; the `on complete <aspect>` gate reads it
     pub aspects: Vec<String>,
     /// outcome strings, parsed at load
@@ -72,13 +72,13 @@ pub struct RecipeDef {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct VerbContent {
     pub slots: Vec<SlotDef>,
-    /// minutes, consumed automatically on success (§9.12)
+    /// minutes, consumed automatically on success (§6.6)
     pub duration: i64,
     /// first match wins; a `when`-less recipe is the default
     pub recipes: Vec<RecipeDef>,
 }
 
-/// A clock trigger (§9.29).
+/// A clock trigger (§6.6).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotTriggerDef {
     pub id: String,
@@ -88,7 +88,7 @@ pub struct SlotTriggerDef {
     pub out: Vec<String>,
 }
 
-/// An expiry trigger (`on expire of NAME`, §6.6/§9.32).
+/// An expiry trigger (`on expire of NAME`, §6.6/§6.6).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpireTriggerDef {
     pub id: String,
@@ -96,13 +96,13 @@ pub struct ExpireTriggerDef {
     pub out: Vec<String>,
 }
 
-/// A completion trigger (`on complete [<aspect>]`, §9.48). ID-less in the
+/// A completion trigger (`on complete [<aspect>]`, §6.7). ID-less in the
 /// script — the id is engine-minted (`complete:{home}`, then
 /// `complete:{home}#2`, … in declaration order). `home` is the
 /// entity/prototype NAME the clause was authored on: the gate matches it
 /// against a locked card's CURRENT name, which is exactly how a prototype's
 /// trigger reaches its mints (they carry the prototype's name, the same
-/// name-keyed read by which mints take the prototype's aspects — §9.48
+/// name-keyed read by which mints take the prototype's aspects — §6.7
 /// "inherits like other prototype members"; a `derive`-renamed mint carries
 /// its new name and no longer fires the prototype's triggers).
 #[derive(Debug, Clone, PartialEq)]
@@ -159,13 +159,13 @@ pub struct PrototypeDerive {
     pub aspects: Option<IndexMap<String, DeriveAspect>>,
 }
 
-/// A prototype: prototype-parameterized spawn (§6.4, §9.15).
+/// A prototype: prototype-parameterized spawn (§6.4, §9.2).
 /// Shared by the raw and compiled faces (the compiled
 /// `prototypes` map stores the same struct).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrototypeDef {
     pub kind: String,
-    /// §9.38: mints from this prototype may share their name with living
+    /// §4.2: mints from this prototype may share their name with living
     /// copies. Every read is a truthiness test, so a
     /// plain `bool` (default false) is exact.
     pub stackable: bool,
@@ -174,7 +174,7 @@ pub struct PrototypeDef {
     pub derive: Option<PrototypeDerive>,
 }
 
-/// A story ending (§9.35). The flavour is an OPEN
+/// A story ending (§4.4). The flavour is an OPEN
 /// vocabulary (any lowercase word) — never tighten to an enum.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EndingDef {
@@ -182,7 +182,7 @@ pub struct EndingDef {
     pub flavour: Option<String>,
 }
 
-/// A function declaration (§9.40): a parametric
+/// A function declaration (§10): a parametric
 /// outcome MACRO, compiled to templates before verbs/triggers parse.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FunctionDef {
@@ -193,7 +193,7 @@ pub struct FunctionDef {
     pub body: String,
 }
 
-/// A deck declaration (§9.42).
+/// A deck declaration (§4.4).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DeckRaw {
     pub id: String,
@@ -211,19 +211,19 @@ pub struct DeckRaw {
 /// minted ids).
 #[derive(Debug, Clone, Default)]
 pub struct ContentRaw {
-    /// §9.41: the dice seed (default 0). Meta line `seed: N` (§10).
+    /// §4.4: the dice seed (default 0). Meta line `seed: N` (§10).
     pub seed: Option<i64>,
     pub verbs: IndexMap<String, VerbContent>,
     pub triggers: Option<Vec<TriggerDef>>,
     pub prototypes: Option<IndexMap<String, PrototypeDef>>,
     /// prose templates per verb (§5.3)
     pub templates: Option<IndexMap<String, String>>,
-    /// the ending table (§9.35)
+    /// the ending table (§4.4)
     pub endings: Option<IndexMap<String, EndingDef>>,
-    /// parametric outcome macros (§9.40) — declaration order matters for
+    /// parametric outcome macros (§10) — declaration order matters for
     /// error reports only
     pub functions: Option<Vec<FunctionDef>>,
-    /// deck declarations (§9.42) — order matters for error reports only
+    /// deck declarations (§4.4) — order matters for error reports only
     pub decks: Option<Vec<DeckRaw>>,
 }
 
@@ -247,9 +247,9 @@ pub struct CompiledRecipe {
     pub when: Option<Pred>,
     pub shown: bool,
     pub hint: Option<String>,
-    /// §9.50: the execution limit — None = unlimited
+    /// §6.4: the execution limit — None = unlimited
     pub max: Option<i64>,
-    /// §9.48: the `aspects` presence list — the emitter gate an
+    /// §6.7: the `aspects` presence list — the emitter gate an
     /// `on complete <aspect>` trigger reads; content, never logged
     pub aspects: Vec<String>,
     pub out: Vec<Outcome>,
@@ -283,7 +283,7 @@ pub struct CompiledEnding {
     pub flavour: String,
 }
 
-/// A compiled deck (§9.42): the fixed draw order is
+/// A compiled deck (§4.4): the fixed draw order is
 /// a PERMUTATION OVER POSITIONS of the spec (multiset preserved), derived
 /// purely from (seed, deck id) at load. It lives on compiled content, never
 /// on State: identical at play and fold, consuming NO rng counter (law 5).
@@ -311,7 +311,7 @@ pub enum CompiledTrigger {
         on_expire_of: String,
         out: Vec<Outcome>,
     },
-    /// §9.48: `on complete [<aspect>]` — home/aspect semantics mirror
+    /// §6.7: `on complete [<aspect>]` — home/aspect semantics mirror
     /// [`CompleteTriggerDef`]; fires in fire_window's completion, never as an
     /// event (no EVENT row, no `state.fired`).
     Complete {
@@ -348,7 +348,7 @@ impl CompiledTrigger {
 /// on it).
 #[derive(Debug, Clone)]
 pub struct CompiledContent {
-    /// §9.41: every die is `f(seed, counter)`; the run's dice sequence is
+    /// §4.4: every die is `f(seed, counter)`; the run's dice sequence is
     /// fixed at load and replay is counter-based (no re-derivation)
     pub seed: i64,
     pub verbs: IndexMap<String, CompiledVerb>,
@@ -356,25 +356,25 @@ pub struct CompiledContent {
     pub prototypes: IndexMap<String, PrototypeDef>,
     pub templates: IndexMap<String, String>,
     pub endings: IndexMap<String, CompiledEnding>,
-    /// §9.38 stackability, derived from `stackable` declarations at load:
+    /// §4.2 stackability, derived from `stackable` declarations at load:
     /// declared stackable prototype/entity NAMES, and the KINDS of those
     /// declarations (a `kind:K` mint is stackable when its kind carries one).
     /// Only membership is ever read, so the single build (prototype side
     /// + script entity side, once, here) is behavior-preserving.
     pub stackable_names: IndexSet<String>,
     pub stackable_kinds: IndexSet<String>,
-    /// §9.42 the deck table: id → compiled deck (permutation + exhaustion)
+    /// §4.4 the deck table: id → compiled deck (permutation + exhaustion)
     pub decks: IndexMap<String, CompiledDeck>,
-    /// §9.47/§9.48 the GLOBAL recipe-id table: recipe id → owning verb name.
+    /// §6.7 the GLOBAL recipe-id table: recipe id → owning verb name.
     /// Recipe-body RUN candidates resolve against their parent verb (the
-    /// per-verb §9.47 check); `on complete` bodies may cross verbs and resolve
+    /// per-verb §6.7 check); `on complete` bodies may cross verbs and resolve
     /// through this table instead — which is why it demands GLOBAL id
     /// uniqueness: the build below is where a cross-verb collision fails loud.
     pub recipe_verbs: IndexMap<String, String>,
 }
 
 /// One declared entity line. The `stackable` flag rides
-/// along so the §9.38 sets build ONCE here instead of `compile_script`
+/// along so the §4.2 sets build ONCE here instead of `compile_script`
 /// mutating the compiled content afterwards (behavior-preserving — set
 /// membership is order- and structure-free).
 #[derive(Debug, Clone)]
@@ -433,7 +433,7 @@ pub(crate) fn collect_stackable(
 }
 
 /// Compile raw content. `entities` contributes the
-/// script's declared entity lines so deck spec entries (§9.42) may name
+/// script's declared entity lines so deck spec entries (§4.4) may name
 /// plain entities as well as prototypes; `compile_script` passes them,
 /// direct callers without entities pass `&[]` (deck entries validate
 /// against prototypes only).
@@ -442,11 +442,11 @@ pub fn compile_content(
     dict: &Dictionary,
     entities: &[DeclaredEntity],
 ) -> Result<CompiledContent> {
-    // §9.40 FIRST, before any verb/trigger body parses: build the function
+    // §10 FIRST, before any verb/trigger body parses: build the function
     // table — call sites dispatch against it and expand
     // immediately after their parse, so the guards below walk expanded lists.
     let fns = build_fn_table(raw.functions.as_deref().unwrap_or(&[]), dict)?;
-    // §9.38: two derived sets every mint site reads
+    // §4.2: two derived sets every mint site reads
     let (stackable_names, stackable_kinds) = collect_stackable(entities, raw.prototypes.as_ref());
     let mut endings = IndexMap::new();
     for (id, e) in entries_in_key_order(raw.endings.as_ref().unwrap_or(&IndexMap::new())) {
@@ -466,7 +466,7 @@ pub fn compile_content(
         }
         endings.insert(id.to_string(), CompiledEnding { title: e.title.clone(), flavour });
     }
-    // §9.42: the deck table — spec entries resolve against prototypes +
+    // §4.4: the deck table — spec entries resolve against prototypes +
     // declared entities, then the seed-fixed permutation is derived
     let decks = compile_decks(
         raw.decks.as_deref().unwrap_or(&[]),
@@ -532,7 +532,7 @@ pub fn compile_content(
             // id-less recipes mint the 0-based `.recipe<i>` (§6.4) — the
             // one mint, shared verbatim by the lint mirror (Q1 unified)
             let id = r.id.clone().unwrap_or_else(|| mint_recipe_id(&name_lower, raw_when, i));
-            // §9.50: N ≥ 1 — a `max 0` (or negative) can never fire, so it
+            // §6.4: N ≥ 1 — a `max 0` (or negative) can never fire, so it
             // fails loudly at load instead (the script parser checks its own
             // token; this guards the code-level ContentRaw face, like the
             // slot max<min check above)
@@ -555,7 +555,7 @@ pub fn compile_content(
                 out,
             });
         }
-        // §9.38 load-time lint: count()/total() args must be declared roles
+        // §4.5 load-time lint: count()/total() args must be declared roles
         // or queries — over every `when` AND every IF condition
         for r in &recipes {
             let where_ = format!("recipe {}", r.id);
@@ -576,12 +576,12 @@ pub fn compile_content(
             },
         );
     }
-    // §9.47/§9.48: the global recipe-id table, built once here over every
+    // §6.7: the global recipe-id table, built once here over every
     // compiled verb — `on complete` RUN candidates resolve cross-verb through
     // it, and the build is where GLOBAL id uniqueness fails loud: the same id
     // authored by two different verbs would make a cross-verb resolution
     // ambiguous, so it is a load error naming both verbs. (Recipe-body RUN
-    // candidates stay per-parent-verb — the §9.47 check — and same-verb
+    // candidates stay per-parent-verb — the §6.7 check — and same-verb
     // duplicates remain first-match selection, §6.4.)
     let mut recipe_verbs: IndexMap<String, String> = IndexMap::new();
     for v in verbs.values() {
@@ -589,7 +589,7 @@ pub fn compile_content(
             match recipe_verbs.get(&r.id) {
                 Some(prev) if prev != &v.name => {
                     return Err(ChorusError::new(format!(
-                        "recipe id '{}' is declared by both verb {prev} and verb {} — on-complete RUN resolution needs globally unique recipe ids (§9.47, §9.48)",
+                        "recipe id '{}' is declared by both verb {prev} and verb {} — on-complete RUN resolution needs globally unique recipe ids (§6.7)",
                         r.id, v.name
                     )));
                 }
@@ -601,37 +601,37 @@ pub fn compile_content(
     }
     let mut triggers = Vec::new();
     for t in raw.triggers.as_deref().unwrap_or(&[]) {
-        // §9.40: expansion (inside parse_outcome_string) has already run —
+        // §10: expansion (inside parse_outcome_string) has already run —
         // these guards see function-expanded bodies exactly like literal ones
         let mut out = Vec::new();
         for o in t.out() {
             out.extend(parse_outcome_string(o, dict, &fns)?);
         }
         let tid = t.id().to_string();
-        // completion triggers (§9.48) run under a different guard regime than
+        // completion triggers (§6.7) run under a different guard regime than
         // the event kinds: RUN is LEGAL (their home is a window completion)
         // and the role-free lint does not run — the window's bindings are
-        // live there. REFUSE stays banned in every home (§9.34).
+        // live there. REFUSE stays banned in every home (§6.6).
         let is_complete = matches!(t, TriggerDef::Complete(_));
-        // §6.7/§9.34 guards — recursive over IF branch bodies (§9.39)
+        // §6.7/§6.6 guards — recursive over IF branch bodies (§6.8)
         for_each_authored_outcome(&out, &mut |o| {
             // §6.7: PROGRESS narrates a processing window; events have none
             if o.op == "PROGRESS" {
                 return Err(ChorusError::new(if is_complete {
                     format!(
-                        "trigger {tid}: PROGRESS belongs to the completing recipe — completion triggers fire after the outcome list (§9.48)"
+                        "trigger {tid}: PROGRESS belongs to the completing recipe — completion triggers fire after the outcome list (§6.7)"
                     )
                 } else {
                     format!("trigger {tid}: PROGRESS belongs to verb recipes, not events")
                 }));
             }
-            // §9.34: REFUSE aborts a step (§6.5); events have no step to refuse
+            // §6.6: REFUSE aborts a step (§6.5); events have no step to refuse
             // — and a completion trigger cannot refuse the completion it
-            // fires inside of either (§9.48 keeps the ban in all homes)
+            // fires inside of either (§6.7 keeps the ban in all homes)
             if o.op == "REFUSE" {
                 return Err(ChorusError::new(if is_complete {
                     format!(
-                        "trigger {tid}: REFUSE belongs to verb recipes — a completion trigger cannot refuse the completion it fires in (§9.34, §9.48)"
+                        "trigger {tid}: REFUSE belongs to verb recipes — a completion trigger cannot refuse the completion it fires in (§6.6, §6.7)"
                     )
                 } else {
                     format!(
@@ -639,7 +639,7 @@ pub fn compile_content(
                     )
                 }));
             }
-            // §9.47: RUN chains a window completion; events have no window
+            // §6.7: RUN chains a window completion; events have no window
             // to chain from — but a completion trigger fires INSIDE one, so
             // its candidates resolve below against the global table instead
             if o.op == "RUN" && !is_complete {
@@ -649,7 +649,7 @@ pub fn compile_content(
             }
             Ok(())
         })?;
-        // §9.39: event bindings are empty, so a role-dependent operand in a
+        // §6.3: event bindings are empty, so a role-dependent operand in a
         // trigger IF condition would silently read false/0. Completion-trigger
         // bodies see the WINDOW's re-resolved bindings, so the role-free lint
         // does NOT run on them — only the recipe-side count()/total() lint.
@@ -660,7 +660,7 @@ pub fn compile_content(
             }
             Ok(())
         })?;
-        // §9.41: trigger ROLL arguments must be role-FREE — except in
+        // §4.4: trigger ROLL arguments must be role-FREE — except in
         // completion triggers, whose window bindings are live (the dice lint
         // in lint_dice still applies)
         for_each_authored_outcome(&out, &mut |o| {
@@ -674,10 +674,10 @@ pub fn compile_content(
             Ok(())
         })?;
         lint_dice(&format!("trigger {tid}"), &out)?;
-        // §9.48: a completion trigger's RUN candidates resolve against the
+        // §6.7: a completion trigger's RUN candidates resolve against the
         // GLOBAL recipe table (cross-verb legal; a collision already failed
         // loud in the table build above) — an unknown id is a load error, IF
-        // branches included (the §9.35 walk)
+        // branches included (the §4.4 walk)
         if is_complete {
             for_each_authored_outcome(&out, &mut |o| {
                 if o.op != "RUN" {
@@ -696,7 +696,7 @@ pub fn compile_content(
                     };
                     if !recipe_verbs.contains_key(id) {
                         return Err(ChorusError::new(format!(
-                            "trigger {tid}: RUN '{id}' does not name a compiled recipe — on-complete candidates resolve against the global recipe table (§9.47, §9.48)"
+                            "trigger {tid}: RUN '{id}' does not name a compiled recipe — on-complete candidates resolve against the global recipe table (§6.7)"
                         )));
                     }
                 }
@@ -734,9 +734,9 @@ pub fn compile_content(
         }
         templates.insert(name.to_string(), tpl.clone());
     }
-    // §9.35: an ENDING outcome must name a declared ending — recipe or
-    // trigger, checked once at load. §9.42: the same walk pins DRAW to a
-    // declared deck. §9.47: a RUN candidate must name a recipe of the
+    // §4.4: an ENDING outcome must name a declared ending — recipe or
+    // trigger, checked once at load. §4.4: the same walk pins DRAW to a
+    // declared deck. §6.7: a RUN candidate must name a recipe of the
     // PARENT verb — recipe bodies only (triggers were rejected above),
     // checked after every verb is compiled so a candidate may name any
     // recipe of its own verb, position notwithstanding.
@@ -808,7 +808,7 @@ pub fn walk_outcomes<S, C: Clone>(
 }
 
 /// Visit every outcome in an authored list,
-/// RECURSING into IF branch bodies (§9.39) — the single entry point for the
+/// RECURSING into IF branch bodies (§6.8) — the single entry point for the
 /// load-time guards, so nothing escapes by nesting. Function expansion
 /// happens BEFORE these guards run. The visitor is
 /// fallible (the guards throw); Rust models the throw as `Err`.
@@ -847,18 +847,18 @@ fn for_each_if_condition(
     })
 }
 
-/// §9.41/§9.42 load lints shared by recipe and
+/// §4.4/§4.4 load lints shared by recipe and
 /// trigger outcome lists, all run AFTER function expansion.
 fn lint_dice(where_: &str, out: &[Outcome]) -> Result<()> {
     for_each_authored_outcome(out, &mut |o| {
         if o.op == "ROLLED" {
             return Err(ChorusError::new(format!(
-                "{where_}: ROLLED is engine-written — author ROLL and the log records the concrete result (§9.41)"
+                "{where_}: ROLLED is engine-written — author ROLL and the log records the concrete result (§4.4)"
             )));
         }
         if o.op == "DRAWN" {
             return Err(ChorusError::new(format!(
-                "{where_}: DRAWN is engine-written — author DRAW and the log records the concrete DRAWN+SPAWN rows (§9.42)"
+                "{where_}: DRAWN is engine-written — author DRAW and the log records the concrete DRAWN+SPAWN rows (§4.4)"
             )));
         }
         if o.op == "PROGRESS" || o.op == "REFUSE" {
@@ -867,7 +867,7 @@ fn lint_dice(where_: &str, out: &[Outcome]) -> Result<()> {
             if let Some(Arg::Str { v }) = o.args.iter().find(|a| matches!(a, Arg::Str { .. })) {
                 if v.contains("{roll}") {
                     return Err(ChorusError::new(format!(
-                        "{where_}: {{roll}} is only available in NARRATE strings — {} prose is load-fixed (§9.41)",
+                        "{where_}: {{roll}} is only available in NARRATE strings — {} prose is load-fixed (§4.4)",
                         o.op
                     )));
                 }
@@ -885,7 +885,7 @@ fn lint_dice(where_: &str, out: &[Outcome]) -> Result<()> {
     lint_roll_may_bind(where_, out)
 }
 
-/// §9.35: ENDING must name a declared ending;
+/// §4.4: ENDING must name a declared ending;
 /// recurses into IF branch bodies (an unknown ending hidden in an untaken
 /// branch is still a load error).
 fn check_ending_refs(
@@ -911,7 +911,7 @@ fn check_ending_refs(
     })
 }
 
-/// §9.42: a DRAW must name a declared deck (an INTO
+/// §4.4: a DRAW must name a declared deck (an INTO
 /// target needs no check here: it resolves at runtime like every ref
 /// position).
 fn check_deck_refs(
@@ -937,9 +937,9 @@ fn check_deck_refs(
     })
 }
 
-/// §9.47: a RUN's candidates must each name a
+/// §6.7: a RUN's candidates must each name a
 /// compiled recipe of the PARENT verb — an unknown or cross-verb id is a
-/// load error, IF branch bodies included (the §9.35 walk; function expansion
+/// load error, IF branch bodies included (the §4.4 walk; function expansion
 /// happened before this guard, so expanded bodies check like literal ones).
 /// The runtime walk resolves candidates against this same list, so a loaded
 /// content never hits a RUN candidate it cannot resolve.
@@ -959,7 +959,7 @@ fn check_run_refs(where_: &str, out: &[Outcome], verb: &CompiledVerb) -> Result<
             };
             if !verb.recipes.iter().any(|r| &r.id == id) {
                 return Err(ChorusError::new(format!(
-                    "{where_}: RUN '{id}' does not name a recipe of verb {} — unknown and cross-verb ids are load errors (§9.47)",
+                    "{where_}: RUN '{id}' does not name a recipe of verb {} — unknown and cross-verb ids are load errors (§6.7)",
                     verb.name
                 )));
             }
@@ -969,7 +969,7 @@ fn check_run_refs(where_: &str, out: &[Outcome], verb: &CompiledVerb) -> Result<
 }
 
 // ---------------------------------------------------------------------------
-// decks (§9.42): seed-fixed permutations
+// decks (§4.4): seed-fixed permutations
 // ---------------------------------------------------------------------------
 
 /// Compile the deck table. Each spec entry must name
@@ -1080,7 +1080,7 @@ pub fn permute_positions(n: usize, seed: i64, deck_id: &str) -> Vec<usize> {
 /// DRAW op) and fold (the DRAWN row's assertion) so the two can never drift:
 /// below the period it is `order[cursor]`; past it, `reset` wraps (periodic
 /// with period len(order)) and otherwise `defaultcard` serves forever; with
-/// neither, the draw FAILS — a §9.19 step rejection at play (nothing logged,
+/// neither, the draw FAILS — a §9.2 step rejection at play (nothing logged,
 /// cursor unmoved) and a loud fold error there. Requires a non-empty order
 /// (compile_decks rejects an empty spec).
 ///
@@ -1103,13 +1103,13 @@ pub fn draw_from(deck: &CompiledDeck, cursor: i64) -> Result<DeckCard> {
         return Ok(dc.clone());
     }
     Err(ChorusError::new(format!(
-        "deck '{}' is exhausted — no 'reset' and no 'defaultcard' (§9.42)",
+        "deck '{}' is exhausted — no 'reset' and no 'defaultcard' (§4.4)",
         deck.id
     )))
 }
 
 /// Allow several outcomes in one string; usually
-/// one per array element. §9.40: with a function table, parse dispatches
+/// one per array element. §10: with a function table, parse dispatches
 /// NAME( calls and the expansion pass runs in the same step — verb/trigger
 /// bodies are compiled fully expanded, so every guard (and the engine) sees
 /// plain outcomes.
@@ -1123,7 +1123,7 @@ fn parse_outcome_string(src: &str, dict: &Dictionary, fns: &FnTable) -> Result<V
 }
 
 // ---------------------------------------------------------------------------
-// functions: the compile-time macro table (§9.40)
+// functions: the compile-time macro table (§10)
 // ---------------------------------------------------------------------------
 
 /// The shared recipe-id mint, one
@@ -1165,7 +1165,7 @@ fn upper_snake_re() -> &'static Regex {
 }
 
 /// Build the function table; functions parse BEFORE
-/// any verb/trigger body (§9.40), in three ordered passes:
+/// any verb/trigger body (§10), in three ordered passes:
 /// 1. declarations: name/param shape, op-name collisions, IF/ELSE,
 ///    duplicates. No entity/verb name constraint.
 /// 2. bodies: each body parses to a TEMPLATE against the table's names.
@@ -1359,7 +1359,7 @@ mod tests {
         let err = draw_from(&deck, 1).unwrap_err();
         assert_eq!(
             err.msg,
-            "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§9.42)"
+            "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard' (§4.4)"
         );
     }
 

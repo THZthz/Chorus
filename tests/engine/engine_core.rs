@@ -1,5 +1,5 @@
 //! Engine acceptance tests (84 tests) — the spec §6.4 READ ladder, REFUSE semantics
-//! (§6.5), time ownership (§9.12), events (§9.16), fold determinism (§7).
+//! (§6.5), time ownership (§6.6), events (§6.6), fold determinism (§7).
 //!
 //! The mod tree groups the behaviors. Every test builds a FRESH Dictionary
 //! (per-test isolation — this choice affects reserved-word collision
@@ -316,7 +316,7 @@ mod talk_with_about {
     }
 }
 
-/// Multi-clause steps and time ownership (§9.12)
+/// Multi-clause steps and time ownership (§6.6)
 mod multi_clause_steps {
     use super::*;
 
@@ -376,7 +376,7 @@ mod use_on_rite {
     }
 }
 
-/// Events — authored triggers and expiries (§6.6, §9.16)
+/// Events — authored triggers and expiries (§6.6, §6.6)
 mod events {
     use super::*;
 
@@ -497,7 +497,7 @@ mod fold_tests {
     }
 }
 
-/// Dictionary is the law (§9.14)
+/// Dictionary is the law (§5.1)
 mod dictionary_is_the_law {
     use super::*;
 
@@ -785,7 +785,7 @@ mod exists_recipes {
             container_attrs("villa"),
             false,
         );
-        // DESTROY shape: stamp + release the name (§9.14)
+        // DESTROY shape: stamp + release the name (§5.1)
         state.entities.get_mut("hunter").unwrap().dead_action = Some(99);
         state.by_name.remove("HUNTER");
         let r = run_with(&gate(&pd), &pd, state, "0:28 @ ANA PROBE", 1);
@@ -925,7 +925,7 @@ mod clock_and_duration_literals {
     use super::*;
 
     /// A sub-halfhour action leaves dead air; the
-    /// next step resumes on the tick and the gap fires (§9.28)
+    /// next step resumes on the tick and the gap fires (§6.6)
     #[test]
     fn a_sub_halfhour_action_leaves_dead_air_the_next_step_resumes_on_the_tick() {
         let (dict, _c, _s) = setup();
@@ -1041,7 +1041,7 @@ mod empty_base_state_fold {
     }
 }
 
-/// SET deltas and aspect keys (§9.31)
+/// SET deltas and aspect keys (§4.4)
 mod set_deltas_and_aspect_keys {
     use super::*;
 
@@ -1163,7 +1163,7 @@ mod set_deltas_and_aspect_keys {
             r2.state.entities["ana"].attrs.get("funds"),
             Some(&AttrValue::Num(5)) // not 5+5
         );
-        assert!(done(&r2).unwrap().sentence.contains("SET(#ana, funds, 5)")); // role concretized (§9.15), value literal
+        assert!(done(&r2).unwrap().sentence.contains("SET(#ana, funds, 5)")); // role concretized (§9.2), value literal
         let _ = (&dict, &content);
     }
 
@@ -1371,7 +1371,7 @@ mod set_deltas_and_aspect_keys {
     }
 }
 
-/// REPLACE — decay into a successor (§4.4, §9.33)
+/// REPLACE — decay into a successor (§4.4, §4.4)
 mod replace_decay {
     use super::*;
 
@@ -1447,7 +1447,7 @@ mod replace_decay {
         let c = decay_content(&dd, "REPLACE OBJECT WITH ASHES", protos);
         let r = run_with(&c, &dd, state, "0:20 @ ANA DECAY CHALICE", 1);
         assert_eq!(r.rejected, None);
-        // zero new log surface: the record carries the concrete SPAWN+DESTROY pair (§9.33)
+        // zero new log surface: the record carries the concrete SPAWN+DESTROY pair (§4.4)
         assert_eq!(ops(done(&r).unwrap()), ["SPAWN", "DESTROY"]);
         let re = regex::Regex::new(r"-> SPAWN ASHES INTO #house AS #x\d+_1 ").unwrap();
         assert!(
@@ -1515,7 +1515,7 @@ mod replace_decay {
             Some(&AttrValue::Str("NIGHTJAR_FLYER".to_string())) // the grouping has no card: the tag passes on
         );
         assert_eq!(ash.attrs.get("container"), None);
-        // the zone rides the concrete attrs pair, so the fold replays it (§9.33)
+        // the zone rides the concrete attrs pair, so the fold replays it (§4.4)
         let played = clone_state(&r.state);
         let fold_base = {
             let mut b = seed_state();
@@ -1660,7 +1660,7 @@ mod replace_decay {
 }
 
 /// Authored expiry triggers — `on expire of`
-/// (§6.6, §9.32). influence decay: G → E → C → (no trigger: built-in destroy)
+/// (§6.6, §6.6). influence decay: G → E → C → (no trigger: built-in destroy)
 mod authored_expiry_triggers {
     use super::*;
 
@@ -1938,7 +1938,7 @@ mod authored_expiry_triggers {
         save_log(&path, &all).unwrap();
         let replayed =
             fold(&load_log(&path).unwrap(), &moth_base(), &dict, &moth_content(&dict)).unwrap();
-        assert_eq!(snap(&replayed), snap(&state)); // snap includes fired (§9.34)
+        assert_eq!(snap(&replayed), snap(&state)); // snap includes fired (§6.6)
                                                    // one fired entry per EVENT row's trigger — authored ids and
                                                    // expire:<NAME> alike
         let mut fired: Vec<&String> = replayed.fired.iter().collect();
@@ -1951,7 +1951,7 @@ mod authored_expiry_triggers {
     }
 }
 
-/// Trigger outcome guards (§6.7, §9.34)
+/// Trigger outcome guards (§6.7, §6.6)
 mod trigger_outcome_guards {
     use super::*;
 
@@ -2027,13 +2027,13 @@ mod trigger_outcome_guards {
 }
 
 /// SET expires — every §5.1 duration form
-/// materializes expiresAt (§4.2, §9.36)
+/// materializes expiresAt (§4.2, §4.2)
 mod set_expires_duration_forms {
     use super::*;
 
     fn tune_dict() -> Dictionary {
         let mut d = core_dictionary();
-        d.register_verb("TUNE").unwrap(); // not a core verb — the rig from the §9.31 describes
+        d.register_verb("TUNE").unwrap(); // not a core verb — the rig from the §4.4 describes
         d
     }
 
@@ -2095,7 +2095,7 @@ mod set_expires_duration_forms {
                 Some(&AttrValue::Num(at(minutes))),
                 "lit {lit}"
             );
-            // the log keeps the authored quoted string and round-trips (§9.15)
+            // the log keeps the authored quoted string and round-trips (§9.2)
             assert!(
                 done(&r).unwrap().sentence.contains(&format!("-> SET(CHALICE, expires, {lit})")),
                 "lit {lit}: {}",
@@ -2249,20 +2249,20 @@ mod set_expires_duration_forms {
             r2.state.entities[rusty].attrs.get("container"),
             Some(&AttrValue::Str("house".to_string()))
         );
-        // play and fold agree through the quoted path too (§9.34)
+        // play and fold agree through the quoted path too (§6.6)
         let mut all = r1.records.clone();
         all.extend(r2.records.clone());
         assert_eq!(snap(&fold(&all, &seed_state(), &td, &c).unwrap()), snap(&r2.state));
     }
 }
 
-/// The SPAWN `expires <duration>` modifier (§4.4, §9.36, §9.18; the E12
+/// The SPAWN `expires <duration>` modifier (§4.4, §4.2, §9.2; the E12
 /// ledger entry): a mint arms its own decay at BIRTH with the SET-expires
 /// pair — one shared write, so the same forms, the same boundary behavior,
 /// the same loud rejection — anchored to the mint clock (`ctx.now`: the
 /// window's START clock inside a completion, §6.7). Each SPAWN arms its own
 /// fresh copy, so a pooled name arms per instance where a following
-/// `SET DREAD, …` would hit the OLDEST pool member (§9.38). The modifier is
+/// `SET DREAD, …` would hit the OLDEST pool member (§4.2). The modifier is
 /// authored-sugar only: the pair rides the concrete row's `attrs=`
 /// materialization, so the fold replays byte-identically with no new log
 /// surface.
@@ -2342,9 +2342,9 @@ verbs:
 
     /// Each SPAWN carries its own modifier, so each fresh copy arms with its
     /// OWN expiresAt — the oldest-name trap is gone (a `SET DREAD, …` after
-    /// the same list would arm only the pool head, §9.38) — and a plain
+    /// the same list would arm only the pool head, §4.2) — and a plain
     /// unmodified spawn arms not at all. The concrete row's `attrs=` pair
-    /// carries the materialization (§9.18).
+    /// carries the materialization (§9.2).
     #[test]
     fn each_spawn_arms_its_own_fresh_pooled_copy() {
         let dict = core_dictionary();
@@ -2380,7 +2380,7 @@ verbs:
             None,
             "the plain spawn arms nothing"
         );
-        // the concrete SPAWN rows carry the pair inside attrs= (§9.18) —
+        // the concrete SPAWN rows carry the pair inside attrs= (§9.2) —
         // the modifier itself never reaches the log
         let done_rows: Vec<String> = r
             .records
@@ -2435,7 +2435,7 @@ verbs:
     /// An authored `on expire of DREAD` trigger fires at the right minute:
     /// `expires 45m` from minute 0 crosses no boundary at :30 and fires at
     /// the :60 crossing (the first halfhour boundary at or after expiresAt
-    /// that the clock actually crosses, §6.6/§9.36's zero rule).
+    /// that the clock actually crosses, §6.6/§4.2's zero rule).
     #[test]
     fn expiry_fires_the_on_expire_trigger_at_the_right_minute() {
         let dict = core_dictionary();
@@ -2459,7 +2459,7 @@ verbs:
         assert_eq!(events[0].trigger.as_deref(), Some("melt"));
         assert_eq!(events[0].t_game, "0:2", "the :60 crossing, not :30");
         assert!(events[0].sentence.contains("the dread melts"));
-        // §9.32: the authored outcomes replace the built-in destroy entirely
+        // §6.6: the authored outcomes replace the built-in destroy entirely
         // — the NARRATE-only trigger leaves the copy alive to re-fire
         assert_eq!(
             r2.state.entities[pool(&r2.state)[0].as_str()].dead_action,
@@ -2471,7 +2471,7 @@ verbs:
     }
 
     /// INTO-targeted spawns arm the same way, and an authored `attrs=`
-    /// materialization pair merges beside the modifier (§9.18) — with the
+    /// materialization pair merges beside the modifier (§9.2) — with the
     /// modifier applied after the merge, so it is authoritative over a
     /// literal `expiresAt` in the same step's pair.
     #[test]
@@ -2498,7 +2498,7 @@ verbs:
         assert_eq!(ch.attrs.get("expires"), Some(&AttrValue::Num(60)));
     }
 
-    /// The zero-duration boundary is SET-expires' own (§9.36): expiresAt =
+    /// The zero-duration boundary is SET-expires' own (§4.2): expiresAt =
     /// the mint clock, firing at the first halfhour boundary at or after
     /// that minute the clock actually crosses.
     #[test]
@@ -2531,7 +2531,7 @@ verbs:
     /// A non-duration is the same loud rejection SET-expires gives: the bare
     /// form cannot even lex into the modifier slot (parse error), the quoted
     /// form reaches the one duration parser and refuses the window with
-    /// nothing logged as state (§9.36's "2fortnights" precedent).
+    /// nothing logged as state (§4.2's "2fortnights" precedent).
     #[test]
     fn bad_durations_get_the_set_expires_rejections() {
         let dict = core_dictionary();
@@ -2546,7 +2546,7 @@ verbs:
             parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires NEVER", &dict),
             "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got 'NEVER'",
         );
-        // the quoted form is §9.36's string path: a bad unit refuses the
+        // the quoted form is §4.2's string path: a bad unit refuses the
         // window at application, exactly like SET
         let (c, s) = compile(
             &dict,
@@ -2564,25 +2564,25 @@ verbs:
 
     /// The §5.2 round-trip of the new spelling: the modifier renders
     /// keyword-restored from the arg shape, canonicalizes its duration per
-    /// §9.45, and re-parses to the identical outcome; quoted forms re-quote.
+    /// §5.1, and re-parses to the identical outcome; quoted forms re-quote.
     #[test]
     fn the_new_spelling_round_trips() {
         let dict = core_dictionary();
         let s =
             parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 90m", &dict).unwrap();
         let out = format_sentence(&s, Some(&dict)).unwrap();
-        // 90m canonicalizes to the exact single unit 3halfhour (§9.45)
+        // 90m canonicalizes to the exact single unit 3halfhour (§5.1)
         assert_eq!(out, "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour");
         let s2 = parse_sentence(&out, &dict).unwrap();
         assert_eq!(s2.outcomes, s.outcomes);
         assert_eq!(format_sentence(&s2, Some(&dict)).unwrap(), out);
-        // a compound with no exact single unit decomposes (§9.45) and still
+        // a compound with no exact single unit decomposes (§5.1) and still
         // re-parses
         let s3 = parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires 100m", &dict).unwrap();
         let out3 = format_sentence(&s3, Some(&dict)).unwrap();
         assert_eq!(out3, "0:0 @ ANA DREAM -> SPAWN DREAD expires 1h40m");
         assert_eq!(parse_sentence(&out3, &dict).unwrap().outcomes, s3.outcomes);
-        // the §9.36 quoted form keeps its string and re-quotes
+        // the §4.2 quoted form keeps its string and re-quotes
         let s4 = parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"", &dict).unwrap();
         let out4 = format_sentence(&s4, Some(&dict)).unwrap();
         assert_eq!(out4, "0:0 @ ANA DREAM -> SPAWN DREAD expires \"2h\"");
@@ -2643,7 +2643,7 @@ verbs:
         assert_eq!(snap(&replayed), snap(&r2.state));
     }
 
-    /// A non-pooled mint arms exactly the same way (the §9.19 tier where
+    /// A non-pooled mint arms exactly the same way (the §9.2 tier where
     /// `SPAWN X, SET X, expires, …` was already exact — the modifier makes
     /// it one op).
     #[test]
@@ -2667,7 +2667,7 @@ verbs:
     }
 }
 
-/// Core verbs STUDY and MANSUS (§4.3, §9.37)
+/// Core verbs STUDY and MANSUS (§4.3, §4.3)
 mod core_verbs_study_mansus {
     use super::*;
 

@@ -710,7 +710,7 @@ fn walk_list<'c, 'a>(
 }
 
 /// Per-name UNIFORMITY: a list re-minting X
-/// collides unless EVERY mint of X stacks (§9.14; seed 2654).
+/// collides unless EVERY mint of X stacks (§5.1; seed 2654).
 fn add_mint(
     content: &CompiledContent,
     mint_counts: &mut IndexMap<String, MintCount>,

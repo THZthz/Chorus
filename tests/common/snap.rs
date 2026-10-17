@@ -53,24 +53,24 @@ pub fn snap(s: &State) -> String {
         sorted_entries(s.by_name.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
     );
     root.insert("now".to_string(), serde_json::json!(s.now));
-    // §9.41: the dice counter — play and fold must land it identically
+    // §4.4: the dice counter — play and fold must land it identically
     root.insert("rng".to_string(), serde_json::json!(s.rng));
-    // §9.42: the deck cursors
+    // §4.4: the deck cursors
     root.insert(
         "decks".to_string(),
         sorted_entries(s.decks.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
     );
-    // §9.50: the recipe execution counts — play and fold must rebuild them
+    // §6.4: the recipe execution counts — play and fold must rebuild them
     // identically (the same registration path)
     root.insert(
         "executed".to_string(),
         sorted_entries(s.executed.iter().map(|(k, v)| (k.clone(), serde_json::json!(v)))),
     );
-    // §9.34: play and fold must agree on fired too (default string sort)
+    // §6.6: play and fold must agree on fired too (default string sort)
     let mut fired: Vec<&String> = s.fired.iter().collect();
     fired.sort_by(|a, b| cmp_utf16(a, b));
     root.insert("fired".to_string(), serde_json::json!(fired));
-    // §9.35: …and on the story's ending
+    // §4.4: …and on the story's ending
     root.insert(
         "ended".to_string(),
         match &s.ended {

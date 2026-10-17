@@ -206,7 +206,7 @@ pub fn candidates_for(
     depth: Depth,
 ) -> Vec<Cand> {
     let full = depth == Depth::Full;
-    let clock = next_step_clock(state.now); // the front door's rule (§9.28)
+    let clock = next_step_clock(state.now); // the front door's rule (§6.6)
     let alive: Vec<&Entity> = state.entities.values().filter(|e| e.dead_action.is_none()).collect();
     let chars: Vec<&Entity> = alive.iter().copied().filter(|e| e.kind == "character").collect();
     let pool = |slot: &CompiledSlot| -> Vec<&Entity> {
@@ -539,7 +539,7 @@ pub fn sampled_walk_states(world: &ExplorerWorld) -> Result<Vec<(String, State)>
         let n = r.records.len();
         records.extend(r.records);
         id += n as i64;
-        // §9.35 ending-awareness, as in the walk pass: undo through the
+        // §4.4 ending-awareness, as in the walk pass: undo through the
         // ending step so the harvest keeps exercising real play and reaches
         // later hours
         if state.ended.is_some() {

@@ -11,10 +11,10 @@ Inputs (read-only):
   --out    the Chorus script to generate (scripts/cultist-full.txt).
 
 Mapping spec: docs/reverse/cultist-simulator.md §2/§6; grammar:
-docs/spec/text-engine-v0.6.md §4.3/4.4/4.5/6.1/6.3/6.4/6.8/9.31/9.32/9.35/
-9.36/9.38/9.41/9.42/9.47/9.48/9.49/9.50/§10; engine laws: docs/plans/v0.6-cs-slice.md
-§3 (entity mints are impossible — decay targets and restore spawns are
-PROTOTYPES; REPLACE into a prototype is legal in recipe bodies only).
+docs/spec/text-engine-v0.6.md §4.3/4.4/4.5/6.1/6.3/6.4/6.8/6.6/4.2/6.7/§10;
+engine laws: docs/plans/v0.6-cs-slice.md §3 (entity mints are impossible —
+decay targets and restore spawns are PROTOTYPES; REPLACE into a prototype is
+legal in recipe bodies only).
 
 FULL-COVERAGE EXPORT — every input element/recipe/deck/ending is EMITTED or a
 NAMED STRUCTURAL SKIP (impossible under the engine grammar); there are no
@@ -58,7 +58,7 @@ default would take every bare attempt from it (first-match, §6.4) — the
 player-visible surface would change. On the five carriers this cannot happen:
 their `actors` slot is guarded (`kind:character aspect:ritual>=1`, and no
 character carries `ritual`), so suggestions skip them and typed attempts
-reject at the engine, while §9.47 RUN projections do not re-check slot queries
+reject at the engine, while §6.7 RUN projections do not re-check slot queries
 and still open their windows. A carrier's default is a REFUSE wall, last in
 its list.
 
@@ -72,7 +72,7 @@ keeps its emitted form and wins first-match exactly as before); the
 requirement-less station twins get a never-matching when (`NOT (count(actors)
 >= 1) …` — CS-faithful: they are data-dead there too), while requirement-less
 carrier recipes get an always-true conjunct instead, because carriers are
-RUN-addressed and a never-when would silently end CS-live chains (§9.47
+RUN-addressed and a never-when would silently end CS-live chains (§6.7
 re-checks a pinned candidate's when).
 
 ASPECT ELEMENTS: the 330 isAspect elements emit as stackable PROTOTYPES —
@@ -178,7 +178,7 @@ CARRIER_OF = {
 
 # the actors-slot guard on carrier verbs: no CS character-kind card carries
 # the `ritual` aspect, so suggestions skip the carrier stations and typed
-# attempts reject at the engine, while §9.47 RUN projections (which do not
+# attempts reject at the engine, while §6.7 RUN projections (which do not
 # re-check slot queries) still open their chain windows. Declared on rites.
 CARRIER_ACTORS_GUARD = "kind:character aspect:ritual>=1"
 CARRIER_GUARD_ASPECTS = {"ritual"}
@@ -300,7 +300,7 @@ def norm_when(w):
 
 # Always-true when-clauses for RUN-target recipes that would otherwise be
 # shadowed (identical requirements or no requirements at all). RUN pins by id
-# (§9.47) and re-checks only the pinned candidate, so a tautology when keeps a
+# (§6.7) and re-checks only the pinned candidate, so a tautology when keeps a
 # chain recipe reachable exactly as a chain target while selection still
 # prefers the earlier twin. Only comparison ops the lint's count-gate scanner
 # handles are used (`!=` would hit its unreachable arm).
@@ -390,7 +390,7 @@ class Converter:
         self.n_twins = Counter()         # verb -> shadowed twins emitted hidden
         self.n_aspect_cards = 0          # isAspect prototypes emitted
         # lifetime arming (P1-2): every lifetime-bearer recipe-effect mint is
-        # ARMED — the authored `SPAWN X expires <dur>` modifier (§4.4/§9.36;
+        # ARMED — the authored `SPAWN X expires <dur>` modifier (§4.4/§4.2;
         # findings E12's spawn-modifier half) materializes expiresAt at the
         # mint, per copy, so pooled names arm per instance. Deck draws stay
         # E12-LEDGERED (DRAW has no expires arg — findings E12's open half).
@@ -572,7 +572,7 @@ class Converter:
             decay = e.get("decayTo")
             if not decay or decay not in self.el:
                 # built-in destroy-by-id expiry: no authored trigger (the
-                # §9.38-safe path under pools)
+                # §4.2-safe path under pools)
                 continue
             body = [f"DESTROY {self.elname[eid]}", f"SPAWN {self.elname[decay]}"]
             dlt = self.el[decay].get("lifetime")
@@ -757,7 +757,7 @@ class Converter:
         uncond_default = {}
 
         # RUN targets survive duplicate/unconditional shadowing with a
-        # disambiguated tautology when (RUN pins by id; §9.47). Collected
+        # disambiguated tautology when (RUN pins by id; §6.7). Collected
         # over station AND carrier recipes.
         run_targets = set()
         verb_of_rid = {}
@@ -831,7 +831,7 @@ class Converter:
                     # requirement-less carrier main: carriers are never
                     # walked (the guarded actors slot), so an always-true
                     # conjunct is safe and keeps the recipe RUN-addressable
-                    # (§9.47 re-checks a pinned candidate's when — a
+                    # (§6.7 re-checks a pinned candidate's when — a
                     # never-when would silently end CS-live chains)
                     i = tau_pool[verb]
                     tau_pool[verb] += 1
@@ -1008,7 +1008,7 @@ class Converter:
 
     def run_ladder(self, arms, rid, is_copy):
         """arms [(chance, id)] → nested fresh-roll ROLL/IF ladder; one RUN
-        reached per completion (§9.47). CS rolls each entry in order, first
+        reached per completion (§6.7). CS rolls each entry in order, first
         pass runs. Each arm RUNs a CANDIDATE LIST of its own entry plus every
         later entry: the roll gives the entry its priority, and if its `when`
         fails the walk falls through to the later candidates instead of
@@ -1017,7 +1017,7 @@ class Converter:
         if not arms:
             return None
         if len(arms) > 1:
-            self.lose("linked/alts collapsed to one RUN per completion (§9.47 single-RUN law)",
+            self.lose("linked/alts collapsed to one RUN per completion (§6.7 single-RUN law)",
                       None if is_copy else rid)
         ids = [a[1] for a in arms]
 
@@ -1035,12 +1035,12 @@ class Converter:
 
     def lifetime_arm(self, rid, k, name):
         """Lifetime bookkeeping for one authored mint of element `k` (P1-2):
-        the authored `expires <duration>` SPAWN modifier (§4.4/§9.36 — the
+        the authored `expires <duration>` SPAWN modifier (§4.4/§4.2 — the
         engine's E12 spawn-modifier fix) rides every lifetime bearer's SPAWN,
         so the fresh copy arms at BIRTH with the SET-expires pair. Each SPAWN
-        arms its own mint — pooled names arm per instance (the §9.38
+        arms its own mint — pooled names arm per instance (the §4.2
         oldest-name trap never applies) and the old SET-after-SPAWN shape's
-        §9.19 non-stackable pin is not needed; the modifier composes with
+        §9.2 non-stackable pin is not needed; the modifier composes with
         INTO and is authoritative over any literal expiresAt in the same
         step's attrs= pairs. Sites count once per (recipe, element); alt/run
         copies share the parent's csid. Deck draws cannot ride the modifier
@@ -1139,7 +1139,7 @@ class Converter:
             pos.append("hidden")
         if r.get("maxexecutions"):
             pos.append(f"max {int(r['maxexecutions'])}")
-        # §9.48 `aspects` presence list: own running-aspects + the positive
+        # §6.7 `aspects` presence list: own running-aspects + the positive
         # requirement keys (the CS situation dictionary while running)
         decl = sorted(set((r.get("aspects") or {}).keys())
                       | {k for k, v in (r.get("requirements") or {}).items() if int(v) > 0})
@@ -1186,7 +1186,7 @@ class Converter:
     # -- verb emission ---------------------------------------------------------
 
     def plan_slots(self):
-        """CS's any-of required map → ONE alternation slot (§9.49); forbidden
+        """CS's any-of required map → ONE alternation slot (§4.5); forbidden
         maps → negated terms in every group."""
         self.slot_of = {}
         for v in self.cs_verbs:
@@ -1328,7 +1328,7 @@ class Converter:
             lines.append("    with: 0..1")
             lines.append(f"    duration: {self.verb_duration[verb]}")
             lines.append("    recipes:")
-            lines.append("      # carrier station — chain-addressed only (§9.47): the guarded")
+            lines.append("      # carrier station — chain-addressed only (§6.7): the guarded")
             lines.append("      # actors slot matches no character, so this verb is never")
             lines.append("      # suggested and a typed attempt rejects; RUN projections do")
             lines.append("      # not re-check slot queries. Every recipe is hidden.")
@@ -1429,8 +1429,8 @@ class Converter:
         w("#              existentials and corrupt the extantreq gates. Cards never")
         w("#              minted anywhere and unique:true are declared entities;")
         w("#              everything minted at runtime, deck-spec members, and")
-        w("#              lifetime bearers are stackable PROTOTYPES (the §9.19 mint-")
-        w("#              collision law and the §9.44 deck livelock rule outrank CS's")
+        w("#              lifetime bearers are stackable PROTOTYPES (the §9.2 mint-")
+        w("#              collision law and the §10 deck livelock rule outrank CS's")
         w("#              unique:true; flips are counted in the report).")
         w("#   carriers   the five non-station lexemes (READ TRAVEL_TO USE_ON ACQUIRE")
         w("#              LOCATE_AT) carry every non-station CS actionid, hidden,")
@@ -1449,19 +1449,19 @@ class Converter:
         w("#              never-matching when (CS cannot fire them either), while")
         w("#              requirement-less carrier recipes get an always-true one")
         w("#              (carriers are RUN-addressed; a never-when would end CS-live")
-        w("#              chains, §9.47).")
+        w("#              chains, §6.7).")
         w("#   decay      1 CS second → 1 engine minute. A lifetime with a decayTo is")
         w("#              an `on expire` DESTROY+SPAWN+SET chain (never REPLACE from a")
         w("#              trigger — the trigger-body law); without a decayTo the")
-        w("#              engine's built-in destroy-by-id expiry stands (the §9.38-")
+        w("#              engine's built-in destroy-by-id expiry stands (the §4.2-")
         w("#              safe path under pools). Recipe-effect mints of lifetime")
         w("#              bearers arm at birth via the authored `SPAWN X expires")
-        w("#              <dur>` modifier (§4.4/§9.36 — each fresh copy its own")
+        w("#              <dur>` modifier (§4.4/§4.2 — each fresh copy its own")
         w("#              decay, pooled or not; findings E12's spawn-modifier half);")
         w("#              deck-drawn lifetime bearers stay un-armed (DRAW has no")
         w("#              expires arg — findings E12's open half).")
         w("#   chains     linked → RUN ladders: ROLL(1,100)+IF arms with a fresh roll")
-        w("#              per entry; one RUN op per completion (§9.47), so CS's")
+        w("#              per entry; one RUN op per completion (§6.7), so CS's")
         w("#              parallel additional-alts + linked chain collapse into the")
         w("#              arms of ONE ladder (alts first, linked last as fallback).")
         w("#              Each arm RUNs a candidate list of its own entry plus every")
@@ -1477,7 +1477,7 @@ class Converter:
         w("#              aspect-borne hooks (CS carries some on isAspect elements,")
         w("#              e.g. job/ingredient → needs) distribute onto every card")
         w("#              declaring the aspect. Recipes declare `aspects` = their own")
-        w("#              running aspects + positive requirement keys (§9.48).")
+        w("#              running aspects + positive requirement keys (§6.7).")
         w("#")
         w("# The feature-loss list (emitted-with-loss and dropped-feature counts —")
         w("# distinct from skips) and the structural-skip tables are in the")

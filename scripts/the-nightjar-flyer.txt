@@ -24,7 +24,7 @@
 # only lands at the border at midnight, and Vienna scatters everyone at 4:00.
 # The clock ticks in halfhours — 0:42 is 21:00 — and the triggers below show
 # every authored form: `once` and recurring, `at halfhour N` and the `at
-# hour N` alias (§10), and the expiry form `on expire of NAME` (§9.32)
+# hour N` alias (§10), and the expiry form `on expire of NAME` (§6.6)
 # beside the built-in destroy.
 #
 # Suspicion rides the night with you. SUSPICION is a pool, not a card: every
@@ -36,7 +36,7 @@
 # The passengers trade gossip from the RUMOURS deck, the rude searches are
 # rolled against the searcher's nerve, and dreaming draws from the DREAMS
 # deck — a second deck with neither `defaultcard` nor `reset`, whose
-# exhaustion is a loud failure (§9.42).
+# exhaustion is a loud failure (§4.4).
 #
 # seed: 1899 — calibrated for the scripted win path: the cabin search's
 # patrol and the 22:30 rounds both
@@ -72,7 +72,7 @@ entities:
   THE_GUARD is character with duty:2, unmet:1 at GUARD_VAN
   THE_CLAIM_TICKET is item with claim:1 at THE_GUARD
 
-  # a stackable entity line (§9.38, §10) of the `resource` kind (§4.1):
+  # a stackable entity line (§4.2, §10) of the `resource` kind (§4.1):
   # wages are a pool of identical cards, not one card
   FUNDS is resource stackable
 
@@ -113,7 +113,7 @@ prototypes:
   THE_STOPPED_WATCH is item
   CONFESSION_OF_QUILL is idea with secret:3
   THE_CLOSED_TALLY is rite with case.closed:1
-  # a derive prototype (§6.4, §9.23): static aspects AND derived ones —
+  # a derive prototype (§6.4): static aspects AND derived ones —
   # minted as HUNCH_<object>, its hunch read off the object's secret
   HUNCH is idea with aether:1 deriving name from object, hunch from object.secret-1
   # pools: suspicion gathers, gossip circulates — same-name copies are legal
@@ -126,12 +126,12 @@ prototypes:
 
 # ── the timetable speaks ─────────────────────────────────────────────────
 # body_found hands the late lord a `expires` clock: one day, then the
-# authored `on expire` trigger replaces him (REPLACE, §9.33) instead of the
+# authored `on expire` trigger replaces him (REPLACE, §4.4) instead of the
 # built-in destroy. The tonic glass takes the built-in path: SET with a
-# quoted duration (§9.36 — the quoted path accepts every §5.1 unit, the
+# quoted duration (§4.2 — the quoted path accepts every §5.1 unit, the
 # halfhour included) and no authored trigger. vienna_arrival is the
 # deadline: reach Vienna with no name on the tally-board and the story
-# quietly ends (ENDING in a trigger, the default flavour, §9.35).
+# quietly ends (ENDING in a trigger, the default flavour, §4.4).
 triggers:
   body_found once at halfhour 44 -> DESTROY THE_PATENTEE, SPAWN THE_LATE_LORD INTO FIRST_CABIN, SPAWN THE_AETHER_SEAL INTO FIRST_CABIN, SET(FIRST_CABIN, unsealed, 1), SET(THE_AETHER_SEAL, state.sealed, true), SET(THE_LATE_LORD, expires, 1d), NARRATE "A cry from the first cabin. Lord Vane lies behind his own aether-seal, unrobbed, unwounded, and entirely dead."
   night_porter once at halfhour 46 -> night_watchman()
@@ -156,7 +156,7 @@ functions:
 
 # ── what the corridor gossips and dreams about ───────────────────────────
 # the draw order is the seed-fixed permutation of the spec (2:1:1 weighting);
-# DREAMS shows the bare deck line — no defaultcard, no reset (§9.42)
+# DREAMS shows the bare deck line — no defaultcard, no reset (§4.4)
 decks:
   RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset
   DREAMS spec PORTENT, PORTENT, VOID
@@ -255,7 +255,7 @@ verbs:
       default -> NARRATE "{actors} watch the night fields run past."
 
   STUDY:
-    # READ's signature (§4.3) at a compound duration (§9.45); the french gate
+    # READ's signature (§4.3) at a compound duration (§5.1); the french gate
     # carries no id — the compiler mints study.recipe0 — and is POSTED:
     # shown, with a hint (§6.2, §6.4)
     actors: 1..2 kind:character
@@ -280,7 +280,7 @@ verbs:
   MANSUS:
     # the crossing is walked in pairs — one to knock, one to hold the lamp —
     # an exact slot count (§6.1); the fire-door rolls with the place's own
-    # aspect as bonus (§9.41) and nests an IF inside an IF (§6.8)
+    # aspect as bonus (§4.4) and nests an IF inside an IF (§6.8)
     actors: 2 kind:character
     object: 1 kind:place
     duration: 1halfhour
@@ -289,7 +289,7 @@ verbs:
       default -> NARRATE "{actors} look long at the place, and the place looks back."
 
   LOCATE_AT:
-    # the utility verb — a sub-halfhour duration leaves dead air behind (§9.28)
+    # the utility verb — a sub-halfhour duration leaves dead air behind (§6.6)
     actors: 1 kind:character
     object: 1 kind:place
     duration: 20m
@@ -300,7 +300,7 @@ verbs:
     # an open-ended slot count with a three-term query — kind, aspect level,
     # and the state flag the seal carries until its voice is played (§4.5);
     # the taken branch draws from the DREAMS deck (no INTO) and ADVANCEs the
-    # window (§9.12)
+    # window (§6.6)
     actors: 1 kind:character
     with: 0.. kind:idea aspect:secret>=1 state:!sealed
     duration: 1h
@@ -309,7 +309,7 @@ verbs:
       default -> NARRATE "{actors} sleep without dreaming, and the night files it away."
 
   ACQUIRE:
-    # the cost verb — a negative delta may go below zero (§9.31), and the
+    # the cost verb — a negative delta may go below zero (§4.4), and the
     # canonical paren'd MOVE carries the ticket into the signer's pocket;
     # the signed flag keeps the company from charging twice for one ticket
     actors: 1 kind:character

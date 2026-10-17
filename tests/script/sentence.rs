@@ -1,7 +1,7 @@
 //! Sentence spec-conformance tests —
 //! every §5.2 worked example parses, canonicalizes, and round-trips. Plus
-//! actor-order equality (§9.6), sugar canonicalization, reserved words
-//! (§9.14).
+//! actor-order equality (§4.3), sugar canonicalization, reserved words
+//! (§5.1).
 //!
 //! Conventions: one `#[test]` per behavior; a FRESH Dictionary per test
 //! (this choice matters for reserved-word-collision tests);
@@ -30,7 +30,7 @@ fn solo_read_with_at_context_bare_ref_shorthand_becomes_spawn() {
 
 #[test]
 fn two_characters_talking_actor_order_is_not_semantic() {
-    // (§9.6)
+    // (§4.3)
     let dict = core_dictionary();
     let a = canonical(
         "2:19 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1",
@@ -132,7 +132,7 @@ fn role_refs_in_outcomes_render_uppercase() {
     );
 }
 
-// ---------- SET deltas and aspect keys, §9.31 ------------------------------
+// ---------- SET deltas and aspect keys, §4.4 ------------------------------
 
 #[test]
 fn signed_values_parse_as_deltas_and_print_with_their_sign() {
@@ -167,7 +167,7 @@ fn aspect_keys_keep_their_prefix_dotted_attr_keys_print_bare() {
 
 #[test]
 fn deltas_are_integers_only_a_duration_after_a_sign_is_a_parse_error() {
-    // (§9.31)
+    // (§4.4)
     let dict = core_dictionary();
     assert_err_msg(
         parse_sentence("0:0 @ ANA WAIT -> SET(ANA, funds, +2h)", &dict),
@@ -179,7 +179,7 @@ fn deltas_are_integers_only_a_duration_after_a_sign_is_a_parse_error() {
     );
 }
 
-// ---------- lexical discipline, §9.14 --------------------------------------
+// ---------- lexical discipline, §5.1 --------------------------------------
 
 #[test]
 fn reserved_words_cannot_be_names() {
@@ -239,7 +239,7 @@ fn study_and_mansus_register_and_are_reserved_like_every_verb_lexeme() {
 #[test]
 fn the_new_verbs_round_trip_like_the_old_ones() {
     // (§5.1); post-verbal AT canonicalizes
-    // pre-verbal for the new verbs too (§9.10)
+    // pre-verbal for the new verbs too (§5.1)
     let dict = core_dictionary();
     assert_eq!(canonical("0:14 @ ANA STUDY THE_MANIFEST", &dict), "0:14 @ ANA STUDY THE_MANIFEST");
     assert_eq!(

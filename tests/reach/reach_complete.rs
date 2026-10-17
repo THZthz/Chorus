@@ -6,8 +6,9 @@
 //! committed-role slots can lock the home (the window rung), under a
 //! selectable completable recipe that declares the aspect (the aspect
 //! rung), with the body's mints colliding with nothing the completion draft
-//! holds (the draft rung). The support lines here are byte-frozen (the
-//! render contract).
+//! holds (the draft rung — EXISTENTIAL over the (verb, recipe) witnesses:
+//! one clean pair releases, only every pair dirty demotes). The support
+//! lines here are byte-frozen (the render contract).
 
 use std::process::Command;
 
@@ -222,6 +223,185 @@ fn a_complete_trigger_on_a_produced_home_proves_after_the_home_is_proven() {
         .chain
         .join("\n")
         .contains("trigger complete:HOME_CARD fires when a window completes binding 'HOME_CARD'"));
+}
+
+/// The draft rung is EXISTENTIAL over the (verb, recipe) witnesses — a
+/// complete trigger fires on every completion (no once), so ONE clean pair
+/// lets the mint land: WORK's work.dirty mints the trigger body's own
+/// X_CARD (that pair's completion draft collides — and the pair's own site
+/// even demotes on its MOVE, so the trigger is the card's only proven
+/// server), while EXPLORE's explore.r0 mints nothing (that pair is clean).
+/// The trigger proves by walking the CLEAN pair — the support line names
+/// EXPLORE/explore.r0, never the dirty witness.
+#[test]
+fn a_complete_trigger_proves_through_one_clean_witness_pair_and_names_it() {
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+        ])),
+        verbs: IndexMap::from([
+            (
+                "WORK".to_string(),
+                VerbContent {
+                    slots: vec![
+                        SlotDef {
+                            role: "actors".to_string(),
+                            min: 1,
+                            max: Some(1),
+                            query: Some("kind:character".to_string()),
+                            shown: None,
+                        },
+                        SlotDef {
+                            role: "object".to_string(),
+                            min: 1,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
+                    ],
+                    duration: 30,
+                    recipes: vec![RecipeDef {
+                        id: Some("work.dirty".to_string()),
+                        when: None,
+                        shown: None,
+                        hint: None,
+                        max: None,
+                        aspects: vec![],
+                        // the MOVE keeps the dirty recipe's own site off the
+                        // card (a throwing op demotes the list) without
+                        // touching its draft — X_CARD is still an
+                        // unconditional mint of the completion
+                        out: vec!["SPAWN X_CARD".to_string(), "MOVE ANA INTO ROOM".to_string()],
+                    }],
+                },
+            ),
+            (
+                "EXPLORE".to_string(),
+                VerbContent {
+                    slots: vec![
+                        SlotDef {
+                            role: "actors".to_string(),
+                            min: 1,
+                            max: Some(1),
+                            query: Some("kind:character".to_string()),
+                            shown: None,
+                        },
+                        SlotDef {
+                            role: "object".to_string(),
+                            min: 1,
+                            max: Some(1),
+                            query: None,
+                            shown: None,
+                        },
+                    ],
+                    duration: 30,
+                    recipes: vec![RecipeDef {
+                        id: Some("explore.r0".to_string()),
+                        when: None,
+                        shown: None,
+                        hint: None,
+                        max: None,
+                        aspects: vec![],
+                        out: vec![],
+                    }],
+                },
+            ),
+        ]),
+        triggers: Some(vec![complete_trigger("HOME_CARD", None)]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![
+        ent("ANA", "character", &[]),
+        ent("ROOM", "place", &[]),
+        ent("HOME_CARD", "item", &[]),
+    ]);
+    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert_eq!(rep.existence, Existence::Proven);
+    // the support walk names the CLEAN witness (EXPLORE), not the dirty one
+    assert!(
+        rep.chain.join("\n").contains(
+            "trigger complete:HOME_CARD fires when a window completes binding 'HOME_CARD' — \
+             completion is arrangeable (commit EXPLORE locking 'HOME_CARD' in its object slot; \
+             recipe explore.r0 completes the window)"
+        ),
+        "{:?}",
+        rep.chain
+    );
+    assert!(
+        !rep.chain.join("\n").contains("work.dirty"),
+        "the dirty witness must not render: {:?}",
+        rep.chain
+    );
+}
+
+/// A min-0 committed slot (0..1) is NEVER a forced lock — the player can
+/// leave it empty and commit the completion without binding the home at
+/// all. WORK's only home-fitting slot is the optional `with` slot (the
+/// world's lone item is HOME_CARD, so pre-correction every commit
+/// "force-locked" it): work.r0's own X_CARD mint collides with the trigger
+/// body's X_CARD mint on every completion, and the recipe falsely demoted
+/// (CompleteDraftCollision). With the min≥1 rule the recipe proves — the
+/// player commits actors only; no window fires the trigger.
+#[test]
+fn an_optional_min0_slot_never_force_locks_so_the_completing_recipe_proves() {
+    let raw = ContentRaw {
+        prototypes: Some(IndexMap::from([
+            ("HOME_CARD".to_string(), proto("item")),
+            ("X_CARD".to_string(), proto("item")),
+        ])),
+        verbs: IndexMap::from([(
+            "WORK".to_string(),
+            VerbContent {
+                slots: vec![
+                    SlotDef {
+                        role: "actors".to_string(),
+                        min: 1,
+                        max: Some(1),
+                        query: Some("kind:character".to_string()),
+                        shown: None,
+                    },
+                    SlotDef {
+                        role: "with".to_string(),
+                        min: 0,
+                        max: Some(1),
+                        query: Some("kind:item".to_string()),
+                        shown: None,
+                    },
+                ],
+                duration: 30,
+                recipes: vec![RecipeDef {
+                    id: Some("work.r0".to_string()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: vec![],
+                    out: vec!["SPAWN X_CARD".to_string()],
+                }],
+            },
+        )]),
+        triggers: Some(vec![complete_trigger("HOME_CARD", None)]),
+        ..ContentRaw::default()
+    };
+    let content = compile(&raw);
+    let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
+    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert_eq!(rep.existence, Existence::Proven);
+    // the proven server is the RECIPE (its completion can simply not fill
+    // the optional slot); the trigger's own witness stays draft-dirty
+    assert!(
+        rep.chain[0].contains("SPAWN mints 'X_CARD' — recipe work.r0 of WORK"),
+        "{:?}",
+        rep.chain
+    );
+    assert!(rep
+        .chain
+        .join("\n")
+        .contains("WORK committable: actors ×1 ← initial entity ANA (character)"));
 }
 
 /// The integration smoke: the cultist slice's THE_TURNING is minted ONLY by

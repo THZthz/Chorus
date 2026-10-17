@@ -382,6 +382,12 @@ fn why_table_names_the_wave3_completion_rungs() {
     // ② but the completion draft already holds X_GEM (work.r0's own mint),
     // so the body's X_GEM mint refuses the whole scratch. The recipe's site
     // demotes the same way (the completing recipe's own contamination).
+    // The rung is EXISTENTIAL over the (verb, recipe) witnesses — one clean
+    // pair (its own draft holding no body mint; the occupancy is that
+    // pair's, never a global union) would release the trigger — but this
+    // fixture has exactly ONE witness pair, so "every pair dirty" holds and
+    // the byte-exact demotion stands (the clean-pair release is pinned in
+    // reach_complete's a_complete_trigger_proves_through_one_clean_witness_pair).
     let binder_no_aspect = ContentRaw {
         prototypes: binder.prototypes.clone(),
         verbs: {

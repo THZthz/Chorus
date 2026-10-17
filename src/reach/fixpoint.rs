@@ -396,10 +396,11 @@ impl<'c> WorldFacts<'c> {
             // the outcomes land on the completion draft, and a complete
             // trigger that fires on this window and refuses discards the
             // whole scratch — the recipe's mints included. When every
-            // completion of this verb force-locks such a trigger's home, the
-            // recipe's completion always refuses and its mints never land
-            // (fuzz seed 162: travel_to.r0's P3 against the t1 body's own
-            // P3 mint).
+            // completion of this verb force-locks such a trigger's home (a
+            // min≥1 committed slot whose every world fit is named the
+            // home), the recipe's completion always refuses and its mints
+            // never land (fuzz seed 162: travel_to.r0's P3 against the t1
+            // body's own P3 mint).
             if let Some(ri) = site.recipe {
                 if let Some(name) = self.completion_contaminated(world, vi, ri) {
                     return (Err(CardBlocker::CompleteDraftCollision { name }), None);
@@ -443,9 +444,14 @@ impl<'c> WorldFacts<'c> {
             //   selectable completable recipe must carry it;
             // ③ the completion draft — the window refusal is atomic (the
             //   whole scratch dies with any refusal), so the body's
-            //   non-stackable mints must not collide with the draft's
-            //   occupants: the locked home itself, the completing recipe's
-            //   own mints, or a same-home sibling trigger's mints.
+            //   non-stackable mints must miss the draft occupants: the
+            //   locked home itself, the completing recipe's own mints, or
+            //   a same-home sibling trigger's mints. Judged PER WITNESS
+            //   PAIR — complete triggers fire on every completion (no
+            //   once), so reachability is existential over the pairs: one
+            //   clean pair (that pair's completion draft holds no body
+            //   mint) lets the mint land, and the site demotes only when
+            //   EVERY pair is dirty.
             let Some(desc) = self.complete_home_desc(home) else {
                 return (Err(CardBlocker::CompleteHomeMissing { home: home.clone() }), None);
             };
@@ -472,14 +478,15 @@ impl<'c> WorldFacts<'c> {
                     );
                 }
             }
-            if let Some(name) =
-                self.complete_draft_collision(world, &pairs, home, desc.stackable, site)
-            {
-                return (Err(CardBlocker::CompleteDraftCollision { name }), None);
-            }
-            // The first surviving witness renders the line (deterministic:
-            // verbs in content.verbs order, recipes in declaration order).
-            let (vi, ri) = pairs[0];
+            let clean =
+                match self.complete_draft_clean_pairs(world, &pairs, home, desc.stackable, site) {
+                    Ok(clean) => clean,
+                    Err(name) => return (Err(CardBlocker::CompleteDraftCollision { name }), None),
+                };
+            // The first CLEAN witness renders the line (deterministic:
+            // verbs in content.verbs order, recipes in declaration order) —
+            // the completion walk it names survives its own draft.
+            let (vi, ri) = clean[0];
             let (verb_name, v) = match self.content.verbs.get_index(vi) {
                 Some((n, v)) => (n, v),
                 None => unreachable!("verb index {vi} came from content.verbs enumeration"),
@@ -581,7 +588,9 @@ pub enum CardBlocker {
     /// the completion refusal is atomic (the whole scratch dies with any
     /// refusal), and a mint collides with a name the completion draft
     /// already holds — the locked home, the completing recipe's own mints,
-    /// or a sibling trigger's mints — so the mint never lands.
+    /// or a sibling trigger's mints — for EVERY (verb, recipe) witness pair
+    /// (one clean pair would let the completion land), so the mint never
+    /// lands.
     CompleteDraftCollision { name: String },
     /// the site's owner is not in the trigger index — defensively unreachable
     /// (mirrors `site_reason`'s "unknown guard" fallback).
@@ -908,11 +917,14 @@ impl<'c> WorldFacts<'c> {
         })
     }
 
-    /// Whether EVERY world descriptor fitting one of the verb's committed
-    /// slots is named `home` — that slot force-locks a home-named card on
-    /// every commit, so EVERY completion of the verb fires the home's
-    /// (aspect-permitting) triggers. `desc` is the home's own descriptor; it
-    /// must fit the slot too (an unobtainable home cannot be locked).
+    /// Whether EVERY world descriptor fitting one of the verb's min≥1
+    /// committed slots is named `home` — that slot force-locks a home-named
+    /// card on every commit, so EVERY completion of the verb fires the
+    /// home's (aspect-permitting) triggers. A min-0 slot (e.g. 0..1) is
+    /// never a forced lock: the player can leave it empty and commit the
+    /// completion without binding the home at all. `desc` is the home's own
+    /// descriptor; it must fit the slot too (an unobtainable home cannot be
+    /// locked).
     fn verb_force_locks(&self, vi: usize, world: &CardWorld, home: &str, desc: &Entity) -> bool {
         let Some((_, v)) = self.content.verbs.get_index(vi) else {
             unreachable!("verb index {vi} came from content.verbs enumeration");
@@ -921,6 +933,9 @@ impl<'c> WorldFacts<'c> {
             let Some(slot) = v.slot_by_role.get(role.as_str()) else {
                 return false;
             };
+            if slot.min < 1 {
+                return false; // an optional slot can be left empty — nothing is forced
+            }
             if slot.max.is_some_and(|max| max < 1) {
                 return false;
             }
@@ -1119,30 +1134,39 @@ impl<'c> WorldFacts<'c> {
         out
     }
 
-    /// ③ the draft rung for the trigger site: the body's unconditional
-    /// non-stackable mints against the draft occupants — the locked home
-    /// itself, the completing recipe's first-application mints, and the
-    /// same-home sibling triggers' mints. Siblings fire in the same
-    /// completion phase (one refusal discards the whole scratch, so both
-    /// must succeed regardless of declaration order); a sibling is
-    /// aspect-compatible when its aspect is absent or the pair's recipe
-    /// declares it.
-    fn complete_draft_collision(
+    /// ③ the draft rung for the trigger site, judged PER WITNESS PAIR —
+    /// complete triggers fire on every completion (no once), so
+    /// reachability is EXISTENTIAL over the (verb, recipe) witnesses: the
+    /// site proves by walking any pair whose completion draft holds none
+    /// of the body's unconditional non-stackable mints, and demotes only
+    /// when EVERY pair is dirty (`Err` carries the first dirty pair's
+    /// colliding name). The occupants are a property of the GIVEN pair,
+    /// never a global union: the locked home itself, that pair's
+    /// completing recipe's first-application mints, and the same-home
+    /// sibling triggers' mints firing beside it (one shared scratch per
+    /// completion pass, in declaration order — a sibling joins exactly
+    /// when its aspect is absent or the PAIR's recipe declares it).
+    fn complete_draft_clean_pairs(
         &self,
         world: &CardWorld,
         pairs: &[(usize, usize)],
         home: &str,
         home_stackable: bool,
         site: &RawSite<'_>,
-    ) -> Option<String> {
+    ) -> Result<Vec<(usize, usize)>, String> {
         let self_mints = self.owner_draft_names(world, &site.owner);
         // the trigger fires BECAUSE a living locked card is named `home` —
-        // minting `home` refuses every firing
+        // minting `home` refuses every firing, whatever the witness
         if !home_stackable && self_mints.contains(home) {
-            return Some(home.to_string());
+            return Err(home.to_string());
         }
+        let mut clean: Vec<(usize, usize)> = Vec::new();
+        let mut first_dirty: Option<String> = None;
         for &(vi, ri) in pairs {
-            let (_, v) = self.content.verbs.get_index(vi)?;
+            let v = match self.content.verbs.get_index(vi) {
+                Some((_, v)) => v,
+                None => unreachable!("verb index {vi} came from content.verbs enumeration"),
+            };
             let r = &v.recipes[ri];
             let mut forbidden: IndexSet<String> = IndexSet::new();
             if !home_stackable {
@@ -1163,19 +1187,32 @@ impl<'c> WorldFacts<'c> {
                 }
             }
             if let Some(n) = self_mints.iter().find(|n| forbidden.contains(*n)) {
-                return Some(n.clone());
+                if first_dirty.is_none() {
+                    first_dirty = Some(n.clone());
+                }
+            } else {
+                clean.push((vi, ri));
             }
         }
-        None
+        match (clean.is_empty(), first_dirty) {
+            // the window/aspect rungs guarantee a non-empty witness list, so
+            // an empty clean list means every pair was dirty and the first
+            // dirty name is on record (the home fallback is defensive only)
+            (true, Some(n)) => Err(n),
+            (true, None) => Err(home.to_string()),
+            (false, _) => Ok(clean),
+        }
     }
 
     /// The completing recipe's own contamination rung: a complete trigger
-    /// whose home every commit of the verb force-locks fires on EVERY
-    /// completion of this recipe (the aspect gate permitting); when its body
-    /// mints a name the draft already holds, the window refuses and the
-    /// recipe's outcomes die with the scratch — the recipe's mints never
-    /// land (fuzz seed 162: travel_to.r0's P3 against the t1 body's own
-    /// P3 mint, the home force-locked by the verb's only text-fitting slot).
+    /// whose home every commit of the verb force-locks (a min≥1 committed
+    /// slot whose every world fit is named the home — a min-0 slot can be
+    /// left empty, so it never forces) fires on EVERY completion of this
+    /// recipe (the aspect gate permitting); when its body mints a name the
+    /// draft already holds, the window refuses and the recipe's outcomes
+    /// die with the scratch — the recipe's mints never land (fuzz seed
+    /// 162: travel_to.r0's P3 against the t1 body's own P3 mint, the home
+    /// force-locked by the verb's only text-fitting slot).
     fn completion_contaminated(&self, world: &CardWorld, vi: usize, ri: usize) -> Option<String> {
         if !self.content.triggers.iter().any(|t| matches!(t, CompiledTrigger::Complete { .. })) {
             return None;

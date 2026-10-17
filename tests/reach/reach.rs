@@ -1065,9 +1065,11 @@ fn render_card(
 /// 同 (content, State) 两次分析输出逐字节一致 — the determinism pin.
 #[test]
 fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
-    let dict = core_dictionary();
     for seed in 1u32..=60 {
         let sc = chorus::reach::fuzz::gen_scenario(seed);
+        // the scenario's own load-effective dictionary (v0.7.6: the sample
+        // may declare script verbs)
+        let dict = sc.dict;
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
         let mut first = String::new();
         let mut second = String::new();
@@ -1092,9 +1094,11 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
 /// byte-for-byte with fresh-per-call analyzers.
 #[test]
 fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
-    let dict = core_dictionary();
     for seed in 1u32..=30 {
         let sc = chorus::reach::fuzz::gen_scenario(seed);
+        // the scenario's own load-effective dictionary (v0.7.6: the sample
+        // may declare script verbs)
+        let dict = sc.dict;
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
         let shared = chorus::reach::Analyzer::new(&content, &sc.initial, &dict);
         for probe in &sc.probes {

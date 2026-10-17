@@ -27,7 +27,6 @@ use chorus::content::script::{lint_script_findings, LintSeverity};
 use chorus::core::dict::core_dictionary;
 
 fn main() -> std::process::ExitCode {
-    let dict = core_dictionary();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let files: Vec<String> = if !args.is_empty() {
         args
@@ -81,6 +80,12 @@ fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::from(1);
             }
         };
+        // a FRESH core dictionary per file (v0.7.6): scripts now declare
+        // vocabulary at load, and linting N files with one shared dictionary
+        // would make file isolation a property of the load's internal clone
+        // discipline rather than of the tool — each file linted against its
+        // own core dictionary can never see another file's declarations
+        let dict = core_dictionary();
         let linted = match lint_script_findings(&text, &dict) {
             Ok(f) => f,
             Err(e) => {

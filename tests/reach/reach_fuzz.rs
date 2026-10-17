@@ -15,7 +15,6 @@
 
 use crate::common::snap::snap;
 use chorus::content::compile_content;
-use chorus::core::dict::core_dictionary;
 use chorus::engine::fold::fold;
 use chorus::reach::fuzz::{drive_fuzz_seed, gen_scenario, run_fuzz_seed};
 
@@ -153,7 +152,9 @@ fn the_driven_seed_log_folds_back_to_the_driven_state() {
     assert!(run.applied > 0, "seed {seed} must apply at least one step");
 
     let sc = gen_scenario(seed);
-    let dict = core_dictionary();
+    // the scenario's own load-effective dictionary — the same shape the
+    // driver used (v0.7.6: the sample may declare script verbs)
+    let dict = sc.dict;
     let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the scenario compiles");
     let replayed = fold(&run.records, &run.base, &dict, &content).expect("the log replays");
     assert_eq!(snap(&replayed), snap(&run.final_state));

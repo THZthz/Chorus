@@ -362,13 +362,15 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 // verb header: indent 2, UPPER_NAME:
                 if indent == 2 && verb_header_re().is_match(t) {
                     let name = t[..t.len() - 1].to_string();
-                    if !eff.is_verb(&name) {
-                        return Err(ChorusError::new(format!(
-                            "line {}: verb '{name}' is not registered in the dictionary",
-                            ln + 1
-                        )));
-                    }
-                    // a repeated verb header is a load error, the same
+                    // v0.7.6: the header no longer demands a PRE-registered
+                    // lexeme — any UPPER_SNAKE name declares a brand-new verb
+                    // or configures an existing one; the shape rule lives in
+                    // verb_header_re above, and the load's registration (the
+                    // `dict_with_vocabulary` half of compile_parsed)
+                    // re-validates the lexeme against the whole nameable
+                    // grammar — a reserved word (EVENT, TO, …) fails loud
+                    // there, naming the lexeme. A repeated verb header is a
+                    // load error, the same
                     // uniform rule as entities/endings (formerly
                     // QUIRK(Q5): the block silently RESET — a fresh empty
                     // `VerbContent` replaced the old)

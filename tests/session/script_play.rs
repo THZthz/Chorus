@@ -433,7 +433,11 @@ fn bad_scripts_fail_loudly() {
         parse_script("entities:\n  A is pals of B\n", &dict),
         r"unknown kind", // 'pals' is not a registered relation
     );
-    assert_err_msg(parse_script("verbs:\n  FLY:\n    duration: 1h\n", &dict), r"not registered");
+    // v0.7.6: a verb header no longer demands a pre-registered lexeme — FLY
+    // declares now (the load registers it; the loud gate moved to the
+    // nameable grammar, a reserved word failing compile instead — pinned in
+    // tests/script/verbs.rs)
+    assert!(parse_script("verbs:\n  FLY:\n    duration: 1h\n", &dict).is_ok());
     assert_err_msg(parse_script("nonsense line\n", &dict), r"section header");
 }
 
@@ -527,8 +531,9 @@ fn function_guards_fire_through_the_real_compile_path_with_the_frozen_texts() ->
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
 /// Lenient input routes the new core
-/// verbs (v0.3). Registration is the gate: unregistered verbs fail the
-/// compile with 'not registered'.
+/// verbs (v0.3). The verbs register into the dictionary by hand here (the
+/// code-level face of register_verb — a script's `verbs:` block drives the
+/// same registration through the load, v0.7.6).
 mod lenient_input_routes_the_new_core_verbs {
     use super::*;
     use crate::common::seed::seed_state;

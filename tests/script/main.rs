@@ -12,3 +12,4 @@ mod kinds;
 mod lint;
 mod query_predicate;
 mod sentence;
+mod verbs;

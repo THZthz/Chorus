@@ -208,3 +208,41 @@ fn reach_scale_worker_shard_and_namestat_interface() {
         arr.iter().map(|st| st["name"].as_str().expect("name").to_string()).collect();
     assert_eq!(worker_names, mine);
 }
+
+/// v0.7.6 — script-declared verbs must not leak ACROSS linted files: the bin
+/// builds a fresh core dictionary per file, so the second file re-declaring
+/// the first's verb lints clean too (through the real argv → process path).
+#[test]
+fn lint_scripts_files_are_isolated_for_script_declared_verbs() {
+    let script = "
+script: Verbs Isolation
+player: ROWAN
+start: 0:0
+
+entities:
+  HOUSE is place
+  ROWAN is character at HOUSE
+  THE_GUARD is character with duty:2 at HOUSE
+
+verbs:
+  INTERROGATE:
+    actors: 1 kind:character
+    object: 1 kind:character
+    duration: 30m
+    recipes:
+      default -> NARRATE \"{actors} question {object}.\"
+";
+    let dir = std::env::temp_dir().join(format!("chorus-lint-verbs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch dir");
+    let one = dir.join("verbs-one.txt");
+    let two = dir.join("verbs-two.txt");
+    std::fs::write(&one, script).expect("write file one");
+    std::fs::write(&two, script).expect("write file two");
+    let (code, stdout, stderr) =
+        run("lint-scripts", &[one.to_str().unwrap(), two.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains("verbs-one.txt: clean"), "{stdout}");
+    assert!(stdout.contains("verbs-two.txt: clean"), "{stdout}");
+}

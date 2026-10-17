@@ -45,6 +45,8 @@ projection of that data, never the source of truth.
 
 24. **v0.7.5** — the vocabulary convergence, script-side: the noun classes become definable, closing the last hardcoded word list a script could not extend. A `kinds:` section (§4.1/§10) registers new `lower_snake` kinds into the load's dictionary in declaration order — the rejections loud and uniform with the §10 duplicate rule (a re-declaration including a built-in, a relation-type collision — the entity line dispatches relation types first, so such a kind could never be declared on an entity line — and any name outside the class), kinds still not reserved words. Every kind check site now reads the Dictionary instead of the frozen eight: entity and prototype lines, the `kind:` term wherever a query parses (slots, `exists()`/`count()` inner queries — the parse_query/predicate front-ends now take the dictionary), and the reach analyzer's `--demand` parse (its Analyzer carries the load-effective dictionary, handed back on `CompiledScript` and adopted by `Game`). Unknown-kind errors keep their message shapes with the suggestion list derived from the dictionary — built-ins first, then declarations, so the byte-pins for the core dictionary are unchanged. The four built-in semantic roles are written down as engine-frozen (§4.1); runtime stays vocabulary-free; the reach scale fixture's private kind pool stays deliberately frozen (it is a generator, not a consumer). No log format change.
 
+25. **v0.7.6** — the vocabulary convergence, verb-side, closing the last open question the script format left (§12 #4): the `verbs:` block now DECLARES lexemes, not just configures them. An indent-2 `VERB:` header is accepted for any UPPER_SNAKE name; the load registers unknown lexemes into its effective dictionary — register-if-unknown on the per-load clone, the v0.7.5 `kinds:` discipline, so recompiling one text against one dictionary stays idempotent — and the whole §5.1 nameable grammar applies at that registration: never a reserved word (`EVENT:` fails loud naming the lexeme; the "reserved words cannot be registered" claim is now enforced, the core verbs exempt as reserved-by-being-a-verb), and never a declared entity or prototype name — one order-independent cross-check over the whole load rejects the overlap in either section order, instead of the section-order luck a growing reserved set implied. Declaration is not playability: the config block (§6.1) makes the verb playable, the "is not a content verb" step gate and the template/compile gates stay as backstops, and `CompiledScript` hands the extended dictionary to `Game`, so a declared verb types, suggests, renders in the banner/help and re-parses in the fold. Duplicate headers stay the uniform load error (core lexemes included); the reach fuzz alphabet takes the declared verbs too (a scenario carries its own effective dictionary); `lint-scripts` lints each file against a fresh core dictionary. No log format change.
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -243,12 +245,27 @@ Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 
 Signatures say which roles a verb may take; cardinalities and queries are
 content (§6.1). The seed content narrows some of these (e.g. seed `ACQUIRE`
-takes an object of any kind; seed `WORK` declares no `with` slot). Custom
-verbs are declarable with the same shape via `Dictionary::register_verb` — the
-core set is a default, not a closed wall. A registered lexeme must be
-UPPER_SNAKE (`^[A-Z][A-Z0-9_]*$`) and not collide with a registered one;
-relation types, by contrast, are deliberately unvalidated — any string is a
-legal relation type. A verb with no template
+takes an object of any kind; seed `WORK` declares no `with` slot). The core
+set is a default, not a closed wall (v0.7.6): a script's `verbs:` block
+declares a brand-new lexeme with an indent-2 `VERB:` header — or configures
+a core one under the same header — and the load registers unknown lexemes
+into its effective dictionary (register-if-unknown on the per-load clone,
+the §4.1 `kinds:` discipline, so recompiling one text against one dictionary
+stays idempotent). The nameable grammar applies at that registration, §5.1's:
+a lexeme must be UPPER_SNAKE (`^[A-Z][A-Z0-9_]*$`), never a registered verb
+(a repeated header is the uniform duplicate load error, §10), and never a
+reserved word — `EVENT:` or `TO:` as a header is a load error naming the
+lexeme (the core verbs are exempt as reserved-by-being-a-verb, which is what
+lets a header configure one). A declared lexeme may not double as a declared
+entity or prototype name either: registration grows the reserved set, so one
+order-independent check over the whole load rejects the overlap in either
+section order, naming both faces of the collision. **Declaration is not
+playability** — the config block under the header (slots, duration, recipes,
+§6.1) is what makes a verb playable: a header with no block compiles an
+empty verb no recipe can match, and a lexeme the dictionary knows but the
+content never declares rejects at the step ("is not a content verb").
+Relation types, by contrast, remain deliberately unvalidated — any string is
+a legal relation type. A verb with no template
 contributes no template line; its recipe NARRATEs still speak.
 
 ### 4.4 OUTCOME operators (fixed vocabulary, **normative arities**)
@@ -494,7 +511,10 @@ Lexical rules:
 - `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT COMPLETE TO WITH AT
   ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED DRAW DRAWN RUN` + every registered
   verb lexeme) cannot be used as names; content needing them uses the quoted-string
-  ref form (`"PLAN B"`). The role words are a SOFT reservation: an entity named
+  ref form (`"PLAN B"`). A script's `verbs:` declarations join the reserved set
+  at load (v0.7.6, §4.3) — and because that growth would otherwise make name
+  legality depend on section order, one order-independent load check rejects a
+  verb lexeme that doubles as a declared entity or prototype name. The role words are a SOFT reservation: an entity named
   `object` is addressable in clause positions, but in outcome-arg positions the
   role ref intercepts before the bare-ref fallback (and a §10 parameter before
   the role) — such an entity must be quoted there.
@@ -1541,7 +1561,8 @@ mapping:
 A whole game is one text file: meta lines, then section blocks of
 sentence-like declarations. `#` starts a comment; blank lines are ignored.
 `compile_script` parses and compiles it once, failing loudly at load time
-(unknown kind, unregistered verb or relation type, bad grammar, duplicate
+(unknown kind, unregistered relation type, a reserved word in a verb header,
+a name shared by a verb and an entity/prototype, bad grammar, duplicate
 declaration). Meta lines:
 `script:` (title), `player:` (the lenient input's default actor — must name
 a declared entity of kind `character`), `goal:` (carried in the meta for an
@@ -1590,7 +1611,7 @@ endings:
   DESPAIR_DEATH: "No More" (melancholy)
   LANTERN_VICTORY: "The Light in the Ruins" (grand)
 
-verbs:
+verbs:                                 # configures a verb — or declares a new one (§4.3, v0.7.6)
   READ:
     actors: 1..2 kind:character
     object: 1 kind:text
@@ -1638,10 +1659,16 @@ Rules:
 - **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
   dictionary, both endpoints declared entities (either missing is a load
   error); symmetric/directed storage follows its definition (§4.2).
-- **Verb lexemes are fixed by the dictionary**: a `verbs:` block configures
-  slots, duration, and recipes for a *registered* verb (§4.3, §6.1); new
-  verb lexemes are a code-level `Dictionary::register_verb`, not a script
-  declaration.
+- **Verb declarations** (v0.7.6): an indent-2 `VERB:` header declares a
+  brand-new UPPER_SNAKE lexeme or configures a registered one (§4.3, §6.1);
+  the load registers the unknown ones into its effective dictionary,
+  register-if-unknown, so re-declaring a core verb just configures it. The
+  block under the header is what makes the verb playable — a header with no
+  block compiles an empty verb no recipe can match, and a lexeme the content
+  never declares rejects at the step. A lexeme that is a reserved word, or
+  that shares a name with a declared entity or prototype (either section
+  order), is a load error (§5.1); a repeated header is the uniform duplicate
+  load error, core lexemes included.
 - **Recipe lines**: §6.4's script form — `[id] [hidden|shown [hint "…"]]
   [when COND] [aspects NAME[, NAME…]] [max N] -> OUTCOMES`, or
   `default -> OUTCOMES`. A leading token is an id only when it matches the
@@ -1828,7 +1855,12 @@ before the verb (`march the guard work`), verbs lighting a non-default
 non-REFUSE recipe first, flavor bindings appended after — every entry
 lenient-parseable and typeable verbatim (lowercase display names), the
 list capped at 3; candidate pools rank same-container cards first, ties in
-the frozen name order (ASCII-lowercase, then byte order). Verbs with an
+the frozen name order (ASCII-lowercase, then byte order); an actors slot
+with no query defaults its pool to the player's own kind (§4.1's frozen
+role). A step rejection renders the verb's usage line from the same slot
+arithmetic, and the noun a slot wants is its kind — `<someone>` for
+`kind:character` (§4.1's frozen role), `<kind>` for any other declared kind,
+`<thing>` when the slot queries no kind. Verbs with an
 open station and cards locked in a window are excluded; `recipe_lights`
 skips REFUSE recipes and spent `max` recipes (they land in flavor), and a
 REFUSED action prints the verb's authored `shown` hints under the refusal.
@@ -1892,8 +1924,11 @@ undo past the ending record reopens the book.
 3. The `to` role has its first content use (the Nightjar Flyer's
    interrogations, §5.3) but no core verb declares it yet (§4.3):
    recipient semantics (gifts, summons, threats) still await a core verb.
-4. Script-level verb declaration: new verb lexemes currently require
-   `Dictionary::register_verb` in code (§10); should scripts declare them?
+4. ~~Script-level verb declaration: new verb lexemes currently require
+   `Dictionary::register_verb` in code (§10); should scripts declare them?~~
+   RESOLVED by v0.7.6: yes — the `verbs:` block declares them (§4.3), the
+   load registers them into its effective dictionary under the §5.1 nameable
+   grammar.
 5. The unattended pump: the CS slice runs its time loop with no background
    tick — the `job→needs` induce bootstraps it (`on complete` + RUN
    hand-off, §6.7), and the loop, once resident and self-rechaining at

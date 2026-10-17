@@ -193,8 +193,19 @@ impl Dictionary {
         })
     }
 
-    /// Reserved words cannot be registered as names/verbs
-    /// (spec §5.1).
+    /// Verb lexemes cannot be registered as names/verbs when the shape or
+    /// the §5.1 namespace says no (spec §5.1): UPPER_SNAKE only, never a
+    /// registered verb, and (v0.7.6) never a reserved word — §5.1 has always
+    /// claimed reserved words cannot be registered; the check now enforces
+    /// it. The collision check precedes the reserved check (a re-register of
+    /// an already-registered verb is a `collides with a verb`, never a
+    /// reserved complaint — it IS in `reserved`, registration put it there),
+    /// and the reserved check exempts CORE_VERBS: RESERVED_WORDS spells the
+    /// core verbs into the seed (the tail the unit test pins), so a core
+    /// verb is reserved *by being a verb* — the exemption is what lets
+    /// `core_dictionary` register its own table and a caller configure a
+    /// core lexeme. It cannot smuggle a duplicate past the collision check
+    /// above.
     fn assert_nameable(&self, lexeme: &str, what: &str) -> Result<()> {
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || Regex::new(r"^[A-Z][A-Z0-9_]*$"));
@@ -203,6 +214,9 @@ impl Dictionary {
         }
         if self.verbs.contains(lexeme) {
             return Err(ChorusError::new(format!("{what} '{lexeme}' collides with a verb")));
+        }
+        if self.reserved.contains(lexeme) && !CORE_VERBS.contains(&lexeme) {
+            return Err(ChorusError::new(format!("{what} '{lexeme}' is a reserved word (§5.1)")));
         }
         Ok(())
     }
@@ -266,7 +280,27 @@ mod tests {
         assert_eq!(e1.msg, "verb 'lower' must be UPPER_SNAKE");
         d.register_verb("VALID").unwrap();
         let e2 = d.register_verb("VALID").unwrap_err();
+        // the collision check outranks the reserved check: VALID joined
+        // `reserved` at its own registration, and the re-register must still
+        // read as a verb collision, not a reserved complaint
         assert_eq!(e2.msg, "verb 'VALID' collides with a verb");
+        // §5.1 (v0.7.6): a reserved word cannot be registered — the claim the
+        // spec always made, now enforced (the keyword half of RESERVED_WORDS)
+        let e3 = d.register_verb("EVENT").unwrap_err();
+        assert_eq!(e3.msg, "verb 'EVENT' is a reserved word (§5.1)");
+        let e4 = d.register_verb("ROLL").unwrap_err();
+        assert_eq!(e4.msg, "verb 'ROLL' is a reserved word (§5.1)");
+        // the CORE_VERBS exemption: a core lexeme is reserved *by being a
+        // verb* — a fresh dictionary registers it (a code-level caller
+        // configuring a core verb), and against the seeded core dictionary a
+        // re-register is the collision above
+        let mut fresh = Dictionary::new();
+        fresh.register_verb("READ").unwrap();
+        assert!(fresh.is_verb("READ"));
+        let mut core = core_dictionary();
+        assert_eq!(core.register_verb("READ").unwrap_err().msg, "verb 'READ' collides with a verb");
+        core.register_verb("SHOUT").unwrap();
+        assert!(core.reserved.contains("SHOUT"));
         // `register_relation` has NO validation — frozen asymmetry
         d.register_relation("x y z", RelationTypeDef { symmetric: true });
         assert!(d.relation_types.contains_key("x y z"));

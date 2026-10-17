@@ -31,7 +31,7 @@ all pinned by the acceptance suite):
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
 - `src/error.rs` / `src/lcg.rs` — the single error channel; the deterministic campaign-side RNG
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
-- `tests/` — 774 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
+- `tests/` — 793 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   the acceptance path wins in seven actions with a `wait` after each — the
@@ -162,12 +162,18 @@ verbs:
     recipes:
       read.magick_gate hidden when object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2) -> REFUSE("The letters swim like minnows.")
       default -> NARRATE "{actors} read {object}."
+  INTERROGATE:                       # a brand-new verb (spec §4.3): any UPPER_SNAKE
+    actors: 1 kind:character         # lexeme that is not a reserved word and not
+    object: 1 kind:character         # an entity/prototype name; the block makes it playable
+    duration: 30m
+    recipes:
+      default -> NARRATE "{actors} question {object}."
 ```
 
 ## Run
 
 ```sh
-cargo test                # 785 acceptance tests
+cargo test                # 793 acceptance tests
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```

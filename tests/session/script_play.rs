@@ -50,7 +50,7 @@ fn meta_lines_set_title_player_goal_the_starting_clock_and_the_dice_seed() {
     assert_eq!(
         game.meta.goal.as_deref(),
         Some(
-            "unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna"
+            "unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna, where the Flyer arrives at six"
         )
     );
     assert_eq!(game.meta.start, Some(Clock { day: 0, halfhour: 42 }));

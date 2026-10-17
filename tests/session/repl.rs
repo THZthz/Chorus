@@ -109,7 +109,7 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
         "inspect the wax cylinder", // inspect prefix, named card
         "inspect",                  // Q11: bare inspect is usage + the card list
         "inspectorish note",        // \b fails inside a word → handle_line
-        "explore the first cabin",  // a real turn (opens a window)
+        "explore the first cabin",  // a REFUSED turn (the seal, before the cry): logged, no window
         "\u{feff}wait",             // a pasted BOM: still the meta word (Q8 class)
         "undo",                     // meta → game.undo() truncates the turn
         "undo",                     // …until nothing is left

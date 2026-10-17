@@ -25,7 +25,10 @@ const FLYER: &str =
 #[test]
 fn lenient_routes_the_pinned_phrases() {
     let dict = core_dictionary();
-    let game = Game::from_script(FLYER, dict).unwrap();
+    let mut game = Game::from_script(FLYER, dict).unwrap();
+    // 22:00 — the cry; the ledger comes to light with the body (before it
+    // nothing on the train reads through the aether-seal)
+    game.handle_line("0:44").unwrap();
     let ctx = LenientCtx {
         dict: &game.dict,
         content: &game.content,
@@ -37,7 +40,7 @@ fn lenient_routes_the_pinned_phrases() {
     let ParsedInput::Ok { step, .. } = parse_player_input("wait", &ctx) else {
         panic!("'wait' must parse");
     };
-    assert_eq!(step.start_min, Some(42 * 30)); // the default begin minute is NOW
+    assert_eq!(step.start_min, Some(44 * 30)); // the default begin minute is NOW
     let c0 = &step.clauses[0];
     assert_eq!(c0.verb, "WAIT");
     assert_eq!(c0.actors.len(), 1);

@@ -35,7 +35,8 @@ all pinned by the acceptance suite):
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   the acceptance path wins in seven actions with a `wait` after each — the
-  inquest's two-hour window must close before Vienna at 6:00)
+  inquest's ninety-minute window must close before Vienna at 6:00, and the
+  goal line says so)
 
 ## Play
 
@@ -46,7 +47,7 @@ cargo run --bin chorus -- my-game.txt
 
 ```
 ── Murder on the Nightjar Flyer ──
-§ unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna
+§ unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna, where the Flyer arrives at six
 you are MARCH · at GUARD VAN · day 0, 21:00
 here: THE GUARD · THE INQUEST
 try: read the manifest · talk to the guard · explore dining car

@@ -442,9 +442,10 @@ pub fn candidates_for(
 
 /// The canonical win path through the Nightjar Flyer: seven commands, each
 /// settled before the next (the REPL player types `wait` between them). The
-/// inquest's two-hour window must CLOSE before Vienna (6:00) — the older
-/// nine-command path with the cabin detour closed it at 6:30 and only
-/// "won" while the advance pass still ran on past an ending.
+/// inquest's ninety-minute window must CLOSE before Vienna (6:00) — this
+/// path closes it at 4:00; the older nine-command path with the cabin
+/// detour closes it at 6:00 exactly and wins too (completions precede
+/// same-minute events).
 pub const WIN_PATH: [&str; 7] = [
     "wait",
     "read the vane ledger",

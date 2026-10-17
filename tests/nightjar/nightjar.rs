@@ -45,7 +45,8 @@ fn play(game: &mut Game, lines: &[&str]) -> chorus::error::Result<Vec<Turn>> {
 // embezzlement (motive); 23:00→0:00 the wax cylinder, and the border stop
 // lands the telegram; 0:00→1:00 the stolen voice (means), the tunnel closes
 // behind; 1:00→1:30 meet Seraphine (the name is learned by talking);
-// 1:30→2:30 the Vienna warning (opportunity); 2:30→4:30 CASE_CLOSED.
+// 1:30→2:30 the Vienna warning (opportunity); 2:30→4:00 CASE_CLOSED (the
+// inquest takes ninety minutes).
 const WIN_PATH: [&str; 7] = [
     "wait",
     "read the vane ledger",
@@ -229,7 +230,7 @@ mod the_nightjar_flyer {
         let inquest =
             game.log.records.iter().find(|r| r.verb == "USE_ON").expect("the inquest ran");
         assert_eq!(inquest.recipes, ["inquest.win"]);
-        // the inquest closed at 4:30, ninety minutes before Vienna: the grand
+        // the inquest closed at 4:00, two hours before Vienna: the grand
         // ending is the story's end (§4.4)
         let ended = game.state.ended.as_ref().expect("the story ended");
         assert_eq!((ended.id.as_str(), ended.flavour.as_str()), ("CASE_CLOSED", "grand"));
@@ -306,7 +307,7 @@ mod the_nightjar_flyer {
         let ok = matches!(said, Some(Arg::Str { v }) if v.contains("we all read the same card: the lord is dead"));
         assert!(ok, "said = {said:?}");
         // the escalation never tripped, and the inquest's window closed at
-        // 4:30 — before Vienna: the grand ending ends the story (§4.4)
+        // 4:00 — before Vienna: the grand ending ends the story (§4.4)
         let ended = game.state.ended.as_ref().expect("the story ended");
         assert_eq!(ended.id, "CASE_CLOSED");
         assert_eq!(ended.flavour, "grand");

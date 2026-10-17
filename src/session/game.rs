@@ -311,15 +311,19 @@ impl Game {
         for r in &result.records {
             lines.extend(prose_lines(r, &self.content, &self.dict)?);
         }
-        // a REFUSED action shows the verb's authored hints (§6.2's `shown`
-        // requirements) — the refusal said no; the hints say what would do
-        let refused = result
+        // a REFUSED action shows the authored hint of the recipe that refused
+        // (§6.2's `shown` requirements) — or, when that recipe carries none
+        // (a bare default REFUSE), the verb's posted hints: the refusal said
+        // no; the hint says what would do
+        let refusing: Vec<&str> = result
             .records
             .iter()
-            .any(|r| r.kind == "action" && r.outcomes.iter().any(|o| o.op == "REFUSE"));
-        if refused {
+            .filter(|r| r.kind == "action" && r.outcomes.iter().any(|o| o.op == "REFUSE"))
+            .flat_map(|r| r.recipes.iter().map(String::as_str))
+            .collect();
+        if !refusing.is_empty() {
             if let Some(verb) = verb_typed.as_deref() {
-                lines.extend(self.hints(verb));
+                lines.extend(self.hints(verb, &refusing));
             }
         }
         // the « … » canonical echo of the player's OWN sentence — the BEGIN
@@ -541,9 +545,21 @@ impl Game {
         lines
     }
 
-    /// the verb's authored `shown` hints (§6.2) — what a refusal would want
-    fn hints(&self, verb: &str) -> Vec<String> {
+    /// the authored `shown` hints (§6.2) a refusal leaves behind: the hint
+    /// of the recipe that refused when it carries one, else every posted
+    /// hint of the verb (a bare default REFUSE points at the posted ones)
+    fn hints(&self, verb: &str, refusing: &[&str]) -> Vec<String> {
         let Some(v) = self.content.verbs.get(verb) else { return vec![] };
+        let own: Vec<String> = v
+            .recipes
+            .iter()
+            .filter(|r| refusing.contains(&r.id.as_str()))
+            .filter_map(|r| r.hint.as_ref())
+            .map(|h| format!("hint: {h}"))
+            .collect();
+        if !own.is_empty() {
+            return own;
+        }
         v.recipes
             .iter()
             .filter(|r| r.shown)

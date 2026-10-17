@@ -13,6 +13,7 @@ mod common;
 
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
+use chorus::core::r#ref::Ref;
 use chorus::core::text::cmp_utf16;
 
 use common::harness::{assert_err_msg, assert_json_eq, canonical};
@@ -120,6 +121,24 @@ fn id_refs_and_quoted_names_round_trip() {
         canonical("#ana READ \"ODD NAME, WITH COMMA\"", &dict),
         "#ana READ \"ODD NAME, WITH COMMA\""
     );
+}
+
+#[test]
+fn backslash_bearing_names_round_trip_losslessly() {
+    // §5.1, one escape discipline: a name holding a backslash before an
+    // escape letter (`a\b`) used to format with the backslash raw and
+    // re-lex as backspace + b; `\` now doubles on output like every other
+    // quoted form, so the parsed name survives the trip unchanged
+    let dict = core_dictionary();
+    let s = parse_sentence("#ana READ \"a\\\\b\"", &dict).unwrap();
+    let Ref::Name { name, .. } = &s.clauses[0].objects[0] else {
+        panic!("expected a name ref, got {:?}", s.clauses[0].objects[0]);
+    };
+    assert_eq!(name, "a\\b");
+    let c = canonical("#ana READ \"a\\\\b\"", &dict);
+    assert_eq!(c, "#ana READ \"a\\\\b\"");
+    let again = parse_sentence(&c, &dict).unwrap();
+    assert_eq!(again.clauses[0].objects[0], s.clauses[0].objects[0]);
 }
 
 #[test]

@@ -36,6 +36,7 @@ projection of that data, never the source of truth.
 17. **v0.5** — parallel verb stations: BEGIN/COMPLETE/WAIT rows; committing opens a real processing window without moving the clock; explicit advances resolve due completions atomically before the halfhour's slot events.
 18. **v0.6** — the engine-findings fixes: the authored `SPAWN … expires <duration>` modifier arming decay at mint; the RUN candidate walk's `when:` evaluated against the parent window's committed bindings overlaid by the projected clause.
 19. **v0.7** — the coverage convergence (spec-side only; no grammar/log/script/API change): the document brought level with the shipped Rust crate — the v0.5 record model written into §5.1/§6.6/§7/§9.2 (WAIT rows own the clock; four record kinds; `startMin`/`window`), the turn-boundary undo stated (§7/§11), the play interface rewritten to the shipped line REPL (§11), the tooling layer documented (§13: the reach analyzer, the script lint, the bins), and the port's frozen wire/collation/escape semantics recorded (§4.2, §4.4, §5.1, §7).
+20. **v0.7.1** — one escape discipline: ref formatting now doubles `\` like every other quoted form, closing the `a\b` round-trip hole (§5.1); a log holding such a name re-formats differently (§9.2, no compatibility).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -464,12 +465,12 @@ Lexical rules:
   \f \r \0` are the control characters; `\"` `\'` `\\` and every unknown
   escape stand for the literal next unit; a trailing backslash is an
   unterminated string literal.
-- **Two quoting layers, different escape sets.** Ref formatting escapes only
-  `"` (backslashes pass through raw); prose strings, RUN ids, pair values and
-  trigger-id segments escape `\` first, then `"`. The known sharp edge: an
-  unsafe NAME containing a backslash before an escape character (`a\b`)
-  formats as `"a\b"` and re-lexes as backspace + `b` — prefer plain
-  UPPER_SNAKE names.
+- **One escape discipline for every quoted form.** Refs, prose strings, RUN
+  ids, pair values and trigger-id segments all escape `\` first, then `"`;
+  the lexer maps `\\` → `\` and `\"` → `"`, so every quoted form re-lexes to
+  the same units and an unsafe name is lossless whatever it contains
+  (v0.7.1 — before it, ref formatting left backslashes raw, and `a\b`
+  re-lexed as backspace + `b`).
 - **Collation and classes are frozen** (the port's JS-emulation semantics):
   "sorted" means UTF-16 code-unit order (`cmp_utf16`), never Rust byte order —
   non-BMP names sort by surrogate pairs; DSL whitespace is its own frozen

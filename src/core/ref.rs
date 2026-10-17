@@ -79,9 +79,11 @@ pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
             if safe {
                 Ok(name.clone())
             } else {
-                // only `"` is escaped, into `\"`;
-                // backslashes pass through raw.
-                Ok(format!("\"{}\"", name.replace('"', "\\\"")))
+                // one escape discipline for every quoted form (§5.1): `\`
+                // first, then `"` — the lexer maps `\\` → `\` and `\"` → `"`,
+                // so any name re-lexes to itself (the same rule as
+                // format.rs's quote() for prose strings)
+                Ok(format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\"")))
             }
         }
         Ref::Param { .. } => Err(ChorusError::new(
@@ -133,8 +135,8 @@ mod tests {
             format_ref(&name_ref("READ", None), Some(&dict)).unwrap(),
             "\"READ\"" // reserved → quoted
         );
-        // QUIRK: only `"` is escaped into \" — backslashes stay raw
-        assert_eq!(format_ref(&name_ref("a\"b\\c", None), None).unwrap(), "\"a\\\"b\\c\"");
+        // one escape discipline: `\` doubles, `"` escapes (§5.1)
+        assert_eq!(format_ref(&name_ref("a\"b\\c", None), None).unwrap(), "\"a\\\"b\\\\c\"");
         assert_eq!(format_ref(&id_ref("c7f3"), None).unwrap(), "#c7f3");
         // param refs never format
         assert!(format_ref(&Ref::Param { name: "n".into() }, None).is_err());

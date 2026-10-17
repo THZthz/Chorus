@@ -139,6 +139,9 @@ script: The Forgotten House
 player: ANA
 start: 0:14
 
+kinds:
+  omen   # new noun classes (spec '4.1): one lower_snake name per line
+
 entities:
   HOUSE is place
   ANA is character with occult:2, lantern:1 at HOUSE
@@ -164,7 +167,7 @@ verbs:
 ## Run
 
 ```sh
-cargo test                # 774 acceptance tests
+cargo test                # 785 acceptance tests
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```

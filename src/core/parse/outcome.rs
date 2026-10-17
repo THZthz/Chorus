@@ -324,7 +324,8 @@ impl Parser<'_> {
         // the condition is parsed from the SENTENCE token stream as a
         // balanced unit up to the depth-0 `->` (predicates contain commas via
         // rel()/every() — never comma-split)
-        let (pred, end) = parse_predicate_toks(&self.toks[self.pos..], self.params.as_ref())?;
+        let (pred, end) =
+            parse_predicate_toks(&self.toks[self.pos..], self.params.as_ref(), self.dict)?;
         self.pos += end;
         self.expect_punct("->")?;
         let then = self.branch_body()?;
@@ -441,7 +442,7 @@ impl Parser<'_> {
         if slice.is_empty() {
             return Err(ChorusError::new("ROLL arguments cannot be empty"));
         }
-        parse_value_expr_toks(slice, self.params.as_ref())
+        parse_value_expr_toks(slice, self.params.as_ref(), self.dict)
     }
 
     /// The DESTROY/REVEAL/REPLACE/MOVE target arg. §10: a parameter wins

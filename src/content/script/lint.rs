@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
-use super::load::compile_parsed;
+use super::load::{compile_parsed, dict_with_kinds};
 use super::parse::parse_script;
 use super::types::declared_entities;
 use super::when_dead::{when_verdict, WhenCx, WhenRange, WhenVerdict};
@@ -114,6 +114,10 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     let script = parse_script(text, dict)?;
     // lints run on scripts that already compile
     compile_parsed(script.clone(), dict)?;
+    // the E11 when-verdict re-parse below reads the same effective dictionary
+    // the compile used — a script-declared kind must not silently shrink the
+    // warning set (a dead-when verdict over kind:custom still parses)
+    let eff = dict_with_kinds(dict, &script.content.kinds)?;
     let mut findings: Vec<LintFinding> = Vec::new();
     let verbs = &script.content.verbs;
     // raw default recipes carry no id — mirror compile_content's minting.
@@ -214,7 +218,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             // compile_script above already parsed (and arg-linted) every
             // when, so the parse here cannot fail — a failure is skipped,
             // never a panic (the lint never throws).
-            if let Ok(pred) = parse_predicate(when) {
+            if let Ok(pred) = parse_predicate(when, &eff) {
                 let mut cx = WhenCx::new(&slot_ranges);
                 if let WhenVerdict::Dead(reason) = when_verdict(&pred, false, &mut cx) {
                     findings.push(LintFinding {

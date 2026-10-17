@@ -203,7 +203,7 @@ fn three_spawns_stack_the_pool_holds_three_ids_in_birth_order_exists_sees_the_po
         pool.iter().map(|id| r3state.entities.get(id).unwrap().born_action.unwrap()).collect();
     assert!(borns[0] < borns[1]);
     assert!(borns[1] < borns[2]);
-    let p = parse_predicate("exists(SUSPICION)").unwrap();
+    let p = parse_predicate("exists(SUSPICION)", &dict).unwrap();
     let ctx = PredCtx { b: &RoleBindings::new(), state: &r3state, strict: false, roll: None };
     assert!(eval_pred(&p, &ctx).unwrap());
 }

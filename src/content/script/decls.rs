@@ -13,7 +13,7 @@ use crate::content::{
     DeriveAspect, EndingDef, ExpireTriggerDef, FunctionDef, PrototypeDef, PrototypeDerive,
     SlotTriggerDef, TriggerDef,
 };
-use crate::core::dict::{Dictionary, KINDS};
+use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::{grp0_start, grp_opt, grp_text, static_regex};
 use crate::core::text::split_dsl_ws;
@@ -250,10 +250,10 @@ pub(super) fn parse_entity_line(
         return Ok(Vec::new());
     }
     check_name(name, ln, dict, "entity name")?;
-    if !KINDS.contains(&second) {
+    if !dict.kinds.contains(second) {
         return Err(ChorusError::new(format!(
             "line {ln}: unknown kind '{second}' (expected one of {})",
-            KINDS.join(", ")
+            dict.kinds_list()
         )));
     }
     let mut rest: &str = rest0;
@@ -331,7 +331,7 @@ pub(super) fn parse_prototype_line(
     let name = grp_text(&m, 1);
     check_name(name, ln, dict, "prototype name")?;
     let kind = grp_text(&m, 2);
-    if !KINDS.contains(&kind) {
+    if !dict.kinds.contains(kind) {
         return Err(ChorusError::new(format!("line {ln}: unknown kind '{kind}'")));
     }
     let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };

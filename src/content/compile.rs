@@ -227,7 +227,7 @@ fn compile_verb(
             // `query\s+(.*)` capture is absent for a bare count spec),
             // so this is the exact mapping.
             query: match s.query.as_deref() {
-                Some(q) if !q.is_empty() => Some(parse_query(q)?),
+                Some(q) if !q.is_empty() => Some(parse_query(q, dict)?),
                 _ => None,
             },
         };
@@ -245,7 +245,7 @@ fn compile_verb(
         // content).
         let raw_when = r.when.as_deref().filter(|w| !w.is_empty());
         let when = match raw_when {
-            Some(w) => Some(parse_predicate(w)?),
+            Some(w) => Some(parse_predicate(w, dict)?),
             None => None,
         };
         // id-less recipes mint the 0-based `.recipe<i>` (§6.4) — the

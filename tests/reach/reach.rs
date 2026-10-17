@@ -15,7 +15,20 @@ use chorus::content::{
 };
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
-use chorus::reach::{analyze_card, render_report, CardOptions, CardVerdict, Existence};
+use chorus::reach::{render_report, CardOptions, CardVerdict, Existence};
+
+/// The file's one analyze_card face: the free entry pinned to a fresh core
+/// dictionary — nothing in this file registers verbs or kinds, so the
+/// built-in vocabulary is the exact isolation (the header note).
+fn analyze_card(
+    content: &chorus::content::CompiledContent,
+    state: &State,
+    target: &str,
+    opts: CardOptions,
+) -> chorus::error::Result<chorus::reach::CardReport> {
+    let dict = core_dictionary();
+    chorus::reach::analyze_card(content, state, &dict, target, opts)
+}
 
 /// One fixture entity (id derived from the lowercased name).
 fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
@@ -1083,7 +1096,7 @@ fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
     for seed in 1u32..=30 {
         let sc = chorus::reach::fuzz::gen_scenario(seed);
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
-        let shared = chorus::reach::Analyzer::new(&content, &sc.initial);
+        let shared = chorus::reach::Analyzer::new(&content, &sc.initial, &dict);
         for probe in &sc.probes {
             let opts = match probe.mode {
                 chorus::reach::fuzz::ProbeMode::Name => {
@@ -1111,4 +1124,56 @@ fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
             assert_eq!(fresh, shared_out, "seed {seed} probe {}: shared vs fresh", probe.q);
         }
     }
+}
+
+/// A script-declared kind rides the whole tool path (§4.1, v0.7.5): the load
+/// hands back its effective dictionary on CompiledScript, the analyzer's
+/// demand parse validates `kind:omen` against it, and the SPAWN of the
+/// custom-kind prototype is proven by a real chain.
+#[test]
+fn a_script_declared_kind_reaches_the_demand_parse_and_the_mint_proof() {
+    let dict = core_dictionary();
+    let text = "
+script: Omens
+start: 0:0
+
+kinds:
+  omen
+
+entities:
+  ROWAN is character
+  THE_TALLY is omen with marks:2
+
+prototypes:
+  BAD_OMEN is omen stackable
+
+verbs:
+  TALK:
+    actors: 1 kind:character
+    recipes:
+      default -> SPAWN BAD_OMEN
+";
+    let chorus::content::script::CompiledScript { content, state, dict: eff, .. } =
+        chorus::content::script::compile_script(text, &dict).unwrap();
+    // the effective dictionary carries the declaration — the demand query
+    // below would be a load-time parse error against the bare core dictionary
+    assert!(eff.kinds_list().ends_with(", omen"));
+
+    // demand mode over the custom kind: the declared THE_TALLY matches
+    let rep = chorus::reach::analyze_card(
+        &content,
+        &state,
+        &eff,
+        "",
+        CardOptions { demand: Some("kind:omen".to_string()), ..CardOptions::default() },
+    )
+    .expect("the demand query parses against the declared kind");
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert!(!rep.paths.is_empty());
+
+    // and the mint of the custom-kind prototype is proven by a chain
+    let rep = chorus::reach::analyze_card(&content, &state, &eff, "BAD_OMEN", Default::default())
+        .unwrap();
+    assert_eq!(rep.verdict, CardVerdict::Obtainable);
+    assert!(rep.chain.iter().any(|l| l.contains("SPAWN mints 'BAD_OMEN'")), "{:?}", rep.chain);
 }

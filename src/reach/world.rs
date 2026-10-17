@@ -15,6 +15,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::{CompiledContent, CompiledTrigger, PrototypeDef};
+use crate::core::dict::Dictionary;
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
@@ -360,17 +361,21 @@ impl<'c> WorldFacts<'c> {
 /// The per-(content, initial) analysis host. Deterministic in its inputs; the
 /// world facts are computed once on first use and shared by every subsequent
 /// [`Analyzer::analyze_card`] call. The
-/// caller must not mutate content or initial between calls.
+/// caller must not mutate content or initial between calls. The dictionary
+/// rides along for the load-time grammars the analyzer re-parses (a
+/// `--demand` §4.5 query validates its `kind:` terms against it, §4.1) —
+/// runtime analysis itself stays vocabulary-free.
 pub struct Analyzer<'c> {
     pub(crate) content: &'c CompiledContent,
     pub(crate) initial: &'c State,
+    pub(crate) dict: &'c Dictionary,
     world: OnceLock<WorldFacts<'c>>,
 }
 
 impl<'c> Analyzer<'c> {
     #[must_use]
-    pub fn new(content: &'c CompiledContent, initial: &'c State) -> Self {
-        Analyzer { content, initial, world: OnceLock::new() }
+    pub fn new(content: &'c CompiledContent, initial: &'c State, dict: &'c Dictionary) -> Self {
+        Analyzer { content, initial, dict, world: OnceLock::new() }
     }
 
     /// The world facts (compute once per (content, initial) pair).

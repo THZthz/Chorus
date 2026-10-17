@@ -43,6 +43,8 @@ projection of that data, never the source of truth.
 
 23. **v0.7.4** — the interface convergence (the acceptance layer only; no log/grammar change except where noted): the advance pass CLOSES at an ENDING instead of running on (§4.4 — completions and slots after the ending no longer fire; the clock stops where the story did), one step may advance at most seven days (§6.6 — a giant day field is a loud rejection, not an unbounded walk), and a slot-count rejection names its verb once instead of twice. The shipped REPL prints what the engine already knew — the goal, the clock, the open stations, the try row of typeable suggestions, `help`, `look`'s exits and carrying — and the lenient front door resolves what its own suggestions suggest (underscored/uppercase spellings, unique name-words, slot-fit disambiguation, `says`-template prose aliases, full-line verb corrections) while refusing outcome arrows instead of dropping them. `scripts/the-nightjar-flyer.txt`'s acceptance path is the honest seven-command win (the older nine-command path closed the inquest at 6:30, after Vienna, and only "won" while endings rode along).
 
+24. **v0.7.5** — the vocabulary convergence, script-side: the noun classes become definable, closing the last hardcoded word list a script could not extend. A `kinds:` section (§4.1/§10) registers new `lower_snake` kinds into the load's dictionary in declaration order — the rejections loud and uniform with the §10 duplicate rule (a re-declaration including a built-in, a relation-type collision — the entity line dispatches relation types first, so such a kind could never be declared on an entity line — and any name outside the class), kinds still not reserved words. Every kind check site now reads the Dictionary instead of the frozen eight: entity and prototype lines, the `kind:` term wherever a query parses (slots, `exists()`/`count()` inner queries — the parse_query/predicate front-ends now take the dictionary), and the reach analyzer's `--demand` parse (its Analyzer carries the load-effective dictionary, handed back on `CompiledScript` and adopted by `Game`). Unknown-kind errors keep their message shapes with the suggestion list derived from the dictionary — built-ins first, then declarations, so the byte-pins for the core dictionary are unchanged. The four built-in semantic roles are written down as engine-frozen (§4.1); runtime stays vocabulary-free; the reach scale fixture's private kind pool stays deliberately frozen (it is a generator, not a consumer). No log format change.
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -103,6 +105,31 @@ projection of that data, never the source of truth.
 | `state`     | Conditions attached to a character or run | dread, affliction, vision        |
 | `rite`      | A procedure-as-card the player owns       | a summoning rite                 |
 | `resource`  | Abstract player stats as cards            | vitality, passion, reason        |
+
+These eight are the **built-in kinds**, and four semantic roles are frozen
+to specific built-in values — the engine never generalizes them to a
+declared kind: `player:` must name a `character` (§10); the actors slot's
+default pool is the player's own kind (§11); `place` owns zone containment
+and the visibility fallout (§4.2, §11); and the `<someone>` phrasing of a
+usage line fires for `kind:character` slots (§11).
+
+Everything else about a kind is **open vocabulary** (v0.7.5): a script's
+`kinds:` section declares new kinds — indent-2 lines under a `kinds:`
+header, one name per line in the class `^[a-z][a-z0-9_]*$` (`lower_snake`)
+— registered into the load's dictionary in section order. That dictionary
+vocabulary is what every check site reads: entity and prototype lines
+(§10), `kind:` query terms wherever a query parses (§4.5), and the reach
+analyzer's `--demand` parse (§13.1, whose Analyzer carries the
+load-effective dictionary). An unknown kind is a load error naming the
+whole list — built-ins first, then declarations in order, which is exactly
+why declaration order is the suggestion order. A declaration itself fails
+loud on: a duplicate (re-declaring a built-in included — the uniform §10
+duplicate rule), a name colliding with a registered relation type (the
+entity line dispatches relation types before kinds, so such a kind could
+never be declared on an entity line), or a name outside the class. Kinds
+are NOT reserved words (§5.1) — an entity may be named `character` — and
+runtime stays vocabulary-free: the engine only ever compares the kind
+strings on cards, never against the dictionary.
 
 ### 4.2 Entity properties (what a card carries)
 
@@ -333,7 +360,8 @@ kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:wi
 name:SUSPICION  -name:SUSPICION        (§4.5: exact-case, like name refs and exists)
 ```
 
-- `kind:` — exactly one of the §4.1 KINDS; an empty or unknown kind is a
+- `kind:` — exactly one of the §4.1 kinds (the built-ins plus the script's
+  `kinds:` declarations, v0.7.5); an empty or unknown kind is a
   parse error wherever a query parses — slots, `exists()`, `count()`
   (v0.7.2: `kind:txet` used to compile and silently never match, the one
   term whose typo was inert)
@@ -1531,6 +1559,9 @@ goal: unmask Lord Vane's killer …      # carried in the meta for the interface
 start: 0:42                            # initial clock
 seed: 7                                # dice seed (§4.4, default 0)
 
+kinds:                                 # new noun classes (§4.1, v0.7.5)
+  omen                                 # one lower_snake name per indent-2 line
+
 entities:
   GUARD_VAN is place in NIGHTJAR_FLYER with site.guard:1
   # `in X` names the parent place card when one is declared (containment);
@@ -1575,6 +1606,15 @@ templates:
 
 Rules:
 
+- **Kind lines** (v0.7.5): one `lower_snake` name per indent-2 line under
+  `kinds:` — new noun classes (§4.1) registered into the load's dictionary,
+  section order = suggestion order. A duplicate (re-declaring a built-in
+  included), a relation-type collision, or a name outside the class is a
+  load error naming the line. A kind is visible to the lines after its
+  declaration only — use before `kinds:` is the ordinary unknown-kind error
+  (the same declare-then-use order containers already follow). The engine
+  never special-cases a declared kind; the four built-in semantic roles
+  (§4.1) stay built-in-only.
 - **Entity line**: `NAME is KIND [stackable] [with aspect:level, …]
   [at|in PLACE]` (trailing `with`/`at`/`in` clauses in either order; the
   `stackable` keyword sits before them, §4.2). Script ids are `s_<name>` —
@@ -1590,10 +1630,10 @@ Rules:
   name is a pool (§4.2) — and are written as-is — prefer `UPPER_SNAKE` (a
   name outside the name-lexeme class is legal but forces quoting on every
   ref to it; the lint flags it, §13.2).
-- **Duplicate declarations are load errors in every section** — entities,
-  prototypes, templates, verbs, decks, endings, functions alike (the
-  functions/decks rule generalized): a second declaration of the same key
-  fails at load naming the key, it never silently overwrites. (Verbs: a
+- **Duplicate declarations are load errors in every section** — kinds,
+  entities, prototypes, templates, verbs, decks, endings, functions alike
+  (the functions/decks rule generalized): a second declaration of the same
+  key fails at load naming the key, it never silently overwrites. (Verbs: a
   repeated verb header, not a body line, is the duplicate.)
 - **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
   dictionary, both endpoints declared entities (either missing is a load

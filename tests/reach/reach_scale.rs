@@ -9,7 +9,7 @@
 
 use chorus::reach::scale::{build_cs_scale, census, summarize};
 
-use chorus::reach::{analyze_card, render_report, Analyzer, CardOptions, CardVerdict};
+use chorus::reach::{render_report, Analyzer, CardOptions, CardVerdict};
 
 // CI-sized slice of CS scale (the full world is `cargo run --bin reach-scale`)
 const PROTOS: usize = 400;
@@ -37,7 +37,7 @@ fn the_synthesized_world_has_the_expected_shape() {
 fn cold_vs_warm_the_second_analysis_on_the_same_world_amortizes_the_fixpoint() {
     let fresh = build_cs_scale(PROTOS, RECIPES);
     let probe = fresh.names[fresh.names.len() >> 1].clone();
-    let analyzer = Analyzer::new(&fresh.content, &fresh.initial);
+    let analyzer = Analyzer::new(&fresh.content, &fresh.initial, &fresh.dict);
     let cold_start = std::time::Instant::now();
     analyzer.analyze_card(&probe, CardOptions::default()).expect("the probe analyzes");
     let cold = cold_start.elapsed().as_secs_f64() * 1000.0;
@@ -69,8 +69,8 @@ fn two_independently_built_worlds_produce_byte_identical_reports_cache_purity() 
     // One Analyzer per world across the whole sample — the world cache is
     // keyed per (content, initial), so each world's facts are
     // built once, not once per name.
-    let analyzer_a = Analyzer::new(&a.content, &a.initial);
-    let analyzer_b = Analyzer::new(&b.content, &b.initial);
+    let analyzer_a = Analyzer::new(&a.content, &a.initial, &a.dict);
+    let analyzer_b = Analyzer::new(&b.content, &b.initial, &b.dict);
     let mut sample: Vec<String> =
         a.names.iter().enumerate().filter(|(i, _)| i % 25 == 0).map(|(_, n)| n.clone()).collect();
     sample.extend(a.names[a.names.len() - 5..].iter().cloned());
@@ -124,7 +124,7 @@ fn census_full_name_sweep_stays_sound_at_scale() {
 #[test]
 fn path_export_invariants_over_a_broad_sample_fuzz_style_at_scale() {
     let world = build_cs_scale(PROTOS, RECIPES);
-    let analyzer = Analyzer::new(&world.content, &world.initial);
+    let analyzer = Analyzer::new(&world.content, &world.initial, &world.dict);
     let mut checked = 0usize;
     for name in world.names.iter().enumerate().filter(|(i, _)| i % 7 == 0).map(|(_, n)| n) {
         let rep = analyzer
@@ -147,9 +147,10 @@ fn path_export_invariants_over_a_broad_sample_fuzz_style_at_scale() {
 #[test]
 fn demand_semantics_survive_the_scale_any_obtainable_card_matches() {
     let world = build_cs_scale(PROTOS, RECIPES);
-    let rep = analyze_card(
+    let rep = chorus::reach::analyze_card(
         &world.content,
         &world.initial,
+        &world.dict,
         "",
         CardOptions { usable: false, demand: Some("aspect:lore>=2".to_string()) },
     )

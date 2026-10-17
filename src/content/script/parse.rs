@@ -48,6 +48,7 @@ fn seed_re() -> &'static Regex {
 /// [`Section::from_header`] is the single source of the header vocabulary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Section {
+    Kinds,
     Entities,
     Prototypes,
     Triggers,
@@ -63,6 +64,7 @@ impl Section {
     /// section header at all.
     fn from_header(name: &str) -> Option<Section> {
         match name {
+            "kinds" => Some(Section::Kinds),
             "entities" => Some(Section::Entities),
             "prototypes" => Some(Section::Prototypes),
             "triggers" => Some(Section::Triggers),
@@ -115,6 +117,17 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut verbs: IndexMap<String, VerbContent> = IndexMap::new();
     let mut decks: Vec<DeckRaw> = Vec::new();
     let mut functions: Vec<FunctionDef> = Vec::new();
+    // §4.1 (v0.7.5): the script's `kinds:` declarations, section order — the
+    // record the loader's compile half re-registers (compile_parsed)
+    let mut kinds: IndexSet<String> = IndexSet::new();
+    // the EFFECTIVE dictionary: the caller's plus every kind this script has
+    // declared so far, so entity/prototype lines read one vocabulary. The
+    // caller's dictionary is never mutated — kinds are load-time vocabulary
+    // only (the engine never reads them), and a per-load clone keeps loading
+    // the same text against one dictionary idempotent (a shared dict would
+    // otherwise fail its second load already-registered). compile_parsed
+    // rebuilds the same augmentation from `kinds` above.
+    let mut eff = dict.clone();
     let mut entity_names: IndexSet<String> = IndexSet::new();
     // minted script id (`s_{name.to_lowercase()}`) → the name holding it
     let mut minted_ids: IndexMap<String, String> = IndexMap::new();
@@ -204,6 +217,26 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
         };
 
         match sec {
+            Section::Kinds => {
+                // §4.1 (v0.7.5): one indent-2 lower_snake kind name per line.
+                // register_kind owns the whole grammar (shape, relation-type
+                // collision, duplicates — built-ins included), so the error
+                // vocabulary lives in one place; the loader wraps it with the
+                // line number. Registration order IS the suggestion order in
+                // every later unknown-kind message. A kind is visible to the
+                // lines AFTER its declaration only — use before `kinds:` is
+                // the ordinary unknown-kind load error (the same
+                // declare-then-use order containers already follow, §10).
+                if indent != 2 {
+                    return Err(ChorusError::new(format!(
+                        "line {}: kinds expect an indent-2 kind name, got '{t}'",
+                        ln + 1
+                    )));
+                }
+                eff.register_kind(t)
+                    .map_err(|e| ChorusError::new(format!("line {}: {e}", ln + 1)))?;
+                kinds.insert(t.to_string());
+            }
             Section::Entities => {
                 // §10: a standalone `on complete` line attaches to the
                 // most recently declared entity — multiple lines per entity
@@ -221,7 +254,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     continue;
                 }
                 let declared = entities.len();
-                let clauses = parse_entity_line(t, ln + 1, dict, &mut entities, &mut relations)?;
+                let clauses = parse_entity_line(t, ln + 1, &eff, &mut entities, &mut relations)?;
                 // duplicate entity declarations share one s_<name> id and
                 // would silently overwrite — a load error, not a
                 // last-write-wins (§5.1). Names are case-exact (§5.1), so
@@ -272,7 +305,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     }
                     continue;
                 }
-                let (key, proto, clauses) = parse_prototype_line(t, ln + 1, dict)?;
+                let (key, proto, clauses) = parse_prototype_line(t, ln + 1, &eff)?;
                 // duplicates are a load error, the same uniform rule as
                 // entities/endings (formerly QUIRK(Q5): a silent
                 // last-write-wins — the later insert overwrote)
@@ -329,7 +362,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                 // verb header: indent 2, UPPER_NAME:
                 if indent == 2 && verb_header_re().is_match(t) {
                     let name = t[..t.len() - 1].to_string();
-                    if !dict.is_verb(&name) {
+                    if !eff.is_verb(&name) {
                         return Err(ChorusError::new(format!(
                             "line {}: verb '{name}' is not registered in the dictionary",
                             ln + 1
@@ -408,6 +441,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
         content: ContentRaw {
             seed: None, // rides in via meta (compile_script merges it)
             verbs,
+            kinds,
             triggers: Some(triggers),
             prototypes: Some(prototypes),
             templates: Some(templates),

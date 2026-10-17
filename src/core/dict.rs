@@ -25,8 +25,15 @@ pub const CORE_VERBS: [&str; 12] = [
     "WAIT",
 ];
 
-/// Noun classes, spec §4.1.
-pub const KINDS: [&str; 8] =
+/// The eight built-in noun classes (§4.1), in suggestion order. The
+/// vocabulary itself is EXTENSIBLE — a script's `kinds:` section registers
+/// more (v0.7.5) — so this table only seeds `core_dictionary`; every
+/// membership/suggestion read goes through `Dictionary::kinds`. The four
+/// semantic roles only the built-ins play are written into §4.1 (player:
+/// names a `character`; the actors pool defaults same-kind; `place` zones;
+/// the `<someone>` phrasing) — nothing in the engine special-cases a
+/// declared kind.
+pub const CORE_KINDS: [&str; 8] =
     ["character", "place", "item", "text", "idea", "state", "rite", "resource"];
 
 /// The reserved list: 18 keywords + every
@@ -86,11 +93,14 @@ pub struct RelationTypeDef {
     pub symmetric: bool,
 }
 
-/// The nameable-word registry: verbs, relation types, reserved words. All
-/// three keep insertion order (IndexSet/IndexMap).
+/// The nameable-word registry: verbs, kinds, relation types, reserved words.
+/// All keep insertion order (IndexSet/IndexMap) — for kinds, insertion order
+/// IS the error-message/suggestion order (built-ins first, then `kinds:`
+/// declarations in section order).
 #[derive(Debug, Clone)]
 pub struct Dictionary {
     pub verbs: IndexSet<String>,
+    pub kinds: IndexSet<String>,
     pub relation_types: IndexMap<String, RelationTypeDef>,
     pub reserved: IndexSet<String>,
 }
@@ -107,6 +117,7 @@ impl Dictionary {
     pub fn new() -> Dictionary {
         Dictionary {
             verbs: IndexSet::new(),
+            kinds: IndexSet::new(),
             relation_types: IndexMap::new(),
             reserved: RESERVED_WORDS.iter().map(|s| (*s).to_string()).collect(),
         }
@@ -118,6 +129,38 @@ impl Dictionary {
         self.verbs.insert(lexeme.to_string());
         self.reserved.insert(lexeme.to_string());
         Ok(())
+    }
+
+    /// Register a kind lexeme (§4.1, v0.7.5): `lower_snake`
+    /// (`^[a-z][a-z0-9_]*$`), never a registered relation type (the entity
+    /// line's relation dispatch precedes the kind check, so such a kind
+    /// could never be declared on an entity line), never a duplicate — the
+    /// caller owns idempotency, and the script loader rejects re-declaration
+    /// loudly (built-ins included), uniform with every other §10 duplicate
+    /// rule. Kinds are NOT added to `reserved`: they never collide with the
+    /// UPPER_SNAKE name/reserved namespace (§5.1), so an entity may still be
+    /// named "character".
+    pub fn register_kind(&mut self, lexeme: &str) -> Result<()> {
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let re = static_regex(&RE, || Regex::new(r"^[a-z][a-z0-9_]*$"));
+        if !re.is_match(lexeme) {
+            return Err(ChorusError::new(format!("kind '{lexeme}' must be lower_snake")));
+        }
+        if self.relation_types.contains_key(lexeme) {
+            return Err(ChorusError::new(format!("kind '{lexeme}' collides with a relation type")));
+        }
+        if self.kinds.contains(lexeme) {
+            return Err(ChorusError::new(format!("kind '{lexeme}' is already registered")));
+        }
+        self.kinds.insert(lexeme.to_string());
+        Ok(())
+    }
+
+    /// The kind vocabulary, insertion order — the exact list the
+    /// unknown-kind errors join into their suggestions (query.rs, decls.rs).
+    #[must_use]
+    pub fn kinds_list(&self) -> String {
+        self.kinds.iter().cloned().collect::<Vec<_>>().join(", ")
     }
 
     /// NO `assert_nameable` check here: relation registration is
@@ -166,7 +209,7 @@ impl Dictionary {
 }
 
 /// The built-in dictionary: the core verbs registered plus the eight
-/// built-in relation types.
+/// built-in kinds and the eight built-in relation types.
 #[must_use]
 pub fn core_dictionary() -> Dictionary {
     let mut d = Dictionary::new();
@@ -175,6 +218,13 @@ pub fn core_dictionary() -> Dictionary {
         // cannot fail; a failure would be a defect in this literal table.
         if let Err(e) = d.register_verb(v) {
             unreachable!("core verb '{v}' failed to register: {e}");
+        }
+    }
+    for k in CORE_KINDS {
+        // CORE_KINDS are lower_snake and name no relation type — same
+        // literal-table argument as the verbs above.
+        if let Err(e) = d.register_kind(k) {
+            unreachable!("core kind '{k}' failed to register: {e}");
         }
     }
     d.register_relation("parent_child", RelationTypeDef { symmetric: true });
@@ -220,5 +270,41 @@ mod tests {
         // `register_relation` has NO validation — frozen asymmetry
         d.register_relation("x y z", RelationTypeDef { symmetric: true });
         assert!(d.relation_types.contains_key("x y z"));
+    }
+
+    #[test]
+    fn core_kinds_seed_in_suggestion_order_and_are_not_reserved() {
+        // the seeds land in table order — the order every unknown-kind
+        // suggestion list joins (query.rs, decls.rs)
+        let d = core_dictionary();
+        let got: Vec<&str> = d.kinds.iter().map(String::as_str).collect();
+        assert_eq!(got, CORE_KINDS);
+        assert_eq!(d.kinds_list(), "character, place, item, text, idea, state, rite, resource");
+        // kinds never join the reserved namespace: the UPPER_SNAKE name
+        // grammar and the lower_snake kind grammar cannot collide (§5.1)
+        for k in CORE_KINDS {
+            assert!(!d.reserved.contains(k));
+        }
+    }
+
+    #[test]
+    fn register_kind_messages_are_byte_exact() {
+        let mut d = core_dictionary();
+        // the shape rule
+        let e1 = d.register_kind("Ritual").unwrap_err();
+        assert_eq!(e1.msg, "kind 'Ritual' must be lower_snake");
+        let e2 = d.register_kind("3rd").unwrap_err();
+        assert_eq!(e2.msg, "kind '3rd' must be lower_snake");
+        // the relation-type collision: the entity line dispatches relation
+        // types BEFORE kinds (decls.rs), so such a kind is unreachable there
+        let e3 = d.register_kind("neighbor").unwrap_err();
+        assert_eq!(e3.msg, "kind 'neighbor' collides with a relation type");
+        // duplicates — built-ins and fresh registrations alike — reject
+        let e4 = d.register_kind("text").unwrap_err();
+        assert_eq!(e4.msg, "kind 'text' is already registered");
+        d.register_kind("omen").unwrap();
+        let e5 = d.register_kind("omen").unwrap_err();
+        assert_eq!(e5.msg, "kind 'omen' is already registered");
+        assert_eq!(d.kinds.len(), CORE_KINDS.len() + 1);
     }
 }

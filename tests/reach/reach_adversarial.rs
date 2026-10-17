@@ -18,7 +18,19 @@ use chorus::content::{
 use chorus::core::dice::roll_die;
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
-use chorus::reach::{analyze_card, CardOptions, CardVerdict, Existence};
+use chorus::reach::{CardOptions, CardVerdict, Existence};
+
+// The file's one analyze_card face: the free entry pinned to a fresh core
+// dictionary — every rig registers only verbs (the header note).
+fn analyze_card(
+    content: &chorus::content::CompiledContent,
+    state: &State,
+    target: &str,
+    opts: CardOptions,
+) -> chorus::error::Result<chorus::reach::CardReport> {
+    let dict = core_dictionary();
+    chorus::reach::analyze_card(content, state, &dict, target, opts)
+}
 
 /// Rig verbs are
 /// code-registered (§10). One fresh dictionary per test.

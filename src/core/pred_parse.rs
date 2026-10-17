@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
+use crate::core::dict::Dictionary;
 use crate::core::lexer::Tok;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::predicate::{Pred, PredField, ScalarCond, ScalarPath, ValExpr};
@@ -34,9 +35,11 @@ pub struct PredView {
     pub spans: Vec<(usize, usize)>,
 }
 
-/// Parse one `when:` predicate string.
-pub fn parse_predicate(src: &str) -> Result<Pred> {
-    PredParser::new(src, None, false)?.parse()
+/// Parse one `when:` predicate string. The dictionary carries the kind
+/// vocabulary the embedded §4.5 queries validate against (exists()/count()
+/// `kind:` terms) — every load-time caller holds one.
+pub fn parse_predicate(src: &str, dict: &Dictionary) -> Result<Pred> {
+    PredParser::new(src, None, false, dict)?.parse()
 }
 
 /// Parse one IF condition out of the
@@ -46,6 +49,7 @@ pub fn parse_predicate(src: &str) -> Result<Pred> {
 pub fn parse_predicate_toks(
     toks: &[Tok],
     params: Option<&HashSet<String>>,
+    dict: &Dictionary,
 ) -> Result<(Pred, usize)> {
     let mut depth: i64 = 0;
     let mut end: Option<usize> = None;
@@ -82,16 +86,20 @@ pub fn parse_predicate_toks(
     let PredView { src, toks, spans } = pred_view_from_toks(slice)?;
     // `allow_roll`: `roll` (§4.4) is an outcome-list operand — an IF condition
     // may read the list's dice; a `when:` line (the string front-end) may not
-    let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true };
+    let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true, dict };
     let pred = parser.parse()?;
     Ok((pred, end))
 }
 
 /// ONE standalone value expression
 /// (§4.4): the ROLL argument grammar — one grammar, three front-ends.
-pub fn parse_value_expr_toks(toks: &[Tok], params: Option<&HashSet<String>>) -> Result<ValExpr> {
+pub fn parse_value_expr_toks(
+    toks: &[Tok],
+    params: Option<&HashSet<String>>,
+    dict: &Dictionary,
+) -> Result<ValExpr> {
     let PredView { src, toks, spans } = pred_view_from_toks(toks)?;
-    let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true };
+    let parser = PredParser { toks, spans, pos: 0, src, params, allow_roll: true, dict };
     parser.parse_value_expr()
 }
 
@@ -147,6 +155,9 @@ struct PredParser<'a> {
     src: String,
     params: Option<&'a HashSet<String>>,
     allow_roll: bool,
+    /// the kind vocabulary for the embedded §4.5 queries (`kind:` terms in
+    /// exists()/count() inner queries)
+    dict: &'a Dictionary,
 }
 
 impl<'a> PredParser<'a> {
@@ -168,7 +179,12 @@ impl<'a> PredParser<'a> {
     /// errors loudly at the parser ("expected comparison op, got '|'").
     /// (`\d` is ASCII `[0-9]`; offsets are byte offsets, the spans
     /// convention.)
-    fn new(src: &str, params: Option<&'a HashSet<String>>, allow_roll: bool) -> Result<Self> {
+    fn new(
+        src: &str,
+        params: Option<&'a HashSet<String>>,
+        allow_roll: bool,
+        dict: &'a Dictionary,
+    ) -> Result<Self> {
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = static_regex(&RE, || {
             Regex::new(&format!(
@@ -202,7 +218,7 @@ impl<'a> PredParser<'a> {
                 }
             }
         }
-        Ok(PredParser { toks, spans, pos: 0, src: src.to_string(), params, allow_roll })
+        Ok(PredParser { toks, spans, pos: 0, src: src.to_string(), params, allow_roll, dict })
     }
 
     fn peek(&self) -> Option<&String> {
@@ -400,7 +416,7 @@ impl<'a> PredParser<'a> {
         let re = static_regex(&CMP, || {
             Regex::new(&format!(r"{}({}){}", DSL_WS_CLASS, CMP_OPS.join("|"), DSL_WS_CLASS))
         });
-        parse_query(&re.replace_all(inner, "$1"))
+        parse_query(&re.replace_all(inner, "$1"), self.dict)
     }
 
     /// scalarCond := 'aspect' ':' key cmp int.
@@ -537,6 +553,7 @@ impl<'a> PredParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::dict::core_dictionary;
     use crate::core::predicate::{eval_pred, PredCtx, RoleBindings};
     use crate::core::query::match_query;
     use crate::core::types::{new_state, Aspects, AttrValue, Attrs, Entity};
@@ -546,19 +563,20 @@ mod tests {
         // Q2 fixed (§6.3's grammar has no `@`): the tokenizer is a load
         // error naming the character and its offset — formerly the `@`
         // silently vanished (`aspect:x >= @3` ≡ `aspect:x>=3`).
-        let e = parse_predicate("count(actors) @>= 2").unwrap_err();
+        let dict = core_dictionary();
+        let e = parse_predicate("count(actors) @>= 2", &dict).unwrap_err();
         assert_eq!(e.msg, "illegal character '@' at offset 14 in predicate 'count(actors) @>= 2'");
         // whitespace stays glue (§6.3's only skip): the spaced form parses
         // identical to the tight one
-        let p1 = parse_predicate("count(actors) >= 2").unwrap();
-        let p2 = parse_predicate("count(actors)>=2").unwrap();
+        let p1 = parse_predicate("count(actors) >= 2", &dict).unwrap();
+        let p2 = parse_predicate("count(actors)>=2", &dict).unwrap();
         assert_eq!(p1, p2);
         // `!` survives tokenization: exists()/count() embed §4.5 queries
         // verbatim (`state:!sealed`) and the inner text is reconstructed
         // from the source — assert the negation actually rode along (a
         // sealed door does NOT match state:!sealed; a swallowed `!` would
         // compile the positive term and match)
-        let pq = parse_predicate("exists(state:!sealed)").unwrap();
+        let pq = parse_predicate("exists(state:!sealed)", &dict).unwrap();
         let Pred::ExistsQuery { query } = pq else {
             panic!("expected ExistsQuery, got {pq:?}");
         };
@@ -575,10 +593,10 @@ mod tests {
         door.attrs.insert("state.sealed".into(), AttrValue::Bool(true));
         assert!(!match_query(&door, &query));
         // a stray `!` outside a query is still a loud parse error
-        let e2 = parse_predicate("count(actors) ! 2").unwrap_err();
+        let e2 = parse_predicate("count(actors) ! 2", &dict).unwrap_err();
         assert_eq!(e2.msg, "expected comparison op, got '!'");
-        assert!(parse_predicate("").is_err());
-        assert_eq!(parse_predicate("").unwrap_err().msg, "empty predicate ''");
+        assert!(parse_predicate("", &dict).is_err());
+        assert_eq!(parse_predicate("", &dict).unwrap_err().msg, "empty predicate ''");
     }
 
     #[test]
@@ -608,6 +626,7 @@ mod tests {
 
     #[test]
     fn if_condition_scan_reports_end_and_errors() {
+        let dict = core_dictionary();
         let toks = vec![
             Tok::Name { v: "count".into() },
             Tok::Punct { v: "(".into() },
@@ -618,32 +637,33 @@ mod tests {
             Tok::Punct { v: "->".into() },
             Tok::Punct { v: "(".into() },
         ];
-        let (pred, end) = parse_predicate_toks(&toks, None).unwrap();
+        let (pred, end) = parse_predicate_toks(&toks, None, &dict).unwrap();
         assert_eq!(end, 6);
         assert!(matches!(pred, Pred::Cmp { .. }));
         // comma at depth 0 → the -> required error
         let bad = vec![Tok::Name { v: "true".into() }, Tok::Punct { v: ",".into() }];
         assert_eq!(
-            parse_predicate_toks(&bad, None).unwrap_err().msg,
+            parse_predicate_toks(&bad, None, &dict).unwrap_err().msg,
             "an IF condition needs '-> ( outcomes )'"
         );
         // ELSE at depth 0 → the before-ELSE error
         let bad2 = vec![Tok::Name { v: "ELSE".into() }];
         assert_eq!(
-            parse_predicate_toks(&bad2, None).unwrap_err().msg,
+            parse_predicate_toks(&bad2, None, &dict).unwrap_err().msg,
             "an IF needs '-> ( outcomes )' before 'ELSE'"
         );
         // no arrow at all
         let bad3 = vec![Tok::Name { v: "true".into() }];
         assert_eq!(
-            parse_predicate_toks(&bad3, None).unwrap_err().msg,
+            parse_predicate_toks(&bad3, None, &dict).unwrap_err().msg,
             "an IF condition needs '-> ( outcomes )'"
         );
     }
 
     #[test]
     fn roll_operand_is_tok_frontend_only() {
-        let e = parse_predicate("roll >= 3").unwrap_err();
+        let dict = core_dictionary();
+        let e = parse_predicate("roll >= 3", &dict).unwrap_err();
         assert_eq!(
             e.msg,
             "'roll' is not available in 'when:' predicates — it binds inside an outcome list, after a ROLL (§4.4)"
@@ -655,7 +675,7 @@ mod tests {
             Tok::Int { v: 3 },
             Tok::Punct { v: "->".into() },
         ];
-        let (pred, _) = parse_predicate_toks(&toks, None).unwrap();
+        let (pred, _) = parse_predicate_toks(&toks, None, &dict).unwrap();
         let bindings = RoleBindings::new();
         let mut state = new_state(0);
         let ctx_none = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
@@ -670,7 +690,8 @@ mod tests {
 
     #[test]
     fn total_with_query_form_is_rejected_with_the_rule() {
-        let e = parse_predicate("total(aspect:x >= 1, aspect:y) >= 2").unwrap_err();
+        let dict = core_dictionary();
+        let e = parse_predicate("total(aspect:x >= 1, aspect:y) >= 2", &dict).unwrap_err();
         assert_eq!(
             e.msg,
             "total() pools a bound role's aspects — total(<query>, …) is not offered; use count(<query>) to count a pool by name (e.g. count(name:X))"

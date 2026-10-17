@@ -220,10 +220,14 @@ pub struct Game {
 
 impl Game {
     /// Compile a text script into a Game; the dictionary must be supplied
-    /// explicitly.
+    /// explicitly. The Game carries the LOAD-EFFECTIVE dictionary back
+    /// (§4.1, v0.7.5): the supplied one plus the script's `kinds:`
+    /// declarations — verbs and relation types are unchanged and the engine
+    /// never reads kinds at runtime, so play behaves identically; the field
+    /// just stays honest about the vocabulary the script loaded under.
     pub fn from_script(text: &str, dict: Dictionary) -> Result<Game> {
         let compiled = compile_script(text, &dict)?;
-        Ok(Self::new(dict, compiled.content, compiled.meta, compiled.state))
+        Ok(Self::new(compiled.dict, compiled.content, compiled.meta, compiled.state))
     }
 
     /// The private constructor.

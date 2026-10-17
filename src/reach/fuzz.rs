@@ -1070,7 +1070,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
     let mut deep: Option<Forward> = None;
     // one Analyzer across the probes — the facts for this (content, initial)
     // pair are built once, not once per probe
-    let analyzer = Analyzer::new(&content, &sc.initial);
+    let analyzer = Analyzer::new(&content, &sc.initial, &dict);
     for p in &sc.probes {
         let rep = match p.mode {
             ProbeMode::Name => analyzer.analyze_card(&p.q, CardOptions::default())?,
@@ -1099,7 +1099,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
         let truth = match p.mode {
             ProbeMode::Name => fw.ever_names.contains(&p.q),
             ProbeMode::Demand => {
-                let q = parse_query(&p.q)?;
+                let q = parse_query(&p.q, &dict)?;
                 fw.ever_desc.values().any(|e| match_query(e, &q))
             }
         };
@@ -1124,7 +1124,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
             let truth_deep = match p.mode {
                 ProbeMode::Name => deep_fw.ever_names.contains(&p.q),
                 ProbeMode::Demand => {
-                    let q = parse_query(&p.q)?;
+                    let q = parse_query(&p.q, &dict)?;
                     deep_fw.ever_desc.values().any(|e| match_query(e, &q))
                 }
             };

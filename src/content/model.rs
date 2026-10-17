@@ -198,6 +198,11 @@ pub struct ContentRaw {
     /// §4.4: the dice seed (default 0). Meta line `seed: N` (§10).
     pub seed: Option<i64>,
     pub verbs: IndexMap<String, VerbContent>,
+    /// §4.1 (v0.7.5): the script's `kinds:` declarations, section order —
+    /// the record of what the loader registers into its per-load dictionary
+    /// clone. Code-level raw builders that use a custom kind must register
+    /// it into their dictionary themselves (the same discipline as verbs).
+    pub kinds: IndexSet<String>,
     pub triggers: Option<Vec<TriggerDef>>,
     pub prototypes: Option<IndexMap<String, PrototypeDef>>,
     /// prose templates per verb (§5.3)

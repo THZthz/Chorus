@@ -85,7 +85,11 @@ fn main() -> ExitCode {
 
     // compile the script; a missing file / compile error is a hard error →
     // exit 1. Only the message line is reproducible
-    // (deliberate: stderr text is not part of the stdout freeze).
+    // (deliberate: stderr text is not part of the stdout freeze). The load
+    // hands back its EFFECTIVE dictionary (§4.1: the core dictionary plus
+    // the script's `kinds:` declarations) — the analyzer's --demand query
+    // parse validates `kind:` terms against it, so a demand on a custom
+    // kind parses.
     let dict = core_dictionary();
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -101,7 +105,7 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let CompiledScript { content, state, .. } = compiled;
+    let CompiledScript { content, state, dict: eff, .. } = compiled;
 
     // the branch ORDER is the frozen behavior: --all
     // wins over an explicit card name; a lone --demand reports once (the
@@ -132,7 +136,7 @@ fn main() -> ExitCode {
         }
         let mut sorted: Vec<String> = names.into_iter().collect();
         sorted.sort_by(|a, b| cmp_utf16(a, b));
-        let analyzer = Analyzer::new(&content, &state);
+        let analyzer = Analyzer::new(&content, &state, &eff);
         for name in &sorted {
             // report(n) passes the CAPTURED demand on — `--all --demand q`
             // renders the demand report once per name
@@ -152,7 +156,7 @@ fn main() -> ExitCode {
         // only --demand is given; the analyzer ignores the target under
         // demand (the demand branch runs first)
         let card = card.map(String::as_str).unwrap_or("");
-        let analyzer = Analyzer::new(&content, &state);
+        let analyzer = Analyzer::new(&content, &state, &eff);
         let r = match analyzer.analyze_card(card, CardOptions { usable, demand: demand.clone() }) {
             Ok(r) => r,
             Err(e) => return fail(e),

@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::core::dict::KINDS;
+use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::core::text::{dsl_trim, split_dsl_ws, DSL_WS_CLASS};
@@ -127,8 +127,10 @@ pub type Query = Vec<Vec<QueryTerm>>;
 /// of those tokens — glued into a term's value (`aspect:a|b`) it rides
 /// along and the atom's own grammar rejects it loudly (no atom form admits
 /// `|`), never a silent second group. A leading `|`, a trailing `|`, or an
-/// empty group (`| |`) is a parse error.
-pub fn parse_query(src: &str) -> Result<Query> {
+/// empty group (`| |`) is a parse error. The dictionary carries the kind
+/// vocabulary (§4.1: the built-ins plus the script's `kinds:` declarations)
+/// — the one externally-owned word class this grammar validates.
+pub fn parse_query(src: &str, dict: &Dictionary) -> Result<Query> {
     let mut groups: Query = Vec::new();
     let mut group: Vec<QueryTerm> = Vec::new();
     for term in split_dsl_ws(dsl_trim(src)) {
@@ -140,7 +142,7 @@ pub fn parse_query(src: &str) -> Result<Query> {
             }
             groups.push(std::mem::take(&mut group));
         } else {
-            group.push(parse_term(term)?);
+            group.push(parse_term(term, dict)?);
         }
     }
     if group.is_empty() {
@@ -157,7 +159,7 @@ pub fn parse_query(src: &str) -> Result<Query> {
 
 /// One term: optional leading `-` negation, then
 /// `kind:`/`name:`/`aspect:`/`state:`.
-fn parse_term(raw: &str) -> Result<QueryTerm> {
+fn parse_term(raw: &str, dict: &Dictionary) -> Result<QueryTerm> {
     let mut term = raw;
     let neg = term.starts_with('-');
     if neg {
@@ -172,19 +174,19 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
     let rest = &term[colon + 1..];
     match field {
         "kind" => {
-            // §4.5/§6.1: a kind is one of the §4.1 KINDS — an empty or unknown
-            // kind could only ever match nothing, and "a slot that compiles
-            // and silently never matches" is exactly what load errors exist
-            // for (a `kind:txet` typo used to be inert)
+            // §4.5/§6.1: a kind is one of the dictionary's §4.1 kinds — an
+            // empty or unknown kind could only ever match nothing, and "a
+            // slot that compiles and silently never matches" is exactly what
+            // load errors exist for (a `kind:txet` typo used to be inert)
             if rest.is_empty() {
                 return Err(ChorusError::new(format!(
                     "bad kind term '{raw}' (expected kind:<KIND>)"
                 )));
             }
-            if !KINDS.contains(&rest) {
+            if !dict.kinds.contains(rest) {
                 return Err(ChorusError::new(format!(
                     "bad kind term '{raw}' (unknown kind '{rest}' — expected one of {})",
-                    KINDS.join(", ")
+                    dict.kinds_list()
                 )));
             }
             Ok(QueryTerm::Kind { neg, kind: rest.to_string() })
@@ -355,11 +357,14 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::dict::core_dictionary;
     use crate::core::types::{AspectVal, Aspects, Attrs};
 
     #[test]
     fn parse_and_match_the_canonical_term_shapes() {
-        let q = parse_query("kind:text aspect:secret>=3 state:!sealed -aspect:winter").unwrap();
+        let dict = core_dictionary();
+        let q =
+            parse_query("kind:text aspect:secret>=3 state:!sealed -aspect:winter", &dict).unwrap();
         assert_eq!(q.len(), 1); // no '|' — one conjunction group (§4.5)
         assert_eq!(q[0].len(), 4);
         let e = Entity {
@@ -382,7 +387,7 @@ mod tests {
         };
         assert!(match_query(&e, &q));
         // state:!x reads false only for EXACT boolean true ("false" string is unsealed)
-        let q2 = parse_query("state:sealed").unwrap();
+        let q2 = parse_query("state:sealed", &dict).unwrap();
         assert!(!match_query(&e, &q2));
         let mut sealed = e.clone();
         sealed.attrs.insert("state.sealed".into(), AttrValue::Bool(true));
@@ -391,8 +396,9 @@ mod tests {
 
     #[test]
     fn name_term_rejects_comparisons_and_defaults_match() {
-        assert!(parse_query("name:X>=1").is_err());
-        let q = parse_query("aspect:language.latin").unwrap();
+        let dict = core_dictionary();
+        assert!(parse_query("name:X>=1", &dict).is_err());
+        let q = parse_query("aspect:language.latin", &dict).unwrap();
         match &q[0][0] {
             QueryTerm::Aspect { path, op, level, .. } => {
                 assert_eq!(path, "language.latin");

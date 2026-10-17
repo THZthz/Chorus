@@ -8,6 +8,7 @@ mod conditionals;
 mod fn_expand_direct;
 mod functions;
 mod gate;
+mod kinds;
 mod lint;
 mod query_predicate;
 mod sentence;

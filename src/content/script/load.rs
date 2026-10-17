@@ -1,6 +1,8 @@
 //! The load entry point: [`compile_script`] parses a script and turns it
 //! into runnable game content + the initial State.
 
+use indexmap::IndexSet;
+
 use super::parse::parse_script;
 use super::types::{declared_entities, CompiledScript, Script};
 use crate::content::{compile_content, ContentRaw};
@@ -8,6 +10,23 @@ use crate::core::clock::abs_min;
 use crate::core::dict::Dictionary;
 use crate::core::types::{add_entity, new_state, relation_key, AttrValue, Attrs, Entity, Relation};
 use crate::error::{ChorusError, Result};
+
+/// The load-effective dictionary: the caller's dictionary plus the script's
+/// `kinds:` declarations (§4.1, v0.7.5), declaration order preserved. Kinds
+/// are load-time vocabulary only — the engine and the log never read them —
+/// so the augmentation rides a per-load CLONE and the caller's dictionary is
+/// left untouched: loading the same text twice against one dictionary stays
+/// idempotent, and `Game::from_script` keeps owning its dictionary verbatim.
+pub(super) fn dict_with_kinds(dict: &Dictionary, kinds: &IndexSet<String>) -> Result<Dictionary> {
+    let mut eff = dict.clone();
+    for k in kinds {
+        // every declaration was validated by parse_script against the same
+        // base dictionary — this cannot fail; if it ever does, the load
+        // fails loud right here
+        eff.register_kind(k)?;
+    }
+    Ok(eff)
+}
 
 /// `compile_script(text, dict)` → `{ content, state, meta }`.
 pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
@@ -27,7 +46,11 @@ pub(super) fn compile_parsed(script: Script, dict: &Dictionary) -> Result<Compil
     // from them.
     let declared = declared_entities(&script.entities);
     let raw = ContentRaw { seed: script.meta.seed, ..script.content };
-    let content = compile_content(&raw, dict, &declared)?;
+    // §4.1: the compile half sees the same effective dictionary the parse
+    // half validated against — the script's kinds re-registered onto a fresh
+    // clone, so every slot/recipe-body query parse below accepts them
+    let eff = dict_with_kinds(dict, &raw.kinds)?;
+    let content = compile_content(&raw, &eff, &declared)?;
     let now = match script.meta.start {
         Some(start) => abs_min(start),
         None => 0,
@@ -113,5 +136,5 @@ pub(super) fn compile_parsed(script: Script, dict: &Dictionary) -> Result<Compil
             )));
         }
     }
-    Ok(CompiledScript { content, state, meta: script.meta })
+    Ok(CompiledScript { content, state, meta: script.meta, dict: eff })
 }

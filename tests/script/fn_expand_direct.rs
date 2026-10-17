@@ -13,9 +13,6 @@
 //! test-local template freeze; the compile-side construction sites must
 //! reproduce them exactly).
 
-#[path = "../common/mod.rs"]
-mod common;
-
 use std::collections::HashMap;
 
 use indexmap::{IndexMap, IndexSet};
@@ -29,7 +26,7 @@ use chorus::core::parse::{parse_function_body, parse_outcomes};
 use chorus::core::sentence::{Outcome, Sentence, SentenceKind};
 use chorus::error::{ChorusError, Result};
 
-use common::harness::assert_err_msg;
+use crate::common::harness::assert_err_msg;
 
 /// A parse-level FnTable the
 /// way compile_content's passes build it: pass 1 inserts every name (so
@@ -72,7 +69,7 @@ fn fmt_outcomes(out: &[Outcome], dict: &Dictionary) -> String {
             outcomes: out.to_vec(),
             span_min: None,
         },
-        Some(dict),
+        dict,
     )
     .unwrap()
 }
@@ -128,8 +125,8 @@ fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
         outcomes: out.to_vec(),
         span_min: None,
     };
-    let a = format_sentence(&as_sentence(&expanded[..2]), Some(&dict)).unwrap();
-    let b = format_sentence(&as_sentence(&twin[..2]), Some(&dict)).unwrap();
+    let a = format_sentence(&as_sentence(&expanded[..2]), &dict).unwrap();
+    let b = format_sentence(&as_sentence(&twin[..2]), &dict).unwrap();
     assert_eq!(a, b);
     assert_eq!(a, " -> SPAWN SUSPICION, NARRATE \"The conductor's eyes linger on THE_GUARD.\"");
 }

@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 use indexmap::IndexMap;
 use regex::Regex;
 
-use crate::content::content::CompiledContent;
+use crate::content::CompiledContent;
 use crate::core::clock::{
     abs_min, clock_from_abs_min, parse_clock, Clock, HALFHOURS_PER_DAY, MIN_PER_HALFHOUR,
 };
@@ -28,7 +28,7 @@ use crate::core::r#ref::{id_ref, name_ref, Ref};
 use crate::core::regex_util::static_regex;
 use crate::core::text::{dsl_trim, DSL_WS_CLASS};
 use crate::core::types::{Entity, State};
-use crate::engine::engine::Step;
+use crate::engine::Step;
 
 /// The parse context: dictionaries, content, state and the default actor.
 pub struct LenientCtx<'a> {
@@ -39,12 +39,12 @@ pub struct LenientCtx<'a> {
     pub player: Option<&'a str>,
 }
 
-/// Success carries the parsed [`Step`] and its canonical text; failure
+/// Success carries the parsed [`Step`]; failure
 /// carries the error message and a suggestion pool ([`ParsedInput::is_ok`]
 /// discriminates the two variants).
 #[derive(Debug, Clone)]
 pub enum ParsedInput {
-    Ok { step: Step, canonical: String },
+    Ok { step: Step },
     Fail { error: String, suggestions: Vec<String> },
 }
 
@@ -66,8 +66,12 @@ const ARTICLES: [&str; 7] = ["the", "a", "an", "my", "her", "his", "their"];
 /// Role keywords that route phrases.
 const ROLE_KEYWORDS: [&str; 4] = ["at", "with", "about", "to"];
 
-// `type GroupKey = 'object' | 'at' | 'with' |
-// 'about' | 'to'`; the discriminants index the fixed-size groups array.
+/// Longest-name-first scan (§11): a role phrase resolves a name of up to
+/// four tokens.
+const MAX_NAME_WORDS: usize = 4;
+
+// The five role groups a clause can hold; `index()` addresses the fixed-size
+// slot arrays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Group {
     Object,
@@ -150,10 +154,9 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
                         clauses: s.clauses,
                         t_real: None,
                     },
-                    canonical: trimmed.to_string(),
                 }
             }
-            Err(e) => ParsedInput::Fail { error: e.msg, suggestions: vec![] },
+            Err(e) => fail(e.msg, vec![]),
         };
     }
 
@@ -163,7 +166,7 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         return fail("empty input", vec![]);
     }
 
-    let names = alive_names(ctx.state);
+    let (names, pools) = living_name_maps(ctx.state);
 
     // optional leading clock token; default: begin now (v0.5)
     let mut i = 0usize;
@@ -193,7 +196,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         if i >= tokens.len() {
             return ParsedInput::Ok {
                 step: Step { start_min: Some(start_min), clock, clauses: vec![], t_real: None },
-                canonical: trimmed.to_string(),
             };
         }
     }
@@ -222,13 +224,13 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     }
     let Some(verb_index) = verb_index else {
         let verbs: Vec<String> = ctx.dict.verbs.iter().map(|v| v.to_lowercase()).collect();
-        return ParsedInput::Fail {
-            error: format!(
+        return fail(
+            format!(
                 "no verb found — try one of: {}",
                 verbs.iter().map(|v| v.replace('_', " ")).collect::<Vec<_>>().join(", ")
             ),
-            suggestions: suggest_verb(tokens[i], &verbs, 3),
-        };
+            suggest_verb(tokens[i], &verbs, 3),
+        );
     };
     let verb = tokens[verb_index..verb_index + verb_len].join("_").to_uppercase();
 
@@ -254,7 +256,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     // failures collect in sentence order and the FIRST one speaks: an
     // unknown word takes the suggestion path, a name whose living pool is
     // smaller than the roles naming it refuses by name (§11, E9)
-    let pools = alive_pools(ctx.state);
     let mut handed: IndexMap<String, usize> = IndexMap::new();
     let mut failures: Vec<PhraseFail> = Vec::new();
 
@@ -287,20 +288,17 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
         match f {
             PhraseFail::Unknown(word) => {
                 let pool: Vec<String> = names.values().map(|v| v.entity.name.clone()).collect();
-                return ParsedInput::Fail {
-                    error: format!("I don't know '{word}'"),
-                    suggestions: suggest(word, &pool, 3),
-                };
+                return fail(format!("I don't know '{word}'"), suggest(word, &pool, 3));
             }
             PhraseFail::Short { key, needed, have } => {
-                return ParsedInput::Fail {
-                    error: format!(
+                return fail(
+                    format!(
                         "only {} '{key}' — you need {}",
                         count_word(*have),
                         count_word(*needed)
                     ),
-                    suggestions: vec![],
-                };
+                    vec![],
+                );
             }
         }
     }
@@ -368,7 +366,6 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     };
     ParsedInput::Ok {
         step: Step { start_min: Some(start_min), clock, clauses: vec![clause], t_real: None },
-        canonical: String::new(),
     }
 }
 
@@ -380,38 +377,31 @@ pub struct NameEntry<'a> {
     pub norm: String,
 }
 
-/// §4.2: one entry per distinct name — the
-/// OLDEST living copy (the head of the `by_name` pool; entities iterate in birth
-/// order). Lenient input has no #id form of its own, so a pool name typed in
-/// prose addresses the oldest; the engine's `resolve_ref` enforces the same rule
-/// on the composed sentence. The single-mention behavior lives here; a name
-/// filling several roles hands out further copies through [`alive_pools`].
-fn alive_names(state: &State) -> IndexMap<String, NameEntry<'_>> {
-    let mut map: IndexMap<String, NameEntry> = IndexMap::new();
+/// §4.2's living name tables, one pass over the entities (birth order):
+/// `names` holds one entry per distinct normalized name — the OLDEST living
+/// copy (the head of the `by_name` pool) — and `pools` holds EVERY living
+/// copy of each name, in the same birth order the engine's `by_name` pools
+/// keep (oldest first). Lenient input has no #id form of its own, so a pool
+/// name typed in prose addresses the oldest; the engine's `resolve_ref`
+/// enforces the same rule on the composed sentence. The single-mention
+/// behavior lives in the `names` head; the `pools` list is the hand-out
+/// order for E9's multi-role binding (§11): the first role naming a pool
+/// addresses the head exactly as ever, each further ROLE takes the next
+/// living copy, and a pool smaller than the roles naming it refuses.
+fn living_name_maps(
+    state: &State,
+) -> (IndexMap<String, NameEntry<'_>>, IndexMap<String, Vec<String>>) {
+    let mut names: IndexMap<String, NameEntry> = IndexMap::new();
+    let mut pools: IndexMap<String, Vec<String>> = IndexMap::new();
     for e in state.entities.values() {
         if e.dead_action.is_some() {
             continue;
         }
         let key = norm(&e.name);
-        map.entry(key.clone()).or_insert(NameEntry { entity: e, norm: key });
+        names.entry(key.clone()).or_insert(NameEntry { entity: e, norm: key.clone() });
+        pools.entry(key).or_default().push(e.id.clone());
     }
-    map
-}
-
-/// §4.2: every LIVING copy of each distinct name, in birth order — the same
-/// order the engine's `by_name` pools keep (oldest first). This is the
-/// hand-out order for E9's multi-role binding (§11): the first role naming a
-/// pool addresses the head exactly as ever, each further ROLE takes the next
-/// living copy, and a pool smaller than the roles naming it refuses.
-fn alive_pools(state: &State) -> IndexMap<String, Vec<String>> {
-    let mut map: IndexMap<String, Vec<String>> = IndexMap::new();
-    for e in state.entities.values() {
-        if e.dead_action.is_some() {
-            continue;
-        }
-        map.entry(norm(&e.name)).or_default().push(e.id.clone());
-    }
-    map
+    (names, pools)
 }
 
 /// One failed binding inside a role phrase, in sentence order: an unknown
@@ -476,9 +466,6 @@ fn resolve_group(
     while j < toks.len() {
         let mut hit: Option<&NameEntry> = None;
         let mut used = 0usize;
-        // `Math.min(4, toks.length - j)` — the magic 4 is the
-        // MAX_NAME_WORDS constant
-        const MAX_NAME_WORDS: usize = 4;
         let mut len = std::cmp::min(MAX_NAME_WORDS, toks.len() - j);
         while len >= 1 {
             let key = toks[j..j + len].join(" ").to_lowercase();
@@ -553,24 +540,32 @@ fn player_refs(ctx: &LenientCtx) -> Vec<Ref> {
 
 // ---------- suggestions ----------
 
+/// The shared suggestion scan (§11): prefix matches on the normalized keys
+/// first; with no prefix hit, the near matches (levenshtein ≤ 2) — pool
+/// order within each pass, capped at `limit`.
+fn suggest_scan<D: Clone>(entries: &[(D, Vec<String>)], w: &str, limit: usize) -> Vec<D> {
+    let starts: Vec<&(D, Vec<String>)> =
+        entries.iter().filter(|(_, keys)| keys.iter().any(|k| k.starts_with(w))).collect();
+    if !starts.is_empty() {
+        return starts.into_iter().take(limit).map(|(d, _)| d.clone()).collect();
+    }
+    entries
+        .iter()
+        .filter(|(_, keys)| keys.iter().any(|k| levenshtein(k, w) <= 2))
+        .take(limit)
+        .map(|(d, _)| d.clone())
+        .collect()
+}
+
 /// Suggest close names: prefix matches first, then levenshtein ≤ 2.
 fn suggest(word: &str, pool: &[String], limit: usize) -> Vec<String> {
     let w = norm(word);
     if w.is_empty() {
         return vec![];
     }
-    let normed: Vec<(&String, String)> = pool.iter().map(|p| (p, norm(p))).collect();
-    let starts: Vec<&(&String, String)> =
-        normed.iter().filter(|(_, n)| n.starts_with(&w)).collect();
-    if !starts.is_empty() {
-        return starts.into_iter().take(limit).map(|(p, _)| (*p).clone()).collect();
-    }
-    normed
-        .iter()
-        .filter(|(_, n)| levenshtein(n, &w) <= 2)
-        .take(limit)
-        .map(|(p, _)| (*p).clone())
-        .collect()
+    let entries: Vec<(String, Vec<String>)> =
+        pool.iter().map(|p| (p.clone(), vec![norm(p)])).collect();
+    suggest_scan(&entries, &w, limit)
 }
 
 /// Like suggest(), but multi-word verbs
@@ -582,27 +577,14 @@ fn suggest_verb(word: &str, verbs: &[String], limit: usize) -> Vec<String> {
     if w.is_empty() {
         return vec![];
     }
-    let normed: Vec<(String, String, String)> = verbs
+    let entries: Vec<(String, Vec<String>)> = verbs
         .iter()
         .map(|v| {
             let first = v.split('_').next().unwrap_or("").to_string();
-            (v.clone(), norm(v), norm(&first))
+            (v.replace('_', " "), vec![norm(&first), norm(v)])
         })
         .collect();
-    let show = |v: &str| v.replace('_', " ");
-    let starts: Vec<&(String, String, String)> = normed
-        .iter()
-        .filter(|(_, whole, first)| whole.starts_with(&w) || first.starts_with(&w))
-        .collect();
-    if !starts.is_empty() {
-        return starts.into_iter().take(limit).map(|(v, ..)| show(v)).collect();
-    }
-    normed
-        .iter()
-        .filter(|(_, whole, first)| levenshtein(first, &w) <= 2 || levenshtein(whole, &w) <= 2)
-        .take(limit)
-        .map(|(v, ..)| show(v))
-        .collect()
+    suggest_scan(&entries, &w, limit)
 }
 
 /// The DP runs on chars (a UTF-16-unit index would agree
@@ -618,7 +600,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
         *cell = j;
     }
     for i in 1..=a.len() {
-        // (the dp table is indexed)
+        // the dp table is indexed — the recurrence reads three neighbors
         #[allow(clippy::needless_range_loop)]
         for j in 1..=b.len() {
             dp[i][j] = std::cmp::min(

@@ -11,7 +11,7 @@
 
 use indexmap::{IndexMap, IndexSet};
 
-use chorus::content::content::{
+use chorus::content::{
     compile_content, ContentRaw, DeckRaw, ExpireTriggerDef, PrototypeDef, PrototypeDerive,
     RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
@@ -22,7 +22,7 @@ use chorus::reach::{analyze_card, CardOptions, CardVerdict, Existence};
 
 /// Rig verbs are
 /// code-registered (§10). One fresh dictionary per test.
-fn compile(raw: &ContentRaw) -> chorus::content::content::CompiledContent {
+fn compile(raw: &ContentRaw) -> chorus::content::CompiledContent {
     let mut dict = core_dictionary();
     for name in raw.verbs.keys() {
         if !dict.is_verb(name) {
@@ -132,7 +132,7 @@ fn deck(id: &str, spec: &[&str], defaultcard: Option<&str>, reset: bool) -> Deck
 }
 
 fn analyze(
-    content: &chorus::content::content::CompiledContent,
+    content: &chorus::content::CompiledContent,
     state: &State,
     target: &str,
 ) -> chorus::reach::CardReport {
@@ -140,7 +140,7 @@ fn analyze(
 }
 
 fn analyze_usable(
-    content: &chorus::content::content::CompiledContent,
+    content: &chorus::content::CompiledContent,
     state: &State,
     target: &str,
 ) -> chorus::reach::CardReport {
@@ -149,7 +149,7 @@ fn analyze_usable(
 }
 
 fn analyze_demand(
-    content: &chorus::content::content::CompiledContent,
+    content: &chorus::content::CompiledContent,
     state: &State,
     demand: &str,
 ) -> chorus::reach::CardReport {

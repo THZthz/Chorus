@@ -12,6 +12,8 @@
 use chorus::core::dict::Dictionary;
 use chorus::core::format::format_sentence;
 use chorus::core::parse::parse_sentence;
+use chorus::engine::settle::refusal;
+use chorus::engine::ExecResult;
 use chorus::error::ChorusError;
 
 /// The ChorusError message must
@@ -47,8 +49,28 @@ pub fn assert_json_eq(a: serde_json::Value, b: serde_json::Value) {
 /// full-state fold-equality snapshot, tests/common/snap.rs).
 pub fn canonical(src: &str, dict: &Dictionary) -> String {
     let s1 = parse_sentence(src, dict).unwrap();
-    let c = format_sentence(&s1, Some(dict)).unwrap();
+    let c = format_sentence(&s1, dict).unwrap();
     let s2 = parse_sentence(&c, dict).unwrap(); // canonical text must re-parse
-    assert_eq!(format_sentence(&s2, Some(dict)).unwrap(), c); // and re-format to itself
+    assert_eq!(format_sentence(&s2, dict).unwrap(), c); // and re-format to itself
     c
+}
+
+/// `r.rejected` matches `re` (the step-level rejection path — nothing logged,
+/// the input state rides back untouched).
+pub fn assert_rejected(r: &ExecResult, pattern: &str) {
+    let msg = r
+        .rejected
+        .as_deref()
+        .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
+    let re = regex::Regex::new(pattern).unwrap();
+    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
+}
+
+/// `refusal(r)` matches `re` (the authored-gate / completion-refusal path —
+/// the attempt logs, the counter never moves).
+pub fn assert_refusal(r: &ExecResult, pattern: &str) {
+    let msg =
+        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
+    let re = regex::Regex::new(pattern).unwrap();
+    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }

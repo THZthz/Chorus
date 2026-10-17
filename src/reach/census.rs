@@ -9,12 +9,14 @@ use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::content::content::walk_outcomes;
-use crate::content::content::{CompiledContent, CompiledDeck, CompiledTrigger};
+use crate::content::walk_outcomes;
+use crate::content::{CompiledContent, CompiledDeck, CompiledTrigger};
 use crate::core::predicate::Pred;
 use crate::core::r#ref::Ref;
 use crate::core::sentence::{Arg, Outcome};
 use crate::core::types::Entity;
+
+use super::world::pred_static;
 
 /// `MANY = 1e9`, the "unbounded copies" sentinel: it feeds the `min(count,
 /// 32)` weight cap, the draw export gate (`cap != MANY` means exportable)
@@ -36,36 +38,20 @@ pub const DERIVED_NAME: &str = "\u{0000}derived";
 /// defer to a completion-time window refusal.
 const THROWING_OPS: [&str; 4] = ["MOVE", "RELATE", "UNRELATE", "REPLACE"];
 
-// ---------------------------------------------------------------------------
-// world-static predicate shapes and the authored
-// aspects= pair parse. These live beside the census
-// because collect_sites itself consumes pred_static while tagging sites
-// (runtime_gated / path_non_static).
-// ---------------------------------------------------------------------------
-
-/// A value expression is world-static when it reads no runtime state.
-pub(crate) fn expr_static(v: &crate::core::predicate::ValExpr) -> bool {
-    matches!(
-        v,
-        crate::core::predicate::ValExpr::Int { .. }
-            | crate::core::predicate::ValExpr::CountQuery { .. }
-    )
+/// Whether the op demotes its whole outcome list: a throwing op, or a DRAW
+/// with an INTO clause (the drawn-into move is the same unresolvable-target
+/// throw).
+fn op_throws(o: &Outcome) -> bool {
+    THROWING_OPS.contains(&o.op.as_str())
+        || (o.op == "DRAW" && o.args.iter().any(|a| matches!(a, Arg::Into { .. })))
 }
 
-/// A predicate is world-static when every operand is.
-pub(crate) fn pred_static(p: &Pred) -> bool {
-    use crate::core::predicate::ValExpr;
-    match p {
-        Pred::And(a, b) | Pred::Or(a, b) => pred_static(a) && pred_static(b),
-        Pred::Not(a) => pred_static(a),
-        Pred::Cmp { l, r, .. } => expr_static(l) && expr_static(r),
-        Pred::Exists { .. } | Pred::ExistsQuery { .. } => true,
-        _ => {
-            let _ = std::mem::size_of::<ValExpr>;
-            false
-        }
-    }
-}
+// ---------------------------------------------------------------------------
+// the authored aspects= pair parse (the Q13 aspect model). The
+// world-static shape tests (`pred_static`/`expr_static`) live in world.rs
+// beside their evaluators; collect_sites imports pred_static for its site
+// tagging (runtime_gated / path_non_static).
+// ---------------------------------------------------------------------------
 
 /// Parse a site's `aspects=` JSON string under the Q13 model: it takes integers
 /// and one-level integer sub-maps; members outside the model are dropped
@@ -201,7 +187,7 @@ pub(crate) struct SetSite {
 /// lists); `live`/`refused` are arena indices in push order — the risky block
 /// mutates sites through these indices (the shared per-list site objects,
 /// flattened into the arena).
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Census<'c> {
     pub sites: Vec<RawSite<'c>>,
     pub live: Vec<usize>,
@@ -209,24 +195,10 @@ pub(crate) struct Census<'c> {
     pub set_sites: Vec<SetSite>,
     /// name → the owners (list display strings) that destroy/replace it
     pub destroyed_by: IndexMap<String, IndexSet<String>>,
-    /// names minted NON-stackably anywhere in the content
-    pub non_stack_names: IndexSet<String>,
-    /// `non_stack_names` ∪ initial non-stackable entity names
+    /// every non-stackable name a mint could collide with — minted
+    /// non-stackable names anywhere in the content ∪ initial non-stackable
+    /// entity names
     pub collision_names: IndexSet<String>,
-}
-
-impl<'c> Default for Census<'c> {
-    fn default() -> Self {
-        Census {
-            sites: Vec::new(),
-            live: Vec::new(),
-            refused: Vec::new(),
-            set_sites: Vec::new(),
-            destroyed_by: IndexMap::new(),
-            non_stack_names: IndexSet::new(),
-            collision_names: IndexSet::new(),
-        }
-    }
 }
 
 /// Owner string ('trigger t3') → (trigger, declaration
@@ -242,7 +214,7 @@ impl<'c> TrigIndex<'c> {
     pub(crate) fn build(content: &'c CompiledContent) -> Self {
         let mut entries = IndexMap::new();
         for (i, t) in content.triggers.iter().enumerate() {
-            entries.insert(format!("trigger {}", t.id()), (t, i as i64));
+            entries.insert(trigger_owner(t.id()), (t, i as i64));
         }
         TrigIndex { entries }
     }
@@ -252,6 +224,13 @@ impl<'c> TrigIndex<'c> {
     pub(crate) fn get(&self, owner: &str) -> Option<(&'c CompiledTrigger, i64)> {
         self.entries.get(owner).map(|(t, d)| (*t, *d))
     }
+}
+
+/// The display/key owner string of a trigger (`trigger t3`) — the ONE format
+/// shared by `TrigIndex`'s key and the `risky_owners`/`dirty_owners`/
+/// `destroyed_by`/`trigger_mint_names` owner keys.
+pub(crate) fn trigger_owner(id: &str) -> String {
+    format!("trigger {id}")
 }
 
 /// SPAWN's first arg as a (name, kind?) name ref.
@@ -319,6 +298,17 @@ pub(crate) struct WalkState<'c> {
     pub kills: Vec<Kill>,
 }
 
+/// The per-list identity of the list being walked — the list context the
+/// census walker threads through `walk_list` (the owner's trigger slot is
+/// looked up once and folded into the [`RecordCx`]).
+pub(crate) struct ListCx<'a> {
+    pub owner: &'a str,
+    pub verb_idx: Option<usize>,
+    pub when: Option<&'a Pred>,
+    pub shadow_risk: bool,
+    pub shadowed: bool,
+}
+
 /// The immutable per-list context of one list's walk.
 /// `'c` is the compiled content's lifetime
 /// (the only lifetime a RawSite borrows — its deck); `'a` covers the
@@ -331,11 +321,6 @@ pub(crate) struct RecordCx<'c, 'a> {
     pub shadow_risk: bool,
     pub shadowed: bool,
     pub own_slot: Option<i64>,
-}
-
-/// The output of one list's walk.
-pub(crate) struct WalkSitesOutput<'c> {
-    pub state: WalkState<'c>,
 }
 
 /// Built on the ONE authored-outcome
@@ -351,7 +336,7 @@ pub(crate) fn walk_sites<'c>(
     cx: &RecordCx<'c, '_>,
     set_sites: &mut Vec<SetSite>,
     destroyed_by: &mut IndexMap<String, IndexSet<String>>,
-) -> WalkSitesOutput<'c> {
+) -> WalkState<'c> {
     let mut st = WalkState::default();
     let root = WalkFrame { path: Vec::new(), segs: vec![0], fallback: false };
     let _ = walk_outcomes(
@@ -369,9 +354,7 @@ pub(crate) fn walk_sites<'c>(
             };
             if o.op == "REFUSE" {
                 st.flags.entry(seg).or_default().refused = true;
-            } else if THROWING_OPS.contains(&o.op.as_str())
-                || (o.op == "DRAW" && o.args.iter().any(|a| matches!(a, Arg::Into { .. })))
-            {
+            } else if op_throws(o) {
                 st.flags.entry(seg).or_default().throwing += 1;
             }
             Ok(())
@@ -401,22 +384,19 @@ pub(crate) fn walk_sites<'c>(
     for seg in 0..=st.seg_counter {
         st.flags.entry(seg).or_default();
     }
-    WalkSitesOutput { state: st }
+    st
 }
 
-/// A mint's stackability comes from the
-/// RESOLVED name+kind: the name is declared stackable, or its KIND carries a
-/// stackable declaration.
+/// A mint's stackability is the engine's §4.2 rule
+/// ([`CompiledContent::mint_is_stackable`]) over the RESOLVED kind: the
+/// site's kind override when it carries one, else the prototype's own kind;
+/// a name with neither only stacks by declaration.
 pub(crate) fn mint_stacks(content: &CompiledContent, name: &str, kind: Option<&str>) -> bool {
-    if content.stackable_names.contains(name) {
-        return true;
+    let resolved = kind.or_else(|| content.prototypes.get(name).map(|p| p.kind.as_str()));
+    match resolved {
+        Some(k) => content.mint_is_stackable(name, k),
+        None => content.stackable_names.contains(name),
     }
-    let proto = content.prototypes.get(name);
-    let resolved = match kind {
-        Some(k) => Some(k),
-        None => proto.map(|p| p.kind.as_str()),
-    };
-    resolved.is_some_and(|k| content.stackable_kinds.contains(k))
 }
 
 /// The verb binds an object on EVERY
@@ -483,11 +463,13 @@ pub(crate) fn collect_sites<'c>(
                 content,
                 trig_idx,
                 &r.out,
-                &format!("recipe {} of {}", r.id, verb.name),
-                Some(vi),
-                r.when.as_ref(),
-                i > 0,
-                shadowed,
+                ListCx {
+                    owner: &format!("recipe {} of {}", r.id, verb.name),
+                    verb_idx: Some(vi),
+                    when: r.when.as_ref(),
+                    shadow_risk: i > 0,
+                    shadowed,
+                },
                 &mut census,
             );
         }
@@ -498,11 +480,13 @@ pub(crate) fn collect_sites<'c>(
             content,
             trig_idx,
             t.out(),
-            &format!("trigger {}", t.id()),
-            None,
-            None,
-            false,
-            false,
+            ListCx {
+                owner: &trigger_owner(t.id()),
+                verb_idx: None,
+                when: None,
+                shadow_risk: false,
+                shadowed: false,
+            },
             &mut census,
         );
     }
@@ -524,24 +508,27 @@ fn walk_list<'c, 'a>(
     content: &'c CompiledContent,
     trig_idx: &TrigIndex<'c>,
     out: &'a [Outcome],
-    owner: &'a str,
-    verb_idx: Option<usize>,
-    when: Option<&'a Pred>,
-    shadow_risk: bool,
-    shadowed: bool,
+    list_cx: ListCx<'a>,
     census: &mut Census<'c>,
 ) {
     // the owner trigger's slot, if any
-    let own_slot: Option<i64> = match trig_idx.get(owner) {
+    let own_slot: Option<i64> = match trig_idx.get(list_cx.owner) {
         Some((CompiledTrigger::Slot { slot, .. }, _)) => Some(*slot),
         _ => None,
     };
 
     // the walk itself; the REFUSE/throwing marking rides
     // inside walk_sites
-    let cx = RecordCx { content, owner, verb_idx, when, shadow_risk, shadowed, own_slot };
-    let out = walk_sites(out, &cx, &mut census.set_sites, &mut census.destroyed_by);
-    let mut st = out.state;
+    let cx = RecordCx {
+        content,
+        owner: list_cx.owner,
+        verb_idx: list_cx.verb_idx,
+        when: list_cx.when,
+        shadow_risk: list_cx.shadow_risk,
+        shadowed: list_cx.shadowed,
+        own_slot,
+    };
+    let mut st = walk_sites(out, &cx, &mut census.set_sites, &mut census.destroyed_by);
     let sites = &mut st.sites;
     let kills = &st.kills;
     let flags = &st.flags;
@@ -555,32 +542,13 @@ fn walk_list<'c, 'a>(
     let mut mint_counts: IndexMap<String, MintCount> = IndexMap::new();
     for s in sites.iter() {
         if s.kind == SiteKind::Draw && s.deck.is_some() {
-            let deck = draw_deck(s);
-            for c in &deck.order {
-                add_mint(
-                    content,
-                    &mut mint_counts,
-                    &mut census.non_stack_names,
-                    &mut census.collision_names,
-                    &c.name,
-                    Some(&c.kind),
-                );
-            }
-            if let Some(dc) = &deck.defaultcard {
-                add_mint(
-                    content,
-                    &mut mint_counts,
-                    &mut census.non_stack_names,
-                    &mut census.collision_names,
-                    &dc.name,
-                    Some(&dc.kind),
-                );
+            for (name, kind) in site_mints(s) {
+                add_mint(content, &mut mint_counts, &mut census.collision_names, name, kind);
             }
         } else {
             add_mint(
                 content,
                 &mut mint_counts,
-                &mut census.non_stack_names,
                 &mut census.collision_names,
                 &s.name,
                 s.kind_override.as_deref(),
@@ -606,12 +574,8 @@ fn walk_list<'c, 'a>(
     let mut list_stack_mints: IndexSet<String> = IndexSet::new();
     for s in sites.iter() {
         if s.kind == SiteKind::Draw && s.deck.is_some() {
-            let deck = draw_deck(s);
-            for c in &deck.order {
-                stacky(content, &mut list_stack_mints, &c.name, Some(&c.kind));
-            }
-            if let Some(dc) = &deck.defaultcard {
-                stacky(content, &mut list_stack_mints, &dc.name, Some(&dc.kind));
+            for (name, kind) in site_mints(s) {
+                stacky(content, &mut list_stack_mints, name, kind);
             }
         } else {
             stacky(content, &mut list_stack_mints, &s.name, s.kind_override.as_deref());
@@ -625,50 +589,7 @@ fn walk_list<'c, 'a>(
     // the post-pass, site by site (co-mint reads see
     // the whole list, mutation goes to the one site)
     for i in 0..sites.len() {
-        // draw caps
-        let mut cap_draw: Option<i64> = None;
-        if sites[i].kind == SiteKind::Draw && sites[i].deck.is_some() {
-            let deck = draw_deck(&sites[i]);
-            let once = match trig_idx.get(&sites[i].owner) {
-                Some((CompiledTrigger::Slot { once, .. }, _)) => *once,
-                _ => false,
-            };
-            let mut cap = if once { 1 } else { MANY };
-            if cap == MANY {
-                // repeatable site: position k is served only if applications
-                // 0..k-1 all succeeded — a non-stackable co-mint freezes the
-                // cursor (fuzz seed 1963); not even position 0 when order[0]
-                // itself is a co-mint
-                let mut co_mints: IndexSet<String> = IndexSet::new();
-                for (j, o) in sites.iter().enumerate() {
-                    if j == i {
-                        continue;
-                    }
-                    if o.kind == SiteKind::Draw && o.deck.is_some() {
-                        let d2 = draw_deck(o);
-                        for c in &d2.order {
-                            co_mints.insert(c.name.clone());
-                        }
-                        if let Some(dc) = &d2.defaultcard {
-                            co_mints.insert(dc.name.clone());
-                        }
-                        continue;
-                    }
-                    if !census.collision_names.contains(&o.name) {
-                        continue;
-                    }
-                    co_mints.insert(o.name.clone());
-                }
-                if !co_mints.is_empty() {
-                    let first = match deck.order.first() {
-                        Some(c) => &c.name,
-                        None => unreachable!("compiled decks always carry a non-empty order"),
-                    };
-                    cap = if co_mints.contains(first) { 0 } else { 1 };
-                }
-            }
-            cap_draw = Some(cap);
-        }
+        let cap = draw_cap(sites, i, census, trig_idx);
         let s = &mut sites[i];
         s.throw_ops = throw_ops;
         s.killed_in_list = s.kind != SiteKind::Draw
@@ -683,11 +604,7 @@ fn walk_list<'c, 'a>(
             && kills.iter().any(|k| {
                 Some(&k.name) == s.replace_target.as_ref() && (k.seg != s.seg || k.pos != s.pos)
             });
-        if let Some(cap) = cap_draw {
-            s.cap = cap;
-        } else {
-            s.cap = MANY;
-        }
+        s.cap = cap;
     }
     for s in std::mem::take(sites) {
         if s.segs.iter().any(|id| dead_segs.contains(id)) {
@@ -703,10 +620,62 @@ fn walk_list<'c, 'a>(
     // a SET inside a REFUSE-doomed segment chain can
     // never persist; it must not serve as an expiry-arming witness (41047)
     for set in census.set_sites.iter_mut() {
-        if set.owner == owner && set.segs.iter().any(|id| dead_segs.contains(id)) {
+        if set.owner == list_cx.owner && set.segs.iter().any(|id| dead_segs.contains(id)) {
             set.refused = true;
         }
     }
+}
+
+/// One site's draw cap: a once trigger draws exactly 1, a repeatable one
+/// draws unbounded — unless a collision-named co-mint freezes the cursor.
+/// Non-draw sites (and hand-built deckless draws, which never enter the
+/// census) are unbounded (`MANY`).
+fn draw_cap<'c>(
+    sites: &[RawSite<'c>],
+    i: usize,
+    census: &Census<'c>,
+    trig_idx: &TrigIndex<'c>,
+) -> i64 {
+    let site = &sites[i];
+    if site.kind != SiteKind::Draw || site.deck.is_none() {
+        return MANY;
+    }
+    let deck = draw_deck(site);
+    let once = match trig_idx.get(&site.owner) {
+        Some((CompiledTrigger::Slot { once, .. }, _)) => *once,
+        _ => false,
+    };
+    let mut cap = if once { 1 } else { MANY };
+    if cap == MANY {
+        // repeatable site: position k is served only if applications
+        // 0..k-1 all succeeded — a non-stackable co-mint freezes the
+        // cursor (fuzz seed 1963); not even position 0 when order[0]
+        // itself is a co-mint
+        let mut co_mints: IndexSet<String> = IndexSet::new();
+        for (j, o) in sites.iter().enumerate() {
+            if j == i {
+                continue;
+            }
+            if o.kind == SiteKind::Draw && o.deck.is_some() {
+                for (name, _) in site_mints(o) {
+                    co_mints.insert(name.to_string());
+                }
+                continue;
+            }
+            if !census.collision_names.contains(&o.name) {
+                continue;
+            }
+            co_mints.insert(o.name.clone());
+        }
+        if !co_mints.is_empty() {
+            let first = match deck.order.first() {
+                Some(c) => &c.name,
+                None => unreachable!("compiled decks always carry a non-empty order"),
+            };
+            cap = if co_mints.contains(first) { 0 } else { 1 };
+        }
+    }
+    cap
 }
 
 /// Per-name UNIFORMITY: a list re-minting X
@@ -714,14 +683,12 @@ fn walk_list<'c, 'a>(
 fn add_mint(
     content: &CompiledContent,
     mint_counts: &mut IndexMap<String, MintCount>,
-    non_stack_names: &mut IndexSet<String>,
     collision_names: &mut IndexSet<String>,
     name: &str,
     kind: Option<&str>,
 ) {
     let stacks = mint_stacks(content, name, kind);
     if !stacks {
-        non_stack_names.insert(name.to_string());
         collision_names.insert(name.to_string());
     }
     let e = mint_counts.entry(name.to_string()).or_insert(MintCount { count: 0, all_stack: true });
@@ -736,8 +703,28 @@ fn stacky(content: &CompiledContent, set: &mut IndexSet<String>, name: &str, kin
     }
 }
 
+/// The `(name, kind?)` pairs one site can mint: a draw serves its deck's
+/// `order` cards then the `defaultcard` — that sequence is load-bearing
+/// (the census mint counters, the co-mint scans and the mint-source
+/// registration all walk it in this order) — and any other site mints its
+/// own name with its kind override. Sites must carry a resolved deck (see
+/// [`draw_deck`]).
+pub(crate) fn site_mints<'a>(site: &'a RawSite<'a>) -> Vec<(&'a str, Option<&'a str>)> {
+    if site.kind == SiteKind::Draw {
+        let deck = draw_deck(site);
+        let mut mints: Vec<(&'a str, Option<&'a str>)> =
+            deck.order.iter().map(|c| (c.name.as_str(), Some(c.kind.as_str()))).collect();
+        if let Some(dc) = &deck.defaultcard {
+            mints.push((dc.name.as_str(), Some(dc.kind.as_str())));
+        }
+        mints
+    } else {
+        vec![(site.name.as_str(), site.kind_override.as_deref())]
+    }
+}
+
 /// The DRAW site's deck — a draw naming an unknown deck is a load error
-/// (`check_deck_refs`) and such sites never enter
+/// (`check_named_ref`) and such sites never enter
 /// the census, so a deckless draw site is unreachable.
 pub(crate) fn draw_deck<'c>(site: &RawSite<'c>) -> &'c CompiledDeck {
     match site.deck {
@@ -761,7 +748,6 @@ fn record_visit<'c, 'a>(
     let owner = cx.owner;
     let verb_idx = cx.verb_idx;
     let when = cx.when;
-    let shadow_risk = cx.shadow_risk;
     let shadowed = cx.shadowed;
     let own_slot = cx.own_slot;
     let seg = match frame.segs.last() {
@@ -772,7 +758,6 @@ fn record_visit<'c, 'a>(
     st.op_counter += 1;
     let path = &frame.path;
     let segs = &frame.segs;
-    let fallback = frame.fallback;
     let sites = &mut st.sites;
     let kills = &mut st.kills;
 
@@ -817,7 +802,7 @@ fn record_visit<'c, 'a>(
                 segs: segs.clone(),
                 shadowed,
                 refused: false, // annotated after the walk, once dead_segs are known
-                path_non_static: path.iter().any(|p| !pred_static(p)),
+                path_non_static: path_runtime_gated(path),
                 when_pred: when.cloned(),
                 owner_slot: own_slot,
             });
@@ -832,107 +817,90 @@ fn record_visit<'c, 'a>(
     let replace = replace_with_ref(o);
     let draw = draw_deck_id(o);
     let site: Option<RawSite<'c>> = if let Some((name, kind)) = spawn {
-        Some(RawSite {
-            kind: SiteKind::Spawn,
-            name: name.to_string(),
-            kind_override: kind.map(str::to_string),
-            deck: None,
-            aspects_json,
-            owner: owner.to_string(),
-            verb: verb_idx,
-            when: when.cloned(),
-            shadow_risk,
-            path: path.clone(),
-            seg,
-            pos,
-            segs: segs.clone(),
-            fallback,
-            runtime_gated: path.iter().any(|p| !pred_static(p)),
-            throw_ops: 0,
-            cap: 0,
-            replace_target: None,
-            killed_in_list: false,
-            dup_risk: false,
-            target_killed_in_list: false,
-            list_gate_mints: Rc::new(IndexSet::new()),
-            list_stack_mints: Rc::new(IndexSet::new()),
-            derives: content
-                .prototypes
-                .get(name)
-                .and_then(|p| p.derive.as_ref())
-                .and_then(|d| d.name_from.as_deref())
-                == Some("object"),
-            where_: owner.to_string(),
-        })
+        let mut site = base_site(SiteKind::Spawn, name, cx, frame, seg, pos);
+        site.kind_override = kind.map(str::to_string);
+        site.aspects_json = aspects_json;
+        site.derives = content
+            .prototypes
+            .get(name)
+            .and_then(|p| p.derive.as_ref())
+            .and_then(|d| d.name_from.as_deref())
+            == Some("object");
+        Some(site)
     } else if let Some(name) = replace {
-        let replace_target = match o.args.first() {
+        let mut site = base_site(SiteKind::Replace, name, cx, frame, seg, pos);
+        site.replace_target = match o.args.first() {
             Some(Arg::Ref { r#ref: Ref::Name { name, .. } }) => Some(name.clone()),
             _ => None,
         };
-        Some(RawSite {
-            kind: SiteKind::Replace,
-            name: name.to_string(),
-            kind_override: None,
-            deck: None,
-            aspects_json: None,
-            owner: owner.to_string(),
-            verb: verb_idx,
-            when: when.cloned(),
-            shadow_risk,
-            path: path.clone(),
-            seg,
-            pos,
-            segs: segs.clone(),
-            fallback,
-            runtime_gated: path.iter().any(|p| !pred_static(p)),
-            throw_ops: 0,
-            cap: 0,
-            replace_target,
-            killed_in_list: false,
-            dup_risk: false,
-            target_killed_in_list: false,
-            list_gate_mints: Rc::new(IndexSet::new()),
-            list_stack_mints: Rc::new(IndexSet::new()),
-            derives: false,
-            where_: owner.to_string(),
-        })
+        Some(site)
     } else {
         // (clippy manual_map: Option::map over the drawn deck id)
-        draw.map(|id| RawSite {
-            kind: SiteKind::Draw,
-            name: id.to_string(),
-            kind_override: None,
-            deck: content.decks.get(id),
-            aspects_json: None,
-            owner: owner.to_string(),
-            verb: verb_idx,
-            when: when.cloned(),
-            shadow_risk,
-            path: path.clone(),
-            seg,
-            pos,
-            segs: segs.clone(),
-            fallback,
-            runtime_gated: false,
-            throw_ops: 0,
-            cap: 0,
-            replace_target: None,
-            killed_in_list: false,
-            dup_risk: false,
-            target_killed_in_list: false,
-            list_gate_mints: Rc::new(IndexSet::new()),
-            list_stack_mints: Rc::new(IndexSet::new()),
-            derives: false,
-            where_: owner.to_string(),
+        draw.map(|id| {
+            let mut site = base_site(SiteKind::Draw, id, cx, frame, seg, pos);
+            site.deck = content.decks.get(id);
+            // a draw's `name` is the DECK id, never a mint name, so the
+            // runtime_gated mint-collision rules cannot apply to it —
+            // runtime_gated stays false by design
+            site.runtime_gated = false;
+            site
         })
     };
     let Some(site) = site else {
         return;
     };
     // a DRAW naming an unknown deck is a load error
-    // (`check_deck_refs`), so deck can only be None for hand-built content
+    // (`check_named_ref`), so deck can only be None for hand-built content
     if site.kind == SiteKind::Draw && site.deck.is_none() {
         return;
     }
     sites.push(site);
+}
+
+/// The site skeleton shared by every producer kind: the walk position and
+/// the owning-list context. The per-kind arms in [`record_visit`] overwrite
+/// the kind-specific fields (`kind_override`, `aspects_json`, `deck`,
+/// `replace_target`, `derives`).
+fn base_site<'c>(
+    kind: SiteKind,
+    name: &str,
+    cx: &RecordCx<'c, '_>,
+    frame: &WalkFrame,
+    seg: usize,
+    pos: i64,
+) -> RawSite<'c> {
+    let owner = cx.owner.to_string();
+    RawSite {
+        kind,
+        name: name.to_string(),
+        kind_override: None,
+        deck: None,
+        aspects_json: None,
+        owner: owner.clone(),
+        verb: cx.verb_idx,
+        when: cx.when.cloned(),
+        shadow_risk: cx.shadow_risk,
+        path: frame.path.clone(),
+        seg,
+        pos,
+        segs: frame.segs.clone(),
+        fallback: frame.fallback,
+        runtime_gated: path_runtime_gated(&frame.path),
+        throw_ops: 0,
+        cap: 0,
+        replace_target: None,
+        killed_in_list: false,
+        dup_risk: false,
+        target_killed_in_list: false,
+        list_gate_mints: Rc::new(IndexSet::new()),
+        list_stack_mints: Rc::new(IndexSet::new()),
+        derives: false,
+        where_: owner,
+    }
+}
+
+/// Whether any IF condition on a site's path is non-static (roll- or
+/// role-dependent) — such a path can be durably false.
+fn path_runtime_gated(path: &[Pred]) -> bool {
+    path.iter().any(|p| !pred_static(p))
 }

@@ -1,27 +1,22 @@
-//! Settle helper — the v0.5 parallel-station test adapter. Under parallel
-//! verb stations a committed action only BEGINS its window; these helpers
-//! complete it (a pure advance to the last window's end) so outcome-level
-//! tests can assert on settled state the way the pre-v0.5 engine behaved
-//! (now = start + Σdurations — the same minute, by construction). Timing-
-//! specific behavior (locks, windows, completion order) is tested WITHOUT
-//! this helper (tests/engine_ordering.rs).
+//! Settle — the run-then-settle convenience the engine tests, the reach
+//! fuzz campaigns and the bins share. Under parallel verb stations a
+//! committed action only BEGINS its window; [`settle_step`] completes it (a
+//! pure advance to the last window's end) so outcome-level tests can assert
+//! on settled state the way the pre-v0.5 engine behaved (now = start +
+//! Σdurations — the same minute, by construction). Timing-specific behavior
+//! (locks, windows, completion order) is tested WITHOUT this helper
+//! (tests/engine/ordering.rs).
 //!
-//! The ONE `run`-helper shape: parallel's bare-clock advance branch + the
-//! settle helpers' id-generator channel + an injectable generator (stackable's
-//! `pool_dict` is the caller's dictionary choice, not this function's
-//! business).
+//! The one `run`-helper shape: parallel's bare-clock advance branch + the
+//! id-generator channel below + an injectable generator (which dictionary
+//! the callers pass is their business, not this function's).
 
-//! (Shared test lib: every helper is the common discipline, not per-file
-//! dead code — each mounting test crate uses a different subset, exactly like
-//! harness.rs. The `allow` lives in this one place.)
-#![allow(dead_code)]
-
-use chorus::content::content::CompiledContent;
-use chorus::core::dict::Dictionary;
-use chorus::core::sentence::Arg;
-use chorus::core::types::State;
-use chorus::engine::engine::{execute_step, ActionRecord, ExecOptions, ExecResult, Step};
-use chorus::error::Result;
+use crate::content::CompiledContent;
+use crate::core::dict::Dictionary;
+use crate::core::sentence::Arg;
+use crate::core::types::State;
+use crate::engine::{execute_step, ActionRecord, ExecOptions, ExecResult, Step};
+use crate::error::Result;
 
 /// The two `execute_step` calls share the caller's id-generator channel via a
 /// fresh reborrow each time (one generator object seen by both, so ids stay

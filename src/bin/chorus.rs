@@ -3,8 +3,8 @@
 //!   cargo run --bin chorus -- scripts/the-nightjar-flyer.txt
 //!   printf 'look\ncards\nread the manifest\nwait\njournal\nquit\n' | cargo run --bin chorus -- scripts/the-nightjar-flyer.txt
 //!
-//! A plain line loop over a [`chorus::session::game::Game`], with the button
-//! views folded in as typed meta commands. This layer is the simplified UI
+//! A plain line loop over a [`chorus::session::game::Game`], with the meta
+//! views folded in as typed words. This layer is the simplified UI
 //! face: everything below the dispatcher is the frozen semantic stack
 //! (lenient → engine → render), byte-pinned elsewhere. The pieces it
 //! preserves:
@@ -20,8 +20,8 @@
 //!     is drawn, so a piped session's stdout is byte-clean (a readline
 //!     prompt would interleave).
 //!
-//! Dispatcher collisions (recorded, not accidental): the meta words are the
-//! button semantics, so bare `wait` means game.wait() (advance the
+//! Dispatcher collisions (recorded, not accidental): the meta words are
+//! typed views, so bare `wait` means game.wait() (advance the
 //! clock), NOT the WAIT verb. The verb stays reachable as `march wait` /
 //! `ANA WAIT` / canonical `0:42 @ MARCH WAIT` — the scripted nightjar win
 //! path in tests/repl.rs enters its first line in canonical form for exactly
@@ -31,7 +31,8 @@ use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 
 use chorus::core::dict::core_dictionary;
-use chorus::session::game::{Game, Turn};
+use chorus::session::game::Game;
+use chorus::session::render::display_name;
 
 fn main() -> ExitCode {
     // the script path is the one CLI argument — the script's own `script:`
@@ -66,12 +67,7 @@ fn main() -> ExitCode {
     let banner = format!(
         "── {} ──\nverbs: {}\n",
         game.title(),
-        game.content
-            .verbs
-            .keys()
-            .map(|v| v.to_lowercase().replace('_', " "))
-            .collect::<Vec<_>>()
-            .join(" · ")
+        game.content.verbs.keys().map(|v| display_name(v)).collect::<Vec<_>>().join(" · ")
     );
     if out.write_all(banner.as_bytes()).is_err() {
         return ExitCode::from(1);
@@ -130,12 +126,12 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
         // a word like `inspector …` falls through to handle_line (the regex
         // would also reject it: \b fails inside a word)
     }
-    // the meta commands (the button labels, as typed)
+    // the meta commands (the typed views)
     match trimmed {
         "quit" => return Flow::Quit,
-        "undo" => turn(game.undo(), out),
-        "wait" => turn(game.wait(), out),
-        "story" => result(game.story(), out),
+        "undo" => emit_all(game.undo().map(|t| t.lines), out),
+        "wait" => emit_all(game.wait().map(|t| t.lines), out),
+        "story" => emit_all(game.story(), out),
         "journal" => {
             for l in game.journal() {
                 emit(out, &l);
@@ -152,7 +148,7 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
             }
         }
         // everything else is a turn of play
-        _ => turn(game.handle_line(line), out),
+        _ => emit_all(game.handle_line(line).map(|t| t.lines), out),
     }
     Flow::Continue
 }
@@ -162,29 +158,12 @@ enum Flow {
     Quit,
 }
 
-/// a Turn's lines go to stdout verbatim — the `« … »` canonical echo is one
-/// of them, preserved byte for byte
-fn turn(t: chorus::error::Result<Turn>, out: &mut impl Write) {
+/// a turn's lines go to stdout verbatim — the `« … »` canonical echo is one
+/// of them, preserved byte for byte; the view commands share the engine's
+/// Result channel (story's prose rendering). An engine/render error is a
+/// crash: the message line on stderr + exit 1 is the bin convention.
+fn emit_all(t: chorus::error::Result<Vec<String>>, out: &mut impl Write) {
     match t {
-        Ok(t) => {
-            for l in &t.lines {
-                emit(out, l);
-            }
-        }
-        Err(e) => {
-            // an engine/render error is a crash; the message line on stderr
-            // + exit 1 is the bin convention
-            let _ = out.flush();
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-    }
-}
-
-/// view commands that share the engine's Result channel (story's prose
-/// rendering) — same crash convention as [`turn`]
-fn result(r: chorus::error::Result<Vec<String>>, out: &mut impl Write) {
-    match r {
         Ok(lines) => {
             for l in &lines {
                 emit(out, l);

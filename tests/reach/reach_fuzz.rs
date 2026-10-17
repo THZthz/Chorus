@@ -13,10 +13,11 @@
 //! shared module tests/common/reach_fuzz_lib.rs —
 //! the same module the bin mounts, so bin and test cannot drift.
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::reach_fuzz_lib::run_fuzz_seed;
+use crate::common::snap::snap;
+use chorus::content::compile_content;
+use chorus::core::dict::core_dictionary;
+use chorus::engine::fold::fold;
+use chorus::reach::fuzz::{drive_fuzz_seed, gen_scenario, run_fuzz_seed};
 
 /// One seed under the DEFAULT bounds (8 steps × 500 states); inconclusive
 /// probes print to the test output, failures fail the test.
@@ -138,3 +139,22 @@ fuzz_seed!(seed_97, 97);
 fuzz_seed!(seed_98, 98);
 fuzz_seed!(seed_99, 99);
 fuzz_seed!(seed_100, 100);
+
+/// The frozen caller discipline, replayed: drive one seed through
+/// `drive_fuzz_seed` (K applied settle_steps or the attempt cap), then fold
+/// the accumulated log over the pristine base — the replay must rebuild the
+/// driven final state exactly (§7 law 6). The content is rebuilt from the
+/// same scenario seed (`gen_scenario` is draw-for-draw deterministic), so the
+/// fold input matches the driver's compile input byte for byte.
+#[test]
+fn the_driven_seed_log_folds_back_to_the_driven_state() {
+    let seed = 7;
+    let run = drive_fuzz_seed(seed, 25, 400).expect("the driver completes");
+    assert!(run.applied > 0, "seed {seed} must apply at least one step");
+
+    let sc = gen_scenario(seed);
+    let dict = core_dictionary();
+    let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the scenario compiles");
+    let replayed = fold(&run.records, &run.base, &dict, &content).expect("the log replays");
+    assert_eq!(snap(&replayed), snap(&run.final_state));
+}

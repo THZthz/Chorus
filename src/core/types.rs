@@ -17,14 +17,6 @@ use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
 use crate::error::{ChorusError, Result};
 
-/// The mechanics clock: `day` + `halfhour` (re-exported by `clock`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Clock {
-    pub day: i64,
-    /// halfhours since day start (0..47); one halfhour = 30 minutes
-    pub halfhour: i64,
-}
-
 /// One aspect value: a number, or the one-level
 /// dot sub-map (`{secret:4, language:{latin:2}}`). QUIRK(Q13): the
 /// model is deliberately NOT a nested tree — `'a.b.c'` stores a sub-map key
@@ -284,12 +276,7 @@ pub fn add_entity(s: &mut State, e: Entity) -> Result<()> {
                 }
             }
         }
-        match s.by_name.get_mut(&e.name) {
-            Some(pool) => pool.push(e.id.clone()),
-            None => {
-                s.by_name.insert(e.name.clone(), vec![e.id.clone()]);
-            }
-        }
+        s.by_name.entry(e.name.clone()).or_default().push(e.id.clone());
     }
     let id = e.id.clone();
     s.entities.insert(id, e);
@@ -298,11 +285,7 @@ pub fn add_entity(s: &mut State, e: Entity) -> Result<()> {
 
 /// §5.1/§4.2 name release on death: remove
 /// the id from the name's pool; the name only frees when the LAST copy dies.
-pub fn release_name(s: &mut State, e: &Entity) {
-    release_name_entry(s, &e.name, &e.id);
-}
-
-/// The (name, id) form of [`release_name`] — the engine's DESTROY/REPLACE
+/// The (name, id) form — the engine's DESTROY/REPLACE
 /// paths read the entity off the same `State` they mutate (stamp
 /// `dead_action`, then release), so the `(name, id)` pair avoids the
 /// double borrow.
@@ -385,25 +368,55 @@ pub fn aspect_get(e: &Entity, path: &str) -> Option<i64> {
     }
 }
 
+/// Numeric attr read (non-number → None) — `aspect_get`'s attr
+/// counterpart.
+#[must_use]
+pub fn number_attr(e: &Entity, key: &str) -> Option<i64> {
+    match e.attrs.get(key) {
+        Some(AttrValue::Num(n)) => Some(*n),
+        _ => None,
+    }
+}
+
 /// Aspect write by dotted path — creates the
 /// sub-object when missing (mirrors aspect_get). QUIRK(Q13): a later scalar
 /// write replaces a whole sub-map and vice versa — both directions silent,
 /// frozen.
 pub fn aspect_set(e: &mut Entity, path: &str, v: i64) {
+    aspects_insert(&mut e.aspects, path, v);
+}
+
+/// The Q13 clobber-aware single write into an `Aspects` map — the ONE
+/// insertion path, so the frozen judgment cannot drift apart between the
+/// mutating (`aspect_set`) and building (`aspects_from_pairs`) fronts.
+pub fn aspects_insert(m: &mut Aspects, path: &str, v: i64) {
     let Some(dot) = path.find('.') else {
-        e.aspects.insert(path.to_string(), AspectVal::Num(v));
+        m.insert(path.to_string(), AspectVal::Num(v));
         return;
     };
     let head = &path[..dot];
     let rest = &path[dot + 1..];
     // an existing Num head is REPLACED by a fresh
     // sub-map; a missing head creates one.
-    if !matches!(e.aspects.get(head), Some(AspectVal::Sub(_))) {
-        e.aspects.insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
+    if !matches!(m.get(head), Some(AspectVal::Sub(_))) {
+        m.insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
     }
-    if let Some(AspectVal::Sub(m)) = e.aspects.get_mut(head) {
-        m.insert(rest.to_string(), v);
+    if let Some(AspectVal::Sub(sub)) = m.get_mut(head) {
+        sub.insert(rest.to_string(), v);
     }
+}
+
+/// Build Aspects from `{key: n}` pairs in
+/// the caller's iteration order (insertion order; the
+/// compile sites own that). QUIRK(Q13): the head collision clobbers
+/// a scalar with a sub-map (and a scalar write clobbers a sub-map) — both
+/// directions silent, frozen.
+pub fn aspects_from_pairs(pairs: &IndexMap<String, i64>) -> Aspects {
+    let mut out = Aspects::new();
+    for (k, v) in pairs {
+        aspects_insert(&mut out, k, *v);
+    }
+    out
 }
 
 /// Symmetric edges get one canonical key
@@ -437,4 +450,29 @@ pub fn relation_alive(s: &State, id_a: &str, id_b: &str, type_: &str) -> bool {
     false
 }
 
-// NOTE: a plain `attr_get` read helper is deliberately absent — dead code.
+// NOTE: a plain any-value `attr_get` read helper is deliberately absent —
+// dead code; the numeric read (`number_attr`, above) is the one live
+// accessor.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aspects_from_pairs_clobbers() {
+        // QUIRK Q13: a later 'a.b' clobbers the scalar 'a' whole
+        let mut pairs = IndexMap::new();
+        pairs.insert("a".to_string(), 1);
+        pairs.insert("a.b".to_string(), 2);
+        let out = aspects_from_pairs(&pairs);
+        assert_eq!(out.get("a"), Some(&AspectVal::Sub(IndexMap::from([("b".to_string(), 2)]))));
+        // 'a.b.c' stores the literal sub-key 'b.c' — no nested tree
+        let mut pairs2 = IndexMap::new();
+        pairs2.insert("a.b.c".to_string(), 7);
+        let out2 = aspects_from_pairs(&pairs2);
+        match out2.get("a") {
+            Some(AspectVal::Sub(m)) => assert_eq!(m.get("b.c"), Some(&7)),
+            other => panic!("expected sub-map, got {other:?}"),
+        }
+    }
+}

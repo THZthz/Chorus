@@ -17,19 +17,28 @@
 //! worker rebuilds the full CS world, and a per-core default would hold that
 //! world × every core. `--cores` overrides.
 
-// The scale lib is the shared TEST lib; bins cannot see tests/, so the shared
-// file is mounted by path. Single source of truth with the test suite.
-#[path = "../../tests/common/reach_scale_lib.rs"]
-mod reach_scale_lib;
-
 use std::sync::mpsc;
 
-use reach_scale_lib::{build_cs_scale, census, summarize};
+use chorus::reach::scale::{self, build_cs_scale, census, summarize};
 
 /// Flag numbers parse to f64 (garbage is NaN) — the flags accept plain
 /// integers (the CLI's own documented interface).
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+}
+
+/// The name shard `idx % k == i` under the worker protocol's f64 semantics:
+/// k = 0 makes every remainder NaN (never equal) and a fractional `i` never
+/// equals an integer remainder — the same filter the `--worker` child runs
+/// (the thread path passes exact integers, where f64 `%` and usize `%`
+/// agree).
+fn shard_names(names: &[String], i: f64, k: f64) -> Vec<String> {
+    names
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| (*idx as f64) % k == i)
+        .map(|(_, n)| n.clone())
+        .collect()
 }
 
 fn as_num(v: Option<String>, dflt: f64) -> f64 {
@@ -52,24 +61,12 @@ fn main() -> std::process::ExitCode {
         let n_protos = as_num(args.get(w + 3).cloned(), f64::NAN) as usize;
         let n_recipes = as_num(args.get(w + 4).cloned(), f64::NAN) as usize;
         let world = build_cs_scale(n_protos, n_recipes);
-        // the name filter `idx % k == i` runs on NUMBERS (f64 semantics):
-        // k = 0 makes the remainder NaN (never equal), a fractional i never
-        // equals an integer remainder; Rust's f64 `%` has exactly those
-        // semantics (0.0 % 0.0 = NaN, NaN == i is false), where the usize
-        // `%` would panic.
-        let mine: Vec<String> = world
-            .names
-            .iter()
-            .enumerate()
-            .filter(|(idx, _)| (*idx as f64) % k == i)
-            .map(|(_, n)| n.clone())
-            .collect();
+        let mine = shard_names(&world.names, i, k);
         let stats = census(&world, &mine);
         // the shard file is `reach-scale-<i>.json` — `<i>` prints like a
         // Number display: bare digits for integers, "NaN" for NaN
         let path = std::env::temp_dir().join(format!("reach-scale-{i}.json"));
-        // serializing plain stats cannot fail; rule 11 keeps the
-        // panic explicit and the grep gate clean
+        // serializing plain stats cannot fail; the panic stays explicit
         let json = serde_json::to_string(&stats)
             .unwrap_or_else(|e| panic!("cannot serialize NameStat: {e}"));
         std::fs::write(&path, json)
@@ -101,18 +98,12 @@ fn main() -> std::process::ExitCode {
     // the parent shards across worker threads over a channel; every worker
     // rebuilds the full world, matching the child-process topology's output.
     let wall_start = std::time::Instant::now();
-    let (tx, rx) = mpsc::channel::<(usize, Vec<reach_scale_lib::NameStat>)>();
+    let (tx, rx) = mpsc::channel::<(usize, Vec<scale::NameStat>)>();
     for i in 0..cores {
         let tx = tx.clone();
         std::thread::spawn(move || {
             let world = build_cs_scale(n_protos, n_recipes);
-            let mine: Vec<String> = world
-                .names
-                .iter()
-                .enumerate()
-                .filter(|(idx, _)| idx % cores == i)
-                .map(|(_, n)| n.clone())
-                .collect();
+            let mine = shard_names(&world.names, i as f64, cores as f64);
             let stats = census(&world, &mine);
             let _ = tx.send((i, stats));
         });
@@ -120,8 +111,7 @@ fn main() -> std::process::ExitCode {
     drop(tx);
     // shards flatten in SHARD (index) order, so the summary's verdict histogram
     // (insertion-ordered) sees the names in the same sequence
-    let mut shards: Vec<Option<Vec<reach_scale_lib::NameStat>>> =
-        (0..cores).map(|_| None).collect();
+    let mut shards: Vec<Option<Vec<scale::NameStat>>> = (0..cores).map(|_| None).collect();
     for _ in 0..cores {
         match rx.recv() {
             Ok((i, stats)) => shards[i] = Some(stats),
@@ -133,7 +123,7 @@ fn main() -> std::process::ExitCode {
         }
     }
     let wall = wall_start.elapsed().as_secs_f64();
-    let stats: Vec<reach_scale_lib::NameStat> = shards.into_iter().flatten().flatten().collect();
+    let stats: Vec<scale::NameStat> = shards.into_iter().flatten().flatten().collect();
     println!("\ncensus wall: {:.1} s on {} cores", wall, cores);
     println!("{}", summarize(&stats));
     std::process::ExitCode::from(0)

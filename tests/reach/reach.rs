@@ -9,16 +9,13 @@
 
 use indexmap::{IndexMap, IndexSet};
 
-use chorus::content::content::{
+use chorus::content::{
     compile_content, ContentRaw, DeckRaw, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef,
     SlotTriggerDef, TriggerDef, VerbContent,
 };
 use chorus::core::dict::core_dictionary;
 use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
 use chorus::reach::{analyze_card, render_report, CardOptions, CardVerdict, Existence};
-
-#[path = "../common/mod.rs"]
-mod common;
 
 /// One fixture entity (id derived from the lowercased name).
 fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
@@ -48,7 +45,7 @@ fn state_with(es: Vec<Entity>) -> State {
 }
 
 /// Compile a fixture (one fresh dictionary per test).
-fn compile(raw: &ContentRaw) -> chorus::content::content::CompiledContent {
+fn compile(raw: &ContentRaw) -> chorus::content::CompiledContent {
     let dict = core_dictionary();
     compile_content(raw, &dict, &[]).expect("fixture content compiles")
 }
@@ -554,7 +551,7 @@ fn replace_is_a_producer_of_its_with_target() {
 // ---------- (c) demand semantics: attribute thresholds ---------------------
 
 /// The book-world fixture: ANA plus THE_BOOK (text, secret:2).
-fn book_world() -> (chorus::content::content::CompiledContent, State) {
+fn book_world() -> (chorus::content::CompiledContent, State) {
     let content = compile(&empty_raw());
     let state = state_with(vec![ana(), book()]);
     (content, state)
@@ -679,7 +676,7 @@ fn a_derive_fed_threshold_cannot_be_bounded() {
                     name_from: None,
                     aspects: Some(IndexMap::from([(
                         "glimpse".to_string(),
-                        chorus::content::content::DeriveAspect {
+                        chorus::content::DeriveAspect {
                             from_object_aspect: "secret".to_string(),
                             minus: 0,
                         },
@@ -705,7 +702,7 @@ fn a_derive_fed_threshold_cannot_be_bounded() {
 // ---------- (b) usability --------------------------------------------------
 
 /// The readable-book fixture: READ binds a kind:text object.
-fn readable_book() -> chorus::content::content::CompiledContent {
+fn readable_book() -> chorus::content::CompiledContent {
     let raw = ContentRaw {
         verbs: IndexMap::from([(
             "READ".to_string(),
@@ -1037,7 +1034,7 @@ fn guarded_candidate_sources_are_listed_flat_in_candidates_never_as_paths() {
 
 fn render_card(
     file: &str,
-    content: &chorus::content::content::CompiledContent,
+    content: &chorus::content::CompiledContent,
     state: &State,
     target: &str,
     opts: &CardOptions,
@@ -1057,16 +1054,16 @@ fn render_card(
 fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
     let dict = core_dictionary();
     for seed in 1u32..=60 {
-        let sc = common::reach_fuzz_lib::gen_scenario(seed);
+        let sc = chorus::reach::fuzz::gen_scenario(seed);
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
         let mut first = String::new();
         let mut second = String::new();
         for probe in &sc.probes {
             let opts = match probe.mode {
-                common::reach_fuzz_lib::ProbeMode::Name => {
+                chorus::reach::fuzz::ProbeMode::Name => {
                     CardOptions { usable: seed % 2 == 0, demand: None }
                 }
-                common::reach_fuzz_lib::ProbeMode::Demand => {
+                chorus::reach::fuzz::ProbeMode::Demand => {
                     CardOptions { usable: false, demand: Some(probe.q.clone()) }
                 }
             };
@@ -1084,15 +1081,15 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
 fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
     let dict = core_dictionary();
     for seed in 1u32..=30 {
-        let sc = common::reach_fuzz_lib::gen_scenario(seed);
+        let sc = chorus::reach::fuzz::gen_scenario(seed);
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
         let shared = chorus::reach::Analyzer::new(&content, &sc.initial);
         for probe in &sc.probes {
             let opts = match probe.mode {
-                common::reach_fuzz_lib::ProbeMode::Name => {
+                chorus::reach::fuzz::ProbeMode::Name => {
                     CardOptions { usable: seed % 3 == 0, demand: None }
                 }
-                common::reach_fuzz_lib::ProbeMode::Demand => {
+                chorus::reach::fuzz::ProbeMode::Demand => {
                     CardOptions { usable: false, demand: Some(probe.q.clone()) }
                 }
             };

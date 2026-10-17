@@ -53,6 +53,16 @@ pub fn is_safe_name(name: &str) -> bool {
     safe_name_re().is_match(name)
 }
 
+/// The one escape discipline for every quoted form (§5.1): `\` doubled
+/// first, then `"` escaped — the lexer maps `\\` → `\` and `\"` → `"`, so
+/// any quoted text re-lexes to itself. `format_ref` (names) and
+/// `format::quote` (prose strings, RUN ids, pair values, trigger segments)
+/// share it verbatim.
+#[must_use]
+pub(crate) fn quote_string(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// A name ref, optionally kind-qualified.
 #[must_use]
 pub fn name_ref(name: impl Into<String>, kind: Option<String>) -> Ref {
@@ -70,20 +80,18 @@ pub fn id_ref(id: impl Into<String>) -> Ref {
 
 /// The only dictionary surface the formatter
 /// needs is `dict.reserved`.
-pub fn format_ref(r: &Ref, dict: Option<&Dictionary>) -> Result<String> {
+pub fn format_ref(r: &Ref, dict: &Dictionary) -> Result<String> {
     match r {
         Ref::Id { id } => Ok(format!("#{id}")),
         Ref::Name { name, .. } => {
-            let safe =
-                safe_name_re().is_match(name) && !dict.is_some_and(|d| d.reserved.contains(name));
+            let safe = safe_name_re().is_match(name) && !dict.reserved.contains(name);
             if safe {
                 Ok(name.clone())
             } else {
-                // one escape discipline for every quoted form (§5.1): `\`
-                // first, then `"` — the lexer maps `\\` → `\` and `\"` → `"`,
-                // so any name re-lexes to itself (the same rule as
-                // format.rs's quote() for prose strings)
-                Ok(format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\"")))
+                // one escape discipline for every quoted form (§5.1):
+                // quote_string doubles `\` first, then escapes `"` — the
+                // same rule format.rs's quote() applies to prose strings
+                Ok(quote_string(name))
             }
         }
         Ref::Param { .. } => Err(ChorusError::new(
@@ -130,16 +138,20 @@ mod tests {
     #[test]
     fn format_ref_quotes_unsafe_and_reserved_names_only() {
         let dict = d();
-        assert_eq!(format_ref(&name_ref("RUMOUR", None), None).unwrap(), "RUMOUR");
+        assert_eq!(format_ref(&name_ref("RUMOUR", None), &dict).unwrap(), "RUMOUR");
         assert_eq!(
-            format_ref(&name_ref("READ", None), Some(&dict)).unwrap(),
+            format_ref(&name_ref("READ", None), &dict).unwrap(),
             "\"READ\"" // reserved → quoted
         );
         // one escape discipline: `\` doubles, `"` escapes (§5.1)
-        assert_eq!(format_ref(&name_ref("a\"b\\c", None), None).unwrap(), "\"a\\\"b\\\\c\"");
-        assert_eq!(format_ref(&id_ref("c7f3"), None).unwrap(), "#c7f3");
+        assert_eq!(format_ref(&name_ref("a\"b\\c", None), &dict).unwrap(), "\"a\\\"b\\\\c\"");
+        assert_eq!(format_ref(&id_ref("c7f3"), &dict).unwrap(), "#c7f3");
         // param refs never format
-        assert!(format_ref(&Ref::Param { name: "n".into() }, None).is_err());
+        assert!(format_ref(&Ref::Param { name: "n".into() }, &dict).is_err());
+        // the dictionary-less rendering (format_sentence's None arm) quotes
+        // the same: READ is reserved via RESERVED_WORDS even unregistered
+        let bare = Dictionary::new();
+        assert_eq!(format_ref(&name_ref("READ", None), &bare).unwrap(), "\"READ\"");
     }
 
     #[test]

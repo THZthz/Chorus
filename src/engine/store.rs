@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::core::types::State;
-use crate::engine::engine::ActionRecord;
+use crate::engine::ActionRecord;
 use crate::error::{ChorusError, Result};
 
 /// The append-only action log. Append-only: the invariant is maintained by
@@ -100,14 +100,14 @@ pub fn load_log(path: &Path) -> Result<Vec<ActionRecord>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::content::content::{compile_content, ContentRaw, RecipeDef, SlotDef, VerbContent};
+    use crate::content::{compile_content, ContentRaw, RecipeDef, SlotDef, VerbContent};
     use crate::core::clock::Clock;
     use crate::core::dict::{core_dictionary, Dictionary};
     use crate::core::parse::parse_sentence;
     use crate::core::types::new_state;
-    use crate::engine::engine::{execute_step, ExecOptions, Step};
+    use crate::engine::{execute_step, ExecOptions, Step};
 
-    fn pace_rig() -> (Dictionary, crate::content::content::CompiledContent) {
+    fn pace_rig() -> (Dictionary, crate::content::CompiledContent) {
         let mut dict = core_dictionary();
         if !dict.is_verb("PACE") {
             dict.register_verb("PACE").unwrap();

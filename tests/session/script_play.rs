@@ -5,20 +5,19 @@
 //! The script text is DATA: embedded with include_str! from
 //! scripts/the-nightjar-flyer.txt.
 
-use chorus::content::content::{
+use chorus::content::script::{compile_script, parse_script};
+use chorus::content::{
     compile_content, for_each_authored_outcome, CompiledEnding, CompiledTrigger, ContentRaw,
     DeckCard, DeclaredEntity, DeriveAspect, PrototypeDerive,
 };
-use chorus::content::script::{compile_script, parse_script};
+use chorus::core::clock::Clock;
 use chorus::core::dict::core_dictionary;
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::{Arg, Outcome};
-use chorus::core::types::{AspectVal, Clock};
+use chorus::core::types::AspectVal;
 use chorus::error::Result;
 
-#[path = "../common/mod.rs"]
-mod common;
-use common::harness::assert_err_msg;
+use crate::common::harness::assert_err_msg;
 
 /// The bundled
 /// showcase, read as text. include_str! pins the path
@@ -32,13 +31,13 @@ fn aspects(pairs: &[(&str, i64)]) -> chorus::core::types::Aspects {
 }
 
 fn deck_of<'a>(
-    content: &'a chorus::content::content::CompiledContent,
+    content: &'a chorus::content::CompiledContent,
     id: &str,
-) -> &'a chorus::content::content::CompiledDeck {
+) -> &'a chorus::content::CompiledDeck {
     content.decks.get(id).unwrap_or_else(|| panic!("deck {id} missing"))
 }
 
-fn names(deck: &chorus::content::content::CompiledDeck) -> Vec<&str> {
+fn names(deck: &chorus::content::CompiledDeck) -> Vec<&str> {
     deck.order.iter().map(|c: &DeckCard| c.name.as_str()).collect()
 }
 
@@ -243,7 +242,7 @@ fn the_showcase_compiles_the_full_script_grammar() {
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     // entity lines: stackable (§4.2) on the resource kind (§4.1), plus a
-    // symmetric relation (§4.2) and a derive prototype (§6.4, §6.4)
+    // symmetric relation (§4.2) and a derive prototype (§6.4)
     let funds = game.state.entities.get("s_funds").unwrap();
     assert_eq!(funds.kind, "resource");
     assert!(funds.stackable);
@@ -382,13 +381,11 @@ fn expiry_triggers_parse_into_their_own_trigger_form() {
     .unwrap();
     assert_eq!(
         script.content.triggers,
-        Some(vec![chorus::content::content::TriggerDef::Expire(
-            chorus::content::content::ExpireTriggerDef {
-                id: "decay_moth".into(),
-                on_expire_of: "INFLUENCE_MOTH_G".into(),
-                out: vec!["REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E".to_string()],
-            }
-        )])
+        Some(vec![chorus::content::TriggerDef::Expire(chorus::content::ExpireTriggerDef {
+            id: "decay_moth".into(),
+            on_expire_of: "INFLUENCE_MOTH_G".into(),
+            out: vec!["REPLACE INFLUENCE_MOTH_G WITH INFLUENCE_MOTH_E".to_string()],
+        })])
     );
     // compiled: the expire variant with parsed outcomes; no existence check on the name
     let compiled = compile_content(&script.content, &dict, &[]).unwrap();
@@ -456,7 +453,7 @@ fn bad_scripts_fail_loudly() {
 fn direct_compile_content_without_entities_rejects_entity_deck_entries() {
     let dict = core_dictionary();
     let raw = ContentRaw {
-        decks: Some(vec![chorus::content::content::DeckRaw {
+        decks: Some(vec![chorus::content::DeckRaw {
             id: "GOSSIP".into(),
             spec: vec!["RUMOUR".into()],
             defaultcard: None,
@@ -478,7 +475,7 @@ fn direct_compile_content_without_entities_rejects_entity_deck_entries() {
 fn direct_compile_content_with_entities_resolves_deck_entries_and_stackable() {
     let dict = core_dictionary();
     let raw = ContentRaw {
-        decks: Some(vec![chorus::content::content::DeckRaw {
+        decks: Some(vec![chorus::content::DeckRaw {
             id: "GOSSIP".into(),
             spec: vec!["RUMOUR".into()],
             defaultcard: None,
@@ -534,15 +531,13 @@ use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 /// compile with 'not registered'.
 mod lenient_input_routes_the_new_core_verbs {
     use super::*;
-    use chorus::content::content::{RecipeDef, SlotDef, VerbContent};
+    use crate::common::seed::seed_state;
+    use chorus::content::{RecipeDef, SlotDef, VerbContent};
     use chorus::core::types::{add_entity, AttrValue, Attrs, Entity, State};
-    use common::seed::seed_state;
 
     /// STUDY (READ's grammar, §4.3) and
     /// MANSUS (EXPLORE's grammar, §4.3) registered on a fresh dictionary.
-    fn verbs_content(
-        dict: &chorus::core::dict::Dictionary,
-    ) -> chorus::content::content::CompiledContent {
+    fn verbs_content(dict: &chorus::core::dict::Dictionary) -> chorus::content::CompiledContent {
         let verb = |slots: Vec<SlotDef>, out: &str| VerbContent {
             slots,
             duration: 60,
@@ -597,7 +592,7 @@ mod lenient_input_routes_the_new_core_verbs {
 
     /// The seed world plus a text
     /// and a place to route at.
-    fn ctx() -> (chorus::core::dict::Dictionary, chorus::content::content::CompiledContent, State) {
+    fn ctx() -> (chorus::core::dict::Dictionary, chorus::content::CompiledContent, State) {
         let verbs_dict = core_dictionary();
         let verbs_content = verbs_content(&verbs_dict);
         let mut state = seed_state();

@@ -13,31 +13,29 @@
 //! (per-test isolation matters for reserved-word collisions). Error-message
 //! patterns are copied CHARACTER FOR CHARACTER from the frozen literals.
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::harness::{assert_err_msg, assert_refusal, assert_rejected};
+use crate::common::rig::{
+    inspect_content, said_record, settle_line, tmp_log_path, try_inspect_content, Extra,
+};
+use crate::common::seed::seed_state;
+use crate::common::snap::snap;
+use chorus::engine::settle::done;
 
-use common::harness::assert_err_msg;
-use common::seed::seed_state;
-use common::settle::{done, refusal, settle_step};
-use common::snap::snap;
-
-use chorus::content::content::{
+use chorus::content::script::compile_script;
+use chorus::content::{
     compile_content, CompiledContent, ContentRaw, FunctionDef, PrototypeDef, RecipeDef, SlotDef,
     SlotTriggerDef, TriggerDef, VerbContent,
 };
-use chorus::content::script::compile_script;
-use chorus::core::clock::Clock;
 use chorus::core::dice::{roll_die, splitmix64};
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::format::format_sentence;
 use chorus::core::parse::{parse_outcomes, parse_sentence};
 use chorus::core::sentence::{Arg, Outcome};
 use chorus::core::types::{clone_state, new_state, AspectVal, AttrValue, State};
-use chorus::engine::engine::{ActionRecord, ExecResult, Step};
 use chorus::engine::fold::{fold, fold_up_to};
 use chorus::engine::store::{load_log, save_log};
+use chorus::engine::ActionRecord;
 use chorus::session::game::{Game, TurnKind};
-use indexmap::IndexMap;
 
 // ---------------------------------------------------------------- rigs ------
 
@@ -48,38 +46,6 @@ fn dice_dict() -> Dictionary {
     d.register_verb("INSPECT").unwrap();
     d.register_verb("ATTUNE").unwrap();
     d
-}
-
-/// Parse + settle_step with the exact
-/// id-generator closure: `x{first_record_id}_{n}`, the counter incrementing
-/// per minted id.
-fn run(
-    content: &CompiledContent,
-    dict: &Dictionary,
-    state: State,
-    src: &str,
-    first_record_id: i64,
-) -> ExecResult {
-    let s = parse_sentence(src, dict).unwrap();
-    let mut n: i64 = 0;
-    let mut id_gen = || {
-        n += 1;
-        format!("x{first_record_id}_{n}")
-    };
-    settle_step(
-        content,
-        dict,
-        state,
-        Step {
-            start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
-            clauses: s.clauses,
-            t_real: None,
-        },
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
 }
 
 /// The record's first ROLLED row
@@ -108,18 +74,6 @@ fn rolled_rows(rec: &ActionRecord) -> Vec<(i64, i64)> {
     rows
 }
 
-/// The NARRATE strings of ONE record.
-fn said(rec: &ActionRecord) -> Vec<String> {
-    rec.outcomes
-        .iter()
-        .filter(|o| o.op == "NARRATE")
-        .map(|o| match o.args.first() {
-            Some(Arg::Str { v }) => v.clone(),
-            _ => "(not a string)".to_string(),
-        })
-        .collect()
-}
-
 /// The standard seed world plus
 /// a `nerve:3` aspect on ANA — the total() cases roll 3 dice at counters
 /// 0..2 = 6+4+4 = 14.
@@ -127,71 +81,6 @@ fn seed_world() -> State {
     let mut s = seed_state();
     s.entities.get_mut("ana").unwrap().aspects.insert("nerve".to_string(), AspectVal::Num(3));
     s
-}
-
-/// the extra ContentRaw fields the rig's spread accepts.
-#[derive(Default)]
-struct Extra {
-    triggers: Option<Vec<TriggerDef>>,
-    prototypes: Option<IndexMap<String, PrototypeDef>>,
-    functions: Option<Vec<FunctionDef>>,
-}
-
-/// Throwing through — the
-/// load-error assertions feed this Result straight to `assert_err_msg`.
-fn try_inspect_content(
-    dict: &Dictionary,
-    out: &[&str],
-    extra: Extra,
-) -> chorus::error::Result<CompiledContent> {
-    compile_content(
-        &ContentRaw {
-            verbs: [(
-                "INSPECT".to_string(),
-                VerbContent {
-                    slots: vec![
-                        SlotDef {
-                            role: "actors".into(),
-                            min: 1,
-                            max: Some(2),
-                            query: Some("kind:character".into()),
-                            shown: None,
-                        },
-                        SlotDef {
-                            role: "object".into(),
-                            min: 0,
-                            max: Some(1),
-                            query: None,
-                            shown: None,
-                        },
-                    ],
-                    duration: 0,
-                    recipes: vec![RecipeDef {
-                        id: None,
-                        when: None,
-                        shown: None,
-                        hint: None,
-                        max: None,
-                        aspects: Vec::new(),
-                        out: out.iter().map(|s| (*s).to_string()).collect(),
-                    }],
-                },
-            )]
-            .into_iter()
-            .collect(),
-            triggers: extra.triggers,
-            prototypes: extra.prototypes,
-            functions: extra.functions,
-            ..ContentRaw::default()
-        },
-        dict,
-        &[],
-    )
-}
-
-/// the unwrapping face used at play call sites.
-fn inspect_content(dict: &Dictionary, out: &[&str], extra: Extra) -> CompiledContent {
-    try_inspect_content(dict, out, extra).unwrap()
 }
 
 fn dice_script(seed: i64) -> String {
@@ -249,31 +138,6 @@ fn rolled_outcome(total: i64, ctr_after: i64) -> Outcome {
         fallback: None,
         call: None,
     }
-}
-
-/// Temp log path (unique per process and tag) + a JSONL round trip.
-fn tmp_log_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("chorus-dice-{tag}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("log.jsonl")
-}
-
-/// `refusal(r)` matches `re`.
-fn assert_refusal(r: &ExecResult, pattern: &str) {
-    let msg =
-        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
-    let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
-}
-
-/// `r.rejected` matches `re`.
-fn assert_rejected(r: &ExecResult, pattern: &str) {
-    let msg = r
-        .rejected
-        .as_deref()
-        .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
-    let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +218,7 @@ fn different_seed_different_sequence() {
     let rows: Vec<Option<(i64, i64)>> = [0, 1, 42]
         .map(|seed| {
             let g = compile_script(&dice_script(seed), &dict).unwrap();
-            let r = run(&g.content, &dict, g.state, "0:0 @ ANA WAIT", 1);
+            let r = settle_line(&g.content, &dict, g.state, "0:0 @ ANA WAIT", 1).unwrap();
             rolled_row(done(&r).unwrap())
         })
         .to_vec();
@@ -410,10 +274,10 @@ fn tier_selection_roll_with_if_else_if_else_fires_the_mid_tier() {
     // ANA carries nerve:3 in the seed world -> 3 dice at counters 0,1,2 = 6+4+4 = 14
     let dict = dice_dict();
     let c = inspect_content(&dict, &[TIERS], Extra::default());
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(rolled_row(done(&r).unwrap()), Some((14, 3)));
-    assert_eq!(said(done(&r).unwrap()), ["mid"]);
+    assert_eq!(said_record(done(&r).unwrap()), ["mid"]);
     assert_eq!(r.state.rng, 3);
 }
 
@@ -426,10 +290,10 @@ fn the_same_tiers_fire_low_from_a_forced_counter() {
         fold(&[fixture_complete(1, vec![rolled_outcome(0, 100)])], &seed_world(), &dict, &c)
             .unwrap();
     assert_eq!(forced.rng, 100);
-    let r = run(&c, &dict, forced, "0:0 @ ANA INSPECT", 2);
+    let r = settle_line(&c, &dict, forced, "0:0 @ ANA INSPECT", 2).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(rolled_row(done(&r).unwrap()), Some((7, 103)));
-    assert_eq!(said(done(&r).unwrap()), ["low"]);
+    assert_eq!(said_record(done(&r).unwrap()), ["low"]);
 }
 
 #[test]
@@ -438,21 +302,23 @@ fn bonus_expression_adds_without_consuming_counters_count_0_rolls_no_dice() {
     // 5 + 6 + 4 = 15 at counters 0,1 — two consumed
     let bonus =
         inspect_content(&dict, &["ROLL(2, 6, 5), NARRATE \"got {roll}\""], Extra::default());
-    let rb = run(&bonus, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let rb = settle_line(&bonus, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(rb.rejected, None);
     assert_eq!(rolled_row(done(&rb).unwrap()), Some((15, 2)));
-    assert_eq!(said(done(&rb).unwrap()), ["got 15"]);
+    assert_eq!(said_record(done(&rb).unwrap()), ["got 15"]);
     // a computed bonus too: object.aspect.demand = 3 (RITE_OF_ASCENSION)
     let bonus_expr = inspect_content(
         &dict,
         &["ROLL(1, 6, object.aspect.demand), NARRATE \"got {roll}\""],
         Extra::default(),
     );
-    let re = run(&bonus_expr, &dict, seed_world(), "0:0 @ ANA INSPECT RITE_OF_ASCENSION", 1);
+    let re =
+        settle_line(&bonus_expr, &dict, seed_world(), "0:0 @ ANA INSPECT RITE_OF_ASCENSION", 1)
+            .unwrap();
     assert_eq!(rolled_row(done(&re).unwrap()), Some((9, 1))); // 6 (die at c0) + 3
                                                               // count 0: total is the bonus, counter unmoved, step still fine
     let zero = inspect_content(&dict, &["ROLL(0, 6, 2)"], Extra::default());
-    let rz = run(&zero, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let rz = settle_line(&zero, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(rz.rejected, None);
     assert_eq!(rolled_row(done(&rz).unwrap()), Some((2, 0)));
     assert_eq!(rz.state.rng, 0);
@@ -463,7 +329,7 @@ fn count_name_and_total_arg_forms_evaluate_0_count_is_legal() {
     let dict = dice_dict();
     // the count(name:…) arg form: the seed world holds one RITE_OF_ASCENSION
     let c = inspect_content(&dict, &["ROLL(count(name:RITE_OF_ASCENSION), 6)"], Extra::default());
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(rolled_row(done(&r).unwrap()), Some((6, 1))); // one die, value 6
                                                              // a computed count of 0 rolls no dice: total over a missing aspect reads 0
     let zero = inspect_content(
@@ -471,7 +337,7 @@ fn count_name_and_total_arg_forms_evaluate_0_count_is_legal() {
         &["ROLL(total(actors, aspect:nonesuch), 6), NARRATE \"after\""],
         Extra::default(),
     );
-    let rz = run(&zero, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let rz = settle_line(&zero, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(rz.rejected, None);
     assert_eq!(rolled_row(done(&rz).unwrap()), Some((0, 0)));
     let ops: Vec<&str> = done(&rz).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
@@ -487,7 +353,7 @@ fn an_operand_that_cannot_resolve_missing_attr_refuses_the_window() {
         &["ROLL(actors.attr.nonesuch, 6), NARRATE \"never\""],
         Extra::default(),
     );
-    let ra = run(&attr, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let ra = settle_line(&attr, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     // v0.5: the error defers to the completion, where the window refuses —
     // the attempt is logged, the scratch (and its counters) discarded
     assert_eq!(ra.rejected, None);
@@ -535,7 +401,7 @@ fn a_roll_inside_an_untaken_branch_consumes_nothing() {
     );
     let state = seed_world();
     let base = clone_for_snap(&state);
-    let r = run(&c, &dict, state, "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, state, "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]);
@@ -560,7 +426,7 @@ fn a_failing_later_outcome_after_a_successful_roll_refuses_the_window() {
         Extra::default(),
     );
     let state = seed_world();
-    let r = run(&c, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "sides must be an integer >= 2");
     assert_eq!(state.rng, 0);
@@ -583,7 +449,8 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
     let dict = dice_dict();
     let state = seed_world();
     let bad_sides = inspect_content(&dict, &["ROLL(1, 1), NARRATE \"never\""], Extra::default());
-    let rs = run(&bad_sides, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1);
+    let rs =
+        settle_line(&bad_sides, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(rs.rejected, None);
     assert_refusal(&rs, "sides must be an integer >= 2");
     assert_eq!(state.rng, 0);
@@ -628,7 +495,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
     .unwrap();
     let mut s2 = seed_world();
     s2.entities.get_mut("ana").unwrap().aspects.insert("dread".to_string(), AspectVal::Num(-3));
-    let rn = run(&neg, &dict, clone_for_snap(&s2), "0:0 @ ANA INSPECT", 1);
+    let rn = settle_line(&neg, &dict, clone_for_snap(&s2), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(rn.rejected, None);
     assert_refusal(&rn, "dice count must be an integer >= 0");
     // §6.4: registered at begin — the refusal still counted
@@ -637,7 +504,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
     assert_eq!(snap(&replayed_neg), snap(&rn.state));
     // and a fractional/missing operand is likewise a rejection, never a silent roll
     let missing = inspect_content(&dict, &["ROLL(object.aspect.nonesuch, 6)"], Extra::default());
-    let rm = run(&missing, &dict, seed_world(), "0:0 @ ANA INSPECT", 1); // no object bound
+    let rm = settle_line(&missing, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap(); // no object bound
     assert_refusal(&rm, "cannot resolve");
 }
 
@@ -653,10 +520,10 @@ fn last_wins_a_second_roll_rebinds_both_consumed_counters_show_in_the_rows() {
         &["ROLL(1, 6), ROLL(1, 6), NARRATE \"final {roll}\""],
         Extra::default(),
     );
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(rolled_rows(done(&r).unwrap()), vec![(6, 1), (4, 2)]);
-    assert_eq!(said(done(&r).unwrap()), ["final 4"]); // die(0,1,6) = 4, not the first roll's 6
+    assert_eq!(said_record(done(&r).unwrap()), ["final 4"]); // die(0,1,6) = 4, not the first roll's 6
     assert_eq!(r.state.rng, 2);
 }
 
@@ -754,13 +621,13 @@ fn each_clause_binds_its_own_dice_the_counter_chain_continues_across_clauses() {
         &[],
     )
     .unwrap();
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT; ANA ATTUNE", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT; ANA ATTUNE", 1).unwrap();
     assert_eq!(r.rejected, None);
     // clause one rolls die(0,0,6)=6; clause two rolls die(0,1,6)=4 at the
     // CONTINUED counter — shared counter, independent bindings; each clause's
     // window closes with its own COMPLETE row
     let completes: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "complete").collect();
-    let narrated: Vec<String> = completes.iter().flat_map(|x| said(x)).collect();
+    let narrated: Vec<String> = completes.iter().flat_map(|x| said_record(x)).collect();
     assert_eq!(narrated, ["clause one 6", "clause two 4"]);
     let rows: Vec<(i64, i64)> = completes.iter().flat_map(|x| rolled_rows(x)).collect();
     assert_eq!(rows, vec![(6, 1), (4, 2)]);
@@ -775,15 +642,15 @@ fn unbound_roll_in_a_taken_branch_refuses_the_window_at_runtime() {
         &["IF exists(HOUSE) -> (ROLL(1, 6)) ELSE -> (NARRATE \"no house\"), IF roll >= 0 -> (NARRATE \"read {roll}\")"],
         Extra::default(),
     );
-    let with_house = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let with_house = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(with_house.rejected, None);
-    assert_eq!(said(done(&with_house).unwrap()), ["read 6"]); // rolled, so `roll` reads
+    assert_eq!(said_record(done(&with_house).unwrap()), ["read 6"]); // rolled, so `roll` reads
     let without_house = inspect_content(
         &dict,
         &["IF exists(NOSUCH) -> (ROLL(1, 6)) ELSE -> (NARRATE \"skip\"), IF roll >= 0 -> (NARRATE \"read {roll}\")"],
         Extra::default(),
     );
-    let r = run(&without_house, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&without_house, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "'roll' is unbound");
 }
@@ -795,7 +662,7 @@ fn roll_as_a_roll_argument_with_no_prior_roll_refuses_the_window_at_runtime() {
     // negatives are allowed; the refusal is the backstop)
     let dict = dice_dict();
     let c = inspect_content(&dict, &["ROLL(roll, 6)"], Extra::default());
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "'roll' is unbound");
 }
@@ -836,10 +703,10 @@ fn a_narrate_in_a_later_clause_keeps_the_roll_literal_the_binding_resets_per_cla
         &[],
     )
     .unwrap();
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT; ANA ATTUNE", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT; ANA ATTUNE", 1).unwrap();
     assert_eq!(r.rejected, None);
     let completes: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "complete").collect();
-    let narrated: Vec<String> = completes.iter().flat_map(|x| said(x)).collect();
+    let narrated: Vec<String> = completes.iter().flat_map(|x| said_record(x)).collect();
     assert_eq!(narrated, ["clause one 6", "clause two {roll}"]);
 }
 
@@ -938,14 +805,14 @@ fn the_concrete_journal_row_carries_the_number() {
         &["ROLL(3, 6), NARRATE \"the bones say {roll}.\""],
         Extra::default(),
     );
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(said(done(&r).unwrap()), ["the bones say 14."]);
+    assert_eq!(said_record(done(&r).unwrap()), ["the bones say 14."]);
     // the recorded SENTENCE carries the number — the fold never rewrites prose
     let sentence = &done(&r).unwrap().sentence;
     assert!(sentence.contains("NARRATE \"the bones say 14.\""), "{sentence}");
     let reparsed = parse_sentence(sentence, &dict).unwrap();
-    assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), *sentence);
+    assert_eq!(format_sentence(&reparsed, &dict).unwrap(), *sentence);
 }
 
 #[test]
@@ -956,8 +823,8 @@ fn a_narrate_before_the_roll_keeps_the_literal_token_after_a_second_roll_it_rebi
         &["NARRATE \"early {roll}\", ROLL(1, 6), NARRATE \"late {roll}\""],
         Extra::default(),
     );
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
-    assert_eq!(said(done(&r).unwrap()), ["early {roll}", "late 6"]);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
+    assert_eq!(said_record(done(&r).unwrap()), ["early {roll}", "late 6"]);
 }
 
 #[test]
@@ -1007,11 +874,11 @@ fn roll_in_progress_or_refuse_strings_is_a_load_error() {
 fn the_concrete_rolled_row_round_trips_through_parse_and_format() {
     let dict = dice_dict();
     let c = inspect_content(&dict, &["ROLL(3, 6)"], Extra::default());
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     let row = done(&r).unwrap().sentence.clone();
     assert!(row.contains("ROLLED(14, 3)"), "{row}");
     let reparsed = parse_sentence(&row, &dict).unwrap();
-    assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), row);
+    assert_eq!(format_sentence(&reparsed, &dict).unwrap(), row);
     // and the parse entry pins the arity/shape
     assert_err_msg(parse_outcomes("ROLLED(1)", &dict, None), "ROLLED takes exactly two integers");
     assert_err_msg(
@@ -1084,7 +951,7 @@ fn fold_of_a_bare_rolled_row_moves_only_the_counter_snap_probe() {
 fn fold_sets_state_rng_from_the_row_and_nothing_else() {
     let dict = dice_dict();
     let c = inspect_content(&dict, &["ROLL(3, 6)"], Extra::default());
-    let r = run(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, seed_world(), "0:0 @ ANA INSPECT", 1).unwrap();
     let replayed = fold(&r.records, &seed_world(), &dict, &c).unwrap();
     assert_eq!(replayed.rng, 3);
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -1110,13 +977,13 @@ fn refuse_after_roll_zero_time_attempt_logged_counter_unmoved_in_play_and_fold()
     );
     let state = seed_world();
     let before = snap(&state);
-    let r = run(&c, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1);
+    let r = settle_line(&c, &dict, clone_for_snap(&state), "0:0 @ ANA INSPECT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(r.records.len(), 1);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["ROLLED", "NARRATE", "REFUSE"]);
     assert_eq!(rolled_row(done(&r).unwrap()), Some((10, 2))); // the dice WERE thrown (6+4)
-    assert_eq!(said(done(&r).unwrap()), ["considering 10..."]); // journal-visible
+    assert_eq!(said_record(done(&r).unwrap()), ["considering 10..."]); // journal-visible
     assert_eq!(done(&r).unwrap().advanced_min, 0);
     // `r.state === state`: the draft died with the refusal — the input
     // state's value rides back untouched (identity → snap equality)
@@ -1183,7 +1050,7 @@ fn play_undo_past_the_roll_different_action_save_then_fold_load_log_equals_state
     assert_eq!(roll_die(0, 0, 6), 6);
     assert!(game.journal().join("\n").contains("ROLLED(6, 1)"));
     // save the whole log and fold it back: byte-identical state, rng included
-    let path = tmp_log_path("undo");
+    let path = tmp_log_path("dice-undo");
     save_log(&path, &game.log.records).unwrap();
     let replayed = fold(
         &load_log(&path).unwrap(),
@@ -1201,9 +1068,17 @@ fn fold_up_to_rebuilds_the_counter_mid_log_without_the_tail() {
     let dict = dice_dict();
     let compiled = compile_script(&undo_script(), &dict).unwrap();
     let base = clone_state(&compiled.state);
-    let r1 = run(&compiled.content, &dict, clone_state(&compiled.state), "0:0 @ ANA WAIT", 1); // rng 0 -> 3
-    let r2 =
-        run(&compiled.content, &dict, r1.state, "0:0 @ ANA DREAM", 1 + r1.records.len() as i64); // rng 3 -> 4
+    let r1 =
+        settle_line(&compiled.content, &dict, clone_state(&compiled.state), "0:0 @ ANA WAIT", 1)
+            .unwrap(); // rng 0 -> 3
+    let r2 = settle_line(
+        &compiled.content,
+        &dict,
+        r1.state,
+        "0:0 @ ANA DREAM",
+        1 + r1.records.len() as i64,
+    )
+    .unwrap(); // rng 3 -> 4
     assert_eq!(r2.state.rng, 4);
     let all: Vec<ActionRecord> = r1.records.iter().chain(r2.records.iter()).cloned().collect();
     let mid =
@@ -1243,7 +1118,7 @@ fn undo_to_mid_log_keep_playing_the_counter_resumes_from_the_fold() {
     assert_eq!(snap(&straight.state), snap(&game.state));
     assert_eq!(straight.journal(), game.journal());
     // the save/fold law still holds on the post-undo log
-    let path = tmp_log_path("undo-mid");
+    let path = tmp_log_path("dice-undo-mid");
     save_log(&path, &game.log.records).unwrap();
     let replayed = fold(
         &load_log(&path).unwrap(),
@@ -1318,14 +1193,14 @@ fn a_slot_trigger_rolls_tiers_on_roll_and_the_event_row_carries_the_result() {
     )
     .unwrap();
     let state = seed_world();
-    let r = run(&c, &dict, state, "0:0 @ ANA WAIT", 1); // 1h crosses slot 2
+    let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 1).unwrap(); // 1h crosses slot 2
     assert_eq!(r.rejected, None);
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     assert_eq!(event.trigger.as_deref(), Some("patrol"));
     let ops: Vec<&str> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["ROLLED", "SPAWN", "NARRATE"]);
     assert_eq!(rolled_row(event), Some((10, 2)));
-    assert_eq!(said(event), ["an omen stirs (10)."]);
+    assert_eq!(said_record(event), ["an omen stirs (10)."]);
     assert_eq!(r.state.rng, 2);
     // the fold replays the EVENT row's ROLLED exactly
     let replayed = fold(&r.records, &seed_world(), &dict, &c).unwrap();
@@ -1337,7 +1212,7 @@ fn an_expiry_trigger_rolls_too_the_card_goes_with_its_authored_outcomes() {
     let dict = dice_dict();
     let c = wait_content(
         &dict,
-        vec![TriggerDef::Expire(chorus::content::content::ExpireTriggerDef {
+        vec![TriggerDef::Expire(chorus::content::ExpireTriggerDef {
             id: "chalice_dust".into(),
             on_expire_of: "CHALICE".into(),
             out: vec![
@@ -1355,14 +1230,14 @@ fn an_expiry_trigger_rolls_too_the_card_goes_with_its_authored_outcomes() {
         .attrs
         .insert("expiresAt".to_string(), AttrValue::Num(30)); // crosses slot 1
     let base = clone_state(&state);
-    let r = run(&c, &dict, state, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     assert_eq!(event.trigger.as_deref(), Some("chalice_dust"));
     let ops: Vec<&str> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["ROLLED", "DESTROY", "SPAWN", "NARRATE"]);
     assert_eq!(rolled_row(event), Some((6, 1))); // die(0,0,6) = 6 -> the crumble tier
-    assert_eq!(said(event), ["it crumbles (6)."]);
+    assert_eq!(said_record(event), ["it crumbles (6)."]);
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -1388,7 +1263,7 @@ fn trigger_roll_arguments_must_be_role_free_load_error_naming_the_argument() {
         wait_content(&dict, slot_trigger("ROLL(total(actors, aspect:nerve), 6)")),
         r"trigger t: ROLL argument total\(actors, aspect:nerve\) reads a step role",
     );
-    let expiry_trigger = vec![TriggerDef::Expire(chorus::content::content::ExpireTriggerDef {
+    let expiry_trigger = vec![TriggerDef::Expire(chorus::content::ExpireTriggerDef {
         id: "t".into(),
         on_expire_of: "CHALICE".into(),
         out: vec!["ROLL(object.attr.seats, 6)".to_string()],
@@ -1445,7 +1320,7 @@ fn a_failing_later_event_after_a_trigger_roll_rejects_the_whole_step() {
     .unwrap();
     let state = seed_world();
     let before = snap(&state);
-    let r = run(&c, &dict, state, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_rejected(&r, "sides must be an integer >= 2");
     assert_eq!(r.records.len(), 0);
     assert_eq!(r.state.rng, 0); // the real counter unmoved
@@ -1472,8 +1347,8 @@ fn trigger_rolls_replay_through_saved_jsonl_rows() {
     )
     .unwrap();
     let state = seed_world();
-    let r = run(&c, &dict, state, "0:0 @ ANA WAIT", 7);
-    let path = tmp_log_path("trig");
+    let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 7).unwrap();
+    let path = tmp_log_path("dice-trig");
     save_log(&path, &r.records).unwrap();
     let replayed = fold(&load_log(&path).unwrap(), &seed_world(), &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -1526,11 +1401,11 @@ fn a_body_roll_with_roll_tiers_expands_into_a_recipe_and_plays() {
     let dict = dice_dict();
     let compiled = compile_script(&fn_script(""), &dict).unwrap();
     let base = clone_state(&compiled.state);
-    let r = run(&compiled.content, &dict, compiled.state, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&compiled.content, &dict, compiled.state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     // 2 dice at counters 0,1 = 10 >= 8 -> the pass tier, param interpolated
     assert_eq!(rolled_row(done(&r).unwrap()), Some((10, 2)));
-    assert_eq!(said(done(&r).unwrap()), ["passed 10 vs 8."]);
+    assert_eq!(said_record(done(&r).unwrap()), ["passed 10 vs 8."]);
     let replayed = fold(&r.records, &base, &dict, &compiled.content).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -1539,7 +1414,7 @@ fn a_body_roll_with_roll_tiers_expands_into_a_recipe_and_plays() {
 fn a_param_as_the_roll_count_expands_from_the_call_site() {
     let dict = dice_dict();
     let compiled = compile_script(&fn_script(", pile(3)"), &dict).unwrap();
-    let r = run(&compiled.content, &dict, compiled.state, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&compiled.content, &dict, compiled.state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let rows = rolled_rows(done(&r).unwrap());
     assert_eq!(rows, vec![(10, 2), (8, 5)]); // second call: 3 dice at counters 2..4 = 4+1+3 = 8
@@ -1551,14 +1426,14 @@ fn the_same_function_called_from_a_trigger_rolls_and_replays_through_the_event_r
     // WAIT lasts 1h, crossing hour 1 (slot 2)
     let compiled = compile_script(&fn_script(" cross"), &dict).unwrap();
     let base = clone_state(&compiled.state);
-    let r = run(&compiled.content, &dict, compiled.state, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&compiled.content, &dict, compiled.state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     // the recipe's own check(8) consumed counters 0,1 (10, passed); the event's
     // call continues at counters 2,3 = 4+1 = 5 < 8 -> the fail tier
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     assert_eq!(event.trigger.as_deref(), Some("patrol"));
     assert_eq!(rolled_row(event), Some((5, 4)));
-    assert_eq!(said(event), ["failed 5 vs 8."]);
+    assert_eq!(said_record(event), ["failed 5 vs 8."]);
     let replayed = fold(&r.records, &base, &dict, &compiled.content).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -1572,7 +1447,7 @@ fn a_different_seed_shifts_future_dice_but_never_past_rows_fold_is_row_driven() 
     let dict = dice_dict();
     let row = |seed: i64| -> (i64, i64) {
         let g = compile_script(&dice_script(seed), &dict).unwrap();
-        let r = run(&g.content, &dict, g.state, "0:0 @ ANA WAIT", 1);
+        let r = settle_line(&g.content, &dict, g.state, "0:0 @ ANA WAIT", 1).unwrap();
         rolled_row(done(&r).unwrap()).unwrap()
     };
     assert_ne!(row(0), row(42));
@@ -1594,7 +1469,7 @@ fn two_fresh_same_seed_runs_write_byte_identical_jsonl_logs_a_different_seed_div
         let mut game = Game::from_script(&dice_script(seed), dice_dict()).unwrap();
         assert_eq!(game.handle_line("wait").unwrap().kind, TurnKind::Action);
         game.wait().unwrap(); // v0.5: the roll lands on the completion — the row must be in the log
-        let path = tmp_log_path(&format!("det-{seed}"));
+        let path = tmp_log_path(&format!("dice-det-{seed}"));
         save_log(&path, &game.log.records).unwrap();
         let bytes = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(&path);

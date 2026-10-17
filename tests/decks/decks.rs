@@ -14,29 +14,26 @@
 //! on a refusal, as a value — `snap()` equality IS the semantic content of
 //! those checks (noted at each site, never weakened).
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::harness::{assert_err_msg, assert_refusal, assert_rejected};
+use crate::common::rig::{compile, settle_line, tmp_log_path};
+use crate::common::seed::seed_state;
+use crate::common::snap::snap;
+use chorus::engine::settle::{act, done, refusal};
 
-use common::harness::assert_err_msg;
-use common::seed::seed_state;
-use common::settle::{act, done, refusal, settle_step};
-use common::snap::snap;
-
-use chorus::content::content::{
+use chorus::content::script::compile_script;
+use chorus::content::{
     compile_content, draw_from, permute_positions, CompiledContent, ContentRaw, DeckRaw,
     PrototypeDef, RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
-use chorus::content::script::compile_script;
-use chorus::core::clock::Clock;
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::format::format_sentence;
 use chorus::core::parse::{parse_outcomes, parse_sentence};
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::Arg;
 use chorus::core::types::{clone_state, AttrValue, State};
-use chorus::engine::engine::{ActionRecord, ExecResult, Step};
 use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
+use chorus::engine::{ActionRecord, ExecResult};
 use chorus::session::game::{Game, TurnKind};
 
 // ---------------------------------------------------------------- rigs ------
@@ -116,43 +113,6 @@ verbs:
 /// RUMOUR, HEARSAY, RUMOUR, SCANDAL — pinned via permute_positions below).
 const PLAN_DECK: &str = "RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset";
 
-fn compile(dict: &Dictionary, text: &str) -> (CompiledContent, State) {
-    let compiled = compile_script(text, dict).unwrap();
-    (compiled.content, compiled.state)
-}
-
-/// Parse + settle_step with the exact
-/// id-generator closure: `x{first_record_id}_{n}`, the counter incrementing
-/// per minted id.
-fn run(
-    content: &CompiledContent,
-    dict: &Dictionary,
-    state: State,
-    src: &str,
-    first_record_id: i64,
-) -> ExecResult {
-    let s = parse_sentence(src, dict).unwrap();
-    let mut n: i64 = 0;
-    let mut id_gen = || {
-        n += 1;
-        format!("x{first_record_id}_{n}")
-    };
-    settle_step(
-        content,
-        dict,
-        state,
-        Step {
-            start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
-            clauses: s.clauses,
-            t_real: None,
-        },
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
-}
-
 /// The drawn names of a result,
 /// in order (the DRAWN row's second arg).
 fn drawn_names(r: &ExecResult) -> Vec<String> {
@@ -184,7 +144,7 @@ fn play_draws(
     let mut id = 1i64;
     for _ in 0..n {
         let ExecResult { records: recs, state: st, rejected } =
-            run(content, dict, state, "0:0 @ ANA WAIT", id);
+            settle_line(content, dict, state, "0:0 @ ANA WAIT", id).unwrap();
         if let Some(rej) = rejected {
             panic!("unexpected rejection: {rej}");
         }
@@ -194,31 +154,6 @@ fn play_draws(
         state = st;
     }
     (names, records, state)
-}
-
-/// Temp log path (unique per process and tag) + a JSONL round trip.
-fn tmp_log_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("chorus-decks-{tag}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("log.jsonl")
-}
-
-/// `refusal(r)` matches `re`.
-fn assert_refusal(r: &ExecResult, pattern: &str) {
-    let msg =
-        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
-    let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
-}
-
-/// `r.rejected` matches `re`.
-fn assert_rejected(r: &ExecResult, pattern: &str) {
-    let msg = r
-        .rejected
-        .as_deref()
-        .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
-    let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +310,7 @@ fn draw_into_a_place_lands_the_card_there() {
             ..Default::default()
         }),
     );
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
     assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
@@ -394,14 +329,14 @@ fn no_into_the_at_card_default_wins_over_the_actor_container() {
             ..Default::default()
         }),
     );
-    let at_card = run(&c, &dict, s, "0:0 @ ANA AT KITCHEN SEEK", 1);
+    let at_card = settle_line(&c, &dict, s, "0:0 @ ANA AT KITCHEN SEEK", 1).unwrap();
     assert_eq!(at_card.rejected, None);
     let placed = at_card.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
     assert_eq!(placed.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
     let placed_container = placed.attrs.get("container").cloned();
     // without AT, the mint goes to the actor's container (ANA is at HOUSE);
     // cursor 1 serves HEARSAY at seed 0 — look up whatever was drawn
-    let carried = run(&c, &dict, at_card.state, "0:0 @ ANA SEEK", 2);
+    let carried = settle_line(&c, &dict, at_card.state, "0:0 @ ANA SEEK", 2).unwrap();
     assert_eq!(carried.rejected, None);
     let drawn = &drawn_names(&carried)[0];
     let second = carried.state.entities.values().find(|e| &e.name == drawn).unwrap();
@@ -424,7 +359,7 @@ fn a_trigger_draw_without_into_mints_containerless() {
         }),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1); // 1h crosses hour 1 (slot 2)
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap(); // 1h crosses hour 1 (slot 2)
     assert_eq!(r.rejected, None);
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     let ops: Vec<&str> = event.outcomes.iter().map(|o| o.op.as_str()).collect();
@@ -450,7 +385,7 @@ fn a_trigger_draw_with_an_explicit_into_lands_in_the_named_place() {
         }),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
     assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_house".into())));
@@ -472,7 +407,7 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
         }),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1); // no object bound
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap(); // no object bound
     assert_eq!(r.rejected, None);
     assert_refusal(&r, r"INTO target of 'RUMOURS' cannot resolve");
     assert_eq!(r.state.decks.get("RUMOURS"), None); // the scratch died with the refusal
@@ -492,7 +427,7 @@ fn an_into_that_cannot_resolve_refuses_the_window_cursor_unmoved() {
 fn the_record_carries_drawn_then_the_concrete_spawn_and_the_row_round_trips() {
     let dict = deck_dict();
     let (c, s) = compile(&dict, &rig(Rig { decks: Some(PLAN_DECK), ..Default::default() }));
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let rec = done(&r).unwrap();
     let ops: Vec<&str> = rec.outcomes.iter().map(|o| o.op.as_str()).collect();
@@ -512,7 +447,7 @@ fn the_record_carries_drawn_then_the_concrete_spawn_and_the_row_round_trips() {
     assert!(rec.sentence.contains("DRAWN(RUMOURS, RUMOUR)"), "{}", rec.sentence);
     assert!(rec.sentence.contains("SPAWN RUMOUR"), "{}", rec.sentence);
     let reparsed = parse_sentence(&rec.sentence, &dict).unwrap();
-    assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), rec.sentence);
+    assert_eq!(format_sentence(&reparsed, &dict).unwrap(), rec.sentence);
 }
 
 #[test]
@@ -531,12 +466,12 @@ fn the_row_round_trips_for_an_unsafe_card_name_too() {
         }),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let sentence = &done(&r).unwrap().sentence;
     assert!(sentence.contains("DRAWN(PAIR, \"X-Y\")"), "{sentence}");
     let reparsed = parse_sentence(sentence, &dict).unwrap();
-    assert_eq!(format_sentence(&reparsed, Some(&dict)).unwrap(), *sentence);
+    assert_eq!(format_sentence(&reparsed, &dict).unwrap(), *sentence);
     // and the DRAWN assertion reads the same name back at fold
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(replayed.decks.get("PAIR"), Some(&1));
@@ -552,7 +487,7 @@ fn the_drawn_parse_format_entry_parses_pins_its_shape_formats_bare() {
     assert_eq!(tags, ["ref", "ref"]);
     let src = "0:0 @ ANA WAIT -> DRAWN(RUMOURS, HEARSAY)";
     let s = parse_sentence(src, &dict).unwrap();
-    assert_eq!(format_sentence(&s, Some(&dict)).unwrap(), src);
+    assert_eq!(format_sentence(&s, &dict).unwrap(), src);
     assert_err_msg(
         parse_outcomes("DRAWN(RUMOURS)", &dict, None),
         "DRAWN takes exactly two name refs",
@@ -661,7 +596,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
         )]
         .into_iter()
         .collect(),
-        functions: Some(vec![chorus::content::content::FunctionDef {
+        functions: Some(vec![chorus::content::FunctionDef {
             name: "helper".into(),
             params: vec![],
             body: "DRAWN(RUMOURS, RUMOUR)".into(),
@@ -776,7 +711,7 @@ fn draw_without_a_deck_id_with_parens_or_naming_an_unknown_deck_is_a_load_error(
     );
     assert_err_msg(
         compile_content(&draw_base_raw(&["IF exists(HOUSE) -> (DRAW NOSUCH)"]), &dict, &[]),
-        "DRAW 'NOSUCH' is not a declared deck", // recurses into branches like check_ending_refs
+        "DRAW 'NOSUCH' is not a declared deck", // recurses into branches like check_named_ref
     );
     let trigger_raw = ContentRaw {
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
@@ -802,7 +737,7 @@ fn draw_and_drawn_join_the_reserved_words_and_a_function_cannot_take_their_names
     assert_eq!(parse_outcomes("SPAWN \"DRAW\"", &dict, None).unwrap().len(), 1); // the quote is the escape hatch
     for name in ["DRAW", "DRAWN"] {
         let raw = ContentRaw {
-            functions: Some(vec![chorus::content::content::FunctionDef {
+            functions: Some(vec![chorus::content::FunctionDef {
                 name: name.into(),
                 params: vec![],
                 body: "NARRATE \"x\"".into(),
@@ -854,13 +789,13 @@ fn neither_reset_nor_defaultcard_the_draw_fails_nothing_logged_cursor_unmoved() 
     let mut cur = state;
     let mut id = 1i64;
     for _ in 0..2 {
-        let ok = run(&c, &dict, cur, "0:0 @ ANA WAIT", id);
+        let ok = settle_line(&c, &dict, cur, "0:0 @ ANA WAIT", id).unwrap();
         assert_eq!(ok.rejected, None);
         id += ok.records.len() as i64;
         cur = ok.state;
     }
     assert_eq!(cur.decks.get("SINGLES"), Some(&2));
-    let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", id);
+    let r = settle_line(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", id).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "deck 'SINGLES' is exhausted — no 'reset' and no 'defaultcard'");
     assert_eq!(r.state.decks.get("SINGLES"), Some(&2)); // cursor unmoved (§9.2 analog)
@@ -892,7 +827,7 @@ fn a_draw_inside_an_untaken_if_branch_leaves_the_cursor_untouched() {
         }),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]); // the taken branch only
@@ -920,7 +855,7 @@ fn a_failure_after_a_successful_draw_refuses_the_window_draw_and_cursor_discarde
             ..Default::default()
         }),
     );
-    let r = run(&c, &dict, clone_state(&s), "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, clone_state(&s), "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "MOVE: unresolvable destination");
     assert_eq!(r.state.decks.len(), 0);
@@ -1021,7 +956,7 @@ fn jsonl_fold_equality_with_the_deck_wrapped_and_with_defaultcard_draws_past_the
     }
     assert_eq!(defaulted.state.decks.get("GOSSIP"), Some(&5));
     for (tag, game) in [("wrapped", &wrapped), ("defaulted", &defaulted)] {
-        let path = tmp_log_path(tag);
+        let path = tmp_log_path(&format!("decks-{tag}"));
         save_log(&path, &game.log.records).unwrap();
         let replayed = fold(
             &load_log(&path).unwrap(),
@@ -1070,12 +1005,12 @@ fn non_stackable_livelock_a_redraw_of_a_living_card_rejects_identically_forever(
             ..Default::default()
         }),
     );
-    let first = run(&c, &dict, state, "0:0 @ ANA WAIT", 1);
+    let first = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(first.rejected, None);
     let cur = first.state;
     assert_eq!(cur.decks.get("PAIR"), Some(&1));
     for _ in 0..3 {
-        let r = run(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", 2);
+        let r = settle_line(&c, &dict, clone_state(&cur), "0:0 @ ANA WAIT", 2).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(refusal(&r).as_deref(), Some("SPAWN: name 'WHISPER' already in use")); // the documented stuck-state message
         assert_eq!(r.state.decks.get("PAIR"), Some(&1)); // stuck forever
@@ -1111,7 +1046,7 @@ fn the_documented_escape_consuming_the_drawn_copy_on_the_same_step_lets_every_se
     let mut records: Vec<ActionRecord> = Vec::new();
     let base = clone_state(&cur);
     for _ in 0..4 {
-        let r = run(&c, &dict, cur, "0:0 @ ANA WAIT", id);
+        let r = settle_line(&c, &dict, cur, "0:0 @ ANA WAIT", id).unwrap();
         assert_eq!(r.rejected, None); // no livelock: the name frees every period
         id += r.records.len() as i64;
         records.extend(r.records);
@@ -1232,7 +1167,7 @@ fn a_param_as_the_into_target_expands_from_a_recipe_call() {
             ..Default::default()
         }),
     );
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
     assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_kitchen".into())));
@@ -1256,7 +1191,7 @@ fn the_same_function_from_a_trigger_explicit_into_lands_and_replays() {
         }),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let rumour = r.state.entities.values().find(|e| e.name == "RUMOUR").unwrap();
     assert_eq!(rumour.attrs.get("container"), Some(&AttrValue::Str("s_house".into())));
@@ -1278,7 +1213,7 @@ fn a_param_as_the_deck_id_expands_and_passes_the_deck_check_at_the_call_site() {
             ..Default::default()
         }),
     );
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(drawn_names(&r), ["HEARSAY"]);
     assert_eq!(r.state.decks.get("QUIET"), Some(&1));
@@ -1303,7 +1238,7 @@ fn a_role_into_expanded_into_a_trigger_rejects_at_runtime() {
         }),
     );
     let before = snap(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_rejected(&r, "INTO target of 'RUMOURS' cannot resolve");
     assert_eq!(r.records.len(), 0); // §9.2: the whole step rejects
                                     // `state === before` (identity): on a rejection the input state's value
@@ -1408,7 +1343,7 @@ fn a_seed_change_under_an_old_log_the_assertion_names_the_deck_cursor_both_names
     let drifted_names: Vec<&str> =
         drifted.decks.get("RUMOURS").unwrap().order.iter().map(|e| e.name.as_str()).collect();
     assert_ne!(played_names, drifted_names);
-    let r = run(&played, &dict, drift_world(), "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&played, &dict, drift_world(), "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let err = fold(&r.records, &drift_world(), &dict, &drifted).unwrap_err();
     let re = regex::Regex::new(
@@ -1427,7 +1362,7 @@ fn a_changed_spec_under_the_same_seed_fires_too_a_removed_deck_says_so() {
     let respecced =
         compile_content(&drift_raw(0, &["SCANDAL", "HEARSAY", "RUMOUR", "RUMOUR"]), &dict, &[])
             .unwrap();
-    let r = run(&played, &dict, drift_world(), "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&played, &dict, drift_world(), "0:0 @ ANA WAIT", 1).unwrap();
     let err = fold(&r.records, &drift_world(), &dict, &respecced).unwrap_err();
     let re = regex::Regex::new("content drift between play and fold").unwrap();
     assert!(re.is_match(&err.msg), "{err}");
@@ -1499,7 +1434,7 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
     let mut cur = drift_world();
     let mut id = 1i64;
     for _ in 0..3 {
-        let r = run(&played, &dict, cur, "0:0 @ ANA WAIT", id);
+        let r = settle_line(&played, &dict, cur, "0:0 @ ANA WAIT", id).unwrap();
         assert_eq!(r.rejected, None);
         id += r.records.len() as i64;
         records.extend(r.records);
@@ -1531,7 +1466,7 @@ fn refuse_after_a_draw_the_draft_dies_the_cursor_never_moves_the_fold_skips_the_
         }),
     );
     let before = snap(&s);
-    let r = run(&c, &dict, clone_state(&s), "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, clone_state(&s), "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DRAWN", "SPAWN", "REFUSE"]);

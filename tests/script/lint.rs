@@ -7,9 +7,7 @@ use chorus::content::script::{
 };
 use chorus::core::dict::core_dictionary;
 
-#[path = "../common/mod.rs"]
-mod common;
-use common::harness::assert_err_msg;
+use crate::common::harness::assert_err_msg;
 
 /// The bundled showcase, read as text (script text = data).
 const FLYER: &str =

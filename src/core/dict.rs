@@ -133,7 +133,9 @@ impl Dictionary {
         self.verbs.contains(tok)
     }
 
-    /// Outcome-op membership over OUTCOME_OPS.
+    /// Outcome-op membership over OUTCOME_OPS. A static test on purpose —
+    /// the op vocabulary is fixed, never per-dictionary state; `&self`
+    /// exists only so call sites read uniformly next to `is_verb`.
     #[must_use]
     pub fn is_op(&self, tok: &str) -> bool {
         OUTCOME_OPS.contains(&tok)

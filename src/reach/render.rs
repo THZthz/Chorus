@@ -1,13 +1,17 @@
-//! Text rendering: static predicate text for path-export guards and
-//! proof/chain/reason display, plus the CLI's stdout shapes frozen byte for
-//! byte: render_path's 4-space indent steps, `path i/n:` and
-//! `verdict: X (existence: y)`.
+//! Text rendering: static predicate text for path-export guards, the
+//! proof/chain/reason display strings that ride inside the report, and the
+//! CLI's stdout shapes frozen byte for byte: render_path's 4-space indent
+//! steps, `path i/n:` and `verdict: X (existence: y)`.
 
 use std::fmt::Write;
 
+use indexmap::IndexMap;
+
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{Query, QueryTerm, StateOp};
+use crate::core::types::Entity;
 
+use super::census::{draw_deck, RawSite, SiteKind, MANY};
 use super::paths::{CardReport, Existence, ReachPath};
 
 // ---------------------------------------------------------------------------
@@ -82,6 +86,125 @@ pub fn pred_text(p: &Pred) -> String {
         Pred::Every { .. } => "<non-static every>".to_string(),
         Pred::Any { .. } => "<non-static any>".to_string(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// the report's display strings (chain lines, candidate reasons)
+// ---------------------------------------------------------------------------
+
+/// The initial-entity provenance line.
+pub(crate) fn initial_decl_line(name: &str, e: &Entity) -> String {
+    let aspects = if e.aspects.is_empty() {
+        String::new()
+    } else {
+        format!(", aspects {}", crate::core::jsonw::aspects_to_json(&e.aspects))
+    };
+    format!("{name} is declared in the initial entities ({}{aspects})", e.kind)
+}
+
+/// The display chain of one proven site.
+pub(crate) fn site_chain(site: &RawSite, target: &str, supports: &[String]) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    if site.kind == SiteKind::Draw {
+        let deck = draw_deck(site);
+        let pos = deck.order.iter().position(|c| c.name == target);
+        let where_ = match pos {
+            Some(p) => format!(
+                "deck {} serves '{}' at order position {} (the permutation is seed-fixed at load — pure in seed × deck id)",
+                deck.id, target, p
+            ),
+            None => format!(
+                "deck {} serves '{}' as defaultcard{}",
+                deck.id,
+                target,
+                if deck.reset { " (reset — periodic)" } else { "" }
+            ),
+        };
+        lines.push(where_);
+        if site.cap != MANY {
+            lines.push(format!(
+                "  finite draw capacity: {} once-trigger draw(s) — only order[0..{}] are ever served",
+                site.cap,
+                site.cap - 1
+            ));
+        }
+        lines.push(format!("  ← {}", site.where_));
+    } else {
+        lines.push(format!(
+            "{} mints '{}' — {}",
+            if site.kind == SiteKind::Replace { "REPLACE" } else { "SPAWN" },
+            target,
+            site.where_
+        ));
+        if let Some(ko) = &site.kind_override {
+            lines.push(format!(
+                "  minted kind overridden to '{ko}' (kind: syntax overrides kind, it does not look up by kind)"
+            ));
+        }
+    }
+    for s in supports {
+        lines.push(format!("  · {s}"));
+    }
+    lines
+}
+
+/// Why a guarded site stays a candidate.
+pub(crate) fn site_reason(site: &RawSite, init_names: &IndexMap<String, &Entity>) -> String {
+    let mut bits: Vec<String> = Vec::new();
+    if site.fallback {
+        bits.push("ELSE fallback body".to_string());
+    }
+    if site.killed_in_list {
+        bits.push(
+            "the mint is destroyed/Replaced later in the same outcome list — it never survives a step"
+                .to_string(),
+        );
+    }
+    if site.dup_risk {
+        bits.push(
+            "this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft"
+                .to_string(),
+        );
+    }
+    if site.throw_ops > 0 {
+        bits.push(
+            "a throwing op in this list may discard the whole draft at completion".to_string(),
+        );
+    }
+    if site.shadow_risk {
+        bits.push("an earlier recipe of the same verb may shadow it (first-match)".to_string());
+    }
+    // QUIRK(Q17): reachable for zero-entity scripts (the language
+    // allows a script with no entities:) — this branch must stay
+    if site.verb.is_some() && init_names.is_empty() {
+        bits.push("verb committability unknown".to_string());
+    }
+    if !site.path.is_empty() {
+        bits.push(format!("{} IF condition(s) on the path", site.path.len()));
+    }
+    if site.verb.is_some() && site.when.is_some() {
+        bits.push("recipe `when` guard".to_string());
+    }
+    if bits.is_empty() {
+        "unknown guard".to_string()
+    } else {
+        bits.join(", ")
+    }
+}
+
+/// The demand chain head line.
+pub(crate) fn demand_chain_head(
+    shown: &str,
+    kind: &str,
+    aspects: &crate::core::types::Aspects,
+    demand: Option<&str>,
+) -> String {
+    let aspects_part = if aspects.is_empty() {
+        String::new()
+    } else {
+        format!(", aspects {}", crate::core::jsonw::aspects_to_json(aspects))
+    };
+    format!("{shown} ({kind}{aspects_part}) satisfies the demand '{}'", demand.unwrap_or(""))
 }
 
 // ---------------------------------------------------------------------------

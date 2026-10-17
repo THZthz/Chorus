@@ -88,6 +88,7 @@ are asserted.
 
 import argparse
 import glob
+import itertools
 import os
 import re
 import sys
@@ -313,32 +314,34 @@ _TAUT_ATOMS = [
     "count(actors) > 0",
 ]
 
+_NEVER_ATOMS = [f"NOT ({a})" for a in _TAUT_ATOMS]
 
-def make_tautologizer():
-    """n-th distinct always-true when-clause (singles, then pairs, then
-    triples of the atoms above) — deterministic, effectively unbounded. Every
-    cache entry is textually distinct: singles carry no ' AND ', a k-fold
-    conjunction carries k-1 of them."""
-    import itertools
 
+def make_combiner(atoms):
+    """n-th deterministic conjunction over `atoms`: singles, then k-fold
+    conjunctions in `itertools.product` order — deterministic, effectively
+    unbounded. Every cache entry is textually distinct: singles carry no
+    ' AND ', a k-fold conjunction carries k-1 of them."""
     cache = []
     k = [1]
 
-    def taut(n):
+    def combine(n):
         while len(cache) <= n:
             if k[0] == 1:
-                cache.extend(_TAUT_ATOMS)
+                cache.extend(atoms)
             else:
                 cache.extend(
-                    " AND ".join(_TAUT_ATOMS[i] for i in c)
-                    for c in itertools.product(range(len(_TAUT_ATOMS)), repeat=k[0]))
+                    " AND ".join(atoms[i] for i in c)
+                    for c in itertools.product(range(len(atoms)), repeat=k[0]))
             k[0] += 1
         return cache[n]
 
-    return taut
+    return combine
 
 
-_NEVER_ATOMS = [f"NOT ({a})" for a in _TAUT_ATOMS]
+def make_tautologizer():
+    """n-th distinct always-true when-clause over [`_TAUT_ATOMS`]."""
+    return make_combiner(_TAUT_ATOMS)
 
 
 def make_neverizer():
@@ -348,25 +351,82 @@ def make_neverizer():
     negation kills it), and every entry can never match a real window —
     actors are always bound. This is the honest encoding of CS's data-dead
     recipes: a requirement-less recipe behind the verb default / under an
-    always-true parent never fires in CS either. Texts are pairwise distinct
-    (singles, then k-fold conjunctions — the tautologizer's shape)."""
-    import itertools
+    always-true parent never fires in CS either."""
+    return make_combiner(_NEVER_ATOMS)
 
-    cache = []
-    k = [1]
 
-    def never(n):
-        while len(cache) <= n:
-            if k[0] == 1:
-                cache.extend(_NEVER_ATOMS)
-            else:
-                cache.extend(
-                    " AND ".join(_NEVER_ATOMS[i] for i in c)
-                    for c in itertools.product(range(len(_NEVER_ATOMS)), repeat=k[0]))
-            k[0] += 1
-        return cache[n]
-
-    return never
+# The generated script's frozen CONVENTIONS header — a byte-stable document
+# describing the mapping (names/aspects/kinds/cards/carriers/twins/decay/
+# chains/xtriggers); generate() splices it between the file banner and the
+# feature-loss note. The census report carries the counts, never this text.
+HEADER_TEMPLATE = """\
+# CONVENTIONS (deterministic):
+#   names      CS element id → UPPER_SNAKE (dots → underscores); decks and
+#              endings likewise; recipe ids are `<verb>.<csid>`, alt/run
+#              copies on a parent verb are `<verb>.alt.<csid>`, and a
+#              shadowed twin is `<verb>.<csid>.x2` (the first occurrence
+#              keeps its unsuffixed emitted form).
+#   aspects    every card carries its own id as a one-level marker aspect
+#              (`with <cs-id>:1`) plus its declared aspects — so CS
+#              requirement keys, element ids and aspect ids alike, read as
+#              `total(with, aspect:k) >= v` (v<0 = total < |v|, CS absence).
+#   kinds      by CS source file (cosmetic: matching is aspect-based).
+#   cards      every non-aspect element is a card; the 330 isAspect
+#              elements (CS uniqueness tags, Exile tracks, pure-aspect
+#              carriers) emit as stackable PROTOTYPES — never entities,
+#              whose existence would satisfy §6.3's world-form count()
+#              existentials and corrupt the extantreq gates. Cards never
+#              minted anywhere and unique:true are declared entities;
+#              everything minted at runtime, deck-spec members, and
+#              lifetime bearers are stackable PROTOTYPES (the §9.2 mint-
+#              collision law and the §10 deck livelock rule outrank CS's
+#              unique:true; flips are counted in the report).
+#   carriers   the five non-station lexemes (READ TRAVEL_TO USE_ON ACQUIRE
+#              LOCATE_AT) carry every non-station CS actionid, hidden,
+#              under a marker comment naming the actionid (the map is in
+#              tools/convert_cs.py's header). Their `actors` slot is
+#              guarded (`aspect:ritual>=1` matches no character): never
+#              suggested, typed attempts reject, RUN projections still
+#              open their windows — the player-visible surface is the
+#              seven stations, unchanged. Carrier defaults are REFUSE
+#              walls, last in each list.
+#   twins      CS's shadowed recipes (requirement-identical duplicates,
+#              requirement-less recipes behind a verb default) emit hidden
+#              under `.x2` ids: duplicates keep their CS when plus an
+#              always-true conjunct (the first occurrence wins first-match
+#              exactly as before); requirement-less station twins get a
+#              never-matching when (CS cannot fire them either), while
+#              requirement-less carrier recipes get an always-true one
+#              (carriers are RUN-addressed; a never-when would end CS-live
+#              chains, §6.7).
+#   decay      1 CS second → 1 engine minute. A lifetime with a decayTo is
+#              an `on expire` DESTROY+SPAWN+SET chain (never REPLACE from a
+#              trigger — the trigger-body law); without a decayTo the
+#              engine's built-in destroy-by-id expiry stands (the §4.2-
+#              safe path under pools). Recipe-effect mints of lifetime
+#              bearers arm at birth via the authored `SPAWN X expires
+#              <dur>` modifier (§4.4/§4.2 — each fresh copy its own
+#              decay, pooled or not; findings E12's spawn-modifier half);
+#              deck-drawn lifetime bearers stay un-armed (DRAW has no
+#              expires arg — findings E12's open half).
+#   chains     linked → RUN ladders: ROLL(1,100)+IF arms with a fresh roll
+#              per entry; one RUN op per completion (§6.7), so CS's
+#              parallel additional-alts + linked chain collapse into the
+#              arms of ONE ladder (alts first, linked last as fallback).
+#              Each arm RUNs a candidate list of its own entry plus every
+#              later entry — the roll gives priority, the walk's when-
+#              checks give fall-through — so a rolled arm whose `when`
+#              fails strands nothing. Probabilities shift accordingly
+#              (counted in the report). Cross-verb targets are emitted as
+#              RUN-addressable copies on the parent verb
+#              (`<verb>.alt.<csid>`, world-form whens). Recipe lists emit
+#              mains in data order, then RUN-target chains (bootstrap
+#              entries first), then copies, then the verb default last.
+#   xtriggers  card xtriggers → `on complete <event>` clauses on the card;
+#              aspect-borne hooks (CS carries some on isAspect elements,
+#              e.g. job/ingredient → needs) distribute onto every card
+#              declaring the aspect. Recipes declare `aspects` = their own
+#              running aspects + positive requirement keys (§6.7)."""
 
 
 class Converter:
@@ -534,6 +594,9 @@ class Converter:
     # -- pass 2: card triggers ----------------------------------------------
 
     def plan_card_triggers(self):
+        """Card xtriggers/induces → `on complete` clauses, plus the on-expire
+        DESTROY+SPAWN chains. Runs AFTER plan_recipes: RUN targets render
+        through `emitted_id_of`, which only plan_recipes populates."""
         self.complete = defaultdict(list)   # element id -> [(aspect|None, body)]
         self.expire_triggers = []           # (trigger id, element id, body)
         for e in self.elements:
@@ -1033,7 +1096,7 @@ class Converter:
             return f'RUN "{arms[0][1]}"'
         return build(0)
 
-    def lifetime_arm(self, rid, k, name):
+    def lifetime_arm(self, rid, k):
         """Lifetime bookkeeping for one authored mint of element `k` (P1-2):
         the authored `expires <duration>` SPAWN modifier (§4.4/§4.2 — the
         engine's E12 spawn-modifier fix) rides every lifetime bearer's SPAWN,
@@ -1065,7 +1128,7 @@ class Converter:
                 continue
             name = self.elname[k]
             if v > 0:
-                mod = self.lifetime_arm(rid, k, name)
+                mod = self.lifetime_arm(rid, k)
                 for _ in range(v):
                     outs.append(f"SPAWN {name}{mod}")
             elif v <= -99:
@@ -1229,6 +1292,37 @@ class Converter:
                     dot = key.find(".", dot + 1)
         return sorted(reads - written)
 
+    def _chain_lines(self, verb, seen_when, force_hidden=False):
+        """A verb's RUN-target chain recipes in emission order — bootstrap
+        entries first, data order within — rendered against `seen_when`."""
+        plan_list = self.plans.get(verb, [])
+        order = {id(p): i for i, p in enumerate(plan_list)}
+        boot, rest = [], []
+        for p in plan_list:
+            if p[3] == "chain":
+                rest.append(p)
+            elif p[3] == "chainboot":
+                boot.append(p)
+        chain = [(0, order[id(p)], p) for p in boot] + [(1, order[id(p)], p) for p in rest]
+        chain.sort(key=lambda t: (t[0], t[1]))  # bootstraps first, data order within
+        return [self.render_recipe(pid, when, r, verb, seen_when, force_hidden=force_hidden)
+                for _grp, _idx, (pid, when, r, _kind) in chain]
+
+    def _verb_block(self, verb, header_lines, main_lines, chain_lines, copy_lines,
+                    default_line):
+        """One verb's rendered block: the header through `recipes:`, mains in
+        data order, RUN-target chains (bootstraps first), copies, default
+        last — bare attempts fall through the mains to the chain catch-alls,
+        copies stay RUN-addressable, the default closes the list (§6.4)."""
+        lines = list(header_lines)
+        lines.extend(main_lines)
+        lines.extend(chain_lines)
+        lines.extend(copy_lines)
+        if default_line:
+            lines.append(default_line)
+        lines.append("")
+        return lines
+
     def emit_verbs(self):
 
         verb_mains = defaultdict(list)
@@ -1252,69 +1346,53 @@ class Converter:
 
         lines = ["verbs:", ""]
         for actionid, verb in VERB_OF.items():
-            lines.append(f"  {verb}:")
-            lines.append("    actors: 1 kind:character")
+            header = [f"  {verb}:", "    actors: 1 kind:character"]
             if verb == "MANSUS":
                 # CS portal.mansus is icon-only (no slot, no recipes); the
                 # signature wants a place and the station one recipe
-                lines.append("    object: 1 kind:place")
-                lines.append(f"    duration: {self.verb_duration[verb]}")
-                lines.append("    recipes:")
-                lines.append('      default -> REFUSE("The Mansus does not open here; no CS recipe carries the portal action.")')
-                lines.append("")
+                header.append("    object: 1 kind:place")
+                header.append(f"    duration: {self.verb_duration[verb]}")
+                header.append("    recipes:")
+                lines.extend(self._verb_block(
+                    verb, header, [], [], [],
+                    '      default -> REFUSE("The Mansus does not open here; no CS recipe carries the portal action.")'))
                 self.verb_recipe_counts[verb] = (0, 0, 0, 1)
                 continue
             q = self.slot_of.get(actionid)
             if q:
-                lines.append(f"    with: 0..1 {q}")
+                header.append(f"    with: 0..1 {q}")
             else:
                 # time's slot has no required map in CS: a queryless slot
                 # (matches any card)
-                lines.append("    with: 0..1")
-            lines.append(f"    duration: {self.verb_duration[verb]}")
-            lines.append("    recipes:")
+                header.append("    with: 0..1")
+            header.append(f"    duration: {self.verb_duration[verb]}")
+            header.append("    recipes:")
             seen_when = set()
-            n_main = n_chain = 0
+            # RUN-target chains render before the mains (the same seen_when
+            # vocabulary); block order stays mains → chains → copies → default
+            chain_lines = self._chain_lines(verb, seen_when)
             default_line = None
-            chain = []
-            plan_list = self.plans.get(verb, [])
-            order = {id(p): i for i, p in enumerate(plan_list)}
-            boot, rest = [], []
-            for p in plan_list:
-                if p[3] == "chain":
-                    rest.append(p)
-                elif p[3] == "chainboot":
-                    boot.append(p)
-            chain = [(0, order[id(p)], p) for p in boot] + [(1, order[id(p)], p) for p in rest]
-            chain.sort(key=lambda t: (t[0], t[1]))  # bootstraps first, data order within
-            rendered_chain = []
-            for _grp, _idx, (pid, when, r, _kind) in chain:
-                rendered_chain.append(self.render_recipe(pid, when, r, verb, seen_when))
-            for pid, when, r, kind in plan_list:
+            main_lines = []
+            n_main = 0
+            for pid, when, r, kind in self.plans.get(verb, []):
                 if kind == "default":
                     default_line = self.render_recipe(pid, when, r, verb, seen_when)
                 elif kind in ("main", "twin"):
                     # mains and their shadowed twins interleave in data order;
                     # twins render hidden (the first occurrence keeps its
                     # emitted form and wins first-match, §6.4)
-                    lines.append(self.render_recipe(
+                    main_lines.append(self.render_recipe(
                         pid, when, r, verb, seen_when, force_hidden=(kind == "twin")))
                     if kind == "main":
                         n_main += 1
-            n_chain = len(rendered_chain)
+            copies = self.copy_lines.get(verb, [])
             # emission order: mains, RUN-target chains (bootstraps first),
             # copies, default last — bare attempts fall through the mains to
             # the chain catch-alls, copies stay RUN-addressable, the default
             # closes the list
-            for line in rendered_chain:
-                lines.append(line)
-            for line in self.copy_lines.get(verb, []):
-                lines.append(line)
-            if default_line:
-                lines.append(default_line)
-            lines.append("")
-            self.verb_recipe_counts[verb] = (n_main, n_chain,
-                                             len(self.copy_lines.get(verb, [])),
+            lines.extend(self._verb_block(verb, header, main_lines, chain_lines,
+                                          copies, default_line))
+            self.verb_recipe_counts[verb] = (n_main, len(chain_lines), len(copies),
                                              1 if default_line else 0)
 
         # the five carrier verbs: every non-station CS actionid rehomes here,
@@ -1323,33 +1401,24 @@ class Converter:
         # carrier mains in data order (grouped by actionid), RUN-target
         # chains, copies, then the REFUSE wall last (first-match, §6.4).
         for verb in CARRIER_VERBS:
-            lines.append(f"  {verb}:")
-            lines.append(f"    actors: 1 {CARRIER_ACTORS_GUARD}")
-            lines.append("    with: 0..1")
-            lines.append(f"    duration: {self.verb_duration[verb]}")
-            lines.append("    recipes:")
-            lines.append("      # carrier station — chain-addressed only (§6.7): the guarded")
-            lines.append("      # actors slot matches no character, so this verb is never")
-            lines.append("      # suggested and a typed attempt rejects; RUN projections do")
-            lines.append("      # not re-check slot queries. Every recipe is hidden.")
+            header = [
+                f"  {verb}:",
+                f"    actors: 1 {CARRIER_ACTORS_GUARD}",
+                "    with: 0..1",
+                f"    duration: {self.verb_duration[verb]}",
+                "    recipes:",
+                "      # carrier station — chain-addressed only (§6.7): the guarded",
+                "      # actors slot matches no character, so this verb is never",
+                "      # suggested and a typed attempt rejects; RUN projections do",
+                "      # not re-check slot queries. Every recipe is hidden.",
+            ]
             seen_when = set()
-            plan_list = self.plans.get(verb, [])
-            order = {id(p): i for i, p in enumerate(plan_list)}
-            boot, rest = [], []
-            for p in plan_list:
-                if p[3] == "chain":
-                    rest.append(p)
-                elif p[3] == "chainboot":
-                    boot.append(p)
-            chain = [(0, order[id(p)], p) for p in boot] + [(1, order[id(p)], p) for p in rest]
-            chain.sort(key=lambda t: (t[0], t[1]))
-            rendered_chain = []
-            for _grp, _idx, (pid, when, r, _kind) in chain:
-                rendered_chain.append(self.render_recipe(pid, when, r, verb, seen_when,
-                                                         force_hidden=True))
+            chain_lines = self._chain_lines(verb, seen_when, force_hidden=True)
+            main_lines = []
             n_main = 0
             last_group = None
             group_n = Counter()
+            plan_list = self.plans.get(verb, [])
             for p in plan_list:
                 if p[3] in ("carrmain", "twin", "main"):
                     group_n[p[2].get("actionid")] += 1
@@ -1358,22 +1427,19 @@ class Converter:
                     continue
                 group = r.get("actionid")
                 if group != last_group:
-                    lines.append(
+                    main_lines.append(
                         f"      # actionid {group!r} → {verb} "
                         f"({group_n[group]} entries; CS runs these from its own "
                         f"situations — rehomed, chain-addressed, hidden)")
                     last_group = group
-                lines.append(self.render_recipe(pid, when, r, verb, seen_when,
-                                                force_hidden=True))
+                main_lines.append(self.render_recipe(pid, when, r, verb, seen_when,
+                                                     force_hidden=True))
                 n_main += 1
-            for line in rendered_chain:
-                lines.append(line)
-            for line in self.copy_lines.get(verb, []):
-                lines.append(line)
-            lines.append(f'      default -> REFUSE("{verb} is a carrier station: no CS recipe addresses it as a play action; its recipes run from chains.")')
-            lines.append("")
-            self.verb_recipe_counts[verb] = (n_main, len(rendered_chain),
-                                             len(self.copy_lines.get(verb, [])), 1)
+            copies = self.copy_lines.get(verb, [])
+            lines.extend(self._verb_block(
+                verb, header, main_lines, chain_lines, copies,
+                f'      default -> REFUSE("{verb} is a carrier station: no CS recipe addresses it as a play action; its recipes run from chains.")'))
+            self.verb_recipe_counts[verb] = (n_main, len(chain_lines), len(copies), 1)
         return lines
 
     # -- assembly --------------------------------------------------------------
@@ -1411,73 +1477,7 @@ class Converter:
         w("# modal nonzero warmup); chances are ROLL(1,100)+IF ladders with fresh")
         w("# rolls per linked entry. It is loadable and accounted, not playable-tuned.")
         w("#")
-        w("# CONVENTIONS (deterministic):")
-        w("#   names      CS element id → UPPER_SNAKE (dots → underscores); decks and")
-        w("#              endings likewise; recipe ids are `<verb>.<csid>`, alt/run")
-        w("#              copies on a parent verb are `<verb>.alt.<csid>`, and a")
-        w("#              shadowed twin is `<verb>.<csid>.x2` (the first occurrence")
-        w("#              keeps its unsuffixed emitted form).")
-        w("#   aspects    every card carries its own id as a one-level marker aspect")
-        w("#              (`with <cs-id>:1`) plus its declared aspects — so CS")
-        w("#              requirement keys, element ids and aspect ids alike, read as")
-        w("#              `total(with, aspect:k) >= v` (v<0 = total < |v|, CS absence).")
-        w("#   kinds      by CS source file (cosmetic: matching is aspect-based).")
-        w("#   cards      every non-aspect element is a card; the 330 isAspect")
-        w("#              elements (CS uniqueness tags, Exile tracks, pure-aspect")
-        w("#              carriers) emit as stackable PROTOTYPES — never entities,")
-        w("#              whose existence would satisfy §6.3's world-form count()")
-        w("#              existentials and corrupt the extantreq gates. Cards never")
-        w("#              minted anywhere and unique:true are declared entities;")
-        w("#              everything minted at runtime, deck-spec members, and")
-        w("#              lifetime bearers are stackable PROTOTYPES (the §9.2 mint-")
-        w("#              collision law and the §10 deck livelock rule outrank CS's")
-        w("#              unique:true; flips are counted in the report).")
-        w("#   carriers   the five non-station lexemes (READ TRAVEL_TO USE_ON ACQUIRE")
-        w("#              LOCATE_AT) carry every non-station CS actionid, hidden,")
-        w("#              under a marker comment naming the actionid (the map is in")
-        w("#              tools/convert_cs.py's header). Their `actors` slot is")
-        w("#              guarded (`aspect:ritual>=1` matches no character): never")
-        w("#              suggested, typed attempts reject, RUN projections still")
-        w("#              open their windows — the player-visible surface is the")
-        w("#              seven stations, unchanged. Carrier defaults are REFUSE")
-        w("#              walls, last in each list.")
-        w("#   twins      CS's shadowed recipes (requirement-identical duplicates,")
-        w("#              requirement-less recipes behind a verb default) emit hidden")
-        w("#              under `.x2` ids: duplicates keep their CS when plus an")
-        w("#              always-true conjunct (the first occurrence wins first-match")
-        w("#              exactly as before); requirement-less station twins get a")
-        w("#              never-matching when (CS cannot fire them either), while")
-        w("#              requirement-less carrier recipes get an always-true one")
-        w("#              (carriers are RUN-addressed; a never-when would end CS-live")
-        w("#              chains, §6.7).")
-        w("#   decay      1 CS second → 1 engine minute. A lifetime with a decayTo is")
-        w("#              an `on expire` DESTROY+SPAWN+SET chain (never REPLACE from a")
-        w("#              trigger — the trigger-body law); without a decayTo the")
-        w("#              engine's built-in destroy-by-id expiry stands (the §4.2-")
-        w("#              safe path under pools). Recipe-effect mints of lifetime")
-        w("#              bearers arm at birth via the authored `SPAWN X expires")
-        w("#              <dur>` modifier (§4.4/§4.2 — each fresh copy its own")
-        w("#              decay, pooled or not; findings E12's spawn-modifier half);")
-        w("#              deck-drawn lifetime bearers stay un-armed (DRAW has no")
-        w("#              expires arg — findings E12's open half).")
-        w("#   chains     linked → RUN ladders: ROLL(1,100)+IF arms with a fresh roll")
-        w("#              per entry; one RUN op per completion (§6.7), so CS's")
-        w("#              parallel additional-alts + linked chain collapse into the")
-        w("#              arms of ONE ladder (alts first, linked last as fallback).")
-        w("#              Each arm RUNs a candidate list of its own entry plus every")
-        w("#              later entry — the roll gives priority, the walk's when-")
-        w("#              checks give fall-through — so a rolled arm whose `when`")
-        w("#              fails strands nothing. Probabilities shift accordingly")
-        w("#              (counted in the report). Cross-verb targets are emitted as")
-        w("#              RUN-addressable copies on the parent verb")
-        w("#              (`<verb>.alt.<csid>`, world-form whens). Recipe lists emit")
-        w("#              mains in data order, then RUN-target chains (bootstrap")
-        w("#              entries first), then copies, then the verb default last.")
-        w("#   xtriggers  card xtriggers → `on complete <event>` clauses on the card;")
-        w("#              aspect-borne hooks (CS carries some on isAspect elements,")
-        w("#              e.g. job/ingredient → needs) distribute onto every card")
-        w("#              declaring the aspect. Recipes declare `aspects` = their own")
-        w("#              running aspects + positive requirement keys (§6.7).")
+        w(HEADER_TEMPLATE)
         w("#")
         w("# The feature-loss list (emitted-with-loss and dropped-feature counts —")
         w("# distinct from skips) and the structural-skip tables are in the")
@@ -1652,7 +1652,7 @@ class Converter:
             "non-structural recipe skip — a convenience skip crept in"
         assert all(k.startswith("STRUCTURAL:") for k in self.el_skip), \
             "non-structural element skip — a convenience skip crept in"
-        assert self.n_real_decks + (len(self.decks) - self.n_real_decks) == len(self.decks) == 67
+        assert len(self.decks) == 67, "deck census broken"
         assert len(self.endingname) == len(self.endings) == 48, "ending census broken"
         # the E12 lifetime split (findings ledger): every recipe-effect spawn
         # of a lifetime bearer armed at the mint (the SPAWN expires modifier);

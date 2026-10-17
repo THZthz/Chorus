@@ -3,7 +3,10 @@
 //! Analyzer/WorldFacts host + the risky-freeze model), `fixpoint.rs` (the
 //! naive round-robin committability/provenance fixpoint + `site_proven`),
 //! `paths.rs` (the mint universe, dead verbs, deck caps and the per-card
-//! report), `render.rs` (predicate/proof text + the CLI's stdout shapes).
+//! report), `render.rs` (predicate/proof/chain/reason text + the CLI's
+//! stdout shapes), plus the two campaign engines the bins and the test
+//! suite share: `fuzz.rs` (seeded differential campaigns) and `scale.rs`
+//! (the CS-scale synthetic world; spec §13.3).
 //!
 //! Discipline: the fixpoint is a NAIVE round-robin re-test in content order
 //! (verbs in content.verbs order, then sites in live order) until nothing
@@ -18,8 +21,10 @@
 
 pub mod census;
 pub mod fixpoint;
+pub mod fuzz;
 pub mod paths;
 pub mod render;
+pub mod scale;
 pub mod world;
 
 pub use paths::{

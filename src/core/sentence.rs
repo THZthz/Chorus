@@ -188,6 +188,52 @@ impl Arg {
     }
 }
 
+/// The signed-integer spelling the two frozen arg-spelling layers share
+/// (`format::format_arg` and `fn_expand`'s `arg_spelling`): negatives print
+/// bare, non-negatives carry the explicit `+` (§4.4). Q16: the sign branch
+/// is explicit on the integer domain.
+#[must_use]
+pub(crate) fn signed_int_spelling(v: i64) -> String {
+    if v < 0 {
+        v.to_string()
+    } else {
+        format!("+{v}")
+    }
+}
+
+impl Outcome {
+    /// A concrete `{ op, args }` outcome — the only shape that reaches the
+    /// log; `arms`/`fallback`/`call` stay empty.
+    #[must_use]
+    pub fn concrete(op: impl Into<String>, args: Vec<Arg>) -> Outcome {
+        Outcome { op: op.into(), args, arms: None, fallback: None, call: None }
+    }
+
+    /// An authored `FN` call node (§10): the declared function this authored
+    /// call invokes; calls expand at load, so the log never sees one.
+    #[must_use]
+    pub fn fn_call(name: impl Into<String>, args: Vec<Arg>) -> Outcome {
+        Outcome { op: "FN".to_string(), args, arms: None, fallback: None, call: Some(name.into()) }
+    }
+}
+
+impl Sentence {
+    /// The zero-field sentence shell: no trigger, no clauses, no outcomes,
+    /// no span. The parser's kind branches and the engine's row builders
+    /// fill in the fields their kind carries.
+    #[must_use]
+    pub fn bare(kind: SentenceKind, clock: Option<Clock>) -> Sentence {
+        Sentence {
+            kind,
+            clock,
+            trigger: None,
+            clauses: Vec::new(),
+            outcomes: Vec::new(),
+            span_min: None,
+        }
+    }
+}
+
 /// One IF/ELSE IF arm (§6.8): a condition
 /// and its paren'd outcome body. Serde derives exist only so [`Outcome`]
 /// (whose `arms` field holds these) has one representation — IF outcomes are
@@ -258,8 +304,10 @@ pub struct Sentence {
     pub span_min: Option<i64>,
 }
 
-/// A clause with actors and everything else empty — consumed by the
-/// reach analyzer and the fuzz driver.
+/// A clause with actors and everything else empty — the canonical empty
+/// clause the nightjar explorer harness (tests/common) and the reach fuzz
+/// campaigns (`reach::fuzz`) step with; the reach analyzer itself reads
+/// outcomes, not clauses.
 #[must_use]
 pub fn empty_clause(actors: Vec<Ref>) -> Clause {
     Clause {
@@ -277,6 +325,7 @@ pub fn empty_clause(actors: Vec<Ref>) -> Clause {
 mod tests {
     use super::*;
     use crate::core::r#ref::id_ref;
+    use crate::core::types::AttrValue;
 
     #[test]
     fn empty_clause_is_the_canonical_empty_clause() {
@@ -294,5 +343,31 @@ mod tests {
         assert_eq!(Arg::Param { name: "n".into(), sign: Some(Sign::Neg) }.tag(), "param");
         assert_eq!(Sign::Neg.apply(5), -5);
         assert_eq!(Sign::Pos.as_i64(), 1);
+    }
+
+    #[test]
+    fn every_arg_variants_wire_tag_matches_tag() {
+        // the serde `rename` attributes and Arg::tag() spell the same 14
+        // discriminator strings twice — pin them equal, one variant per arm
+        let variants: Vec<Arg> = vec![
+            Arg::Ref { r#ref: id_ref("x1") },
+            Arg::Role { role: Role::Object },
+            Arg::Int { v: 1 },
+            Arg::Delta { v: -1 },
+            Arg::Str { v: "s".into() },
+            Arg::Bool { v: true },
+            Arg::Dur { v: 60 },
+            Arg::Key { v: "level".into() },
+            Arg::Into { r#ref: IntoTarget::Role { role: Role::At } },
+            Arg::AsId { id: "a1".into() },
+            Arg::Pair { k: "attrs".into(), v: AttrValue::Num(1) },
+            Arg::Expires { v: AttrValue::Num(30) },
+            Arg::Vexpr { v: ValExpr::Int { v: 2 } },
+            Arg::Param { name: "n".into(), sign: None },
+        ];
+        for a in &variants {
+            let wire = serde_json::to_value(a).unwrap();
+            assert_eq!(wire["t"].as_str(), Some(a.tag()), "wire tag of {}", a.tag());
+        }
     }
 }

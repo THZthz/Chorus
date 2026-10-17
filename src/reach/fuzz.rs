@@ -14,25 +14,25 @@
 
 use indexmap::IndexMap;
 
-use chorus::content::content::{
+use crate::content::{
     compile_content, CompiledContent, CompiledSlot, ContentRaw, DeckRaw, DeclaredEntity,
     ExpireTriggerDef, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef,
     TriggerDef, VerbContent,
 };
-use chorus::core::clock::{abs_min, clock_from_abs_min, format_clock, next_step_clock};
-use chorus::core::dict::{core_dictionary, Dictionary, CORE_VERBS};
-use chorus::core::parse::parse_sentence;
-use chorus::core::query::match_query;
-use chorus::core::r#ref::{id_ref, name_ref, Ref};
-use chorus::core::sentence::{empty_clause, Clause};
-use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
+use crate::core::clock::{abs_min, clock_from_abs_min, format_clock, next_step_clock};
+use crate::core::dict::{core_dictionary, Dictionary, CORE_VERBS};
+use crate::core::parse::parse_sentence;
+use crate::core::query::match_query;
+use crate::core::r#ref::{id_ref, name_ref, Ref};
+use crate::core::sentence::{empty_clause, Clause};
+use crate::core::types::{add_entity, new_state, AspectVal, Entity, State};
 #[allow(unused_imports)]
-// ActionRecord only flows through drive_fuzz_seed (unused in the #[path]-mounted fuzz bin)
-use chorus::engine::engine::{ActionRecord, Step};
-use chorus::error::Result;
-use chorus::lcg::Lcg;
+// ActionRecord only flows through drive_fuzz_seed (unused by the fuzz bin)
+use crate::engine::{ActionRecord, Step};
+use crate::error::Result;
+use crate::lcg::Lcg;
 
-use super::settle::settle_step;
+use crate::engine::settle::settle_step;
 
 // ---------- deterministic RNG (the frozen LCG discipline) ----------
 
@@ -429,7 +429,9 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 out: outs,
             });
         }
-        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"]).parse().expect("duration literal");
+        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
+            .parse()
+            .unwrap_or_else(|e| panic!("duration literal: {e}"));
         verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes });
     }
 
@@ -460,7 +462,8 @@ pub fn gen_scenario(seed: u32) -> Scenario {
 
     let mut initial = new_state(0);
     for e in entities.iter().cloned() {
-        add_entity(&mut initial, e).expect("gen_scenario entities never collide (unique names)");
+        add_entity(&mut initial, e)
+            .unwrap_or_else(|e| panic!("gen_scenario entities never collide (unique names): {e}"));
     }
 
     // probes — every name that could ever exist, derived shapes, and demands;
@@ -604,7 +607,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
         let begin =
             if ahead == 0 { clock } else { clock_from_abs_min(abs_min(clock) + ahead as i64 * 30) };
         let parsed = parse_sentence(&format!("{} @ ANA WAIT", format_clock(begin)), dict)
-            .expect("the WAIT probe parses");
+            .unwrap_or_else(|e| panic!("the WAIT probe parses: {e}"));
         out.push(Step {
             start_min: None,
             clock: Some(parsed.clock.unwrap_or(begin)),
@@ -613,7 +616,7 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
         });
     }
     let wait_clause = parse_sentence(&format!("{} @ ANA WAIT", format_clock(clock)), dict)
-        .expect("the WAIT probe parses")
+        .unwrap_or_else(|e| panic!("the WAIT probe parses: {e}"))
         .clauses;
     let id_of = |name: &str| -> String {
         alive
@@ -775,9 +778,9 @@ use std::collections::VecDeque;
 
 use indexmap::IndexSet;
 
-use chorus::core::query::parse_query;
-use chorus::core::types::AttrValue;
-use chorus::reach::{Analyzer, CardOptions};
+use crate::core::query::parse_query;
+use crate::core::types::AttrValue;
+use crate::reach::{Analyzer, CardOptions};
 
 /// Cumulative exploration bookkeeping.
 pub struct Forward {
@@ -810,7 +813,7 @@ fn json_of_aspect(v: &AspectVal) -> String {
 /// UTF-16 code unit) order.
 fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> String {
     let mut keys: Vec<(&String, &AspectVal)> = pairs.collect();
-    keys.sort_by(|a, b| chorus::core::text::cmp_utf16(a.0, b.0));
+    keys.sort_by(|a, b| crate::core::text::cmp_utf16(a.0, b.0));
     let parts: Vec<String> =
         keys.into_iter().map(|(k, v)| format!("{k}={}", json_of_aspect(v))).collect();
     format!("{{{}}}", parts.join(","))
@@ -820,18 +823,19 @@ fn canon_pairs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AspectVal)>) -> 
 /// bools).
 fn canon_attrs<'a>(pairs: impl Iterator<Item = (&'a String, &'a AttrValue)>) -> String {
     let mut keys: Vec<(&String, &AttrValue)> = pairs.collect();
-    keys.sort_by(|a, b| chorus::core::text::cmp_utf16(a.0, b.0));
-    let parts: Vec<String> = keys
-        .into_iter()
-        .map(|(k, v)| {
-            let json = match v {
-                AttrValue::Str(s) => serde_json::to_string(s).expect("a string serializes"),
-                AttrValue::Num(n) => n.to_string(),
-                AttrValue::Bool(b) => b.to_string(),
-            };
-            format!("{k}={json}")
-        })
-        .collect();
+    keys.sort_by(|a, b| crate::core::text::cmp_utf16(a.0, b.0));
+    let parts: Vec<String> =
+        keys.into_iter()
+            .map(|(k, v)| {
+                let json = match v {
+                    AttrValue::Str(s) => serde_json::to_string(s)
+                        .unwrap_or_else(|e| panic!("a string serializes: {e}")),
+                    AttrValue::Num(n) => n.to_string(),
+                    AttrValue::Bool(b) => b.to_string(),
+                };
+                format!("{k}={json}")
+            })
+            .collect();
     format!("{{{}}}", parts.join(","))
 }
 
@@ -874,7 +878,7 @@ pub fn sig(s: &State) -> String {
         })
         .collect();
     let mut e = e;
-    e.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+    e.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
     // relations are ids — map through names like locked windows (a generated
     // scenario never RELATEs today, but a signature that ignores a State
     // field is a latent subtree loss)
@@ -887,11 +891,11 @@ pub fn sig(s: &State) -> String {
         })
         .collect();
     let mut r = r;
-    r.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+    r.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
     let mut f: Vec<String> = s.fired.iter().cloned().collect();
-    f.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+    f.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
     let mut d: Vec<String> = s.decks.iter().map(|(k, v)| format!("{k}:{v}")).collect();
-    d.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+    d.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
     // a window's completion applies ITS recipe's outcomes anchored to w.start
     // (SET expires!) over ITS role bindings — verb+end+locked alone would
     // collapse worlds whose completions mint different cards. beginId/clause
@@ -914,9 +918,9 @@ pub fn sig(s: &State) -> String {
                     })
                 })
                 .collect();
-            refs.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+            refs.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
             let mut locked: Vec<String> = win.locked.iter().map(|id| name_of(id)).collect();
-            locked.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+            locked.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
             [
                 win.verb.clone(),
                 win.start.to_string(),
@@ -929,7 +933,7 @@ pub fn sig(s: &State) -> String {
         })
         .collect();
     let mut w = w;
-    w.sort_by(|a, b| chorus::core::text::cmp_utf16(a, b));
+    w.sort_by(|a, b| crate::core::text::cmp_utf16(a, b));
     format!(
         "{{now={},g={},ended={},e=[{}],r=[{}],f=[{}],d=[{}],w=[{}]}}",
         s.now,
@@ -1114,7 +1118,9 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
             if deep.is_none() {
                 deep = Some(explore(&content, &dict, &sc.initial, max_steps + 7, max_states * 20)?);
             }
-            let deep_fw = deep.as_ref().expect("the deep exploration was just seeded");
+            let deep_fw = deep
+                .as_ref()
+                .unwrap_or_else(|| unreachable!("the deep exploration was just seeded"));
             let truth_deep = match p.mode {
                 ProbeMode::Name => deep_fw.ever_names.contains(&p.q),
                 ProbeMode::Demand => {

@@ -15,8 +15,8 @@
 
 use indexmap::IndexMap;
 
-use chorus::content::content::{CompiledContent, CompiledSlot};
 use chorus::content::script::{compile_script, ScriptMeta};
+use chorus::content::{CompiledContent, CompiledSlot};
 use chorus::core::clock::{abs_min, clock_from_abs_min, format_clock, next_step_clock, Clock};
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::parse::parse_sentence;
@@ -25,13 +25,13 @@ use chorus::core::r#ref::{name_ref, Ref};
 use chorus::core::roles::{Role, ROLES};
 use chorus::core::sentence::{empty_clause, Clause};
 use chorus::core::types::{clone_state, Entity, State};
-use chorus::engine::engine::{ActionRecord, Step};
 use chorus::engine::fold::fold;
+use chorus::engine::{ActionRecord, Step};
 use chorus::error::{ChorusError, Result};
 use chorus::lcg::Lcg;
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
-use super::settle::settle_step;
+use chorus::engine::settle::settle_step;
 
 /// The script text is DATA: embedded by path, never precompiled.
 pub const SCRIPT_TEXT: &str =

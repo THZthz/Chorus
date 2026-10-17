@@ -15,24 +15,19 @@
 //! (regex-escaped), and play/fold equality asserted through the shared
 //! `snap`.
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::harness::assert_err_msg;
+use crate::common::rig::{begin_recipes, compile, kind_spine, narrated_of, ops_of, settle_line};
+use crate::common::snap::snap;
+use chorus::engine::settle::refusal;
 
-use common::harness::assert_err_msg;
-use common::settle::{refusal, settle_step};
-use common::snap::snap;
-
-use chorus::content::content::CompiledContent;
 use chorus::content::script::compile_script;
-use chorus::core::clock::Clock;
 use chorus::core::dice::roll_die;
-use chorus::core::dict::{core_dictionary, Dictionary};
-use chorus::core::parse::parse_sentence;
+use chorus::core::dict::core_dictionary;
 use chorus::core::sentence::Arg;
-use chorus::core::types::{clone_state, AspectVal, State};
-use chorus::engine::engine::{ExecResult, Step};
+use chorus::core::types::{clone_state, AspectVal};
 use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
+use chorus::engine::ExecResult;
 
 // ---------------------------------------------------------------- rigs ------
 
@@ -71,69 +66,6 @@ fn dream(slots: &str, recipes: &str) -> String {
     )
 }
 
-fn compile(dict: &Dictionary, text: &str) -> (CompiledContent, State) {
-    let compiled = compile_script(text, dict).unwrap();
-    (compiled.content, compiled.state)
-}
-
-/// Parse + settle_step with the run_chains id-generator shape.
-fn run(
-    content: &CompiledContent,
-    dict: &Dictionary,
-    state: State,
-    src: &str,
-    first_record_id: i64,
-) -> ExecResult {
-    let s = parse_sentence(src, dict).unwrap();
-    let mut n: i64 = 0;
-    let mut id_gen = || {
-        n += 1;
-        format!("x{first_record_id}_{n}")
-    };
-    settle_step(
-        content,
-        dict,
-        state,
-        Step {
-            start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
-            clauses: s.clauses,
-            t_real: None,
-        },
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
-}
-
-/// The kind spine of a settled turn.
-fn kind_spine(r: &ExecResult) -> Vec<&str> {
-    r.records.iter().map(|rec| rec.kind.as_str()).collect()
-}
-
-/// Every action row's commit-time recipe ids, record order — the BEGIN
-/// spine of a turn: [parent…, follow-up…].
-fn begin_recipes(r: &ExecResult) -> Vec<Vec<String>> {
-    r.records.iter().filter(|rec| rec.kind == "action").map(|rec| rec.recipes.clone()).collect()
-}
-
-/// The op list of one record's concrete outcomes.
-fn ops(r: &ExecResult, i: usize) -> Vec<&str> {
-    r.records[i].outcomes.iter().map(|o| o.op.as_str()).collect()
-}
-
-/// The NARRATE-string arguments of one record's outcomes, in order.
-fn narrated(r: &ExecResult, i: usize) -> Vec<String> {
-    r.records[i]
-        .outcomes
-        .iter()
-        .filter_map(|o| match o.args.first() {
-            Some(Arg::Str { v }) => Some(v.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Living entities carrying this name.
 fn living_named(r: &ExecResult, name: &str) -> usize {
     r.state.entities.values().filter(|e| e.name == name && e.dead_action.is_none()).count()
@@ -162,12 +94,12 @@ fn a_bare_trigger_fires_and_replaces_self() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no EVENT rows");
     // the recipe's own NARRATE first; the trigger's REPLACE logged as its
     // concrete SPAWN+DESTROY pair, appended after
-    assert_eq!(ops(&r, 1), ["NARRATE", "SPAWN", "DESTROY"]);
+    assert_eq!(ops_of(&r, 1), ["NARRATE", "SPAWN", "DESTROY"]);
     assert_eq!(living_named(&r, "HEALTH"), 0, "the carrier was replaced");
     assert_eq!(living_named(&r, "FATIGUE"), 1);
     // fold agrees
@@ -197,13 +129,13 @@ fn a_prototype_trigger_reaches_its_mints() {
     );
     let base = clone_state(&s);
     // completion 1: `spawn` is the default — the mint is born, not bound
-    let r1 = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+    let r1 = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
     assert_eq!(r1.rejected, None);
-    assert_eq!(ops(&r1, 1), ["SPAWN"], "the mint is not bound by its own birth");
+    assert_eq!(ops_of(&r1, 1), ["SPAWN"], "the mint is not bound by its own birth");
     // completion 2 binds the mint: `hold` matches, the prototype's trigger fires
-    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DREAM SPRITE", 100);
+    let r2 = settle_line(&c, &dict, r1.state, "0:0 @ ANA DREAM SPRITE", 100).unwrap();
     assert_eq!(r2.rejected, None);
-    assert_eq!(narrated(&r2, 1), ["held", "sprite done"]);
+    assert_eq!(narrated_of(&r2, 1), ["held", "sprite done"]);
     // fold agrees across both plays
     let mut records = r1.records.clone();
     records.extend(r2.records.iter().cloned());
@@ -236,14 +168,14 @@ fn the_aspect_gate_reads_the_recipes_aspects() {
     );
     // completion 1: the recipe declares `employment` — gated (declared
     // first) then bare, in declaration order
-    let r1 = run(&c, &dict, clone_state(&s), "0:0 @ ANA DREAM HEALTH", 1);
+    let r1 = settle_line(&c, &dict, clone_state(&s), "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r1.rejected, None);
-    assert_eq!(narrated(&r1, 1), ["tagged", "gated", "bare"]);
+    assert_eq!(narrated_of(&r1, 1), ["tagged", "gated", "bare"]);
     // completion 2: the SAME card under the aspect-less recipe — the gated
     // form stays silent, the bare one fires
-    let r2 = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH WITH CALM", 100);
+    let r2 = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH WITH CALM", 100).unwrap();
     assert_eq!(r2.rejected, None);
-    assert_eq!(narrated(&r2, 1), ["plain", "bare"]);
+    assert_eq!(narrated_of(&r2, 1), ["plain", "bare"]);
 }
 
 /// A dotted aspect names the same keys in both grammars: the head token
@@ -265,9 +197,9 @@ fn dotted_aspects_name_the_same_key_on_both_sides() {
             ),
         ),
     );
-    let r = run(&c, &dict, clone_state(&s), "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, clone_state(&s), "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(narrated(&r, 1), ["scholar", "latin"]);
+    assert_eq!(narrated_of(&r, 1), ["scholar", "latin"]);
     // fold agrees
     let replayed = fold(&r.records, &s, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -292,9 +224,9 @@ fn unbound_cards_and_actors_never_fire() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(narrated(&r, 1), ["rested"], "neither the table card nor the free actor fires");
+    assert_eq!(narrated_of(&r, 1), ["rested"], "neither the table card nor the free actor fires");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -319,9 +251,9 @@ fn a_card_in_two_roles_fires_once() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH WITH HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH WITH HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(narrated(&r, 1), ["both", "deduped"], "exactly one firing despite two roles");
+    assert_eq!(narrated_of(&r, 1), ["both", "deduped"], "exactly one firing despite two roles");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
 }
@@ -349,10 +281,10 @@ fn fire_order_is_declaration_then_locked_order() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM FIRST_CARD WITH SECOND_CARD", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM FIRST_CARD WITH SECOND_CARD", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(
-        narrated(&r, 1),
+        narrated_of(&r, 1),
         ["both", "first-one", "first-two", "second"],
         "the object card's triggers (declaration order), then the with card's"
     );
@@ -383,10 +315,10 @@ fn outcomes_append_to_the_complete_row_and_fold_replays_them() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"]);
-    assert_eq!(ops(&r, 1), ["NARRATE", "SET", "NARRATE"], "recipe first, trigger appended");
+    assert_eq!(ops_of(&r, 1), ["NARRATE", "SET", "NARRATE"], "recipe first, trigger appended");
     assert!(r.state.fired.is_empty(), "completion triggers never touch state.fired");
     // the SET landed (the trigger's effects are real state)
     let health = r.state.entities.values().find(|e| e.name == "HEALTH").unwrap();
@@ -425,7 +357,7 @@ fn advance_in_the_body_stays_legal_and_stretches_the_pass() {
   JOB is resource
   on complete -> (ADVANCE(1h), NARRATE \"the job drags on\")";
     let (c, s) = compile(&dict, &rig(entities, verbs));
-    let r = run(&c, &dict, s, "0:0 @ ANA WORK JOB", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WORK JOB", 1).unwrap();
     assert_eq!(r.rejected, None, "ADVANCE in an on complete body compiles and runs");
     // the wait row closing the pass spans the authored extension
     let wait = r.records.iter().find(|x| x.kind == "wait").expect("the pass ends in a wait row");
@@ -451,7 +383,7 @@ fn run_in_the_body_hands_off_across_verbs() {
   on complete -> (RUN \"dream_rest\")";
     let (c, s) = compile(&dict, &rig(entities, verbs));
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WORK JOB", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WORK JOB", 1).unwrap();
     assert_eq!(r.rejected, None, "cross-verb candidates resolve");
     assert_eq!(
         kind_spine(&r),
@@ -486,7 +418,7 @@ fn run_in_the_body_hands_off_across_verbs() {
         ),
     );
     let base2 = clone_state(&s2);
-    let r2 = run(&c2, &dict, s2, "0:0 @ ANA DREAM HEALTH", 1);
+    let r2 = settle_line(&c2, &dict, s2, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r2.rejected, None);
     assert_eq!(
         begin_recipes(&r2),
@@ -516,7 +448,7 @@ fn a_busy_station_skips_the_candidate_silently() {
     let (c, s) = compile(&dict, &rig(entities, verbs));
     // one step, two stations: the DREAM window (0m) completes while the
     // STUDY window (2h) holds its station — the body's RUN skips silently
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH ; ANA STUDY", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH ; ANA STUDY", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(refusal(&r), None, "a busy station skips, it does not refuse");
     assert_eq!(kind_spine(&r), ["action", "complete", "complete", "wait"]);
@@ -525,7 +457,7 @@ fn a_busy_station_skips_the_candidate_silently() {
         [vec!["drifter".to_string(), "study_thing".to_string()]],
         "one BEGIN, no follow-up"
     );
-    assert_eq!(narrated(&r, 1), ["drifted"]);
+    assert_eq!(narrated_of(&r, 1), ["drifted"]);
     assert_eq!(
         r.state.executed.get("study_thing"),
         Some(&1),
@@ -533,7 +465,7 @@ fn a_busy_station_skips_the_candidate_silently() {
     );
     // contrast: with the station free the same body opens the follow-up
     let (_, s2) = compile(&dict, &rig(entities, verbs));
-    let r2 = run(&c, &dict, s2, "0:0 @ ANA DREAM HEALTH", 300);
+    let r2 = settle_line(&c, &dict, s2, "0:0 @ ANA DREAM HEALTH", 300).unwrap();
     assert_eq!(r2.rejected, None);
     assert_eq!(begin_recipes(&r2), [vec!["drifter".to_string()], vec!["study_thing".to_string()]]);
 }
@@ -558,16 +490,14 @@ fn two_parked_runs_refuse_at_replay_in_list_order() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(
         refusal(&r),
-        Some(
-            "a second RUN in one completion — a station holds one window (§6.7)".to_string()
-        )
+        Some("a second RUN in one completion — a station holds one window (§6.7)".to_string())
     );
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"], "no follow-up survived");
-    assert_eq!(ops(&r, 1), ["NARRATE", "REFUSE"]);
+    assert_eq!(ops_of(&r, 1), ["NARRATE", "REFUSE"]);
     assert_eq!(r.state.executed.get("runner"), Some(&1));
     assert!(r.state.executed.get("x").is_none(), "the parked first RUN's follow-up died too");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
@@ -594,12 +524,12 @@ fn a_parked_run_refuses_through_its_candidates_guard() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(refusal(&r), Some("the gate says no".to_string()));
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"]);
     assert_eq!(
-        ops(&r, 1),
+        ops_of(&r, 1),
         ["NARRATE", "SET", "REFUSE"],
         "the trigger phase ran before the parked RUN's guard"
     );
@@ -633,10 +563,10 @@ fn a_card_destroyed_by_the_recipe_fires_nothing() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(ops(&r, 1), ["DESTROY", "NARRATE"]);
-    assert_eq!(narrated(&r, 1), ["reaped"], "the destroyed carrier's trigger never fires");
+    assert_eq!(ops_of(&r, 1), ["DESTROY", "NARRATE"]);
+    assert_eq!(narrated_of(&r, 1), ["reaped"], "the destroyed carrier's trigger never fires");
     assert_eq!(living_named(&r, "HEALTH"), 0);
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -665,11 +595,11 @@ fn a_recipe_replace_stops_the_old_names_trigger() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(ops(&r, 1), ["SPAWN", "DESTROY", "NARRATE"]);
+    assert_eq!(ops_of(&r, 1), ["SPAWN", "DESTROY", "NARRATE"]);
     assert_eq!(
-        narrated(&r, 1),
+        narrated_of(&r, 1),
         ["swapped"],
         "neither the dead carrier's nor the survivor's trigger fires"
     );
@@ -702,12 +632,12 @@ fn a_failure_inside_a_body_refuses_the_window() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
     let msg = refusal(&r).unwrap_or_else(|| panic!("expected the window refusal"));
     assert!(msg.contains("already in use"), "{msg}");
     assert_eq!(kind_spine(&r), ["action", "complete", "wait"]);
-    assert_eq!(ops(&r, 1), ["REFUSE"], "partial effects discarded — only the marker logs");
+    assert_eq!(ops_of(&r, 1), ["REFUSE"], "partial effects discarded — only the marker logs");
     assert_eq!(living_named(&r, "TRINKET"), 0, "the scratch died whole");
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
@@ -775,9 +705,9 @@ fn refuse_is_a_load_error_and_roll_works() {
     );
     let base = clone_state(&s);
     let total = roll_die(0, 0, 2);
-    let r = run(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(ops(&r, 1), ["NARRATE", "ROLLED", "NARRATE"]);
+    assert_eq!(ops_of(&r, 1), ["NARRATE", "ROLLED", "NARRATE"]);
     assert_eq!(r.records[1].outcomes[1].args[0], Arg::Int { v: total });
     assert_eq!(r.records[1].outcomes[2].args[0], Arg::Str { v: format!("rolled {total}") });
     assert_eq!(r.state.rng, 1, "the counter consumed one die");
@@ -868,7 +798,7 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
         ),
     );
-    // the §4.4/§4.4 declared-checks walk completion bodies like any other
+    // the §4.4 declared-checks walk completion bodies like any other
     // trigger home: an undeclared ENDING id is a load error, a declared one
     // compiles, and a DRAW of an unknown deck too
     assert_err_msg(
@@ -949,9 +879,9 @@ fn the_load_checks_pin_the_table_the_ban_and_the_orders() {
             ),
         ),
     );
-    let rw = run(&cw, &dict, sw, "0:0 @ ANA DREAM HEALTH", 1);
+    let rw = settle_line(&cw, &dict, sw, "0:0 @ ANA DREAM HEALTH", 1).unwrap();
     assert_eq!(rw.rejected, None);
-    assert_eq!(narrated(&rw, 1), ["rested", "wide"]);
+    assert_eq!(narrated_of(&rw, 1), ["rested", "wide"]);
     // `with` is reserved — an aspect may not collide with the clause keyword
     assert_err_msg(
         compile_script(

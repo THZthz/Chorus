@@ -7,10 +7,7 @@
 //!   - the path-export invariants hold at scale
 //!   - a full-name census completes and stays sound
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::reach_scale_lib::{build_cs_scale, census, summarize};
+use chorus::reach::scale::{build_cs_scale, census, summarize};
 
 use chorus::reach::{analyze_card, render_report, Analyzer, CardOptions, CardVerdict};
 

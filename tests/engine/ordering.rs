@@ -9,7 +9,7 @@
 //! The fold-equality assertions in this file compare through the shared
 //! `snap()` (tests/common/snap.rs — same field set and order disciplines).
 
-use chorus::content::content::{
+use chorus::content::{
     compile_content, CompiledContent, ContentRaw, PrototypeDef, RecipeDef, SlotDef, TriggerDef,
     VerbContent,
 };
@@ -19,14 +19,14 @@ use chorus::core::parse::parse_sentence;
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::Arg;
 use chorus::core::types::{add_entity, clone_state, new_state, AttrValue, Attrs, Entity, State};
-use chorus::engine::engine::{apply_record, execute_step, ActionRecord, ExecOptions, Step};
 use chorus::engine::fold::{fold, fold_up_to};
+use chorus::engine::{apply_record, execute_step, ActionRecord, ExecOptions, Step};
 use chorus::error::Result;
 
-#[path = "../common/mod.rs"]
-mod common;
-use common::seed::{seed_content, seed_state};
-use common::snap::snap;
+use crate::common::harness::assert_rejected;
+use crate::common::rig::{kinds, ops};
+use crate::common::seed::{seed_content, seed_state};
+use crate::common::snap::snap;
 
 // ---------------------------------------------------------------- rig ------
 
@@ -144,7 +144,7 @@ fn run(
     state: State,
     src: &str,
     first: i64,
-) -> chorus::engine::engine::ExecResult {
+) -> chorus::engine::ExecResult {
     let s = parse_sentence(src, dict).unwrap();
     execute_step(
         content,
@@ -168,7 +168,7 @@ fn run_clock(
     state: State,
     clock: &str,
     first: i64,
-) -> chorus::engine::engine::ExecResult {
+) -> chorus::engine::ExecResult {
     execute_step(
         content,
         dict,
@@ -209,16 +209,8 @@ fn replay_all(
     fold(&flat, base, dict, content)
 }
 
-fn kinds(records: &[ActionRecord]) -> Vec<&str> {
-    records.iter().map(|r| r.kind.as_str()).collect()
-}
-
 fn triggers(records: &[ActionRecord]) -> Vec<Option<&str>> {
     records.iter().map(|r| r.trigger.as_deref()).collect()
-}
-
-fn outcome_ops(r: &ActionRecord) -> Vec<&str> {
-    r.outcomes.iter().map(|o| o.op.as_str()).collect()
 }
 
 // ------------------------------------------------------------- matrix ------
@@ -236,13 +228,13 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         ],
         |raw| {
             raw.triggers = Some(vec![
-                TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
+                TriggerDef::Slot(chorus::content::SlotTriggerDef {
                     id: "halfhour_mark".to_string(),
                     slot: 1,
                     once: None,
                     out: vec!["NARRATE \"mark.\"".to_string()],
                 }),
-                TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
+                TriggerDef::Slot(chorus::content::SlotTriggerDef {
                     id: "ninety_mark".to_string(),
                     slot: 3,
                     once: None,
@@ -381,12 +373,12 @@ fn same_halfhour_expiries_fire_in_entity_insertion_order() {
 fn authored_on_expire_first_match_in_declaration_order() {
     let (dict, content) = rig(vec![], |raw| {
         raw.triggers = Some(vec![
-            TriggerDef::Expire(chorus::content::content::ExpireTriggerDef {
+            TriggerDef::Expire(chorus::content::ExpireTriggerDef {
                 id: "decay_first".to_string(),
                 on_expire_of: "INFLUENCE_MOTH_G".to_string(),
                 out: vec!["NARRATE \"first wins.\"".to_string()],
             }),
-            TriggerDef::Expire(chorus::content::content::ExpireTriggerDef {
+            TriggerDef::Expire(chorus::content::ExpireTriggerDef {
                 id: "decay_second".to_string(),
                 on_expire_of: "INFLUENCE_MOTH_G".to_string(),
                 out: vec!["NARRATE \"never fires.\"".to_string()],
@@ -413,10 +405,10 @@ fn authored_on_expire_first_match_in_declaration_order() {
     // the first-match event row carries the AUTHORED id as its trigger and
     // its outcomes (the built-in row carries the DESTROY #id)
     let decay = &adv.records[0];
-    assert_eq!(outcome_ops(decay), ["NARRATE"]);
+    assert_eq!(ops(decay), ["NARRATE"]);
     assert!(matches!(&decay.outcomes[0].args[0], Arg::Str { v } if v == "first wins."));
     let builtin = &adv.records[1];
-    assert_eq!(outcome_ops(builtin), ["DESTROY"]);
+    assert_eq!(ops(builtin), ["DESTROY"]);
     assert!(
         matches!(&builtin.outcomes[0].args[0], Arg::Ref { r#ref: Ref::Id { id } } if id == "dust")
     );
@@ -466,7 +458,7 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     assert_eq!(snap(&replayed1), snap(&pre_adv1));
     let _ = &base;
     let complete = &adv1.records[0];
-    assert_eq!(outcome_ops(complete), ["SET"]);
+    assert_eq!(ops(complete), ["SET"]);
     // scenario: anchor-expiry-hoist-no-cascade (frozen expectation) — anchored to
     // the window START (minute 0): 0 + 60 = 60
     let egg = &adv1.state.entities["egg"];
@@ -512,7 +504,7 @@ fn refuse_discards_advance_and_recycles_ids() {
     assert_eq!(r2.records.len(), 1);
     assert_eq!(r2.records[0].id, 2, "a refusal row reuses the pass's firstRecordId");
     assert_eq!(r2.records[0].advanced_min, 0, "§6.5: no window elapses");
-    assert_eq!(outcome_ops(&r2.records[0]), ["REFUSE"]);
+    assert_eq!(ops(&r2.records[0]), ["REFUSE"]);
     assert!(
         matches!(&r2.records[0].outcomes[0].args[0], Arg::Str { v } if v == "not without a lantern.")
     );
@@ -638,7 +630,7 @@ fn window_completion_failure_refuses_only_that_window() {
     assert_eq!(adv.rejected, None, "the pass did NOT roll back");
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     let complete = &adv.records[0];
-    assert_eq!(outcome_ops(complete), ["REFUSE"]);
+    assert_eq!(ops(complete), ["REFUSE"]);
     assert!(
         matches!(&complete.outcomes[0].args[0], Arg::Str { v } if v.contains("NOSUCH_PROTOTYPE"))
     );
@@ -838,7 +830,7 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
     // the completion dropped the dead ref: SET found no targets (concretized
     // per-card → none), DESTROY concretized to an empty row
     let complete = adv.records.iter().find(|x| x.kind == "complete").unwrap();
-    assert_eq!(outcome_ops(complete), ["DESTROY"]);
+    assert_eq!(ops(complete), ["DESTROY"]);
     assert!(complete.outcomes[0].args.is_empty());
     assert!(!adv.state.by_name.contains_key("MAGICK_BOOK"));
     let replayed = replay_all(&[&r1.records, &adv.records], &base, &dict, &content).unwrap();
@@ -853,19 +845,19 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
 fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     let (dict, content) = rig(vec![], |raw| {
         raw.triggers = Some(vec![
-            TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
+            TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "mark".to_string(),
                 slot: 1,
                 once: None,
                 out: vec!["NARRATE \"mark.\"".to_string()],
             }),
-            TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
+            TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "mark".to_string(), // same id, later declaration — first match wins per slot
                 slot: 2,
                 once: None,
                 out: vec!["NARRATE \"mark again.\"".to_string()],
             }),
-            TriggerDef::Slot(chorus::content::content::SlotTriggerDef {
+            TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "once_dusk".to_string(),
                 slot: 1,
                 once: Some(true),
@@ -909,16 +901,6 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
 /// representable and folds exactly.
 mod input_surface {
     use super::*;
-
-    /// `re` must match `result.rejected`.
-    fn assert_rejected(r: &chorus::engine::engine::ExecResult, pattern: &str) {
-        let msg = r
-            .rejected
-            .as_deref()
-            .unwrap_or_else(|| panic!("expected a rejected step matching /{pattern}/, got None"));
-        let re = regex::Regex::new(pattern).unwrap();
-        assert!(re.is_match(msg), "rejected {msg:?} does not match /{pattern}/");
-    }
 
     #[test]
     fn a_lone_clock_advances_the_same_minute_with_nothing_due_is_rejected() {

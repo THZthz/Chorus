@@ -3,7 +3,15 @@
 //! the `OrdinaryOwnPropertyKeys` judgment, B-20) and the canonical JSON
 //! writer [`jsonw`], whose escape set and integer-only number domain are
 //! frozen (B-20). serde_json's `preserve_order` feature is load-bearing for
-//! the pinned key order — do not touch.
+//! the pinned key order — do not touch. The aspects/attrs pair values the
+//! engine materializes on SPAWN/REPLACE rows (and reads back on fold) are
+//! formatted and parsed here too, so play, fold and the reach analyzer share
+//! one frozen shape.
+
+use indexmap::IndexMap;
+
+use crate::core::types::{AspectVal, Aspects, AttrValue, Attrs};
+use crate::error::{ChorusError, Result};
 
 /// The engine's frozen integer-like-key judgment: a key is integer-like iff
 /// it is a canonical unsigned decimal string with no leading zero (`0`,
@@ -29,6 +37,28 @@ fn integer_like_key_value(k: &str) -> Option<u64> {
     k.parse::<u64>().ok().filter(|v| *v <= 4_294_967_294)
 }
 
+/// The clone-order index walk shared by [`canonical_key_order`] and
+/// [`clone_map_in_key_order`]: the integer-like keys' indices of `m`,
+/// ascending by numeric value, then the rest in insertion order. Keys are
+/// unique canonical digit strings, so the values are distinct and the sort
+/// is total. `None` = no integer-like keys, so the insertion order IS the
+/// canonical order and callers take their plain fast path (the rebuild
+/// would be entry-for-entry identical).
+fn clone_order_indices<V>(m: &indexmap::IndexMap<String, V>) -> Option<Vec<usize>> {
+    let mut ints: Vec<(u64, usize)> = m
+        .keys()
+        .enumerate()
+        .filter_map(|(i, k)| integer_like_key_value(k).map(|v| (v, i)))
+        .collect();
+    if ints.is_empty() {
+        return None;
+    }
+    ints.sort_unstable_by_key(|(v, _)| *v);
+    let plain: Vec<usize> =
+        m.keys().enumerate().filter(|(_, k)| !is_integer_like_key(k)).map(|(i, _)| i).collect();
+    Some(ints.into_iter().map(|(_, i)| i).chain(plain).collect())
+}
+
 /// The key order every object spread/clone/entries site produces
 /// (the frozen `OrdinaryOwnPropertyKeys` judgment, B-20): integer-like keys
 /// first in ascending numeric value, everything else in insertion order.
@@ -37,38 +67,20 @@ fn integer_like_key_value(k: &str) -> Option<u64> {
 /// (the clone points live in `core/types.rs`).
 #[must_use]
 pub fn canonical_key_order<V>(m: &indexmap::IndexMap<String, V>) -> Vec<String> {
-    if !m.keys().any(|k| is_integer_like_key(k)) {
+    let Some(order) = clone_order_indices(m) else {
         // no integer-like keys ⇒ the canonical order IS the insertion order
         // (the reorder only fronts integer-like keys), so the two-pass walk
         // would re-emit the keys verbatim
         return m.keys().cloned().collect();
-    }
+    };
     let mut out: Vec<String> = Vec::with_capacity(m.len());
-    for i in integer_keys_in_order(m) {
+    for i in order {
         let Some((k, _)) = m.get_index(i) else {
             unreachable!("every index comes from this same map's key walk");
         };
         out.push(k.clone());
     }
-    for k in m.keys() {
-        if !is_integer_like_key(k) {
-            out.push(k.clone());
-        }
-    }
     out
-}
-
-/// The integer-like keys' indices of `m`, ascending by numeric value. Keys
-/// are unique canonical digit strings, so the values are distinct and the
-/// sort is total.
-fn integer_keys_in_order<V>(m: &indexmap::IndexMap<String, V>) -> impl Iterator<Item = usize> {
-    let mut ints: Vec<(u64, usize)> = m
-        .keys()
-        .enumerate()
-        .filter_map(|(i, k)| integer_like_key_value(k).map(|v| (v, i)))
-        .collect();
-    ints.sort_unstable_by_key(|(v, _)| *v);
-    ints.into_iter().map(|(_, i)| i)
 }
 
 /// Clone a string-keyed map rebuilding keys in
@@ -82,14 +94,11 @@ fn integer_keys_in_order<V>(m: &indexmap::IndexMap<String, V>) -> impl Iterator<
 pub fn clone_map_in_key_order<V: Clone>(
     m: &indexmap::IndexMap<String, V>,
 ) -> indexmap::IndexMap<String, V> {
-    let has_int_keys = m.keys().any(|k| is_integer_like_key(k));
-    if !has_int_keys {
+    let Some(order) = clone_order_indices(m) else {
         return m.clone();
-    }
-    let plain: Vec<usize> =
-        m.keys().enumerate().filter(|(_, k)| !is_integer_like_key(k)).map(|(i, _)| i).collect();
+    };
     let mut out = indexmap::IndexMap::with_capacity(m.len());
-    for i in integer_keys_in_order(m).chain(plain) {
+    for i in order {
         let Some((k, v)) = m.get_index(i) else {
             unreachable!("every index comes from this same map's key walk");
         };
@@ -216,6 +225,114 @@ pub fn jsonw_obj_in_key_order(m: &indexmap::IndexMap<String, Jsonw>) -> Jsonw {
         }
     }
     Jsonw::Obj(entries)
+}
+
+// ---------- the aspects / attrs pair values (SPAWN, REPLACE; §4.4) ----------
+
+/// The aspects map's canonical JSON form — the SPAWN/REPLACE `aspects=`
+/// pair value. Serialization applies the canonical key order
+/// (`OrdinaryOwnPropertyKeys`), so the map goes through
+/// [`jsonw_obj_in_key_order`]. The reach analyzer re-uses this exact frozen
+/// format for its provenance/demand chain lines.
+pub fn aspects_to_json(a: &Aspects) -> String {
+    let mut m: IndexMap<String, Jsonw> = IndexMap::new();
+    for (k, v) in a {
+        m.insert(
+            k.clone(),
+            match v {
+                AspectVal::Num(n) => Jsonw::Int(*n),
+                AspectVal::Sub(sub) => {
+                    Jsonw::Obj(sub.iter().map(|(k2, n2)| (k2.clone(), Jsonw::Int(*n2))).collect())
+                }
+            },
+        );
+    }
+    jsonw(&jsonw_obj_in_key_order(&m))
+}
+
+/// The attrs map's canonical JSON form — the `attrs=` pair value (same
+/// canonical key-order rule).
+pub fn attrs_to_json(a: &Attrs) -> String {
+    let mut m: IndexMap<String, Jsonw> = IndexMap::new();
+    for (k, v) in a {
+        m.insert(
+            k.clone(),
+            match v {
+                AttrValue::Str(s) => Jsonw::Str(s.clone()),
+                AttrValue::Num(n) => Jsonw::Int(*n),
+                AttrValue::Bool(b) => Jsonw::Bool(*b),
+            },
+        );
+    }
+    jsonw(&jsonw_obj_in_key_order(&m))
+}
+
+/// Parse an aspects JSON pair value into `Aspects`. Values are
+/// numbers or one-level sub-maps of numbers (the Q13 model).
+pub fn aspects_from_json(s: &str) -> Result<Aspects> {
+    let v: serde_json::Value =
+        serde_json::from_str(s).map_err(|e| ChorusError::new(format!("bad aspects pair: {e}")))?;
+    let serde_json::Value::Object(map) = v else {
+        return Err(ChorusError::new("bad aspects pair: not an object"));
+    };
+    let mut out = Aspects::new();
+    for (k, val) in map {
+        out.insert(k, json_to_aspect_val(&val)?);
+    }
+    Ok(out)
+}
+
+fn json_to_aspect_val(v: &serde_json::Value) -> Result<AspectVal> {
+    match v {
+        serde_json::Value::Number(n) => Ok(AspectVal::Num(
+            n.as_i64().ok_or_else(|| ChorusError::new("bad aspects pair: non-integer number"))?,
+        )),
+        serde_json::Value::Object(sub) => {
+            let mut m = IndexMap::new();
+            for (k, val) in sub {
+                let serde_json::Value::Number(n) = val else {
+                    return Err(ChorusError::new(
+                        "bad aspects pair: sub-map values must be numbers",
+                    ));
+                };
+                m.insert(
+                    k.clone(),
+                    n.as_i64()
+                        .ok_or_else(|| ChorusError::new("bad aspects pair: non-integer number"))?,
+                );
+            }
+            Ok(AspectVal::Sub(m))
+        }
+        _ => Err(ChorusError::new("bad aspects pair: values must be numbers")),
+    }
+}
+
+/// Parse an attrs JSON pair: a flat object whose values are
+/// strings/numbers/booleans.
+/// Key order follows the document (serde_json
+/// preserve_order) — the order new keys append in.
+pub fn attrs_from_json(s: &str) -> Result<Attrs> {
+    let v: serde_json::Value =
+        serde_json::from_str(s).map_err(|e| ChorusError::new(format!("bad attrs pair: {e}")))?;
+    let serde_json::Value::Object(map) = v else {
+        return Err(ChorusError::new("bad attrs pair: not an object"));
+    };
+    let mut out = Attrs::new();
+    for (k, val) in map {
+        out.insert(k, json_to_attr_value(&val)?);
+    }
+    Ok(out)
+}
+
+fn json_to_attr_value(v: &serde_json::Value) -> Result<AttrValue> {
+    match v {
+        serde_json::Value::String(s) => Ok(AttrValue::Str(s.clone())),
+        serde_json::Value::Number(n) => Ok(AttrValue::Num(
+            n.as_i64().ok_or_else(|| ChorusError::new("bad attrs pair: non-integer number"))?,
+        )),
+        serde_json::Value::Bool(b) => Ok(AttrValue::Bool(*b)),
+        _ => Err(ChorusError::new("bad attrs pair: values must be strings, numbers or booleans")),
+    }
 }
 
 #[cfg(test)]

@@ -39,6 +39,8 @@ projection of that data, never the source of truth.
 20. **v0.7.1** — one escape discipline: ref formatting now doubles `\` like every other quoted form, closing the `a\b` round-trip hole (§5.1); a log holding such a name re-formats differently (§9.2, no compatibility).
 21. **v0.7.2** — the loud-fail sweep, five silent-drop corners made load errors: a trailing token after `default` (`default max 2`, `default when …` — §6.4/§10), an unknown `k=v` pair key on SPAWN (§4.4/§5.1), `ADVANCE` in a slot/expire trigger's outcomes (§6.6/§6.7/§10), an empty or unknown `kind:` in any query (§4.5/§6.1), and a mis-spelled braced token in a never-called function body (§10). No log format change; scripts that leaned on a dropped token now fail to load, naming it.
 
+22. **v0.7.3** — the layout convergence, zero grammar/log/script change: the oversized modules split along their seams (`engine.rs` → `engine/{record,validate,exec,outcomes,advance,replay}`; `content/script.rs` → `content/script/{parse,decls,verbblock,complete,load,lint,when_dead}`; `predicate.rs` → `predicate` + `pred_parse`/`pred_lint`; `parse.rs` → `parse/{mod,outcome}`), the `engine::engine` / `content::content` inception shapes dissolved into flat module APIs, the fuzz/scale campaign engines and the settle adapter moved from `tests/common` into the crate (`reach::fuzz`, `reach::scale`, `engine::settle` — §13.1's no-engine claim now scoped to the five seam modules, §13.3 amended), and two interface bytes changed: the unresolvable-table hint names the typed word (`cards`) instead of a button number (§11), and `lint-scripts` with no arguments reads its files in sorted order. Everything else is comment/code organization; the acceptance suite pins the behavior throughout.
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -1836,7 +1838,10 @@ format, or play semantics.
 
 `src/reach/` answers "can the player obtain card X?" STATICALLY, over
 (compiled content, initial state) — design-time analysis: no engine, no
-mutation, deterministic. Five seam modules:
+mutation, deterministic. Five seam modules (the analyzer proper — none of
+them imports the engine; the `fuzz` / `scale` campaign modules that share
+the directory are §13.3's differential layer, and they are the only reach
+files allowed to):
 
 - **census** — every SPAWN/REPLACE/DRAW site over recipes, all three
   trigger kinds, decks, prototypes and initial entities. IF-branch
@@ -1927,7 +1932,8 @@ itself and the cwd, exit 1).
 
 `bin/chorus` is the line REPL of §11. The other four are the fixed-purpose
 CLIs above (`reach`, `reach-fuzz`, `reach-scale`, `lint-scripts`); the fuzz
-and scale libraries are mounted by path from `tests/common`, so bins and
-the test suite share one implementation. `lcg` (crate root) is the
-deterministic test-side RNG — deliberately NOT the engine's randomness,
-which is §4.4's counter alone.
+and scale campaign engines are library modules (`reach::fuzz`,
+`reach::scale`, with the run-then-settle adapter in `engine::settle`), so
+the bins and the test suite import one implementation. `lcg` (crate root)
+is the deterministic campaign-side RNG those modules draw from —
+deliberately NOT the engine's randomness, which is §4.4's counter alone.

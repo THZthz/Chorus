@@ -8,32 +8,29 @@
 //! - explorer_lib: the win path plays end-to-end and the sampled walk
 //!   harvests states (LCG 'NIGH' entry).
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::explorer_lib::{
+use crate::common::explorer_lib::{
     candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth,
 };
-use common::seed::{seed_content, seed_state};
-use common::settle::{act, done, refusal, settle_step};
-use common::snap::snap;
+use crate::common::seed::{seed_content, seed_state};
+use crate::common::snap::snap;
+use chorus::engine::settle::{act, done, refusal, settle_step};
 
-use chorus::content::content::{compile_content, RecipeDef, SlotDef, VerbContent};
+use chorus::content::{compile_content, RecipeDef, SlotDef, VerbContent};
 use chorus::core::clock::Clock;
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
 use chorus::core::types::{
     add_entity, clone_state, new_state, AspectVal, AttrValue, Attrs, Entity, State,
 };
-use chorus::engine::engine::Step;
 use chorus::engine::fold::fold;
+use chorus::engine::Step;
 use indexmap::IndexMap;
 
 /// The store.rs test rig's PACE shape: one actor, one 30-minute window.
-fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::content::CompiledContent) {
+fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::CompiledContent) {
     let mut dict = core_dictionary();
     dict.register_verb("PACE").expect("PACE registers");
-    let raw = chorus::content::content::ContentRaw {
+    let raw = chorus::content::ContentRaw {
         verbs: [(
             "PACE".to_string(),
             VerbContent {
@@ -58,7 +55,7 @@ fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::content::Comp
         )]
         .into_iter()
         .collect(),
-        ..chorus::content::content::ContentRaw::default()
+        ..chorus::content::ContentRaw::default()
     };
     let content = compile_content(&raw, &dict, &[]).expect("pace compiles");
     (dict, content)
@@ -198,7 +195,7 @@ fn settle_completes_the_window_and_act_done_route() {
 fn refusal_reads_the_authored_gate_and_the_turn_rolls_back() {
     let mut dict = core_dictionary();
     dict.register_verb("SULK").expect("SULK registers");
-    let raw = chorus::content::content::ContentRaw {
+    let raw = chorus::content::ContentRaw {
         verbs: [(
             "SULK".to_string(),
             VerbContent {
@@ -223,7 +220,7 @@ fn refusal_reads_the_authored_gate_and_the_turn_rolls_back() {
         )]
         .into_iter()
         .collect(),
-        ..chorus::content::content::ContentRaw::default()
+        ..chorus::content::ContentRaw::default()
     };
     let content = compile_content(&raw, &dict, &[]).unwrap();
     let base = solo("ANA");

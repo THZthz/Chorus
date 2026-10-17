@@ -4,17 +4,14 @@
 //! Rust: fold(log) must repopulate the played state, and two runs must
 //! produce byte-identical logs under the demo's `x{id}_{++n}` idGen.
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::seed::{seed_content, seed_state};
 
-use common::seed::{seed_content, seed_state};
-
-use chorus::content::content::compile_content;
+use chorus::content::compile_content;
 use chorus::core::clock::clock_from_abs_min;
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
-use chorus::engine::engine::{execute_step, ExecOptions, Step};
 use chorus::engine::fold::fold;
+use chorus::engine::{execute_step, ExecOptions, Step};
 
 const STEPS: [&str; 6] = [
     "0:28 @ ANA AT HOUSE READ THE_FORGETTING", // 14:00

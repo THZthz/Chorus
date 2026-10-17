@@ -6,7 +6,7 @@
 //! harness.rs. The `allow` lives in this one place.)
 #![allow(dead_code)]
 
-use chorus::content::content::{
+use chorus::content::{
     ContentRaw, DeriveAspect, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef, SlotTriggerDef,
     TriggerDef, VerbContent,
 };

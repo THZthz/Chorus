@@ -7,14 +7,13 @@
 
 use std::sync::OnceLock;
 
-use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::core::dict::KINDS;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
-use crate::core::text::{dsl_trim, DSL_WS_CLASS};
-use crate::core::types::{aspect_get, AspectVal, Aspects, AttrValue, Entity};
+use crate::core::text::{dsl_trim, split_dsl_ws, DSL_WS_CLASS};
+use crate::core::types::{aspect_get, AttrValue, Entity};
 use crate::error::{ChorusError, Result};
 
 /// A comparison operator: `'>=' | '<=' | '>' | '<' | '=' | '!='`.
@@ -60,7 +59,13 @@ impl CmpOp {
     }
 }
 
-/// The `(>=|<=|>|<|!=|=)` alternation, in that order (leftmost-first);
+/// The comparison-op alternation `>=|<=|!=|=|>|<`, leftmost-first (each
+/// two-char op before its one-char prefix) — the single source for
+/// `parse_cmp_op`, the predicate parser's lookup table, and every regex
+/// alternation spelled from it.
+pub(crate) const CMP_OPS: [&str; 6] = [">=", "<=", "!=", "=", ">", "<"];
+
+/// The [`CMP_OPS`] alternation, in that order (leftmost-first);
 /// unreachable default — the alternation only yields these six.
 #[must_use]
 pub fn parse_cmp_op(s: &str) -> CmpOp {
@@ -111,8 +116,9 @@ impl QueryTerm {
 /// `|`-less form) behaves exactly as the pre-alternation flat conjunction;
 /// the zero-group query (from `''` — the frozen-falsy no-query, guarded at
 /// every home before parsing) stays vacuous-true like the old empty
-/// conjunction. No canonical printer: queries are authored strings, never
-/// serialized and never logged (§4.5).
+/// conjunction. No round-trip printer in the engine core: queries are
+/// authored strings, never serialized and never logged (§4.5) — `reach`
+/// renders display strings for its analyzer reports only.
 pub type Query = Vec<Vec<QueryTerm>>;
 
 /// The §4.5 grammar: `query := and ( '|' and )*`, `and := term+`,
@@ -147,28 +153,6 @@ pub fn parse_query(src: &str) -> Result<Query> {
     }
     groups.push(group);
     Ok(groups)
-}
-
-/// `split(/\s+/).filter(Boolean)` on the frozen DSL whitespace class;
-/// hand-splitting the
-/// same class is term-for-term identical because `\s+` never matches empty.
-#[must_use]
-fn split_dsl_ws(s: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut start = None;
-    for (i, c) in s.char_indices() {
-        if crate::core::text::is_dsl_ws_char(c) {
-            if let Some(st) = start.take() {
-                out.push(&s[st..i]);
-            }
-        } else {
-            start.get_or_insert(i);
-        }
-    }
-    if let Some(st) = start {
-        out.push(&s[st..]);
-    }
-    out
 }
 
 /// One term: optional leading `-` negation, then
@@ -230,8 +214,9 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || {
                 Regex::new(&format!(
-                    r"^(?:([A-Za-z_][A-Za-z0-9_.]*))?(?:{ws}*(>=|<=|>|<|!=|=){ws}*(-?[0-9]+))?$",
-                    ws = DSL_WS_CLASS
+                    r"^(?:([A-Za-z_][A-Za-z0-9_.]*))?(?:{ws}*({ops}){ws}*(-?[0-9]+))?$",
+                    ws = DSL_WS_CLASS,
+                    ops = CMP_OPS.join("|")
                 ))
             });
             let Some(m) = re.captures(rest) else {
@@ -255,8 +240,9 @@ fn parse_term(raw: &str) -> Result<QueryTerm> {
             static RE: OnceLock<Regex> = OnceLock::new();
             let re = static_regex(&RE, || {
                 Regex::new(&format!(
-                    r"^(!)?([A-Za-z_][A-Za-z0-9_.]*)(?:{ws}*(>=|<=|>|<|!=|=){ws}*(.+))?$",
-                    ws = DSL_WS_CLASS
+                    r"^(!)?([A-Za-z_][A-Za-z0-9_.]*)(?:{ws}*({ops}){ws}*(.+))?$",
+                    ws = DSL_WS_CLASS,
+                    ops = CMP_OPS.join("|")
                 ))
             });
             let Some(m) = re.captures(rest) else {
@@ -366,35 +352,10 @@ fn match_term(e: &Entity, t: &QueryTerm) -> bool {
     }
 }
 
-/// Build Aspects from `{key: n}` pairs in
-/// the caller's iteration order (insertion order; the
-/// compile sites own that). QUIRK(Q13): the head collision clobbers
-/// a scalar with a sub-map (and a scalar write clobbers a sub-map) — both
-/// directions silent, frozen.
-pub fn aspects_from_pairs(pairs: &IndexMap<String, i64>) -> Aspects {
-    let mut out = Aspects::new();
-    for (k, v) in pairs {
-        let Some(dot) = k.find('.') else {
-            out.insert(k.clone(), AspectVal::Num(*v));
-            continue;
-        };
-        let head = &k[..dot];
-        // an existing non-sub-map head is replaced by a fresh sub-map; a
-        // missing head creates one (the sub-scalar clobber, Q13)
-        if !matches!(out.get(head), Some(AspectVal::Sub(_))) {
-            out.insert(head.to_string(), AspectVal::Sub(IndexMap::new()));
-        }
-        if let Some(AspectVal::Sub(sub)) = out.get_mut(head) {
-            sub.insert(k[dot + 1..].to_string(), *v);
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::Attrs;
+    use crate::core::types::{AspectVal, Aspects, Attrs};
 
     #[test]
     fn parse_and_match_the_canonical_term_shapes() {
@@ -439,24 +400,6 @@ mod tests {
                 assert_eq!(*level, 1); // the default when no comparison follows
             }
             _ => panic!("expected aspect term"),
-        }
-    }
-
-    #[test]
-    fn aspects_from_pairs_clobbers() {
-        // QUIRK Q13: a later 'a.b' clobbers the scalar 'a' whole
-        let mut pairs = IndexMap::new();
-        pairs.insert("a".to_string(), 1);
-        pairs.insert("a.b".to_string(), 2);
-        let out = aspects_from_pairs(&pairs);
-        assert_eq!(out.get("a"), Some(&AspectVal::Sub(IndexMap::from([("b".to_string(), 2)]))));
-        // 'a.b.c' stores the literal sub-key 'b.c' — no nested tree
-        let mut pairs2 = IndexMap::new();
-        pairs2.insert("a.b.c".to_string(), 7);
-        let out2 = aspects_from_pairs(&pairs2);
-        match out2.get("a") {
-            Some(AspectVal::Sub(m)) => assert_eq!(m.get("b.c"), Some(&7)),
-            other => panic!("expected sub-map, got {other:?}"),
         }
     }
 }

@@ -16,23 +16,20 @@
 //! tests/common/explorer_lib.rs (explorer_world/candidates_for/
 //! WIN_PATH/win_path_states/sampled_walk_states/SCRIPT_TEXT/clause_key).
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::explorer_lib::{
+use crate::common::explorer_lib::{
     candidates_for, explorer_world, sampled_walk_states, win_path_states, Depth, ExplorerWorld,
     WIN_PATH,
 };
-use common::snap::snap;
+use crate::common::snap::snap;
 
-use chorus::content::content::CompiledContent;
+use chorus::content::CompiledContent;
 use chorus::core::format::format_sentence;
 use chorus::core::parse::parse_sentence;
 use chorus::core::r#ref::sort_refs;
 use chorus::core::types::{clone_state, State};
-use chorus::engine::engine::{execute_step, ActionRecord, ExecOptions, ExecResult, Step};
 use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
+use chorus::engine::{execute_step, ActionRecord, ExecOptions, ExecResult, Step};
 use chorus::session::game::{Game, TurnKind};
 use chorus::session::render::prose_lines;
 
@@ -86,7 +83,7 @@ fn check_records(records: &[ActionRecord], world: &ExplorerWorld) {
         // itself
         let s = parse_sentence(&rec.sentence, &world.dict)
             .unwrap_or_else(|e| panic!("record sentence does not parse: {}: {e}", rec.sentence));
-        assert_eq!(format_sentence(&s, Some(&world.dict)).unwrap(), rec.sentence);
+        assert_eq!(format_sentence(&s, &world.dict).unwrap(), rec.sentence);
         // prose rendering must never error on a committed record
         prose_lines(rec, &world.content, &world.dict)
             .unwrap_or_else(|e| panic!("prose_lines threw on {}: {e}", rec.sentence));
@@ -312,15 +309,15 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
         let cands =
             candidates_for(&world.content, &world.dict, &state, &world.player, Depth::Sampled);
         // mostly walk the well-formed space; keep a 20% budget for error probes
-        let benign: Vec<&common::explorer_lib::Cand> = cands
+        let benign: Vec<&crate::common::explorer_lib::Cand> = cands
             .iter()
             .filter(|c| !c.tag.contains("wrong-kind") && c.tag != "clock rewind")
             .collect();
-        let pick_from: Vec<&common::explorer_lib::Cand> =
+        let pick_from: Vec<&crate::common::explorer_lib::Cand> =
             if lcg.next_f64() < 0.2 || benign.is_empty() { cands.iter().collect() } else { benign };
         let cand = &pick_from
             [(lcg.next_f64() * pick_from.len() as f64).floor() as usize % pick_from.len()];
-        let r = common::settle::settle_step(
+        let r = chorus::engine::settle::settle_step(
             &world.content,
             &world.dict,
             state,
@@ -406,7 +403,7 @@ fn hundreds_of_arbitrary_steps_and_undos_keep_state_equals_fold_of_log() {
 #[test]
 fn slash_commands_garbage_and_the_event_guard_never_throw() {
     let world = explorer_world();
-    let mut game = Game::from_script(common::explorer_lib::SCRIPT_TEXT, world.dict).unwrap();
+    let mut game = Game::from_script(crate::common::explorer_lib::SCRIPT_TEXT, world.dict).unwrap();
     game.handle_line("wait").unwrap();
 
     let cases = [
@@ -451,7 +448,7 @@ fn slash_commands_garbage_and_the_event_guard_never_throw() {
 #[test]
 fn the_guard_a_player_typed_event_sentence_is_rejected_nothing_logged() {
     let world = explorer_world();
-    let mut game = Game::from_script(common::explorer_lib::SCRIPT_TEXT, world.dict).unwrap();
+    let mut game = Game::from_script(crate::common::explorer_lib::SCRIPT_TEXT, world.dict).unwrap();
     let before = game.log.records.len();
     let turn = game.handle_line("0:0 @ EVENT body_found -> SPAWN DREAD").unwrap();
     assert_eq!(turn.kind, TurnKind::Error);

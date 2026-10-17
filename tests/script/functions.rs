@@ -14,19 +14,17 @@
 //! CHARACTER; each test owns a fresh Dictionary with STEW registered
 //! (per-test).
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::harness::{assert_err_msg, assert_refusal};
+use crate::common::rig::said;
+use crate::common::rig::settle_line;
+use crate::common::snap::snap;
+use chorus::engine::settle::{act, done, refusal};
 
-use common::harness::assert_err_msg;
-use common::settle::{act, done, refusal, settle_step};
-use common::snap::snap;
-
-use chorus::content::content::{
+use chorus::content::script::{compile_script, CompiledScript};
+use chorus::content::{
     compile_content, CompiledContent, ContentRaw, EndingDef, FunctionDef, PrototypeDef, RecipeDef,
     SlotDef, TriggerDef, VerbContent,
 };
-use chorus::content::script::{compile_script, CompiledScript};
-use chorus::core::clock::Clock;
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::fn_expand::{FnTable, FnTemplate};
 use chorus::core::format::format_sentence;
@@ -36,9 +34,9 @@ use chorus::core::sentence::{Arg, Outcome, Sentence, SentenceKind};
 use chorus::core::types::{
     add_entity, clone_state, new_state, AspectVal, Aspects, AttrValue, Attrs, Entity, State,
 };
-use chorus::engine::engine::{ActionRecord, ExecResult, Step};
 use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
+use chorus::engine::ActionRecord;
 use indexmap::IndexMap;
 
 // ---------------------------------------------------------------- rig ------
@@ -49,52 +47,6 @@ fn stew_dict() -> Dictionary {
     let mut d = core_dictionary();
     d.register_verb("STEW").unwrap();
     d
-}
-
-/// settle_step with the exact id-generator
-/// closure: `x{first_record_id}_{n}`, the counter incrementing per minted id.
-fn run(
-    content: &CompiledContent,
-    dict: &Dictionary,
-    state: State,
-    src: &str,
-    first_record_id: i64,
-) -> ExecResult {
-    let s = parse_sentence(src, dict).unwrap();
-    let mut n: i64 = 0;
-    let mut id_gen = || {
-        n += 1;
-        format!("x{first_record_id}_{n}")
-    };
-    settle_step(
-        content,
-        dict,
-        state,
-        Step {
-            start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
-            clauses: s.clauses,
-            t_real: None,
-        },
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
-}
-
-/// `said` — v0.5: NARRATE defers to the
-/// completion — gather across the COMPLETE rows.
-fn said(r: &ExecResult) -> Vec<String> {
-    r.records
-        .iter()
-        .filter(|x| x.kind == "complete")
-        .flat_map(|x| {
-            x.outcomes.iter().filter(|o| o.op == "NARRATE").map(|o| match o.args.first() {
-                Some(Arg::Str { v }) => v.clone(),
-                _ => "(not a string)".to_string(),
-            })
-        })
-        .collect()
 }
 
 // ---------- rig: the flagship pair, verbatim grammar ----------------
@@ -347,8 +299,8 @@ mod expansion_equivalence {
             compile_script(&rig_script(CALL_RECIPE, CALL_FUNCTIONS), &dict).unwrap();
         let twin = compile_script(&rig_script(TWIN_RECIPE, ""), &dict).unwrap();
         let call_state = clone_state(&call.state);
-        let ra = run(&call.content, &dict, call.state, "0:0 @ ANA STEW", 1);
-        let rb = run(&twin.content, &dict, twin.state, "0:0 @ ANA STEW", 1);
+        let ra = settle_line(&call.content, &dict, call.state, "0:0 @ ANA STEW", 1).unwrap();
+        let rb = settle_line(&twin.content, &dict, twin.state, "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(ra.rejected, None);
         assert_eq!(rb.rejected, None);
         assert_eq!(
@@ -429,7 +381,7 @@ mod call_site_dispatch_and_arity {
             &[],
         )
         .unwrap();
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(said(&r), ["x is THE_GUARD."]);
     }
@@ -444,7 +396,7 @@ mod parameter_substitution {
     fn ref_position_a_param_mints_whatever_prototype_the_call_names() {
         let dict = stew_dict();
         let c = rig(&dict, vec![fdef("mint", &["card"], "SPAWN card")], "mint(SUSPICION)");
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         let spawn = &done(&r).unwrap().outcomes[0];
         assert_eq!(spawn.op, "SPAWN");
@@ -467,7 +419,7 @@ mod parameter_substitution {
             ],
             "bump(2), drop(4)",
         );
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         // secret starts at 1: +2 → 3, then −4 → −1; the log carries computed
         // absolutes (§4.4)
@@ -495,7 +447,7 @@ mod parameter_substitution {
             vec![fdef("cry", &["msg", "who"], "NARRATE msg, NARRATE(\"so does {who}.\")")],
             "cry(\"halt!\", THE_GUARD)",
         );
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(said(&r), ["halt!", "so does THE_GUARD."]);
     }
@@ -509,7 +461,7 @@ mod parameter_substitution {
             vec![fdef("witness", &["who"], "NARRATE \"{actors} saw {who}.\"")],
             "witness(THE_GUARD)",
         );
-        let r = run(&ok, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&ok, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(said(&r), ["{actors} saw THE_GUARD."]);
         // a typo'd parameter would silently bake into every call's journal
         // prose — this compiler has no warning channel, so undeclared
@@ -585,13 +537,13 @@ mod parameter_substitution {
         );
         let mut s = world();
         add_suspicion(&mut s, 2); // 2 >= 3 is false → the ELSE arm runs
-        let r = run(&c, &dict, s, "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, s, "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(said(&r), ["not yet."]);
         assert_eq!(r.state.ended, None);
         let mut state = r.state;
         add_suspicion(&mut state, 1); // now 3 >= 3: the same compiled content arrests
-        let r2 = run(&c, &dict, state, "0:1 @ ANA STEW", 10);
+        let r2 = settle_line(&c, &dict, state, "0:1 @ ANA STEW", 10).unwrap();
         let ended = r2.state.ended.as_ref().unwrap();
         assert_eq!(ended.id, "ARRESTED");
         assert_eq!(ended.title, "Taken by the constabulary");
@@ -604,9 +556,9 @@ mod parameter_substitution {
         // DESTROY of a value literal would iterate nothing (iteration-style
         // op); SPAWN actually needs its name ref, so the mismatch refuses
         let c = rig(&dict, vec![fdef("mint", &["card"], "SPAWN card")], "mint(7)");
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
-        assert_refusal_matches(&r, r"SPAWN needs a name ref");
+        assert_refusal(&r, r"SPAWN needs a name ref");
     }
 }
 
@@ -632,9 +584,9 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
             vec![fdef("decay", &["p"], "SPAWN SUSPICION ttl=p, NARRATE \"minted.\"")],
             "decay(2h)",
         );
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None, "the expansion compiles and runs to completion");
-        assert_refusal_matches(
+        assert_refusal(
             &r,
             r"a bare dur arg is not a SPAWN arg shape — a §10 parameter standing in a k=v pair position expands to the caller's whole bound value",
         );
@@ -652,9 +604,9 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
             vec![fdef("tag", &["p"], "SPAWN SUSPICION note=p, NARRATE \"minted.\"")],
             "tag(\"soon\")",
         );
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
-        assert_refusal_matches(
+        assert_refusal(
             &r,
             r"a bare str arg is not a SPAWN arg shape — a §10 parameter standing in a k=v pair position expands to the caller's whole bound value",
         );
@@ -671,7 +623,7 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
             vec![fdef("decay", &[], "SPAWN SUSPICION expires 2h, NARRATE \"minted.\"")],
             "decay()",
         );
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(refusal(&r), None);
         let id = &r.state.by_name["SUSPICION"][0];
@@ -703,13 +655,6 @@ fn a_never_called_body_fails_its_token_checks_at_load() {
         "NARRATE \"x\""
     )
     .is_ok());
-}
-
-fn assert_refusal_matches(r: &ExecResult, pattern: &str) {
-    let msg =
-        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
-    let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
 }
 
 // ---------- nesting, recursion, depth --------------------------------------
@@ -745,7 +690,7 @@ mod nesting_recursion_and_the_depth_cap {
             &[],
         )
         .unwrap();
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(said(&r), ["inner THE_GUARD."]);
         assert_eq!(r.state.by_name.get("SUSPICION").unwrap().len(), 1);
@@ -794,7 +739,7 @@ mod nesting_recursion_and_the_depth_cap {
             &[],
         )
         .unwrap();
-        let r = run(&eight, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&eight, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(said(&r), ["bottom."]);
         assert_err_msg(
             compile_content(
@@ -861,7 +806,7 @@ mod parameter_shadows_an_entity_of_the_same_name {
             },
         )
         .unwrap();
-        let r = run(&c, &dict, s, "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, s, "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert!(r.state.entities["s_the_guard"].dead_action.is_some()); // the bound card died
         assert!(r.state.entities["s_guard"].dead_action.is_none()); // the namesake lives
@@ -906,7 +851,7 @@ verbs:
         .unwrap();
         // the 1h duration crosses hour 1 (slot 2)
         let c_state = clone_state(&c.state);
-        let r = run(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         let event = r.records.iter().find(|x| x.kind == "event").expect("the patrol event");
         assert_eq!(event.trigger.as_deref(), Some("patrol"));
@@ -952,7 +897,7 @@ verbs:
         .unwrap();
         let c_state = clone_state(&c.state);
         let before = snap(&c_state);
-        let r = run(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c.content, &dict, c.state, "0:0 @ ANA STEW", 1).unwrap();
         // MOVE cannot proceed with empty bindings (§9.2)
         assert!(r.rejected.as_deref().is_some_and(|m| regex::Regex::new(
             r"unresolvable destination"
@@ -972,14 +917,12 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["tick()"]),
-                    triggers: Some(vec![TriggerDef::Slot(
-                        chorus::content::content::SlotTriggerDef {
-                            id: "tock".to_string(),
-                            slot: 2,
-                            once: Some(true),
-                            out: vec!["tick()".to_string()],
-                        },
-                    )]),
+                    triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
+                        id: "tock".to_string(),
+                        slot: 2,
+                        once: Some(true),
+                        out: vec!["tick()".to_string()],
+                    })]),
                     functions: Some(vec![tick.clone()]),
                     ..ContentRaw::default()
                 },
@@ -1000,7 +943,7 @@ verbs:
             &[],
         )
         .unwrap();
-        let r = run(&c, &dict, world(), "0:0 @ ANA STEW", 1);
+        let r = settle_line(&c, &dict, world(), "0:0 @ ANA STEW", 1).unwrap();
         assert_eq!(r.rejected, None);
         let first = &act(&r).unwrap().outcomes[0];
         assert_eq!(first.op, "PROGRESS");
@@ -1029,19 +972,17 @@ verbs:
             r"ENDING 'NOT_DECLARED' is not in the endings table",
         );
         // the same through the TRIGGER path — expansion precedes
-        // check_ending_refs there too
+        // check_named_ref there too
         assert_err_msg(
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(
-                        chorus::content::content::SlotTriggerDef {
-                            id: "doom_t".to_string(),
-                            slot: 2,
-                            once: Some(true),
-                            out: vec!["doom()".to_string()],
-                        },
-                    )]),
+                    triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
+                        id: "doom_t".to_string(),
+                        slot: 2,
+                        once: Some(true),
+                        out: vec!["doom()".to_string()],
+                    })]),
                     functions: Some(vec![fdef("doom", &[], "ENDING NOT_DECLARED")]),
                     ..ContentRaw::default()
                 },
@@ -1063,14 +1004,12 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(
-                        chorus::content::content::SlotTriggerDef {
-                            id: "sneak".to_string(),
-                            slot: 2,
-                            once: Some(true),
-                            out: vec!["sneak()".to_string()],
-                        },
-                    )]),
+                    triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
+                        id: "sneak".to_string(),
+                        slot: 2,
+                        once: Some(true),
+                        out: vec!["sneak()".to_string()],
+                    })]),
                     functions: Some(vec![fdef(
                         "sneak",
                         &[],
@@ -1092,14 +1031,12 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(
-                        chorus::content::content::SlotTriggerDef {
-                            id: "linted".to_string(),
-                            slot: 2,
-                            once: Some(true),
-                            out: vec!["watch(3)".to_string()],
-                        },
-                    )]),
+                    triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
+                        id: "linted".to_string(),
+                        slot: 2,
+                        once: Some(true),
+                        out: vec!["watch(3)".to_string()],
+                    })]),
                     functions: Some(vec![fdef(
                         "watch",
                         &["n"],
@@ -1118,14 +1055,12 @@ verbs:
             compile_content(
                 &ContentRaw {
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
-                    triggers: Some(vec![TriggerDef::Slot(
-                        chorus::content::content::SlotTriggerDef {
-                            id: "roled".to_string(),
-                            slot: 2,
-                            once: Some(true),
-                            out: vec!["watch(3)".to_string()],
-                        },
-                    )]),
+                    triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
+                        id: "roled".to_string(),
+                        slot: 2,
+                        once: Some(true),
+                        out: vec!["watch(3)".to_string()],
+                    })]),
                     functions: Some(vec![fdef(
                         "watch",
                         &["n"],
@@ -1156,7 +1091,7 @@ mod if_inside_a_function_body {
         let mut all: Vec<ActionRecord> = Vec::new();
         let mut told: Vec<Vec<String>> = Vec::new();
         for _ in 0..3 {
-            let r = run(&c.content, &dict, cur, "0:0 @ ANA STEW", id);
+            let r = settle_line(&c.content, &dict, cur, "0:0 @ ANA STEW", id).unwrap();
             assert_eq!(r.rejected, None);
             told.push(said(&r));
             all.extend(r.records.clone());
@@ -1182,7 +1117,7 @@ mod if_inside_a_function_body {
         assert_eq!(ended.id, "ARRESTED");
         assert_eq!(ended.title, "Taken by the constabulary");
         assert_eq!(ended.flavour, "melancholy");
-        let over = run(&c.content, &dict, cur, "0:0 @ ANA STEW", id);
+        let over = settle_line(&c.content, &dict, cur, "0:0 @ ANA STEW", id).unwrap();
         assert!(over.rejected.as_deref().is_some_and(|m| m.contains("the story has ended")));
         // and the whole run folds back identically
         assert_eq!(snap(&fold(&all, &c_state, &dict, &c.content).unwrap()), snap(&over.state));
@@ -1203,7 +1138,7 @@ mod canonical_equals_expansion {
         let mut id = 1;
         let mut all: Vec<ActionRecord> = Vec::new();
         for _ in 0..3 {
-            let r = run(&c.content, &dict, cur, "0:0 @ ANA STEW", id);
+            let r = settle_line(&c.content, &dict, cur, "0:0 @ ANA STEW", id).unwrap();
             all.extend(r.records.clone());
             id += r.records.len() as i64;
             cur = r.state;
@@ -1216,7 +1151,7 @@ mod canonical_equals_expansion {
             // canonical sentences re-parse to themselves (every outcome is concrete)
             let parsed = parse_sentence(&rec.sentence, &dict).unwrap();
             assert_eq!(
-                format_sentence(&parsed, Some(&dict)).unwrap(),
+                format_sentence(&parsed, &dict).unwrap(),
                 rec.sentence,
                 "sentence must round-trip"
             );
@@ -1243,10 +1178,7 @@ mod canonical_equals_expansion {
             outcomes: vec![node.clone()],
             span_min: None,
         };
-        assert_err_msg(
-            format_sentence(&sentence, Some(&dict)),
-            r"a function call is authored form only",
-        );
+        assert_err_msg(format_sentence(&sentence, &dict), r"a function call is authored form only");
         let sentence = Sentence {
             kind: SentenceKind::Action,
             clock: None,
@@ -1262,7 +1194,7 @@ mod canonical_equals_expansion {
             span_min: None,
         };
         assert_err_msg(
-            format_sentence(&sentence, Some(&dict)),
+            format_sentence(&sentence, &dict),
             r"a function parameter is authored form only",
         );
     }

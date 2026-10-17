@@ -70,7 +70,7 @@ pub fn collect_fn_calls(out: &[Outcome], into: &mut IndexSet<String>) {
 /// Replace every FN call in an authored
 /// outcome list with its function's body, substituting parameters.
 pub fn expand_fn_calls(out: &[Outcome], fns: &FnTable) -> Result<Vec<Outcome>> {
-    expand_list(out, fns, &mut IndexMap::new(), None)
+    expand_list(out, fns, &IndexMap::new(), None)
 }
 
 /// Tokens a body string may carry that are never
@@ -90,7 +90,7 @@ pub const MAX_FN_DEPTH: u32 = 8;
 fn expand_list(
     list: &[Outcome],
     fns: &FnTable,
-    bind: &mut IndexMap<String, Arg>,
+    bind: &IndexMap<String, Arg>,
     fn_: Option<&str>,
 ) -> Result<Vec<Outcome>> {
     let mut out: Vec<Outcome> = Vec::new();
@@ -119,7 +119,7 @@ fn expand_list(
                 };
                 bind2.insert(p.clone(), subst_arg(arg, fn_, bind)?);
             }
-            let body = expand_list(&tpl.body, fns, &mut bind2, Some(name))?;
+            let body = expand_list(&tpl.body, fns, &bind2, Some(name))?;
             out.extend(body);
         } else if o.op == "IF" {
             let arms: Vec<IfArm> = o
@@ -163,7 +163,7 @@ fn expand_list(
 
 /// Substitute one arg against the enclosing
 /// function's bindings.
-fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Result<Arg> {
+fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &IndexMap<String, Arg>) -> Result<Arg> {
     match a {
         Arg::Param { name, sign } => {
             let Some(bound) = bind.get(name) else {
@@ -211,12 +211,12 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
                 )));
             };
             match bound {
-                Arg::Ref { r#ref } => Ok(Arg::Into {
-                    r#ref: crate::core::sentence::IntoTarget::Ref(r#ref.clone()),
-                }),
-                Arg::Role { role } => Ok(Arg::Into {
-                    r#ref: crate::core::sentence::IntoTarget::Role { role: *role },
-                }),
+                Arg::Ref { r#ref } => {
+                    Ok(Arg::Into { r#ref: crate::core::sentence::IntoTarget::Ref(r#ref.clone()) })
+                }
+                Arg::Role { role } => {
+                    Ok(Arg::Into { r#ref: crate::core::sentence::IntoTarget::Role { role: *role } })
+                }
                 other => Err(ChorusError::new(format!(
                     "function '{}': parameter '{name}' stands in an INTO position — the call supplies a {}, not a ref or role",
                     fn_.unwrap_or("?"),
@@ -240,7 +240,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &mut IndexMap<String, Arg>) -> Re
 /// tokens pass through; undeclared names are a load error); a SPACED
 /// spelling (`{ x }`, `{ actors }`) never rewrites. Commas/quotes inside
 /// braces are ordinary prose.
-fn subst_string(s: &str, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<String> {
+fn subst_string(s: &str, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<String> {
     let re = brace_token_re();
     let mut out = String::new();
     let mut last = 0;
@@ -354,9 +354,9 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
     match a {
         Arg::Ref { r#ref } => match r#ref {
             crate::core::r#ref::Ref::Id { id } => Ok(format!("#{id}")),
-            crate::core::r#ref::Ref::Param { .. } => Err(ChorusError::new(format!(
-                "internal: parameter '{param}' bound to a parameter"
-            ))),
+            crate::core::r#ref::Ref::Param { .. } => {
+                Err(ChorusError::new(format!("internal: parameter '{param}' bound to a parameter")))
+            }
             crate::core::r#ref::Ref::Name { kind, name } => Ok(match kind {
                 Some(k) => format!("{k}:{name}"),
                 None => name.clone(),
@@ -364,11 +364,7 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
         },
         Arg::Role { role } => Ok(role.as_str().to_uppercase()),
         Arg::Int { v } => Ok(v.to_string()),
-        Arg::Delta { v } => Ok(if *v < 0 {
-            v.to_string()
-        } else {
-            format!("+{v}")
-        }),
+        Arg::Delta { v } => Ok(crate::core::sentence::signed_int_spelling(*v)),
         Arg::Str { v } => Ok(v.clone()), // RAW — the deliberate unquoted spelling
         Arg::Bool { v } => Ok(v.to_string()),
         Arg::Dur { v } => format_duration(*v),
@@ -388,7 +384,7 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
 /// Substitute a condition: parameters stand
 /// in cmp operands (numeric literal positions); quantifiers/exists/query
 /// terms take none — the grammar already rejected them at parse.
-fn subst_pred(p: &Pred, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<Pred> {
+fn subst_pred(p: &Pred, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<Pred> {
     match p {
         Pred::And(a, b) => {
             Ok(Pred::And(Box::new(subst_pred(a, fn_, bind)?), Box::new(subst_pred(b, fn_, bind)?)))
@@ -407,7 +403,7 @@ fn subst_pred(p: &Pred, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<P
 
 /// Substitute a value expression: only a param operand rewrites; a bound
 /// int/delta/dur lands as an int.
-fn subst_expr(x: &ValExpr, fn_: &str, bind: &mut IndexMap<String, Arg>) -> Result<ValExpr> {
+fn subst_expr(x: &ValExpr, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<ValExpr> {
     if let ValExpr::Param { name } = x {
         let Some(bound) = bind.get(name) else {
             return Err(ChorusError::new(format!(
@@ -612,25 +608,13 @@ mod tests {
                 op: crate::core::query::CmpOp::Eq,
                 r: ValExpr::Int { v: 1 },
             },
-            then: vec![Outcome {
-                op: "FN".into(),
-                args: vec![],
-                arms: None,
-                fallback: None,
-                call: Some("GIVE".into()),
-            }],
+            then: vec![Outcome::fn_call("GIVE", vec![])],
         };
         let o = Outcome {
             op: "IF".into(),
             args: vec![],
             arms: Some(vec![arm]),
-            fallback: Some(vec![Outcome {
-                op: "FN".into(),
-                args: vec![],
-                arms: None,
-                fallback: None,
-                call: Some("TAKE".into()),
-            }]),
+            fallback: Some(vec![Outcome::fn_call("TAKE", vec![])]),
             call: None,
         };
         let mut into = IndexSet::new();
@@ -648,13 +632,7 @@ mod tests {
         // it in that order (first undeclared callee in the error text; the
         // first cycle found and its `a -> b -> a` spelling). Hand-built FN
         // nodes, as in the branch test above (undeclared fns fail at parse).
-        let fn_ = |call: &str| Outcome {
-            op: "FN".into(),
-            args: vec![],
-            arms: None,
-            fallback: None,
-            call: Some(call.into()),
-        };
+        let fn_ = |call: &str| Outcome::fn_call(call, vec![]);
         let arm = IfArm {
             when: Pred::Cmp {
                 l: ValExpr::Int { v: 1 },
@@ -684,14 +662,14 @@ mod tests {
         let mut bind = IndexMap::new();
         bind.insert("n".to_string(), Arg::Int { v: 4 });
         let a = Arg::Param { name: "n".into(), sign: Some(Sign::Neg) };
-        match subst_arg(&a, Some("f"), &mut bind).unwrap() {
+        match subst_arg(&a, Some("f"), &bind).unwrap() {
             Arg::Delta { v } => assert_eq!(v, -4),
             other => panic!("expected delta, got {other:?}"),
         }
         // a non-numeric binding splices through for the runtime kind error
         bind.insert("s".to_string(), Arg::Str { v: "x".into() });
         let a2 = Arg::Param { name: "s".into(), sign: Some(Sign::Pos) };
-        match subst_arg(&a2, Some("f"), &mut bind).unwrap() {
+        match subst_arg(&a2, Some("f"), &bind).unwrap() {
             Arg::Str { v } => assert_eq!(v, "x"),
             other => panic!("expected splice-through, got {other:?}"),
         }

@@ -4,17 +4,19 @@
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::content::content::{CompiledContent, CompiledDeck, CompiledTrigger};
+use crate::content::{CompiledContent, CompiledDeck, CompiledTrigger, DeckCard};
 use crate::core::query::{match_conjunction, match_query, parse_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
 use crate::error::Result;
 
 use super::census::{
-    draw_blinds_bare, draw_deck, object_always, parse_aspects_json, pred_static, site_aspects,
-    RawSite, SiteKind, MANY,
+    draw_blinds_bare, draw_deck, object_always, parse_aspects_json, site_aspects, RawSite,
+    SiteKind, DERIVED_NAME, MANY,
 };
-use super::render::pred_text;
-use super::world::{writable_paths, writable_paths_of, Analyzer, WorldFacts};
+use super::render::{demand_chain_head, initial_decl_line, pred_text, site_chain, site_reason};
+use super::world::{
+    pred_static, writable_paths, writable_paths_of, Analyzer, CardFact, WorldFacts,
+};
 
 // ---------------------------------------------------------------------------
 // report types
@@ -145,7 +147,6 @@ pub struct CardReport {
     pub target: String,
     pub verdict: CardVerdict,
     pub existence: Existence,
-    pub requested_usable: bool,
     /// the FIRST proven path only (byte-stable; the full enumeration is
     /// `paths`)
     pub chain: Vec<String>,
@@ -162,20 +163,12 @@ const MAX_PATH_DEPTH: usize = 12;
 // post-fixpoint world facts
 // ---------------------------------------------------------------------------
 
-/// Flatten with multiplicity (capped at 32 per fact)
-/// so count(<query>) thresholds can read it.
-fn flatten(avail: &IndexMap<String, Vec<super::world::CardFact>>) -> Vec<Entity> {
-    let mut out: Vec<Entity> = Vec::new();
-    for list in avail.values() {
-        for f in list {
-            out.push(f.entity.clone());
-            let n = std::cmp::min(f.count, 32);
-            for _ in 1..n {
-                out.push(f.entity.clone());
-            }
-        }
-    }
-    out
+/// One static descriptor per available fact. The universe is scanned only
+/// through `any(match…)` existence tests (`can_ever_match`, the demand
+/// mode's `matches_somewhere`), so per-fact multiplicity would be
+/// unobservable and is not materialized — exactly one descriptor per fact.
+fn flatten(avail: &IndexMap<String, Vec<CardFact>>) -> Vec<Entity> {
+    avail.values().flatten().map(|f| f.entity.clone()).collect()
 }
 
 /// The universe of cards that can ever exist, the
@@ -420,8 +413,8 @@ impl<'c> WorldFacts<'c> {
     /// fixpoint's strict proof order means no true cycle exists); the depth
     /// cap is the best-effort backstop. The set is threaded `&mut` — the name
     /// goes in for the subtree and comes back out for the next sibling, which
-    /// yields exactly the per-branch membership the old clone-per-source
-    /// built (the set is membership-only; its iteration order is unobservable).
+    /// yields the per-branch membership (the set is membership-only; its
+    /// iteration order is unobservable).
     pub(crate) fn path_for(
         &self,
         si: usize,
@@ -506,18 +499,8 @@ impl<'c> WorldFacts<'c> {
     }
 }
 
-/// The initial-entity provenance line.
-fn initial_decl_line(name: &str, e: &Entity) -> String {
-    let aspects = if e.aspects.is_empty() {
-        String::new()
-    } else {
-        format!(", aspects {}", crate::engine::engine::aspects_to_json(&e.aspects))
-    };
-    format!("{name} is declared in the initial entities ({}{aspects})", e.kind)
-}
-
 /// Does the deck carry the target at all?
-pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
+fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
     deck.order.iter().any(|c| c.name == target)
         || deck.defaultcard.as_ref().is_some_and(|dc| dc.name == target)
 }
@@ -525,7 +508,7 @@ pub(crate) fn deck_serves(deck: &CompiledDeck, target: &str) -> bool {
 /// Does `cap` total draws suffice to serve `target`?
 /// order positions need cap > idx; the defaultcard needs the cursor to pass
 /// the order's end; reset only makes the sequence periodic (seed 74985).
-pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool {
+fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool {
     match deck.order.iter().position(|c| c.name == target) {
         Some(idx) => cap > idx as i64,
         None => {
@@ -540,96 +523,6 @@ pub(crate) fn served_by_cap(deck: &CompiledDeck, target: &str, cap: i64) -> bool
     }
 }
 
-/// The display chain of one proven site.
-pub(crate) fn site_chain(site: &RawSite, target: &str, supports: &[String]) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
-    if site.kind == SiteKind::Draw {
-        let deck = draw_deck(site);
-        let pos = deck.order.iter().position(|c| c.name == target);
-        let where_ = match pos {
-            Some(p) => format!(
-                "deck {} serves '{}' at order position {} (the permutation is seed-fixed at load — pure in seed × deck id)",
-                deck.id, target, p
-            ),
-            None => format!(
-                "deck {} serves '{}' as defaultcard{}",
-                deck.id,
-                target,
-                if deck.reset { " (reset — periodic)" } else { "" }
-            ),
-        };
-        lines.push(where_);
-        if site.cap != MANY {
-            lines.push(format!(
-                "  finite draw capacity: {} once-trigger draw(s) — only order[0..{}] are ever served",
-                site.cap,
-                site.cap - 1
-            ));
-        }
-        lines.push(format!("  ← {}", site.where_));
-    } else {
-        lines.push(format!(
-            "{} mints '{}' — {}",
-            if site.kind == SiteKind::Replace { "REPLACE" } else { "SPAWN" },
-            target,
-            site.where_
-        ));
-        if let Some(ko) = &site.kind_override {
-            lines.push(format!(
-                "  minted kind overridden to '{ko}' (kind: syntax overrides kind, it does not look up by kind)"
-            ));
-        }
-    }
-    for s in supports {
-        lines.push(format!("  · {s}"));
-    }
-    lines
-}
-
-/// Why a guarded site stays a candidate.
-pub(crate) fn site_reason(site: &RawSite, init_names: &IndexMap<String, &Entity>) -> String {
-    let mut bits: Vec<String> = Vec::new();
-    if site.fallback {
-        bits.push("ELSE fallback body".to_string());
-    }
-    if site.killed_in_list {
-        bits.push(
-            "the mint is destroyed/Replaced later in the same outcome list — it never survives a step"
-                .to_string(),
-        );
-    }
-    if site.dup_risk {
-        bits.push(
-            "this list mints a name that can collide with a living card (duplicate mint or an initial copy) — the refusal would discard the draft"
-                .to_string(),
-        );
-    }
-    if site.throw_ops > 0 {
-        bits.push(
-            "a throwing op in this list may discard the whole draft at completion".to_string(),
-        );
-    }
-    if site.shadow_risk {
-        bits.push("an earlier recipe of the same verb may shadow it (first-match)".to_string());
-    }
-    // QUIRK(Q17): reachable for zero-entity scripts (the language
-    // allows a script with no entities:) — this branch must stay
-    if site.verb.is_some() && init_names.is_empty() {
-        bits.push("verb committability unknown".to_string());
-    }
-    if !site.path.is_empty() {
-        bits.push(format!("{} IF condition(s) on the path", site.path.len()));
-    }
-    if site.verb.is_some() && site.when.is_some() {
-        bits.push("recipe `when` guard".to_string());
-    }
-    if bits.is_empty() {
-        "unknown guard".to_string()
-    } else {
-        bits.join(", ")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // analyze_card
 // ---------------------------------------------------------------------------
@@ -639,13 +532,10 @@ impl<'c> Analyzer<'c> {
     /// calls. `target` is ignored under `demand`.
     pub fn analyze_card(&self, target: &str, opts: CardOptions) -> Result<CardReport> {
         let facts = self.facts();
-        let content = self.content;
         let mut notes: Vec<String> = facts.notes.clone();
         let mut chain: Vec<String> = Vec::new();
         let mut paths: Vec<ReachPath> = Vec::new();
         let mut candidates: Vec<CardCandidate> = Vec::new();
-        let mut existence = Existence::None;
-        let mut demand_match: Option<Entity> = None;
         let demand_q: Option<Query> = match opts.demand.as_deref() {
             // an EMPTY demand string counts as no demand (the frozen truthiness of
             // `''`); parse_query("") would return an empty query
@@ -654,282 +544,30 @@ impl<'c> Analyzer<'c> {
             _ => None,
         };
 
-        if let Some(dq) = &demand_q {
-            // semantics (c): ANY obtainable card
-            // satisfying the demand query, matched against each source's ACTUAL
-            // product descriptor, never the bare prototype
-            for e in facts.init_names.values() {
-                if !match_query(e, dq) {
-                    continue;
-                }
-                if existence != Existence::Proven {
-                    existence = Existence::Proven;
-                    demand_match = Some((*e).clone());
-                    chain.push(demand_chain_head(
-                        &e.name,
-                        &e.kind,
-                        &e.aspects,
-                        opts.demand.as_deref(),
-                    ));
-                    match facts.proven_source_for(&e.name) {
-                        Some(lines) => chain.extend(lines),
-                        None => {
-                            unreachable!("initNames hit ⇒ provenSourceFor returns the initial line")
-                        }
-                    }
-                }
-                paths.push(facts.initial_path(&e.name));
+        // the existence branch: demand mode (semantics (c)) or bare-name mode
+        let (existence, demand_match) = match &demand_q {
+            Some(dq) => analyze_demand(
+                facts,
+                dq,
+                opts.demand.as_deref(),
+                &mut chain,
+                &mut paths,
+                &mut notes,
+            ),
+            None => {
+                let existence = analyze_name(
+                    facts,
+                    target,
+                    &mut chain,
+                    &mut paths,
+                    &mut candidates,
+                    &mut notes,
+                );
+                (existence, None)
             }
-            if existence == Existence::None {
-                // the proven-site descriptor scan
-                for (&si, sup) in &facts.proven {
-                    let site = &facts.census.sites[si];
-                    let descs: Vec<(String, Entity, bool)> = if site.kind == SiteKind::Draw {
-                        let deck = draw_deck(site);
-                        let mut entries: Vec<&crate::content::content::DeckCard> =
-                            deck.order.iter().collect();
-                        if let Some(dc) = &deck.defaultcard {
-                            entries.push(dc);
-                        }
-                        entries
-                            .iter()
-                            .map(|c| {
-                                let desc = facts.synth(
-                                    &c.name,
-                                    &c.kind,
-                                    content.prototypes.get(&c.name),
-                                    None,
-                                );
-                                // a draw of a
-                                // derive-card behind an object-mandatory verb
-                                // never carries the bare name (12320)
-                                let blind = draw_blinds_bare(content, site, &c.name);
-                                let mut desc = desc;
-                                if blind {
-                                    desc.name = super::census::DERIVED_NAME.to_string();
-                                }
-                                (c.name.clone(), desc, blind)
-                            })
-                            .collect()
-                    } else {
-                        let proto = content.prototypes.get(&site.name);
-                        let kind = site
-                            .kind_override
-                            .clone()
-                            .or_else(|| proto.map(|pp| pp.kind.clone()))
-                            .unwrap_or_else(|| "item".to_string());
-                        let desc = facts.synth(&site.name, &kind, proto, site_aspects(site));
-                        let blind = site.derives && object_always(content, site.verb);
-                        let mut desc = desc;
-                        if blind {
-                            desc.name = super::census::DERIVED_NAME.to_string();
-                        }
-                        vec![(site.name.clone(), desc, blind)]
-                    };
-                    for (name, desc, derived) in descs {
-                        if !match_query(&desc, dq) {
-                            continue;
-                        }
-                        if site.kind == SiteKind::Draw
-                            && !served_by_cap(
-                                draw_deck(site),
-                                &name,
-                                facts.deck_cap.get(&site.name).copied().unwrap_or(0),
-                            )
-                        {
-                            continue;
-                        }
-                        if existence != Existence::Proven {
-                            existence = Existence::Proven;
-                            demand_match = Some(desc.clone());
-                            // the chain shows the REAL
-                            // name, never the blinding sentinel
-                            let shown = if derived {
-                                "a derived-mint card (name formed from the bound object)"
-                                    .to_string()
-                            } else {
-                                name.clone()
-                            };
-                            chain.push(demand_chain_head(
-                                &shown,
-                                &desc.kind,
-                                &desc.aspects,
-                                opts.demand.as_deref(),
-                            ));
-                            chain.extend(site_chain(site, &name, sup));
-                        }
-                        paths.push(facts.path_for(
-                            si,
-                            &name,
-                            sup,
-                            0,
-                            &mut IndexSet::new(),
-                            derived,
-                        ));
-                    }
-                }
-            }
-            if existence == Existence::None {
-                // a static descriptor may match behind
-                // guarded sites; a threshold may be pumped by SET or fed by
-                // derive; any of these keeps 'none' unprovable
-                let matches_somewhere = facts.universe.iter().any(|u| match_query(u, dq));
-                let write_paths = writable_paths(dq);
-                let pumps: Vec<&String> =
-                    write_paths.iter().filter(|p| facts.set_writes.contains(*p)).collect();
-                let derives: Vec<&String> =
-                    write_paths.iter().filter(|p| facts.derive_paths.contains(*p)).collect();
-                for p in &pumps {
-                    let owners: Vec<&str> = facts
-                        .census
-                        .set_sites
-                        .iter()
-                        .filter(|s| &s.key == *p)
-                        .map(|s| s.owner.as_str())
-                        .collect();
-                    notes.push(format!(
-                        "'{p}' is written by SET at: {} — the threshold can be pumped at play time",
-                        owners.join(", ")
-                    ));
-                }
-                for p in &derives {
-                    notes.push(format!(
-                        "'{p}' is derive-fed at mint time (from the bound object's aspects) — its threshold cannot be bounded statically"
-                    ));
-                }
-                if matches_somewhere {
-                    notes.push(
-                        "a static descriptor matches the demand but no proven source reaches it — witness needed"
-                            .to_string(),
-                    );
-                }
-                existence = if matches_somewhere
-                    || !pumps.is_empty()
-                    || !derives.is_empty()
-                    || facts.opaque_spawn_aspects
-                {
-                    Existence::Candidate
-                } else {
-                    Existence::None
-                };
-            }
-        } else if facts.init_names.contains_key(target) {
-            // an initial entity is proven outright
-            existence = Existence::Proven;
-            match facts.proven_source_for(target) {
-                Some(lines) => chain.extend(lines),
-                None => unreachable!("initNames hit ⇒ provenSourceFor returns the initial line"),
-            }
-            paths.push(facts.initial_path(target));
-        } else {
-            // the proven-site scan for the bare name
-            for (&si, sup) in &facts.proven {
-                let site = &facts.census.sites[si];
-                // a derive-mint behind an
-                // object-mandatory verb never mints the BARE name (12320)
-                if site.derives && object_always(content, site.verb) {
-                    continue;
-                }
-                let hit = if site.kind == SiteKind::Draw {
-                    !draw_blinds_bare(content, site, target)
-                        && served_by_cap(
-                            draw_deck(site),
-                            target,
-                            facts.deck_cap.get(&site.name).copied().unwrap_or(0),
-                        )
-                } else {
-                    site.name == target
-                };
-                if !hit {
-                    continue;
-                }
-                if existence != Existence::Proven {
-                    existence = Existence::Proven;
-                    chain.extend(site_chain(site, target, sup));
-                }
-                paths.push(facts.path_for(si, target, sup, 0, &mut IndexSet::new(), false));
-            }
-            if existence == Existence::None {
-                // no proven path, but a live guarded
-                // site still blocks 'unobtainable'
-                let candidate_exists = facts.census.live.iter().any(|&i| {
-                    let s = &facts.census.sites[i];
-                    let verb_alive = s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v));
-                    let not_derive_mandated = !(s.derives && object_always(content, s.verb));
-                    let serves = if s.kind == SiteKind::Draw {
-                        !draw_blinds_bare(content, s, target)
-                            && deck_serves(draw_deck(s), target)
-                            // a PROVEN draw site whose
-                            // cap cannot reach this position is still a guarded
-                            // source in a frozen world (81401); unfrozen caps
-                            // are exact structural facts
-                            && (!facts.proven.contains_key(&i)
-                                || (facts.frozen
-                                    && !served_by_cap(
-                                        draw_deck(s),
-                                        target,
-                                        facts.deck_cap.get(&s.name).copied().unwrap_or(0),
-                                    )))
-                    } else {
-                        s.name == target && !facts.proven.contains_key(&i)
-                    };
-                    verb_alive && not_derive_mandated && serves
-                });
-                if candidate_exists {
-                    existence = Existence::Candidate;
-                }
-            }
-            if existence == Existence::None {
-                // every producer of the bare name is a
-                // derive-mint behind an object-mandatory verb — BUT the bare
-                // name is still reachable when the object binding dies
-                // mid-window (seed 30790)
-                let derived_only = facts.census.live.iter().any(|&i| {
-                    let s = &facts.census.sites[i];
-                    // a dead verb's sites never
-                    // produce; they must not negate the derive-drop escape
-                    // (seed 91492)
-                    s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v))
-                        && (if s.kind == SiteKind::Draw {
-                            !draw_blinds_bare(content, s, target)
-                                && deck_serves(draw_deck(s), target)
-                        } else {
-                            s.name == target
-                        })
-                        && !(s.derives && object_always(content, s.verb))
-                        && !facts.init_names.contains_key(target)
-                });
-                let any_derived = facts.census.live.iter().any(|&i| {
-                    let s = &facts.census.sites[i];
-                    if s.kind == SiteKind::Draw {
-                        draw_blinds_bare(content, s, target)
-                    } else {
-                        s.derives && s.name == target && object_always(content, s.verb)
-                    }
-                });
-                if !derived_only && any_derived {
-                    existence = Existence::Candidate;
-                    notes.push(
-                        format!("'{target}' derives its name from the bound object at every commit (the verb's object slot is mandatory) — normally the bare name never mints, but a mid-window death of the bound object drops the binding at completion and the derive silently no-ops")
-                    );
-                }
-            }
-            // derived mints can mint names we cannot
-            // enumerate; their shape must never be called structurally absent
-            let derived_pattern = content.prototypes.iter().any(|(pname, p)| {
-                p.derive.as_ref().and_then(|d| d.name_from.as_deref()) == Some("object")
-                    && target.starts_with(&format!("{pname}_"))
-            });
-            if existence == Existence::None && derived_pattern {
-                existence = Existence::Candidate;
-                notes.push(format!(
-                    "'{target}' matches a derived-mint shape (deriving name from object) — the object half is chosen at play time, so structural absence cannot be proven"
-                ));
-            }
-        }
+        };
 
         // (b) usability
-        let mut usable_via: Vec<String> = Vec::new();
         let descriptor: Option<Entity> = match (&demand_match, facts.init_names.get(target)) {
             (Some(d), _) => Some(d.clone()),
             (None, Some(e)) => Some((*e).clone()),
@@ -942,28 +580,10 @@ impl<'c> Analyzer<'c> {
                 "no static descriptor for '{target}' (minted without a declared prototype?) — usability could not be checked"
             ));
         }
-        if let Some(descriptor) = &descriptor {
-            for (vi, (_name, verb)) in content.verbs.iter().enumerate() {
-                if !facts.committable.contains_key(&vi) {
-                    continue;
-                }
-                for slot in &verb.slots {
-                    let fits = slot.query.as_ref().is_none_or(|q| match_query(descriptor, q));
-                    if fits {
-                        usable_via.push(format!(
-                            "{}.{}{}",
-                            verb.name,
-                            slot.role,
-                            if slot.query.is_some() {
-                                " (query matches)"
-                            } else {
-                                " (no query — binds anything)"
-                            }
-                        ));
-                    }
-                }
-            }
-        }
+        let usable_via = match &descriptor {
+            Some(d) => usable_lines(facts, d),
+            None => Vec::new(),
+        };
 
         // the verdict
         let verdict = match existence {
@@ -978,31 +598,10 @@ impl<'c> Analyzer<'c> {
             }
         };
 
-        // guarded (candidate) sources listed flat
-        if demand_q.is_none() && existence == Existence::Candidate && chain.is_empty() {
-            for &i in &facts.census.live {
-                if facts.proven.contains_key(&i) {
-                    continue;
-                }
-                let s = &facts.census.sites[i];
-                let serves = if s.kind == SiteKind::Draw {
-                    deck_serves(draw_deck(s), target)
-                } else {
-                    s.name == target
-                };
-                if serves {
-                    let reason = site_reason(s, &facts.init_names);
-                    notes.push(format!("candidate source: {} — guarded ({})", s.where_, reason));
-                    candidates.push(CardCandidate { via: s.where_.clone(), reason });
-                }
-            }
-        }
-
         Ok(CardReport {
             target: target.to_string(),
             verdict,
             existence,
-            requested_usable: opts.usable,
             chain,
             paths,
             candidates,
@@ -1012,14 +611,338 @@ impl<'c> Analyzer<'c> {
     }
 }
 
-/// The demand chain head line.
-fn demand_chain_head(shown: &str, kind: &str, aspects: &Aspects, demand: Option<&str>) -> String {
-    let aspects_part = if aspects.is_empty() {
-        String::new()
-    } else {
-        format!(", aspects {}", crate::engine::engine::aspects_to_json(aspects))
-    };
-    format!("{shown} ({kind}{aspects_part}) satisfies the demand '{}'", demand.unwrap_or(""))
+/// Semantics (c): ANY obtainable card satisfying the demand query, matched
+/// against each source's ACTUAL product descriptor, never the bare
+/// prototype. Fills the chain, paths and demand notes; returns the
+/// existence tier and the matching descriptor.
+fn analyze_demand(
+    facts: &WorldFacts,
+    dq: &Query,
+    demand: Option<&str>,
+    chain: &mut Vec<String>,
+    paths: &mut Vec<ReachPath>,
+    notes: &mut Vec<String>,
+) -> (Existence, Option<Entity>) {
+    let content = facts.content;
+    let mut existence = Existence::None;
+    let mut demand_match: Option<Entity> = None;
+    for e in facts.init_names.values() {
+        if !match_query(e, dq) {
+            continue;
+        }
+        if existence != Existence::Proven {
+            existence = Existence::Proven;
+            demand_match = Some((*e).clone());
+            chain.push(demand_chain_head(&e.name, &e.kind, &e.aspects, demand));
+            match facts.proven_source_for(&e.name) {
+                Some(lines) => chain.extend(lines),
+                None => {
+                    unreachable!("initNames hit ⇒ provenSourceFor returns the initial line")
+                }
+            }
+        }
+        paths.push(facts.initial_path(&e.name));
+    }
+    if existence == Existence::None {
+        // the proven-site descriptor scan
+        for (&si, sup) in &facts.proven {
+            let site = &facts.census.sites[si];
+            let descs: Vec<(String, Entity, bool)> = if site.kind == SiteKind::Draw {
+                let deck = draw_deck(site);
+                let mut entries: Vec<&DeckCard> = deck.order.iter().collect();
+                if let Some(dc) = &deck.defaultcard {
+                    entries.push(dc);
+                }
+                entries
+                    .iter()
+                    .map(|c| {
+                        let desc =
+                            facts.synth(&c.name, &c.kind, content.prototypes.get(&c.name), None);
+                        // a draw of a
+                        // derive-card behind an object-mandatory verb
+                        // never carries the bare name (12320)
+                        let blind = draw_blinds_bare(content, site, &c.name);
+                        let mut desc = desc;
+                        if blind {
+                            desc.name = DERIVED_NAME.to_string();
+                        }
+                        (c.name.clone(), desc, blind)
+                    })
+                    .collect()
+            } else {
+                let proto = content.prototypes.get(&site.name);
+                let kind = site
+                    .kind_override
+                    .clone()
+                    .or_else(|| proto.map(|pp| pp.kind.clone()))
+                    .unwrap_or_else(|| "item".to_string());
+                let desc = facts.synth(&site.name, &kind, proto, site_aspects(site));
+                let blind = site.derives && object_always(content, site.verb);
+                let mut desc = desc;
+                if blind {
+                    desc.name = DERIVED_NAME.to_string();
+                }
+                vec![(site.name.clone(), desc, blind)]
+            };
+            for (name, desc, derived) in descs {
+                if !match_query(&desc, dq) {
+                    continue;
+                }
+                if site.kind == SiteKind::Draw
+                    && !served_by_cap(
+                        draw_deck(site),
+                        &name,
+                        facts.deck_cap.get(&site.name).copied().unwrap_or(0),
+                    )
+                {
+                    continue;
+                }
+                if existence != Existence::Proven {
+                    existence = Existence::Proven;
+                    demand_match = Some(desc.clone());
+                    // the chain shows the REAL
+                    // name, never the blinding sentinel
+                    let shown = if derived {
+                        "a derived-mint card (name formed from the bound object)".to_string()
+                    } else {
+                        name.clone()
+                    };
+                    chain.push(demand_chain_head(&shown, &desc.kind, &desc.aspects, demand));
+                    chain.extend(site_chain(site, &name, sup));
+                }
+                paths.push(facts.path_for(si, &name, sup, 0, &mut IndexSet::new(), derived));
+            }
+        }
+    }
+    if existence == Existence::None {
+        // a static descriptor may match behind
+        // guarded sites; a threshold may be pumped by SET or fed by
+        // derive; any of these keeps 'none' unprovable
+        let matches_somewhere = facts.universe.iter().any(|u| match_query(u, dq));
+        let write_paths = writable_paths(dq);
+        let pumps: Vec<&String> =
+            write_paths.iter().filter(|p| facts.set_writes.contains(*p)).collect();
+        let derives: Vec<&String> =
+            write_paths.iter().filter(|p| facts.derive_paths.contains(*p)).collect();
+        for p in &pumps {
+            let owners: Vec<&str> = facts
+                .census
+                .set_sites
+                .iter()
+                .filter(|s| &s.key == *p)
+                .map(|s| s.owner.as_str())
+                .collect();
+            notes.push(format!(
+                "'{p}' is written by SET at: {} — the threshold can be pumped at play time",
+                owners.join(", ")
+            ));
+        }
+        for p in &derives {
+            notes.push(format!(
+                "'{p}' is derive-fed at mint time (from the bound object's aspects) — its threshold cannot be bounded statically"
+            ));
+        }
+        if matches_somewhere {
+            notes.push(
+                "a static descriptor matches the demand but no proven source reaches it — witness needed"
+                    .to_string(),
+            );
+        }
+        existence = if matches_somewhere
+            || !pumps.is_empty()
+            || !derives.is_empty()
+            || facts.opaque_spawn_aspects
+        {
+            Existence::Candidate
+        } else {
+            Existence::None
+        };
+    }
+    (existence, demand_match)
+}
+
+/// The bare-name existence branch: the initial hit, the proven-site scan,
+/// then the guarded-candidate tiers and the flat candidate listing.
+fn analyze_name(
+    facts: &WorldFacts,
+    target: &str,
+    chain: &mut Vec<String>,
+    paths: &mut Vec<ReachPath>,
+    candidates: &mut Vec<CardCandidate>,
+    notes: &mut Vec<String>,
+) -> Existence {
+    let content = facts.content;
+    if facts.init_names.contains_key(target) {
+        // an initial entity is proven outright
+        match facts.proven_source_for(target) {
+            Some(lines) => chain.extend(lines),
+            None => unreachable!("initNames hit ⇒ provenSourceFor returns the initial line"),
+        }
+        paths.push(facts.initial_path(target));
+        return Existence::Proven;
+    }
+    let mut existence = Existence::None;
+    // the proven-site scan for the bare name
+    for (&si, sup) in &facts.proven {
+        let site = &facts.census.sites[si];
+        // a derive-mint behind an
+        // object-mandatory verb never mints the BARE name (12320)
+        if site.derives && object_always(content, site.verb) {
+            continue;
+        }
+        let hit = if site.kind == SiteKind::Draw {
+            !draw_blinds_bare(content, site, target)
+                && served_by_cap(
+                    draw_deck(site),
+                    target,
+                    facts.deck_cap.get(&site.name).copied().unwrap_or(0),
+                )
+        } else {
+            site.name == target
+        };
+        if !hit {
+            continue;
+        }
+        if existence != Existence::Proven {
+            existence = Existence::Proven;
+            chain.extend(site_chain(site, target, sup));
+        }
+        paths.push(facts.path_for(si, target, sup, 0, &mut IndexSet::new(), false));
+    }
+    if existence == Existence::None {
+        // no proven path, but a live guarded
+        // site still blocks 'unobtainable'
+        let candidate_exists = facts.census.live.iter().any(|&i| {
+            let s = &facts.census.sites[i];
+            let verb_alive = s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v));
+            let not_derive_mandated = !(s.derives && object_always(content, s.verb));
+            let serves = if s.kind == SiteKind::Draw {
+                !draw_blinds_bare(content, s, target)
+                    && deck_serves(draw_deck(s), target)
+                    // a PROVEN draw site whose
+                    // cap cannot reach this position is still a guarded
+                    // source in a frozen world (81401); unfrozen caps
+                    // are exact structural facts
+                    && (!facts.proven.contains_key(&i)
+                        || (facts.frozen
+                            && !served_by_cap(
+                                draw_deck(s),
+                                target,
+                                facts.deck_cap.get(&s.name).copied().unwrap_or(0),
+                            )))
+            } else {
+                s.name == target && !facts.proven.contains_key(&i)
+            };
+            verb_alive && not_derive_mandated && serves
+        });
+        if candidate_exists {
+            existence = Existence::Candidate;
+        }
+    }
+    if existence == Existence::None {
+        // every producer of the bare name is a
+        // derive-mint behind an object-mandatory verb — BUT the bare
+        // name is still reachable when the object binding dies
+        // mid-window (seed 30790)
+        let derived_only = !facts.init_names.contains_key(target)
+            && live_sites_serving(facts, target).any(|s| {
+                // a dead verb's sites never
+                // produce; they must not negate the derive-drop escape
+                // (seed 91492)
+                s.verb.is_none_or(|v| !facts.dead_verbs.contains(&v))
+                    && !(s.derives && object_always(content, s.verb))
+            });
+        let any_derived = facts.census.live.iter().any(|&i| {
+            let s = &facts.census.sites[i];
+            if s.kind == SiteKind::Draw {
+                draw_blinds_bare(content, s, target)
+            } else {
+                s.derives && s.name == target && object_always(content, s.verb)
+            }
+        });
+        if !derived_only && any_derived {
+            existence = Existence::Candidate;
+            notes.push(
+                format!("'{target}' derives its name from the bound object at every commit (the verb's object slot is mandatory) — normally the bare name never mints, but a mid-window death of the bound object drops the binding at completion and the derive silently no-ops")
+            );
+        }
+    }
+    // derived mints can mint names we cannot
+    // enumerate; their shape must never be called structurally absent
+    let derived_pattern = content.prototypes.iter().any(|(pname, p)| {
+        p.derive.as_ref().and_then(|d| d.name_from.as_deref()) == Some("object")
+            && target.starts_with(&format!("{pname}_"))
+    });
+    if existence == Existence::None && derived_pattern {
+        existence = Existence::Candidate;
+        notes.push(format!(
+            "'{target}' matches a derived-mint shape (deriving name from object) — the object half is chosen at play time, so structural absence cannot be proven"
+        ));
+    }
+    // guarded (candidate) sources listed flat
+    if existence == Existence::Candidate && chain.is_empty() {
+        for &i in &facts.census.live {
+            if facts.proven.contains_key(&i) {
+                continue;
+            }
+            let s = &facts.census.sites[i];
+            let serves = if s.kind == SiteKind::Draw {
+                deck_serves(draw_deck(s), target)
+            } else {
+                s.name == target
+            };
+            if serves {
+                let reason = site_reason(s, &facts.init_names);
+                notes.push(format!("candidate source: {} — guarded ({})", s.where_, reason));
+                candidates.push(CardCandidate { via: s.where_.clone(), reason });
+            }
+        }
+    }
+    existence
+}
+
+/// The (b) usability lines: every committable verb slot the descriptor fits.
+fn usable_lines(facts: &WorldFacts, descriptor: &Entity) -> Vec<String> {
+    let mut usable_via: Vec<String> = Vec::new();
+    for (vi, (_name, verb)) in facts.content.verbs.iter().enumerate() {
+        if !facts.committable.contains_key(&vi) {
+            continue;
+        }
+        for slot in &verb.slots {
+            let fits = slot.query.as_ref().is_none_or(|q| match_query(descriptor, q));
+            if fits {
+                usable_via.push(format!(
+                    "{}.{}{}",
+                    verb.name,
+                    slot.role,
+                    if slot.query.is_some() {
+                        " (query matches)"
+                    } else {
+                        " (no query — binds anything)"
+                    }
+                ));
+            }
+        }
+    }
+    usable_via
+}
+
+/// The live sites that can still serve `target`'s bare name — draws must be
+/// unblinded and their deck must carry the name, other sites mint it
+/// directly. The shared serve predicate of the candidate scans.
+fn live_sites_serving<'a, 'c>(
+    facts: &'a WorldFacts<'c>,
+    target: &'a str,
+) -> impl Iterator<Item = &'a RawSite<'c>> {
+    facts.census.live.iter().filter_map(move |&i| {
+        let s = &facts.census.sites[i];
+        let serves = if s.kind == SiteKind::Draw {
+            !draw_blinds_bare(facts.content, s, target) && deck_serves(draw_deck(s), target)
+        } else {
+            s.name == target
+        };
+        serves.then_some(s)
+    })
 }
 
 /// The module-level entry (a fresh world per call — a fresh [`Analyzer`] is

@@ -1,5 +1,5 @@
 //! Cultist-Simulator-scale load generator for the reachability analyzer. The
-//! companion of `reach_fuzz_lib`: that one checks SOUNDNESS against engine truth, this
+//! companion of `fuzz`: that one checks SOUNDNESS against engine truth, this
 //! one checks the analyzer's SCALING — compile + per-card census + path
 //! export over CS-shaped content. NO test harness here (explorer-lib
 //! precedent — scripts and tests import alike; the reach-scale bin mounts
@@ -12,7 +12,7 @@
 //! Deterministic in its arguments — same (n_protos, n_recipes) ⇒ byte-identical
 //! content, so two builds produce independent, comparable worlds.
 //!
-//! (Shared test lib discipline: the `allow` lives in this one place.)
+//! (Shared campaign machinery: the `allow` lives in this one place.)
 #![allow(dead_code)]
 
 use std::time::Instant;
@@ -20,14 +20,14 @@ use std::time::Instant;
 use indexmap::{IndexMap, IndexSet};
 use serde::Serialize;
 
-use chorus::content::content::{
+use crate::content::{
     compile_content, CompiledContent, ContentRaw, DeckRaw, ExpireTriggerDef, PrototypeDef,
     RecipeDef, SlotDef, SlotTriggerDef, TriggerDef, VerbContent,
 };
-use chorus::core::dict::{core_dictionary, Dictionary};
-use chorus::core::types::{add_entity, new_state, AspectVal, Entity, State};
-use chorus::lcg::Lcg;
-use chorus::reach::{Analyzer, CardReport, ReachPath};
+use crate::core::dict::{core_dictionary, Dictionary};
+use crate::core::types::{add_entity, new_state, AspectVal, Entity, State};
+use crate::lcg::Lcg;
+use crate::reach::{Analyzer, CardReport, ReachPath};
 
 /// The world plus every card name worth
 /// probing and the shape counters the CLI prints.
@@ -299,8 +299,9 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         }
         // duration picked from the weighted pool [0, 30, 60, 60, 60]
         let durations: [&str; 5] = ["0", "30", "60", "60", "60"];
-        let duration: i64 =
-            durations[int(ctx.rnd, durations.len())].parse().expect("duration literal");
+        let duration: i64 = durations[int(ctx.rnd, durations.len())]
+            .parse()
+            .unwrap_or_else(|e| panic!("duration literal: {e}"));
         verbs_raw.insert(
             name.clone(),
             VerbContent {
@@ -375,7 +376,8 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut dict = core_dictionary();
     for name in verbs_raw.keys() {
         if !dict.is_verb(name) {
-            dict.register_verb(name).expect("verb registration cannot fail here");
+            dict.register_verb(name)
+                .unwrap_or_else(|e| panic!("verb registration cannot fail here: {e}"));
         }
     }
     let raw = ContentRaw {
@@ -402,26 +404,25 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         }
     }
     let mut initial = new_state(0);
-    add_entity(&mut initial, ent("ANA", "character", IndexMap::new()))
-        .expect("initial entities never collide");
+    let fresh = |e: crate::error::ChorusError| panic!("initial entities never collide: {e}");
+    add_entity(&mut initial, ent("ANA", "character", IndexMap::new())).unwrap_or_else(fresh);
     for r in &resources {
         let mut aspects: IndexMap<String, AspectVal> = IndexMap::new();
         for a in ASPECTS {
             let v = 1 + int(&mut rnd, 3) as i64;
             aspects.insert(a.to_string(), AspectVal::Num(v));
         }
-        add_entity(&mut initial, ent(r, "item", aspects)).expect("initial entities never collide");
+        add_entity(&mut initial, ent(r, "item", aspects)).unwrap_or_else(fresh);
     }
     let mut follower = IndexMap::new();
     follower.insert("follower".to_string(), AspectVal::Num(1));
-    add_entity(&mut initial, ent("BERTHA", "character", follower.clone()))
-        .expect("initial entities never collide");
-    add_entity(&mut initial, ent("CARL", "character", follower))
-        .expect("initial entities never collide");
+    add_entity(&mut initial, ent("BERTHA", "character", follower.clone())).unwrap_or_else(fresh);
+    add_entity(&mut initial, ent("CARL", "character", follower)).unwrap_or_else(fresh);
 
     // the compile call passes NO entity_kinds:
     // the declared list is empty
-    let content = compile_content(&raw, &dict, &[]).expect("the CS-scale world compiles");
+    let content = compile_content(&raw, &dict, &[])
+        .unwrap_or_else(|e| panic!("the CS-scale world compiles: {e}"));
 
     // insertion-order dedup
     let mut seen: IndexSet<String> = IndexSet::new();
@@ -503,7 +504,7 @@ pub fn census(world: &ScaleWorld, names: &[String]) -> Vec<NameStat> {
             let t = Instant::now();
             let rep = analyzer
                 .analyze_card(name, Default::default())
-                .expect("census probes analyze cleanly");
+                .unwrap_or_else(|e| panic!("census probes analyze cleanly: {e}"));
             let ms = t.elapsed().as_secs_f64() * 1000.0;
             let CardReport { paths, .. } = &rep;
             NameStat {
@@ -522,7 +523,7 @@ pub fn census(world: &ScaleWorld, names: &[String]) -> Vec<NameStat> {
 /// The CLI's one-line summary.
 pub fn summarize(stats: &[NameStat]) -> String {
     let mut times: Vec<f64> = stats.iter().map(|st| st.ms).collect();
-    times.sort_by(|a, b| a.partial_cmp(b).expect("ms values are finite"));
+    times.sort_by(|a, b| a.partial_cmp(b).unwrap_or_else(|| unreachable!("ms values are finite")));
     let q = |p: f64| -> f64 {
         times[std::cmp::min(times.len() - 1, (times.len() as f64 * p).floor() as usize)]
     };

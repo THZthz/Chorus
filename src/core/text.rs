@@ -21,14 +21,12 @@ pub fn cmp_utf16(a: &str, b: &str) -> Ordering {
 /// the reverse on those two. All regexes must spell whitespace with this
 /// explicit class; `\S` is the negation of the same class, never the
 /// crate's `\S`.
-pub const DSL_WS_CLASS: &str =
-    "[\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
+pub const DSL_WS_CLASS: &str = "[\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
 /// The negation of [`DSL_WS_CLASS`] — the class every regex `\S` must spell
 /// (Q8). The regex crate's `\S` is the complement of White_Space: it
 /// EXCLUDES U+FEFF and INCLUDES U+0085 — exactly the reverse of this class.
-pub const DSL_NON_WS_CLASS: &str =
-    "[^\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
+pub const DSL_NON_WS_CLASS: &str = "[^\\t\\n\\v\\f\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
 
 /// The same frozen whitespace set as a code-unit predicate — the
 /// hand-written lexer scanners run on `Vec<u16>` code units where regex
@@ -66,6 +64,14 @@ pub fn is_dsl_ws_char(c: char) -> bool {
 #[must_use]
 pub fn dsl_trim(s: &str) -> &str {
     s.trim_matches(is_dsl_ws_char)
+}
+
+/// `split(/\s+/)` over the DSL whitespace class: runs of whitespace split;
+/// the inputs are always trimmed or `\S`-anchored, so filtering the empty
+/// pieces yields exactly the canonical token sequence.
+#[must_use]
+pub fn split_dsl_ws(s: &str) -> Vec<&str> {
+    s.split(is_dsl_ws_char).filter(|p| !p.is_empty()).collect()
 }
 
 /// The engine's frozen suggestion-pool collation (B-21): ASCII-lowercase
@@ -128,5 +134,21 @@ mod tests {
         assert_eq!(dsl_trim("\u{feff}abc "), "abc");
         assert_eq!(dsl_trim("\u{85}abc\u{85}"), "\u{85}abc\u{85}");
         assert_eq!(dsl_trim("  a\tb\u{2028}"), "a\tb");
+    }
+
+    #[test]
+    fn dsl_non_ws_class_is_the_exact_complement_of_dsl_ws_class() {
+        // the frozen pair must stay complements on every edge unit — the
+        // deciding ones are U+FEFF (whitespace here, not for Rust \s) and
+        // U+0085 (the reverse); U+180E is in neither class
+        let ws = regex::Regex::new(DSL_WS_CLASS).unwrap();
+        let non_ws = regex::Regex::new(DSL_NON_WS_CLASS).unwrap();
+        for u in [
+            0x09u16, 0x0b, 0x20, 0x85, 0xa0, 0x1680, 0x180e, 0x2000, 0x200a, 0x200b, 0x2028,
+            0x202f, 0x205f, 0x3000, 0xfeff,
+        ] {
+            let s = char::from_u32(u32::from(u)).unwrap().to_string();
+            assert_eq!(ws.is_match(&s), !non_ws.is_match(&s), "u+{u:04x} must classify oppositely");
+        }
     }
 }

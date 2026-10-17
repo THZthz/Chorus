@@ -64,6 +64,9 @@ fn main() -> std::process::ExitCode {
                 }
             }
         }
+        // readdir order is machine-dependent; a deterministic tool reports
+        // the files in a sorted order
+        names.sort();
         names
     };
 

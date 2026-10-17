@@ -6,29 +6,36 @@
 //! (+ `turn_lengths` bookkeeping), wait's ceil-to-halfhour quantization,
 //! visible/suggestions/story/journal/look/cards/inspect, and BOTH game-over
 //! texts (this file speaks the UI notice; the engine's rejected short
-//! text stays in engine.rs).
+//! text stays in `engine::exec`).
 
 use indexmap::IndexMap;
 use std::collections::HashSet;
 
-use crate::content::content::{CompiledContent, CompiledVerb};
 use crate::content::script::{compile_script, ScriptMeta};
+use crate::content::{CompiledContent, CompiledVerb};
 use crate::core::clock::{clock_from_abs_min, Clock, MIN_PER_HALFHOUR};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::{eval_pred, PredCtx, RoleBindings};
 use crate::core::query::match_query;
 use crate::core::r#ref::Ref;
 use crate::core::roles::Role;
-use crate::core::sentence::Arg;
-use crate::core::text::dsl_trim;
+use crate::core::sentence::{Arg, IntoTarget};
+use crate::core::text::{cmp_ascii_ci, dsl_trim};
 use crate::core::types::{clone_state, is_truthy, AttrValue, Entity, OpenWindow, State};
-use crate::engine::engine::{execute_step, ExecOptions};
 use crate::engine::fold::fold;
 use crate::engine::store::Log;
+use crate::engine::{execute_step, ExecOptions};
 use crate::error::Result;
 
 use super::lenient::{parse_player_input, LenientCtx, ParsedInput};
-use super::render::{ending_notice, flatten_aspects, journal, pretty, prose_lines};
+use super::render::{display_name, ending_notice, flatten_aspects, journal, pretty, prose_lines};
+
+/// the idle wait advance: one hour when nothing is in flight (§11)
+const IDLE_WAIT_MIN: i64 = 60;
+
+/// the round-robin scan cap over the per-verb suggestion groups — the frozen
+/// [`SUGGEST_LIMIT`] (3) always bites before it does
+const ROUND_ROBIN_CAP: usize = 64;
 
 /// The kind of turn: an action, an info notice, or an input error.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +54,96 @@ pub struct Turn {
 
 fn turn(kind: TurnKind, lines: Vec<String>) -> Turn {
     Turn { kind, lines }
+}
+
+// ---- suggestion machinery: pools, bindings, phrases (§11's try row) ----
+
+/// the candidate pools per non-actor slot: living visible cards other than
+/// the player, not carried by the player and not locked in a window, that
+/// match the slot's query — `None` when a min-count slot cannot fill (the
+/// verb is skipped outright).
+fn verb_pools<'a>(
+    verb: &CompiledVerb,
+    alive: &[&'a Entity],
+    me: &Entity,
+    busy_cards: &HashSet<&str>,
+) -> Option<IndexMap<String, Vec<&'a Entity>>> {
+    // same-container cards rank first (the Option
+    // equality models strict equality over possibly-missing attrs)
+    let me_container = me.attrs.get("container");
+    let rank = |e: &Entity| if e.attrs.get("container") == me_container { 0 } else { 1 };
+    let mut pools: IndexMap<String, Vec<&Entity>> = IndexMap::new();
+    for slot in &verb.slots {
+        if slot.role == "actors" {
+            continue;
+        }
+        let pool: Vec<&Entity> = alive
+            .iter()
+            .copied()
+            .filter(|e| {
+                e.name != me.name
+                    && !matches!(me.attrs.get("container"),
+                        Some(AttrValue::Str(c)) if *c == e.id)
+                    && !busy_cards.contains(e.id.as_str())
+                    && slot.query.as_ref().is_none_or(|q| match_query(e, q))
+            })
+            .collect();
+        // rank ascending, then name — the frozen comparator:
+        // rank ascending, ties broken by `cmp_ascii_ci`
+        // (§11's frozen name order — ASCII-lowercase then byte order)
+        let mut pool = pool;
+        pool.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| cmp_ascii_ci(&a.name, &b.name)));
+        if slot.min >= 1 && (pool.len() as i64) < slot.min {
+            return None;
+        }
+        pools.insert(slot.role.clone(), pool);
+    }
+    Some(pools)
+}
+
+/// base binding: each role filled to its minimum
+fn base_binding(
+    me: &Entity,
+    verb: &CompiledVerb,
+    pools: &IndexMap<String, Vec<&Entity>>,
+) -> RoleBindings {
+    let mut base: RoleBindings = IndexMap::new();
+    base.insert(Role::Actors, vec![me.id.clone()]);
+    for (role_str, pool) in pools {
+        let Some(slot) = verb.slot_by_role.get(role_str) else {
+            // pool keys ⊆ slot roles ⊆ `slot_by_role` keys — the lookup
+            // never misses (a miss there would panic the same way)
+            unreachable!("pool role is always a declared slot role")
+        };
+        let role = Role::from_lower(role_str);
+        if let Some(role) = role {
+            base.insert(
+                role,
+                pool.iter()
+                    .take(std::cmp::min(slot.min, 3) as usize)
+                    .map(|e| e.id.clone())
+                    .collect(),
+            );
+        }
+        // (a typo'd slot role (Q4) would add a junk binding key no
+        // predicate or phrase ever reads — skipping it is exact)
+    }
+    base
+}
+
+/// round-robin across the per-verb story groups so one greedy verb does not
+/// own the list; [`ROUND_ROBIN_CAP`] stops the scan.
+fn round_robin(groups: Vec<Vec<String>>, cap: usize) -> Vec<String> {
+    let mut mixed: Vec<String> = Vec::new();
+    let mut groups = groups;
+    while mixed.len() < cap && groups.iter().any(|g| !g.is_empty()) {
+        for g in &mut groups {
+            if !g.is_empty() {
+                mixed.push(g.remove(0));
+            }
+        }
+    }
+    mixed
 }
 
 /// The game. `base` and
@@ -102,6 +199,12 @@ impl Game {
         }
     }
 
+    /// the living entity behind `meta.player`, if the script declares one
+    fn living_player(&self) -> Option<&Entity> {
+        let player = self.meta.player.as_ref()?;
+        self.state.entities.values().find(|e| e.dead_action.is_none() && &e.name == player)
+    }
+
     /// one turn of play — pure enough to drive from tests
     /// (`Result` carries prose rendering's error channel)
     pub fn handle_line(&mut self, line: &str) -> Result<Turn> {
@@ -153,7 +256,7 @@ impl Game {
         Ok(turn(TurnKind::Action, lines))
     }
 
-    // ---- meta views for the player interface (rendered as buttons) ----
+    // ---- meta views: the typed words the player interface routes to ----
 
     /// the cards this player can see: places; the player; cards sharing the
     /// player's location; carried cards; contents of an explored (named)
@@ -162,8 +265,7 @@ impl Game {
     pub fn visible(&self) -> Vec<&Entity> {
         let alive: Vec<&Entity> =
             self.state.entities.values().filter(|e| e.dead_action.is_none()).collect();
-        let me =
-            self.meta.player.as_ref().and_then(|p| alive.iter().copied().find(|e| &e.name == p));
+        let me = self.living_player();
         let mut named: HashSet<String> = HashSet::new();
         for r in &self.log.records {
             let mut refs: Vec<&Ref> =
@@ -190,9 +292,7 @@ impl Game {
                     // shape is skipped (it names no card)
                     match a {
                         Arg::Ref { r#ref: Ref::Name { name, .. } }
-                        | Arg::Into {
-                            r#ref: crate::core::sentence::IntoTarget::Ref(Ref::Name { name, .. }),
-                        } => {
+                        | Arg::Into { r#ref: IntoTarget::Ref(Ref::Name { name, .. }) } => {
                             named.insert(name.clone());
                         }
                         _ => {}
@@ -227,10 +327,7 @@ impl Game {
 
     /// what is around the player
     pub fn look(&self) -> Vec<String> {
-        let player = self.meta.player.as_ref().and_then(|p| {
-            self.state.entities.values().find(|e| e.dead_action.is_none() && &e.name == p)
-        });
-        let Some(player) = player else {
+        let Some(player) = self.living_player() else {
             return vec!["(no player character — open the cards view)".to_string()];
         };
         let here: Option<&AttrValue> = player.attrs.get("container");
@@ -274,7 +371,7 @@ impl Game {
     /// showed the FIRST visible card, Q11) names the usage and lists the
     /// table instead; it never guesses a card.
     pub fn inspect(&self, raw_name: &str) -> Vec<String> {
-        let q = dsl_trim(raw_name).to_lowercase().replace('_', " ");
+        let q = display_name(dsl_trim(raw_name));
         if q.is_empty() {
             // Q11: usage + the card list (the same projection `cards`
             // prints), not the first visible card
@@ -285,7 +382,7 @@ impl Game {
             return lines;
         }
         let table = self.visible();
-        let face = |e: &Entity| e.name.to_lowercase().replace('_', " ");
+        let face = |e: &Entity| display_name(&e.name);
         let card = table
             .iter()
             .copied()
@@ -293,7 +390,7 @@ impl Game {
             .or_else(|| table.iter().copied().find(|e| face(e).starts_with(&q)));
         let Some(card) = card else {
             return vec![format!(
-                "nothing on the table answers to '{}' — press 2 for the table",
+                "nothing on the table answers to '{}' — try 'cards' for the table",
                 dsl_trim(raw_name)
             )];
         };
@@ -358,7 +455,9 @@ impl Game {
     }
 
     /// the open processing windows, soonest-completing first — the live
-    /// area's "processing:" line (v0.5).
+    /// area's "processing:" line (v0.5). The (end, begin_id) order is the
+    /// engine's frozen due-window order (the advance pass's sort in
+    /// `engine::advance`, minus the clause tiebreak a rendering never needs).
     #[must_use]
     pub fn processing(&self) -> Vec<String> {
         let mut windows: Vec<&OpenWindow> = self.state.windows.values().collect();
@@ -367,33 +466,114 @@ impl Game {
             .iter()
             .map(|w| {
                 let end = clock_from_abs_min(w.end);
-                format!(
-                    "{} — until {}:{}",
-                    w.verb.to_lowercase().replace('_', " "),
-                    end.day,
-                    end.halfhour
-                )
+                format!("{} — until {}:{}", display_name(&w.verb), end.day, end.halfhour)
             })
             .collect()
     }
 
     /// let time pass: advance to the earliest window's end, or one hour when
-    /// nothing is in flight (the `wait` button; typing `1:12` does the same).
-    /// The clock input is halfhour-quantized, so round the target UP — the
-    /// advance then resolves everything due at or before it.
+    /// nothing is in flight (the `wait` meta word; typing `1:12` does the
+    /// same). The clock input is halfhour-quantized, so round the target UP —
+    /// the advance then resolves everything due at or before it.
     pub fn wait(&mut self) -> Result<Turn> {
         let now = self.state.now;
-        // `windows.size > 0 ? Math.min(...) : now + 60` — min of an empty set
-        // is None, which lands on the same now + 60 arm
-        let due_at = self.state.windows.values().map(|w| w.end).min().unwrap_or(now + 60);
-        // ceil to the halfhour — the `ceil(dueAt / 30) * 30` spelling;
-        // the manual ceil-division is exact for
-        // the non-negative minutes the engine ever holds (i64::div_ceil is
-        // still feature-gated on this toolchain)
+        let due_at =
+            self.state.windows.values().map(|w| w.end).min().unwrap_or(now + IDLE_WAIT_MIN);
+        // ceil to the halfhour — the manual ceil-division is exact for the
+        // non-negative minutes the engine ever holds (i64::div_ceil is still
+        // feature-gated on this toolchain)
         let target = (due_at + MIN_PER_HALFHOUR - 1) / MIN_PER_HALFHOUR * MIN_PER_HALFHOUR;
         let clock = clock_from_abs_min(target);
         let Clock { day, halfhour } = clock;
         self.handle_line(&format!("{day}:{halfhour}"))
+    }
+
+    /// does a non-default recipe light on these bindings? A REFUSE gate that
+    /// matches is a wall, not an invitation (`.some()` over the recipes).
+    fn recipe_lights(&self, verb: &CompiledVerb, b: &RoleBindings) -> Result<bool> {
+        let p = PredCtx { b, state: &self.state, strict: false, roll: None };
+        for r in &verb.recipes {
+            let Some(w) = &r.when else { continue };
+            // §6.4: a spent recipe stops being suggested — the same
+            // gate selection applies
+            if let Some(max) = r.max {
+                if self.state.executed.get(&r.id).is_some_and(|&n| n >= max) {
+                    continue;
+                }
+            }
+            if r.out.iter().any(|o| o.op == "REFUSE") {
+                continue;
+            }
+            if eval_pred(w, &p)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// the display phrase; bindings hold ids,
+    /// resolved through the live state here
+    fn suggestion_phrase(&self, display: &str, b: &RoleBindings) -> String {
+        let mut parts: Vec<String> = vec![display.to_string()];
+        for role in [Role::Object, Role::To, Role::With, Role::At, Role::About] {
+            let Some(ids) = b.get(&role) else { continue };
+            if ids.is_empty() {
+                continue;
+            }
+            let names: Vec<String> = ids
+                .iter()
+                .map(|id| match self.state.entities.get(id) {
+                    Some(e) => pretty(&e.name),
+                    // suggestion bindings are built from living cards below
+                    None => unreachable!("suggestion bindings hold living ids"),
+                })
+                .collect();
+            parts.push(match role {
+                Role::Object => names.join(" "),
+                Role::To => format!("with {}", names.join(" ")),
+                _ => format!("{} {}", role.as_str(), names.join(" ")),
+            });
+        }
+        parts.join(" ")
+    }
+
+    /// alternative bindings: swap or extend role cards; keep what lights
+    fn alt_bindings(
+        &self,
+        verb: &CompiledVerb,
+        base: &RoleBindings,
+        pools: &IndexMap<String, Vec<&Entity>>,
+    ) -> Result<Vec<RoleBindings>> {
+        let mut alts: Vec<RoleBindings> = Vec::new();
+        for (role_str, pool) in pools {
+            let Some(slot) = verb.slot_by_role.get(role_str) else {
+                unreachable!("pool role is always a declared slot role")
+            };
+            // cap = max(slot.min, min(slot.max, 2)) — an unbounded max
+            // (None) loses to the 2
+            let cap = std::cmp::max(slot.min, std::cmp::min(slot.max.unwrap_or(2), 2));
+            let role = Role::from_lower(role_str);
+            let base_es: Vec<String> =
+                role.as_ref().and_then(|r| base.get(r)).cloned().unwrap_or_default();
+            for e in pool {
+                if base_es.iter().any(|x| x == &e.id) {
+                    continue;
+                }
+                let mut combined = base_es.clone();
+                combined.push(e.id.clone());
+                if combined.len() as i64 > cap {
+                    combined = vec![e.id.clone()];
+                }
+                let mut alt = base.clone();
+                if let Some(role) = role {
+                    alt.insert(role, combined);
+                }
+                if self.recipe_lights(verb, &alt)? {
+                    alts.push(alt);
+                }
+            }
+        }
+        Ok(alts)
     }
 
     /// concrete actions the player can take right now: verb × card bindings
@@ -409,74 +589,14 @@ impl Game {
             return Ok(vec![]); // §4.4: nothing left to suggest after the ending
         }
         let alive = self.visible();
-        let me =
-            self.meta.player.as_ref().and_then(|p| alive.iter().copied().find(|e| &e.name == p));
-        let Some(me) = me else {
+        let Some(me) = self.living_player() else {
             return Ok(vec![]);
         };
         let busy_verbs: HashSet<&str> =
             self.state.windows.values().map(|w| w.verb.as_str()).collect();
         let busy_cards: HashSet<&str> =
             self.state.windows.values().flat_map(|w| w.locked.iter().map(String::as_str)).collect();
-        // same-container cards rank first (the Option
-        // equality models strict equality over possibly-missing attrs)
-        let me_container = me.attrs.get("container");
-        let rank = |e: &Entity| {
-            if e.attrs.get("container") == me_container {
-                0
-            } else {
-                1
-            }
-        };
-        let lights = |verb: &CompiledVerb, bindings: &RoleBindings| -> Result<bool> {
-            let p = PredCtx { b: bindings, state: &self.state, strict: false, roll: None };
-            // a REFUSE gate that matches is a wall, not an invitation
-            // (`.some()` over the recipes)
-            for r in &verb.recipes {
-                let Some(w) = &r.when else { continue };
-                // §6.4: a spent recipe stops being suggested — the same
-                // gate selection applies
-                if let Some(max) = r.max {
-                    if self.state.executed.get(&r.id).is_some_and(|&n| n >= max) {
-                        continue;
-                    }
-                }
-                if r.out.iter().any(|o| o.op == "REFUSE") {
-                    continue;
-                }
-                if eval_pred(w, &p)? {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        };
-        // the display phrase; bindings hold ids,
-        // resolved through the live state here
-        let phrase = |display: &str, b: &RoleBindings| -> String {
-            let mut parts: Vec<String> = vec![display.to_string()];
-            for role in [Role::Object, Role::To, Role::With, Role::At, Role::About] {
-                let Some(ids) = b.get(&role) else { continue };
-                if ids.is_empty() {
-                    continue;
-                }
-                let names: Vec<String> = ids
-                    .iter()
-                    .map(|id| match self.state.entities.get(id) {
-                        Some(e) => pretty(&e.name),
-                        // suggestion bindings are built from living cards below
-                        None => unreachable!("suggestion bindings hold living ids"),
-                    })
-                    .collect();
-                parts.push(match role {
-                    Role::Object => names.join(" "),
-                    Role::To => format!("with {}", names.join(" ")),
-                    _ => format!("{} {}", role.as_str(), names.join(" ")),
-                });
-            }
-            parts.join(" ")
-        };
-
-        let mut story: Vec<String> = Vec::new();
+        let mut story: Vec<Vec<String>> = Vec::new();
         let mut flavor: Vec<String> = Vec::new();
         for verb in self.content.verbs.values() {
             if busy_verbs.contains(verb.name.as_str()) {
@@ -491,126 +611,23 @@ impl Game {
             if actors_slot.query.as_ref().is_some_and(|q| !match_query(me, q)) {
                 continue;
             }
-            let display = verb.name.to_lowercase().replace('_', " ");
-
-            let mut pools: IndexMap<String, Vec<&Entity>> = IndexMap::new();
-            let mut missing = false;
-            for slot in &verb.slots {
-                if slot.role == "actors" {
-                    continue;
-                }
-                let pool: Vec<&Entity> = alive
-                    .iter()
-                    .copied()
-                    .filter(|e| {
-                        e.name != me.name
-                            && !matches!(me.attrs.get("container"),
-                                Some(AttrValue::Str(c)) if *c == e.id)
-                            && !busy_cards.contains(e.id.as_str())
-                            && slot.query.as_ref().is_none_or(|q| match_query(e, q))
-                    })
-                    .collect();
-                // rank ascending, then name — the frozen comparator:
-                // rank ascending, ties broken by `cmp_ascii_ci`
-                // (§11's frozen name order — ASCII-lowercase then byte order)
-                let mut pool = pool;
-                pool.sort_by(|a, b| {
-                    rank(a)
-                        .cmp(&rank(b))
-                        .then_with(|| crate::core::text::cmp_ascii_ci(&a.name, &b.name))
-                });
-                if slot.min >= 1 && (pool.len() as i64) < slot.min {
-                    missing = true;
-                    break;
-                }
-                pools.insert(slot.role.clone(), pool);
-            }
-            if missing {
+            let display = display_name(&verb.name);
+            let Some(pools) = verb_pools(verb, &alive, me, &busy_cards) else {
                 continue;
-            }
-
-            // base binding: each role filled to its minimum
-            let mut base: RoleBindings = IndexMap::new();
-            base.insert(Role::Actors, vec![me.id.clone()]);
-            for (role_str, pool) in &pools {
-                let Some(slot) = verb.slot_by_role.get(role_str) else {
-                    // pool keys ⊆ slot roles ⊆ `slot_by_role` keys — the lookup
-                    // never misses (a miss there would panic the same way)
-                    unreachable!("pool role is always a declared slot role")
-                };
-                let role = Role::from_lower(role_str);
-                if let Some(role) = role {
-                    base.insert(
-                        role,
-                        pool.iter()
-                            .take(std::cmp::min(slot.min, 3) as usize)
-                            .map(|e| e.id.clone())
-                            .collect(),
-                    );
-                }
-                // (a typo'd slot role (Q4) would add a junk binding key no
-                // predicate or phrase ever reads — skipping it is exact)
-            }
+            };
+            let base = base_binding(me, verb, &pools);
             let mut verb_story: Vec<String> = Vec::new();
-            if lights(verb, &base)? {
-                verb_story.push(phrase(&display, &base));
+            if self.recipe_lights(verb, &base)? {
+                verb_story.push(self.suggestion_phrase(&display, &base));
             } else {
-                flavor.push(phrase(&display, &base));
+                flavor.push(self.suggestion_phrase(&display, &base));
             }
-
-            // alternative bindings: swap or extend role cards; keep what lights
-            for (role_str, pool) in &pools {
-                let Some(slot) = verb.slot_by_role.get(role_str) else {
-                    unreachable!("pool role is always a declared slot role")
-                };
-                // cap = max(slot.min, min(slot.max, 2)) — an unbounded max
-                // (None) loses to the 2
-                let cap = std::cmp::max(slot.min, std::cmp::min(slot.max.unwrap_or(2), 2));
-                let role = Role::from_lower(role_str);
-                let base_es: Vec<String> =
-                    role.as_ref().and_then(|r| base.get(r)).cloned().unwrap_or_default();
-                for e in pool {
-                    if base_es.iter().any(|x| x == &e.id) {
-                        continue;
-                    }
-                    let mut combined = base_es.clone();
-                    combined.push(e.id.clone());
-                    if combined.len() as i64 > cap {
-                        combined = vec![e.id.clone()];
-                    }
-                    let mut alt = base.clone();
-                    if let Some(role) = role {
-                        alt.insert(role, combined);
-                    }
-                    if lights(verb, &alt)? {
-                        verb_story.push(phrase(&display, &alt));
-                    }
-                }
+            for alt in self.alt_bindings(verb, &base, &pools)? {
+                verb_story.push(self.suggestion_phrase(&display, &alt));
             }
-            story.extend(verb_story);
+            story.push(verb_story);
         }
-        // round-robin across verbs so one greedy verb does not own the list
-        let mut by_verb: Vec<Vec<String>> = Vec::new();
-        let mut i = 0usize;
-        while i < story.len() {
-            let first_word = story[i].split(' ').next().unwrap_or("").to_string();
-            let mut group = Vec::new();
-            while i < story.len() && story[i].split(' ').next().unwrap_or("") == first_word {
-                group.push(story[i].clone());
-                i += 1;
-            }
-            if !group.is_empty() {
-                by_verb.push(group);
-            }
-        }
-        let mut mixed: Vec<String> = Vec::new();
-        while mixed.len() < 64 && by_verb.iter().any(|g| !g.is_empty()) {
-            for g in &mut by_verb {
-                if let Some(v) = if g.is_empty() { None } else { Some(g.remove(0)) } {
-                    mixed.push(v);
-                }
-            }
-        }
+        let mixed = round_robin(story, ROUND_ROBIN_CAP);
         // dedupe, keep the lenient-parseable ones, cap at the limit
         let mut seen: HashSet<String> = HashSet::new();
         let mut out: Vec<String> = Vec::new();

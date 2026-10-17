@@ -64,6 +64,13 @@ impl Role {
 pub const ROLES: [Role; 6] =
     [Role::Actors, Role::Object, Role::With, Role::At, Role::About, Role::To];
 
+/// The role names in [`ROLES`] order — the spelling every joined role list
+/// uses (the predicate lint's ROLE_LIST, the script lint's known-role list).
+#[must_use]
+pub fn role_names() -> Vec<&'static str> {
+    ROLES.iter().map(|r| r.as_str()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

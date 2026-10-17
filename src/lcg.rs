@@ -1,11 +1,11 @@
-//! The deterministic test-side driver RNG (`Lcg`).
+//! The deterministic campaign-side driver RNG (`Lcg`).
 //!
 //! Deliberately NOT `#[cfg(test)]`-gated: integration-test crates compile
 //! the library without `cfg(test)`, so the type must live in the normal
 //! public surface. Its sequences are frozen bit-for-bit — the fuzz
 //! campaigns and the seed-keyed findings are keyed to them.
 
-/// The deterministic test-side LCG: u32 wrapping arithmetic,
+/// The deterministic campaign-side LCG: u32 wrapping arithmetic,
 /// `s = s.wrapping_mul(1664525) + 1013904223 (mod 2^32)` — the frozen
 /// sequences shared by the reach-fuzz, reach-scale and explorer drivers.
 ///

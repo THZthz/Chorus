@@ -9,23 +9,19 @@
 //! patterns copied CHARACTER FOR CHARACTER from the frozen literals, and
 //! play/fold equality asserted through the shared `snap`.
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::harness::assert_err_msg;
+use crate::common::rig::{begin_recipe, compile, executed_entries, settle_line};
+use crate::common::snap::snap;
+use chorus::engine::settle::{act, done, refusal};
 
-use common::harness::assert_err_msg;
-use common::settle::{act, done, refusal, settle_step};
-use common::snap::snap;
-
-use chorus::content::content::{
-    compile_content, CompiledContent, ContentRaw, RecipeDef, SlotDef, VerbContent,
-};
 use chorus::content::script::compile_script;
+use chorus::content::{compile_content, ContentRaw, RecipeDef, SlotDef, VerbContent};
 use chorus::core::clock::Clock;
 use chorus::core::dict::{core_dictionary, Dictionary};
 use chorus::core::parse::parse_sentence;
 use chorus::core::types::clone_state;
-use chorus::engine::engine::{ExecResult, Step};
 use chorus::engine::fold::fold;
+use chorus::engine::Step;
 use chorus::session::game::{Game, TurnKind};
 
 // ---------------------------------------------------------------- rigs ------
@@ -65,52 +61,6 @@ verbs:
     )
 }
 
-fn compile(dict: &Dictionary, text: &str) -> (CompiledContent, chorus::core::types::State) {
-    let compiled = compile_script(text, dict).unwrap();
-    (compiled.content, compiled.state)
-}
-
-/// Parse + settle_step with the decks.rs
-/// id-generator shape: `x{first_record_id}_{n}`.
-fn run(
-    content: &CompiledContent,
-    dict: &Dictionary,
-    state: chorus::core::types::State,
-    src: &str,
-    first_record_id: i64,
-) -> ExecResult {
-    let s = parse_sentence(src, dict).unwrap();
-    let mut n: i64 = 0;
-    let mut id_gen = || {
-        n += 1;
-        format!("x{first_record_id}_{n}")
-    };
-    settle_step(
-        content,
-        dict,
-        state,
-        Step {
-            start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
-            clauses: s.clauses,
-            t_real: None,
-        },
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
-}
-
-/// The BEGIN row's commit-time recipe ids, clause order.
-fn begin_recipes(r: &ExecResult) -> Vec<String> {
-    act(r).map(|rec| rec.recipes.clone()).unwrap_or_default()
-}
-
-/// The execution map as entry pairs (insertion order observable).
-fn executed_entries(s: &chorus::core::types::State) -> Vec<(String, i64)> {
-    s.executed.iter().map(|(k, v)| (k.clone(), *v)).collect()
-}
-
 // ------------------------------------------------------------- the gate -----
 
 /// A `max 1` recipe runs once; the second selection attempt skips it and
@@ -126,15 +76,15 @@ fn max_one_runs_once_then_the_walk_skips_it() {
         ),
     );
     // first run: the budgeted recipe fires and its window registers
-    let r1 = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r1 = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r1.rejected, None);
-    assert_eq!(begin_recipes(&r1), ["first"]);
+    assert_eq!(begin_recipe(&r1), ["first"]);
     assert_eq!(done(&r1).unwrap().outcomes[0].op, "NARRATE");
     assert_eq!(executed_entries(&r1.state), vec![("first".to_string(), 1)]);
     // second run: `first` is spent — the walk continues into the default
-    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA WAIT", 10);
+    let r2 = settle_line(&c, &dict, r1.state, "0:0 @ ANA WAIT", 10).unwrap();
     assert_eq!(r2.rejected, None);
-    assert_eq!(begin_recipes(&r2), ["wait.default"]);
+    assert_eq!(begin_recipe(&r2), ["wait.default"]);
     assert_eq!(
         executed_entries(&r2.state),
         vec![("first".to_string(), 1), ("wait.default".to_string(), 1)]
@@ -156,24 +106,24 @@ fn a_table_refused_attempt_consumes_nothing() {
     );
     // attempt 1: the gate refuses AT THE TABLE (§6.5) — attempt logged,
     // zero time, no window, no count
-    let r1 = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r1 = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r1.rejected, None);
     assert_eq!(refusal(&r1).as_deref(), Some("blocked"));
     assert_eq!(act(&r1).unwrap().advanced_min, 0); // §6.5: the refusal collapses the cycle
     assert_eq!(executed_entries(&r1.state), vec![]);
     // attempt 2: the budget was NOT spent — the gate is selected again
     // (a spent gate would have fallen through to the default instead)
-    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA WAIT", 10);
+    let r2 = settle_line(&c, &dict, r1.state, "0:0 @ ANA WAIT", 10).unwrap();
     assert_eq!(r2.rejected, None);
     assert_eq!(refusal(&r2).as_deref(), Some("blocked"));
     assert_eq!(executed_entries(&r2.state), vec![]);
     // clear the lock, then the retry succeeds through the default recipe
-    let r3 = run(&c, &dict, r2.state, "0:0 @ ANA CLEAR", 20);
+    let r3 = settle_line(&c, &dict, r2.state, "0:0 @ ANA CLEAR", 20).unwrap();
     assert_eq!(r3.rejected, None);
-    let r4 = run(&c, &dict, r3.state, "0:0 @ ANA WAIT", 40);
+    let r4 = settle_line(&c, &dict, r3.state, "0:0 @ ANA WAIT", 40).unwrap();
     assert_eq!(r4.rejected, None);
     assert_eq!(refusal(&r4), None);
-    assert_eq!(begin_recipes(&r4), ["wait.default"]);
+    assert_eq!(begin_recipe(&r4), ["wait.default"]);
     assert!(!r4.state.executed.contains_key("gate"));
     assert_eq!(r4.state.executed.get("wait.default"), Some(&1));
 }
@@ -193,7 +143,7 @@ fn a_window_that_refuses_at_completion_still_counted() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None, "the BEGIN succeeds — the refusal is deferred");
     let complete = done(&r).unwrap();
     let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
@@ -223,16 +173,16 @@ fn fold_replay_rebuilds_executed_and_the_gate_still_gates() {
         ),
     );
     let base = clone_state(&s);
-    let r = run(&c, &dict, s, "0:0 @ ANA WAIT", 1);
+    let r = settle_line(&c, &dict, s, "0:0 @ ANA WAIT", 1).unwrap();
     assert_eq!(r.rejected, None);
-    assert_eq!(begin_recipes(&r), ["first"]);
+    assert_eq!(begin_recipe(&r), ["first"]);
     let replayed = fold(&r.records, &base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
     assert_eq!(executed_entries(&replayed), vec![("first".to_string(), 1)]);
     // a subsequent play step from the FOLDED state gates identically
-    let r2 = run(&c, &dict, replayed, "0:0 @ ANA WAIT", 10);
+    let r2 = settle_line(&c, &dict, replayed, "0:0 @ ANA WAIT", 10).unwrap();
     assert_eq!(r2.rejected, None);
-    assert_eq!(begin_recipes(&r2), ["wait.default"]);
+    assert_eq!(begin_recipe(&r2), ["wait.default"]);
 }
 
 /// `max N` parses positionally; `max` is a KEYWORD, never a leading recipe
@@ -367,10 +317,7 @@ fn the_positional_walk_honors_every_token_and_errors_on_strays() {
         "line 20: `default` takes no modifiers — got 'max 2'",
     );
     assert_err_msg(
-        compile_script(
-            &verbs_max("      default when count(actors) >= 1 -> NARRATE \"x\""),
-            &dict,
-        ),
+        compile_script(&verbs_max("      default when count(actors) >= 1 -> NARRATE \"x\""), &dict),
         "line 20: `default` takes no modifiers — got 'when count\\(actors\\) >= 1'",
     );
 }
@@ -390,9 +337,9 @@ fn max_three_runs_three_then_skips() {
     let mut id = 1i64;
     let mut begins: Vec<Vec<String>> = Vec::new();
     for _ in 0..4 {
-        let r = run(&c, &dict, state, "0:0 @ ANA WAIT", id);
+        let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", id).unwrap();
         assert_eq!(r.rejected, None);
-        begins.push(begin_recipes(&r));
+        begins.push(begin_recipe(&r));
         id += r.records.len() as i64;
         state = r.state;
     }
@@ -438,7 +385,7 @@ fn a_spent_recipe_stops_being_suggested() {
 /// later (§6.4: a window that later refuses still counted).
 #[test]
 fn registration_at_begin_counts_while_the_window_is_still_open() {
-    use chorus::engine::engine::{execute_step, ExecOptions};
+    use chorus::engine::{execute_step, ExecOptions};
     let dict = max_dict();
     let (c, s) = compile(
         &dict,

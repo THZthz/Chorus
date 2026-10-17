@@ -32,12 +32,6 @@ pub fn grp_text<'t>(c: &regex::Captures<'t>, i: usize) -> &'t str {
         .unwrap_or_else(|| unreachable!("capture group {i} always participates in this pattern"))
 }
 
-/// Group 0 (the whole match) — always present after a successful match.
-#[must_use]
-pub fn grp0_text<'a>(c: &'a regex::Captures<'a>) -> &'a str {
-    c.get(0).map(|m| m.as_str()).unwrap_or_else(|| unreachable!("regex group 0 is always present"))
-}
-
 /// Group 0's start offset (bytes; byte offsets are monotonic with
 /// the UTF-16 unit offsets the `.index` compare/slice decisions use).
 #[must_use]

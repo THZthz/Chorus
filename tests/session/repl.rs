@@ -8,6 +8,7 @@
 //!   across runs, so the bin's bytes and the library's bytes are the same
 //!   surface judged twice.
 
+use chorus::session::render::display_name;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -80,10 +81,8 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
     let mut game = Game::from_script(&text, core_dictionary()).expect("the script compiles");
 
     let title = game.title();
-    let mut expected = banner(
-        &title,
-        &game.content.verbs.keys().map(|v| v.to_lowercase().replace('_', " ")).collect::<Vec<_>>(),
-    );
+    let mut expected =
+        banner(&title, &game.content.verbs.keys().map(|v| display_name(v)).collect::<Vec<_>>());
     for line in inputs {
         let trimmed = line.trim();
         match trimmed {
@@ -137,7 +136,7 @@ fn bare_inspect_is_usage_plus_the_card_list_never_the_first_card() {
     let game = Game::from_script(&text, core_dictionary()).expect("the script compiles");
     let mut expected = banner(
         &game.title(),
-        &game.content.verbs.keys().map(|v| v.to_lowercase().replace('_', " ")).collect::<Vec<_>>(),
+        &game.content.verbs.keys().map(|v| display_name(v)).collect::<Vec<_>>(),
     );
     push_lines(&mut expected, &game.inspect(""));
     assert_eq!(stdout, expected, "the bin is routing only");

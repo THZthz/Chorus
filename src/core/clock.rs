@@ -11,9 +11,13 @@ use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::static_regex;
 use crate::error::{ChorusError, Result};
 
-/// The `Clock` type is defined in `types`; this module re-exports it as
-/// part of the clock API.
-pub use crate::core::types::Clock;
+/// The mechanics clock: `day` + `halfhour`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Clock {
+    pub day: i64,
+    /// halfhours since day start (0..47); one halfhour = 30 minutes
+    pub halfhour: i64,
+}
 
 /// Minutes per clock tick.
 pub const MIN_PER_HALFHOUR: i64 = 30;
@@ -90,7 +94,7 @@ fn unit_minutes(unit: &str) -> i64 {
         "h" => 60,
         "m" => 1,
         "d" => 24 * 60,
-        _ => 0, // unreachable: the caller only passes UNIT_MINUTES keys
+        _ => 0, // unreachable: parse_duration's unit alternation only yields the four units above
     }
 }
 

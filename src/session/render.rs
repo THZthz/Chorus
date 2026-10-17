@@ -1,14 +1,14 @@
 //! L3 projection (spec §5.3, §6.7, §8, §4.4). Pure
 //! functions over records/state.
 
-use crate::content::content::CompiledContent;
+use crate::content::CompiledContent;
 use crate::core::clock::format_duration;
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
 use crate::core::r#ref::Ref;
-use crate::core::sentence::Arg;
-use crate::core::types::{Aspects, Ending};
-use crate::engine::engine::ActionRecord;
+use crate::core::sentence::{Arg, Clause};
+use crate::core::types::{AspectVal, Aspects, Ending};
+use crate::engine::ActionRecord;
 use crate::error::Result;
 
 /// The canonical journal: one canonical sentence per line.
@@ -35,26 +35,28 @@ pub fn pretty(name: &str) -> String {
     name.replace('_', " ")
 }
 
-/// nested aspects as flat "path level" strings: tome.cylinder 1
-/// (the `prefix` parameter is the recursion's
-/// internal accumulator; the public form starts empty)
+/// the display form of a registered verb lexeme (§11's banner list): USE_ON
+/// → "use on" — lowercased, underscores spaced
 #[must_use]
-pub fn flatten_aspects(a: &Aspects) -> Vec<String> {
-    flatten_with_prefix(a, "")
+pub fn display_name(name: &str) -> String {
+    name.to_lowercase().replace('_', " ")
 }
 
-fn flatten_with_prefix(a: &Aspects, prefix: &str) -> Vec<String> {
+/// nested aspects as flat "path level" strings: tome.cylinder 1. Q13's flat
+/// one-level model: sub-values are plain ints, so one pass is the whole shape.
+#[must_use]
+pub fn flatten_aspects(a: &Aspects) -> Vec<String> {
     let mut out = Vec::new();
     for (k, v) in a {
         match v {
-            crate::core::types::AspectVal::Num(n) => {
-                out.push(format!("{prefix}{k} {n}"));
+            AspectVal::Num(n) => {
+                out.push(format!("{k} {n}"));
             }
             // sub-values are plain ints (Q13's flat model), so the recursion
             // into `<prefix><k>.` yields exactly this one level
-            crate::core::types::AspectVal::Sub(sub) => {
+            AspectVal::Sub(sub) => {
                 for (sk, sv) in sub {
-                    out.push(format!("{prefix}{k}.{sk} {sv}"));
+                    out.push(format!("{k}.{sk} {sv}"));
                 }
             }
         }
@@ -163,26 +165,50 @@ fn ref_names(rs: &[Ref]) -> Vec<String> {
 
 /// The token replaces run in the authored
 /// order (actors, object, at, about, to, with); str::replace is a global
-/// replace, the exact /g semantics.
-fn interpolate_clause(template: &str, clause: &crate::core::sentence::Clause) -> String {
+/// replace, the exact /g semantics. The clause and record variants share
+/// this chain — a record's instruments are the clause's `with`.
+fn interpolate_refs(
+    template: &str,
+    actors: &[Ref],
+    objects: &[Ref],
+    at: Option<&Ref>,
+    about: Option<&Ref>,
+    to: Option<&Ref>,
+    with: &[Ref],
+) -> String {
     template
-        .replace("{actors}", &join_and(&ref_names(&clause.actors)))
-        .replace("{object}", ref_names(&clause.objects).first().map_or("—", String::as_str))
-        .replace("{at}", &ref_name(clause.at.as_ref()))
-        .replace("{about}", &ref_name(clause.about.as_ref()))
-        .replace("{to}", &ref_name(clause.to.as_ref()))
-        .replace("{with}", &join_and(&ref_names(&clause.with)))
+        .replace("{actors}", &join_and(&ref_names(actors)))
+        .replace("{object}", ref_names(objects).first().map_or("—", String::as_str))
+        .replace("{at}", &ref_name(at))
+        .replace("{about}", &ref_name(about))
+        .replace("{to}", &ref_name(to))
+        .replace("{with}", &join_and(&ref_names(with)))
+}
+
+/// The clause variant.
+fn interpolate_clause(template: &str, clause: &Clause) -> String {
+    interpolate_refs(
+        template,
+        &clause.actors,
+        &clause.objects,
+        clause.at.as_ref(),
+        clause.about.as_ref(),
+        clause.to.as_ref(),
+        &clause.with,
+    )
 }
 
 /// The record variant (instruments = with).
 fn interpolate_record(template: &str, record: &ActionRecord) -> String {
-    template
-        .replace("{actors}", &join_and(&ref_names(&record.actors)))
-        .replace("{object}", ref_names(&record.objects).first().map_or("—", String::as_str))
-        .replace("{at}", &ref_name(record.at.as_ref()))
-        .replace("{about}", &ref_name(record.about.as_ref()))
-        .replace("{to}", &ref_name(record.to.as_ref()))
-        .replace("{with}", &join_and(&ref_names(&record.instruments)))
+    interpolate_refs(
+        template,
+        &record.actors,
+        &record.objects,
+        record.at.as_ref(),
+        record.about.as_ref(),
+        record.to.as_ref(),
+        &record.instruments,
+    )
 }
 
 /// English "A, B and C" joining.

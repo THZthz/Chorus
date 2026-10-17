@@ -9,17 +9,14 @@
 //! before the fix the missing purse read false and the candle recipe sold
 //! her one silver into debt.
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::settle::{act, done, refusal, settle_step};
+use chorus::engine::settle::{act, done, refusal, settle_step};
 
 use chorus::content::script::compile_script;
 use chorus::core::clock::Clock;
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
 use chorus::core::types::{AspectVal, AttrValue};
-use chorus::engine::engine::{ExecResult, Step};
+use chorus::engine::{ExecResult, Step};
 use chorus::session::game::{Game, TurnKind};
 use chorus::session::render::ending_banner;
 
@@ -28,7 +25,7 @@ const SLICE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/c
 
 /// settle_step with the engine's id-generator shape (fresh `x{n}` ids).
 fn run(
-    content: &chorus::content::content::CompiledContent,
+    content: &chorus::content::CompiledContent,
     dict: &chorus::core::dict::Dictionary,
     state: chorus::core::types::State,
     src: &str,

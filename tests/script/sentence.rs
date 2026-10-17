@@ -8,15 +8,12 @@
 //! error assertions go through `assert_err_msg(res, "re")` with the pattern
 //! copied verbatim.
 
-#[path = "../common/mod.rs"]
-mod common;
-
 use chorus::core::dict::core_dictionary;
 use chorus::core::parse::parse_sentence;
 use chorus::core::r#ref::Ref;
 use chorus::core::text::cmp_utf16;
 
-use common::harness::{assert_err_msg, assert_json_eq, canonical};
+use crate::common::harness::{assert_err_msg, assert_json_eq, canonical};
 
 // ---------- spec §5.2 worked examples --------------------------------------
 

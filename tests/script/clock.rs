@@ -4,15 +4,12 @@
 //! error assertions go through `assert_err_msg(res, "re")`; value equality
 //! through `assert_json_eq`.
 
-#[path = "../common/mod.rs"]
-mod common;
-
+use chorus::core::clock::Clock;
 use chorus::core::clock::{format_clock, format_duration, parse_clock, parse_duration};
 use chorus::core::dict::core_dictionary;
 use chorus::core::lexer::{lex, Tok};
-use chorus::core::types::Clock;
 
-use common::harness::{assert_err_msg, assert_json_eq, canonical};
+use crate::common::harness::{assert_err_msg, assert_json_eq, canonical};
 
 // ---------- parse_clock -----------------------------------------------------
 

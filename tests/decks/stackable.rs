@@ -13,31 +13,28 @@
 //! as a value — `snap()` equality IS the semantic content of those checks
 //! (noted at each site, never weakened).
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common::harness::{assert_err_msg, assert_refusal};
+use crate::common::rig::settle_line;
+use crate::common::rig::tmp_log_path;
+use crate::common::seed::seed_state;
+use crate::common::snap::snap;
+use chorus::engine::settle::{act, done, settle_step};
 
-use common::harness::assert_err_msg;
-use common::seed::seed_state;
-use common::settle::{act, done, refusal, settle_step};
-use common::snap::snap;
-
-use chorus::content::content::{
+use chorus::content::script::{compile_script, parse_script};
+use chorus::content::{
     compile_content, CompiledContent, ContentRaw, PrototypeDef, PrototypeDerive, RecipeDef,
     SlotDef, VerbContent,
 };
-use chorus::content::script::{compile_script, parse_script};
-use chorus::core::clock::Clock;
 use chorus::core::dict::{core_dictionary, Dictionary};
-use chorus::core::parse::parse_sentence;
 use chorus::core::predicate::{eval_pred, parse_predicate, PredCtx, RoleBindings};
 use chorus::core::r#ref::Ref;
 use chorus::core::sentence::Arg;
 use chorus::core::types::{
     add_entity, clone_state, new_state, AspectVal, Aspects, AttrValue, Attrs, Entity, State,
 };
-use chorus::engine::engine::{ActionRecord, ExecResult, Step};
 use chorus::engine::fold::fold;
 use chorus::engine::store::{load_log, save_log};
+use chorus::engine::{ActionRecord, ExecResult};
 use chorus::session::game::Game;
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
@@ -112,61 +109,15 @@ fn rig(dict: &Dictionary) -> (CompiledContent, State) {
     (compiled.content, compiled.state)
 }
 
-/// settle_step with the exact id-generator
-/// closure: `x{first_record_id}_{n}`, the counter incrementing per minted id.
-fn run(
-    content: &CompiledContent,
-    dict: &Dictionary,
-    state: State,
-    src: &str,
-    first_record_id: i64,
-) -> ExecResult {
-    let s = parse_sentence(src, dict).unwrap();
-    let mut n: i64 = 0;
-    let mut id_gen = || {
-        n += 1;
-        format!("x{first_record_id}_{n}")
-    };
-    settle_step(
-        content,
-        dict,
-        state,
-        Step {
-            start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
-            clauses: s.clauses,
-            t_real: None,
-        },
-        first_record_id,
-        Some(&mut id_gen),
-    )
-    .unwrap()
-}
-
 fn stew(content: &CompiledContent, dict: &Dictionary, mut state: State, times: usize) -> State {
     let mut id = 1i64;
     for _ in 0..times {
-        let r = run(content, dict, state, "0:0 @ ANA STEW", id);
+        let r = settle_line(content, dict, state, "0:0 @ ANA STEW", id).unwrap();
         assert_eq!(r.rejected, None, "stew must not reject");
         id += r.records.len() as i64;
         state = r.state;
     }
     state
-}
-
-/// `refusal(r)` matches `re`.
-fn assert_refusal(r: &ExecResult, pattern: &str) {
-    let msg =
-        refusal(r).unwrap_or_else(|| panic!("expected a refusal matching /{pattern}/, got None"));
-    let re = regex::Regex::new(pattern).unwrap();
-    assert!(re.is_match(&msg), "refusal {msg:?} does not match /{pattern}/");
-}
-
-/// Temp log path, unique per process and tag.
-fn tmp_log_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("chorus-pool-{tag}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("log.jsonl")
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +237,7 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
     let mut cur = stew(&content, &dict, state, 3);
     let mut id = 4i64;
     for expected in [2usize, 1, 0] {
-        let r = run(&content, &dict, cur, "0:0 @ ANA CALM", id);
+        let r = settle_line(&content, &dict, cur, "0:0 @ ANA CALM", id).unwrap();
         assert_eq!(r.rejected, None);
         // the authored name-addressed destroy LOGS THE NAME (oldest resolved at apply)
         assert_eq!(
@@ -342,7 +293,7 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
         &[],
     )
     .unwrap();
-    let r = run(&plain, &dict, cur, "0:0 @ ANA ACQUIRE", id);
+    let r = settle_line(&plain, &dict, cur, "0:0 @ ANA ACQUIRE", id).unwrap();
     assert_eq!(r.rejected, None);
 }
 
@@ -390,7 +341,7 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
     )
     .unwrap();
     let mut state = seed_state();
-    let r = run(&poke, &dict, clone_state(&state), "0:0 @ ANA ACQUIRE", 1);
+    let r = settle_line(&poke, &dict, clone_state(&state), "0:0 @ ANA ACQUIRE", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
     // §6.4: the window registered at begin — the completion-time refusal
@@ -401,7 +352,7 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
     // once the non-stackable holder dies the name accepts the stackable mint
     state.entities.get_mut("chalice").unwrap().dead_action = Some(99);
     state.by_name.remove("CHALICE"); // by_name is the order-pool HashMap (outer map is unordered)
-    let r2 = run(&poke, &dict, state, "0:0 @ ANA ACQUIRE", 2);
+    let r2 = settle_line(&poke, &dict, state, "0:0 @ ANA ACQUIRE", 2).unwrap();
     assert_eq!(r2.rejected, None);
 }
 
@@ -451,7 +402,7 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
     )
     .unwrap();
     let _before = snap(&pooled); // computed but never asserted (deliberate)
-    let r = run(&plain, &dict, clone_state(&pooled), "0:0 @ ANA ACQUIRE", 1);
+    let r = settle_line(&plain, &dict, clone_state(&pooled), "0:0 @ ANA ACQUIRE", 1).unwrap();
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
     assert_eq!(
@@ -551,7 +502,7 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
     let mut state = seed_state();
     let mut id = 1i64;
     for _ in 0..2 {
-        let r = run(&spy, &dict, state, "0:0 @ ANA ACQUIRE CHALICE", id);
+        let r = settle_line(&spy, &dict, state, "0:0 @ ANA ACQUIRE CHALICE", id).unwrap();
         assert_eq!(r.rejected, None);
         id += r.records.len() as i64;
         state = r.state;
@@ -646,12 +597,14 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
     )
     .unwrap();
     let base = seed_state();
-    let r1 = run(&c, &dict, clone_state(&base), "0:0 @ ANA ACQUIRE", 1);
+    let r1 = settle_line(&c, &dict, clone_state(&base), "0:0 @ ANA ACQUIRE", 1).unwrap();
     assert_eq!(r1.rejected, None);
     let h1 = r1.state.by_name.get("HEARSAY").unwrap()[0].clone();
     assert!(r1.state.entities.get(&h1).unwrap().stackable);
     // the REPLACE successor computes the same way
-    let r2 = run(&c, &dict, r1.state, "0:0 @ ANA DECAY CHALICE", r1.records.len() as i64 + 1);
+    let r2 =
+        settle_line(&c, &dict, r1.state, "0:0 @ ANA DECAY CHALICE", r1.records.len() as i64 + 1)
+            .unwrap();
     assert_eq!(r2.rejected, None);
     let h2 = r2.state.by_name.get("HEARSAY").unwrap()[0].clone();
     assert!(r2.state.entities.get(&h2).unwrap().stackable);
@@ -675,7 +628,9 @@ fn two_copies_bind_by_id_set_and_destroy_object_address_each_bound_card() {
     let pool = pooled.by_name.get("SUSPICION").unwrap();
     let elder = pool[0].clone();
     let younger = pool[1].clone();
-    let r = run(&content, &dict, pooled, &format!("0:0 @ ANA PROBE #{elder}, #{younger}"), 3);
+    let r =
+        settle_line(&content, &dict, pooled, &format!("0:0 @ ANA PROBE #{elder}, #{younger}"), 3)
+            .unwrap();
     assert_eq!(r.rejected, None);
     assert_eq!(act(&r).unwrap().recipes, ["probe.clear"]);
     // one concrete SET per bound card, then the destroy carries both ids
@@ -754,7 +709,7 @@ fn engine_expiry_addresses_by_id_the_younger_expires_and_dies_no_re_fire_later()
         .unwrap()
         .attrs
         .insert("expiresAt".to_string(), AttrValue::Num(30)); // crosses slot 1 (0:30)
-    let r = run(&content, &dict, pooled, "0:0 @ ANA WAIT", 1); // 1h: crosses slots 1 and 2
+    let r = settle_line(&content, &dict, pooled, "0:0 @ ANA WAIT", 1).unwrap(); // 1h: crosses slots 1 and 2
     assert_eq!(r.rejected, None);
     let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
     assert_eq!(events.len(), 1);
@@ -766,7 +721,8 @@ fn engine_expiry_addresses_by_id_the_younger_expires_and_dies_no_re_fire_later()
     assert_eq!(r.state.entities.get(&eldest).unwrap().dead_action, None); // the elder survives
     assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![eldest.clone()]));
     // later crossings never re-fire: the survivor carries no expires
-    let r2 = run(&content, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 1);
+    let r2 = settle_line(&content, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 1)
+        .unwrap();
     assert_eq!(r2.rejected, None);
     assert_eq!(r2.records.iter().filter(|x| x.kind == "event").count(), 0);
 }
@@ -787,7 +743,7 @@ fn three_copies_past_their_expires_cross_one_two_slot_advance_oldest_dies_first_
             .insert("expiresAt".to_string(), AttrValue::Num(10)); // past BOTH crossed slots
     }
     let base = clone_state(&pooled);
-    let r = run(&content, &dict, pooled, "0:0 @ ANA WAIT", 1); // 1h: crosses slots 1 and 2
+    let r = settle_line(&content, &dict, pooled, "0:0 @ ANA WAIT", 1).unwrap(); // 1h: crosses slots 1 and 2
     assert_eq!(r.rejected, None);
     let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
     // the expiry snapshot iterates entities in birth order: all three fire at
@@ -862,8 +818,8 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
             ]
             .into_iter()
             .collect(),
-            triggers: Some(vec![chorus::content::content::TriggerDef::Expire(
-                chorus::content::content::ExpireTriggerDef {
+            triggers: Some(vec![chorus::content::TriggerDef::Expire(
+                chorus::content::ExpireTriggerDef {
                     id: "sus_burns".into(),
                     on_expire_of: "SUSPICION".into(),
                     out: vec![
@@ -901,7 +857,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
         .unwrap()
         .attrs
         .insert("expiresAt".to_string(), AttrValue::Num(60));
-    let r = run(&asym, &dict, pooled, "0:1 @ ANA WAIT", 3);
+    let r = settle_line(&asym, &dict, pooled, "0:1 @ ANA WAIT", 3).unwrap();
     assert_eq!(r.rejected, None);
     let triggers: Vec<&str> = r
         .records
@@ -917,7 +873,8 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
     assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![younger.clone()]));
     // the crossing copy is past its expires: it re-fires (§6.6) on the next
     // crossing — and being now the pool's head, the second DESTROY takes IT
-    let r2 = run(&asym, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 3);
+    let r2 =
+        settle_line(&asym, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 3).unwrap();
     let triggers: Vec<&str> = r2
         .records
         .iter()
@@ -993,7 +950,7 @@ fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
     let pooled = stew(&content, &dict, state, 1); // one copy alive, container s_house
     let elder = pooled.by_name.get("SUSPICION").unwrap()[0].clone();
     let pooled_base = clone_state(&pooled);
-    let r = run(&c, &dict, pooled, &format!("0:0 @ ANA DECAY #{elder}"), 2);
+    let r = settle_line(&c, &dict, pooled, &format!("0:0 @ ANA DECAY #{elder}"), 2).unwrap();
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["SPAWN", "DESTROY"]);
@@ -1010,13 +967,14 @@ fn spawn_appends_while_the_dying_card_lives_then_the_destroy_pops_it() {
     let replayed = fold(&r.records, &pooled_base, &dict, &c).unwrap();
     assert_eq!(snap(&replayed), snap(&r.state));
     // and the next-oldest (now the only) replaces again just the same
-    let r2 = run(
+    let r2 = settle_line(
         &c,
         &dict,
         r.state,
         &format!("0:0 @ ANA DECAY #{}", successor[0]),
         r.records.len() as i64 + 2,
-    );
+    )
+    .unwrap();
     assert_eq!(r2.rejected, None);
     assert_eq!(r2.state.by_name.get("SUSPICION").unwrap().len(), 1);
 }
@@ -1028,7 +986,8 @@ fn a_non_stackable_replace_onto_a_stackable_pool_still_rejects() {
     let (content, state) = rig(&dict);
     let pooled = stew(&content, &dict, state, 2);
     let elder = pooled.by_name.get("SUSPICION").unwrap()[0].clone();
-    let r = run(&c, &dict, clone_state(&pooled), &format!("0:0 @ ANA DECAY #{elder}"), 3); // the successor's name collides with the pool
+    let r = settle_line(&c, &dict, clone_state(&pooled), &format!("0:0 @ ANA DECAY #{elder}"), 3)
+        .unwrap(); // the successor's name collides with the pool
     assert_eq!(r.rejected, None);
     assert_refusal(&r, "already in use");
     assert_eq!(r.state.entities.get(&elder).unwrap().dead_action, None); // nothing applied
@@ -1095,7 +1054,7 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
     let pool = pooled.by_name.get("SUSPICION").unwrap();
     let eldest = pool[0].clone();
     let younger = pool[1].clone();
-    let r = run(&refuse, &dict, clone_state(&pooled), "0:0 @ ANA CALM", 3);
+    let r = settle_line(&refuse, &dict, clone_state(&pooled), "0:0 @ ANA CALM", 3).unwrap();
     assert_eq!(r.rejected, None);
     let ops: Vec<&str> = done(&r).unwrap().outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["DESTROY", "REFUSE"]);
@@ -1203,9 +1162,9 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
             step.to_string()
         };
         let r = if verb == "STEW" {
-            run(&content, &dict, cur, &src, id)
+            settle_line(&content, &dict, cur, &src, id).unwrap()
         } else {
-            run(&expire_set, &dict, cur, &src, id)
+            settle_line(&expire_set, &dict, cur, &src, id).unwrap()
         };
         assert_eq!(r.rejected, None);
         if verb == "STEW" && src.contains("STEW") {
@@ -1216,7 +1175,7 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
         cur = r.state;
     }
     assert!(!cur.by_name.contains_key("SUSPICION")); // the pool drained
-    let path = tmp_log_path("fold");
+    let path = tmp_log_path("pool-fold");
     save_log(&path, &all).unwrap();
     let loaded = load_log(&path).unwrap();
     let (base2_content, base2_state) = rig(&dict);
@@ -1292,7 +1251,7 @@ fn the_pool_count_grows_per_copy_and_flips_the_branch_at_the_threshold() {
     let mut picks: Vec<String> = Vec::new();
     let mut id = 1i64;
     for _ in 0..3 {
-        let r = run(&c, &dict, cur, "0:0 @ ANA STEW", id);
+        let r = settle_line(&c, &dict, cur, "0:0 @ ANA STEW", id).unwrap();
         assert_eq!(r.rejected, None);
         picks.extend(act(&r).unwrap().recipes.iter().cloned());
         id += r.records.len() as i64;

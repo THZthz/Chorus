@@ -353,7 +353,7 @@ door decks.
 
 This section **supersedes the v1 mapping**, which was written against the retired
 TypeScript prototype (`src/engine.ts`) and is obsolete. The engine is now Rust
-(`src/engine/engine.rs`, `src/core/…`), and every "engine gap" the v1 listed has since
+(`src/engine/`, `src/core/…`), and every "engine gap" the v1 listed has since
 been closed in code. Every claim below was verified against the current source on
 2026-10-15 (same pass as §9); `src/core/types.rs` and the spec sections cited in the
 code comments are ground truth.
@@ -373,7 +373,7 @@ code comments are ground truth.
 | chance (`linked` rolls, induces) | `ROLL`/`ROLLED` + the seeded `State.rng` counter; each draw lands in the log as `ROLLED(total, ctrAfter)` so the fold replays deterministically (§4.4) — v1's recommended option (b), shipped |
 | `deckeffects` / `internaldeck` | `DRAW`/`DRAWN` + per-deck cursors + `draw_from` exhaustion rules (§4.4) |
 | endings (48) | `ENDING` outcome + `State.ended` (§4.4) |
-| `extantreqs` / `tablereqs` | `exists()` / `count()` predicates over the whole living world (§4.5; `predicate.rs:493`) — the v1 "not expressible" note is obsolete |
+| `extantreqs` / `tablereqs` | `exists()` / `count()` predicates over the whole living world (§4.5; `core/pred_parse.rs`) — the v1 "not expressible" note is obsolete |
 | conditional chains / challenge rolls | `IF`/`ELSE` outcome arms (§6.8) reading the last `ROLL`; strict arms reject the step |
 | hintonly suggestions | `shown` + `hint` recipes |
 | followers/cult/social graph | relations (8 registered types) + multi-actor roles |

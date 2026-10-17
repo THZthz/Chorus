@@ -9,33 +9,16 @@
 //! progress + the summary go to stdout; exit code 1 iff there is a failure;
 //! failing seeds print as a space-separated list. `run_fuzz_seed` is a pure
 //! function of its seed (the shared implementation lives in
-//! tests/common/reach_fuzz_lib.rs, mounted here — single source of truth
-//! with the test suite).
+//! `chorus::reach::fuzz` — single source of truth with the test suite).
 
-// The fuzz machinery is the shared TEST lib; bins cannot see tests/, so the
-// shared files are mounted by path. `reach_fuzz_lib`'s
-// `use super::settle::settle_step` resolves against this crate root, where
-// `settle` is mounted first.
-#[path = "../../tests/common/reach_fuzz_lib.rs"]
-mod reach_fuzz_lib;
-#[path = "../../tests/common/settle.rs"]
-mod settle;
+use chorus::reach::fuzz;
 
 /// The canonical number grammar for the flag values — trim DSL whitespace,
 /// '' → 0, decimal/hex/±Infinity literals, anything else NaN. (A NaN feeds
 /// straight into the loop condition, which then never runs —
 /// replicated below by keeping the loop in f64.)
 fn parse_canonical_number(s: &str) -> f64 {
-    let t: String = {
-        let mut chars: Vec<char> = s.chars().collect();
-        while chars.first().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
-            chars.remove(0);
-        }
-        while chars.last().is_some_and(|c| chorus::core::text::is_dsl_ws_char(*c)) {
-            chars.pop();
-        }
-        chars.into_iter().collect()
-    };
+    let t = chorus::core::text::dsl_trim(s);
     if t.is_empty() {
         return 0.0;
     }
@@ -54,7 +37,7 @@ fn parse_canonical_number(s: &str) -> f64 {
     // decimal: optional sign, digits with optional fraction and exponent —
     // anything else is NaN (str::parse would also accept "inf"/"nan", which
     // the canonical grammar rejects)
-    let mut body = t.as_str();
+    let mut body = t;
     if let Some(rest) = body.strip_prefix(['+', '-']) {
         body = rest;
     }
@@ -124,12 +107,11 @@ fn main() -> std::process::ExitCode {
         // 3 states for `--states 2.5`. Integer flags, the defaults and NaN
         // (`parse_canonical_number` = `Number`, registered at its definition) are exact;
         // only a fractional flag digs one level shallower here.
-        let out =
-            reach_fuzz_lib::run_fuzz_seed(seed as i32 as u32, steps as usize, states as usize)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                });
+        let out = fuzz::run_fuzz_seed(seed as i32 as u32, steps as usize, states as usize)
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            });
         worst = worst.max(out.states_seen as f64);
         dup_pushes += out.deduped as f64;
         for f in &out.failures {

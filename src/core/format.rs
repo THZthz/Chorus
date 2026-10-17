@@ -5,12 +5,19 @@
 
 use crate::core::clock::{format_clock, format_duration};
 use crate::core::dict::Dictionary;
-use crate::core::r#ref::{format_ref, is_safe_name, sort_refs, Ref};
-use crate::core::sentence::{Arg, Clause, IntoTarget, Outcome, Sentence, SentenceKind};
+use crate::core::r#ref::{format_ref, is_safe_name, quote_string, sort_refs, Ref};
+use crate::core::sentence::{
+    signed_int_spelling, Arg, Clause, IntoTarget, Outcome, Sentence, SentenceKind,
+};
 use crate::error::{ChorusError, Result};
 
 /// The canonical spelling of one parsed sentence (spec §5.1).
-pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String> {
+///
+/// The dictionary stays an `Option` at THIS boundary on purpose — the
+/// acceptance harness calls the formatter both with a loaded dictionary and
+/// without (a name formats bare unless unsafe) — but it is resolved here and
+/// never threaded below: every helper takes `&Dictionary`.
+pub fn format_sentence(s: &Sentence, dict: &Dictionary) -> Result<String> {
     let mut parts: Vec<String> = Vec::new();
     if let Some(clock) = s.clock {
         parts.push(format!("{} @", format_clock(clock)));
@@ -49,7 +56,7 @@ pub fn format_sentence(s: &Sentence, dict: Option<&Dictionary>) -> Result<String
 
 /// One clause in canonical order: actors (sorted), pre-verbal AT, verb,
 /// TO, objects (sorted), WITH (sorted), ABOUT.
-fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
+fn format_clause(c: &Clause, dict: &Dictionary) -> Result<String> {
     let mut parts: Vec<String> = Vec::new();
     let actors =
         sort_refs(&c.actors).iter().map(|r| format_ref(r, dict)).collect::<Result<Vec<_>>>()?;
@@ -86,7 +93,7 @@ fn format_clause(c: &Clause, dict: Option<&Dictionary>) -> Result<String> {
 /// One outcome. Authored-only ops (IF, FN, ROLL, DRAW) are errors here; the
 /// concrete rows ROLLED/DRAWN ride the generic paren'd fallback; SPAWN,
 /// NARRATE, REPLACE and ENDING have dedicated canonical spellings.
-fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
+fn format_outcome(o: &Outcome, dict: &Dictionary) -> Result<String> {
     if o.op == "IF" {
         return Err(ChorusError::new(
             "an IF outcome is authored form only — the log records the taken branch (§6.8)",
@@ -167,7 +174,7 @@ fn format_outcome(o: &Outcome, dict: Option<&Dictionary>) -> Result<String> {
 }
 
 /// Comma-joined args.
-fn format_args(args: &[Arg], dict: Option<&Dictionary>) -> Result<String> {
+fn format_args(args: &[Arg], dict: &Dictionary) -> Result<String> {
     let parts = args.iter().map(|a| format_arg(a, dict)).collect::<Result<Vec<_>>>()?;
     Ok(parts.join(", "))
 }
@@ -175,17 +182,14 @@ fn format_args(args: &[Arg], dict: Option<&Dictionary>) -> Result<String> {
 /// The canonical arg spelling. The str/pair spellings here
 /// QUOTE — `fn_expand`'s `arg_spelling` deliberately does not; the two spelling
 /// layers are frozen separately, only delta/int/dur/bool are shared.
-pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
+fn format_arg(a: &Arg, dict: &Dictionary) -> Result<String> {
     match a {
         Arg::Ref { r#ref } => format_ref(r#ref, dict),
         Arg::Role { role } => Ok(role.as_str().to_uppercase()),
         Arg::Int { v } => Ok(v.to_string()),
-        Arg::Delta { v } => Ok(if *v < 0 {
-            v.to_string()
-        } else {
-            format!("+{v}")
-        }), // signed args print with their sign (§4.4); -0 → +0 (Q16: the
-            // sign branch is explicit on the integer domain)
+        // signed args print with their sign (§4.4); -0 → +0 (Q16: the
+        // sign branch is explicit on the integer domain)
+        Arg::Delta { v } => Ok(signed_int_spelling(*v)),
         Arg::Str { v } => Ok(quote(v)),
         Arg::Bool { v } => Ok(v.to_string()),
         Arg::Dur { v } => format_duration(*v),
@@ -218,10 +222,12 @@ pub fn format_arg(a: &Arg, dict: Option<&Dictionary>) -> Result<String> {
 }
 
 /// Quote a string: `\` → `\\` first, then `"` → `\"` (backslash must be
-/// escaped first or the quote escapes would double-encode).
+/// escaped first or the quote escapes would double-encode). The discipline
+/// itself lives once, in [`crate::core::r#ref::quote_string`] — names and
+/// prose quote by the same rule.
 #[must_use]
-pub fn quote(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+fn quote(s: &str) -> String {
+    quote_string(s)
 }
 
 /// Colon-joined trigger ids (`expire:<NAME>`,
@@ -251,14 +257,14 @@ mod tests {
         let d = dict();
         // spec §5.2 worked-example shape: actors sorted, pre-verbal AT
         let s = parse_sentence("THING, ANOTHER READ TO book AT shelf", &d).unwrap();
-        let out = format_sentence(&s, Some(&d)).unwrap();
+        let out = format_sentence(&s, &d).unwrap();
         assert_eq!(out, "ANOTHER, THING AT shelf READ TO book");
         // post-verbal AT canonicalizes pre-verbal (§5.1)
         let s2 = parse_sentence("ANA READ book AT shelf", &d).unwrap();
-        assert_eq!(format_sentence(&s2, Some(&d)).unwrap(), "ANA AT shelf READ book");
+        assert_eq!(format_sentence(&s2, &d).unwrap(), "ANA AT shelf READ book");
         // re-parse stability: format(parse(format(parse(x)))) == format(parse(x))
         let s3 = parse_sentence(&out, &d).unwrap();
-        assert_eq!(format_sentence(&s3, Some(&d)).unwrap(), out);
+        assert_eq!(format_sentence(&s3, &d).unwrap(), out);
     }
 
     #[test]
@@ -269,7 +275,7 @@ mod tests {
             &d,
         )
         .unwrap();
-        let out = format_sentence(&s, Some(&d)).unwrap();
+        let out = format_sentence(&s, &d).unwrap();
         // DESTROY has no format special-case — the generic paren'd
         // fallback prints DESTROY(OBJECT), which re-parses through the
         // generic arg grammar (arg() reads OBJECT as a role ref)
@@ -282,7 +288,7 @@ mod tests {
         let s2 =
             parse_sentence("ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)", &d).unwrap();
         assert_eq!(
-            format_sentence(&s2, Some(&d)).unwrap(),
+            format_sentence(&s2, &d).unwrap(),
             "ANA READ book -> ROLLED(14, 3), DRAWN(RUMOURS, HEARSAY)"
         );
     }
@@ -293,7 +299,7 @@ mod tests {
         // 90 minutes has no exact hour fit — canonical is 3halfhour — and the
         // rendering re-parses to the same span
         let s = parse_sentence("0:42 @ WAIT 1h30m", &d).unwrap();
-        let out = format_sentence(&s, Some(&d)).unwrap();
+        let out = format_sentence(&s, &d).unwrap();
         assert_eq!(out, "0:42 @ WAIT 3halfhour");
         let s2 = parse_sentence(&out, &d).unwrap();
         assert_eq!(s2.span_min, s.span_min);
@@ -301,7 +307,7 @@ mod tests {
         // colon-joined segment
         let s = parse_sentence("1:2 @ EVENT expire:\"THE DOOR\" -> NARRATE \"x\"", &d).unwrap();
         assert_eq!(
-            format_sentence(&s, Some(&d)).unwrap(),
+            format_sentence(&s, &d).unwrap(),
             "1:2 @ EVENT expire:\"THE DOOR\" -> NARRATE \"x\""
         );
     }

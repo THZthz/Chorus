@@ -2,24 +2,26 @@
 //! interface, `compute_world_facts`' pre-fixpoint half, and the identity-cache
 //! design — all world facts are pure functions of (content, initial), so one
 //! `Analyzer<'c>` holding `(content, initial)` suffices, with a
-//! lazily-computed [`WorldFacts`]. The world-static predicate EVALUATORS
-//! (`eval_static`/`path_open`/`writable_paths`) live here; the static-shape PREDICATES
-//! (`pred_static`) live in census.rs — collect_sites itself consumes
-//! pred_static while tagging sites.
+//! lazily-computed [`WorldFacts`]. The world-static predicate CLASSIFIERS
+//! (`pred_static`/`expr_static`) and EVALUATORS
+//! (`eval_static`/`path_open`/`writable_paths`) live here — the shape tests
+//! and the evaluators must agree variant for variant, so they share one
+//! home; census.rs imports pred_static for its site tagging
+//! (runtime_gated / path_non_static).
 
 use std::rc::Rc;
 use std::sync::OnceLock;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::content::content::{CompiledContent, CompiledTrigger, PrototypeDef};
+use crate::content::{CompiledContent, CompiledTrigger, PrototypeDef};
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
 use crate::error::{ChorusError, Result};
 
 use super::census::{
-    collect_sites, draw_deck, object_always, pred_static, Census, RawSite, SiteKind, TrigIndex,
+    collect_sites, object_always, site_mints, trigger_owner, Census, RawSite, SiteKind, TrigIndex,
 };
 
 /// An `i64::MAX` stand-in for an unbounded freeze distance: every
@@ -28,14 +30,39 @@ use super::census::{
 /// unfrozen, `fc >= freeze_dist` always false).
 pub(crate) const INFINITY: i64 = i64::MAX;
 
+/// The per-fact weight cap of the card world: `min(count, 32)`. The
+/// fixpoint's count queries and the post-fixpoint universe flatten MUST
+/// agree on it (a fact's world weight and its universe presence are two
+/// views of the same fact).
+pub(crate) const FLATTEN_WEIGHT_CAP: i64 = 32;
+
 // ---------------------------------------------------------------------------
 // world-static predicate evaluation
 // ---------------------------------------------------------------------------
 
+/// A value expression is world-static when it reads no runtime state.
+fn expr_static(v: &ValExpr) -> bool {
+    matches!(v, ValExpr::Int { .. } | ValExpr::CountQuery { .. })
+}
+
+/// A predicate is world-static when every operand is. The
+/// `Rel`/`Every`/`Any` arms read runtime role state; `Exists` /
+/// `ExistsQuery` are plain world reads (answerable from the card world
+/// alone, evaluated by [`eval_static`]).
+pub(crate) fn pred_static(p: &Pred) -> bool {
+    match p {
+        Pred::And(a, b) | Pred::Or(a, b) => pred_static(a) && pred_static(b),
+        Pred::Not(a) => pred_static(a),
+        Pred::Cmp { l, r, .. } => expr_static(l) && expr_static(r),
+        Pred::Exists { .. } | Pred::ExistsQuery { .. } => true,
+        Pred::Rel { .. } | Pred::Every { .. } | Pred::Any { .. } => false,
+    }
+}
+
 /// The fixpoint's view of the available world: distinct
 /// facts with count-capped weights. Query evaluation over weights is EXACTLY
-/// the evaluation over the flattened entity array — flatten pushed
-/// min(count, 32) instances per fact.
+/// the evaluation over the flattened entity array — flatten pushes
+/// [`FLATTEN_WEIGHT_CAP`] instances per fact at most.
 #[derive(Debug, Clone)]
 pub(crate) struct CardWorld {
     /// the flat_cache version stamp (see [`WorldFacts::push`])
@@ -60,7 +87,7 @@ fn eval_expr_static(v: &ValExpr, world: &CardWorld) -> Result<i64> {
             Ok(world.distinct.iter().filter(|d| match_query(&d.e, query)).map(|d| d.w).sum())
         }
         // preserved as Err (catchable upstream)
-        _ => Err(ChorusError::new("internal: evalExprStatic over a non-static operand")),
+        _ => Err(ChorusError::new("internal: eval_expr_static over a non-static operand")),
     }
 }
 
@@ -90,7 +117,7 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
         Pred::Exists { name } => Ok(world.by_name.contains_key(name)),
         Pred::ExistsQuery { query } => Ok(world.distinct.iter().any(|d| match_query(&d.e, query))),
         // preserved as Err (catchable upstream)
-        _ => Err(ChorusError::new("internal: evalStatic over a non-static predicate")),
+        _ => Err(ChorusError::new("internal: eval_static over a non-static predicate")),
     }
 }
 
@@ -104,6 +131,19 @@ pub(crate) fn path_open(path: &[Pred], world: &CardWorld) -> Result<bool> {
         return Ok(false);
     }
     Ok(true)
+}
+
+/// `eval_static` with the internal-throw guard: the non-static operands sit
+/// behind `pred_static` guards and are unreachable; debug-trap if a bug ever
+/// reaches one.
+pub(crate) fn eval_static_ok(p: &Pred, world: &CardWorld) -> bool {
+    match eval_static(p, world) {
+        Ok(b) => b,
+        Err(e) => {
+            debug_assert!(false, "internal: {e}");
+            false
+        }
+    }
 }
 
 /// The writable paths a query's aspect/state thresholds
@@ -137,17 +177,16 @@ pub(crate) fn writable_paths_of(group: &[QueryTerm]) -> Vec<String> {
 
 /// A slot filler: the `name` and `how` it was obtained.
 #[derive(Debug, Clone)]
-pub struct SlotFiller {
+pub(crate) struct SlotFiller {
     pub name: String,
     pub how: String,
 }
 
 /// One filled slot of a verb's committability proof.
 #[derive(Debug, Clone)]
-pub struct SlotProof {
+pub(crate) struct SlotProof {
     pub role: String,
     pub min: i64,
-    pub query: Option<Query>,
     pub fillers: Vec<SlotFiller>,
 }
 
@@ -187,8 +226,7 @@ pub(crate) struct WorldFacts<'c> {
     pub avail_ver: u64,
     /// the flat_cache — exact mechanics preserved including its
     /// version stamp; `Rc` because every [`WorldFacts::cards_of`] call
-    /// hands the SAME immutable snapshot to the whole round (a deep clone
-    /// per call was the one true fixpoint hot spot)
+    /// hands the SAME immutable snapshot to the whole round
     pub flat_cache: Option<Rc<CardWorld>>,
     /// one representative per name (descriptors; later-wins over
     /// State.entities order — same-name stackable mints in mid-game States)
@@ -272,10 +310,9 @@ impl<'c> WorldFacts<'c> {
     /// `cards_of`, over the flat_cache. Exact
     /// mechanics: [`WorldFacts::push`] bumps `avail_ver` without touching the
     /// cache's `ver`, so every push invalidates and the next call rebuilds from
-    /// `avail` (insertion order preserved — the "O(1) warmth" claim is
-    /// defeated by the stale ver; reproduced, not repaired). The snapshot is
-    /// handed out as an `Rc`: it is never mutated through the handle, so an
-    /// `Rc::clone` replaces the per-call deep clone byte-for-byte.
+    /// `avail` (insertion order preserved — the cache never reads warm after a
+    /// push). The snapshot is handed out as an `Rc`: it is never mutated
+    /// through the handle.
     pub(crate) fn cards_of(&mut self) -> Rc<CardWorld> {
         if let Some(cache) = &self.flat_cache {
             if cache.ver == self.avail_ver {
@@ -286,7 +323,7 @@ impl<'c> WorldFacts<'c> {
         let mut distinct: Vec<DistEntry> = Vec::new();
         for list in self.avail.values() {
             for f in list {
-                let w = std::cmp::min(f.count, 32);
+                let w = std::cmp::min(f.count, FLATTEN_WEIGHT_CAP);
                 by_name.insert(
                     f.entity.name.clone(),
                     by_name.get(&f.entity.name).copied().unwrap_or(0) + w,
@@ -300,11 +337,11 @@ impl<'c> WorldFacts<'c> {
     }
 
     /// Add one available-card fact under its name (the `push` mechanics).
-    /// The TS mirror also patched the cached CardWorld here; that patch was
-    /// DEAD WORK — the same statement sequence bumps `avail_ver`, so the very
-    /// next [`WorldFacts::cards_of`] sees `cache.ver != avail_ver` and rebuilds
-    /// from `avail` before any reader could observe the patch. Dropping it is
-    /// output-identical; the ver stamp (the observable part) stays.
+    /// A cached-CardWorld patch here would be DEAD WORK — the same statement
+    /// sequence bumps `avail_ver`, so the very next [`WorldFacts::cards_of`]
+    /// sees `cache.ver != avail_ver` and rebuilds from `avail` before any
+    /// reader could observe the patch. Dropping it is output-identical; the
+    /// ver stamp (the observable part) stays.
     pub(crate) fn push(&mut self, name: String, fact: CardFact) {
         match self.avail.get_mut(&name) {
             Some(list) => list.push(fact),
@@ -437,7 +474,7 @@ pub(crate) fn compute_world_facts<'c>(
         .iter()
         .filter(|t| {
             matches!(t, CompiledTrigger::Slot { .. })
-                && wf.risky_owners.contains(&format!("trigger {}", t.id()))
+                && wf.risky_owners.contains(&trigger_owner(t.id()))
         })
         .collect();
     wf.frozen = !risky_triggers.is_empty();
@@ -448,7 +485,7 @@ pub(crate) fn compute_world_facts<'c>(
             .map(|t| match t {
                 CompiledTrigger::Slot { slot, .. } => wf.first_cross(*slot),
                 CompiledTrigger::Expire { .. } | CompiledTrigger::Complete { .. } => {
-                    unreachable!("riskyTriggers filters to slot triggers")
+                    unreachable!("risky_triggers filters to slot triggers")
                 }
             })
             .min()
@@ -474,91 +511,141 @@ pub(crate) fn compute_world_facts<'c>(
 /// The risky block: list-level mint risk against the
 /// INITIAL world and CROSS-LIST trigger timing. Mutates census sites
 /// (`dup_risk`) through arena indices (the shared per-list site objects,
-/// flattened into the arena).
+/// flattened into the arena). The stages run in exactly this order and each
+/// owns one rule set:
+///
+/// 1. [`RiskySets::build`] — the per-owner grouping and mint sets
+/// 2. [`initial_collision_risky`] — initial-world mint collisions (seeds 40/43)
+/// 3. [`slot_pair_risky`] — same-slot mint pairs + the event-pass kill
+/// 4. [`cross_slot_risky`] — later-first-crossing demotions (seed 7475)
+/// 5. [`gated_arm_demotions`] — roll/role-gated mint arms (seed 686)
+/// 6. [`throw_freeze_set`] — deterministic-throw freeze (seeds 2876, 10388)
+/// 7. [`first_freeze_at`] — the freeze boundary (seed 65415 shape)
+/// 8. [`boundary_demotions`] — pass-mates of a freezing trigger
+/// 9. [`demote_risky_owners`] — the final demotions + `trigger_mint_names`
 fn risky_block(wf: &mut WorldFacts) {
-    // by_list: live ∪ refused grouped by owner
-    let mut by_list: IndexMap<String, Vec<usize>> = IndexMap::new();
-    for &i in wf.census.live.iter().chain(&wf.census.refused) {
-        let owner = wf.census.sites[i].owner.clone();
-        by_list.entry(owner).or_default().push(i);
-    }
+    let mut sets = RiskySets::build(wf);
+    initial_collision_risky(wf, &mut sets);
+    slot_pair_risky(wf, &mut sets);
+    cross_slot_risky(wf, &mut sets);
+    gated_arm_demotions(wf, &sets);
+    let throw_frozen = throw_freeze_set(wf, &sets);
+    let freeze_at = first_freeze_at(wf, &sets, &throw_frozen);
+    boundary_demotions(wf, &sets, &throw_frozen, freeze_at);
+    demote_risky_owners(wf, &sets, &throw_frozen);
+}
 
-    /// The owner's site indices, empty when the owner has none.
-    fn idxs<'m>(m: &'m IndexMap<String, Vec<usize>>, k: &str) -> &'m [usize] {
-        m.get(k).map_or(&[], Vec::as_slice)
-    }
+/// The owner's site indices, empty when the owner has none.
+fn idxs<'m>(m: &'m IndexMap<String, Vec<usize>>, k: &str) -> &'m [usize] {
+    m.get(k).map_or(&[], Vec::as_slice)
+}
 
-    /// Collision-filtered mint names of a site list.
-    fn mint_set_of(census: &Census, sites: &[usize]) -> IndexSet<String> {
-        let mut names = IndexSet::new();
-        for &i in sites {
-            let s = &census.sites[i];
-            if s.kind == SiteKind::Draw && s.deck.is_some() {
-                let deck = draw_deck(s);
-                for c in &deck.order {
-                    if census.collision_names.contains(&c.name) {
-                        names.insert(c.name.clone());
-                    }
+/// Collision-filtered mint names of a site list.
+fn mint_set_of(census: &Census, sites: &[usize]) -> IndexSet<String> {
+    let mut names = IndexSet::new();
+    for &i in sites {
+        let s = &census.sites[i];
+        if s.kind == SiteKind::Draw && s.deck.is_some() {
+            for (n, _) in site_mints(s) {
+                if census.collision_names.contains(n) {
+                    names.insert(n.to_string());
                 }
-                if let Some(dc) = &deck.defaultcard {
-                    if census.collision_names.contains(&dc.name) {
-                        names.insert(dc.name.clone());
-                    }
-                }
-            } else if census.collision_names.contains(&s.name) {
-                names.insert(s.name.clone());
             }
+        } else if census.collision_names.contains(&s.name) {
+            names.insert(s.name.clone());
         }
-        names
+    }
+    names
+}
+
+/// The per-owner bookkeeping the risky stages share: the live ∪ refused site
+/// indices grouped by owner, each owner's collision-filtered mint set (built
+/// once — the pair stages consult it repeatedly), and the running risky flags.
+struct RiskySets {
+    by_list: IndexMap<String, Vec<usize>>,
+    owner_mints: IndexMap<String, IndexSet<String>>,
+    risky: IndexMap<String, bool>,
+}
+
+impl RiskySets {
+    fn build(wf: &WorldFacts) -> Self {
+        // by_list: live ∪ refused grouped by owner
+        let mut by_list: IndexMap<String, Vec<usize>> = IndexMap::new();
+        for &i in wf.census.live.iter().chain(&wf.census.refused) {
+            let owner = wf.census.sites[i].owner.clone();
+            by_list.entry(owner).or_default().push(i);
+        }
+        let mut owner_mints: IndexMap<String, IndexSet<String>> = IndexMap::new();
+        for (owner, sites) in &by_list {
+            owner_mints.insert(owner.clone(), mint_set_of(&wf.census, sites));
+        }
+        // every trigger owner is a query candidate of the stages below;
+        // owners without sites read as the empty set
+        for t in &wf.content.triggers {
+            owner_mints.entry(trigger_owner(t.id())).or_default();
+        }
+        RiskySets { by_list, owner_mints, risky: IndexMap::new() }
     }
 
-    // a list minting the name of a living initial
-    // non-stackable card collides on its first commit (seeds 40/43)
-    let mut risky: IndexMap<String, bool> = IndexMap::new();
-    for (owner, sites) in &by_list {
-        let names = mint_set_of(&wf.census, sites);
-        let val = names.iter().any(|n| wf.init_names.get(n).is_some_and(|e| !e.stackable));
-        risky.insert(owner.clone(), val);
+    /// The owner's collision-filtered mint set. Every queried owner is a
+    /// by_list key or a trigger owner, both seeded by [`RiskySets::build`].
+    fn mints(&self, owner: &str) -> &IndexSet<String> {
+        match self.owner_mints.get(owner) {
+            Some(m) => m,
+            None => unreachable!("owner '{owner}' was not seeded by RiskySets::build"),
+        }
     }
+}
 
-    // slot triggers by slot, declaration order
+/// A list minting the name of a living initial
+/// non-stackable card collides on its first commit (seeds 40/43)
+fn initial_collision_risky(wf: &WorldFacts, sets: &mut RiskySets) {
+    for (owner, _) in &sets.by_list {
+        let val =
+            sets.mints(owner).iter().any(|n| wf.init_names.get(n).is_some_and(|e| !e.stackable));
+        sets.risky.insert(owner.clone(), val);
+    }
+}
+
+/// Slot triggers by slot, declaration order.
+/// Same-slot pairs: a shared mint name makes the
+/// pair mutually risky, and one risky trigger kills the whole EVENT PASS
+fn slot_pair_risky(wf: &WorldFacts, sets: &mut RiskySets) {
     let mut trig_by_slot: IndexMap<i64, Vec<String>> = IndexMap::new();
     for t in &wf.content.triggers {
         if let CompiledTrigger::Slot { id, slot, .. } = t {
-            trig_by_slot.entry(*slot).or_default().push(format!("trigger {id}"));
+            trig_by_slot.entry(*slot).or_default().push(trigger_owner(id));
         }
     }
-
-    // same-slot pairs: a shared mint name makes the
-    // pair mutually risky, and one risky trigger kills the whole EVENT PASS
     for owners in trig_by_slot.values() {
         for i in 0..owners.len() {
             for j in (i + 1)..owners.len() {
-                let a = mint_set_of(&wf.census, idxs(&by_list, &owners[i]));
-                let b = mint_set_of(&wf.census, idxs(&by_list, &owners[j]));
+                let (a, b) = (sets.mints(&owners[i]), sets.mints(&owners[j]));
                 if a.iter().any(|n| b.contains(n)) {
-                    risky.insert(owners[i].clone(), true);
-                    risky.insert(owners[j].clone(), true);
+                    sets.risky.insert(owners[i].clone(), true);
+                    sets.risky.insert(owners[j].clone(), true);
                 }
             }
         }
-        if owners.iter().any(|o| risky.get(o) == Some(&true)) {
+        if owners.iter().any(|o| sets.risky.get(o) == Some(&true)) {
             for o in owners {
-                risky.insert(o.clone(), true);
+                sets.risky.insert(o.clone(), true);
             }
         }
     }
+}
 
-    // across DIFFERENT slots the LATER first crossing
-    // demotes (fuzz seed 7475). trig_flat's sort is stability-irrelevant:
-    // equal first-cross pairs are skipped below.
+/// Across DIFFERENT slots the LATER first crossing
+/// demotes (fuzz seed 7475). trig_flat's sort is stability-irrelevant:
+/// equal first-cross pairs are skipped below.
+fn cross_slot_risky(wf: &WorldFacts, sets: &mut RiskySets) {
     let mut trig_flat: Vec<(String, i64)> = wf
         .content
         .triggers
         .iter()
         .filter_map(|t| match t {
             CompiledTrigger::Slot { id, slot, .. } => {
-                Some((format!("trigger {id}"), wf.first_cross(*slot)))
+                Some((trigger_owner(id), wf.first_cross(*slot)))
             }
             _ => None,
         })
@@ -569,23 +656,26 @@ fn risky_block(wf: &mut WorldFacts) {
             if trig_flat[i].1 == trig_flat[j].1 {
                 continue; // same slot — handled above (both risky)
             }
-            let a = mint_set_of(&wf.census, idxs(&by_list, &trig_flat[i].0));
-            let b = mint_set_of(&wf.census, idxs(&by_list, &trig_flat[j].0));
+            let (a, b) = (sets.mints(&trig_flat[i].0), sets.mints(&trig_flat[j].0));
             if a.iter().any(|n| b.contains(n)) {
-                risky.insert(trig_flat[j].0.clone(), true);
+                sets.risky.insert(trig_flat[j].0.clone(), true);
             }
         }
     }
+}
 
-    // the gated-branch escape set: every non-stackable
-    // mint name anywhere (initial copies included)
+/// The gated-branch escape set: every non-stackable
+/// mint name anywhere (initial copies included). Then the
+/// roll/role-gated mint arms join the risky set
+/// when their mint name is ALSO minted elsewhere (fuzz seed 686).
+fn gated_arm_demotions(wf: &mut WorldFacts, sets: &RiskySets) {
     let mut other_mints: IndexSet<String> = IndexSet::new();
     for e in wf.init_names.values() {
         if !e.stackable {
             other_mints.insert(e.name.clone());
         }
     }
-    for sites in by_list.values() {
+    for sites in sets.by_list.values() {
         for &i in sites {
             let s = &wf.census.sites[i];
             if s.derives && object_always(wf.content, s.verb) {
@@ -597,10 +687,7 @@ fn risky_block(wf: &mut WorldFacts) {
             other_mints.insert(s.name.clone());
         }
     }
-
-    // roll/role-gated mint arms join the risky set
-    // when their mint name is ALSO minted elsewhere (fuzz seed 686)
-    for (owner_o, sites_o) in &by_list {
+    for (owner_o, sites_o) in &sets.by_list {
         let gated: Vec<String> = sites_o
             .iter()
             .filter_map(|&i| {
@@ -615,7 +702,7 @@ fn risky_block(wf: &mut WorldFacts) {
         let elsewhere = other_mints.iter().any(|n| {
             if gated.contains(n) {
                 // also minted by a DIFFERENT list?
-                by_list.iter().any(|(o2, ss2)| {
+                sets.by_list.iter().any(|(o2, ss2)| {
                     o2 != owner_o
                         && ss2.iter().any(|&i2| {
                             let s2 = &wf.census.sites[i2];
@@ -632,16 +719,31 @@ fn risky_block(wf: &mut WorldFacts) {
             }
         }
     }
+}
 
-    // list_blocked
-    let list_blocked = |wf: &WorldFacts, owner: &str| -> bool {
-        if risky.get(owner) == Some(&true) {
-            return true;
-        }
-        idxs(&by_list, owner).iter().any(|&i| wf.census.sites[i].dup_risk)
-    };
+/// Whether the owner's list is demoted outright: flagged risky, or carrying
+/// any site already marked `dup_risk`.
+fn list_blocked(wf: &WorldFacts, sets: &RiskySets, owner: &str) -> bool {
+    if sets.risky.get(owner) == Some(&true) {
+        return true;
+    }
+    idxs(&sets.by_list, owner).iter().any(|&i| wf.census.sites[i].dup_risk)
+}
 
-    // deterministic-throw freeze (seeds 2876, 10388)
+/// The owner's first firing is blocked outright (list-blocked or
+/// deterministically throw-frozen).
+fn first_firing_throws(
+    wf: &WorldFacts,
+    sets: &RiskySets,
+    throw_frozen: &IndexSet<String>,
+    owner: &str,
+) -> bool {
+    list_blocked(wf, sets, owner) || throw_frozen.contains(owner)
+}
+
+/// Deterministic-throw freeze (seeds 2876, 10388): slot triggers whose
+/// REPLACE target dies in-list or by an earlier-determined other owner.
+fn throw_freeze_set(wf: &WorldFacts, sets: &RiskySets) -> IndexSet<String> {
     let mut throw_frozen: IndexSet<String> = IndexSet::new();
     let decl_of = |owner: &str| -> i64 { wf.trig_idx.get(owner).map_or(-1, |(_, d)| d) };
     let first_cross_of = |owner: &str| -> Option<i64> {
@@ -654,10 +756,10 @@ fn risky_block(wf: &mut WorldFacts) {
         let CompiledTrigger::Slot { id, slot, .. } = t else {
             continue;
         };
-        let owner = format!("trigger {id}");
+        let owner = trigger_owner(id);
         let my_first = wf.first_cross(*slot);
         let my_decl = decl_of(&owner);
-        let replaces: Vec<&RawSite> = idxs(&by_list, &owner)
+        let replaces: Vec<&RawSite> = idxs(&sets.by_list, &owner)
             .iter()
             .filter_map(|&i| {
                 let s = &wf.census.sites[i];
@@ -699,31 +801,41 @@ fn risky_block(wf: &mut WorldFacts) {
             throw_frozen.insert(owner);
         }
     }
+    throw_frozen
+}
 
-    // first_freeze: the first crossing of a blocking
-    // boundary freezes the clock there forever. Crossings accumulate
-    // deduplicated (key==value set semantics); only their min is ever read.
+/// first_freeze: the first crossing of a blocking
+/// boundary freezes the clock there forever. Crossings accumulate
+/// deduplicated (key==value set semantics); only their min is ever read.
+fn first_freeze_at(wf: &WorldFacts, sets: &RiskySets, throw_frozen: &IndexSet<String>) -> i64 {
     let mut first_freeze: Vec<i64> = Vec::new();
     for t in &wf.content.triggers {
         let CompiledTrigger::Slot { id, slot, once, .. } = t else {
             continue;
         };
-        let owner = format!("trigger {id}");
-        let recurring_minter = !once && !mint_set_of(&wf.census, idxs(&by_list, &owner)).is_empty();
-        if list_blocked(wf, &owner) || recurring_minter {
+        let owner = trigger_owner(id);
+        let recurring_minter = !once && !sets.mints(&owner).is_empty();
+        if list_blocked(wf, sets, &owner) || recurring_minter {
             first_freeze.push(wf.first_cross(*slot));
         }
     }
-    for owner in &throw_frozen {
+    for owner in throw_frozen {
         if let Some((CompiledTrigger::Slot { slot, .. }, _)) = wf.trig_idx.get(owner) {
             first_freeze.push(wf.first_cross(*slot));
         }
     }
-    let freeze_at: i64 = first_freeze.iter().copied().min().unwrap_or(INFINITY);
+    first_freeze.iter().copied().min().unwrap_or(INFINITY)
+}
 
-    // same-slot pass-mates of a freezing trigger never
-    // persist either; the exemption is EXACT (recurring minter standing ON
-    // the boundary slot, clean first firings only)
+/// Same-slot pass-mates of a freezing trigger never
+/// persist either; the exemption is EXACT (recurring minter standing ON
+/// the boundary slot, clean first firings only)
+fn boundary_demotions(
+    wf: &mut WorldFacts,
+    sets: &RiskySets,
+    throw_frozen: &IndexSet<String>,
+    freeze_at: i64,
+) {
     let boundary_slot: Option<i64> = if freeze_at != INFINITY {
         wf.content.triggers.iter().find_map(|t| match t {
             CompiledTrigger::Slot { slot, .. } if wf.first_cross(*slot) == freeze_at => Some(*slot),
@@ -732,50 +844,52 @@ fn risky_block(wf: &mut WorldFacts) {
     } else {
         None
     };
-    let first_firing_throws =
-        |wf: &WorldFacts, owner: &str| list_blocked(wf, owner) || throw_frozen.contains(owner);
     for t in &wf.content.triggers {
         let CompiledTrigger::Slot { id, slot, once, .. } = t else {
             continue;
         };
-        let owner = format!("trigger {id}");
+        let owner = trigger_owner(id);
         let fc = wf.first_cross(*slot);
         if fc < freeze_at {
             continue;
         }
-        let recurring_minter_self =
-            !once && !mint_set_of(&wf.census, idxs(&by_list, &owner)).is_empty();
+        let recurring_minter_self = !once && !sets.mints(&owner).is_empty();
         let on_clean_boundary = match boundary_slot {
             Some(bs) => {
                 *slot == bs
                     && recurring_minter_self
                     && !wf.content.triggers.iter().any(|o| {
                         matches!(o, CompiledTrigger::Slot { slot: s2, .. } if *s2 == *slot)
-                            && first_firing_throws(wf, &format!("trigger {}", o.id()))
+                            && first_firing_throws(wf, sets, throw_frozen, &trigger_owner(o.id()))
                     })
             }
             None => false,
         };
         if !on_clean_boundary {
-            for &i in idxs(&by_list, &owner) {
+            for &i in idxs(&sets.by_list, &owner) {
                 wf.census.sites[i].dup_risk = true;
             }
         }
     }
+}
 
+/// Risky owners, deterministic throwers and draft-condemned triggers demote
+/// their lists; `trigger_mint_names` is hoisted for `site_proven`'s
+/// trigger-vs-recipe rule
+fn demote_risky_owners(wf: &mut WorldFacts, sets: &RiskySets, throw_frozen: &IndexSet<String>) {
     // risky owners and deterministic throwers demote
-    for (owner, is_risky) in &risky {
+    for (owner, is_risky) in &sets.risky {
         if !*is_risky {
             continue;
         }
         wf.risky_owners.insert(owner.clone());
-        for &i in idxs(&by_list, owner) {
+        for &i in idxs(&sets.by_list, owner) {
             wf.census.sites[i].dup_risk = true;
         }
     }
-    for owner in &throw_frozen {
+    for owner in throw_frozen {
         wf.risky_owners.insert(owner.clone());
-        for &i in idxs(&by_list, owner) {
+        for &i in idxs(&sets.by_list, owner) {
             wf.census.sites[i].dup_risk = true;
         }
     }
@@ -785,12 +899,12 @@ fn risky_block(wf: &mut WorldFacts) {
         let CompiledTrigger::Slot { id, .. } = t else {
             continue;
         };
-        let owner = format!("trigger {id}");
-        if !list_blocked(wf, &owner) {
+        let owner = trigger_owner(id);
+        if !list_blocked(wf, sets, &owner) {
             continue;
         }
         wf.risky_owners.insert(owner.clone());
-        for &i in idxs(&by_list, &owner) {
+        for &i in idxs(&sets.by_list, &owner) {
             wf.census.sites[i].dup_risk = true;
         }
     }
@@ -799,8 +913,8 @@ fn risky_block(wf: &mut WorldFacts) {
         let CompiledTrigger::Slot { id, .. } = t else {
             continue;
         };
-        let owner = format!("trigger {id}");
-        let mints = mint_set_of(&wf.census, idxs(&by_list, &owner));
+        let owner = trigger_owner(id);
+        let mints = sets.mints(&owner).clone();
         wf.trigger_mint_names.insert(owner, mints);
     }
 }

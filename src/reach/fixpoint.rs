@@ -10,23 +10,26 @@
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::content::content::{CompiledSlot, CompiledTrigger};
+use crate::content::{CompiledSlot, CompiledTrigger};
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, QueryTerm};
 use crate::core::types::Entity;
 
-use super::census::pred_static;
 use super::census::{
-    draw_blinds_bare, draw_deck, mint_stacks, object_always, RawSite, SetSite, SiteKind,
-    DERIVED_NAME, MANY,
+    draw_blinds_bare, draw_deck, mint_stacks, object_always, site_mints, RawSite, SetSite,
+    SiteKind, DERIVED_NAME, MANY,
 };
 use super::world::{
-    eval_static, path_open, CardFact, CardWorld, SlotFiller, SlotProof, WorldFacts,
+    eval_static_ok, path_open, pred_static, CardFact, CardWorld, SlotFiller, SlotProof, WorldFacts,
 };
 
 // ---------------------------------------------------------------------------
 // gate-name collectors
 // ---------------------------------------------------------------------------
+
+/// The per-slot candidate cap: a stackable fact contributes at most this
+/// many `name#copy` instances to a slot's candidate list.
+const SLOT_CANDIDATE_CAP: i64 = 4;
 
 /// Name terms mentioned by a value expression (the
 /// bootstrap-gate check: `count(name:X) >= k` gates on X's aliveness exactly
@@ -43,7 +46,7 @@ fn expr_exists_names(v: &ValExpr, acc: &mut IndexSet<String>) {
 }
 
 /// Name terms mentioned anywhere in a predicate.
-pub(crate) fn pred_exists_names(p: &Pred, acc: &mut IndexSet<String>) {
+fn pred_exists_names(p: &Pred, acc: &mut IndexSet<String>) {
     match p {
         Pred::And(a, b) | Pred::Or(a, b) => {
             pred_exists_names(a, acc);
@@ -101,7 +104,7 @@ impl<'c> WorldFacts<'c> {
             return Some(Vec::new());
         }
         // the per-slot candidate cap
-        let cap: i64 = 4;
+        let cap: i64 = SLOT_CANDIDATE_CAP;
         let cand: Vec<Vec<CandInst>> = slots
             .iter()
             .map(|slot| {
@@ -112,11 +115,8 @@ impl<'c> WorldFacts<'c> {
                         if !fits {
                             continue;
                         }
-                        let copies = if f.entity.stackable {
-                            std::cmp::min(if f.count == MANY { cap } else { f.count }, cap)
-                        } else {
-                            1
-                        };
+                        let copies =
+                            if f.entity.stackable { std::cmp::min(f.count, cap) } else { 1 };
                         for c in 0..copies {
                             list.push(CandInst {
                                 how: f.how.clone(),
@@ -139,7 +139,6 @@ impl<'c> WorldFacts<'c> {
             .map(|(i, slot)| SlotProof {
                 role: slot.role.clone(),
                 min: slot.min,
-                query: slot.query.clone(),
                 fillers: chosen[i]
                     .iter()
                     .map(|inst| SlotFiller {
@@ -170,16 +169,7 @@ impl<'c> WorldFacts<'c> {
     pub(crate) fn record_mint_source(&mut self, si: usize) {
         let content = self.content;
         let site = self.census.sites[si].clone();
-        let names: Vec<String> = if site.kind == SiteKind::Draw {
-            let deck = draw_deck(&site);
-            let mut v: Vec<String> = deck.order.iter().map(|c| c.name.clone()).collect();
-            if let Some(dc) = &deck.defaultcard {
-                v.push(dc.name.clone());
-            }
-            v
-        } else {
-            vec![site.name.clone()]
-        };
+        let names: Vec<String> = site_mints(&site).iter().map(|(n, _)| (*n).to_string()).collect();
         for n in names {
             let blind = if site.kind == SiteKind::Draw {
                 draw_blinds_bare(content, &site, &n)
@@ -285,13 +275,13 @@ impl<'c> WorldFacts<'c> {
 
     /// Whether a site proves this round. Returns the site's
     /// support lines, or None when the site
-    /// stays unproven this round.
+    /// stays unproven this round. The demotion rules run in exactly this
+    /// order (the ladder IS the semantics).
     pub(crate) fn site_proven(&mut self, si: usize) -> Option<Vec<String>> {
-        // the flat snapshot first (it needs &mut), then BORROW the site —
-        // a per-call RawSite clone here ran once per unproven site per
-        // round and was the fixpoint's second hot spot. The borrow splits
-        // cleanly: `site` reads self.census while every other access is a
-        // disjoint field or an immutable whole-self reborrow.
+        // the flat snapshot first (it needs &mut), then BORROW the site.
+        // The borrow splits cleanly: `site` reads self.census while every
+        // other access is a disjoint field or an immutable whole-self
+        // reborrow.
         let world = self.cards_of();
         let site = &self.census.sites[si];
         if site.fallback {
@@ -336,112 +326,28 @@ impl<'c> WorldFacts<'c> {
                 return None;
             }
         }
+        let gated_names = static_gate_names(site);
         // a static gate on exists(X) is only as
         // durable as X's aliveness (seed 6028)
-        let mut gated_names: IndexSet<String> = IndexSet::new();
-        for p in site.path.iter().chain(site.when.iter()) {
-            if pred_static(p) {
-                pred_exists_names(p, &mut gated_names);
-            }
-        }
         if gated_names.iter().any(|n| self.census.destroyed_by.contains_key(n)) {
             return None;
         }
-        // gate-timing (seed 40449): a SLOT trigger's
-        // static gate names a card whose only proven producers fire at (or
-        // after) the trigger's own first crossing
-        if site.verb.is_none() {
-            if let Some((CompiledTrigger::Slot { slot: owner_slot, .. }, owner_decl)) =
-                self.trig_idx.get(&site.owner)
-            {
-                let my_first_cross = self.first_cross(*owner_slot);
-                let my_decl = owner_decl;
-                let dead_at_my_firing = |src: &RawSite| -> bool {
-                    if src.verb.is_some() {
-                        return false; // recipe commit — player-timed
-                    }
-                    match self.trig_idx.get(&src.owner) {
-                        None => true,
-                        Some((CompiledTrigger::Expire { .. }, _)) => false, // arrangeable
-                        // §6.7: a completion trigger mints when some window
-                        // completes binding its home card — not statically
-                        // timed, so its mints are never "dead at my firing"
-                        Some((CompiledTrigger::Complete { .. }, _)) => false,
-                        Some((CompiledTrigger::Slot { slot: s2, .. }, decl2)) => {
-                            if *s2 == *owner_slot {
-                                decl2 > my_decl // same slot, later declaration
-                            } else {
-                                self.first_cross(*s2) > my_first_cross // not yet alive
-                            }
-                        }
-                    }
-                };
-                let gate_unsatisfiable_at_firing = gated_names.iter().any(|n| {
-                    let sources = self.mint_sources.get(n);
-                    !self.init_names.contains_key(n)
-                        && !site.list_gate_mints.contains(n)
-                        && sources.is_some_and(|v| !v.is_empty())
-                        && sources.is_some_and(|v| {
-                            v.iter().all(|&src| dead_at_my_firing(&self.census.sites[src]))
-                        })
-                });
-                if gate_unsatisfiable_at_firing {
-                    return None;
-                }
-            }
+        // gate-timing (seed 40449)
+        if gate_timing_unsatisfiable(self, site, &gated_names) {
+            return None;
         }
         // gate-source kills a slot filler (12460)
-        if let Some(vi) = site.verb {
-            if let Some(f) = self.fillers.get(&vi) {
-                if !f.is_empty() {
-                    let kills_filler = |src: &RawSite| -> bool {
-                        f.iter().any(|y| {
-                            self.census
-                                .destroyed_by
-                                .get(y)
-                                .is_some_and(|set| set.contains(&src.owner))
-                        })
-                    };
-                    let filler_doomed = gated_names.iter().any(|n| {
-                        let sources = self.mint_sources.get(n);
-                        !self.init_names.contains_key(n)
-                            && sources.is_some_and(|v| !v.is_empty())
-                            && sources.is_some_and(|v| {
-                                v.iter().all(|&src| kills_filler(&self.census.sites[src]))
-                            })
-                    });
-                    if filler_doomed {
-                        return None;
-                    }
-                }
-            }
+        if filler_doomed(self, site, &gated_names) {
+            return None;
         }
-        // cross-list trigger-vs-recipe mint collision
-        // (81915): every window completes at begin+duration ≥ B, so the
-        // boundary at B has already fired the trigger or rolled the pass back
+        // cross-list trigger-vs-recipe mint collision (81915)
         let verb_duration: Option<i64> =
             site.verb.map(|vi| match self.content.verbs.get_index(vi) {
                 Some((_, v)) => v.duration,
                 None => unreachable!("verb index {vi} came from content.verbs enumeration"),
             });
-        if let Some(dur) = verb_duration {
-            for (owner2, mints2) in &self.trigger_mint_names {
-                if mints2.is_empty() {
-                    continue;
-                }
-                let Some((CompiledTrigger::Slot { slot: s2, .. }, _)) = self.trig_idx.get(owner2)
-                else {
-                    continue;
-                };
-                if dur < self.first_cross(*s2) {
-                    continue;
-                }
-                for n in mints2 {
-                    if site.list_gate_mints.contains(n) {
-                        return None;
-                    }
-                }
-            }
+        if cross_list_mint_collision(self, site, verb_duration) {
+            return None;
         }
         // frozen-completion rule (seed 296):
         // provable only for duration-0 recipes
@@ -452,14 +358,7 @@ impl<'c> WorldFacts<'c> {
         // static-true and the verb committable
         if let Some(vi) = site.verb {
             if let Some(when) = &site.when {
-                let holds = pred_static(when)
-                    && match eval_static(when, &world) {
-                        Ok(b) => b,
-                        Err(e) => {
-                            debug_assert!(false, "internal: {e}");
-                            false
-                        }
-                    };
+                let holds = pred_static(when) && eval_static_ok(when, &world);
                 if !holds {
                     return None;
                 }
@@ -486,28 +385,16 @@ impl<'c> WorldFacts<'c> {
         let CompiledTrigger::Expire { id, on_expire_of, .. } = trig else {
             unreachable!("a compiled trigger is either Slot or Expire");
         };
-        // expiry trigger: the named card must be
-        // obtainable AND able to expire. The arming-witness recursion is the
-        // seed-100625 rule; `visiting` cuts arming cycles (the seed-41247
-        // self-arming check is subsumed), and the memo caches only cycle-free
-        // (top-level) verdicts.
-        let desc: Option<Entity> =
-            self.init_names.get(on_expire_of).map(|e| (*e).clone()).or_else(|| {
-                self.avail.get(on_expire_of).and_then(|list| list.first()).map(|f| f.entity.clone())
-            });
-        let mut expiry_memo: IndexMap<String, bool> = IndexMap::new();
-        let expirable = desc.is_some()
-            && expirable_card(self, &world, &mut expiry_memo, on_expire_of, &IndexSet::new());
-        if desc.is_none() || !expirable {
-            return None;
-        }
+        // expiry trigger — see expiry_support
+        let initial = expiry_support(self, &world, on_expire_of)?;
+        // the note is a disjoint-field write here (expiry_support only reads);
+        // site_proven runs at most once per site (proven-once-never-removed),
+        // so the note cannot duplicate
         self.notes.push(format!(
             "expiry trigger {id} reaches its body only while a living '{on_expire_of}' can expire"
         ));
-        let available =
-            if self.init_names.contains_key(on_expire_of) { "initial" } else { "produced" };
-        let writable_suffix =
-            if self.init_names.contains_key(on_expire_of) { "" } else { " or minted" };
+        let available = if initial { "initial" } else { "produced" };
+        let writable_suffix = if initial { "" } else { " or minted" };
         Some(vec![format!(
             "trigger {id} fires on the expiry of {on_expire_of} (available: {available}; expires writable{writable_suffix})"
         )])
@@ -523,9 +410,141 @@ fn verb_idx_of(wf: &WorldFacts, verb_name: &str) -> usize {
     }
 }
 
+/// The static gate names on a site's IF path and recipe `when` — the
+/// exists/count names a static-true condition reads (polarity ignored on
+/// purpose; the gate checks only DEMOTE).
+fn static_gate_names(site: &RawSite) -> IndexSet<String> {
+    let mut gated_names: IndexSet<String> = IndexSet::new();
+    for p in site.path.iter().chain(site.when.iter()) {
+        if pred_static(p) {
+            pred_exists_names(p, &mut gated_names);
+        }
+    }
+    gated_names
+}
+
+/// Gate-timing (seed 40449): a SLOT trigger's
+/// static gate names a card whose only proven producers fire at (or
+/// after) the trigger's own first crossing. Rules over recipe-owned sites
+/// and non-slot owners do not apply.
+fn gate_timing_unsatisfiable(
+    wf: &WorldFacts,
+    site: &RawSite,
+    gated_names: &IndexSet<String>,
+) -> bool {
+    if site.verb.is_some() {
+        return false;
+    }
+    let Some((CompiledTrigger::Slot { slot: owner_slot, .. }, owner_decl)) =
+        wf.trig_idx.get(&site.owner)
+    else {
+        return false;
+    };
+    let my_first_cross = wf.first_cross(*owner_slot);
+    let my_decl = owner_decl;
+    let dead_at_my_firing = |src: &RawSite| -> bool {
+        if src.verb.is_some() {
+            return false; // recipe commit — player-timed
+        }
+        match wf.trig_idx.get(&src.owner) {
+            None => true,
+            Some((CompiledTrigger::Expire { .. }, _)) => false, // arrangeable
+            // §6.7: a completion trigger mints when some window
+            // completes binding its home card — not statically
+            // timed, so its mints are never "dead at my firing"
+            Some((CompiledTrigger::Complete { .. }, _)) => false,
+            Some((CompiledTrigger::Slot { slot: s2, .. }, decl2)) => {
+                if *s2 == *owner_slot {
+                    decl2 > my_decl // same slot, later declaration
+                } else {
+                    wf.first_cross(*s2) > my_first_cross // not yet alive
+                }
+            }
+        }
+    };
+    gated_names.iter().any(|n| {
+        let sources = wf.mint_sources.get(n);
+        !wf.init_names.contains_key(n)
+            && !site.list_gate_mints.contains(n)
+            && sources.is_some_and(|v| !v.is_empty())
+            && sources
+                .is_some_and(|v| v.iter().all(|&src| dead_at_my_firing(&wf.census.sites[src])))
+    })
+}
+
+/// Gate-source kills a slot filler (12460): every proven source of a gated
+/// name is a site whose list destroys one of the proof's filler names.
+fn filler_doomed(wf: &WorldFacts, site: &RawSite, gated_names: &IndexSet<String>) -> bool {
+    let Some(vi) = site.verb else {
+        return false;
+    };
+    let Some(f) = wf.fillers.get(&vi) else {
+        return false;
+    };
+    if f.is_empty() {
+        return false;
+    }
+    let kills_filler = |src: &RawSite| -> bool {
+        f.iter().any(|y| wf.census.destroyed_by.get(y).is_some_and(|set| set.contains(&src.owner)))
+    };
+    gated_names.iter().any(|n| {
+        let sources = wf.mint_sources.get(n);
+        !wf.init_names.contains_key(n)
+            && sources.is_some_and(|v| !v.is_empty())
+            && sources.is_some_and(|v| v.iter().all(|&src| kills_filler(&wf.census.sites[src])))
+    })
+}
+
+/// Cross-list trigger-vs-recipe mint collision
+/// (81915): every window completes at begin+duration ≥ B, so the
+/// boundary at B has already fired the trigger or rolled the pass back.
+fn cross_list_mint_collision(wf: &WorldFacts, site: &RawSite, verb_duration: Option<i64>) -> bool {
+    let Some(dur) = verb_duration else {
+        return false;
+    };
+    for (owner2, mints2) in &wf.trigger_mint_names {
+        if mints2.is_empty() {
+            continue;
+        }
+        let Some((CompiledTrigger::Slot { slot: s2, .. }, _)) = wf.trig_idx.get(owner2) else {
+            continue;
+        };
+        if dur < wf.first_cross(*s2) {
+            continue;
+        }
+        for n in mints2 {
+            if site.list_gate_mints.contains(n) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The expiry trigger's provability: the named card must be
+/// obtainable AND able to expire. The arming-witness recursion is the
+/// seed-100625 rule; `visiting` cuts arming cycles (the seed-41247
+/// self-arming check is subsumed), and the memo caches only cycle-free
+/// (top-level) verdicts. Returns whether the named card is an initial
+/// entity (the support line's available-label); None when the trigger
+/// stays unproven.
+fn expiry_support(wf: &WorldFacts, world: &CardWorld, on_expire_of: &str) -> Option<bool> {
+    let desc: Option<Entity> =
+        wf.init_names.get(on_expire_of).map(|e| (*e).clone()).or_else(|| {
+            wf.avail.get(on_expire_of).and_then(|list| list.first()).map(|f| f.entity.clone())
+        });
+    let mut expiry_memo: IndexMap<String, bool> = IndexMap::new();
+    let expirable = desc.is_some()
+        && expirable_card(wf, world, &mut expiry_memo, on_expire_of, &IndexSet::new());
+    if desc.is_none() || !expirable {
+        return None;
+    }
+    Some(wf.init_names.contains_key(on_expire_of))
+}
+
 /// The display lines of a verb's structured
 /// committability proof (byte-identical to the pre-structure format).
-pub(crate) fn slot_proof_lines(verb_name: &str, proofs: &[SlotProof]) -> Vec<String> {
+fn slot_proof_lines(verb_name: &str, proofs: &[SlotProof]) -> Vec<String> {
     proofs
         .iter()
         .map(|pf| {
@@ -583,12 +602,7 @@ fn assign(
 /// the self-mint collides — and a completion refusal freezes the dice counter,
 /// so the escape roll never comes (seeds 523, 5631).
 pub(crate) fn self_gated(wf: &WorldFacts, site: &RawSite) -> bool {
-    let mut gates: IndexSet<String> = IndexSet::new();
-    for p in site.path.iter().chain(site.when.iter()) {
-        if pred_static(p) {
-            pred_exists_names(p, &mut gates);
-        }
-    }
+    let gates = static_gate_names(site);
     let mints = &site.list_gate_mints;
     if gates.iter().any(|g| mints.contains(g)) {
         return true;
@@ -726,16 +740,7 @@ fn expirable_card(
                 })
                 && (match &s.when_pred {
                     None => true,
-                    Some(wp) => {
-                        pred_static(wp)
-                            && match eval_static(wp, world) {
-                                Ok(b) => b,
-                                Err(e) => {
-                                    debug_assert!(false, "internal: {e}");
-                                    false
-                                }
-                            }
-                    }
+                    Some(wp) => pred_static(wp) && eval_static_ok(wp, world),
                 })
                 && (s.target_name.as_deref() == Some(card_name)
                     || match (&s.target_role, &d) {

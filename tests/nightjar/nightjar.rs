@@ -16,10 +16,8 @@
 //! Object-identity assertions have no Rust observable; snap /
 //! field equality is used at those sites (never weakened).
 
-#[path = "../common/mod.rs"]
-mod common;
-
-use common::explorer_lib::SCRIPT_TEXT;
+use crate::common::explorer_lib::SCRIPT_TEXT;
+use crate::common::rig::auto_settle_line;
 
 use chorus::content::script::compile_script;
 use chorus::core::dict::core_dictionary;
@@ -31,19 +29,6 @@ use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 /// Game + the auto-settle adapter.
 fn fresh() -> Game {
     Game::from_script(SCRIPT_TEXT, core_dictionary()).unwrap()
-}
-
-/// the auto-settle adapter: after a committed action with open windows, the
-/// settle lines append to the SAME action turn's lines.
-fn auto_settle_line(game: &mut Game, line: &str) -> chorus::error::Result<Turn> {
-    let t = game.handle_line(line)?;
-    let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
-        let settle = game.wait()?;
-        Turn { kind: TurnKind::Action, lines: [t.lines, settle.lines].concat() }
-    } else {
-        t
-    };
-    Ok(t)
 }
 
 fn play(game: &mut Game, lines: &[&str]) -> chorus::error::Result<Vec<Turn>> {
@@ -69,7 +54,7 @@ const WIN_PATH: [&str; 9] = [
 ];
 
 use chorus::core::sentence::Arg;
-use chorus::engine::engine::ActionRecord;
+use chorus::engine::ActionRecord;
 
 /// The ROLLED (total, counter-after) pair.
 fn ints(o: &chorus::core::sentence::Outcome) -> Option<(i64, i64)> {
@@ -437,7 +422,7 @@ mod the_nightjar_flyer {
 
     #[test]
     fn once_triggers_fire_exactly_once_and_the_lord_expires_into_his_successor() {
-        // (§6.6, §6.6)
+        // (§6.6)
         let mut game = fresh();
         play(&mut game, &["wait"]).unwrap(); // day 0, hour 22 — body_found fires
         assert_eq!(

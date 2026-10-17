@@ -7,9 +7,6 @@
 
 use std::process::Command;
 
-#[path = "../common/mod.rs"]
-mod common;
-
 fn run(bin: &str, args: &[&str]) -> (Option<i32>, String, String) {
     let exe = match bin {
         "reach" => env!("CARGO_BIN_EXE_reach"),
@@ -199,7 +196,7 @@ fn reach_scale_worker_shard_and_namestat_interface() {
     }
     // the shard discipline: regenerate the same world here and compare the
     // name set (idx % 3 === 1 over world.names)
-    let world = common::reach_scale_lib::build_cs_scale(20, 15);
+    let world = chorus::reach::scale::build_cs_scale(20, 15);
     let mine: Vec<String> = world
         .names
         .iter()

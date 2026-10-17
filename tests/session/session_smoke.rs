@@ -10,35 +10,15 @@
 //!   and BOTH game-over texts through a
 //!   minimal endings script.
 
+use crate::common::rig::auto_settle_line;
+
 use chorus::core::dict::core_dictionary;
-use chorus::engine::engine::ExecOptions;
-use chorus::error::Result;
+use chorus::engine::ExecOptions;
 use chorus::session::game::{Game, TurnKind};
 use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 
-#[path = "../common/mod.rs"]
-mod common;
-
 const FLYER: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/the-nightjar-flyer.txt"));
-
-/// The v0.5 test adapter: settle each
-/// committed action's window right away, so loop tests keep their
-/// pre-parallel commit-completes-at-once shape. (The game-loop suites
-/// mount this same helper.)
-fn auto_settle_line(game: &mut Game, line: &str) -> Result<chorus::session::game::Turn> {
-    let t = game.handle_line(line)?;
-    let t = if t.kind == TurnKind::Action && !game.state.windows.is_empty() {
-        let settle = game.wait()?;
-        chorus::session::game::Turn {
-            kind: TurnKind::Action,
-            lines: [t.lines, settle.lines].concat(),
-        }
-    } else {
-        t
-    };
-    Ok(t)
-}
 
 // ------------------------------- lenient -----------------------------------
 
@@ -98,7 +78,7 @@ fn lenient_routes_the_pinned_phrases() {
     let ParsedInput::Ok { step, .. } = parse_player_input("0:44 @ MARCH WAIT", &ctx) else {
         panic!("passthrough must parse");
     };
-    assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 0, halfhour: 44 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 0, halfhour: 44 }));
 
     // 'unknown words get suggestions' — the failed word is 'vane',
     // so the suggestion rides the normalized-prefix path
@@ -157,7 +137,7 @@ fn pool_world() -> chorus::core::types::State {
 
 fn pool_ctx<'a>(
     dict: &'a chorus::core::dict::Dictionary,
-    content: &'a chorus::content::content::CompiledContent,
+    content: &'a chorus::content::CompiledContent,
     state: &'a chorus::core::types::State,
 ) -> LenientCtx<'a> {
     LenientCtx { dict, content, state, player: Some("ANA") }
@@ -169,12 +149,9 @@ fn one_name_in_two_roles_binds_distinct_pool_copies() {
     // roles — the object takes the §4.2 head as a name ref exactly as ever,
     // the with-role takes the NEXT living copy as an #id ref
     let dict = core_dictionary();
-    let content = chorus::content::content::compile_content(
-        &chorus::content::content::ContentRaw::default(),
-        &dict,
-        &[],
-    )
-    .unwrap();
+    let content =
+        chorus::content::compile_content(&chorus::content::ContentRaw::default(), &dict, &[])
+            .unwrap();
     let world = pool_world();
     let ParsedInput::Ok { step, .. } =
         parse_player_input("ana read the psalm with the psalm", &pool_ctx(&dict, &content, &world))
@@ -212,12 +189,9 @@ fn one_name_in_two_roles_binds_distinct_pool_copies() {
 fn a_pool_too_small_for_its_roles_refuses_by_name() {
     // E9: the refusal — one copy alive, two roles naming it (spec §11)
     let dict = core_dictionary();
-    let content = chorus::content::content::compile_content(
-        &chorus::content::content::ContentRaw::default(),
-        &dict,
-        &[],
-    )
-    .unwrap();
+    let content =
+        chorus::content::compile_content(&chorus::content::ContentRaw::default(), &dict, &[])
+            .unwrap();
     let mut world = pool_world();
     let dead = world.entities.get_mut("psalm_b").unwrap();
     dead.dead_action = Some(1);
@@ -247,12 +221,9 @@ fn single_mentions_and_same_role_doubles_are_untouched() {
     // head twice — the engine's same-role placement refusal speaks, not the
     // lenient binder (spec §11)
     let dict = core_dictionary();
-    let content = chorus::content::content::compile_content(
-        &chorus::content::content::ContentRaw::default(),
-        &dict,
-        &[],
-    )
-    .unwrap();
+    let content =
+        chorus::content::compile_content(&chorus::content::ContentRaw::default(), &dict, &[])
+            .unwrap();
     let world = pool_world();
     let ParsedInput::Ok { step, .. } = parse_player_input(
         "ana read the psalm with the candle",
@@ -300,25 +271,25 @@ fn the_bare_lenient_clock_wraps_halfhour_overflow() {
     let ParsedInput::Ok { step, .. } = parse_player_input("0:118", &ctx) else {
         panic!("0:118 must wrap");
     };
-    assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 2, halfhour: 22 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 2, halfhour: 22 }));
     assert_eq!(step.start_min, Some((2 * 48 + 22) * 30));
 
     // 1:49 crosses the day too (1*48 + 49 = 97 halfhours = day 2, halfhour 1)
     let ParsedInput::Ok { step, .. } = parse_player_input("1:49", &ctx) else {
         panic!("1:49 must wrap");
     };
-    assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 2, halfhour: 1 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 2, halfhour: 1 }));
 
     // the boundary itself folds exactly one day; the legal top of a day is
     // untouched
     let ParsedInput::Ok { step, .. } = parse_player_input("0:48", &ctx) else {
         panic!("0:48 must wrap");
     };
-    assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 1, halfhour: 0 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 1, halfhour: 0 }));
     let ParsedInput::Ok { step, .. } = parse_player_input("0:47", &ctx) else {
         panic!("0:47 is legal");
     };
-    assert_eq!(step.clock, Some(chorus::core::types::Clock { day: 0, halfhour: 47 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 0, halfhour: 47 }));
 
     // the canonical passthrough keeps the strict bound — the frozen §5
     // discipline governs that form
@@ -518,6 +489,33 @@ fn suggestions_are_concrete_executable_actions() {
 }
 
 #[test]
+fn processing_lists_open_windows_soonest_first_begin_id_on_ties() {
+    // the processing view (§11): open windows sort by end minute, ties
+    // broken by begin_id (commit order); each line reads
+    // "<verb display> — until <day>:<halfhour>" with the verb lowercased,
+    // underscores spaced.
+    let dict = core_dictionary();
+    let mut game = Game::from_script(PROCESSING_SCRIPT, dict).unwrap();
+    assert!(game.processing().is_empty(), "nothing committed, nothing processing");
+
+    for line in ["study the frob", "dream", "use on the glyph"] {
+        let t = game.handle_line(line).unwrap();
+        assert_eq!(t.kind, TurnKind::Action, "`{line}` must commit: {:?}", t.lines);
+    }
+    // dream and use_on both end at 0:2 (one hour = two halfhours from 0:0) —
+    // the earlier begin (dream, committed first) comes first; study runs an
+    // hour longer and closes the list.
+    assert_eq!(
+        game.processing(),
+        vec![
+            "dream — until 0:2".to_string(),
+            "use on — until 0:2".to_string(),
+            "study — until 0:4".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn game_over_speaks_both_texts_and_undo_reopens() {
     let dict = core_dictionary();
     let mut game = Game::from_script(GAME_SCRIPT, dict).unwrap();
@@ -525,13 +523,13 @@ fn game_over_speaks_both_texts_and_undo_reopens() {
     game.wait().unwrap();
     assert!(game.state.ended.is_some());
     // engine version (the short text) — rejected, no flavour
-    let again = chorus::engine::engine::execute_step(
+    let again = chorus::engine::execute_step(
         &game.content,
         &game.dict,
         chorus::core::types::clone_state(&game.state),
-        chorus::engine::engine::Step {
+        chorus::engine::Step {
             start_min: None,
-            clock: Some(chorus::core::types::Clock { day: 0, halfhour: 44 }),
+            clock: Some(chorus::core::clock::Clock { day: 0, halfhour: 44 }),
             clauses: vec![],
             t_real: None,
         },
@@ -575,4 +573,43 @@ verbs:
 
 templates:
   WAIT says \"{actors} wait.\"
+";
+
+/// A three-station rig for the processing view: two one-hour stations
+/// committed in sequence (their windows share an end minute — the begin_id
+/// tiebreak speaks) and one two-hour station (a later end).
+const PROCESSING_SCRIPT: &str = "
+script: Processing Rig
+player: ANA
+start: 0:0
+
+entities:
+  HOUSE is place
+  ANA is character at HOUSE
+  FROB is item at HOUSE
+  GLYPH is item at HOUSE
+
+verbs:
+  STUDY:
+    actors: 1 kind:character
+    object: 1 kind:item
+    duration: 2h
+    recipes:
+      default -> NARRATE \"study.\"
+  DREAM:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      default -> NARRATE \"dream.\"
+  USE_ON:
+    actors: 1 kind:character
+    object: 1 kind:item
+    duration: 1h
+    recipes:
+      default -> NARRATE \"use.\"
+
+templates:
+  STUDY says \"{actors} study {object}.\"
+  DREAM says \"{actors} dream.\"
+  USE_ON says \"{actors} use {object}.\"
 ";

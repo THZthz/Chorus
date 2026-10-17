@@ -9,18 +9,15 @@
 //! the engine's own invariant (bindings always resolve into the live
 //! state).
 
-#[path = "../common/mod.rs"]
-mod common;
-
 use indexmap::IndexMap;
 
 use chorus::core::predicate::{eval_pred, parse_predicate, Pred, PredCtx, RoleBindings};
-use chorus::core::query::aspects_from_pairs;
 use chorus::core::query::{match_query, parse_query};
 use chorus::core::roles::Role;
+use chorus::core::types::aspects_from_pairs;
 use chorus::core::types::{add_entity, new_state, Aspects, AttrValue, Attrs, Entity, State};
 
-use common::harness::assert_err_msg;
+use crate::common::harness::assert_err_msg;
 
 /// A bare entity: empty aspects/attrs, never born, never dead, not
 /// stackable.
@@ -136,7 +133,7 @@ fn alternation_matches_when_any_group_matches() {
 
 #[test]
 fn alternation_binds_loosest_each_side_is_a_conjunction() {
-    // the spec's own example (§4.5/§4.5): ability OR (job AND ritual) —
+    // the spec's own example (§4.5): ability OR (job AND ritual) —
     // a card with job but no ritual does not match
     let q = parse_query("aspect:ability | aspect:job aspect:ritual").unwrap();
     assert_eq!(q.len(), 2);

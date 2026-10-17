@@ -246,6 +246,15 @@ pub(crate) struct WorldFacts<'c> {
     /// the freeze boundary in FIRST-CROSSING distance units; [`INFINITY`]
     /// when unfrozen
     pub freeze_dist: i64,
+    /// the `--by` bound: the AUTHORED absolute minute (engine clock, §7)
+    /// the analysis window closes at; `None` on the unbounded default face.
+    /// Every time-keyed rule reads the horizon it induces
+    /// ([`WorldFacts::horizon`]) — never this field alone.
+    pub by: Option<i64>,
+    /// owners of ONCE slot triggers already fired in the replayed log —
+    /// they never fire again, so their sites demote (AlreadyFired).
+    /// Empty on the default face (script states carry no fired set).
+    pub fired_once_owners: IndexSet<String>,
     /// owners whose every draft is refused at completion
     pub dirty_owners: IndexSet<String>,
     /// world-level notes, converging on the named card's report (the
@@ -274,6 +283,22 @@ pub(crate) struct WorldFacts<'c> {
 }
 
 impl<'c> WorldFacts<'c> {
+    /// The EFFECTIVE analysis horizon in first-crossing distance units:
+    /// [`INFINITY`] unbounded, otherwise `min(freeze_dist, by_dist + 1)` —
+    /// the freeze boundary and the `--by` window take the tighter, and
+    /// `by_dist + 1` turns "fired by minute M" into the same strict
+    /// `first_cross < horizon` comparison the freeze model already speaks
+    /// (`first_cross <= M − now` ⇔ `first_cross < M − now + 1`). The
+    /// default face passes `by: None`, so the horizon IS the freeze
+    /// distance and every rule below reads it byte-identically to the
+    /// pre-`--by` code.
+    pub(crate) fn horizon(&self) -> i64 {
+        match self.by {
+            None => self.freeze_dist,
+            Some(m) => self.freeze_dist.min(m.saturating_sub(self.initial.now).saturating_add(1)),
+        }
+    }
+
     /// Minutes until the FIRST crossing of slot s (a
     /// start-slot trigger's first crossing is the next cycle — boundary ==
     /// now is already spent). The `d === 0 → 1440` branch is part of the
@@ -378,21 +403,50 @@ impl<'c> WorldFacts<'c> {
 /// world facts are computed once on first use and shared by every subsequent
 /// [`Analyzer::analyze_card`] call. The
 /// caller must not mutate content or initial between calls.
+///
+/// The two bounded-time faces ride the HOST, not `CardOptions`: one
+/// Analyzer owns exactly one world, so the bound cannot drift between
+/// cards of one run (the CLI sets it once, before the first analysis).
+/// `by` is the `--by` absolute minute; `replayed` marks a `--from-state`
+/// initial world (the fidelity note). Both default to the unbounded
+/// script face.
 pub struct Analyzer<'c> {
     pub(crate) content: &'c CompiledContent,
     pub(crate) initial: &'c State,
+    pub(crate) by: Option<i64>,
+    pub(crate) replayed: bool,
     world: OnceLock<WorldFacts<'c>>,
 }
 
 impl<'c> Analyzer<'c> {
     #[must_use]
     pub fn new(content: &'c CompiledContent, initial: &'c State) -> Self {
-        Analyzer { content, initial, world: OnceLock::new() }
+        Analyzer { content, initial, by: None, replayed: false, world: OnceLock::new() }
     }
 
-    /// The world facts (compute once per (content, initial) pair).
+    /// The `--by <minute>` face: bound every time-keyed judgment at the
+    /// authored absolute minute. Must be set before the first analysis
+    /// (the world facts are cached once).
+    #[must_use]
+    pub fn by(mut self, minute: i64) -> Self {
+        self.by = Some(minute);
+        self
+    }
+
+    /// The `--from-state` face: the initial world is a log replay — the
+    /// fidelity note rides on every report. Must be set before the first
+    /// analysis.
+    #[must_use]
+    pub fn replayed(mut self) -> Self {
+        self.replayed = true;
+        self
+    }
+
+    /// The world facts (compute once per (content, initial) pair, under
+    /// this Analyzer's bound).
     pub(crate) fn facts(&self) -> &WorldFacts<'c> {
-        self.world.get_or_init(|| compute_world_facts(self.content, self.initial))
+        let (by, replayed) = (self.by, self.replayed);
+        self.world.get_or_init(|| compute_world_facts(self.content, self.initial, by, replayed))
     }
 }
 
@@ -403,8 +457,25 @@ impl<'c> Analyzer<'c> {
 pub(crate) fn compute_world_facts<'c>(
     content: &'c CompiledContent,
     initial: &'c State,
+    by: Option<i64>,
+    replayed: bool,
 ) -> WorldFacts<'c> {
     let trig_idx = TrigIndex::build(content);
+
+    // the midgame face's spent-once set: once slot triggers the replayed
+    // log already fired never fire again (§6.6 — the fold marks fired from
+    // each EVENT row's trigger id, the same raw id the census keys). The
+    // default face reads an empty fired set, so this stays empty there.
+    let fired_once_owners: IndexSet<String> = content
+        .triggers
+        .iter()
+        .filter_map(|t| match t {
+            CompiledTrigger::Slot { id, once: true, .. } if initial.fired.contains(id.as_str()) => {
+                Some(trigger_owner(id))
+            }
+            _ => None,
+        })
+        .collect();
 
     // initial living entities, grouped by name; the
     // LAST entity with a name wins the representative slot (insertion keeps
@@ -433,6 +504,8 @@ pub(crate) fn compute_world_facts<'c>(
         risky_owners: IndexSet::new(),
         frozen: false,
         freeze_dist: INFINITY,
+        by,
+        fired_once_owners,
         dirty_owners: IndexSet::new(),
         notes: Vec::new(),
         committable: IndexMap::new(),
@@ -513,6 +586,24 @@ pub(crate) fn compute_world_facts<'c>(
         wf.notes.push(format!(
             "{} producer site(s) sit behind an authored REFUSE — they can never apply and are excluded",
             wf.census.refused.len()
+        ));
+    }
+
+    // the midgame face's fidelity note (name-free ⇒ global — it rides on
+    // every report): what the replay models beyond the script face, and
+    // the state fields read by the engine but deliberately unmodeled.
+    if replayed {
+        let cursors: Vec<(String, i64)> = initial
+            .decks
+            .iter()
+            .filter(|(id, _)| content.decks.get(*id).is_some_and(|d| !d.reset))
+            .map(|(id, c)| (id.clone(), *c))
+            .collect();
+        wf.notes.push(format!(
+            "midgame analysis: the initial world is replayed from a log — modeled: the replayed entities and clock (first crossings re-anchor to minute {}), {} already-fired once trigger(s) (they never fire again), {} non-reset deck cursor(s) (draws serve from the cursor forward); read but not modeled: open windows (the lock table), the executed-recipe map, the rng counter",
+            initial.now,
+            wf.fired_once_owners.len(),
+            cursors.len(),
         ));
     }
 

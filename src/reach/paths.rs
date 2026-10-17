@@ -23,7 +23,7 @@ use super::render::{
     demand_chain_head, initial_decl_line, pred_text, query_text, site_chain, site_reason,
 };
 use super::world::{
-    pred_static, writable_paths, writable_paths_of, Analyzer, CardFact, WorldFacts,
+    pred_static, writable_paths, writable_paths_of, Analyzer, CardFact, WorldFacts, INFINITY,
 };
 
 // ---------------------------------------------------------------------------
@@ -285,9 +285,12 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
             wf.dead_verbs.insert(vi);
         }
     }
-    // deck capacity from proven sites (the freeze
-    // model: pre-S* trigger draws count 1, at/after-S* count 0; recipe-owned
-    // draws stay unbounded)
+    // deck capacity from proven sites (the horizon
+    // model: pre-S* trigger draws count 1, at/after-S* count 0 — S* being
+    // the freeze boundary and the --by window taking the tighter; on the
+    // default face the horizon IS the freeze distance; recipe-owned
+    // draws stay unbounded — commits at/short of the horizon are still
+    // player-timed)
     let proven: Vec<usize> = wf.proven.keys().copied().collect();
     for si in proven {
         let site = &wf.census.sites[si];
@@ -295,13 +298,13 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
             continue;
         }
         let mut cap = site.cap;
-        if wf.frozen {
+        if wf.horizon() != INFINITY {
             if site.verb.is_some() {
-                cap = site.cap; // recipe-owned: commits at/short of the freeze are still unbounded
+                cap = site.cap; // recipe-owned: commits at/short of the horizon are still unbounded
             } else {
                 cap = match wf.trig_idx.get(&site.owner) {
                     Some((CompiledTrigger::Slot { slot, .. }, _))
-                        if wf.first_cross(*slot) < wf.freeze_dist =>
+                        if wf.first_cross(*slot) < wf.horizon() =>
                     {
                         1
                     }
@@ -315,6 +318,31 @@ pub(crate) fn build_post_fixpoint(wf: &mut WorldFacts) {
 }
 
 impl<'c> WorldFacts<'c> {
+    /// The deck serving predicate with the midgame deck cursor folded in —
+    /// ONE serving predicate, one home: [`served_by_cap`] judged from the
+    /// cursor-shifted origin. `cap` counts the draws still AVAILABLE (the
+    /// freeze/`--by` rewrite's firing count, or MANY) and they serve the
+    /// position window `[cursor, cursor + cap)` — on a non-reset deck the
+    /// positions before the replayed cursor are already drawn and never
+    /// return. The default face reads no cursors (script states carry
+    /// none), so this IS `served_by_cap` there verbatim — the graph face
+    /// (export.rs) shares this exact verdict with analyze_name /
+    /// analyze_demand.
+    pub(crate) fn deck_serves_cap(&self, deck: &CompiledDeck, target: &str, cap: i64) -> bool {
+        let cursor =
+            if deck.reset { 0 } else { self.initial.decks.get(&deck.id).copied().unwrap_or(0) };
+        if cursor == 0 {
+            return served_by_cap(deck, target, cap);
+        }
+        // a consumed order position never serves again; the defaultcard
+        // rides past the order's end, so only the shifted-cap arm bites
+        let position_ok = match deck.order.iter().position(|c| c.name == target) {
+            Some(idx) => idx as i64 >= cursor,
+            None => true,
+        };
+        position_ok && served_by_cap(deck, target, cap.saturating_add(cursor))
+    }
+
     /// Can a card matching `query` EVER exist? No memo is needed: the
     /// function is pure over fields that are
     /// final once the world facts are built, so memoization cannot change any
@@ -362,7 +390,7 @@ impl<'c> WorldFacts<'c> {
             let site = &self.census.sites[si];
             let hit = if site.kind == SiteKind::Draw {
                 !draw_blinds_bare(self.content, site, name)
-                    && served_by_cap(
+                    && self.deck_serves_cap(
                         draw_deck(site),
                         name,
                         self.deck_cap.get(&site.name).copied().unwrap_or(0),
@@ -395,7 +423,7 @@ impl<'c> WorldFacts<'c> {
             for &si in candidates {
                 let site = &self.census.sites[si];
                 if site.kind == SiteKind::Draw
-                    && !served_by_cap(
+                    && !self.deck_serves_cap(
                         draw_deck(site),
                         name,
                         self.deck_cap.get(&site.name).copied().unwrap_or(0),
@@ -916,7 +944,7 @@ fn analyze_demand(
                     continue;
                 }
                 if site.kind == SiteKind::Draw
-                    && !served_by_cap(
+                    && !facts.deck_serves_cap(
                         draw_deck(site),
                         &name,
                         facts.deck_cap.get(&site.name).copied().unwrap_or(0),
@@ -1019,7 +1047,7 @@ fn analyze_name(
         }
         let hit = if site.kind == SiteKind::Draw {
             !draw_blinds_bare(content, site, target)
-                && served_by_cap(
+                && facts.deck_serves_cap(
                     draw_deck(site),
                     target,
                     facts.deck_cap.get(&site.name).copied().unwrap_or(0),
@@ -1048,11 +1076,11 @@ fn analyze_name(
                     && deck_serves(draw_deck(s), target)
                     // a PROVEN draw site whose
                     // cap cannot reach this position is still a guarded
-                    // source in a frozen world (81401); unfrozen caps
+                    // source in a bounded world (81401); unbounded caps
                     // are exact structural facts
                     && (!facts.proven.contains_key(&i)
-                        || (facts.frozen
-                            && !served_by_cap(
+                        || (facts.horizon() != INFINITY
+                            && !facts.deck_serves_cap(
                                 draw_deck(s),
                                 target,
                                 facts.deck_cap.get(&s.name).copied().unwrap_or(0),
@@ -1119,13 +1147,74 @@ fn analyze_name(
                 s.name == target
             };
             if serves {
-                let reason = site_reason(s, &facts.init_names);
+                let mut reason = site_reason(s, &facts.init_names);
+                if let Some(t) = time_guard_note(facts, s, target) {
+                    // the bounded-time faces replace the bare "unknown
+                    // guard" fallback with the honest timing reason
+                    reason = if reason == "unknown guard" { t } else { format!("{reason}; {t}") };
+                }
                 notes.push(format!("candidate source: {} — guarded ({})", s.where_, reason));
                 candidates.push(CardCandidate { via: s.where_.clone(), reason });
             }
         }
     }
     existence
+}
+
+/// The bounded-time guard of a live site — the candidate reason's timing
+/// half: a draw whose order position the replayed deck cursor already
+/// consumed (a non-reset permutation never returns), a slot trigger whose
+/// first crossing lies beyond the `--by` minute (it has not fired yet), or
+/// an already-fired once trigger of the replayed face (it never fires
+/// again). `None` when the site carries no time guard — ALWAYS `None` on
+/// the default face (no cursors, no bound, no replayed firings), so the
+/// listing bytes hold.
+fn time_guard_note(facts: &WorldFacts, s: &RawSite, target: &str) -> Option<String> {
+    if s.kind == SiteKind::Draw {
+        let deck = draw_deck(s);
+        if !deck.reset {
+            let cursor = facts.initial.decks.get(&deck.id).copied().unwrap_or(0);
+            if let Some(pos) = deck.order.iter().position(|c| c.name == target) {
+                if (pos as i64) < cursor {
+                    return Some(format!(
+                        "deck {} has already drawn past order position {pos} (a non-reset permutation never returns)",
+                        deck.id
+                    ));
+                }
+            }
+        }
+    }
+    if let Some(vi) = s.verb {
+        // a duration>0 recipe cannot complete inside a bounded horizon
+        if let Some(m) = facts.by {
+            if let Some((_, v)) = facts.content.verbs.get_index(vi) {
+                if v.duration > 0 {
+                    return Some(format!(
+                        "the verb's {}m window completes past the by {m} horizon",
+                        v.duration
+                    ));
+                }
+            }
+        }
+        return None;
+    }
+    let (CompiledTrigger::Slot { id, slot, once, .. }, _) = facts.trig_idx.get(&s.owner)? else {
+        return None;
+    };
+    if *once && facts.fired_once_owners.contains(&s.owner) {
+        return Some(format!(
+            "trigger {id} already fired in the replayed log — it never fires again"
+        ));
+    }
+    if let Some(m) = facts.by {
+        let minute = facts.initial.now + facts.first_cross(*slot);
+        if minute > m {
+            return Some(format!(
+                "trigger {id}'s first crossing at minute {minute} lies beyond the by {m} window"
+            ));
+        }
+    }
+    None
 }
 
 /// The world-level notes a report targeting `target` carries (the note

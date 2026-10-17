@@ -1,6 +1,7 @@
 //! Static card-reachability, split along the report's seams: `census.rs`
 //! (site census), `world.rs` (world-static predicates + the
-//! Analyzer/WorldFacts host + the risky-freeze model), `fixpoint.rs` (the
+//! Analyzer/WorldFacts host + the risky-freeze model + the two bounded-time
+//! faces' horizon), `fixpoint.rs` (the
 //! naive round-robin committability/provenance fixpoint + `site_proven`),
 //! `paths.rs` (the mint universe, dead verbs, deck caps and the per-card
 //! report), `render.rs` (predicate/proof/chain/reason text + the CLI's
@@ -8,7 +9,9 @@
 //! world-static facts re-rendered, zero new analysis), `export.rs` (the
 //! machine-readable exits: `--json` — the per-card report envelope, and
 //! `--graph` — the whole-content mint dependency graph as Graphviz DOT;
-//! both zero new analysis, both deterministic), plus the two campaign
+//! both zero new analysis, both deterministic), `midgame.rs` (the
+//! `--from-state` replay entry — the engine's own fold over a JSONL log),
+//! plus the two campaign
 //! engines the bins and the test
 //! suite share: `fuzz.rs` (seeded differential campaigns) and `scale.rs`
 //! (the CS-scale synthetic world; spec §13.3).
@@ -28,12 +31,14 @@ pub mod census;
 pub mod export;
 pub mod fixpoint;
 pub mod fuzz;
+pub mod midgame;
 pub mod paths;
 pub mod render;
 pub mod scale;
 pub mod world;
 pub mod world_report;
 
+pub use midgame::replay_state;
 pub use paths::{
     analyze_card, CardCandidate, CardOptions, CardReport, CardVerdict, Existence, PathDeck, PathOp,
     ReachPath, Require,

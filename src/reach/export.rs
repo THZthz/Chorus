@@ -24,8 +24,10 @@
 //!   (`analyze_name`'s) contributes `owner → mints` (SPAWN/REPLACE mints
 //!   the site name; a proven DRAW serves a deck name only when it is not
 //!   derive-blinded and the freeze model's `deck_cap` — the report side's
-//!   value, rewritten after the fixpoint — can reach it, the shared
-//!   `served_by_cap`) and `mints → requires` (a recipe-owned site's verb
+//!   value, rewritten after the fixpoint — can reach it, judged by
+//!   paths.rs's `deck_serves_cap` — one serving predicate, one home, the
+//!   cursor-aware verdict the card faces report) and `mints → requires`
+//!   (a recipe-owned site's verb
 //!   slot fillers, an expiry trigger's named card); `census.destroyed_by`
 //!   contributes dashed `owner → name` kill edges. Determinism is the
 //!   contract: node lines sort by node id, edge lines by (src, dst,
@@ -45,7 +47,7 @@ use crate::core::types::State;
 
 use super::census::{draw_blinds_bare, draw_deck, object_always, SiteKind};
 use super::fixpoint::SiteBlocker;
-use super::paths::{served_by_cap, CardReport};
+use super::paths::CardReport;
 use super::world::Analyzer;
 
 // ---------------------------------------------------------------------------
@@ -244,7 +246,14 @@ pub fn graph_dot(content: &CompiledContent, initial: &State) -> String {
                     if draw_blinds_bare(facts.content, site, m) {
                         continue;
                     }
-                    if !served_by_cap(deck, m, cap) {
+                    // one serving predicate, one home: the CURSOR-AWARE
+                    // `deck_serves_cap` — the very verdict analyze_name /
+                    // analyze_demand report — not a re-derivation. At
+                    // cursor 0 (every script-state face) it IS
+                    // `served_by_cap`, so the frozen pins hold; under
+                    // `--from-state` a consumed order position emits no
+                    // edge, exactly as the card face reports.
+                    if !facts.deck_serves_cap(deck, m, cap) {
                         continue;
                     }
                     edges.insert((owner.clone(), m.to_string(), label.clone(), false));

@@ -343,7 +343,8 @@ pub fn render_verb(out: &mut String, file: &str, r: &VerbReport) {
 }
 
 /// One card's report block (the CLI calls this
-/// per card; a trailing blank line separates reports).
+/// per card; a trailing blank line separates reports). The frozen shape —
+/// exactly [`render_report_by`] with no `--by` annotation.
 pub fn render_report(
     out: &mut String,
     file: &str,
@@ -352,14 +353,36 @@ pub fn render_report(
     usable: bool,
     r: &CardReport,
 ) {
+    render_report_by(out, file, card, demand, usable, None, r);
+}
+
+/// The same block with the `--by` face's one header annotation
+/// (`  [by minute N]`, the `[usable semantics]` bracket style). `None`
+/// renders byte-identical to [`render_report`].
+pub fn render_report_by(
+    out: &mut String,
+    file: &str,
+    card: &str,
+    demand: Option<&str>,
+    usable: bool,
+    by: Option<i64>,
+    r: &CardReport,
+) {
     let head = match demand {
         // an EMPTY demand is falsy (the frozen truthiness) and prints the bare card
         // name; otherwise the header is "matching '<demand>'"
         Some(d) if !d.is_empty() => format!("matching '{d}'"),
         _ => card.to_string(),
     };
-    let _ =
-        writeln!(out, "{file} · card {head}{}", if usable { "  [usable semantics]" } else { "" });
+    let by_tag = match by {
+        Some(m) => format!("  [by minute {m}]"),
+        None => String::new(),
+    };
+    let _ = writeln!(
+        out,
+        "{file} · card {head}{}{by_tag}",
+        if usable { "  [usable semantics]" } else { "" }
+    );
     let _ = writeln!(
         out,
         "  verdict: {}  (existence: {})",

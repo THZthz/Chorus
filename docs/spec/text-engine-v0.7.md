@@ -49,6 +49,7 @@ projection of that data, never the source of truth.
 
 26. **v0.7.7** — the reach Complete arm tightened from "home obtainable ⇒ the window is arrangeable" to a constructible completion (§13.1): the window rung (a committable verb's committed-role slot binds the home — no duration condition, duration-0 windows complete like any other — under a completable recipe: selectable under first-match, no decided REFUSE, no deterministic completion-time error, no unconditional mint collision), the aspect rung (the binder recipe must declare the trigger's aspect), and the draft rung (the completion refusal is atomic, and the rung is existential over the (verb, recipe) witnesses — one clean pair's completion draft lets the body's mints land, the occupancy being that pair's own, only every pair dirty demotes — and a recipe whose verb force-locks such a home by a min≥1 committed slot demotes symmetrically); three new `CardBlocker` rungs surface in `--why`. The differential campaign's 22 failures over 14 seeds (the generator-v2 ledger) resolve to zero with none opening the other direction; no grammar/log/script change; complete-mint support lines re-render with the named witness (a sanctioned default-report byte change).
 27. **v0.7.8** — the analyzer's machine-readable exits (§13.1): a seventh seam module, `export`, landing `--json` and `--graph` with ZERO new analysis over the settled facts and the usage line byte-frozen (documented in the bin module's docs and §13.1 — no sanctioned argv byte change this wave). `--json` is the per-card report envelope (`file`/`demand`/`usable` around `report`; the `serde::Serialize` derives ride the paths.rs report types — derive only, no logic — keys in declaration order, the report enums as their `as_str` strings, pretty and deterministic), `--why --json` merges the blocker table into the envelope as a `why` array of the very strings `render_why` prints (without the flag the key is absent), and `--all --json` is one array in the walk order; `--world`/`--verb`/`--graph` ignore the flag. `--graph` renders the whole-content mint dependency graph as Graphviz DOT — the universe ∪ initial card names (kind-annotated) plus owner boxes; every proven site contributes owner → mints through the analyzer's OWN bare-name serving predicate: a blinded derive-mint's site contributes no edge at all (the same blind filter `record_mint_source` applies to the requires side, whose filler edges therefore never route through a source that never mints), and a draw serves only what `facts.deck_cap` — the freeze model's value — reaches, judged per name by `served_by_cap` (the raw site cap never read; seed 81401's frozen-cap shape pinned with the analyzer's own verdicts, both directions); mints → requires carry the slot fillers and destroyed-by rides dashed; nodes sort by id, edges by (src, dst, label), under `cmp_utf16` with duplicates collapsed — two runs byte-identical. Face priority world > graph > verb > all > card/demand. 808 tests green (+13); the eight text faces byte-identical throughout; no grammar/log/script change.
+28. **v0.7.9** — the reach analyzer's two bounded-time faces (§13.1): `--by <minute>` keys every time-keyed judgment on one horizon (`min(freeze_dist, M − now + 1)` — `INFINITY` unbounded, the +1 turning "fired by minute M" into the freeze model's strict `first_cross < horizon`; every rule reads `WorldFacts::horizon`, never the raw bound) — slot-trigger provenance beyond the window demotes to candidate (`TriggerBeyondBy`), duration>0 recipes demote at any finite horizon (`BeyondByDuration`, the unfrozen spelling of the seed-296 rule), trigger-held deck caps and the expiry-arming recursion follow the horizon, and expiry/complete triggers are untouched by M directly (arranged, not timed; the head gains `  [by minute N]`); and `--from-state <log.jsonl>` rebuilds the analysis initial world by the engine's own fold (`reach::midgame::replay_state` = `load_log` + `fold`, §7 — a third engine-importing reach file beside fuzz/scale, zero session/engine edits), modeling the fired set (spent once triggers never fire again — `AlreadyFired`; their past mints ride the replayed entities) and non-reset deck cursors (draws serve `[cursor, cursor + cap)` through `deck_serves_cap`, the graph face's predicate too — one serving predicate, one home — and `add_product`'s same window; identity at cursor 0), leaving open windows/executed-map/rng read-but-unmodeled under a name-free fidelity note on every replayed report, and refusing ended logs. The bound and replay mark live on the Analyzer host; the default face is byte-identical throughout (the usage line stays frozen, the export precedent). 816 tests green (+8: tests/reach/reach_timing.rs — the byte-pinned two-state slot trigger, freeze×M tightening, duration×by, the engine-run→log→fold replay pin, and the graph-vs-card serving pin); the eight text faces byte-identical throughout; no grammar/log/script change.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -1879,8 +1880,9 @@ format, or play semantics.
 (compiled content, initial state) — design-time analysis: no engine, no
 mutation, deterministic. Seven seam modules (the analyzer proper — none of
 them imports the engine; the `fuzz` / `scale` campaign modules that share
-the directory are §13.3's differential layer, and they are the only reach
-files allowed to):
+the directory are §13.3's differential layer, `midgame` composes the
+engine's own replay entry for the `--from-state` face (§7), and they are
+the only reach files allowed to):
 
 - **census** — every SPAWN/REPLACE/DRAW site over recipes, all three
   trigger kinds, decks, prototypes and initial entities. IF-branch
@@ -2011,14 +2013,50 @@ files allowed to):
   draw serves a name only when it is not derive-blinded and
   `facts.deck_cap` can reach it: the freeze model's value, rewritten to
   0/1 for trigger-held draws after the fixpoint (seed 81401's shape),
-  judged per name by `served_by_cap` — one serving predicate, one home
-  (the site's raw cap is never read). `mints → requires` edges carry the
+  judged per name by `deck_serves_cap` — the cursor-aware verdict the
+  card face sees, against `facts.deck_cap`; one serving predicate, one
+  home (at cursor 0 it is `served_by_cap`, the script faces' identity;
+  the site's raw cap is never read). `mints → requires` edges carry the
   verb's slot fillers (or an expiry trigger's named card — the same
   split `path_for` renders), and `census.destroyed_by` the dashed
   `destroys` kill edges. Determinism is the contract: node lines sort by
   node id, edge lines by (src, dst, label), both under `cmp_utf16` with
   exact duplicates collapsed — two runs over the same (compiled content,
   initial state) render byte-identical text.
+
+The two bounded-time faces key the SAME settled facts on one horizon
+(`WorldFacts::horizon`) instead of adding analysis. `--by <minute>`
+bounds every time-keyed judgment at the authored absolute minute M
+(engine clock, §7): the horizon is `min(freeze_dist, M − now + 1)` —
+`INFINITY` unbounded, the freeze boundary and the window taking the
+tighter, the +1 turning "fired by minute M" into the freeze model's
+strict `first_cross < horizon` — and every time-keyed rule reads the
+horizon it induces, never the raw bound. A slot trigger whose first
+crossing lands beyond M has not fired in the window and its sites fall
+to candidate (`TriggerBeyondBy`); duration>0 recipes demote at ANY
+finite horizon (`BeyondByDuration`, the unfrozen spelling of the
+seed-296 rule); trigger-held deck caps rewrite `first_cross < horizon`
+to fired-by-M 1/0 and the expiry-arming recursion follows the same
+horizon; expiry/complete triggers are never demoted by M directly
+(arranged, not timed). The report head gains `  [by minute N]`.
+`--from-state <log.jsonl>` rebuilds the analysis initial world by the
+engine's OWN fold (`reach::midgame::replay_state` = `load_log` + `fold`,
+§7 — a third engine-composing reach file beside `fuzz` / `scale`, zero
+session/engine edits): the replayed entities and clock enter for free
+(every `first_cross` re-anchors), the log's fired set demotes spent
+once triggers (`AlreadyFired` — they never fire again; their past
+mints ride the replayed entities as initial facts), and non-reset deck
+cursors bound the remaining draws (`deck_serves_cap` serves the window
+`[cursor, cursor + cap)` — the graph face's predicate too;
+`add_product` registers the same window; identity at cursor 0). Read
+but deliberately unmodeled: open windows (the lock table), the
+executed-recipe map, the rng counter — named by a name-free fidelity
+note that rides on every replayed card report (global, the
+note-convergence rule). An ended log is the analyze error (exit 1).
+The bound and the replay mark live on the Analyzer HOST (one world per
+run — the bound cannot drift between cards); on the default face every
+rule reads `by: None`'s horizon, which IS the freeze distance — the
+frozen output byte-identical throughout.
 
 CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"] [--why]
 [--verb "<NAME>"] [--world]`,
@@ -2052,6 +2090,20 @@ text and DOT selves. The export flags deliberately do NOT touch the
 usage line (the argv-error surface stays byte-frozen, the two-line
 usage text above verbatim); they are documented in the reach bin
 module's docs and here.
+`--by <minute>` bounds the card faces (it composes with `--all`, a
+card, `--demand` and `--why`; `--world`, `--verb` and `--graph` ignore
+it, and the `--json` envelope carries the BOUNDED report with no `by`
+marker — the report fields say it). A missing or non-integer value is
+the argv error naming the flag (exit 2); `--by` does not open the
+usage gate. `--from-state <log.jsonl>` plays the midgame face on every
+target face (the state is the Analyzer's input — the fidelity-note
+head is the card face) and composes with `--by`, the window anchoring
+to the replayed clock; a missing value is the argv error, a
+missing/unreadable/unparsable log or a drifting fold is the analyze
+error (exit 1), and a log that ENDS the game is refused the same way —
+an ended world has nothing left to reach. Both flags deliberately do
+NOT touch the usage line (byte-frozen, the export precedent); they are
+documented in the reach bin module's docs and here.
 A card minted only by `on complete` clauses reports like any other — its
 provenance chain names the engine-minted `complete:{home}` trigger id —
 and the analyzer never rejects a script for owning one. Argv errors exit

@@ -29,7 +29,7 @@ use super::census::{
 use super::render::pred_text;
 use super::world::{
     eval_static_ok, path_open_first_failure, pred_static, CardFact, CardWorld, SlotFiller,
-    SlotProof, WorldFacts,
+    SlotProof, WorldFacts, INFINITY,
 };
 
 // ---------------------------------------------------------------------------
@@ -202,8 +202,18 @@ impl<'c> WorldFacts<'c> {
             // capacity-aware: only the first `site.cap`
             // order positions are ever served (seed 150846 phantom entries)
             let served_len = std::cmp::min(site.cap as usize, deck.order.len());
+            // the midgame deck cursor: on a non-reset deck the positions
+            // before the replayed cursor are already drawn — the world
+            // registers the order window from the cursor forward (the
+            // default face reads no cursors and takes the whole window)
+            let start = if deck.reset {
+                0
+            } else {
+                self.initial.decks.get(&deck.id).copied().unwrap_or(0).min(served_len as i64)
+                    as usize
+            };
             let mut counts: IndexMap<String, i64> = IndexMap::new();
-            for c in &deck.order[..served_len] {
+            for c in &deck.order[start..served_len] {
                 *counts.entry(c.name.clone()).or_insert(0) += 1;
             }
             for (name, n) in &counts {
@@ -369,12 +379,23 @@ impl<'c> WorldFacts<'c> {
             return (Err(CardBlocker::CrossListMintCollision { name: n }), None);
         }
         // frozen-completion rule (seed 296):
-        // provable only for duration-0 recipes
-        if self.frozen && site.verb.is_some() && verb_duration.unwrap_or(0) > 0 {
-            return (
-                Err(CardBlocker::FrozenDuration { duration: verb_duration.unwrap_or(0) }),
-                None,
-            );
+        // provable only for duration-0 recipes. The horizon keys the rung —
+        // the freeze boundary and the --by window take the tighter — and the
+        // unfrozen --by face yields its own blocker spelling.
+        if self.horizon() != INFINITY && site.verb.is_some() && verb_duration.unwrap_or(0) > 0 {
+            return match self.frozen {
+                true => (
+                    Err(CardBlocker::FrozenDuration { duration: verb_duration.unwrap_or(0) }),
+                    None,
+                ),
+                false => (
+                    Err(CardBlocker::BeyondByDuration {
+                        duration: verb_duration.unwrap_or(0),
+                        by: self.by.unwrap_or(INFINITY),
+                    }),
+                    None,
+                ),
+            };
         }
         // recipe-owned site: the `when` must be
         // static-true and the verb committable
@@ -417,15 +438,37 @@ impl<'c> WorldFacts<'c> {
             return (Err(CardBlocker::UnknownGuard), None);
         };
         if let CompiledTrigger::Slot { id, slot, once, .. } = trig {
+            // the midgame face: a spent ONCE trigger never fires again (its
+            // past mints ride the replayed entities as initial facts)
+            if *once && self.fired_once_owners.contains(&site.owner) {
+                return (Err(CardBlocker::AlreadyFired { trigger: id.clone() }), None);
+            }
+            let first_cross_minute = self.initial.now + self.first_cross(*slot);
+            // the --by face: a first crossing beyond the authored minute has
+            // not happened within the window, so the site proves nothing yet
+            // (it falls to candidate)
+            if let Some(m) = self.by {
+                if first_cross_minute > m {
+                    return (
+                        Err(CardBlocker::TriggerBeyondBy { minute: first_cross_minute, by: m }),
+                        None,
+                    );
+                }
+            }
             let once_note = if *once {
                 " (once: true — still fires its first crossing)"
             } else {
                 " (every crossing)"
             };
+            let tail = match self.by {
+                // the frozen face's line, byte-frozen
+                None => "— the clock is unbounded forward".to_string(),
+                Some(m) => format!(
+                    "— first crossing at minute {first_cross_minute}, inside the by {m} window"
+                ),
+            };
             return (
-                Ok(vec![format!(
-                    "trigger {id} fires on slot {slot}{once_note} — the clock is unbounded forward"
-                )]),
+                Ok(vec![format!("trigger {id} fires on slot {slot}{once_note} {tail}")]),
                 None,
             );
         }
@@ -595,6 +638,19 @@ pub enum CardBlocker {
     /// the site's owner is not in the trigger index — defensively unreachable
     /// (mirrors `site_reason`'s "unknown guard" fallback).
     UnknownGuard,
+    /// the `--by` window (the ladder's bounded-time rung): the slot
+    /// trigger's first crossing lands at `minute`, beyond the authored
+    /// `by` minute — it has not fired yet, so nothing it mints is
+    /// available within the window (the site falls to candidate).
+    TriggerBeyondBy { minute: i64, by: i64 },
+    /// the `--by` window, the unfrozen face of `FrozenDuration`: the
+    /// window bounds every commit, and a duration>0 recipe cannot prove
+    /// completion inside it — only duration-0 recipes prove.
+    BeyondByDuration { duration: i64, by: i64 },
+    /// the midgame face (`--from-state`): the once trigger already fired
+    /// in the replayed log — it never fires again, so its sites cannot
+    /// mint in the future (its past mints ride the replayed entities).
+    AlreadyFired { trigger: String },
 }
 
 impl CardBlocker {
@@ -661,6 +717,16 @@ impl CardBlocker {
                 "the completion draft already holds '{name}' (the locked home card, the completing recipe's own mints, or a sibling trigger's mint) — the body's mint refuses the draft and the whole completion is discarded"
             ),
             CardBlocker::UnknownGuard => "unknown guard".to_string(),
+            CardBlocker::TriggerBeyondBy { minute, by } => format!(
+                "the trigger's first crossing lands at minute {minute}, beyond the by {by} window — it has not fired yet, so nothing it mints is available within the window"
+            ),
+            CardBlocker::BeyondByDuration { duration, by } => format!(
+                "the by {by} window bounds every commit — a duration-{duration} recipe completes past the analysis horizon, and only duration-0 recipes prove"
+            ),
+            CardBlocker::AlreadyFired { trigger: _ } => {
+                "the once trigger already fired in the replayed log — it never fires again, so its sites cannot mint in the future (its past mints ride the replayed entities)"
+                    .to_string()
+            }
         }
     }
 }
@@ -1382,7 +1448,15 @@ fn owner_armable(
 ) -> bool {
     match wf.trig_idx.get(owner) {
         None => true,
-        Some((CompiledTrigger::Slot { .. }, _)) => true,
+        // a slot trigger arms unconditionally on the default face (the
+        // freeze model's own rules already police its firing); under --by
+        // it must fire BY the minute for its arming SET to apply in the
+        // window — the freeze half of the horizon must NOT enter here
+        // (the clean-boundary exemption proves at fc == freeze_dist)
+        Some((CompiledTrigger::Slot { slot, .. }, _)) => match wf.by {
+            None => true,
+            Some(m) => wf.initial.now + wf.first_cross(*slot) <= m,
+        },
         // §6.7: a completion trigger fires whenever a window completes
         // binding its home card — treated as arrangeable, the generous
         // (sound-for-'none') side
@@ -1435,16 +1509,17 @@ fn expirable_card(
                 && !wf.dirty_owners.contains(&s.owner)
                 && !self_arm(wf, &s.owner, card_name)
                 // the arming SET must actually APPLY:
-                // a runtime-gated path can be durably false, a frozen world
-                // hides owner firings past the freeze boundary, and a
-                // duration>0 recipe window completes inside the failing step
+                // a runtime-gated path can be durably false, a bounded
+                // horizon (the freeze boundary and --by taking the tighter)
+                // hides owner firings past it, and a duration>0 recipe
+                // window completes inside the failing step
                 && !s.path_non_static
-                && !(wf.frozen
+                && !(wf.horizon() != INFINITY
                     && (match &s.verb_name {
                         Some(vn) => wf.content.verbs.get(vn).is_some_and(|v| v.duration > 0),
                         None => s
                             .owner_slot
-                            .is_some_and(|os| wf.first_cross(os) >= wf.freeze_dist),
+                            .is_some_and(|os| wf.first_cross(os) >= wf.horizon()),
                     }))
                 && (match &s.verb_name {
                     None => true,

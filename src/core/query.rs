@@ -112,11 +112,10 @@ impl QueryTerm {
 }
 
 /// A query: the OR of its conjunction groups (§4.5 alternation) —
-/// `[[a, b], [c]]` is `(a AND b) OR c`; `|` binds loosest. One group (the
-/// `|`-less form) behaves exactly as the pre-alternation flat conjunction;
-/// the zero-group query (from `''` — the frozen-falsy no-query, guarded at
-/// every home before parsing) stays vacuous-true like the old empty
-/// conjunction. No round-trip printer in the engine core: queries are
+/// `[[a, b], [c]]` is `(a AND b) OR c`; `|` binds loosest. A single group
+/// (the `|`-less form) is a flat conjunction; the zero-group query (from
+/// `''` — the frozen-falsy no-query, guarded at every home before parsing)
+/// is vacuous-true. No round-trip printer in the engine core: queries are
 /// authored strings, never serialized and never logged (§4.5) — `reach`
 /// renders display strings for its analyzer reports only.
 pub type Query = Vec<Vec<QueryTerm>>;
@@ -177,7 +176,7 @@ fn parse_term(raw: &str, dict: &Dictionary) -> Result<QueryTerm> {
             // §4.5/§6.1: a kind is one of the dictionary's §4.1 kinds — an
             // empty or unknown kind could only ever match nothing, and "a
             // slot that compiles and silently never matches" is exactly what
-            // load errors exist for (a `kind:txet` typo used to be inert)
+            // load errors exist for
             if rest.is_empty() {
                 return Err(ChorusError::new(format!(
                     "bad kind term '{raw}' (expected kind:<KIND>)"
@@ -296,14 +295,14 @@ fn coerce(v: &str) -> AttrValue {
 
 /// A card matches iff ANY group's terms ALL match (§4.5 DNF). The
 /// zero-group query (from `''`) stays vacuous-true — the empty
-/// conjunction's pre-alternation semantics.
+/// conjunction's semantics.
 #[must_use]
 pub fn match_query(e: &Entity, query: &Query) -> bool {
     query.is_empty() || query.iter().any(|g| match_conjunction(e, g))
 }
 
 /// Every term of one conjunction group must match (each term's `neg` flips
-/// its result) — the pre-alternation flat-conjunction semantics, one group.
+/// its result) — the flat-conjunction semantics, one group.
 #[must_use]
 pub(crate) fn match_conjunction(e: &Entity, group: &[QueryTerm]) -> bool {
     group.iter().all(|t| match_term(e, t) != t.neg())

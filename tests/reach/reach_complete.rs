@@ -423,7 +423,7 @@ fn an_optional_min0_slot_never_force_locks_so_the_completing_recipe_proves() {
 #[test]
 fn cultist_slice_the_turning_proves_via_its_complete_triggers_and_all_exits_0() {
     let probe = Command::new(env!("CARGO_BIN_EXE_reach"))
-        .args(["scripts/cultist-slice.txt", "THE_TURNING"])
+        .args(["scripts/cultist-slice.txt", "card", "THE_TURNING"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("the reach bin spawns");
@@ -438,7 +438,7 @@ fn cultist_slice_the_turning_proves_via_its_complete_triggers_and_all_exits_0() 
     );
 
     let all = Command::new(env!("CARGO_BIN_EXE_reach"))
-        .args(["scripts/cultist-slice.txt", "--all"])
+        .args(["scripts/cultist-slice.txt", "all"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("the reach bin spawns");

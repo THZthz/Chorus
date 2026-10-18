@@ -177,7 +177,7 @@ pub struct FunctionDef {
     pub body: String,
 }
 
-/// An `ops:` declaration (§10, v0.7.7): a script-defined outcome operator.
+/// An `ops:` declaration (§10): a script-defined outcome operator.
 /// Structurally a [`FunctionDef`] — the same head grammar, the same
 /// template shape, the same expansion pass — but it joins the OP namespace:
 /// an UPPER_SNAKE name callable exactly like a built-in op, arity-checked
@@ -207,7 +207,7 @@ pub struct ContentRaw {
     /// §4.4: the dice seed (default 0). Meta line `seed: N` (§10).
     pub seed: Option<i64>,
     pub verbs: IndexMap<String, VerbContent>,
-    /// §4.1 (v0.7.5): the script's `kinds:` declarations, section order —
+    /// §4.1: the script's `kinds:` declarations, section order —
     /// the record of what the loader registers into its per-load dictionary
     /// clone. Code-level raw builders that use a custom kind must register
     /// it into their dictionary themselves (the same discipline as verbs).
@@ -221,7 +221,7 @@ pub struct ContentRaw {
     /// parametric outcome macros (§10) — declaration order matters for
     /// error reports only
     pub functions: Option<Vec<FunctionDef>>,
-    /// script-defined outcome operators (§10, v0.7.7) — the same record
+    /// script-defined outcome operators (§10) — the same record
     /// shape as `functions`, a different table; declaration order matters
     /// for error reports only
     pub ops: Option<Vec<OpDef>>,

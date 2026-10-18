@@ -87,7 +87,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     // The fixture's own kind pool, DELIBERATELY FROZEN: this generator is a
     // scaling fixture, not a vocabulary consumer — it never reads
     // Dictionary::kinds, and its draw order (pinned by the harnesses) must not
-    // move when the script-side kind vocabulary grows (v0.7.5).
+    // move when the script-side kind vocabulary grows.
     const KINDS: [&str; 8] =
         ["item", "text", "idea", "resource", "rite", "state", "place", "character"];
     const ASPECTS: [&str; 12] = [

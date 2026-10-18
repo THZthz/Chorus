@@ -125,10 +125,11 @@ pub(crate) fn eval_static(p: &Pred, world: &CardWorld) -> Result<bool> {
 
 /// The path-open walk, reporting its evidence: the FIRST path
 /// condition that is not a static truth (non-static, or static and false) —
-/// `Some(p)` demotes exactly when the old boolean `path_open` returned
-/// false. The fixpoint's ladder hands the predicate to the design-time
-/// renderer, so the PathClosed blocker and the demotion verdict come from
-/// this ONE pass; there is no second evaluation to drift away from.
+/// `Some(p)` is the demotion verdict, `None` exactly when every path
+/// condition is a static truth. The fixpoint's ladder hands the predicate
+/// to the design-time renderer, so the PathClosed blocker and the demotion
+/// verdict come from this ONE pass; there is no second evaluation to drift
+/// away from.
 pub(crate) fn path_open_first_failure<'p>(path: &'p [Pred], world: &CardWorld) -> Option<&'p Pred> {
     for p in path {
         if pred_static(p) && eval_static_ok(p, world) {
@@ -164,8 +165,7 @@ pub(crate) fn writable_paths(query: &Query) -> Vec<String> {
     out
 }
 
-/// The writable paths ONE conjunction group demands (the pre-alternation
-/// body, unchanged).
+/// The writable paths ONE conjunction group demands.
 pub(crate) fn writable_paths_of(group: &[QueryTerm]) -> Vec<String> {
     group
         .iter()

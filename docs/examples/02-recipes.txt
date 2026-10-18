@@ -1,0 +1,30 @@
+# docs/examples/02-recipes.txt — recipes: first match wins, hidden gates, REFUSE.
+# The logbook is ciphered until the codebook has been read (and destroyed).
+
+script: The Keeper's First Light
+player: WICK
+goal: light the lamp — the keeper's logbook says how
+start: 0:8
+
+entities:
+  LAMP_ROOM is place
+  WICK is character at LAMP_ROOM
+  THE_LOGBOOK is text with tome:1, cipher:2 at LAMP_ROOM
+  THE_CODEBOOK is text with primer:1 at LAMP_ROOM
+
+endings:
+  FIRST_LIGHT: "The lamp burns" (grand)
+
+verbs:
+  READ:
+    actors: 1 kind:character
+    object: 1 kind:text
+    duration: 30m
+    recipes:
+      read.cipher_gate hidden when object.aspect.cipher >= 1 AND exists(THE_CODEBOOK) -> REFUSE("The logbook is written in the keeper's cipher. The worn primer at your belt holds the key.")
+      read.primer when object.aspect.primer >= 1 -> DESTROY OBJECT, NARRATE "You work through the primer until the cipher's shapes stop swimming."
+      read.deciphered when object.aspect.cipher >= 1 -> SPAWN THE_KEEPERS_NOTE, NARRATE "The logbook opens. 'Trim the wick. Feed the lamp the good oil. Speak the old word at dusk.' You set the page down, lighter by one secret.", ENDING FIRST_LIGHT
+      default -> NARRATE "{actors} read {object} and find nothing of use."
+
+prototypes:
+  THE_KEEPERS_NOTE is idea with secret:1

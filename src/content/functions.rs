@@ -1,5 +1,5 @@
-//! The §10 call tables: `functions:` declarations (v0.3.3) and `ops:`
-//! declarations (v0.7.7) both compile to call templates BEFORE any
+//! The §10 call tables: `functions:` and `ops:` declarations both compile
+//! to call templates BEFORE any
 //! verb/trigger body parses, and every authored outcome string expands
 //! through the combined table in the same step (verb/trigger bodies are
 //! compiled fully expanded, so every guard and the engine see plain
@@ -48,7 +48,7 @@ pub(super) fn parse_outcome_string(
 ///    BANNED, and an fn name sharing an op name is the collision error);
 /// 3. ops pass 2 — op BODIES parse against the completed fn table plus the
 ///    op names (an op may call functions and other ops), and every declared
-///    body's braced tokens are checked, called or not (v0.7.2 rule);
+///    body's braced tokens are checked, called or not (§10's rule);
 /// 4. ops pass 3 — the op→op call graph: recursion cycles and the depth cap
 ///    (the fn graph never reaches ops — the ban — so its own build already
 ///    settled it).
@@ -262,9 +262,8 @@ fn build_fns(defs: &[FunctionDef], dict: &Dictionary, table: &mut FnTable) -> Re
             Some(tpl) => {
                 tpl.body = body;
                 // §10: every declared body's braced tokens are checked at
-                // load, called or not — expansion runs the same check only
-                // for the bodies a call reaches, so a never-called `{ x }`
-                // or `{typo}` used to load clean
+                // load, called or not — expansion alone would only check
+                // the bodies a call reaches
                 check_body_tokens(tpl, CallKind::Function)?;
             }
             None => unreachable!("pass 1 inserted '{}'", def.name),

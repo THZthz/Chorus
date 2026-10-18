@@ -4,13 +4,18 @@ version = "0.1.0"
 edition = "2021"
 # A text-game engine: single crate, multi-module, lib + 5 [[bin]] targets.
 
-# Dependencies are frozen to exactly these four crates; Cargo.lock is
-# committed.
+# Dependencies are frozen to exactly these five crates; Cargo.lock is
+# committed. crossterm rides with default-features = false — the style API
+# (the ANSI writer for the bins' --color faces) without the defaults'
+# event/tty machinery (MIO, signal-hook, the windows console backend);
+# crossterm's own unconditional deps (rustix, parking_lot, …) still ride
+# in the lock.
 [dependencies]
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
+crossterm = { version = "0.29", default-features = false }
 
 # The five binary targets:
 # - chorus: the main line REPL game over a compiled script

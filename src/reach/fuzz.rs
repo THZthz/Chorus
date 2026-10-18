@@ -85,12 +85,10 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
     vs.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// Script-style verb lexemes the generator declares beside the core set
-/// (v0.7.6): sampled from the alphabet exactly like a core verb, authored by
+/// Script-style verb lexemes the generator declares beside the core set:
+/// sampled from the alphabet exactly like a core verb, authored by
 /// the same verb loop, and registered into the scenario's dictionary with
-/// the loader's register-if-unknown discipline — the campaign used to pin
-/// the alphabet to the core twelve, so the explore/probe machinery never
-/// saw a content verb a script could not have declared.
+/// the loader's register-if-unknown discipline.
 const SCRIPT_VERBS: [&str; 3] = ["INTERROGATE", "COMMUNE", "DISTILL"];
 
 /// The generated-action alphabet: CORE_VERBS ∪ the declarable script verbs
@@ -126,7 +124,7 @@ pub enum ProbeMode {
 /// One generated scenario: the raw content, its compile inputs, the initial
 /// state, and the probe list. The dictionary is the scenario's OWN
 /// load-effective dictionary — the core seed plus every script verb the
-/// sample declared (§4.3, v0.7.6) — so every consumer compiles, explores and
+/// sample declared (§4.3) — so every consumer compiles, explores and
 /// folds against the vocabulary the content actually uses.
 pub struct Scenario {
     pub seed: i64,
@@ -1135,11 +1133,9 @@ pub fn explore(
     let mut capped = false;
     // i64: the settle_step first-record id domain
     let mut id_counter = 0i64;
-    // dedupe at PUSH time: the old pop-time check counted every duplicate pop
-    // against max_states AND let the queue grow with them — the budget bought
-    // re-sights instead of new worlds. BFS pop order makes the first
-    // (shallowest) push the keeper; equal-signature states record identical
-    // descriptors.
+    // dedupe at PUSH time — the max_states budget buys new worlds, never
+    // re-sights. BFS pop order makes the first (shallowest) push the
+    // keeper; equal-signature states record identical descriptors.
     let mut queue: VecDeque<(State, usize)> = VecDeque::new();
     {
         let key = sig(initial);

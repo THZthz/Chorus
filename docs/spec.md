@@ -17,6 +17,8 @@ projection of that data, never the source of truth.
 
 **Version log** — one entry per spec version, brief; §9.3 maps the retired per-version rulings to their current homes:
 
+> Keep **concise**, one line each.
+
 1. **v0.2** — grammar formalized and reconciled with examples (pre-verbal `AT`, arities, reserved words); USE_ON fixed to one object; single time model; step-atomic REFUSE; recipe ids; EVENT representation; aspects/attrs split; name uniqueness. The ruling ledger opens (§5.1+).
 2. **v0.2.1** — spec–implementation alignment: reserved `AS`, canonical paren-less `SPAWN`/`NARRATE`, fully materialized concrete outcomes, prototype `derive`, recipe auto-ids, monotonic clock, slot `shown`/`hidden` display-only; the script format (§10) and the play interface (§11) documented.
 3. **v0.2.2** — the processing cycle: `PROGRESS` ticks; commit → lock → ticks → outcomes → unlock; `{to}`/`{with}` prose tokens; `once` triggers; quantized step clocks with dead-air event crossings; first story content (the Nightjar Flyer).
@@ -37,30 +39,20 @@ projection of that data, never the source of truth.
 18. **v0.6** — the engine-findings fixes: the authored `SPAWN … expires <duration>` modifier arming decay at mint; the RUN candidate walk's `when:` evaluated against the parent window's committed bindings overlaid by the projected clause.
 19. **v0.7** — the coverage convergence (spec-side only; no grammar/log/script/API change): the document brought level with the shipped Rust crate — the v0.5 record model written into §5.1/§6.6/§7/§9.2 (WAIT rows own the clock; four record kinds; `startMin`/`window`), the turn-boundary undo stated (§7/§11), the play interface rewritten to the shipped line REPL (§11), the tooling layer documented (§13: the reach analyzer, the script lint, the bins), and the port's frozen wire/collation/escape semantics recorded (§4.2, §4.4, §5.1, §7).
 20. **v0.7.1** — one escape discipline: ref formatting now doubles `\` like every other quoted form, closing the `a\b` round-trip hole (§5.1); a log holding such a name re-formats differently (§9.2, no compatibility).
-21. **v0.7.2** — the loud-fail sweep, five silent-drop corners made load errors: a trailing token after `default` (`default max 2`, `default when …` — §6.4/§10), an unknown `k=v` pair key on SPAWN (§4.4/§5.1), `ADVANCE` in a slot/expire trigger's outcomes (§6.6/§6.7/§10), an empty or unknown `kind:` in any query (§4.5/§6.1), and a mis-spelled braced token in a never-called function body (§10). No log format change; scripts that leaned on a dropped token now fail to load, naming it.
-
-22. **v0.7.3** — the layout convergence, zero grammar/log/script change: the oversized modules split along their seams (`engine.rs` → `engine/{record,validate,exec,outcomes,advance,replay}`; `content/script.rs` → `content/script/{parse,decls,verbblock,complete,load,lint,when_dead}`; `predicate.rs` → `predicate` + `pred_parse`/`pred_lint`; `parse.rs` → `parse/{mod,outcome}`), the `engine::engine` / `content::content` inception shapes dissolved into flat module APIs, the fuzz/scale campaign engines and the settle adapter moved from `tests/common` into the crate (`reach::fuzz`, `reach::scale`, `engine::settle` — §13.1's no-engine claim now scoped to the five seam modules, §13.3 amended), and two interface bytes changed: the unresolvable-table hint names the typed word (`cards`) instead of a button number (§11), and `lint-scripts` with no arguments reads its files in sorted order. Everything else is comment/code organization; the acceptance suite pins the behavior throughout.
-
-23. **v0.7.4** — the interface convergence (the acceptance layer only; no log/grammar change except where noted): the advance pass CLOSES at an ENDING instead of running on (§4.4 — completions and slots after the ending no longer fire; the clock stops where the story did), one step may advance at most seven days (§6.6 — a giant day field is a loud rejection, not an unbounded walk), and a slot-count rejection names its verb once instead of twice. The shipped REPL prints what the engine already knew — the goal, the clock, the open stations, the try row of typeable suggestions, `help`, `look`'s exits and carrying — and the lenient front door resolves what its own suggestions suggest (underscored/uppercase spellings, unique name-words, slot-fit disambiguation, `says`-template prose aliases, full-line verb corrections) while refusing outcome arrows instead of dropping them. `scripts/the-nightjar-flyer.txt`'s acceptance path is the honest seven-command win (the older nine-command path closed the inquest at 6:30, after Vienna, and only "won" while endings rode along).
-
-24. **v0.7.5** — the reach fixpoint learned completion triggers and the analyzer gained a `--world` dashboard (§13.1): a `site_proven` support arm proves a mint owned by an `on complete` clause when its home card is obtainable — completion is arrangeable, the aspect filter lands in the support line, not the verdict, and the frozen rule does not apply — fixing a panic (exit 101) that took `reach` down on completion-only producers; and a sixth seam module, `world_report`, re-renders the post-fixpoint world facts (census counts, freeze line, dead verbs with their killing slots, deck caps, collision names, destroyed-by, the SET pump map, refused owners, notes) into one byte-identical-across-runs dashboard that wins over `--all`/card/demand, the reach usage first line gaining `[--world]` as the one sanctioned argv-surface byte change; no grammar/log/script change.
-
-25. **v0.7.6** — the reach fuzz generator v2 and the analyzer's diagnostic faces (§13.1/§13.3): the generator's scenario space now covers the full trigger face (slot, expiry and completion triggers with their §6.7 aspect gates), RUN candidates (a recipe body may RUN only the same verb's strictly earlier recipes; a completion body draws from the global duration>0 table) and §6.4 recipe `aspects` — its draw order re-banded and declared VERSIONED, not frozen, so recorded campaign runs reproduce only against the generator version that produced them, and the seed suite pins determinism (same seed ⇒ the same outcome, failures printed) instead of soundness, whose open complete-arm over-generosity (seed 41 among seeds 1–50) stays the campaign's ledger for the coming tightening; and the demotion guards converged on one `site_ladder` pass whose failing rungs yield structured `CardBlocker`s (`site_proven` its `.ok()` face), surfaced as `reach --why` (the per-card blocker table) and `--verb "<NAME>"` (the settled-facts verb report), world notes converging on the named card's report, the usage first line gaining `[--why] [--verb "<NAME>"]` as the sanctioned argv byte change; no grammar/log/script change.
-
-26. **v0.7.7** — the reach Complete arm tightened from "home obtainable ⇒ the window is arrangeable" to a constructible completion (§13.1): the window rung (a committable verb's committed-role slot binds the home — no duration condition, duration-0 windows complete like any other — under a completable recipe: selectable under first-match, no decided REFUSE, no deterministic completion-time error, no unconditional mint collision), the aspect rung (the binder recipe must declare the trigger's aspect), and the draft rung (the completion refusal is atomic, and the rung is existential over the (verb, recipe) witnesses — one clean pair's completion draft lets the body's mints land, the occupancy being that pair's own, only every pair dirty demotes — and a recipe whose verb force-locks such a home by a min≥1 committed slot demotes symmetrically); three new `CardBlocker` rungs surface in `--why`. The differential campaign's 22 failures over 14 seeds (the generator-v2 ledger) resolve to zero with none opening the other direction; no grammar/log/script change; complete-mint support lines re-render with the named witness (a sanctioned default-report byte change).
-27. **v0.7.8** — the analyzer's machine-readable exits (§13.1): a seventh seam module, `export`, landing `--json` and `--graph` with ZERO new analysis over the settled facts and the usage line byte-frozen (documented in the bin module's docs and §13.1 — no sanctioned argv byte change this wave). `--json` is the per-card report envelope (`file`/`demand`/`usable` around `report`; the `serde::Serialize` derives ride the paths.rs report types — derive only, no logic — keys in declaration order, the report enums as their `as_str` strings, pretty and deterministic), `--why --json` merges the blocker table into the envelope as a `why` array of the very strings `render_why` prints (without the flag the key is absent), and `--all --json` is one array in the walk order; `--world`/`--verb`/`--graph` ignore the flag. `--graph` renders the whole-content mint dependency graph as Graphviz DOT — the universe ∪ initial card names (kind-annotated) plus owner boxes; every proven site contributes owner → mints through the analyzer's OWN bare-name serving predicate: a blinded derive-mint's site contributes no edge at all (the same blind filter `record_mint_source` applies to the requires side, whose filler edges therefore never route through a source that never mints), and a draw serves only what `facts.deck_cap` — the freeze model's value — reaches, judged per name by `served_by_cap` (the raw site cap never read; seed 81401's frozen-cap shape pinned with the analyzer's own verdicts, both directions); mints → requires carry the slot fillers and destroyed-by rides dashed; nodes sort by id, edges by (src, dst, label), under `cmp_utf16` with duplicates collapsed — two runs byte-identical. Face priority world > graph > verb > all > card/demand. 808 tests green (+13); the eight text faces byte-identical throughout; no grammar/log/script change.
-28. **v0.7.9** — the reach analyzer's two bounded-time faces (§13.1): `--by <minute>` keys every time-keyed judgment on one horizon (`min(freeze_dist, M − now + 1)` — `INFINITY` unbounded, the +1 turning "fired by minute M" into the freeze model's strict `first_cross < horizon`; every rule reads `WorldFacts::horizon`, never the raw bound) — slot-trigger provenance beyond the window demotes to candidate (`TriggerBeyondBy`), duration>0 recipes demote at any finite horizon (`BeyondByDuration`, the unfrozen spelling of the seed-296 rule), trigger-held deck caps and the expiry-arming recursion follow the horizon, and expiry/complete triggers are untouched by M directly (arranged, not timed; the head gains `  [by minute N]`); and `--from-state <log.jsonl>` rebuilds the analysis initial world by the engine's own fold (`reach::midgame::replay_state` = `load_log` + `fold`, §7 — a third engine-importing reach file beside fuzz/scale, zero session/engine edits), modeling the fired set (spent once triggers never fire again — `AlreadyFired`; their past mints ride the replayed entities) and non-reset deck cursors (draws serve `[cursor, cursor + cap)` through `deck_serves_cap`, the graph face's predicate too — one serving predicate, one home — and `add_product`'s same window; identity at cursor 0), leaving open windows/executed-map/rng read-but-unmodeled under a name-free fidelity note on every replayed report, and refusing ended logs. The bound and replay mark live on the Analyzer host; the default face is byte-identical throughout (the usage line stays frozen, the export precedent). 816 tests green (+8: tests/reach/reach_timing.rs — the byte-pinned two-state slot trigger, freeze×M tightening, duration×by, the engine-run→log→fold replay pin, and the graph-vs-card serving pin); the eight text faces byte-identical throughout; no grammar/log/script change.
-29. **v0.7.10** — the analyzer's cost/count face (§13.1): an eighth seam module, `cost`, landing `--cost` with ZERO new analysis over the settled facts and the usage line byte-frozen (the export precedent). The per-card `— cost` section (card mode and `--all` alike, appended after `--why`) answers three questions over the proven provenance DAG (`facts.proven_sources` — the `mint_sources` candidates under the chain's own serving predicate, the deck-cap test folded in): minimum verb applications (recipe hops 1, trigger hops 0, initial 0 — memoized, depth-backstopped, tie-broken in proof order, the cheapest witness chain on one line) with the lower-bound honesty stated on every costed report; minimum clock minutes (recipe hops = the verb's duration, slot hops = `first_cross`, arranged expiry/complete hops 0; a frozen world's note caps the clock); and the copies bound from `avail` (`MANY` → `unbounded`, a count past the flatten weight cap → `N+ (world cap)`). Expiry/complete hops cost 0 with the arranged note (fillers recur); a non-proven target renders the one-line exclusion face. Composes with `--usable`/`--why`/`--all`/`--by`/`--from-state`; kept out of `--json` and ignored under `--demand` (documented). 825 tests green (+9: tests/reach/reach_cost.rs — the equality-pinned chain fixture, the 0-applications trigger faces, the deck-multiplicity/defaultcard copies, the replay cursor pin, the `--by` bound, and the CLI composition faces); the eight text faces byte-identical throughout; no grammar/log/script change.
-30. **v0.7.11** — the lint bridge (§13.1 → §13.2): a ninth seam module, `bridge`, landing `bin/lint-scripts --reach` — the reach analyzer's global-dynamic findings surfaced as WARNING-class lint findings with ZERO new analysis over the settled facts, the default invocation byte-frozen (verified against a HEAD-compiled bin; the exit code stays constant 0 — the §13.2 rule). `--reach` (anywhere in the arguments, combinable with named files; the sole-argument invocation still reads the default `scripts/` list) appends six owner-addressed finding families in a fixed class order, every walk an insertion order, deduplicated per owner: dead verbs (`dead_verbs`, the killing slot walked the way the `--world` dead-verbs row walks it); self-gated lists (live unproven sites re-run through `site_ladder` over the read-only world rebuild — the `--why` pass's own ladder, no re-derivation — only the `SelfGated` rung surfaced); risky owners (`risky_owners`); deck-cap cursor freezes (a live draw whose census cap froze below `MANY` on a repeatable owner — a once trigger's single draw is its design, not a smell); the frozen world (`frozen` + `freeze_dist` — the boundary minute `now + freeze_dist` with the risky slot triggers standing on it, exactly the argmin owners of `freeze_dist`'s own min over the risky slot triggers' first crossings, the minute the `--world` freeze line renders); and REFUSE-doomed sites (the refused census, owners named). Every finding reuses the lint's own `LintFinding`/`LintSeverity` types (zero lint edits), prints `[reach]`-prefixed in the one stream, and the summary names the two layers separately. 829 tests green (+4: tests/reach/reach_bridge.rs — the all-six-classes byte-exact fixture, the two-run determinism pin, the clean-world face, and the bin face: the `--reach` stream byte-pinned beside the unchanged default invocation and the sole-argument fallback); no grammar/log/script change.
-
-*(Entries 31–33 are the script-vocabulary stream, merged after the reach stream: their original 24–26 numbering collided with the reach entries above, so they renumber to follow it — the reach stream landed first (2026-10-17/18) and the vocabulary convergence is chronologically later. Inline § citations below use the new numbers.)*
-
-31. **v0.7.12** — the vocabulary convergence, script-side: the noun classes become definable, closing the last hardcoded word list a script could not extend. A `kinds:` section (§4.1/§10) registers new `lower_snake` kinds into the load's dictionary in declaration order — the rejections loud and uniform with the §10 duplicate rule (a re-declaration including a built-in, a relation-type collision — the entity line dispatches relation types first, so such a kind could never be declared on an entity line — and any name outside the class), kinds still not reserved words. Every kind check site now reads the Dictionary instead of the frozen eight: entity and prototype lines, the `kind:` term wherever a query parses (slots, `exists()`/`count()` inner queries — the parse_query/predicate front-ends now take the dictionary), and the reach analyzer's `--demand` parse (its Analyzer carries the load-effective dictionary, handed back on `CompiledScript` and adopted by `Game`). Unknown-kind errors keep their message shapes with the suggestion list derived from the dictionary — built-ins first, then declarations, so the byte-pins for the core dictionary are unchanged. The four built-in semantic roles are written down as engine-frozen (§4.1); runtime stays vocabulary-free; the reach scale fixture's private kind pool stays deliberately frozen (it is a generator, not a consumer). No log format change.
-
-32. **v0.7.13** — the vocabulary convergence, verb-side, closing the last open question the script format left (§12 #4): the `verbs:` block now DECLARES lexemes, not just configures them. An indent-2 `VERB:` header is accepted for any UPPER_SNAKE name; the load registers unknown lexemes into its effective dictionary — register-if-unknown on the per-load clone, the v0.7.12 `kinds:` discipline, so recompiling one text against one dictionary stays idempotent — and the whole §5.1 nameable grammar applies at that registration: never a reserved word (`EVENT:` fails loud naming the lexeme; the "reserved words cannot be registered" claim is now enforced, the core verbs exempt as reserved-by-being-a-verb), and never a declared entity or prototype name — one order-independent cross-check over the whole load rejects the overlap in either section order, instead of the section-order luck a growing reserved set implied. Declaration is not playability: the config block (§6.1) makes the verb playable, the "is not a content verb" step gate and the template/compile gates stay as backstops, and `CompiledScript` hands the extended dictionary to `Game`, so a declared verb types, suggests, renders in the banner/help and re-parses in the fold. Duplicate headers stay the uniform load error (core lexemes included); the reach fuzz alphabet takes the declared verbs too (a scenario carries its own effective dictionary); `lint-scripts` lints each file against a fresh core dictionary. No log format change.
-
-33. **v0.7.14** — the ops convergence: script-defined outcome operators. A new `ops:` top-level section (§10) declares named, parameterized bodies of outcomes callable in ANY outcome position — recipes, all three trigger kinds, IF arms, other op bodies — written and read exactly like a built-in op call (`ENCHANT(ROWAN)`), while §4.4's built-in table stays closed. The mechanism is deliberately the functions' mechanism (§10, v0.3.3): a call expands into its body AT LOAD through the same pass, so the engine, the log and the fold never see a call, and every existing outcome guard — ENDING and DRAW membership, RUN's recipe scoping, the trigger ban sweep (an op body carrying ADVANCE into a slot trigger is caught), the dice lints (ROLLED/DRAWN in a body are the call site's load error), the braced-token check over every declared body called or not — stays sound by construction, because expansion lands in the authored-outcome world the guards already walk. What makes an op more than a renamed function: the OP namespace (UPPER_SNAKE; never a built-in op, a reserved word — declared verbs included, the ops table building after the load's verb registration — a duplicate, or a functions name, the fn grammar admitting UPPER names so the namespaces are checked against each other; deliberately NOT reserved — a prototype may be named like an op, a bare `ENCHANT` stays SPAWN sugar and only `ENCHANT(` is the call), op-grade call checking (arity at every call site — wrong arity is a load error naming the op, the expected and the actual count, nested sites included; deliberately NOT retro-fitted onto functions, the asymmetry documented), and the composition rules (an op may call ops and functions; a FUNCTION body calling an op is the specific load error — functions expand at load before ops exist — and op→op recursion names the cycle over the shared DFS with the functions' depth cap of 8, op hops only). The load carries ONE call table (`FnTable` gains the ops map, disjoint by the collision check) threaded exactly where the function table already went — no new plumbing below the load, zero log/format change; `unknown 'NAME(…)'` errors teach declared ops too, and the lint scans op bodies like function bodies (an op body's raw SET writes count; the lint still never sees through a call site — §13.2). Pinned: a played op step's JSONL carries no op name anywhere and folds byte-identically; a mint reachable only through an op call is proven (the reach 'none' verdict cannot appear); recompiling one ops script against one dictionary stays idempotent (ops are load-time state, never dictionary state). Four phase-2 review minors ride along: the dead `played` binding deleted from tests/script/verbs.rs; the lint-isolation CLI test strengthened so file two USES file one's verb (exit 1 alone and combined, the declaring file clean — the identical-files version could not distinguish per-file dictionaries from a shared one); the two stale doc claims ("play behaves identically", "the engine and the log never read the dictionary's word lists") scoped to the mechanics — a declared verb does change the typing/suggestion surface, and the fold's sentence re-parse reads the dictionary's verb list; and a deck-id-vs-declared-verb pin (the deck reserved check sees registered lexemes). Tests +22 = 815 green. Gates: bundled scripts unchanged (cultist-full's 76 warnings pinned, slice and flyer clean, exit 0); clippy --all-targets clean; fmt clean.
-
+21. **v0.7.2** — the loud-fail sweep: five silent-drop script corners become loud load errors.
+22. **v0.7.3** — the layout convergence: oversized modules split along their seams, zero grammar/log/script change.
+23. **v0.7.4** — the interface convergence: endings close the advance pass, advances cap at seven days, the line REPL lands.
+24. **v0.7.5** — the reach fixpoint learns completion triggers; the `--world` whole-world dashboard joins as a seam module.
+25. **v0.7.6** — the fuzz generator's scenario space covers the full trigger face; the analyzer gains the `--why` and `verb` diagnostic faces.
+26. **v0.7.7** — the reach Complete arm tightens to a constructible completion: the window, aspect and draft rungs surface in `--why`.
+27. **v0.7.8** — the analyzer's machine-readable exits: the `export` module lands `--json` envelopes and the `--graph` DOT face.
+28. **v0.7.9** — the bounded-time faces: `--by <minute>` keys judgments on one horizon; `--from-state <log.jsonl>` replays a log as the initial world.
+29. **v0.7.10** — the cost face: `--cost` reads the minimum applications, minutes and copies off the proven provenance DAG.
+30. **v0.7.11** — the lint bridge: reach findings surface in lint-scripts via `--reach`, advisory only.
+31. **v0.7.12** — the vocabulary convergence, script-side: a `kinds:` section registers new noun kinds into the load's dictionary.
+32. **v0.7.13** — the vocabulary convergence, verb-side: a `VERB:` header declares new verb lexemes into the effective dictionary.
+33. **v0.7.14** — the ops convergence: an `ops:` section declares script-defined outcome operators, expanded at load like functions.
+34. **v0.8.0** — the bin-interface convergence: `reach` speaks the Commands + Options grammar; `--color`, lint-scripts' Options form and the tutorial land.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -130,7 +122,7 @@ default pool is the player's own kind (§11); `place` owns zone containment
 and the visibility fallout (§4.2, §11); and the `<someone>` phrasing of a
 usage line fires for `kind:character` slots (§11).
 
-Everything else about a kind is **open vocabulary** (v0.7.12): a script's
+Everything else about a kind is **open vocabulary**: a script's
 `kinds:` section declares new kinds — indent-2 lines under a `kinds:`
 header, one name per line in the class `^[a-z][a-z0-9_]*$` (`lower_snake`)
 — registered into the load's dictionary in section order. That dictionary
@@ -246,11 +238,11 @@ Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 | Verb        | Signature                              | Purpose                        |
 |-------------|----------------------------------------|--------------------------------|
 | `READ`      | ACTORS READ object [AT place]          | study a text → ideas           |
-| `STUDY`     | ACTORS STUDY object [AT place]         | the CS study station (READ's signature, v0.3) |
+| `STUDY`     | ACTORS STUDY object [AT place]         | the CS study station (READ's signature) |
 | `WORK`      | ACTORS WORK [AT place]                 | labor → resources              |
 | `TALK`      | ACTORS TALK [AT place] [ABOUT idea]    | social outcomes, group actions |
 | `EXPLORE`   | ACTORS EXPLORE place                   | discover contents of a place   |
-| `MANSUS`    | ACTORS MANSUS place                    | enter a place — the Mansus crossing (EXPLORE's signature, v0.3) |
+| `MANSUS`    | ACTORS MANSUS place                    | enter a place — the Mansus crossing (EXPLORE's signature) |
 | `TRAVEL_TO` | ACTORS TRAVEL_TO place                 | deliberate movement            |
 | `LOCATE_AT` | ACTORS LOCATE_AT place                 | set/dump position (utility)    |
 | `DREAM`     | ACTORS DREAM [WITH idea]               | visions, rest                  |
@@ -261,7 +253,7 @@ Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 Signatures say which roles a verb may take; cardinalities and queries are
 content (§6.1). The seed content narrows some of these (e.g. seed `ACQUIRE`
 takes an object of any kind; seed `WORK` declares no `with` slot). The core
-set is a default, not a closed wall (v0.7.13): a script's `verbs:` block
+set is a default, not a closed wall: a script's `verbs:` block
 declares a brand-new lexeme with an indent-2 `VERB:` header — or configures
 a core one under the same header — and the load registers unknown lexemes
 into its effective dictionary (register-if-unknown on the per-load clone,
@@ -287,7 +279,7 @@ contributes no template line; its recipe NARRATEs still speak.
 
 | Operator  | Args (normative)                | Effect                                        |
 |-----------|---------------------------------|-----------------------------------------------|
-| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error (v0.7.2; it used to parse as an inert pair that apply dropped without a trace); the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first halfhour boundary at or after that minute that the clock actually crosses |
+| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error; the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first halfhour boundary at or after that minute that the clock actually crosses |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
 | `REPLACE` | ref `WITH` prototype            | decay a card into its successor: mint from the prototype into the dying card's **current location** — its `container` (place-contained or character-carried) or, for a zone-tagged card, its `zone` (§10: the grouping has no card, so the tag passes to the successor) — then soft-destroy it — spawn first, then destroy, so the old name is released as usual. Paren-less authored form `REPLACE X WITH Y`; the engine logs the concrete `SPAWN … AS #id` + `DESTROY #id` pair, so there is no REPLACE in the log. Prototype derivation (`name from object`) is unavailable — REPLACE has no clause. A name collision with any living entity — the dying card itself included, still alive at spawn time — rejects the whole step (§9.2); revised for pools: a stackable successor may share a stackable pool, so `REPLACE X WITH X` succeeds — append-then-pop, the pool never dips, and the next pool op addresses the next-oldest. A replaced place's children keep pointing at the dead place id; re-parenting them is the author's job. REPLACE always writes the `attrs=` pair, even empty — the pair is the authoritative materialization (§9.2), so the fold cannot grow a location the mint never had |
 | `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute: a missing entry counts as 0, results may go negative (no clamping — a counter may read below zero), adding to a non-numeric entry is an application failure (§9.2), and a delta over a role ref applies per bound card, logging one concrete SET per card (`#id`s, each with its own result); deltas apply to the draft, so a later REFUSE in the same step discards them whole (§6.5). `SET x, expires, 2h` also materializes `expiresAt` (§4.2) |
@@ -298,7 +290,7 @@ contributes no template line; its recipe NARRATEs still speak.
 | `PROGRESS`| duration, string                | a read-bar tick: authored progress text at `duration` into the processing window (§6.7); journal-only, no state or time effect |
 | `RELATE`  | ref, ref, type [, int]          | create a relation edge between two cards      |
 | `UNRELATE`| ref, ref, type                  | remove a relation edge                        |
-| `ENDING`  | id                              | end the story: sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — the ending's OWN completion still applies its whole outcome list (an ADVANCE extension it carries counts, §6.6). Within one advance pass the story's ENDING closes the pass: an action's own advance finishes, but an EVENT ending (a trigger's or a completion's) stops the pass AT THAT MINUTE — the wait row's span ends there, later due completions and slots do not fire, and the clock does not run past the story (v0.7.4: the ending used to ride along while later completions still landed — an ending after the ending made a loss print a second, winning banner). A REFUSE later in the same step discards the ending with the whole draft (§6.5); a REFUSE later in the same step discards the ending with the whole draft (§6.5). Post-ending steps are rejected before validation, nothing logged, the message naming the ending's title; the fold itself never enforces game-over (it trusts logged rows) — the rejection lives in the step executor only |
+| `ENDING`  | id                              | end the story: sets `state.ended` to `{id, title, flavour}` resolved from the `endings:` table (§10); the id must be declared — load-time error otherwise (recipe or trigger); the first ENDING to apply in a step wins, later ones are logged no-ops; the step itself completes normally — the ending's OWN completion still applies its whole outcome list (an ADVANCE extension it carries counts, §6.6). Within one advance pass the story's ENDING closes the pass: an action's own advance finishes, but an EVENT ending (a trigger's or a completion's) stops the pass AT THAT MINUTE — the wait row's span ends there, later due completions and slots do not fire, and the clock does not run past the story. A REFUSE later in the same step discards the ending with the whole draft (§6.5). Post-ending steps are rejected before validation, nothing logged, the message naming the ending's title; the fold itself never enforces game-over (it trusts logged rows) — the rejection lives in the step executor only |
 | `IF`      | cond `->` `(` outcomes `)` { `ELSE IF` cond `->` `(` outcomes `)` } [ `ELSE` `->` `(` outcomes `)` ] | branching (§6.8, §6.3): arms evaluate in order against the draft, first true condition wins, `ELSE` is the default, no true arm and no `ELSE` applies nothing; the log records only the TAKEN branch's outcomes, flattened in position — no IF ever appears in the log |
 | `ROLL`    | count, sides [, bonus]          | roll dice: paren-only; each argument is a §6.3 value expression (`3`, `total(actors, aspect:nerve)`, `count(name:X)`, `object.aspect.dc`, …). Rolls `count` dice of `sides` faces plus `bonus`, consuming exactly `count` rng counters; binds `roll` for the rest of the outcome list. The log records the engine-written `ROLLED(<total>, <ctrAfter>)` — no ROLL ever appears in the log. `sides` < 2 or `count` < 0 reject the whole step (§9.2); `count` = 0 is legal (total = bonus, counter unmoved); an argument expression that cannot resolve (a missing aspect over its bound role) rejects the step rather than silently rolling nothing |
 | `ROLLED`  | total, ctrAfter                 | **engine-written only**: the record of one ROLL — the fold sets `state.rng = ctrAfter` and derives nothing else. Authoring one is a load error |
@@ -322,7 +314,7 @@ to a `functions:` declaration and expands to its body AT LOAD — one vocabulary
 two namespaces of convenience: functions are not ops (§4.4's table is closed),
 declaring one named like an op is a load error (§10).
 
-**Declared ops head one too** (v0.7.14): `OP(arg, …)` dispatches to an `ops:`
+**Declared ops head one too**: `OP(arg, …)` dispatches to an `ops:`
 declaration and expands to its body AT LOAD through the same pass — the
 built-in table above stays closed, and the log never carries an op name (the
 §10 op rules cover the name rules, the per-call-site arity rule, and the
@@ -399,10 +391,8 @@ name:SUSPICION  -name:SUSPICION        (§4.5: exact-case, like name refs and ex
 ```
 
 - `kind:` — exactly one of the §4.1 kinds (the built-ins plus the script's
-  `kinds:` declarations, v0.7.12); an empty or unknown kind is a
+  `kinds:` declarations); an empty or unknown kind is a
   parse error wherever a query parses — slots, `exists()`, `count()`
-  (v0.7.2: `kind:txet` used to compile and silently never match, the one
-  term whose typo was inert)
 - `aspect:path[>=|<=|>|<|!=|=]level` — principle match: all six comparators,
   levels may be negative; bare `aspect:x` = level ≥ 1
 - `state:key[=|!]value` — attr match against the `state.*` namespace
@@ -446,14 +436,14 @@ each).
 log        = { sentence } ;
 sentence   = [ clock "@" ] ( action | event | complete | wait ) ;
 complete   = "COMPLETE" verbo [ "->" outcomes ] ;
-                                                 (* v0.5, ENGINE-WRITTEN: one processing
+                                                 (* ENGINE-WRITTEN: one processing
                                                     window closing (§6.7) — the verb appears as a
                                                     raw name token riding the record's `trigger`
                                                     field (never ref(); engine-written rows always
                                                     carry a registered verb, the grammar itself does
                                                     not check registration); parses so every
                                                     concrete row round-trips *)
-wait       = "WAIT" duration ;                   (* v0.5, ENGINE-WRITTEN: one advance pass —
+wait       = "WAIT" duration ;                   (* ENGINE-WRITTEN: one advance pass —
                                                     the span that moved `now` (§6.7); WAIT is
                                                     reserved (a core verb), so this sits before
                                                     the action fallthrough *)
@@ -484,7 +474,7 @@ outcome    = OPERATOR "(" [ args ] ")"           (* SET/RELATE/UNRELATE/REFUSE/A
                                                     into a pair position lands as a bare value the grammar
                                                     rejects loud (§9.2). The pair loop itself admits only the
                                                     engine-written `aspects=`/`attrs=` keys — any other key is
-                                                    a parse error (v0.7.2) *)
+                                                    a parse error *)
            | ( "DESTROY" | "REVEAL" | "MOVE" ) parenlessTail      (* input sugar *)
            | "REPLACE" ( ref | role ) "WITH" ref (* paren-less only; WITH is syntax, not a role *)
            | "NARRATE" string
@@ -533,7 +523,7 @@ Lexical rules:
   ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED DRAW DRAWN RUN` + every registered
   verb lexeme) cannot be used as names; content needing them uses the quoted-string
   ref form (`"PLAN B"`). A script's `verbs:` declarations join the reserved set
-  at load (v0.7.13, §4.3) — and because that growth would otherwise make name
+  at load (§4.3) — and because that growth would otherwise make name
   legality depend on section order, one order-independent load check rejects a
   verb lexeme that doubles as a declared entity or prototype name. The role words are a SOFT reservation: an entity named
   `object` is addressable in clause positions, but in outcome-arg positions the
@@ -546,9 +536,7 @@ Lexical rules:
 - **One escape discipline for every quoted form.** Refs, prose strings, RUN
   ids, pair values and trigger-id segments all escape `\` first, then `"`;
   the lexer maps `\\` → `\` and `\"` → `"`, so every quoted form re-lexes to
-  the same units and an unsafe name is lossless whatever it contains
-  (v0.7.1 — before it, ref formatting left backslashes raw, and `a\b`
-  re-lexed as backspace + `b`).
+  the same units and an unsafe name is lossless whatever it contains.
 - **Collation and classes are frozen** (the port's JS-emulation semantics):
   "sorted" means UTF-16 code-unit order (`cmp_utf16`), never Rust byte order —
   non-BMP names sort by surrogate pairs; DSL whitespace is its own frozen
@@ -764,7 +752,7 @@ logic        AND · OR · NOT (uppercase; NOT binds tightest)
 comparisons  >= · <= · > · < · = · !=
 ```
 
-v0.2 limits: path operands read `role.aspect.key` and `role.attr.key`
+Limits: path operands read `role.aspect.key` and `role.attr.key`
 (numeric attrs); the scalar conditions inside `every`/`any` read **aspects
 only** (`aspect:key >= n`). A missing numeric attr entry on a bound card
 compares as 0 (§6.3); a missing aspect on a bound card reads false.
@@ -862,7 +850,7 @@ script line := [id] ["hidden" | "shown" ["hint" «"text"»]] ["when" cond]
                   is the id) — the grammar above shows the conventional
                   order; `when` is last before `->`; `default` is its own
                   whole shape — a trailing token after it is a load error
-                  (v0.7.2) *)
+                  *)
 ```
 
 **Execution limits — `max N`** (N ≥ 1, integer). At selection a recipe whose
@@ -981,7 +969,7 @@ object.aspect-N`, alongside `name from object`).
    INTO mints the card containerless
    rather than materialize it nowhere. Otherwise the draft becomes the new
    state.
-4. **Time**: the step itself moves nothing — since v0.5 the clauses'
+4. **Time**: the step itself moves nothing — the clauses'
    durations are the processing WINDOW's length, recorded as the BEGIN row's
    `advancedMin` (§6.7), and the clock advances only through advance
    passes: a bare clock input, an action whose typed clock lies ahead, or a
@@ -1005,12 +993,12 @@ object.aspect-N`, alongside `name from object`).
    `DESTROY`).
    Within one crossed halfhour, authored triggers fire before expiries. Each
    fires its own EVENT log row with its outcomes applied. One pass — events
-   never cascade within the same advance (v0.2 simplification; new expiries
+   never cascade within the same advance (new expiries
    resolve at the next advance). **The fold trusts logged EVENT rows** — it
    never re-derives them; a once-trigger's fired-ness is a projection
    rebuilt from those rows.
 
-Perishables/decay v0.2: an entity may carry `expires:+24h`; the engine
+Perishables/decay: an entity may carry `expires:+24h`; the engine
 materializes `expiresAt` when the attr is set; the crossing fires an expiry
 EVENT — the authored `on expire of NAME` trigger's outcomes if one matches
 (decay chains: influence → weaker influence, health → fatigue, summons →
@@ -1022,10 +1010,9 @@ declaration order wins; there is no compile-time existence check on NAME
 (decay targets are often spawned at runtime — a wrong name is an inert
 trigger, not a load error). REFUSE in any trigger outcome is a load-time
 error (an event has no step to refuse; §6.7); an authored `ADVANCE` there is
-a load-time error too (v0.7.2) — an event owns no advance pass to stretch,
-so the extension could only have been dropped (it used to apply, ride the
-EVENT row, and vanish on both play and fold); a completion trigger fires
-inside a pass and keeps ADVANCE (§6.7); and the fired set is written
+a load-time error too — an event owns no advance pass to stretch; a
+completion trigger fires inside a pass and keeps ADVANCE (§6.7); and the
+fired set is written
 by exactly one rule in both paths — one entry per EVENT row's trigger
 (authored id or `expire:<NAME>`).
 
@@ -1033,7 +1020,7 @@ by exactly one rule in both paths — one entry per EVENT row's trigger
 
 Committing cards to a verb station is not the whole action: the action
 *processes* over the verb's duration, and the engine narrates that
-processing. Since v0.5 the window is **real**: several stations run in
+processing. The window is **real**: several stations run in
 parallel, and the lock is machinery — the state's open-window table — not a
 projection of serialized time.
 
@@ -1089,13 +1076,13 @@ starting exactly at `now` is a loud log-drift error, §7). A bare advance to
 the current minute with nothing due is rejected outright (`nothing to do —
 the clock already reads d:h (commit an action, or name a later minute to
 wait)`) rather than idling — idling is what `wait`
-(§11) is for. One pass is atomic (§9.2); one step may advance the clock at most SEVEN DAYS — the pass walks every halfhour it crosses (recurring triggers fire on each), so a giant day field is a loud rejection ("more than 7 days ahead"), not an unbounded walk (v0.7.4). Expiries created
+(§11) is for. One pass is atomic (§9.2); one step may advance the clock at most SEVEN DAYS — the pass walks every halfhour it crosses (recurring triggers fire on each), so a giant day field is a loud rejection ("more than 7 days ahead"), not an unbounded walk. Expiries created
 by the pass resolve at the next one.
 
 **Why there is no lock-flag machinery beyond the windows table**: the
 table *is* the lock — play and fold rebuild it identically from BEGIN and
 COMPLETE rows (§7), and every busy check is a lookup in it. Concurrent
-verb stations, left open in earlier revisions, are the model since v0.5.
+verb stations are the model.
 
 `PROGRESS` belongs to verb recipes only — the script compiler rejects it in
 trigger outcomes (events have no window). `REFUSE` belongs to verb recipes
@@ -1106,7 +1093,7 @@ in a slot/expire trigger's outcomes it is a load-time error — an event has
 no window to chain from (`on complete` bodies fire inside one, so they are
 the exempt kind, above) — and so does `ADVANCE`, which can only stretch the
 pass a completion rides: in the two event kinds it is a load error, in an
-`on complete` body it extends the pass (v0.7.2).
+`on complete` body it extends the pass.
 
 `PROGRESS(duration, string)` is journal-only, like `NARRATE`: no state
 effect, no time effect, raw template stored and interpolated at render
@@ -1258,9 +1245,8 @@ same list are visible to later IFs. Normative:
   rule).
 
 **Concretization — the taken branch only.** The log records the taken
-branch's outcomes, flattened into the IF's position (the SET-delta
-precedent, §4.4: the engine computes once at execution and logs the
-result). The record never contains an IF op; the untaken branches are
+branch's outcomes, flattened into the IF's position — the engine computes
+once at execution and logs the result (§4.4). The record never contains an IF op; the untaken branches are
 authored discipline the log cannot recover (the §5.3 journal-loss
 corollary). A `REFUSE` inside a taken branch refuses the whole step as
 usual (§6.5).
@@ -1303,7 +1289,7 @@ CREATE TABLE relation (
 
 CREATE TABLE action (
   id           INTEGER PRIMARY KEY,
-  kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' (BEGIN) | 'complete' | 'wait' | 'event' — the v0.5 record model (§6.7)
+  kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' (BEGIN) | 'complete' | 'wait' | 'event' — the record model (§6.7)
   trigger      TEXT,                            -- events: the trigger id (an authored `on expire` trigger's id, else 'expire:<NAME>');
                                                 -- COMPLETE rows: the window's VERB (raw name token, never a ref)
   t_game       TEXT NOT NULL,                   -- display clock "day:halfhour", day 0-based — floored, DISPLAY ONLY
@@ -1311,9 +1297,9 @@ CREATE TABLE action (
                                                 --   reaches its window start through the `window` key)
   t_real       TEXT,
   advanced_min INTEGER NOT NULL DEFAULT 0,      -- BEGIN: the window length (moves NOTHING; 0 on a refused attempt) · wait: the span (the only clock mover) · else 0
-  start_min    INTEGER,                         -- v0.5, exact minutes: BEGIN = begin minute, wait = span start — the fold
+  start_min    INTEGER,                         -- exact minutes: BEGIN = begin minute, wait = span start — the fold
                                                 --   lands them exactly (expires anchoring); absent on complete/event rows
-  window       TEXT,                            -- v0.5, COMPLETE rows: the key of the window they close
+  window       TEXT,                            -- COMPLETE rows: the key of the window they close
   actors       JSON,                            -- refs: sorted, de-duplicated union across clauses (order not semantic)
   verb         TEXT NOT NULL,                   -- FIRST clause's verb lexeme ('' for event/wait rows; the verb of a COMPLETE row)
   objects      JSON,                            -- FIRST clause's object/with/at/about roles (multi-clause steps
@@ -1375,8 +1361,7 @@ Card (every field is from the dictionary — nothing ad hoc). Shipped shape:
 ```
 
 Verb station (requirement badges per §6.2 — shown gates print their hint,
-hidden gates print nothing). Still a sketch: nothing renders stations in
-v0.2.
+hidden gates print nothing). Still a sketch: nothing renders stations.
 
 ```
 ▶ USE_ON  [ actors: 1..5 characters ]  [ object: a rite ]  [ with: 0..2 items ]
@@ -1601,7 +1586,7 @@ goal: unmask Lord Vane's killer …      # carried in the meta for the interface
 start: 0:42                            # initial clock
 seed: 7                                # dice seed (§4.4, default 0)
 
-kinds:                                 # new noun classes (§4.1, v0.7.12)
+kinds:                                 # new noun classes (§4.1)
   omen                                 # one lower_snake name per indent-2 line
 
 entities:
@@ -1624,7 +1609,7 @@ functions:
   sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
   watch(n) -> IF count(name:SUSPICION) >= n -> (ENDING ARRESTED)
 
-ops:                                   # script-defined outcome operators (§10, v0.7.14):
+ops:                                   # script-defined outcome operators (§10):
   ENCHANT(who) -> SET(who, aspect:charmed, 1), NARRATE "{who} glows."   # callable like a built-in op
 
 decks:
@@ -1635,7 +1620,7 @@ endings:
   DESPAIR_DEATH: "No More" (melancholy)
   LANTERN_VICTORY: "The Light in the Ruins" (grand)
 
-verbs:                                 # configures a verb — or declares a new one (§4.3, v0.7.13)
+verbs:                                 # configures a verb — or declares a new one (§4.3)
   READ:
     actors: 1..2 kind:character
     object: 1 kind:text
@@ -1651,7 +1636,7 @@ templates:
 
 Rules:
 
-- **Kind lines** (v0.7.12): one `lower_snake` name per indent-2 line under
+- **Kind lines**: one `lower_snake` name per indent-2 line under
   `kinds:` — new noun classes (§4.1) registered into the load's dictionary,
   section order = suggestion order. A duplicate (re-declaring a built-in
   included), a relation-type collision, or a name outside the class is a
@@ -1683,7 +1668,7 @@ Rules:
 - **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
   dictionary, both endpoints declared entities (either missing is a load
   error); symmetric/directed storage follows its definition (§4.2).
-- **Verb declarations** (v0.7.13): an indent-2 `VERB:` header declares a
+- **Verb declarations**: an indent-2 `VERB:` header declares a
   brand-new UPPER_SNAKE lexeme or configures a registered one (§4.3, §6.1);
   the load registers the unknown ones into its effective dictionary,
   register-if-unknown, so re-declaring a core verb just configures it. The
@@ -1702,8 +1687,7 @@ Rules:
   and `hint "…"` may appear with or without
   `shown`/`hidden`. `default` is its own whole shape — first token and
   nothing else: a trailing token (`default max 2`, `default when …`) is a
-  load error naming it (v0.7.2; it used to be silently dropped, the cap or
-  condition gone without a trace).
+  load error naming it.
   `max N` (N ≥ 1) caps executions (§6.4); `aspects` lists the
   presence-emitted aspects that gate `on complete` triggers (§6.7).
 - **Trigger lines** — two section-scoped forms plus one card-carried kind:
@@ -1753,8 +1737,8 @@ Rules:
   at a signed delta position folds the `+`/`-` into the bound number.
   A braced token is spelled exactly: `{ x }` with inner spaces is the
   undeclared-token load error even when `x` is a declared parameter (checked
-  at load for every declared body, called or not — v0.7.2; expansion used
-  to check only the bodies a call reached).
+  at load for every declared body, called or not — expansion alone would
+  check only the bodies a call reached).
   `{param}` interpolates AT EXPANSION to the
   call-site arg's canonical spelling; the reserved tokens `{actors}`
   `{object}` `{with}` `{at}` `{about}` `{to}` `{roll}` are never
@@ -1777,7 +1761,7 @@ Rules:
   guards and the endings check run AFTER expansion, so a body's PROGRESS/
   REFUSE or an undeclared ENDING id is a load error exactly as if authored
   at the call site.
-- **Script op lines** (v0.7.14): `NAME(params…) -> OUTCOMES` under `ops:` —
+- **Script op lines**: `NAME(params…) -> OUTCOMES` under `ops:` —
   the same three accepted head forms as functions (`NAME(p, …) ->`, `NAME ->`,
   bare `NAME p … ->`) and the same body grammar (one source line, outcome
   list, `{param}` interpolation with the exact-spelling rule, `IF`, `ROLL`,
@@ -1856,7 +1840,7 @@ sentence is what gets logged (§9.1). Rules:
   goes through the strict parser unchanged (clock defaults to the world
   clock when absent).
 - Otherwise: optional leading `d:h` clock (default: **begin now** — the
-  world clock, minute-precise; v0.5 windows may begin mid-halfhour) — an
+  world clock, minute-precise; windows may begin mid-halfhour) — an
   out-of-range halfhour
   field wraps into whole days the way durations compose (`0:118` = 118
   halfhours = day 2, halfhour 22; the canonical `d:h @` form keeps its
@@ -1888,7 +1872,7 @@ sentence is what gets logged (§9.1). Rules:
   speaks: an unknown word takes the suggestion path, a pool too small the
   refusal.
 
-**The interface shows its options outright** (v0.7.4): the line REPL opens
+**The interface shows its options outright**: the line REPL opens
 with `Game::banner` — the title, the script's `goal:` line (`§ …`, the
 deadline is part of the game), a status line (`you are MARCH · at GUARD VAN ·
 day 0, 21:00` — the player's clock is the same minute rendered as day +
@@ -1926,7 +1910,7 @@ open station and cards locked in a window are excluded; `recipe_lights`
 skips REFUSE recipes and spent `max` recipes (they land in flavor), and a
 REFUSED action prints the verb's authored `shown` hints under the refusal.
 
-**Lenient input meets its own suggestions** (v0.7.4): name runs normalize
+**Lenient input meets its own suggestions**: name runs normalize
 with the same key the tables use — `MARCH READ THE_MANIFEST`, `the vane
 ledger` and `read ledger` (a unique name-word) all resolve; when a word is
 ambiguous among several names, the one fitting the verb's slot query wins
@@ -1967,10 +1951,9 @@ name — engine state untouched, everything in the log (§9.2).
 
 **Undo** = truncate the log to where the last turn began and re-fold the
 surviving prefix from the base state (§7). The turn boundary is
-bookkeeping, not log archaeology: a v0.5 turn may be `[advance…, begin]` or
-a bare advance, and no suffix rule can tell them apart once appended — the
-older "drop the trailing EVENT rows and the last action row" reading is
-pre-v0.5 and unimplementable. Rejections and parse errors log nothing,
+bookkeeping, not log archaeology: a turn may be `[advance…, begin]` or
+a bare advance, and no suffix rule can tell them apart once appended.
+Rejections and parse errors log nothing,
 so there is nothing to undo after them. Once the story has ended (§4.4)
 input returns the ending notice, and the
 suggestion list empties — while the views and meta words keep working, because
@@ -1987,7 +1970,7 @@ undo past the ending record reopens the book.
    recipient semantics (gifts, summons, threats) still await a core verb.
 4. ~~Script-level verb declaration: new verb lexemes currently require
    `Dictionary::register_verb` in code (§10); should scripts declare them?~~
-   RESOLVED by v0.7.13: yes — the `verbs:` block declares them (§4.3), the
+   RESOLVED: yes — the `verbs:` block declares them (§4.3), the
    load registers them into its effective dictionary under the §5.1 nameable
    grammar.
 5. The unattended pump: the CS slice runs its time loop with no background
@@ -2152,7 +2135,7 @@ are the only reach files allowed to):
   exact duplicates collapsed — two runs over the same (compiled content,
   initial state) render byte-identical text.
 - **cost** — the `--cost` face: the cost/count reading of the settled
-  facts, ZERO new analysis (an eighth seam module beside `export`).
+  facts, ZERO new analysis (a seam module beside `export`).
   Three answers over the PROVEN provenance DAG (`facts.proven_sources`
   — the `mint_sources` candidates under the chain's OWN serving
   predicate, the deck-cap test folded in — with the `fillers` split
@@ -2176,23 +2159,23 @@ are the only reach files allowed to):
   timing / the anti-monotone count gates are honored only through
   provenness (a site they kill is never a proven source). A frozen
   world's note says the freeze boundary caps the clock. The face
-  composes with `--usable`/`--why`/`--all` and the bounded-time faces
+  composes with `--usable`/`--why`, the `all` command and the
+  bounded-time faces
   (the `--by` window bounds the DAG — only sites proven inside it
   participate, and a note says so; `--from-state` anchors for free —
   same facts, the clock re-anchoring with the replayed minute and the
   deck windows shrinking with the cursor); it stays out of `--json`
   and is ignored under `--demand` (the demand match's provenance is
-  not costed) — documented, not rejected; the usage line stays
-  byte-frozen.
+  not costed) — documented, not rejected.
 - **bridge** — the lint seam (§13.2): the settled facts re-rendered as
   WARNING-class findings for `bin/lint-scripts --reach`, ZERO new analysis
-  (a ninth seam module beside `cost`). One `Analyzer` per script; six
+  (a seam module beside `cost`). One `Analyzer` per script; six
   finding families in a fixed class order, every walk an IndexMap/IndexSet
   insertion order, deduplicated per owner, every finding owner-addressed
   (reach has no line numbers) and WARNING-class (a design smell, never an
-  error): dead verbs (`dead_verbs`, the killing slot walked exactly the way
-  the `--world` dead-verbs row walks it — the same `build_post_fixpoint`
-  hopeless predicate); self-gated lists (live unproven sites re-run through
+  error): dead verbs (`dead_verbs`, the killing slot walked by the same
+  `build_post_fixpoint` hopeless predicate as the `--world` dead-verbs
+  row); self-gated lists (live unproven sites re-run through
   `site_ladder` over the read-only world rebuild — the `--why` pass's own
   ladder, no re-derivation — with only the `SelfGated` rung surfaced);
   risky owners (`risky_owners`); deck-cap cursor freezes (a live draw whose
@@ -2200,8 +2183,8 @@ are the only reach files allowed to):
   single draw is its design, not a smell); the frozen world (`frozen` +
   `freeze_dist` — the boundary minute `now + freeze_dist` with the risky
   slot triggers standing on it, exactly the argmin owners of
-  `freeze_dist`'s own min over the risky slot triggers' first crossings,
-  the very minute the `--world` freeze line renders); and REFUSE-doomed
+  `freeze_dist`'s own min over the risky slot triggers' first crossings —
+  the minute the `--world` freeze line renders); and REFUSE-doomed
   sites (the refused census, owners named — the world note carries the
   count). The findings reuse the lint's own `LintFinding` type, so the bin
   prints one uniform stream.
@@ -2240,65 +2223,89 @@ run — the bound cannot drift between cards); on the default face every
 rule reads `by: None`'s horizon, which IS the freeze distance — the
 frozen output byte-identical throughout.
 
-CLIs: `reach <script> <CARD> [--usable] [--demand "<query>"] [--why]
-[--verb "<NAME>"] [--world]`,
-or `reach <script> --all` (prototypes ∪ LIVE initial entities ∪
-`deck.order` — not `defaultcard` — in UTF-16 order; `--all` wins over an
-explicit card), or `reach <script> --world` — the dashboard needs only
-the script and wins over `--all`, an explicit card, and a demand (`reach
---world` with no script is the argv error). The usage text's first line
-gained `[--world]` and now gains `[--why] [--verb "<NAME>"]`: sanctioned
-byte changes to the frozen argv-error surface, each landing with its
-three usage pins updated in the same change. `--why` appends one
-`— why` section to each card report (card mode and `--all` alike):
-every live unproven site serving the card, with its owner and the
-ladder's FIRST blocker — without the flag the output is byte-identical,
-and a card whose every serving site is proven renders the one-line empty
-face. `--cost` appends one `— cost` section to each card report (card
-mode and `--all` alike, after `--why`): the three answers — minimum
-applications with its witness chain, minimum minutes, the copies bound —
-with the lower-bound honesty stated on every costed report, and a
-target with no proven DAG rendering the one-line exclusion face. It
-composes with `--usable`, `--why`, `--all` and the bounded-time faces,
-stays out of `--json` and is ignored under `--demand` (documented, not
-rejected); it opens no usage gate and the usage line stays byte-frozen.
-`--verb <NAME>` renders one verb's report (duration, slots,
+CLIs: the argv surface is the cargo/uv-style Commands + Options grammar:
+`reach <script.txt> <COMMAND> [OPTIONS]` — the script first, then
+one of six commands, `card <NAME>` (the default face: one card's proven
+paths and bindable slots), `all` (prototypes ∪
+LIVE initial entities ∪ `deck.order` — not `defaultcard` — in UTF-16
+order), `demand <QUERY>` (a §4.5 query matched against the actual mint
+descriptors, any target never read), `verb <NAME>` (one verb's report),
+`world` (the whole-world dashboard) and `graph` (the whole-content mint
+dependency graph as Graphviz DOT) — `world` and `graph` need only the
+script. The command IS the face: a `-`-spelled unknown word is an
+unknown FLAG (exit 2, stderr, naming the word and listing the legal
+flags), a non-`-` word an unknown command (naming the word and listing
+`card, all, demand, verb, world, graph`). `--help`/`-h` anywhere in argv
+prints the full help (the command table, the option table, three real
+examples) on stdout and exits 0; no arguments prints the short usage
+(`usage: reach <script.txt> <COMMAND> [OPTIONS]` + the `reach --help`
+hint) on stderr, exit 2; a script with no command word, or an unknown
+command word, is the same exit-2 family; an unknown `-`-word in flag
+position — a typo'd `--usablee`, a stray `--` (there is no
+end-of-options separator) — is the unknown-flag error naming it; extra
+positionals beyond `<script> <COMMAND> [value]` are the exit-2 error
+naming the first extra; `card`/`demand`/`verb` with no — or an empty, the
+frozen truthiness — value is the exit-2 error naming the command. Argv
+errors exit 2 with the short usage; compile/analyze errors exit 1
+(stderr only); every value flag or value command with a missing value
+names itself, and a value slot refuses a `-`-leading token (that token is
+a flag, not a value — `--from-state --why` names the flag instead of
+reading a log named `--why`), the single deliberate exemption being `--by`
+(negative minutes are values).
+
+The options compose: `--usable` (existence plus bindability
+into a committable verb slot), `--why` appends one `— why` section to
+each card report (the `card` and `all` faces alike): every live unproven
+site serving the card, with its owner and the ladder's FIRST blocker —
+without the flag the output is byte-identical, and a card whose every
+serving site is proven renders the one-line empty face. `--cost` appends
+one `— cost` section to each card report (the `card` and `all` faces
+alike, after `--why`): the three answers — minimum applications with its
+witness chain, minimum minutes, the copies bound — with the lower-bound
+honesty stated on every costed report, and a target with no proven DAG
+rendering the one-line exclusion face. It composes with `--usable`,
+`--why`, the `all` command and the bounded-time faces, stays out of
+`--json` and is ignored under the `demand` command (documented, not
+rejected). The `verb` command renders one verb's report (duration, slots,
 committability verdict with its proof lines, per-recipe mint-site
-verdicts — the settled facts re-rendered, zero new analysis); it wins
-over `--all`, an explicit card and a demand (the `--world` precedent —
-one dedicated, target-free face), `--why` does not apply to it, a
-`--verb` with no value slot is the argv error, an EMPTY value is falsy
-(the demand truthiness), and an unknown verb name is the analyze error
-(exit 1). `--graph` needs only the script and wins over `--verb`, `--all`,
-an explicit card and a demand, losing only to `--world` — the face
-priority is world > graph > verb > all > card/demand. `--json` rides the
-card faces only (`<CARD> --json`; `--all --json` one JSON array in the
-walk order; `--demand "<q>" --json` the envelope with the query in
-`demand`), `--why --json` merging the blocker table into the envelope;
-`--world`, `--verb` and `--graph` ignore it — their faces stay their
-text and DOT selves. The export flags deliberately do NOT touch the
-usage line (the argv-error surface stays byte-frozen, the two-line
-usage text above verbatim); they are documented in the reach bin
-module's docs and here.
-`--by <minute>` bounds the card faces (it composes with `--all`, a
-card, `--demand` and `--why`; `--world`, `--verb` and `--graph` ignore
-it, and the `--json` envelope carries the BOUNDED report with no `by`
-marker — the report fields say it). A missing or non-integer value is
-the argv error naming the flag (exit 2); `--by` does not open the
-usage gate. `--from-state <log.jsonl>` plays the midgame face on every
-target face (the state is the Analyzer's input — the fidelity-note
+verdicts — the settled facts re-rendered, zero new analysis); `--why`
+does not apply to it, and an unknown verb name is the analyze error
+(exit 1). `--json` rides the card faces only (`card <NAME> --json`;
+`all --json` one JSON array in the walk order; `demand "<q>" --json` the
+envelope with the query in `demand`), `--why --json` merging the blocker
+table into the envelope; the `world`, `verb` and `graph` faces ignore it
+— their faces stay their text and DOT selves.
+`--by <minute>` bounds the card faces (it composes with `all`, `card`,
+`demand` and `--why`; `world`, `verb` and `graph` ignore it, and the
+`--json` envelope carries the BOUNDED report with no `by` marker — the
+report fields say it). A missing or non-integer value is the argv error
+naming the flag (exit 2). `--from-state <log.jsonl>` plays the midgame
+face on every face (the state is the Analyzer's input — the fidelity-note
 head is the card face) and composes with `--by`, the window anchoring
 to the replayed clock; a missing value is the argv error, a
 missing/unreadable/unparsable log or a drifting fold is the analyze
 error (exit 1), and a log that ENDS the game is refused the same way —
-an ended world has nothing left to reach. Both flags deliberately do
-NOT touch the usage line (byte-frozen, the export precedent); they are
-documented in the reach bin module's docs and here.
+an ended world has nothing left to reach.
+`--color` is the one output-styling switch: OFF by default —
+the identity transform, every face byte-identical to its unstyled
+output; ON, the bin wraps the ALREADY-RENDERED lines in ANSI SGR
+sequences through the shared lib module `chorus::cli` (`Styles` —
+line-level prefix matching over the frozen text; the library renderers
+are untouched, coloring lives at the bin layer): the verdict word
+green+bold (`OBTAINABLE`) / yellow+bold (`UNPROVEN`) / red+bold (the
+negative verdicts), each face's first line and the `— why` / `— cost`
+section headers bold, `note:` rows dim+italic, `path i/n:` heads and
+their `·` steps dim, `bindable via` rows cyan, `candidate source` rows
+dim, and the `world` panel's freeze value red (frozen) or green (not
+frozen), its `risky:` row yellow and its dead / refused counts red when
+non-zero. Only foreground colors (crossterm's own fixed named-color
+encoding) and the bold/dim/italic attributes are ever emitted — no
+background colors, no 256-color palette values. The machine faces (the
+`--json` envelopes and the `graph` DOT) are NEVER colorized — under
+`--color` they stay their exact bytes.
 A card minted only by `on complete` clauses reports like any other — its
 provenance chain names the engine-minted `complete:{home}` trigger id —
-and the analyzer never rejects a script for owning one. Argv errors exit
-2 with the usage; compile/analyze errors exit 1 (stderr only); a
-trailing `--demand` with no value is an argv error naming the flag.
+and the analyzer never rejects a script for owning one.
 `reach-fuzz` differentially fuzzes the analyzer against
 the real engine's settle (`--seeds/--steps/--states/--from`, defaults
 200/7/400/1; FAIL and soft-inconclusive lines on stderr, progress and the
@@ -2363,13 +2370,13 @@ scenario, draw for draw, under ONE version.
   numbers have no reach counterpart), deduplicated per owner,
   deterministic (insertion-order walks — two runs byte-identical). A reach
   finding is advisory by the same rule — it never changes the exit code —
-  and without the flag the output is byte-identical to the pre-bridge bin.
+  and without the flag the output is byte-identical to the plain lint.
 
 Errors are counted, warnings advise; findings never change the exit code
 (constant 0 — a dead `when` is sometimes the point); compile errors remain
 `compile_script`'s hard failure and unreadable input exits 1. The bin
 defaults to every `scripts/*.txt` relative to the CWD (a missing dir names
-itself and the cwd, exit 1). Script op bodies (§10, v0.7.14) are scanned
+itself and the cwd, exit 1). Script op bodies (§10) are scanned
 like function bodies — an op body's raw `SET(…, aspect:x)` counts as a
 write and its braced tokens get the same typo scan — but the lint never
 sees through a CALL SITE: a recipe line reading `BOOST(OBJECT)` contributes
@@ -2381,11 +2388,33 @@ default list).
 ### 13.3 The bins
 
 `bin/chorus` is the line REPL of §11. The other four are the fixed-purpose
-CLIs above (`reach`, `reach-fuzz`, `reach-scale`, `lint-scripts`); the fuzz
+CLIs above (`reach`, `reach-fuzz`, `reach-scale`, `lint-scripts`) — all
+five keep byte-exact stdout text and exit codes; the
+`reach` CLI speaks the cargo/uv-style Commands + Options grammar of §13.1
+(`reach <script.txt> <COMMAND> [OPTIONS]`; `--help`/`-h` prints the full
+help on stdout at exit 0; every argv error exits 2 on stderr with the
+short usage and the offending word named), its one styling switch
+`--color` (default OFF — the identity transform) wrapping the frozen text
+faces through the shared lib module `cli` while the machine faces
+(`--json`, `graph`) never color. `lint-scripts` has the
+single-purpose Options form (`lint-scripts [OPTIONS] [FILES...]`, no
+subcommands: `--help`/`-h` anywhere prints the full help on stdout at exit
+0; an unknown `-`-flag is the argv error — exit 2 on stderr naming the
+flag, never a silent fallthrough into the file list — while any non-flag
+word stays a file path, the empty list meaning the sorted `scripts/`
+default) with the same `--color` switch wrapping its faces through `cli`
+(the per-file title bold, the finding rows' bullet + severity marker in
+the severity color — error red, `[warning]` yellow, `[reach]` magenta —
+the message text untouched, the summary's non-zero counts in their
+severity colors and an all-zero summary green), the exit-code discipline
+unchanged (findings 0, hard input errors 1, argv errors 2). The fuzz
 and scale campaign engines are library modules (`reach::fuzz`,
 `reach::scale`, with the run-then-settle adapter in `engine::settle`), so
 the bins and the test suite import one implementation. `lcg` (crate root)
 is the deterministic campaign-side RNG those modules draw from —
 deliberately NOT the engine's randomness, which is §4.4's counter alone.
 Recorded campaign runs are reproducible only against the generator
-version that produced them.
+version that produced them. The bins freeze exactly five dependency
+crates (`Cargo.toml`: indexmap, serde, serde_json, regex, crossterm —
+the last only for the ANSI writer behind `cli`, riding with
+`default-features = false`; `Cargo.lock` is committed).

@@ -352,8 +352,8 @@ impl<'c> WorldFacts<'c> {
         let Some(q) = query else {
             return true;
         };
-        // §4.5: a DNF can ever match iff ANY group can — each group is the
-        // pre-alternation flat conjunction, so the possibility analysis is
+        // §4.5: a DNF can ever match iff ANY group can — each group is a
+        // flat conjunction, so the possibility analysis is
         // per group; the zero-group query stays vacuous-true
         q.is_empty() || q.iter().any(|g| self.group_can_ever_match(g))
     }
@@ -414,7 +414,7 @@ impl<'c> WorldFacts<'c> {
     /// Indexed: `mint_sources` was built at each proof in `proven`'s insertion
     /// order under EXACTLY this predicate minus the deck-cap test (the cap
     /// freezes only after `build_post_fixpoint`, which is why the index can't
-    /// absorb it), so the candidate list here is the old whole-`proven` scan
+    /// absorb it), so the candidate list here is the whole-`proven` scan
     /// filtered to the same hits in the same order — the cap check then keeps
     /// the identical survivors. Selection order (first-fit path export) is
     /// untouched.

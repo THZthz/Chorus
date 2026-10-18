@@ -122,10 +122,9 @@ fn id_refs_and_quoted_names_round_trip() {
 
 #[test]
 fn backslash_bearing_names_round_trip_losslessly() {
-    // §5.1, one escape discipline: a name holding a backslash before an
-    // escape letter (`a\b`) used to format with the backslash raw and
-    // re-lex as backspace + b; `\` now doubles on output like every other
-    // quoted form, so the parsed name survives the trip unchanged
+    // §5.1, one escape discipline: `\` doubles on output like every other
+    // quoted form, so a name holding a backslash before an escape letter
+    // (`a\b`) survives the format → re-lex trip unchanged
     let dict = core_dictionary();
     let s = parse_sentence("#ana READ \"a\\\\b\"", &dict).unwrap();
     let Ref::Name { name, .. } = &s.clauses[0].objects[0] else {
@@ -141,8 +140,7 @@ fn backslash_bearing_names_round_trip_losslessly() {
 #[test]
 fn spawn_rejects_unknown_pair_keys_loud() {
     // §4.4: the only SPAWN pairs are the engine-written aspects=/attrs=
-    // materialization — any other key used to parse as an inert pair that
-    // apply dropped without a trace (no error, no log)
+    // materialization — any other key is a parse error, never an inert pair
     let dict = core_dictionary();
     assert_err_msg(
         parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD ttl=2h", &dict),

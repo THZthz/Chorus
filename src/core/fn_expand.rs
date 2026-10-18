@@ -30,7 +30,7 @@ pub struct FnTemplate {
     pub body: Vec<Outcome>,
 }
 
-/// Which call table a name resolved from (§10, v0.7.7): a declared FUNCTION
+/// Which call table a name resolved from (§10): a declared FUNCTION
 /// or a script-declared OP. The two share one template shape and one
 /// expansion pass, but their error wording differs ("function 'x'" vs
 /// "op 'OP'") and the fn→op composition ban keys on the distinction.
@@ -54,7 +54,7 @@ impl CallKind {
 /// The load-time call table, threaded
 /// EXPLICITLY into every parse that may contain calls (never Dictionary
 /// state). `by_name` holds the `functions:` declarations, `ops` the
-/// `ops:` ones (§10, v0.7.7) — the same [`FnTemplate`] shape, a DISJOINT
+/// `ops:` ones (§10) — the same [`FnTemplate`] shape, a DISJOINT
 /// name set (the build rejects any overlap, so [`FnTable::resolve`]'s
 /// functions-first order is unobservable), expanded by the same pass.
 /// Both maps MUST preserve declaration order (IndexMap): iteration

@@ -27,7 +27,7 @@ pub const CORE_VERBS: [&str; 12] = [
 
 /// The eight built-in noun classes (§4.1), in suggestion order. The
 /// vocabulary itself is EXTENSIBLE — a script's `kinds:` section registers
-/// more (v0.7.5) — so this table only seeds `core_dictionary`; every
+/// more — so this table only seeds `core_dictionary`; every
 /// membership/suggestion read goes through `Dictionary::kinds`. The four
 /// semantic roles only the built-ins play are written into §4.1 (player:
 /// names a `character`; the actors pool defaults same-kind; `place` zones;
@@ -131,7 +131,7 @@ impl Dictionary {
         Ok(())
     }
 
-    /// Register a kind lexeme (§4.1, v0.7.5): `lower_snake`
+    /// Register a kind lexeme (§4.1): `lower_snake`
     /// (`^[a-z][a-z0-9_]*$`), never a registered relation type (the entity
     /// line's relation dispatch precedes the kind check, so such a kind
     /// could never be declared on an entity line), never a duplicate — the
@@ -195,9 +195,9 @@ impl Dictionary {
 
     /// Verb lexemes cannot be registered as names/verbs when the shape or
     /// the §5.1 namespace says no (spec §5.1): UPPER_SNAKE only, never a
-    /// registered verb, and (v0.7.6) never a reserved word — §5.1 has always
-    /// claimed reserved words cannot be registered; the check now enforces
-    /// it. The collision check precedes the reserved check (a re-register of
+    /// registered verb, and never a reserved word (§5.1: reserved words
+    /// cannot be registered). The collision check precedes the reserved
+    /// check (a re-register of
     /// an already-registered verb is a `collides with a verb`, never a
     /// reserved complaint — it IS in `reserved`, registration put it there),
     /// and the reserved check exempts CORE_VERBS: RESERVED_WORDS spells the
@@ -284,8 +284,8 @@ mod tests {
         // `reserved` at its own registration, and the re-register must still
         // read as a verb collision, not a reserved complaint
         assert_eq!(e2.msg, "verb 'VALID' collides with a verb");
-        // §5.1 (v0.7.6): a reserved word cannot be registered — the claim the
-        // spec always made, now enforced (the keyword half of RESERVED_WORDS)
+        // §5.1: a reserved word cannot be registered (the keyword half of
+        // RESERVED_WORDS)
         let e3 = d.register_verb("EVENT").unwrap_err();
         assert_eq!(e3.msg, "verb 'EVENT' is a reserved word (§5.1)");
         let e4 = d.register_verb("ROLL").unwrap_err();

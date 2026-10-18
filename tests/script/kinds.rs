@@ -1,4 +1,4 @@
-//! Script-definable kinds (§4.1, v0.7.5): the `kinds:` section registers new
+//! Script-definable kinds (§4.1): the `kinds:` section registers new
 //! noun classes into the load-effective dictionary, and every vocabulary
 //! check site — entity lines, prototype lines, slot queries, `kind:` terms
 //! inside predicates — reads that dictionary. Declaration order is the

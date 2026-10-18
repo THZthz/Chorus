@@ -697,11 +697,10 @@ fn count_with_a_non_role_non_query_argument_is_a_parse_shaped_role() {
 #[test]
 fn kind_terms_reject_empty_and_unknown_kinds_at_parse() {
     let dict = core_dictionary();
-    // §4.5/§6.1: a kind is one of the dictionary's §4.1 kinds — `kind:` and
-    // `kind:txet` used to parse and silently never match (the one slot query
-    // term whose typo was inert; name:/aspect:/state: already rejected
-    // empties). The suggestion list is the dictionary's insertion order —
-    // built-ins first, then script declarations (§4.1, v0.7.5) — so the
+    // §4.5/§6.1: a kind is one of the dictionary's §4.1 kinds — an empty or
+    // unknown kind is a parse error (name:/aspect:/state: reject empties
+    // too). The suggestion list is the dictionary's insertion order —
+    // built-ins first, then script declarations (§4.1) — so the
     // built-in pin below is byte-exact and grows with `kinds:`.
     assert_err_msg(parse_query("kind:", &dict), "bad kind term 'kind:' \\(expected kind:<KIND>\\)");
     assert_err_msg(

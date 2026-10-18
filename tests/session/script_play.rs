@@ -534,7 +534,7 @@ use chorus::session::lenient::{parse_player_input, LenientCtx, ParsedInput};
 /// Lenient input routes the new core
 /// verbs (v0.3). The verbs register into the dictionary by hand here (the
 /// code-level face of register_verb — a script's `verbs:` block drives the
-/// same registration through the load, v0.7.6).
+/// same registration through the load).
 mod lenient_input_routes_the_new_core_verbs {
     use super::*;
     use crate::common::seed::seed_state;

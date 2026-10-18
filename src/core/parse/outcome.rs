@@ -66,7 +66,7 @@ impl Parser<'_> {
                 if let Some((tpl, kind)) = self.fns.and_then(|f| f.resolve(v)) {
                     match kind {
                         CallKind::Function => return self.call_outcome(tpl, kind),
-                        // §10 (v0.7.7): a function body may not call a script
+                        // §10: a function body may not call a script
                         // op — fn bodies parse before the op bodies exist, so
                         // the call could never expand there
                         CallKind::Op if !self.ops_call => {
@@ -655,11 +655,9 @@ impl Parser<'_> {
             // §10 gives a parameter the pair KEY or VALUE face in
             // spawn_args only (the whole pair is replaced by the
             // parameter, value token consumed). In generic outcome args a
-            // param as the pair VALUE used to be "returned unconsumed" —
-            // stranding the token for the outcome loop's bare
-            // `expected ')', got 'p'`. Q3's teach: say so directly,
-            // naming the param and the legal forms. The acceptance face
-            // is UNCHANGED: the spelling was and remains a parse error.
+            // param as the pair VALUE is a parse error that says so
+            // directly — Q3's teach: it names the param and the legal
+            // forms, never a bare token-stranding message.
             if let Some(name) = self.param_at(2) {
                 return Err(ChorusError::new(param_pair_error(
                     "value",

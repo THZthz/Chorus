@@ -345,8 +345,7 @@ templates:
 fn the_self_pair_binds_both_copies_and_mints_once() {
     // E9 at engine scale (spec §11): the lenient self-pair hands the engine
     // DISTINCT ids — both fragments are consumed, the 6 mints once, and no
-    // stray survives. Under the old head-only binding the pair fired on one
-    // card and left the second copy alive.
+    // stray survives.
     let dict = core_dictionary();
     let mut game = Game::from_script(POOL_SCRIPT, dict).unwrap();
     auto_settle_line(&mut game, "explore").unwrap();

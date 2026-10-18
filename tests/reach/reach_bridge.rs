@@ -166,8 +166,8 @@ fn run_bin(text: &str, args: &[&str]) -> (Option<i32>, String, String) {
 /// rule). The fixture also trips two per-site lint ERRORs on purpose —
 /// work.loop sits behind a when-less recipe and READ's aspect has no writer
 /// — so the pin shows the two layers reading apart in one stream. The
-/// default invocation on the CLEAN fixture stays byte-identical to the
-/// pre-bridge bin, with and without the flag.
+/// default invocation on the CLEAN fixture stays byte-identical, with and
+/// without the flag.
 #[test]
 fn lint_scripts_reach_flag_and_the_unchanged_default() {
     // --reach over the smell-fest: the two lint ERRORs, then the seven
@@ -193,7 +193,7 @@ fn lint_scripts_reach_flag_and_the_unchanged_default() {
     );
     assert_eq!(out, expected, "the --reach stream drifted");
 
-    // the same file WITHOUT --reach: the pre-bridge bytes, byte-pinned (the
+    // the same file WITHOUT --reach: the plain bytes, byte-pinned (the
     // two lint ERRORs only — the bridge layer is absent)
     let (code, out, err) = run_bin(FIXTURE, &[]);
     assert_eq!(code, Some(0), "{err}");

@@ -8,15 +8,18 @@
 //! (the step executor and the headless play surface; no UI layer is part of
 //! this crate), `reach` (static reachability analysis, plus the fuzz and
 //! scale campaign engines the bins and the test suite share), crate-root
-//! `error` (the shared error channel) and `lcg` (the deterministic
-//! campaign-side RNG — never the engine's randomness), and the five bins
-//! (`bin/chorus` is a line REPL; the other four are fixed-purpose CLI
-//! tools). The curated entry surface is [`prelude`].
+//! `error` (the shared error channel), `lcg` (the deterministic
+//! campaign-side RNG — never the engine's randomness), `cli` (the shared
+//! bin-layer styling — the opt-in ANSI colorer that wraps the bins'
+//! byte-frozen stdout faces; the identity transform unless asked), and the
+//! five bins (`bin/chorus` is a line REPL; the other four are
+//! fixed-purpose CLI tools). The curated entry surface is [`prelude`].
 //!
 //! Invariants kept crate-wide: error messages are byte-exact
 //! (`ChorusError`); iteration order is observable behavior (IndexMap, never
 //! std HashMap at order-sensitive points).
 
+pub mod cli;
 pub mod content;
 pub mod core;
 pub mod engine;

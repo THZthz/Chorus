@@ -658,8 +658,8 @@ fn resolve_group<'a>(
 /// `d:h @` passthrough keeps its frozen `bad halfhour` bound: per FORM, the
 /// lenient front door wraps and the authored grammar stays loud. Only
 /// reachable on a `[0-9]+:[0-9]+` token (the `clock_token_re` gate), so the
-/// `None` arm is i64 saturation alone — absurd literals keep today's
-/// `bad clock` refusal.
+/// `None` arm is i64 saturation alone — absurd literals refuse with the
+/// frozen `bad clock` message.
 fn wrap_clock(tok: &str) -> Option<Clock> {
     let (day, halfhour) = tok.split_once(':')?;
     let total = parse_authored_int(day)

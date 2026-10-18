@@ -36,7 +36,7 @@ pub fn parse_sentence(src: &str, dict: &Dictionary) -> Result<Sentence> {
 
 /// Parse an outcome list for recipe `out`
 /// strings at content load: authored outcome strings must parse COMPLETELY
-/// (§5.1). Calls to declared functions AND script ops (§10, v0.7.7) both
+/// (§5.1). Calls to declared functions AND script ops (§10) both
 /// dispatch.
 pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Result<Vec<Outcome>> {
     let mut p = Parser::new(lex(src)?, dict, fns, None, true);
@@ -47,7 +47,7 @@ pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Re
 
 /// Parse one function BODY into its template
 /// (§10): parameters are active, nested calls become FN nodes, NOTHING
-/// expands yet. A function body may NOT call script ops (§10, v0.7.7) —
+/// expands yet. A function body may NOT call script ops (§10) —
 /// functions parse before the ops bodies exist, so an op call here is the
 /// specific ban error, not a generic unknown-call.
 pub fn parse_function_body(
@@ -63,7 +63,7 @@ pub fn parse_function_body(
     Ok(out)
 }
 
-/// Parse one OP BODY into its template (§10, v0.7.7): the same grammar as a
+/// Parse one OP BODY into its template (§10): the same grammar as a
 /// function body, but op calls are LEGAL here — an op body may call other
 /// ops and functions alike (a function may never call an op).
 pub fn parse_op_body(

@@ -132,7 +132,7 @@ fn push_lines(out: &mut String, lines: &[String]) {
 }
 
 /// Q11: bare `inspect` names the usage and lists the table — it does NOT
-/// show the first visible card (the old empty-prefix startswith match).
+/// guess a card.
 /// The bin bytes are the library bytes for the same call, and the body's
 /// shape is pinned: usage line first, every following line indented.
 #[test]
@@ -156,7 +156,7 @@ fn bare_inspect_is_usage_plus_the_card_list_never_the_first_card() {
     assert!(!list.is_empty(), "the nightjar table is non-empty — the list must follow the usage");
     assert!(
         list.iter().all(|l| l.starts_with("  ")),
-        "the card list is indented — a bare card face would be the old first-card guess"
+        "the card list is indented — no bare card face lines"
     );
 }
 

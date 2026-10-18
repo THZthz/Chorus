@@ -1,0 +1,51 @@
+# docs/examples/07-smells.txt — a deliberately smelly script. Every line in
+# it is a design smell the tooling can see: run
+#
+#   lint-scripts --reach docs/examples/07-smells.txt
+#
+# and the [reach] bridge names all six families (plus one lint error). This
+# file is for reading diagnostics against, not for playing.
+
+script: The Smelly Annex
+player: MARCH
+goal: exercise every diagnostic
+seed: 7
+start: 0:0
+
+entities:
+  HALL is place
+  MARCH is character at HALL
+  THE_RELIC is item at HALL
+
+prototypes:
+  THE_CHARM is item
+  GIFT_B is item
+  GIFT_C is item
+  GIFT_D is item
+  COIN is resource stackable
+  TALISMAN is resource stackable
+
+triggers:
+  relic_goes once at halfhour 2 -> DESTROY THE_RELIC
+  relic_draw once at halfhour 3 -> DRAW RELIC_DRAW
+  charm_sweep at halfhour 4 -> SPAWN THE_CHARM, DRAW POUCH
+  morning_charm_a at halfhour 8 -> SPAWN THE_CHARM
+  morning_charm_b at halfhour 8 -> SPAWN THE_CHARM
+
+decks:
+  POUCH spec COIN defaultcard COIN reset
+  RELIC_DRAW spec TALISMAN
+
+verbs:
+  WORK:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      work.moonlight -> SPAWN GIFT_B, IF exists(THE_RELIC) -> (NARRATE "fine") ELSE -> (SPAWN GIFT_C, REFUSE("the hour is wrong"))
+      work.loop -> SPAWN THE_CHARM, IF exists(THE_CHARM) -> (SPAWN GIFT_D)
+  READ:
+    actors: 1 kind:character
+    object: 1 kind:text aspect:wishlist>=1
+    duration: 1h
+    recipes:
+      read.never -> NARRATE "never"

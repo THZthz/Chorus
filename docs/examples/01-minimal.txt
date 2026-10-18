@@ -1,0 +1,22 @@
+# docs/examples/01-minimal.txt — the smallest playable Chorus game.
+# One place, one character, one card, one verb with one recipe, one ending.
+
+script: The Keeper's First Light
+player: WICK
+start: 0:8
+
+entities:
+  LAMP_ROOM is place
+  WICK is character at LAMP_ROOM
+  THE_LOGBOOK is text with tome:1 at LAMP_ROOM
+
+endings:
+  FIRST_LIGHT: "The lamp burns" (grand)
+
+verbs:
+  READ:
+    actors: 1 kind:character
+    object: 1 kind:text
+    duration: 30m
+    recipes:
+      default -> NARRATE "{actors} read {object} cover to cover.", ENDING FIRST_LIGHT

@@ -568,9 +568,8 @@ mod parameter_substitution {
 /// caller's WHOLE bound value — a bare Dur/Str arg the SPAWN grammar itself
 /// can never author. The `expires <duration>` mint modifier (§4.4) is its
 /// own dedicated arg shape precisely so such an expansion can never
-/// masquerade as it: the residue is a LOUD application failure (the E12
-/// review's chosen discipline — it used to drop the arg inertly, silently
-/// losing the author's intent).
+/// masquerade as it: the residue is a LOUD application failure (E12's
+/// discipline — the author's intent is never dropped inertly).
 mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
     use super::*;
 
@@ -635,8 +634,7 @@ mod param_in_a_pair_position_never_reads_as_the_expires_modifier {
 }
 
 /// §10: braced tokens are checked for EVERY declared body at load, called or
-/// not — expansion runs the same check only for the bodies a call reaches, so
-/// a `{ x }` or `{typo}` in a function nobody calls used to load clean.
+/// not — expansion alone would only check the bodies a call reaches.
 #[test]
 fn a_never_called_body_fails_its_token_checks_at_load() {
     let dict = stew_dict();

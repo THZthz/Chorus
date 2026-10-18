@@ -620,7 +620,7 @@ fn the_cli_faces_compose_and_the_error_faces_hold() {
 
     // the card face over the replay: the fidelity note rides, the past mint
     // proves via the replayed entity
-    let c = run(&[&script, "--from-state", &log, "THE_GEM"]);
+    let c = run(&[&script, "card", "THE_GEM", "--from-state", &log]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(c.out.contains(" · card THE_GEM\n  verdict: OBTAINABLE"), "{}", c.out);
     assert!(
@@ -629,38 +629,45 @@ fn the_cli_faces_compose_and_the_error_faces_hold() {
         c.out
     );
     // without the flag the same command is the script face (no note)
-    let plain = run(&[&script, "THE_GEM"]);
+    let plain = run(&[&script, "card", "THE_GEM"]);
     assert_eq!(plain.code, Some(0));
     assert!(!plain.out.contains("midgame analysis"), "{}", plain.out);
 
     // --by composes: one head annotation, the midgame-anchored horizon
-    let c = run(&[&script, "--from-state", &log, "--by", "100", &second]);
+    let c = run(&[&script, "card", &second, "--from-state", &log, "--by", "100"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(c.out.contains(&format!(" · card {second}  [by minute 100]")), "{}", c.out);
     assert!(c.out.contains("lies beyond the by 100 window"), "{}", c.out);
     assert!(c.out.contains("note: midgame analysis:"), "{}", c.out);
 
     // the argv errors: a missing --by value and a non-integer — exit 2
-    // naming the flag over the frozen usage text
+    // naming the flag over the short usage
     for bad in [vec![script.as_str(), "--by"], vec![script.as_str(), "--by", "soon"]] {
         let c = run(&bad);
         assert_eq!(c.code, Some(2), "{bad:?} {}{}", c.out, c.err);
         assert!(c.err.starts_with("--by needs"), "{}", c.err);
-        assert!(c.err.contains("usage: reach <script.txt> <CARD_NAME>"), "{}", c.err);
+        assert!(c.err.contains("usage: reach <script.txt> <COMMAND>"), "{}", c.err);
     }
     let c = run(&[&script, "--from-state"]);
     assert_eq!(c.code, Some(2), "{}", c.err);
     assert!(c.err.starts_with("--from-state needs"), "{}", c.err);
 
     // a missing log file is the analyze error (exit 1, Error: line)
-    let c = run(&[&script, "--from-state", "no/such/log.jsonl", "THE_GEM"]);
+    let c = run(&[&script, "card", "THE_GEM", "--from-state", "no/such/log.jsonl"]);
     assert_eq!(c.code, Some(1), "{}{}", c.out, c.err);
     assert!(c.err.starts_with("Error: cannot read"), "{}", c.err);
 
-    // --by does not open the usage gate; the usage line is byte-frozen
+    // `--by` survived as a MODIFIER flag, but with no command word it never
+    // reaches analysis: the missing-command error of the new grammar — exit 2
     let c = run(&[&script, "--by", "30"]);
     assert_eq!(c.code, Some(2));
-    assert!(c.err.starts_with("usage: reach <script.txt> <CARD_NAME>"), "{}", c.err);
+    assert!(
+        c.err.starts_with(
+            "reach needs a command — expected one of: card, all, demand, verb, world, graph"
+        ),
+        "{}",
+        c.err
+    );
 }
 
 #[test]
@@ -714,7 +721,7 @@ endings:
 
     // the midgame fold rebuilds the ending — the CLI refuses with the
     // analyze error
-    let c = run(&[&script, "--from-state", &log, "THE_GEM"]);
+    let c = run(&[&script, "card", "THE_GEM", "--from-state", &log]);
     assert_eq!(c.code, Some(1), "{}{}", c.out, c.err);
     assert!(c.err.starts_with("Error: the log ends the game ('The story ends')"), "{}", c.err);
 }

@@ -121,10 +121,10 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
     let mut verbs: IndexMap<String, VerbContent> = IndexMap::new();
     let mut decks: Vec<DeckRaw> = Vec::new();
     let mut functions: Vec<FunctionDef> = Vec::new();
-    // §10 (v0.7.7): the script's `ops:` declarations, section order — the
+    // §10: the script's `ops:` declarations, section order — the
     // record the call-table build reads (functions.rs)
     let mut ops: Vec<OpDef> = Vec::new();
-    // §4.1 (v0.7.5): the script's `kinds:` declarations, section order — the
+    // §4.1: the script's `kinds:` declarations, section order — the
     // record the loader's compile half re-registers (compile_parsed)
     let mut kinds: IndexSet<String> = IndexSet::new();
     // the EFFECTIVE dictionary: the caller's plus every kind this script has
@@ -225,7 +225,7 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
 
         match sec {
             Section::Kinds => {
-                // §4.1 (v0.7.5): one indent-2 lower_snake kind name per line.
+                // §4.1: one indent-2 lower_snake kind name per line.
                 // register_kind owns the whole grammar (shape, relation-type
                 // collision, duplicates — built-ins included), so the error
                 // vocabulary lives in one place; the loader wraps it with the

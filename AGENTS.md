@@ -1,0 +1,2 @@
+- NEVER add historical, outdated, stale, or non-current-implementation-related information anywhere, including in docs, code, and comments. If a later developer wants to see it, they will check git history.
+- NEVER add history information which are longer than one sentence 20 words; later developers will check git history if they need.

@@ -1,0 +1,70 @@
+# docs/examples/04-triggers.txt — the timetable: slot triggers (recurring and
+# `once`), card expiry (`expires` + `on expire of`), a deadline ending, and
+# ADVANCE inside a verb recipe. The night now fights back: the note fades,
+# dawn comes at 07:00 whether you lit the lamp or not.
+
+script: The Keeper's First Light
+player: WICK
+goal: fill and light the keeper's lamp before dawn
+start: 0:8
+
+kinds:
+  fuel
+
+entities:
+  LAMP_ROOM is place
+  WICK is character with keeper:1 at LAMP_ROOM
+  THE_LAMP is item with lamp:1, fueled:0 at LAMP_ROOM
+  OIL_JUG is fuel with jug:1 at LAMP_ROOM
+  THE_LOGBOOK is text with tome:1, cipher:2 at LAMP_ROOM
+  THE_CODEBOOK is text with primer:1 at LAMP_ROOM
+
+prototypes:
+  THE_KEEPERS_NOTE is idea with secret:1
+  THE_FADED_NOTE is idea with secret:1, faded:1
+  HUNCH is idea deriving name from object, hunch from object.secret-1
+  OIL is fuel stackable
+
+triggers:
+  oil_delivery at hour 6 -> SPAWN OIL INTO LAMP_ROOM, NARRATE "The chandler leaves a can of lamp oil by the door."
+  dawn_comes once at hour 7 -> NARRATE "Dawn grays the window. The lamp was never lit.", ENDING DAWN_UNLIT
+  note_fades on expire of THE_KEEPERS_NOTE -> REPLACE THE_KEEPERS_NOTE WITH THE_FADED_NOTE, NARRATE "The note yellows to a faded one; the words go faint. The shape of the secret stays with you."
+
+endings:
+  FIRST_LIGHT: "The lamp burns" (grand)
+  DAWN_UNLIT: "Dawn on a dark lamp" (melancholy)
+
+verbs:
+  READ:
+    actors: 1 kind:character
+    object: 1 kind:text
+    duration: 30m
+    recipes:
+      read.cipher_gate hidden when object.aspect.cipher >= 1 AND exists(THE_CODEBOOK) -> REFUSE("The logbook is written in the keeper's cipher. The worn primer at your belt holds the key.")
+      read.primer when object.aspect.primer >= 1 -> DESTROY OBJECT, NARRATE "You work through the primer until the cipher's shapes stop swimming."
+      read.deciphered max 1 when object.aspect.cipher >= 1 -> PROGRESS(15m, "The cipher gives way a line at a time."), SPAWN THE_KEEPERS_NOTE, SET(THE_KEEPERS_NOTE, expires, 1h), SPAWN HUNCH, NARRATE "The logbook opens: 'Trim the wick. Feed the lamp the good oil. Speak the old word at dusk.'"
+      default -> NARRATE "{actors} read {object} and find nothing of use."
+
+  FILL:
+    actors: 1 kind:character
+    object: 1 kind:item aspect:lamp>=1
+    with: 0..1 kind:fuel
+    duration: 20m
+    recipes:
+      fill.dry hidden when count(with) < 1 -> REFUSE("The lamp drinks oil before it will burn. Find fuel.")
+      default -> SET(OBJECT, aspect:fueled, 1), DESTROY WITH, NARRATE "{actors} pour {with} into {object}, and the lamp drinks."
+
+  LIGHT:
+    actors: 1 kind:character
+    object: 1 kind:item aspect:lamp>=1
+    duration: 10m
+    recipes:
+      light.dark hidden when object.aspect.fueled < 1 -> REFUSE("The wick is dry. Fill the lamp first.")
+      default -> SET(OBJECT, aspect:lit, 1), NARRATE "The wick takes the flame, and the room goes gold.", ENDING FIRST_LIGHT
+
+  WAIT:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      wait.musing when exists(name:THE_KEEPERS_NOTE) -> ADVANCE(1h), NARRATE "{actors} sleep sitting up, the note on their chest, and the hour slides by."
+      default -> NARRATE "{actors} watch the dark window."

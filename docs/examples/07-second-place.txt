@@ -1,0 +1,138 @@
+# docs/examples/07-second-place.txt — a second place and the corridor between:
+# exit relations on entity lines, a gated TRAVEL_TO, MOVE INTO, and the
+# `at` role. Tonight the deadline is an hour later (08:00) — the stair
+# costs time. THE_LAMP declares fueled:0 because light.dark compares it.
+
+script: The Keeper's First Light
+player: WICK
+goal: fill and light the keeper's lamp before dawn
+start: 0:8
+
+kinds:
+  fuel
+
+entities:
+  LAMP_ROOM is place
+  THE_STAIR is place with site.stair:1
+  WICK is character with keeper:1, nerve:0 at LAMP_ROOM
+  THE_CAT is character with naps:1 at LAMP_ROOM
+  THE_LAMP is item with lamp:1, fueled:0 at LAMP_ROOM on complete fueled -> (NARRATE "The lamp settles, oil moving in the well glass.") on complete job -> (RUN "tend.sit")
+  OIL_JUG is fuel with jug:1 at LAMP_ROOM
+  THE_LOGBOOK is text with tome:1, cipher:2 at LAMP_ROOM
+  THE_CODEBOOK is text with primer:1 at LAMP_ROOM
+  THE_MATCHBOX is item with matchbox:1 at THE_STAIR
+
+  # the corridor: directed layout links (§4.2) — `A is south of B` puts A
+  # south of B, and travel verbs read the same edges back
+  THE_STAIR is south of LAMP_ROOM
+
+prototypes:
+  THE_KEEPERS_NOTE is idea with secret:1
+  HUNCH is idea deriving name from object, hunch from object.secret-1
+  OIL is fuel stackable
+  A_GUST is idea stackable
+  A_CALM is idea stackable
+  A_SILENCE is idea stackable
+
+triggers:
+  oil_delivery at hour 6 -> delivery(1)
+  dawn_comes once at hour 8 -> NARRATE "Dawn grays the window. The lamp was never lit.", ENDING DAWN_UNLIT
+  note_fades on expire of THE_KEEPERS_NOTE -> DESTROY THE_KEEPERS_NOTE, NARRATE "The note yellows; the words go faint. The shape of the secret stays with you."
+
+functions:
+  delivery(n) -> SPAWN OIL INTO LAMP_ROOM, NARRATE "The chandler leaves {n} can of lamp oil by the door — the same word for one or many, out here."
+
+ops:
+  SPILL(who) -> SET(who, aspect:oil_stained, 1)
+
+decks:
+  OMENS spec A_GUST, A_GUST, A_CALM, A_SILENCE defaultcard A_GUST reset
+
+endings:
+  FIRST_LIGHT: "The lamp burns" (grand)
+  DAWN_UNLIT: "Dawn on a dark lamp" (melancholy)
+
+verbs:
+  READ:
+    actors: 1 kind:character
+    object: 1 kind:text
+    duration: 30m
+    recipes:
+      read.cipher_gate hidden when object.aspect.cipher >= 1 AND exists(THE_CODEBOOK) -> REFUSE("The logbook is written in the keeper's cipher. The worn primer at your belt holds the key.")
+      read.primer when object.aspect.primer >= 1 -> DESTROY OBJECT, NARRATE "You work through the primer until the cipher's shapes stop swimming."
+      read.deciphered max 1 when object.aspect.cipher >= 1 -> PROGRESS(15m, "The cipher gives way a line at a time."), SPAWN THE_KEEPERS_NOTE, SET(THE_KEEPERS_NOTE, expires, 1h), SPAWN HUNCH, NARRATE "The logbook opens: 'Trim the wick. Feed the lamp the good oil. Speak the old word at dusk.'"
+      default -> NARRATE "{actors} read {object} and find nothing of use."
+
+  FILL:
+    actors: 1 kind:character
+    object: 1 kind:item aspect:lamp>=1
+    with: 0..1 kind:fuel
+    duration: 20m
+    recipes:
+      fill.dry hidden when count(with) < 1 -> REFUSE("The lamp drinks oil before it will burn. Find fuel.")
+      fill.pour aspects fueled, job when count(with) >= 1 -> SET(OBJECT, aspect:fueled, 1), DESTROY WITH, SPILL(ACTORS), NARRATE "{actors} wipe the slick off on the apron, pour {with} into {object}, and the lamp drinks."
+
+  LIGHT:
+    actors: 1 kind:character
+    object: 1 kind:item aspect:lamp>=1
+    with: 0..1 kind:item aspect:matchbox>=1
+    duration: 10m
+    recipes:
+      light.dark hidden when object.aspect.fueled < 1 -> REFUSE("The wick is dry. Fill the lamp first.")
+      light.box when actors.attr.nerve < 1 AND total(with, aspect:matchbox) >= 1 -> SET(OBJECT, aspect:lit, 1), DESTROY WITH, NARRATE "One of the box's dry matches catches on the first strike. The room goes gold.", ENDING FIRST_LIGHT
+      light.matchbox when actors.attr.nerve < 1 -> ROLL(1, 6), IF roll >= 3 -> (SET(OBJECT, aspect:lit, 1), NARRATE "The match catches on the second strike ({roll}). The wick takes the flame, and the room goes gold.", ENDING FIRST_LIGHT) ELSE -> (NARRATE "The match snaps ({roll}). Your hands are too cold for this — sleep, and try steadier.")
+      default -> SET(OBJECT, aspect:lit, 1), NARRATE "The wick takes the flame, and the room goes gold.", ENDING FIRST_LIGHT
+
+  TEND:
+    actors: 1 kind:character
+    object: 0..1 kind:item aspect:lamp>=1
+    duration: 30m
+    recipes:
+      tend.sit when count(object) < 1 OR object.aspect.fueled >= 1 -> NARRATE "{actors} sits with the lamp a while, watching the oil move."
+
+  TALK:
+    actors: 1 kind:character
+    to: 0..1 kind:character
+    about: 0..1 kind:idea
+    duration: 30m
+    recipes:
+      talk.befriend when to.aspect.naps >= 1 AND NOT rel(neighbor, actors, to) -> RELATE(WICK, THE_CAT, neighbor), NARRATE "{actors} scratch {to} behind the ear. A small, formal friendship."
+      default -> NARRATE "{actors} mentions {about} to {to}. The cat blinks. That is the whole conversation."
+
+  TRAVEL_TO:
+    actors: 1 kind:character
+    object: 1 kind:place
+    duration: 30m
+    recipes:
+      travel.no_link hidden when NOT (rel(north, actors.container, object) OR rel(south, actors.container, object) OR rel(east, actors.container, object) OR rel(west, actors.container, object)) -> REFUSE("The keeper's tower is one straight stair — that is not next door.")
+      default -> MOVE ACTORS INTO OBJECT, NARRATE "{actors} take the stair to {object}."
+
+  TAKE:
+    actors: 1 kind:character
+    at: 0..1 kind:place
+    object: 1 kind:item
+    duration: 10m
+    recipes:
+      take.matchbox when object.aspect.matchbox >= 1 AND at.aspect.site.stair >= 1 -> MOVE OBJECT INTO ACTORS, NARRATE "{actors} pocket {object}."
+      take.here hidden when NOT object.aspect.matchbox >= 1 -> REFUSE("That is not yours to take — or not here to take.")
+      take.where hidden when count(at) < 1 -> REFUSE("Take it where it lies — name the place with `at`.")
+      default -> REFUSE("You cannot take {object} from here.")
+
+  DREAM:
+    actors: 1 kind:character
+    duration: 1h
+    recipes:
+      dream.on_note when exists(name:THE_KEEPERS_NOTE) -> DESTROY THE_KEEPERS_NOTE, DRAW OMENS, ROLL(1, 6), IF roll >= 4 -> (SET(ACTORS, aspect:nerve, +1), NARRATE "{actors} sleep on the note and wake steadier — the dream went easy ({roll}).") ELSE -> (NARRATE "{actors} sleep on the note and wake tired ({roll}).")
+      default -> DRAW OMENS, NARRATE "{actors} sleep, and the night sends an omen."
+
+  WAIT:
+    actors: 1 kind:character
+    duration: 30m
+    recipes:
+      default -> NARRATE "{actors} watch the dark window."
+
+templates:
+  DREAM says "{actors} dream."
+  LIGHT says "{actors} strike a light."
+  TALK says "{actors} talk."
+  FILL says "{actors} fill the lamp."

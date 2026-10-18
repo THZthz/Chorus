@@ -257,8 +257,7 @@ fn max_zero_and_negative_are_load_errors_and_max_is_a_keyword_not_an_id() {
 
 /// The positional walk never drops a token: `hidden|shown` and `max N`
 /// compose around the regex-extracted `hint "…"`/`when COND` clauses in any
-/// order, and a stray the walk cannot own is a load error naming the line
-/// (the review pin — `first max 2 hidden` used to discard the `hidden`).
+/// order, and a stray the walk cannot own is a load error naming the line.
 #[test]
 fn the_positional_walk_honors_every_token_and_errors_on_strays() {
     let dict = max_dict();
@@ -309,9 +308,8 @@ fn the_positional_walk_honors_every_token_and_errors_on_strays() {
         ),
         "line 20: unexpected 'hint' before '->'",
     );
-    // `default` is the whole shape (§6.4): a trailing keyword used to be
-    // silently dropped — `default max 2` compiled as a bare default and the
-    // cap was gone without a trace; `default when …` lost its condition
+    // `default` is the whole shape (§6.4): a trailing keyword is a load
+    // error naming it — never a bare default with the cap or condition gone
     assert_err_msg(
         compile_script(&verbs_max("      default max 2 -> NARRATE \"x\""), &dict),
         "line 20: `default` takes no modifiers — got 'max 2'",

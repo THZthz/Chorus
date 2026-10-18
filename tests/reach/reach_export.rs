@@ -505,7 +505,7 @@ mod cli {
     #[test]
     fn card_json_and_the_why_merge_over_the_cli() {
         let script = write_fixture();
-        let (code, out, err) = run(&[&script, "COIN", "--json"]);
+        let (code, out, err) = run(&[&script, "card", "COIN", "--json"]);
         assert_eq!(code, Some(0), "{err}");
         let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
         assert_eq!(v["file"], script);
@@ -513,7 +513,7 @@ mod cli {
         assert_eq!(v["usable"], false);
         assert_eq!(v["report"]["target"], "COIN");
         assert!(v.get("why").is_none(), "no --why, no why key: {v}");
-        let (code, out, err) = run(&[&script, "GEM", "--why", "--json"]);
+        let (code, out, err) = run(&[&script, "card", "GEM", "--why", "--json"]);
         assert_eq!(code, Some(0), "{err}");
         let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
         assert_eq!(v["why"][0]["owner"], "trigger t_fallback");
@@ -524,7 +524,7 @@ mod cli {
     #[test]
     fn all_demand_usable_faces_over_the_cli() {
         let script = write_fixture();
-        let (code, out, err) = run(&[&script, "--all", "--json"]);
+        let (code, out, err) = run(&[&script, "all", "--json"]);
         assert_eq!(code, Some(0), "{err}");
         let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
         let arr = v.as_array().expect("the array face");
@@ -532,66 +532,82 @@ mod cli {
         let targets: Vec<&str> =
             arr.iter().map(|e| e["report"]["target"].as_str().expect("target")).collect();
         assert_eq!(targets, ["COIN", "GEM", "ROOM", "SOLO"]);
-        let (code, out, err) = run(&[&script, "--demand", "kind:resource", "--json"]);
+        let (code, out, err) = run(&[&script, "demand", "kind:resource", "--json"]);
         assert_eq!(code, Some(0), "{err}");
         let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
         assert_eq!(v["demand"], "kind:resource");
         assert_eq!(v["report"]["verdict"], "obtainable");
-        let (code, out, err) = run(&[&script, "COIN", "--usable", "--json"]);
+        let (code, out, err) = run(&[&script, "card", "COIN", "--usable", "--json"]);
         assert_eq!(code, Some(0), "{err}");
         let v: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
         assert_eq!(v["usable"], true);
     }
 
-    /// `--graph` needs only the script and loses only to `--world`: it wins
-    /// over --all, an explicit card and a demand; two runs are
-    /// byte-identical; `--json` is ignored beside it (the DOT face).
+    /// The `graph` command needs only the script: two runs are
+    /// byte-identical, and `--json` is ignored beside it (the DOT face —
+    /// the machine faces stay their machine selves; never colorized either,
+    /// under any flag combination).
     #[test]
-    fn graph_face_priority_and_determinism_over_the_cli() {
+    fn graph_command_is_deterministic_and_ignores_the_json_flag() {
         let script = write_fixture();
-        let (code, out, err) = run(&[&script, "--graph"]);
+        let (code, out, err) = run(&[&script, "graph"]);
         assert_eq!(code, Some(0), "{err}");
         assert!(out.starts_with("digraph reach {\n  rankdir=LR;\n"), "{out}");
         assert!(out.contains("\"GEM\" -> \"SOLO\" [label=\"requires\"];"), "{out}");
-        let (_, out2, _) = run(&[&script, "--graph"]);
+        let (_, out2, _) = run(&[&script, "graph"]);
         assert_eq!(out, out2, "two runs must be byte-identical");
-        // --graph wins over --all / card / demand (the DOT face each time)
-        for args in [
-            vec![script.as_str(), "--all", "--graph"],
-            vec![script.as_str(), "COIN", "--graph"],
-            vec![script.as_str(), "--demand", "kind:resource", "--graph"],
-        ] {
-            let (code, out, err) = run(&args);
-            assert_eq!(code, Some(0), "{err}");
-            assert!(out.starts_with("digraph reach {\n"), "{out}");
-        }
-        // --world still wins over --graph (the dashboard's text face)
-        let (code, out, err) = run(&[&script, "--world", "--graph"]);
-        assert_eq!(code, Some(0), "{err}");
-        assert!(out.contains(" · world\n"), "{out}");
-        assert!(!out.contains("digraph"), "{out}");
-        // --json is a card-face modifier: beside --graph it is ignored
-        let (code, out, err) = run(&[&script, "--graph", "--json"]);
+        // --json is a card-face modifier: beside the graph command it is
+        // ignored (the DOT face)
+        let (code, out, err) = run(&[&script, "graph", "--json"]);
         assert_eq!(code, Some(0), "{err}");
         assert!(out.starts_with("digraph reach {\n"), "{out}");
     }
 
-    /// The usage gate unchanged: a lone `--json` (no card, no face) and a
-    /// lone `--graph` with no script are the argv error (exit 2, the
-    /// byte-pinned two-line usage).
+    /// The argv gate, new grammar: an old flag spelling (`--graph`,
+    /// `--all`, `--demand`) is an UNKNOWN FLAG — exit 2 naming it and
+    /// listing the legal flags (no compatibility aliases; a `-`-word never
+    /// reaches the command slot). A non-`-` word stays the unknown-command
+    /// face, and a still-known modifier flag with no command (`--json`
+    /// alone) is the missing-command error of the same family.
     #[test]
-    fn argv_gate_unchanged() {
+    fn argv_unknown_command_faces() {
         let script = write_fixture();
+        for word in ["--graph", "--all", "--demand", "--world", "--verb"] {
+            let (code, stdout, stderr) = run(&[&script, word]);
+            assert_eq!(code, Some(2), "{word}");
+            assert_eq!(stdout, "", "{word}");
+            assert!(
+                stderr.starts_with(&format!(
+                    "unknown flag '{word}' — expected one of: --usable, --why, --cost, --json, --by <MINUTE>, --from-state <LOG>, --color, -h/--help\n"
+                )),
+                "{word}: {stderr}"
+            );
+            assert!(stderr.contains("usage: reach <script.txt> <COMMAND>"), "{word}: {stderr}");
+        }
+        // a non-`-` word stays the unknown-COMMAND face
+        let (code, stdout, stderr) = run(&[&script, "frobnicate"]);
+        assert_eq!(code, Some(2));
+        assert_eq!(stdout, "");
+        assert!(
+            stderr.starts_with(
+                "unknown command 'frobnicate' — expected one of: card, all, demand, verb, world, graph\n"
+            ),
+            "{stderr}"
+        );
+        // `--json` survived as a MODIFIER flag: a script with the flag but
+        // no command word is the missing-command error, exit 2
         let (code, stdout, stderr) = run(&[&script, "--json"]);
         assert_eq!(code, Some(2));
         assert_eq!(stdout, "");
         assert!(
-            stderr.starts_with("usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"),
+            stderr.starts_with(
+                "reach needs a command — expected one of: card, all, demand, verb, world, graph\n"
+            ),
             "{stderr}"
         );
-        let (code, stdout, stderr) = run(&["--graph"]);
-        assert_eq!(code, Some(2));
-        assert_eq!(stdout, "");
-        assert!(stderr.starts_with("usage: reach <script.txt>"), "{stderr}");
+        // help needs no script and wins everywhere
+        let (code, stdout, _stderr) = run(&["--help"]);
+        assert_eq!(code, Some(0), "help wins even without a script");
+        assert!(stdout.contains("Commands:"), "{stdout}");
     }
 }

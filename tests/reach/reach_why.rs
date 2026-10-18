@@ -517,8 +517,7 @@ fn world_notes_converge_on_the_named_card() {
 }
 
 /// The nightjar end of the convergence rule: the `lord_tended` expiry note
-/// names THE_LATE_LORD — it used to ride on all 44 --all reports; now only
-/// THE_LATE_LORD's report carries it.
+/// names THE_LATE_LORD and rides only on THE_LATE_LORD's report.
 #[test]
 fn nightjar_expiry_note_rides_only_on_the_late_lord() {
     let dict = core_dictionary();
@@ -563,7 +562,7 @@ mod cli {
     /// initial card renders the empty face (no live unproven server).
     #[test]
     fn why_appends_the_section_and_the_proven_card_is_empty() {
-        let (code, out, err) = run(&[SCRIPT, "THE_LATE_LORD", "--why"]);
+        let (code, out, err) = run(&[SCRIPT, "card", "THE_LATE_LORD", "--why"]);
         assert_eq!(code, Some(0), "{err}");
         assert!(out.contains("verdict: OBTAINABLE  (existence: proven)"), "{out}");
         assert!(
@@ -571,39 +570,37 @@ mod cli {
             "{out}"
         );
         // the frozen face is untouched without the flag
-        let (code, plain, _) = run(&[SCRIPT, "THE_LATE_LORD"]);
+        let (code, plain, _) = run(&[SCRIPT, "card", "THE_LATE_LORD"]);
         assert_eq!(code, Some(0));
         assert!(!plain.contains("— why"), "{plain}");
         assert!(out.starts_with(&plain), "the report must precede the why section byte-exactly");
     }
 
-    /// `--verb <NAME>` renders the verb report; it WINS over --all (the
-    /// --world precedence shape) and over an explicit card.
+    /// The `verb <NAME>` command renders the verb report — one dedicated,
+    /// target-free face: a subcommand IS the face.
     #[test]
-    fn verb_wins_over_all_and_card() {
-        let (code, out, err) = run(&[SCRIPT, "--all", "--verb", "WORK"]);
+    fn verb_command_renders_the_verb_report() {
+        let (code, out, err) = run(&[SCRIPT, "verb", "WORK"]);
         assert_eq!(code, Some(0), "{err}");
         assert!(out.starts_with("scripts/the-nightjar-flyer.txt · verb WORK\n"), "{out}");
-        assert!(!out.contains("· card "), "--all must not render beside the verb report");
-        let (code, out, err) = run(&[SCRIPT, "MARCH", "--verb", "WORK"]);
-        assert_eq!(code, Some(0), "{err}");
+        assert!(!out.contains("· card "), "no card report beside the verb report");
         assert!(out.contains("  committable: yes"), "{out}");
     }
 
-    /// A trailing `--verb` (no value slot) is the argv error naming the
-    /// flag; an unknown verb name is the analyze error (exit 1).
+    /// A trailing `verb` command (no value slot) is the argv error naming
+    /// the command; an unknown verb name is the analyze error (exit 1).
     #[test]
     fn verb_argv_error_and_unknown_verb() {
-        let (code, stdout, stderr) = run(&[SCRIPT, "--verb"]);
+        let (code, stdout, stderr) = run(&[SCRIPT, "verb"]);
         assert_eq!(code, Some(2));
         assert_eq!(stdout, "");
-        assert!(
-            stderr.starts_with(
-                "--verb needs a value: --verb \"<NAME>\"\nusage: reach <script.txt> <CARD_NAME>"
-            ),
-            "{stderr}"
+        assert_eq!(
+            stderr,
+            "verb needs a value: reach <script.txt> verb \"<NAME>\"\n\
+             usage: reach <script.txt> <COMMAND> [OPTIONS]\n\
+             try 'reach --help' for the command list\n"
         );
-        let (code, stdout, stderr) = run(&[SCRIPT, "--verb", "NO_SUCH_VERB"]);
+        let (code, stdout, stderr) = run(&[SCRIPT, "verb", "NO_SUCH_VERB"]);
         assert_eq!(code, Some(1));
         assert_eq!(stdout, "");
         assert_eq!(stderr, "Error: no verb 'NO_SUCH_VERB'\n");

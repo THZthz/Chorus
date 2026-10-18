@@ -1,4 +1,4 @@
-//! Script-defined outcome operators (§10's `ops:`, v0.7.7): a declared op is
+//! Script-defined outcome operators (§10's `ops:`): a declared op is
 //! a named, parameterized body of outcomes callable in ANY outcome position
 //! exactly like a built-in op. The mechanism is the functions mechanism — a
 //! call expands into its body AT LOAD, so the engine and the log never see a

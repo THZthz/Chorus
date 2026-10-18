@@ -1,6 +1,6 @@
-//! Lint (14 tests) — the compiler's load-time
-//! discipline: error upgrades (things that used to compile and detonate
-//! later) and the lint layer (warnings that never throw).
+//! Lint — the compiler's load-time discipline: loud load errors for the
+//! corners that would otherwise detonate later, and the lint layer
+//! (warnings that never throw).
 
 use chorus::content::script::{
     compile_script, lint_script, lint_script_findings, LintFinding, LintSeverity,
@@ -102,9 +102,9 @@ fn a_name_declared_both_as_entity_and_prototype_can_never_spawn_load_error() {
 
 #[test]
 fn a_typo_d_slot_role_is_a_load_error_not_a_silent_never_matching_slot() {
-    // Q4 fixed (spec §4.3's six-role list + §10's fail-loudly rule): the slot
-    // key is validated against the role vocabulary at load; previously the
-    // role was cast unvalidated and the slot compiled only to never match.
+    // Q4 (spec §4.3's six-role list + §10's fail-loudly rule): the slot
+    // key is validated against the role vocabulary at load — a slot can
+    // never compile into a silent never-match.
     // (The fixture trips exactly ONE error — the count and query are legal.)
     assert_err_msg(
         compile(&base(
@@ -116,8 +116,8 @@ fn a_typo_d_slot_role_is_a_load_error_not_a_silent_never_matching_slot() {
 
 #[test]
 fn duplicate_prototype_declarations_are_a_load_error_not_last_write_wins() {
-    // Q5 fixed: prototypes used to silently overwrite (the later insert won);
-    // they now error like entities/endings. The fixture trips exactly ONE
+    // Q5: duplicate prototype declarations are a load error like
+    // entities/endings. The fixture trips exactly ONE
     // error — both lines are individually legal (no slot typo to double-fire
     // into Q4's check).
     assert_err_msg(
@@ -138,8 +138,7 @@ fn duplicate_template_declarations_are_a_load_error_not_last_write_wins() {
 
 #[test]
 fn a_repeated_verb_header_is_a_load_error_not_a_silent_reset() {
-    // a repeated header used to silently RESET the block (a fresh empty
-    // VerbContent replaced the configured one)
+    // a repeated header is a load error, never a silent block reset
     assert_err_msg(
         compile(&base(
             "verbs:\n  READ:\n    object: 1 kind:text\n    recipes:\n      default -> NARRATE \"one.\"\n  READ:\n    object: 1 kind:text\n    recipes:\n      default -> NARRATE \"two.\"\n",
@@ -162,10 +161,9 @@ fn case_colliding_entity_names_are_a_minted_id_collision_load_error() {
 
 #[test]
 fn an_illegal_character_in_a_when_line_is_a_load_error_naming_char_and_offset() {
-    // Q2 fixed (§6.3's grammar has no `@`): a `@3`-class typo used to be
-    // silently swallowed by the predicate tokenizer — `secret >= @2` read
-    // as `secret >= 2` and selected. The tokenizer now fails at load naming
-    // the character and its offset. (The fixture trips exactly ONE error.)
+    // Q2 (§6.3's grammar has no `@`): the tokenizer fails at load naming
+    // the illegal character and its offset — a `@3`-class typo can never
+    // silently read as a number. (The fixture trips exactly ONE error.)
     assert_err_msg(
         compile(&base(
             "verbs:\n  READ:\n    object: 1 kind:text\n    recipes:\n      r1 when object.aspect.secret >= @2 -> NARRATE \"x.\"\n",
@@ -282,10 +280,8 @@ verbs:
     assert!(!w.iter().any(|x| x.contains("talk.duo")), "{w:?}"); // = 2 is satisfiable
 }
 
-/// `!=` is the count-gate alternation's sixth op, and its arm used to be
-/// missing — any authored `count(role) != k` hit the unreachable and
-/// aborted the whole lint run (exit 101) instead of reporting. The arm:
-/// dead only when the slot's WHOLE range is the excluded value; a partial
+/// `!=` is the count-gate alternation's sixth op. Its arm: dead only when
+/// the slot's WHOLE range is the excluded value; a partial
 /// exclusion (or any other slot value) is satisfiable and silent.
 #[test]
 fn a_count_neq_excluding_the_whole_slot_range_is_an_error_not_a_panic() {
@@ -451,8 +447,8 @@ fn warnings_of(findings: &[LintFinding]) -> Vec<&LintFinding> {
 /// satisfiable negation beside it (`NOT (count(actors) = 1)` over 1..2:
 /// satisfiable through the slot's other value) stays silent — the detector
 /// complements exact verdicts only. (The fixtures use slot-TRUE inner atoms
-/// throughout: a slot-dead inner atom is the pre-existing count-gate
-/// ERROR's territory, negation or not.)
+/// throughout: a slot-dead inner atom is the count-gate ERROR's
+/// territory, negation or not.)
 #[test]
 fn a_negated_count_gate_the_slot_forces_always_true_is_a_warning() {
     let findings = findings_for(
@@ -480,7 +476,7 @@ verbs:
     assert!(findings.iter().all(|f| !f.message.contains("work.sat")), "{findings:?}");
     assert!(
         findings.iter().all(|f| f.severity == LintSeverity::Warning),
-        "the marker fixtures must not trip the pre-existing ERROR class: {findings:?}"
+        "the marker fixtures must not trip the ERROR class: {findings:?}"
     );
 }
 
@@ -592,8 +588,8 @@ verbs:
 
 /// OR branches are independent worlds: dead only when EVERY branch is dead;
 /// a tautology (either branch always true) is silent. (NOT-wrapped branches
-/// with slot-true inner atoms — the old count-gate ERROR scans the inner
-/// atom and must stay silent here.)
+/// with slot-true inner atoms are the count-gate scan's territory and must
+/// stay silent here.)
 #[test]
 fn an_or_is_dead_only_when_every_branch_is_dead() {
     let findings = findings_for(
@@ -613,7 +609,7 @@ verbs:
     assert!(findings.iter().all(|f| !f.message.contains("talk.taut")), "{findings:?}");
     assert!(
         findings.iter().all(|f| f.severity == LintSeverity::Warning),
-        "the OR fixtures must not trip the pre-existing ERROR class: {findings:?}"
+        "the OR fixtures must not trip the ERROR class: {findings:?}"
     );
 }
 

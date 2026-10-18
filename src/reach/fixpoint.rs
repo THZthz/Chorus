@@ -933,8 +933,8 @@ const COMMITTED_ROLES: [Role; 5] = [Role::Object, Role::With, Role::At, Role::Ab
 impl<'c> WorldFacts<'c> {
     /// The home card's static descriptor — the expiry_support desc-lookup
     /// shape: the initial representative, else the first avail fact. Its
-    /// presence is the old `complete_home_obtainable` verdict; its
-    /// kind/aspect body feeds the slot-binding rungs.
+    /// presence is the `CompleteHomeMissing` verdict; its kind/aspect body
+    /// feeds the slot-binding rungs.
     fn complete_home_desc(&self, home: &str) -> Option<Entity> {
         self.init_names.get(home).map(|e| (*e).clone()).or_else(|| {
             self.avail.get(home).and_then(|facts| facts.first()).map(|f| f.entity.clone())

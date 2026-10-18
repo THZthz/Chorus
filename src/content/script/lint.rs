@@ -70,10 +70,10 @@ fn name_lexeme_re() -> &'static Regex {
 /// Severity class of one lint finding (E11's two-class design).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintSeverity {
-    /// The pre-existing finding set (dead recipes, shadowed whens,
+    /// The load-time finding set (dead recipes, shadowed whens,
     /// slot-violating count gates, unknown template tokens, unwritten aspect
-    /// reads, unstackable deck entries, non-lexeme names). Errors keep the
-    /// reporting they always had — counted as findings; the exit code
+    /// reads, unstackable deck entries, non-lexeme names). Errors are
+    /// counted as findings; the exit code
     /// discipline is the caller's (the lint-scripts bin's constant-0 stands).
     Error,
     /// A recipe `when` that is PROVABLY false for every §6.6 selection
@@ -270,8 +270,8 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             scan_tokens(&mut findings, &format!("function {}", f.name), &f.body, &extra);
         }
     }
-    // op bodies get the same template-token scan as function bodies (§10,
-    // v0.7.7). The lint never sees through a CALL SITE — a recipe line
+    // op bodies get the same template-token scan as function bodies (§10).
+    // The lint never sees through a CALL SITE — a recipe line
     // reading `BOOST(OBJECT)` contributes no finding itself (§13.2's note);
     // the writes are counted from the declared bodies further below.
     if let Some(ops) = &script.content.ops {
@@ -408,7 +408,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         }
     }
     // op bodies count as writers exactly like function bodies — the raw
-    // `SET(…, aspect:x)` inside a declared op body is a write (§10, v0.7.7)
+    // `SET(…, aspect:x)` inside a declared op body is a write (§10)
     if let Some(ops) = &script.content.ops {
         for o in ops {
             scan_writes(&mut writes, &o.body);

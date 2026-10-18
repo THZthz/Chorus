@@ -1,4 +1,4 @@
-//! Script-definable verbs (§4.3, v0.7.6): the `verbs:` block declares
+//! Script-definable verbs (§4.3): the `verbs:` block declares
 //! brand-new UPPER_SNAKE lexemes (or configures existing ones) into the
 //! load-effective dictionary — the same per-load-clone pattern the `kinds:`
 //! section established. Declaration is not playability: a declared verb is
@@ -139,7 +139,7 @@ entities:
 #[test]
 fn a_reserved_word_as_a_verb_header_is_a_load_error() {
     let dict = core_dictionary();
-    // §5.1 (v0.7.6): the registration the load performs re-validates the
+    // §5.1: the registration the load performs re-validates the
     // whole nameable grammar — a reserved word fails loud, naming the lexeme
     assert_err_msg(
         compile_script("verbs:\n  EVENT:\n", &dict),

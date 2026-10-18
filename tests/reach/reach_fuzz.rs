@@ -182,7 +182,7 @@ fn the_driven_seed_log_folds_back_to_the_driven_state() {
 
     let sc = gen_scenario(seed);
     // the scenario's own load-effective dictionary — the same shape the
-    // driver used (v0.7.6: the sample may declare script verbs)
+    // driver used (the sample may declare script verbs)
     let dict = sc.dict;
     let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the scenario compiles");
     let replayed = fold(&run.records, &run.base, &dict, &content).expect("the log replays");

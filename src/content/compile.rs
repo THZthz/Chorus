@@ -85,7 +85,7 @@ pub fn compile_content(
     entities: &[DeclaredEntity],
 ) -> Result<CompiledContent> {
     // §10 FIRST, before any verb/trigger body parses: build the combined
-    // call table (functions AND script ops, v0.7.7) — call sites dispatch
+    // call table (functions AND script ops) — call sites dispatch
     // against it and expand
     // immediately after their parse, so the guards below walk expanded lists.
     let fns = build_call_tables(raw, dict)?;
@@ -375,9 +375,8 @@ fn compile_trigger(
         }
         // §6.6/§6.7: ADVANCE stretches the advance pass a window
         // completion rides (the completion ctx's extra_advance_min feeds
-        // the pass target); the event kinds own no pass, so the extension
-        // could only be dropped — it used to apply, log, and vanish on
-        // both play and fold. A completion trigger fires inside a pass
+        // the pass target); the event kinds own no pass, so ADVANCE in
+        // one is a load error. A completion trigger fires inside a pass
         // and keeps ADVANCE.
         if o.op == "ADVANCE" && !is_complete {
             return Err(ChorusError::new(format!(

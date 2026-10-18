@@ -1,9 +1,14 @@
 //! The four CLI bins, exercised as subprocesses — argv parsing (verbatim
 //! including the error texts), stream discipline, exit codes and the Q15
 //! honesty fixes. This file pins the WIRING (real argv → real process):
-//! usage exit 2, the trailing-`--demand` argv error, bad-demand exit 1, fuzz
-//! flags/streams/exit, the reach-scale `--worker` NameStat interface, and
-//! lint-scripts' constant-0 + missing-input exit 1.
+//! the reach Commands+Options grammar (each subcommand dispatching, the
+//! full `--help` text, the argv-error faces, the `--color` opt-in and its
+//! byte-identity default), bad-demand exit 1, fuzz flags/streams/exit, the
+//! reach-scale `--worker` NameStat interface, and lint-scripts' pieces: the
+//! constant-0 + missing-input exits and the single-purpose Options grammar
+//! (the full-help pin, the unknown-flag
+//! exit-2 face, the `--color` opt-in over the lint faces, the sorted
+//! default list).
 
 use std::process::Command;
 
@@ -29,60 +34,240 @@ fn run(bin: &str, args: &[&str]) -> (Option<i32>, String, String) {
 
 const SCRIPT: &str = "scripts/the-nightjar-flyer.txt";
 
-/// The usage gate: no card, no --all, no
-/// --demand, no --world → exit 2, the two-line usage text on stderr, stdout
-/// empty.
+/// The short usage — the no-arguments face and the tail of every argv
+/// error: one usage line plus the `reach --help` hint (the cargo/uv
+/// convention), stderr, exit 2.
+const SHORT_USAGE: &str =
+    "usage: reach <script.txt> <COMMAND> [OPTIONS]\ntry 'reach --help' for the command list\n";
+
+/// lint-scripts' short usage — the tail of its argv error (the unknown
+/// flag face), stderr, exit 2.
+const LINT_SHORT_USAGE: &str =
+    "usage: lint-scripts [OPTIONS] [FILES...]\ntry 'lint-scripts --help' for the options\n";
+
+/// The six legal command words, in help order — what every
+/// missing/unknown-command error lists.
+const COMMAND_LIST: &str = "card, all, demand, verb, world, graph";
+
+/// No arguments at all → the short usage, exit 2, stdout empty.
 #[test]
-fn reach_usage_exits_2_with_the_exact_text() {
+fn reach_no_arguments_is_the_short_usage_exit_2() {
+    let (code, stdout, stderr) = run("reach", &[]);
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(stderr, SHORT_USAGE);
+}
+
+/// The usage gate, new grammar: a script with NO command word → exit 2,
+/// the command list named, the short usage following.
+#[test]
+fn reach_script_without_a_command_lists_the_commands() {
     let (code, stdout, stderr) = run("reach", &[SCRIPT]);
     assert_eq!(code, Some(2));
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"
+        format!("reach needs a command — expected one of: {COMMAND_LIST}\n{SHORT_USAGE}")
     );
 }
 
-/// Q15 — a trailing `--demand` (no next argv slot) used to read
-/// argv[idx+1] = undefined and silently degrade to name mode; it is now an
-/// argv error: the flag is named, the usage text follows, exit 2 (the
-/// usage gate's family).
+/// An unknown command word → exit 2 naming it, the command list, the
+/// short usage. A `-`-spelled unknown word takes the unknown-FLAG face
+/// (reach_unknown_flag_names_the_word_and_exits_2) — a non-`-` word is
+/// the unknown command.
+#[test]
+fn reach_unknown_command_names_the_word_and_lists_the_commands() {
+    for word in ["frobnicate", "World", "cards"] {
+        let (code, stdout, stderr) = run("reach", &[SCRIPT, word]);
+        assert_eq!(code, Some(2), "{word}");
+        assert_eq!(stdout, "", "{word}");
+        assert_eq!(
+            stderr,
+            format!("unknown command '{word}' — expected one of: {COMMAND_LIST}\n{SHORT_USAGE}"),
+            "{word}"
+        );
+    }
+}
+
+/// `--help` (and `-h`) anywhere in argv prints the full help on stdout and
+/// exits 0 — pinned byte for byte (the lint-scripts plain-text style).
+#[test]
+fn reach_help_is_the_frozen_full_text_exit_0() {
+    let expected = "\
+reach — static card reachability over a compiled script
+
+usage: reach <script.txt> <COMMAND> [OPTIONS]
+try 'reach --help' for the command list
+
+Commands:
+  card <NAME>      one card's verdict: proven paths and bindable slots
+  all              the verdict for every name
+  demand <QUERY>   the cards whose aspects/properties match a slot query like aspect:secret>=2
+  verb <NAME>      one verb's report
+  world            the whole-world dashboard
+  graph            the mint dependency graph as Graphviz DOT
+
+Options:
+  --usable             also require bindability into a committable verb slot
+  --why                append the per-site blocker table (card/all/demand)
+  --cost               append the cost/count section (card/all; ignored under demand)
+  --json               machine-readable output (card/all/demand; world/verb/graph ignore it)
+  --by <MINUTE>        bind every time-keyed judgment to absolute minute MINUTE
+  --from-state <LOG>   replay a JSONL action log as the analysis initial world
+  --color              ANSI color (default off; when off the output is byte-identical to the plain face)
+  -h, --help           print help
+
+  a value option (--by, --from-state) repeated on one line: the last occurrence wins
+
+examples:
+  reach scripts/the-nightjar-flyer.txt card THE_WAX_CYLINDER --why
+  reach scripts/the-nightjar-flyer.txt all --cost --by 600
+  reach scripts/the-nightjar-flyer.txt world
+";
+    for argv in [vec!["--help"], vec!["-h"], vec![SCRIPT, "card", "X", "--help"]] {
+        let (code, stdout, stderr) = run("reach", &argv);
+        assert_eq!(code, Some(0), "{argv:?}");
+        assert_eq!(stdout, expected, "{argv:?}");
+        assert_eq!(stderr, "", "{argv:?}");
+    }
+}
+
+/// The six subcommands each dispatch to their face over the bundled
+/// script: exit 0 and the face's own head/marker on stdout.
+#[test]
+fn reach_card_command_dispatches_the_single_card_face() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "card", "THE_WAX_CYLINDER"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(
+        stdout.contains("scripts/the-nightjar-flyer.txt · card THE_WAX_CYLINDER\n"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("  verdict: "), "{stdout}");
+}
+
+#[test]
+fn reach_all_command_dispatches_the_walk() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "all"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains("scripts/the-nightjar-flyer.txt · card "), "{stdout}");
+    // the walk: more than one report in the sweep
+    assert!(stdout.matches("  verdict: ").count() > 1, "{stdout}");
+}
+
+#[test]
+fn reach_demand_command_dispatches_the_query_face() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "demand", "aspect:secret>=2"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains(" · card matching 'aspect:secret>=2'\n"), "{stdout}");
+}
+
+#[test]
+fn reach_verb_command_dispatches_the_verb_report() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "verb", "WORK"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.starts_with("scripts/the-nightjar-flyer.txt · verb WORK\n"), "{stdout}");
+}
+
+#[test]
+fn reach_world_command_dispatches_the_dashboard() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "world"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.starts_with("scripts/the-nightjar-flyer.txt · world\n"), "{stdout}");
+    assert!(stdout.contains("  overview: "), "{stdout}");
+    assert!(stdout.contains("  freeze: "), "{stdout}");
+}
+
+#[test]
+fn reach_graph_command_dispatches_the_dot_face() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "graph"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.starts_with("digraph reach {\n"), "{stdout}");
+}
+
+/// The `--color` opt-in: ON → the same face with ANSI escapes; OFF → the
+/// byte-identical plain face. The machine faces (graph, --json) never
+/// color, even under --color.
+#[test]
+fn reach_color_is_opt_in_and_the_machine_faces_never_color() {
+    // off (the default): no escapes anywhere, byte-identical to the plain face
+    let (code, plain, stderr) = run("reach", &[SCRIPT, "card", "THE_WAX_CYLINDER"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(!plain.contains("\x1b["), "{plain}");
+    let (code, on, _) = run("reach", &[SCRIPT, "card", "THE_WAX_CYLINDER", "--color"]);
+    assert_eq!(code, Some(0));
+    assert!(on.contains("\x1b["), "the colored face carries escapes");
+    assert!(on.contains("verdict: "), "{on}");
+    // the world face colors too
+    let (code, world_on, _) = run("reach", &[SCRIPT, "world", "--color"]);
+    assert_eq!(code, Some(0));
+    assert!(world_on.contains("\x1b["), "{world_on}");
+    // graph and --json stay their machine selves under --color
+    let (code, graph_plain, _) = run("reach", &[SCRIPT, "graph"]);
+    assert_eq!(code, Some(0));
+    let (code, graph_color, _) = run("reach", &[SCRIPT, "graph", "--color"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(graph_plain, graph_color, "the DOT face is never colorized");
+    assert!(!graph_color.contains("\x1b["), "{graph_color}");
+    let (code, json_color, _) =
+        run("reach", &[SCRIPT, "card", "THE_WAX_CYLINDER", "--json", "--color"]);
+    assert_eq!(code, Some(0));
+    assert!(!json_color.contains("\x1b["), "{json_color}");
+    assert!(json_color.trim_start().starts_with('{'), "{json_color}");
+}
+
+/// Q15 in the new grammar — a trailing `demand` command with no value slot
+/// is the argv error naming the command, the short usage following, exit 2.
 #[test]
 fn reach_trailing_demand_is_an_argv_error_q15() {
-    let (code, stdout, stderr) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER", "--demand"]);
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "demand"]);
     assert_eq!(code, Some(2));
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "--demand needs a value: --demand \"<query>\"\nusage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"
+        format!("demand needs a value: reach <script.txt> demand \"<query>\"\n{SHORT_USAGE}")
     );
 }
 
-/// `--demand ''`: the EMPTY string is FALSY, so
-/// `!demand` holds and the usage gate exits 2 with the
-/// exact two-line text (Rust used to treat Some("") as a provided demand and
-/// rendered a demand report).
+/// `demand ''`: the EMPTY string value is FALSY (the frozen truthiness, now
+/// per command) and reads as a missing value — the argv error, exit 2.
 #[test]
-fn reach_empty_string_demand_is_falsy_usage_exits_2() {
-    let (code, stdout, stderr) = run("reach", &[SCRIPT, "--demand", ""]);
+fn reach_empty_string_demand_is_falsy_argv_error() {
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "demand", ""]);
     assert_eq!(code, Some(2));
     assert_eq!(stdout, "");
     assert_eq!(
         stderr,
-        "usage: reach <script.txt> <CARD_NAME> [--usable] [--demand \"<query>\"] [--why] [--verb \"<NAME>\"] [--world]\n       reach <script.txt> --all\n"
+        format!("demand needs a value: reach <script.txt> demand \"<query>\"\n{SHORT_USAGE}")
     );
+    // the same truthiness for card and verb
+    for (cmd, shape) in [("card", "<NAME>"), ("verb", "\"<NAME>\"")] {
+        let (code, stdout, stderr) = run("reach", &[SCRIPT, cmd, ""]);
+        assert_eq!(code, Some(2), "{cmd}");
+        assert_eq!(stdout, "", "{cmd}");
+        assert_eq!(
+            stderr,
+            format!("{cmd} needs a value: reach <script.txt> {cmd} {shape}\n{SHORT_USAGE}"),
+            "{cmd}"
+        );
+    }
 }
 
-/// with a card name, `--demand ''` degrades to plain
-/// NAME mode (the falsy demand never reaches analyze_card/render: the header
-/// prints the card name, the run is the no-demand run).
+/// the value-flag errors keep the Q15 wordings: `--by` with no value and
+/// with a non-integer value, `--from-state` with no value — exit 2 naming
+/// the flag, the short usage following.
 #[test]
-fn reach_empty_string_demand_degrades_to_name_mode() {
-    let (plain_code, plain_out, _) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER"]);
-    let (code, stdout, stderr) = run("reach", &[SCRIPT, "THE_WAX_CYLINDER", "--demand", ""]);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(code, plain_code);
-    assert_eq!(stdout, plain_out, "the empty demand must not change the output");
+fn reach_value_flag_errors_name_the_flag() {
+    for (argv, head) in [
+        (vec![SCRIPT, "--by"], "--by needs a value: --by <minute>"),
+        (vec![SCRIPT, "--by", "soon"], "--by needs an integer minute: --by <minute>"),
+        (vec![SCRIPT, "card", "X", "--by"], "--by needs a value: --by <minute>"),
+        (vec![SCRIPT, "--from-state"], "--from-state needs a value: --from-state <log.jsonl>"),
+    ] {
+        let (code, stdout, stderr) = run("reach", &argv);
+        assert_eq!(code, Some(2), "{argv:?}");
+        assert_eq!(stdout, "", "{argv:?}");
+        assert_eq!(stderr, format!("{head}\n{SHORT_USAGE}"), "{argv:?}");
+    }
 }
 
 /// a bad demand query is an uncaught parse error: the
@@ -90,13 +275,77 @@ fn reach_empty_string_demand_degrades_to_name_mode() {
 /// — the recorded divergence).
 #[test]
 fn reach_bad_demand_exits_1_with_the_query_error() {
-    let (code, stdout, stderr) = run("reach", &[SCRIPT, "--demand", "aspect:secret >= 3"]);
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "demand", "aspect:secret >= 3"]);
     assert_eq!(code, Some(1));
     assert_eq!(stdout, "");
     assert!(
         stderr.starts_with("Error: bad query term '>=' (expected kind:/aspect:/state:/name:)"),
         "{stderr}"
     );
+}
+
+/// an unknown `-`-word in flag position is the argv error naming it — a
+/// typo'd `--usablee` must never silently drop its flag and change the
+/// face's semantics, and `--` is no end-of-options separator on this
+/// surface (the lint-scripts alignment): every case exits 2 with the word
+/// named and the short usage following.
+#[test]
+fn reach_unknown_flag_names_the_word_and_exits_2() {
+    for (argv, word) in [
+        (vec![SCRIPT, "card", "THE_WAX_CYLINDER", "--typo"], "--typo"),
+        (vec![SCRIPT, "card", "THE_WAX_CYLINDER", "--usablee"], "--usablee"),
+        (vec![SCRIPT, "--typo", "all"], "--typo"),
+        (vec![SCRIPT, "all", "-x"], "-x"),
+        (vec![SCRIPT, "card", "--", "--weird"], "--"),
+    ] {
+        let (code, stdout, stderr) = run("reach", &argv);
+        assert_eq!(code, Some(2), "{argv:?}");
+        assert_eq!(stdout, "", "{argv:?}");
+        assert_eq!(
+            stderr,
+            format!("unknown flag '{word}' — expected one of: --usable, --why, --cost, --json, --by <MINUTE>, --from-state <LOG>, --color, -h/--help\n{SHORT_USAGE}"),
+            "{argv:?}"
+        );
+    }
+}
+
+/// extra positionals beyond `<script> <COMMAND> [value]` are the argv
+/// error naming the FIRST extra — no silently-ignored word beside the
+/// command (`all extra --json`, `world extra stuff`, `card X Y`).
+#[test]
+fn reach_extra_positionals_are_argv_errors() {
+    for (argv, extra) in [
+        (vec![SCRIPT, "all", "extra", "--json"], "extra"),
+        (vec![SCRIPT, "world", "extra", "stuff"], "extra"),
+        (vec![SCRIPT, "graph", "bogus"], "bogus"),
+        (vec![SCRIPT, "card", "X", "Y"], "Y"),
+        (vec![SCRIPT, "demand", "kind:resource", "Z"], "Z"),
+    ] {
+        let (code, stdout, stderr) = run("reach", &argv);
+        assert_eq!(code, Some(2), "{argv:?}");
+        assert_eq!(stdout, "", "{argv:?}");
+        assert_eq!(stderr, format!("unexpected argument '{extra}'\n{SHORT_USAGE}"), "{argv:?}");
+    }
+}
+
+/// a value flag's next slot must be a VALUE, not another flag —
+/// `--from-state --why` names the flag instead of reading a log named
+/// `--why` (the baffling "cannot read --why" face). `--by` is the
+/// deliberate exception: a negative minute is a value, not a flag.
+#[test]
+fn reach_value_slots_reject_flag_looking_tokens() {
+    let (code, stdout, stderr) =
+        run("reach", &[SCRIPT, "card", "THE_GEM", "--from-state", "--why"]);
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(
+        stderr,
+        format!("--from-state needs a value, not '--why': --from-state <log.jsonl>\n{SHORT_USAGE}")
+    );
+    // the --by exemption: a negative minute parses, binds, annotates the head
+    let (code, stdout, stderr) = run("reach", &[SCRIPT, "card", "THE_LATE_LORD", "--by", "-5"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains(" · card THE_LATE_LORD  [by minute -5]\n"), "{stdout}");
 }
 
 /// Flags default 200/7/400/1 (overridden here for a
@@ -180,6 +429,124 @@ fn lint_scripts_missing_scripts_dir_names_the_directory() {
         "{stderr}"
     );
     assert!(stderr.contains("name files: lint-scripts [file.txt ...]"), "{stderr}");
+}
+
+/// v0.8.0 — lint-scripts' single-purpose Options grammar: `--help`/`-h`
+/// anywhere prints the full help on stdout and exits 0 — pinned byte for
+/// byte (the option table with the `--reach` advisory note, three real
+/// examples).
+#[test]
+fn lint_scripts_help_is_the_frozen_full_text_exit_0() {
+    let expected = "\
+lint-scripts — the script lint (§13.2) over named or bundled scripts
+
+usage: lint-scripts [OPTIONS] [FILES...]
+
+Args:
+  FILES...    the scripts to lint; the default (no FILES) reads every scripts/*.txt relative to the CWD
+
+Options:
+  --reach     append the reach bridge's design-smell findings (the §13.1 → §13.2 six families; advisory — a reach finding never changes the exit code)
+  --color     ANSI color (default off; when off the output is byte-identical to the plain face)
+  -h, --help  print help
+
+examples:
+  lint-scripts
+  lint-scripts --reach scripts/cultist-slice.txt
+  lint-scripts --color scripts/the-nightjar-flyer.txt
+";
+    for argv in [vec!["--help"], vec!["-h"], vec![SCRIPT, "--help"], vec!["--reach", "--help"]] {
+        let (code, stdout, stderr) = run("lint-scripts", &argv);
+        assert_eq!(code, Some(0), "{argv:?}");
+        assert_eq!(stdout, expected, "{argv:?}");
+        assert_eq!(stderr, "", "{argv:?}");
+    }
+}
+
+/// v0.8.0 — an unknown `-`-flag is the argv error: exit 2 on stderr naming
+/// the flag, the short usage following — never a silent fallthrough into
+/// the file list and a bogus read error (the Q15 honesty tradition). Any
+/// non-flag word is STILL a file path (the frozen semantics): a missing one
+/// is the hard input error, exit 1, unchanged.
+#[test]
+fn lint_scripts_unknown_flag_is_an_argv_error_exit_2() {
+    for flag in ["--foo", "--reac", "--color=always", "-x"] {
+        let (code, stdout, stderr) = run("lint-scripts", &[flag]);
+        assert_eq!(code, Some(2), "{flag}");
+        assert_eq!(stdout, "", "{flag}");
+        assert_eq!(stderr, format!("unknown flag '{flag}'\n{LINT_SHORT_USAGE}"), "{flag}");
+    }
+    // unknown flags lose to nothing — the error fires wherever they sit
+    let (code, stdout, stderr) = run("lint-scripts", &["--reach", "--foo", SCRIPT]);
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(stderr, format!("unknown flag '--foo'\n{LINT_SHORT_USAGE}"));
+}
+
+/// v0.8.0 — the `--color` opt-in over the lint faces: ON → the same faces
+/// with ANSI escapes (the title bold, the `[warning]` / `[reach]` markers
+/// in their colors, the summary's non-zero counts colored, an all-zero
+/// summary green); OFF → the byte-identical plain face. Stripping the
+/// escapes restores the plain bytes both ways.
+#[test]
+fn lint_scripts_color_is_opt_in_and_default_stays_plain() {
+    // plain (the default): no escapes anywhere — the plain bytes
+    let (code, plain, stderr) = run("lint-scripts", &[SCRIPT]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(!plain.contains("\x1b["), "{plain}");
+    assert_eq!(plain, "scripts/the-nightjar-flyer.txt: clean\n\n1 file(s), 0 finding(s)\n");
+
+    // colored: escapes; stripping them restores the plain bytes
+    let (code, on, _) = run("lint-scripts", &[SCRIPT, "--color"]);
+    assert_eq!(code, Some(0));
+    assert!(on.contains("\x1b["), "{on}");
+    assert_eq!(strip_ansi(&on), plain, "removing escapes restores the plain face");
+    // the everything-clean face: the `…: clean` row plain, the summary
+    // green whole
+    assert!(on.starts_with("scripts/the-nightjar-flyer.txt: clean\n"), "{on}");
+    assert!(on.contains("\x1b[38;5;10m1 file(s), 0 finding(s)\x1b[0m\n"), "{on}");
+
+    // the warning-carrying face: yellow markers on the rows, red + yellow
+    // counts in the summary; the message text stays untouched
+    let full = "scripts/cultist-full.txt";
+    let (code, plain_full, _) = run("lint-scripts", &[full]);
+    assert_eq!(code, Some(0));
+    let (code, on_full, _) = run("lint-scripts", &[full, "--color"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(strip_ansi(&on_full), plain_full);
+    // the per-file title bold
+    assert!(on_full.starts_with("\x1b[1mscripts/cultist-full.txt:\x1b[0m\n"), "{on_full}");
+    assert!(on_full.contains("  - \x1b[38;5;11m[warning]\x1b[0m "), "{on_full}");
+    assert!(on_full.contains("\x1b[38;5;9m76 finding(s)\x1b[0m"), "{on_full}");
+    assert!(on_full.contains("\x1b[38;5;11m76 warning(s)\x1b[0m"), "{on_full}");
+
+    // the bridge layer: the `[reach]` marker magenta
+    let (code, on_reach, _) =
+        run("lint-scripts", &["scripts/cultist-slice.txt", "--reach", "--color"]);
+    assert_eq!(code, Some(0), "{on_reach}");
+    assert!(on_reach.contains("  - \x1b[38;5;13m[reach]\x1b[0m "), "{on_reach}");
+}
+
+/// v0.8.0 — the no-argument face unchanged: every scripts/*.txt relative
+/// to the cwd, in the bin's sorted order; the 76-warning composition on
+/// cultist-full (every finding row WARNING-class, none ERROR), slice and
+/// flyer clean, exit 0 (findings never fail).
+#[test]
+fn lint_scripts_no_arguments_reads_the_sorted_scripts_default() {
+    let (code, stdout, stderr) = run("lint-scripts", &[]);
+    assert_eq!(code, Some(0), "{stderr}");
+    // sorted: cultist-full < cultist-slice < the-nightjar-flyer
+    assert!(stdout.starts_with("scripts/cultist-full.txt:\n"), "{stdout}");
+    assert!(stdout.contains("\nscripts/cultist-slice.txt: clean\n"), "{stdout}");
+    assert!(stdout.contains("\nscripts/the-nightjar-flyer.txt: clean\n"), "{stdout}");
+    assert_eq!(stdout.matches("\n  - ").count(), 76, "{stdout}");
+    assert_eq!(stdout.matches("\n  - [warning] ").count(), 76, "{stdout}");
+    assert!(
+        stdout.ends_with(
+            "\n3 file(s), 76 finding(s), 76 warning(s) — warnings advise, the exit code stays 0\n"
+        ),
+        "{stdout}"
+    );
 }
 
 /// the `--worker i k P R` sharded interface: names `idx % k === i` of a
@@ -286,4 +653,24 @@ templates:
     assert!(stdout.contains("verbs-one.txt: clean"), "{stdout}");
     assert!(!stdout.contains("verbs-two.txt: clean"), "{stdout}");
     assert!(stderr.contains("template 'INTERROGATE' is not a registered verb"), "{stderr}");
+}
+
+/// A tiny SGR stripper for the `--color` on/off equality (test-only): an
+/// escape, `[`, then up to the first ASCII alphabetic byte, dropped.
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' && chars.peek() == Some(&'[') {
+            chars.next();
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }

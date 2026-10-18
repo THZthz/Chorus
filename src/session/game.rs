@@ -228,7 +228,7 @@ impl Game {
     /// parser, the lenient input, the suggestions and the banner read this
     /// dictionary per call (§11) — which is exactly what makes a
     /// script-declared verb typeable, suggestable, and re-parseable in the
-    /// fold (v0.7.6).
+    /// fold.
     pub fn from_script(text: &str, dict: Dictionary) -> Result<Game> {
         let compiled = compile_script(text, &dict)?;
         Ok(Self::new(compiled.dict, compiled.content, compiled.meta, compiled.state))
@@ -752,8 +752,7 @@ impl Game {
 
     /// a card's face: kind, aspects, where it sits, when it entered play.
     /// Visible cards only — the table has no face-down deck to fish from.
-    /// A bare `inspect` (empty name — the old empty-prefix startswith match
-    /// showed the FIRST visible card, Q11) names the usage and lists the
+    /// A bare `inspect` (empty name, Q11) names the usage and lists the
     /// table instead; it never guesses a card.
     pub fn inspect(&self, raw_name: &str) -> Vec<String> {
         let q = display_name(dsl_trim(raw_name));

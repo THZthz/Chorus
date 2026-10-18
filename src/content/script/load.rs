@@ -13,8 +13,8 @@ use crate::core::types::{add_entity, new_state, relation_key, AttrValue, Attrs, 
 use crate::error::{ChorusError, Result};
 
 /// The load-effective dictionary: the caller's dictionary plus the script's
-/// `kinds:` declarations (§4.1, v0.7.5) and its `verbs:` declarations
-/// (§4.3, v0.7.6), declaration order preserved. Vocabulary is load-time
+/// `kinds:` declarations (§4.1) and its `verbs:` declarations
+/// (§4.3), declaration order preserved. Vocabulary is load-time
 /// state — the MECHANICS never read the word lists (verb lookup is
 /// content-driven), but the SENTENCES do: the play surface parses typed
 /// input and prints canonical text against this dictionary, and the fold

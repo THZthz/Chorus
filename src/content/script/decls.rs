@@ -445,7 +445,7 @@ pub(super) fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
     fn_head(t, ln, "functions", |name, params, body| FunctionDef { name, params, body })
 }
 
-/// An `ops:` line (§10, v0.7.7): the SAME three accepted head forms as a
+/// An `ops:` line (§10): the SAME three accepted head forms as a
 /// function line — the head grammar is shared by construction (the
 /// regexes' name group is `\S+`, never lowercase-bound), only the error
 /// text and the destination differ. Grammar only: the UPPER_SNAKE shape,

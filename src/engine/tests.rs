@@ -555,8 +555,8 @@ mod smoke {
 
     #[test]
     fn register_windows_roundtrips_the_sentence_and_errors_on_degenerate_rows() {
-        // Q6 (fixed): a BEGIN row whose sentence fails to re-parse is a
-        // loud drift error — it used to silently open no window
+        // Q6: a BEGIN row whose sentence fails to re-parse is a loud
+        // drift error, never a silently missing window
         let (dict, content) = rig(vec![("PACE", pace(30, &["NARRATE \"d.\""]))], |_| {});
         let rec = ActionRecord {
             id: 7,

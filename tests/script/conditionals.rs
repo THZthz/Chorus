@@ -924,9 +924,8 @@ fn the_recursive_guards_catch_progress_refuse_unknown_ending_nested_in_if_branch
         "trigger t: REFUSE belongs to verb recipes — events have no step to refuse",
     );
     // §6.6: ADVANCE stretches the pass a completion rides; the event kinds
-    // own no pass, so it used to apply, log, and drop its duration silently
-    // on both play and fold — now the same load-error family as PROGRESS/
-    // REFUSE/RUN, nested arms included
+    // own no pass, so ADVANCE there is the same load-error family as
+    // PROGRESS/REFUSE/RUN, nested arms included
     assert_err_msg(
         compile_content(&raw(&["IF exists(X) -> (ADVANCE(1h))"], None), &dict, &[]),
         "trigger t: ADVANCE belongs to verb recipes — events own no advance pass to stretch",

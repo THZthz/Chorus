@@ -542,7 +542,7 @@ fn the_cli_appends_one_cost_section_per_card_and_the_default_face_stays_frozen()
 
     // --all --cost: one cost section per walked card (the cost header also
     // contains " · card ", so the reports are counted by their verdict lines)
-    let c = run(&[&script, "--all", "--cost"]);
+    let c = run(&[&script, "all", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     let cards = c.out.matches("\n  verdict: ").count();
     assert_eq!(cards, 5, "prototypes ∪ live initials: MID_B TOP_C SEED_A ANA ROOM");
@@ -550,32 +550,33 @@ fn the_cli_appends_one_cost_section_per_card_and_the_default_face_stays_frozen()
     assert!(c.out.contains("applications: 2 (lower-bound planning estimate)"), "{}", c.out);
 
     // without the flag: byte-identical frozen face, no cost section
-    let plain = run(&[&script, "--all"]);
+    let plain = run(&[&script, "all"]);
     assert_eq!(plain.code, Some(0));
     assert!(!plain.out.contains("— cost"), "{}", plain.out);
 
     // a single card: the report precedes the section byte-exactly
-    let c = run(&[&script, "TOP_C", "--cost"]);
+    let c = run(&[&script, "card", "TOP_C", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
-    let plain = run(&[&script, "TOP_C"]);
+    let plain = run(&[&script, "card", "TOP_C"]);
     assert!(c.out.starts_with(plain.out.as_str()), "the frozen face must be a byte prefix");
 
-    // --cost does not open the usage gate (the export precedent)
-    let c = run(&[&script, "--cost"]);
+    // a script with NO command word is the argv error: the command list, exit 2
+    let c = run(&[&script]);
     assert_eq!(c.code, Some(2), "{}{}", c.out, c.err);
-    assert!(c.err.contains("usage: reach <script.txt> <CARD_NAME>"), "{}", c.err);
+    assert!(c.err.contains("reach needs a command"), "{}", c.err);
+    assert!(c.err.contains("usage: reach <script.txt> <COMMAND>"), "{}", c.err);
 }
 
 #[test]
 fn the_cli_composes_with_usable_why_and_ignores_demand_and_json() {
     // --usable composes: the semantics bracket and the section coexist
-    let c = run(&[NIGHTJAR, "THE_TENDED_LORD", "--usable", "--cost"]);
+    let c = run(&[NIGHTJAR, "card", "THE_TENDED_LORD", "--usable", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(c.out.contains("[usable semantics]"), "{}", c.out);
     assert!(c.out.contains(" · card THE_TENDED_LORD — cost\n"), "{}", c.out);
 
     // --why composes: the report, then the why section, then the cost section
-    let c = run(&[NIGHTJAR, "THE_TENDED_LORD", "--why", "--cost"]);
+    let c = run(&[NIGHTJAR, "card", "THE_TENDED_LORD", "--why", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     let report_end = c.out.find("\n\n").expect("the report's blank line");
     let why = c.out.find(" — why\n").expect("the why section");
@@ -583,12 +584,12 @@ fn the_cli_composes_with_usable_why_and_ignores_demand_and_json() {
     assert!(report_end < why && why < cost, "{}", c.out);
 
     // --demand: documented ignore — the demand match is not costed
-    let c = run(&[NIGHTJAR, "--demand", "aspect:secret>=3", "--cost"]);
+    let c = run(&[NIGHTJAR, "demand", "aspect:secret>=3", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(!c.out.contains("— cost"), "{}", c.out);
 
     // --json: kept out for now — the envelope carries no cost data
-    let c = run(&[NIGHTJAR, "THE_TENDED_LORD", "--json", "--cost"]);
+    let c = run(&[NIGHTJAR, "card", "THE_TENDED_LORD", "--json", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(c.out.trim_start().starts_with('{'), "{}", c.out);
     assert!(!c.out.contains("\"cost\""), "{}", c.out);
@@ -597,7 +598,7 @@ fn the_cli_composes_with_usable_why_and_ignores_demand_and_json() {
 #[test]
 fn the_non_proven_target_renders_the_exclusion_face_and_the_complete_target_costs_zero() {
     // the candidate card: no proven DAG, the candidates sit above
-    let c = run(&[NIGHTJAR, "THE_WAX_CYLINDER", "--cost"]);
+    let c = run(&[NIGHTJAR, "card", "THE_WAX_CYLINDER", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(
         c.out.contains(
@@ -609,7 +610,7 @@ fn the_non_proven_target_renders_the_exclusion_face_and_the_complete_target_cost
     );
 
     // the complete-trigger provenance: 0 applications, the arranged note
-    let c = run(&[SLICE, "THE_TURNING", "--cost"]);
+    let c = run(&[SLICE, "card", "THE_TURNING", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
     assert!(
         c.out.contains(

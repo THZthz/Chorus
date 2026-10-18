@@ -731,8 +731,8 @@ verbs:
         .any(|e| e.name == "THE_WEARY_HOUR" && e.dead_action.is_none()));
     assert_eq!(r2.state.windows.len(), 1, "the wheel rechained");
     assert!(r2.state.windows.values().next().unwrap().locked.is_empty());
-    // the restore: dream.rest_vigor mints VIGOR back — no §9.2 rejection
-    // (a restored mint used to re-lock by name on the next rechain)
+    // the restore: dream.rest_vigor mints VIGOR back — no §9.2 rejection,
+    // the restored mint never re-locks by name on a later rechain
     let r3 = settle_line(&c, &dict, r2.state, "1:0 @ ANA DREAM WITH THE_WEARY_HOUR", 300).unwrap();
     assert_eq!(r3.rejected, None);
     assert_eq!(refusal(&r3), None, "the restore lands clean");

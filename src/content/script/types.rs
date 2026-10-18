@@ -47,7 +47,7 @@ pub struct Script {
 }
 
 /// The `compile_script` return shape `{ content, state, meta, dict }` —
-/// `dict` is the LOAD-EFFECTIVE dictionary (§4.1, v0.7.5): the caller's plus
+/// `dict` is the LOAD-EFFECTIVE dictionary (§4.1): the caller's plus
 /// the script's `kinds:` declarations, handed back so tools that re-run
 /// load-time grammars over the compiled world (the reach analyzer's
 /// `--demand` query parse) validate against the vocabulary the script

@@ -1067,7 +1067,7 @@ fn render_card(
 fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
     for seed in 1u32..=60 {
         let sc = chorus::reach::fuzz::gen_scenario(seed);
-        // the scenario's own load-effective dictionary (v0.7.6: the sample
+        // the scenario's own load-effective dictionary (the sample
         // may declare script verbs)
         let dict = sc.dict;
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
@@ -1096,7 +1096,7 @@ fn the_same_content_and_state_analyzed_twice_is_byte_identical() {
 fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
     for seed in 1u32..=30 {
         let sc = chorus::reach::fuzz::gen_scenario(seed);
-        // the scenario's own load-effective dictionary (v0.7.6: the sample
+        // the scenario's own load-effective dictionary (the sample
         // may declare script verbs)
         let dict = sc.dict;
         let content = compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("scenario compiles");
@@ -1130,7 +1130,7 @@ fn a_shared_analyzer_matches_fresh_per_call_analyzers() {
     }
 }
 
-/// A script-declared kind rides the whole tool path (§4.1, v0.7.5): the load
+/// A script-declared kind rides the whole tool path (§4.1): the load
 /// hands back its effective dictionary on CompiledScript, the analyzer's
 /// demand parse validates `kind:omen` against it, and the SPAWN of the
 /// custom-kind prototype is proven by a real chain.

@@ -333,8 +333,8 @@ fn the_win_walk_replays_to_over_the_roof() {
     );
 
     // the E9-at-scale pins: the 0:32 self-pair bound DISTINCT pool copies
-    // (the lenient binder's hand-out — the old head-only binding fired the
-    // pair row on one card and left the second as a stray), so both candle
+    // (the lenient binder's hand-out: the pair row consumes both cards,
+    // never one card plus a stray), so both candle
     // psalms went into the Lampkeeper's Hour and nothing pooled twice
     assert_eq!(completions(&game, "study.rad2_pair"), 1, "the psalm pair combined once");
     assert_eq!(alive_named(&game, "A_CANDLE_PSALM"), 0, "no stray: the pair consumed both copies");

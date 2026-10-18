@@ -1,7 +1,7 @@
-# docs/examples/07-smells.txt — a deliberately smelly script. Every line in
+# docs/examples/08-smells.txt — a deliberately smelly script. Every line in
 # it is a design smell the tooling can see: run
 #
-#   lint-scripts --reach docs/examples/07-smells.txt
+#   lint-scripts --reach docs/examples/08-smells.txt
 #
 # and the [reach] bridge names all six families (plus one lint error). This
 # file is for reading diagnostics against, not for playing.

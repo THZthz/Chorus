@@ -1,4 +1,4 @@
-//! The four CLI bins, exercised as subprocesses — argv parsing (verbatim
+//! The five CLI bins, exercised as subprocesses — argv parsing (verbatim
 //! including the error texts), stream discipline, exit codes and the Q15
 //! honesty fixes. This file pins the WIRING (real argv → real process):
 //! the reach Commands+Options grammar (each subcommand dispatching, the
@@ -8,9 +8,11 @@
 //! constant-0 + missing-input exits and the single-purpose Options grammar
 //! (the full-help pin, the unknown-flag
 //! exit-2 face, the `--color` opt-in over the lint faces, the sorted
-//! default list).
+//! default list). The chorus bin keeps the same family: `--help`/`-h`
+//! anywhere, the short-usage argv errors, and the script path as the one
+//! positional.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn run(bin: &str, args: &[&str]) -> (Option<i32>, String, String) {
     let exe = match bin {
@@ -18,6 +20,7 @@ fn run(bin: &str, args: &[&str]) -> (Option<i32>, String, String) {
         "reach-fuzz" => env!("CARGO_BIN_EXE_reach-fuzz"),
         "reach-scale" => env!("CARGO_BIN_EXE_reach-scale"),
         "lint-scripts" => env!("CARGO_BIN_EXE_lint-scripts"),
+        "chorus" => env!("CARGO_BIN_EXE_chorus"),
         other => panic!("unknown bin {other}"),
     };
     let out = Command::new(exe)
@@ -346,6 +349,199 @@ fn reach_value_slots_reject_flag_looking_tokens() {
     let (code, stdout, stderr) = run("reach", &[SCRIPT, "card", "THE_LATE_LORD", "--by", "-5"]);
     assert_eq!(code, Some(0), "{stderr}");
     assert!(stdout.contains(" · card THE_LATE_LORD  [by minute -5]\n"), "{stdout}");
+}
+
+// ---------------------------------------------------------------------------
+// chorus — the line REPL's argv face (the same family grammar)
+// ---------------------------------------------------------------------------
+
+/// chorus' short usage — the no-arguments face and the tail of every argv
+/// error: the usage line with the meta words, plus the `chorus --help`
+/// hint, stderr, exit 2.
+const CHORUS_SHORT_USAGE: &str = "usage: chorus <script.txt>\n       a line REPL: type what happens, or help/look/cards/story/journal/save/undo/wait/inspect/quit\ntry 'chorus --help' for how to play\n";
+
+/// `--help` (and `-h`) anywhere in argv prints the full help on stdout and
+/// exits 0 — pinned byte for byte, the reach/lint-scripts plain-text style.
+#[test]
+fn chorus_help_is_the_frozen_full_text_exit_0() {
+    let expected = "\
+chorus — the line REPL: a script file played as a text game
+
+usage: chorus <script.txt>
+try 'chorus --help' for how to play
+
+The player types plain English-ish sentences; the banner's `try:` row
+lists what the game understands right now. Meta words (typed as-is):
+
+  look                the place, the clock, what is here and carried
+  cards               the visible table
+  inspect <card>      one card's face; a bare `inspect` prints usage + the table
+  story               the prose so far
+  journal             the canonical log
+  save <file.jsonl>   write the action log — `reach --from-state <file>` replays it
+  undo                take back the last turn
+  wait                jump to the next due completion (or one hour)
+  help                how to play
+  quit                leave
+
+Options:
+  -h, --help  print help
+
+examples:
+  chorus scripts/the-nightjar-flyer.txt
+  printf 'look\\nread the manifest\\nsave /tmp/log.jsonl\\nquit\\n' | chorus scripts/the-nightjar-flyer.txt
+  reach scripts/the-nightjar-flyer.txt card THE_WAX_CYLINDER --from-state /tmp/log.jsonl
+";
+    for argv in
+        [vec!["--help"], vec!["-h"], vec![SCRIPT, "-h"], vec![SCRIPT, "card", "X", "--help"]]
+    {
+        let (code, stdout, stderr) = run("chorus", &argv);
+        assert_eq!(code, Some(0), "{argv:?}");
+        assert_eq!(stdout, expected, "{argv:?}");
+        assert_eq!(stderr, "", "{argv:?}");
+    }
+}
+
+/// No arguments at all → the short usage, exit 2, stdout empty.
+#[test]
+fn chorus_no_arguments_is_the_short_usage_exit_2() {
+    let (code, stdout, stderr) = run("chorus", &[]);
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(stderr, CHORUS_SHORT_USAGE);
+}
+
+/// An unknown `-`-flag (longer than one char) is the argv error naming it —
+/// never a silent fallthrough into a script read of the flag word.
+#[test]
+fn chorus_unknown_flag_names_the_word_and_exits_2() {
+    for flag in ["--typo", "-x", "--color", "--reach"] {
+        let (code, stdout, stderr) = run("chorus", &[flag]);
+        assert_eq!(code, Some(2), "{flag}");
+        assert_eq!(stdout, "", "{flag}");
+        assert_eq!(stderr, format!("unknown flag '{flag}'\n{CHORUS_SHORT_USAGE}"), "{flag}");
+        // the flag loses to nothing — the error fires wherever it sits
+        let (code, stdout, stderr) = run("chorus", &[SCRIPT, flag]);
+        assert_eq!(code, Some(2), "{flag}");
+        assert_eq!(stdout, "", "{flag}");
+        assert_eq!(stderr, format!("unknown flag '{flag}'\n{CHORUS_SHORT_USAGE}"), "{flag}");
+    }
+}
+
+/// Extra positionals beyond the script path name the FIRST extra —
+/// `chorus script.txt card X` is not a silent two-word drop.
+#[test]
+fn chorus_extra_positionals_are_argv_errors() {
+    for (argv, extra) in [
+        (vec![SCRIPT, "extra"], "extra"),
+        (vec![SCRIPT, "card", "X"], "card"),
+        (vec![SCRIPT, "extra", "stuff"], "extra"),
+    ] {
+        let (code, stdout, stderr) = run("chorus", &argv);
+        assert_eq!(code, Some(2), "{argv:?}");
+        assert_eq!(stdout, "", "{argv:?}");
+        assert_eq!(
+            stderr,
+            format!("unexpected argument '{extra}'\n{CHORUS_SHORT_USAGE}"),
+            "{argv:?}"
+        );
+    }
+}
+
+/// The save → analyze loop, end to end through real processes: a piped
+/// chorus session plays the slice and saves its log; `reach --from-state`
+/// replays that log (paired with the SAME script) as its initial world and
+/// answers with the midgame note. The saved file is cleaned up.
+#[test]
+fn chorus_save_feeds_reach_from_state_end_to_end() {
+    let log = std::env::temp_dir().join(format!("chorus-cli-save-{}.jsonl", std::process::id()));
+    let _ = std::fs::remove_file(&log);
+    let session = format!("look\nwork with vigor\nsave {}\nquit\n", log.display());
+    let out = Command::new(env!("CARGO_BIN_EXE_chorus"))
+        .arg("scripts/cultist-slice.txt")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write as _;
+            child.stdin.as_mut().expect("piped stdin").write_all(session.as_bytes())?;
+            child.wait_with_output()
+        })
+        .expect("the chorus bin runs");
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8(out.stdout).expect("stdout is UTF-8");
+    assert_eq!(String::from_utf8(out.stderr).expect("stderr is UTF-8"), "");
+    assert!(stdout.contains(&format!("saved: 1 record(s) -> {}", log.display())), "{stdout}");
+
+    let (code, stdout, stderr) = run(
+        "reach",
+        &[
+            "scripts/cultist-slice.txt",
+            "card",
+            "THE_TURNING",
+            "--from-state",
+            log.to_str().unwrap(),
+        ],
+    );
+    let _ = std::fs::remove_file(&log);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains(" · card THE_TURNING\n"), "{stdout}");
+    assert!(stdout.contains("verdict: OBTAINABLE  (existence: proven)"), "{stdout}");
+    assert!(stdout.contains("note: midgame analysis"), "{stdout}");
+}
+
+/// A save whose path cannot be written (the parent directory is missing) is
+/// the bin's error face: the piped transcript stops after the echo, the
+/// `Error: cannot write …` line goes to stderr, exit 1 — the emit_all
+/// convention over `Game::save`'s `Result` channel.
+#[test]
+fn chorus_save_failure_is_the_error_line_exit_1() {
+    let dir = std::env::temp_dir().join(format!("chorus-save-fail-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir); // the save below needs the dir MISSING
+    let log = dir.join("x.jsonl");
+    let session = format!("look\nsave {}\nquit\n", log.display());
+    let out = Command::new(env!("CARGO_BIN_EXE_chorus"))
+        .arg(SCRIPT)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write as _;
+            child.stdin.as_mut().expect("piped stdin").write_all(session.as_bytes())?;
+            child.wait_with_output()
+        })
+        .expect("the chorus bin runs");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(out.status.code(), Some(1));
+    let stdout = String::from_utf8(out.stdout).expect("stdout is UTF-8");
+    let stderr = String::from_utf8(out.stderr).expect("stderr is UTF-8");
+    assert!(stdout.contains(&format!("\u{bb} save {}", log.display())), "{stdout}");
+    assert!(stderr.starts_with("Error: cannot write "), "{stderr}");
+}
+
+/// A bare `-` is one char long — no flag is one char long on this surface —
+/// so it stays a script path (here: a missing one, the hard input error,
+/// exit 1), never the unknown-flag face.
+#[test]
+fn chorus_single_dash_is_a_script_path_not_a_flag() {
+    let (code, stdout, stderr) = run("chorus", &["-"]);
+    assert_eq!(code, Some(1));
+    assert_eq!(stdout, "");
+    assert!(stderr.starts_with("Error: "), "{stderr}");
+}
+
+/// An empty argument is filtered out before the positional scan — `chorus
+/// ""` is the no-arguments face, not a doomed read of an empty path.
+#[test]
+fn chorus_empty_argument_is_the_no_arguments_face() {
+    let (code, stdout, stderr) = run("chorus", &[""]);
+    assert_eq!(code, Some(2));
+    assert_eq!(stdout, "");
+    assert_eq!(stderr, CHORUS_SHORT_USAGE);
 }
 
 /// Flags default 200/7/400/1 (overridden here for a

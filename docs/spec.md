@@ -53,6 +53,7 @@ projection of that data, never the source of truth.
 32. **v0.7.13** — the vocabulary convergence, verb-side: a `VERB:` header declares new verb lexemes into the effective dictionary.
 33. **v0.7.14** — the ops convergence: an `ops:` section declares script-defined outcome operators, expanded at load like functions.
 34. **v0.8.0** — the bin-interface convergence: `reach` speaks the Commands + Options grammar; `--color`, lint-scripts' Options form and the tutorial land.
+35. **v0.8.1** — chorus gains `save <file>` and `--help`; the deck lint exempts once-served spec entries; same-root-cause findings dedup.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -1891,7 +1892,8 @@ grouped), `inspect <name>` (a card's face; a card that left play says
 "no longer in play (left play at action N)"; a bare `inspect` prints the
 usage and the table, never guessing a card), `journal` (canonical),
 `story` (prose), `undo` (names what it took back — `undone: « … »` or
-`undone: the wait`), `wait`, `help`, `quit`. A piped session echoes every
+`undone: the wait`), `save <file>` (the log as JSONL — the file
+`reach --from-state` replays), `wait`, `help`, `quit`. A piped session echoes every
 line as `» line` (the stand-in for a TTY's prompt + typing; on a TTY the
 `» ` prompt is drawn instead and input is not echoed).
 `suggestions()` (the try row) is `Game` API the REPL prints: verb × card
@@ -2345,7 +2347,13 @@ scenario, draw for draw, under ONE version.
   satisfy (all six comparators); an unknown `{token}` template token (the
   six roles + `{roll}`; function bodies also admit their params); a deck
   entry neither stackable by name nor by kind (the §10 livelock rule as a
-  compile-side diagnostic); an aspect read — slot query, `when`, or derive
+  compile-side diagnostic) — except a spec entry that can physically be
+  served only once (one serving position among every deck's spec and
+  `defaultcard`, once in its deck's spec, no `reset`: a spec entry served
+  once can never meet its own copy — the deck exhausts first — while a
+  `defaultcard` entry never qualifies and `spec X defaultcard X` is one
+  finding about one name); an aspect
+  read — slot query, `when`, or derive
   source — with no writer anywhere (declared `with` clauses, derive
   targets, `SET(…, aspect:x)`; every dotted prefix of a written path counts
   as written, so writing `a.b.c` satisfies reads of `a` and `a.b`, while a

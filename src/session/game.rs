@@ -4,12 +4,13 @@
 //!
 //! The full player surface: handle_line, undo
 //! (+ `turn_lengths` bookkeeping), wait's ceil-to-halfhour quantization,
-//! visible/suggestions/story/journal/look/cards/inspect, and BOTH game-over
-//! texts (this file speaks the UI notice; the engine's rejected short
-//! text stays in `engine::exec`).
+//! visible/suggestions/story/journal/look/cards/inspect/save, and BOTH
+//! game-over texts (this file speaks the UI notice; the engine's rejected
+//! short text stays in `engine::exec`).
 
 use indexmap::IndexMap;
 use std::collections::HashSet;
+use std::path::Path;
 
 use crate::content::script::{compile_script, ScriptMeta};
 use crate::content::{CompiledContent, CompiledSlot, CompiledVerb};
@@ -23,7 +24,7 @@ use crate::core::sentence::{Arg, IntoTarget};
 use crate::core::text::{cmp_ascii_ci, dsl_trim};
 use crate::core::types::{clone_state, is_truthy, AttrValue, Entity, OpenWindow, State};
 use crate::engine::fold::fold;
-use crate::engine::store::Log;
+use crate::engine::store::{save_log, Log};
 use crate::engine::{execute_step, ExecOptions};
 use crate::error::Result;
 
@@ -479,8 +480,9 @@ impl Game {
             "  role words: to · with · at · about — `use on <thing> with <proof> <proof>`".to_string(),
             "  names forgive case, underscores and articles; one distinctive word is enough".to_string(),
             "  time: an action opens a station that finishes later — `wait` jumps to the next thing due; a clock like 1:4 jumps there".to_string(),
+            "  save: write the play log to a file — `save <file.jsonl>`; `reach --from-state <file>` analyzes the midgame".to_string(),
             format!("  verbs: {}", self.verb_list()),
-            "  views: look · cards · inspect <card> · story · journal · undo · help · quit".to_string(),
+            "  views: look · cards · inspect <card> · story · journal · save <file> · undo · help · quit".to_string(),
         ])
     }
 
@@ -846,6 +848,18 @@ impl Game {
         } else {
             vec![j]
         }
+    }
+
+    /// the log as JSONL at `path` — one record per line (§7), the file
+    /// `reach --from-state` replays as a midgame starting world. A missing
+    /// path answers with the usage line instead of writing a file.
+    pub fn save(&self, path: &str) -> Result<String> {
+        let path = dsl_trim(path);
+        if path.is_empty() {
+            return Ok("save needs a file path: save <file.jsonl>".to_string());
+        }
+        save_log(Path::new(&path), &self.log.records)?;
+        Ok(format!("saved: {} record(s) -> {}", self.log.records.len(), path))
     }
 
     /// take back the last turn: truncate the log to where it started and

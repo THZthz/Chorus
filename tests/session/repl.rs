@@ -76,6 +76,17 @@ fn replay(game: &mut Game, inputs: &[&str]) -> String {
             "journal" => push_lines(&mut expected, &game.journal()),
             "look" => push_lines(&mut expected, &game.look()),
             "cards" => push_lines(&mut expected, &game.cards()),
+            _ if trimmed == "save"
+                || (trimmed.starts_with("save")
+                    && trimmed["save".len()..]
+                        .starts_with(|c: char| !c.is_ascii_alphanumeric() && c != '_')) =>
+            {
+                // the save prefix: bare `save` is the usage line,
+                // `save <file>` writes the log — one line either way
+                let rest = trimmed.strip_prefix("save").unwrap_or("");
+                let line = game.save(rest.trim()).expect("save renders");
+                push_lines(&mut expected, &[line]);
+            }
             _ if trimmed == "inspect" || trimmed.starts_with("inspect ") => {
                 let rest = trimmed.strip_prefix("inspect").unwrap_or("");
                 push_lines(&mut expected, &game.inspect(rest.trim()));
@@ -93,10 +104,10 @@ fn replay(game: &mut Game, inputs: &[&str]) -> String {
 }
 
 /// The dispatcher is routing only: a session that exercises every
-/// branch (meta words incl. help, inspect prefix incl. the Q11 bare form, a
-/// fall-through word like `inspectorish`, bad input, handle_line turns, a
-/// BOM-prefixed meta word) replays through the library Game, and the whole
-/// stdout matches byte for byte.
+/// branch (meta words incl. help, the inspect and save prefixes incl. the
+/// Q11 bare form, a fall-through word like `inspectorish` or `save5`, bad
+/// input, handle_line turns, a BOM-prefixed meta word) replays through the
+/// library Game, and the whole stdout matches byte for byte.
 #[test]
 fn repl_dispatcher_routing_matches_the_library_game_exactly() {
     let inputs = [
@@ -106,6 +117,9 @@ fn repl_dispatcher_routing_matches_the_library_game_exactly() {
         "journal",                  // meta → game.journal() (empty: the placeholder)
         "story",                    // meta → game.story() (empty: the placeholder)
         "frobnicate",               // handle_line → error turn + the live area
+        "save",                     // the save prefix, no path → the usage line
+        "saved the day",            // \b fails inside a word → handle_line
+        "save5",                    // the digit shape: no boundary → handle_line
         "inspect the wax cylinder", // inspect prefix, named card
         "inspect",                  // Q11: bare inspect is usage + the card list
         "inspectorish note",        // \b fails inside a word → handle_line
@@ -129,6 +143,61 @@ fn push_lines(out: &mut String, lines: &[String]) {
         out.push_str(l);
         out.push('\n');
     }
+}
+
+/// `save <file>` writes the JSONL action log from both surfaces: the bin
+/// and the library replay run the SAME session, each saving to its OWN tmp
+/// path (one writer per file); the transcripts match byte for byte (the
+/// only difference — the echoed path — is swapped back), and the two files
+/// are byte-equal. Nothing is left behind.
+#[test]
+fn repl_save_writes_the_log_and_bin_and_library_files_are_byte_equal() {
+    let dir = std::env::temp_dir().join(format!("chorus-repl-save-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch dir");
+    let bin_log = dir.join("bin.jsonl");
+    let lib_log = dir.join("lib.jsonl");
+
+    // the bin's session: a turn of play, then the save
+    let bin_inputs: Vec<String> = vec![
+        "look".into(),
+        "read the manifest".into(),
+        format!("save {}", bin_log.display()),
+        "quit".into(),
+    ];
+    let bin_strs: Vec<&str> = bin_inputs.iter().map(String::as_str).collect();
+    let (code, stdout, stderr) = run_repl(NIGHTJAR_SCRIPT, &bin_strs);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stderr, "", "the session must run clean");
+
+    // the library replay of the SAME session, saving to its own path
+    let lib_inputs: Vec<String> = vec![
+        "look".into(),
+        "read the manifest".into(),
+        format!("save {}", lib_log.display()),
+        "quit".into(),
+    ];
+    let lib_strs: Vec<&str> = lib_inputs.iter().map(String::as_str).collect();
+    let mut game = nightjar_game();
+    let expected = replay(&mut game, &lib_strs);
+    // the save line's echo and its confirmation both carry the path — swap
+    // it back so the two transcripts judge byte-equal
+    let expected = expected.replace(lib_log.to_str().unwrap(), bin_log.to_str().unwrap());
+    assert_eq!(stdout, expected, "the bin is routing only");
+
+    // the two saves are the same records
+    let from_bin = std::fs::read(&bin_log).expect("the bin wrote its log");
+    let from_lib = std::fs::read(&lib_log).expect("the replay wrote its log");
+    assert!(!from_bin.is_empty(), "the played session logged records");
+    assert_eq!(from_bin, from_lib, "both surfaces wrote the same records");
+    // the confirmation line names the count: every written line parses as
+    // one record, so the count is the file's line count
+    let count = from_bin.iter().filter(|b| **b == b'\n').count();
+    assert!(
+        stdout.contains(&format!("saved: {count} record(s) -> {}", bin_log.display())),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Q11: bare `inspect` names the usage and lists the table — it does NOT
@@ -179,8 +248,9 @@ fn the_banner_and_help_tell_a_new_player_what_to_type() {
     assert_eq!(lines[7], "\u{bb} help");
     assert_eq!(lines[8], "how to play");
     assert!(stdout.contains("people go BEFORE the verb"));
-    assert!(stdout
-        .contains("views: look · cards · inspect <card> · story · journal · undo · help · quit"));
+    assert!(stdout.contains(
+        "views: look · cards · inspect <card> · story · journal · save <file> · undo · help · quit"
+    ));
     // every try-row entry is a line the game accepts as a real turn
     let mut game = nightjar_game();
     let try_row = lines[4].trim_start_matches("try: ").split(" · ");

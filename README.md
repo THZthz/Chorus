@@ -15,6 +15,14 @@ Play (line REPL):
 cargo run --bin chorus -- scripts/the-nightjar-flyer.txt   # or any script file
 ```
 
+A real save, replayed by the analyzer — inside the REPL `save <file>` writes
+the action log, and `reach --from-state` reads it back as a midgame world:
+
+```sh
+printf 'look\nread the manifest\nsave /tmp/log.jsonl\nquit\n' | cargo run --bin chorus -- scripts/the-nightjar-flyer.txt
+cargo run --bin reach -- scripts/the-nightjar-flyer.txt card THE_WAX_CYLINDER --from-state /tmp/log.jsonl
+```
+
 Analyze a script — `reach` answers "can the player obtain card X?" statically,
 over the compiled script, before play:
 

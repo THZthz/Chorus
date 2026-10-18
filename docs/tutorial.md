@@ -93,9 +93,10 @@ What just happened, line by line:
   world moved (the 22:00 timetable trigger — the body being found — fired in
   the same pass).
 
-The meta words are one-word commands: `look`, `cards`,
+The meta words are typed commands: `look`, `cards`,
 `inspect <card>`, `story` (the prose so far), `journal` (the canonical
-sentences), `undo`, `wait`, `help`, `quit`.
+sentences), `save <file>` (the log as JSONL), `undo`, `wait`, `help`,
+`quit`.
 
 Now run the two analyzers over the same script:
 
@@ -638,8 +639,9 @@ New ideas:
 
   (The nightjar's `DREAMS spec PORTENT, PORTENT, VOID` is exactly that
   shape — a door that empties — on purpose. Mark deck entries `stackable`
-  while you are at it: the lint flags every non-stackable one; §4 has the
-  details.)
+  while you are at it: the lint flags a non-stackable entry unless it can
+  physically be dealt only once — one serving position across every deck,
+  no `reset`; §4 has the details.)
 - **Functions** are parametric outcome macros; the call `delivery(1)` expands
   at load time — the log never shows the call. `{n}` interpolates the
   argument. Write `{who}`-style tokens only for declared parameters; an
@@ -1092,13 +1094,26 @@ When a site cannot be proven, the report names its reasons. Translations:
   triggers beyond minute M have not fired yet, long windows do not finish in
   time. The head gains `[by minute N]`. Use it to answer "can the player win
   *before the train arrives*".
-- **`--from-state <log.jsonl>`** — replay a real save as the starting world.
-  `examples/make-midgame-log.rs` writes one:
+- **`--from-state <log.jsonl>`** — replay a real save as the starting
+  world. The REPL's `save <file>` writes one — play a few turns, `save`,
+  `quit`, then point reach at the same script the log came from:
 
   ```sh
-  cargo run --example make-midgame-log -- scripts/cultist-slice.txt /tmp/midgame.jsonl
+  printf 'look\nwork with vigor\nwork with wits\nwait\nwait\nsave /tmp/midgame.jsonl\nquit\n' | ./target/debug/chorus scripts/cultist-slice.txt
   ./target/debug/reach scripts/cultist-slice.txt card THE_TURNING
   ./target/debug/reach scripts/cultist-slice.txt card THE_TURNING --from-state /tmp/midgame.jsonl
+  ```
+
+  Real output (the second call; the log and the script travel as a pair):
+
+  ```
+  scripts/cultist-slice.txt · card THE_TURNING
+    verdict: OBTAINABLE  (existence: proven)
+    path 1/1:
+      · initial 'THE_TURNING' — via initial entity THE_TURNING (state)
+          · THE_TURNING is declared in the initial entities (state)
+    bindable via DREAM.with (query matches)
+    note: midgame analysis: the initial world is replayed from a log — modeled: the replayed entities and clock (first crossings re-anchor to minute 600), 0 already-fired once trigger(s) (they never fire again), 0 non-reset deck cursor(s) (draws serve from the cursor forward); read but not modeled: open windows (the lock table), the executed-recipe map, the rng counter
   ```
 
   Before play, `THE_TURNING` is proven through the bootstrap chain (`via
@@ -1107,7 +1122,9 @@ When a site cannot be proven, the report names its reasons. Translations:
   fidelity note listing what is modeled (entities, clock, spent `once`
   triggers, deck cursors) and what is not (open windows, executed recipes,
   the dice counter). An *ended* log is refused — a finished world has
-  nothing left to reach.
+  nothing left to reach. (A library-side alternative that writes the same
+  shape of log: `cargo run --example make-midgame-log --
+  scripts/cultist-slice.txt /tmp/midgame.jsonl`.)
 
 ### 3.5 Machine faces
 
@@ -1159,25 +1176,29 @@ Three finding classes:
   normalized `when` (shadowing), a `count(actors) <= 0` gate the slot
   cardinality can never satisfy, an unknown `{token}` in a template, a deck
   entry that is not stackable, an aspect that is read but never written
-  anywhere, an entity name that needs quoting everywhere. One of these is
-  stricter than it reads: the **deck-entry rule is one-cut** — *every*
-  non-stackable deck entry is flagged, even in a draw-once deck with no
-  `reset` and no `defaultcard`, where the entry could physically be dealt
-  only once. The lint cannot see that a recipe consumes the card, so it
-  never grants the "or it's spent on the same step" exemption the spec
-  allows. Real case, from a deck written exactly that way
-  (`OMENS spec PORTENT`, `PORTENT` not stackable, nothing else):
+  anywhere, an entity name that needs quoting everywhere. One of these has
+  a physical out: the **deck-entry rule exempts an entry that can only ever
+  be dealt once** — its name is served by exactly one position across every
+  deck's `spec`/`defaultcard`, it appears once in its deck's spec, and the
+  deck has no `reset` (a spec entry served once can never meet its own
+  copy — the deck exhausts first). Everything else is flagged: a name
+  served twice, a `defaultcard` entry (it serves forever), a `reset` deck
+  (the wrap deals everything again). Real case, from a deck whose one name
+  sits in both the spec and the defaultcard:
 
   ```
-  oneshot-deck.txt:
+  omens-deck.txt:
     - deck OMENS: entry PORTENT is not stackable — served again while a copy lives, the spawn collides (§10 livelock rule)
 
   1 file(s), 1 finding(s)
   ```
 
-  Mark deck entries `stackable` and the file goes clean.
+  Mark the entries `stackable` (or give the name a single serving
+  position) and the file goes clean. A count-gate ERROR and the
+  never-matching WARNING below are one root cause on one recipe — the lint
+  reports the ERROR alone.
 - **`[warning]`** — a `when` that can *provably* never match, e.g. a real
-  line from linting the bundled slice:
+  line from linting the bundled cultist-full:
   `- [warning] recipe talk.inspiremystique.x2 (TALK): the when can never match — count(actors) < 1 can never hold — actors takes 1..1 here (§6.1) (§6.3)`.
 - **`[reach]`** — with `--reach`, the reach analyzer's whole-world design
   smells, addressed by owner (recipe/trigger/verb) rather than line.
@@ -1254,10 +1275,13 @@ a genuinely unreachable recipe and a misspelled aspect.
 
 ```
 usage: chorus <script.txt>
+       a line REPL: type what happens, or help/look/cards/story/journal/save/undo/wait/inspect/quit
+try 'chorus --help' for how to play
 ```
 
 One argument: the script file. Exit 0 on quit/EOF, 1 on unreadable or
-uncompilable script, 2 on missing argument.
+uncompilable script, 2 on argv errors (no script path, an unknown flag, an
+extra positional word).
 
 Typed words: actions in plain English (`read the manifest`, `question the
 guard`, `fill the lamp with the oil jug`); people go **before** the verb when
@@ -1266,12 +1290,44 @@ slots (`use on <thing> with <proof> <proof>`); names forgive case,
 underscores, articles and possessives, and one distinctive word is enough
 (`read ledger` finds `THE_VANE_LEDGER`). Strict canonical sentences
 (`0:42 @ MARCH WAIT`) pass through unchanged. Meta words: `look`, `cards`,
-`inspect <card>`, `story`, `journal`, `undo`, `wait`, `help`, `quit`. Time:
-an action opens a station; `wait` jumps to the next due thing (or one hour
-if nothing is due); a clock like `1:4` jumps there; `undo` truncates the log
-to the turn boundary.
+`inspect <card>`, `story`, `journal`, `save <file.jsonl>`, `undo`, `wait`,
+`help`, `quit`. Time: an action opens a station; `wait` jumps to the next
+due thing (or one hour if nothing is due); a clock like `1:4` jumps there;
+`undo` truncates the log to the turn boundary. `save` writes the JSONL log
+to a file — hand it to `reach --from-state` (§3.4) to analyze the midgame.
 
-The game's own `help` (verbatim):
+`chorus --help` (verbatim, exit 0; `-h` anywhere in the arguments does the same):
+
+```
+chorus — the line REPL: a script file played as a text game
+
+usage: chorus <script.txt>
+try 'chorus --help' for how to play
+
+The player types plain English-ish sentences; the banner's `try:` row
+lists what the game understands right now. Meta words (typed as-is):
+
+  look                the place, the clock, what is here and carried
+  cards               the visible table
+  inspect <card>      one card's face; a bare `inspect` prints usage + the table
+  story               the prose so far
+  journal             the canonical log
+  save <file.jsonl>   write the action log — `reach --from-state <file>` replays it
+  undo                take back the last turn
+  wait                jump to the next due completion (or one hour)
+  help                how to play
+  quit                leave
+
+Options:
+  -h, --help  print help
+
+examples:
+  chorus scripts/the-nightjar-flyer.txt
+  printf 'look\nread the manifest\nsave /tmp/log.jsonl\nquit\n' | chorus scripts/the-nightjar-flyer.txt
+  reach scripts/the-nightjar-flyer.txt card THE_WAX_CYLINDER --from-state /tmp/log.jsonl
+```
+
+The game's own `help` (verbatim, from the nightjar):
 
 ```
 how to play
@@ -1280,8 +1336,9 @@ how to play
   role words: to · with · at · about — `use on <thing> with <proof> <proof>`
   names forgive case, underscores and articles; one distinctive word is enough
   time: an action opens a station that finishes later — `wait` jumps to the next thing due; a clock like 1:4 jumps there
+  save: write the play log to a file — `save <file.jsonl>`; `reach --from-state <file>` analyzes the midgame
   verbs: read · talk · explore · use on · travel to · wait · study · work · mansus · locate at · dream · acquire
-  views: look · cards · inspect <card> · story · journal · undo · help · quit
+  views: look · cards · inspect <card> · story · journal · save <file> · undo · help · quit
 ```
 
 ### reach — analyze
@@ -1425,12 +1482,13 @@ triggers: an event has no step and no window. Move the logic into a verb
 recipe, or end with `ENDING`.
 
 **"deck OMENS: entry PORTENT is not stackable — served again while a copy
-lives, the spawn collides"** (lint) — the lint flags every non-stackable
-deck entry, one-cut: even a draw-once deck with no `reset` and no
-`defaultcard` (where the entry can only ever be dealt once) is told to mark
-it `stackable`, because the lint cannot see that a recipe consumes the card
-on the same step. Mark deck entries `stackable` unless the card truly is
-unique-and-replaceable by design.
+lives, the spawn collides"** (lint) — the deck serves this non-stackable
+name more than once (a repeated spec entry, a `defaultcard`, a `reset`
+wrap, or a second deck dealing the same name), so a second copy will
+collide with a living one. Mark the card `stackable`, or give the name a
+single serving position. A non-stackable spec entry that can only ever be
+dealt once (one position across every deck, once in its spec, no `reset`)
+is exempt — the deck exhausts before a second copy exists.
 
 **Play: `SPAWN: name 'THE_KEEPERS_NOTE' already in use`** — a completion
 tried to mint a non-stackable card whose name is alive (usually: a

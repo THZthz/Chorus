@@ -26,6 +26,11 @@
 //! typed views, so bare `wait` means game.wait() (advance the
 //! clock), NOT the WAIT verb. The verb stays reachable as `march wait` /
 //! `ANA WAIT` / canonical `0:42 @ MARCH WAIT`.
+//!
+//! The `save <file>` meta word writes the JSONL action log (Game::save) —
+//! the file `reach --from-state` replays as a midgame world; a bare `save`
+//! answers with the usage line, and a word like `saved` is no save at all
+//! (the ASCII `\b` class) and falls through to handle_line.
 
 use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
@@ -34,12 +39,65 @@ use chorus::core::dict::core_dictionary;
 use chorus::core::text::dsl_trim;
 use chorus::session::game::Game;
 
+/// The no-arguments face and the tail of every argv error: one usage line
+/// with the meta words, plus the `chorus --help` hint (the cargo/uv
+/// convention), stderr, exit 2.
+const SHORT_USAGE: &str = "usage: chorus <script.txt>\n       a line REPL: type what happens, or help/look/cards/story/journal/save/undo/wait/inspect/quit\ntry 'chorus --help' for how to play\n";
+
+/// The full `--help` text (stdout, exit 0) — the plain-text style of the
+/// reach/lint-scripts helps: usage, the meta words, one option, examples.
+const HELP: &str = "\
+chorus — the line REPL: a script file played as a text game
+
+usage: chorus <script.txt>
+try 'chorus --help' for how to play
+
+The player types plain English-ish sentences; the banner's `try:` row
+lists what the game understands right now. Meta words (typed as-is):
+
+  look                the place, the clock, what is here and carried
+  cards               the visible table
+  inspect <card>      one card's face; a bare `inspect` prints usage + the table
+  story               the prose so far
+  journal             the canonical log
+  save <file.jsonl>   write the action log — `reach --from-state <file>` replays it
+  undo                take back the last turn
+  wait                jump to the next due completion (or one hour)
+  help                how to play
+  quit                leave
+
+Options:
+  -h, --help  print help
+
+examples:
+  chorus scripts/the-nightjar-flyer.txt
+  printf 'look\\nread the manifest\\nsave /tmp/log.jsonl\\nquit\\n' | chorus scripts/the-nightjar-flyer.txt
+  reach scripts/the-nightjar-flyer.txt card THE_WAX_CYLINDER --from-state /tmp/log.jsonl
+";
+
 fn main() -> ExitCode {
-    // the script path is the one CLI argument — the script's own `script:`
-    // line names the game
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let Some(file) = args.first().filter(|f| !f.is_empty()) else {
-        eprintln!("usage: chorus <script.txt>\n       a line REPL: type what happens, or help/look/cards/story/journal/undo/wait/inspect/quit");
+    // one CLI argument — the script path (the script's own `script:` line
+    // names the game). `--help`/`-h` anywhere wins; anything else starting
+    // with `-` is an unknown flag, and a second positional word is named,
+    // never silently dropped
+    let args: Vec<String> = std::env::args().skip(1).filter(|a| !a.is_empty()).collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print!("{HELP}");
+        return ExitCode::from(0);
+    }
+    let mut script: Option<&String> = None;
+    for a in &args {
+        if a.starts_with('-') && a.len() > 1 {
+            eprint!("unknown flag '{a}'\n{SHORT_USAGE}");
+            return ExitCode::from(2);
+        }
+        if script.replace(a).is_some() {
+            eprint!("unexpected argument '{a}'\n{SHORT_USAGE}");
+            return ExitCode::from(2);
+        }
+    }
+    let Some(file) = script else {
+        eprint!("{SHORT_USAGE}");
         return ExitCode::from(2);
     };
 
@@ -100,8 +158,8 @@ fn main() -> ExitCode {
     ExitCode::from(0)
 }
 
-/// one dispatched line — the single routing point (the inspect prefix and
-/// the meta commands, converged here).
+/// one dispatched line — the single routing point (the inspect and save
+/// prefixes and the meta commands, converged here).
 fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
     // the DSL whitespace class (Q8): a pasted BOM or a non-ASCII space
     // before `quit` must not turn the word into a failed action
@@ -123,6 +181,19 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
         }
         // a word like `inspector …` falls through to handle_line (the regex
         // would also reject it: \b fails inside a word)
+    }
+    // `/^save\b\s*(.*)$/` over the trimmed line; the SAME ASCII
+    // word-boundary class as the inspect prefix: a following word
+    // (`saved`, `saving`, `save5`) means NO boundary and the line falls
+    // through to handle_line
+    if let Some(rest) = trimmed.strip_prefix("save") {
+        if rest.is_empty() || rest.starts_with(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+            // bare `save` is the usage line (Game::save's empty-path
+            // branch); `save  x` trims the rest — one line either way
+            emit_all(game.save(rest.trim()).map(|l| vec![l]), out);
+            return Flow::Continue;
+        }
+        // a word like `saved …` falls through (the boundary fails)
     }
     // the meta commands (the typed views); the turns — undo, wait, a line of
     // play — are followed by the live area (what is processing, what to try)

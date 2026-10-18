@@ -280,6 +280,32 @@ verbs:
     assert!(!w.iter().any(|x| x.contains("talk.duo")), "{w:?}"); // = 2 is satisfiable
 }
 
+/// One `when`, one verdict: the slot-dead count gate already proves the
+/// recipe's when false, so the count-gate ERROR and the never-matching
+/// WARNING (the same root cause) surface as ONE finding. A count over a
+/// role the verb never declares produces no count-gate error at all — that
+/// warning survives the guard
+/// (`a_count_over_a_role_the_verb_never_binds_warns_and_its_negation_does_not`).
+#[test]
+fn a_slot_dead_count_gate_reports_one_error_not_an_error_plus_its_warning() {
+    let findings = findings_for(
+        "
+verbs:
+  TALK:
+    actors: 1..2 kind:character
+    duration: 30m
+    recipes:
+      talk.trio when count(actors) >= 3 -> NARRATE \"three.\"
+",
+    );
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert_eq!(findings[0].severity, LintSeverity::Error, "{findings:?}");
+    assert!(
+        findings[0].message.contains("talk.trio") && findings[0].message.contains(">= 3"),
+        "{findings:?}"
+    );
+}
+
 /// `!=` is the count-gate alternation's sixth op. Its arm: dead only when
 /// the slot's WHOLE range is the excluded value; a partial
 /// exclusion (or any other slot value) is satisfiable and silent.
@@ -373,6 +399,215 @@ verbs:
     )
     .unwrap();
     assert!(w.iter().any(|x| x.contains("deck POST: entry LETTER is not stackable")), "{w:?}");
+}
+
+// ---------------------------------------------------------------------------
+// the deck livelock rule's once-only exemption — a non-stackable spec entry
+// that can physically be served only once cannot collide with itself
+// ---------------------------------------------------------------------------
+
+/// One spec entry, no `reset`, no other deck serving the name: the deck is
+/// exhausted before a second copy is ever asked for — clean.
+#[test]
+fn a_once_served_spec_entry_without_reset_is_exempt() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+
+decks:
+  POST spec LETTER
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(w, Vec::<String>::new(), "{w:?}");
+}
+
+/// A repeated spec entry is served at two positions — the exemption never
+/// applies, and each served position speaks.
+#[test]
+fn a_spec_entry_served_twice_is_reported_per_position() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+
+decks:
+  POST spec LETTER, LETTER
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    let deck: Vec<_> = w.iter().filter(|x| x.contains("entry LETTER is not stackable")).collect();
+    assert_eq!(deck.len(), 2, "{w:?}");
+}
+
+/// `reset` wraps the spec: the entry is served again after the wrap, so the
+/// once-only physics never holds.
+#[test]
+fn a_reset_deck_reports_its_once_entry() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+
+decks:
+  POST spec LETTER reset
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(
+        w.iter().filter(|x| x.contains("entry LETTER is not stackable")).count(),
+        1,
+        "{w:?}"
+    );
+}
+
+/// A defaultcard serves forever, but the SPEC period still deals each spec
+/// entry exactly once — the spec entry stays exempt beside one.
+#[test]
+fn a_defaultcard_deck_still_exempts_its_once_spec_entry() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+  COIN is resource stackable
+
+decks:
+  POST spec LETTER defaultcard COIN
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(w, Vec::<String>::new(), "{w:?}");
+}
+
+/// The defaultcard entry itself is never exempt: it is served on every
+/// later draw.
+#[test]
+fn the_defaultcard_entry_itself_is_reported() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+  COIN is resource stackable
+
+decks:
+  POST spec COIN defaultcard LETTER
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(
+        w.iter().filter(|x| x.contains("entry LETTER is not stackable")).count(),
+        1,
+        "{w:?}"
+    );
+}
+
+/// A second deck serving the same name hands the first deck a living copy
+/// to collide with — both decks report.
+#[test]
+fn the_same_name_in_two_decks_reports_from_both() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+
+decks:
+  POST spec LETTER
+  POST2 spec LETTER
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(
+        w.iter().filter(|x| x.contains("entry LETTER is not stackable")).count(),
+        2,
+        "{w:?}"
+    );
+}
+
+/// The census counts defaultcard positions too: deck A's spec serves the
+/// name exactly once, but deck B's `defaultcard` deals the same name again
+/// on every later draw — the exemption is cancelled and both decks report.
+#[test]
+fn a_defaultcard_in_another_deck_cancels_the_once_spec_entrys_exemption() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+  COIN is resource stackable
+
+decks:
+  POST spec LETTER
+  POST2 spec COIN defaultcard LETTER
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    let deck: Vec<_> = w.iter().filter(|x| x.contains("entry LETTER is not stackable")).collect();
+    assert_eq!(deck.len(), 2, "{w:?}");
+    assert!(deck.iter().any(|x| x.contains("deck POST:")), "{deck:?}");
+    assert!(deck.iter().any(|x| x.contains("deck POST2:")), "{deck:?}");
+}
+
+/// `spec X defaultcard X` is one problem about one name: exactly one
+/// finding (the spec position's), never the byte-identical pair.
+#[test]
+fn spec_and_defaultcard_naming_one_entry_report_once() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+
+decks:
+  POST spec LETTER defaultcard LETTER
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    let deck: Vec<_> = w.iter().filter(|x| x.contains("entry LETTER is not stackable")).collect();
+    assert_eq!(deck.len(), 1, "{w:?}");
+}
+
+/// The kind-level check answers first: an entry whose kind is stackable is
+/// clean without the exemption ever being consulted.
+#[test]
+fn a_stackable_kind_entry_is_clean_without_the_exemption() {
+    let dict = core_dictionary();
+    let w = lint_script(
+        &base(
+            r#"
+  LETTER is text with secret:1
+  SCRAP is text stackable
+
+decks:
+  POST spec LETTER, LETTER reset
+"#,
+        ),
+        &dict,
+    )
+    .unwrap();
+    assert_eq!(w, Vec::<String>::new(), "{w:?}");
 }
 
 #[test]

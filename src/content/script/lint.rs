@@ -183,6 +183,14 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             } else {
                 whens.insert(norm, id.clone());
             }
+            // one `when`, one verdict: a count-gate error and the
+            // never-matching warning name the SAME deadness (a gate the
+            // slot cannot satisfy already proves the when false), so the
+            // error speaks and the warning stands down. A count over a role
+            // the verb never declared has no error to stand down for — its
+            // count binds nothing (§6.6), and the warning is the only
+            // finding that names it.
+            let mut gate_error = false;
             for cap in count_gate_re().captures_iter(when) {
                 let role = grp_text(&cap, 1);
                 let Some(slot) = slot_of.get(role) else {
@@ -194,8 +202,8 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 // an absent bound, so the over-max arms are false.
                 // `!=` (the alternation's sixth op) is dead only when the
                 // slot's WHOLE range is the excluded value — without this
-                // arm the unreachable below aborted the whole lint run on
-                // any authored `count(role) != k` (repro'd at HEAD).
+                // arm the whole lint run aborts on any authored
+                // `count(role) != k`.
                 let dead = match op {
                     "=" => k < slot.min || slot.max.is_some_and(|mx| k > mx),
                     "!=" => slot.min == k && slot.max == Some(k),
@@ -206,6 +214,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                     _ => unreachable!("count-gate alternation only yields >=|<=|>|<|=|!="),
                 };
                 if dead {
+                    gate_error = true;
                     let range = match slot.max {
                         Some(mx) => format!("{}..{mx}", slot.min),
                         None => format!("{}..∞", slot.min),
@@ -218,16 +227,20 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             // E11: the never-matching-`when` detector (the WARNING class).
             // compile_script above already parsed (and arg-linted) every
             // when, so the parse here cannot fail — a failure is skipped,
-            // never a panic (the lint never throws).
-            if let Ok(pred) = parse_predicate(when, eff) {
-                let mut cx = WhenCx::new(&slot_ranges);
-                if let WhenVerdict::Dead(reason) = when_verdict(&pred, false, &mut cx) {
-                    findings.push(LintFinding {
-                        severity: LintSeverity::Warning,
-                        message: format!(
-                            "recipe {id} ({name}): the when can never match — {reason} (§6.3)"
-                        ),
-                    });
+            // never a panic (the lint never throws). A count-gate error on
+            // this recipe already reported the deadness (one root cause,
+            // one finding); without one, the detector speaks.
+            if !gate_error {
+                if let Ok(pred) = parse_predicate(when, eff) {
+                    let mut cx = WhenCx::new(&slot_ranges);
+                    if let WhenVerdict::Dead(reason) = when_verdict(&pred, false, &mut cx) {
+                        findings.push(LintFinding {
+                            severity: LintSeverity::Warning,
+                            message: format!(
+                                "recipe {id} ({name}): the when can never match — {reason} (§6.3)"
+                            ),
+                        });
+                    }
                 }
             }
         }
@@ -283,15 +296,34 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
 
     // the §10 livelock rule: deck entries should be stackable (or consumed
     // and renamed on the same step) — served twice while a copy lives, the
-    // second spawn name-collides and rejects the step (§9.2)
+    // second spawn name-collides and rejects the step (§9.2). A non-stackable
+    // spec entry that can physically be served only ONCE cannot collide with
+    // itself: the deck exhausts before a second copy is ever asked for.
     let declared = declared_entities(&script.entities);
     let (stackable_names, stackable_kinds) =
         collect_stackable(&declared, script.content.prototypes.as_ref());
     if let Some(decks) = &script.content.decks {
+        // the serve census: how many spec/defaultcard positions across ALL
+        // decks serve each name — a name with a second serving position can
+        // meet the copy that position dealt, whatever each deck's own shape
+        let mut served: IndexMap<&str, usize> = IndexMap::new();
         for d in decks {
+            for e in &d.spec {
+                *served.entry(e).or_insert(0) += 1;
+            }
+            if let Some(dc) = &d.defaultcard {
+                *served.entry(dc).or_insert(0) += 1;
+            }
+        }
+        for d in decks {
+            // `spec X defaultcard X` is one problem about one name — the
+            // defaultcard occurrence adds no second finding (the spec
+            // occurrence speaks for the name)
             let mut entries: Vec<&String> = d.spec.iter().collect();
             if let Some(dc) = &d.defaultcard {
-                entries.push(dc);
+                if !d.spec.contains(dc) {
+                    entries.push(dc);
+                }
             }
             for entry in entries {
                 // prototype kind first, then the
@@ -305,14 +337,25 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                     .or_else(|| {
                         script.entities.iter().find(|e| &e.name == entry).map(|e| e.kind.as_str())
                     });
-                if !stackable_names.contains(entry)
-                    && !kind.is_some_and(|k| stackable_kinds.contains(k))
+                if stackable_names.contains(entry)
+                    || kind.is_some_and(|k| stackable_kinds.contains(k))
                 {
-                    findings.push(LintFinding::error(format!(
-                        "deck {}: entry {entry} is not stackable — served again while a copy lives, the spawn collides (§10 livelock rule)",
-                        d.id
-                    )));
+                    continue;
                 }
+                // the once-only physics, all three required: the entry comes
+                // from the spec (a defaultcard serves forever), exactly once
+                // in this deck's spec, and no other position anywhere serves
+                // the name; `reset` wraps the spec, so every entry is served
+                // again after the wrap
+                let in_spec_once = d.spec.iter().filter(|e| *e == entry).count() == 1;
+                let served_once = served.get(entry.as_str()).is_some_and(|&n| n == 1);
+                if in_spec_once && !d.reset && served_once {
+                    continue;
+                }
+                findings.push(LintFinding::error(format!(
+                    "deck {}: entry {entry} is not stackable — served again while a copy lives, the spawn collides (§10 livelock rule)",
+                    d.id
+                )));
             }
         }
     }

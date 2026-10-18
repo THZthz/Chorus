@@ -1122,9 +1122,7 @@ When a site cannot be proven, the report names its reasons. Translations:
   fidelity note listing what is modeled (entities, clock, spent `once`
   triggers, deck cursors) and what is not (open windows, executed recipes,
   the dice counter). An *ended* log is refused — a finished world has
-  nothing left to reach. (A library-side alternative that writes the same
-  shape of log: `cargo run --example make-midgame-log --
-  scripts/cultist-slice.txt /tmp/midgame.jsonl`.)
+  nothing left to reach.
 
 ### 3.5 Machine faces
 

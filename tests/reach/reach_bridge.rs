@@ -255,34 +255,6 @@ fn lint_scripts_reach_flag_and_the_unchanged_default() {
         "--reach with no named files lost the default list"
     );
 
-    // the bundled slice is lint-clean but whole-world-risky: the pinned
-    // --reach stream (five DREAM/USE_ON recipes minting living non-stackable
-    // cards — VIGOR and its foundation kin — plus mansus.enter's BELLWOOD
-    // draw pinned at 1 by the THE_PALE_YEARNING co-mint)
-    let slice = format!("{}/scripts/cultist-slice.txt", env!("CARGO_MANIFEST_DIR"));
-    let out = Command::new(env!("CARGO_BIN_EXE_lint-scripts"))
-        .args(["--reach", &slice])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect("the bin spawns");
-    assert_eq!(out.status.code(), Some(0));
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-    let expected = format!(
-        "\
-{slice}:
-  - [reach] recipe dream.rest_vigor of DREAM: its list's non-stackable mints can collide with a living card or another owner's mint at a crossing — the collision refuses the whole draft (§13.1)
-  - [reach] recipe dream.rest_wits of DREAM: its list's non-stackable mints can collide with a living card or another owner's mint at a crossing — the collision refuses the whole draft (§13.1)
-  - [reach] recipe dream.rest_yearning of DREAM: its list's non-stackable mints can collide with a living card or another owner's mint at a crossing — the collision refuses the whole draft (§13.1)
-  - [reach] recipe dream.mend of DREAM: its list's non-stackable mints can collide with a living card or another owner's mint at a crossing — the collision refuses the whole draft (§13.1)
-  - [reach] recipe dream.fever of DREAM: its list's non-stackable mints can collide with a living card or another owner's mint at a crossing — the collision refuses the whole draft (§13.1)
-  - [reach] recipe rite.salve of USE_ON: its list's non-stackable mints can collide with a living card or another owner's mint at a crossing — the collision refuses the whole draft (§13.1)
-  - [reach] recipe mansus.enter of MANSUS: its DRAW from deck BELLWOOD freezes the cursor at 1 served position(s) — a non-stackable co-mint in the same list pins the draw (§13.1)
-
-1 file(s), 0 finding(s), 0 warning(s), 7 reach finding(s) — warnings and reach findings advise, the exit code stays 0
-"
-    );
-    assert_eq!(stdout, expected, "the bundled slice's --reach stream drifted");
-
     // the bundled flyer: one reach finding (talk.meet_spiritualist's RUMOURS
     // draw pinned by its co-mint), exit 0
     let flyer = format!("{}/scripts/the-nightjar-flyer.txt", env!("CARGO_MANIFEST_DIR"));

@@ -10,8 +10,6 @@
 //! one clean pair releases, only every pair dirty demotes). The support
 //! lines here are byte-frozen (the render contract).
 
-use std::process::Command;
-
 use indexmap::IndexMap;
 
 use chorus::content::{
@@ -412,35 +410,4 @@ fn an_optional_min0_slot_never_force_locks_so_the_completing_recipe_proves() {
         .chain
         .join("\n")
         .contains("WORK committable: actors ×1 ← initial entity ANA (character)"));
-}
-
-/// The integration smoke: the cultist slice's THE_TURNING is minted ONLY by
-/// `on complete` clauses (VIGOR#2's `on complete job`, the two posts'), and
-/// the probe must still prove it — the tightened window witness resolves to
-/// WORK's `with` slot (0..1: an optional fill the player includes) under
-/// work.vigor (aspects labor, job), exit 0, OBTAINABLE, the byte-exact
-/// support line — and `--all` must sweep the whole slice without a panic.
-#[test]
-fn cultist_slice_the_turning_proves_via_its_complete_triggers_and_all_exits_0() {
-    let probe = Command::new(env!("CARGO_BIN_EXE_reach"))
-        .args(["scripts/cultist-slice.txt", "card", "THE_TURNING"])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect("the reach bin spawns");
-    assert_eq!(probe.status.code(), Some(0));
-    let out = String::from_utf8_lossy(&probe.stdout);
-    assert!(out.contains("verdict: OBTAINABLE"), "{out}");
-    assert!(
-        out.contains(
-            "trigger complete:VIGOR#2 fires when a window completes binding 'VIGOR' — completion is arrangeable (commit WORK locking 'VIGOR' in its with slot; recipe work.vigor completes the window and declares the 'job' aspect)"
-        ),
-        "{out}"
-    );
-
-    let all = Command::new(env!("CARGO_BIN_EXE_reach"))
-        .args(["scripts/cultist-slice.txt", "all"])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect("the reach bin spawns");
-    assert_eq!(all.status.code(), Some(0));
 }

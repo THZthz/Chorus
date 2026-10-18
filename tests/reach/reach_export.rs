@@ -4,8 +4,8 @@
 //! fixture whose shapes are the simple ones (an initial card, one proven
 //! recipe site with a slot filler, one fallback-blocked trigger site), the
 //! CLI faces run as a subprocess (the array face, the --why merge, the
-//! demand face, the priority), and the scale/determinism guard runs the
-//! graph over the bundled cultist-slice world.
+//! demand face, the priority), and the determinism guard runs the graph
+//! over the bundled nightjar world.
 
 use std::process::Command;
 
@@ -397,76 +397,19 @@ verbs:
     assert_eq!(g, graph_dot(&content, &state, &dict), "byte-identical across runs");
 }
 
-/// The determinism contract at scale: the graph over the bundled
-/// cultist-slice world (86 universe/initial nodes — the slice's whole mint
-/// universe) is byte-identical across runs, its node ids ascend under
-/// cmp_utf16, its edge lines (src, dst, label) ascend under the same order
-/// after the node block, and the spawn + dashed-kill edge families ride
-/// (the slice has no PROVEN expire site — the requires family is pinned on
-/// the small fixture above and on nightjar below). (cultist-full is out
-/// of scope — unverified.)
+/// The determinism contract over the bundled nightjar world: the graph is
+/// byte-identical across runs, and the expiry trigger's proven REPLACE site
+/// grows the `THE_TENDED_LORD -> THE_LATE_LORD requires` edge (the requires
+/// family; the filler family is pinned on the small fixture above).
 #[test]
-fn graph_is_deterministic_and_scales_to_cultist_slice() {
-    let text = std::fs::read_to_string("scripts/cultist-slice.txt").expect("bundled script");
-    let dict = core_dictionary();
-    let cs = compile_script(&text, &dict).expect("cultist-slice compiles");
-    let CompiledScript { content, state, .. } = cs;
-    let g1 = graph_dot(&content, &state, &dict);
-    let g2 = graph_dot(&content, &state, &dict);
-    assert_eq!(g1, g2, "two runs over the same inputs must be byte-identical");
-    assert!(g1.starts_with("digraph reach {\n  rankdir=LR;\n"));
-    assert!(g1.ends_with("}\n"));
-    let utf16 = |s: &str| s.encode_utf16().collect::<Vec<_>>();
-    let mut nodes = 0usize;
-    let mut edges: Vec<(String, String, String)> = Vec::new();
-    let mut prev_node: Option<String> = None;
-    let mut node_block = true;
-    for line in g1.lines().skip(2) {
-        if line == "}" {
-            break;
-        }
-        if let Some((src, dst, label)) = edge_of(line) {
-            node_block = false;
-            edges.push((src, dst, label));
-        } else {
-            assert!(node_block, "no node line may follow an edge line: {line}");
-            let id = line.trim_start().split('"').nth(1).expect("quoted id").to_string();
-            if let Some(p) = &prev_node {
-                assert!(utf16(p) <= utf16(&id), "node ids ascend under cmp_utf16: {p} then {id}");
-            }
-            prev_node = Some(id);
-            nodes += 1;
-        }
-    }
-    let mut sorted_edges = edges.clone();
-    sorted_edges.sort_by(|a, b| {
-        utf16(&a.0)
-            .cmp(&utf16(&b.0))
-            .then(utf16(&a.1).cmp(&utf16(&b.1)))
-            .then(utf16(&a.2).cmp(&utf16(&b.2)))
-    });
-    assert_eq!(edges, sorted_edges, "edge lines ascend by (src, dst, label)");
-    assert!(nodes >= 80, "the slice's whole-universe node set: {nodes}");
-    assert!(edges.len() >= 25, "the slice's proven spawn + kill edges: {}", edges.len());
-    assert!(g1.contains("[label=\"SPAWN\"]"), "the proven completion spawn rides");
-    assert!(g1.contains("[label=\"destroys\", style=dashed]"), "kill edges ride dashed");
-    // nightjar: the expiry trigger's proven REPLACE site grows the
-    // `THE_TENDED_LORD -> THE_LATE_LORD requires` edge (the third family)
+fn graph_is_deterministic_and_the_requires_family_rides() {
     let text = std::fs::read_to_string("scripts/the-nightjar-flyer.txt").expect("bundled script");
+    let dict = core_dictionary();
     let cs = compile_script(&text, &dict).expect("nightjar compiles");
     let CompiledScript { content, state, .. } = cs;
     let g = graph_dot(&content, &state, &dict);
-    assert_eq!(g, graph_dot(&content, &state, &dict), "nightjar: byte-identical across runs");
+    assert_eq!(g, graph_dot(&content, &state, &dict), "byte-identical across runs");
     assert!(g.contains("\"THE_TENDED_LORD\" -> \"THE_LATE_LORD\" [label=\"requires\"];"), "{g}");
-}
-
-/// Split one DOT edge line back into (src, dst, label); `None` for a node
-/// line. The pinned emission shape is `  "SRC" -> "DST" [label="L"...];`.
-fn edge_of(line: &str) -> Option<(String, String, String)> {
-    let (src, rest) = line.trim_start().split_once("\" -> \"")?;
-    let (dst, rest) = rest.split_once("\" [label=\"")?;
-    let (label, _) = rest.split_once('"')?;
-    Some((src.to_string(), dst.to_string(), label.to_string()))
 }
 
 // ---------------------------------------------------------------------------

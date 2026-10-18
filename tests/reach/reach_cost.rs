@@ -31,7 +31,6 @@ use chorus::reach::Analyzer;
 // ---------------------------------------------------------------------------
 
 const NIGHTJAR: &str = "scripts/the-nightjar-flyer.txt";
-const SLICE: &str = "scripts/cultist-slice.txt";
 
 /// The hand-provable chain: SEED_A is initial; WORK (30m) binds SEED_A and
 /// spawns MID_B; DREAM (1h) binds MID_B and spawns TOP_C. TOP_C costs
@@ -596,7 +595,7 @@ fn the_cli_composes_with_usable_why_and_ignores_demand_and_json() {
 }
 
 #[test]
-fn the_non_proven_target_renders_the_exclusion_face_and_the_complete_target_costs_zero() {
+fn the_non_proven_target_renders_the_exclusion_face() {
     // the candidate card: no proven DAG, the candidates sit above
     let c = run(&[NIGHTJAR, "card", "THE_WAX_CYLINDER", "--cost"]);
     assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
@@ -604,27 +603,6 @@ fn the_non_proven_target_renders_the_exclusion_face_and_the_complete_target_cost
         c.out.contains(
             "scripts/the-nightjar-flyer.txt · card THE_WAX_CYLINDER — cost\n  \
              (no proven provenance DAG for 'THE_WAX_CYLINDER' — the candidate sources above are excluded from costing)\n"
-        ),
-        "{}",
-        c.out
-    );
-
-    // the complete-trigger provenance: 0 applications, the arranged note
-    let c = run(&[SLICE, "card", "THE_TURNING", "--cost"]);
-    assert_eq!(c.code, Some(0), "{}{}", c.out, c.err);
-    assert!(
-        c.out.contains(
-            "scripts/cultist-slice.txt · card THE_TURNING — cost\n  \
-             applications: 0 (lower-bound planning estimate)\n  \
-             witness: trigger complete:VIGOR#2 mints THE_TURNING\n  \
-             minutes: 0 (planning estimate)\n"
-        ),
-        "{}",
-        c.out
-    );
-    assert!(
-        c.out.contains(
-            "note: trigger complete:VIGOR#2's firing is arranged (a window completion) — costed 0"
         ),
         "{}",
         c.out

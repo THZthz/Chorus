@@ -10,10 +10,8 @@
 //!   - WARNING — a recipe whose `when` is PROVABLY never-matching (false for
 //!     every §6.6 selection binding; E11). Warnings print `[warning]` with
 //!     the recipe id + reason and never fail the exit: a dead `when` is
-//!     sometimes the point — cultist-full.txt carries 76 warnings, pinned as
-//!     a composition in tests/convert_cs_smoke.rs (36 deliberate dead-marker
-//!     twins under `NOT (count(actors) …)` whens, plus 24 genuinely-CS-dead
-//!     and 16 converter-induced NOT-alt total contradictions on TALK).
+//!     sometimes the point (a deliberately parked clause documents a branch
+//!     the world can no longer reach), so this class only advises.
 //!
 //!   cargo run --bin lint-scripts
 //!   cargo run --bin lint-scripts -- my-game.txt
@@ -22,7 +20,7 @@
 //! `--reach` (anywhere in the arguments, combinable with named files)
 //! appends the lint bridge's findings (§13.1 → §13.2): the reach analyzer
 //! run over that script's compiled (content, initial) — ONE `Analyzer` per
-//! script, so on cultist-full-scale scripts the flag adds a moment of
+//! script, so on large scripts the flag adds a moment of
 //! analysis — re-rendered as WARNING-class design smells the per-site lint
 //! cannot see (dead verbs, self-gated lists, risky owners, frozen deck
 //! cursors, the freeze boundary, REFUSE-doomed sites). Each line prints
@@ -93,7 +91,7 @@ Options:
 
 examples:
   lint-scripts
-  lint-scripts --reach scripts/cultist-slice.txt
+  lint-scripts --reach scripts/the-nightjar-flyer.txt
   lint-scripts --color scripts/the-nightjar-flyer.txt
 "
     .to_string()

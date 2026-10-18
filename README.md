@@ -45,7 +45,7 @@ Lint a script:
 
 ```sh
 cargo run --bin lint-scripts                                  # the sorted scripts/ default
-cargo run --bin lint-scripts -- --reach scripts/cultist-slice.txt   # + the reach design-smell findings
+cargo run --bin lint-scripts -- --reach scripts/the-nightjar-flyer.txt   # + the reach design-smell findings
 ```
 
 `--color` opts every bin's text faces into ANSI highlighting (default off —

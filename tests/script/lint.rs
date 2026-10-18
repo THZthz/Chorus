@@ -13,10 +13,6 @@ use crate::common::harness::assert_err_msg;
 const FLYER: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/the-nightjar-flyer.txt"));
 
-/// The bundled CS slice — the second hand-authored script; like the flyer
-/// it must lint with ZERO findings of either class.
-const SLICE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/cultist-slice.txt"));
-
 /// The shared base script. Byte-shape
 /// preserved (leading newline, section order) because line numbers flow into
 /// load-error messages.
@@ -180,12 +176,6 @@ fn an_illegal_character_in_a_when_line_is_a_load_error_naming_char_and_offset() 
 fn the_bundled_showcase_lints_clean() {
     let dict = core_dictionary();
     assert_eq!(lint_script(FLYER, &dict).unwrap(), Vec::<String>::new());
-}
-
-#[test]
-fn the_bundled_slice_lints_clean() {
-    let dict = core_dictionary();
-    assert_eq!(lint_script(SLICE, &dict).unwrap(), Vec::<String>::new());
 }
 
 #[test]

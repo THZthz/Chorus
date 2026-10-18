@@ -869,7 +869,7 @@ New ideas:
   completion**, so `look` during a travel window still shows the old room
   (and a `processing: travel to until 04:30` line appears under it).
 - **There is no co-location predicate** — no `same_place(actors, object)`.
-  The working idiom (the cultist-slice market's) is a place-marker aspect
+  The working idiom is a place-marker aspect
   plus the `at` role: `THE_STAIR` carries `site.stair:1`, TAKE binds an
   optional `at` slot, and the recipe demands
   `at.aspect.site.stair >= 1`. The player types the place with the role
@@ -1099,26 +1099,26 @@ When a site cannot be proven, the report names its reasons. Translations:
   `quit`, then point reach at the same script the log came from:
 
   ```sh
-  printf 'look\nwork with vigor\nwork with wits\nwait\nwait\nsave /tmp/midgame.jsonl\nquit\n' | ./target/debug/chorus scripts/cultist-slice.txt
-  ./target/debug/reach scripts/cultist-slice.txt card THE_TURNING
-  ./target/debug/reach scripts/cultist-slice.txt card THE_TURNING --from-state /tmp/midgame.jsonl
+  printf 'look\nread the manifest\nsave /tmp/midgame.jsonl\nquit\n' | ./target/debug/chorus scripts/the-nightjar-flyer.txt
+  ./target/debug/reach scripts/the-nightjar-flyer.txt card THE_MANIFEST
+  ./target/debug/reach scripts/the-nightjar-flyer.txt card THE_MANIFEST --from-state /tmp/midgame.jsonl
   ```
 
-  Real output (the second call; the log and the script travel as a pair):
+  Real output (the last call; the log and the script travel as a pair):
 
   ```
-  scripts/cultist-slice.txt · card THE_TURNING
+  scripts/the-nightjar-flyer.txt · card THE_MANIFEST
     verdict: OBTAINABLE  (existence: proven)
     path 1/1:
-      · initial 'THE_TURNING' — via initial entity THE_TURNING (state)
-          · THE_TURNING is declared in the initial entities (state)
-    bindable via DREAM.with (query matches)
-    note: midgame analysis: the initial world is replayed from a log — modeled: the replayed entities and clock (first crossings re-anchor to minute 600), 0 already-fired once trigger(s) (they never fire again), 0 non-reset deck cursor(s) (draws serve from the cursor forward); read but not modeled: open windows (the lock table), the executed-recipe map, the rng counter
+      · initial 'THE_MANIFEST' — via initial entity THE_MANIFEST (text)
+          · THE_MANIFEST is declared in the initial entities (text, aspects {"manifest":1})
+    bindable via READ.object (query matches)
+    bindable via STUDY.object (query matches)
+    note: midgame analysis: the initial world is replayed from a log — modeled: the replayed entities and clock (first crossings re-anchor to minute 1260), 0 already-fired once trigger(s) (they never fire again), 0 non-reset deck cursor(s) (draws serve from the cursor forward); read but not modeled: open windows (the lock table), the executed-recipe map, the rng counter
   ```
 
-  Before play, `THE_TURNING` is proven through the bootstrap chain (`via
-  trigger complete:VIGOR#2 …`); after the replayed two works it is simply
-  `initial 'THE_TURNING'` — it exists in the save. Replayed reports carry a
+  The verdict is anchored to the save: the clock rides the log (21:00, so
+  crossings re-anchor to minute 1260), and the report carries the
   fidelity note listing what is modeled (entities, clock, spent `once`
   triggers, deck cursors) and what is not (open windows, executed recipes,
   the dice counter). An *ended* log is refused — a finished world has
@@ -1195,9 +1195,11 @@ Three finding classes:
   position) and the file goes clean. A count-gate ERROR and the
   never-matching WARNING below are one root cause on one recipe — the lint
   reports the ERROR alone.
-- **`[warning]`** — a `when` that can *provably* never match, e.g. a real
-  line from linting the bundled cultist-full:
-  `- [warning] recipe talk.inspiremystique.x2 (TALK): the when can never match — count(actors) < 1 can never hold — actors takes 1..1 here (§6.1) (§6.3)`.
+- **`[warning]`** — a `when` that can *provably* never match, e.g. a recipe
+  gated on `NOT count(actors) >= 1` while the verb's actors slot takes
+  `1..1` (the slot always binds exactly one card, so the count can never
+  drop below one):
+  `- [warning] recipe wait.doomed (WAIT): the when can never match — count(actors) < 1 can never hold — actors takes 1..1 here (§6.1) (§6.3)`.
 - **`[reach]`** — with `--reach`, the reach analyzer's whole-world design
   smells, addressed by owner (recipe/trigger/verb) rather than line.
 
@@ -1401,7 +1403,7 @@ Options:
 
 examples:
   lint-scripts
-  lint-scripts --reach scripts/cultist-slice.txt
+  lint-scripts --reach scripts/the-nightjar-flyer.txt
   lint-scripts --color scripts/the-nightjar-flyer.txt
 ```
 
@@ -1545,9 +1547,7 @@ Fix the compile error first.
 ## Where to go next
 
 - `scripts/the-nightjar-flyer.txt` — every feature, commented, in one
-  working mystery. `scripts/cultist-slice.txt` is a 102-recipe vertical
-  slice of Cultist Simulator mechanics (the self-rechaining season wheel is
-  the deepest RUN-chain example in the repo).
+  working mystery.
 - `docs/spec/text-engine-v0.7.md` — the exact rules: §4 dictionary and
   outcome operators, §5 sentence grammar, §6 slots/recipes/conditions, §10
   the script format, §11 the play interface, §13 the tools.

@@ -5,8 +5,8 @@
 //! precedent — scripts and tests import alike; the reach-scale bin mounts
 //! this file via `#[path]` for its `--worker` A/B interface).
 //!
-//! The content is SYNTHETIC, not a conversion (docs/reverse/cultist-simulator.md
-//! §6): N prototypes ≈ CS elements, M recipes ≈ CS's 2,084-recipe rulebook
+//! The content is SYNTHETIC, not a conversion: N prototypes ≈ CS elements,
+//! M recipes ≈ CS's 2,084-recipe rulebook
 //! modeled the Chorus way (ONE VERB PER SITUATION — same-verb multi-recipe is
 //! first-match and self-shadow), 67 decks, season/expiry triggers.
 //! Deterministic in its arguments — same (n_protos, n_recipes) ⇒ byte-identical

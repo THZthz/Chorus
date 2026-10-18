@@ -766,7 +766,7 @@ rule below), so a `@3`-class typo is visible at load instead of silently
 vanishing from the condition.
 
 **`exists(...)` — the world-existential check** (Chorus's answer to Cultist
-Simulator's `extantreqs`/`tablereqs`, docs/reverse/cultist-simulator.md):
+Simulator's `extantreqs`/`tablereqs`):
 true iff at least one **alive** card anywhere in the state matches — every
 alive entity in the world, not just the cards bound into this step's roles,
 and regardless of where they sit. It reads the same input state as every
@@ -1160,10 +1160,10 @@ follow-up windows — the mechanics:
   the window (a station holds one window); the list is the only
   multi-candidate shape, and deeper chains author RUN inside the follow-up's
   own outcomes.
-- *Out of slice (reserved)*: CS `linked`-entry `challenges` (authorable
-  today as ROLL + IF) and the 8 inline recipe definitions (compile to
-  ordinary declared recipes); `additional`/`expulsion` never occur in core
-  linked entries.
+- *Reserved (deliberately unmodeled CS surface)*: CS `linked`-entry
+  `challenges` (authorable today as ROLL + IF) and the 8 inline recipe
+  definitions (compile to ordinary declared recipes);
+  `additional`/`expulsion` never occur in core linked entries.
 
 **Completion triggers — `on complete`.** A third trigger kind, carried by an
 entity or prototype line (ID-less, beside the section-scoped `triggers:`
@@ -1975,7 +1975,7 @@ undo past the ending record reopens the book.
    RESOLVED: yes — the `verbs:` block declares them (§4.3), the
    load registers them into its effective dictionary under the §5.1 nameable
    grammar.
-5. The unattended pump: the CS slice runs its time loop with no background
+5. The unattended pump: the time loop runs with no background
    tick — the `job→needs` induce bootstraps it (`on complete` + RUN
    hand-off, §6.7), and the loop, once resident and self-rechaining at
    100 %, suppresses later bootstraps exactly as CS's does. A true

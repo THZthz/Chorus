@@ -460,7 +460,7 @@ mod tests {
     fn enabled_colors_the_lint_faces() {
         let s = Styles::new(true);
         // the per-file title bold; the `…: clean` row and blank lines plain
-        let title = "scripts/cultist-full.txt:";
+        let title = "scripts/some-script.txt:";
         assert_eq!(s.colorize(title), format!("{BOLD}{title}{RESET}"));
         assert_eq!(s.colorize("scripts/f.txt: clean"), "scripts/f.txt: clean");
         assert_eq!(s.colorize(""), "");

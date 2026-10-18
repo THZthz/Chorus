@@ -448,50 +448,6 @@ fn chorus_extra_positionals_are_argv_errors() {
     }
 }
 
-/// The save → analyze loop, end to end through real processes: a piped
-/// chorus session plays the slice and saves its log; `reach --from-state`
-/// replays that log (paired with the SAME script) as its initial world and
-/// answers with the midgame note. The saved file is cleaned up.
-#[test]
-fn chorus_save_feeds_reach_from_state_end_to_end() {
-    let log = std::env::temp_dir().join(format!("chorus-cli-save-{}.jsonl", std::process::id()));
-    let _ = std::fs::remove_file(&log);
-    let session = format!("look\nwork with vigor\nsave {}\nquit\n", log.display());
-    let out = Command::new(env!("CARGO_BIN_EXE_chorus"))
-        .arg("scripts/cultist-slice.txt")
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write as _;
-            child.stdin.as_mut().expect("piped stdin").write_all(session.as_bytes())?;
-            child.wait_with_output()
-        })
-        .expect("the chorus bin runs");
-    assert_eq!(out.status.code(), Some(0));
-    let stdout = String::from_utf8(out.stdout).expect("stdout is UTF-8");
-    assert_eq!(String::from_utf8(out.stderr).expect("stderr is UTF-8"), "");
-    assert!(stdout.contains(&format!("saved: 1 record(s) -> {}", log.display())), "{stdout}");
-
-    let (code, stdout, stderr) = run(
-        "reach",
-        &[
-            "scripts/cultist-slice.txt",
-            "card",
-            "THE_TURNING",
-            "--from-state",
-            log.to_str().unwrap(),
-        ],
-    );
-    let _ = std::fs::remove_file(&log);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert!(stdout.contains(" · card THE_TURNING\n"), "{stdout}");
-    assert!(stdout.contains("verdict: OBTAINABLE  (existence: proven)"), "{stdout}");
-    assert!(stdout.contains("note: midgame analysis"), "{stdout}");
-}
-
 /// A save whose path cannot be written (the parent directory is missing) is
 /// the bin's error face: the piped transcript stops after the echo, the
 /// `Error: cannot write …` line goes to stderr, exit 1 — the emit_all
@@ -648,7 +604,7 @@ Options:
 
 examples:
   lint-scripts
-  lint-scripts --reach scripts/cultist-slice.txt
+  lint-scripts --reach scripts/the-nightjar-flyer.txt
   lint-scripts --color scripts/the-nightjar-flyer.txt
 ";
     for argv in [vec!["--help"], vec!["-h"], vec![SCRIPT, "--help"], vec!["--reach", "--help"]] {
@@ -680,10 +636,9 @@ fn lint_scripts_unknown_flag_is_an_argv_error_exit_2() {
 }
 
 /// v0.8.0 — the `--color` opt-in over the lint faces: ON → the same faces
-/// with ANSI escapes (the title bold, the `[warning]` / `[reach]` markers
-/// in their colors, the summary's non-zero counts colored, an all-zero
-/// summary green); OFF → the byte-identical plain face. Stripping the
-/// escapes restores the plain bytes both ways.
+/// with ANSI escapes (the title bold, the `[reach]` marker in its color,
+/// the all-zero summary green); OFF → the byte-identical plain face.
+/// Stripping the escapes restores the plain bytes both ways.
 #[test]
 fn lint_scripts_color_is_opt_in_and_default_stays_plain() {
     // plain (the default): no escapes anywhere — the plain bytes
@@ -702,47 +657,10 @@ fn lint_scripts_color_is_opt_in_and_default_stays_plain() {
     assert!(on.starts_with("scripts/the-nightjar-flyer.txt: clean\n"), "{on}");
     assert!(on.contains("\x1b[38;5;10m1 file(s), 0 finding(s)\x1b[0m\n"), "{on}");
 
-    // the warning-carrying face: yellow markers on the rows, red + yellow
-    // counts in the summary; the message text stays untouched
-    let full = "scripts/cultist-full.txt";
-    let (code, plain_full, _) = run("lint-scripts", &[full]);
-    assert_eq!(code, Some(0));
-    let (code, on_full, _) = run("lint-scripts", &[full, "--color"]);
-    assert_eq!(code, Some(0));
-    assert_eq!(strip_ansi(&on_full), plain_full);
-    // the per-file title bold
-    assert!(on_full.starts_with("\x1b[1mscripts/cultist-full.txt:\x1b[0m\n"), "{on_full}");
-    assert!(on_full.contains("  - \x1b[38;5;11m[warning]\x1b[0m "), "{on_full}");
-    assert!(on_full.contains("\x1b[38;5;9m76 finding(s)\x1b[0m"), "{on_full}");
-    assert!(on_full.contains("\x1b[38;5;11m76 warning(s)\x1b[0m"), "{on_full}");
-
     // the bridge layer: the `[reach]` marker magenta
-    let (code, on_reach, _) =
-        run("lint-scripts", &["scripts/cultist-slice.txt", "--reach", "--color"]);
+    let (code, on_reach, _) = run("lint-scripts", &[SCRIPT, "--reach", "--color"]);
     assert_eq!(code, Some(0), "{on_reach}");
     assert!(on_reach.contains("  - \x1b[38;5;13m[reach]\x1b[0m "), "{on_reach}");
-}
-
-/// v0.8.0 — the no-argument face unchanged: every scripts/*.txt relative
-/// to the cwd, in the bin's sorted order; the 76-warning composition on
-/// cultist-full (every finding row WARNING-class, none ERROR), slice and
-/// flyer clean, exit 0 (findings never fail).
-#[test]
-fn lint_scripts_no_arguments_reads_the_sorted_scripts_default() {
-    let (code, stdout, stderr) = run("lint-scripts", &[]);
-    assert_eq!(code, Some(0), "{stderr}");
-    // sorted: cultist-full < cultist-slice < the-nightjar-flyer
-    assert!(stdout.starts_with("scripts/cultist-full.txt:\n"), "{stdout}");
-    assert!(stdout.contains("\nscripts/cultist-slice.txt: clean\n"), "{stdout}");
-    assert!(stdout.contains("\nscripts/the-nightjar-flyer.txt: clean\n"), "{stdout}");
-    assert_eq!(stdout.matches("\n  - ").count(), 76, "{stdout}");
-    assert_eq!(stdout.matches("\n  - [warning] ").count(), 76, "{stdout}");
-    assert!(
-        stdout.ends_with(
-            "\n3 file(s), 76 finding(s), 76 warning(s) — warnings advise, the exit code stays 0\n"
-        ),
-        "{stdout}"
-    );
 }
 
 /// the `--worker i k P R` sharded interface: names `idx % k === i` of a

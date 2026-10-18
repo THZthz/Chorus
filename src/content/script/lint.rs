@@ -78,8 +78,8 @@ pub enum LintSeverity {
     Error,
     /// A recipe `when` that is PROVABLY false for every §6.6 selection
     /// binding (see [`when_verdict`]). Advisory by design: a dead `when` is
-    /// sometimes the point — the CS converter emits deliberate dead-marker
-    /// twins under exactly such negation whens — so this class warns with
+    /// sometimes the point (a deliberately parked clause documents a branch
+    /// the world can no longer reach), so this class warns with
     /// the recipe id + reason and never fails anything by itself.
     Warning,
 }

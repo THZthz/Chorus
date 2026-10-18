@@ -118,10 +118,16 @@ fn by_window_slot_trigger_two_states_around_the_bound_are_byte_exact() {
     let content = compile(&gem_raw());
     let state = state_with(vec![ana()]);
 
+    // the analyzer's dictionary: the fixtures declare no vocabulary, so
+    // the core seed IS the load-effective one (the --demand grammar's
+    // kind: terms read it)
+    let dict = core_dictionary();
+
     // the DEFAULT face byte-identical through both renderers (the
     // delegation wrapper renders exactly the frozen shape)
-    let rep =
-        Analyzer::new(&content, &state).analyze_card("THE_GEM", CardOptions::default()).unwrap();
+    let rep = Analyzer::new(&content, &state, &dict)
+        .analyze_card("THE_GEM", CardOptions::default())
+        .unwrap();
     let mut a = String::new();
     render_report(&mut a, "script.txt", "THE_GEM", None, false, &rep);
     let mut b = String::new();
@@ -137,7 +143,7 @@ fn by_window_slot_trigger_two_states_around_the_bound_are_byte_exact() {
 
     // M BEFORE the first crossing: the trigger has not fired, the site
     // falls to candidate with the honest timing reason
-    let before = Analyzer::new(&content, &state)
+    let before = Analyzer::new(&content, &state, &dict)
         .by(30)
         .analyze_card("THE_GEM", CardOptions::default())
         .unwrap();
@@ -154,12 +160,12 @@ fn by_window_slot_trigger_two_states_around_the_bound_are_byte_exact() {
     );
 
     // the blockers face names the same rung (judgment and reason one pass)
-    let blockers = Analyzer::new(&content, &state).by(30).card_blockers("THE_GEM");
+    let blockers = Analyzer::new(&content, &state, &dict).by(30).card_blockers("THE_GEM");
     assert_eq!(blockers.len(), 1);
     assert_eq!(blockers[0].blocker, CardBlocker::TriggerBeyondBy { minute: 60, by: 30 });
 
     // AT M: a crossing AT the boundary minute counts as by M
-    let at = Analyzer::new(&content, &state)
+    let at = Analyzer::new(&content, &state, &dict)
         .by(60)
         .analyze_card("THE_GEM", CardOptions::default())
         .unwrap();
@@ -175,7 +181,7 @@ fn by_window_slot_trigger_two_states_around_the_bound_are_byte_exact() {
     );
 
     // a WIDE M keeps the default verdict, by-annotated
-    let wide = Analyzer::new(&content, &state)
+    let wide = Analyzer::new(&content, &state, &dict)
         .by(2000)
         .analyze_card("THE_GEM", CardOptions::default())
         .unwrap();
@@ -208,16 +214,22 @@ fn by_and_freeze_take_the_tighter_horizon() {
     let content = compile(&frozen_pair_raw());
     let state = state_with(vec![ana()]);
 
+    // the analyzer's dictionary: the fixtures declare no vocabulary, so
+    // the core seed IS the load-effective one (the --demand grammar's
+    // kind: terms read it)
+    let dict = core_dictionary();
+
     // default: the frozen face's settled shape — proven via the clean
     // boundary trigger, the later crossing DupRisk
-    let rep =
-        Analyzer::new(&content, &state).analyze_card("THE_GEM", CardOptions::default()).unwrap();
+    let rep = Analyzer::new(&content, &state, &dict)
+        .analyze_card("THE_GEM", CardOptions::default())
+        .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert!(rep.paths[0].supports[0].ends_with("— the clock is unbounded forward"));
 
     // M PAST the freeze: the freeze binds (min semantics) — the verdict is
     // the frozen shape, and the support line names the crossing minute
-    let wide = Analyzer::new(&content, &state)
+    let wide = Analyzer::new(&content, &state, &dict)
         .by(5000)
         .analyze_card("THE_GEM", CardOptions::default())
         .unwrap();
@@ -226,12 +238,12 @@ fn by_and_freeze_take_the_tighter_horizon() {
         wide.paths[0].supports[0],
         "trigger t_a fires on slot 1 (every crossing) — first crossing at minute 30, inside the by 5000 window"
     );
-    let blockers = Analyzer::new(&content, &state).by(5000).card_blockers("THE_GEM");
+    let blockers = Analyzer::new(&content, &state, &dict).by(5000).card_blockers("THE_GEM");
     assert!(blockers.iter().all(|b| b.blocker == CardBlocker::DupRisk), "{blockers:?}");
 
     // M BEFORE the freeze: M binds — even the boundary trigger is beyond
     // the window, and the card falls to candidate
-    let tight = Analyzer::new(&content, &state)
+    let tight = Analyzer::new(&content, &state, &dict)
         .by(20)
         .analyze_card("THE_GEM", CardOptions::default())
         .unwrap();
@@ -267,18 +279,24 @@ fn by_bounds_duration_recipes_only_duration0_proves() {
     // unfrozen + unbounded: the duration-30 recipe proves as ever
     let content = compile(&mk(30));
     let state = state_with(vec![ana()]);
-    let rep =
-        Analyzer::new(&content, &state).analyze_card("THE_RING", CardOptions::default()).unwrap();
+
+    // the analyzer's dictionary: the fixtures declare no vocabulary, so
+    // the core seed IS the load-effective one (the --demand grammar's
+    // kind: terms read it)
+    let dict = core_dictionary();
+    let rep = Analyzer::new(&content, &state, &dict)
+        .analyze_card("THE_RING", CardOptions::default())
+        .unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
 
     // the SAME world under any --by: the horizon is finite, the recipe
     // demotes with its own blocker spelling
-    let by = Analyzer::new(&content, &state)
+    let by = Analyzer::new(&content, &state, &dict)
         .by(9999)
         .analyze_card("THE_RING", CardOptions::default())
         .unwrap();
     assert_eq!(by.verdict, CardVerdict::Unproven);
-    let blockers = Analyzer::new(&content, &state).by(9999).card_blockers("THE_RING");
+    let blockers = Analyzer::new(&content, &state, &dict).by(9999).card_blockers("THE_RING");
     assert_eq!(blockers[0].blocker, CardBlocker::BeyondByDuration { duration: 30, by: 9999 });
     assert_eq!(
         blockers[0].blocker.as_str(),
@@ -294,7 +312,7 @@ fn by_bounds_duration_recipes_only_duration0_proves() {
 
     // duration-0 recipes prove at any horizon (commits land at commit time)
     let instant = compile(&mk(0));
-    let fast = Analyzer::new(&instant, &state)
+    let fast = Analyzer::new(&instant, &state, &dict)
         .by(1)
         .analyze_card("THE_RING", CardOptions::default())
         .unwrap();
@@ -369,8 +387,9 @@ fn midgame_replay_models_fired_once_triggers_and_deck_cursors() {
     // the script face: both deck positions provable (the recurring draw is
     // unbounded), THE_GEM via the unspent trigger
     for name in [&first, &second, "THE_GEM"] {
-        let rep =
-            Analyzer::new(content, initial).analyze_card(name, CardOptions::default()).unwrap();
+        let rep = Analyzer::new(content, initial, &dict)
+            .analyze_card(name, CardOptions::default())
+            .unwrap();
         assert_eq!(rep.verdict, CardVerdict::Obtainable, "{name}");
     }
 
@@ -388,7 +407,7 @@ fn midgame_replay_models_fired_once_triggers_and_deck_cursors() {
     assert_eq!(mid.decks.get("BOX"), Some(&1));
     assert!(mid.entities.values().any(|e| e.name == "THE_GEM" && e.dead_action.is_none()));
 
-    let analyzer = Analyzer::new(content, &mid).replayed();
+    let analyzer = Analyzer::new(content, &mid, &dict).replayed();
 
     // THE_GEM: the past mint rides the replayed entities as an initial fact
     let g = analyzer.analyze_card("THE_GEM", CardOptions::default()).unwrap();
@@ -424,7 +443,7 @@ fn midgame_replay_models_fired_once_triggers_and_deck_cursors() {
 
     // --by composes with the replay and anchors to the MIDGAME clock:
     // t_draw (halfhour 6) next crosses at minute 180 (120 past now=60)
-    let bounded = Analyzer::new(content, &mid)
+    let bounded = Analyzer::new(content, &mid, &dict)
         .replayed()
         .by(100)
         .analyze_card(&second, CardOptions::default())
@@ -437,7 +456,7 @@ fn midgame_replay_models_fired_once_triggers_and_deck_cursors() {
         "{bounded:?}"
     );
     // ... and AT 180 it proves, the support line naming the minute
-    let inside = Analyzer::new(content, &mid)
+    let inside = Analyzer::new(content, &mid, &dict)
         .replayed()
         .by(180)
         .analyze_card(&second, CardOptions::default())
@@ -466,12 +485,13 @@ fn the_deck_cursor_bounds_the_remaining_permutation_non_reset_never_returns() {
         ..ContentRaw::default()
     };
     let content = compile(&raw);
+    let dict = core_dictionary();
     let order = content.decks.get("BOX").unwrap().order.clone();
     let (first, second) = (order[0].name.clone(), order[1].name.clone());
 
     // the script face: both positions provable (the draw is unbounded)
     for name in [&first, &second] {
-        let rep = Analyzer::new(&content, &state_with(vec![ana()]))
+        let rep = Analyzer::new(&content, &state_with(vec![ana()]), &dict)
             .analyze_card(name, CardOptions::default())
             .unwrap();
         assert_eq!(rep.verdict, CardVerdict::Obtainable, "{name}");
@@ -492,7 +512,7 @@ fn the_deck_cursor_bounds_the_remaining_permutation_non_reset_never_returns() {
     dead.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     let mut mid = state_with(vec![ana(), dead.clone()]);
     mid.decks.insert("BOX".to_string(), 1);
-    let analyzer = Analyzer::new(&content, &mid).replayed();
+    let analyzer = Analyzer::new(&content, &mid, &dict).replayed();
 
     let gone = analyzer.analyze_card(&first, CardOptions::default()).unwrap();
     assert_eq!(gone.verdict, CardVerdict::Unobtainable, "{gone:?}");
@@ -503,20 +523,20 @@ fn the_deck_cursor_bounds_the_remaining_permutation_non_reset_never_returns() {
     // the --graph face shares the SAME serving verdict (one predicate, one
     // home): the consumed order[0] emits NO draw edge while order[1] does —
     // the graph can never contradict the card face over the same replay
-    let dot = graph_dot(&content, &mid);
+    let dot = graph_dot(&content, &mid, &dict);
     let draw_edge =
         |name: &str| format!("\"trigger t_draw\" -> \"{name}\" [label=\"DRAW deck BOX\"]");
     assert!(!dot.contains(&draw_edge(&first)), "consumed position must emit no edge: {dot}");
     assert!(dot.contains(&draw_edge(&second)), "{dot}");
     // the control graph (cursor 0) carries BOTH edges
-    let fresh_dot = graph_dot(&content, &state_with(vec![ana()]));
+    let fresh_dot = graph_dot(&content, &state_with(vec![ana()]), &dict);
     assert!(fresh_dot.contains(&draw_edge(&first)));
     assert!(fresh_dot.contains(&draw_edge(&second)));
 
     // the control: the SAME dead copy with NO cursor re-mints — the
     // position is still ahead of the permutation, so the draw still serves
     let fresh = state_with(vec![ana(), dead]);
-    let analyzer = Analyzer::new(&content, &fresh).replayed();
+    let analyzer = Analyzer::new(&content, &fresh, &dict).replayed();
     let alive = analyzer.analyze_card(&first, CardOptions::default()).unwrap();
     assert_eq!(alive.verdict, CardVerdict::Obtainable);
 }
@@ -540,8 +560,9 @@ fn a_fired_once_trigger_whose_past_mint_died_leaves_only_a_candidate() {
     let mut mid = state_with(vec![ana(), gem]);
     mid.now = 90;
     mid.fired.insert("t_gem".to_string());
+    let dict = core_dictionary();
 
-    let analyzer = Analyzer::new(&content, &mid).replayed();
+    let analyzer = Analyzer::new(&content, &mid, &dict).replayed();
     let rep = analyzer.analyze_card("THE_GEM", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert_eq!(rep.existence, Existence::Candidate);

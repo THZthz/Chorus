@@ -53,6 +53,15 @@ projection of that data, never the source of truth.
 29. **v0.7.10** — the analyzer's cost/count face (§13.1): an eighth seam module, `cost`, landing `--cost` with ZERO new analysis over the settled facts and the usage line byte-frozen (the export precedent). The per-card `— cost` section (card mode and `--all` alike, appended after `--why`) answers three questions over the proven provenance DAG (`facts.proven_sources` — the `mint_sources` candidates under the chain's own serving predicate, the deck-cap test folded in): minimum verb applications (recipe hops 1, trigger hops 0, initial 0 — memoized, depth-backstopped, tie-broken in proof order, the cheapest witness chain on one line) with the lower-bound honesty stated on every costed report; minimum clock minutes (recipe hops = the verb's duration, slot hops = `first_cross`, arranged expiry/complete hops 0; a frozen world's note caps the clock); and the copies bound from `avail` (`MANY` → `unbounded`, a count past the flatten weight cap → `N+ (world cap)`). Expiry/complete hops cost 0 with the arranged note (fillers recur); a non-proven target renders the one-line exclusion face. Composes with `--usable`/`--why`/`--all`/`--by`/`--from-state`; kept out of `--json` and ignored under `--demand` (documented). 825 tests green (+9: tests/reach/reach_cost.rs — the equality-pinned chain fixture, the 0-applications trigger faces, the deck-multiplicity/defaultcard copies, the replay cursor pin, the `--by` bound, and the CLI composition faces); the eight text faces byte-identical throughout; no grammar/log/script change.
 30. **v0.7.11** — the lint bridge (§13.1 → §13.2): a ninth seam module, `bridge`, landing `bin/lint-scripts --reach` — the reach analyzer's global-dynamic findings surfaced as WARNING-class lint findings with ZERO new analysis over the settled facts, the default invocation byte-frozen (verified against a HEAD-compiled bin; the exit code stays constant 0 — the §13.2 rule). `--reach` (anywhere in the arguments, combinable with named files; the sole-argument invocation still reads the default `scripts/` list) appends six owner-addressed finding families in a fixed class order, every walk an insertion order, deduplicated per owner: dead verbs (`dead_verbs`, the killing slot walked the way the `--world` dead-verbs row walks it); self-gated lists (live unproven sites re-run through `site_ladder` over the read-only world rebuild — the `--why` pass's own ladder, no re-derivation — only the `SelfGated` rung surfaced); risky owners (`risky_owners`); deck-cap cursor freezes (a live draw whose census cap froze below `MANY` on a repeatable owner — a once trigger's single draw is its design, not a smell); the frozen world (`frozen` + `freeze_dist` — the boundary minute `now + freeze_dist` with the risky slot triggers standing on it, exactly the argmin owners of `freeze_dist`'s own min over the risky slot triggers' first crossings, the minute the `--world` freeze line renders); and REFUSE-doomed sites (the refused census, owners named). Every finding reuses the lint's own `LintFinding`/`LintSeverity` types (zero lint edits), prints `[reach]`-prefixed in the one stream, and the summary names the two layers separately. 829 tests green (+4: tests/reach/reach_bridge.rs — the all-six-classes byte-exact fixture, the two-run determinism pin, the clean-world face, and the bin face: the `--reach` stream byte-pinned beside the unchanged default invocation and the sole-argument fallback); no grammar/log/script change.
 
+*(Entries 31–33 are the script-vocabulary stream, merged after the reach stream: their original 24–26 numbering collided with the reach entries above, so they renumber to follow it — the reach stream landed first (2026-10-17/18) and the vocabulary convergence is chronologically later. Inline § citations below use the new numbers.)*
+
+31. **v0.7.12** — the vocabulary convergence, script-side: the noun classes become definable, closing the last hardcoded word list a script could not extend. A `kinds:` section (§4.1/§10) registers new `lower_snake` kinds into the load's dictionary in declaration order — the rejections loud and uniform with the §10 duplicate rule (a re-declaration including a built-in, a relation-type collision — the entity line dispatches relation types first, so such a kind could never be declared on an entity line — and any name outside the class), kinds still not reserved words. Every kind check site now reads the Dictionary instead of the frozen eight: entity and prototype lines, the `kind:` term wherever a query parses (slots, `exists()`/`count()` inner queries — the parse_query/predicate front-ends now take the dictionary), and the reach analyzer's `--demand` parse (its Analyzer carries the load-effective dictionary, handed back on `CompiledScript` and adopted by `Game`). Unknown-kind errors keep their message shapes with the suggestion list derived from the dictionary — built-ins first, then declarations, so the byte-pins for the core dictionary are unchanged. The four built-in semantic roles are written down as engine-frozen (§4.1); runtime stays vocabulary-free; the reach scale fixture's private kind pool stays deliberately frozen (it is a generator, not a consumer). No log format change.
+
+32. **v0.7.13** — the vocabulary convergence, verb-side, closing the last open question the script format left (§12 #4): the `verbs:` block now DECLARES lexemes, not just configures them. An indent-2 `VERB:` header is accepted for any UPPER_SNAKE name; the load registers unknown lexemes into its effective dictionary — register-if-unknown on the per-load clone, the v0.7.12 `kinds:` discipline, so recompiling one text against one dictionary stays idempotent — and the whole §5.1 nameable grammar applies at that registration: never a reserved word (`EVENT:` fails loud naming the lexeme; the "reserved words cannot be registered" claim is now enforced, the core verbs exempt as reserved-by-being-a-verb), and never a declared entity or prototype name — one order-independent cross-check over the whole load rejects the overlap in either section order, instead of the section-order luck a growing reserved set implied. Declaration is not playability: the config block (§6.1) makes the verb playable, the "is not a content verb" step gate and the template/compile gates stay as backstops, and `CompiledScript` hands the extended dictionary to `Game`, so a declared verb types, suggests, renders in the banner/help and re-parses in the fold. Duplicate headers stay the uniform load error (core lexemes included); the reach fuzz alphabet takes the declared verbs too (a scenario carries its own effective dictionary); `lint-scripts` lints each file against a fresh core dictionary. No log format change.
+
+33. **v0.7.14** — the ops convergence: script-defined outcome operators. A new `ops:` top-level section (§10) declares named, parameterized bodies of outcomes callable in ANY outcome position — recipes, all three trigger kinds, IF arms, other op bodies — written and read exactly like a built-in op call (`ENCHANT(ROWAN)`), while §4.4's built-in table stays closed. The mechanism is deliberately the functions' mechanism (§10, v0.3.3): a call expands into its body AT LOAD through the same pass, so the engine, the log and the fold never see a call, and every existing outcome guard — ENDING and DRAW membership, RUN's recipe scoping, the trigger ban sweep (an op body carrying ADVANCE into a slot trigger is caught), the dice lints (ROLLED/DRAWN in a body are the call site's load error), the braced-token check over every declared body called or not — stays sound by construction, because expansion lands in the authored-outcome world the guards already walk. What makes an op more than a renamed function: the OP namespace (UPPER_SNAKE; never a built-in op, a reserved word — declared verbs included, the ops table building after the load's verb registration — a duplicate, or a functions name, the fn grammar admitting UPPER names so the namespaces are checked against each other; deliberately NOT reserved — a prototype may be named like an op, a bare `ENCHANT` stays SPAWN sugar and only `ENCHANT(` is the call), op-grade call checking (arity at every call site — wrong arity is a load error naming the op, the expected and the actual count, nested sites included; deliberately NOT retro-fitted onto functions, the asymmetry documented), and the composition rules (an op may call ops and functions; a FUNCTION body calling an op is the specific load error — functions expand at load before ops exist — and op→op recursion names the cycle over the shared DFS with the functions' depth cap of 8, op hops only). The load carries ONE call table (`FnTable` gains the ops map, disjoint by the collision check) threaded exactly where the function table already went — no new plumbing below the load, zero log/format change; `unknown 'NAME(…)'` errors teach declared ops too, and the lint scans op bodies like function bodies (an op body's raw SET writes count; the lint still never sees through a call site — §13.2). Pinned: a played op step's JSONL carries no op name anywhere and folds byte-identically; a mint reachable only through an op call is proven (the reach 'none' verdict cannot appear); recompiling one ops script against one dictionary stays idempotent (ops are load-time state, never dictionary state). Four phase-2 review minors ride along: the dead `played` binding deleted from tests/script/verbs.rs; the lint-isolation CLI test strengthened so file two USES file one's verb (exit 1 alone and combined, the declaring file clean — the identical-files version could not distinguish per-file dictionaries from a shared one); the two stale doc claims ("play behaves identically", "the engine and the log never read the dictionary's word lists") scoped to the mechanics — a declared verb does change the typing/suggestion surface, and the fold's sentence re-parse reads the dictionary's verb list; and a deck-id-vs-declared-verb pin (the deck reserved check sees registered lexemes). Tests +22 = 815 green. Gates: bundled scripts unchanged (cultist-full's 76 warnings pinned, slice and flyer clean, exit 0); clippy --all-targets clean; fmt clean.
+
+
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
 ---
@@ -113,6 +122,31 @@ projection of that data, never the source of truth.
 | `state`     | Conditions attached to a character or run | dread, affliction, vision        |
 | `rite`      | A procedure-as-card the player owns       | a summoning rite                 |
 | `resource`  | Abstract player stats as cards            | vitality, passion, reason        |
+
+These eight are the **built-in kinds**, and four semantic roles are frozen
+to specific built-in values — the engine never generalizes them to a
+declared kind: `player:` must name a `character` (§10); the actors slot's
+default pool is the player's own kind (§11); `place` owns zone containment
+and the visibility fallout (§4.2, §11); and the `<someone>` phrasing of a
+usage line fires for `kind:character` slots (§11).
+
+Everything else about a kind is **open vocabulary** (v0.7.12): a script's
+`kinds:` section declares new kinds — indent-2 lines under a `kinds:`
+header, one name per line in the class `^[a-z][a-z0-9_]*$` (`lower_snake`)
+— registered into the load's dictionary in section order. That dictionary
+vocabulary is what every check site reads: entity and prototype lines
+(§10), `kind:` query terms wherever a query parses (§4.5), and the reach
+analyzer's `--demand` parse (§13.1, whose Analyzer carries the
+load-effective dictionary). An unknown kind is a load error naming the
+whole list — built-ins first, then declarations in order, which is exactly
+why declaration order is the suggestion order. A declaration itself fails
+loud on: a duplicate (re-declaring a built-in included — the uniform §10
+duplicate rule), a name colliding with a registered relation type (the
+entity line dispatches relation types before kinds, so such a kind could
+never be declared on an entity line), or a name outside the class. Kinds
+are NOT reserved words (§5.1) — an entity may be named `character` — and
+runtime stays vocabulary-free: the engine only ever compares the kind
+strings on cards, never against the dictionary.
 
 ### 4.2 Entity properties (what a card carries)
 
@@ -226,12 +260,27 @@ Roles: `actors` (subject, an unordered set) · `object` (direct) ·
 
 Signatures say which roles a verb may take; cardinalities and queries are
 content (§6.1). The seed content narrows some of these (e.g. seed `ACQUIRE`
-takes an object of any kind; seed `WORK` declares no `with` slot). Custom
-verbs are declarable with the same shape via `Dictionary::register_verb` — the
-core set is a default, not a closed wall. A registered lexeme must be
-UPPER_SNAKE (`^[A-Z][A-Z0-9_]*$`) and not collide with a registered one;
-relation types, by contrast, are deliberately unvalidated — any string is a
-legal relation type. A verb with no template
+takes an object of any kind; seed `WORK` declares no `with` slot). The core
+set is a default, not a closed wall (v0.7.13): a script's `verbs:` block
+declares a brand-new lexeme with an indent-2 `VERB:` header — or configures
+a core one under the same header — and the load registers unknown lexemes
+into its effective dictionary (register-if-unknown on the per-load clone,
+the §4.1 `kinds:` discipline, so recompiling one text against one dictionary
+stays idempotent). The nameable grammar applies at that registration, §5.1's:
+a lexeme must be UPPER_SNAKE (`^[A-Z][A-Z0-9_]*$`), never a registered verb
+(a repeated header is the uniform duplicate load error, §10), and never a
+reserved word — `EVENT:` or `TO:` as a header is a load error naming the
+lexeme (the core verbs are exempt as reserved-by-being-a-verb, which is what
+lets a header configure one). A declared lexeme may not double as a declared
+entity or prototype name either: registration grows the reserved set, so one
+order-independent check over the whole load rejects the overlap in either
+section order, naming both faces of the collision. **Declaration is not
+playability** — the config block under the header (slots, duration, recipes,
+§6.1) is what makes a verb playable: a header with no block compiles an
+empty verb no recipe can match, and a lexeme the dictionary knows but the
+content never declares rejects at the step ("is not a content verb").
+Relation types, by contrast, remain deliberately unvalidated — any string is
+a legal relation type. A verb with no template
 contributes no template line; its recipe NARRATEs still speak.
 
 ### 4.4 OUTCOME operators (fixed vocabulary, **normative arities**)
@@ -272,6 +321,12 @@ uppercase) — and expands to that role's bound cards (`DESTROY WITH`,
 to a `functions:` declaration and expands to its body AT LOAD — one vocabulary,
 two namespaces of convenience: functions are not ops (§4.4's table is closed),
 declaring one named like an op is a load error (§10).
+
+**Declared ops head one too** (v0.7.14): `OP(arg, …)` dispatches to an `ops:`
+declaration and expands to its body AT LOAD through the same pass — the
+built-in table above stays closed, and the log never carries an op name (the
+§10 op rules cover the name rules, the per-call-site arity rule, and the
+composition rules, including the ban on calling an op from a function body).
 
 **Operator internals.**
 
@@ -343,7 +398,8 @@ kind:text  aspect:secret>=3  aspect:language.latin>=2  state:!sealed  -aspect:wi
 name:SUSPICION  -name:SUSPICION        (§4.5: exact-case, like name refs and exists)
 ```
 
-- `kind:` — exactly one of the §4.1 KINDS; an empty or unknown kind is a
+- `kind:` — exactly one of the §4.1 kinds (the built-ins plus the script's
+  `kinds:` declarations, v0.7.12); an empty or unknown kind is a
   parse error wherever a query parses — slots, `exists()`, `count()`
   (v0.7.2: `kind:txet` used to compile and silently never match, the one
   term whose typo was inert)
@@ -476,7 +532,10 @@ Lexical rules:
 - `name` = `[A-Za-z_][A-Za-z0-9_]*`. **Reserved words** (`EVENT COMPLETE TO WITH AT
   ABOUT INTO AS AND OR NOT IF ELSE ROLL ROLLED DRAW DRAWN RUN` + every registered
   verb lexeme) cannot be used as names; content needing them uses the quoted-string
-  ref form (`"PLAN B"`). The role words are a SOFT reservation: an entity named
+  ref form (`"PLAN B"`). A script's `verbs:` declarations join the reserved set
+  at load (v0.7.13, §4.3) — and because that growth would otherwise make name
+  legality depend on section order, one order-independent load check rejects a
+  verb lexeme that doubles as a declared entity or prototype name. The role words are a SOFT reservation: an entity named
   `object` is addressable in clause positions, but in outcome-arg positions the
   role ref intercepts before the bare-ref fallback (and a §10 parameter before
   the role) — such an entity must be quoted there.
@@ -1523,7 +1582,8 @@ mapping:
 A whole game is one text file: meta lines, then section blocks of
 sentence-like declarations. `#` starts a comment; blank lines are ignored.
 `compile_script` parses and compiles it once, failing loudly at load time
-(unknown kind, unregistered verb or relation type, bad grammar, duplicate
+(unknown kind, unregistered relation type, a reserved word in a verb header,
+a name shared by a verb and an entity/prototype, bad grammar, duplicate
 declaration). Meta lines:
 `script:` (title), `player:` (the lenient input's default actor — must name
 a declared entity of kind `character`), `goal:` (carried in the meta for an
@@ -1540,6 +1600,9 @@ player: MARCH                          # default actor for lenient input (§11)
 goal: unmask Lord Vane's killer …      # carried in the meta for the interface (§11: the shipped REPL does not print it)
 start: 0:42                            # initial clock
 seed: 7                                # dice seed (§4.4, default 0)
+
+kinds:                                 # new noun classes (§4.1, v0.7.12)
+  omen                                 # one lower_snake name per indent-2 line
 
 entities:
   GUARD_VAN is place in NIGHTJAR_FLYER with site.guard:1
@@ -1561,6 +1624,9 @@ functions:
   sus capital -> SPAWN SUSPICION, NARRATE "The conductor's eyes linger on {capital}."
   watch(n) -> IF count(name:SUSPICION) >= n -> (ENDING ARRESTED)
 
+ops:                                   # script-defined outcome operators (§10, v0.7.14):
+  ENCHANT(who) -> SET(who, aspect:charmed, 1), NARRATE "{who} glows."   # callable like a built-in op
+
 decks:
   RUMOURS spec RUMOUR, RUMOUR, HEARSAY, SCANDAL defaultcard RUMOUR reset
 
@@ -1569,7 +1635,7 @@ endings:
   DESPAIR_DEATH: "No More" (melancholy)
   LANTERN_VICTORY: "The Light in the Ruins" (grand)
 
-verbs:
+verbs:                                 # configures a verb — or declares a new one (§4.3, v0.7.13)
   READ:
     actors: 1..2 kind:character
     object: 1 kind:text
@@ -1585,6 +1651,15 @@ templates:
 
 Rules:
 
+- **Kind lines** (v0.7.12): one `lower_snake` name per indent-2 line under
+  `kinds:` — new noun classes (§4.1) registered into the load's dictionary,
+  section order = suggestion order. A duplicate (re-declaring a built-in
+  included), a relation-type collision, or a name outside the class is a
+  load error naming the line. A kind is visible to the lines after its
+  declaration only — use before `kinds:` is the ordinary unknown-kind error
+  (the same declare-then-use order containers already follow). The engine
+  never special-cases a declared kind; the four built-in semantic roles
+  (§4.1) stay built-in-only.
 - **Entity line**: `NAME is KIND [stackable] [with aspect:level, …]
   [at|in PLACE]` (trailing `with`/`at`/`in` clauses in either order; the
   `stackable` keyword sits before them, §4.2). Script ids are `s_<name>` —
@@ -1600,18 +1675,24 @@ Rules:
   name is a pool (§4.2) — and are written as-is — prefer `UPPER_SNAKE` (a
   name outside the name-lexeme class is legal but forces quoting on every
   ref to it; the lint flags it, §13.2).
-- **Duplicate declarations are load errors in every section** — entities,
-  prototypes, templates, verbs, decks, endings, functions alike (the
-  functions/decks rule generalized): a second declaration of the same key
-  fails at load naming the key, it never silently overwrites. (Verbs: a
+- **Duplicate declarations are load errors in every section** — kinds,
+  entities, prototypes, templates, verbs, decks, endings, functions alike
+  (the functions/decks rule generalized): a second declaration of the same
+  key fails at load naming the key, it never silently overwrites. (Verbs: a
   repeated verb header, not a body line, is the duplicate.)
 - **Relation line**: `A is RELTYPE of B`, `RELTYPE` registered in the
   dictionary, both endpoints declared entities (either missing is a load
   error); symmetric/directed storage follows its definition (§4.2).
-- **Verb lexemes are fixed by the dictionary**: a `verbs:` block configures
-  slots, duration, and recipes for a *registered* verb (§4.3, §6.1); new
-  verb lexemes are a code-level `Dictionary::register_verb`, not a script
-  declaration.
+- **Verb declarations** (v0.7.13): an indent-2 `VERB:` header declares a
+  brand-new UPPER_SNAKE lexeme or configures a registered one (§4.3, §6.1);
+  the load registers the unknown ones into its effective dictionary,
+  register-if-unknown, so re-declaring a core verb just configures it. The
+  block under the header is what makes the verb playable — a header with no
+  block compiles an empty verb no recipe can match, and a lexeme the content
+  never declares rejects at the step. A lexeme that is a reserved word, or
+  that shares a name with a declared entity or prototype (either section
+  order), is a load error (§5.1); a repeated header is the uniform duplicate
+  load error, core lexemes included.
 - **Recipe lines**: §6.4's script form — `[id] [hidden|shown [hint "…"]]
   [when COND] [aspects NAME[, NAME…]] [max N] -> OUTCOMES`, or
   `default -> OUTCOMES`. A leading token is an id only when it matches the
@@ -1696,6 +1777,43 @@ Rules:
   guards and the endings check run AFTER expansion, so a body's PROGRESS/
   REFUSE or an undeclared ENDING id is a load error exactly as if authored
   at the call site.
+- **Script op lines** (v0.7.14): `NAME(params…) -> OUTCOMES` under `ops:` —
+  the same three accepted head forms as functions (`NAME(p, …) ->`, `NAME ->`,
+  bare `NAME p … ->`) and the same body grammar (one source line, outcome
+  list, `{param}` interpolation with the exact-spelling rule, `IF`, `ROLL`,
+  `DRAW`, any built-in op, function calls). A declared op is a named,
+  parameterized body of outcomes callable in ANY outcome position — recipes,
+  all three trigger kinds, IF arms, other op bodies — written and read
+  exactly like a built-in op call: `ENCHANT(ROWAN)`. A call expands at load
+  by the same pass functions use; the engine and the log never see a call,
+  and §4.4's built-in table stays closed — which is why every load guard
+  (ENDING membership, DRAW decks, RUN scoping, the trigger ban sweep, the
+  dice lints) sees through op bodies by construction: the guards run
+  post-expansion, on the body the call became. Name rules: an op name is
+  UPPER_SNAKE, and it may be none of — a built-in op (the table is closed),
+  a reserved word (declared verbs included: the ops table builds after the
+  load's verb registration, so a script's own lexemes are as taken as
+  built-ins), a duplicate op, or a declared function's name (the
+  function-name grammar admits UPPER names, so the two namespaces are
+  checked against each other — not case-disjoint by construction). Op names
+  are deliberately NOT added to `reserved`: calls only ever parse in
+  outcome position, so a prototype or entity may legitimately be named like
+  an op — a bare `ENCHANT` in an outcome list stays SPAWN sugar; only
+  `ENCHANT(` is the call. Arity is checked at EVERY call site at load (wrong
+  arity is a load error naming the op, the expected count, and the actual
+  count — nested sites included, the wrapping body's name prefixed); this
+  op-grade check is deliberately NOT retro-fitted onto functions. An op
+  body may call other ops and functions alike; `ops:` and `functions:`
+  declare one flat namespace that builds names first and bodies second, so a
+  body's references resolve regardless of section order — a function or op
+  declared after its caller is legal. A FUNCTION body may never
+  call an op — a specific load error ("functions expand at load before ops
+  exist"), not a generic unknown-call. Recursion (op→op) is a load error
+  naming the cycle, over the same colored DFS the functions use; the depth
+  cap is the functions' 8, counting op→op hops only (a function's graph is
+  already acyclic and capped by its own build, so function calls are leaves
+  of the op graph). The `unknown 'NAME(…)'` error teaches declared ops as
+  part of the outcome vocabulary.
 - **Deck lines** (§4.4): `ID spec NAME[, NAME…] [defaultcard NAME] [reset]`
   (the trailing clauses in either order). The id is UPPER_SNAKE, unreserved,
   and unique. Spec entries are prototype/entity NAMES only — repeats weight
@@ -1798,7 +1916,12 @@ before the verb (`march the guard work`), verbs lighting a non-default
 non-REFUSE recipe first, flavor bindings appended after — every entry
 lenient-parseable and typeable verbatim (lowercase display names), the
 list capped at 3; candidate pools rank same-container cards first, ties in
-the frozen name order (ASCII-lowercase, then byte order). Verbs with an
+the frozen name order (ASCII-lowercase, then byte order); an actors slot
+with no query defaults its pool to the player's own kind (§4.1's frozen
+role). A step rejection renders the verb's usage line from the same slot
+arithmetic, and the noun a slot wants is its kind — `<someone>` for
+`kind:character` (§4.1's frozen role), `<kind>` for any other declared kind,
+`<thing>` when the slot queries no kind. Verbs with an
 open station and cards locked in a window are excluded; `recipe_lights`
 skips REFUSE recipes and spent `max` recipes (they land in flavor), and a
 REFUSED action prints the verb's authored `shown` hints under the refusal.
@@ -1862,8 +1985,11 @@ undo past the ending record reopens the book.
 3. The `to` role has its first content use (the Nightjar Flyer's
    interrogations, §5.3) but no core verb declares it yet (§4.3):
    recipient semantics (gifts, summons, threats) still await a core verb.
-4. Script-level verb declaration: new verb lexemes currently require
-   `Dictionary::register_verb` in code (§10); should scripts declare them?
+4. ~~Script-level verb declaration: new verb lexemes currently require
+   `Dictionary::register_verb` in code (§10); should scripts declare them?~~
+   RESOLVED by v0.7.13: yes — the `verbs:` block declares them (§4.3), the
+   load registers them into its effective dictionary under the §5.1 nameable
+   grammar.
 5. The unattended pump: the CS slice runs its time loop with no background
    tick — the `job→needs` induce bootstraps it (`on complete` + RUN
    hand-off, §6.7), and the loop, once resident and self-rechaining at
@@ -2243,9 +2369,14 @@ Errors are counted, warnings advise; findings never change the exit code
 (constant 0 — a dead `when` is sometimes the point); compile errors remain
 `compile_script`'s hard failure and unreadable input exits 1. The bin
 defaults to every `scripts/*.txt` relative to the CWD (a missing dir names
-itself and the cwd, exit 1). `--reach` may sit anywhere in the arguments
-and composes with the default list and named files alike (the
-sole-argument invocation still reads the default list).
+itself and the cwd, exit 1). Script op bodies (§10, v0.7.14) are scanned
+like function bodies — an op body's raw `SET(…, aspect:x)` counts as a
+write and its braced tokens get the same typo scan — but the lint never
+sees through a CALL SITE: a recipe line reading `BOOST(OBJECT)` contributes
+no finding itself, the write is counted once from the declared op body.
+`--reach` may sit anywhere in the arguments and composes with the default
+list and named files alike (the sole-argument invocation still reads the
+default list).
 
 ### 13.3 The bins
 

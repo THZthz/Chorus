@@ -85,9 +85,25 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
     vs.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// CORE_VERBS minus WAIT.
-fn non_wait_verbs() -> Vec<String> {
-    CORE_VERBS.iter().filter(|v| **v != "WAIT").map(|v| (*v).to_string()).collect()
+/// Script-style verb lexemes the generator declares beside the core set
+/// (v0.7.6): sampled from the alphabet exactly like a core verb, authored by
+/// the same verb loop, and registered into the scenario's dictionary with
+/// the loader's register-if-unknown discipline — the campaign used to pin
+/// the alphabet to the core twelve, so the explore/probe machinery never
+/// saw a content verb a script could not have declared.
+const SCRIPT_VERBS: [&str; 3] = ["INTERROGATE", "COMMUNE", "DISTILL"];
+
+/// The generated-action alphabet: CORE_VERBS ∪ the declarable script verbs
+/// (SCRIPT_VERBS), minus WAIT as today. v0.7.6 widened the pool from the
+/// bare core twelve; the draw order stays frozen — same seed, same scenario,
+/// draw for draw — only the pool contents grew.
+fn action_alphabet() -> Vec<String> {
+    CORE_VERBS
+        .iter()
+        .chain(SCRIPT_VERBS.iter())
+        .filter(|v| **v != "WAIT")
+        .map(|v| (*v).to_string())
+        .collect()
 }
 
 /// KIND_POOL minus place.
@@ -108,10 +124,14 @@ pub enum ProbeMode {
 }
 
 /// One generated scenario: the raw content, its compile inputs, the initial
-/// state, and the probe list.
+/// state, and the probe list. The dictionary is the scenario's OWN
+/// load-effective dictionary — the core seed plus every script verb the
+/// sample declared (§4.3, v0.7.6) — so every consumer compiles, explores and
+/// folds against the vocabulary the content actually uses.
 pub struct Scenario {
     pub seed: i64,
     pub raw: ContentRaw,
+    pub dict: Dictionary,
     pub initial: State,
     /// the initial entities as name/kind pairs — compile_content's deck-entry
     /// validation takes them explicitly
@@ -312,10 +332,23 @@ impl Gen<'_> {
 /// header.
 pub fn gen_scenario(seed: u32) -> Scenario {
     let mut r = rng(seed);
-    let non_wait = non_wait_verbs();
+    let alphabet = action_alphabet();
     // the count draw happens BEFORE sample_distinct's internal draws
     let n_verbs = 2 + int(&mut r, 3); // 2–4
-    let verbs = sample_distinct(&mut r, &non_wait, n_verbs);
+    let verbs = sample_distinct(&mut r, &alphabet, n_verbs);
+    // the scenario's dictionary: the core seed plus every non-core lexeme
+    // the sample declared — register-if-unknown, the script loader's
+    // discipline (§4.3), so a sampled core verb skips and a declared one
+    // joins both verbs and reserved
+    let mut dict = core_dictionary();
+    for v in verbs.iter().filter(|v| SCRIPT_VERBS.contains(&v.as_str())) {
+        // SCRIPT_VERBS are UPPER_SNAKE literals naming no reserved word —
+        // registration cannot fail; a failure would be a defect in the
+        // literal table (the core_dictionary seed's own argument)
+        if let Err(e) = dict.register_verb(v) {
+            unreachable!("scenario verb '{v}' failed to register: {e}");
+        }
+    }
 
     // initial entities — two characters (ANA the player + maybe BERTHA), 1–3
     // pool cards, maybe a place
@@ -651,6 +684,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
     Scenario {
         seed: seed as i64,
         raw,
+        dict,
         initial,
         entity_kinds: entities
             .iter()
@@ -1168,7 +1202,9 @@ pub struct FuzzOutcome {
 /// The differential driver: a pure function of its seed.
 pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<FuzzOutcome> {
     let sc = gen_scenario(seed);
-    let dict = core_dictionary();
+    // the scenario's own load-effective dictionary (field move — the other
+    // `sc` fields stay in use below)
+    let dict = sc.dict;
     let content = compile_content(&sc.raw, &dict, &sc.entity_kinds)?;
     let fw = explore(&content, &dict, &sc.initial, max_steps, max_states)?;
     let mut failures: Vec<String> = Vec::new();
@@ -1178,7 +1214,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
     let mut deep: Option<Forward> = None;
     // one Analyzer across the probes — the facts for this (content, initial)
     // pair are built once, not once per probe
-    let analyzer = Analyzer::new(&content, &sc.initial);
+    let analyzer = Analyzer::new(&content, &sc.initial, &dict);
     for p in &sc.probes {
         let rep = match p.mode {
             ProbeMode::Name => analyzer.analyze_card(&p.q, CardOptions::default())?,
@@ -1207,7 +1243,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
         let truth = match p.mode {
             ProbeMode::Name => fw.ever_names.contains(&p.q),
             ProbeMode::Demand => {
-                let q = parse_query(&p.q)?;
+                let q = parse_query(&p.q, &dict)?;
                 fw.ever_desc.values().any(|e| match_query(e, &q))
             }
         };
@@ -1232,7 +1268,7 @@ pub fn run_fuzz_seed(seed: u32, max_steps: usize, max_states: usize) -> Result<F
             let truth_deep = match p.mode {
                 ProbeMode::Name => deep_fw.ever_names.contains(&p.q),
                 ProbeMode::Demand => {
-                    let q = parse_query(&p.q)?;
+                    let q = parse_query(&p.q, &dict)?;
                     deep_fw.ever_desc.values().any(|e| match_query(e, &q))
                 }
             };
@@ -1283,7 +1319,9 @@ pub struct FuzzRun {
 /// applied steps or the 400-attempt cap.
 pub fn drive_fuzz_seed(seed: u32, k: usize, attempt_cap: usize) -> Result<FuzzRun> {
     let sc = gen_scenario(seed);
-    let dict = core_dictionary();
+    // the scenario's own load-effective dictionary (field move — the other
+    // `sc` fields stay in use below)
+    let dict = sc.dict;
     let content = compile_content(&sc.raw, &dict, &sc.entity_kinds)?;
     let mut sel = rng(seed); // the selector LCG — fresh per seed
     let base = sc.initial.clone();

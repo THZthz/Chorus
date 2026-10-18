@@ -10,10 +10,10 @@ use super::complete::{find_on_complete, parse_complete_clauses, CompleteClause};
 use super::types::{EntitySpec, RelationSpec};
 use crate::content::DeckRaw;
 use crate::content::{
-    DeriveAspect, EndingDef, ExpireTriggerDef, FunctionDef, PrototypeDef, PrototypeDerive,
+    DeriveAspect, EndingDef, ExpireTriggerDef, FunctionDef, OpDef, PrototypeDef, PrototypeDerive,
     SlotTriggerDef, TriggerDef,
 };
-use crate::core::dict::{Dictionary, KINDS};
+use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::{grp0_start, grp_opt, grp_text, static_regex};
 use crate::core::text::split_dsl_ws;
@@ -250,10 +250,10 @@ pub(super) fn parse_entity_line(
         return Ok(Vec::new());
     }
     check_name(name, ln, dict, "entity name")?;
-    if !KINDS.contains(&second) {
+    if !dict.kinds.contains(second) {
         return Err(ChorusError::new(format!(
             "line {ln}: unknown kind '{second}' (expected one of {})",
-            KINDS.join(", ")
+            dict.kinds_list()
         )));
     }
     let mut rest: &str = rest0;
@@ -331,7 +331,7 @@ pub(super) fn parse_prototype_line(
     let name = grp_text(&m, 1);
     check_name(name, ln, dict, "prototype name")?;
     let kind = grp_text(&m, 2);
-    if !KINDS.contains(&kind) {
+    if !dict.kinds.contains(kind) {
         return Err(ChorusError::new(format!("line {ln}: unknown kind '{kind}'")));
     }
     let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };
@@ -442,6 +442,27 @@ pub(super) fn parse_trigger_line(t: &str, ln: usize) -> Result<TriggerDef> {
 /// `NAME param …`). Grammar only: name/param shape, op collisions and
 /// duplicates are `compile_content`'s. `ln` is the 1-BASED line number.
 pub(super) fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
+    fn_head(t, ln, "functions", |name, params, body| FunctionDef { name, params, body })
+}
+
+/// An `ops:` line (§10, v0.7.7): the SAME three accepted head forms as a
+/// function line — the head grammar is shared by construction (the
+/// regexes' name group is `\S+`, never lowercase-bound), only the error
+/// text and the destination differ. Grammar only: the UPPER_SNAKE shape,
+/// collision and duplicate rules are the ops table build's.
+pub(super) fn parse_op_line(t: &str, ln: usize) -> Result<OpDef> {
+    fn_head(t, ln, "ops", |name, params, body| OpDef { name, params, body })
+}
+
+/// The shared head grammar: `NAME(params) -> body`, `NAME -> body`, or the
+/// bare `NAME param … -> body`. `what` words the grammar error
+/// ("functions" / "ops"); `build` constructs the section's record.
+fn fn_head(
+    t: &str,
+    ln: usize,
+    what: &str,
+    build: fn(name: String, params: Vec<String>, body: String) -> FunctionDef,
+) -> Result<FunctionDef> {
     if let Some(m) = fn_paren_re().captures(t) {
         let params_raw = dsl_trim(grp_text(&m, 2));
         let params: Vec<String> = if params_raw.is_empty() {
@@ -449,28 +470,28 @@ pub(super) fn parse_function_line(t: &str, ln: usize) -> Result<FunctionDef> {
         } else {
             params_raw.split(',').map(|s| dsl_trim(s).to_string()).collect()
         };
-        return Ok(FunctionDef {
-            name: grp_text(&m, 1).to_string(),
+        return Ok(build(
+            grp_text(&m, 1).to_string(),
             params,
-            body: dsl_trim(grp_text(&m, 3)).to_string(),
-        });
+            dsl_trim(grp_text(&m, 3)).to_string(),
+        ));
     }
     if let Some(m) = fn_arrow_re().captures(t) {
-        return Ok(FunctionDef {
-            name: grp_text(&m, 1).to_string(),
-            params: Vec::new(),
-            body: dsl_trim(grp_text(&m, 2)).to_string(),
-        });
+        return Ok(build(
+            grp_text(&m, 1).to_string(),
+            Vec::new(),
+            dsl_trim(grp_text(&m, 2)).to_string(),
+        ));
     }
     if let Some(m) = fn_bare_re().captures(t) {
-        return Ok(FunctionDef {
-            name: grp_text(&m, 1).to_string(),
-            params: split_dsl_ws(grp_text(&m, 2)).into_iter().map(str::to_string).collect(),
-            body: dsl_trim(grp_text(&m, 3)).to_string(),
-        });
+        return Ok(build(
+            grp_text(&m, 1).to_string(),
+            split_dsl_ws(grp_text(&m, 2)).into_iter().map(str::to_string).collect(),
+            dsl_trim(grp_text(&m, 3)).to_string(),
+        ));
     }
     Err(ChorusError::new(format!(
-        "line {ln}: functions expect  NAME(param, …) -> OUTCOMES  or  NAME param … -> OUTCOMES"
+        "line {ln}: {what} expect  NAME(param, …) -> OUTCOMES  or  NAME param … -> OUTCOMES"
     )))
 }
 

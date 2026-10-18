@@ -163,7 +163,7 @@ fn the_chain_fixture_costs_exactly_two_applications_and_the_duration_sum() {
     let dict = core_dictionary();
     let compiled = compile_script(CHAIN_SCRIPT, &dict).unwrap();
     let (content, state) = (&compiled.content, &compiled.state);
-    let analyzer = Analyzer::new(content, state);
+    let analyzer = Analyzer::new(content, state, &dict);
 
     // TOP_C: exactly 2 applications (SEED_A free, WORK once, DREAM once) and
     // exactly 90 minutes (30m + 1h) — equality, not a bound
@@ -220,7 +220,11 @@ fn a_slot_trigger_costs_minutes_but_zero_applications() {
     };
     let content = compile(&raw);
     let state = state_with(vec![ana()]);
-    let analyzer = Analyzer::new(&content, &state);
+
+    // the analyzer's dictionary: the fixture declares no vocabulary, so
+    // the core seed IS the load-effective one
+    let dict = core_dictionary();
+    let analyzer = Analyzer::new(&content, &state, &dict);
 
     let rep = cost_report(&analyzer, "GEM");
     let plan = rep.plan.as_ref().expect("GEM is proven");
@@ -273,7 +277,8 @@ fn an_expiry_trigger_is_arranged_and_its_required_card_recurs() {
     seed.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     seed.attrs.insert("expires".into(), chorus::core::types::AttrValue::Str("2halfhour".into()));
     let state = state_with(vec![ana(), seed]);
-    let analyzer = Analyzer::new(&content, &state);
+    let dict = core_dictionary();
+    let analyzer = Analyzer::new(&content, &state, &dict);
 
     let rep = cost_report(&analyzer, "YIELD_Y");
     let plan = rep.plan.as_ref().expect("YIELD_Y is proven through the expiry trigger");
@@ -335,7 +340,8 @@ fn copies_read_the_avail_counts_deck_multiplicity_versus_defaultcard_many() {
     };
     seed.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     let state = state_with(vec![ana(), seed]);
-    let analyzer = Analyzer::new(&content, &state);
+    let dict = core_dictionary();
+    let analyzer = Analyzer::new(&content, &state, &dict);
 
     // the recipe-owned draws cost one application each and their verb's
     // duration (0 here) in minutes
@@ -398,7 +404,7 @@ fn the_replayed_world_anchors_costs_and_the_cursor_consumes_deck_copies() {
     let bs_in = |from: usize| order[from..].iter().filter(|c| c.name == "B_CARD").count();
 
     // the script face: the whole permutation serves — both B copies
-    let script_face = Analyzer::new(&content, &initial);
+    let script_face = Analyzer::new(&content, &initial, &dict);
     let script_cost = cost_report(&script_face, "B_CARD");
     assert_eq!(script_cost.copies.as_ref().expect("copies").text, "2");
 
@@ -418,7 +424,7 @@ fn the_replayed_world_anchors_costs_and_the_cursor_consumes_deck_copies() {
     // the replayed face: the deck row shrinks to the remaining window
     // (order[2..3)), the drawn copies are initial facts, and the clock
     // re-anchors (t_draw's next crossing is a full day out: 1440)
-    let analyzer = Analyzer::new(&content, &mid).replayed();
+    let analyzer = Analyzer::new(&content, &mid, &dict).replayed();
     let cost = cost_report(&analyzer, "B_CARD");
     let hand = mid.entities.values().filter(|e| e.name == "B_CARD").count();
     let window = bs_in(2);
@@ -468,8 +474,12 @@ fn the_by_window_bounds_the_dag_and_a_note_says_so() {
     let content = compile(&raw);
     let state = state_with(vec![ana()]);
 
+    // the analyzer's dictionary: the fixture declares no vocabulary, so
+    // the core seed IS the load-effective one
+    let dict = core_dictionary();
+
     // M before the crossing: the site fell out of the window — no DAG
-    let before = Analyzer::new(&content, &state).by(30);
+    let before = Analyzer::new(&content, &state, &dict).by(30);
     let rep = cost_report(&before, "GEM");
     assert!(rep.plan.is_none());
     let mut buf = String::new();
@@ -481,7 +491,7 @@ fn the_by_window_bounds_the_dag_and_a_note_says_so() {
     );
 
     // a wide M: the site participates, the window note rides
-    let wide = Analyzer::new(&content, &state).by(2000);
+    let wide = Analyzer::new(&content, &state, &dict).by(2000);
     let rep = cost_report(&wide, "GEM");
     let plan = rep.plan.as_ref().expect("inside the window the site proves");
     assert_eq!(plan.apps, 0);

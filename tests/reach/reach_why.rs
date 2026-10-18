@@ -112,16 +112,21 @@ verbs:
       read.refused -> IF exists(THE_COIN) -> (SPAWN REFUSED_GEM, REFUSE(\"sealed\"))
 ";
 
-fn why_analyzer() -> (chorus::content::CompiledContent, chorus::core::types::State) {
+/// The fixture triple: the analyzer carries the load-effective dictionary
+/// beside (content, initial) — this fixture declares no vocabulary, so the
+/// core seed is the effective one.
+fn why_analyzer(
+) -> (chorus::content::CompiledContent, chorus::core::types::State, chorus::core::dict::Dictionary)
+{
     let dict = core_dictionary();
     let cs = compile_script(WHY_SCRIPT, &dict).expect("blocker fixture compiles");
-    (cs.content, cs.state)
+    (cs.content, cs.state, cs.dict)
 }
 
 /// The --why table for `target`, rendered (the CLI's exact bytes).
 fn why_section(target: &str) -> String {
-    let (content, state) = why_analyzer();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = why_analyzer();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let mut out = String::new();
     render_why(&mut out, "why.txt", target, &analyzer.card_blockers(target));
     out
@@ -246,7 +251,7 @@ fn why_table_names_the_missing_completion_home() {
     let content = compile_content(&raw, &dict, &[]).expect("fixture compiles");
     let mut state = new_state(0);
     add_entity(&mut state, ent("ANA", "character")).expect("fixture entity");
-    let analyzer = Analyzer::new(&content, &state);
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let mut out = String::new();
     render_why(&mut out, "why.txt", "HOME_GEM", &analyzer.card_blockers("HOME_GEM"));
     assert_eq!(
@@ -304,7 +309,7 @@ fn why_table_names_the_wave3_completion_rungs() {
         ..ContentRaw::default()
     };
     let content = compile_content(&unbindable, &dict, &[]).expect("fixture compiles");
-    let analyzer = Analyzer::new(&content, &state);
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let mut out = String::new();
     render_why(&mut out, "why.txt", "X_GEM", &analyzer.card_blockers("X_GEM"));
     assert_eq!(
@@ -366,7 +371,7 @@ fn why_table_names_the_wave3_completion_rungs() {
         ..ContentRaw::default()
     };
     let content = compile_content(&binder, &dict, &[]).expect("fixture compiles");
-    let analyzer = Analyzer::new(&content, &state);
+    let analyzer = Analyzer::new(&content, &state, &dict);
     // ② the aspect rung: work.r0 is a selectable completable lock-binder,
     // but it declares no 'labor' — the filter never passes.
     let mut out = String::new();
@@ -406,7 +411,7 @@ fn why_table_names_the_wave3_completion_rungs() {
         ..ContentRaw::default()
     };
     let content = compile_content(&binder_no_aspect, &dict, &[]).expect("fixture compiles");
-    let analyzer = Analyzer::new(&content, &state);
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let mut out = String::new();
     render_why(&mut out, "why.txt", "X_GEM", &analyzer.card_blockers("X_GEM"));
     assert_eq!(
@@ -444,8 +449,8 @@ fn why_table_omits_proven_sites_and_renders_the_empty_face() {
 /// and one line per recipe with the mint-site verdicts.
 #[test]
 fn verb_report_renders_the_settled_facts_byte_exact() {
-    let (content, state) = why_analyzer();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = why_analyzer();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let mut out = String::new();
     let vr = analyzer.verb_report("WORK").expect("WORK exists");
     render_verb(&mut out, "why.txt", &vr);
@@ -497,8 +502,8 @@ fn verb_report_renders_the_settled_facts_byte_exact() {
 /// rides ONLY on that name's report; name-free notes stay global.
 #[test]
 fn world_notes_converge_on_the_named_card() {
-    let (content, state) = why_analyzer();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = why_analyzer();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     // The GLOBAL refused note (no card name in the text) rides on every
     // report — the nightjar card and a name nothing mints alike.
     for target in ["THE_COIN", "WHEN_GEM", "NO_SUCH_NAME"] {
@@ -519,7 +524,7 @@ fn nightjar_expiry_note_rides_only_on_the_late_lord() {
     let dict = core_dictionary();
     let text = std::fs::read_to_string("scripts/the-nightjar-flyer.txt").expect("bundled script");
     let cs = compile_script(&text, &dict).expect("the nightjar compiles");
-    let analyzer = Analyzer::new(&cs.content, &cs.state);
+    let analyzer = Analyzer::new(&cs.content, &cs.state, &cs.dict);
     let note = "expiry trigger lord_tended reaches its body only while a living 'THE_LATE_LORD' can expire";
     let lord = analyzer.analyze_card("THE_LATE_LORD", CardOptions::default()).unwrap();
     assert!(lord.notes.iter().any(|n| n == note), "{:?}", lord.notes);

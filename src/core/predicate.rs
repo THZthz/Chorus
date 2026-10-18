@@ -404,6 +404,7 @@ pub fn eval_expr(x: &ValExpr, ctx: &PredCtx) -> Result<Option<i64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::dict::core_dictionary;
     use crate::core::pred_parse::parse_predicate;
     use crate::core::types::{new_state, AspectVal, Aspects, Attrs};
 
@@ -422,9 +423,10 @@ mod tests {
 
     #[test]
     fn parses_and_evaluates_the_doc_grammar() {
+        let dict = core_dictionary();
         // count(actors) = 2 AND NOT any(actors, aspect:occult >= 2)
-        let p =
-            parse_predicate("count(actors) = 2 AND NOT any(actors, aspect:occult >= 2)").unwrap();
+        let p = parse_predicate("count(actors) = 2 AND NOT any(actors, aspect:occult >= 2)", &dict)
+            .unwrap();
         let mut state = new_state(0);
         let mut e1 = ent("a1", "A", "character", Aspects::new(), Attrs::new());
         e1.aspects.insert("occult".into(), AspectVal::Num(3));
@@ -439,20 +441,21 @@ mod tests {
         // the conjunction is FALSE
         assert!(!eval_pred(&p, &ctx).unwrap());
         // the same tree with a predicate that passes end to end
-        let p_pos =
-            parse_predicate("count(actors) = 2 AND any(actors, aspect:occult >= 2)").unwrap();
+        let p_pos = parse_predicate("count(actors) = 2 AND any(actors, aspect:occult >= 2)", &dict)
+            .unwrap();
         assert!(eval_pred(&p_pos, &ctx).unwrap());
-        let p2 = parse_predicate("any(actors, aspect:occult >= 2)").unwrap();
+        let p2 = parse_predicate("any(actors, aspect:occult >= 2)", &dict).unwrap();
         assert!(eval_pred(&p2, &ctx).unwrap());
-        let p3 = parse_predicate("every(actors, aspect:occult >= 2)").unwrap();
+        let p3 = parse_predicate("every(actors, aspect:occult >= 2)", &dict).unwrap();
         assert!(!eval_pred(&p3, &ctx).unwrap()); // e2 has 1 — every fails
     }
 
     #[test]
     fn three_valued_boundaries_are_frozen() {
+        let dict = core_dictionary();
         // every([]) is vacuously true, any([]) vacuously false
-        let p = parse_predicate("every(actors, aspect:x >= 1)").unwrap();
-        let p2 = parse_predicate("any(actors, aspect:x >= 1)").unwrap();
+        let p = parse_predicate("every(actors, aspect:x >= 1)", &dict).unwrap();
+        let p2 = parse_predicate("any(actors, aspect:x >= 1)", &dict).unwrap();
         let mut state = new_state(0);
         let bindings = RoleBindings::new();
         let ctx = PredCtx { b: &bindings, state: &state, strict: false, roll: None };
@@ -465,7 +468,7 @@ mod tests {
         let mut bindings2 = RoleBindings::new();
         bindings2.insert(Role::Object, vec!["d1".into()]);
         let ctx2 = PredCtx { b: &bindings2, state: &state, strict: true, roll: None };
-        let p3 = parse_predicate("object.aspect.x >= 1").unwrap();
+        let p3 = parse_predicate("object.aspect.x >= 1", &dict).unwrap();
         assert!(!eval_pred(&p3, &ctx2).unwrap());
         // strict + ZERO bindings → the exact rejection message
         let bindings3 = RoleBindings::new();
@@ -479,9 +482,10 @@ mod tests {
 
     #[test]
     fn exists_and_count_query_forms() {
-        let p = parse_predicate("exists(THE_SEALED_DOOR)").unwrap();
-        let pq = parse_predicate("exists(aspect:occult >= 2)").unwrap();
-        let pc = parse_predicate("count(aspect:occult >= 2) = 1").unwrap();
+        let dict = core_dictionary();
+        let p = parse_predicate("exists(THE_SEALED_DOOR)", &dict).unwrap();
+        let pq = parse_predicate("exists(aspect:occult >= 2)", &dict).unwrap();
+        let pc = parse_predicate("count(aspect:occult >= 2) = 1", &dict).unwrap();
         let mut state = new_state(0);
         let mut door = ent("x1", "THE_SEALED_DOOR", "place", Aspects::new(), Attrs::new());
         door.aspects.insert("occult".into(), AspectVal::Num(5));

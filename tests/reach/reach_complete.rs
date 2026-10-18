@@ -127,7 +127,11 @@ fn mint_fixture(aspect: Option<&str>) -> ContentRaw {
 fn a_complete_trigger_on_an_initial_home_proves_its_mint_with_the_exact_support_line() {
     let content = compile(&mint_fixture(None));
     let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    // the module-level analyze_card re-parses the --demand grammar against the
+    // analyzer's dictionary; these fixtures declare no vocabulary, so the core
+    // seed is the load-effective one
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(rep.existence, Existence::Proven);
     assert_eq!(
@@ -148,7 +152,8 @@ fn a_complete_trigger_on_an_initial_home_proves_its_mint_with_the_exact_support_
 fn an_aspect_complete_trigger_carries_the_filter_in_its_exact_support_line() {
     let content = compile(&mint_fixture(Some("labor")));
     let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(
         rep.chain,
@@ -167,7 +172,8 @@ fn an_aspect_complete_trigger_carries_the_filter_in_its_exact_support_line() {
 fn a_complete_trigger_whose_home_is_unobtainable_stays_unproven_candidate() {
     let content = compile(&mint_fixture(None));
     let state = state_with(vec![ent("ANA", "character", &[])]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert_eq!(rep.existence, Existence::Candidate);
 }
@@ -188,7 +194,8 @@ fn a_complete_trigger_without_any_home_locking_verb_stays_unproven() {
     };
     let content = compile(&raw);
     let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Unproven);
     assert_eq!(rep.existence, Existence::Candidate);
 }
@@ -217,7 +224,8 @@ fn a_complete_trigger_on_a_produced_home_proves_after_the_home_is_proven() {
     };
     let content = compile(&raw);
     let state = state_with(vec![ent("ANA", "character", &[])]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert!(rep
         .chain
@@ -317,7 +325,8 @@ fn a_complete_trigger_proves_through_one_clean_witness_pair_and_names_it() {
         ent("ROOM", "place", &[]),
         ent("HOME_CARD", "item", &[]),
     ]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(rep.existence, Existence::Proven);
     // the support walk names the CLEAN witness (EXPLORE), not the dirty one
@@ -388,7 +397,8 @@ fn an_optional_min0_slot_never_force_locks_so_the_completing_recipe_proves() {
     };
     let content = compile(&raw);
     let state = state_with(vec![ent("ANA", "character", &[]), ent("HOME_CARD", "item", &[])]);
-    let rep = analyze_card(&content, &state, "X_CARD", CardOptions::default()).unwrap();
+    let dict = core_dictionary();
+    let rep = analyze_card(&content, &state, &dict, "X_CARD", CardOptions::default()).unwrap();
     assert_eq!(rep.verdict, CardVerdict::Obtainable);
     assert_eq!(rep.existence, Existence::Proven);
     // the proven server is the RECIPE (its completion can simply not fill

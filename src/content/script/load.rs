@@ -1,13 +1,59 @@
 //! The load entry point: [`compile_script`] parses a script and turns it
 //! into runnable game content + the initial State.
 
+use indexmap::{IndexMap, IndexSet};
+
 use super::parse::parse_script;
 use super::types::{declared_entities, CompiledScript, Script};
-use crate::content::{compile_content, ContentRaw};
+use crate::content::{compile_content, ContentRaw, VerbContent};
 use crate::core::clock::abs_min;
 use crate::core::dict::Dictionary;
+use crate::core::jsonw::canonical_key_order;
 use crate::core::types::{add_entity, new_state, relation_key, AttrValue, Attrs, Entity, Relation};
 use crate::error::{ChorusError, Result};
+
+/// The load-effective dictionary: the caller's dictionary plus the script's
+/// `kinds:` declarations (§4.1, v0.7.5) and its `verbs:` declarations
+/// (§4.3, v0.7.6), declaration order preserved. Vocabulary is load-time
+/// state — the MECHANICS never read the word lists (verb lookup is
+/// content-driven), but the SENTENCES do: the play surface parses typed
+/// input and prints canonical text against this dictionary, and the fold
+/// re-parses every recorded sentence with it (exec's format∘parse gate),
+/// which is why a declared verb must be registered here and not merely
+/// compiled. The augmentation rides a per-load CLONE, so the caller's
+/// dictionary is left untouched: loading the same text twice against one
+/// dictionary stays idempotent, and `Game::from_script` keeps owning its
+/// dictionary verbatim. Verbs register IF-UNKNOWN: a lexeme already present
+/// (a core verb being configured, or one an earlier load of this same text
+/// inserted) is skipped — `register_verb` is not idempotent, and the skip
+/// is what makes recompiling one text against one dictionary — or against
+/// its own effective output — succeed twice. An unknown lexeme runs the
+/// full nameable grammar (§4.3): UPPER_SNAKE, never a reserved word (§5.1)
+/// — `EVENT:` or `TO:` as a header fails loud here, naming the lexeme.
+pub(super) fn dict_with_vocabulary(
+    dict: &Dictionary,
+    kinds: &IndexSet<String>,
+    verbs: &IndexMap<String, VerbContent>,
+) -> Result<Dictionary> {
+    let mut eff = dict.clone();
+    for k in kinds {
+        // every declaration was validated by parse_script against the same
+        // base dictionary — this cannot fail; if it ever does, the load
+        // fails loud right here
+        eff.register_kind(k)?;
+    }
+    for name in verbs.keys() {
+        // the header grammar (verb_header_re) already enforced the shape at
+        // parse; the reserved/verb-collision arms of the nameable grammar
+        // are re-checked HERE, where the registration actually happens — an
+        // intra-file duplicate header never reaches this loop (the parse-side
+        // duplicate rule fired first)
+        if !eff.is_verb(name) {
+            eff.register_verb(name)?;
+        }
+    }
+    Ok(eff)
+}
 
 /// `compile_script(text, dict)` → `{ content, state, meta }`.
 pub fn compile_script(text: &str, dict: &Dictionary) -> Result<CompiledScript> {
@@ -27,7 +73,41 @@ pub(super) fn compile_parsed(script: Script, dict: &Dictionary) -> Result<Compil
     // from them.
     let declared = declared_entities(&script.entities);
     let raw = ContentRaw { seed: script.meta.seed, ..script.content };
-    let content = compile_content(&raw, dict, &declared)?;
+    // §4.1/§4.3: the compile half sees the same effective dictionary the
+    // parse half validated against — the script's kinds and verb lexemes
+    // re-registered onto a fresh clone, so every slot/recipe-body query parse
+    // below accepts them and `compile_verb`'s registration gate passes for a
+    // script-declared lexeme
+    let eff = dict_with_vocabulary(dict, &raw.kinds, &raw.verbs)?;
+    // v0.7.6, order-independent: a declared verb lexeme may not share its
+    // name with a declared entity or prototype. Registration grows
+    // `reserved` (§5.1), so an overlap would flip `format_ref` to quoting
+    // the name and the bare-ref parser to refusing it — and without this
+    // check, whether the load errored at all would depend on which section
+    // the file happened to list first (an entity line parses against the
+    // base reserved set, so `entities:` before `verbs:` would slip a name
+    // past `check_name` that the reverse order rejects). One walk over the
+    // whole load kills the order dependence both directions.
+    for name in script.entities.iter().map(|e| &e.name) {
+        if raw.verbs.contains_key(name) {
+            return Err(ChorusError::new(format!(
+                "'{name}' is declared both as an entity and as a verb — a verb lexeme is a reserved word (§5.1)"
+            )));
+        }
+    }
+    // prototype names are `\S+` (integer-like keys legal), so the walk goes
+    // through `canonical_key_order`, same as parse_script's entity/prototype
+    // double-declaration check
+    if let Some(protos) = &raw.prototypes {
+        for name in canonical_key_order(protos) {
+            if raw.verbs.contains_key(&name) {
+                return Err(ChorusError::new(format!(
+                    "'{name}' is declared both as a prototype and as a verb — a verb lexeme is a reserved word (§5.1)"
+                )));
+            }
+        }
+    }
+    let content = compile_content(&raw, &eff, &declared)?;
     let now = match script.meta.start {
         Some(start) => abs_min(start),
         None => 0,
@@ -113,5 +193,5 @@ pub(super) fn compile_parsed(script: Script, dict: &Dictionary) -> Result<Compil
             )));
         }
     }
-    Ok(CompiledScript { content, state, meta: script.meta })
+    Ok(CompiledScript { content, state, meta: script.meta, dict: eff })
 }

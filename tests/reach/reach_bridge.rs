@@ -96,7 +96,7 @@ fn compile(text: &str) -> chorus::content::script::CompiledScript {
 #[test]
 fn bridge_classes_are_byte_exact() {
     let cs = compile(FIXTURE);
-    let findings = reach_findings(&cs.content, &cs.state);
+    let findings = reach_findings(&cs.content, &cs.state, &cs.dict);
     let messages: Vec<&str> = findings.iter().map(|f| f.message.as_str()).collect();
     assert_eq!(
         messages,
@@ -122,7 +122,10 @@ fn bridge_classes_are_byte_exact() {
 #[test]
 fn two_runs_are_byte_identical() {
     let cs = compile(FIXTURE);
-    assert_eq!(reach_findings(&cs.content, &cs.state), reach_findings(&cs.content, &cs.state));
+    assert_eq!(
+        reach_findings(&cs.content, &cs.state, &cs.dict),
+        reach_findings(&cs.content, &cs.state, &cs.dict)
+    );
 }
 
 /// A clean world yields no findings — the bridge only speaks when the
@@ -130,7 +133,7 @@ fn two_runs_are_byte_identical() {
 #[test]
 fn a_clean_world_yields_no_findings() {
     let cs = compile(CLEAN);
-    assert!(reach_findings(&cs.content, &cs.state).is_empty());
+    assert!(reach_findings(&cs.content, &cs.state, &cs.dict).is_empty());
 }
 
 // ---------------------------------------------------------------------------

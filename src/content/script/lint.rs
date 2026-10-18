@@ -112,8 +112,13 @@ impl LintFinding {
 /// such negation whens).
 pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFinding>> {
     let script = parse_script(text, dict)?;
-    // lints run on scripts that already compile
-    compile_parsed(script.clone(), dict)?;
+    // lints run on scripts that already compile — and the compile hands back
+    // the load-effective dictionary on `CompiledScript`, so the E11
+    // when-verdict re-parse below binds THAT instead of rebuilding an
+    // identical one (a script-declared kind or verb must not silently shrink
+    // the finding set: a dead-when verdict over `kind:custom` still parses)
+    let compiled = compile_parsed(script.clone(), dict)?;
+    let eff = &compiled.dict;
     let mut findings: Vec<LintFinding> = Vec::new();
     let verbs = &script.content.verbs;
     // raw default recipes carry no id — mirror compile_content's minting.
@@ -214,7 +219,7 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             // compile_script above already parsed (and arg-linted) every
             // when, so the parse here cannot fail — a failure is skipped,
             // never a panic (the lint never throws).
-            if let Ok(pred) = parse_predicate(when) {
+            if let Ok(pred) = parse_predicate(when, eff) {
                 let mut cx = WhenCx::new(&slot_ranges);
                 if let WhenVerdict::Dead(reason) = when_verdict(&pred, false, &mut cx) {
                     findings.push(LintFinding {
@@ -263,6 +268,16 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         for f in functions {
             let extra: Vec<&str> = f.params.iter().map(String::as_str).collect();
             scan_tokens(&mut findings, &format!("function {}", f.name), &f.body, &extra);
+        }
+    }
+    // op bodies get the same template-token scan as function bodies (§10,
+    // v0.7.7). The lint never sees through a CALL SITE — a recipe line
+    // reading `BOOST(OBJECT)` contributes no finding itself (§13.2's note);
+    // the writes are counted from the declared bodies further below.
+    if let Some(ops) = &script.content.ops {
+        for o in ops {
+            let extra: Vec<&str> = o.params.iter().map(String::as_str).collect();
+            scan_tokens(&mut findings, &format!("op {}", o.name), &o.body, &extra);
         }
     }
 
@@ -390,6 +405,13 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     if let Some(functions) = &script.content.functions {
         for f in functions {
             scan_writes(&mut writes, &f.body);
+        }
+    }
+    // op bodies count as writers exactly like function bodies — the raw
+    // `SET(…, aspect:x)` inside a declared op body is a write (§10, v0.7.7)
+    if let Some(ops) = &script.content.ops {
+        for o in ops {
+            scan_writes(&mut writes, &o.body);
         }
     }
     for r in &reads {

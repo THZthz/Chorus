@@ -10,6 +10,7 @@ use std::fmt::Write as _;
 use indexmap::IndexMap;
 
 use crate::content::{CompiledContent, CompiledTrigger};
+use crate::core::dict::Dictionary;
 use crate::core::types::State;
 
 use super::census::MANY;
@@ -112,10 +113,12 @@ pub struct WorldReport {
 
 /// The world dashboard over one (content, initial) pair. A fresh
 /// [`Analyzer`] per call — the world facts are a pure function of the
-/// inputs, so this is observably identical to sharing one.
+/// inputs (the dictionary included: the `--demand`-family grammars the
+/// analyzer re-parses read it), so this is observably identical to
+/// sharing one.
 #[must_use]
-pub fn world_report(content: &CompiledContent, initial: &State) -> WorldReport {
-    let analyzer = Analyzer::new(content, initial);
+pub fn world_report(content: &CompiledContent, initial: &State, dict: &Dictionary) -> WorldReport {
+    let analyzer = Analyzer::new(content, initial, dict);
     let facts = analyzer.facts();
 
     // overview: content-level counts + the census split
@@ -401,7 +404,7 @@ verbs:
         let dict = core_dictionary();
         let cs = compile_script(RICH, &dict).expect("fixture compiles");
         let mut buf = String::new();
-        render_report(&mut buf, "fixture.txt", &world_report(&cs.content, &cs.state));
+        render_report(&mut buf, "fixture.txt", &world_report(&cs.content, &cs.state, &cs.dict));
         buf
     }
 
@@ -453,7 +456,7 @@ entities:
         )
         .expect("fixture compiles");
         let mut buf = String::new();
-        render_report(&mut buf, "bare.txt", &world_report(&cs.content, &cs.state));
+        render_report(&mut buf, "bare.txt", &world_report(&cs.content, &cs.state, &cs.dict));
         assert_eq!(
             buf,
             "\

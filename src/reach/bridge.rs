@@ -24,6 +24,7 @@ use indexmap::IndexSet;
 
 use crate::content::script::{LintFinding, LintSeverity};
 use crate::content::{CompiledContent, CompiledTrigger};
+use crate::core::dict::Dictionary;
 use crate::core::types::State;
 
 use super::census::{trigger_owner, SiteKind, MANY};
@@ -60,8 +61,12 @@ use super::world::Analyzer;
 ///    owners (the world note already carries the count; the lint form names
 ///    owners).
 #[must_use]
-pub fn reach_findings(content: &CompiledContent, initial: &State) -> Vec<LintFinding> {
-    let analyzer = Analyzer::new(content, initial);
+pub fn reach_findings(
+    content: &CompiledContent,
+    initial: &State,
+    dict: &Dictionary,
+) -> Vec<LintFinding> {
+    let analyzer = Analyzer::new(content, initial, dict);
     let facts = analyzer.facts();
     let mut findings: Vec<LintFinding> = Vec::new();
     let mut warn = |message: String| {

@@ -279,7 +279,11 @@ fn main() -> ExitCode {
 
     // compile the script; a missing file / compile error is a hard error →
     // exit 1. Only the message line is reproducible
-    // (deliberate: stderr text is not part of the stdout freeze).
+    // (deliberate: stderr text is not part of the stdout freeze). The load
+    // hands back its EFFECTIVE dictionary (§4.1: the core dictionary plus
+    // the script's `kinds:` declarations) — the analyzer's --demand query
+    // parse validates `kind:` terms against it, so a demand on a custom
+    // kind parses.
     let dict = core_dictionary();
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -295,7 +299,7 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let CompiledScript { content, state, .. } = compiled;
+    let CompiledScript { content, state, dict: eff, .. } = compiled;
 
     // the midgame face: the analysis initial world is the LOG replayed onto
     // the script's initial state (the engine's own fold — §7). A missing or
@@ -305,7 +309,11 @@ fn main() -> ExitCode {
     let state = match &from_state {
         None => state,
         Some(log_path) => {
-            let mid = match replay_state(std::path::Path::new(log_path), &state, &dict, &content) {
+            // the fold re-parses the log's sentences, so it must read the
+            // script's LOAD-EFFECTIVE dictionary (declared verbs/kinds
+            // included — the same dictionary the playing bin adopted and
+            // wrote the log with), not the bare core seed
+            let mid = match replay_state(std::path::Path::new(log_path), &state, &eff, &content) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("Error: {e}");
@@ -343,7 +351,7 @@ fn main() -> ExitCode {
     if world {
         // one Analyzer, one world, zero per-card work — the sections are the
         // post-fixpoint facts re-rendered (reach::world_report)
-        let r = world_report(&content, &state);
+        let r = world_report(&content, &state, &eff);
         let mut buf = String::new();
         world_report::render_report(&mut buf, file, &r);
         if out.write_all(buf.as_bytes()).is_err() {
@@ -355,7 +363,7 @@ fn main() -> ExitCode {
     if graph {
         // the whole-content mint dependency graph as Graphviz DOT
         // (reach::export::graph_dot — deterministic, cmp_utf16-sorted)
-        let buf = graph_dot(&content, &state);
+        let buf = graph_dot(&content, &state, &eff);
         if out.write_all(buf.as_bytes()).is_err() {
             return ExitCode::from(1);
         }
@@ -367,7 +375,7 @@ fn main() -> ExitCode {
         // precedent: one dedicated, target-free face — §13.1); --why does
         // not apply to it. An unknown verb name is the analyze error
         // (exit 1, stderr only).
-        let analyzer = Analyzer::new(&content, &state);
+        let analyzer = Analyzer::new(&content, &state, &eff);
         let Some(vr) = analyzer.verb_report(name) else {
             eprintln!("Error: no verb '{name}'");
             return ExitCode::from(1);
@@ -399,8 +407,10 @@ fn main() -> ExitCode {
         let mut sorted: Vec<String> = names.into_iter().collect();
         sorted.sort_by(|a, b| cmp_utf16(a, b));
         // one Analyzer, one world: the bound and the replay mark are set
-        // once, before the first analysis (the facts cache is per host)
-        let mut analyzer = Analyzer::new(&content, &state);
+        // once, before the first analysis (the facts cache is per host);
+        // the analyzer parses the script's load-effective dictionary (a
+        // `--demand` on a declared kind parses against it)
+        let mut analyzer = Analyzer::new(&content, &state, &eff);
         if let Some(m) = by {
             analyzer = analyzer.by(m);
         }
@@ -475,7 +485,9 @@ fn main() -> ExitCode {
         // only --demand is given; the analyzer ignores the target under
         // demand (the demand branch runs first)
         let card = card.map(String::as_str).unwrap_or("");
-        let mut analyzer = Analyzer::new(&content, &state);
+        // the same host discipline as the --all walk: the bound and the
+        // replay mark set once, the dictionary the script's load produced
+        let mut analyzer = Analyzer::new(&content, &state, &eff);
         if let Some(m) = by {
             analyzer = analyzer.by(m);
         }

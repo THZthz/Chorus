@@ -218,3 +218,72 @@ fn reach_scale_worker_shard_and_namestat_interface() {
         arr.iter().map(|st| st["name"].as_str().expect("name").to_string()).collect();
     assert_eq!(worker_names, mine);
 }
+
+/// v0.7.6 — script-declared verbs must not leak ACROSS linted files: the bin
+/// builds a fresh core dictionary per file, so file two, which USES file
+/// one's verb without declaring it, cannot compile (the templates gate) —
+/// while with a shared dictionary file one's lint would have registered
+/// INTERROGATE and file two would have passed (through the real argv →
+/// process path).
+#[test]
+fn lint_scripts_files_are_isolated_for_script_declared_verbs() {
+    let declares = "
+script: Verbs Isolation One
+player: ROWAN
+start: 0:0
+
+entities:
+  HOUSE is place
+  ROWAN is character at HOUSE
+  THE_GUARD is character with duty:2 at HOUSE
+
+verbs:
+  INTERROGATE:
+    actors: 1 kind:character
+    object: 1 kind:character
+    duration: 30m
+    recipes:
+      default -> NARRATE \"{actors} question {object}.\"
+";
+    // the user, not the declarer: the templates line reads the verb file one
+    // declared — legal only if file one's registration leaked into this
+    // file's dictionary
+    let uses = "
+script: Verbs Isolation Two
+player: ROWAN
+start: 0:0
+
+entities:
+  HOUSE is place
+  ROWAN is character at HOUSE
+
+templates:
+  INTERROGATE says \"{actors} press {object}.\"
+";
+    let dir = std::env::temp_dir().join(format!("chorus-lint-verbs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch dir");
+    let one = dir.join("verbs-one.txt");
+    let two = dir.join("verbs-two.txt");
+    std::fs::write(&one, declares).expect("write file one");
+    std::fs::write(&two, uses).expect("write file two");
+    // the declaring file lints clean on its own
+    let (code, stdout, stderr) = run("lint-scripts", &[one.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains("verbs-one.txt: clean"), "{stdout}");
+    // ... and the using file fails ALONE (no leak backward either)
+    let (solo_code, solo_out, solo_err) = run("lint-scripts", &[two.to_str().unwrap()]);
+    assert_eq!(solo_code, Some(1), "{solo_out}");
+    assert!(solo_err.contains("template 'INTERROGATE' is not a registered verb"), "{solo_err}");
+    // and in ONE invocation the leak would show exactly here: a shared
+    // dictionary linted file one first, file two inherited INTERROGATE, and
+    // the run exited 0. Per-file isolation: exit 1, file one clean, file two
+    // named by the same compile error.
+    let (code, stdout, stderr) =
+        run("lint-scripts", &[one.to_str().unwrap(), two.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stdout.contains("verbs-one.txt: clean"), "{stdout}");
+    assert!(!stdout.contains("verbs-two.txt: clean"), "{stdout}");
+    assert!(stderr.contains("template 'INTERROGATE' is not a registered verb"), "{stderr}");
+}

@@ -10,6 +10,7 @@
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::{CompiledContent, CompiledDeck, CompiledTrigger, DeckCard};
+use crate::core::dict::Dictionary;
 use crate::core::query::{match_conjunction, match_query, parse_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
 use crate::error::Result;
@@ -606,7 +607,7 @@ impl<'c> Analyzer<'c> {
             // an EMPTY demand string counts as no demand (the frozen truthiness of
             // `''`); parse_query("") would return an empty query
             // without erroring and must not enter demand mode
-            Some(d) if !d.is_empty() => Some(parse_query(d)?),
+            Some(d) if !d.is_empty() => Some(parse_query(d, self.dict)?),
             _ => None,
         };
 
@@ -1297,8 +1298,9 @@ fn live_sites_serving<'a, 'c>(
 pub fn analyze_card(
     content: &CompiledContent,
     initial: &State,
+    dict: &Dictionary,
     target: &str,
     opts: CardOptions,
 ) -> Result<CardReport> {
-    Analyzer::new(content, initial).analyze_card(target, opts)
+    Analyzer::new(content, initial, dict).analyze_card(target, opts)
 }

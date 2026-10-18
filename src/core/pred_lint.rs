@@ -182,30 +182,32 @@ fn walk_roll_may_bind(where_: &str, list: &[Outcome], bound: bool) -> Result<boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::dict::core_dictionary;
     use crate::core::pred_parse::parse_predicate;
 
     #[test]
     fn lint_messages_name_roles_and_world_forms() {
-        let p = parse_predicate("count(DREAD) >= 3").unwrap();
+        let dict = core_dictionary();
+        let p = parse_predicate("count(DREAD) >= 3", &dict).unwrap();
         let e = lint_pred("recipe r1", &p).unwrap_err();
         assert_eq!(
             e.msg,
             "recipe r1: count() argument 'DREAD' is neither a role (actors, object, with, at, about, to) nor a query (name:x, kind:k, aspect:a>=1, state:s, -term) — did you mean count(name:DREAD)?"
         );
-        let p2 = parse_predicate("total(BOB, aspect:x) >= 1").unwrap();
+        let p2 = parse_predicate("total(BOB, aspect:x) >= 1", &dict).unwrap();
         let e2 = lint_pred("recipe r2", &p2).unwrap_err();
         assert_eq!(
             e2.msg,
             "recipe r2: total() first argument 'BOB' is not a declared role (actors, object, with, at, about, to) — total pools a role's aspects; use count(name:x) to count a pool by name"
         );
         // trigger lint: rel/every/count over step roles are load errors
-        let p3 = parse_predicate("rel(neighbor, actors)").unwrap();
+        let p3 = parse_predicate("rel(neighbor, actors)", &dict).unwrap();
         let e3 = lint_trigger_pred("trigger t", &p3).unwrap_err();
         assert_eq!(
             e3.msg,
             "trigger t: IF operand rel(neighbor, actors) reads a step role — trigger bindings are empty, it would always be false; use world forms (exists(…), count(name:…))"
         );
-        let p4 = parse_predicate("every(actors, aspect:x >= 1)").unwrap();
+        let p4 = parse_predicate("every(actors, aspect:x >= 1)", &dict).unwrap();
         let e4 = lint_trigger_pred("trigger t", &p4).unwrap_err();
         assert_eq!(
             e4.msg,

@@ -324,7 +324,9 @@ pub fn seed_content() -> ContentRaw {
         ),
         endings: None,
         functions: None,
+        ops: None, // built-in outcome vocabulary only (§10)
         decks: None,
+        kinds: Default::default(), // built-in vocabulary only (§4.1)
     }
 }
 

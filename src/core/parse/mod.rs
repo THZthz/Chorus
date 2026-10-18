@@ -31,14 +31,15 @@ const CLAUSE_KEYWORDS: [&str; 4] = ["TO", "WITH", "AT", "ABOUT"];
 
 /// Parse one full sentence.
 pub fn parse_sentence(src: &str, dict: &Dictionary) -> Result<Sentence> {
-    Parser::new(lex(src)?, dict, None, None).sentence()
+    Parser::new(lex(src)?, dict, None, None, false).sentence()
 }
 
 /// Parse an outcome list for recipe `out`
 /// strings at content load: authored outcome strings must parse COMPLETELY
-/// (§5.1).
+/// (§5.1). Calls to declared functions AND script ops (§10, v0.7.7) both
+/// dispatch.
 pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Result<Vec<Outcome>> {
-    let mut p = Parser::new(lex(src)?, dict, fns, None);
+    let mut p = Parser::new(lex(src)?, dict, fns, None, true);
     let out = p.outcome_list_or_empty()?;
     p.expect_end()?;
     Ok(out)
@@ -46,14 +47,33 @@ pub fn parse_outcomes(src: &str, dict: &Dictionary, fns: Option<&FnTable>) -> Re
 
 /// Parse one function BODY into its template
 /// (§10): parameters are active, nested calls become FN nodes, NOTHING
-/// expands yet.
+/// expands yet. A function body may NOT call script ops (§10, v0.7.7) —
+/// functions parse before the ops bodies exist, so an op call here is the
+/// specific ban error, not a generic unknown-call.
 pub fn parse_function_body(
     src: &str,
     dict: &Dictionary,
     fns: &FnTable,
     params: &[String],
 ) -> Result<Vec<Outcome>> {
-    let mut p = Parser::new(lex(src)?, dict, Some(fns), Some(params.iter().cloned().collect()));
+    let mut p =
+        Parser::new(lex(src)?, dict, Some(fns), Some(params.iter().cloned().collect()), false);
+    let out = p.outcome_list_or_empty()?;
+    p.expect_end()?;
+    Ok(out)
+}
+
+/// Parse one OP BODY into its template (§10, v0.7.7): the same grammar as a
+/// function body, but op calls are LEGAL here — an op body may call other
+/// ops and functions alike (a function may never call an op).
+pub fn parse_op_body(
+    src: &str,
+    dict: &Dictionary,
+    fns: &FnTable,
+    params: &[String],
+) -> Result<Vec<Outcome>> {
+    let mut p =
+        Parser::new(lex(src)?, dict, Some(fns), Some(params.iter().cloned().collect()), true);
     let out = p.outcome_list_or_empty()?;
     p.expect_end()?;
     Ok(out)
@@ -66,6 +86,11 @@ struct Parser<'a> {
     dict: &'a Dictionary,
     fns: Option<&'a FnTable>,
     params: Option<HashSet<String>>,
+    /// May a `NAME(` dispatch to a DECLARED SCRIPT OP? True for outcome
+    /// lists and op bodies; false inside a function body, where an op call
+    /// is the §10 composition ban (a specific load error). Built-in ops
+    /// dispatch regardless — they are grammar, not table entries.
+    ops_call: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -74,8 +99,9 @@ impl<'a> Parser<'a> {
         dict: &'a Dictionary,
         fns: Option<&'a FnTable>,
         params: Option<HashSet<String>>,
+        ops_call: bool,
     ) -> Parser<'a> {
-        Parser { toks, pos: 0, dict, fns, params }
+        Parser { toks, pos: 0, dict, fns, params, ops_call }
     }
 
     fn peek(&self, o: usize) -> Option<&Tok> {
@@ -443,7 +469,8 @@ mod tests {
         // SET(myparam = 3) inside a body: the param reads as a pair KEY —
         // rejected as before (acceptance face unchanged), but the error is
         // the Q3 teach message, not the loop's bare `expected ')', got '='`
-        let mut p = Parser::new(lex("SET(myparam = 3)").unwrap(), &d, None, Some(params.clone()));
+        let mut p =
+            Parser::new(lex("SET(myparam = 3)").unwrap(), &d, None, Some(params.clone()), true);
         let err = p.outcome_list_or_empty().unwrap_err();
         assert_eq!(
             err.msg,
@@ -455,7 +482,7 @@ mod tests {
         // SPAWN's own arg parse DOES accept the param key (the whole pair becomes
         // the param, and the value token is consumed) — the §10 pair face,
         // untouched by the teach
-        let mut p2 = Parser::new(lex("SPAWN X myparam = 3").unwrap(), &d, None, Some(params));
+        let mut p2 = Parser::new(lex("SPAWN X myparam = 3").unwrap(), &d, None, Some(params), true);
         let out = p2.outcome_list_or_empty().unwrap();
         match &out[0].args[1] {
             Arg::Param { name, sign } => {
@@ -474,7 +501,7 @@ mod tests {
         // A param as the pair's VALUE: rejected as before (acceptance face
         // unchanged), but the error is the Q3 teach message, not the loop's
         // bare `expected ')', got 'p'` — and it lists the scope, sorted
-        let mut p = Parser::new(lex("SET(x, k = p)").unwrap(), &d, None, Some(params));
+        let mut p = Parser::new(lex("SET(x, k = p)").unwrap(), &d, None, Some(params), true);
         let err = p.outcome_list_or_empty().unwrap_err();
         assert_eq!(
             err.msg,
@@ -495,6 +522,7 @@ mod tests {
             &d,
             None,
             Some(params),
+            true,
         );
         let out = p.outcome_list_or_empty().unwrap();
         let args = &out[0].args;
@@ -515,6 +543,7 @@ mod tests {
             &d,
             None,
             None,
+            true,
         );
         let s = p.sentence().unwrap();
         let o = &s.outcomes[0];
@@ -523,14 +552,15 @@ mod tests {
         assert!(o.fallback.is_some());
         // engine-written rows re-parse (law 2)
         let mut p2 =
-            Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14, 3)").unwrap(), &d, None, None);
+            Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14, 3)").unwrap(), &d, None, None, true);
         let s2 = p2.sentence().unwrap();
         assert_eq!(s2.kind, SentenceKind::Complete);
         assert_eq!(s2.outcomes[0].op, "ROLLED");
         assert_eq!(s2.outcomes[0].args[0], Arg::Int { v: 14 });
         assert_eq!(s2.outcomes[0].args[1], Arg::Int { v: 3 });
         // ROLLED arity is pinned
-        let mut p3 = Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14)").unwrap(), &d, None, None);
+        let mut p3 =
+            Parser::new(lex("1:2 @ COMPLETE READ -> ROLLED(14)").unwrap(), &d, None, None, true);
         let err = p3.sentence().unwrap_err();
         assert_eq!(err.msg, "ROLLED takes exactly two integers: ROLLED(<total>, <ctrAfter>)");
     }
@@ -539,23 +569,23 @@ mod tests {
     fn fn_call_arity_error_is_byte_exact() {
         let d = dict();
         let fns = FnTable::default();
-        let mut p = Parser::new(lex("GIVE(a, b)").unwrap(), &d, Some(&fns), None);
+        let mut p = Parser::new(lex("GIVE(a, b)").unwrap(), &d, Some(&fns), None, true);
         let err = p.outcome().unwrap_err();
         assert_eq!(
             err.msg,
-            "unknown 'GIVE(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; no functions declared (bare names spawn — an op's parens are part of its grammar; calls need a declared function)"
+            "unknown 'GIVE(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; no ops declared; no functions declared (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)"
         );
     }
 
     #[test]
     fn wait_row_requires_a_dur_and_draw_is_parenless_only() {
         let d = dict();
-        let mut p = Parser::new(lex("0:42 @ WAIT READ").unwrap(), &d, None, None);
+        let mut p = Parser::new(lex("0:42 @ WAIT READ").unwrap(), &d, None, None, true);
         // WAIT followed by a non-dur falls through to the action grammar,
         // whose ref() refuses the reserved token
         let err = p.sentence().unwrap_err();
         assert_eq!(err.msg, "'WAIT' is reserved and cannot be a name (quote it)");
-        let mut p2 = Parser::new(lex("DRAW(RUMOURS)").unwrap(), &d, None, None);
+        let mut p2 = Parser::new(lex("DRAW(RUMOURS)").unwrap(), &d, None, None, true);
         let err2 = p2.outcome().unwrap_err();
         assert_eq!(err2.msg, "DRAW takes the paren-less form: DRAW <DECK> [INTO target]");
     }
@@ -565,7 +595,7 @@ mod tests {
         let d = dict();
         let mut params = HashSet::new();
         params.insert("n".to_string());
-        let mut p = Parser::new(lex("SET(x, -n)").unwrap(), &d, None, Some(params));
+        let mut p = Parser::new(lex("SET(x, -n)").unwrap(), &d, None, Some(params), true);
         let out = p.outcome_list_or_empty().unwrap();
         assert_eq!(out[0].args[1], Arg::Param { name: "n".into(), sign: Some(Sign::Neg) });
     }

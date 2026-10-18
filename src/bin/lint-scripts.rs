@@ -41,7 +41,10 @@ use chorus::core::dict::core_dictionary;
 use chorus::reach::reach_findings;
 
 fn main() -> std::process::ExitCode {
-    let dict = core_dictionary();
+    // --reach anywhere in argv (the bridge is per-file below); the
+    // remaining arguments are the file list, empty meaning the scripts/
+    // default. No dictionary is built here: each file is linted against
+    // its own fresh core dictionary (v0.7.6, in the loop).
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let reach = args.iter().any(|a| a == "--reach");
     args.retain(|a| a != "--reach");
@@ -98,6 +101,12 @@ fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::from(1);
             }
         };
+        // a FRESH core dictionary per file (v0.7.6): scripts now declare
+        // vocabulary at load, and linting N files with one shared dictionary
+        // would make file isolation a property of the load's internal clone
+        // discipline rather than of the tool — each file linted against its
+        // own core dictionary can never see another file's declarations
+        let dict = core_dictionary();
         let linted = match lint_script_findings(&text, &dict) {
             Ok(f) => f,
             Err(e) => {
@@ -110,8 +119,11 @@ fn main() -> std::process::ExitCode {
         // fail for a file that reached here — the error arm keeps the bin's
         // hard-error discipline anyway
         let bridged: Vec<LintFinding> = if reach {
+            // the bridge's analyzer reads the SAME fresh per-file dictionary
+            // the lint used — a script's vocabulary is part of its compiled
+            // face, so the bridge must see exactly what the lint saw
             match compile_script(&text, &dict) {
-                Ok(cs) => reach_findings(&cs.content, &cs.state),
+                Ok(cs) => reach_findings(&cs.content, &cs.state, &dict),
                 Err(e) => {
                     eprintln!("Error: {e}");
                     return std::process::ExitCode::from(1);

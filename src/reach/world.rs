@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::{CompiledContent, CompiledTrigger, PrototypeDef};
+use crate::core::dict::Dictionary;
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, Query, QueryTerm};
 use crate::core::types::{Aspects, Entity, State};
@@ -404,6 +405,10 @@ impl<'c> WorldFacts<'c> {
 /// [`Analyzer::analyze_card`] call. The
 /// caller must not mutate content or initial between calls.
 ///
+/// The dictionary rides along for the load-time grammars the analyzer
+/// re-parses (a `--demand` §4.5 query validates its `kind:` terms against
+/// it, §4.1) — runtime analysis itself stays vocabulary-free.
+///
 /// The two bounded-time faces ride the HOST, not `CardOptions`: one
 /// Analyzer owns exactly one world, so the bound cannot drift between
 /// cards of one run (the CLI sets it once, before the first analysis).
@@ -413,6 +418,7 @@ impl<'c> WorldFacts<'c> {
 pub struct Analyzer<'c> {
     pub(crate) content: &'c CompiledContent,
     pub(crate) initial: &'c State,
+    pub(crate) dict: &'c Dictionary,
     pub(crate) by: Option<i64>,
     pub(crate) replayed: bool,
     world: OnceLock<WorldFacts<'c>>,
@@ -420,8 +426,8 @@ pub struct Analyzer<'c> {
 
 impl<'c> Analyzer<'c> {
     #[must_use]
-    pub fn new(content: &'c CompiledContent, initial: &'c State) -> Self {
-        Analyzer { content, initial, by: None, replayed: false, world: OnceLock::new() }
+    pub fn new(content: &'c CompiledContent, initial: &'c State, dict: &'c Dictionary) -> Self {
+        Analyzer { content, initial, dict, by: None, replayed: false, world: OnceLock::new() }
     }
 
     /// The `--by <minute>` face: bound every time-keyed judgment at the

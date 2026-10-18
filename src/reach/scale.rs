@@ -84,6 +84,10 @@ fn str_vec(vs: &[&str]) -> Vec<String> {
 pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
     let mut rnd = lcg(0xc5);
 
+    // The fixture's own kind pool, DELIBERATELY FROZEN: this generator is a
+    // scaling fixture, not a vocabulary consumer — it never reads
+    // Dictionary::kinds, and its draw order (pinned by the harnesses) must not
+    // move when the script-side kind vocabulary grows (v0.7.5).
     const KINDS: [&str; 8] =
         ["item", "text", "idea", "resource", "rite", "state", "place", "character"];
     const ASPECTS: [&str; 12] = [
@@ -497,7 +501,7 @@ fn nodes_of(p: &ReachPath) -> usize {
 /// `analyze_card` convenience would rebuild the Analyzer per name and
 /// pay full price every time.
 pub fn census(world: &ScaleWorld, names: &[String]) -> Vec<NameStat> {
-    let analyzer = Analyzer::new(&world.content, &world.initial);
+    let analyzer = Analyzer::new(&world.content, &world.initial, &world.dict);
     names
         .iter()
         .map(|name| {

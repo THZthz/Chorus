@@ -48,18 +48,21 @@ verbs:
       grab -> SPAWN GEM
 ";
 
-fn fixture() -> (CompiledContent, State) {
+/// The fixture triple: the analyzer now carries the load-effective
+/// dictionary beside (content, initial) — the fixtures declare no
+/// vocabulary, so the core seed is the effective one.
+fn fixture() -> (CompiledContent, State, chorus::core::dict::Dictionary) {
     let dict = core_dictionary();
     let cs = compile_script(EXPORT_SCRIPT, &dict).expect("export fixture compiles");
-    let CompiledScript { content, state, .. } = cs;
-    (content, state)
+    let CompiledScript { content, state, dict, .. } = cs;
+    (content, state, dict)
 }
 
 /// The `--json` face over one card (the CLI's exact bytes: the envelope
 /// rendered by `render_json`).
 fn card_json(card: &str) -> String {
-    let (content, state) = fixture();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = fixture();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let r = analyzer
         .analyze_card(card, CardOptions::default())
         .expect("export fixture analyzes cleanly");
@@ -117,8 +120,8 @@ fn json_pins_the_initial_card_envelope_byte_for_byte() {
 /// `null`, the support lines as strings).
 #[test]
 fn json_round_trips_through_serde_json() {
-    let (content, state) = fixture();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = fixture();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let r = analyzer
         .analyze_card("GEM", CardOptions::default())
         .expect("export fixture analyzes cleanly");
@@ -152,8 +155,8 @@ fn json_round_trips_through_serde_json() {
 /// under demand), and the chain head names the satisfying descriptor.
 #[test]
 fn json_demand_mode_carries_the_query() {
-    let (content, state) = fixture();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = fixture();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let r = analyzer
         .analyze_card("", CardOptions { usable: false, demand: Some("kind:resource".into()) })
         .expect("demand analyzes cleanly");
@@ -186,8 +189,8 @@ fn json_demand_mode_carries_the_query() {
 /// `render_why` prints); without the pass the key is absent entirely.
 #[test]
 fn json_why_merges_the_blocker_table() {
-    let (content, state) = fixture();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = fixture();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let r = analyzer
         .analyze_card("GEM", CardOptions::default())
         .expect("export fixture analyzes cleanly");
@@ -217,8 +220,8 @@ fn json_why_merges_the_blocker_table() {
 /// (prototypes ∪ live initial ∪ deck order, UTF-16 sorted).
 #[test]
 fn json_all_is_the_sorted_array() {
-    let (content, state) = fixture();
-    let analyzer = Analyzer::new(&content, &state);
+    let (content, state, dict) = fixture();
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let mut names: indexmap::IndexSet<String> = indexmap::IndexSet::new();
     names.extend(content.prototypes.keys().cloned());
     for e in state.entities.values() {
@@ -268,9 +271,9 @@ fn json_all_is_the_sorted_array() {
 /// no edge and no owner node.
 #[test]
 fn graph_pins_the_small_world_byte_for_byte() {
-    let (content, state) = fixture();
+    let (content, state, dict) = fixture();
     assert_eq!(
-        graph_dot(&content, &state),
+        graph_dot(&content, &state, &dict),
         r#"digraph reach {
   rankdir=LR;
   "COIN" [label="COIN\nresource", shape=ellipse];
@@ -322,14 +325,14 @@ triggers:
     let CompiledScript { content, state, .. } = cs;
     // the analyzer's own face: the frozen cap lets order[0] through and
     // denies order[1] — the graph may not draw an edge the analyzer denies
-    let analyzer = Analyzer::new(&content, &state);
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let dawn = analyzer.analyze_card("DAWN", CardOptions::default()).expect("analyzes");
     assert_eq!(dawn.verdict, chorus::reach::CardVerdict::Obtainable);
     let dusk = analyzer.analyze_card("DUSK", CardOptions::default()).expect("analyzes");
     assert_eq!(dusk.verdict, chorus::reach::CardVerdict::Unproven);
     // the graph, byte for byte: the one cap-served draw edge, no DUSK, and
     // the risky SPAWN's demoted site minting nothing
-    let g = graph_dot(&content, &state);
+    let g = graph_dot(&content, &state, &dict);
     assert_eq!(
         g,
         r#"digraph reach {
@@ -344,7 +347,7 @@ triggers:
 }
 "#
     );
-    assert_eq!(g, graph_dot(&content, &state), "byte-identical across runs");
+    assert_eq!(g, graph_dot(&content, &state, &dict), "byte-identical across runs");
 }
 
 /// A proven SPAWN of a `deriving name from object` prototype behind an
@@ -381,17 +384,17 @@ verbs:
     let dict = core_dictionary();
     let cs = compile_script(derive_script, &dict).expect("derive fixture compiles");
     let CompiledScript { content, state, .. } = cs;
-    let analyzer = Analyzer::new(&content, &state);
+    let analyzer = Analyzer::new(&content, &state, &dict);
     let clue = analyzer.analyze_card("CLUE", CardOptions::default()).expect("analyzes");
     assert_eq!(clue.verdict, chorus::reach::CardVerdict::Unproven);
     assert_eq!(clue.existence, chorus::reach::Existence::Candidate);
-    let g = graph_dot(&content, &state);
+    let g = graph_dot(&content, &state, &dict);
     assert!(!g.contains(" -> "), "the blinded site mints no edge at all: {g}");
     assert!(!g.contains("recipe skim of READ"), "no owner node without an edge: {g}");
     // the universe's nodes still ride (the bare name and the derive
     // sentinel are mint-universe names — the graph annotates, never hides)
     assert!(g.contains("\"CLUE\" [label=\"CLUE\\nidea\", shape=ellipse];"), "{g}");
-    assert_eq!(g, graph_dot(&content, &state), "byte-identical across runs");
+    assert_eq!(g, graph_dot(&content, &state, &dict), "byte-identical across runs");
 }
 
 /// The determinism contract at scale: the graph over the bundled
@@ -408,8 +411,8 @@ fn graph_is_deterministic_and_scales_to_cultist_slice() {
     let dict = core_dictionary();
     let cs = compile_script(&text, &dict).expect("cultist-slice compiles");
     let CompiledScript { content, state, .. } = cs;
-    let g1 = graph_dot(&content, &state);
-    let g2 = graph_dot(&content, &state);
+    let g1 = graph_dot(&content, &state, &dict);
+    let g2 = graph_dot(&content, &state, &dict);
     assert_eq!(g1, g2, "two runs over the same inputs must be byte-identical");
     assert!(g1.starts_with("digraph reach {\n  rankdir=LR;\n"));
     assert!(g1.ends_with("}\n"));
@@ -452,8 +455,8 @@ fn graph_is_deterministic_and_scales_to_cultist_slice() {
     let text = std::fs::read_to_string("scripts/the-nightjar-flyer.txt").expect("bundled script");
     let cs = compile_script(&text, &dict).expect("nightjar compiles");
     let CompiledScript { content, state, .. } = cs;
-    let g = graph_dot(&content, &state);
-    assert_eq!(g, graph_dot(&content, &state), "nightjar: byte-identical across runs");
+    let g = graph_dot(&content, &state, &dict);
+    assert_eq!(g, graph_dot(&content, &state, &dict), "nightjar: byte-identical across runs");
     assert!(g.contains("\"THE_TENDED_LORD\" -> \"THE_LATE_LORD\" [label=\"requires\"];"), "{g}");
 }
 

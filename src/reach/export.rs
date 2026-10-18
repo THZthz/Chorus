@@ -42,6 +42,7 @@ use serde::Serialize;
 use serde_json::to_string_pretty;
 
 use crate::content::{CompiledContent, CompiledTrigger};
+use crate::core::dict::Dictionary;
 use crate::core::text::cmp_utf16;
 use crate::core::types::State;
 
@@ -160,11 +161,12 @@ fn dot_id(s: &str) -> String {
 
 /// The whole-content mint dependency graph over one (content, initial)
 /// pair — the `--graph` face. A fresh [`Analyzer`] per call (the world
-/// facts are a pure function of the inputs). See the module docs for the
-/// node/edge model and the determinism contract.
+/// facts are a pure function of the inputs, the load-effective dictionary
+/// included). See the module docs for the node/edge model and the
+/// determinism contract.
 #[must_use]
-pub fn graph_dot(content: &CompiledContent, initial: &State) -> String {
-    let analyzer = Analyzer::new(content, initial);
+pub fn graph_dot(content: &CompiledContent, initial: &State, dict: &Dictionary) -> String {
+    let analyzer = Analyzer::new(content, initial, dict);
     let facts = analyzer.facts();
 
     // card name → kind, FIRST occurrence wins: the universe's walk is

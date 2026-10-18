@@ -24,14 +24,14 @@ This repository is a text-only card-game engine implemented in Rust —
 deterministic end to end (same dice rolls, same log bytes, same error text,
 all pinned by the acceptance suite):
 
-- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse/` (`mod` is the sentence grammar + token primitives, `outcome` the outcome-list grammar) `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3; `pred_parse` / `pred_lint` are its parser and load-time-lint halves), `fn_expand` (§10 function expansion), `types` `clock` `dice` `ref` `roles`, `text` (the frozen whitespace/collation classes), `jsonw` (canonical JSON writer + object-key order + the aspects/attrs pair values), `regex_util` `num_parse`
-- `src/content/` — `model` (verbs/slots/recipes/prototypes/triggers/decks as data: authored `ContentRaw` and compiled `CompiledContent`), `compile` (the compiler + load-time guards), `deck` (§4.4 permutation + draw rule), `functions` (§10 function table), `script/` (the script compiler: a text file becomes world + logic — `parse` `decls` `verbblock` `complete` `load` `lint` `when_dead`)
+- `src/core/` — `dict` (L1 dictionary: verbs, reserved words, outcome operators, relation types), `sentence` `lexer` `parse/` (`mod` is the sentence grammar + token primitives, `outcome` the outcome-list grammar) `format` (L2 grammar, canonical form), `query` `predicate` (slot queries §4.5 and recipe conditions §6.3; `pred_parse` / `pred_lint` are its parser and load-time-lint halves), `fn_expand` (§10 call expansion: functions and script ops), `types` `clock` `dice` `ref` `roles`, `text` (the frozen whitespace/collation classes), `jsonw` (canonical JSON writer + object-key order + the aspects/attrs pair values), `regex_util` `num_parse`
+- `src/content/` — `model` (verbs/slots/recipes/prototypes/triggers/decks as data: authored `ContentRaw` and compiled `CompiledContent`), `compile` (the compiler + load-time guards), `deck` (§4.4 permutation + draw rule), `functions` (§10 call tables: functions and script ops), `script/` (the script compiler: a text file becomes world + logic — `parse` `decls` `verbblock` `complete` `load` `lint` `when_dead`)
 - `src/engine/` — `exec` (the step interpreter: slots → recipes → outcomes → time → events; step-atomic REFUSE), `validate` (slot arity/queries, recipe selection, station locks), `outcomes/` (§4.4 application: the op dispatch, `mint` rules, the RUN `chain`), `advance` (the advance pass: window completions, slot triggers, expiries), `replay` + `fold` (state = fold(log)), `record` (the BEGIN/COMPLETE/WAIT/EVENT rows), `store` (JSONL persistence), `settle` (the run-then-settle convenience the tests and campaigns share)
 - `src/reach/` — the static card-reachability analyzer (`census` `world` `fixpoint` `paths` `render`; obtainable / demand / usability judgments) plus the campaign engines the bins and the tests share (`fuzz` — seeded differential campaigns against engine truth; `scale` — the CS-scale synthetic world)
 - `src/session/` — `lenient` (lenient English-ish player input → canonical steps), `game` (the game loop; one turn = handle_line), `render` (journal / prose / text cards — L3 projections)
 - `src/error.rs` / `src/lcg.rs` — the single error channel; the deterministic campaign-side RNG
 - `src/bin/` — `chorus` (line REPL), `lint-scripts` (script linter), `reach` (reachability reports), `reach-fuzz` (seeded differential campaigns), `reach-scale` (CS-scale benchmarks)
-- `tests/` — 774 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
+- `tests/` — 875 acceptance tests; `tests/common/` is the shared harness (assertions, snapshots, seed fixtures, the nightjar explorer), mounted once per test binary
 - `scripts/the-nightjar-flyer.txt` — a murder mystery on an aether express
   (the engine's whole twelve-verb core set, a timetable that fights back;
   the acceptance path wins in seven actions with a `wait` after each — the
@@ -139,6 +139,9 @@ script: The Forgotten House
 player: ANA
 start: 0:14
 
+kinds:
+  omen   # new noun classes (spec '4.1): one lower_snake name per line
+
 entities:
   HOUSE is place
   ANA is character with occult:2, lantern:1 at HOUSE
@@ -159,12 +162,18 @@ verbs:
     recipes:
       read.magick_gate hidden when object.aspect.magick >= 1 AND NOT any(actors, aspect:occult >= 2) -> REFUSE("The letters swim like minnows.")
       default -> NARRATE "{actors} read {object}."
+  INTERROGATE:                       # a brand-new verb (spec §4.3): any UPPER_SNAKE
+    actors: 1 kind:character         # lexeme that is not a reserved word and not
+    object: 1 kind:character         # an entity/prototype name; the block makes it playable
+    duration: 30m
+    recipes:
+      default -> NARRATE "{actors} question {object}."
 ```
 
 ## Run
 
 ```sh
-cargo test                # 774 acceptance tests
+cargo test                # 875 acceptance tests
 cargo test --test demo    # the demo world's fold-verify smoke
 cargo build --release     # chorus / lint-scripts / reach / reach-fuzz / reach-scale land in target/release/
 ```

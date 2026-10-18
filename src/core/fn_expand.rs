@@ -1,10 +1,10 @@
-//! Expansion: compile-time call substitution — function templates, the
-//! load-time function table, call-graph collection, and the
+//! Expansion: compile-time call substitution — the load-time call table
+//! (functions AND script ops, §10), call-graph collection, and the
 //! substitution helpers. This layer
 //! is only ever invoked by content compile, after `parse_outcomes` /
-//! `parse_function_body`, BEFORE the load guards — so expanded bodies are
-//! guarded exactly like literal ones and the engine (and therefore the log)
-//! never sees a call.
+//! `parse_function_body` / `parse_op_body`, BEFORE the load guards — so
+//! expanded bodies are guarded exactly like literal ones and the engine
+//! (and therefore the log) never sees a call.
 //!
 //! Canonical equals expansion: a call site IS its expanded body, byte for
 //! byte.
@@ -30,14 +30,59 @@ pub struct FnTemplate {
     pub body: Vec<Outcome>,
 }
 
-/// The load-time function table, threaded
+/// Which call table a name resolved from (§10, v0.7.7): a declared FUNCTION
+/// or a script-declared OP. The two share one template shape and one
+/// expansion pass, but their error wording differs ("function 'x'" vs
+/// "op 'OP'") and the fn→op composition ban keys on the distinction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallKind {
+    Function,
+    Op,
+}
+
+impl CallKind {
+    /// The word every load-error message prefixes a call-table name with.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            CallKind::Function => "function",
+            CallKind::Op => "op",
+        }
+    }
+}
+
+/// The load-time call table, threaded
 /// EXPLICITLY into every parse that may contain calls (never Dictionary
-/// state). `by_name` MUST preserve declaration order (IndexMap): iteration
-/// feeds `unknown_call_error`'s "declared functions:" list and the
-/// content-compile walk order.
+/// state). `by_name` holds the `functions:` declarations, `ops` the
+/// `ops:` ones (§10, v0.7.7) — the same [`FnTemplate`] shape, a DISJOINT
+/// name set (the build rejects any overlap, so [`FnTable::resolve`]'s
+/// functions-first order is unobservable), expanded by the same pass.
+/// Both maps MUST preserve declaration order (IndexMap): iteration
+/// feeds `unknown_call_error`'s "declared" lists and the content-compile
+/// walk order.
 #[derive(Debug, Clone, Default)]
 pub struct FnTable {
     pub by_name: IndexMap<String, FnTemplate>,
+    pub ops: IndexMap<String, FnTemplate>,
+}
+
+impl FnTable {
+    /// Resolve a call name: functions first, then ops — the build's
+    /// collision check keeps the two maps disjoint, so the order never
+    /// changes which template a name resolves to.
+    #[must_use]
+    pub fn resolve(&self, name: &str) -> Option<(&FnTemplate, CallKind)> {
+        if let Some(tpl) = self.by_name.get(name) {
+            return Some((tpl, CallKind::Function));
+        }
+        self.ops.get(name).map(|tpl| (tpl, CallKind::Op))
+    }
+
+    /// Is either table non-empty? (parse_outcome_string's expand-or-not gate.)
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty() && self.ops.is_empty()
+    }
 }
 
 /// Every function a body calls, directly
@@ -84,14 +129,31 @@ pub const FN_RESERVED_TOKENS: [&str; 7] = ["actors", "object", "with", "at", "ab
 /// — depth 9 is a load error (rejected over the call graph at content load).
 pub const MAX_FN_DEPTH: u32 = 8;
 
-/// Expand a list: FN calls splice in their expanded bodies, IF arms and
-/// fallbacks recurse, and inside a function body every arg is substituted
-/// against the current bindings.
+/// The enclosing call's name + kind, for error wording only: every
+/// substitution error names the call whose body it happened in ("function
+/// 'f': …" / "op 'OP': …"). `expand_fn_calls`'s top level passes `None` —
+/// nothing is substituted there.
+#[derive(Clone, Copy)]
+struct Scope<'a> {
+    name: &'a str,
+    kind: CallKind,
+}
+
+impl Scope<'_> {
+    fn word(self) -> &'static str {
+        self.kind.word()
+    }
+}
+
+/// Expand a list: FN calls splice in their expanded bodies (a call node is
+/// a call node — function and op calls share it; [`FnTable::resolve`] says
+/// which), IF arms and fallbacks recurse, and inside a call's body every
+/// arg is substituted against the current bindings.
 fn expand_list(
     list: &[Outcome],
     fns: &FnTable,
     bind: &IndexMap<String, Arg>,
-    fn_: Option<&str>,
+    scope: Option<Scope<'_>>,
 ) -> Result<Vec<Outcome>> {
     let mut out: Vec<Outcome> = Vec::new();
     for o in list {
@@ -101,25 +163,25 @@ fn expand_list(
                 // hand-built FN nodes without a call are a programmer error
                 unreachable!("FN node without a call")
             };
-            let Some(tpl) = fns.by_name.get(name) else {
+            let Some((tpl, kind)) = fns.resolve(name) else {
                 return Err(ChorusError::new(format!(
-                    "internal: call to undeclared function '{name}' survived parsing"
+                    "internal: call to undeclared function or op '{name}' survived parsing"
                 )));
             };
             // bind this call's args (themselves substituted by the enclosing
-            // function's parameters, if any) — always concrete before
+            // body's parameters, if any) — always concrete before
             // expansion
             let mut bind2: IndexMap<String, Arg> = IndexMap::new();
             for (i, p) in tpl.params.iter().enumerate() {
                 let Some(arg) = o.args.get(i) else {
                     // arity checked at
-                    // fn_call; hand-built lists violating it are a
+                    // the call; hand-built lists violating it are a
                     // programmer error
                     unreachable!("FN call missing arg {i} for '{name}'")
                 };
-                bind2.insert(p.clone(), subst_arg(arg, fn_, bind)?);
+                bind2.insert(p.clone(), subst_arg(arg, scope, bind)?);
             }
-            let body = expand_list(&tpl.body, fns, &bind2, Some(name))?;
+            let body = expand_list(&tpl.body, fns, &bind2, Some(Scope { name, kind }))?;
             out.extend(body);
         } else if o.op == "IF" {
             let arms: Vec<IfArm> = o
@@ -129,16 +191,16 @@ fn expand_list(
                 .iter()
                 .map(|a| {
                     Ok(IfArm {
-                        when: match fn_ {
-                            Some(fn_name) => subst_pred(&a.when, fn_name, bind)?,
+                        when: match scope {
+                            Some(s) => subst_pred(&a.when, Some(s), bind)?,
                             None => a.when.clone(),
                         },
-                        then: expand_list(&a.then, fns, bind, fn_)?,
+                        then: expand_list(&a.then, fns, bind, scope)?,
                     })
                 })
                 .collect::<Result<Vec<IfArm>>>()?;
             let fallback = match &o.fallback {
-                Some(fallback) => Some(expand_list(fallback, fns, bind, fn_)?),
+                Some(fallback) => Some(expand_list(fallback, fns, bind, scope)?),
                 None => None,
             };
             out.push(Outcome {
@@ -149,10 +211,12 @@ fn expand_list(
                 call: None,
             });
         } else {
-            let args = match fn_ {
-                Some(_) => {
-                    o.args.iter().map(|a| subst_arg(a, fn_, bind)).collect::<Result<Vec<Arg>>>()?
-                }
+            let args = match scope {
+                Some(_) => o
+                    .args
+                    .iter()
+                    .map(|a| subst_arg(a, scope, bind))
+                    .collect::<Result<Vec<Arg>>>()?,
                 None => o.args.clone(),
             };
             out.push(Outcome { op: o.op.clone(), args, arms: None, fallback: None, call: None });
@@ -162,14 +226,14 @@ fn expand_list(
 }
 
 /// Substitute one arg against the enclosing
-/// function's bindings.
-fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &IndexMap<String, Arg>) -> Result<Arg> {
+/// body's bindings.
+fn subst_arg(a: &Arg, scope: Option<Scope<'_>>, bind: &IndexMap<String, Arg>) -> Result<Arg> {
+    let fn_ = scope.map(|s| s.name).unwrap_or("?");
     match a {
         Arg::Param { name, sign } => {
             let Some(bound) = bind.get(name) else {
                 return Err(ChorusError::new(format!(
-                    "internal: parameter '{name}' of '{}' has no binding",
-                    fn_.unwrap_or("?")
+                    "internal: parameter '{name}' of '{fn_}' has no binding"
                 )));
             };
             if let Some(sign) = sign {
@@ -188,7 +252,7 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &IndexMap<String, Arg>) -> Result
             // §4.4: a ROLL argument is a value expression; a body template
             // may carry a param operand inside it (`ROLL(n, 6)`), substituted
             // by the same rule as IF-condition cmp operands
-            Ok(Arg::Vexpr { v: subst_expr(v, fn_.unwrap_or("?"), bind)? })
+            Ok(Arg::Vexpr { v: subst_expr(v, scope, bind)? })
         }
         Arg::Ref { r#ref: crate::core::r#ref::Ref::Param { name } } => {
             // whole-ref position: the bound arg splices in as-is — a ref or a
@@ -218,14 +282,14 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &IndexMap<String, Arg>) -> Result
                     Ok(Arg::Into { r#ref: crate::core::sentence::IntoTarget::Role { role: *role } })
                 }
                 other => Err(ChorusError::new(format!(
-                    "function '{}': parameter '{name}' stands in an INTO position — the call supplies a {}, not a ref or role",
-                    fn_.unwrap_or("?"),
-                    other.tag()
+                    "{word} '{fn_}': parameter '{name}' stands in an INTO position — the call supplies a {}, not a ref or role",
+                    other.tag(),
+                    word = scope.map(Scope::word).unwrap_or("function"),
                 ))),
             }
         }
-        Arg::Str { v } => match fn_ {
-            Some(fn_name) => Ok(Arg::Str { v: subst_string(v, fn_name, bind)? }),
+        Arg::Str { v } => match scope {
+            Some(s) => Ok(Arg::Str { v: subst_string(v, s, bind)? }),
             None => Ok(a.clone()),
         },
         _ => Ok(a.clone()),
@@ -233,14 +297,14 @@ fn subst_arg(a: &Arg, fn_: Option<&str>, bind: &IndexMap<String, Arg>) -> Result
 }
 
 /// `{param}` → the call-site arg's canonical
-/// spelling, inside a function body string. One NON-RESCANNING pass over the
+/// spelling, inside a call body string. One NON-RESCANNING pass over the
 /// body string (a global replace ≡ single-pass non-overlapping, and the
 /// replacements are never rescanned — regex `replace_all` + manual assembly
 /// matches exactly): the exact spelling `{name}` substitutes (reserved
 /// tokens pass through; undeclared names are a load error); a SPACED
 /// spelling (`{ x }`, `{ actors }`) never rewrites. Commas/quotes inside
 /// braces are ordinary prose.
-fn subst_string(s: &str, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<String> {
+fn subst_string(s: &str, scope: Scope<'_>, bind: &IndexMap<String, Arg>) -> Result<String> {
     let re = brace_token_re();
     let mut out = String::new();
     let mut last = 0;
@@ -255,15 +319,15 @@ fn subst_string(s: &str, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<Stri
         let name = caps.get(2).map(|g| g.as_str()).unwrap_or_default();
         let post = caps.get(3).map(|g| g.as_str()).unwrap_or_default();
         if !pre.is_empty() || !post.is_empty() {
-            return Err(undeclared_token_error(fn_, whole));
+            return Err(undeclared_token_error(scope, whole));
         }
         if FN_RESERVED_TOKENS.contains(&name) {
             out.push_str(whole);
         } else {
             let Some(bound) = bind.get(name) else {
-                return Err(undeclared_token_error(fn_, whole));
+                return Err(undeclared_token_error(scope, whole));
             };
-            let spelling = arg_spelling(bound, fn_, name)?;
+            let spelling = arg_spelling(bound, scope, name)?;
             out.push_str(&spelling);
         }
         last = m.1;
@@ -295,53 +359,57 @@ fn brace_token_re() -> &'static Regex {
 /// regex and the same error as `subst_string`, with nothing substituted.
 /// Expansion runs its check only for the bodies a call reaches, so without
 /// this a never-called body would bake a `{ x }` or `{typo}` silently.
-pub fn check_body_tokens(tpl: &FnTemplate) -> Result<()> {
-    fn walk(list: &[Outcome], fn_: &str, params: &[String]) -> Result<()> {
+/// `kind` words the error ("function 'f'" / "op 'OP'") — the fn and op
+/// builds pass their own.
+pub fn check_body_tokens(tpl: &FnTemplate, kind: CallKind) -> Result<()> {
+    fn walk(list: &[Outcome], scope: Scope<'_>, params: &[String]) -> Result<()> {
         for o in list {
             for a in &o.args {
                 if let Arg::Str { v } = a {
-                    check_string_tokens(v, fn_, params)?;
+                    check_string_tokens(v, scope, params)?;
                 }
             }
             if let Some(arms) = &o.arms {
                 for arm in arms {
-                    walk(&arm.then, fn_, params)?;
+                    walk(&arm.then, scope, params)?;
                 }
             }
             if let Some(fb) = &o.fallback {
-                walk(fb, fn_, params)?;
+                walk(fb, scope, params)?;
             }
         }
         Ok(())
     }
-    walk(&tpl.body, &tpl.name, &tpl.params)
+    walk(&tpl.body, Scope { name: &tpl.name, kind }, &tpl.params)
 }
 
-fn check_string_tokens(s: &str, fn_: &str, params: &[String]) -> Result<()> {
+fn check_string_tokens(s: &str, scope: Scope<'_>, params: &[String]) -> Result<()> {
     for caps in brace_token_re().captures_iter(s) {
         let whole = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
         let pre = caps.get(1).map(|g| g.as_str()).unwrap_or_default();
         let name = caps.get(2).map(|g| g.as_str()).unwrap_or_default();
         let post = caps.get(3).map(|g| g.as_str()).unwrap_or_default();
         if !pre.is_empty() || !post.is_empty() {
-            return Err(undeclared_token_error(fn_, whole));
+            return Err(undeclared_token_error(scope, whole));
         }
         if FN_RESERVED_TOKENS.contains(&name) || params.iter().any(|p| p == name) {
             continue;
         }
-        return Err(undeclared_token_error(fn_, whole));
+        return Err(undeclared_token_error(scope, whole));
     }
     Ok(())
 }
 
 /// The undeclared-interpolation load error:
-/// names the token, the function, and the reserved set it would have had to
-/// belong to.
+/// names the token, the call body it sits in ("function 'f'" / "op 'OP'"),
+/// and the reserved set it would have had to belong to.
 #[must_use]
-fn undeclared_token_error(fn_: &str, token: &str) -> ChorusError {
+fn undeclared_token_error(scope: Scope<'_>, token: &str) -> ChorusError {
+    let fn_ = scope.name;
     ChorusError::new(format!(
-        "function '{fn_}': '{token}' in a body string names neither a parameter of '{fn_}' nor a reserved token ({{{}}}) — undeclared interpolation is a load error, not a silent literal (braced tokens must be spelled exactly, without inner spaces)",
-        FN_RESERVED_TOKENS.join("} {")
+        "{word} '{fn_}': '{token}' in a body string names neither a parameter of '{fn_}' nor a reserved token ({{{}}}) — undeclared interpolation is a load error, not a silent literal (braced tokens must be spelled exactly, without inner spaces)",
+        FN_RESERVED_TOKENS.join("} {"),
+        word = scope.word(),
     ))
 }
 
@@ -350,7 +418,8 @@ fn undeclared_token_error(fn_: &str, token: &str) -> ChorusError {
 /// DELIBERATELY UNQUOTED here — format.rs's format_arg quotes them. The two
 /// spellings are frozen separately; merging them would break byte-for-byte
 /// expansion. Only delta/int/dur/bool spellings are shared with format_arg.
-fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
+fn arg_spelling(a: &Arg, scope: Scope<'_>, param: &str) -> Result<String> {
+    let fn_ = scope.name;
     match a {
         Arg::Ref { r#ref } => match r#ref {
             crate::core::r#ref::Ref::Id { id } => Ok(format!("#{id}")),
@@ -375,8 +444,9 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
             Ok(format!("{k}={}", v.to_canonical_string()))
         }
         other => Err(ChorusError::new(format!(
-            "function '{fn_}': parameter '{param}' cannot interpolate into a string (bound to a {})",
-            other.tag()
+            "{word} '{fn_}': parameter '{param}' cannot interpolate into a string (bound to a {})",
+            other.tag(),
+            word = scope.word(),
         ))),
     }
 }
@@ -384,18 +454,22 @@ fn arg_spelling(a: &Arg, fn_: &str, param: &str) -> Result<String> {
 /// Substitute a condition: parameters stand
 /// in cmp operands (numeric literal positions); quantifiers/exists/query
 /// terms take none — the grammar already rejected them at parse.
-fn subst_pred(p: &Pred, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<Pred> {
+fn subst_pred(p: &Pred, scope: Option<Scope<'_>>, bind: &IndexMap<String, Arg>) -> Result<Pred> {
     match p {
-        Pred::And(a, b) => {
-            Ok(Pred::And(Box::new(subst_pred(a, fn_, bind)?), Box::new(subst_pred(b, fn_, bind)?)))
-        }
-        Pred::Or(a, b) => {
-            Ok(Pred::Or(Box::new(subst_pred(a, fn_, bind)?), Box::new(subst_pred(b, fn_, bind)?)))
-        }
-        Pred::Not(a) => Ok(Pred::Not(Box::new(subst_pred(a, fn_, bind)?))),
-        Pred::Cmp { l, op, r } => {
-            Ok(Pred::Cmp { l: subst_expr(l, fn_, bind)?, op: *op, r: subst_expr(r, fn_, bind)? })
-        }
+        Pred::And(a, b) => Ok(Pred::And(
+            Box::new(subst_pred(a, scope, bind)?),
+            Box::new(subst_pred(b, scope, bind)?),
+        )),
+        Pred::Or(a, b) => Ok(Pred::Or(
+            Box::new(subst_pred(a, scope, bind)?),
+            Box::new(subst_pred(b, scope, bind)?),
+        )),
+        Pred::Not(a) => Ok(Pred::Not(Box::new(subst_pred(a, scope, bind)?))),
+        Pred::Cmp { l, op, r } => Ok(Pred::Cmp {
+            l: subst_expr(l, scope, bind)?,
+            op: *op,
+            r: subst_expr(r, scope, bind)?,
+        }),
         // Rel/Every/Any/Exists/ExistsQuery carry no parameters
         _ => Ok(p.clone()),
     }
@@ -403,8 +477,13 @@ fn subst_pred(p: &Pred, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<Pred>
 
 /// Substitute a value expression: only a param operand rewrites; a bound
 /// int/delta/dur lands as an int.
-fn subst_expr(x: &ValExpr, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<ValExpr> {
+fn subst_expr(
+    x: &ValExpr,
+    scope: Option<Scope<'_>>,
+    bind: &IndexMap<String, Arg>,
+) -> Result<ValExpr> {
     if let ValExpr::Param { name } = x {
+        let fn_ = scope.map(|s| s.name).unwrap_or("?");
         let Some(bound) = bind.get(name) else {
             return Err(ChorusError::new(format!(
                 "internal: parameter '{name}' of '{fn_}' has no binding"
@@ -417,8 +496,9 @@ fn subst_expr(x: &ValExpr, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<Va
             // durations are minutes
             Arg::Dur { v } => Ok(ValExpr::Int { v: *v }),
             other => Err(ChorusError::new(format!(
-                "function '{fn_}': parameter '{name}' stands in an IF condition — the call supplies a {}, not a number",
-                other.tag()
+                "{word} '{fn_}': parameter '{name}' stands in an IF condition — the call supplies a {}, not a number",
+                other.tag(),
+                word = scope.map(Scope::word).unwrap_or("function"),
             ))),
         };
     }
@@ -426,19 +506,27 @@ fn subst_expr(x: &ValExpr, fn_: &str, bind: &IndexMap<String, Arg>) -> Result<Va
 }
 
 /// The unknown `NAME(...)` compile error:
-/// the full outcome vocabulary — ops, then declared functions — so the
-/// author can see what IS legal; a name that looks like a predicate helper
-/// gets the forgotten-IF hint.
+/// the full outcome vocabulary — built-in ops, then declared script ops,
+/// then declared functions — so the author can see what IS legal; a name
+/// that looks like a predicate helper gets the forgotten-IF hint.
 #[must_use]
 pub fn unknown_call_error(name: &str, fns: Option<&FnTable>) -> String {
     let pred_helpers = ["exists", "count", "total", "rel", "every", "any"];
-    let fns_listed: Vec<&str> = match fns {
-        Some(fns) => fns.by_name.keys().map(String::as_str).collect(),
-        None => Vec::new(),
+    let (ops_listed, fns_listed): (Vec<&str>, Vec<&str>) = match fns {
+        Some(fns) => (
+            fns.ops.keys().map(String::as_str).collect(),
+            fns.by_name.keys().map(String::as_str).collect(),
+        ),
+        None => (Vec::new(), Vec::new()),
     };
     format!(
-        "unknown '{name}(...)' in outcome position — the outcome vocabulary is: {ops}{fns}{hint} (bare names spawn — an op's parens are part of its grammar; calls need a declared function)",
+        "unknown '{name}(...)' in outcome position — the outcome vocabulary is: {ops}{script_ops}{fns}{hint} (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)",
         ops = OUTCOME_OPS.join(", "),
+        script_ops = if !ops_listed.is_empty() {
+            format!("; declared ops: {}", ops_listed.join(", "))
+        } else {
+            "; no ops declared".to_string()
+        },
         fns = if !fns_listed.is_empty() {
             format!("; declared functions: {}", fns_listed.join(", "))
         } else {
@@ -577,7 +665,7 @@ mod tests {
         let err = parse_outcomes("count(actors)", &d, Some(&fns2)).unwrap_err();
         assert_eq!(
             err.msg,
-            "unknown 'count(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; declared functions: alpha, zeta (a condition wants the IF keyword: IF …count(…) -> ( outcomes )) (bare names spawn — an op's parens are part of its grammar; calls need a declared function)"
+            "unknown 'count(...)' in outcome position — the outcome vocabulary is: SPAWN, DESTROY, REPLACE, SET, MOVE, REVEAL, ADVANCE, NARRATE, PROGRESS, RELATE, UNRELATE, REFUSE, ENDING, ROLL, ROLLED, DRAW, DRAWN, RUN; no ops declared; declared functions: alpha, zeta (a condition wants the IF keyword: IF …count(…) -> ( outcomes )) (bare names spawn — an op's parens are part of its grammar; calls need a declared function or op)"
         );
     }
 
@@ -662,14 +750,15 @@ mod tests {
         let mut bind = IndexMap::new();
         bind.insert("n".to_string(), Arg::Int { v: 4 });
         let a = Arg::Param { name: "n".into(), sign: Some(Sign::Neg) };
-        match subst_arg(&a, Some("f"), &bind).unwrap() {
+        let scope = Some(Scope { name: "f", kind: CallKind::Function });
+        match subst_arg(&a, scope, &bind).unwrap() {
             Arg::Delta { v } => assert_eq!(v, -4),
             other => panic!("expected delta, got {other:?}"),
         }
         // a non-numeric binding splices through for the runtime kind error
         bind.insert("s".to_string(), Arg::Str { v: "x".into() });
         let a2 = Arg::Param { name: "s".into(), sign: Some(Sign::Pos) };
-        match subst_arg(&a2, Some("f"), &bind).unwrap() {
+        match subst_arg(&a2, scope, &bind).unwrap() {
             Arg::Str { v } => assert_eq!(v, "x"),
             other => panic!("expected splice-through, got {other:?}"),
         }

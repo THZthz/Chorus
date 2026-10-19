@@ -206,6 +206,7 @@ pub fn try_inspect_content(
                         dur: None,
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()

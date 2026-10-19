@@ -134,6 +134,7 @@ mod tests {
                         dur: None,
                         out: vec!["NARRATE \"d.\"".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -155,6 +156,7 @@ mod tests {
             born_action: None,
             dead_action: None,
             stackable: false,
+            desc: None,
         };
         ana.attrs.insert("container".into(), crate::core::types::AttrValue::Str("house".into()));
         crate::core::types::add_entity(&mut s, ana).unwrap();

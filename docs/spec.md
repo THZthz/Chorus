@@ -60,6 +60,7 @@ projection of that data, never the source of truth.
 39. **v0.9.2** — the predicate sum scopes: `total(bound, aspect:k)` sums the window's bindings across all its roles (per-binding) and `total(table, aspect:k)` sums the whole living world (§6.3); the reach intervals weight the count-world by level (the table scope) and model the verb's bindable window (the bound scope), Unknown only ever widening toward candidate (§13.1); the W1 always-true gate extends to open `total(table, …)` forms (§13.2); the fuzz generator gains the sum-scope `when` forms (v9).
 40. **v0.9.3** — the held slot: a verb may declare one extra role slot `held: 0..1 <query>` (§6.1 — held is the seventh role, §4.3); a player `hold <card>` step (§11) binds a fitting card into the open held-capable station as a logged HOLD row (§5.1, §6.7, §7); verbs with a held slot DEFER recipe selection to window completion (§6.4 — the BEGIN row records the deferral, the COMPLETE row the selected id), recipes read `held.…`/`count(held)` like any role and outcomes consume it like any role; the held card locks like other committed cards for the window's remainder; the lint gains the held faces (§13.2) and the reach model treats the hold as an arrangeable player step — `count(held)` decides over the held slot's fit, chain-pinned verbs stay Unknown (§13.1).
 41. **v0.9.4** — card descriptions: an entity or prototype line may carry one `desc "…"` attribute — single-line quoted display text under the §5.1 escape rules (§4.2), copied onto every card minted from the name by the mint's resolved name and rendered under the `inspect` face (§11); display only — no engine semantics, nothing logged, the fold recomputes it from the same name-keyed table.
+42. **v0.9.5** — ambient verbs: the bare `ambient` verb-block line makes the station self-starting — the advance pass opens its windows at the two deterministic check points (after every completion, at every crossed tick) through the ONE begin/registration path, over empty bindings, in verb declaration order (§6.9 — the unattended pump, §12.5 resolved); a player commit refuses, slots (held included) are a load error, a top-level REFUSE in an ambient recipe is a load error, a zero-duration self-chain trips the §6.7 livelock budget; the ambient BEGIN row's `trigger` field reads `ambient`; the try row never suggests one and the verb lists/explain mark it `runs on its own` (§11); the analyzer's empty-scope gate model decides the ambient `when` both ways — decided-False demotes, True/Unknown keeps the mint available (§13.1) — and the fuzz generator draws ambient verbs (v10).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -1493,6 +1494,69 @@ silently read false/0 there (§6.3). The trigger PROGRESS/REFUSE guards
 (§6.7, §6.6) and the endings existence check (§4.4) recurse into branch
 bodies — nothing escapes by nesting.
 
+### 6.9 Ambient verbs — the unattended pump (v0.9.5)
+
+A verb block carrying the bare `ambient` line (§10) is a **self-starting
+station**: the advance pass opens its windows without player action — the
+Cadence/Time-loop shape (CS's Time verb: a resident, self-sustaining linked
+cycle) as first-class content. Ambient verbs declare NO player-facing slots
+(a slot line — the `held` slot included — is a load error: the walk binds
+nothing), and a player commit REFUSES (`TIME runs on its own — it opens its
+windows without a commit`, checked before slot validation; nothing logs).
+World forms and `total(table, …)` are the selection vocabulary.
+
+**The sweep.** At the pass's two deterministic check points — after every
+window completion (begin minute = the completion's end, the chain
+follow-up's parent-end face) and at every crossed tick (begin minute = the
+crossing) — the pass walks the ambient verbs in declaration order: a verb
+with NO open window whose §6.4 walk selects a recipe over the CURRENT world
+opens its window. The walk runs over EMPTY bindings (the §6.6
+event-binding discipline: a role-path comparison reads false;
+counts/sums over a role read 0, while `exists(...)`, `count(name:X)`,
+`count(aspect:…)`, `total(table, …)` work). The open is the player
+commit's ONE path —
+`make_begin_record` over the §5.1 actor-less clause, registered through
+`register_windows` (§6.7): the execution count lands at begin (the `max`
+discipline applies), and the window's length is the selected recipe's `dur`
+else the verb's `duration:` (§6.4). A station already processing skips the
+verb silently (one window per station, §6.7 — the verb's own chain
+follow-up included). A pass with no crossing and no completion does no
+ambient work — the checks sit at the boundary points only, never at the
+pass's entry.
+
+**Rows and replay.** An ambient open logs an ordinary BEGIN row; the
+minimal marker is the row's `trigger` field carrying `ambient` — a field
+the action branch of every reader (the fold's `apply_record` included)
+never reads, so replay is untouched and a chain-PINNED follow-up onto the
+same verb (§6.7 — cross-verb chains may target an ambient recipe) stays
+unmarked (the pin, not the sweep, opened it). The sweep runs ONLY in live
+advance passes, never at fold: the fold replays the logged BEGIN rows
+through the one registration path and re-derives nothing — the §6.6
+event-row discipline ("the fold trusts logged rows"). Play == fold == undo
+throughout, and a double run is byte-identical (§9.2).
+
+**The cadence.** The re-arm is natural: the window re-opens at the first
+check after its completion, so a self-chaining ambient recipe pulses at its
+own window length. The chaining itself is the §6.7 RUN machinery (chain ops
+are legal in ambient recipes): the sweep BOOTSTRAPS the first window, the
+RUN cycle keeps the station busy, and when a pin's merged gate finally
+refuses (a world-form gate that flipped — the seasons case) the chain ends
+silently and the sweep re-arms with whatever the walk now selects. A
+zero-duration self-chain (recipe `dur 0m` on an ambient verb, or a zero
+verb `duration:`) opens, completes and re-opens inside one pass and trips
+the §6.7 livelock budget loudly — the one guard, no new one.
+
+**Outcome rules.** A top-level REFUSE in an ambient recipe is a load-time
+error: its home is the §6.5 table, which an ambient open never sees — the
+gate is `when` (the walk opens nothing when no recipe matches). A REFUSE
+inside an IF branch keeps the §6.7 window-refuse exactly like every
+completion (a refused pulse journals its marker and the station re-arms at
+the next check). `PROGRESS` rides the ambient BEGIN row like any; `ADVANCE`
+extends the pass in flight (the completion-trigger face of §6.6); `ENDING`
+ends the story and the pass closes at its minute (§6.7). An ambient verb
+with no recipes is dead content — the §13.2 dead-verb error family (its
+walk never selects, no window ever opens).
+
 ---
 
 ## 7. Database schema (append-only log; projections derived)
@@ -1525,6 +1589,7 @@ CREATE TABLE action (
   kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' (BEGIN) | 'complete' | 'wait' | 'event' | 'hold' — the record model (§6.7)
   trigger      TEXT,                            -- events: the trigger id (an authored `on expire` trigger's id, else 'expire:<NAME>');
                                                 -- COMPLETE rows: the window's VERB (raw name token, never a ref)
+                                                -- BEGIN rows: 'ambient' when the §6.9 sweep opened it (else absent)
   t_game       TEXT NOT NULL,                   -- display clock "day:tick", day 0-based, tick 0..143 — floored, DISPLAY ONLY
                                                 --   (exact minutes ride `start_min` on BEGIN/wait rows; a COMPLETE row
                                                 --   reaches its window start through the `window` key)
@@ -1668,7 +1733,7 @@ Two invariants keep the mapping safe:
    front door onto the grammar; the logged sentence is always canonical.
    §8.1 is the operation-level card mapping.
 2. **Time model**: discrete, per-action. No background ticking. (The
-   unattended pump remains open work — §12.)
+   unattended pump is §6.9's ambient verbs.)
 3. **Outcomes**: hand-authored recipes only. Deterministic and testable.
 4. **Prose layer**: afterthought. Canonical sentences are the deliverable.
 5. **Timestamps**: `day:tick` (144 ticks of 10 minutes per day, day 0
@@ -1915,6 +1980,14 @@ Rules:
   that shares a name with a declared entity or prototype (either section
   order), is a load error (§5.1); a repeated header is the uniform duplicate
   load error, core lexemes included.
+- **The ambient line** (§6.9): a bare indent-4 `ambient` inside a verb
+  block — anywhere before `recipes:` — makes the verb self-starting. It is
+  a bare token only (`ambient: …` is the slot shape and dies on the slot
+  role vocabulary); a repeated line is the uniform duplicate load error; a
+  slot line on an ambient verb is a load error (the `held` slot included —
+  the walk binds nothing, so nothing can defer); and a top-level REFUSE in
+  an ambient recipe is a load error (§6.9 — the gate is `when`). An
+  ambient verb with no recipes is the §13.2 dead-verb error family.
 - **Recipe lines**: §6.4's script form — `[id] [hidden|shown [hint "…"]]
   [when COND] [aspects NAME[, NAME…]] [max N] [dur D] -> OUTCOMES`, or
   `default -> OUTCOMES`. A leading token is an id only when it matches the
@@ -2166,6 +2239,10 @@ slot arithmetic, and the noun a slot wants is its kind — `<someone>` for
 open station and cards locked in a window are excluded; `recipe_lights`
 skips REFUSE recipes and spent `max` recipes (they land in flavor), and a
 REFUSED action prints the verb's authored `shown` hints under the refusal.
+An ambient verb never suggests (§6.9 — a commit refuses, so the try row
+would only offer a rejection); the verb lists (the banner's `verbs:` row,
+`help`, the `explain` usage) mark it `runs on its own`, and `explain
+<verb>` on one prints the `ambient: runs on its own` line.
 
 **`hold <card>`** is the held binding's player face (§6.7): one open
 held-capable station at a time is the target — the card resolves by display
@@ -2270,11 +2347,9 @@ undo past the ending record reopens the book.
    RESOLVED: yes — the `verbs:` block declares them (§4.3), the
    load registers them into its effective dictionary under the §5.1 nameable
    grammar.
-5. The unattended pump: the time loop runs with no background
-   tick — the `job→needs` induce bootstraps it (`on complete` + RUN
-   hand-off, §6.7), and the loop, once resident and self-rechaining at
-   100 %, suppresses later bootstraps exactly as CS's does. A true
-   unattended pump remains future work.
+5. The unattended pump: can the time loop run with no background tick?
+   The `ambient` verb (§6.9) — the advance pass opens the station's
+   windows itself, and the §6.7 RUN cycle keeps it resident.
 
 ## 13. Tooling — the reach analyzer, the lint, the bins
 
@@ -2358,7 +2433,24 @@ are the only reach files allowed to):
   (chain-pinned verb, trigger — the C ruling, held inherits it) reads the
   full-open pair, Unknown under every op. Other held reads
   (`held.aspect.k`, `total(held, …)`) keep their runtime-gated face —
-  Unknown, which only widens toward candidate.
+  Unknown, which only widens toward candidate. The §6.9 AMBIENT gate joins
+  the same three-valued face: an ambient verb is trivially committable (no
+  slots — the empty proof), and its recipes' `when` decides by the
+  empty-scope model the sweep itself runs — the role forms decide EXACTLY
+  (the runtime face of `eval_pred` over empty bindings: `rel`/`any` False,
+  `every` vacuously True, a role path unresolved so its comparison reads
+  False, `count`/`total` over a role and `total(bound, …)` exactly 0);
+  the world forms keep the interval truth (a mixed comparison reads its
+  role side unresolved and decides False — the sound under-claim); Kleene
+  composition lifts. Decided-False demotes (the recipe never opens — no
+  false obtainable); True or Unknown keeps the mint AVAILABLE — the sound
+  direction, since an ambient recipe needs no player to arrange it: only a
+  false unobtainable is a failure, and Unknown may only widen toward
+  candidate (the completing invariant). The interval model's
+  unconditional-repeat rule stays when-less-only — a gated ambient list
+  reads bounded (the under-claim only demotes) — and the bounded-time
+  rungs (the freeze face, `--by`) apply unchanged: a demotion there is
+  the under-claim, never a false verdict.
 - **fixpoint** — committability as a NAIVE round-robin re-test (verbs in
   content order, then sites in live order) until nothing changes. The
   schedule is part of the contract: `count(X) <= k` gates make
@@ -2672,7 +2764,7 @@ full 1,566 × 2,084 world) on worker threads — at most
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats.
 
-The fuzz generator (`gen_scenario`, v9) builds one random script per
+The fuzz generator (`gen_scenario`, v10) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers
 (the complete form drawing its home and its optional §6.7 aspect gate) —
 plus §6.7 chain candidates (a recipe body draws from the GLOBAL
@@ -2696,7 +2788,14 @@ band into RUN [0.22, 0.27) and FORK [0.27, 0.32); v7 turned the chain
 band on in slot/expire trigger bodies; v8 added the recipe `dur` band
 (p=0.15, one ladder literal, drawn after the aspects gate); v9 added the
 two predicate sum scopes (§6.3) to the `when` candidate table
-(`total(bound, aspect:a) >= n`, `total(table, aspect:b) >= n`). Scenario
+(`total(bound, aspect:a) >= n`, `total(table, aspect:b) >= n`); v10 added
+the §6.9 ambient draw — p=0.15, the FIRST draw of the verb block: an
+ambient verb declares no slots (the slot draws short-circuit off), draws
+its duration from the nonzero pool only (a zero-duration ambient recipe
+self-chains into the §6.7 livelock budget — a hard error would abort the
+oracle, so the filter discipline is the trigger table's), short-circuits
+the `dur` band off (the `0m` ladder literal is lethal there) and the
+REFUSE band off (a load error in ambient recipes). Scenario
 streams differ across generator versions by design. What stays pinned is
 purity: the generator is a pure function of its seed — the same seed
 builds the same scenario, draw for draw, under ONE version.
@@ -2707,7 +2806,9 @@ builds the same scenario, draw for draw, under ONE version.
 `compile_script`: a script that does not compile never lints. Findings:
 
 - **ERROR** — a verb declares slots but no recipes (every action rejects at
-  selection, §6.6); a recipe unreachable after a catch-all (first match
+  selection, §6.6), an ambient verb declares no recipes (§6.9 — the walk
+  never selects, no window ever opens); a recipe unreachable after a
+  catch-all (first match
   wins, §6.4); a recipe shadowed by a whitespace-normalized identical
   `when`; a `count(role) op k` gate the slot's §6.1 cardinality can never
   satisfy (all six comparators, held's `0..1` included); a recipe reading
@@ -2841,9 +2942,10 @@ Recorded campaign runs are reproducible only against the generator
 version that produced them. The scenario generator is itself VERSIONED
 (draw-order deliberately re-banded per feature): v5 widened the recipe-body
 chain-candidate table to the global build prefix (cross-verb chains, §6.7),
-v6 split the chain band into RUN [0.22, 0.27) and FORK [0.27, 0.32), and
+v6 split the chain band into RUN [0.22, 0.27) and FORK [0.27, 0.32),
 v7 turned the chain band on in slot/expire trigger bodies (§6.6's
-event-chain channel). The bins freeze exactly five dependency
+event-chain channel), and v10 added the §6.9 ambient draw (the full
+v10 draw-order note lives in §13.1). The bins freeze exactly five dependency
 crates (`Cargo.toml`: indexmap, serde, serde_json, regex, crossterm —
 the last only for the ANSI writer behind `cli`, riding with
 `default-features = false`; `Cargo.lock` is committed).

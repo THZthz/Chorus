@@ -58,6 +58,7 @@ mod set_deltas_and_aspect_keys {
                 }],
                 duration: 30,
                 recipes,
+                ambient: false,
             },
         );
         compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
@@ -188,6 +189,7 @@ mod set_deltas_and_aspect_keys {
                             ],
                             duration: 30,
                             recipes: vec![recipe(&["SET(OBJECT, searched, 1)"])],
+                            ambient: false,
                         },
                     );
                     v
@@ -416,6 +418,7 @@ mod replace_decay {
                     dur: None,
                     out: vec![out.to_string()],
                 }],
+                ambient: false,
             },
         );
         compile_content(
@@ -568,6 +571,7 @@ mod replace_decay {
                                 dur: None,
                                 out: vec!["REPLACE OBJECT WITH ASHES".to_string()],
                             }],
+                            ambient: false,
                         },
                     );
                     v

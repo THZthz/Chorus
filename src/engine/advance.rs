@@ -24,9 +24,10 @@ use super::outcomes::{
     apply_outcome, apply_outcomes_with_refuse, refuse_marker, ApplyCtx, ChainCtx,
 };
 use super::record::{
-    checked_step, make_complete_record, make_event_record, make_wait_record, ActionRecord,
+    checked_step, make_begin_record, make_complete_record, make_event_record, make_wait_record,
+    ActionRecord, Step,
 };
-use super::validate::{defers_selection, resolve_role_refs, select_recipe};
+use super::validate::{clause_refs, defers_selection, resolve_role_refs, select_recipe, Prepared};
 
 /// The advance pass result: the rewritten state plus the records minted.
 pub(super) struct PassResult {
@@ -156,6 +157,15 @@ pub(super) fn resolve_due(
                     target = checked_step(w_end, fired.advance_extra, "advance extension");
                     break;
                 }
+                // §6.9: the ambient check AFTER EVERY COMPLETION — an ambient
+                // verb with a free station whose §6.4 walk selects over the
+                // world opens its window here, beginning at the completion
+                // minute (the chain follow-up's parent_end face). Its BEGIN
+                // rows ride after the chain follow-ups', in verb declaration
+                // order.
+                let ambient = ambient_sweep(content, dict, &mut state, w_end, id)?;
+                id += ambient.len() as i64;
+                records.extend(ambient);
                 continue;
             }
         }
@@ -181,6 +191,12 @@ pub(super) fn resolve_due(
                 target = slot_abs;
                 break;
             }
+            // §6.9: the ambient check AT EVERY BOUNDARY CROSSING — after the
+            // tick's event rows (and their chain follow-ups), a free ambient
+            // station whose walk selects opens at the crossing minute.
+            let ambient = ambient_sweep(content, dict, &mut state, slot_abs, id)?;
+            id += ambient.len() as i64;
+            records.extend(ambient);
             continue;
         }
         break;
@@ -205,6 +221,81 @@ fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
     } else {
         None
     }
+}
+
+/// §6.9 — the ambient sweep: every `ambient` verb, in declaration order,
+/// with NO open window whose §6.4 walk selects a recipe over the CURRENT
+/// world opens its window here. The walk runs over EMPTY bindings (the
+/// §6.6 event-binding discipline: a role-path comparison reads false;
+/// counts/sums over a role read 0, while the world forms — `exists`,
+/// `count(name:…)`, `total(table, …)` — are the selection vocabulary). The open is the player commit's ONE path:
+/// `make_begin_record` over the §5.1 actor-less clause (the same shape a
+/// chain follow-up onto a slotless verb synthesizes), registered through
+/// `register_windows` — the execution count lands at begin and the window
+/// length is the selected recipe's `dur`, else the verb's `duration:`.
+/// The row is an ordinary BEGIN row; the minimal marker is `trigger =
+/// "ambient"` — a field the action branch of every reader (the fold's
+/// `apply_record` included) never reads, so replay is untouched and a
+/// chain-PINNED follow-up onto the same verb stays unmarked (the pin, not
+/// the sweep, opened it). The sweep runs ONLY inside a live advance pass —
+/// after every window completion (begin minute = the completion's end) and
+/// at every crossed tick (begin minute = the crossing) — never at fold:
+/// the fold replays the logged BEGIN rows and re-derives nothing (the
+/// §6.6 event-row discipline). A station already processing skips the
+/// verb silently (one window per station, §6.7 — the verb's own chain
+/// follow-up included); the re-arm cadence is therefore natural — the
+/// window re-opens at the first check after its completion, so a
+/// self-chaining ambient recipe pulses at its own window length. A
+/// zero-duration self-chain (recipe `dur 0m` or a zero `duration:` verb)
+/// opens, completes and re-opens inside one pass — the §6.7
+/// WINDOW_COMPLETION_BUDGET trips loudly, the one guard, no new one.
+fn ambient_sweep(
+    content: &CompiledContent,
+    dict: &Dictionary,
+    state: &mut State,
+    at_min: i64,
+    first_record_id: i64,
+) -> Result<Vec<ActionRecord>> {
+    let mut records: Vec<ActionRecord> = Vec::new();
+    if state.ended.is_some() {
+        return Ok(records);
+    }
+    for verb in content.verbs.values() {
+        if !verb.ambient {
+            continue;
+        }
+        if state.windows.values().any(|w| w.verb == verb.name) {
+            continue; // the station is processing — one window per station
+        }
+        let bindings = RoleBindings::new();
+        let Some(recipe) = select_recipe(verb, &bindings, state)? else {
+            continue; // nothing matches over the world: the verb idles
+        };
+        let mut clause = crate::core::sentence::empty_clause(Vec::new());
+        clause.verb = verb.name.clone();
+        let step = Step {
+            start_min: Some(at_min),
+            clock: None,
+            clauses: vec![clause.clone()],
+            t_real: None,
+        };
+        let prepared =
+            [Prepared { clause: &clause, verb, refs: clause_refs(&clause), recipe: Some(recipe) }];
+        let progress: Vec<Outcome> =
+            recipe.out.iter().filter(|o| o.op == "PROGRESS").cloned().collect();
+        let mut record = make_begin_record(
+            first_record_id + records.len() as i64,
+            at_min,
+            &step,
+            &prepared,
+            progress,
+            dict,
+        )?;
+        record.trigger = Some("ambient".to_string());
+        register_windows(&record, state, dict, content)?;
+        records.push(record);
+    }
+    Ok(records)
 }
 
 /// §6.7's livelock budget: an advance pass that completes MORE than this

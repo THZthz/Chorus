@@ -258,6 +258,7 @@ fn the_dur_compiles_through_the_script_and_the_raw_face_alike() {
                     dur: Some(5),
                     out: vec!["NARRATE \"tap.\"".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -289,6 +290,7 @@ fn new_state_zero() -> State {
             born_action: None,
             dead_action: None,
             stackable: false,
+            desc: None,
         },
     )
     .unwrap();

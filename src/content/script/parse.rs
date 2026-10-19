@@ -410,9 +410,25 @@ pub fn parse_script(text: &str, dict: &Dictionary) -> Result<Script> {
                     continue;
                 }
                 if !in_recipes && indent >= 4 {
+                    // §6.9: the bare `ambient` line — the verb opens its own
+                    // windows at the advance pass's check points. Bare token
+                    // only: `ambient: …` is the kv shape and dies on the slot
+                    // role vocabulary below; a repeated line is the uniform
+                    // duplicate load error; inside `recipes:` it parses as a
+                    // recipe line and fails there (no arrow).
+                    if t == "ambient" {
+                        if v.ambient {
+                            return Err(ChorusError::new(format!(
+                                "line {}: duplicate 'ambient' line in verb {vn}",
+                                ln + 1
+                            )));
+                        }
+                        v.ambient = true;
+                        continue;
+                    }
                     let Some(m) = verb_kv_re().captures(t) else {
                         return Err(ChorusError::new(format!(
-                            "line {}: expected 'role: count query', 'duration: X', or 'recipes:'",
+                            "line {}: expected 'role: count query', 'duration: X', 'ambient', or 'recipes:'",
                             ln + 1
                         )));
                     };

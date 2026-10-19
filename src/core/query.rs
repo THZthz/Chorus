@@ -383,6 +383,7 @@ mod tests {
             born_action: Some(0),
             dead_action: None,
             stackable: false,
+            desc: None,
         };
         assert!(match_query(&e, &q));
         // state:!x reads false only for EXACT boolean true ("false" string is unsealed)

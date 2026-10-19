@@ -26,6 +26,9 @@ pub struct EntitySpec {
     pub stackable: bool,
     pub aspects: Aspects,
     pub container_name: Option<String>,
+    /// §4.2: the `desc "…"` display text — static prose copied onto the
+    /// card this line mints
+    pub desc: Option<String>,
 }
 
 /// One declared relation line.
@@ -62,8 +65,9 @@ pub struct CompiledScript {
 }
 
 /// The compile-side face of the declared entity lines: deck resolution and
-/// the §4.2 stackable sets read name/kind/stackable only — one shared map
-/// for every consumer that crosses from the script face to compiled content.
+/// the §4.2 stackable sets read name/kind/stackable, the description table
+/// reads `desc` — one shared map for every consumer that crosses from the
+/// script face to compiled content.
 pub(super) fn declared_entities(entities: &[EntitySpec]) -> Vec<DeclaredEntity> {
     entities
         .iter()
@@ -71,6 +75,7 @@ pub(super) fn declared_entities(entities: &[EntitySpec]) -> Vec<DeclaredEntity> 
             name: e.name.clone(),
             kind: e.kind.clone(),
             stackable: e.stackable,
+            desc: e.desc.clone(),
         })
         .collect()
 }

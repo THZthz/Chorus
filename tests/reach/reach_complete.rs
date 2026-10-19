@@ -35,6 +35,7 @@ fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     }
 }
 
@@ -92,6 +93,7 @@ fn gated_work(gate: &str) -> VerbContent {
             dur: None,
             out: vec![],
         }],
+        ambient: false,
     }
 }
 
@@ -171,6 +173,7 @@ fn binder_verb(aspects: Vec<String>) -> (String, VerbContent) {
                 dur: None,
                 out: vec![],
             }],
+            ambient: false,
         },
     )
 }
@@ -351,6 +354,7 @@ fn a_complete_trigger_proves_through_one_clean_witness_pair_and_names_it() {
                         // unconditional mint of the completion
                         out: vec!["SPAWN X_CARD".to_string(), "MOVE ANA INTO ROOM".to_string()],
                     }],
+                    ambient: false,
                 },
             ),
             (
@@ -383,6 +387,7 @@ fn a_complete_trigger_proves_through_one_clean_witness_pair_and_names_it() {
                         dur: None,
                         out: vec![],
                     }],
+                    ambient: false,
                 },
             ),
         ]),
@@ -461,6 +466,7 @@ fn an_optional_min0_slot_never_force_locks_so_the_completing_recipe_proves() {
                     dur: None,
                     out: vec!["SPAWN X_CARD".to_string()],
                 }],
+                ambient: false,
             },
         )]),
         triggers: Some(vec![complete_trigger("HOME_CARD", None)]),
@@ -515,6 +521,7 @@ fn an_unknown_count_gate_keeps_the_completing_recipe_selectable() {
             dur: None,
             out: vec![],
         }],
+        ambient: false,
     };
     let mut purse = proto("resource");
     purse.stackable = true;
@@ -547,6 +554,7 @@ fn an_unknown_count_gate_keeps_the_completing_recipe_selectable() {
                         dur: None,
                         out: vec!["SPAWN PURSE".to_string()],
                     }],
+                    ambient: false,
                 },
             ),
             ("WORK".to_string(), work),
@@ -624,6 +632,7 @@ fn a_replace_source_keeps_the_gated_completion_a_candidate() {
                     dur: None,
                     out: vec!["REPLACE POT WITH PURSE".to_string()],
                 }],
+                ambient: false,
             },
         )],
         vec![complete_trigger("HOME_CARD", None)],
@@ -664,6 +673,7 @@ fn a_max_capped_draw_keeps_the_gated_completion_a_candidate() {
                     dur: None,
                     out: vec!["DRAW D1".to_string()],
                 }],
+                ambient: false,
             },
         )],
         vec![complete_trigger("HOME_CARD", None)],
@@ -716,6 +726,7 @@ fn a_recipe_that_destroys_its_own_filler_keeps_the_gated_completion_a_candidate(
                     dur: None,
                     out: vec!["DESTROY actors".to_string(), "SPAWN COIN".to_string()],
                 }],
+                ambient: false,
             },
         )],
         vec![complete_trigger("HOME_CARD", None)],
@@ -785,6 +796,7 @@ fn a_floor_violated_closed_gate_never_selects_the_completing_recipe() {
                     dur: None,
                     out: vec!["SPAWN PURSE".to_string()],
                 }],
+                ambient: false,
             },
         )],
         vec![complete_trigger("HOME_CARD", None)],

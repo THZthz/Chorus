@@ -487,8 +487,12 @@ fn direct_compile_content_with_entities_resolves_deck_entries_and_stackable() {
         }]),
         ..ContentRaw::default()
     };
-    let entities =
-        vec![DeclaredEntity { name: "RUMOUR".into(), kind: "idea".into(), stackable: true }];
+    let entities = vec![DeclaredEntity {
+        name: "RUMOUR".into(),
+        kind: "idea".into(),
+        stackable: true,
+        desc: None,
+    }];
     let compiled = compile_content(&raw, &dict, &entities).unwrap();
     assert_eq!(
         names(deck_of(&compiled, "GOSSIP")),
@@ -557,6 +561,7 @@ mod lenient_input_routes_the_new_core_verbs {
                 dur: None,
                 out: vec![out.to_string()],
             }],
+            ambient: false,
         };
         let slot = |role: &str, min: i64, max: Option<i64>, query: &str| SlotDef {
             role: role.to_string(),
@@ -616,6 +621,7 @@ mod lenient_input_routes_the_new_core_verbs {
             born_action: None,
             dead_action: None,
             stackable: false,
+            desc: None,
         };
         add_entity(&mut state, card("manifest", "text", "THE_MANIFEST", "house")).unwrap();
         add_entity(&mut state, card("white_door", "place", "THE_WHITE_DOOR", "villa")).unwrap();

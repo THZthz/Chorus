@@ -89,6 +89,11 @@ pub struct Entity {
     /// several living copies. Every mint site computes it from the compiled
     /// stackable sets; the fold recomputes it identically from the logged ref.
     pub stackable: bool,
+    /// §4.2: the declared `desc "…"` display text, copied onto the card at
+    /// mint from the mint's RESOLVED name (the stackable sets' lookup) — the
+    /// fold recomputes it identically from the concrete row's name. Static
+    /// prose for the play surface's `inspect` face; no engine semantics.
+    pub desc: Option<String>,
 }
 
 impl Clone for Entity {
@@ -108,6 +113,7 @@ impl Clone for Entity {
             born_action: self.born_action,
             dead_action: self.dead_action,
             stackable: self.stackable,
+            desc: self.desc.clone(),
         }
     }
 }

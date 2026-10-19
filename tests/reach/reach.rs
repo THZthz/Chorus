@@ -45,6 +45,7 @@ fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     }
 }
 
@@ -81,7 +82,7 @@ fn slot(role: &str, min: i64, max: i64, query: Option<&str>) -> SlotDef {
 }
 
 fn verb(name_slots: Vec<SlotDef>, duration: i64, recipes: Vec<RecipeDef>) -> VerbContent {
-    VerbContent { slots: name_slots, duration, recipes }
+    VerbContent { slots: name_slots, duration, recipes, ambient: false }
 }
 
 fn recipe(out: &[&str]) -> RecipeDef {

@@ -7,7 +7,7 @@
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //!
-//! The scenario space (gen_scenario v9) now generates completion triggers
+//! The scenario space (gen_scenario v10) now generates completion triggers
 //! (`on complete [<aspect>]`), §6.7 chain candidates in verb recipes and
 //! trigger bodies (the recipe-body table is the GLOBAL build prefix —
 //! recipe-body RUNs cross verbs; slot/expire bodies chain onto the global
@@ -263,10 +263,10 @@ fn scenario_pred_has(seed: u32, f: &dyn Fn(&Pred) -> bool) -> bool {
 }
 
 #[test]
-fn seed_5_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
-    assert!(scenario_has_aspect_world_form(5));
-    assert!(scenario_has_closed_aspect_count_form(5));
-    assert_seed_deterministic(5);
+fn seed_9_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
+    assert!(scenario_has_aspect_world_form(9));
+    assert!(scenario_has_closed_aspect_count_form(9));
+    assert_seed_deterministic(9);
 }
 
 #[test]
@@ -302,15 +302,28 @@ fn scenario_recipe_run_crosses_verbs(seed: u32) -> bool {
     })
 }
 
+// The v10 ambient draw (§6.9): a verb drawn ambient declares no slots, a
+// nonzero duration, and recipes whose REFUSE band and `dur` band stayed
+// off. The probe pins a seed whose scenario verifiably carries one.
+fn scenario_has_ambient_verb(seed: u32) -> bool {
+    gen_scenario(seed).raw.verbs.values().any(|v| v.ambient)
+}
+
 #[test]
-fn seed_1_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
+fn seed_2_carries_an_ambient_verb_and_stays_deterministic() {
+    assert!(scenario_has_ambient_verb(2));
+    assert_seed_deterministic(2);
+}
+
+#[test]
+fn seed_18_carries_a_cross_verb_recipe_body_run_and_a_sum_scope_when_and_stays_deterministic() {
     // the v9 sum-scope probe rides this seed too: a `when` whose comparison
     // names `total(bound, aspect:a)` or `total(table, aspect:b)` — the
     // analyzer's window-model and world-sum interval faces, exercised by the
     // same differential sweep
-    assert!(scenario_has_sum_scope_when(1));
-    assert!(scenario_recipe_run_crosses_verbs(1));
-    assert_seed_deterministic(1);
+    assert!(scenario_has_sum_scope_when(18));
+    assert!(scenario_recipe_run_crosses_verbs(18));
+    assert_seed_deterministic(18);
 }
 
 // The v8 recipe `dur` band: a minority of recipes complete under a window of
@@ -332,9 +345,9 @@ fn scenario_has_recipe_dur(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_7_carries_a_recipe_dur_override_and_stays_deterministic() {
-    assert!(scenario_has_recipe_dur(7));
-    assert_seed_deterministic(7);
+fn seed_3_carries_a_recipe_dur_override_and_stays_deterministic() {
+    assert!(scenario_has_recipe_dur(3));
+    assert_seed_deterministic(3);
 }
 
 // The v7 event-body chain band: slot/expire bodies draw RUN/FORK onto the

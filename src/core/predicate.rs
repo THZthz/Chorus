@@ -456,6 +456,7 @@ mod tests {
             born_action: Some(0),
             dead_action: None,
             stackable: false,
+            desc: None,
         }
     }
 

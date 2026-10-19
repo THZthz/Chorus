@@ -3,6 +3,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod ambient;
 mod completion_triggers;
 mod demo;
 mod endings;

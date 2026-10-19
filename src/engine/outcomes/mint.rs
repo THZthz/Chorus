@@ -72,6 +72,10 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
     // to whatever name the mint ends up carrying (derived names stack when
     // the prototype is declared stackable)
     let is_stack = ctx.content.mint_is_stackable(proto_name, &kind);
+    // §4.2: the static card description — the RESOLVED name's declared
+    // `desc` (a derive-renamed mint reads the name it ends up carrying, the
+    // same discipline the fold's recompute from the concrete row follows)
+    let desc = ctx.content.mint_desc(&name).map(str::to_string);
     // §5.1 + §4.2: a non-stackable mint demands a free name; a stackable
     // mint stacks with its own kind of pool but may not collide with a
     // distinct NON-stackable living name (shared namespace)
@@ -190,6 +194,7 @@ pub(super) fn apply_spawn(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyResul
             born_action: Some(ctx.record_id),
             dead_action: None,
             stackable: is_stack,
+            desc,
         },
     )?;
     // concrete outcome: everything a fold needs,
@@ -251,8 +256,10 @@ pub(super) fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyRes
     // §4.2: same computation as SPAWN — the RESOLVED name+kind, so the
     // fold's recompute from the concrete SPAWN row agrees (a stackable
     // successor may share the dying card's name: REPLACE X WITH X succeeds —
-    // spawn appends, destroy pops)
+    // spawn appends, destroy pops); the successor's desc comes off the same
+    // resolved name (REPLACE never derives)
     let is_stack = ctx.content.mint_is_stackable(&proto_name, &kind);
+    let desc = ctx.content.mint_desc(&proto_name).map(str::to_string);
     let aspects_tpl: Aspects = match proto.and_then(|p| p.aspects.as_ref()) {
         Some(a) => clone_aspects(a),
         None => Aspects::new(),
@@ -318,6 +325,7 @@ pub(super) fn apply_replace(args: &[Arg], ctx: &mut ApplyCtx) -> Result<ApplyRes
                 born_action: Some(ctx.record_id),
                 dead_action: None,
                 stackable: is_stack,
+                desc: desc.clone(),
             },
         )?;
         // soft-destroy AFTER the spawn

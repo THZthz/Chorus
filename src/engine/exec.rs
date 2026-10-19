@@ -143,6 +143,18 @@ pub fn execute_step(
         let Some(verb) = content.verbs.get(&clause.verb) else {
             return Ok(rejected(format!("{} is not a content verb", clause.verb), state_in));
         };
+        // §6.9: an ambient verb opens its own windows — a player commit
+        // refuses. The check sits BEFORE slot validation, so this ambient
+        // face (not a slot error) is what a typed line meets; nothing logs.
+        if verb.ambient {
+            return Ok(rejected(
+                format!(
+                    "{} runs on its own — it opens its windows without a commit (§6.9)",
+                    verb.name
+                ),
+                state_in,
+            ));
+        }
         let refs = clause_refs(clause);
         // Channel note: the reachable validate_slots errors reject here with
         // the `<verb>: ` prefix (the `{error}` return channel), while

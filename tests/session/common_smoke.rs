@@ -52,6 +52,7 @@ fn pace_rig() -> (chorus::core::dict::Dictionary, chorus::content::CompiledConte
                     dur: None,
                     out: vec!["NARRATE \"d.\"".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -73,6 +74,7 @@ fn solo(name: &str) -> State {
         born_action: None,
         dead_action: None,
         stackable: false,
+        desc: None,
     };
     e.attrs.insert("container".into(), AttrValue::Str("house".into()));
     add_entity(&mut s, e).expect("fixture entity");
@@ -97,6 +99,7 @@ fn snap_hides_map_insertion_order_and_sorts_by_utf16_order() {
                 born_action: Some(1),
                 dead_action: None,
                 stackable: false,
+                desc: None,
             };
             add_entity(&mut s, e).unwrap();
         }
@@ -135,6 +138,7 @@ fn snap_sorts_keys_by_utf16_code_units_not_rust_bytes() {
             born_action: None,
             dead_action: None,
             stackable: false,
+            desc: None,
         };
         add_entity(&mut s, e).unwrap();
     }
@@ -218,6 +222,7 @@ fn refusal_reads_the_authored_gate_and_the_turn_rolls_back() {
                     dur: None,
                     out: vec!["REFUSE(\"not in the mood.\")".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()

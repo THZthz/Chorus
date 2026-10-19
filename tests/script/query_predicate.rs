@@ -34,6 +34,7 @@ fn ent(id: &str, kind: &str, name: &str) -> Entity {
         born_action: None,
         dead_action: None,
         stackable: false,
+        desc: None,
     }
 }
 

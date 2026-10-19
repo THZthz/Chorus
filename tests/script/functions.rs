@@ -120,6 +120,7 @@ fn rig_verb(recipes: &[&str]) -> IndexMap<String, VerbContent> {
                     out: vec![out.to_string()],
                 })
                 .collect(),
+            ambient: false,
         },
     )]
     .into_iter()
@@ -142,6 +143,7 @@ fn world() -> State {
                 born_action: None,
                 dead_action: None,
                 stackable: false,
+                desc: None,
             },
         )
         .unwrap();
@@ -186,6 +188,7 @@ fn add_suspicion(s: &mut State, n: i64) {
                 born_action: None,
                 dead_action: None,
                 stackable: true,
+                desc: None,
             },
         )
         .unwrap();
@@ -802,6 +805,7 @@ mod parameter_shadows_an_entity_of_the_same_name {
                 born_action: None,
                 dead_action: None,
                 stackable: false,
+                desc: None,
             },
         )
         .unwrap();

@@ -28,8 +28,9 @@ use super::census::{
 };
 use super::render::pred_text;
 use super::world::{
-    eval_static_ok, eval_static_truth, path_open_first_failure, pred_static, BoundSlot, BoundView,
-    CardFact, CardWorld, SlotFiller, SlotProof, StaticTruth, WorldFacts, INFINITY,
+    ambient_gate_truth, eval_static_ok, eval_static_truth, path_open_first_failure, pred_static,
+    BoundSlot, BoundView, CardFact, CardWorld, SlotFiller, SlotProof, StaticTruth, WorldFacts,
+    INFINITY,
 };
 
 // ---------------------------------------------------------------------------
@@ -579,10 +580,25 @@ impl<'c> WorldFacts<'c> {
             };
         }
         // recipe-owned site: the `when` must be
-        // static-true and the verb committable
+        // static-true and the verb committable — §6.9 except: an AMBIENT
+        // verb's recipes need no commit (the sweep opens them over the
+        // world, empty bindings), so the gate decides by the empty-scope
+        // model [`ambient_gate_truth`]: decided-False never opens (the
+        // demotion is the same judgment), static-True or Unknown stays
+        // available — the walk may hold at runtime, and the
+        // widening-only invariant keeps Unknown from proving anything by
+        // itself (the mints still clear every other rung the ladder runs).
         if let Some(vi) = site.verb {
             if let Some(when) = &site.when {
-                let holds = pred_static(when) && eval_static_ok(when, world, bound.as_ref());
+                let is_ambient = match self.content.verbs.get_index(vi) {
+                    Some((_, v)) => v.ambient,
+                    None => unreachable!("verb index {vi} came from content.verbs enumeration"),
+                };
+                let holds = if is_ambient {
+                    ambient_gate_truth(when, world, bound.as_ref()) != StaticTruth::False
+                } else {
+                    pred_static(when) && eval_static_ok(when, world, bound.as_ref())
+                };
                 if !holds {
                     return (Err(CardBlocker::WhenNotStaticTrue), None);
                 }

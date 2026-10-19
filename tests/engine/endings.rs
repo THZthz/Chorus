@@ -73,6 +73,7 @@ fn wait_content_raw(out: &[&str]) -> ContentRaw {
                     dur: None,
                     out: out.iter().map(|s| (*s).to_string()).collect(),
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -196,6 +197,7 @@ mod the_endings_script_section {
                                 dur: None,
                                 out: vec!["ENDING NOPE".to_string()],
                             }],
+                            ambient: false,
                         },
                     )]
                     .into_iter()
@@ -296,6 +298,7 @@ mod the_endings_script_section {
                                 dur: None,
                                 out: vec!["ENDING ONLY_B".to_string()],
                             }],
+                            ambient: false,
                         },
                     )]
                     .into_iter()

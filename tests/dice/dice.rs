@@ -485,6 +485,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
                         dur: None,
                         out: vec!["ROLL(actors.aspect.dread, 6), NARRATE \"never\"".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -543,6 +544,7 @@ fn a_roll_does_not_cross_clauses_clause_two_read_is_a_load_error() {
                     slots: vec![actors_slot()],
                     duration: 0,
                     recipes: vec![default_recipe(&["ROLL(1, 6), NARRATE \"clause one {roll}\""])],
+                    ambient: false,
                 },
             ),
             (
@@ -553,6 +555,7 @@ fn a_roll_does_not_cross_clauses_clause_two_read_is_a_load_error() {
                     recipes: vec![default_recipe(&[
                         "IF roll >= 0 -> (NARRATE \"clause two {roll}\")",
                     ])],
+                    ambient: false,
                 },
             ),
         ]
@@ -603,6 +606,7 @@ fn each_clause_binds_its_own_dice_the_counter_chain_continues_across_clauses() {
                         recipes: vec![default_recipe(&[
                             "ROLL(1, 6), NARRATE \"clause one {roll}\"",
                         ])],
+                        ambient: false,
                     },
                 ),
                 (
@@ -613,6 +617,7 @@ fn each_clause_binds_its_own_dice_the_counter_chain_continues_across_clauses() {
                         recipes: vec![default_recipe(&[
                             "ROLL(1, 6), NARRATE \"clause two {roll}\"",
                         ])],
+                        ambient: false,
                     },
                 ),
             ]
@@ -687,6 +692,7 @@ fn a_narrate_in_a_later_clause_keeps_the_roll_literal_the_binding_resets_per_cla
                         recipes: vec![default_recipe(&[
                             "ROLL(1, 6), NARRATE \"clause one {roll}\"",
                         ])],
+                        ambient: false,
                     },
                 ),
                 (
@@ -695,6 +701,7 @@ fn a_narrate_in_a_later_clause_keeps_the_roll_literal_the_binding_resets_per_cla
                         slots: vec![actors_slot()],
                         duration: 0,
                         recipes: vec![default_recipe(&["NARRATE \"clause two {roll}\""])],
+                        ambient: false,
                     },
                 ),
             ]
@@ -741,6 +748,7 @@ fn when_predicates_cannot_read_roll_if_conditions_can() {
                     },
                     default_recipe(&["NARRATE(\"default\")"]),
                 ],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -1159,6 +1167,7 @@ fn wait_content(
                     }],
                     duration: 60,
                     recipes: vec![default_recipe(&["NARRATE(\"{actors} wait.\")"])],
+                    ambient: false,
                 },
             )]
             .into_iter()

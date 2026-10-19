@@ -574,6 +574,7 @@ mod exists_recipes {
                 }],
                 duration: 30,
                 recipes,
+                ambient: false,
             },
         );
         compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
@@ -848,6 +849,7 @@ mod clock_and_duration_literals {
                     dur: None,
                     out: vec!["NARRATE(\"{actors} waits a moment.\")".to_string()],
                 }],
+                ambient: false,
             },
         );
         let content15 = compile_content(
@@ -1001,6 +1003,7 @@ mod core_verbs_study_mansus {
                                     out: vec!["NARRATE(\"{actors} study {object}.\")".to_string()],
                                 },
                             ],
+                            ambient: false,
                         },
                     ),
                     (
@@ -1034,6 +1037,7 @@ mod core_verbs_study_mansus {
                                 out: vec!["NARRATE(\"{actors} walk the Mansus to {object}.\")"
                                     .to_string()],
                             }],
+                            ambient: false,
                         },
                     ),
                 ]
@@ -1137,6 +1141,7 @@ mod core_verbs_study_mansus {
                                 "NARRATE(\"{actors} walk the Mansus to {object}.\")".to_string()
                             ],
                         }],
+                        ambient: false,
                     },
                 )]
                 .into_iter()

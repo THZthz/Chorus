@@ -31,6 +31,7 @@ fn ent(name: &str, kind: &str, aspects: &[(&str, i64)]) -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     }
 }
 
@@ -91,6 +92,7 @@ fn rite_with_held(held_query: Option<&str>, gate: &str) -> VerbContent {
                 ..RecipeDef::default()
             },
         ],
+        ambient: false,
     }
 }
 
@@ -166,6 +168,7 @@ fn a_chain_pinned_held_gate_stays_unknown_and_the_site_unproven() {
             out: vec!["RUN \"rite.prize\"".to_string()],
             ..RecipeDef::default()
         }],
+        ambient: false,
     };
     let mut raw = raw_rite(verb);
     verb = parent;

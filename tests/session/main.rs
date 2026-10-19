@@ -3,6 +3,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod ambient;
 mod cli;
 mod common_smoke;
 mod held;

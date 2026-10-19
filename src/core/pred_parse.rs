@@ -605,6 +605,7 @@ mod tests {
             born_action: Some(0),
             dead_action: None,
             stackable: false,
+            desc: None,
         };
         door.attrs.insert("state.sealed".into(), AttrValue::Bool(true));
         assert!(!match_query(&door, &query));

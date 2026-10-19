@@ -529,9 +529,22 @@ impl Game {
         Ok(lines)
     }
 
-    /// the configured verbs, display form, dot-separated (the banner row)
+    /// the configured verbs, display form, dot-separated (the banner row) —
+    /// §6.9: an ambient verb carries the `runs on its own` mark, so the
+    /// vocabulary names what the player cannot commit
     fn verb_list(&self) -> String {
-        self.content.verbs.keys().map(|v| display_name(v)).collect::<Vec<_>>().join(" · ")
+        self.content
+            .verbs
+            .values()
+            .map(|v| {
+                if v.ambient {
+                    format!("{} (runs on its own)", display_name(&v.name))
+                } else {
+                    display_name(&v.name)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" · ")
     }
 
     /// `you are MARCH · at GUARD VAN · day 0, 21:00`
@@ -960,6 +973,12 @@ impl Game {
             )];
         };
         let mut lines = vec![format!("{}  [{}]", pretty(&card.name), card.kind)];
+        // §4.2: the declared `desc "…"` rides the face, right under the
+        // name/kind header — static mint-time prose; a card without one
+        // renders exactly the pre-desc lines
+        if let Some(d) = &card.desc {
+            lines.push(format!("  {d}"));
+        }
         let aspects = flatten_aspects(&card.aspects);
         if !aspects.is_empty() {
             lines.push(format!("  {}", aspects.join(" · ")));
@@ -1430,6 +1449,11 @@ impl Game {
         let mut story: Vec<Vec<String>> = Vec::new();
         let mut flavor: Vec<String> = Vec::new();
         for verb in self.content.verbs.values() {
+            // §6.9: an ambient verb never suggests — a commit refuses, so
+            // the try row would only offer a rejection
+            if verb.ambient {
+                continue;
+            }
             if busy_verbs.contains(verb.name.as_str()) {
                 continue; // the station is processing (v0.5)
             }

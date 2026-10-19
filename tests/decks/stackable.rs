@@ -279,6 +279,7 @@ fn destroy_by_name_takes_the_oldest_then_the_next_oldest_the_last_release_frees_
                         dur: None,
                         out: vec!["SPAWN SUSPICION".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -327,6 +328,7 @@ fn a_stackable_spawn_onto_a_distinct_non_stackable_living_name_rejects_nothing_l
                         dur: None,
                         out: vec!["SPAWN CHALICE".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -389,6 +391,7 @@ fn a_non_stackable_spawn_onto_an_existing_pool_name_rejects_the_shared_namespace
                         dur: None,
                         out: vec!["SPAWN SUSPICION".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -431,6 +434,7 @@ fn add_entity_enforces_the_law_itself_non_stackable_duplicates_throw_stackables_
                 born_action: Some(1),
                 dead_action: None,
                 stackable,
+                desc: None,
             },
         )
     };
@@ -480,6 +484,7 @@ fn a_stackable_prototype_with_derive_name_from_object_stacks_under_the_derived_n
                         dur: None,
                         out: vec!["SPAWN RUMOUR".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -547,6 +552,7 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                             dur: None,
                             out: vec!["SPAWN HEARSAY".to_string()],
                         }],
+                        ambient: false,
                     },
                 ),
                 (
@@ -579,6 +585,7 @@ fn kind_level_stackability_a_plain_spawn_of_a_non_stackable_prototype_in_a_stack
                             dur: None,
                             out: vec!["REPLACE OBJECT WITH HEARSAY".to_string()],
                         }],
+                        ambient: false,
                     },
                 ),
             ]
@@ -802,6 +809,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                             dur: None,
                             out: vec!["SPAWN SUSPICION".to_string()],
                         }],
+                        ambient: false,
                     },
                 ),
                 (
@@ -825,6 +833,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
                             dur: None,
                             out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                         }],
+                        ambient: false,
                     },
                 ),
             ]
@@ -935,6 +944,7 @@ fn decay_rig(dict: &Dictionary, stackable: bool) -> CompiledContent {
                         dur: None,
                         out: vec!["REPLACE OBJECT WITH SUSPICION".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -1044,6 +1054,7 @@ fn the_draft_spliced_a_clone_of_the_pool_array_the_real_state_keeps_both_copies(
                             "REFUSE(\"not yet\")".to_string(),
                         ],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -1145,6 +1156,7 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
                         dur: None,
                         out: vec!["SET(OBJECT, expires, 30m)".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -1239,6 +1251,7 @@ fn gate(dict: &Dictionary) -> CompiledContent {
                             out: vec!["SPAWN SUSPICION".to_string()],
                         },
                     ],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -1303,6 +1316,7 @@ fn count_dread_and_total_dread_are_load_errors_naming_the_valid_forms() {
                     dur: None,
                     out: vec!["NARRATE(\"x\")".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()

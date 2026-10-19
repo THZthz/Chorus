@@ -74,6 +74,7 @@ fn ana() -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     };
     e.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     e
@@ -128,7 +129,12 @@ fn recipe(id: &str, out: &[&str]) -> RecipeDef {
 
 /// One verb with a single object slot and one recipe.
 fn one_verb(slot_query: &str, duration: i64, recipe: RecipeDef) -> VerbContent {
-    VerbContent { slots: vec![object_slot(slot_query)], duration, recipes: vec![recipe] }
+    VerbContent {
+        slots: vec![object_slot(slot_query)],
+        duration,
+        recipes: vec![recipe],
+        ambient: false,
+    }
 }
 
 fn wait_to(
@@ -310,6 +316,7 @@ fn an_expiry_trigger_is_arranged_and_its_required_card_recurs() {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     };
     seed.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     seed.attrs.insert("expires".into(), chorus::core::types::AttrValue::Str("1h".into()));
@@ -374,6 +381,7 @@ fn copies_read_the_avail_counts_deck_multiplicity_versus_defaultcard_many() {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     };
     seed.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     let state = state_with(vec![ana(), seed]);

@@ -84,6 +84,7 @@ fn attune_content(dict: &Dictionary, out: &[&str], duration: i64) -> CompiledCon
                         dur: None,
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -416,6 +417,7 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
                                     .to_string(),
                             ],
                         }],
+                    ambient: false,
                     },
                 ),
                 (
@@ -445,6 +447,7 @@ fn multi_clause_steps_each_clause_carries_its_own_bindings_ifs_in_both_apply() {
                                     .to_string(),
                             ],
                         }],
+                    ambient: false,
                     },
                 ),
             ]
@@ -665,6 +668,7 @@ fn the_same_predicate_in_a_when_position_reads_false_and_selects_the_default() {
                             out: vec!["NARRATE(\"default\")".to_string()],
                         },
                     ],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -987,6 +991,7 @@ fn trigger_wait(dict: &Dictionary, triggers: Vec<TriggerDef>) -> CompiledContent
                         dur: None,
                         out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()
@@ -1172,6 +1177,7 @@ fn a_preset_pool_arrests_on_the_first_stew_count_name_is_world_scoped() {
                 born_action: None,
                 dead_action: None,
                 stackable,
+                desc: None,
             },
         )
         .unwrap();

@@ -132,6 +132,7 @@ fn pool_world() -> chorus::core::types::State {
                 born_action: None,
                 dead_action: None,
                 stackable,
+                desc: None,
             },
         )
         .unwrap();

@@ -64,6 +64,11 @@ pub struct VerbContent {
     pub duration: i64,
     /// first match wins; a `when`-less recipe is the default
     pub recipes: Vec<RecipeDef>,
+    /// §6.9: the bare `ambient` line — the verb opens its own windows at the
+    /// advance pass's check points, without a player commit. An ambient verb
+    /// declares no slots (a compile error) and its recipes may not REFUSE at
+    /// the top level (§6.9).
+    pub ambient: bool,
 }
 
 /// A clock trigger (§6.6).
@@ -160,6 +165,9 @@ pub struct PrototypeDef {
     pub aspects: Option<Aspects>,
     pub attrs: Option<Attrs>,
     pub derive: Option<PrototypeDerive>,
+    /// §4.2: the `desc "…"` display text — static prose every mint of this
+    /// prototype carries
+    pub desc: Option<String>,
 }
 
 /// A story ending (§4.4). The flavour is an OPEN
@@ -275,6 +283,9 @@ pub struct CompiledVerb {
     pub slot_by_role: IndexMap<SlotRole, CompiledSlot>,
     pub duration: i64,
     pub recipes: Vec<CompiledRecipe>,
+    /// §6.9: the ambient face — the advance pass opens this verb's windows
+    /// itself (empty bindings, one per station) and a player commit refuses
+    pub ambient: bool,
 }
 
 /// A compiled ending: flavour resolved (default 'melancholy', §10).
@@ -371,6 +382,12 @@ pub struct CompiledContent {
     /// + script entity side, once, here) is behavior-preserving.
     pub stackable_names: IndexSet<String>,
     pub stackable_kinds: IndexSet<String>,
+    /// §4.2 the card descriptions: declared entity and prototype NAMES
+    /// carrying a `desc "…"` — the mint-time lookup by the mint's RESOLVED
+    /// name (the stackable sets' discipline). Display text only: no
+    /// predicate reads it and the log never carries it (the fold recomputes
+    /// it from this table).
+    pub descs: IndexMap<String, String>,
     /// §4.4 the deck table: id → compiled deck (permutation + exhaustion)
     pub decks: IndexMap<String, CompiledDeck>,
     /// §6.7 the GLOBAL recipe-id table: recipe id → owning verb name.
@@ -394,15 +411,26 @@ impl CompiledContent {
     pub fn mint_is_stackable(&self, name: &str, kind: &str) -> bool {
         self.stackable_names.contains(name) || self.stackable_kinds.contains(kind)
     }
+
+    /// §4.2 the description a mint carries: the RESOLVED name's declared
+    /// `desc`, None when the name carries none — the same one-lookup shape
+    /// as [`CompiledContent::mint_is_stackable`], so play and fold read the
+    /// mint's face off the identical name.
+    #[must_use]
+    pub fn mint_desc(&self, name: &str) -> Option<&str> {
+        self.descs.get(name).map(String::as_str)
+    }
 }
 
 /// One declared entity line. The `stackable` flag rides
 /// along so the §4.2 sets build ONCE here instead of `compile_script`
 /// mutating the compiled content afterwards (behavior-preserving — set
-/// membership is order- and structure-free).
+/// membership is order- and structure-free); the `desc` rides along so the
+/// §4.2 description table builds in the same one pass.
 #[derive(Debug, Clone)]
 pub struct DeclaredEntity {
     pub name: String,
     pub kind: String,
     pub stackable: bool,
+    pub desc: Option<String>,
 }

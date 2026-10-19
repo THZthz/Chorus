@@ -173,11 +173,20 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
     for (name, verb) in verbs {
         // verb keys are
         // `[A-Z][A-Z0-9_]*` (never integer-like), so insertion order IS the
-        // canonical key order
-        if !verb.slots.is_empty() && verb.recipes.is_empty() {
-            findings.push(LintFinding::error(format!(
-                "verb {name}: declares slots but no recipes — every action rejects at selection (§6.6)"
-            )));
+        // canonical key order. §6.9: an ambient verb with no recipes joins
+        // the same family — its walk never selects, so no window ever opens
+        // (slots cannot be the witness there: an ambient verb declares none,
+        // a compile error).
+        if (!verb.slots.is_empty() || verb.ambient) && verb.recipes.is_empty() {
+            findings.push(LintFinding::error(if verb.ambient {
+                format!(
+                    "verb {name}: declares no recipes — the ambient walk never opens a window (§6.9)"
+                )
+            } else {
+                format!(
+                    "verb {name}: declares slots but no recipes — every action rejects at selection (§6.6)"
+                )
+            }));
         }
         // the advisory dead-slot face (§6.1, §6.4): a held slot no recipe
         // reads can never flip the deferred selection — the player can fill

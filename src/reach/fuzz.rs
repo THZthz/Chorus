@@ -17,8 +17,11 @@
 //! event-chain channel); v8 added the recipe-line `dur` band (NEW draw,
 //! p=0.15, one ladder literal, after the aspects gate); v9 added the §6.3
 //! sum scopes to the `when` table (`total(bound, aspect:a) >= n`,
-//! `total(table, aspect:b) >= n`). Every recorded
-//! fuzz run taken before v9 is therefore NOT reproducible
+//! `total(table, aspect:b) >= n`); v10 added the §6.9 ambient draw
+//! (p=0.15, FIRST draw of the verb block: an ambient verb declares no
+//! slots, draws its duration from the nonzero pool only, short-circuits
+//! the recipe `dur` band and the REFUSE band off). Every recorded
+//! fuzz run taken before v10 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -165,6 +168,7 @@ fn ent(name: &str, kind: &str, aspects: IndexMap<String, i64>) -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     }
 }
 
@@ -495,6 +499,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 dur: None,
                 out: vec![],
             }],
+            ambient: false,
         },
     );
     // the global §6.7 trigger-side chain-candidate table — every recipe id
@@ -506,35 +511,50 @@ pub fn gen_scenario(seed: u32) -> Scenario {
     // chain lowers the build index every hop and cannot cycle)
     let mut recipe_prefix: Vec<String> = Vec::new();
     for v in &verbs {
-        let mut slots: Vec<SlotDef> = vec![SlotDef {
-            role: "actors".to_string(),
-            min: 1,
-            max: Some(1),
-            query: Some("kind:character".to_string()),
-            shown: None,
-        }];
-        let n_slots = int(ctx.r, 3); // 0–2 non-actor slots
-        for _ in 0..n_slots {
-            let role = pick_str(ctx.r, &["object", "with", "with"]);
-            let mut query = String::new();
-            if ctx.r.next_f64() < 0.5 {
-                query.push_str(&format!(" kind:{}", pick_of(ctx.r, &non_char_kinds())));
-            }
-            if ctx.r.next_f64() < 0.4 {
-                let a = pick_str(ctx.r, &ASPECTS);
-                let bound = 1 + int(ctx.r, 3) as i64;
-                query.push_str(&format!(" aspect:{a}>={bound}"));
-            }
-            let query = query.trim().to_string();
-            // short-circuit on the role check (min:2 slots are "with"-only)
-            let double = role == "with" && ctx.r.next_f64() < 0.15;
+        // §6.9 (v10 NEW draw, p=0.15, FIRST draw of the verb block): the verb
+        // goes ambient — it declares NO slots (the slot draws below skip
+        // entirely, a documented short-circuit) and its duration draws from
+        // the nonzero pool only: an ambient recipe with effective duration 0
+        // self-chains inside one advance pass (open → complete → the
+        // §6.9 check re-opens) and trips the engine's §6.7 livelock
+        // budget, a hard ChorusError that would abort the oracle run instead
+        // of reporting a differential — the same filter discipline as the
+        // trigger-side duration>0 table. The §6.4 recipe `dur` band below
+        // short-circuits OFF for ambient verbs for the same reason (the
+        // ladder's `0m` literal is lethal there).
+        let ambient = ctx.r.next_f64() < 0.15;
+        let mut slots: Vec<SlotDef> = Vec::new();
+        if !ambient {
             slots.push(SlotDef {
-                role,
-                min: if double { 2 } else { 1 },
-                max: Some(if double { 2 } else { 1 }),
-                query: if query.is_empty() { None } else { Some(query) },
+                role: "actors".to_string(),
+                min: 1,
+                max: Some(1),
+                query: Some("kind:character".to_string()),
                 shown: None,
             });
+            let n_slots = int(ctx.r, 3); // 0–2 non-actor slots
+            for _ in 0..n_slots {
+                let role = pick_str(ctx.r, &["object", "with", "with"]);
+                let mut query = String::new();
+                if ctx.r.next_f64() < 0.5 {
+                    query.push_str(&format!(" kind:{}", pick_of(ctx.r, &non_char_kinds())));
+                }
+                if ctx.r.next_f64() < 0.4 {
+                    let a = pick_str(ctx.r, &ASPECTS);
+                    let bound = 1 + int(ctx.r, 3) as i64;
+                    query.push_str(&format!(" aspect:{a}>={bound}"));
+                }
+                let query = query.trim().to_string();
+                // short-circuit on the role check (min:2 slots are "with"-only)
+                let double = role == "with" && ctx.r.next_f64() < 0.15;
+                slots.push(SlotDef {
+                    role,
+                    min: if double { 2 } else { 1 },
+                    max: Some(if double { 2 } else { 1 }),
+                    query: if query.is_empty() { None } else { Some(query) },
+                    shown: None,
+                });
+            }
         }
         let n_recipes = 1 + int(ctx.r, 3);
         let mut recipes: Vec<RecipeDef> = Vec::new();
@@ -551,7 +571,10 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             // window of their own, in place of the verb's `duration:`:
             // `0m` (an instant window on a slow verb), `10m`, `20m`. Draw
             // order: when gate → aspects gate → dur band → n_outs.
-            let dur = if ctx.r.next_f64() < 0.15 {
+            // §6.9: the band short-circuits OFF for an ambient verb — a
+            // zero-duration ambient recipe self-chains into the livelock
+            // budget (see the ambient draw above).
+            let dur = if !ambient && ctx.r.next_f64() < 0.15 {
                 Some(
                     parse_duration(&pick_str(ctx.r, &DUR_LADDER))
                         .unwrap_or_else(|e| panic!("dur literal: {e}")),
@@ -571,7 +594,11 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             let n_outs = 1 + int(ctx.r, 4);
             let mut outs: Vec<String> = Vec::new();
             for _ in 0..n_outs {
-                outs.push(ctx.op(true, true));
+                // §6.9: an ambient recipe cannot REFUSE at the top level
+                // (a load error — the gate is `when`), so the REFUSE band
+                // is off for one; the chain band stays ON (RUN/FORK is the
+                // self-chaining mechanism the Time-loop shape is built from).
+                outs.push(ctx.op(!ambient, true));
             }
             recipes.push(RecipeDef {
                 id: Some(format!("{}.r{}", v.to_lowercase(), i)),
@@ -585,9 +612,13 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             });
             recipe_prefix.push(format!("{}.r{}", v.to_lowercase(), i));
         }
-        let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
-            .parse()
-            .unwrap_or_else(|e| panic!("duration literal: {e}"));
+        let duration: i64 = if ambient {
+            pick_str(ctx.r, &["30", "60"])
+        } else {
+            pick_str(ctx.r, &["0", "30", "60"])
+        }
+        .parse()
+        .unwrap_or_else(|e| panic!("duration literal: {e}"));
         // §6.7/§6.6 trigger-side chain candidates: only recipes whose
         // EFFECTIVE duration is > 0 join the global table — the recipe's
         // own `dur` overrides the verb's `duration:` (§6.4), so a `dur 0m`
@@ -603,7 +634,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         global_run_targets.extend(
             recipes.iter().filter(|r| r.dur.unwrap_or(duration) > 0).filter_map(|r| r.id.clone()),
         );
-        verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes });
+        verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes, ambient });
     }
     // from here the chain-legal bodies are the completion triggers; the table
     // switches to the global duration>0 candidates (the §6.7 global recipe
@@ -758,6 +789,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 name: e.name.clone(),
                 kind: e.kind.clone(),
                 stackable: e.stackable,
+                desc: None,
             })
             .collect(),
         probes,

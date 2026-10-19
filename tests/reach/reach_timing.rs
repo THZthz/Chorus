@@ -41,6 +41,7 @@ fn ana() -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     };
     e.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     e
@@ -272,6 +273,7 @@ fn by_bounds_duration_recipes_only_duration0_proves() {
                 slots: vec![actor_slot()],
                 duration,
                 recipes: vec![recipe(&["SPAWN THE_RING"])],
+                ambient: false,
             },
         )]),
         ..ContentRaw::default()
@@ -344,6 +346,7 @@ fn mk_dur(recipe_dur: Option<i64>) -> ContentRaw {
                     dur: recipe_dur,
                     out: vec!["SPAWN THE_RING".to_string()],
                 }],
+                ambient: false,
             },
         )]),
         ..ContentRaw::default()
@@ -582,6 +585,7 @@ fn the_deck_cursor_bounds_the_remaining_permutation_non_reset_never_returns() {
         born_action: Some(1),
         dead_action: Some(2),
         stackable: true,
+        desc: None,
     };
     dead.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     let mut mid = state_with(vec![ana(), dead.clone()]);
@@ -629,6 +633,7 @@ fn a_fired_once_trigger_whose_past_mint_died_leaves_only_a_candidate() {
         born_action: Some(1),
         dead_action: Some(2),
         stackable: false,
+        desc: None,
     };
     gem.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
     let mut mid = state_with(vec![ana(), gem]);

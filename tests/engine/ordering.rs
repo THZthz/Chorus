@@ -46,6 +46,7 @@ fn verb_of(name: &str, slots: Vec<SlotDef>, duration: i64, out: &[&str]) -> (Str
                 dur: None,
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
+            ambient: false,
         },
     )
 }
@@ -104,6 +105,7 @@ fn seed() -> State {
         born_action: None,
         dead_action: None,
         stackable: false,
+        desc: None,
     };
     let base = |container: &str| {
         let mut a = Attrs::new();
@@ -134,6 +136,7 @@ fn expiring_item(s: &mut State, id: &str, name: &str, at: i64) {
             born_action: None,
             dead_action: None,
             stackable: false,
+            desc: None,
         },
     )
     .unwrap();
@@ -711,6 +714,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             dur: None,
             out: vec!["NARRATE \"seized.\"".to_string()],
         }],
+        ambient: false,
     };
     let touch = VerbContent {
         slots: vec![actor_slot(), object_slot(None)],
@@ -725,6 +729,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             dur: None,
             out: vec!["NARRATE \"touched.\"".to_string()],
         }],
+        ambient: false,
     };
     let (dict, content) =
         rig(vec![("SEIZE".to_string(), seize), ("TOUCH".to_string(), touch)], |_| {});

@@ -22,6 +22,7 @@ pub fn seed_content() -> ContentRaw {
         slots,
         duration,
         recipes,
+        ambient: false,
     };
     let slot = |role: &str, min: i64, max: Option<i64>, query: Option<&str>| SlotDef {
         role: role.to_string(),
@@ -274,6 +275,7 @@ pub fn seed_content() -> ContentRaw {
                     aspects: Some([("secret", AspectVal::Num(1))].into_iter().map(|(k, v)| (k.to_string(), v)).collect()),
                     attrs: None,
                     derive: None,
+                    desc: None,
                 },
             ),
             ("PLAN_INFILTRATION", PrototypeDef { kind: "idea".into(), ..Default::default() }),
@@ -299,6 +301,7 @@ pub fn seed_content() -> ContentRaw {
                         .into_iter()
                         .collect()),
                     }),
+                    desc: None,
                 },
             ),
         ]
@@ -355,6 +358,7 @@ pub fn seed_state() -> State {
                 born_action: None,
                 dead_action: None,
                 stackable: false,
+                desc: None,
             },
         )
         .expect("seed fixture place");
@@ -386,6 +390,7 @@ pub fn seed_state() -> State {
                 born_action: None,
                 dead_action: None,
                 stackable: false,
+                desc: None,
             },
         )
         .expect("seed fixture character");
@@ -424,6 +429,7 @@ pub fn seed_state() -> State {
                 born_action: None,
                 dead_action: None,
                 stackable: false,
+                desc: None,
             },
         )
         .expect("seed fixture text");
@@ -483,6 +489,7 @@ pub fn seed_state() -> State {
                 born_action: None,
                 dead_action: None,
                 stackable: false,
+                desc: None,
             },
         )
         .expect("seed fixture entity");

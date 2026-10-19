@@ -275,6 +275,14 @@ pub fn explain_verb(
     } else {
         format!("slots: {slots}")
     });
+    // §6.9: the ambient face — the marks above ran against the table, but
+    // this verb's windows open without one
+    if verb.ambient {
+        lines.push(
+            "ambient: runs on its own — the advance pass opens its windows; a commit refuses (§6.9)"
+                .to_string(),
+        );
+    }
     let bound = bindings_line(bindings, state);
     lines.push(if bound.is_empty() {
         "bindings: none".to_string()

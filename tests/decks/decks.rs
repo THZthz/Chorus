@@ -528,6 +528,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                     dur: None,
                     out: vec!["DRAWN(RUMOURS, RUMOUR)".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -594,6 +595,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                     dur: None,
                     out: vec!["helper()".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -643,6 +645,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
                     dur: None,
                     out: vec!["IF exists(NOSUCH) -> (DRAWN(RUMOURS, RUMOUR))".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -686,6 +689,7 @@ fn draw_base_raw(out: &[&str]) -> ContentRaw {
                     dur: None,
                     out: out.iter().map(|s| (*s).to_string()).collect(),
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -1300,6 +1304,7 @@ fn drift_raw(seed: i64, spec: &[&str]) -> ContentRaw {
                     dur: None,
                     out: vec!["DRAW RUMOURS".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -1411,6 +1416,7 @@ fn drift_in_the_defaultcard_alone_fires_too_past_the_period_the_assertion_still_
                     dur: None,
                     out: vec!["DRAW SMALL".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()

@@ -135,7 +135,14 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         let stackable = rnd.next_f64() >= 0.24;
         protos.insert(
             id,
-            PrototypeDef { kind, stackable, aspects: Some(aspects), attrs: None, derive: None },
+            PrototypeDef {
+                kind,
+                stackable,
+                aspects: Some(aspects),
+                attrs: None,
+                derive: None,
+                desc: None,
+            },
         );
     }
 
@@ -218,6 +225,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                 dur: None,
                 out: vec![],
             }],
+            ambient: false,
         },
     );
 
@@ -322,6 +330,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
                     dur: None,
                     out,
                 }],
+                ambient: false,
             },
         );
     }
@@ -407,6 +416,7 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
             born_action: Some(0),
             dead_action: None,
             stackable: false,
+            desc: None,
         }
     }
     let mut initial = new_state(0);

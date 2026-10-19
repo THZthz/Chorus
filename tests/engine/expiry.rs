@@ -67,6 +67,7 @@ mod authored_expiry_triggers {
                 dur: None,
                 out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
             }],
+            ambient: false,
         }
     }
 
@@ -439,6 +440,7 @@ mod set_expires_duration_forms {
                     dur: None,
                     out: vec![out.to_string()],
                 }],
+                ambient: false,
             },
         );
         compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
@@ -572,6 +574,7 @@ mod set_expires_duration_forms {
                                 dur: None,
                                 out: vec!["SET(CHALICE, expires, \"1h\")".to_string()],
                             }],
+                            ambient: false,
                         },
                     ),
                     (
@@ -595,6 +598,7 @@ mod set_expires_duration_forms {
                                 dur: None,
                                 out: vec!["NARRATE(\"{actors} wait.\")".to_string()],
                             }],
+                            ambient: false,
                         },
                     ),
                 ]

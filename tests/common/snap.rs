@@ -116,6 +116,7 @@ fn entity_json(e: &Entity) -> serde_json::Value {
         "bornAction": e.born_action,
         "deadAction": e.dead_action,
         "stackable": e.stackable,
+        "desc": e.desc,
     })
 }
 

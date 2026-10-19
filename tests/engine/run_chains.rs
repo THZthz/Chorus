@@ -1105,6 +1105,7 @@ fn the_load_checks_pin_homes_candidates_and_arg_form() {
                     dur: None,
                     out: vec!["RUN \"ghost\"".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()
@@ -1461,6 +1462,7 @@ fn the_fork_load_checks_pin_homes_and_arg_form() {
                     dur: None,
                     out: vec!["FORK \"ghost\"".to_string()],
                 }],
+                ambient: false,
             },
         )]
         .into_iter()

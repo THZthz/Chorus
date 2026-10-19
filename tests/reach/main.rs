@@ -5,6 +5,7 @@ mod common;
 
 mod reach;
 mod reach_adversarial;
+mod reach_ambient;
 mod reach_bridge;
 mod reach_complete;
 mod reach_cost;

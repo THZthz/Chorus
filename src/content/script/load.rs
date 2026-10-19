@@ -127,6 +127,7 @@ pub(super) fn compile_parsed(script: Script, dict: &Dictionary) -> Result<Compil
                 born_action: Some(0),
                 dead_action: None,
                 stackable: e.stackable,
+                desc: e.desc.clone(),
             },
         )?;
     }

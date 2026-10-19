@@ -334,58 +334,7 @@ pub(crate) fn eval_static_truth(
             Ok(va.or(eval_static_truth(b, world, bound)?))
         }
         Pred::Not(a) => Ok(eval_static_truth(a, world, bound)?.not()),
-        Pred::Cmp { l, op, r } => {
-            // the count/sum-form leaf, decided over the OPERAND INTERVALS: an
-            // unbounded matching pool opens its side's ceiling (the world
-            // sum there is a floor, never a ceiling). The verdict is the
-            // interval decision — True when the comparison holds at the
-            // WORST corner pair (the floors, so growth never un-holds it),
-            // False when it holds at NO pair (even the ceiling corners
-            // fail — a pool can only grow, so a comparison false at the
-            // floor of an upward-closed pool stays false), Unknown
-            // otherwise. The invariant over open pools: Unknown may only
-            // widen toward "candidate", never produce "proven" on its own.
-            // Bounded operands are single-point intervals, where this is
-            // exactly the capped-weight comparison.
-            let (lv, lhi) = eval_expr_interval(l, world, bound)?;
-            let (rv, rhi) = eval_expr_interval(r, world, bound)?;
-            // the open faces: an open ceiling is the floor's infinity
-            // stand-in (world counts never reach i64::MAX, so every
-            // comparison direction survives the substitution)
-            let l_lo = lv;
-            let l_hi = lhi.unwrap_or(INFINITY);
-            let r_lo = rv;
-            let r_hi = rhi.unwrap_or(INFINITY);
-            // the monotone ops decide on the corner pairs; the point ops
-            // (= and !=) are not monotone — they decide only on the
-            // interval SHAPES (equality needs two exact points; interval
-            // disjointness is the everywhere-face of both)
-            let exact_pair = l_lo == l_hi && r_lo == r_hi;
-            let disjoint = l_hi < r_lo || r_hi < l_lo;
-            let everywhere = match op {
-                CmpOp::Ge => l_lo >= r_hi,
-                CmpOp::Gt => l_lo > r_hi,
-                CmpOp::Le => l_hi <= r_lo,
-                CmpOp::Lt => l_hi < r_lo,
-                CmpOp::Eq => exact_pair && l_lo == r_lo,
-                CmpOp::Ne => disjoint,
-            };
-            let nowhere = match op {
-                CmpOp::Ge => l_hi < r_lo,
-                CmpOp::Gt => l_hi <= r_lo,
-                CmpOp::Le => l_lo > r_hi,
-                CmpOp::Lt => l_lo >= r_hi,
-                CmpOp::Eq => disjoint,
-                CmpOp::Ne => exact_pair && l_lo == r_lo,
-            };
-            Ok(if everywhere {
-                StaticTruth::True
-            } else if nowhere {
-                StaticTruth::False
-            } else {
-                StaticTruth::Unknown
-            })
-        }
+        Pred::Cmp { l, op, r } => cmp_interval_truth(l, op, r, world, bound),
         Pred::Exists { name } => Ok(if world.by_name.contains_key(name) {
             StaticTruth::True
         } else {
@@ -413,6 +362,130 @@ pub(crate) fn eval_static(
     bound: Option<&BoundView<'_>>,
 ) -> Result<bool> {
     Ok(eval_static_truth(p, world, bound)? == StaticTruth::True)
+}
+
+/// The count/sum-form comparison leaf, decided over the OPERAND INTERVALS:
+/// an unbounded matching pool opens its side's ceiling (the world sum there
+/// is a floor, never a ceiling). The verdict is the interval decision —
+/// True when the comparison holds at the WORST corner pair (the floors, so
+/// growth never un-holds it), False when it holds at NO pair (even the
+/// ceiling corners fail — a pool can only grow, so a comparison false at
+/// the floor of an upward-closed pool stays false), Unknown otherwise. The
+/// invariant over open pools: Unknown may only widen toward "candidate",
+/// never produce "proven" on its own. Bounded operands are single-point
+/// intervals, where this is exactly the capped-weight comparison. Shared by
+/// [`eval_static_truth`] and [`ambient_gate_truth`].
+fn cmp_interval_truth(
+    l: &ValExpr,
+    op: &CmpOp,
+    r: &ValExpr,
+    world: &CardWorld,
+    bound: Option<&BoundView<'_>>,
+) -> Result<StaticTruth> {
+    let (lv, lhi) = eval_expr_interval(l, world, bound)?;
+    let (rv, rhi) = eval_expr_interval(r, world, bound)?;
+    // the open faces: an open ceiling is the floor's infinity
+    // stand-in (world counts never reach i64::MAX, so every
+    // comparison direction survives the substitution)
+    let l_lo = lv;
+    let l_hi = lhi.unwrap_or(INFINITY);
+    let r_lo = rv;
+    let r_hi = rhi.unwrap_or(INFINITY);
+    // the monotone ops decide on the corner pairs; the point ops
+    // (= and !=) are not monotone — they decide only on the
+    // interval SHAPES (equality needs two exact points; interval
+    // disjointness is the everywhere-face of both)
+    let exact_pair = l_lo == l_hi && r_lo == r_hi;
+    let disjoint = l_hi < r_lo || r_hi < l_lo;
+    let everywhere = match op {
+        CmpOp::Ge => l_lo >= r_hi,
+        CmpOp::Gt => l_lo > r_hi,
+        CmpOp::Le => l_hi <= r_lo,
+        CmpOp::Lt => l_hi < r_lo,
+        CmpOp::Eq => exact_pair && l_lo == r_lo,
+        CmpOp::Ne => disjoint,
+    };
+    let nowhere = match op {
+        CmpOp::Ge => l_hi < r_lo,
+        CmpOp::Gt => l_hi <= r_lo,
+        CmpOp::Le => l_lo > r_hi,
+        CmpOp::Lt => l_lo >= r_hi,
+        CmpOp::Eq => disjoint,
+        CmpOp::Ne => exact_pair && l_lo == r_lo,
+    };
+    Ok(if everywhere {
+        StaticTruth::True
+    } else if nowhere {
+        StaticTruth::False
+    } else {
+        StaticTruth::Unknown
+    })
+}
+
+/// §6.9: one operand's EMPTY-BINDINGS face — the exact value an ambient
+/// walk's comparison operand reads over the empty scope (`select_recipe`'s
+/// bindings are empty there). The role forms are exact: a count or total
+/// over a role reduces over no cards and reads 0, and `total(bound, …)`
+/// sums no window and reads 0. Everything else reaching this arm (a role
+/// path, the dice operand) resolves nothing and reads None — the
+/// comparison then reads false, exactly the runtime lenient face
+/// (`eval_pred`'s Cmp: either side None → false). The static world forms
+/// never reach this arm (they take the interval path).
+fn ambient_operand(x: &ValExpr) -> Option<i64> {
+    match x {
+        ValExpr::Int { v } => Some(*v),
+        ValExpr::Count { .. } | ValExpr::Total { .. } | ValExpr::TotalBound { .. } => Some(0),
+        _ => None,
+    }
+}
+
+/// §6.9: the ambient gate's three-valued truth — the §6.4 walk an ambient
+/// sweep runs, over EMPTY bindings, mirrored onto the analyzer's card
+/// world. The role forms decide EXACTLY (the empty scope: `rel` pairs no
+/// cards, `any` sees none and reads false, `every` is vacuously true, a
+/// role path resolves to None so its comparison reads false, and a
+/// count/total over a role reads 0 — each the runtime face of
+/// `eval_pred` over empty bindings); the world forms keep the interval
+/// truth of [`eval_static_truth`] (a mixed comparison — a world form
+/// against a role form — reads its role side unresolved and decides False,
+/// the sound under-claim); Kleene composition lifts. Unknown may only
+/// widen toward candidate (the completing invariant) — a decided FALSE is
+/// the recipe that never opens, and the ladder demotes it exactly like a
+/// player recipe's non-static-true gate.
+pub(crate) fn ambient_gate_truth(
+    p: &Pred,
+    world: &CardWorld,
+    bound: Option<&BoundView<'_>>,
+) -> StaticTruth {
+    match p {
+        Pred::And(a, b) => {
+            ambient_gate_truth(a, world, bound).and(ambient_gate_truth(b, world, bound))
+        }
+        Pred::Or(a, b) => {
+            ambient_gate_truth(a, world, bound).or(ambient_gate_truth(b, world, bound))
+        }
+        Pred::Not(a) => ambient_gate_truth(a, world, bound).not(),
+        Pred::Rel { .. } | Pred::Any { .. } => StaticTruth::False,
+        Pred::Every { .. } => StaticTruth::True,
+        Pred::Exists { .. } | Pred::ExistsQuery { .. } => {
+            eval_static_truth(p, world, bound).unwrap_or(StaticTruth::False)
+        }
+        Pred::Cmp { l, op, r } => {
+            if expr_static(l) && expr_static(r) {
+                return cmp_interval_truth(l, op, r, world, bound).unwrap_or(StaticTruth::False);
+            }
+            match (ambient_operand(l), ambient_operand(r)) {
+                (Some(a), Some(b)) => {
+                    if op.num_cmp(a, b) {
+                        StaticTruth::True
+                    } else {
+                        StaticTruth::False
+                    }
+                }
+                _ => StaticTruth::False,
+            }
+        }
+    }
 }
 
 /// The path-open walk, reporting its evidence: the FIRST path
@@ -649,6 +722,8 @@ impl<'c> WorldFacts<'c> {
             born_action: Some(0),
             dead_action: None,
             stackable: proto.is_some_and(|p| p.stackable),
+            // §4.2: the same resolved-name lookup the engine's mint sites run
+            desc: self.content.mint_desc(name).map(str::to_string),
         }
     }
 

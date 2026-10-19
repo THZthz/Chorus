@@ -220,6 +220,7 @@ fn ent(name: &str, kind: &str) -> Entity {
         born_action: Some(0),
         dead_action: None,
         stackable: false,
+        desc: None,
     }
 }
 
@@ -284,6 +285,7 @@ fn why_table_names_the_wave3_completion_rungs() {
             born_action: Some(0),
             dead_action: None,
             stackable: false,
+            desc: None,
         }
     };
     let mut state = new_state(0);
@@ -361,6 +363,7 @@ fn why_table_names_the_wave3_completion_rungs() {
                     dur: None,
                     out: vec!["SPAWN X_GEM".to_string()],
                 }],
+                ambient: false,
             },
         )]),
         triggers: Some(vec![TriggerDef::Complete(CompleteTriggerDef {

@@ -40,6 +40,7 @@ mod smoke {
                 dur: None,
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
+            ambient: false,
         }
     }
 
@@ -76,6 +77,7 @@ mod smoke {
             born_action: None,
             dead_action: None,
             stackable: false,
+            desc: None,
         };
         add_entity(&mut s, card("house", "place", "HOUSE", None)).unwrap();
         add_entity(&mut s, card("ana", "character", "ANA", Some("house"))).unwrap();
@@ -206,6 +208,7 @@ mod smoke {
                     dur: None,
                     out: out.iter().map(|s| s.to_string()).collect(),
                 }],
+                ambient: false,
             },
         )];
         verbs.push(("REL", pace(0, &["UNRELATE(ANA, MAGICK_BOOK, parent_child)"])));
@@ -249,6 +252,7 @@ mod smoke {
                         ),
                         attrs: None,
                         derive: None,
+                        desc: None,
                     },
                 )]
                 .into_iter()
@@ -320,6 +324,7 @@ mod smoke {
                 dur: None,
                 out: vec!["RELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
+            ambient: false,
         };
         let unrel_verb = VerbContent {
             slots: rel_verb.slots.clone(),
@@ -334,6 +339,7 @@ mod smoke {
                 dur: None,
                 out: vec!["UNRELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
+            ambient: false,
         };
         let (dict, content) = rig(vec![("LINK", rel_verb), ("UNLINK", unrel_verb)], |_| {});
         let s1 = run(&content, &dict, seed_state(), "0:0 @ ANA LINK MAGICK_BOOK", 1);
@@ -399,6 +405,7 @@ mod smoke {
                 dur: None,
                 out: vec!["ROLL(2, 6)".to_string(), "NARRATE \"rolled {roll}.\"".to_string()],
             }],
+            ambient: false,
         };
         let (dict, content) = rig(vec![("CAST", roll_verb)], |_| {});
         let seed = content.seed;
@@ -453,6 +460,7 @@ mod smoke {
                 dur: None,
                 out: vec!["DRAW RUMOURS".to_string()],
             }],
+            ambient: false,
         };
         let (dict, content) = rig(vec![("DRAWV", draw_verb)], |raw| {
             raw.decks = Some(vec![crate::content::DeckRaw {
@@ -524,6 +532,7 @@ mod smoke {
                 "IF exists(HOUSE) -> (SPAWN PARANOIA, REFUSE(\"too late.\")) ELSE -> (NARRATE \"calm.\")".to_string(),
             ],
         }],
+    ambient: false,
     };
         let (dict, content) = rig(vec![("LATE", late)], |raw| {
             raw.prototypes = Some(

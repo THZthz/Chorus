@@ -74,6 +74,32 @@ pub(crate) fn collect_stackable(
     (names, kinds)
 }
 
+/// The §4.2 description table: the declared entity and prototype names
+/// carrying a `desc "…"`. Keyed by NAME (an entity/prototype name collision
+/// is a load error, so the keys are unique); insertion order is
+/// unobservable — only `mint_desc` membership is ever read, and the build
+/// order here (entities first, then prototypes, mirroring
+/// [`collect_stackable`]) changes no result anywhere.
+fn collect_descs(
+    entities: &[DeclaredEntity],
+    prototypes: Option<&IndexMap<String, PrototypeDef>>,
+) -> IndexMap<String, String> {
+    let mut descs = IndexMap::new();
+    for e in entities {
+        if let Some(d) = &e.desc {
+            descs.insert(e.name.clone(), d.clone());
+        }
+    }
+    if let Some(prototypes) = prototypes {
+        for (name, p) in entries_in_key_order(prototypes) {
+            if let Some(d) = &p.desc {
+                descs.insert(name.to_string(), d.clone());
+            }
+        }
+    }
+    descs
+}
+
 /// Compile raw content. `entities` contributes the
 /// script's declared entity lines so deck spec entries (§4.4) may name
 /// plain entities as well as prototypes; `compile_script` passes them,
@@ -91,6 +117,8 @@ pub fn compile_content(
     let fns = build_call_tables(raw, dict)?;
     // §4.2: two derived sets every mint site reads
     let (stackable_names, stackable_kinds) = collect_stackable(entities, raw.prototypes.as_ref());
+    // §4.2: …and the description table they mint from
+    let descs = collect_descs(entities, raw.prototypes.as_ref());
     let endings = compile_endings(raw.endings.as_ref())?;
     // §4.4: the deck table — spec entries resolve against prototypes +
     // declared entities, then the seed-fixed permutation is derived
@@ -160,6 +188,7 @@ pub fn compile_content(
         endings,
         stackable_names,
         stackable_kinds,
+        descs,
         decks,
         recipe_verbs,
     })
@@ -207,6 +236,18 @@ fn compile_verb(
     let name_lower = name.to_lowercase();
     let mut slot_by_role = IndexMap::new();
     let mut slots = Vec::with_capacity(v.slots.len());
+    // §6.9: an ambient verb declares NO player-facing slots — the walk binds
+    // nothing (empty bindings) and a commit refuses, so a slot would be dead
+    // weight the hold could never reach either (the held slot included: the
+    // deferral mark is a held-slot shape, and an ambient verb never defers)
+    if v.ambient {
+        if let Some(s) = v.slots.first() {
+            return Err(ChorusError::new(format!(
+                "verb {name}: an ambient verb declares no slots — the §6.9 walk opens its windows over empty bindings (got slot '{}')",
+                s.role
+            )));
+        }
+    }
     for s in &v.slots {
         // `s.max < s.min`: Infinity is never
         // less than anything, so the check only runs for a finite max
@@ -277,6 +318,16 @@ fn compile_verb(
         for o in &r.out {
             out.extend(parse_outcome_string(o, dict, fns)?);
         }
+        // §6.9: a top-level REFUSE in an ambient recipe is a load error —
+        // its home is the §6.5 table, which an ambient open never sees; the
+        // gate is `when` (the walk opens nothing when no recipe matches). A
+        // REFUSE inside an IF branch keeps the §6.7 window-refuse, exactly
+        // like every completion (only the top level is banned).
+        if v.ambient && out.iter().any(|o| o.op == "REFUSE") {
+            return Err(ChorusError::new(format!(
+                "verb {name}: recipe {id}: a top-level REFUSE has no step to refuse on an ambient verb — gate with `when` (the §6.9 walk opens nothing when no recipe matches)"
+            )));
+        }
         recipes.push(CompiledRecipe {
             id,
             when,
@@ -298,7 +349,14 @@ fn compile_verb(
         for_each_if_condition(&r.out, &mut |w| lint_pred(&where_, w))?;
         lint_dice(&where_, &r.out)?;
     }
-    Ok(CompiledVerb { name: name.to_string(), slots, slot_by_role, duration: v.duration, recipes })
+    Ok(CompiledVerb {
+        name: name.to_string(),
+        slots,
+        slot_by_role,
+        duration: v.duration,
+        recipes,
+        ambient: v.ambient,
+    })
 }
 
 /// The global recipe-id table: recipe id → owning verb name. RUN/FORK
@@ -741,6 +799,7 @@ mod tests {
                         dur: None,
                         out: vec!["NARRATE \"idle.\"".to_string()],
                     }],
+                    ambient: false,
                 },
             )]
             .into_iter()

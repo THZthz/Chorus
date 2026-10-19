@@ -60,6 +60,7 @@ pub fn plain_card(
             born_action: None,
             dead_action: None,
             stackable,
+            desc: None,
         },
     )
     .unwrap();

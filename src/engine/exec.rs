@@ -331,6 +331,19 @@ pub(super) fn register_windows(
         }
         let key = format!("{}:{}", record.id, ci);
         let recipe = record.recipes.get(ci).cloned().unwrap_or_default();
+        // §6.4: the window length is the clause's OWN recipe's — a recipe
+        // `dur` overrides the verb's `duration` default (a synthesized
+        // follow-up BEGIN carries its pinned candidate's recipe id, so a
+        // chained hand-off takes ITS recipe's length). An id the content no
+        // longer carries falls back to the verb default, the same
+        // tolerance the completion's lookup never needs (fire_window's
+        // drift check is the loud one).
+        let dur = verb
+            .recipes
+            .iter()
+            .find(|r| r.id == recipe)
+            .and_then(|r| r.dur)
+            .unwrap_or(verb.duration);
         // §6.4: the count rides the ONE registration path play and fold
         // share — a registered window increments its clause's commit-time
         // recipe id ON THE DRAFT. A table-refused step opens no window and
@@ -345,17 +358,13 @@ pub(super) fn register_windows(
                 clause: ci as i64,
                 verb: clause.verb.clone(),
                 start: checked_step(start_min, offset, "window start"),
-                end: checked_step(
-                    checked_step(start_min, offset, "window end"),
-                    verb.duration,
-                    "window end",
-                ),
+                end: checked_step(checked_step(start_min, offset, "window end"), dur, "window end"),
                 recipe,
                 refs,
                 locked,
             },
         );
-        offset = checked_step(offset, verb.duration, "window offset");
+        offset = checked_step(offset, dur, "window offset");
     }
     Ok(())
 }

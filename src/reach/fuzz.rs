@@ -14,8 +14,9 @@
 //! the GLOBAL build prefix (cross-verb chains, §6.7); v6 split the chain
 //! band into RUN [0.22, 0.27) and FORK [0.27, 0.32) (the FORK fan-out, §6.7);
 //! v7 turned the chain band ON in slot/expire trigger bodies (the §6.6
-//! event-chain channel). Every recorded
-//! fuzz run taken before v7 is therefore NOT reproducible
+//! event-chain channel); v8 added the recipe-line `dur` band (NEW draw,
+//! p=0.15, one ladder literal, after the aspects gate). Every recorded
+//! fuzz run taken before v8 is therefore NOT reproducible
 //! seed-for-seed; reproduce against the matching generator version. What
 //! stays pinned is that the generator is a pure function of its seed — the
 //! same seed builds the same scenario, draw for draw, under ONE version.
@@ -31,7 +32,7 @@ use crate::content::{
     SlotTriggerDef, TriggerDef, VerbContent,
 };
 use crate::core::clock::{
-    abs_min, clock_from_abs_min, format_clock, next_step_clock, MIN_PER_TICK,
+    abs_min, clock_from_abs_min, format_clock, next_step_clock, parse_duration, MIN_PER_TICK,
 };
 use crate::core::dict::{core_dictionary, Dictionary, CORE_VERBS};
 use crate::core::parse::parse_sentence;
@@ -89,6 +90,10 @@ fn sample_distinct(r: &mut Lcg, arr: &[String], n: usize) -> Vec<String> {
 const ASPECTS: [&str; 2] = ["a", "b"];
 const NAME_POOL: [&str; 5] = ["LAMP", "ROPE", "LEDGER", "CRATE", "VIAL"];
 const KIND_POOL: [&str; 5] = ["item", "text", "idea", "place", "resource"];
+/// The §6.4 recipe `dur` ladder (v8): instant (0m) plus the two sub-halfhour
+/// ticks — small windows a verb's own `duration:` pool (0/30/60) never
+/// produces.
+const DUR_LADDER: [&str; 3] = ["0m", "10m", "20m"];
 
 fn str_vec(vs: &[&str]) -> Vec<String> {
     vs.iter().map(|s| (*s).to_string()).collect()
@@ -479,6 +484,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec![],
             }],
         },
@@ -529,9 +535,22 @@ pub fn gen_scenario(seed: u32) -> Scenario {
             // §6.4 recipe-line `aspects` presence list (NEW draw, p=0.15,
             // single name) — the emitter gate the §6.7 `on complete
             // <aspect>` trigger reads on the completed recipe. Draw order:
-            // when gate → aspects gate → n_outs.
+            // when gate → aspects gate → dur band → n_outs.
             let aspects =
                 if ctx.r.next_f64() < 0.15 { vec![pick_str(ctx.r, &ASPECTS)] } else { Vec::new() };
+            // §6.4 recipe-line `dur` override (v8 NEW draw, p=0.15, one
+            // ladder literal) — a minority of recipes complete under a
+            // window of their own, in place of the verb's `duration:`:
+            // `0m` (an instant window on a slow verb), `10m`, `20m`. Draw
+            // order: when gate → aspects gate → dur band → n_outs.
+            let dur = if ctx.r.next_f64() < 0.15 {
+                Some(
+                    parse_duration(&pick_str(ctx.r, &DUR_LADDER))
+                        .unwrap_or_else(|e| panic!("dur literal: {e}")),
+                )
+            } else {
+                None
+            };
             // §6.7 chain candidates: the recipes built SO FAR across ALL
             // verbs — strictly earlier in build order only, so a recipe-body
             // RUN chain lowers the build index every hop and cannot cycle
@@ -553,6 +572,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                 hint: None,
                 max: None,
                 aspects,
+                dur,
                 out: outs,
             });
             recipe_prefix.push(format!("{}.r{}", v.to_lowercase(), i));
@@ -560,17 +580,21 @@ pub fn gen_scenario(seed: u32) -> Scenario {
         let duration: i64 = pick_str(ctx.r, &["0", "30", "60"])
             .parse()
             .unwrap_or_else(|e| panic!("duration literal: {e}"));
-        // §6.7/§6.6 trigger-side chain candidates: only recipes of
-        // duration>0 verbs join the global table. A trigger chain onto a
-        // zero-duration recipe whose windows lock the trigger's home card
+        // §6.7/§6.6 trigger-side chain candidates: only recipes whose
+        // EFFECTIVE duration is > 0 join the global table — the recipe's
+        // own `dur` overrides the verb's `duration:` (§6.4), so a `dur 0m`
+        // recipe of a duration-30 verb is a zero-duration window exactly
+        // like a whole zero-duration verb. A trigger chain onto a
+        // zero-effective-duration recipe whose windows lock the trigger's
+        // home card
         // re-fires the gate forever INSIDE one advance pass and trips the
         // engine's §6.7 livelock budget (a hard ChorusError, which would
         // abort the oracle run instead of reporting a differential) — the
-        // duration>0 filter bounds every trigger-fed chain to one hop
-        // per advance, far under the 1024-completion budget.
-        if duration > 0 {
-            global_run_targets.extend(recipes.iter().filter_map(|r| r.id.clone()));
-        }
+        // effective-duration>0 filter bounds every trigger-fed chain to one
+        // hop per advance, far under the 1024-completion budget.
+        global_run_targets.extend(
+            recipes.iter().filter(|r| r.dur.unwrap_or(duration) > 0).filter_map(|r| r.id.clone()),
+        );
         verbs_raw.insert(v.clone(), VerbContent { slots, duration, recipes });
     }
     // from here the chain-legal bodies are the completion triggers; the table

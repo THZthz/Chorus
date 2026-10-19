@@ -19,7 +19,8 @@
 //!   anti-monotone `count(X) <= k` gates are honored only through
 //!   provenness (a site the gates would kill is not in `mint_sources`).
 //! - **minutes** — the same DAG under the clock weights: a recipe hop costs
-//!   its verb's duration (the window completes), a slot-trigger hop its
+//!   its window's length (the recipe's own `dur`, else the verb's duration —
+//!   the window completes), a slot-trigger hop its
 //!   first crossing (`WorldFacts::first_cross`, re-anchored under the
 //!   bounded-time faces), an expiry/complete hop 0 (arranged). The
 //!   clock-cheapest plan may differ from the application-cheapest one —
@@ -74,8 +75,8 @@ pub struct CostPlan {
     /// `{owner} mints {name}` for proven sites.
     pub witness: String,
     /// minimum clock minutes under the clock weights (recipe hops = the
-    /// verb's duration, slot-trigger hops = the first crossing, arranged
-    /// hops 0)
+    /// window length — the recipe's own `dur`, else the verb's duration;
+    /// slot-trigger hops = the first crossing, arranged hops 0)
     pub minutes: i64,
 }
 
@@ -108,8 +109,9 @@ pub struct CostReport {
 enum Metric {
     /// recipe hops 1, trigger hops 0, initial 0
     Apps,
-    /// recipe hops = the verb's duration, slot hops = the first crossing,
-    /// arranged hops 0, initial 0
+    /// recipe hops = the window length (the recipe's own `dur`, else the
+    /// verb's duration), slot hops = the first crossing, arranged hops 0,
+    /// initial 0
     Minutes,
 }
 
@@ -135,8 +137,15 @@ fn hop_cost(facts: &WorldFacts<'_>, metric: Metric, site: &RawSite<'_>) -> i64 {
             Some(_) => 1,
             None => 0,
         },
+        // §6.4: the recipe's own `dur` overrides its verb's `duration` —
+        // the site knows its recipe exactly (the census keys it)
         Metric::Minutes => match site.verb {
-            Some(vi) => facts.content.verbs.get_index(vi).map(|(_, v)| v.duration).unwrap_or(0),
+            Some(vi) => facts
+                .content
+                .verbs
+                .get_index(vi)
+                .map(|(_, v)| super::world::effective_duration(v, site.recipe))
+                .unwrap_or(0),
             None => match facts.trig_idx.get(&site.owner) {
                 Some((CompiledTrigger::Slot { slot, .. }, _)) => facts.first_cross(*slot),
                 // expiry/complete: arranged, not timed

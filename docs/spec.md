@@ -56,6 +56,7 @@ projection of that data, never the source of truth.
 35. **v0.8.1** — chorus gains `save <file>` and `--help`; the deck lint exempts once-served spec entries; same-root-cause findings dedup.
 36. **v0.8.2** — the tick: the clock's minimal unit shrinks from the halfhour to 10 minutes (`day:tick`, 144 ticks/day); `at tick N` triggers replace `at halfhour N`; the `halfhour` duration unit is removed (write `30m`); quantization and dead-air semantics re-anchor on the 10-minute tick; pre-0.8.2 logs' `tGame` digits are stale display data (§9.2, no compatibility).
 37. **v0.9.0** — the RUN-semantics cluster: chain candidates resolve against the global recipe table in every home (cross-verb RUN from recipe bodies); the chain slot is earned by a pin (a whiffed list falls through); the `FORK` fan-out op (one window per matching candidate, one branch per station, atomic gate); `RUN`/`FORK` legal in slot/expire trigger bodies (the §6.6 event-chain channel: empty bindings, immediate registration); the actor-less clause form (§5.1); the dead-chain lint warning; the fuzz generator re-banded (v5–v7).
+38. **v0.9.1** — the per-recipe window: the recipe-line `dur <duration>` modifier overrides the verb's `duration:` for that recipe's completions (§6.4 — window ends, the BEGIN row's `advancedMin` sum, chained follow-ups' own lengths); the reach cost/bounded-horizon faces read the same override; the fuzz generator gains the `dur` band (v8).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -851,15 +852,15 @@ compiler mints `<verb>.recipe<n>` / `<verb>.default`), `when` (or `default`),
 recipe      := [id] ["when:" cond | "default"] "out:" outcomes
                ["shown:" true|false] ["hint:" "text"]      (default: shown: false)
 script line := [id] ["hidden" | "shown" ["hint" «"text"»]] ["when" cond]
-               ["aspects" name {"," name}] ["max" N] "->" outcomes
+               ["aspects" name {"," name}] ["max" N] ["dur" D] "->" outcomes
              | "default" "->" outcomes
                (* the bracketed keywords may sit in any order around each
-                  other — `max`, `aspects`, `hidden|shown`, and `hint "…"`
-                  anywhere but FIRST (a leading token matching the id class
-                  is the id) — the grammar above shows the conventional
-                  order; `when` is last before `->`; `default` is its own
-                  whole shape — a trailing token after it is a load error
-                  *)
+                  other — `max`, `aspects`, `dur`, `hidden|shown`, and
+                  `hint "…"` anywhere but FIRST (a leading token matching the
+                  id class is the id) — the grammar above shows the
+                  conventional order; `when` is last before `->`; `default`
+                  is its own whole shape — a trailing token after it is a
+                  load error *)
 ```
 
 **Execution limits — `max N`** (N ≥ 1, integer). At selection a recipe whose
@@ -874,6 +875,16 @@ nothing; a window that later refuses still counted (it registered at begin).
 `hintonly`/`shown` recipes respect `max` the same way — a spent recipe stops
 being suggested. A max change under an old log changes future selection only
 (§9.2, no compatibility).
+
+**Per-recipe windows — `dur D`** (a §5.1 duration literal: `30m`, `2h`,
+`1h30m`, …; `0m` is legal, exactly like a zero verb duration). A recipe that
+carries `dur` completes under a window of its OWN: the selected recipe's
+`dur` overrides the verb's `duration:` for that completion — the window's
+end, the BEGIN row's `advancedMin` (§6.7: the sum of the clauses' effective
+durations) and a chained follow-up's window length (each link's length is
+its own recipe's, §6.7) all read it. The lowercase token is deliberately
+distinct from the verb block's `duration:` FIELD, which stays the default
+for every recipe without the modifier.
 
 The flagship ladder:
 
@@ -978,8 +989,9 @@ object.aspect-N`, alongside `name from object`).
    INTO mints the card containerless
    rather than materialize it nowhere. Otherwise the draft becomes the new
    state.
-4. **Time**: the step itself moves nothing — the clauses'
-   durations are the processing WINDOW's length, recorded as the BEGIN row's
+4. **Time**: the step itself moves nothing — each clause's window length is
+   its SELECTED recipe's `dur`, else the verb's `duration:` (§6.4), recorded
+   as the BEGIN row's
    `advancedMin` (§6.7), and the clock advances only through advance
    passes: a bare clock input, an action whose typed clock lies ahead, or a
    WAIT (an authored `ADVANCE` only stretches the pass already in flight) —
@@ -1060,7 +1072,8 @@ per crossing.
 ### 6.7 The processing cycle (begin → lock → ticks → complete → unlock)
 
 Committing cards to a verb station is not the whole action: the action
-*processes* over the verb's duration, and the engine narrates that
+*processes* over the selected recipe's window (its own `dur`, else the
+verb's duration — §6.4), and the engine narrates that
 processing. The window is **real**: several stations run in
 parallel, and the lock is machinery — the state's open-window table — not a
 projection of serialized time.
@@ -1068,7 +1081,9 @@ projection of serialized time.
 1. **Begin & lock.** The step validates against the post-advance state
    (§6.6) and a recipe fires per clause. Each clause **begins a window**
    `[t, t + Σdurations]` (minute-precise; multi-clause steps stagger their
-   windows). The row logged is the BEGIN row: clauses, the commit-time
+   windows; each clause's duration is its SELECTED recipe's `dur`, else the
+   verb's `duration:` — §6.4). The row logged is the BEGIN row: clauses, the
+   commit-time
    recipe ids, the `PROGRESS` ticks (journal-only), `advancedMin` = the
    window length. For the whole window the verb's station is closed (a
    station holds one window) and every card bound in a committed role —
@@ -1149,7 +1164,9 @@ follow-up windows — the mechanics:
   own outcomes — RUN walks its candidates in order and pins the first whose
   `when:` matches LENIENT (§6.4's selection discipline) and whose `max`
   (§6.4) is unspent, then opens ONE follow-up window on that recipe's verb
-  at the completion clock, with the parent's committed role refs PROJECTED
+  at the completion clock — of the follow-up recipe's OWN `dur` length
+  (§6.4; each link's window is its own recipe's) — with the parent's
+  committed role refs PROJECTED
   onto the candidate verb's declared roles (a role the candidate verb does
   not declare is dropped, so the synthesized clause keeps the shape a player
   step could produce; a card bound only in a dropped role is carried by no
@@ -1749,9 +1766,10 @@ Rules:
   order), is a load error (§5.1); a repeated header is the uniform duplicate
   load error, core lexemes included.
 - **Recipe lines**: §6.4's script form — `[id] [hidden|shown [hint "…"]]
-  [when COND] [aspects NAME[, NAME…]] [max N] -> OUTCOMES`, or
+  [when COND] [aspects NAME[, NAME…]] [max N] [dur D] -> OUTCOMES`, or
   `default -> OUTCOMES`. A leading token is an id only when it matches the
-  id class and is not one of `when`, `hidden`, `shown`, `max`, `aspects` —
+  id class and is not one of `when`, `hidden`, `shown`, `max`, `aspects`,
+  `dur` —
   so a leading `hint "…"` parses as the id and dies; the bracketed keywords
   otherwise sit in any order around each other, `when` last before `->`,
   and `hint "…"` may appear with or without
@@ -1759,7 +1777,10 @@ Rules:
   nothing else: a trailing token (`default max 2`, `default when …`) is a
   load error naming it.
   `max N` (N ≥ 1) caps executions (§6.4); `aspects` lists the
-  presence-emitted aspects that gate `on complete` triggers (§6.7).
+  presence-emitted aspects that gate `on complete` triggers (§6.7); `dur D`
+  (a §5.1 duration literal) overrides the verb's `duration:` FIELD for this
+  recipe's own windows (§6.4) — the lowercase token is the modifier, the
+  verb block's `duration:` line stays the default.
 - **Trigger lines** — two section-scoped forms plus one card-carried kind:
   - `ID [once] at (hour|tick) N -> OUTCOMES` — `hour` N is 0..23
     (slot 6N), `tick` N is 0..143. Fires on every crossing of that
@@ -2286,7 +2307,8 @@ are the only reach files allowed to):
   `path_for` (12), tie-break stable (the first proven source in proof
   order — the chain's own first-fit), reported with the cheapest
   witness chain on one line; **minimum clock minutes** — the same DAG
-  under the clock weights (recipe hops = the verb's duration, slot
+  under the clock weights (recipe hops = the recipe's own `dur`, else its
+  verb's duration — §6.4, slot
   hops = `first_cross`, arranged hops 0); **copies bound** — the max
   simultaneous copies the settled world supports from `avail`'s
   counts (`MANY` → `unbounded`; a count past `FLATTEN_WEIGHT_CAP` →
@@ -2338,7 +2360,9 @@ horizon it induces, never the raw bound. A slot trigger whose first
 crossing lands beyond M has not fired in the window and its sites fall
 to candidate (`TriggerBeyondBy`); duration>0 recipes demote at ANY
 finite horizon (`BeyondByDuration`, the unfrozen spelling of the
-seed-296 rule); trigger-held deck caps rewrite `first_cross < horizon`
+seed-296 rule — the horizon check reads the recipe's OWN `dur`, else the
+verb's duration, §6.4); trigger-held deck caps rewrite
+`first_cross < horizon`
 to fired-by-M 1/0 and the expiry-arming recursion follows the same
 horizon; expiry/complete triggers are never demoted by M directly
 (arranged, not timed). The report head gains `  [by minute N]`.
@@ -2454,14 +2478,15 @@ full 1,566 × 2,084 world) on worker threads — at most
 whole deterministic world — with a `--worker i k P R` child protocol
 dumping per-name JSON stats.
 
-The fuzz generator (`gen_scenario`, v7) builds one random script per
+The fuzz generator (`gen_scenario`, v8) builds one random script per
 seed over the FULL trigger face — slot, expiry and completion triggers
 (the complete form drawing its home and its optional §6.7 aspect gate) —
 plus §6.7 chain candidates (a recipe body draws from the GLOBAL
 build-order prefix — strictly earlier recipes across ALL verbs, so a
 recipe-body chain lowers the build index every hop and is acyclic by
-construction; trigger bodies draw from the global table of duration>0
-recipes, bounding every trigger-fed chain to one hop per advance) and
+construction; trigger bodies draw from the global table of
+effective-duration>0 recipes — a recipe's own `dur` overriding its verb's
+`duration:` — bounding every trigger-fed chain to one hop per advance) and
 §6.4 recipe `aspects` presence lists. The generator's draw order is
 deliberate (every short-circuit and evaluation-order choice carries an
 inline note) but VERSIONED, not frozen: the v2 space added the
@@ -2474,7 +2499,8 @@ to the `when` candidate table; v4 added a closed form
 comparison face visible to the differential campaign; v5 widened the
 recipe-body chain table to the global build prefix; v6 split the chain
 band into RUN [0.22, 0.27) and FORK [0.27, 0.32); v7 turned the chain
-band on in slot/expire trigger bodies. Scenario streams
+band on in slot/expire trigger bodies; v8 added the recipe `dur` band
+(p=0.15, one ladder literal, drawn after the aspects gate). Scenario streams
 differ across generator versions by design. What stays pinned is purity:
 the generator is a pure function of its seed — the same seed builds the
 same scenario, draw for draw, under ONE version.

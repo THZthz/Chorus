@@ -7,7 +7,7 @@
 //!   obtainable   ⇒ appears in some explored play        (hard; downgraded to
 //!                  inconclusive when the exploration hit its state cap)
 //!
-//! The scenario space (gen_scenario v7) now generates completion triggers
+//! The scenario space (gen_scenario v8) now generates completion triggers
 //! (`on complete [<aspect>]`), §6.7 chain candidates in verb recipes and
 //! trigger bodies (the recipe-body table is the GLOBAL build prefix —
 //! recipe-body RUNs cross verbs; slot/expire bodies chain onto the global
@@ -248,10 +248,10 @@ fn scenario_pred_has(seed: u32, f: &dyn Fn(&Pred) -> bool) -> bool {
 }
 
 #[test]
-fn seed_13_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
-    assert!(scenario_has_aspect_world_form(13));
-    assert!(scenario_has_closed_aspect_count_form(13));
-    assert_seed_deterministic(13);
+fn seed_5_emits_the_world_form_and_the_closed_aspect_count_form_and_stays_deterministic() {
+    assert!(scenario_has_aspect_world_form(5));
+    assert!(scenario_has_closed_aspect_count_form(5));
+    assert_seed_deterministic(5);
 }
 
 #[test]
@@ -288,9 +288,33 @@ fn scenario_recipe_run_crosses_verbs(seed: u32) -> bool {
 }
 
 #[test]
-fn seed_1_carries_a_cross_verb_recipe_body_run_and_stays_deterministic() {
-    assert!(scenario_recipe_run_crosses_verbs(1));
-    assert_seed_deterministic(1);
+fn seed_2_carries_a_cross_verb_recipe_body_run_and_stays_deterministic() {
+    assert!(scenario_recipe_run_crosses_verbs(2));
+    assert_seed_deterministic(2);
+}
+
+// The v8 recipe `dur` band: a minority of recipes complete under a window of
+// their own (§6.4). The probe pins a seed whose scenario verifiably carries
+// one — including a `dur 0m` recipe on a duration>0 verb, the
+// effective-duration face the analyzer's bounded-horizon rules must read.
+fn scenario_has_recipe_dur(seed: u32) -> bool {
+    let sc = gen_scenario(seed);
+    let mut dict = core_dictionary();
+    for v in sc.raw.verbs.keys() {
+        let _ = dict.register_verb(v);
+    }
+    let content =
+        compile_content(&sc.raw, &dict, &sc.entity_kinds).expect("the generated scenario compiles");
+    content
+        .verbs
+        .values()
+        .any(|v| v.duration > 0 && v.recipes.iter().any(|r| r.dur.is_some_and(|d| d < v.duration)))
+}
+
+#[test]
+fn seed_7_carries_a_recipe_dur_override_and_stays_deterministic() {
+    assert!(scenario_has_recipe_dur(7));
+    assert_seed_deterministic(7);
 }
 
 // The v7 event-body chain band: slot/expire bodies draw RUN/FORK onto the

@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::content::{CompiledContent, CompiledTrigger, PrototypeDef};
+use crate::content::{CompiledContent, CompiledTrigger, CompiledVerb, PrototypeDef};
 use crate::core::clock::{MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::{Pred, ValExpr};
@@ -38,6 +38,18 @@ pub(crate) const INFINITY: i64 = i64::MAX;
 /// agree on it (a fact's world weight and its universe presence are two
 /// views of the same fact).
 pub(crate) const FLATTEN_WEIGHT_CAP: i64 = 32;
+
+/// The window length a recipe-owned site completes under (§6.4): the
+/// site's OWN recipe's `dur` override, else the verb's `duration` default.
+/// Sites are keyed (verb index, recipe index) by the census, so the recipe
+/// is always known exactly — the analyzer never has to guess which recipe a
+/// commit selects here.
+pub(crate) fn effective_duration(v: &CompiledVerb, ri: Option<usize>) -> i64 {
+    match ri {
+        Some(i) => v.recipes.get(i).and_then(|r| r.dur).unwrap_or(v.duration),
+        None => v.duration,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // world-static predicate evaluation

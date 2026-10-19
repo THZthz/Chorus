@@ -121,6 +121,7 @@ fn recipe(id: &str, out: &[&str]) -> RecipeDef {
         hint: None,
         max: None,
         aspects: Vec::new(),
+        dur: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }
@@ -199,6 +200,48 @@ fn the_chain_fixture_costs_exactly_two_applications_and_the_duration_sum() {
     let copies = seed.copies.as_ref().expect("the initial fact carries copies");
     assert_eq!(copies.text, "1");
     assert_eq!(copies.detail.as_deref(), Some("×1 initial entity SEED_A (item)"));
+}
+
+// ---------------------------------------------------------------------------
+// the per-recipe `dur` face: the minutes walk reads the recipe's OWN window
+// ---------------------------------------------------------------------------
+
+/// WORK's verb default is 1h but its single recipe carries `dur 10m` (§6.4) —
+/// the hop costs ONE tick, not the verb's six.
+const DUR_CHAIN_SCRIPT: &str = "\
+script: Cost Dur Fixture
+player: ANA
+goal: exercise the cost face
+seed: 3
+start: 0:00
+
+entities:
+  ROOM is place
+  ANA is character at ROOM
+  SEED_A is item
+
+prototypes:
+  MID_B is item
+
+verbs:
+  WORK:
+    object: 1 name:SEED_A
+    duration: 1h
+    recipes:
+      work.make dur 10m -> SPAWN MID_B
+";
+
+#[test]
+fn the_minutes_walk_costs_the_recipe_dur_not_the_verb_default() {
+    let dict = core_dictionary();
+    let compiled = compile_script(DUR_CHAIN_SCRIPT, &dict).unwrap();
+    let (content, state) = (&compiled.content, &compiled.state);
+    let analyzer = Analyzer::new(content, state, &dict);
+
+    let mid = cost_report(&analyzer, "MID_B");
+    let plan = mid.plan.as_ref().expect("MID_B has a proven DAG");
+    assert_eq!(plan.apps, 1);
+    assert_eq!(plan.minutes, 10, "the recipe's own dur — one tick, not the verb's 60");
 }
 
 // ---------------------------------------------------------------------------

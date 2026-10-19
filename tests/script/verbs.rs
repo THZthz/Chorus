@@ -270,3 +270,81 @@ fn compiling_the_same_text_twice_against_one_dictionary_is_idempotent() {
         chorus::content::script::lint_script_findings(INTERROGATION_SCRIPT, &dict).unwrap();
     assert!(findings.is_empty(), "{findings:?}");
 }
+
+// ------------------------------------------------------- recipe `dur` (§6.4)
+
+/// The raw face of one recipe line: `parse_script`'s RecipeDef for the first
+/// recipe of the given verb.
+fn first_recipe(script: &str, verb: &str) -> chorus::content::RecipeDef {
+    parse_script(script, &core_dictionary()).unwrap().content.verbs[verb].recipes[0].clone()
+}
+
+fn one_recipe_verb(line: &str) -> String {
+    format!("verbs:\n  SHOUT:\n    actors: 1 kind:character\n    recipes:\n      {line}\n")
+}
+
+#[test]
+fn the_recipe_dur_modifier_parses_and_composes_in_any_order() {
+    // the conventional spot, mid-modifiers
+    let r = first_recipe(&one_recipe_verb("s.loud dur 2h max 3 -> NARRATE \"ho.\""), "SHOUT");
+    assert_eq!(r.dur, Some(120));
+    assert_eq!(r.max, Some(3));
+    // either order around `max` and `aspects` — the positional walk is
+    // order-free
+    let r = first_recipe(
+        &one_recipe_verb("s.loud max 3 dur 90m aspects a, b -> NARRATE \"ho.\""),
+        "SHOUT",
+    );
+    assert_eq!(r.dur, Some(90));
+    assert_eq!(r.aspects, ["a", "b"]);
+    // every §5.1 duration form the verb field takes, the modifier takes
+    let r = first_recipe(&one_recipe_verb("s.loud dur 1h30m -> NARRATE \"ho.\""), "SHOUT");
+    assert_eq!(r.dur, Some(90));
+    let r = first_recipe(&one_recipe_verb("s.loud dur 1d -> NARRATE \"ho.\""), "SHOUT");
+    assert_eq!(r.dur, Some(1440));
+    // `dur 0m` is legal — the same zero the verb-level `duration: 0m` is
+    let r = first_recipe(&one_recipe_verb("s.loud dur 0m -> NARRATE \"ho.\""), "SHOUT");
+    assert_eq!(r.dur, Some(0));
+    // a recipe without the modifier stays None (the verb default governs)
+    let r = first_recipe(&one_recipe_verb("s.loud -> NARRATE \"ho.\""), "SHOUT");
+    assert_eq!(r.dur, None);
+}
+
+#[test]
+fn a_leading_dur_is_a_modifier_never_an_id() {
+    let r = first_recipe(&one_recipe_verb("dur 30m -> NARRATE \"ho.\""), "SHOUT");
+    assert_eq!(r.id, None, "`dur` is a keyword — the id slot stays empty");
+    assert_eq!(r.dur, Some(30));
+}
+
+#[test]
+fn an_aspects_list_never_swallows_the_dur_keyword() {
+    let r = first_recipe(
+        &one_recipe_verb("s.loud aspects a dur 30m when count(actors) >= 1 -> NARRATE \"ho.\""),
+        "SHOUT",
+    );
+    assert_eq!(r.aspects, ["a"], "`dur` is excluded from the member class");
+    assert_eq!(r.dur, Some(30));
+    assert_eq!(r.when.as_deref(), Some("count(actors) >= 1"));
+}
+
+#[test]
+fn dur_parse_errors_fail_loud_naming_the_line() {
+    let dict = core_dictionary();
+    // the missing-argument shape
+    assert_err_msg(
+        compile_script(&one_recipe_verb("s.loud dur -> NARRATE \"ho.\""), &dict),
+        r"line 5: `dur` needs a duration \(e\.g\. 30m, 2h, 90m, 1d, 1h30m\)",
+    );
+    // a bad literal rides parse_duration's own message, like the verb's
+    // `duration:` FIELD arm
+    assert_err_msg(
+        compile_script(&one_recipe_verb("s.loud dur 5x -> NARRATE \"ho.\""), &dict),
+        r"bad duration '5x' \(expected e\.g\. 30m, 2h, 90m, 1d, 1h30m\)",
+    );
+    // a trailing token that owns nothing still names the positional list
+    assert_err_msg(
+        compile_script(&one_recipe_verb("s.loud dur 30m wat -> NARRATE \"ho.\""), &dict),
+        r#"line 5: unexpected 'wat' before '->' — positionals are \[id\] \[hidden\|shown\] \[hint "..."\] \[max N\] \[dur D\] \[aspects NAME, \.\.\.\], then \[when COND\]"#,
+    );
+}

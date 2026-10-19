@@ -715,6 +715,9 @@ pub struct VerbRecipeRow {
     pub id: String,
     /// design-time spelling; `None` = the default (no authored `when`)
     pub when: Option<String>,
+    /// §6.4 the recipe's own window override (`dur`); `None` = the verb
+    /// default
+    pub dur: Option<i64>,
     /// any live site of this recipe may be shadowed by an earlier recipe
     pub shadow_risk: bool,
     /// the live mint sites, census walk order (refused sites are excluded —
@@ -851,6 +854,7 @@ impl<'c> Analyzer<'c> {
             recipes.push(VerbRecipeRow {
                 id: r.id.clone(),
                 when: r.when.as_ref().map(pred_text),
+                dur: r.dur,
                 shadow_risk,
                 sites,
             });
@@ -1186,13 +1190,22 @@ fn time_guard_note(facts: &WorldFacts, s: &RawSite, target: &str) -> Option<Stri
         }
     }
     if let Some(vi) = s.verb {
-        // a duration>0 recipe cannot complete inside a bounded horizon
+        // a duration>0 recipe cannot complete inside a bounded horizon —
+        // the site's OWN recipe's length (`dur` overrides the verb's, §6.4)
         if let Some(m) = facts.by {
             if let Some((_, v)) = facts.content.verbs.get_index(vi) {
-                if v.duration > 0 {
+                let dur = super::world::effective_duration(v, s.recipe);
+                if dur > 0 {
+                    let owner = if s
+                        .recipe
+                        .is_some_and(|i| v.recipes.get(i).is_some_and(|r| r.dur.is_some()))
+                    {
+                        "recipe"
+                    } else {
+                        "verb"
+                    };
                     return Some(format!(
-                        "the verb's {}m window completes past the by {m} horizon",
-                        v.duration
+                        "the {owner}'s {dur}m window completes past the by {m} horizon"
                     ));
                 }
             }

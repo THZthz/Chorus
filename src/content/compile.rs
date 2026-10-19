@@ -274,6 +274,7 @@ fn compile_verb(
             hint: r.hint.clone(),
             max: r.max,
             aspects: r.aspects.clone(),
+            dur: r.dur,
             out,
         });
     }
@@ -727,6 +728,7 @@ mod tests {
                         hint: None,
                         max: None,
                         aspects: Vec::new(),
+                        dur: None,
                         out: vec!["NARRATE \"idle.\"".to_string()],
                     }],
                 },

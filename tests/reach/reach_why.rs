@@ -358,6 +358,7 @@ fn why_table_names_the_wave3_completion_rungs() {
                     hint: None,
                     max: None,
                     aspects: vec![],
+                    dur: None,
                     out: vec!["SPAWN X_GEM".to_string()],
                 }],
             },

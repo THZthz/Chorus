@@ -131,6 +131,7 @@ mod tests {
                         hint: None,
                         max: None,
                         aspects: Vec::new(),
+                        dur: None,
                         out: vec!["NARRATE \"d.\"".to_string()],
                     }],
                 },

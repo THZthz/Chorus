@@ -10,6 +10,7 @@ mod engine_core;
 mod expiry;
 mod max_executions;
 mod ordering;
+mod recipe_dur;
 mod rig;
 mod run_chains;
 mod set_ops;

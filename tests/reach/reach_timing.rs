@@ -94,6 +94,7 @@ fn recipe(out: &[&str]) -> RecipeDef {
         hint: None,
         max: None,
         aspects: Vec::new(),
+        dur: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }
@@ -317,6 +318,79 @@ fn by_bounds_duration_recipes_only_duration0_proves() {
         .analyze_card("THE_RING", CardOptions::default())
         .unwrap();
     assert_eq!(fast.verdict, CardVerdict::Obtainable);
+}
+
+// ---------------------------------------------------------------------------
+// --by: the recipe's OWN `dur` overrides the verb's duration (§6.4)
+// ---------------------------------------------------------------------------
+
+/// WORK with the verb default 1h and one recipe whose own window is the
+/// caller's (the §6.4 override).
+fn mk_dur(recipe_dur: Option<i64>) -> ContentRaw {
+    ContentRaw {
+        prototypes: Some(IndexMap::from([("THE_RING".to_string(), proto("item"))])),
+        verbs: indexmap::IndexMap::from([(
+            "WORK".to_string(),
+            VerbContent {
+                slots: vec![actor_slot()],
+                duration: 60,
+                recipes: vec![RecipeDef {
+                    id: Some("work.make".into()),
+                    when: None,
+                    shown: None,
+                    hint: None,
+                    max: None,
+                    aspects: Vec::new(),
+                    dur: recipe_dur,
+                    out: vec!["SPAWN THE_RING".to_string()],
+                }],
+            },
+        )]),
+        ..ContentRaw::default()
+    }
+}
+
+#[test]
+fn by_reads_the_recipe_dur_override_not_the_verb_default() {
+    let dict = core_dictionary();
+    let content = compile(&mk_dur(Some(10)));
+    let state = state_with(vec![ana()]);
+
+    // the dur-10m recipe is UNPROVABLE under a by 5m deadline — its own
+    // window completes past the horizon even though the verb reads 1h...
+    let by = Analyzer::new(&content, &state, &dict)
+        .by(5)
+        .analyze_card("THE_RING", CardOptions::default())
+        .unwrap();
+    assert_eq!(by.verdict, CardVerdict::Unproven);
+    let blockers = Analyzer::new(&content, &state, &dict).by(5).card_blockers("THE_RING");
+    assert_eq!(blockers[0].blocker, CardBlocker::BeyondByDuration { duration: 10, by: 5 });
+    // ...and the candidate listing names the RECIPE's window
+    assert!(
+        by.candidates
+            .iter()
+            .any(|c| c.reason.contains("the recipe's 10m window completes past the by 5 horizon")),
+        "{by:?}"
+    );
+
+    // a dur 0m recipe on the SAME duration-1h verb proves under any horizon:
+    // its own window lands at its begin minute
+    let instant = compile(&mk_dur(Some(0)));
+    let fast = Analyzer::new(&instant, &state, &dict)
+        .by(5)
+        .analyze_card("THE_RING", CardOptions::default())
+        .unwrap();
+    assert_eq!(fast.verdict, CardVerdict::Obtainable);
+
+    // no override — the verb's own 1h still rules the horizon check
+    let plain = compile(&mk_dur(None));
+    let slow = Analyzer::new(&plain, &state, &dict)
+        .by(9999)
+        .analyze_card("THE_RING", CardOptions::default())
+        .unwrap();
+    assert_eq!(slow.verdict, CardVerdict::Unproven);
+    let blockers = Analyzer::new(&plain, &state, &dict).by(9999).card_blockers("THE_RING");
+    assert_eq!(blockers[0].blocker, CardBlocker::BeyondByDuration { duration: 60, by: 9999 });
 }
 
 // ---------------------------------------------------------------------------

@@ -481,6 +481,7 @@ fn sides_below_2_and_count_below_0_refuse_the_window_nothing_moved() {
                         hint: None,
                         max: None,
                         aspects: Vec::new(),
+                        dur: None,
                         out: vec!["ROLL(actors.aspect.dread, 6), NARRATE \"never\"".to_string()],
                     }],
                 },
@@ -582,6 +583,7 @@ fn default_recipe(out: &[&str]) -> RecipeDef {
         hint: None,
         max: None,
         aspects: Vec::new(),
+        dur: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     }
 }
@@ -733,6 +735,7 @@ fn when_predicates_cannot_read_roll_if_conditions_can() {
                         hint: None,
                         max: None,
                         aspects: Vec::new(),
+                        dur: None,
                         out: vec!["NARRATE(\"gate\")".to_string()],
                     },
                     default_recipe(&["NARRATE(\"default\")"]),

@@ -244,6 +244,7 @@ fn max_zero_and_negative_are_load_errors_and_max_is_a_keyword_not_an_id() {
                     hint: None,
                     max: Some(0),
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE \"x\"".to_string()],
                 }],
             },

@@ -203,6 +203,7 @@ pub fn try_inspect_content(
                         hint: None,
                         max: None,
                         aspects: Vec::new(),
+                        dur: None,
                         out: out.iter().map(|s| (*s).to_string()).collect(),
                     }],
                 },

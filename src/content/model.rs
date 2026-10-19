@@ -48,6 +48,10 @@ pub struct RecipeDef {
     /// §6.7: the `aspects` presence list (`aspects <name> [, <name>]*`) —
     /// content only, never logged; the `on complete <aspect>` gate reads it
     pub aspects: Vec<String>,
+    /// §6.4: the per-recipe window override (`dur <duration>`, minutes) —
+    /// the window length for completions of THIS recipe, in place of the
+    /// verb's `duration:` default; None = the verb default
+    pub dur: Option<i64>,
     /// outcome strings, parsed at load
     pub out: Vec<String>,
 }
@@ -246,6 +250,9 @@ pub struct CompiledRecipe {
     /// §6.7: the `aspects` presence list — the emitter gate an
     /// `on complete <aspect>` trigger reads; content, never logged
     pub aspects: Vec<String>,
+    /// §6.4: the per-recipe window override (minutes) — the window length
+    /// for this recipe's completions; None = the verb's `duration` default
+    pub dur: Option<i64>,
     pub out: Vec<Outcome>,
 }
 

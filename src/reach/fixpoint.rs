@@ -497,27 +497,28 @@ impl<'c> WorldFacts<'c> {
             return (Err(CardBlocker::FillerDoomed { name: n }), None);
         }
         // cross-list trigger-vs-recipe mint collision (81915)
-        let verb_duration: Option<i64> =
+        let site_duration: Option<i64> =
             site.verb.map(|vi| match self.content.verbs.get_index(vi) {
-                Some((_, v)) => v.duration,
+                Some((_, v)) => super::world::effective_duration(v, site.recipe),
                 None => unreachable!("verb index {vi} came from content.verbs enumeration"),
             });
-        if let Some(n) = cross_list_mint_collision(self, site, verb_duration) {
+        if let Some(n) = cross_list_mint_collision(self, site, site_duration) {
             return (Err(CardBlocker::CrossListMintCollision { name: n }), None);
         }
         // frozen-completion rule (seed 296):
         // provable only for duration-0 recipes. The horizon keys the rung —
         // the freeze boundary and the --by window take the tighter — and the
-        // unfrozen --by face yields its own blocker spelling.
-        if self.horizon() != INFINITY && site.verb.is_some() && verb_duration.unwrap_or(0) > 0 {
+        // unfrozen --by face yields its own blocker spelling. §6.4: the
+        // length is the site's OWN recipe's (`dur` overrides the verb's).
+        if self.horizon() != INFINITY && site.verb.is_some() && site_duration.unwrap_or(0) > 0 {
             return match self.frozen {
                 true => (
-                    Err(CardBlocker::FrozenDuration { duration: verb_duration.unwrap_or(0) }),
+                    Err(CardBlocker::FrozenDuration { duration: site_duration.unwrap_or(0) }),
                     None,
                 ),
                 false => (
                     Err(CardBlocker::BeyondByDuration {
-                        duration: verb_duration.unwrap_or(0),
+                        duration: site_duration.unwrap_or(0),
                         by: self.by.unwrap_or(INFINITY),
                     }),
                     None,
@@ -1005,9 +1006,9 @@ fn filler_doomed(
 fn cross_list_mint_collision(
     wf: &WorldFacts,
     site: &RawSite,
-    verb_duration: Option<i64>,
+    site_duration: Option<i64>,
 ) -> Option<String> {
-    let dur = verb_duration?;
+    let dur = site_duration?;
     for (owner2, mints2) in &wf.trigger_mint_names {
         if mints2.is_empty() {
             continue;
@@ -1651,11 +1652,17 @@ fn expirable_card(
                 // a runtime-gated path can be durably false, a bounded
                 // horizon (the freeze boundary and --by taking the tighter)
                 // hides owner firings past it, and a duration>0 recipe
-                // window completes inside the failing step
+                // window completes inside the failing step — the SET's OWN
+                // recipe's length (its `dur` overrides the verb's, §6.4;
+                // the SET row carries the recipe index the sites carry)
                 && !s.path_non_static
                 && !(wf.horizon() != INFINITY
                     && (match &s.verb_name {
-                        Some(vn) => wf.content.verbs.get(vn).is_some_and(|v| v.duration > 0),
+                        Some(vn) => wf
+                            .content
+                            .verbs
+                            .get(vn)
+                            .is_some_and(|v| super::world::effective_duration(v, s.recipe) > 0),
                         None => s
                             .owner_slot
                             .is_some_and(|os| wf.first_cross(os) >= wf.horizon()),

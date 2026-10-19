@@ -314,6 +314,12 @@ pub fn render_verb(out: &mut String, file: &str, r: &VerbReport) {
                 None => "when: none".to_string(),
             };
             let shadow = if rec.shadow_risk { ", shadow_risk" } else { "" };
+            // §6.4: a recipe `dur` override rides its row; no override —
+            // nothing (the verb default line above is the length)
+            let dur = match rec.dur {
+                Some(d) => format!(", dur {d}m"),
+                None => String::new(),
+            };
             let sites = if rec.sites.is_empty() {
                 "no live mint site".to_string()
             } else {
@@ -336,7 +342,7 @@ pub fn render_verb(out: &mut String, file: &str, r: &VerbReport) {
                     .collect::<Vec<String>>()
                     .join("; ")
             };
-            let _ = writeln!(out, "  · {} ({when}{shadow}) — {sites}", rec.id);
+            let _ = writeln!(out, "  · {} ({when}{shadow}{dur}) — {sites}", rec.id);
         }
     }
     out.push('\n');

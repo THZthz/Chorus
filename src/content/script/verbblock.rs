@@ -1,5 +1,5 @@
 //! The verb-block parsers: slot spec lines (`role: count query`) and recipe
-//! lines (`[id] [hidden|shown] [hint "..."] [max N] [aspects NAME, ...]
+//! lines (`[id] [hidden|shown] [hint "..."] [max N] [dur D] [aspects NAME, ...]
 //! [when COND] -> OUTCOMES`).
 
 use std::sync::OnceLock;
@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 use crate::content::{RecipeDef, SlotDef};
+use crate::core::clock::parse_duration;
 use crate::core::num_parse::parse_authored_int;
 use crate::core::regex_util::{grp_opt, grp_text, static_regex};
 use crate::core::roles::{role_names, Role};
@@ -96,7 +97,7 @@ pub(super) fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     // UTF-16 unit offsets, so the byte slices carry the same text
     let Some(arrow) = t.find("->") else {
         return Err(ChorusError::new(format!(
-            "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [max N] [aspects NAME, ...] [when COND] -> OUTCOMES"
+            "line {ln}: recipes expect  [id] [hidden|shown] [hint \"...\"] [max N] [dur D] [aspects NAME, ...] [when COND] -> OUTCOMES"
         )));
     };
     let lhs = dsl_trim(&t[..arrow]);
@@ -116,14 +117,15 @@ pub(super) fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     let tokens = split_dsl_ws(lhs);
     let mut i = 0usize;
     if let Some(tok0) = tokens.first() {
-        // §6.4/§10: `max` and `aspects` are keywords — a leading `max N`
-        // or `aspects NAME, …` must never parse as a recipe id
+        // §6.4/§10: `max`, `aspects` and `dur` are keywords — a leading
+        // `max N`, `aspects NAME, …` or `dur D` must never parse as a recipe id
         if recipe_id_re().is_match(tok0)
             && *tok0 != "when"
             && *tok0 != "hidden"
             && *tok0 != "shown"
             && *tok0 != "max"
             && *tok0 != "aspects"
+            && *tok0 != "dur"
         {
             def.id = Some((*tok0).to_string());
             i += 1;
@@ -133,7 +135,10 @@ pub(super) fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     // order around the regex-extracted clauses (N ≥ 1: a `max 0` or negative
     // is a load error — such a recipe could never fire, so it fails loudly
     // instead). §10 adds the `aspects NAME, …` presence list to the same
-    // walk — both orders around `max` parse. `hint "…"` and `when COND` are
+    // walk — both orders around `max` parse — and the `dur D` window
+    // override (the same §5.1 duration literals the verb's `duration:`
+    // FIELD takes; the lowercase token is distinct from the field).
+    // `hint "…"` and `when COND` are
     // matched on the lhs BELOW, so their tokens stay on the stream: the walk
     // jumps the hint's span by byte offset, and a token left at the cursor
     // that neither clause owns is a load error — positionals are never
@@ -207,6 +212,22 @@ pub(super) fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
                 }
                 def.aspects.extend(names);
             }
+            Some(tok) if *tok == "dur" => {
+                // §6.4: the per-recipe window override — the same §5.1
+                // duration grammar the verb's `duration:` FIELD takes
+                // (`30m`, `2h`, `1h30m`, …); `0m` is legal exactly like a
+                // zero verb duration (the window completes at its begin
+                // minute). Parse errors ride parse_duration's own message,
+                // like the field arm.
+                i += 1;
+                let Some(d_tok) = tokens.get(i) else {
+                    return Err(ChorusError::new(format!(
+                        "line {ln}: `dur` needs a duration (e.g. 30m, 2h, 90m, 1d, 1h30m)"
+                    )));
+                };
+                def.dur = Some(parse_duration(d_tok)?);
+                i += 1;
+            }
             // the quoted hint text may contain whitespace — skip its whole
             // span by offset. A span that ends before the cursor (a second
             // `hint`) leaves i unmoved: the trailing check below errors.
@@ -225,7 +246,7 @@ pub(super) fn parse_recipe_line(t: &str, ln: usize) -> Result<RecipeDef> {
     if let Some(tok) = tokens.get(i) {
         if *tok != "when" || !when_re().is_match(lhs) {
             return Err(ChorusError::new(format!(
-                "line {ln}: unexpected '{tok}' before '->' — positionals are [id] [hidden|shown] [hint \"...\"] [max N] [aspects NAME, ...], then [when COND]"
+                "line {ln}: unexpected '{tok}' before '->' — positionals are [id] [hidden|shown] [hint \"...\"] [max N] [dur D] [aspects NAME, ...], then [when COND]"
             )));
         }
     }
@@ -248,5 +269,8 @@ fn is_aspects_member(tok: &str) -> bool {
     !t.is_empty()
         && t.starts_with(|c: char| c.is_ascii_lowercase())
         && t.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
-        && !matches!(t, "max" | "when" | "hidden" | "shown" | "hint" | "default" | "aspects")
+        && !matches!(
+            t,
+            "max" | "when" | "hidden" | "shown" | "hint" | "default" | "aspects" | "dur"
+        )
 }

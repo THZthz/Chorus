@@ -71,6 +71,7 @@ mod set_deltas_and_aspect_keys {
             hint: None,
             max: None,
             aspects: Vec::new(),
+            dur: None,
             out: out.iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -236,6 +237,7 @@ mod set_deltas_and_aspect_keys {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec!["SET(ACTORS, aspect:dread, +1)".to_string()],
             }],
         );
@@ -411,6 +413,7 @@ mod replace_decay {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec![out.to_string()],
                 }],
             },
@@ -562,6 +565,7 @@ mod replace_decay {
                                 hint: None,
                                 max: None,
                                 aspects: Vec::new(),
+                                dur: None,
                                 out: vec!["REPLACE OBJECT WITH ASHES".to_string()],
                             }],
                         },

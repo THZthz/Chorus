@@ -127,7 +127,9 @@ fn base_record(kind: &str, id: i64, clock: Clock) -> ActionRecord {
 }
 
 /// Build the BEGIN row: merged deduped actors, the first clause's role refs,
-/// durations summed into `advanced_min`.
+/// effective durations summed into `advanced_min` (§6.4: a recipe's `dur`
+/// overrides its verb's `duration` — the row's `advancedMin` is the WINDOW
+/// length the clause's own recipe selected).
 pub(super) fn make_begin_record(
     id: i64,
     start_min: i64,
@@ -136,7 +138,9 @@ pub(super) fn make_begin_record(
     outcomes: Vec<Outcome>,
     dict: &Dictionary,
 ) -> Result<ActionRecord> {
-    let advanced_min = prepared.iter().fold(0i64, |s, p| s.saturating_add(p.verb.duration));
+    let advanced_min = prepared
+        .iter()
+        .fold(0i64, |s, p| s.saturating_add(p.recipe.dur.unwrap_or(p.verb.duration)));
     let first = prepared.first();
     let mut seen: HashSet<String> = HashSet::new();
     let actors: Vec<Ref> = sort_refs(

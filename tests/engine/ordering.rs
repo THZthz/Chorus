@@ -43,6 +43,7 @@ fn verb_of(name: &str, slots: Vec<SlotDef>, duration: i64, out: &[&str]) -> (Str
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
         },
@@ -706,6 +707,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             hint: None,
             max: None,
             aspects: Vec::new(),
+            dur: None,
             out: vec!["NARRATE \"seized.\"".to_string()],
         }],
     };
@@ -719,6 +721,7 @@ fn stations_and_committed_locks_gate_phase_two() {
             hint: None,
             max: None,
             aspects: Vec::new(),
+            dur: None,
             out: vec!["NARRATE \"touched.\"".to_string()],
         }],
     };

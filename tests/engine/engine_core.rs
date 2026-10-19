@@ -596,6 +596,7 @@ mod exists_recipes {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"A hunter walks the world.\")".to_string()],
                 },
                 RecipeDef {
@@ -605,6 +606,7 @@ mod exists_recipes {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"The world is calm.\")".to_string()],
                 },
             ],
@@ -702,6 +704,7 @@ mod exists_recipes {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"The door still stands.\")".to_string()],
                 },
                 RecipeDef {
@@ -711,6 +714,7 @@ mod exists_recipes {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"No door.\")".to_string()],
                 },
             ],
@@ -735,6 +739,7 @@ mod exists_recipes {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"Kin in a haunted world.\")".to_string()],
                 },
                 RecipeDef {
@@ -744,6 +749,7 @@ mod exists_recipes {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"No kinship.\")".to_string()],
                 },
             ],
@@ -839,6 +845,7 @@ mod clock_and_duration_literals {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: vec!["NARRATE(\"{actors} waits a moment.\")".to_string()],
                 }],
             },
@@ -976,6 +983,7 @@ mod core_verbs_study_mansus {
                                     hint: None,
                                     max: None,
                                     aspects: Vec::new(),
+                                    dur: None,
                                     out: vec![
                                         "SPAWN CLUE".to_string(),
                                         "NARRATE(\"{actors} tease out a hidden thread.\")"
@@ -989,6 +997,7 @@ mod core_verbs_study_mansus {
                                     hint: None,
                                     max: None,
                                     aspects: Vec::new(),
+                                    dur: None,
                                     out: vec!["NARRATE(\"{actors} study {object}.\")".to_string()],
                                 },
                             ],
@@ -1021,6 +1030,7 @@ mod core_verbs_study_mansus {
                                 hint: None,
                                 max: None,
                                 aspects: Vec::new(),
+                                dur: None,
                                 out: vec!["NARRATE(\"{actors} walk the Mansus to {object}.\")"
                                     .to_string()],
                             }],
@@ -1122,6 +1132,7 @@ mod core_verbs_study_mansus {
                             hint: None,
                             max: None,
                             aspects: Vec::new(),
+                            dur: None,
                             out: vec![
                                 "NARRATE(\"{actors} walk the Mansus to {object}.\")".to_string()
                             ],

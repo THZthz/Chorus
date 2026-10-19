@@ -37,6 +37,7 @@ mod smoke {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: out.iter().map(|s| s.to_string()).collect(),
             }],
         }
@@ -202,6 +203,7 @@ mod smoke {
                     hint: None,
                     max: None,
                     aspects: Vec::new(),
+                    dur: None,
                     out: out.iter().map(|s| s.to_string()).collect(),
                 }],
             },
@@ -315,6 +317,7 @@ mod smoke {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec!["RELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
         };
@@ -328,6 +331,7 @@ mod smoke {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec!["UNRELATE(ANA, MAGICK_BOOK, parent_child)".to_string()],
             }],
         };
@@ -392,6 +396,7 @@ mod smoke {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec!["ROLL(2, 6)".to_string(), "NARRATE \"rolled {roll}.\"".to_string()],
             }],
         };
@@ -445,6 +450,7 @@ mod smoke {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec!["DRAW RUMOURS".to_string()],
             }],
         };
@@ -513,6 +519,7 @@ mod smoke {
             hint: None,
             max: None,
             aspects: Vec::new(),
+            dur: None,
             out: vec![
                 "IF exists(HOUSE) -> (SPAWN PARANOIA, REFUSE(\"too late.\")) ELSE -> (NARRATE \"calm.\")".to_string(),
             ],

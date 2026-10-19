@@ -176,6 +176,10 @@ pub(crate) struct SetSite {
     pub key: String,
     pub owner: String,
     pub verb_name: Option<String>,
+    /// the owning recipe's index within its verb (None for trigger-owned
+    /// lists) — the same key [`RawSite::recipe`] carries, so the bounded-
+    /// horizon faces read the SET's own recipe's `dur` override (§6.4)
+    pub recipe: Option<usize>,
     pub target_name: Option<String>,
     pub target_role: Option<String>,
     pub segs: Vec<usize>,
@@ -807,6 +811,7 @@ fn record_visit<'c, 'a>(
                     Some((name, _)) => name.clone(),
                     None => unreachable!("verb index {vi} came from content.verbs enumeration"),
                 }),
+                recipe: cx.recipe_idx,
                 target_name,
                 target_role,
                 segs: segs.clone(),

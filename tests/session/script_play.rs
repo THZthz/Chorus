@@ -554,6 +554,7 @@ mod lenient_input_routes_the_new_core_verbs {
                 hint: None,
                 max: None,
                 aspects: Vec::new(),
+                dur: None,
                 out: vec![out.to_string()],
             }],
         };

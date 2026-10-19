@@ -19,12 +19,14 @@ use crate::core::sentence::{Arg, Outcome};
 use crate::core::types::{clone_state, AttrValue, OpenWindow, State};
 use crate::error::{ChorusError, Result};
 
-use super::exec::register_windows;
-use super::outcomes::{apply_outcome, apply_outcomes_with_refuse, ApplyCtx, ChainCtx};
+use super::exec::{count_deferred, register_windows};
+use super::outcomes::{
+    apply_outcome, apply_outcomes_with_refuse, refuse_marker, ApplyCtx, ChainCtx,
+};
 use super::record::{
     checked_step, make_complete_record, make_event_record, make_wait_record, ActionRecord,
 };
-use super::validate::resolve_role_refs;
+use super::validate::{defers_selection, resolve_role_refs, select_recipe};
 
 /// The advance pass result: the rewritten state plus the records minted.
 pub(super) struct PassResult {
@@ -238,19 +240,6 @@ fn fire_window(
     record_id: i64,
     id_gen: &mut dyn FnMut() -> String,
 ) -> Result<FireWindowResult> {
-    // the drift guard throws OUT of fire_window (and
-    // out of the pass; the caller rejects the step)
-    let recipe =
-        content.verbs.get(&w.verb).and_then(|v| v.recipes.iter().find(|r| r.id == w.recipe));
-    let recipe = match recipe {
-        Some(r) => r,
-        None => {
-            return Err(ChorusError::new(format!(
-                "completion of {} (begin row {}): recipe '{}' is not in the compiled content — content drift between commit and completion",
-                w.verb, w.begin_id, w.recipe
-            )));
-        }
-    };
     let mut scratch = clone_state(&state_in);
     let mut bindings = RoleBindings::new();
     for role in ROLES {
@@ -258,6 +247,66 @@ fn fire_window(
         let ids = resolve_role_refs(&scratch, &w.refs[&role])?;
         bindings.insert(role, ids);
     }
+    // The §6.4 selection face of this window: an empty `w.recipe` is the
+    // DEFERRAL mark — a held-capable verb's player-committed window selects
+    // NOW, over the completion bindings (held included), through the same
+    // first-match walk the table runs (the max discipline reading the same
+    // executed map — the window's own count has not landed yet; it lands
+    // below, on survival). Nothing matching: the completion analog of the
+    // commit-time "no recipe matched" rejection — the window refuses, closes,
+    // and logs its marker (the fold replays the no-op). A non-empty id looks
+    // its recipe up in compiled content (drift fails loud, as always).
+    let (recipe, deferred) = if w.recipe.is_empty() {
+        let Some(v) = content.verbs.get(&w.verb) else {
+            return Err(ChorusError::new(format!(
+                "completion of {} (begin row {}): verb is not in the compiled content — drift",
+                w.verb, w.begin_id
+            )));
+        };
+        // the deferral mark is ONLY ever written for a verb that declares a
+        // held slot (execute_step's commit-time walk rejects a held-less verb
+        // whose selection finds nothing). An empty entry on a held-less verb
+        // would re-run selection over the drifted world here — the mid-window
+        // ghost the commit-time rejection exists to prevent — so it fails
+        // loud, like every drift.
+        if !defers_selection(v) {
+            return Err(ChorusError::new(format!(
+                "completion of {} (begin row {}): the empty recipe entry is the §6.4 deferral mark, but {} declares no held slot — a held-less verb selects at commit (drift)",
+                w.verb, w.begin_id, w.verb
+            )));
+        }
+        match select_recipe(v, &bindings, &scratch)? {
+            Some(r) => (r, true),
+            None => {
+                // the refused deferred completion: state untouched, window
+                // closed, the marker journals the miss. No count lands (the
+                // draft died — the same rule the fold replays).
+                let mut out = state_in;
+                out.windows.shift_remove(&w.key);
+                let concrete = vec![refuse_marker(format!("{}: no recipe matched", w.verb))];
+                let mut record = make_complete_record(record_id, w, concrete, dict)?;
+                record.recipes = Vec::new();
+                return Ok(FireWindowResult {
+                    state: out,
+                    record,
+                    advance_extra: 0,
+                    extra_records: Vec::new(),
+                });
+            }
+        }
+    } else {
+        let found =
+            content.verbs.get(&w.verb).and_then(|v| v.recipes.iter().find(|r| r.id == w.recipe));
+        match found {
+            Some(r) => (r, false),
+            None => {
+                return Err(ChorusError::new(format!(
+                    "completion of {} (begin row {}): recipe '{}' is not in the compiled content — content drift between commit and completion",
+                    w.verb, w.begin_id, w.recipe
+                )));
+            }
+        }
+    };
     let mut ctx = ApplyCtx {
         state: &mut scratch,
         dict,
@@ -288,10 +337,15 @@ fn fire_window(
     let mut concrete: Vec<Outcome> = Vec::new();
     // the try/catch spans the outcome loop: an
     // outcome that cannot apply refuses the WINDOW with a REFUSE marker
-    // carrying the message. (PROGRESS is skipped — the ticks rode the
-    // BEGIN row.)
+    // carrying the message. (PROGRESS on a PINNED window is skipped — the
+    // ticks rode the BEGIN row; a DEFERRED window's ticks were unknown at
+    // begin, so they journal here, on the COMPLETE row — display-only rows
+    // either way.)
     let mut refused = apply_outcomes_with_refuse(
-        recipe.out.iter().filter(|o| o.op != "PROGRESS"),
+        // pinned: PROGRESS rode the BEGIN row — skipped here. Deferred
+        // (§6.4): the ticks were unknown at begin, so they journal on this
+        // COMPLETE row.
+        recipe.out.iter().filter(|o| deferred || o.op != "PROGRESS"),
         &mut ctx,
         &mut concrete,
     );
@@ -318,6 +372,12 @@ fn fire_window(
     // the parent's own window excluded, §6.7)
     out.windows.shift_remove(&w.key);
     if !refused {
+        // §6.4: a deferred window's execution count lands at its successful
+        // completion, through the ONE rule play and fold share (a refused
+        // completion counted nothing — its draft died with the scratch)
+        if deferred {
+            count_deferred(&mut out, content, &w.verb, &recipe.id);
+        }
         // §6.7: each follow-up registers through the ONE registration path
         // play and fold share — the §6.4 count and the window land
         // identically on both paths, so the fold's BEGIN replay cannot drift
@@ -330,12 +390,13 @@ fn fire_window(
             extra_records = chain.extra_records;
         }
     }
-    Ok(FireWindowResult {
-        state: out,
-        record: make_complete_record(record_id, w, concrete, dict)?,
-        advance_extra,
-        extra_records,
-    })
+    let mut record = make_complete_record(record_id, w, concrete, dict)?;
+    // §6.4: the deferred window's row carries the id SELECTED at completion
+    // (the window's own entry stayed empty — the deferral mark)
+    if deferred {
+        record.recipes = vec![recipe.id.clone()];
+    }
+    Ok(FireWindowResult { state: out, record, advance_extra, extra_records })
 }
 
 /// §6.7: the completion-trigger phase — the window's committed locked

@@ -135,7 +135,7 @@ impl<'c> WorldFacts<'c> {
                     }
                 }
             }
-            slots.push(BoundSlot { cards, min: slot.min, max: slot.max });
+            slots.push(BoundSlot { role: slot.role.clone(), cards, min: slot.min, max: slot.max });
         }
         Some(BoundView { slots })
     }

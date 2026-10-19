@@ -261,6 +261,24 @@ impl<'a> Parser<'a> {
             return Ok(s);
         }
 
+        // HOLD rows (v0.9.3): the verb is a RAW name token (like COMPLETE's),
+        // the held card a ref. HOLD is reserved (§5.1), so this sits before
+        // the action fallthrough. Engine-written; parses so every concrete
+        // row round-trips (law 2).
+        if self.at_keyword("HOLD") {
+            self.next()?;
+            let verb_tok = self.next()?;
+            if verb_tok.t() != "name" {
+                return Err(ChorusError::new("expected a verb name after HOLD"));
+            }
+            let held = self.ref_()?;
+            self.expect_end()?;
+            let mut s = Sentence::bare(SentenceKind::Hold, clock);
+            s.trigger = Some(verb_tok.v_str());
+            s.held = Some(held);
+            return Ok(s);
+        }
+
         let mut clauses = vec![self.clause()?];
         while self.at_punct(";", 0) {
             self.next()?;

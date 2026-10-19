@@ -68,6 +68,7 @@ fn fmt_outcomes(out: &[Outcome], dict: &Dictionary) -> String {
             clauses: vec![],
             outcomes: out.to_vec(),
             span_min: None,
+            held: None,
         },
         dict,
     )
@@ -124,6 +125,7 @@ fn call_site_equals_the_hand_expanded_twin_byte_for_byte() {
         clauses: vec![],
         outcomes: out.to_vec(),
         span_min: None,
+        held: None,
     };
     let a = format_sentence(&as_sentence(&expanded[..2]), &dict).unwrap();
     let b = format_sentence(&as_sentence(&twin[..2]), &dict).unwrap();

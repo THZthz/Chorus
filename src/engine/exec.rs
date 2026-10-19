@@ -10,7 +10,8 @@ use crate::core::clock::{
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
 use crate::core::predicate::RoleBindings;
-use crate::core::roles::ROLES;
+use crate::core::r#ref::Ref;
+use crate::core::roles::{Role, ROLES};
 use crate::core::sentence::{Clause, Outcome};
 use crate::core::types::{clone_state, OpenWindow, State};
 use crate::error::{ChorusError, Result};
@@ -18,11 +19,12 @@ use crate::error::{ChorusError, Result};
 use super::advance::resolve_due;
 use super::outcomes::{apply_outcome, ApplyCtx};
 use super::record::{
-    checked_step, make_begin_record, rejected, ActionRecord, ExecOptions, ExecResult, Step,
+    checked_step, make_begin_record, make_hold_record, rejected, ActionRecord, ExecOptions,
+    ExecResult, Step,
 };
 use super::validate::{
-    busy_reason, clause_refs, resolve_ref, resolve_role_refs, select_recipe, validate_slots,
-    Prepared, COMMITTED_ROLES,
+    busy_reason, clause_refs, defers_selection, resolve_ref, resolve_role_refs, select_recipe,
+    validate_hold, validate_slots, Prepared, COMMITTED_ROLES,
 };
 
 /// minutes in a day (144 ticks of 10)
@@ -162,8 +164,22 @@ pub fn execute_step(
         if let Some(busy) = busy_reason(&draft, &clause.verb, &refs)? {
             return Ok(rejected(busy, state_in));
         }
-        let Some(recipe) = select_recipe(verb, &bindings, &draft)? else {
-            return Ok(rejected(format!("{}: no recipe matched", verb.name), state_in));
+        // §6.4: selection. A verb that declares a held slot DEFERS selection
+        // to its window's completion — the held binding can flip which
+        // recipe matches, so the walk waits for it: the deferred clause
+        // opens its window unconditionally (the empty recipe entry is the
+        // deferral mark), with no §6.5 table-gate trial (the gate is part
+        // of selection) and a completion that finds no match refusing the
+        // window. A held-less verb selects NOW, and no recipe matched is
+        // the commit-time rejection — nothing logged, the input state rides
+        // back untouched (§9.2).
+        let recipe = if defers_selection(verb) {
+            None
+        } else {
+            match select_recipe(verb, &bindings, &draft)? {
+                Some(r) => Some(r),
+                None => return Ok(rejected(format!("{}: no recipe matched", verb.name), state_in)),
+            }
         };
         prepared.push(Prepared { clause, verb, refs, recipe });
     }
@@ -189,11 +205,13 @@ pub fn execute_step(
 
     // Phase 4 — BEGIN (v0.5): one row per step, one window per clause. No
     // outcome applies here: the row carries the PROGRESS ticks (journal), the
-    // commit-time recipe ids, and the window table does the locking. The
-    // recipe's real outcomes land on the COMPLETE row at the window's close.
+    // commit-time recipe ids (an empty entry for a §6.4 deferred clause), and
+    // the window table does the locking. The recipe's real outcomes land on
+    // the COMPLETE row at the window's close.
     let progress: Vec<Outcome> = prepared
         .iter()
-        .flat_map(|p| p.recipe.out.iter())
+        .filter_map(|p| p.recipe)
+        .flat_map(|r| r.out.iter())
         .filter(|o| o.op == "PROGRESS")
         .cloned()
         .collect();
@@ -246,13 +264,16 @@ fn table_gate_trial(
                 // §4.4: the dice binding is PER CLAUSE — a roll in clause one
                 // is not visible to clause two's conditions
                 sctx.roll = None;
+                // a §6.4 deferred clause has no recipe yet — nothing to trial (the
+                // gate runs at completion, where the held binding is in context)
+                let Some(recipe) = p.recipe else { continue };
                 let mut rebound = RoleBindings::new();
                 for role in ROLES {
                     let ids = resolve_role_refs(sctx.state, &p.refs[&role])?;
                     rebound.insert(role, ids);
                 }
                 sctx.bindings = rebound;
-                for outcome in &p.recipe.out {
+                for outcome in &recipe.out {
                     // an IF is opaque to the gate check: its branches —
                     // including any REFUSE inside them — belong to the
                     // completion, where the world the window imagined actually
@@ -348,8 +369,13 @@ pub(super) fn register_windows(
         // share — a registered window increments its clause's commit-time
         // recipe id ON THE DRAFT. A table-refused step opens no window and
         // counts nothing (execute_step returns before Phase 4); a window
-        // that later refuses still counted (it registered at begin).
-        *state.executed.entry(recipe.clone()).or_insert(0) += 1;
+        // that later refuses still counted (it registered at begin). A §6.4
+        // DEFERRED clause (the empty id) counts nothing here — its count
+        // lands at its completion, through the one shared rule
+        // (`count_deferred`), symmetric on play and fold.
+        if !recipe.is_empty() {
+            *state.executed.entry(recipe.clone()).or_insert(0) += 1;
+        }
         state.windows.insert(
             key.clone(),
             OpenWindow {
@@ -367,4 +393,115 @@ pub(super) fn register_windows(
         offset = checked_step(offset, dur, "window offset");
     }
     Ok(())
+}
+
+/// §6.7: the ONE held-binding path play and fold share — the held ref enters
+/// the window's refs as the `held` role (the completion re-resolves it like
+/// every binding) and the card's id joins the locked set (the §6.7 busy rule
+/// covers it for the window's remainder). Callers own the validity checks
+/// (`execute_hold` at play; the fold trusts its logged HOLD row and only
+/// asserts the window is there to bind).
+pub(super) fn bind_hold(window_key: &str, held_id: &str, held: &Ref, state: &mut State) {
+    let Some(w) = state.windows.get_mut(window_key) else {
+        return;
+    };
+    w.refs.insert(Role::Held, vec![held.clone()]);
+    w.locked.push(held_id.to_string());
+}
+
+/// §6.4: a deferred window's execution count lands at its SUCCESSFUL
+/// completion (a refused completion's draft died with the scratch on the
+/// play side, and the fold's refused rows are state no-ops — the same rule
+/// both sides run, keyed on the verb declaring a held slot, so they cannot
+/// drift). The ONE shared increment; `recipe` empty is the never-selected
+/// case and counts nothing.
+pub(super) fn count_deferred(
+    state: &mut State,
+    content: &CompiledContent,
+    verb: &str,
+    recipe: &str,
+) {
+    if recipe.is_empty() {
+        return;
+    }
+    let Some(v) = content.verbs.get(verb) else {
+        return;
+    };
+    if !defers_selection(v) {
+        return;
+    }
+    *state.executed.entry(recipe.to_string()).or_insert(0) += 1;
+}
+
+/// §6.7: the hold step — bind one card into an open held-capable station's
+/// held slot. No clock movement, no outcomes, no time checks: one logged
+/// HOLD row through [`bind_hold`], replayed by the fold through the same
+/// bind. Every failure is a rejection — nothing logged, state untouched.
+pub fn execute_hold(
+    content: &CompiledContent,
+    dict: &Dictionary,
+    state_in: State,
+    verb_name: &str,
+    held: Ref,
+    first_record_id: i64,
+) -> Result<ExecResult> {
+    // game-over, exactly as a play step (§4.4): the notice, nothing logged
+    if let Some(ended) = &state_in.ended {
+        return Ok(rejected(format!("the story has ended — {}", ended.title), state_in));
+    }
+    let Some(verb) = content.verbs.get(verb_name) else {
+        return Ok(rejected(format!("{verb_name} is not a content verb"), state_in));
+    };
+    if !defers_selection(verb) {
+        return Ok(rejected(format!("{verb_name} has no held slot"), state_in));
+    }
+    // one window per station (§6.7), so the verb names it unambiguously
+    let Some((key, w)) = state_in.windows.iter().find(|(_, w)| w.verb == verb_name) else {
+        return Ok(rejected(
+            format!("{verb_name} is not processing — hold targets an open station"),
+            state_in,
+        ));
+    };
+    let (key, w) = (key.clone(), w.clone());
+    // a chain-pinned follow-up keeps its §6.7 pin — the hold cannot flip a
+    // recipe that was already selected
+    if !w.recipe.is_empty() {
+        return Ok(rejected(
+            format!(
+                "{verb_name} is pinned to recipe {} — its selection was fixed at the pin (§6.7)",
+                w.recipe
+            ),
+            state_in,
+        ));
+    }
+    // one held card per window, bound at most once (§6.7: no mid-window eviction)
+    if w.refs.get(&Role::Held).is_some_and(|v| !v.is_empty()) {
+        return Ok(rejected(
+            format!("{verb_name} already holds a card — one binding per window (§6.7)"),
+            state_in,
+        ));
+    }
+    let held_id = match validate_hold(verb, &held, &state_in) {
+        Ok(id) => id,
+        Err(e) => return Ok(rejected(e.msg, state_in)),
+    };
+    // the §6.7 busy rule: the card may not sit in any OTHER open window's
+    // lock (a lock held by THIS window is the §6.3 cross-role case — a card
+    // bound here twice, once committed and once held, is legal)
+    let busy = state_in.windows.iter().find_map(|(k, w2)| {
+        (k != &key && w2.locked.iter().any(|id| id == &held_id)).then(|| w2.clone())
+    });
+    if let Some(w2) = busy {
+        let end = clock_from_abs_min(w2.end);
+        let name =
+            state_in.entities.get(&held_id).map(|e| e.name.replace('_', " ")).unwrap_or_default();
+        return Ok(rejected(
+            format!("{name} is busy with {} — it frees at {}:{}", w2.verb, end.day, end.tick),
+            state_in,
+        ));
+    }
+    let mut draft = clone_state(&state_in);
+    let record = make_hold_record(first_record_id, state_in.now, verb_name, &key, &held, dict)?;
+    bind_hold(&key, &held_id, &held, &mut draft);
+    Ok(ExecResult { records: vec![record], state: draft, rejected: None })
 }

@@ -39,6 +39,16 @@ pub fn format_sentence(s: &Sentence, dict: &Dictionary) -> Result<String> {
             parts.push("WAIT".to_string());
             parts.push(span);
         }
+        SentenceKind::Hold => {
+            // v0.9.3: `1:42 @ HOLD STUDY THE_CHALICE` — the held binding of
+            // the open station (§6.7); the verb prints bare, the ref canonically
+            parts.push("HOLD".to_string());
+            parts.push(s.trigger.clone().unwrap_or_else(|| "?".to_string()));
+            parts.push(format_ref(
+                s.held.as_ref().ok_or_else(|| ChorusError::new("a HOLD sentence needs a ref"))?,
+                dict,
+            )?);
+        }
         SentenceKind::Action => {
             let clauses =
                 s.clauses.iter().map(|c| format_clause(c, dict)).collect::<Result<Vec<_>>>()?;

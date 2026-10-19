@@ -124,6 +124,7 @@ fn fixture_complete(id: i64, outcomes: Vec<Outcome>) -> ActionRecord {
         at: None,
         about: None,
         to: None,
+        held: None,
         outcomes,
         recipes: vec![],
         sentence: String::new(),

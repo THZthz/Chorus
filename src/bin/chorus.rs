@@ -58,6 +58,8 @@ lists what the game understands right now. Meta words (typed as-is):
   look                the place, the clock, what is here and carried
   cards               the visible table
   inspect <card>      one card's face; a bare `inspect` prints usage + the table
+  hold <card>         bind a card into the open held-capable station (§6.7);
+                      `hold <card> for <verb>` picks between stations
   story               the prose so far
   journal             the canonical log
   save <file.jsonl>   write the action log — `reach --from-state <file>` replays it
@@ -206,6 +208,20 @@ fn dispatch(game: &mut Game, line: &str, out: &mut impl Write) -> Flow {
             return Flow::Continue;
         }
         // a word like `explained …` falls through to handle_line
+    }
+    // `/^hold\b\s*(.*)$/` over the trimmed line; the SAME ASCII
+    // word-boundary class as the inspect/save/explain prefixes: a following
+    // word (`holds`, `hold5`) means NO boundary and the line falls through
+    // to handle_line
+    if let Some(rest) = trimmed.strip_prefix("hold") {
+        if rest.is_empty() || rest.starts_with(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+            // the held binding (§6.7): Game::hold answers bare `hold` with
+            // the usage line, `hold <card>` binds the open station
+            emit_all(game.hold(rest.trim()).map(|t| t.lines), out);
+            emit_all(game.after_turn(), out);
+            return Flow::Continue;
+        }
+        // a word like `holds …` falls through to handle_line
     }
     // the meta commands (the typed views); the turns — undo, wait, a line of
     // play — are followed by the live area (what is processing, what to try)

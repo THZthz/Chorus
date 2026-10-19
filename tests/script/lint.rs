@@ -98,7 +98,7 @@ fn a_name_declared_both_as_entity_and_prototype_can_never_spawn_load_error() {
 
 #[test]
 fn a_typo_d_slot_role_is_a_load_error_not_a_silent_never_matching_slot() {
-    // Q4 (spec §4.3's six-role list + §10's fail-loudly rule): the slot
+    // Q4 (spec §4.3's role list + §10's fail-loudly rule): the slot
     // key is validated against the role vocabulary at load — a slot can
     // never compile into a silent never-match.
     // (The fixture trips exactly ONE error — the count and query are legal.)
@@ -106,7 +106,7 @@ fn a_typo_d_slot_role_is_a_load_error_not_a_silent_never_matching_slot() {
         compile(&base(
             "verbs:\n  READ:\n    actrs: 1 kind:character\n    object: 1 kind:text\n    recipes:\n      default -> NARRATE \"read.\"\n",
         )),
-        r"line \d+: bad slot role 'actrs' \(expected one of actors, object, with, at, about, to\)",
+        r"line \d+: bad slot role 'actrs' \(expected one of actors, object, with, at, about, to, held\)",
     );
 }
 
@@ -1620,4 +1620,204 @@ verbs:
 ",
     );
     assert!(warnings_of(&findings).is_empty(), "{findings:?}");
+}
+
+// ---------------------------------------------------------------------------
+// the held faces (v0.9.3, §6.1, §6.3, §6.4)
+// ---------------------------------------------------------------------------
+
+/// A recipe reading the held scope on a verb that declares no held slot is
+/// dead content — the scope is ALWAYS empty there (no HOLD step can bind).
+/// Every read face is caught: the count, the path, the total, the
+/// quantifier, the rel pair.
+#[test]
+fn a_held_reading_recipe_without_a_held_slot_is_an_error() {
+    let findings = findings_for(
+        "
+prototypes:
+  QUESTY is item with quest:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.count when count(held) >= 1 -> NARRATE \"dead.\"
+      rite.path when held.aspect.quest >= 1 -> NARRATE \"dead.\"
+      rite.total when total(held, aspect:quest) >= 1 -> NARRATE \"dead.\"
+      rite.any when any(held, aspect:quest >= 1) -> NARRATE \"dead.\"
+      rite.rel when rel(neighbor, held) -> NARRATE \"dead.\"
+      rite.relc when rel(neighbor, held.container, actors) -> NARRATE \"dead.\"
+      default -> NARRATE \"live.\"
+",
+    );
+    let held_errors: Vec<&LintFinding> = findings
+        .iter()
+        .filter(|f| f.severity == LintSeverity::Error && f.message.contains("reads the held scope"))
+        .collect();
+    assert_eq!(held_errors.len(), 6, "{findings:?}");
+    for id in ["rite.count", "rite.path", "rite.total", "rite.any", "rite.rel", "rite.relc"] {
+        let f = held_errors
+            .iter()
+            .find(|f| f.message.contains(id))
+            .unwrap_or_else(|| panic!("{id} is missing from the findings: {findings:?}"));
+        assert!(
+            f.message.contains("reads the held scope")
+                && f.message.contains("declares no held slot"),
+            "{f:?}"
+        );
+    }
+    // the default (held-free) recipe stays clean
+    assert!(findings.iter().all(|f| !f.message.contains("default")), "{findings:?}");
+    // the deadness errors stand E11 down — one root cause, one finding:
+    // no never-matching warning re-reports what the held ERROR named
+    assert!(warnings_of(&findings).is_empty(), "{findings:?}");
+}
+
+/// The advisory face: a verb declaring a held slot no recipe ever reads —
+/// no hold can flip the deferred selection. A single held-reading when
+/// silences it.
+#[test]
+fn a_held_slot_no_recipe_reads_is_an_advisory_warning() {
+    let findings = findings_for(
+        "
+verbs:
+  DEAD:
+    actors: 1 kind:character
+    held: 0..1 kind:item
+    duration: 0m
+    recipes:
+      dead.a -> NARRATE \"one.\"
+      dead.b when count(actors) >= 1 -> NARRATE \"two.\"
+  LIVE:
+    actors: 1 kind:character
+    held: 0..1 kind:item
+    duration: 0m
+    recipes:
+      live.flip when count(held) >= 1 -> NARRATE \"flipped.\"
+      default -> NARRATE \"plain.\"
+",
+    );
+    let warnings = warnings_of(&findings);
+    assert_eq!(warnings.len(), 1, "{findings:?}");
+    assert!(
+        warnings[0].message.contains("verb DEAD")
+            && warnings[0].message.contains("no recipe reads it"),
+        "{findings:?}"
+    );
+    assert!(findings.iter().all(|f| !f.message.contains("LIVE")), "{findings:?}");
+}
+
+/// The held ERROR face extends into recipe BODIES: a held-reading IF
+/// condition on a verb that declares no held slot is the same dead content —
+/// the held-reading arm can never take. The when-face leaves a live `when`
+/// alone, and the held-capable twin's IF stays clean.
+#[test]
+fn a_held_reading_if_condition_on_a_held_less_verb_is_an_error() {
+    let findings = findings_for(
+        "
+prototypes:
+  QUESTY is item with quest:1
+
+verbs:
+  RITE:
+    actors: 1 kind:character
+    duration: 0m
+    recipes:
+      rite.gate when count(actors) >= 1 -> IF count(held) >= 1 -> (NARRATE \"dead arm.\") ELSE -> (NARRATE \"live arm.\")
+      default -> NARRATE \"plain.\"
+
+  RITE2:
+    actors: 1 kind:character
+    held: 0..1 kind:item
+    duration: 0m
+    recipes:
+      rite2.gate when count(actors) >= 1 -> IF count(held) >= 1 -> (NARRATE \"arrangeable.\") ELSE -> (NARRATE \"without.\")
+",
+    );
+    let errors: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.severity == LintSeverity::Error).collect();
+    assert_eq!(errors.len(), 1, "{findings:?}");
+    assert!(
+        errors[0].message.contains("rite.gate")
+            && errors[0].message.contains("an IF condition reads the held scope")
+            && errors[0].message.contains("declares no held slot"),
+        "{findings:?}"
+    );
+    // the held-capable twin's IF is arrangeable content, not dead
+    assert!(findings.iter().all(|f| !f.message.contains("rite2")), "{findings:?}");
+    // the when itself (`count(actors) >= 1` over 1..1) is live — the E11
+    // detector stays silent (RITE2's advisory held-slot warning is the
+    // separate when-face, expected here)
+    assert!(
+        findings.iter().all(
+            |f| !(f.severity == LintSeverity::Warning && f.message.contains("can never match"))
+        ),
+        "{findings:?}"
+    );
+}
+
+/// The count-cardinality family reads the held slot's 0..1 like any slot:
+/// `count(held) >= 2` can never hold (the count-gate ERROR), `>= 1` can
+/// (silent — the hold is arrangeable).
+#[test]
+fn the_held_count_gate_reads_the_0_1_cardinality() {
+    let findings = findings_for(
+        "
+verbs:
+  RITE:
+    actors: 1 kind:character
+    held: 0..1 kind:item
+    duration: 0m
+    recipes:
+      rite.dead when count(held) >= 2 -> NARRATE \"impossible.\"
+      rite.live when count(held) >= 1 -> NARRATE \"arrangeable.\"
+      default -> NARRATE \"plain.\"
+",
+    );
+    let errors: Vec<&LintFinding> =
+        findings.iter().filter(|f| f.severity == LintSeverity::Error).collect();
+    assert_eq!(errors.len(), 1, "{findings:?}");
+    assert!(
+        errors[0].message.contains("rite.dead")
+            && errors[0].message.contains("count(held) >= 2 can never hold")
+            && errors[0].message.contains("takes 0..1"),
+        "{findings:?}"
+    );
+    assert!(findings.iter().all(|f| !f.message.contains("rite.live")), "{findings:?}");
+}
+
+/// The held slot takes exactly 0..1 (§6.1) — any other cardinality is a
+/// load error naming the verb, never a slot the hold step could fill.
+#[test]
+fn the_held_slot_cardinality_is_exactly_0_1() {
+    for line in ["held: 1", "held: 0..2", "held: 1..", "held: 2"] {
+        assert_err_msg(
+            compile(&base(&format!(
+                "
+verbs:
+  RITE:
+    actors: 1 kind:character
+    {line} kind:item
+    duration: 0m
+    recipes:
+      default -> NARRATE \"x.\"
+"
+            ))),
+            r"the held slot takes exactly '0\.\.1'",
+        );
+    }
+    // the legal spelling compiles clean
+    assert!(compile(&base(
+        "
+verbs:
+  RITE:
+    actors: 1 kind:character
+    held: 0..1 kind:item
+    duration: 0m
+    recipes:
+      default -> NARRATE \"x.\"
+"
+    ))
+    .is_ok());
 }

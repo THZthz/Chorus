@@ -218,6 +218,16 @@ fn compile_verb(
                 )));
             }
         }
+        // §6.1: the held slot takes exactly 0..1 — one held card per window,
+        // bound at most once (§6.7). Any other cardinality fails loud instead
+        // of compiling a slot the hold step could never legally fill.
+        if s.role == "held" && (s.min != 0 || s.max != Some(1)) {
+            return Err(ChorusError::new(format!(
+                "verb {name}: the held slot takes exactly '0..1' (one held card per window, §6.1), got '{}..{}'",
+                s.min,
+                s.max.map_or("∞".to_string(), |m| m.to_string())
+            )));
+        }
         let compiled = CompiledSlot {
             role: s.role.clone(),
             min: s.min,

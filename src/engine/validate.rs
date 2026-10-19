@@ -18,16 +18,20 @@ use crate::error::{ChorusError, Result};
 
 // ---------- role binding & slot validation (§6.1) ----------
 
-/// One validated, recipe-selected clause.
+/// One validated clause. `recipe` is the §6.4 commit-time selection — `None`
+/// for a §6.4 DEFERRED clause (a held-capable verb: selection runs at the
+/// window's completion, where the held binding is in context).
 pub(super) struct Prepared<'a> {
     pub(super) clause: &'a Clause,
     pub(super) verb: &'a CompiledVerb,
     pub(super) refs: IndexMap<Role, Vec<Ref>>,
-    pub(super) recipe: &'a CompiledRecipe,
+    pub(super) recipe: Option<&'a CompiledRecipe>,
 }
 
 /// Clause refs per role; the IndexMap keys follow the ROLES declaration
-/// order for the `refs[role]` lookups.
+/// order for the `refs[role]` lookups. A clause never carries `held`
+/// (§4.3 — the binding arrives through a HOLD row), so the role maps to the
+/// empty vec here.
 pub(super) fn clause_refs(c: &Clause) -> IndexMap<Role, Vec<Ref>> {
     let mut m = IndexMap::new();
     m.insert(Role::Actors, c.actors.clone());
@@ -36,7 +40,39 @@ pub(super) fn clause_refs(c: &Clause) -> IndexMap<Role, Vec<Ref>> {
     m.insert(Role::At, c.at.iter().cloned().collect());
     m.insert(Role::About, c.about.iter().cloned().collect());
     m.insert(Role::To, c.to.iter().cloned().collect());
+    m.insert(Role::Held, Vec::new());
     m
+}
+
+/// §6.4: does this verb defer recipe selection to its windows' completions?
+/// Exactly the verbs that declare a held slot — the held binding can flip
+/// which recipe matches, so the walk waits for it.
+#[must_use]
+pub(super) fn defers_selection(verb: &CompiledVerb) -> bool {
+    verb.slot_by_role.contains_key("held")
+}
+
+/// §6.7: the held slot's validity face for a `hold <card>` step — the card
+/// must resolve to a LIVING entity and fit the held slot's query (the slot's
+/// `0..1` cardinality is enforced by the compile guard and the at-most-once
+/// hold rule, not here). Returns the entity id.
+pub(super) fn validate_hold(verb: &CompiledVerb, r: &Ref, state: &State) -> Result<String> {
+    let Some(slot) = verb.slot_by_role.get("held") else {
+        return Err(ChorusError::new(format!("{} has no held slot", verb.name)));
+    };
+    let Some(e) = resolve_ref(state, r)? else {
+        return Err(ChorusError::new(format!("unresolvable ref {}", show(r))));
+    };
+    if let Some(query) = &slot.query {
+        if !match_query(e, query) {
+            return Err(ChorusError::new(format!(
+                "{} does not fit slot 'held' of {}",
+                show(r),
+                verb.name
+            )));
+        }
+    }
+    Ok(e.id.clone())
 }
 
 /// Slot validation. Error texts come WITHOUT the `<verb>: ` prefix; the

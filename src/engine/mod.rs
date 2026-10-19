@@ -40,6 +40,6 @@ pub mod fold;
 pub mod settle;
 pub mod store;
 
-pub use exec::execute_step;
+pub use exec::{execute_hold, execute_step};
 pub use record::{ActionRecord, ExecOptions, ExecResult, Step};
 pub use replay::apply_record;

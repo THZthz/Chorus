@@ -5,6 +5,7 @@ mod common;
 
 mod cli;
 mod common_smoke;
+mod held;
 mod recipe_dur;
 mod repl;
 mod script_play;

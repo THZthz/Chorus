@@ -376,6 +376,8 @@ lists what the game understands right now. Meta words (typed as-is):
   look                the place, the clock, what is here and carried
   cards               the visible table
   inspect <card>      one card's face; a bare `inspect` prints usage + the table
+  hold <card>         bind a card into the open held-capable station (§6.7);
+                      `hold <card> for <verb>` picks between stations
   story               the prose so far
   journal             the canonical log
   save <file.jsonl>   write the action log — `reach --from-state <file>` replays it

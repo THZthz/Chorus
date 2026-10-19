@@ -520,7 +520,11 @@ fn synthesize_followup(
         clauses: vec![clause.clone()],
         t_real: None,
     };
-    let prepared =
-        [Prepared { clause: &clause, verb: cand_verb, refs: clause_refs(&clause), recipe: cand }];
+    let prepared = [Prepared {
+        clause: &clause,
+        verb: cand_verb,
+        refs: clause_refs(&clause),
+        recipe: Some(cand),
+    }];
     make_begin_record(next_record_id, parent_end, &step, &prepared, progress, dict)
 }

@@ -594,6 +594,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
         at: None,
         about: None,
         to: None,
+        held: None,
         outcomes: vec![chorus::core::sentence::Outcome {
             op: "SET".to_string(),
             args: vec![

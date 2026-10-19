@@ -94,7 +94,8 @@ What just happened, line by line:
   the same pass).
 
 The meta words are typed commands: `look`, `cards`,
-`inspect <card>`, `story` (the prose so far), `journal` (the canonical
+`inspect <card>`, `hold <card>` (bind a card into an open held-capable
+station — §6.7), `story` (the prose so far), `journal` (the canonical
 sentences), `save <file>` (the log as JSONL), `undo`, `wait`, `help`,
 `quit`.
 

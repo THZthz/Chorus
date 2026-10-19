@@ -36,10 +36,10 @@ pub const CORE_VERBS: [&str; 12] = [
 pub const CORE_KINDS: [&str; 8] =
     ["character", "place", "item", "text", "idea", "state", "rite", "resource"];
 
-/// The reserved list: 19 keywords + every
+/// The reserved list: 20 keywords + every
 /// CORE_VERB appended (spelled out; a unit test below pins the tail equal to
 /// CORE_VERBS so the double-write cannot drift).
-pub const RESERVED_WORDS: [&str; 31] = [
+pub const RESERVED_WORDS: [&str; 32] = [
     "EVENT",
     "TO",
     "WITH",
@@ -59,6 +59,7 @@ pub const RESERVED_WORDS: [&str; 31] = [
     "RUN", // §4.4: the recipe-chain op — authored, zero-concrete (the follow-up's BEGIN row is the record)
     "FORK", // §4.4: the multi-continuation chain op — every candidate opens, all-or-refuse
     "COMPLETE", // v0.5: the engine-written completion row of a processing window
+    "HOLD", // v0.9.3: the engine-written held-binding row of a processing window (§6.7)
     "READ",
     "STUDY",
     "WORK",

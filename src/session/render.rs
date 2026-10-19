@@ -15,13 +15,16 @@ use crate::error::Result;
 /// recipe ids in a trailing bracket — `0:42 @ MARCH READ THE_MANIFEST
 /// [read.manifest]`. A REFUSED row's bracket names the recipe that refused;
 /// a step no recipe matched never becomes a row (the engine's rejection
-/// line says `<verb>: no recipe matched`).
+/// line says `<verb>: no recipe matched`). A §6.4 deferred clause's BEGIN
+/// entry is the EMPTY id — the deferral mark — and renders nothing (the
+/// COMPLETE row carries the selected id).
 #[must_use]
 pub fn row_text(r: &ActionRecord) -> String {
-    if r.recipes.is_empty() {
+    let ids: Vec<&str> = r.recipes.iter().map(String::as_str).filter(|id| !id.is_empty()).collect();
+    if ids.is_empty() {
         return r.sentence.clone();
     }
-    format!("{} [{}]", r.sentence, r.recipes.join(", "))
+    format!("{} [{}]", r.sentence, ids.join(", "))
 }
 
 /// The canonical journal: one canonical sentence per line — a row that
@@ -195,52 +198,68 @@ fn ref_names(rs: &[Ref]) -> Vec<String> {
         .collect()
 }
 
+/// The role refs one interpolation draws from — the clause and record
+/// variants share this projection (a record's instruments are the clause's
+/// `with`, and a record's `held` is the §6.7 held binding; a clause never
+/// carries one).
+struct InterpRefs<'a> {
+    actors: &'a [Ref],
+    objects: &'a [Ref],
+    at: Option<&'a Ref>,
+    about: Option<&'a Ref>,
+    to: Option<&'a Ref>,
+    with: &'a [Ref],
+    held: Option<&'a Ref>,
+}
+
+impl InterpRefs<'_> {
+    fn of_clause(clause: &Clause) -> InterpRefs<'_> {
+        InterpRefs {
+            actors: &clause.actors,
+            objects: &clause.objects,
+            at: clause.at.as_ref(),
+            about: clause.about.as_ref(),
+            to: clause.to.as_ref(),
+            with: &clause.with,
+            held: None,
+        }
+    }
+
+    fn of_record(record: &ActionRecord) -> InterpRefs<'_> {
+        InterpRefs {
+            actors: &record.actors,
+            objects: &record.objects,
+            at: record.at.as_ref(),
+            about: record.about.as_ref(),
+            to: record.to.as_ref(),
+            with: &record.instruments,
+            held: record.held.as_ref(),
+        }
+    }
+}
+
 /// The token replaces run in the authored
-/// order (actors, object, at, about, to, with); str::replace is a global
-/// replace, the exact /g semantics. The clause and record variants share
-/// this chain — a record's instruments are the clause's `with`.
-fn interpolate_refs(
-    template: &str,
-    actors: &[Ref],
-    objects: &[Ref],
-    at: Option<&Ref>,
-    about: Option<&Ref>,
-    to: Option<&Ref>,
-    with: &[Ref],
-) -> String {
+/// order (actors, object, at, about, to, with, held); str::replace is a global
+/// replace, the exact /g semantics.
+fn interpolate_refs(template: &str, refs: &InterpRefs<'_>) -> String {
     template
-        .replace("{actors}", &join_and(&ref_names(actors)))
-        .replace("{object}", ref_names(objects).first().map_or("—", String::as_str))
-        .replace("{at}", &ref_name(at))
-        .replace("{about}", &ref_name(about))
-        .replace("{to}", &ref_name(to))
-        .replace("{with}", &join_and(&ref_names(with)))
+        .replace("{actors}", &join_and(&ref_names(refs.actors)))
+        .replace("{object}", ref_names(refs.objects).first().map_or("—", String::as_str))
+        .replace("{at}", &ref_name(refs.at))
+        .replace("{about}", &ref_name(refs.about))
+        .replace("{to}", &ref_name(refs.to))
+        .replace("{with}", &join_and(&ref_names(refs.with)))
+        .replace("{held}", &ref_name(refs.held))
 }
 
 /// The clause variant.
 fn interpolate_clause(template: &str, clause: &Clause) -> String {
-    interpolate_refs(
-        template,
-        &clause.actors,
-        &clause.objects,
-        clause.at.as_ref(),
-        clause.about.as_ref(),
-        clause.to.as_ref(),
-        &clause.with,
-    )
+    interpolate_refs(template, &InterpRefs::of_clause(clause))
 }
 
-/// The record variant (instruments = with).
+/// The record variant (instruments = with, held = the §6.7 binding).
 fn interpolate_record(template: &str, record: &ActionRecord) -> String {
-    interpolate_refs(
-        template,
-        &record.actors,
-        &record.objects,
-        record.at.as_ref(),
-        record.about.as_ref(),
-        record.to.as_ref(),
-        &record.instruments,
-    )
+    interpolate_refs(template, &InterpRefs::of_record(record))
 }
 
 /// English "A, B and C" joining.

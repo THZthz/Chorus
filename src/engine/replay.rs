@@ -10,10 +10,10 @@ use crate::core::roles::Role;
 use crate::core::types::State;
 use crate::error::{ChorusError, Result};
 
-use super::exec::register_windows;
+use super::exec::{bind_hold, count_deferred, register_windows};
 use super::outcomes::{apply_outcome, ApplyCtx};
 use super::record::{checked_step, ActionRecord};
-use super::validate::resolve_role_refs;
+use super::validate::{resolve_ref, resolve_role_refs};
 
 /// Apply one record's concrete outcomes to
 /// a state (replay). Refused records are state no-ops: their logged outcomes
@@ -53,8 +53,12 @@ pub fn apply_record(
         // pre-window logs still replay — the START-clock anchoring that
         // matters for `expires` is exercised on the real path, where the
         // window exists (this fallback branch is load-bearing for
-        // bare-row probes and MUST stay)
-        let w_start = record.window.as_ref().and_then(|k| state.windows.get(k)).map(|w| w.start);
+        // bare-row probes and MUST stay). The deferral mark is read off the
+        // SAME window before it leaves the table: a §6.4 deferred window
+        // (empty recipe entry) counts its selected id at the completion.
+        let open = record.window.as_ref().and_then(|k| state.windows.get(k));
+        let w_start = open.map(|w| w.start);
+        let was_deferred = open.is_some_and(|w| w.recipe.is_empty());
         if let Some(k) = &record.window {
             state.windows.shift_remove(k); // removal preserves the remaining keys' insertion order
         }
@@ -88,8 +92,55 @@ pub fn apply_record(
         for o in &record.outcomes {
             apply_outcome(o, &mut ctx)?;
         }
+        // §6.4: the deferred window's count lands at its successful
+        // completion, through the ONE rule play runs in fire_window — keyed
+        // on the verb declaring a held slot, so the two paths cannot drift
+        if was_deferred {
+            let id = record.recipes.first().map(String::as_str).unwrap_or_default();
+            count_deferred(state, content, &record.verb, id);
+        }
         // ADVANCE replayed here only touches the inert `extra_advance_min` — the
         // extension lives in the wait row's span (§4.4 replay safety)
+        return Ok(());
+    }
+    // §6.7: a HOLD row re-binds its card through the ONE shared path the
+    // play side ran — the window must be open, deferred and unheld (the
+    // shape execute_hold enforces); anything else is log drift, loud.
+    if record.kind == "hold" {
+        // the display clock parses for EVERY row kind (drift check); the
+        // hold consumes no mechanics from it
+        let _ = abs_min(parse_clock(&record.t_game)?);
+        let key = record.window.as_deref().ok_or_else(|| {
+            ChorusError::new(format!("hold row {} carries no window key — drift", record.id))
+        })?;
+        let w = state.windows.get(key).ok_or_else(|| {
+            ChorusError::new(format!(
+                "hold row {} binds window '{key}' but it is not open — drift",
+                record.id
+            ))
+        })?;
+        if w.verb != record.verb {
+            return Err(ChorusError::new(format!(
+                "hold row {} names verb {} but window '{key}' belongs to {} — drift",
+                record.id, record.verb, w.verb
+            )));
+        }
+        if !w.recipe.is_empty() || w.refs.get(&Role::Held).is_some_and(|v| !v.is_empty()) {
+            return Err(ChorusError::new(format!(
+                "hold row {} binds a window that is pinned or already held — drift",
+                record.id
+            )));
+        }
+        let held = record.held.clone().ok_or_else(|| {
+            ChorusError::new(format!("hold row {} carries no held ref — drift", record.id))
+        })?;
+        let id = resolve_ref(state, &held)?.map(|e| e.id.clone()).ok_or_else(|| {
+            ChorusError::new(format!(
+                "hold row {} names a card that is not alive — drift",
+                record.id
+            ))
+        })?;
+        bind_hold(key, &id, &held, state);
         return Ok(());
     }
     // refused: state no-op, clock untouched (§6.5) — this guard ALSO covers
@@ -152,5 +203,6 @@ fn fold_bindings(record: &ActionRecord, state: &State) -> Result<RoleBindings> {
     b.insert(Role::At, resolve_role_refs(state, record.at.as_slice())?);
     b.insert(Role::About, resolve_role_refs(state, record.about.as_slice())?);
     b.insert(Role::To, resolve_role_refs(state, record.to.as_slice())?);
+    b.insert(Role::Held, resolve_role_refs(state, record.held.as_slice())?);
     Ok(b)
 }

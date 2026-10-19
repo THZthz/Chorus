@@ -93,6 +93,7 @@ pub fn fixture_complete(id: i64, t_game: &str, outcomes: Vec<Outcome>) -> Action
         at: None,
         about: None,
         to: None,
+        held: None,
         outcomes,
         recipes: vec![],
         sentence: String::new(),

@@ -61,15 +61,20 @@ pub struct ActionRecord {
     /// v0.5 — COMPLETE rows only: the window key they close
     pub window: Option<String>,
     pub actors: Vec<Ref>, // sorted union across clauses
-    pub verb: String,     // first clause's verb ('' for events/waits; the verb of a COMPLETE row)
+    pub verb: String, // first clause's verb ('' for events/waits; the verb of a COMPLETE/HOLD row)
     pub objects: Vec<Ref>,
     pub instruments: Vec<Ref>,
     pub at: Option<Ref>,
     pub about: Option<Ref>,
     pub to: Option<Ref>,
+    /// v0.9.3 — HOLD rows: the held card; COMPLETE rows: the held card
+    /// re-resolved (§6.7); every other row absent (explicit null on the wire).
+    #[serde(default)]
+    pub held: Option<Ref>,
     pub outcomes: Vec<Outcome>, // concrete: ids minted, sugar resolved (§9.2)
-    pub recipes: Vec<String>,   // BEGIN: fired recipe ids, clause order; COMPLETE: the one recipe
-    pub sentence: String,       // canonical, lossless
+    pub recipes: Vec<String>, // BEGIN: fired recipe ids, clause order (empty entry = a §6.4 deferred
+    // clause); COMPLETE: the one recipe; else empty
+    pub sentence: String, // canonical, lossless
 }
 
 /// One executed step: the records minted, the resulting state (unchanged
@@ -120,6 +125,7 @@ fn base_record(kind: &str, id: i64, clock: Clock) -> ActionRecord {
         at: None,
         about: None,
         to: None,
+        held: None,
         outcomes: Vec::new(),
         recipes: Vec::new(),
         sentence: String::new(),
@@ -129,7 +135,9 @@ fn base_record(kind: &str, id: i64, clock: Clock) -> ActionRecord {
 /// Build the BEGIN row: merged deduped actors, the first clause's role refs,
 /// effective durations summed into `advanced_min` (§6.4: a recipe's `dur`
 /// overrides its verb's `duration` — the row's `advancedMin` is the WINDOW
-/// length the clause's own recipe selected).
+/// length the clause's own recipe selected; a §6.4 deferred clause (a
+/// held-capable verb) contributes its verb default and an EMPTY recipe id —
+/// the deferral mark the completion's COMPLETE row replaces).
 pub(super) fn make_begin_record(
     id: i64,
     start_min: i64,
@@ -138,9 +146,9 @@ pub(super) fn make_begin_record(
     outcomes: Vec<Outcome>,
     dict: &Dictionary,
 ) -> Result<ActionRecord> {
-    let advanced_min = prepared
-        .iter()
-        .fold(0i64, |s, p| s.saturating_add(p.recipe.dur.unwrap_or(p.verb.duration)));
+    let advanced_min = prepared.iter().fold(0i64, |s, p| {
+        s.saturating_add(p.recipe.map_or(p.verb.duration, |r| r.dur.unwrap_or(p.verb.duration)))
+    });
     let first = prepared.first();
     let mut seen: HashSet<String> = HashSet::new();
     let actors: Vec<Ref> = sort_refs(
@@ -163,7 +171,8 @@ pub(super) fn make_begin_record(
     let at = first.and_then(|p| p.clause.at.clone());
     let about = first.and_then(|p| p.clause.about.clone());
     let to = first.and_then(|p| p.clause.to.clone());
-    let recipes: Vec<String> = prepared.iter().map(|p| p.recipe.id.clone()).collect();
+    let recipes: Vec<String> =
+        prepared.iter().map(|p| p.recipe.map(|r| r.id.clone()).unwrap_or_default()).collect();
     let mut record = base_record("action", id, clock_from_abs_min(start_min));
     record.t_real = step.t_real.clone();
     record.advanced_min = advanced_min; // the window length — NOT a clock advance (v0.5)
@@ -184,7 +193,11 @@ pub(super) fn make_begin_record(
     Ok(record)
 }
 
-/// Build the COMPLETE row for one closed window.
+/// Build the COMPLETE row for one closed window. A deferred window's row
+/// carries the id SELECTED at completion (`w.recipe`), and the held field
+/// copies the ref stored in the window's refs — the hold's binding, alive
+/// or not: only the fold's binding resolution drops a card that died
+/// mid-window (§6.7). The empty case is the never-held window.
 pub(super) fn make_complete_record(
     id: i64,
     w: &OpenWindow,
@@ -204,12 +217,38 @@ pub(super) fn make_complete_record(
     rec.at = w.refs.get(&Role::At).and_then(|v| v.first().cloned());
     rec.about = w.refs.get(&Role::About).and_then(|v| v.first().cloned());
     rec.to = w.refs.get(&Role::To).and_then(|v| v.first().cloned());
+    rec.held = w.refs.get(&Role::Held).and_then(|v| v.first().cloned());
     rec.outcomes = outcomes;
     rec.recipes = vec![w.recipe.clone()];
     // advanced_min stays 0: complete rows never move the clock — waits do
     let mut s = Sentence::bare(SentenceKind::Complete, Some(clock));
     s.trigger = Some(w.verb.clone());
     s.outcomes = rec.outcomes.clone();
+    rec.sentence = format_sentence(&s, dict)?;
+    Ok(rec)
+}
+
+/// Build the HOLD row for one held binding (§6.7): `HOLD <VERB> <ref>` —
+/// the verb names the open held-capable station, the window key rides along,
+/// the ref is the held card. No clock movement, no outcomes; the display
+/// clock is the world clock at the hold.
+pub(super) fn make_hold_record(
+    id: i64,
+    now_min: i64,
+    verb: &str,
+    window_key: &str,
+    held: &Ref,
+    dict: &Dictionary,
+) -> Result<ActionRecord> {
+    let clock = clock_from_abs_min(now_min);
+    let mut rec = base_record("hold", id, clock);
+    rec.trigger = Some(verb.to_string());
+    rec.window = Some(window_key.to_string());
+    rec.verb = verb.to_string();
+    rec.held = Some(held.clone());
+    let mut s = Sentence::bare(SentenceKind::Hold, Some(clock));
+    s.trigger = Some(verb.to_string());
+    s.held = Some(held.clone());
     rec.sentence = format_sentence(&s, dict)?;
     Ok(rec)
 }

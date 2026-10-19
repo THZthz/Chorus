@@ -27,7 +27,7 @@ use crate::core::types::{
 };
 use crate::engine::fold::fold;
 use crate::engine::store::{save_log, Log};
-use crate::engine::{execute_step, ExecOptions};
+use crate::engine::{execute_hold, execute_step, ExecOptions};
 use crate::error::Result;
 
 use super::explain::{explain_verb, DETAIL_LIMIT};
@@ -363,6 +363,154 @@ impl Game {
         Ok(turn(TurnKind::Action, lines))
     }
 
+    /// §6.7/§11: the `hold <card>` meta command — bind one card into the open
+    /// held-capable station's held slot. The card resolves by display face
+    /// over the visible table (the `inspect` discipline: exact, then unique
+    /// prefix); `hold <card> for <verb>` names the station when several
+    /// held-capable stations are open. One turn: the HOLD row echoes in the
+    /// canonical form, `undo` takes it back.
+    pub fn hold(&mut self, raw: &str) -> Result<Turn> {
+        let text = dsl_trim(raw);
+        if text.is_empty() {
+            return Ok(turn(
+                TurnKind::Error,
+                vec!["usage: hold <card> — or `hold <card> for <verb>` when several stations can take it".to_string()],
+            ));
+        }
+        // game-over, exactly as a play turn
+        if let Some(ended) = self.state.ended.clone() {
+            return Ok(turn(TurnKind::Info, vec![ending_notice(&ended)]));
+        }
+        // the trailing `for <verb>` names the station: the LONGEST tail of
+        // tokens joining to a registered verb wins (the explain head's scan)
+        let tokens = split_dsl_ws(text);
+        let mut verb_filter: Option<String> = None;
+        let mut card_end = tokens.len();
+        for len in (1..=tokens.len().saturating_sub(1).min(VERB_TOKEN_CAP)).rev() {
+            let start = tokens.len() - len;
+            if tokens[start].eq_ignore_ascii_case("for") {
+                let joined = tokens[start + 1..].join("_").to_uppercase();
+                if self.content.verbs.contains_key(&joined) {
+                    verb_filter = Some(joined);
+                    card_end = start;
+                    break;
+                }
+            }
+        }
+        let mut card_text = tokens[..card_end].join(" ");
+        if card_text.is_empty() {
+            return Ok(turn(
+                TurnKind::Error,
+                vec![format!(
+                    "hold needs a card: hold <card>{}",
+                    if verb_filter.is_some() { " for <verb>" } else { "" }
+                )],
+            ));
+        }
+        // names forgive articles (§11): a leading the/a/an drops before the
+        // display-face match (`hold the chalice` and `hold chalice` are one)
+        let lowered = card_text.to_lowercase();
+        if let Some(rest) = ["the ", "a ", "an "].iter().find_map(|a| lowered.strip_prefix(a)) {
+            card_text = card_text[card_text.len() - rest.len()..].to_string();
+        }
+        // the card: display-face match over the visible table, exact then
+        // unique prefix (the `inspect` discipline — a meta command resolves
+        // what the player sees, not the whole world)
+        let table = self.visible();
+        let face = |e: &Entity| display_name(&e.name);
+        let q = display_name(&card_text);
+        let alive: Vec<&&Entity> = table.iter().filter(|e| e.dead_action.is_none()).collect();
+        let matches: Vec<&&Entity> = alive.iter().copied().filter(|e| face(e) == q).collect();
+        let matches = if matches.is_empty() {
+            alive.iter().copied().filter(|e| face(e).starts_with(&q)).collect()
+        } else {
+            matches
+        };
+        let Some(card) = matches.first().copied() else {
+            return Ok(turn(
+                TurnKind::Error,
+                vec![format!(
+                    "nothing on the table answers to '{card_text}' — try 'cards' for the table"
+                )],
+            ));
+        };
+        let held_ref = Ref::Name { kind: None, name: card.name.clone() };
+        // the target station(s): every open DEFERRED window the verb filter
+        // admits — the engine re-checks fit and pins with its own precise
+        // messages, this scan only picks between stations and reports the
+        // ambiguity (among the stations the card actually fits)
+        let candidates: Vec<&OpenWindow> = self
+            .state
+            .windows
+            .values()
+            .filter(|w| {
+                w.recipe.is_empty()
+                    && w.refs.get(&Role::Held).is_none_or(|v| v.is_empty())
+                    && verb_filter.as_deref().is_none_or(|f| w.verb == f)
+            })
+            .collect();
+        if candidates.is_empty() {
+            let why = match verb_filter.as_deref() {
+                Some(v) => format!(
+                    "{} cannot take the hold — it is not open, not held-capable, already holds, or the card does not fit",
+                    super::render::display_name(v)
+                ),
+                None => "no open station can take the hold — `processing` names what is cooking"
+                    .to_string(),
+            };
+            return Ok(turn(TurnKind::Error, vec![why]));
+        }
+        let fitting: Vec<&OpenWindow> = candidates
+            .clone()
+            .into_iter()
+            .filter(|w| {
+                self.content
+                    .verbs
+                    .get(&w.verb)
+                    .and_then(|v| v.slot_by_role.get("held"))
+                    .and_then(|s| s.query.as_ref())
+                    .is_none_or(|q| match_query(card, q))
+            })
+            .collect();
+        if fitting.len() > 1 {
+            let verbs: Vec<String> = fitting.iter().map(|w| display_name(&w.verb)).collect();
+            return Ok(turn(
+                TurnKind::Error,
+                vec![format!(
+                    "several stations can take the hold — name one: hold <card> for {}",
+                    verbs.join(" / ")
+                )],
+            ));
+        }
+        let verb_name = fitting
+            .first()
+            .or_else(|| candidates.first())
+            .map(|w| w.verb.clone())
+            .unwrap_or_default();
+        let result = execute_hold(
+            &self.content,
+            &self.dict,
+            clone_state(&self.state),
+            &verb_name,
+            held_ref.clone(),
+            self.log.next_record_id(),
+        )?;
+        if let Some(rejected) = result.rejected {
+            return Ok(turn(TurnKind::Error, vec![rejected]));
+        }
+        self.turn_lengths.push(self.log.records.len());
+        let mut lines: Vec<String> = Vec::new();
+        for r in &result.records {
+            lines.extend(prose_lines(r, &self.content, &self.dict)?);
+        }
+        let own: Vec<String> = result.records.iter().map(row_text).collect();
+        lines.push(String::new());
+        lines.push(format!("« {} »", own.join(" | ")));
+        self.log.append_all(result.records);
+        self.state = result.state;
+        Ok(turn(TurnKind::Action, lines))
+    }
+
     // ---- the live area (§11): banner, status, the try row, help ----
 
     /// the opening screen: title, the script's goal, where and when the
@@ -491,6 +639,7 @@ impl Game {
             "  time: an action opens a station that finishes later — `wait` jumps to the next thing due; a clock like 1:4 jumps there".to_string(),
             "  save: write the play log to a file — `save <file.jsonl>`; `reach --from-state <file>` analyzes the midgame".to_string(),
             "  explain: `explain <verb> [bindings…] [all]` — every recipe of the verb, marked against the table or those bindings".to_string(),
+            "  hold: `hold <card>` while a held-capable station processes — the held binding can flip what its completion fires".to_string(),
             format!("  verbs: {}", self.verb_list()),
             "  views: look · cards · inspect <card> · story · journal · save <file> · undo · help · quit".to_string(),
         ])
@@ -648,6 +797,11 @@ impl Game {
             }
             if let Some(to) = &r.to {
                 refs.push(to);
+            }
+            // a held card is named through its binding (§6.7) — the table
+            // shows what a processing station holds
+            if let Some(held) = &r.held {
+                refs.push(held);
             }
             for rf in refs {
                 if let Ref::Name { name, .. } = rf {
@@ -888,7 +1042,31 @@ impl Game {
                 }
             }
         };
-        explain_verb(v, &bindings, &self.state, show_all)
+        let mut lines = explain_verb(v, &bindings, &self.state, show_all)?;
+        // the held face (§6.7): what the station holds, or the hold's reach —
+        // a held-capable verb's selection is deferred (§6.4), so the marks
+        // above ran against the empty held scope
+        if v.slot_by_role.contains_key("held") {
+            let held = self
+                .state
+                .windows
+                .values()
+                .find(|w| w.verb == v.name)
+                .and_then(|w| w.refs.get(&Role::Held).and_then(|rv| rv.first()))
+                .and_then(|r| self.binding_id(r))
+                .and_then(|id| self.state.entities.get(&id).map(|e| pretty(&e.name)));
+            match held {
+                Some(name) => lines.push(format!(
+                    "held: {name} (bound — the completion reads it; releases when the window closes)"
+                )),
+                None => lines.push(
+                    "held: empty — `hold <card>` while the station processes can flip the \
+                     deferred selection (§6.4)"
+                        .to_string(),
+                ),
+            }
+        }
+        Ok(lines)
     }
 
     /// the table binding behind a bare `explain <verb>`: each role filled to
@@ -1003,10 +1181,11 @@ impl Game {
         let Some(length) = self.turn_lengths.pop() else {
             return Ok(turn(TurnKind::Info, vec!["nothing to undo".to_string()]));
         };
-        // name what goes: the turn's own sentence(s), or the wait it was
+        // name what goes: the turn's own sentence(s), or the wait it was —
+        // a hold turn's HOLD row names itself the same way (§6.7)
         let own: Vec<String> = self.log.records[length..]
             .iter()
-            .filter(|r| r.kind == "action")
+            .filter(|r| r.kind == "action" || r.kind == "hold")
             .map(|r| r.sentence.clone())
             .collect();
         let what = if own.is_empty() {
@@ -1026,11 +1205,28 @@ impl Game {
     /// area's "processing:" line (v0.5). The (end, begin_id) order is the
     /// engine's frozen due-window order (the advance pass's sort in
     /// `engine::advance`, minus the clause tiebreak a rendering never needs).
+    /// A window holding a card (§6.7) names it: `study until 23:00 (holding
+    /// the chalice)`.
     #[must_use]
     pub fn processing(&self) -> Vec<String> {
         let mut windows: Vec<&OpenWindow> = self.state.windows.values().collect();
         windows.sort_by(|a, b| a.end.cmp(&b.end).then(a.begin_id.cmp(&b.begin_id)));
-        windows.iter().map(|w| format!("{} until {}", display_name(&w.verb), hhmm(w.end))).collect()
+        windows
+            .iter()
+            .map(|w| {
+                let held = w.refs.get(&Role::Held).and_then(|v| v.first()).and_then(|r| match r {
+                    Ref::Name { name, .. } => Some(pretty(name)),
+                    Ref::Id { id } => self.state.entities.get(id).map(|e| pretty(&e.name)),
+                    Ref::Param { name } => Some(pretty(name)),
+                });
+                match held {
+                    Some(name) => {
+                        format!("{} until {} (holding {name})", display_name(&w.verb), hhmm(w.end))
+                    }
+                    None => format!("{} until {}", display_name(&w.verb), hhmm(w.end)),
+                }
+            })
+            .collect()
     }
 
     /// let time pass: advance to the earliest window's end, or one hour when
@@ -1075,6 +1271,31 @@ impl Game {
     /// does a non-default recipe light on these bindings?
     fn recipe_lights(&self, verb: &CompiledVerb, b: &RoleBindings) -> Result<bool> {
         Ok(self.lit_recipe(verb, b)?.is_some())
+    }
+
+    /// the full §6.4 first-match walk these bindings select — the WINNING
+    /// recipe's id, a `when`-less default included (the flip detector reads
+    /// whole selections, not just lit ones). A matching REFUSE gate reads
+    /// `None` (the window would refuse, not fire) and so does no match.
+    fn selected_recipe(&self, verb: &CompiledVerb, b: &RoleBindings) -> Result<Option<String>> {
+        let p = PredCtx { b, state: &self.state, strict: false, roll: None };
+        for r in &verb.recipes {
+            if let Some(max) = r.max {
+                if self.state.executed.get(&r.id).is_some_and(|&n| n >= max) {
+                    continue;
+                }
+            }
+            let holds = match &r.when {
+                None => true,
+                Some(w) => eval_pred(w, &p)?,
+            };
+            if !holds {
+                continue;
+            }
+            let refuses = r.out.iter().any(|o| o.op == "REFUSE");
+            return Ok(if refuses { None } else { Some(r.id.clone()) });
+        }
+        Ok(None)
     }
 
     /// the display phrase, typeable as shown: companions before the verb
@@ -1241,16 +1462,81 @@ impl Game {
             }
             story.push(verb_story);
         }
+        // the hold flips (§11): an open DEFERRED held-capable station whose
+        // §6.4 selection would change under a fitting card suggests
+        // `hold <card>` — computed, not authored: the walk runs with and
+        // without each candidate, and only a card that actually changes the
+        // outcome suggests
+        let mut holds: Vec<String> = Vec::new();
+        let deferred: Vec<&OpenWindow> = self
+            .state
+            .windows
+            .values()
+            .filter(|w| w.recipe.is_empty() && w.refs.get(&Role::Held).is_none_or(|v| v.is_empty()))
+            .collect();
+        let multi = deferred.len() > 1;
+        for w in &deferred {
+            let Some(v) = self.content.verbs.get(&w.verb) else { continue };
+            let Some(slot) = v.slot_by_role.get("held") else { continue };
+            // the committed bindings, re-resolved; `held` is the variable
+            let mut base = RoleBindings::new();
+            for role in [Role::Actors, Role::Object, Role::With, Role::At, Role::About, Role::To] {
+                let ids: Vec<String> = w
+                    .refs
+                    .get(&role)
+                    .map(|refs| refs.iter().filter_map(|r| self.binding_id(r)).collect())
+                    .unwrap_or_default();
+                base.insert(role, ids);
+            }
+            base.insert(Role::Held, Vec::new());
+            let without = self.selected_recipe(v, &base)?;
+            // the held candidates: fitting, not locked anywhere (a hold
+            // cannot take a busy card), ranked like the pools
+            let me_container = me.attrs.get("container");
+            let mut candidates: Vec<&Entity> = alive
+                .iter()
+                .copied()
+                .filter(|e| {
+                    !busy_cards.contains(e.id.as_str())
+                        && slot.query.as_ref().is_none_or(|q| match_query(e, q))
+                })
+                .collect();
+            candidates.sort_by(|a, b| {
+                let rank = |e: &Entity| {
+                    if e.attrs.get("container") == me_container {
+                        0
+                    } else {
+                        1
+                    }
+                };
+                rank(a).cmp(&rank(b)).then_with(|| cmp_ascii_ci(&a.name, &b.name))
+            });
+            for card in candidates {
+                let mut with = base.clone();
+                with.insert(Role::Held, vec![card.id.clone()]);
+                let with_id = self.selected_recipe(v, &with)?;
+                if with_id.is_some() && with_id != without {
+                    let suffix = if multi {
+                        format!(" for {}", display_name(&w.verb))
+                    } else {
+                        String::new()
+                    };
+                    holds.push(format!("hold {}{suffix}", display_name(&card.name)));
+                }
+            }
+        }
         let mixed = round_robin(story, ROUND_ROBIN_CAP);
-        // dedupe, keep the lenient-parseable ones, cap at the limit
+        // dedupe, keep the lenient-parseable ones, cap at the limit; the
+        // hold suggestions bypass the play-line parse probe (the `hold`
+        // command is their reader)
         let mut seen: HashSet<String> = HashSet::new();
         let mut out: Vec<String> = Vec::new();
-        for s in mixed.into_iter().chain(flavor) {
+        for s in holds.into_iter().chain(mixed).chain(flavor) {
             if seen.contains(&s) {
                 continue;
             }
             seen.insert(s.clone());
-            if parse_player_input(&s, &self.lenient_ctx()).is_ok() {
+            if s.starts_with("hold ") || parse_player_input(&s, &self.lenient_ctx()).is_ok() {
                 out.push(s);
             }
         }

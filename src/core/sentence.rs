@@ -219,8 +219,8 @@ impl Outcome {
 
 impl Sentence {
     /// The zero-field sentence shell: no trigger, no clauses, no outcomes,
-    /// no span. The parser's kind branches and the engine's row builders
-    /// fill in the fields their kind carries.
+    /// no span, no held ref. The parser's kind branches and the engine's row
+    /// builders fill in the fields their kind carries.
     #[must_use]
     pub fn bare(kind: SentenceKind, clock: Option<Clock>) -> Sentence {
         Sentence {
@@ -230,6 +230,7 @@ impl Sentence {
             clauses: Vec::new(),
             outcomes: Vec::new(),
             span_min: None,
+            held: None,
         }
     }
 }
@@ -269,13 +270,16 @@ pub struct Outcome {
     pub call: Option<String>,
 }
 
-/// The sentence kind, serialized as `action` / `event` / `complete` / `wait`.
+/// The sentence kind, serialized as `action` / `event` / `complete` /
+/// `wait` / `hold`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SentenceKind {
     Action,
     Event,
     Complete,
     Wait,
+    /// v0.9.3: the held binding of an open station (§6.7) — `HOLD VERB ref`.
+    Hold,
 }
 
 impl SentenceKind {
@@ -286,6 +290,7 @@ impl SentenceKind {
             SentenceKind::Event => "event",
             SentenceKind::Complete => "complete",
             SentenceKind::Wait => "wait",
+            SentenceKind::Hold => "hold",
         }
     }
 }
@@ -295,13 +300,15 @@ impl SentenceKind {
 pub struct Sentence {
     pub kind: SentenceKind,
     pub clock: Option<Clock>,
-    /// event trigger id; the VERB of a COMPLETE row
+    /// event trigger id; the VERB of a COMPLETE or HOLD row
     pub trigger: Option<String>,
     pub clauses: Vec<Clause>,
     pub outcomes: Vec<Outcome>,
     /// wait rows only: the advanced span in minutes (records carry the same
     /// value as advancedMin — the clock row is the only clock-mover, v0.5)
     pub span_min: Option<i64>,
+    /// hold rows only (v0.9.3): the held card's ref (§6.7)
+    pub held: Option<Ref>,
 }
 
 /// A clause with actors and everything else empty — the canonical empty

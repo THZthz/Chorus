@@ -86,7 +86,8 @@ const LIST_ROLES: [&str; 3] = ["actors", "object", "with"];
 
 /// The role's ref list — the single-ref
 /// roles yield the one ref or null. The JSON image (null / array / object)
-/// is the canonical wire form.
+/// is the canonical wire form. `held` is never a clause position (§4.3 —
+/// the binding arrives through a HOLD row), so it reads the null image.
 fn role_refs(c: &Clause, role: Role) -> serde_json::Value {
     match role {
         Role::Actors => serde_json::to_value(&c.actors).unwrap_or(serde_json::Value::Null),
@@ -95,6 +96,7 @@ fn role_refs(c: &Clause, role: Role) -> serde_json::Value {
         Role::At => serde_json::to_value(&c.at).unwrap_or(serde_json::Value::Null),
         Role::About => serde_json::to_value(&c.about).unwrap_or(serde_json::Value::Null),
         Role::To => serde_json::to_value(&c.to).unwrap_or(serde_json::Value::Null),
+        Role::Held => serde_json::Value::Null,
     }
 }
 

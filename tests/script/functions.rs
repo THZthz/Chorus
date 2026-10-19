@@ -1176,6 +1176,7 @@ mod canonical_equals_expansion {
             clauses: vec![],
             outcomes: vec![node.clone()],
             span_min: None,
+            held: None,
         };
         assert_err_msg(format_sentence(&sentence, &dict), r"a function call is authored form only");
         let sentence = Sentence {
@@ -1191,6 +1192,7 @@ mod canonical_equals_expansion {
                 call: None,
             }],
             span_min: None,
+            held: None,
         };
         assert_err_msg(
             format_sentence(&sentence, &dict),

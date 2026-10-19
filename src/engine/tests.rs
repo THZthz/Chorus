@@ -581,6 +581,7 @@ mod smoke {
             at: None,
             about: None,
             to: None,
+            held: None,
             outcomes: vec![],
             recipes: vec!["pace.default".to_string()],
             // a degenerate sentence: quotes never close — unparseable
@@ -609,11 +610,12 @@ mod smoke {
         let (dict, content) = rig(vec![("PACE", pace(30, &["NARRATE \"d.\""]))], |_| {});
         let r = run(&content, &dict, seed_state(), "0:0 @ ANA PACE", 1);
         let line = serde_json::to_string(&r.records[0]).unwrap();
-        // hand-written canonical JSON shape for a BEGIN row
+        // hand-written canonical JSON shape for a BEGIN row (`held` rides
+        // between `to` and `outcomes`, explicit null on the wire)
         let expected = concat!(
             r#"{"id":1,"kind":"action","trigger":null,"tGame":"0:0","tReal":null,"advancedMin":30,"startMin":0,"#,
             r#""window":null,"actors":[{"form":"name","name":"ANA"}],"verb":"PACE","objects":[],"instruments":[],"#,
-            r#""at":null,"about":null,"to":null,"outcomes":[],"recipes":["pace.default"],"sentence":"0:0 @ ANA PACE"}"#
+            r#""at":null,"about":null,"to":null,"held":null,"outcomes":[],"recipes":["pace.default"],"sentence":"0:0 @ ANA PACE"}"#
         );
         assert_eq!(line, expected);
         // parse-back is lossless
@@ -677,6 +679,7 @@ mod smoke {
                 at: None,
                 about: None,
                 to: None,
+                held: None,
                 outcomes: vec![],
                 recipes: vec![],
                 sentence: String::new(),

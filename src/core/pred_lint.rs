@@ -198,13 +198,13 @@ mod tests {
         let e = lint_pred("recipe r1", &p).unwrap_err();
         assert_eq!(
             e.msg,
-            "recipe r1: count() argument 'DREAD' is neither a role (actors, object, with, at, about, to) nor a query (name:x, kind:k, aspect:a>=1, state:s, -term) — did you mean count(name:DREAD)?"
+            "recipe r1: count() argument 'DREAD' is neither a role (actors, object, with, at, about, to, held) nor a query (name:x, kind:k, aspect:a>=1, state:s, -term) — did you mean count(name:DREAD)?"
         );
         let p2 = parse_predicate("total(BOB, aspect:x) >= 1", &dict).unwrap();
         let e2 = lint_pred("recipe r2", &p2).unwrap_err();
         assert_eq!(
             e2.msg,
-            "recipe r2: total() first argument 'BOB' is not a declared role (actors, object, with, at, about, to) — total pools a role's aspects; the scope forms are total(bound, aspect:k) and total(table, aspect:k), and count(name:x) counts a pool by name"
+            "recipe r2: total() first argument 'BOB' is not a declared role (actors, object, with, at, about, to, held) — total pools a role's aspects; the scope forms are total(bound, aspect:k) and total(table, aspect:k), and count(name:x) counts a pool by name"
         );
         // trigger lint: rel/every/count over step roles are load errors
         let p3 = parse_predicate("rel(neighbor, actors)", &dict).unwrap();

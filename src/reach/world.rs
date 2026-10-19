@@ -64,15 +64,22 @@ pub(crate) fn effective_duration(v: &CompiledVerb, ri: Option<usize>) -> i64 {
 /// §6.3 sum scopes join the static class: `total(table, …)` is a pure world
 /// read, and `total(bound, …)` is decidable from the analyzer's window
 /// model (the [`BoundView`]) — a missing model reads Unknown, never an
-/// internal throw.
+/// internal throw. `count(held)` joins the same way (§6.7's held slot, §13.1):
+/// the analyzer models the hold as a player step it can arrange, so the
+/// gate decides over the held slot's fit — any other role's count reads
+/// runtime bindings and stays non-static.
 fn expr_static(v: &ValExpr) -> bool {
-    matches!(
-        v,
+    match v {
         ValExpr::Int { .. }
-            | ValExpr::CountQuery { .. }
-            | ValExpr::TotalTable { .. }
-            | ValExpr::TotalBound { .. }
-    )
+        | ValExpr::CountQuery { .. }
+        | ValExpr::TotalTable { .. }
+        | ValExpr::TotalBound { .. } => true,
+        // §6.7's held slot: the analyzer models the hold as arrangeable, so
+        // the gate decides over the held slot's fit (§13.1). Any other
+        // role's count reads runtime bindings and stays non-static.
+        ValExpr::Count { role } => role == "held",
+        _ => false,
+    }
 }
 
 /// A predicate is world-static when every operand is. The
@@ -124,8 +131,11 @@ pub(crate) struct BoundView<'a> {
     pub slots: Vec<BoundSlot<'a>>,
 }
 
-/// One declared slot's bindable face (see [`BoundView`]).
+/// One declared slot's bindable face (see [`BoundView`]). `role` is the
+/// lowercase slot role — the held slot's face is what a `count(held)` gate
+/// reads (§13.1's arrangeable-hold model).
 pub(crate) struct BoundSlot<'a> {
+    pub role: String,
     pub cards: Vec<&'a Entity>,
     pub min: i64,
     pub max: Option<i64>,
@@ -151,6 +161,23 @@ fn eval_expr_interval(
 ) -> Result<(i64, Option<i64>)> {
     match v {
         ValExpr::Int { v } => Ok((*v, Some(*v))),
+        // §6.7's held slot, the arrangeable face (§13.1): the hold is a
+        // player step the analyzer can arrange, like a commit — a fitting
+        // descriptor in the available world reads the count as exactly 1
+        // (the hold arranged; a require-held gate then decides True,
+        // provable), none reads exactly 0 (the gate decides False — the
+        // hold alone cannot satisfy it: never claim Proven off an
+        // unarrangeable hold). No window model at all (a chain-pinned verb's
+        // merged-gate walk, a trigger's empty bindings) reads the full-open
+        // pair — Unknown under every op, the widening-only invariant.
+        ValExpr::Count { role } if role == "held" => match bound {
+            None => Ok((i64::MIN, None)),
+            Some(b) => {
+                let fits =
+                    b.slots.iter().find(|s| s.role == "held").is_some_and(|s| !s.cards.is_empty());
+                Ok(if fits { (1, Some(1)) } else { (0, Some(0)) })
+            }
+        },
         ValExpr::CountQuery { query } => {
             let mut sum: i64 = 0;
             let mut unbounded = false;

@@ -28,12 +28,12 @@ use crate::core::types::Aspects;
 use crate::error::Result;
 
 /// The count-gate scan
-/// `/count\((actors|object|with|at|about|to)\)\s*(>=|<=|>|<|=|!=)\s*(\d+)/g`
+/// `/count\((actors|object|with|at|about|to|held)\)\s*(>=|<=|>|<|=|!=)\s*(\d+)/g`
 fn count_gate_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r"count\((actors|object|with|at|about|to)\){DSL_WS_CLASS}*(>=|<=|>|<|=|!=){DSL_WS_CLASS}*([0-9]+)"
+            r"count\((actors|object|with|at|about|to|held)\){DSL_WS_CLASS}*(>=|<=|>|<|=|!=){DSL_WS_CLASS}*([0-9]+)"
         ))
     })
 }
@@ -71,6 +71,33 @@ fn write_set_re() -> &'static Regex {
 fn name_lexeme_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$"))
+}
+
+/// Does the predicate read the held scope (§4.3's seventh role)? A read is
+/// any role position naming `held` — a count/total/path operand, a
+/// quantifier's role, a rel pair (`held` or its `.container` redirect).
+fn pred_reads_held(p: &Pred) -> bool {
+    match p {
+        Pred::And(a, b) | Pred::Or(a, b) => pred_reads_held(a) || pred_reads_held(b),
+        Pred::Not(a) => pred_reads_held(a),
+        Pred::Cmp { l, r, .. } => expr_reads_held(l) || expr_reads_held(r),
+        Pred::Rel { role, role2, .. } => [Some(role.as_str()), role2.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|r| r == "held" || r.strip_suffix(".container") == Some("held")),
+        Pred::Every { role, .. } | Pred::Any { role, .. } => role == "held",
+        Pred::Exists { .. } | Pred::ExistsQuery { .. } => false,
+    }
+}
+
+/// The operand half of [`pred_reads_held`].
+fn expr_reads_held(x: &ValExpr) -> bool {
+    match x {
+        ValExpr::Count { role } | ValExpr::Total { role, .. } | ValExpr::Path { role, .. } => {
+            role == "held"
+        }
+        _ => false,
+    }
 }
 
 /// Severity class of one lint finding (E11's two-class design).
@@ -152,6 +179,25 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
                 "verb {name}: declares slots but no recipes — every action rejects at selection (§6.6)"
             )));
         }
+        // the advisory dead-slot face (§6.1, §6.4): a held slot no recipe
+        // reads can never flip the deferred selection — the player can fill
+        // it to no effect. Recipes exist (the empty case is the ERROR above)
+        // and none of their whens reaches the held scope.
+        if verb.slots.iter().any(|s| s.role == "held")
+            && !verb.recipes.is_empty()
+            && verb.recipes.iter().all(|r| {
+                r.when
+                    .as_deref()
+                    .is_none_or(|w| parse_predicate(w, eff).is_ok_and(|p| !pred_reads_held(&p)))
+            })
+        {
+            findings.push(LintFinding {
+                severity: LintSeverity::Warning,
+                message: format!(
+                    "verb {name}: declares a held slot but no recipe reads it — no hold can flip the deferred selection (§6.1, §6.4)"
+                ),
+            });
+        }
     }
 
     // dead recipes: after a catch-all, shadowed by an identical when, or a
@@ -197,14 +243,27 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             } else {
                 whens.insert(norm, id.clone());
             }
-            // one `when`, one verdict: a count-gate error and the
-            // never-matching warning name the SAME deadness (a gate the
-            // slot cannot satisfy already proves the when false), so the
-            // error speaks and the warning stands down. A count over a role
-            // the verb never declared has no error to stand down for — its
-            // count binds nothing (§6.6), and the warning is the only
-            // finding that names it.
+            // one `when`, one verdict: the deadness errors below (the held
+            // ERROR face, the count-gate) and the never-matching warning
+            // name the SAME deadness (an error that already proves the when
+            // false), so the error speaks and the warning stands down. A
+            // count over a role the verb never declared has no error to
+            // stand down for — its count binds nothing (§6.6), and the
+            // warning is the only finding that names it.
             let mut gate_error = false;
+            // the held ERROR face (§6.1, §6.3): a recipe reading the held
+            // scope on a verb that declares no held slot — the scope is
+            // ALWAYS empty there (no HOLD step can ever bind), so every
+            // held-reading clause is dead content. The slot vocabulary is
+            // exact: a `held.container` rel role reads the scope the same way.
+            if let Ok(pred) = parse_predicate(when, eff) {
+                if pred_reads_held(&pred) && !slot_of.contains_key("held") {
+                    gate_error = true;
+                    findings.push(LintFinding::error(format!(
+                        "recipe {id} ({name}): reads the held scope but {name} declares no held slot — the scope is always empty there (§6.1, §6.3)"
+                    )));
+                }
+            }
             for cap in count_gate_re().captures_iter(when) {
                 let role = grp_text(&cap, 1);
                 let Some(slot) = slot_of.get(role) else {
@@ -241,9 +300,10 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
             // E11: the never-matching-`when` detector (the WARNING class).
             // compile_script above already parsed (and arg-linted) every
             // when, so the parse here cannot fail — a failure is skipped,
-            // never a panic (the lint never throws). A count-gate error on
-            // this recipe already reported the deadness (one root cause,
-            // one finding); without one, the detector speaks.
+            // never a panic (the lint never throws). A deadness error on
+            // this recipe (the held face, the count-gate) already reported
+            // it (one root cause, one finding); without one, the detector
+            // speaks.
             if !gate_error {
                 if let Ok(pred) = parse_predicate(when, eff) {
                     let mut cx = WhenCx::new(&slot_ranges);
@@ -350,16 +410,43 @@ pub fn lint_script_findings(text: &str, dict: &Dictionary) -> Result<Vec<LintFin
         dead_chain_check(&mut findings, &format!("trigger {}", t.id()), t.out(), empty_bindings);
     }
 
-    // template tokens: {actors} {object} {with} {at} {about} {to} {roll} — a
-    // typo renders literally at render time (§5.3); function bodies also
-    // interpolate their params (§10)
+    // the held ERROR face over recipe BODIES (§6.1, §6.3): an IF condition
+    // reading the held scope on a verb that declares no held slot — the
+    // same dead content the when-face above names, one branch deeper (the
+    // held-reading arm can never take). The walk runs on the compiled
+    // outcomes, so an IF inside an expanded call is still seen; one finding
+    // per recipe.
+    let mut held_if_seen: IndexSet<String> = IndexSet::new();
+    for (vname, v) in &compiled.content.verbs {
+        let held_slot = v.slot_by_role.contains_key("held");
+        for r in &v.recipes {
+            for_each_authored_outcome_infallible(&r.out, &mut |o| {
+                if o.op != "IF" || held_slot {
+                    return;
+                }
+                let Some(arms) = &o.arms else { return };
+                if arms.iter().any(|arm| pred_reads_held(&arm.when))
+                    && held_if_seen.insert(r.id.clone())
+                {
+                    findings.push(LintFinding::error(format!(
+                        "recipe {} ({vname}): an IF condition reads the held scope but {vname} declares no held slot — the scope is always empty there (§6.1, §6.3)",
+                        r.id
+                    )));
+                }
+            });
+        }
+    }
+
+    // template tokens: {actors} {object} {with} {at} {about} {to} {held}
+    // {roll} — a typo renders literally at render time (§5.3); function
+    // bodies also interpolate their params (§10)
     let known: Vec<&str> = role_names().into_iter().chain(["roll"]).collect();
     let scan_tokens = |findings: &mut Vec<LintFinding>, where_: &str, s: &str, extra: &[&str]| {
         for cap in template_token_re().captures_iter(s) {
             let tok = grp_text(&cap, 1);
             if !known.contains(&tok) && !extra.contains(&tok) {
                 findings.push(LintFinding::error(format!(
-                    "{where_}: unknown template token {{{tok}}} — roles are {{actors}} {{object}} {{with}} {{at}} {{about}} {{to}}, plus {{roll}} (§5.3)"
+                    "{where_}: unknown template token {{{tok}}} — roles are {{actors}} {{object}} {{with}} {{at}} {{about}} {{to}} {{held}}, plus {{roll}} (§5.3)"
                 )));
             }
         }

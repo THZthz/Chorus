@@ -5,6 +5,7 @@ mod common;
 
 mod clock;
 mod conditionals;
+mod desc;
 mod fn_expand_direct;
 mod functions;
 mod gate;

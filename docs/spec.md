@@ -59,6 +59,7 @@ projection of that data, never the source of truth.
 38. **v0.9.1** — the per-recipe window: the recipe-line `dur <duration>` modifier overrides the verb's `duration:` for that recipe's completions (§6.4 — window ends, the BEGIN row's `advancedMin` sum, chained follow-ups' own lengths); the reach cost/bounded-horizon faces read the same override; the fuzz generator gains the `dur` band (v8).
 39. **v0.9.2** — the predicate sum scopes: `total(bound, aspect:k)` sums the window's bindings across all its roles (per-binding) and `total(table, aspect:k)` sums the whole living world (§6.3); the reach intervals weight the count-world by level (the table scope) and model the verb's bindable window (the bound scope), Unknown only ever widening toward candidate (§13.1); the W1 always-true gate extends to open `total(table, …)` forms (§13.2); the fuzz generator gains the sum-scope `when` forms (v9).
 40. **v0.9.3** — the held slot: a verb may declare one extra role slot `held: 0..1 <query>` (§6.1 — held is the seventh role, §4.3); a player `hold <card>` step (§11) binds a fitting card into the open held-capable station as a logged HOLD row (§5.1, §6.7, §7); verbs with a held slot DEFER recipe selection to window completion (§6.4 — the BEGIN row records the deferral, the COMPLETE row the selected id), recipes read `held.…`/`count(held)` like any role and outcomes consume it like any role; the held card locks like other committed cards for the window's remainder; the lint gains the held faces (§13.2) and the reach model treats the hold as an arrangeable player step — `count(held)` decides over the held slot's fit, chain-pinned verbs stay Unknown (§13.1).
+41. **v0.9.4** — card descriptions: an entity or prototype line may carry one `desc "…"` attribute — single-line quoted display text under the §5.1 escape rules (§4.2), copied onto every card minted from the name by the mint's resolved name and rendered under the `inspect` face (§11); display only — no engine semantics, nothing logged, the fold recomputes it from the same name-keyed table.
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -182,6 +183,18 @@ spellings) and the boolean flag
 namespace `state.*`: `state.sealed`, `state.locked`, `state.hidden`,
 `state.portable`, `state.unique`. Queries read them via `state:sealed` /
 `state:!sealed` (§4.5); `SET`/`REVEAL` toggle them.
+
+**The description — `desc "…"` (v0.9.4).** An entity or prototype line may
+carry one `desc "…"` attribute — a single-line double-quoted string under the
+one §5.1 escape discipline (a NARRATE string's rules; blank-after-trim is a
+load error — the endings' blank-title loudness).
+The text is static display prose: it rides the card face as one
+`Option<String>`, copied onto every card minted from the name — declared
+entities at load, SPAWN/REPLACE/DRAW mints by the mint's RESOLVED name (the
+§4.2 stackable sets' lookup discipline, so a `derive`-renamed mint reads the
+prototype its new name names, if any). The play surface's `inspect` renders
+it under the face (§11); no predicate reads it, the log never carries it,
+and the fold recomputes it from the same name-keyed table.
 
 **Pools — `stackable`.** Dread, Funds, and Suspicion are pools of identical
 cards, not unique cards. An entity or prototype line may carry the
@@ -1868,8 +1881,10 @@ Rules:
   never special-cases a declared kind; the four built-in semantic roles
   (§4.1) stay built-in-only.
 - **Entity line**: `NAME is KIND [stackable] [with aspect:level, …]
-  [at|in PLACE]` (trailing `with`/`at`/`in` clauses in either order; the
-  `stackable` keyword sits before them, §4.2). Script ids are `s_<name>` —
+  [at|in PLACE] [desc "…"]` (trailing `with`/`at`/`in`/`desc` clauses in
+  either order; the `stackable` keyword sits before them, §4.2; the
+  prototype line takes the same trailing `desc "…"` — §4.2's display text).
+  Script ids are `s_<name>` —
   the name lowercased, so two names differing only in case mint the same id
   (`ANA`/`ana` → `s_ana`); since names are case-exact (§5.1), the id
   collision is its own load error, naming both names. Containers resolve by
@@ -2120,7 +2135,8 @@ printed once — later turns answer with the plain notice. The meta views are ty
 (place + clock, cards here, **exits** read off the living direction
 relations the same way `rel(<dir>, …)` gates travel, what the player
 carries, the processing stations), `cards` (the visible table, copies
-grouped), `inspect <name>` (a card's face; a card that left play says
+grouped), `inspect <name>` (a card's face — the declared `desc` renders
+under it (§4.2); a card that left play says
 "no longer in play (left play at action N)"; a bare `inspect` prints the
 usage and the table, never guessing a card), `journal` (canonical, recipe
 ids bracketed like the echo), `story` (prose), `undo` (names what it took

@@ -39,6 +39,15 @@ pub fn grp0_start(c: &regex::Captures) -> usize {
     c.get(0).map(|m| m.start()).unwrap_or_else(|| unreachable!("regex group 0 is always present"))
 }
 
+/// A group's end offset (bytes) — same always-participates guarantee as
+/// [`grp_text`]; only optional groups go through [`grp_opt`].
+#[must_use]
+pub fn grp_end(c: &regex::Captures, i: usize) -> usize {
+    c.get(i)
+        .map(|m| m.end())
+        .unwrap_or_else(|| unreachable!("capture group {i} always participates in this pattern"))
+}
+
 /// An OPTIONAL capture group's text (`(?:…)?` — may legitimately not
 /// participate; unmatched reads as `None`).
 #[must_use]

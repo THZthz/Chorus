@@ -15,7 +15,7 @@ use crate::content::{
 };
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
-use crate::core::regex_util::{grp0_start, grp_opt, grp_text, static_regex};
+use crate::core::regex_util::{grp0_start, grp_end, grp_opt, grp_text, static_regex};
 use crate::core::text::split_dsl_ws;
 use crate::core::text::{dsl_trim, DSL_NON_WS_CLASS, DSL_WS_CLASS};
 use crate::core::types::aspects_from_pairs;
@@ -65,6 +65,37 @@ fn with_re() -> &'static Regex {
 fn deriving_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || Regex::new(&format!(r"(?:^|{DSL_WS_CLASS}+)deriving{DSL_WS_CLASS}+(.+)$")))
+}
+
+/// `/(?:^|\s+)desc\s+(".*")/` — the §4.2 `desc "…"` attribute, matched
+/// ANYWHERE on the line: the greedy capture runs to the LAST quote on the
+/// line (only desc text carries quotes), and the clause loops check `desc`
+/// before the `with`/`at`/`in`/`deriving` scanners on EVERY iteration and
+/// splice the whole match out, so keyword-looking text inside the string
+/// (`found with care`, `stayed at home`) never feeds the scanners — tail
+/// position or not.
+fn desc_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    static_regex(&RE, || Regex::new(&format!(r#"(?:^|{DSL_WS_CLASS}+)desc{DSL_WS_CLASS}+(".*")"#)))
+}
+
+/// The decoded text of one quoted-string chunk: the sentence lexer's string
+/// scan — the ONE escape discipline every quoted form speaks (§5.1) —
+/// applied to the desc attribute, so `desc "a \"b\""` decodes exactly like a
+/// NARRATE string. Exactly one NON-BLANK string token must come out (the
+/// endings' blank-title loudness): `""`, `" "`, and `"a" "b"` are grammar
+/// errors.
+fn decode_desc(chunk: &str, ln: usize) -> Result<String> {
+    let toks = crate::core::lexer::lex(chunk)
+        .map_err(|e| ChorusError::new(format!("line {ln}: desc: {e}")))?;
+    match toks.first() {
+        Some(crate::core::lexer::Tok::Str { v }) if toks.len() == 1 && !dsl_trim(v).is_empty() => {
+            Ok(v.clone())
+        }
+        _ => Err(ChorusError::new(format!(
+            "line {ln}: desc expects one non-blank quoted string, got '{chunk}'"
+        ))),
+    }
 }
 
 /// `/^\s*([A-Za-z_][A-Za-z0-9_.]*):(-?\d+)\s*$/`
@@ -223,7 +254,7 @@ pub(super) fn parse_entity_line(
     };
     let Some(m) = entity_re().captures(base) else {
         return Err(ChorusError::new(format!(
-            "line {ln}: entities expect  NAME is KIND [with ...] [at PLACE] [on complete [<aspect>] -> ( outcomes )]"
+            "line {ln}: entities expect  NAME is KIND [stackable] [with ...] [at PLACE] [desc \"...\"] [on complete [<aspect>] -> ( outcomes )]"
         )));
     };
     let name = grp_text(&m, 1);
@@ -256,20 +287,34 @@ pub(super) fn parse_entity_line(
             dict.kinds_list()
         )));
     }
-    let mut rest: &str = rest0;
+    let mut rest: String = rest0.to_string();
     // §4.2: the `stackable` keyword sits before `with`/`at`/`in` clauses
     let mut stackable = false;
-    if let Some(sm) = stackable_re().find(rest) {
+    if let Some(sm) = stackable_re().find(&rest) {
         stackable = true;
-        rest = &rest[sm.end()..];
+        let end = sm.end();
+        rest.drain(..end);
     }
     // trailing clauses, in either order: "with specs" and "at/in PLACE" —
-    // strip whichever matches last
+    // strip whichever matches last — plus the §4.2 `desc "…"` attribute,
+    // spliced out of the line before the scanners on EVERY iteration, so its
+    // quoted text never feeds the scanners below (tail position or not)
     let mut container_name: Option<String> = None;
     let mut aspects: Aspects = IndexMap::new();
+    let mut desc: Option<String> = None;
     loop {
-        let at_in = at_in_re().captures(rest);
-        let with_m = with_re().captures(rest);
+        if let Some(dm) = desc_re().captures(&rest) {
+            if desc.is_some() {
+                return Err(ChorusError::new(format!("line {ln}: duplicate 'desc' attribute")));
+            }
+            desc = Some(decode_desc(grp_text(&dm, 1), ln)?);
+            let start = grp0_start(&dm);
+            let end = grp_end(&dm, 1);
+            rest = format!("{}{}", &rest[..start], &rest[end..]);
+            continue;
+        }
+        let at_in = at_in_re().captures(&rest);
+        let with_m = with_re().captures(&rest);
         // the earlier match wins (whichever clause starts first);
         // byte offsets order identically to the UTF-16 unit offsets
         if let Some(a) = &at_in {
@@ -277,11 +322,12 @@ pub(super) fn parse_entity_line(
             let with_is_first = with_m.as_ref().is_some_and(|w| grp0_start(w) >= a_start);
             if !with_is_first {
                 container_name = Some(grp_text(a, 1).to_string());
-                rest = &rest[..a_start];
+                rest.truncate(a_start);
                 continue;
             }
         }
         if let Some(w) = &with_m {
+            let w_start = grp0_start(w);
             let mut pairs: IndexMap<String, i64> = IndexMap::new();
             for spec in grp_text(w, 1).split(',') {
                 let Some(sm) = aspect_spec_re().captures(spec) else {
@@ -293,12 +339,12 @@ pub(super) fn parse_entity_line(
                 pairs.insert(grp_text(&sm, 1).to_string(), parse_authored_int(grp_text(&sm, 2)));
             }
             aspects = aspects_from_pairs(&pairs);
-            rest = &rest[..grp0_start(w)];
+            rest.truncate(w_start);
             continue;
         }
         break;
     }
-    if !dsl_trim(rest).is_empty() {
+    if !dsl_trim(&rest).is_empty() {
         return Err(ChorusError::new(format!("line {ln}: could not parse entity line '{t}'")));
     }
     entities.push(EntitySpec {
@@ -307,6 +353,7 @@ pub(super) fn parse_entity_line(
         stackable,
         aspects,
         container_name,
+        desc,
     });
     Ok(clause_src.unwrap_or_default())
 }
@@ -325,7 +372,7 @@ pub(super) fn parse_prototype_line(
     };
     let Some(m) = prototype_re().captures(base) else {
         return Err(ChorusError::new(format!(
-            "line {ln}: prototypes expect  NAME is KIND [stackable] [deriving ...] [with ...] [on complete [<aspect>] -> ( outcomes )]"
+            "line {ln}: prototypes expect  NAME is KIND [stackable] [deriving ...] [with ...] [desc \"...\"] [on complete [<aspect>] -> ( outcomes )]"
         )));
     };
     let name = grp_text(&m, 1);
@@ -335,17 +382,32 @@ pub(super) fn parse_prototype_line(
         return Err(ChorusError::new(format!("line {ln}: unknown kind '{kind}'")));
     }
     let mut proto = PrototypeDef { kind: kind.to_string(), ..PrototypeDef::default() };
-    let mut rest: &str = grp_text(&m, 3);
+    let mut rest: String = grp_text(&m, 3).to_string();
     // §4.2: the `stackable` keyword sits before `deriving`/`with` clauses
-    if let Some(sm) = stackable_re().find(rest) {
+    if let Some(sm) = stackable_re().find(&rest) {
         proto.stackable = true;
-        rest = &rest[sm.end()..];
+        let end = sm.end();
+        rest.drain(..end);
     }
     let mut aspects_done = false;
     let mut derive_done = false;
+    let mut desc: Option<String> = None;
     loop {
-        let with_m = with_re().captures(rest);
-        let deriving_m = deriving_re().captures(rest);
+        // the §4.2 `desc "…"` attribute — spliced out before the scanners on
+        // EVERY iteration, so its quoted text never feeds the with/deriving
+        // scanners (tail position or not)
+        if let Some(dm) = desc_re().captures(&rest) {
+            if desc.is_some() {
+                return Err(ChorusError::new(format!("line {ln}: duplicate 'desc' attribute")));
+            }
+            desc = Some(decode_desc(grp_text(&dm, 1), ln)?);
+            let start = grp0_start(&dm);
+            let end = grp_end(&dm, 1);
+            rest = format!("{}{}", &rest[..start], &rest[end..]);
+            continue;
+        }
+        let with_m = with_re().captures(&rest);
+        let deriving_m = deriving_re().captures(&rest);
         if let Some(w) = &with_m {
             let w_start = grp0_start(w);
             let deriving_is_first = deriving_m.as_ref().is_some_and(|d| grp0_start(d) >= w_start);
@@ -366,7 +428,7 @@ pub(super) fn parse_prototype_line(
                         .insert(grp_text(&sm, 1).to_string(), parse_authored_int(grp_text(&sm, 2)));
                 }
                 proto.aspects = Some(aspects_from_pairs(&pairs));
-                rest = &rest[..w_start];
+                rest.truncate(w_start);
                 continue;
             }
         }
@@ -375,9 +437,11 @@ pub(super) fn parse_prototype_line(
                 return Err(ChorusError::new(format!("line {ln}: duplicate 'deriving' clause")));
             }
             derive_done = true;
-            rest = &rest[..grp0_start(dm_all)];
+            let d_start = grp0_start(dm_all);
+            let spec_src = grp_text(dm_all, 1).to_string();
+            rest.truncate(d_start);
             let mut derive = PrototypeDerive::default();
-            for item in grp_text(dm_all, 1).split(',') {
+            for item in spec_src.split(',') {
                 if name_from_re().is_match(item) {
                     derive.name_from = Some("object".to_string());
                     continue;
@@ -402,9 +466,10 @@ pub(super) fn parse_prototype_line(
         }
         break;
     }
-    if !dsl_trim(rest).is_empty() {
+    if !dsl_trim(&rest).is_empty() {
         return Err(ChorusError::new(format!("line {ln}: could not parse prototype line '{t}'")));
     }
+    proto.desc = desc;
     Ok((name.to_string(), proto, clause_src.unwrap_or_default()))
 }
 

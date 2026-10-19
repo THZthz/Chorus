@@ -14,12 +14,12 @@ use chorus::engine::fold::fold;
 use chorus::engine::{execute_step, ExecOptions, Step};
 
 const STEPS: [&str; 6] = [
-    "0:28 @ ANA AT HOUSE READ THE_FORGETTING", // 14:00
-    "0:30 @ ANA, BERTHA READ FAIRY_TALES",     // 15:00 — ends 16:00 → dusk_falls fires
-    "0:32 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
-    "0:34 @ BERTHA READ MAGICK_BOOK", // refused — nobody who knows is present
-    "0:34 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ MAGICK_BOOK",
-    "0:40 @ ANA WAIT",
+    "0:84 @ ANA AT HOUSE READ THE_FORGETTING", // 14:00
+    "0:90 @ ANA, BERTHA READ FAIRY_TALES",     // 15:00 — ends 16:00 → dusk_falls fires
+    "0:96 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
+    "0:102 @ BERTHA READ MAGICK_BOOK", // refused — nobody who knows is present
+    "0:102 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ MAGICK_BOOK",
+    "0:120 @ ANA WAIT",
 ];
 
 /// the whole of the demo, as one test: play the six canonical steps
@@ -74,7 +74,7 @@ fn demo_plays_the_six_canonical_steps_and_fold_verifies() -> chorus::error::Resu
         "fold(log) must repopulate exactly the played entity set"
     );
     let clock = clock_from_abs_min(replayed.now);
-    assert_eq!((clock.day, clock.halfhour), (0, 40), "the folded clock is the last step's 0:40");
+    assert_eq!((clock.day, clock.tick), (0, 120), "the folded clock is the last step's 0:120");
 
     Ok(())
 }

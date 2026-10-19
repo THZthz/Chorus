@@ -903,7 +903,7 @@ fn authoring_rolled_in_content_is_a_load_error_engine_written_only() {
     let trigger_raw = ContentRaw {
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "t".into(),
-            slot: 1,
+            slot: 3,
             once: None,
             out: vec!["ROLLED(1, 2)".to_string()],
         })]),
@@ -1183,7 +1183,7 @@ fn a_slot_trigger_rolls_tiers_on_roll_and_the_event_row_carries_the_result() {
         &dict,
         vec![TriggerDef::Slot(SlotTriggerDef {
             id: "patrol".into(),
-            slot: 2,
+            slot: 6,
             once: Some(true),
             out: vec![
                 "ROLL(2, 6), IF roll >= 8 -> (SPAWN OMEN, NARRATE \"an omen stirs ({roll}).\") ELSE -> (NARRATE \"all quiet.\")"
@@ -1193,7 +1193,7 @@ fn a_slot_trigger_rolls_tiers_on_roll_and_the_event_row_carries_the_result() {
     )
     .unwrap();
     let state = seed_world();
-    let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 1).unwrap(); // 1h crosses slot 2
+    let r = settle_line(&c, &dict, state, "0:0 @ ANA WAIT", 1).unwrap(); // 1h crosses slot 6
     assert_eq!(r.rejected, None);
     let event = r.records.iter().find(|x| x.kind == "event").unwrap();
     assert_eq!(event.trigger.as_deref(), Some("patrol"));
@@ -1248,7 +1248,7 @@ fn trigger_roll_arguments_must_be_role_free_load_error_naming_the_argument() {
     let slot_trigger = |out: &str| {
         vec![TriggerDef::Slot(SlotTriggerDef {
             id: "t".into(),
-            slot: 1,
+            slot: 3,
             once: None,
             out: vec![out.to_string()],
         })]
@@ -1284,7 +1284,7 @@ fn a_trigger_reading_roll_with_no_possible_roll_is_a_load_error() {
             &dict,
             vec![TriggerDef::Slot(SlotTriggerDef {
                 id: "t".into(),
-                slot: 1,
+                slot: 3,
                 once: None,
                 out: vec!["IF roll >= 4 -> (NARRATE \"x\")".to_string()],
             })],
@@ -1305,13 +1305,13 @@ fn a_failing_later_event_after_a_trigger_roll_rejects_the_whole_step() {
         vec![
             TriggerDef::Slot(SlotTriggerDef {
                 id: "roller".into(),
-                slot: 2,
+                slot: 6,
                 once: Some(true),
                 out: vec!["ROLL(2, 6), NARRATE \"rolled.\"".to_string()],
             }),
             TriggerDef::Slot(SlotTriggerDef {
                 id: "breaker".into(),
-                slot: 2,
+                slot: 6,
                 once: Some(true),
                 out: vec!["ROLL(1, 1)".to_string()],
             }),
@@ -1338,7 +1338,7 @@ fn trigger_rolls_replay_through_saved_jsonl_rows() {
         &dict,
         vec![TriggerDef::Slot(SlotTriggerDef {
             id: "patrol".into(),
-            slot: 2,
+            slot: 6,
             once: Some(true),
             out: vec![
                 "ROLL(2, 6), IF roll >= 8 -> (SPAWN OMEN) ELSE -> (NARRATE \"quiet.\")".to_string()

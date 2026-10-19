@@ -157,7 +157,7 @@ fn a_deck_hit_behind_a_slot_trigger_draw_is_proven_the_order_is_seed_fixed_at_lo
             ("B_CARD".to_string(), proto("item")),
         ])),
         decks: Some(vec![deck("BOX", &["A_CARD", "B_CARD"])]),
-        triggers: Some(vec![slot_trigger("deal", 2, &["DRAW BOX"])]),
+        triggers: Some(vec![slot_trigger("deal", 6, &["DRAW BOX"])]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);
@@ -165,7 +165,7 @@ fn a_deck_hit_behind_a_slot_trigger_draw_is_proven_the_order_is_seed_fixed_at_lo
     let b = analyze_card(&content, &state, "B_CARD", CardOptions::default()).unwrap();
     assert_eq!(b.verdict, CardVerdict::Obtainable);
     assert!(b.chain[0].contains("deck BOX serves 'B_CARD'"));
-    assert!(b.chain.join("\n").contains("trigger deal fires on slot 2"));
+    assert!(b.chain.join("\n").contains("trigger deal fires on slot 6"));
 
     let c = analyze_card(&content, &state, "C_CARD", CardOptions::default()).unwrap();
     assert_eq!(c.verdict, CardVerdict::Unobtainable);
@@ -181,7 +181,7 @@ fn deck_capacity_one_once_trigger_draw_serves_only_order0_deeper_positions_are_n
         decks: Some(vec![deck("BOX", &["A_CARD", "B_CARD"])]),
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "deal".to_string(),
-            slot: 2,
+            slot: 6,
             once: Some(true),
             out: vec!["DRAW BOX".to_string()],
         })]),
@@ -355,7 +355,7 @@ fn the_fixpoint_chains_mints_through_slots_deck_card_to_slot_to_second_stage_min
             ("PILLAR".to_string(), proto("item")),
         ])),
         decks: Some(vec![deck("BOX", &["KEY_CARD"])]),
-        triggers: Some(vec![slot_trigger("deal", 2, &["DRAW BOX"])]),
+        triggers: Some(vec![slot_trigger("deal", 6, &["DRAW BOX"])]),
         verbs: IndexMap::from([(
             "EXPLORE".to_string(),
             verb(
@@ -406,7 +406,7 @@ fn mixture_a_deck_fed_card_satisfies_an_if_exists_guard_gating_a_spawn() {
             ("PILLAR".to_string(), proto("item")),
         ])),
         decks: Some(vec![deck("BOX", &["KEY_CARD"])]),
-        triggers: Some(vec![slot_trigger("deal", 2, &["DRAW BOX"])]),
+        triggers: Some(vec![slot_trigger("deal", 6, &["DRAW BOX"])]),
         verbs: IndexMap::from([(
             "EXPLORE".to_string(),
             verb(

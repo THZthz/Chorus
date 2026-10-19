@@ -50,7 +50,7 @@ ops:
   ABORT -> REFUSE("the op refuses")
 
 triggers:
-  dusk at halfhour 1 -> PRESS(THE_GUARD, 3)
+  dusk at tick 3 -> PRESS(THE_GUARD, 3)
 
 verbs:
   TOUCH:
@@ -103,7 +103,7 @@ fn an_op_declares_expands_and_plays_in_a_recipe() {
     assert_eq!(t.kind, TurnKind::Action, "{:?}", t.lines);
     assert!(t.lines.iter().any(|l| l.contains("OBJECT feels it: +1.")), "{:?}", t.lines);
     // the recipe op's SET applied to the bound role — and the 30m window
-    // completing at 0:30 crosses halfhour 1 in the SAME turn, so the slot
+    // completing at 0:30 crosses tick 3 (minute 30) in the SAME turn, so the slot
     // trigger's op adds its +3 before the turn ends
     assert_eq!(guard_pressure(&game), 4, "recipe op + trigger op both applied");
     // the log rows are built-in-shaped: no PRESS, no call — the recipe's
@@ -121,7 +121,7 @@ fn an_op_plays_from_a_slot_trigger_and_an_on_complete_body() {
     let mut game = Game::from_script(OP_SCRIPT, core_dictionary()).unwrap();
     // TOUCH (30m) completes at 0:30: the recipe's op sets +1, the on
     // complete clause mints through MINT_SUS, and the advance pass crosses
-    // halfhour 1 where the slot trigger's op sets +3 — every position is
+    // tick 3 (minute 30) where the slot trigger's op sets +3 — every position is
     // just another outcome list, and the deltas commute
     let t = auto_settle_line(&mut game, "touch the guard").unwrap();
     assert_eq!(t.kind, TurnKind::Action, "{:?}", t.lines);
@@ -457,7 +457,7 @@ fn the_event_trigger_ban_reaches_through_op_bodies() {
     // paren'd spelling — a bare name is SPAWN sugar and never a call)
     assert_err_msg(
         compile_script(
-            "triggers:\n  dusk at halfhour 1 -> GO_ADV()\nops:\n  GO_ADV -> ADVANCE(1h)\n",
+            "triggers:\n  dusk at tick 3 -> GO_ADV()\nops:\n  GO_ADV -> ADVANCE(1h)\n",
             &dict,
         ),
         "trigger dusk: ADVANCE belongs to verb recipes — events own no advance pass to stretch",
@@ -510,7 +510,7 @@ fn the_deck_check_sees_through_op_bodies() {
     // homes (named-ref membership checks run on the expanded lists)
     assert_err_msg(
         compile_script(
-            "triggers:\n  dusk at halfhour 1 -> DEAL()\nops:\n  DEAL -> DRAW NOWHERE\n",
+            "triggers:\n  dusk at tick 3 -> DEAL()\nops:\n  DEAL -> DRAW NOWHERE\n",
             &dict,
         ),
         r"trigger dusk: DRAW 'NOWHERE' is not a declared deck \(decks:\)",
@@ -526,7 +526,7 @@ fn the_trigger_roll_lint_sees_through_op_bodies() {
     // in tests/dice/dice.rs)
     assert_err_msg(
         compile_script(
-            "ops:\n  GAMBLE -> ROLL(count(actors), 6)\ntriggers:\n  dusk at halfhour 1 -> GAMBLE()\n",
+            "ops:\n  GAMBLE -> ROLL(count(actors), 6)\ntriggers:\n  dusk at tick 3 -> GAMBLE()\n",
             &dict,
         ),
         r"trigger dusk: ROLL argument count\(actors\) reads a step role — trigger bindings are empty, it would always be 0; use count\(<query>\) \(e\.g\. count\(name:actors\)\)",
@@ -701,4 +701,26 @@ fn the_lint_sees_an_op_bodys_writes_and_lints_a_clean_ops_script_clean() {
     // and a script that only declares ops lints entirely clean
     let findings = lint_script_findings("ops:\n  BUMP -> NARRATE \"bump.\"\n", &dict).unwrap();
     assert!(findings.is_empty(), "{findings:?}");
+}
+
+#[test]
+fn the_hour_alias_compiles_to_six_ticks_per_hour_and_tick_is_verbatim() {
+    // §10's trigger grammar: `at hour N` is the wall-clock alias (slot 6N
+    // under 144 ticks/day), `at tick N` carries its index verbatim
+    let dict = core_dictionary();
+    let compiled = compile_script(
+        "script: Probe\nplayer: ROWAN\nstart: 0:0\n\nentities:\n  HOUSE is place\n  ROWAN is character at HOUSE\n\ntriggers:\n  dawn once at hour 4 -> NARRATE \"dawn.\"\n  tick16 once at tick 16 -> NARRATE \"tick.\"\n",
+        &dict,
+    )
+    .unwrap();
+    let slots: Vec<(&str, i64)> = compiled
+        .content
+        .triggers
+        .iter()
+        .filter_map(|t| match t {
+            chorus::content::CompiledTrigger::Slot { id, slot, .. } => Some((id.as_str(), *slot)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(slots, [("dawn", 24), ("tick16", 16)]);
 }

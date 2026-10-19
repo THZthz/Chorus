@@ -152,7 +152,7 @@ fn run(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, tick: 0 })),
             clauses: s.clauses,
             t_real: None,
         },
@@ -229,14 +229,14 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         |raw| {
             raw.triggers = Some(vec![
                 TriggerDef::Slot(chorus::content::SlotTriggerDef {
-                    id: "halfhour_mark".to_string(),
-                    slot: 1,
+                    id: "tick_mark".to_string(),
+                    slot: 3,
                     once: None,
                     out: vec!["NARRATE \"mark.\"".to_string()],
                 }),
                 TriggerDef::Slot(chorus::content::SlotTriggerDef {
                     id: "ninety_mark".to_string(),
-                    slot: 3,
+                    slot: 9,
                     once: None,
                     out: vec!["NARRATE \"ninety.\"".to_string()],
                 }),
@@ -250,12 +250,12 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         &content,
         &dict,
         r2.state,
-        "0:3",
+        "0:9",
         (r1.records.len() + r2.records.len()) as i64 + 1,
     );
     assert_eq!(adv.rejected, None);
     // scenario: anchor-advance-chronological (frozen expectation) — FAST closes at
-    // 30 (before the halfhour mark), SLOW at 90 (before the ninety mark) —
+    // 30 (before the tick-3 mark), SLOW at 90 (before the ninety mark) —
     // completions lead, same-minute events follow.
     let shapes: Vec<(Option<&str>, Option<&str>)> =
         adv.records.iter().map(|r| (Some(r.kind.as_str()), r.trigger.as_deref())).collect();
@@ -263,7 +263,7 @@ fn advance_pass_is_chronological_across_windows_and_slots() {
         shapes,
         vec![
             (Some("complete"), Some("FAST")),
-            (Some("event"), Some("halfhour_mark")),
+            (Some("event"), Some("tick_mark")),
             (Some("complete"), Some("SLOW")),
             (Some("event"), Some("ninety_mark")),
             (Some("wait"), None),
@@ -296,7 +296,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     );
     let r1 = run(&content, &dict, seed(), "0:0 @ ANA PACE_A", 1); // beginId 1
     let r2 = run(&content, &dict, r1.state, "0:0 @ ANA PACE_B", 2); // beginId 2
-    let adv = run_clock(&content, &dict, r2.state, "0:1", 3);
+    let adv = run_clock(&content, &dict, r2.state, "0:3", 3);
     assert_eq!(adv.rejected, None);
     let closes: Vec<Option<&str>> =
         adv.records.iter().filter(|r| r.kind == "complete").map(|r| r.trigger.as_deref()).collect();
@@ -318,7 +318,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
         seed(),
         Step {
             start_min: None,
-            clock: Some(Clock { day: 0, halfhour: 0 }),
+            clock: Some(Clock { day: 0, tick: 0 }),
             clauses: s.clauses,
             t_real: None,
         },
@@ -330,7 +330,7 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     // scenario: anchor-due-tie-clause (frozen expectation) — clause 0 spans [0,30],
     // clause 1 (offset 30, duration 0) [30,30]
     assert_eq!(windows, vec![(0, 30), (30, 30)]);
-    let adv = run_clock(&content, &dict, r.state, "0:1", r.records.len() as i64 + 1);
+    let adv = run_clock(&content, &dict, r.state, "0:3", r.records.len() as i64 + 1);
     assert_eq!(adv.rejected, None);
     let closes: Vec<Option<&str>> =
         adv.records.iter().filter(|r| r.kind == "complete").map(|r| r.trigger.as_deref()).collect();
@@ -339,18 +339,18 @@ fn due_window_ties_break_by_begin_id_then_clause() {
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
-/// §3.14 row 2a — same-halfhour expiries fire in ENTITIES INSERTION order
+/// §3.14 row 2a — same-tick expiries fire in ENTITIES INSERTION order
 /// (the hoisted snapshot preserves State.entities insert order).
 /// scenario: anchor-expiry-insertion-order (frozen expectation).
 #[test]
-fn same_halfhour_expiries_fire_in_entity_insertion_order() {
+fn same_tick_expiries_fire_in_entity_insertion_order() {
     let (dict, content) = rig(vec![], |_| {});
     let mut state = seed();
     // insertion order ZOMBIE then APPLE — deliberately NOT name order
     expiring_item(&mut state, "z_card", "ZOMBIE_CARD", 30);
     expiring_item(&mut state, "a_card", "APPLE_CARD", 30);
     let base = clone_state(&state);
-    let adv = run_clock(&content, &dict, state, "0:1", 1);
+    let adv = run_clock(&content, &dict, state, "0:3", 1);
     assert_eq!(adv.rejected, None);
     // scenario: anchor-expiry-insertion-order (frozen expectation) — insertion
     // order, NOT alphabetical
@@ -397,7 +397,7 @@ fn authored_on_expire_first_match_in_declaration_order() {
     expiring_item(&mut state, "moth_g", "INFLUENCE_MOTH_G", 30);
     expiring_item(&mut state, "dust", "DUST", 30);
     let base = clone_state(&state);
-    let adv = run_clock(&content, &dict, state, "0:1", 1);
+    let adv = run_clock(&content, &dict, state, "0:3", 1);
     assert_eq!(adv.rejected, None);
     // scenario: anchor-on-expire-first-match (frozen expectation) — the first
     // authored match only, the un-authored name takes the built-in
@@ -447,10 +447,10 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     let r = run(&content, &dict, state, "0:0 @ ANA INCUBATE EGG", 1);
     assert_eq!(r.rejected, None);
     let post_begin = clone_state(&r.state);
-    let adv1 = run_clock(&content, &dict, r.state, "0:1", r.records.len() as i64 + 1);
+    let adv1 = run_clock(&content, &dict, r.state, "0:3", r.records.len() as i64 + 1);
     assert_eq!(adv1.rejected, None);
     // pass 1: [complete, wait] — the SET's fresh expiresAt=60 does NOT fire
-    // within this pass (the snapshot predates it), even though slot 1 (minute
+    // within this pass (the snapshot predates it), even though slot 3 (minute
     // 30) was crossed
     assert_eq!(kinds(&adv1.records), ["complete", "wait"]);
     let pre_adv1 = clone_state(&adv1.state);
@@ -465,10 +465,10 @@ fn expiry_snapshot_is_hoisted_no_cascade_next_pass_resolves() {
     assert_eq!(egg.attrs.get("expiresAt"), Some(&AttrValue::Num(60)));
     assert!(egg.dead_action.is_none());
     // pass 2: the snapshot now carries EGG@60; the pass walks 30 → 60 and the
-    // slot-2 crossing (minute 60) fires it — at the END of the walk, after
+    // slot-6 crossing (minute 60) fires it — at the END of the walk, after
     // any due windows (none here)
     let pre_adv2 = clone_state(&adv1.state);
-    let adv2 = run_clock(&content, &dict, adv1.state, "0:2", adv1.records.len() as i64 + 1 + 10);
+    let adv2 = run_clock(&content, &dict, adv1.state, "0:6", adv1.records.len() as i64 + 1 + 10);
     assert_eq!(adv2.rejected, None);
     assert_eq!(kinds(&adv2.records), ["event", "wait"]);
     assert_eq!(adv2.records[0].trigger.as_deref(), Some("expire:EGG"));
@@ -497,9 +497,9 @@ fn refuse_discards_advance_and_recycles_ids() {
     let r1 = run(&content, &dict, clone_state(&base), "0:0 @ ANA SEEDV", 1);
     assert_eq!(r1.records.len(), 1, "begin only — nothing due yet");
     assert_eq!(r1.state.windows.len(), 1);
-    // the refused step at 0:1 WOULD have closed the window first (complete +
+    // the refused step at 0:3 WOULD have closed the window first (complete +
     // wait), but the whole pass dies with the refusal
-    let r2 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
+    let r2 = run(&content, &dict, clone_state(&r1.state), "0:3 @ ANA GATE", 2);
     assert_eq!(r2.rejected, None, "a refusal is a logged result, not a rejection");
     assert_eq!(r2.records.len(), 1);
     assert_eq!(r2.records[0].id, 2, "a refusal row reuses the pass's firstRecordId");
@@ -513,11 +513,11 @@ fn refuse_discards_advance_and_recycles_ids() {
     assert_eq!(r2.state.windows.len(), 1);
     assert_eq!(snap(&r2.state), snap(&r1.state));
     // id recycle: the SAME attempt again mints the SAME id
-    let r3 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
+    let r3 = run(&content, &dict, clone_state(&r1.state), "0:3 @ ANA GATE", 2);
     assert_eq!(r3.records[0].id, 2, "a recycled id mints identically on replay");
     // a real advance now closes the still-open window with ids 2,3
     let begin_only_state = clone_state(&r1.state);
-    let adv = run_clock(&content, &dict, r1.state, "0:1", 2);
+    let adv = run_clock(&content, &dict, r1.state, "0:3", 2);
     assert_eq!(adv.records.iter().map(|r| r.id).collect::<Vec<_>>(), vec![2, 3]);
     assert_eq!(adv.state.windows.len(), 0);
     assert_eq!(adv.state.now, 30);
@@ -550,7 +550,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     let (dict, content) =
         rig(vec![verb_of("PACE", vec![actor_slot()], 30, &["NARRATE \"d.\""])], |_| {});
     let r = run(&content, &dict, seed(), "0:0 @ ANA PACE", 1);
-    let adv = run_clock(&content, &dict, r.state, "0:1", 2);
+    let adv = run_clock(&content, &dict, r.state, "0:3", 2);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     // fold the BEGIN only: windows rebuild, clock does not move
     let begin_only = vec![r.records[0].clone()];
@@ -581,7 +581,7 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
         id: 9,
         kind: "complete".to_string(),
         trigger: Some("PROBE".to_string()),
-        t_game: "0:5".to_string(),
+        t_game: "0:15".to_string(),
         t_real: None,
         advanced_min: 0,
         start_min: None,
@@ -609,8 +609,8 @@ fn wait_is_the_only_clock_mover_and_must_partition_time() {
     };
     let mut st = seed();
     apply_record(&bare_complete, &mut st, &dict, &content).unwrap();
-    // scenario: anchor-wait-partition (frozen expectation, folded) — 0:5 = day 0,
-    // halfhour 5 = minute 150; 150 + 30 = 180
+    // scenario: anchor-wait-partition (frozen expectation, folded) — 0:15 = day 0,
+    // tick 15 = minute 150; 150 + 30 = 180
     assert_eq!(st.entities["book"].attrs.get("expiresAt"), Some(&AttrValue::Num(180)));
 }
 
@@ -626,7 +626,7 @@ fn window_completion_failure_refuses_only_that_window() {
     let r = run(&content, &dict, seed(), "0:0 @ ANA BAD", 1);
     assert_eq!(r.rejected, None, "the BEGIN succeeds — the failure is deferred");
     assert_eq!(r.state.windows.len(), 1);
-    let adv = run_clock(&content, &dict, r.state, "0:1", 2);
+    let adv = run_clock(&content, &dict, r.state, "0:3", 2);
     assert_eq!(adv.rejected, None, "the pass did NOT roll back");
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     let complete = &adv.records[0];
@@ -638,7 +638,7 @@ fn window_completion_failure_refuses_only_that_window() {
     assert_eq!(adv.state.now, 30);
     // a second advance is healthy
     let adv_state = clone_state(&adv.state);
-    let adv2 = run_clock(&content, &dict, adv.state, "0:2", 10);
+    let adv2 = run_clock(&content, &dict, adv.state, "0:6", 10);
     assert_eq!(adv2.rejected, None);
     assert_eq!(kinds(&adv2.records), ["wait"]);
     // the fold agrees: the REFUSE complete row is a no-op that closed its window
@@ -660,7 +660,7 @@ fn advance_extension_lands_in_the_wait_span() {
     );
     let r = run(&content, &dict, seed(), "0:0 @ ANA HATCH", 1);
     assert_eq!(r.records[0].advanced_min, 30, "advancedMin is the window length, not the advance");
-    let adv = run_clock(&content, &dict, r.state, "0:1", 2);
+    let adv = run_clock(&content, &dict, r.state, "0:3", 2);
     assert_eq!(adv.rejected, None);
     assert_eq!(kinds(&adv.records), ["complete", "wait"]);
     let wait = &adv.records[1];
@@ -730,12 +730,12 @@ fn stations_and_committed_locks_gate_phase_two() {
     let r2 = run(&content, &dict, clone_state(&r1.state), "0:0 @ BERTHA SEIZE", 3);
     assert_eq!(
         r2.rejected.as_deref(),
-        Some("SEIZE is already processing — its station frees at 0:2")
+        Some("SEIZE is already processing — its station frees at 0:6")
     );
     assert!(r2.records.is_empty());
     // committed card busy (as object of another verb); actors stay free
     let r3 = run(&content, &dict, clone_state(&r1.state), "0:0 @ ANA TOUCH MAGICK_BOOK", 3);
-    assert_eq!(r3.rejected.as_deref(), Some("MAGICK BOOK is busy with SEIZE — it frees at 0:2"));
+    assert_eq!(r3.rejected.as_deref(), Some("MAGICK BOOK is busy with SEIZE — it frees at 0:6"));
     let r4 = run(&content, &dict, clone_state(&r1.state), "0:0 @ BERTHA TOUCH", 3);
     assert_eq!(r4.rejected, None, "the actor is never locked");
     assert_eq!(r4.state.windows.len(), 2, "two stations run in parallel");
@@ -824,7 +824,7 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
     assert!(r1.state.windows.values().any(|w| w.locked.iter().any(|id| id == "book")));
     let adv = run_clock(&content, &dict, r1.state, "1:0", 2);
     assert_eq!(adv.rejected, None);
-    // the expiry event fired at slot 1 (minute 30) while the card was locked
+    // the expiry event fired at slot 3 (minute 30) while the card was locked
     assert_eq!(adv.records[0].trigger.as_deref(), Some("expire:MAGICK_BOOK"));
     assert!(adv.state.entities["book"].dead_action.is_some());
     // the completion dropped the dead ref: SET found no targets (concretized
@@ -837,7 +837,7 @@ fn expiry_of_a_locked_card_drops_the_completion_refs() {
     assert_eq!(snap(&replayed), snap(&adv.state));
 }
 
-/// §3.14 row 12 — slot cadence: a trigger fires once per crossed halfhour in
+/// §3.14 row 12 — slot cadence: a trigger fires once per crossed tick in
 /// declaration order across MULTIPLE slots, and `once` fires only the first
 /// crossing. scenario: anchor-slot-cadence-once
 /// (frozen expectation: [mark@30, once_dusk@30, mark@60, wait]).
@@ -853,38 +853,38 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
             }),
             TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "mark".to_string(), // same id, later declaration — first match wins per slot
-                slot: 2,
+                slot: 6,
                 once: None,
                 out: vec!["NARRATE \"mark again.\"".to_string()],
             }),
             TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "once_dusk".to_string(),
-                slot: 1,
+                slot: 3,
                 once: Some(true),
                 out: vec!["NARRATE \"dusk.\"".to_string()],
             }),
         ]);
     });
-    let adv = run_clock(&content, &dict, seed(), "0:2", 1); // walk 0 → 60
+    let adv = run_clock(&content, &dict, seed(), "0:6", 1); // walk 0 → 60
     assert_eq!(adv.rejected, None);
-    // scenario: anchor-slot-cadence-once (frozen expectation) — slot 1 (minute 30):
-    // mark then once_dusk (declaration order); slot 2 (minute 60): the
+    // scenario: anchor-slot-cadence-once (frozen expectation) — slot 3 (minute 30):
+    // mark then once_dusk (declaration order); slot 6 (minute 60): the
     // second mark declaration
     assert_eq!(
         triggers(&adv.records),
         [
             Some("mark"),
             Some("once_dusk"),
-            Some("mark"), // the slot-2 declaration REUSES the id — fired only gates `once`
+            Some("mark"), // the slot-6 declaration REUSES the id — fired only gates `once`
             None,
         ]
     );
     assert_eq!(adv.state.now, 60);
-    // once: dusk fired exactly once — the NEXT slot-1 crossing (abs slot 49,
-    // minute 1470, day 1) refires `mark` (slot 2 declaration at abs 50,
+    // once: dusk fired exactly once — the NEXT slot-3 crossing (abs slot 147,
+    // minute 1470, day 1) refires `mark` (slot 6 declaration at abs 150,
     // minute 1500) but NOT `once_dusk`
     let pre = clone_state(&adv.state);
-    let adv2 = run_clock(&content, &dict, adv.state, "1:4", 10); // walk 60 → 1560
+    let adv2 = run_clock(&content, &dict, adv.state, "1:12", 10); // walk 60 → 1560
     let t2: Vec<Option<&str>> = adv2.records.iter().map(|r| r.trigger.as_deref()).collect();
     assert!(t2.contains(&Some("mark")), "non-once refires per crossing: {t2:?}");
     assert!(!t2.contains(&Some("once_dusk")), "once means once (§6.6)");
@@ -893,11 +893,35 @@ fn slot_triggers_fire_per_crossing_in_declaration_order_and_once_stays_once() {
     assert_eq!(snap(&replayed), snap(&adv2.state));
 }
 
+/// The denser grid pinned against off-by-one at the boundary count: a
+/// slot trigger at tick 3 (minute 30) fires on a wait to 0:3 and NOT on a
+/// wait to 0:2 (minute 20) — the boundary sits strictly between the two
+/// waits, so the second cannot fire it.
+#[test]
+fn a_tick_boundary_trigger_fires_at_its_tick_and_not_before() {
+    let (dict, content) = rig(vec![], |raw| {
+        raw.triggers = Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
+            id: "chime".to_string(),
+            slot: 3,
+            once: None,
+            out: vec!["NARRATE \"chime.\"".to_string()],
+        })]);
+    });
+    let short = run_clock(&content, &dict, seed(), "0:2", 1);
+    assert_eq!(short.rejected, None);
+    assert_eq!(kinds(&short.records), ["wait"], "minute 20 crosses no tick 3");
+    let full = run_clock(&content, &dict, seed(), "0:3", 1);
+    assert_eq!(full.rejected, None);
+    assert_eq!(kinds(&full.records), ["event", "wait"]);
+    assert_eq!(full.records[0].trigger.as_deref(), Some("chime"));
+    assert_eq!(full.records[0].t_game, "0:3");
+}
+
 // ------------------------------------------------------ input surface ------
 
 /// The input surface (migrated from the former parallel.rs): a lone clock
 /// token is a pure advance — rejected outright when nothing is due — and a
-/// begin minute quantizes to the halfhour grid, so a mid-halfhour minute is
+/// begin minute quantizes to the tick grid, so a mid-tick minute is
 /// representable and folds exactly.
 mod input_surface {
     use super::*;
@@ -918,7 +942,7 @@ mod input_surface {
         );
         let r = run(&g, &dict, state, "0:0 @ ANA PACE_A", 1);
         state = r.state;
-        let adv = run_clock(&g, &dict, state, "0:1", r.records.len() as i64 + 1);
+        let adv = run_clock(&g, &dict, state, "0:3", r.records.len() as i64 + 1);
         assert_eq!(adv.rejected, None);
         assert_eq!(
             adv.records.iter().map(|x| x.kind.as_str()).collect::<Vec<_>>(),
@@ -929,7 +953,7 @@ mod input_surface {
             &g,
             &dict,
             adv.state,
-            "0:2",
+            "0:6",
             (r.records.len() + adv.records.len()) as i64 + 1,
         );
         assert_eq!(
@@ -940,15 +964,15 @@ mod input_surface {
     }
 
     #[test]
-    fn beginning_at_a_mid_halfhour_minute_is_representable_and_folds_exactly() {
+    fn beginning_at_a_mid_tick_minute_is_representable_and_folds_exactly() {
         let (dict, c) = rig(
-            vec![verb_of("NAP", vec![actor_slot()], 20, &["NARRATE \"twenty minutes.\""])],
+            vec![verb_of("NAP", vec![actor_slot()], 15, &["NARRATE \"fifteen minutes.\""])],
             |_| {},
         );
         let mut state = seed();
-        let r1 = run(&c, &dict, state, "0:0 @ ANA NAP", 1); // [0, 20] — mid-halfhour end
+        let r1 = run(&c, &dict, state, "0:0 @ ANA NAP", 1); // [0, 15] — mid-tick end
         state = r1.state;
-        let adv = run_clock(&c, &dict, state, "0:1", r1.records.len() as i64 + 1);
+        let adv = run_clock(&c, &dict, state, "0:3", r1.records.len() as i64 + 1);
         assert_eq!(adv.state.now, 30);
         let adv_state = clone_state(&adv.state);
         // a second NAP begins at minute 30 exactly (now, quantized input 0:1 = 30)
@@ -956,13 +980,13 @@ mod input_surface {
             &c,
             &dict,
             adv.state,
-            "0:1 @ ANA NAP",
+            "0:3 @ ANA NAP",
             (r1.records.len() + adv.records.len()) as i64 + 1,
         );
         assert_eq!(r2.rejected, None);
         let w = r2.state.windows.values().next().expect("one open window");
         assert_eq!(w.start, 30);
-        assert_eq!(w.end, 50);
+        assert_eq!(w.end, 45);
         assert_eq!(snap(&fold(&r2.records, &adv_state, &dict, &c).unwrap()), snap(&r2.state));
     }
 }

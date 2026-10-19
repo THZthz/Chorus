@@ -117,12 +117,12 @@ fn expire_re() -> &'static Regex {
     })
 }
 
-/// Clock form: `ID [once] at (hour|halfhour) N -> …`
+/// Clock form: `ID [once] at (hour|tick) N -> …`
 fn trigger_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     static_regex(&RE, || {
         Regex::new(&format!(
-            r#"^({DSL_NON_WS_CLASS}+)({DSL_WS_CLASS}+once)?{DSL_WS_CLASS}+at{DSL_WS_CLASS}+(hour|halfhour){DSL_WS_CLASS}+([0-9]+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
+            r#"^({DSL_NON_WS_CLASS}+)({DSL_WS_CLASS}+once)?{DSL_WS_CLASS}+at{DSL_WS_CLASS}+(hour|tick){DSL_WS_CLASS}+([0-9]+){DSL_WS_CLASS}*->{DSL_WS_CLASS}*(.+)$"#
         ))
     })
 }
@@ -420,19 +420,19 @@ pub(super) fn parse_trigger_line(t: &str, ln: usize) -> Result<TriggerDef> {
     }
     let Some(m) = trigger_re().captures(t) else {
         return Err(ChorusError::new(format!(
-            "line {ln}: triggers expect  ID [once] at (hour|halfhour) N -> OUTCOMES  or  ID on expire of NAME -> OUTCOMES"
+            "line {ln}: triggers expect  ID [once] at (hour|tick) N -> OUTCOMES  or  ID on expire of NAME -> OUTCOMES"
         )));
     };
     let n = parse_authored_int(grp_text(&m, 4));
     if grp_text(&m, 3) == "hour" && n > 23 {
         return Err(ChorusError::new(format!("line {ln}: trigger hour must be 0..23")));
     }
-    if grp_text(&m, 3) == "halfhour" && n > 47 {
-        return Err(ChorusError::new(format!("line {ln}: trigger halfhour must be 0..47")));
+    if grp_text(&m, 3) == "tick" && n > 143 {
+        return Err(ChorusError::new(format!("line {ln}: trigger tick must be 0..143")));
     }
     Ok(TriggerDef::Slot(SlotTriggerDef {
         id: grp_text(&m, 1).to_string(),
-        slot: if grp_text(&m, 3) == "hour" { n * 2 } else { n },
+        slot: if grp_text(&m, 3) == "hour" { n * 6 } else { n },
         once: Some(grp_opt(&m, 2).is_some()),
         out: vec![grp_text(&m, 5).to_string()],
     }))

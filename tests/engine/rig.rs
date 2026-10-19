@@ -28,11 +28,11 @@ pub fn setup() -> (Dictionary, CompiledContent, State) {
     (dict, content, seed_state())
 }
 
-/// the step clock defaults to day 0 / halfhour 0 when the sentence omits one.
+/// the step clock defaults to day 0 / tick 0 when the sentence omits one.
 pub fn step_of(s: &Sentence) -> Step {
     Step {
         start_min: None,
-        clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+        clock: Some(s.clock.unwrap_or(Clock { day: 0, tick: 0 })),
         clauses: s.clauses.clone(),
         t_real: None,
     }

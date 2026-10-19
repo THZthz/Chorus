@@ -4,7 +4,9 @@
 //! guard, §6.4).
 
 use crate::content::CompiledContent;
-use crate::core::clock::{abs_min, clock_from_abs_min, format_clock, parse_clock};
+use crate::core::clock::{
+    abs_min, clock_from_abs_min, format_clock, parse_clock, MIN_PER_TICK, TICKS_PER_DAY,
+};
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
 use crate::core::predicate::RoleBindings;
@@ -23,11 +25,11 @@ use super::validate::{
     Prepared, COMMITTED_ROLES,
 };
 
-/// minutes in a day (48 halfhours of 30)
-const MIN_PER_DAY: i64 = 48 * 30;
+/// minutes in a day (144 ticks of 10)
+const MIN_PER_DAY: i64 = TICKS_PER_DAY * MIN_PER_TICK;
 
 /// §6.6: the farthest one step may advance the clock — seven days. The
-/// advance pass is linear in the halfhours crossed, so this bounds a single
+/// advance pass is linear in the ticks crossed, so this bounds a single
 /// step's work; nothing in a real log comes near it.
 const MAX_ADVANCE_MIN: i64 = 7 * MIN_PER_DAY;
 
@@ -47,7 +49,7 @@ pub fn execute_step(
     if let Some(ended) = &state_in.ended {
         return Ok(rejected(format!("the story has ended — {}", ended.title), state_in));
     }
-    // v0.5: the begin minute — start_min wins (a mid-halfhour begin is
+    // v0.5: the begin minute — start_min wins (a mid-tick begin is
     // representable), the quantized clock field is the input syntax.
     // A DEFINED start_min wins even when it is 0 (0 wins over the clock):
     // Option + unwrap_or_else, never a 0-sentinel.
@@ -63,13 +65,13 @@ pub fn execute_step(
                 "clock {} is before state.now ({}:{})",
                 format_clock(clock_from_abs_min(start_min)),
                 now.day,
-                now.halfhour
+                now.tick
             ),
             state_in,
         ));
     }
     // §6.6: one step may advance the clock at most MAX_ADVANCE_MIN ahead —
-    // the pass walks every halfhour it crosses (recurring triggers fire on
+    // the pass walks every tick it crosses (recurring triggers fire on
     // each), so an absurd clock (`9999999999:1`) would otherwise spin for
     // days of CPU and unbounded memory; a legitimate night never needs more
     if start_min - state_in.now > MAX_ADVANCE_MIN {
@@ -80,7 +82,7 @@ pub fn execute_step(
                 format_clock(clock_from_abs_min(start_min)),
                 MAX_ADVANCE_MIN / MIN_PER_DAY,
                 now.day,
-                now.halfhour
+                now.tick
             ),
             state_in,
         ));
@@ -92,7 +94,7 @@ pub fn execute_step(
             return Ok(rejected(
                 format!(
                     "nothing to do — the clock already reads {}:{} (commit an action, or name a later minute to wait)",
-                    now.day, now.halfhour
+                    now.day, now.tick
                 ),
                 state_in,
             ));
@@ -114,7 +116,7 @@ pub fn execute_step(
 
     // Phase 1 — the advance (v0.5): everything due at or before the begin
     // minute resolves first — due windows in (end, begin_id, clause) order,
-    // slot events at each crossed halfhour, completions before same-minute
+    // slot events at each crossed tick, completions before same-minute
     // events. Atomic with the whole step: any rejection below discards the
     // pass — nothing logged, clock unmoved (§9.2).
     let draft = clone_state(&state_in);

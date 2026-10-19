@@ -3,7 +3,7 @@
 //! TTY); the REPL (bin/chorus.rs) renders it.
 //!
 //! The full player surface: handle_line, undo
-//! (+ `turn_lengths` bookkeeping), wait's ceil-to-halfhour quantization,
+//! (+ `turn_lengths` bookkeeping), wait's ceil-to-tick quantization,
 //! visible/suggestions/story/journal/look/cards/inspect/save, and BOTH
 //! game-over texts (this file speaks the UI notice; the engine's rejected
 //! short text stays in `engine::exec`).
@@ -14,7 +14,7 @@ use std::path::Path;
 
 use crate::content::script::{compile_script, ScriptMeta};
 use crate::content::{CompiledContent, CompiledSlot, CompiledVerb};
-use crate::core::clock::{clock_from_abs_min, Clock, MIN_PER_HALFHOUR};
+use crate::core::clock::{clock_from_abs_min, Clock, MIN_PER_TICK};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::{eval_pred, PredCtx, RoleBindings};
 use crate::core::query::{match_query, QueryTerm};
@@ -1035,19 +1035,19 @@ impl Game {
 
     /// let time pass: advance to the earliest window's end, or one hour when
     /// nothing is in flight (the `wait` meta word; typing `1:12` does the
-    /// same). The clock input is halfhour-quantized, so round the target UP —
+    /// same). The clock input is tick-quantized, so round the target UP —
     /// the advance then resolves everything due at or before it.
     pub fn wait(&mut self) -> Result<Turn> {
         let now = self.state.now;
         let due_at =
             self.state.windows.values().map(|w| w.end).min().unwrap_or(now + IDLE_WAIT_MIN);
-        // ceil to the halfhour — the manual ceil-division is exact for the
+        // ceil to the tick — the manual ceil-division is exact for the
         // non-negative minutes the engine ever holds (i64::div_ceil is still
         // feature-gated on this toolchain)
-        let target = (due_at + MIN_PER_HALFHOUR - 1) / MIN_PER_HALFHOUR * MIN_PER_HALFHOUR;
+        let target = (due_at + MIN_PER_TICK - 1) / MIN_PER_TICK * MIN_PER_TICK;
         let clock = clock_from_abs_min(target);
-        let Clock { day, halfhour } = clock;
-        self.handle_line(&format!("{day}:{halfhour}"))
+        let Clock { day, tick } = clock;
+        self.handle_line(&format!("{day}:{tick}"))
     }
 
     /// the recipe these bindings would light, mirroring the engine's §6.4

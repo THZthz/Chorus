@@ -4,7 +4,7 @@
 //!   canonical passthrough, suggestion surfaces, case-insensitive names;
 //!   E9's multi-role binding (distinct §4.2 pool copies head-first, the
 //!   too-small-pool refusal, same-role doubling unchanged) and E6's bare
-//!   clock halfhour wrap (the canonical form stays strict);
+//!   clock tick wrap (the canonical form stays strict);
 //! - Game: from_script → handle_line → journal/story/look → undo → bogus
 //!   error, visible/inspect projection, suggestions with `s[0]` pinned,
 //!   and BOTH game-over texts through a
@@ -28,7 +28,7 @@ fn lenient_routes_the_pinned_phrases() {
     let mut game = Game::from_script(FLYER, dict).unwrap();
     // 22:00 — the cry; the ledger comes to light with the body (before it
     // nothing on the train reads through the aether-seal)
-    game.handle_line("0:44").unwrap();
+    game.handle_line("0:132").unwrap();
     let ctx = LenientCtx {
         dict: &game.dict,
         content: &game.content,
@@ -40,7 +40,7 @@ fn lenient_routes_the_pinned_phrases() {
     let ParsedInput::Ok { step, .. } = parse_player_input("wait", &ctx) else {
         panic!("'wait' must parse");
     };
-    assert_eq!(step.start_min, Some(44 * 30)); // the default begin minute is NOW
+    assert_eq!(step.start_min, Some(132 * 10)); // the default begin minute is NOW
     let c0 = &step.clauses[0];
     assert_eq!(c0.verb, "WAIT");
     assert_eq!(c0.actors.len(), 1);
@@ -78,10 +78,10 @@ fn lenient_routes_the_pinned_phrases() {
     );
 
     // 'canonical passthrough still works'
-    let ParsedInput::Ok { step, .. } = parse_player_input("0:44 @ MARCH WAIT", &ctx) else {
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:132 @ MARCH WAIT", &ctx) else {
         panic!("passthrough must parse");
     };
-    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 0, halfhour: 44 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 0, tick: 132 }));
 
     // 'unknown words get suggestions' — the failed word is 'vane',
     // so the suggestion rides the normalized-prefix path
@@ -258,11 +258,11 @@ fn single_mentions_and_same_role_doubles_are_untouched() {
 // ------------------------- lenient: E6 bare-clock wrap ----------------------
 
 #[test]
-fn the_bare_lenient_clock_wraps_halfhour_overflow() {
-    // E6 (spec §11): the lenient front door WRAPS an out-of-range halfhour
-    // field the way durations compose — `0:118` is 118 halfhours = day 2,
-    // halfhour 22 — where the CANONICAL `d:h @` passthrough keeps its frozen
-    // loud `bad halfhour` bound. Per form: lenient wraps, canonical refuses.
+fn the_bare_lenient_clock_wraps_tick_overflow() {
+    // E6 (spec §11): the lenient front door WRAPS an out-of-range tick
+    // field the way durations compose — `0:354` is 354 ticks = day 2,
+    // tick 66 — where the CANONICAL `d:u @` passthrough keeps its frozen
+    // loud `bad tick` bound. Per form: lenient wraps, canonical refuses.
     let dict = core_dictionary();
     let game = Game::from_script(FLYER, dict).unwrap();
     let ctx = LenientCtx {
@@ -272,35 +272,46 @@ fn the_bare_lenient_clock_wraps_halfhour_overflow() {
         player: Some("MARCH"),
     };
 
-    let ParsedInput::Ok { step, .. } = parse_player_input("0:118", &ctx) else {
-        panic!("0:118 must wrap");
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:354", &ctx) else {
+        panic!("0:354 must wrap");
     };
-    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 2, halfhour: 22 }));
-    assert_eq!(step.start_min, Some((2 * 48 + 22) * 30));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 2, tick: 66 }));
+    assert_eq!(step.start_min, Some((2 * 144 + 66) * 10));
 
-    // 1:49 crosses the day too (1*48 + 49 = 97 halfhours = day 2, halfhour 1)
-    let ParsedInput::Ok { step, .. } = parse_player_input("1:49", &ctx) else {
-        panic!("1:49 must wrap");
+    // 1:147 crosses the day too (1*144 + 147 = 291 ticks = day 2, tick 3)
+    let ParsedInput::Ok { step, .. } = parse_player_input("1:147", &ctx) else {
+        panic!("1:147 must wrap");
     };
-    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 2, halfhour: 1 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 2, tick: 3 }));
 
     // the boundary itself folds exactly one day; the legal top of a day is
     // untouched
-    let ParsedInput::Ok { step, .. } = parse_player_input("0:48", &ctx) else {
-        panic!("0:48 must wrap");
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:144", &ctx) else {
+        panic!("0:144 must wrap");
     };
-    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 1, halfhour: 0 }));
-    let ParsedInput::Ok { step, .. } = parse_player_input("0:47", &ctx) else {
-        panic!("0:47 is legal");
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 1, tick: 0 }));
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:143", &ctx) else {
+        panic!("0:143 is legal");
     };
-    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 0, halfhour: 47 }));
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 0, tick: 143 }));
 
     // the canonical passthrough keeps the strict bound — the frozen §5
     // discipline governs that form
-    let ParsedInput::Fail { error, .. } = parse_player_input("0:118 @ MARCH WAIT", &ctx) else {
+    let ParsedInput::Fail { error, .. } = parse_player_input("0:354 @ MARCH WAIT", &ctx) else {
         panic!("the canonical form must refuse");
     };
-    assert!(error.contains("bad halfhour"), "{error}");
+    assert!(error.contains("bad tick"), "{error}");
+
+    // the fresh fold point: 0:150 wraps to day 1, tick 6 (01:00), and the
+    // canonical form refuses it with the same bound
+    let ParsedInput::Ok { step, .. } = parse_player_input("0:150", &ctx) else {
+        panic!("0:150 must wrap");
+    };
+    assert_eq!(step.clock, Some(chorus::core::clock::Clock { day: 1, tick: 6 }));
+    let ParsedInput::Fail { error, .. } = parse_player_input("0:150 @ MARCH WAIT", &ctx) else {
+        panic!("the canonical form must refuse");
+    };
+    assert!(error.contains("bad tick"), "{error}");
 }
 
 // --------------------- lenient through the engine: the pair plays -----------
@@ -492,6 +503,37 @@ fn suggestions_are_concrete_executable_actions() {
 }
 
 #[test]
+fn wait_ceils_the_due_window_to_the_tick() {
+    // a window due at minute 65 waits to minute 70 (the next tick), not
+    // 25 minutes later — the denser grid only
+    // shortens the jump (idle waits ceil to the 10-minute tick)
+    const CEIL_SCRIPT: &str = "
+script: Ceil Rig
+player: ANA
+start: 0:0
+
+entities:
+  HOUSE is place
+  ANA is character at HOUSE
+
+verbs:
+  EXPLORE:
+    actors: 1 kind:character
+    object: 1 kind:place
+    duration: 65m
+    recipes:
+      default -> NARRATE \"searched.\"
+";
+    let dict = core_dictionary();
+    let mut game = Game::from_script(CEIL_SCRIPT, dict).unwrap();
+    game.handle_line("explore the house").unwrap();
+    assert_eq!(game.processing(), vec!["explore until 01:05"]);
+    let turn = game.wait().unwrap();
+    assert_eq!(turn.kind, TurnKind::Action);
+    assert_eq!(game.state.now, 70, "the wait ceiled 65 up to the tick at 70");
+}
+
+#[test]
 fn processing_lists_open_windows_soonest_first_begin_id_on_ties() {
     // the processing view (§11): open windows sort by end minute, ties
     // broken by begin_id (commit order); each line reads
@@ -505,7 +547,7 @@ fn processing_lists_open_windows_soonest_first_begin_id_on_ties() {
         let t = game.handle_line(line).unwrap();
         assert_eq!(t.kind, TurnKind::Action, "`{line}` must commit: {:?}", t.lines);
     }
-    // dream and use_on both end at 0:2 (one hour = two halfhours from 0:0) —
+    // dream and use_on both end at 0:6 (one hour = six ticks from 0:0) —
     // the earlier begin (dream, committed first) comes first; study runs an
     // hour longer and closes the list.
     assert_eq!(
@@ -519,8 +561,8 @@ fn processing_lists_open_windows_soonest_first_begin_id_on_ties() {
 }
 
 #[test]
-fn an_absurd_clock_jump_refuses_instead_of_walking_halfhours_forever() {
-    // §6.6: the advance pass crosses every halfhour in its span (recurring
+fn an_absurd_clock_jump_refuses_instead_of_walking_ticks_forever() {
+    // §6.6: the advance pass crosses every tick in its span (recurring
     // triggers fire on each) — a giant day field must be a loud refusal, not
     // an unbounded walk
     let dict = core_dictionary();
@@ -547,7 +589,7 @@ fn game_over_speaks_both_texts_and_undo_reopens() {
         chorus::core::types::clone_state(&game.state),
         chorus::engine::Step {
             start_min: None,
-            clock: Some(chorus::core::clock::Clock { day: 0, halfhour: 44 }),
+            clock: Some(chorus::core::clock::Clock { day: 0, tick: 132 }),
             clauses: vec![],
             t_real: None,
         },

@@ -100,10 +100,10 @@ fn stackable_proto(kind: &str) -> PrototypeDef {
     PrototypeDef { kind: kind.to_string(), stackable: true, ..PrototypeDef::default() }
 }
 
-fn slot_trigger(id: &str, halfhour: i64, once: bool, out: &[&str]) -> TriggerDef {
+fn slot_trigger(id: &str, tick: i64, once: bool, out: &[&str]) -> TriggerDef {
     TriggerDef::Slot(SlotTriggerDef {
         id: id.to_string(),
-        slot: halfhour,
+        slot: tick,
         once: Some(once),
         out: out.iter().map(|s| (*s).to_string()).collect(),
     })
@@ -134,7 +134,7 @@ fn wait_to(
     content: &CompiledContent,
     from: State,
     day: i64,
-    halfhour: i64,
+    tick: i64,
     first_record_id: i64,
 ) -> chorus::engine::ExecResult {
     let dict = core_dictionary();
@@ -142,12 +142,7 @@ fn wait_to(
         content,
         &dict,
         from,
-        Step {
-            start_min: None,
-            clock: Some(Clock { day, halfhour }),
-            clauses: vec![],
-            t_real: None,
-        },
+        Step { start_min: None, clock: Some(Clock { day, tick }), clauses: vec![], t_real: None },
         ExecOptions { first_record_id, id_gen: None },
     )
     .expect("the step executes")
@@ -214,7 +209,7 @@ fn the_chain_fixture_costs_exactly_two_applications_and_the_duration_sum() {
 fn a_slot_trigger_costs_minutes_but_zero_applications() {
     let raw = ContentRaw {
         prototypes: Some(IndexMap::from([("GEM".to_string(), proto("item"))])),
-        triggers: Some(vec![slot_trigger("t_gem", 2, true, &["SPAWN GEM"])]),
+        triggers: Some(vec![slot_trigger("t_gem", 6, true, &["SPAWN GEM"])]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);
@@ -229,7 +224,7 @@ fn a_slot_trigger_costs_minutes_but_zero_applications() {
     let plan = rep.plan.as_ref().expect("GEM is proven");
     // the clock fires the trigger: no verb application, but the wait is real
     assert_eq!(plan.apps, 0);
-    assert_eq!(plan.minutes, 60, "halfhour 2 at now 0 is minute 60");
+    assert_eq!(plan.minutes, 60, "tick 6 at now 0 is minute 60");
     assert_eq!(plan.witness, "trigger t_gem mints GEM");
 
     let mut buf = String::new();
@@ -274,7 +269,7 @@ fn an_expiry_trigger_is_arranged_and_its_required_card_recurs() {
         stackable: false,
     };
     seed.attrs.insert("container".into(), chorus::core::types::AttrValue::Str("ROOM".into()));
-    seed.attrs.insert("expires".into(), chorus::core::types::AttrValue::Str("2halfhour".into()));
+    seed.attrs.insert("expires".into(), chorus::core::types::AttrValue::Str("1h".into()));
     let state = state_with(vec![ana(), seed]);
     let dict = core_dictionary();
     let analyzer = Analyzer::new(&content, &state, &dict);
@@ -394,7 +389,7 @@ fn the_replayed_world_anchors_costs_and_the_cursor_consumes_deck_copies() {
             defaultcard: None,
             reset: false,
         }]),
-        triggers: Some(vec![slot_trigger("t_draw", 1, false, &["DRAW BOX"])]),
+        triggers: Some(vec![slot_trigger("t_draw", 3, false, &["DRAW BOX"])]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);
@@ -409,16 +404,16 @@ fn the_replayed_world_anchors_costs_and_the_cursor_consumes_deck_copies() {
 
     // play two wait steps a day apart: the recurring draw fires twice, the
     // cursor consumes order[0..2), and the drawn copies ride the replay
-    let r1 = wait_to(&content, new_state(0), 0, 1, 1);
+    let r1 = wait_to(&content, new_state(0), 0, 3, 1);
     assert_eq!(r1.state.decks.get("BOX"), Some(&1));
-    let r2 = wait_to(&content, r1.state, 1, 1, r1.records.len() as i64 + 1);
+    let r2 = wait_to(&content, r1.state, 1, 3, r1.records.len() as i64 + 1);
     assert_eq!(r2.state.decks.get("BOX"), Some(&2));
     let mut records = r1.records;
     records.extend(r2.records);
     let path = crate::common::rig::tmp_log_path("reach-cost-replay");
     save_log(&path, &records).unwrap();
     let mid = replay_state(&path, &initial, &dict, &content).unwrap();
-    assert_eq!(mid.now, 1470, "day 1, halfhour 1");
+    assert_eq!(mid.now, 1470, "day 1, tick 3");
 
     // the replayed face: the deck row shrinks to the remaining window
     // (order[2..3)), the drawn copies are initial facts, and the clock
@@ -467,7 +462,7 @@ fn the_replayed_world_anchors_costs_and_the_cursor_consumes_deck_copies() {
 fn the_by_window_bounds_the_dag_and_a_note_says_so() {
     let raw = ContentRaw {
         prototypes: Some(IndexMap::from([("GEM".to_string(), proto("item"))])),
-        triggers: Some(vec![slot_trigger("t_gem", 2, true, &["SPAWN GEM"])]),
+        triggers: Some(vec![slot_trigger("t_gem", 6, true, &["SPAWN GEM"])]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);

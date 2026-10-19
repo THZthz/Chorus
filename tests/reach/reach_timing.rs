@@ -67,10 +67,10 @@ fn stackable_proto(kind: &str) -> PrototypeDef {
     PrototypeDef { kind: kind.to_string(), stackable: true, ..PrototypeDef::default() }
 }
 
-fn slot_trigger(id: &str, halfhour: i64, once: bool, out: &[&str]) -> TriggerDef {
+fn slot_trigger(id: &str, tick: i64, once: bool, out: &[&str]) -> TriggerDef {
     TriggerDef::Slot(SlotTriggerDef {
         id: id.to_string(),
-        slot: halfhour,
+        slot: tick,
         once: Some(once),
         out: out.iter().map(|s| (*s).to_string()).collect(),
     })
@@ -98,13 +98,13 @@ fn recipe(out: &[&str]) -> RecipeDef {
     }
 }
 
-/// The clean by-window fixture: one ONCE slot trigger at halfhour 2
+/// The clean by-window fixture: one ONCE slot trigger at tick 6
 /// (minute 60) spawning THE_GEM. `once` keeps the risky-freeze model out —
 /// a recurring minter would set the freeze at its own crossing.
 fn gem_raw() -> ContentRaw {
     ContentRaw {
         prototypes: Some(IndexMap::from([("THE_GEM".to_string(), proto("item"))])),
-        triggers: Some(vec![slot_trigger("t_gem", 2, true, &["SPAWN THE_GEM"])]),
+        triggers: Some(vec![slot_trigger("t_gem", 6, true, &["SPAWN THE_GEM"])]),
         ..ContentRaw::default()
     }
 }
@@ -138,7 +138,7 @@ fn by_window_slot_trigger_two_states_around_the_bound_are_byte_exact() {
         "script.txt · card THE_GEM\n  \
          verdict: OBTAINABLE  (existence: proven)\n  path 1/1:\n    \
          · SPAWN 'THE_GEM' — via trigger t_gem\n        \
-         · trigger t_gem fires on slot 2 (once: true — still fires its first crossing) — the clock is unbounded forward\n\n"
+         · trigger t_gem fires on slot 6 (once: true — still fires its first crossing) — the clock is unbounded forward\n\n"
     );
 
     // M BEFORE the first crossing: the trigger has not fired, the site
@@ -177,7 +177,7 @@ fn by_window_slot_trigger_two_states_around_the_bound_are_byte_exact() {
         "script.txt · card THE_GEM  [by minute 60]\n  \
          verdict: OBTAINABLE  (existence: proven)\n  path 1/1:\n    \
          · SPAWN 'THE_GEM' — via trigger t_gem\n        \
-         · trigger t_gem fires on slot 2 (once: true — still fires its first crossing) — first crossing at minute 60, inside the by 60 window\n\n"
+         · trigger t_gem fires on slot 6 (once: true — still fires its first crossing) — first crossing at minute 60, inside the by 60 window\n\n"
     );
 
     // a WIDE M keeps the default verdict, by-annotated
@@ -202,8 +202,8 @@ fn frozen_pair_raw() -> ContentRaw {
     ContentRaw {
         prototypes: Some(IndexMap::from([("THE_GEM".to_string(), proto("item"))])),
         triggers: Some(vec![
-            slot_trigger("t_a", 1, false, &["SPAWN THE_GEM"]),
-            slot_trigger("t_b", 4, false, &["SPAWN THE_GEM"]),
+            slot_trigger("t_a", 3, false, &["SPAWN THE_GEM"]),
+            slot_trigger("t_b", 12, false, &["SPAWN THE_GEM"]),
         ]),
         ..ContentRaw::default()
     }
@@ -236,7 +236,7 @@ fn by_and_freeze_take_the_tighter_horizon() {
     assert_eq!(wide.verdict, CardVerdict::Obtainable);
     assert_eq!(
         wide.paths[0].supports[0],
-        "trigger t_a fires on slot 1 (every crossing) — first crossing at minute 30, inside the by 5000 window"
+        "trigger t_a fires on slot 3 (every crossing) — first crossing at minute 30, inside the by 5000 window"
     );
     let blockers = Analyzer::new(&content, &state, &dict).by(5000).card_blockers("THE_GEM");
     assert!(blockers.iter().all(|b| b.blocker == CardBlocker::DupRisk), "{blockers:?}");
@@ -323,9 +323,9 @@ fn by_bounds_duration_recipes_only_duration0_proves() {
 // --from-state: the replayed world
 // ---------------------------------------------------------------------------
 
-/// The midgame fixture: a once trigger (halfhour 2 = minute 60) that spawns
+/// The midgame fixture: a once trigger (tick 6 = minute 60) that spawns
 /// THE_GEM and draws BOX (advancing the cursor past order[0]), and a
-/// recurring trigger at halfhour 6 (minute 300) that keeps drawing. The
+/// recurring trigger at tick 18 (minute 180) that keeps drawing. The
 /// deck cards are STACKABLE so the two draws stay collision-free (the
 /// recurring draw stays unbounded — the clean future source).
 const MIDGAME_SCRIPT: &str = "\
@@ -348,16 +348,16 @@ decks:
   BOX spec A_CARD, B_CARD
 
 triggers:
-  t_gem once at halfhour 2 -> SPAWN THE_GEM, DRAW BOX
-  t_draw at halfhour 6 -> DRAW BOX
+  t_gem once at tick 6 -> SPAWN THE_GEM, DRAW BOX
+  t_draw at tick 18 -> DRAW BOX
 ";
 
 /// One empty-clause step = the wait row (the only clock mover): advance the
-/// fold to `halfhour`, firing whatever the pass finds there.
+/// fold to `tick`, firing whatever the pass finds there.
 fn wait_to(
     content: &chorus::content::CompiledContent,
     from: State,
-    halfhour: i64,
+    tick: i64,
     first_record_id: i64,
 ) -> chorus::engine::ExecResult {
     let dict = core_dictionary();
@@ -367,7 +367,7 @@ fn wait_to(
         from,
         Step {
             start_min: None,
-            clock: Some(Clock { day: 0, halfhour }),
+            clock: Some(Clock { day: 0, tick }),
             clauses: vec![],
             t_real: None,
         },
@@ -393,9 +393,9 @@ fn midgame_replay_models_fired_once_triggers_and_deck_cursors() {
         assert_eq!(rep.verdict, CardVerdict::Obtainable, "{name}");
     }
 
-    // play one wait step to 0:02 (minute 60): t_gem fires (spawn + draw),
-    // t_draw (minute 300) does not
-    let r = wait_to(content, new_state(0), 2, 1);
+    // play one wait step to 0:6 (minute 60): t_gem fires (spawn + draw),
+    // t_draw (minute 180) does not
+    let r = wait_to(content, new_state(0), 6, 1);
     assert!(r.state.fired.contains("t_gem"), "the once trigger fired");
     let path = crate::common::rig::tmp_log_path("reach-timing");
     save_log(&path, &r.records).unwrap();
@@ -442,7 +442,7 @@ fn midgame_replay_models_fired_once_triggers_and_deck_cursors() {
     assert!(tail.chain[0].contains(&format!("deck BOX serves '{second}'")), "{:?}", tail.chain);
 
     // --by composes with the replay and anchors to the MIDGAME clock:
-    // t_draw (halfhour 6) next crosses at minute 180 (120 past now=60)
+    // t_draw (tick 18) next crosses at minute 180 (120 past now=60)
     let bounded = Analyzer::new(content, &mid, &dict)
         .replayed()
         .by(100)
@@ -481,7 +481,7 @@ fn the_deck_cursor_bounds_the_remaining_permutation_non_reset_never_returns() {
             defaultcard: None,
             reset: false,
         }]),
-        triggers: Some(vec![slot_trigger("t_draw", 6, false, &["DRAW BOX"])]),
+        triggers: Some(vec![slot_trigger("t_draw", 18, false, &["DRAW BOX"])]),
         ..ContentRaw::default()
     };
     let content = compile(&raw);
@@ -613,7 +613,7 @@ fn the_cli_faces_compose_and_the_error_faces_hold() {
     let dict = core_dictionary();
     let compiled = compile_script(MIDGAME_SCRIPT, &dict).unwrap();
     let second = compiled.content.decks.get("BOX").unwrap().order[1].name.clone();
-    let r = wait_to(&compiled.content, new_state(0), 2, 1);
+    let r = wait_to(&compiled.content, new_state(0), 6, 1);
     let script = temp_file("reach-timing-cli", "mid.txt", MIDGAME_SCRIPT);
     let log = temp_file("reach-timing-cli", "mid.jsonl", "");
     save_log(std::path::Path::new(&log), &r.records).unwrap();
@@ -706,14 +706,14 @@ endings:
         compiled.state.clone(),
         Step {
             start_min: None,
-            clock: Some(Clock { day: 0, halfhour: 0 }),
+            clock: Some(Clock { day: 0, tick: 0 }),
             clauses: step.clauses,
             t_real: None,
         },
         ExecOptions { first_record_id: 1, id_gen: None },
     )
     .unwrap();
-    let r = wait_to(&compiled.content, begin.state, 1, begin.records.len() as i64 + 1);
+    let r = wait_to(&compiled.content, begin.state, 3, begin.records.len() as i64 + 1);
     assert!(r.state.ended.is_some(), "the story ended");
     let script = temp_file("reach-timing-end", "end.txt", script_text);
     let log = temp_file("reach-timing-end", "end.jsonl", "");

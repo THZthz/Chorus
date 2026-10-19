@@ -160,7 +160,7 @@ mod authored_expiry_triggers {
         let mut all_records: Vec<ActionRecord> = Vec::new();
         let mut e_id: Option<String> = None;
         let mut c_id: Option<String> = None;
-        for step in ["0:30 @ ANA WAIT", "0:32 @ ANA WAIT", "0:34 @ ANA WAIT"] {
+        for step in ["0:90 @ ANA WAIT", "0:96 @ ANA WAIT", "0:102 @ ANA WAIT"] {
             let r = run_moth(&dict, state, step, id);
             assert_eq!(r.rejected, None);
             all_records.extend(r.records.clone());
@@ -214,7 +214,7 @@ mod authored_expiry_triggers {
                 triggers: Some(vec![
                     TriggerDef::Slot(SlotTriggerDef {
                         id: "dusk_falls".to_string(),
-                        slot: 32,
+                        slot: 96,
                         once: None,
                         out: vec!["SPAWN DREAD".to_string()],
                     }),
@@ -240,9 +240,9 @@ mod authored_expiry_triggers {
         .unwrap();
         state.entities.get_mut("chalice").unwrap().attrs.insert(
             "expiresAt".to_string(),
-            AttrValue::Num(16 * 60), // same crossing as dusk (slot 32)
+            AttrValue::Num(16 * 60), // same crossing as dusk (slot 96)
         );
-        let r = settle_line(&c, &dict, state, "0:28 @ ANA WAIT; ANA WAIT; ANA WAIT", 1).unwrap();
+        let r = settle_line(&c, &dict, state, "0:84 @ ANA WAIT; ANA WAIT; ANA WAIT", 1).unwrap();
         assert_eq!(r.rejected, None);
         let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(
@@ -292,7 +292,7 @@ mod authored_expiry_triggers {
             .attrs
             .insert("expiresAt".to_string(), AttrValue::Num(15 * 60));
         let before = snap(&state);
-        let r = settle_line(&c, &dict, state, "0:28 @ ANA WAIT; ANA WAIT", 1).unwrap();
+        let r = settle_line(&c, &dict, state, "0:84 @ ANA WAIT; ANA WAIT", 1).unwrap();
         assert_rejected(&r, r"already in use");
         assert_eq!(r.records.len(), 0);
         assert_eq!(snap(&r.state), before);
@@ -304,7 +304,7 @@ mod authored_expiry_triggers {
         let mut state = moth_base();
         let mut all: Vec<ActionRecord> = Vec::new();
         let mut id = 1;
-        for step in ["0:30 @ ANA WAIT", "0:32 @ ANA WAIT", "0:34 @ ANA WAIT"] {
+        for step in ["0:90 @ ANA WAIT", "0:96 @ ANA WAIT", "0:102 @ ANA WAIT"] {
             let r = run_moth(&dict, state, step, id);
             assert_eq!(r.rejected, None);
             all.extend(r.records.clone());
@@ -344,7 +344,7 @@ mod trigger_outcome_guards {
             compile_content(
                 &raw(TriggerDef::Slot(SlotTriggerDef {
                     id: "t".to_string(),
-                    slot: 1,
+                    slot: 3,
                     once: None,
                     out: vec!["PROGRESS(30m, \"tick\")".to_string()],
                 })),
@@ -379,7 +379,7 @@ mod trigger_outcome_guards {
             compile_content(
                 &raw(TriggerDef::Slot(SlotTriggerDef {
                     id: "t".to_string(),
-                    slot: 1,
+                    slot: 3,
                     once: None,
                     out: vec!["REFUSE(\"no\")".to_string()],
                 })),
@@ -442,16 +442,16 @@ mod set_expires_duration_forms {
         compile_content(&ContentRaw { verbs, ..ContentRaw::default() }, dict, &[]).unwrap()
     }
 
-    /// 0:20 = absolute minute 600
+    /// 0:60 = absolute minute 600
     fn at(minutes: i64) -> i64 {
-        20 * 30 + minutes
+        60 * 10 + minutes
     }
 
     #[test]
     fn quoted_durations_materialize_expires_at() {
         let td = tune_dict();
         for (lit, minutes) in [
-            ("\"2halfhour\"", 60),
+            ("\"1h\"", 60),
             ("\"90m\"", 90),
             ("\"1h30m\"", 90),
             ("\"2h\"", 120),
@@ -463,7 +463,7 @@ mod set_expires_duration_forms {
                 &tune_content(&td, &format!("SET(CHALICE, expires, {lit})")),
                 &td,
                 state,
-                "0:20 @ ANA TUNE",
+                "0:60 @ ANA TUNE",
                 1,
             )
             .unwrap();
@@ -486,10 +486,10 @@ mod set_expires_duration_forms {
     fn bare_duration_literals_are_unchanged_the_lexer_pre_converts_them() {
         let td = tune_dict();
         let r = settle_line(
-            &tune_content(&td, "SET(CHALICE, expires, 2halfhour)"),
+            &tune_content(&td, "SET(CHALICE, expires, 1h)"),
             &td,
             seed_state(),
-            "0:20 @ ANA TUNE",
+            "0:60 @ ANA TUNE",
             1,
         )
         .unwrap();
@@ -505,10 +505,10 @@ mod set_expires_duration_forms {
         // expiresAt. The authored `expires` attr itself keeps its authored
         // form: minutes for bare, the string for quoted
         let rq = settle_line(
-            &tune_content(&td, "SET(CHALICE, expires, \"2halfhour\")"),
+            &tune_content(&td, "SET(CHALICE, expires, \"1h\")"),
             &td,
             seed_state(),
-            "0:20 @ ANA TUNE",
+            "0:60 @ ANA TUNE",
             1,
         )
         .unwrap();
@@ -519,7 +519,7 @@ mod set_expires_duration_forms {
         );
         assert_eq!(
             rq.state.entities["chalice"].attrs.get("expires"),
-            Some(&AttrValue::Str("2halfhour".to_string()))
+            Some(&AttrValue::Str("1h".to_string()))
         );
         assert_eq!(r.state.entities["chalice"].attrs.get("expires"), Some(&AttrValue::Num(60)));
     }
@@ -532,7 +532,7 @@ mod set_expires_duration_forms {
             &tune_content(&td, "SET(CHALICE, expires, \"2fortnights\")"),
             &td,
             state,
-            "0:20 @ ANA TUNE",
+            "0:60 @ ANA TUNE",
             1,
         )
         .unwrap();
@@ -567,7 +567,7 @@ mod set_expires_duration_forms {
                                 hint: None,
                                 max: None,
                                 aspects: Vec::new(),
-                                out: vec!["SET(CHALICE, expires, \"2halfhour\")".to_string()],
+                                out: vec!["SET(CHALICE, expires, \"1h\")".to_string()],
                             }],
                         },
                     ),
@@ -615,14 +615,15 @@ mod set_expires_duration_forms {
             &[],
         )
         .unwrap();
-        let r1 = settle_line(&c, &td, state, "0:28 @ ANA TUNE", 1).unwrap(); // expiresAt = 28*30 + 60
+        let r1 = settle_line(&c, &td, state, "0:84 @ ANA TUNE", 1).unwrap(); // expiresAt = 84*10 + 60
         assert_eq!(r1.rejected, None);
         // set this pass: resolves at the NEXT advance (§6.6 snapshot)
         assert!(!r1.records.iter().any(|x| x.kind == "event"));
         let r2 =
-            settle_line(&c, &td, r1.state, "0:30 @ ANA WAIT", 1 + r1.records.len() as i64).unwrap(); // crosses slot 31 (0:31)
+            settle_line(&c, &td, r1.state, "0:90 @ ANA WAIT", 1 + r1.records.len() as i64).unwrap(); // fires on tick 90 (0:90, minute 900) — the wait's own advance walks (840, 900]
         assert_eq!(r2.rejected, None);
         let event = r2.records.iter().find(|x| x.kind == "event").expect("the melt_chalice event");
+        assert_eq!(event.t_game, "0:90", "minute 900 is a crossed boundary inside the advance");
         assert_eq!(event.trigger.as_deref(), Some("melt_chalice"));
         assert!(event.sentence.contains("EVENT melt_chalice"));
         assert_eq!(r2.state.entities["chalice"].dead_action, Some(event.id));
@@ -815,9 +816,9 @@ verbs:
     }
 
     /// An authored `on expire of DREAD` trigger fires at the right minute:
-    /// `expires 45m` from minute 0 crosses no boundary at :30 and fires at
-    /// the :60 crossing (the first halfhour boundary at or after expiresAt
-    /// that the clock actually crosses, §6.6/§4.2's zero rule).
+    /// `expires 45m` from minute 0 crosses no boundary at :30 or :40 and
+    /// fires at the :50 crossing (the first tick boundary at or after
+    /// expiresAt that the clock actually crosses, §6.6/§4.2's zero rule).
     #[test]
     fn expiry_fires_the_on_expire_trigger_at_the_right_minute() {
         let dict = core_dictionary();
@@ -834,12 +835,12 @@ verbs:
         assert_eq!(r1.rejected, None);
         // set this pass: resolves at the NEXT advance (§6.6 snapshot)
         assert!(!r1.records.iter().any(|x| x.kind == "event"));
-        let r2 = advance(&c, &dict, r1.state, "0:2", 100); // crosses :30 and :60
+        let r2 = advance(&c, &dict, r1.state, "0:5", 100); // crosses :30 and :40, fires at :50
         assert_eq!(r2.rejected, None);
         let events: Vec<&ActionRecord> = r2.records.iter().filter(|x| x.kind == "event").collect();
-        assert_eq!(events.len(), 1, "one expiry, at the :60 crossing");
+        assert_eq!(events.len(), 1, "one expiry, at the :50 crossing");
         assert_eq!(events[0].trigger.as_deref(), Some("melt"));
-        assert_eq!(events[0].t_game, "0:2", "the :60 crossing, not :30");
+        assert_eq!(events[0].t_game, "0:5", "the :50 crossing, not :30 or :40");
         assert!(events[0].sentence.contains("the dread melts"));
         // §6.6: the authored outcomes replace the built-in destroy entirely
         // — the NARRATE-only trigger leaves the copy alive to re-fire
@@ -881,7 +882,7 @@ verbs:
     }
 
     /// The zero-duration boundary is SET-expires' own (§4.2): expiresAt =
-    /// the mint clock, firing at the first halfhour boundary at or after
+    /// the mint clock, firing at the first tick boundary at or after
     /// that minute the clock actually crosses.
     #[test]
     fn zero_duration_materializes_the_mint_clock_like_set() {
@@ -895,15 +896,15 @@ verbs:
             ),
         );
         let base = clone_state(&s);
-        let r1 = settle_line(&c, &dict, s, "0:20 @ ANA DREAM", 1).unwrap(); // absolute minute 600
+        let r1 = settle_line(&c, &dict, s, "0:60 @ ANA DREAM", 1).unwrap(); // absolute minute 600
         assert_eq!(r1.rejected, None);
         assert_eq!(
             r1.state.entities[pool(&r1.state)[0].as_str()].attrs.get("expiresAt"),
             Some(&AttrValue::Num(600))
         );
-        // fires at the first crossed boundary at or after 600 — the :30 slot
-        // of hour 20 (absolute 630) — during the next advance
-        let r2 = advance(&c, &dict, r1.state, "0:22", 100); // crosses 630
+        // fires at the first crossed boundary at or after 600 — tick 61
+        // (minute 610) — during the next advance's walk of (600, 660]
+        let r2 = advance(&c, &dict, r1.state, "1:6", 100); // crosses (600, 660]
         assert_eq!(r2.rejected, None);
         assert!(r2.records.iter().any(|x| x.kind == "event"));
         let replayed = fold(&[r1.records, r2.records].concat(), &base, &dict, &c).unwrap();
@@ -921,12 +922,12 @@ verbs:
         // slot rejects it at parse, naming the grammar
         assert_err_msg(
             parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires -1h", &dict),
-            "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got '-'",
+            "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 30m\\), got '-'",
         );
         // a non-duration keyword lands the same way
         assert_err_msg(
             parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires NEVER", &dict),
-            "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got 'NEVER'",
+            "SPAWN expires takes a §5.1 duration \\(e\\.g\\. 2h, 90m, 30m\\), got 'NEVER'",
         );
         // the quoted form is §4.2's string path: a bad unit refuses the
         // window at application, exactly like SET
@@ -953,8 +954,8 @@ verbs:
         let s =
             parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 90m", &dict).unwrap();
         let out = format_sentence(&s, &dict).unwrap();
-        // 90m canonicalizes to the exact single unit 3halfhour (§5.1)
-        assert_eq!(out, "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 3halfhour");
+        // 90m finds no exact hour fit — canonical is the compound 1h30m (§5.1)
+        assert_eq!(out, "0:0 @ ANA DREAM -> SPAWN DREAD INTO HOUSE expires 1h30m");
         let s2 = parse_sentence(&out, &dict).unwrap();
         assert_eq!(s2.outcomes, s.outcomes);
         assert_eq!(format_sentence(&s2, &dict).unwrap(), out);
@@ -979,17 +980,17 @@ verbs:
         // silently stand in for it
         assert_err_msg(
             parse_sentence("0:0 @ ANA DREAM -> SPAWN DREAD expires=2h", &dict),
-            "SPAWN expires takes a §5\\.1 duration \\(e\\.g\\. 2h, 90m, 1halfhour\\), got '='",
+            "SPAWN expires takes a §5\\.1 duration \\(e\\.g\\. 2h, 90m, 30m\\), got '='",
         );
     }
 
     /// The anchor inside a REAL completion — a 1h window begun at 0:0, its
-    /// outcomes applying when the settle advance closes it at 1:0 — is the
+    /// outcomes applying when the settle advance closes it at 0:6 — is the
     /// window START clock (§6.7, the same clock SET-expires anchors to
-    /// there): `expires 30m` materializes 0:30, never completion+30 (1:30).
-    /// The expiry snapshot predates the mint, so the fire waits for the
-    /// next advance's first crossed boundary at or after 0:30 — the :90
-    /// slot (§6.6).
+    /// there): `expires 30m` materializes minute 30, never completion+30
+    /// (minute 90). The expiry snapshot predates the mint, so the fire
+    /// waits for the next advance's first crossed boundary at or after
+    /// minute 30 — tick 7 (minute 70, §6.6).
     #[test]
     fn the_anchor_inside_a_real_completion_is_the_window_start() {
         let dict = core_dictionary();
@@ -1002,7 +1003,7 @@ verbs:
         let (c, s) = compile(&dict, &text);
         let base = clone_state(&s);
         // the settle adapter: begin at 0:0, then the closing advance to the
-        // window's end (1:0) — the completion mints there
+        // window's end (0:6, minute 60) — the completion mints there
         let r1 = settle_line(&c, &dict, s, "0:0 @ ANA DREAM", 1).unwrap();
         assert_eq!(r1.rejected, None);
         assert!(r1.state.windows.is_empty(), "the settle advance closed the window");
@@ -1013,14 +1014,14 @@ verbs:
         assert_eq!(
             r1.state.entities[pool(&r1.state)[0].as_str()].attrs.get("expiresAt"),
             Some(&AttrValue::Num(30)),
-            "window START + 30 (0:30), never completion + 30 (1:30)"
+            "window START + 30 (minute 30), never completion + 30 (minute 90)"
         );
-        // the next advance (now = 1:0) crosses the :90 slot → the fire
-        let r2 = advance(&c, &dict, r1.state, "1:2", 200);
+        // the next advance (now = 1:0) crosses tick 7 (minute 70) → the fire
+        let r2 = advance(&c, &dict, r1.state, "1:6", 200);
         assert_eq!(r2.rejected, None);
         let events: Vec<&ActionRecord> = r2.records.iter().filter(|x| x.kind == "event").collect();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].t_game, "0:3", "the :90-minute crossing (halfhour 3) — the first boundary at or after expiresAt that the clock crosses");
+        assert_eq!(events[0].t_game, "0:7", "the :70-minute crossing (tick 7) — the first boundary at or after expiresAt that the clock crosses");
         let replayed = fold(&[r1.records, r2.records].concat(), &base, &dict, &c).unwrap();
         assert_eq!(snap(&replayed), snap(&r2.state));
     }

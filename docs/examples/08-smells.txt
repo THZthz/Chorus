@@ -26,11 +26,11 @@ prototypes:
   TALISMAN is resource stackable
 
 triggers:
-  relic_goes once at halfhour 2 -> DESTROY THE_RELIC
-  relic_draw once at halfhour 3 -> DRAW RELIC_DRAW
-  charm_sweep at halfhour 4 -> SPAWN THE_CHARM, DRAW POUCH
-  morning_charm_a at halfhour 8 -> SPAWN THE_CHARM
-  morning_charm_b at halfhour 8 -> SPAWN THE_CHARM
+  relic_goes once at tick 6 -> DESTROY THE_RELIC
+  relic_draw once at tick 9 -> DRAW RELIC_DRAW
+  charm_sweep at tick 12 -> SPAWN THE_CHARM, DRAW POUCH
+  morning_charm_a at tick 24 -> SPAWN THE_CHARM
+  morning_charm_b at tick 24 -> SPAWN THE_CHARM
 
 decks:
   POUCH spec COIN defaultcard COIN reset

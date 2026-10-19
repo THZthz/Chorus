@@ -774,7 +774,7 @@ fn apply_all(outcomes: &[Outcome], ctx: &mut ApplyCtx) -> Result<ApplyResult> {
 /// `expires` materialization (§4.2): numbers are
 /// already minutes — the lexer pre-converts bare duration literals (§5.1)
 /// before SET sees them; quoted strings go through the one duration parser,
-/// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
+/// so every §5.1 form (`2h`, `90m`, `1d`) materializes
 /// `expiresAt`. The ONE write both SET (§4.2) and the SPAWN
 /// `expires <duration>` mint modifier (§4.4, §6.6) share: the authored
 /// `expires` attr keeps its form (minutes for bare, the string for quoted,
@@ -801,7 +801,7 @@ fn materialize_expires(
 /// The duration-to-minutes read every `expires` write shares: numbers are
 /// already minutes — the lexer pre-converts bare duration literals (§5.1)
 /// before SET sees them; quoted strings go through the one duration parser,
-/// so every §5.1 form (`2halfhour`, `2h`, `90m`, `1d`) materializes
+/// so every §5.1 form (`2h`, `90m`, `1d`) materializes
 /// `expiresAt` (§4.2, §5.1).
 fn to_minutes(v: &AttrValue) -> Result<i64> {
     match v {

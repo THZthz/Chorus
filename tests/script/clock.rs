@@ -14,16 +14,16 @@ use crate::common::harness::{assert_err_msg, assert_json_eq, canonical};
 // ---------- parse_clock -----------------------------------------------------
 
 #[test]
-fn accepts_day_halfhour() {
+fn accepts_day_tick() {
     let got = parse_clock("0:0").unwrap();
     assert_json_eq(
-        serde_json::json!({ "day": got.day, "halfhour": got.halfhour }),
-        serde_json::json!({ "day": 0, "halfhour": 0 }),
+        serde_json::json!({ "day": got.day, "tick": got.tick }),
+        serde_json::json!({ "day": 0, "tick": 0 }),
     );
     let got = parse_clock("3:47").unwrap();
     assert_json_eq(
-        serde_json::json!({ "day": got.day, "halfhour": got.halfhour }),
-        serde_json::json!({ "day": 3, "halfhour": 47 }),
+        serde_json::json!({ "day": got.day, "tick": got.tick }),
+        serde_json::json!({ "day": 3, "tick": 47 }),
     );
 }
 
@@ -34,8 +34,11 @@ fn day_cannot_be_negative_d_cannot_lex_a_sign() {
 }
 
 #[test]
-fn rejects_halfhour_out_of_range_and_malformed_input() {
-    assert_err_msg(parse_clock("0:48"), "bad halfhour");
+fn rejects_tick_out_of_range_and_malformed_input() {
+    // the bound is 143 (144 ticks per day); the old 48-unit day is legal now
+    assert_eq!(parse_clock("0:48").unwrap(), Clock { day: 0, tick: 48 });
+    assert_eq!(parse_clock("0:143").unwrap(), Clock { day: 0, tick: 143 });
+    assert_err_msg(parse_clock("0:144"), "bad tick");
     assert_err_msg(parse_clock("0:-1"), "bad clock");
     assert_err_msg(parse_clock("1:"), "bad clock");
     assert_err_msg(parse_clock("now"), "bad clock");
@@ -46,7 +49,7 @@ fn rejects_halfhour_out_of_range_and_malformed_input() {
 #[test]
 fn single_5_1_units() {
     assert_eq!(parse_duration("0m").unwrap(), 0);
-    assert_eq!(parse_duration("1halfhour").unwrap(), 30);
+    assert_eq!(parse_duration("30m").unwrap(), 30);
     assert_eq!(parse_duration("2h").unwrap(), 120);
     assert_eq!(parse_duration("90m").unwrap(), 90);
     assert_eq!(parse_duration("1d").unwrap(), 1440);
@@ -56,7 +59,7 @@ fn single_5_1_units() {
 fn compound_literals_sum_their_unit_pairs() {
     // (§5.1)
     assert_eq!(parse_duration("1h30m").unwrap(), 90);
-    assert_eq!(parse_duration("2halfhour15m").unwrap(), 75);
+    assert_eq!(parse_duration("1h15m").unwrap(), 75);
     assert_eq!(parse_duration("1d2h30m").unwrap(), 1590);
 }
 
@@ -73,11 +76,12 @@ fn rejects_unknown_units_bare_ints_and_stray_suffixes() {
 #[test]
 fn prefers_the_shortest_exact_single_unit() {
     assert_eq!(format_duration(0).unwrap(), "0m");
-    assert_eq!(format_duration(30).unwrap(), "1halfhour");
+    assert_eq!(format_duration(30).unwrap(), "30m");
     assert_eq!(format_duration(60).unwrap(), "1h");
-    assert_eq!(format_duration(90).unwrap(), "3halfhour"); // exact halfhour beats compound
+    assert_eq!(format_duration(90).unwrap(), "1h30m"); // no exact hour fit — compound minutes finish it
     assert_eq!(format_duration(1440).unwrap(), "1d");
-    assert_eq!(format_duration(1470).unwrap(), "49halfhour"); // exact single unit wins
+    assert_eq!(format_duration(1470).unwrap(), "1d30m"); // exact day fit wins
+    assert_eq!(format_duration(1770).unwrap(), "1d5h30m"); // compound rung: 1d 5h 30m
 }
 
 #[test]
@@ -108,11 +112,11 @@ fn round_trips_through_parse_duration_dense_sweep() {
 #[test]
 fn format_parse_is_the_identity() {
     for day in [0, 1, 12] {
-        for halfhour in [0, 23, 47] {
-            let parsed = parse_clock(&format_clock(Clock { day, halfhour })).unwrap();
+        for tick in [0, 71, 143] {
+            let parsed = parse_clock(&format_clock(Clock { day, tick })).unwrap();
             assert_json_eq(
-                serde_json::json!({ "day": parsed.day, "halfhour": parsed.halfhour }),
-                serde_json::json!({ "day": day, "halfhour": halfhour }),
+                serde_json::json!({ "day": parsed.day, "tick": parsed.tick }),
+                serde_json::json!({ "day": day, "tick": tick }),
             );
         }
     }
@@ -139,8 +143,7 @@ fn toks_json(toks: &[Tok]) -> serde_json::Value {
 
 #[test]
 fn lexes_as_one_dur_token_a_dur_re_regression_would_split_it() {
-    // The `halfhour|h|m|d` alternation order is
-    // load-bearing (Q9); no unit → still an int
+    // a compound is ONE token; no unit → still an int
     assert_json_eq(toks_json(&lex("1h30m").unwrap()), serde_json::json!([{ "t": "dur", "v": 90 }]));
     assert_json_eq(
         toks_json(&lex("1d2h30m").unwrap()),
@@ -151,11 +154,11 @@ fn lexes_as_one_dur_token_a_dur_re_regression_would_split_it() {
 
 #[test]
 fn canonicalizes_in_an_outcome_list_and_round_trips() {
-    // (§5.2) — format_duration(90) prefers the exact
-    // single unit: 1h30m → 3halfhour
+    // (§5.2) — format_duration(90) finds no exact hour fit: the compound
+    // 1h30m is canonical
     let dict = core_dictionary();
     assert_eq!(
-        canonical("0:16 @ EVENT dusk_falls -> PROGRESS(1h30m, \"tick\")", &dict),
-        "0:16 @ EVENT dusk_falls -> PROGRESS(3halfhour, \"tick\")"
+        canonical("0:48 @ EVENT dusk_falls -> PROGRESS(1h30m, \"tick\")", &dict),
+        "0:48 @ EVENT dusk_falls -> PROGRESS(1h30m, \"tick\")"
     );
 }

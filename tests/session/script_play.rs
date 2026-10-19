@@ -53,9 +53,9 @@ fn meta_lines_set_title_player_goal_the_starting_clock_and_the_dice_seed() {
             "unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna, where the Flyer arrives at six"
         )
     );
-    assert_eq!(game.meta.start, Some(Clock { day: 0, halfhour: 42 }));
+    assert_eq!(game.meta.start, Some(Clock { day: 0, tick: 126 }));
     assert_eq!(game.meta.seed, Some(1899));
-    assert_eq!(game.state.now, 42 * 30);
+    assert_eq!(game.state.now, 126 * 10);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn verb_blocks_compile_slots_durations_and_recipes() {
 #[test]
 fn triggers_and_prototypes_compile() {
     // The timetable: recurring + `once`,
-    // the `at hour N` alias (hour 1 = slot 2), and the expiry trigger form
+    // the `at hour N` alias (hour 1 = slot 6), and the expiry trigger form
     let dict = core_dictionary();
     let game = compile_script(FLYER, &dict).unwrap();
     let got: Vec<String> = game
@@ -158,15 +158,15 @@ fn triggers_and_prototypes_compile() {
     assert_eq!(
         got,
         [
-            "body_found|44|true",
-            "night_porter|46|true",
-            "conductor_rounds|45|false",
+            "body_found|132|true",
+            "night_porter|138|true",
+            "conductor_rounds|135|false",
             "border_stop|0|true",
-            "the_long_tunnel|2|true",
-            "the_furnace_takes_it|4|true",
-            "dawn_watch|8|false",
+            "the_long_tunnel|6|true",
+            "the_furnace_takes_it|12|true",
+            "dawn_watch|24|false",
             "lord_tended|THE_LATE_LORD",
-            "vienna_arrival|12|true",
+            "vienna_arrival|36|true",
         ]
     );
     let late_lord = game.content.prototypes.get("THE_LATE_LORD").unwrap();

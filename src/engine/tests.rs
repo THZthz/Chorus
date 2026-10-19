@@ -96,7 +96,7 @@ mod smoke {
             state,
             Step {
                 start_min: None,
-                clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+                clock: Some(s.clock.unwrap_or(Clock { day: 0, tick: 0 })),
                 clauses: s.clauses,
                 t_real: None,
             },
@@ -139,7 +139,7 @@ mod smoke {
         assert_eq!(r.state.now, 0, "beginning moves nothing");
         assert_eq!(r.state.windows.len(), 1);
         // the pass: completion then the wait row
-        let adv = advance(&content, &dict, r.state, "0:1", 2);
+        let adv = advance(&content, &dict, r.state, "0:3", 2);
         assert_eq!(
             adv.records.iter().map(|x| x.kind.as_str()).collect::<Vec<_>>(),
             ["complete", "wait"]
@@ -262,7 +262,7 @@ mod smoke {
         );
         assert_eq!(r.state.ended, None, "the ending rides the completion");
         // the completion: the recipe's real outcomes land there
-        let adv = advance(&content, &dict, r.state, "0:1", 2);
+        let adv = advance(&content, &dict, r.state, "0:3", 2);
         assert_eq!(adv.rejected, None, "rejected: {:?}", adv.rejected);
         let complete = adv.records.iter().find(|x| x.kind == "complete").unwrap();
         let mut ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
@@ -357,7 +357,7 @@ mod smoke {
         assert_eq!(r1.state.windows.len(), 1);
         // the GATE step is refused: the advance (complete+wait) is discarded,
         // the attempt row takes firstRecordId = 2, state untouched
-        let r2 = run(&content, &dict, clone_state(&r1.state), "0:1 @ ANA GATE", 2);
+        let r2 = run(&content, &dict, clone_state(&r1.state), "0:3 @ ANA GATE", 2);
         assert_eq!(r2.rejected, None);
         assert_eq!(r2.records.len(), 1);
         assert_eq!(r2.records[0].id, 2, "the refusal row reuses firstRecordId");
@@ -370,7 +370,7 @@ mod smoke {
             "the window the pass would have closed is still open"
         );
         // same inputs again → the SAME id is minted again (id recycle)
-        let r3 = run(&content, &dict, r1.state, "0:1 @ ANA GATE", 2);
+        let r3 = run(&content, &dict, r1.state, "0:3 @ ANA GATE", 2);
         assert_eq!(r3.records[0].id, 2);
     }
 
@@ -536,7 +536,7 @@ mod smoke {
         // the completion evaluates the IF against the completion-time world:
         // HOUSE exists → SPAWN then REFUSE; the spawn dies with the scratch…
         let begin_state = clone_state(&r.state);
-        let adv = advance(&content, &dict, r.state, "0:31", 2);
+        let adv = advance(&content, &dict, r.state, "0:93", 2);
         assert_eq!(adv.rejected, None);
         let complete = adv.records.iter().find(|x| x.kind == "complete").unwrap();
         let ops: Vec<&str> = complete.outcomes.iter().map(|o| o.op.as_str()).collect();
@@ -628,14 +628,14 @@ mod smoke {
             },
             Step {
                 start_min: None,
-                clock: Some(Clock { day: 0, halfhour: 1 }),
+                clock: Some(Clock { day: 0, tick: 1 }),
                 clauses: vec![],
                 t_real: None,
             },
             ExecOptions { first_record_id: 1, id_gen: None },
         )
         .unwrap();
-        assert_eq!(r.rejected.as_deref(), Some("clock 0:1 is before state.now (0:2)"));
+        assert_eq!(r.rejected.as_deref(), Some("clock 0:1 is before state.now (0:6)"));
         // nothing to do (the live to_min == now && !has_due branch)
         let r = advance(&content, &dict, seed_state(), "0:0", 1);
         assert!(
@@ -649,7 +649,7 @@ mod smoke {
         let mut ended = seed_state();
         ended.ended =
             Some(Ending { id: "E".into(), title: "It is over.".into(), flavour: "calm".into() });
-        let r = run(&content, &dict, ended, "0:1 @ ANA PACE", 1);
+        let r = run(&content, &dict, ended, "0:3 @ ANA PACE", 1);
         assert_eq!(r.rejected.as_deref(), Some("the story has ended — It is over."));
         // wait-partition fold assertion
         let mut st = new_state(5);

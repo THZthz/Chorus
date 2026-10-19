@@ -21,8 +21,8 @@ use crate::common::harness::{assert_err_msg, assert_json_eq, canonical};
 fn solo_read_with_at_context_bare_ref_shorthand_becomes_spawn() {
     let dict = core_dictionary();
     assert_eq!(
-        canonical("0:14 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT", &dict),
-        "0:14 @ ANA AT HOUSE READ THE_FORGETTING -> SPAWN CLUE_SECRET_HIDEOUT"
+        canonical("0:42 @ ANA AT HOUSE READ THE_FORGETTING -> CLUE_SECRET_HIDEOUT", &dict),
+        "0:42 @ ANA AT HOUSE READ THE_FORGETTING -> SPAWN CLUE_SECRET_HIDEOUT"
     );
 }
 
@@ -31,17 +31,17 @@ fn two_characters_talking_actor_order_is_not_semantic() {
     // (§4.3)
     let dict = core_dictionary();
     let a = canonical(
-        "2:19 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1",
+        "2:57 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1",
         &dict,
     );
     let b = canonical(
-        "2:19 @ BERTHA, ANA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1",
+        "2:57 @ BERTHA, ANA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1",
         &dict,
     );
     assert_eq!(a, b);
     assert_eq!(
         a,
-        "2:19 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1"
+        "2:57 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT -> SPAWN PLAN_INFILTRATION AS #p1"
     );
 }
 
@@ -50,10 +50,10 @@ fn two_clause_step() {
     let dict = core_dictionary();
     assert_eq!(
         canonical(
-            "0:14 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY -> CLUE_SECRET_HIDEOUT",
+            "0:42 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY -> CLUE_SECRET_HIDEOUT",
             &dict
         ),
-        "0:14 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY -> SPAWN CLUE_SECRET_HIDEOUT"
+        "0:42 @ ANA TRAVEL_TO VILLA; ANA AT THE_STUDY READ THE_PALE_LADY -> SPAWN CLUE_SECRET_HIDEOUT"
     );
 }
 
@@ -63,12 +63,12 @@ fn event_sentence() {
     // SPAWN stays pretty …but the paren form parses equally
     let dict = core_dictionary();
     assert_eq!(
-        canonical("0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE(\"The lamps come on.\")", &dict),
-        "0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\""
+        canonical("0:48 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE(\"The lamps come on.\")", &dict),
+        "0:48 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\""
     );
     assert_eq!(
-        canonical("0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\"", &dict),
-        "0:16 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\""
+        canonical("0:48 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\"", &dict),
+        "0:48 @ EVENT dusk_falls -> SPAWN DREAD, NARRATE \"The lamps come on.\""
     );
 }
 
@@ -79,12 +79,12 @@ fn engine_written_expiry_trigger_ids_round_trip() {
     // prints quoted — and reassembles
     let dict = core_dictionary();
     assert_eq!(
-        canonical("1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)", &dict),
-        "1:20 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)"
+        canonical("1:60 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)", &dict),
+        "1:60 @ EVENT expire:THE_TONIC_GLASS -> DESTROY(#e1_1)"
     );
     assert_eq!(
-        canonical("1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)", &dict),
-        "1:20 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)"
+        canonical("1:60 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)", &dict),
+        "1:60 @ EVENT expire:\"TONIC-GLASS\" -> DESTROY(#e1_1)"
     );
 }
 
@@ -93,10 +93,10 @@ fn rite_with_instruments_and_into() {
     let dict = core_dictionary();
     assert_eq!(
         canonical(
-            "1:23 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE",
+            "1:69 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE",
             &dict
         ),
-        "1:23 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE"
+        "1:69 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE -> DESTROY(CHALICE), SPAWN MARK_OF_ASCENSION INTO HOUSE"
     );
 }
 
@@ -269,13 +269,13 @@ fn the_new_verbs_round_trip_like_the_old_ones() {
     // (§5.1); post-verbal AT canonicalizes
     // pre-verbal for the new verbs too (§5.1)
     let dict = core_dictionary();
-    assert_eq!(canonical("0:14 @ ANA STUDY THE_MANIFEST", &dict), "0:14 @ ANA STUDY THE_MANIFEST");
+    assert_eq!(canonical("0:42 @ ANA STUDY THE_MANIFEST", &dict), "0:42 @ ANA STUDY THE_MANIFEST");
     assert_eq!(
-        canonical("0:14 @ ANA STUDY THE_MANIFEST AT HOUSE", &dict),
-        "0:14 @ ANA AT HOUSE STUDY THE_MANIFEST"
+        canonical("0:42 @ ANA STUDY THE_MANIFEST AT HOUSE", &dict),
+        "0:42 @ ANA AT HOUSE STUDY THE_MANIFEST"
     );
     assert_eq!(
-        canonical("0:14 @ ANA MANSUS THE_WHITE_DOOR", &dict),
-        "0:14 @ ANA MANSUS THE_WHITE_DOOR"
+        canonical("0:42 @ ANA MANSUS THE_WHITE_DOOR", &dict),
+        "0:42 @ ANA MANSUS THE_WHITE_DOOR"
     );
 }

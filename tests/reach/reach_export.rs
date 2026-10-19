@@ -38,7 +38,7 @@ prototypes:
   GEM is item
 
 triggers:
-  t_fallback at halfhour 1 -> IF exists(COIN) -> (NARRATE \"coin lives\") ELSE -> (SPAWN GEM)
+  t_fallback at tick 3 -> IF exists(COIN) -> (NARRATE \"coin lives\") ELSE -> (SPAWN GEM)
 
 verbs:
   WORK:
@@ -317,8 +317,8 @@ decks:
   CYCLE spec DAWN, DUSK
 
 triggers:
-  d0 at halfhour 1 -> DRAW CYCLE
-  t_risky at halfhour 2 -> SPAWN ECHO
+  d0 at tick 3 -> DRAW CYCLE
+  t_risky at tick 6 -> SPAWN ECHO
 ";
     let dict = core_dictionary();
     let cs = compile_script(frozen_script, &dict).expect("freeze fixture compiles");

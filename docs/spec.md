@@ -54,6 +54,7 @@ projection of that data, never the source of truth.
 33. **v0.7.14** — the ops convergence: an `ops:` section declares script-defined outcome operators, expanded at load like functions.
 34. **v0.8.0** — the bin-interface convergence: `reach` speaks the Commands + Options grammar; `--color`, lint-scripts' Options form and the tutorial land.
 35. **v0.8.1** — chorus gains `save <file>` and `--help`; the deck lint exempts once-served spec entries; same-root-cause findings dedup.
+36. **v0.8.2** — the tick: the clock's minimal unit shrinks from the halfhour to 10 minutes (`day:tick`, 144 ticks/day); `at tick N` triggers replace `at halfhour N`; the `halfhour` duration unit is removed (write `30m`); quantization and dead-air semantics re-anchor on the 10-minute tick; pre-0.8.2 logs' `tGame` digits are stale display data (§9.2, no compatibility).
 
 **Contents**: §1 [Goals](#1-goals) · §2 [Non-goals](#2-non-goals-v02) · §3 [Architecture](#3-architecture-three-layers) · §4 [L1 — Dictionary](#4-l1--dictionary) · §5 [L2 — Sentence grammar](#5-l2--sentence-grammar) · §6 [Engine layer](#6-engine-layer--properties-slots-recipes-content-model) · §7 [Database schema](#7-database-schema-append-only-log-projections-derived) · §8 [Rendering sketches](#8-rendering-sketches-text-now-drawable-later) · §9 [Design decisions](#9-design-decisions) · §10 [The script format](#10-the-script-format--a-game-as-one-text-file) · §11 [The play interface](#11-the-play-interface--lenient-input-the-line-repl-undo) · §12 [Remaining open questions](#12-remaining-open-questions) · §13 [Tooling](#13-tooling--the-reach-analyzer-the-lint-the-bins)
 
@@ -167,7 +168,7 @@ no null; aspect leaves are integers only.
 
 **Structural properties are attrs**, not aspects. Engine-known attr keys:
 `container` (where the card sits — the container's entity id), `expires`
-(any §5.1 duration form — `2h`, `90m`, `1d`, `2halfhour`, compound `1h30m`
+(any §5.1 duration form — `2h`, `90m`, `1d`, `30m`, compound `1h30m`
 (§5.1) — quoted or bare;
 the engine materializes `expiresAt` = current clock +
 duration at set time, stored as **absolute minutes**, while the authored
@@ -280,7 +281,7 @@ contributes no template line; its recipe NARRATEs still speak.
 
 | Operator  | Args (normative)                | Effect                                        |
 |-----------|---------------------------------|-----------------------------------------------|
-| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error; the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first halfhour boundary at or after that minute that the clock actually crosses |
+| `SPAWN`   | ref [, INTO ref] [, AS #id] [, expires duration] [, k=v …] | mint a new entity (from a prototype if one is defined); `AS #id` is engine-written so folds replay exactly; `aspects=`/`attrs=` JSON pairs are engine-written materialization (§9.2) — and the ONLY pair keys: any other `k=v` on SPAWN is a parse error; the authored `expires <duration>` modifier arms the mint at birth with the SET-expires pair (§4.2), so an authored outcome can decay the card it just minted even when the name pools — the concrete row carries the pair inside its `attrs=` materialization (§9.2), anchored to the MINT clock — the step clock at the table, the window's START clock inside a completion (§6.7), a slot/expire trigger's crossing tick (an `on complete` mint anchors to the completion's window-start clock) — never a follow-up derivation; a zero duration (`0m`) fires at the first tick boundary at or after that minute that the clock actually crosses |
 | `DESTROY` | ref                             | card removed (deadAction stamped)             |
 | `REPLACE` | ref `WITH` prototype            | decay a card into its successor: mint from the prototype into the dying card's **current location** — its `container` (place-contained or character-carried) or, for a zone-tagged card, its `zone` (§10: the grouping has no card, so the tag passes to the successor) — then soft-destroy it — spawn first, then destroy, so the old name is released as usual. Paren-less authored form `REPLACE X WITH Y`; the engine logs the concrete `SPAWN … AS #id` + `DESTROY #id` pair, so there is no REPLACE in the log. Prototype derivation (`name from object`) is unavailable — REPLACE has no clause. A name collision with any living entity — the dying card itself included, still alive at spawn time — rejects the whole step (§9.2); revised for pools: a stackable successor may share a stackable pool, so `REPLACE X WITH X` succeeds — append-then-pop, the pool never dips, and the next pool op addresses the next-oldest. A replaced place's children keep pointing at the dead place id; re-parenting them is the author's job. REPLACE always writes the `attrs=` pair, even empty — the pair is the authoritative materialization (§9.2), so the fold cannot grow a location the mint never had |
 | `SET`     | ref, key, value                 | mutate an attr (`state.sealed`, `container`, `expires`…) — or the aspects map when the key is `aspect:`-prefixed (`aspect:level`); a signed integer value (`+1`, `-2`) is a delta on the entry's current value and logs the computed absolute: a missing entry counts as 0, results may go negative (no clamping — a counter may read below zero), adding to a non-numeric entry is an application failure (§9.2), and a delta over a role ref applies per bound card, logging one concrete SET per card (`#id`s, each with its own result); deltas apply to the draft, so a later REFUSE in the same step discards them whole (§6.5). `SET x, expires, 2h` also materializes `expiresAt` (§4.2) |
@@ -448,7 +449,7 @@ wait       = "WAIT" duration ;                   (* ENGINE-WRITTEN: one advance 
                                                     the span that moved `now` (§6.7); WAIT is
                                                     reserved (a core verb), so this sits before
                                                     the action fallthrough *)
-clock      = int ":" int ;                       (* "day:halfhour", day 0-based, halfhour 0..47; 1 halfhour = 30 min *)
+clock      = int ":" int ;                       (* "day:tick", day 0-based, tick 0..143; 1 tick = 10 min *)
 action     = clause { ";" clause } [ "->" outcomes ] ;
 event      = "EVENT" trigger-id [ "->" outcomes ] ;
 trigger-id = name { ":" name }                    (* segments reassembled — the
@@ -505,13 +506,13 @@ aspectKey  = "aspect:" name { "." name } ;       (* SET key into the aspects map
 target     = ref | role ;
 role       = "ACTORS" | "OBJECT" | "WITH" | "AT" | "ABOUT" | "TO" ;  (* case-insensitive *)
 dottedName = name { "." name } ;                 (* SET(x, state.sealed, true) *)
-duration   = int ( "halfhour" | "h" | "m" | "d" ) { int ( "halfhour" | "h" | "m" | "d" ) } ;
-                                                 (* 1halfhour = 30 minutes; compound
+duration   = int ( "h" | "m" | "d" ) { int ( "h" | "m" | "d" ) } ;
+                                                 (* compound
                                                     literals like `1h30m` sum their pairs; every path shares
                                                     this one parser (bare args, quoted-string `expires`,
                                                     script `duration:`). Canonical rendering prefers one
-                                                    exact unit (d, then h, then halfhour, then raw minutes —
-                                                    `90m` renders `3halfhour`, never `1h30m`) and decomposes
+                                                    exact unit (d, then h, then raw minutes —
+                                                    `90m` renders `1h30m`) and decomposes
                                                     into compound form only when no single unit fits
                                                     (`100m` → `1h40m`, `61m` → `1h1m`) — every canonical
                                                     form re-parses (§5.2) *)
@@ -976,7 +977,7 @@ object.aspect-N`, alongside `name from object`).
    passes: a bare clock input, an action whose typed clock lies ahead, or a
    WAIT (an authored `ADVANCE` only stretches the pass already in flight) —
    each pass resolves due completions
-   first, then the halfhour's slot events, and ends in a WAIT row, the only
+   first, then the tick's slot events, and ends in a WAIT row, the only
    record that moves `now` (§6.7). On replay (fold, §7) only WAIT rows move
    the clock — `startMin` + `advancedMin`; BEGIN, COMPLETE and EVENT rows
    never touch it (§7).
@@ -986,13 +987,13 @@ object.aspect-N`, alongside `name from object`).
    chronological order, across the **whole elapsed span** — from the state's
    previous clock to the pass's target, so dead air (§9.2)
    cannot swallow a crossing: authored time triggers (content: id + slot,
-   the `hour`/`halfhour` syntax of §10 [+ `once`], firing on every crossing
-   of that halfhour-of-day, or on the first crossing only when `once`,
+   the `hour`/`tick` syntax of §10 [+ `once`], firing on every crossing
+   of that tick-of-day, or on the first crossing only when `once`,
    §6.6) and entity expiries (`expiresAt` crossed — authored `on expire of
    NAME` triggers fire instead when one names the expiring entity, §6.6;
    with no match, trigger id `expire:<NAME>` and one engine-written
    `DESTROY`).
-   Within one crossed halfhour, authored triggers fire before expiries. Each
+   Within one crossed tick, authored triggers fire before expiries. Each
    fires its own EVENT log row with its outcomes applied. One pass — events
    never cascade within the same advance (new expiries
    resolve at the next advance). **The fold trusts logged EVENT rows** — it
@@ -1070,14 +1071,14 @@ only through advance passes — a bare clock input, an action whose typed
 clock lies ahead, WAIT (an authored `ADVANCE` only stretches the pass in
 flight) — and each pass resolves due completions
 first (ordered by end minute, then begin row, then clause), then the
-halfhour's slot events (§6.6), completions at minute m preceding slot-m
+tick's slot events (§6.6), completions at minute m preceding slot-m
 events. The pass ends in a WAIT row, the only record that moves `now`,
 whose spans partition time (the fold asserts the partition: a wait row not
 starting exactly at `now` is a loud log-drift error, §7). A bare advance to
 the current minute with nothing due is rejected outright (`nothing to do —
-the clock already reads d:h (commit an action, or name a later minute to
+the clock already reads d:u (commit an action, or name a later minute to
 wait)`) rather than idling — idling is what `wait`
-(§11) is for. One pass is atomic (§9.2); one step may advance the clock at most SEVEN DAYS — the pass walks every halfhour it crosses (recurring triggers fire on each), so a giant day field is a loud rejection ("more than 7 days ahead"), not an unbounded walk. Expiries created
+(§11) is for. One pass is atomic (§9.2); one step may advance the clock at most SEVEN DAYS — the pass walks every tick it crosses (recurring triggers fire on each), so a giant day field is a loud rejection ("more than 7 days ahead"), not an unbounded walk. Expiries created
 by the pass resolve at the next one.
 
 **Why there is no lock-flag machinery beyond the windows table**: the
@@ -1293,7 +1294,7 @@ CREATE TABLE action (
   kind         TEXT NOT NULL DEFAULT 'action',  -- 'action' (BEGIN) | 'complete' | 'wait' | 'event' — the record model (§6.7)
   trigger      TEXT,                            -- events: the trigger id (an authored `on expire` trigger's id, else 'expire:<NAME>');
                                                 -- COMPLETE rows: the window's VERB (raw name token, never a ref)
-  t_game       TEXT NOT NULL,                   -- display clock "day:halfhour", day 0-based — floored, DISPLAY ONLY
+  t_game       TEXT NOT NULL,                   -- display clock "day:tick", day 0-based, tick 0..143 — floored, DISPLAY ONLY
                                                 --   (exact minutes ride `start_min` on BEGIN/wait rows; a COMPLETE row
                                                 --   reaches its window start through the `window` key)
   t_real       TEXT,
@@ -1437,7 +1438,7 @@ Two invariants keep the mapping safe:
    unattended pump remains open work — §12.)
 3. **Outcomes**: hand-authored recipes only. Deterministic and testable.
 4. **Prose layer**: afterthought. Canonical sentences are the deliverable.
-5. **Timestamps**: `day:halfhour` (48 halfhours of 30 minutes per day, day 0
+5. **Timestamps**: `day:tick` (144 ticks of 10 minutes per day, day 0
    based) — raw monotonic mechanics time; human framing is L3's business.
 6. **Multiple actors**: the subject is an unordered set (`A, B TALK …` ≡
    `B, A TALK …`), stored sorted — action equality is structural. Clauses
@@ -1486,10 +1487,10 @@ to its current home.
    advance passes, each written as a WAIT row (§6.7); a step whose typed
    clock precedes `state.now` is rejected, nothing logged; the fold sets
    the clock from WAIT records only — BEGIN, COMPLETE and EVENT rows never
-   advance or rebase it. Mechanics time is minute-precise — a mid-halfhour
-   begin is representable (the `d:h` clock field's quantization is input
+   advance or rebase it. Mechanics time is minute-precise — a mid-tick
+   begin is representable (the `d:u` clock field's quantization is input
    syntax, not mechanics; only the `t_game` display clock floors to the
-   halfhour) — and dead air is real time: event resolution spans the whole
+   tick) — and dead air is real time: event resolution spans the whole
    elapsed span, so a tick's trigger fires even when no action window
    covers that instant.
 5. **The fold trusts the log.** It never re-derives a decision: EVENT rows,
@@ -1574,17 +1575,17 @@ declaration). Meta lines:
 `script:` (title), `player:` (the lenient input's default actor — must name
 a declared entity of kind `character`), `goal:` (carried in the meta for an
 interface to show; the shipped REPL does not print it),
-`start: d:h` (initial clock), and `seed: N` — the §4.4 dice seed, an
+`start: d:u` (initial clock), and `seed: N` — the §4.4 dice seed, an
 integer, default 0; a negative seed enters the §4.4 key as its low 64 bits,
 and integer literals saturate at the 64-bit bounds rather than erroring
-(fields with small ranges — `hour`, halfhour, `max` — then reject on the
+(fields with small ranges — `hour`, tick, `max` — then reject on the
 saturated value).
 
 ```
 script: Murder on the Nightjar Flyer   # title
 player: MARCH                          # default actor for lenient input (§11)
 goal: unmask Lord Vane's killer …      # carried in the meta for the interface (§11: the shipped REPL does not print it)
-start: 0:42                            # initial clock
+start: 0:126                           # initial clock (21:00)
 seed: 7                                # dice seed (§4.4, default 0)
 
 kinds:                                 # new noun classes (§4.1)
@@ -1692,9 +1693,9 @@ Rules:
   `max N` (N ≥ 1) caps executions (§6.4); `aspects` lists the
   presence-emitted aspects that gate `on complete` triggers (§6.7).
 - **Trigger lines** — two section-scoped forms plus one card-carried kind:
-  - `ID [once] at (hour|halfhour) N -> OUTCOMES` — `hour` N is 0..23
-    (slot 2N), `halfhour` N is 0..47. Fires on every crossing of that
-    halfhour-of-day — or on the first crossing only with `once` (§6.6).
+  - `ID [once] at (hour|tick) N -> OUTCOMES` — `hour` N is 0..23
+    (slot 6N), `tick` N is 0..143. Fires on every crossing of that
+    tick-of-day — or on the first crossing only with `once` (§6.6).
   - `ID on expire of NAME -> OUTCOMES` — fires when an entity named NAME
     expires (§6.6); NAME gets no compile-time existence check (the entity
     may be spawned at runtime), and its outcomes may reference NAME directly.
@@ -1830,7 +1831,7 @@ tests. The shipped interface is a plain **line REPL** (`bin/chorus`: a
 TTY, so a piped session's stdout stays byte-clean). No TUI ships in this
 crate — `Game` is the headless seam a drawn UI would sit on. An action turn
 ends with the `« … »` canonical echo — every record's sentence with its
-executed recipe ids in a trailing bracket (`0:42 @ MARCH READ THE_MANIFEST
+executed recipe ids in a trailing bracket (`0:126 @ MARCH READ THE_MANIFEST
 [read.manifest]`; a REFUSED row's bracket names the recipe that refused,
 right beside its `REFUSE(…)` outcome; a step no recipe matched never becomes
 a row — the rejection line says `<verb>: no recipe matched`), `|`-joined —
@@ -1842,15 +1843,15 @@ journal line names what lit — COMPLETE rows included.
 it maps onto the canonical grammar, and the engine-composed canonical
 sentence is what gets logged (§9.1). Rules:
 
-- **Canonical passthrough**: input starting `d:h @` or containing `->`
+- **Canonical passthrough**: input starting `d:u @` or containing `->`
   goes through the strict parser unchanged (clock defaults to the world
   clock when absent).
-- Otherwise: optional leading `d:h` clock (default: **begin now** — the
-  world clock, minute-precise; windows may begin mid-halfhour) — an
-  out-of-range halfhour
-  field wraps into whole days the way durations compose (`0:118` = 118
-  halfhours = day 2, halfhour 22; the canonical `d:h @` form keeps its
-  strict `bad halfhour` bound); the
+- Otherwise: optional leading `d:u` clock (default: **begin now** — the
+  world clock, minute-precise; windows may begin mid-tick) — an
+  out-of-range tick
+  field wraps into whole days the way durations compose (`0:354` = 354
+  ticks = day 2, tick 66; the canonical `d:u @` form keeps its
+  strict `bad tick` bound); the
   first dictionary verb token ends the actor list — two-token preposition
   forms like `use on` are recognized; tokens before the verb are actors,
   defaulting to the `player:` character. A missing verb fails with the

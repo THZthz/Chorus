@@ -67,7 +67,7 @@ type `help` for how to play
 » read the manifest
 MARCH read THE MANIFEST.
 
-« 0:42 @ MARCH READ THE_MANIFEST »
+« 0:126 @ MARCH READ THE_MANIFEST »
 now: day 0, 21:00 · processing: read until 22:00
 try: talk to the guard · explore dining car · march the guard work at firebox · wait
 » wait
@@ -88,7 +88,7 @@ What just happened, line by line:
   stand, who is `here`, and a **try row** of actions you can type verbatim.
 - `read the manifest` did not finish. It **opened a station** — a processing
   window that runs 21:00–22:00. The canonical sentence
-  `« 0:42 @ MARCH READ THE_MANIFEST »` is the record of the attempt.
+  `« 0:126 @ MARCH READ THE_MANIFEST »` is the record of the attempt.
 - `wait` advanced time; the window completed, its narration printed, and the
   world moved (the 22:00 timetable trigger — the body being found — fired in
   the same pass).
@@ -148,8 +148,8 @@ at LAMP_ROOM`); things to do are **verbs** with **slots** (how many cards of
 what kind each role takes) and **recipes** (which outcomes fire when, chosen
 by `when` conditions, first match wins); **triggers** fire on the clock, on
 card expiry, or on completions; **decks** deal fixed permutations of cards;
-**endings** stop the story. The clock is `day:halfhour` — `0:42` is day 0,
-42nd halfhour = 21:00.
+**endings** stop the story. The clock is `day:tick` — `0:126` is day 0,
+tick 126 = 21:00 (144 ticks of 10 minutes per day).
 
 ### 2.1 The minimal game — one room, one verb, one ending
 
@@ -158,7 +158,7 @@ card expiry, or on completions; **decks** deal fixed permutations of cards;
 ```
 script: The Keeper's First Light
 player: WICK
-start: 0:8
+start: 0:24
 
 entities:
   LAMP_ROOM is place
@@ -214,13 +214,13 @@ verbs: read
 type `help` for how to play
 » read the logbook
 
-« 0:8 @ WICK READ THE_LOGBOOK »
+« 0:24 @ WICK READ THE_LOGBOOK »
 now: day 0, 04:00 · processing: read until 04:30
 try: wait
 » wait
 WICK read THE LOGBOOK cover to cover.
 — The lamp burns —
-  (+1halfhour) time passes.
+  (+30m) time passes.
 the story has ended — The lamp burns (grand). `undo` takes back the last turn; `quit` leaves.
 ```
 
@@ -252,7 +252,7 @@ a locked book (the full file):
 script: The Keeper's First Light
 player: WICK
 goal: light the lamp — the keeper's logbook says how
-start: 0:8
+start: 0:24
 
 entities:
   LAMP_ROOM is place
@@ -304,7 +304,7 @@ Play (the win is: read the primer, then the logbook — the deciphered read ends
 » read the logbook
 The logbook is written in the keeper's cipher. The worn primer at your belt holds the key.
 
-« 0:8 @ WICK READ THE_LOGBOOK -> REFUSE("The logbook is written in the keeper's cipher. The worn primer at your belt holds the key.") »
+« 0:24 @ WICK READ THE_LOGBOOK -> REFUSE("The logbook is written in the keeper's cipher. The worn primer at your belt holds the key.") »
 now: day 0, 04:00
 try: read the codebook
 » wait
@@ -313,23 +313,23 @@ now: day 0, 05:00
 try: read the codebook
 » read the codebook
 
-« 0:10 @ WICK READ THE_CODEBOOK »
+« 0:30 @ WICK READ THE_CODEBOOK »
 now: day 0, 05:00 · processing: read until 05:30
 try: wait
 » wait
 You work through the primer until the cipher's shapes stop swimming.
-  (+1halfhour) time passes.
+  (+30m) time passes.
 now: day 0, 05:30
 try: read the logbook
 » read the logbook
 
-« 0:11 @ WICK READ THE_LOGBOOK »
+« 0:33 @ WICK READ THE_LOGBOOK »
 now: day 0, 05:30 · processing: read until 06:00
 try: wait
 » wait
 The logbook opens. 'Trim the wick. Feed the lamp the good oil. Speak the old word at dusk.' You set the page down, lighter by one secret.
 — The lamp burns —
-  (+1halfhour) time passes.
+  (+30m) time passes.
 the story has ended — The lamp burns (grand). `undo` takes back the last turn; `quit` leaves.
 ```
 
@@ -454,7 +454,7 @@ refused at the table, exactly as authored:
 ```
 » light the lamp
 
-« 0:8 @ WICK LIGHT THE_LAMP -> REFUSE("The wick is dry. Fill the lamp first.") »
+« 0:24 @ WICK LIGHT THE_LAMP -> REFUSE("The wick is dry. Fill the lamp first.") »
 now: day 0, 04:00
 try: read the codebook · fill the lamp · light the lamp
 ```
@@ -500,8 +500,8 @@ and in the verb blocks:
 New ideas:
 
 - **Three trigger kinds:**
-  - *Slot trigger* — `ID [once] at (hour|halfhour) N -> OUTCOMES`. `hour 7`
-    means 07:00 (`halfhour 7` would be 03:30). It fires on **every** crossing
+  - *Slot trigger* — `ID [once] at (hour|tick) N -> OUTCOMES`. `hour 7`
+    means 07:00 (`tick 7` would be 01:10). It fires on **every** crossing
     of that time of day — `oil_delivery` happens daily — and on the first
     crossing only with `once` (`dawn_comes`).
   - *Expiry trigger* — `ID on expire of NAME -> OUTCOMES`. When a card whose
@@ -521,7 +521,7 @@ New ideas:
   » read the logbook
     (+15m) The cipher gives way a line at a time.
 
-  « 0:9 @ WICK READ THE_LOGBOOK -> PROGRESS(15m, "The cipher gives way a line at a time.") »
+  « 0:27 @ WICK READ THE_LOGBOOK -> PROGRESS(15m, "The cipher gives way a line at a time.") »
   ```
 
 - `max 1` caps a recipe's executions — the recipe-analog of a `once`
@@ -534,14 +534,14 @@ New ideas:
   ```
   » wick wait
 
-  « 0:10 @ WICK WAIT »
+  « 0:30 @ WICK WAIT »
   now: day 0, 05:00 · processing: wait until 05:30
   try: read the logbook · fill the lamp · light the lamp · wait
   » wait
   WICK sleep sitting up, the note on their chest, and the hour slides by.
   The note yellows to a faded one; the words go faint. The shape of the secret stays with you.
   The chandler leaves a can of lamp oil by the door.
-    (+3halfhour) time passes.
+    (+1h30m) time passes.
   now: day 0, 06:30
   ```
 
@@ -554,7 +554,7 @@ Two clock subtleties that surprise everyone:
 
 - `SET(x, expires, …)` applied at a **completion** is anchored to the
   window's *start* clock, not its end.
-- Typing a future clock (`0:16 @ WICK READ THE_LOGBOOK`) advances the world
+- Typing a future clock (`0:48 @ WICK READ THE_LOGBOOK`) advances the world
   to 08:00 in the same atomic pass that commits the action — "+4h time
   passes". If the action is then refused at the table, the whole pass
   (advance included) is discarded.
@@ -565,7 +565,7 @@ Dawdle and the deadline gets you:
 » wait
 Dawn grays the window. The lamp was never lit.
 — Dawn on a dark lamp —
-  (+1halfhour) time passes.
+  (+30m) time passes.
 the story has ended — Dawn on a dark lamp (melancholy). …
 ```
 
@@ -657,7 +657,7 @@ The deck-drawn cards are real cards — `dream` then `wait`, then `cards`:
 » dream
 WICK dream.
 
-« 0:8 @ WICK DREAM »
+« 0:24 @ WICK DREAM »
 now: day 0, 04:00 · processing: dream until 05:00
 try: read the codebook · fill the lamp · light the lamp · wait
 » wait
@@ -732,16 +732,16 @@ New ideas:
   » fill the lamp with the oil jug
   WICK fill the lamp.
 
-  « 0:10 @ WICK FILL THE_LAMP WITH OIL_JUG »
+  « 0:30 @ WICK FILL THE_LAMP WITH OIL_JUG »
   now: day 0, 05:00 · processing: fill until 05:20
   try: tend · talk to the cat · dream · wait
   » wait
   WICK wipe the slick off on the apron, pour OIL JUG into THE LAMP, and the lamp drinks.
   The lamp settles, oil moving in the well glass.
   The note yellows; the words go faint. The shape of the secret stays with you.
-    (+1halfhour) time passes.
+    (+30m) time passes.
 
-  « 0:10 @ WICK TEND THE_LAMP »
+  « 0:30 @ WICK TEND THE_LAMP »
   now: day 0, 05:30 · processing: tend until 05:50
   ```
 
@@ -776,8 +776,8 @@ New ideas:
 - `journal` shows the machinery — expansions done, raw templates stored:
 
   ```
-  0:10 @ COMPLETE FILL -> SET(#s_the_lamp, aspect:fueled, 1), DESTROY(#s_oil_jug), SET(#s_wick, aspect:oil_stained, 1), NARRATE "{actors} wipe the slick off on the apron, pour {with} into {object}, and the lamp drinks.", NARRATE "The lamp settles, oil moving in the well glass."
-  0:10 @ WICK TEND THE_LAMP
+  0:30 @ COMPLETE FILL -> SET(#s_the_lamp, aspect:fueled, 1), DESTROY(#s_oil_jug), SET(#s_wick, aspect:oil_stained, 1), NARRATE "{actors} wipe the slick off on the apron, pour {with} into {object}, and the lamp drinks.", NARRATE "The lamp settles, oil moving in the well glass."
+  0:30 @ WICK TEND THE_LAMP
   ```
 
 You now have every section of the format in your head:
@@ -878,7 +878,7 @@ New ideas:
   ```
   » take the matchbox at the stair
 
-  « 0:9 @ WICK AT THE_STAIR TAKE THE_MATCHBOX »
+  « 0:27 @ WICK AT THE_STAIR TAKE THE_MATCHBOX »
   ```
 
 - **`cards` (and `look`) show a projection, not the world.** Probed on this
@@ -1289,10 +1289,10 @@ several act (`march brack work`); role words `to with at about` shape the
 slots (`use on <thing> with <proof> <proof>`); names forgive case,
 underscores, articles and possessives, and one distinctive word is enough
 (`read ledger` finds `THE_VANE_LEDGER`). Strict canonical sentences
-(`0:42 @ MARCH WAIT`) pass through unchanged. Meta words: `look`, `cards`,
+(`0:126 @ MARCH WAIT`) pass through unchanged. Meta words: `look`, `cards`,
 `inspect <card>`, `story`, `journal`, `save <file.jsonl>`, `undo`, `wait`,
 `help`, `quit`. Time: an action opens a station; `wait` jumps to the next
-due thing (or one hour if nothing is due); a clock like `1:4` jumps there;
+due thing (or one hour if nothing is due); a clock like `1:12` jumps there;
 `undo` truncates the log to the turn boundary. `save` writes the JSONL log
 to a file — hand it to `reach --from-state` (§3.4) to analyze the midgame.
 
@@ -1335,7 +1335,7 @@ how to play
   people go BEFORE the verb: `march <someone> <verb> …` makes two of you act together
   role words: to · with · at · about — `use on <thing> with <proof> <proof>`
   names forgive case, underscores and articles; one distinctive word is enough
-  time: an action opens a station that finishes later — `wait` jumps to the next thing due; a clock like 1:4 jumps there
+  time: an action opens a station that finishes later — `wait` jumps to the next thing due; a clock like 1:12 jumps there
   save: write the play log to a file — `save <file.jsonl>`; `reach --from-state <file>` analyzes the midgame
   verbs: read · talk · explore · use on · travel to · wait · study · work · mansus · locate at · dream · acquire
   views: look · cards · inspect <card> · story · journal · save <file> · undo · help · quit
@@ -1500,8 +1500,8 @@ cap the recipe with `max 1`.
 [with <fuel>]`** — the card you named does not satisfy that slot's query.
 The usage line is generated from the slots; read it as the verb's contract.
 
-**Play: `READ is already processing — its station frees at 0:9`** (or
-`THE LAMP is busy with TEND — it frees at 0:11`) — one verb = one open
+**Play: `READ is already processing — its station frees at 0:27`** (or
+`THE LAMP is busy with TEND — it frees at 0:33`) — one verb = one open
 station, and cards bound in committed roles are busy. `wait` until the
 window closes (or use a different verb, or a different card).
 
@@ -1510,12 +1510,12 @@ window closes (or use a different verb, or a different card).
 `defaultcard X` (serve X forever) — or keep the exhaustion; it is a legal,
 loud design.
 
-**Play: `clock 0:0 is before state.now (0:8)`** — strict canonical input
+**Play: `clock 0:0 is before state.now (0:24)`** — strict canonical input
 with a past clock. Mechanics time is monotonic; use `undo` to go back, or
 type a clock at/after `now`.
 
-**Play: `bad halfhour (0..47)`** — the strict `d:h @ …` form bounds the
-halfhour field at 47 (48 halfhours per day). Type `1:0` for the next day's
+**Play: `bad tick (0..143)`** — the strict `d:u @ …` form bounds the
+tick field at 143 (144 ticks per day). Type `1:0` for the next day's
 start, or drop the `@` and let the lenient door wrap it.
 
 **Play: `I don't know 'moon'` / `no verb found — try one of: …` + `did you

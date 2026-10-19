@@ -311,7 +311,7 @@ fn candidate_generator_offers_the_pinned_probes() {
     assert!(tags.iter().any(|t| t.contains("wrong-kind")));
     assert!(tags.iter().all(|t| *t != "clock rewind"), "now < 60");
     // every candidate step carries the front-door clock (§6.6)
-    assert_eq!(cands[0].step.clock, Some(Clock { day: 0, halfhour: 42 }));
+    assert_eq!(cands[0].step.clock, Some(Clock { day: 0, tick: 126 }));
 }
 
 #[test]

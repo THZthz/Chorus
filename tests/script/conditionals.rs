@@ -525,7 +525,7 @@ fn the_taken_branch_flattens_in_position_the_untaken_branch_is_gone() {
     // v0.5: a branch-nested PROGRESS defers with the branch — the completion
     // row carries the flattened, taken branch verbatim
     let sentence = &done(&r).unwrap().sentence;
-    assert!(sentence.contains("PROGRESS(1halfhour, \"tick\")"), "{sentence}"); // canonical duration form
+    assert!(sentence.contains("PROGRESS(30m, \"tick\")"), "{sentence}"); // canonical duration form
     assert!(!sentence.contains("IF "));
 }
 
@@ -800,7 +800,7 @@ fn object_aspect_reads_the_bound_card_the_count_dread_typo_lint_covers_if_condit
 fn slot_triggers(out: &[&str]) -> Vec<TriggerDef> {
     vec![TriggerDef::Slot(SlotTriggerDef {
         id: "t".into(),
-        slot: 1,
+        slot: 3,
         once: None,
         out: out.iter().map(|s| (*s).to_string()).collect(),
     })]
@@ -1009,7 +1009,7 @@ fn a_slot_trigger_takes_its_if_branch_exists_form_and_the_record_flattens_it() {
         &dict,
         vec![TriggerDef::Slot(SlotTriggerDef {
             id: "patrol".into(),
-            slot: 2,
+            slot: 6,
             once: Some(true),
             out: vec![
                 "IF exists(HOUSE) -> (SPAWN PARANOIA) ELSE -> (NARRATE \"quiet.\")".to_string()
@@ -1070,7 +1070,7 @@ fn a_trigger_if_whose_condition_is_false_takes_the_else_branch() {
         &dict,
         vec![TriggerDef::Slot(SlotTriggerDef {
             id: "patrol".into(),
-            slot: 2,
+            slot: 6,
             once: None,
             out: vec![
                 "IF exists(NOSUCH_CARD) -> (SPAWN PARANOIA) ELSE -> (NARRATE \"all quiet.\")"

@@ -88,7 +88,7 @@ mod set_deltas_and_aspect_keys {
         let (dict, content, state) = setup();
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ANA, funds, +2)"])]);
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(
             r.state.entities["ana"].attrs.get("funds"),
@@ -104,7 +104,7 @@ mod set_deltas_and_aspect_keys {
                                                                                // the concrete sentence round-trips
         assert_round_trips(&done(&r).unwrap().sentence.clone(), &td);
         // the next delta applies to the new value
-        let r2 = settle_line(&c, &td, r.state, "0:21 @ ANA TUNE", 2).unwrap();
+        let r2 = settle_line(&c, &td, r.state, "0:63 @ ANA TUNE", 2).unwrap();
         assert_eq!(r2.state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(4)));
         let _ = (&dict, &content);
     }
@@ -114,7 +114,7 @@ mod set_deltas_and_aspect_keys {
         let (dict, content, state) = setup();
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, funds, -3)"])]);
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(r.state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(-3)));
         assert!(done(&r).unwrap().sentence.contains("SET(#ana, funds, -3)"));
@@ -126,7 +126,7 @@ mod set_deltas_and_aspect_keys {
         let (dict, content, state) = setup();
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, aspect:dread, +1)"])]);
-        let mut r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let mut r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(r.state.entities["ana"].aspects.get("dread"), Some(&AspectVal::Num(1)));
         assert!(done(&r).unwrap().sentence.contains("SET(#ana, aspect:dread, 1)"));
@@ -147,9 +147,9 @@ mod set_deltas_and_aspect_keys {
         let (dict, content, state) = setup();
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, funds, 5)"])]);
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.state.entities["ana"].attrs.get("funds"), Some(&AttrValue::Num(5)));
-        let r2 = settle_line(&c, &td, r.state, "0:21 @ ANA TUNE", 2).unwrap();
+        let r2 = settle_line(&c, &td, r.state, "0:63 @ ANA TUNE", 2).unwrap();
         assert_eq!(
             r2.state.entities["ana"].attrs.get("funds"),
             Some(&AttrValue::Num(5)) // not 5+5
@@ -201,7 +201,7 @@ mod set_deltas_and_aspect_keys {
             &c,
             &td,
             state,
-            "0:20 @ ANA TUNE THE_FORGETTING; BERTHA TUNE FAIRY_TALES",
+            "0:60 @ ANA TUNE THE_FORGETTING; BERTHA TUNE FAIRY_TALES",
             1,
         )
         .unwrap();
@@ -239,7 +239,7 @@ mod set_deltas_and_aspect_keys {
                 out: vec!["SET(ACTORS, aspect:dread, +1)".to_string()],
             }],
         );
-        let r = settle_line(&c, &td, state, "0:20 @ ANA, BERTHA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA, BERTHA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(done(&r).unwrap().outcomes.iter().filter(|o| o.op == "SET").count(), 2);
         assert!(done(&r)
@@ -271,7 +271,7 @@ mod set_deltas_and_aspect_keys {
             .insert("dread".to_string(), AspectVal::Num(7));
         let mut id = 1;
         let mut all: Vec<ActionRecord> = Vec::new();
-        for step in ["0:20 @ ANA, BERTHA TUNE", "0:21 @ ANA TUNE", "0:22 @ BERTHA TUNE"] {
+        for step in ["0:60 @ ANA, BERTHA TUNE", "0:63 @ ANA TUNE", "0:66 @ BERTHA TUNE"] {
             let r = settle_line(&c, &td, state, step, id).unwrap();
             assert_eq!(r.rejected, None);
             all.extend(r.records.clone());
@@ -303,7 +303,7 @@ mod set_deltas_and_aspect_keys {
                 "REFUSE(\"too costly\")",
             ])],
         );
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(ops(done(&r).unwrap()), ["SET", "SET", "REFUSE"]);
         assert_eq!(act(&r).unwrap().advanced_min, 0);
@@ -323,7 +323,7 @@ mod set_deltas_and_aspect_keys {
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, container, +1)"])]);
         // container is a string attr
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"non-numeric");
         assert_eq!(r.state.entities["ana"].attrs.get("funds"), None); // nothing applied
@@ -341,7 +341,7 @@ mod set_deltas_and_aspect_keys {
             ),
         );
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, aspect:language, +1)"])]);
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"non-numeric");
         assert_eq!(
@@ -357,7 +357,7 @@ mod set_deltas_and_aspect_keys {
         let td = tune_dict();
         let c = counter_content(&td, vec![recipe(&["SET(ACTORS, \"about\", +5)"])]);
         // 'about' is a reserved role word
-        let r = settle_line(&c, &td, state, "0:20 @ ANA TUNE", 1).unwrap();
+        let r = settle_line(&c, &td, state, "0:60 @ ANA TUNE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(r.state.entities["ana"].attrs.get("about"), Some(&AttrValue::Num(5)));
         assert!(done(&r).unwrap().sentence.contains("SET(#ana, \"about\", 5)"));
@@ -441,7 +441,7 @@ mod replace_decay {
             },
         );
         let c = decay_content(&dd, "REPLACE OBJECT WITH ASHES", protos);
-        let r = settle_line(&c, &dd, state, "0:20 @ ANA DECAY CHALICE", 1).unwrap();
+        let r = settle_line(&c, &dd, state, "0:60 @ ANA DECAY CHALICE", 1).unwrap();
         assert_eq!(r.rejected, None);
         // zero new log surface: the record carries the concrete SPAWN+DESTROY pair (§4.4)
         assert_eq!(ops(done(&r).unwrap()), ["SPAWN", "DESTROY"]);
@@ -478,7 +478,7 @@ mod replace_decay {
         let mut protos = IndexMap::new();
         protos.insert("ASHES".to_string(), proto("item"));
         let c = decay_content(&dd, "REPLACE OBJECT WITH ASHES", protos);
-        let r = settle_line(&c, &dd, state, "0:20 @ ANA DECAY CHALICE", 1).unwrap();
+        let r = settle_line(&c, &dd, state, "0:60 @ ANA DECAY CHALICE", 1).unwrap();
         assert_eq!(r.rejected, None);
         let ash_id = &r.state.by_name.get("ASHES").unwrap()[0];
         assert_eq!(
@@ -502,7 +502,7 @@ mod replace_decay {
         let mut protos = IndexMap::new();
         protos.insert("ASHES".to_string(), proto("item"));
         let c = decay_content(&dd, "REPLACE OBJECT WITH ASHES", protos);
-        let r = settle_line(&c, &dd, base, "0:20 @ ANA DECAY CHALICE", 1).unwrap();
+        let r = settle_line(&c, &dd, base, "0:60 @ ANA DECAY CHALICE", 1).unwrap();
         assert_eq!(r.rejected, None);
         let ash_id = &r.state.by_name.get("ASHES").unwrap()[0];
         let ash = &r.state.entities[ash_id];
@@ -575,7 +575,7 @@ mod replace_decay {
             &[],
         )
         .unwrap();
-        let r = settle_line(&c, &dd, state, "0:20 @ ANA DECAY", 1).unwrap();
+        let r = settle_line(&c, &dd, state, "0:60 @ ANA DECAY", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"unresolvable ref");
         assert_eq!(r.state.entities["chalice"].dead_action, None); // nothing applied
@@ -589,7 +589,7 @@ mod replace_decay {
         let mut protos = IndexMap::new();
         protos.insert("ASHES".to_string(), proto("item"));
         let c = decay_content(&dd, "REPLACE OBJECT WITH ASHES", protos);
-        let r = settle_line(&c, &dd, state, "0:20 @ ANA DECAY CHALICE", 1).unwrap();
+        let r = settle_line(&c, &dd, state, "0:60 @ ANA DECAY CHALICE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert!(r.state.entities["chalice"].dead_action.is_some());
         assert!(!r.state.by_name.contains_key("CHALICE"));
@@ -601,7 +601,7 @@ mod replace_decay {
         let (dict, content, state) = setup();
         let dd = decay_dict();
         let c = decay_content(&dd, "REPLACE OBJECT WITH item:CRUMBS", IndexMap::new());
-        let r = settle_line(&c, &dd, state, "0:20 @ ANA DECAY CHALICE", 1).unwrap();
+        let r = settle_line(&c, &dd, state, "0:60 @ ANA DECAY CHALICE", 1).unwrap();
         assert_eq!(r.rejected, None);
         let crumbs_id = &r.state.by_name.get("CRUMBS").unwrap()[0];
         let crumbs = &r.state.entities[crumbs_id];
@@ -617,7 +617,7 @@ mod replace_decay {
         let mut protos = IndexMap::new();
         protos.insert("CHALICE".to_string(), proto("item"));
         let c = decay_content(&dd, "REPLACE OBJECT WITH CHALICE", protos);
-        let r = settle_line(&c, &dd, state, "0:20 @ ANA DECAY CHALICE", 1).unwrap(); // CHALICE is still alive at spawn time
+        let r = settle_line(&c, &dd, state, "0:60 @ ANA DECAY CHALICE", 1).unwrap(); // CHALICE is still alive at spawn time
         assert_eq!(r.rejected, None);
         assert_refusal(&r, r"already in use");
         assert_eq!(r.state.entities["chalice"].dead_action, None); // nothing applied

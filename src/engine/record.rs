@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::clock::{clock_from_abs_min, format_clock, Clock, MIN_PER_HALFHOUR};
+use crate::core::clock::{clock_from_abs_min, format_clock, Clock, MIN_PER_TICK};
 use crate::core::dict::Dictionary;
 use crate::core::format::format_sentence;
 use crate::core::r#ref::{sort_refs, Ref};
@@ -48,13 +48,13 @@ pub struct ActionRecord {
     pub kind: String,
     pub trigger: Option<String>,
     #[serde(rename = "tGame")]
-    pub t_game: String, // display clock "day:halfhour" (floored — display only)
+    pub t_game: String, // display clock "day:tick" (floored — display only)
     #[serde(rename = "tReal")]
     pub t_real: Option<String>,
     #[serde(rename = "advancedMin")]
     pub advanced_min: i64, // BEGIN: window length; wait: the span; else 0
     /// v0.5 — exact minutes: BEGIN = begin minute, wait = span start. The
-    /// quantized tGame cannot carry mid-halfhour minutes, and fold must land
+    /// quantized tGame cannot carry mid-tick minutes, and fold must land
     /// them exactly (expires anchoring, §4.4)
     #[serde(rename = "startMin")]
     pub start_min: Option<i64>,
@@ -235,7 +235,7 @@ pub(super) fn make_event_record(
     outcomes: Vec<Outcome>,
     dict: &Dictionary,
 ) -> Result<ActionRecord> {
-    let clock = clock_from_abs_min(abs_slot * MIN_PER_HALFHOUR);
+    let clock = clock_from_abs_min(abs_slot * MIN_PER_TICK);
     let mut rec = base_record("event", id, clock);
     rec.trigger = Some(trigger.to_string());
     rec.outcomes = outcomes;

@@ -711,20 +711,20 @@ fn engine_expiry_addresses_by_id_the_younger_expires_and_dies_no_re_fire_later()
         .get_mut(&younger)
         .unwrap()
         .attrs
-        .insert("expiresAt".to_string(), AttrValue::Num(30)); // crosses slot 1 (0:30)
-    let r = settle_line(&content, &dict, pooled, "0:0 @ ANA WAIT", 1).unwrap(); // 1h: crosses slots 1 and 2
+        .insert("expiresAt".to_string(), AttrValue::Num(30)); // crosses tick 3 (minute 30)
+    let r = settle_line(&content, &dict, pooled, "0:0 @ ANA WAIT", 1).unwrap(); // 1h: crosses ticks 1..6
     assert_eq!(r.rejected, None);
     let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].trigger.as_deref(), Some("expire:SUSPICION"));
-    assert_eq!(events[0].t_game, "0:1");
+    assert_eq!(events[0].t_game, "0:3");
     // the engine-written destroy is keyed to the EXPIRING copy: DESTROY #id
     assert_eq!(events[0].outcomes[0].args[0], Arg::Ref { r#ref: Ref::Id { id: younger.clone() } });
     assert!(r.state.entities.get(&younger).unwrap().dead_action.is_some());
     assert_eq!(r.state.entities.get(&eldest).unwrap().dead_action, None); // the elder survives
     assert_eq!(r.state.by_name.get("SUSPICION"), Some(&vec![eldest.clone()]));
     // later crossings never re-fire: the survivor carries no expires
-    let r2 = settle_line(&content, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 1)
+    let r2 = settle_line(&content, &dict, r.state, "0:6 @ ANA WAIT", r.records.len() as i64 + 1)
         .unwrap();
     assert_eq!(r2.rejected, None);
     assert_eq!(r2.records.iter().filter(|x| x.kind == "event").count(), 0);
@@ -743,14 +743,15 @@ fn three_copies_past_their_expires_cross_one_two_slot_advance_oldest_dies_first_
             .get_mut(pid)
             .unwrap()
             .attrs
-            .insert("expiresAt".to_string(), AttrValue::Num(10)); // past BOTH crossed slots
+            .insert("expiresAt".to_string(), AttrValue::Num(10)); // past the first crossed tick
     }
     let base = clone_state(&pooled);
-    let r = settle_line(&content, &dict, pooled, "0:0 @ ANA WAIT", 1).unwrap(); // 1h: crosses slots 1 and 2
+    let r = settle_line(&content, &dict, pooled, "0:0 @ ANA WAIT", 1).unwrap(); // 1h: crosses ticks 1..6
     assert_eq!(r.rejected, None);
     let events: Vec<&ActionRecord> = r.records.iter().filter(|x| x.kind == "event").collect();
     // the expiry snapshot iterates entities in birth order: all three fire at
-    // the FIRST crossed slot (0:1), oldest first; slot 2 finds nobody alive
+    // the FIRST crossed tick (0:1, minute 10), oldest first; later ticks find
+    // nobody alive
     let t_games: Vec<&str> = events.iter().map(|e| e.t_game.as_str()).collect();
     assert_eq!(t_games, ["0:1", "0:1", "0:1"]);
     let dead_ids: Vec<String> = events
@@ -860,7 +861,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
         .unwrap()
         .attrs
         .insert("expiresAt".to_string(), AttrValue::Num(60));
-    let r = settle_line(&asym, &dict, pooled, "0:1 @ ANA WAIT", 3).unwrap();
+    let r = settle_line(&asym, &dict, pooled, "0:3 @ ANA WAIT", 3).unwrap();
     assert_eq!(r.rejected, None);
     let triggers: Vec<&str> = r
         .records
@@ -877,7 +878,7 @@ fn authored_expiry_asymmetry_fires_per_crossing_copy_its_name_outcomes_hit_the_o
     // the crossing copy is past its expires: it re-fires (§6.6) on the next
     // crossing — and being now the pool's head, the second DESTROY takes IT
     let r2 =
-        settle_line(&asym, &dict, r.state, "0:2 @ ANA WAIT", r.records.len() as i64 + 3).unwrap();
+        settle_line(&asym, &dict, r.state, "0:6 @ ANA WAIT", r.records.len() as i64 + 3).unwrap();
     let triggers: Vec<&str> = r2
         .records
         .iter()
@@ -1153,14 +1154,14 @@ fn the_log_alone_reproduces_the_pooled_state_byname_arrays_included() {
         ("STEW", "0:0 @ ANA STEW"),  // mint 3
         ("EXPIRE", ""),              // logs SET(#third, expires, 30m) → expiresAt 30
         ("STEW", "0:0 @ ANA WAIT"),  // crosses slot 1: expire:SUSPICION DESTROY the third (by id)
-        ("STEW", "0:2 @ ANA CALM"),  // authored destroy of the then-oldest (by name)
-        ("STEW", "0:2 @ ANA PROBE"), // slot-bound SET+DESTROY of the last copy
+        ("STEW", "0:6 @ ANA CALM"),  // authored destroy of the then-oldest (by name)
+        ("STEW", "0:6 @ ANA PROBE"), // slot-bound SET+DESTROY of the last copy
     ];
     for (verb, step) in steps {
         let src = if verb == "EXPIRE" {
             format!("0:0 @ ANA ACQUIRE #{}", mints[2])
         } else if verb == "STEW" && step.contains("PROBE") {
-            format!("0:2 @ ANA PROBE #{}", mints[1])
+            format!("0:6 @ ANA PROBE #{}", mints[1])
         } else {
             step.to_string()
         };

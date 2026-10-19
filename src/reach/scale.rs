@@ -354,14 +354,14 @@ pub fn build_cs_scale(n_protos: usize, n_recipes: usize) -> ScaleWorld {
         let v = 1 + int(&mut rnd, 5) as i64;
         triggers.push(TriggerDef::Slot(SlotTriggerDef {
             id: format!("season{i}"),
-            slot: (i * 6) as i64,
+            slot: (i * 18) as i64,
             once: Some(false),
             out: vec![format!("SPAWN {p}"), format!("SET({r}, aspect:{a}, {v})")],
         }));
     }
     triggers.push(TriggerDef::Slot(SlotTriggerDef {
         id: "t_expiry".to_string(),
-        slot: 40,
+        slot: 120,
         once: Some(true),
         out: vec![format!("SPAWN {}", proto_names[int(&mut rnd, proto_names.len())].clone())],
     }));

@@ -649,7 +649,7 @@ fn a_bad_start_value_blames_the_clock_not_the_key() {
     // error (correct attribution) — only the un-listed-key path changed.
     assert_err_msg(
         compile("script: Probe\nplayer: MARCH\nstart: banana\nentities:\n  MARCH is character\n"),
-        r#"bad clock 'banana' \(expected "day:halfhour"\)"#,
+        r#"bad clock 'banana' \(expected "day:tick"\)"#,
     );
 }
 
@@ -1267,7 +1267,7 @@ verbs:
       make.arm when count(actors) >= 1 -> IF count(actors) >= 1 -> (SPAWN POT)
 
 triggers:
-  t1 at halfhour 1 -> SPAWN POT
+  t1 at tick 3 -> SPAWN POT
 ",
     );
     let hits: Vec<&str> = findings

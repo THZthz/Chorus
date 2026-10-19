@@ -404,7 +404,7 @@ fn registration_at_begin_counts_while_the_window_is_still_open() {
         s,
         Step {
             start_min: None,
-            clock: Some(Clock { day: 0, halfhour: 0 }),
+            clock: Some(Clock { day: 0, tick: 0 }),
             clauses: parsed.clauses,
             t_real: None,
         },

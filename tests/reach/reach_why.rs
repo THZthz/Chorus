@@ -69,11 +69,11 @@ prototypes:
   GATED_GEM is item
 
 triggers:
-  t_fallback at halfhour 1 -> IF exists(THE_COIN) -> (NARRATE \"coin lives\") ELSE -> (SPAWN FALLBACK_GEM)
-  t_kill at halfhour 1 -> SPAWN KILLED_GEM, DESTROY KILLED_GEM
+  t_fallback at tick 3 -> IF exists(THE_COIN) -> (NARRATE \"coin lives\") ELSE -> (SPAWN FALLBACK_GEM)
+  t_kill at tick 3 -> SPAWN KILLED_GEM, DESTROY KILLED_GEM
   t_expire_bad on expire of NO_SUCH_CARD -> SPAWN EXPIRY_GEM
-  t_gate_src at halfhour 1 -> SPAWN DOOMED_GEM
-  t_doom at halfhour 2 -> DESTROY DOOMED_GEM
+  t_gate_src at tick 3 -> SPAWN DOOMED_GEM
+  t_doom at tick 6 -> DESTROY DOOMED_GEM
 
 verbs:
   WORK:

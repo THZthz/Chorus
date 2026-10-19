@@ -66,7 +66,7 @@ pub struct VerbContent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotTriggerDef {
     pub id: String,
-    /// halfhours-of-day slot 0..47 (`at hour N` in the script is slot 2N)
+    /// ticks-of-day slot 0..143 (`at hour N` in the script is slot 6N)
     pub slot: i64,
     pub once: Option<bool>,
     pub out: Vec<String>,

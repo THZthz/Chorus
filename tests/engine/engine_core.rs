@@ -54,7 +54,7 @@ mod read_ladder {
     #[test]
     fn solo_reader_with_knowledge_passes_the_gate_default_narrates() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA READ MAGICK_BOOK", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA READ MAGICK_BOOK", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(act(&r).unwrap().recipes, ["read.default"]);
         assert_eq!(act(&r).unwrap().advanced_min, 60);
@@ -65,7 +65,7 @@ mod read_ladder {
     fn magick_gate_refuses_an_ignorant_reader_no_state_change_no_time_attempt_logged() {
         let (dict, content, state) = setup();
         let before = snap(&state);
-        let r = settle_line(&content, &dict, state, "0:28 @ BERTHA READ MAGICK_BOOK", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ BERTHA READ MAGICK_BOOK", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(r.records.len(), 1);
         assert_eq!(ops(done(&r).unwrap()), ["REFUSE"]);
@@ -80,7 +80,7 @@ mod read_ladder {
     fn parent_child_reading_fairy_tales_branches_to_bonding_memory() {
         let (dict, content, state) = setup();
         let r =
-            settle_line(&content, &dict, state, "0:28 @ ANA, BERTHA READ FAIRY_TALES", 1).unwrap();
+            settle_line(&content, &dict, state, "0:84 @ ANA, BERTHA READ FAIRY_TALES", 1).unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["read.parent_child"]);
         let spawn = &done(&r).unwrap().outcomes[0];
         assert_eq!(spawn.op, "SPAWN");
@@ -94,7 +94,7 @@ mod read_ladder {
     #[test]
     fn two_unrelated_readers_get_the_poorer_outcome_no_spawn() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA, MY_FOLLOWER READ FAIRY_TALES", 1)
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA, MY_FOLLOWER READ FAIRY_TALES", 1)
             .unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["read.unrelated_pair"]);
         assert!(done(&r).unwrap().outcomes.iter().all(|o| o.op == "NARRATE"));
@@ -103,7 +103,7 @@ mod read_ladder {
     #[test]
     fn prototype_parameterized_spawn_resolves_into_a_concrete_named_card() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA READ THE_FORGETTING", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA READ THE_FORGETTING", 1).unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["read.secret"]);
         let spawn = &done(&r).unwrap().outcomes[0];
         let Arg::Ref { r#ref: Ref::Name { name, .. } } = &spawn.args[0] else {
@@ -136,7 +136,7 @@ mod slot_discipline {
             &content,
             &dict,
             state,
-            "0:28 @ ANA, BERTHA, MY_FOLLOWER READ FAIRY_TALES",
+            "0:84 @ ANA, BERTHA, MY_FOLLOWER READ FAIRY_TALES",
             1,
         )
         .unwrap();
@@ -147,7 +147,7 @@ mod slot_discipline {
     #[test]
     fn slot_discipline_undeclared_roles_are_rejected() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA READ FAIRY_TALES WITH CHALICE", 1)
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA READ FAIRY_TALES WITH CHALICE", 1)
             .unwrap();
         assert_rejected(&r, r"does not accept 'with'");
         assert_eq!(r.records.len(), 0);
@@ -156,7 +156,7 @@ mod slot_discipline {
     #[test]
     fn slot_discipline_one_card_cannot_fill_a_role_twice() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA, ANA READ FAIRY_TALES", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA, ANA READ FAIRY_TALES", 1).unwrap();
         assert_rejected(&r, r"already placed in 'actors'");
         assert_eq!(r.records.len(), 0);
     }
@@ -173,7 +173,7 @@ mod talk_with_about {
             &content,
             &dict,
             state,
-            "0:28 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
+            "0:84 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
             1,
         )
         .unwrap();
@@ -193,7 +193,7 @@ mod multi_clause_steps {
             &content,
             &dict,
             state,
-            "0:28 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ THE_FORGETTING",
+            "0:84 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ THE_FORGETTING",
             1,
         )
         .unwrap();
@@ -217,7 +217,7 @@ mod use_on_rite {
         state.now = 14 * 60;
         let before = snap(&state);
         let r =
-            settle_line(&content, &dict, state, "0:28 @ ANA AT HOUSE USE_ON RITE_OF_ASCENSION", 1)
+            settle_line(&content, &dict, state, "0:84 @ ANA AT HOUSE USE_ON RITE_OF_ASCENSION", 1)
                 .unwrap();
         assert_eq!(ops(done(&r).unwrap()), ["REFUSE"]);
         assert_eq!(r.state.now, 14 * 60);
@@ -231,7 +231,7 @@ mod use_on_rite {
             &content,
             &dict,
             state,
-            "0:28 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE",
+            "0:84 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE",
             1,
         )
         .unwrap();
@@ -255,16 +255,16 @@ mod events {
     #[test]
     fn crossing_hour_16_fires_dusk_falls_as_its_own_event_row() {
         let (dict, content, state) = setup();
-        let r1 = settle_line(&content, &dict, state, "0:28 @ ANA WAIT", 1).unwrap(); // crosses 15 only
+        let r1 = settle_line(&content, &dict, state, "0:84 @ ANA WAIT", 1).unwrap(); // crosses 15 only
         let mut kinds1 = kinds(&r1.records);
         if kinds1.first() == Some(&"wait") {
             kinds1.remove(0); // the typed clock bridges from now=0
         }
         assert_eq!(kinds1, ["action", "complete", "wait"]); // v0.5 turn shape
-        let r2 = settle_line(&content, &dict, r1.state, "0:30 @ ANA WAIT", 1).unwrap(); // crosses 16 → dusk
+        let r2 = settle_line(&content, &dict, r1.state, "0:90 @ ANA WAIT", 1).unwrap(); // crosses 16 → dusk
         let event = r2.records.iter().find(|x| x.kind == "event").expect("the dusk event row");
         assert_eq!(event.trigger.as_deref(), Some("dusk_falls"));
-        assert_eq!(event.t_game, "0:32");
+        assert_eq!(event.t_game, "0:96");
         assert!(r2.records.iter().any(|x| x.kind == "action" && !x.sentence.is_empty()));
         assert!(r2.state.by_name.contains_key("DREAD"));
     }
@@ -274,13 +274,13 @@ mod events {
         let (dict, content, mut state) = setup();
         state.entities.get_mut("chalice").unwrap().attrs.insert(
             "expiresAt".to_string(),
-            AttrValue::Num(16 * 60), // 0:32
+            AttrValue::Num(16 * 60), // 0:96
         );
         let r = settle_line(
             &content,
             &dict,
             state,
-            "0:28 @ ANA WAIT; ANA WAIT; ANA WAIT", // three staggered windows, 14 → 17
+            "0:84 @ ANA WAIT; ANA WAIT; ANA WAIT", // three staggered windows, 14 → 17
             1,
         )
         .unwrap();
@@ -309,12 +309,12 @@ mod fold_tests {
         let mut state = state;
         let mut log = Log::new(seed_state());
         let steps = [
-            "0:28 @ ANA READ THE_FORGETTING",
-            "0:30 @ ANA, BERTHA READ FAIRY_TALES", // ends 0:32 → dusk event row
-            "0:32 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
-            "0:34 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ MAGICK_BOOK",
-            "0:40 @ ANA WAIT",
-            "0:42 @ ANA WAIT",
+            "0:84 @ ANA READ THE_FORGETTING",
+            "0:90 @ ANA, BERTHA READ FAIRY_TALES", // ends 0:96 → dusk event row
+            "0:96 @ ANA, BERTHA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
+            "0:102 @ ANA TRAVEL_TO THE_STUDY; ANA AT THE_STUDY READ MAGICK_BOOK",
+            "0:120 @ ANA WAIT",
+            "0:126 @ ANA WAIT",
         ];
         let mut id = 1;
         for step in steps {
@@ -332,7 +332,7 @@ mod fold_tests {
     fn refused_attempts_replay_as_no_ops() {
         let (dict, content, state) = setup();
         let before = snap(&state);
-        let r = settle_line(&content, &dict, state, "0:28 @ BERTHA READ MAGICK_BOOK", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ BERTHA READ MAGICK_BOOK", 1).unwrap();
         let replayed = fold(&r.records, &seed_state(), &dict, &content).unwrap();
         assert_eq!(snap(&replayed), before);
     }
@@ -340,7 +340,7 @@ mod fold_tests {
     #[test]
     fn jsonl_persistence_round_trips_the_log() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA READ THE_FORGETTING", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA READ THE_FORGETTING", 1).unwrap();
         let path = tmp_log_path("engine-jsonl-roundtrip");
         save_log(&path, &r.records).unwrap();
         let loaded = load_log(&path).unwrap();
@@ -352,13 +352,13 @@ mod fold_tests {
     #[test]
     fn undo_re_fold_without_the_tail() {
         let (dict, content, state) = setup();
-        let r1 = settle_line(&content, &dict, state, "0:28 @ ANA READ THE_FORGETTING", 1).unwrap();
+        let r1 = settle_line(&content, &dict, state, "0:84 @ ANA READ THE_FORGETTING", 1).unwrap();
         let snapshot_after_one = snap(&r1.state);
         let r2 = settle_line(
             &content,
             &dict,
             r1.state,
-            "0:32 @ ANA READ FAIRY_TALES",
+            "0:96 @ ANA READ FAIRY_TALES",
             r1.records.len() as i64 + 1,
         )
         .unwrap();
@@ -382,7 +382,7 @@ mod dictionary_is_the_law {
             &content,
             &dict,
             state,
-            "0:28 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE",
+            "0:84 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE",
             1,
         )
         .unwrap();
@@ -392,7 +392,7 @@ mod dictionary_is_the_law {
         // a new CHALICE can be minted after the old one died
         let rec = fixture_complete(
             99,
-            "0:40",
+            "0:120",
             vec![outcome(
                 "SPAWN",
                 vec![
@@ -415,7 +415,7 @@ mod behavior_regressions {
         let (dict, content, mut state) = setup();
         let rec = fixture_complete(
             1,
-            "0:28",
+            "0:84",
             vec![outcome(
                 "SET",
                 vec![
@@ -470,7 +470,7 @@ mod behavior_regressions {
             &content,
             &dict,
             state,
-            "0:28 @ ANA WAIT; ANA WAIT; ANA WAIT", // 14→17, events at 15/16
+            "0:84 @ ANA WAIT; ANA WAIT; ANA WAIT", // 14→17, events at 15/16
             1,
         )
         .unwrap();
@@ -487,7 +487,7 @@ mod behavior_regressions {
             &content,
             &dict,
             state,
-            "0:28 @ ANA, BERTHA TRAVEL_TO VILLA; MY_FOLLOWER WAIT",
+            "0:84 @ ANA, BERTHA TRAVEL_TO VILLA; MY_FOLLOWER WAIT",
             1,
         )
         .unwrap();
@@ -520,7 +520,7 @@ mod behavior_regressions {
     fn steps_cannot_rewind_the_clock() {
         let (dict, content, mut state) = setup();
         state.now = 10 * 60;
-        let r = settle_line(&content, &dict, state, "0:6 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:18 @ ANA WAIT", 1).unwrap();
         assert_rejected(&r, r"before state\.now");
         assert_eq!(r.records.len(), 0);
     }
@@ -529,13 +529,13 @@ mod behavior_regressions {
     fn application_failures_refuse_the_window_instead_of_throwing() {
         let (dict, content, state) = setup();
         let r =
-            settle_line(&content, &dict, state, "0:28 @ ANA, BERTHA READ FAIRY_TALES", 1).unwrap();
+            settle_line(&content, &dict, state, "0:84 @ ANA, BERTHA READ FAIRY_TALES", 1).unwrap();
         assert_eq!(r.rejected, None);
         let r2 = settle_line(
             &content,
             &dict,
             r.state,
-            "0:32 @ ANA, BERTHA READ FAIRY_TALES", // duplicate mint name
+            "0:96 @ ANA, BERTHA READ FAIRY_TALES", // duplicate mint name
             r.records.len() as i64 + 1,
         )
         .unwrap();
@@ -627,7 +627,7 @@ mod exists_recipes {
             container_attrs("villa"),
             false,
         );
-        let r = settle_line(&c, &pd, state, "0:28 @ ANA PROBE", 1).unwrap();
+        let r = settle_line(&c, &pd, state, "0:84 @ ANA PROBE", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(act(&r).unwrap().recipes, ["probe.hunted"]);
         assert!(done(&r).unwrap().sentence.contains("A hunter walks the world."));
@@ -655,7 +655,7 @@ mod exists_recipes {
             container_attrs("greenhouse"),
             false,
         );
-        let r = settle_line(&gate(&pd), &pd, state, "0:28 @ ANA PROBE", 1).unwrap();
+        let r = settle_line(&gate(&pd), &pd, state, "0:84 @ ANA PROBE", 1).unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["probe.default"]);
     }
 
@@ -675,7 +675,7 @@ mod exists_recipes {
         // DESTROY shape: stamp + release the name (§5.1)
         state.entities.get_mut("hunter").unwrap().dead_action = Some(99);
         state.by_name.remove("HUNTER");
-        let r = settle_line(&gate(&pd), &pd, state, "0:28 @ ANA PROBE", 1).unwrap();
+        let r = settle_line(&gate(&pd), &pd, state, "0:84 @ ANA PROBE", 1).unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["probe.default"]);
     }
 
@@ -715,7 +715,7 @@ mod exists_recipes {
                 },
             ],
         );
-        let r = settle_line(&c, &pd, state, "0:28 @ ANA PROBE", 1).unwrap();
+        let r = settle_line(&c, &pd, state, "0:84 @ ANA PROBE", 1).unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["probe.door"]);
     }
 
@@ -749,10 +749,10 @@ mod exists_recipes {
             ],
         );
         // ANA is BERTHA's parent (seed edge)
-        let r = settle_line(&c, &pd, state, "0:28 @ ANA, BERTHA PROBE", 1).unwrap();
+        let r = settle_line(&c, &pd, state, "0:84 @ ANA, BERTHA PROBE", 1).unwrap();
         assert_eq!(act(&r).unwrap().recipes, ["probe.bonded"]);
         // no parent_child edge — a fresh seed for the second probe
-        let r2 = settle_line(&c, &pd, seed_state(), "0:30 @ ANA, MY_FOLLOWER PROBE", 2).unwrap();
+        let r2 = settle_line(&c, &pd, seed_state(), "0:90 @ ANA, MY_FOLLOWER PROBE", 2).unwrap();
         assert_eq!(act(&r2).unwrap().recipes, ["probe.default"]);
     }
 }
@@ -768,7 +768,7 @@ mod progress_ticks {
             &content,
             &dict,
             state,
-            "0:28 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE",
+            "0:84 @ ANA, MY_FOLLOWER AT HOUSE USE_ON RITE_OF_ASCENSION WITH CHALICE",
             1,
         )
         .unwrap();
@@ -793,7 +793,7 @@ mod progress_ticks {
         let (dict, content, mut state) = setup();
         let rec = fixture_complete(
             1,
-            "0:28",
+            "0:84",
             vec![outcome("PROGRESS", vec![Arg::Str { v: "no duration".to_string() }])],
         );
         assert_err_msg(apply_record(&rec, &mut state, &dict, &content), r"PROGRESS needs");
@@ -813,13 +813,13 @@ mod progress_ticks {
 mod clock_and_duration_literals {
     use super::*;
 
-    /// A sub-halfhour action leaves dead air; the
+    /// A sub-tick action leaves dead air; the
     /// next step resumes on the tick and the gap fires (§6.6)
     #[test]
-    fn a_sub_halfhour_action_leaves_dead_air_the_next_step_resumes_on_the_tick() {
+    fn a_sub_tick_action_leaves_dead_air_the_next_step_resumes_on_the_tick() {
         let (dict, _c, _s) = setup();
-        // a 20m verb pushes the world clock mid-tick; the timetable speaks at
-        // 14:30 (slot 29)
+        // a 15m verb pushes the world clock mid-tick; the timetable speaks at
+        // 14:30 (slot 87)
         let mut verbs = IndexMap::new();
         verbs.insert(
             "WAIT".to_string(),
@@ -831,7 +831,7 @@ mod clock_and_duration_literals {
                     query: Some("kind:character".to_string()),
                     shown: None,
                 }],
-                duration: 20,
+                duration: 15,
                 recipes: vec![RecipeDef {
                     id: None,
                     when: None,
@@ -843,16 +843,14 @@ mod clock_and_duration_literals {
                 }],
             },
         );
-        let content20 = compile_content(
+        let content15 = compile_content(
             &ContentRaw {
                 verbs,
                 triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
                     id: "the_chime".to_string(),
-                    slot: 29,
+                    slot: 87,
                     once: None,
-                    out: vec![
-                        "NARRATE(\"The halfhour chime sings through the frames.\")".to_string()
-                    ],
+                    out: vec!["NARRATE(\"The tick chime sings through the frames.\")".to_string()],
                 })]),
                 ..ContentRaw::default()
             },
@@ -861,27 +859,27 @@ mod clock_and_duration_literals {
         )
         .unwrap();
         let s = seed_state();
-        let r1 = settle_line(&content20, &dict, s, "0:28 @ ANA WAIT", 1).unwrap(); // 14:00 → 14:20
+        let r1 = settle_line(&content15, &dict, s, "0:84 @ ANA WAIT", 1).unwrap(); // 14:00 → 14:15
         assert_eq!(r1.rejected, None);
-        assert_eq!(r1.state.now, 28 * 30 + 20);
-        // the next step resumes on the halfhour tick (14:30); the chime
+        assert_eq!(r1.state.now, 84 * 10 + 15);
+        // the next step resumes on the tick (14:30); the chime
         // crosses inside the quantized gap, so it fires even though no window
         // spans 14:30
-        let r2 = settle_line(&content20, &dict, r1.state, "0:29 @ ANA WAIT", 1).unwrap();
+        let r2 = settle_line(&content15, &dict, r1.state, "0:87 @ ANA WAIT", 1).unwrap();
         assert_eq!(r2.rejected, None);
         // v0.5: the chime crosses inside the advance that leads the step,
         // before the BEGIN — the quantized dead air is a logged wait row now
         assert_eq!(kinds(&r2.records), ["event", "wait", "action", "complete", "wait"]);
         assert_eq!(r2.records[0].trigger.as_deref(), Some("the_chime"));
-        assert_eq!(r2.records[0].t_game, "0:29");
+        assert_eq!(r2.records[0].t_game, "0:87");
     }
 
     #[test]
     fn durations_spill_into_the_next_day() {
         let (dict, content, state) = setup();
-        let r = settle_line(&content, &dict, state, "0:44 @ ANA WORK AT HOUSE", 1).unwrap(); // 2h → day 1, 0:00
+        let r = settle_line(&content, &dict, state, "0:132 @ ANA WORK AT HOUSE", 1).unwrap(); // 2h → day 1, 0:00
         assert_eq!(r.state.now, 22 * 60 + 120);
-        assert_eq!(act(&r).unwrap().t_game, "0:44");
+        assert_eq!(act(&r).unwrap().t_game, "0:132");
     }
 
     #[test]
@@ -901,7 +899,7 @@ mod record_shape {
             &content,
             &dict,
             state,
-            "0:28 @ BERTHA, ANA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
+            "0:84 @ BERTHA, ANA AT DINING_HALL TALK ABOUT CLUE_SECRET_HIDEOUT",
             1,
         )
         .unwrap();
@@ -916,8 +914,8 @@ mod record_shape {
             .collect();
         assert_eq!(actors, ["ANA", "BERTHA"]);
         assert_eq!(rec.verb, "TALK");
-        assert_eq!(rec.t_game, "0:28");
-        assert!(rec.sentence.starts_with("0:28 @ ANA, BERTHA AT DINING_HALL TALK"));
+        assert_eq!(rec.t_game, "0:84");
+        assert!(rec.sentence.starts_with("0:84 @ ANA, BERTHA AT DINING_HALL TALK"));
     }
 }
 
@@ -1083,10 +1081,10 @@ mod core_verbs_study_mansus {
     fn the_mirrored_grammar_bites_mansus_takes_a_place_not_a_text() {
         let (dict, _content, _s) = setup();
         let vc = verbs_content(&dict);
-        let r = settle_line(&vc, &dict, world(), "0:14 @ ANA MANSUS THE_MANIFEST", 1).unwrap();
+        let r = settle_line(&vc, &dict, world(), "0:42 @ ANA MANSUS THE_MANIFEST", 1).unwrap();
         assert_rejected(&r, r"does not fit slot 'object'");
         assert_eq!(r.records.len(), 0);
-        let r2 = settle_line(&vc, &dict, world(), "0:14 @ ANA MANSUS HOUSE", 1).unwrap();
+        let r2 = settle_line(&vc, &dict, world(), "0:42 @ ANA MANSUS HOUSE", 1).unwrap();
         assert_eq!(r2.rejected, None);
         assert_eq!(act(&r2).unwrap().recipes, ["mansus.default"]);
         assert!(act(&r2).unwrap().sentence.contains("ANA MANSUS HOUSE"));
@@ -1139,7 +1137,7 @@ mod core_verbs_study_mansus {
             &[],
         )
         .unwrap();
-        let r = settle_line(&bare, &dict, world(), "0:14 @ ANA MANSUS HOUSE", 1).unwrap();
+        let r = settle_line(&bare, &dict, world(), "0:42 @ ANA MANSUS HOUSE", 1).unwrap();
         assert_eq!(r.rejected, None);
         // v0.5: the NARRATE speaks at the completion, so the prose renders
         // from there
@@ -1177,12 +1175,12 @@ mod core_verbs_study_mansus {
         )
         .unwrap();
         let s1 = world();
-        let r = settle_line(&unauthored, &dict, s1, "0:14 @ ANA STUDY THE_MANIFEST", 1).unwrap();
+        let r = settle_line(&unauthored, &dict, s1, "0:42 @ ANA STUDY THE_MANIFEST", 1).unwrap();
         assert_rejected(&r, r"STUDY is not a content verb");
         assert_eq!(r.records.len(), 0);
         assert_eq!(snap(&r.state), snap(&world())); // same world, untouched
         let s2 = world();
-        let r2 = settle_line(&unauthored, &dict, s2, "0:14 @ ANA MANSUS HOUSE", 1).unwrap();
+        let r2 = settle_line(&unauthored, &dict, s2, "0:42 @ ANA MANSUS HOUSE", 1).unwrap();
         assert_rejected(&r2, r"MANSUS is not a content verb");
         assert_eq!(r2.records.len(), 0);
         assert_eq!(snap(&r2.state), snap(&world()));

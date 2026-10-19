@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::content::{CompiledContent, CompiledTrigger, PrototypeDef};
+use crate::core::clock::{MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::{Pred, ValExpr};
 use crate::core::query::{match_query, CmpOp, Query, QueryTerm};
@@ -441,9 +442,9 @@ impl<'c> WorldFacts<'c> {
     /// now is already spent). The `d === 0 → 1440` branch is part of the
     /// semantics.
     pub(crate) fn first_cross(&self, slot: i64) -> i64 {
-        let d = (slot * 30 - self.initial.now).rem_euclid(1440);
+        let d = (slot * MIN_PER_TICK - self.initial.now).rem_euclid(TICKS_PER_DAY * MIN_PER_TICK);
         if d == 0 {
-            1440
+            TICKS_PER_DAY * MIN_PER_TICK
         } else {
             d
         }
@@ -1167,5 +1168,38 @@ fn demote_risky_owners(wf: &mut WorldFacts, sets: &RiskySets, throw_frozen: &Ind
         let owner = trigger_owner(id);
         let mints = sets.mints(&owner).clone();
         wf.trigger_mint_names.insert(owner, mints);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::script::compile_script;
+    use crate::core::dict::core_dictionary;
+    use crate::core::types::new_state;
+
+    #[test]
+    fn first_cross_wraps_at_the_day_boundary_on_the_tick_grid() {
+        let dict = core_dictionary();
+        let text = "\
+script: First Cross Probe
+player: MARCH
+start: 0:0
+
+entities:
+  MARCH is character
+
+triggers:
+  t_edge at tick 143 -> NARRATE \"edge\"
+  t_wrap at tick 0 -> NARRATE \"wrap\"
+";
+        let compiled = compile_script(text, &dict).unwrap();
+        let state = new_state(1430); // day 0, 23:50 — tick 143 was spent at 1430
+        let facts = compute_world_facts(&compiled.content, &state, None, false);
+        // the day's own tick 143 lies at now: the next crossing is a full
+        // day out (the d == 0 → 1440 branch of the rem_euclid walk)
+        assert_eq!(facts.first_cross(143), 1440);
+        // tick 0 (00:00) lies 10 minutes ahead, at day 1's first tick
+        assert_eq!(facts.first_cross(0), 10);
     }
 }

@@ -210,7 +210,7 @@ mod the_endings_script_section {
                 &ContentRaw {
                     triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
                         id: "t".into(),
-                        slot: 1,
+                        slot: 3,
                         once: None,
                         out: vec!["ENDING NOPE".to_string()],
                     })]),
@@ -374,7 +374,7 @@ mod a_recipe_that_ends_the_story {
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA WAIT", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(
             ended_of(&r.state),
@@ -394,7 +394,7 @@ mod a_recipe_that_ends_the_story {
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
-        let r = settle_line(&content, &dict, state, "0:28 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&content, &dict, state, "0:84 @ ANA WAIT", 1).unwrap();
         let rec = done(&r).unwrap();
         assert!(rec.outcomes.iter().any(|o| o.op == "ENDING"));
         assert!(rec.sentence.contains("-> NARRATE \"The candle gutters.\", ENDING DESPAIR_DEATH"));
@@ -413,7 +413,7 @@ mod a_recipe_that_ends_the_story {
             &[],
         )
         .unwrap();
-        let r = settle_line(&two_endings, &dict, seed_state(), "0:28 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&two_endings, &dict, seed_state(), "0:84 @ ANA WAIT", 1).unwrap();
         assert_eq!(r.rejected, None);
         assert_eq!(
             ended_of(&r.state),
@@ -432,13 +432,13 @@ mod a_recipe_that_ends_the_story {
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
-        let r1 = settle_line(&content, &dict, state, "0:28 @ ANA WAIT", 1).unwrap();
+        let r1 = settle_line(&content, &dict, state, "0:84 @ ANA WAIT", 1).unwrap();
         let before = snap(&r1.state);
         // reference identity `r2.state === r1.state` — execute_step hands
         // the ORIGINAL back untouched on a rejection, so snap equality IS the
         // semantic content of the check
         let r2 =
-            settle_line(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT", 2).unwrap();
+            settle_line(&content, &dict, clone_state(&r1.state), "0:90 @ ANA WAIT", 2).unwrap();
         assert_rejected(&r2, r"the story has ended — No More");
         assert_eq!(r2.records.len(), 0);
         assert_eq!(snap(&r2.state), before);
@@ -456,7 +456,7 @@ mod a_recipe_that_ends_the_story {
         .unwrap();
         let state = seed_state();
         let before = snap(&state);
-        let r = settle_line(&c, &dict, state, "0:28 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&c, &dict, state, "0:84 @ ANA WAIT", 1).unwrap();
         assert_eq!(ops(done(&r).unwrap()), ["ENDING", "REFUSE"]);
         // reference identity `r.state === state` — the refused turn returns the
         // untouched input state; snap equality is its Rust observable
@@ -473,19 +473,19 @@ mod a_recipe_that_ends_the_story {
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
-        let r1 = settle_line(&content, &dict, state, "0:28 @ ANA WAIT", 1).unwrap();
+        let r1 = settle_line(&content, &dict, state, "0:84 @ ANA WAIT", 1).unwrap();
         assert!(r1.state.ended.is_some());
         // a stale clock (would be a §9.2 rejection) and a multi-clause step
         // would both get past their own checks — the ended guard must precede
         // them
         let mut attempts: Vec<ExecResult> = vec![
-            settle_line(&content, &dict, clone_state(&r1.state), "0:10 @ ANA WAIT", 2).unwrap(),
-            settle_line(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT; ANA WAIT", 2)
+            settle_line(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT", 2).unwrap(),
+            settle_line(&content, &dict, clone_state(&r1.state), "0:90 @ ANA WAIT; ANA WAIT", 2)
                 .unwrap(),
         ];
         // an EVENT-typed sentence reaches execute_step with zero clauses
         // (canonical passthrough)
-        let ev = parse_sentence("0:40 @ EVENT dusk_falls -> ENDING DESPAIR_DEATH", &dict).unwrap();
+        let ev = parse_sentence("0:120 @ EVENT dusk_falls -> ENDING DESPAIR_DEATH", &dict).unwrap();
         attempts.push(
             execute_step(
                 &content,
@@ -493,9 +493,7 @@ mod a_recipe_that_ends_the_story {
                 clone_state(&r1.state),
                 Step {
                     start_min: None,
-                    clock: Some(
-                        ev.clock.unwrap_or(chorus::core::clock::Clock { day: 0, halfhour: 0 }),
-                    ),
+                    clock: Some(ev.clock.unwrap_or(chorus::core::clock::Clock { day: 0, tick: 0 })),
                     clauses: ev.clauses,
                     t_real: None,
                 },
@@ -516,10 +514,10 @@ mod a_recipe_that_ends_the_story {
         let dict = core_dictionary();
         let content = guttering(&dict);
         let state = seed_state();
-        let r1 = settle_line(&content, &dict, state, "0:28 @ ANA WAIT", 1).unwrap();
+        let r1 = settle_line(&content, &dict, state, "0:84 @ ANA WAIT", 1).unwrap();
         // rejected; nothing logged
         let r2 =
-            settle_line(&content, &dict, clone_state(&r1.state), "0:30 @ ANA WAIT", 2).unwrap();
+            settle_line(&content, &dict, clone_state(&r1.state), "0:90 @ ANA WAIT", 2).unwrap();
         assert_eq!(r2.records.len(), 0);
         let dir = std::env::temp_dir().join(format!("chorus-endings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -551,7 +549,7 @@ mod events_may_end_the_game {
         let mut raw = wait_content(&["NARRATE(\"{actors} wait.\")"]);
         raw.triggers = Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "despair".into(),
-            slot: 32, // 16:00
+            slot: 96, // 16:00
             once: None,
             out: vec!["SPAWN DREAD".to_string(), "ENDING DESPAIR_DEATH".to_string()],
         })]);
@@ -564,7 +562,7 @@ mod events_may_end_the_game {
         let c = compile_content(&raw, &dict, &[]).unwrap();
         let state = seed_state();
         // 15:00 → 16:00, crossing slot 32
-        let r = settle_line(&c, &dict, state, "0:30 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&c, &dict, state, "0:90 @ ANA WAIT", 1).unwrap();
         assert_eq!(r.rejected, None);
         let event = r.records.iter().find(|x| x.kind == "event").expect("the trigger fired");
         assert_eq!(event.trigger.as_deref(), Some("despair"));
@@ -604,9 +602,9 @@ mod events_may_end_the_game {
             .get_mut("chalice")
             .unwrap()
             .attrs
-            .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:30
+            .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:90
                                                                        // 14:00 → 16:00, expiry at 15:00
-        let r = settle_line(&c, &dict, clone_state(&base), "0:28 @ ANA WAIT; ANA WAIT", 1).unwrap();
+        let r = settle_line(&c, &dict, clone_state(&base), "0:84 @ ANA WAIT; ANA WAIT", 1).unwrap();
         assert_eq!(r.rejected, None);
         let event = r.records.iter().find(|x| x.kind == "event").expect("the expiry fired");
         assert_eq!(event.trigger.as_deref(), Some("the_lights_go_out"));
@@ -643,9 +641,9 @@ mod events_may_end_the_game {
             .get_mut("chalice")
             .unwrap()
             .attrs
-            .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:30
+            .insert("expiresAt".to_string(), AttrValue::Num(15 * 60)); // 0:90
                                                                        // 14:00 → 15:00 — the expiry crossing
-        let r1 = settle_line(&c, &dict, clone_state(&base), "0:28 @ ANA WAIT", 1).unwrap();
+        let r1 = settle_line(&c, &dict, clone_state(&base), "0:84 @ ANA WAIT", 1).unwrap();
         assert_eq!(
             r1.records
                 .iter()
@@ -654,7 +652,7 @@ mod events_may_end_the_game {
             1
         );
         // 15:00 → 16:00 — still past expiresAt
-        let r2 = settle_line(&c, &dict, r1.state, "0:30 @ ANA WAIT", 3).unwrap();
+        let r2 = settle_line(&c, &dict, r1.state, "0:90 @ ANA WAIT", 3).unwrap();
         assert!(
             r2.records
                 .iter()
@@ -674,13 +672,13 @@ mod events_may_end_the_game {
         let mut raw = wait_content(&["ENDING LANTERN_VICTORY"]);
         raw.triggers = Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "despair".into(),
-            slot: 32,
+            slot: 96,
             once: None,
             out: vec!["ENDING DESPAIR_DEATH".to_string()],
         })]);
         let c = compile_content(&raw, &dict, &[]).unwrap();
         // the step crosses slot 32
-        let r = settle_line(&c, &dict, seed_state(), "0:30 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&c, &dict, seed_state(), "0:90 @ ANA WAIT", 1).unwrap();
         assert_eq!(r.rejected, None);
         // the action's ENDING applied first
         assert_eq!(r.state.ended.as_ref().unwrap().id, "LANTERN_VICTORY");
@@ -829,7 +827,7 @@ mod the_player_surface {
             &[],
         )
         .unwrap();
-        let r = settle_line(&content, &dict, seed_state(), "0:28 @ ANA WAIT", 1).unwrap();
+        let r = settle_line(&content, &dict, seed_state(), "0:84 @ ANA WAIT", 1).unwrap();
         // v0.5: the ending narrates at the completion
         let lines = prose_lines(done(&r).unwrap(), &content, &dict).unwrap();
         assert_eq!(lines[lines.len() - 1], "— No More —");
@@ -837,7 +835,7 @@ mod the_player_surface {
             &compile_content(&wait_content(&["NARRATE(\"just waiting.\")"]), &dict, &[]).unwrap(),
             &dict,
             seed_state(),
-            "0:28 @ ANA WAIT",
+            "0:84 @ ANA WAIT",
             1,
         )
         .unwrap();

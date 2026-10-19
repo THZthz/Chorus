@@ -36,7 +36,7 @@ use chorus::session::game::{Game, Turn, TurnKind};
 /// `run` adapter. The id-generator closure `x{first_record_id}_{n}` (counter
 /// incrementing once per minted id) is LOAD-BEARING — the REPLACE-sentence
 /// assertions regex-match the minted `#x\d+_1` ids — so it lives here exactly
-/// once. The step clock defaults to day 0 / halfhour 0 when the sentence
+/// once. The step clock defaults to day 0 / tick 0 when the sentence
 /// omits one.
 pub fn settle_line(
     content: &CompiledContent,
@@ -57,7 +57,7 @@ pub fn settle_line(
         state,
         Step {
             start_min: None,
-            clock: Some(s.clock.unwrap_or(Clock { day: 0, halfhour: 0 })),
+            clock: Some(s.clock.unwrap_or(Clock { day: 0, tick: 0 })),
             clauses: s.clauses,
             t_real: None,
         },

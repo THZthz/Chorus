@@ -3,7 +3,7 @@
 //! commas/brackets.
 //!
 //! The five regex-shaped scans (NAME, digits, DUR
-//! with its load-bearing `halfhour|h|m|d` alternation order (Q9), the frozen
+//! with its `h|m|d` unit set, the frozen
 //! whitespace skip, and `[0-9]`) are HAND-WRITTEN over `Vec<u16>` code units: the
 //! regex crate cannot run on a UTF-16 code-unit domain, and code-unit
 //! indexing is what makes the error offsets and the `->`/punct decisions
@@ -100,26 +100,11 @@ fn scan_digits(s: &[u16], i: usize) -> Option<usize> {
     }
 }
 
-/// One DUR unit at `s[j..]`, tried in the alternation order `halfhour|h|m|d`
-/// — the ORDER IS LOAD-BEARING (Q9): trying `h`
-/// first would split `1halfhour` into dur(1h)+name(alfhour).
+/// One DUR unit at `s[j..]`: one of the single-letter units `h`, `m`, `d`.
 #[must_use]
 fn scan_dur_unit(s: &[u16], j: usize) -> Option<usize> {
-    const HALF: [u16; 8] = [
-        b'h' as u16,
-        b'a' as u16,
-        b'l' as u16,
-        b'f' as u16,
-        b'h' as u16,
-        b'o' as u16,
-        b'u' as u16,
-        b'r' as u16,
-    ];
-    if s.len() >= j + 8 && s[j..j + 8] == HALF {
-        return Some(8);
-    }
     for u in [0x68u16, 0x6D, 0x64] {
-        // 'h', 'm', 'd' — only reached when the 8-char "halfhour" missed
+        // 'h', 'm', 'd'
         if s.get(j) == Some(&u) {
             return Some(1);
         }
@@ -127,7 +112,7 @@ fn scan_dur_unit(s: &[u16], j: usize) -> Option<usize> {
     None
 }
 
-/// DUR scan (`/^([0-9]+)(halfhour|h|m|d)(?:[0-9]+(?:halfhour|h|m|d))*/`):
+/// DUR scan (`/^([0-9]+)(h|m|d)(?:[0-9]+(?:h|m|d))*/`):
 /// returns `(group1_len, total_len)` — the leading digit run and the TOTAL
 /// match length of the whole digit+unit run (greedy over the
 /// trailing `(?:…)*` groups, so `1h30m` is one match).
@@ -136,7 +121,7 @@ fn scan_dur(s: &[u16], i: usize) -> Option<(usize, usize)> {
     let first_digits = scan_digits(s, i)?;
     let first_unit = scan_dur_unit(s, i + first_digits)?;
     let mut j = i + first_digits + first_unit;
-    // greedy tail: `(?:[0-9]+(?:halfhour|h|m|d))*`
+    // greedy tail: `(?:[0-9]+(?:h|m|d))*`
     while let Some(digits) = scan_digits(s, j) {
         let Some(unit) = scan_dur_unit(s, j + digits) else {
             break;
@@ -220,7 +205,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
         }
         if (b'0' as u16..=b'9' as u16).contains(&c) {
             // a duration only when the whole number is
-            // the duration's digits ('1halfhour' and compound '1h30m' (§5.1)
+            // the duration's digits ('30m' and compound '1h30m' (§5.1)
             // are one token; '12' alone stays an int)
             let rest = &s[i..];
             let num_len = scan_digits(rest, 0).unwrap_or_else(|| {
@@ -300,16 +285,15 @@ mod tests {
     }
 
     #[test]
-    fn durations_vs_ints_and_the_q9_alternation_order() {
-        // '1halfhour' is ONE token — 'h' must not win over 'halfhour' (Q9)
-        assert_eq!(lex("1halfhour").unwrap(), vec![Tok::Dur { v: 30 }]);
+    fn durations_vs_ints() {
+        assert_eq!(lex("30m").unwrap(), vec![Tok::Dur { v: 30 }]);
         assert_eq!(lex("1h").unwrap(), vec![Tok::Dur { v: 60 }]);
         assert_eq!(lex("1h30m").unwrap(), vec![Tok::Dur { v: 90 }]);
         assert_eq!(lex("12").unwrap(), vec![Tok::Int { v: 12 }]);
         // '1hour': DUR_RE matches '1h', then 'our' lexes as a name
         assert_eq!(lex("1hour").unwrap(), vec![Tok::Dur { v: 60 }, Tok::Name { v: "our".into() }]);
-        // '12halfhour' — both digits belong to the duration
-        assert_eq!(lex("12halfhour").unwrap(), vec![Tok::Dur { v: 12 * 30 }]);
+        // '120m' — both digits belong to the duration
+        assert_eq!(lex("120m").unwrap(), vec![Tok::Dur { v: 120 }]);
     }
 
     #[test]

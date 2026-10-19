@@ -551,7 +551,7 @@ fn authoring_drawn_is_a_load_error_engine_written_only() {
     let trigger_raw = ContentRaw {
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "t".into(),
-            slot: 1,
+            slot: 3,
             once: None,
             out: vec!["DRAWN(RUMOURS, RUMOUR)".to_string()],
         })]),
@@ -716,7 +716,7 @@ fn draw_without_a_deck_id_with_parens_or_naming_an_unknown_deck_is_a_load_error(
     let trigger_raw = ContentRaw {
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "t".into(),
-            slot: 1,
+            slot: 3,
             once: None,
             out: vec!["DRAW NOSUCH".to_string()],
         })]),

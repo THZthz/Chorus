@@ -256,7 +256,7 @@ pub fn seed_content() -> ContentRaw {
         .collect(),
         triggers: Some(vec![TriggerDef::Slot(SlotTriggerDef {
             id: "dusk_falls".to_string(),
-            slot: 32, // 16:00
+            slot: 96, // 16:00
             once: None,
             out: vec![
                 "SPAWN DREAD".to_string(),

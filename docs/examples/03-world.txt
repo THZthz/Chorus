@@ -5,7 +5,7 @@
 script: The Keeper's First Light
 player: WICK
 goal: fill and light the keeper's lamp — the logbook says how
-start: 0:8
+start: 0:24
 
 kinds:
   fuel

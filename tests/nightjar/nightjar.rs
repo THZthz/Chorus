@@ -199,7 +199,7 @@ mod the_nightjar_flyer {
         let turn = auto_settle_line(&mut game, "explore the first cabin").unwrap();
         assert_eq!(turn.kind, TurnKind::Action);
         let joined = turn.lines.join("\n");
-        assert!(joined.contains("(+1halfhour)"), "{joined}"); // live tick line
+        assert!(joined.contains("(+30m)"), "{joined}"); // live tick line
         assert!(joined.contains("solicitor's letter"));
         let canonical = turn
             .lines
@@ -210,7 +210,7 @@ mod the_nightjar_flyer {
             .join("\n");
         // the tick rides the BEGIN row; the echo is the player's own BEGIN
         // row only — the mint rode the completion, which the journal keeps
-        assert!(canonical.contains("PROGRESS(1halfhour,"));
+        assert!(canonical.contains("PROGRESS(30m,"));
         assert!(!canonical.contains("SPAWN THE_SOLICITOR_LETTER"));
         assert!(game
             .journal()
@@ -408,7 +408,7 @@ mod the_nightjar_flyer {
     }
 
     #[test]
-    fn halfhour_actions_land_back_on_the_ticks_and_the_timetable_fires_as_the_night_passes() {
+    fn tick_actions_land_back_on_the_ticks_and_the_timetable_fires_as_the_night_passes() {
         let mut game = fresh();
         // 21:00 → 21:30 — meet Cole
         assert_eq!(
@@ -444,7 +444,7 @@ mod the_nightjar_flyer {
         );
         // jump a day ahead in ONE step: the once-trigger must neither re-fire
         // nor reject. The span crosses the vienna ending (§4.4): the advance
-        // pass CLOSES at that halfhour — the lord's 1-day `expires` lies
+        // pass CLOSES at that tick — the lord's 1-day `expires` lies
         // beyond it and never crosses (the `on expire` REPLACE mechanic is
         // pinned on scratch content in tests/engine/expiry.rs).
         let jump = auto_settle_line(&mut game, "2:0 @ MARCH WAIT").unwrap();
@@ -459,7 +459,7 @@ mod the_nightjar_flyer {
         // the clock stopped where the story did — 6:00, not the asked-for day 2
         assert_eq!(
             game.state.now,
-            chorus::core::clock::abs_min(chorus::core::clock::Clock { day: 1, halfhour: 12 })
+            chorus::core::clock::abs_min(chorus::core::clock::Clock { day: 1, tick: 36 })
         );
         assert!(game.state.by_name.contains_key("THE_LATE_LORD"));
         assert!(!game.state.by_name.contains_key("THE_TENDED_LORD"));
@@ -521,7 +521,9 @@ mod the_nightjar_flyer {
             auto_settle_line(&mut game, "locate_at the firebox").unwrap().kind,
             TurnKind::Action
         );
-        // to 1:00 — the tunnel severs the crew door
+        // into day 1 — the idle wait lands at 00:50, short of the 01:00
+        // tunnel; the next wait crosses it and severs the crew door
+        auto_settle_line(&mut game, "wait").unwrap();
         auto_settle_line(&mut game, "wait").unwrap();
         assert!(game.state.relations["s_firebox|s_guard_van|south"].dead_action.is_some());
         let blocked = auto_settle_line(&mut game, "travel to the guard van").unwrap();
@@ -529,7 +531,7 @@ mod the_nightjar_flyer {
         assert!(blocked.lines.join("\n").contains("does not bend"));
         auto_settle_line(&mut game, "wait").unwrap();
         auto_settle_line(&mut game, "wait").unwrap();
-        // to 4:30 — dawn_watch relinks the corridor
+        // the third wait crosses 04:00 — dawn_watch relinks the corridor
         auto_settle_line(&mut game, "wait").unwrap();
         assert!(game.state.relations["s_firebox|s_guard_van|south"].dead_action.is_none());
         assert_eq!(

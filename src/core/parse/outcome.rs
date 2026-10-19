@@ -515,7 +515,7 @@ impl Parser<'_> {
                 Tok::Str { v } => args.push(Arg::Expires { v: AttrValue::Str(v.clone()) }),
                 other => {
                     return Err(ChorusError::new(format!(
-                        "SPAWN expires takes a §5.1 duration (e.g. 2h, 90m, 1halfhour), got '{}'",
+                        "SPAWN expires takes a §5.1 duration (e.g. 2h, 90m, 30m), got '{}'",
                         show(other)
                     )));
                 }

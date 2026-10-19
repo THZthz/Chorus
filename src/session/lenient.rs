@@ -18,7 +18,7 @@ use regex::Regex;
 
 use crate::content::CompiledContent;
 use crate::core::clock::{
-    abs_min, clock_from_abs_min, parse_clock, Clock, HALFHOURS_PER_DAY, MIN_PER_HALFHOUR,
+    abs_min, clock_from_abs_min, parse_clock, Clock, MIN_PER_TICK, TICKS_PER_DAY,
 };
 use crate::core::dict::Dictionary;
 use crate::core::num_parse::parse_authored_int;
@@ -198,8 +198,8 @@ pub fn parse_player_input(line: &str, ctx: &LenientCtx) -> ParsedInput {
     let mut start_min = ctx.state.now;
     if clock_token_re().is_match(tokens[0]) {
         // E6 (§11): a legal clock parses exactly as the canonical grammar
-        // does; an out-of-range halfhour field WRAPS into whole days
-        // (`wrap_clock`) where the canonical `d:h @` form keeps its frozen
+        // does; an out-of-range tick field WRAPS into whole days
+        // (`wrap_clock`) where the canonical `d:u @` form keeps its frozen
         // loud bound — the front door is the friendly form, the authored
         // grammar the strict one. The token shape is `[0-9]+:[0-9]+`, so the
         // failure arm is i64 overflow alone (absurd literals still refuse).
@@ -651,21 +651,21 @@ fn resolve_group<'a>(
     (refs, failed)
 }
 
-/// E6 (§11): the bare lenient clock wraps an out-of-range halfhour field
-/// into whole days the way durations compose (§5.1) — `0:118` is 118
-/// halfhours, day 2 halfhour 22; `1:49` is 97 halfhours, day 2 halfhour 1.
+/// E6 (§11): the bare lenient clock wraps an out-of-range tick field
+/// into whole days the way durations compose (§5.1) — `0:354` is 354
+/// ticks, day 2 tick 66; `1:147` is 291 ticks, day 2 tick 3.
 /// The canonical
-/// `d:h @` passthrough keeps its frozen `bad halfhour` bound: per FORM, the
+/// `d:u @` passthrough keeps its frozen `bad tick` bound: per FORM, the
 /// lenient front door wraps and the authored grammar stays loud. Only
 /// reachable on a `[0-9]+:[0-9]+` token (the `clock_token_re` gate), so the
 /// `None` arm is i64 saturation alone — absurd literals refuse with the
 /// frozen `bad clock` message.
 fn wrap_clock(tok: &str) -> Option<Clock> {
-    let (day, halfhour) = tok.split_once(':')?;
+    let (day, tick) = tok.split_once(':')?;
     let total = parse_authored_int(day)
-        .checked_mul(HALFHOURS_PER_DAY)?
-        .checked_add(parse_authored_int(halfhour))?;
-    Some(clock_from_abs_min(total.checked_mul(MIN_PER_HALFHOUR)?))
+        .checked_mul(TICKS_PER_DAY)?
+        .checked_add(parse_authored_int(tick))?;
+    Some(clock_from_abs_min(total.checked_mul(MIN_PER_TICK)?))
 }
 
 /// The default actor as refs, when set and alive.
@@ -879,15 +879,17 @@ mod tests {
     }
 
     #[test]
-    fn wrap_clock_folds_halfhour_overflow_into_days() {
+    fn wrap_clock_folds_tick_overflow_into_days() {
         // E6: the lenient front door wraps, the way durations compose —
-        // 118 halfhours = day 2 halfhour 22, and the day field carries over
-        assert_eq!(wrap_clock("0:118"), Some(Clock { day: 2, halfhour: 22 }));
-        assert_eq!(wrap_clock("1:49"), Some(Clock { day: 2, halfhour: 1 }));
+        // 354 ticks = day 2 tick 66 (11:00), and the day field carries over
+        assert_eq!(wrap_clock("0:354"), Some(Clock { day: 2, tick: 66 }));
+        assert_eq!(wrap_clock("1:147"), Some(Clock { day: 2, tick: 3 }));
         // the boundary itself folds exactly one day
-        assert_eq!(wrap_clock("0:48"), Some(Clock { day: 1, halfhour: 0 }));
+        assert_eq!(wrap_clock("0:144"), Some(Clock { day: 1, tick: 0 }));
+        // the fold point's first crossings
+        assert_eq!(wrap_clock("0:150"), Some(Clock { day: 1, tick: 6 }));
         // a legal clock needs no wrap (parse_clock takes it first)
-        assert_eq!(wrap_clock("3:47"), Some(Clock { day: 3, halfhour: 47 }));
+        assert_eq!(wrap_clock("3:143"), Some(Clock { day: 3, tick: 143 }));
         // absurd literals saturate parse_authored_int and refuse here
         assert_eq!(wrap_clock("0:99999999999999999999"), None);
     }

@@ -2,7 +2,7 @@
 //! functions over records/state.
 
 use crate::content::CompiledContent;
-use crate::core::clock::{format_duration, HALFHOURS_PER_DAY, MIN_PER_HALFHOUR};
+use crate::core::clock::{format_duration, MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
 use crate::core::parse::parse_sentence;
 use crate::core::r#ref::Ref;
@@ -51,18 +51,18 @@ pub fn pretty(name: &str) -> String {
 }
 
 /// The player's clock: `day 0, 21:00` from absolute minutes — the
-/// canonical `d:h` form (48 halfhours a day) is the log's spelling, this
+/// canonical `d:u` form (144 ticks a day) is the log's spelling, this
 /// is the one a reader keeps time by.
 #[must_use]
 pub fn clock_text(abs_min: i64) -> String {
-    let per_day = HALFHOURS_PER_DAY * MIN_PER_HALFHOUR;
+    let per_day = TICKS_PER_DAY * MIN_PER_TICK;
     format!("day {}, {}", abs_min.div_euclid(per_day), hhmm(abs_min))
 }
 
 /// The time of day alone: `21:00`.
 #[must_use]
 pub fn hhmm(abs_min: i64) -> String {
-    let per_day = HALFHOURS_PER_DAY * MIN_PER_HALFHOUR;
+    let per_day = TICKS_PER_DAY * MIN_PER_TICK;
     let m = abs_min.rem_euclid(per_day);
     format!("{:02}:{:02}", m / 60, m % 60)
 }
@@ -279,9 +279,9 @@ mod tests {
     #[test]
     fn clock_text_speaks_day_and_time_of_day() {
         assert_eq!(clock_text(0), "day 0, 00:00");
-        assert_eq!(clock_text(42 * 30), "day 0, 21:00");
-        assert_eq!(clock_text(48 * 30 + 12 * 30), "day 1, 06:00");
-        assert_eq!(hhmm(42 * 30 + 20), "21:20");
+        assert_eq!(clock_text(126 * 10), "day 0, 21:00");
+        assert_eq!(clock_text(144 * 10 + 6 * 60), "day 1, 06:00");
+        assert_eq!(hhmm(126 * 10 + 10), "21:10");
     }
 
     #[test]

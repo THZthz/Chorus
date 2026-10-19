@@ -1,6 +1,6 @@
 //! Time (spec §6.6, §6.7): the atomic advance pass — due windows closing in
 //! (end, begin_id, clause) order, slot triggers and expiries at each crossed
-//! halfhour, the WAIT row that alone moves the clock — and the window
+//! tick, the WAIT row that alone moves the clock — and the window
 //! completion (`fire_window`): recipe outcomes, the `on complete` trigger
 //! phase, and the deferred RUN replay, all under the window-refuse
 //! discipline.
@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use crate::content::{CompiledContent, CompiledRecipe, CompiledTrigger};
-use crate::core::clock::{HALFHOURS_PER_DAY, MIN_PER_HALFHOUR};
+use crate::core::clock::{MIN_PER_TICK, TICKS_PER_DAY};
 use crate::core::dict::Dictionary;
 use crate::core::predicate::RoleBindings;
 use crate::core::r#ref::id_ref;
@@ -41,7 +41,7 @@ struct Expiring {
 /// v0.5 — advance the world from `state.now` to `to_min` in ONE atomic pass.
 /// Candidates merge chronologically: due windows close at their `end` (ordered
 /// by end, then begin_id, then clause — a total order with no ties); authored
-/// slot triggers and expiries fire at each crossed halfhour (§6.6 order:
+/// slot triggers and expiries fire at each crossed tick (§6.6 order:
 /// triggers in declaration order, then expiries from the hoisted snapshot).
 /// A completion at minute m fires BEFORE slot-m events. The pass ends with one
 /// WAIT row — the only record that moves the clock — spanning exactly
@@ -136,7 +136,7 @@ pub(super) fn resolve_due(
                 id += 1 + fired.extra_records.len() as i64;
                 records.extend(fired.extra_records);
                 // NOTE: the slot cursor does NOT jump to the window's end —
-                // the halfhours the window spanned must still strike (a
+                // the ticks the window spanned must still strike (a
                 // completion at minute m precedes slot-m events, but
                 // slot-(<m) events fire after it in the same pass, §6.6)
                 if fired.advance_extra > 0 {
@@ -156,13 +156,13 @@ pub(super) fn resolve_due(
             }
         }
         if let Some(slot_abs) = slot_abs {
-            // `fire_slot` speaks in halfhour INDICES (§6.6: slot = abs % 48,
-            // minute = abs * 30); the walk speaks in minutes
+            // `fire_slot` speaks in tick INDICES (§6.6: slot = abs % 144,
+            // minute = abs * 10); the walk speaks in minutes
             let slot_records = fire_slot(
                 content,
                 dict,
                 &mut state,
-                slot_abs / MIN_PER_HALFHOUR,
+                slot_abs / MIN_PER_TICK,
                 &expiring,
                 id,
                 id_gen,
@@ -170,7 +170,7 @@ pub(super) fn resolve_due(
             id += slot_records.len() as i64;
             records.extend(slot_records);
             cursor = slot_abs;
-            // §4.4: an ending fired at this halfhour — the pass closes here;
+            // §4.4: an ending fired at this tick — the pass closes here;
             // later slots and still-open windows wait for a night that will
             // not come (undo past the ending reopens them)
             if state.ended.is_some() {
@@ -186,7 +186,7 @@ pub(super) fn resolve_due(
     Ok(PassResult { state, records })
 }
 
-/// The first halfhour boundary strictly
+/// The first tick boundary strictly
 /// after `cursor`, or None past `target` — the (from, to] crossing rule of
 /// §6.6, one boundary at a time
 fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
@@ -195,7 +195,7 @@ fn next_slot_after(cursor: i64, target: i64) -> Option<i64> {
         "next_slot_after: negative cursor {cursor} (clocks are non-negative)"
     );
     // Math.floor == truncated division on the non-negative domain
-    let abs = (cursor / MIN_PER_HALFHOUR + 1) * MIN_PER_HALFHOUR;
+    let abs = (cursor / MIN_PER_TICK + 1) * MIN_PER_TICK;
     if abs <= target {
         Some(abs)
     } else {
@@ -405,7 +405,7 @@ fn fire_completion_triggers(
     refused
 }
 
-/// Fire one crossed halfhour: authored
+/// Fire one crossed tick: authored
 /// triggers (declaration order) first, then expiries from the pass's snapshot
 /// — §6.6 order, unchanged (§6.6).
 fn fire_slot(
@@ -423,7 +423,7 @@ fn fire_slot(
         let CompiledTrigger::Slot { id: trig_id, slot, once, out } = trig else {
             continue; // expiry triggers ride the expiry path below
         };
-        if *slot != abs_slot % HALFHOURS_PER_DAY {
+        if *slot != abs_slot % TICKS_PER_DAY {
             continue;
         }
         if *once && state.fired.contains(trig_id) {
@@ -450,7 +450,7 @@ fn fire_slot(
     // expiries from the hoisted snapshot, in
     // snapshot order (= entities insertion order)
     for exp in expiring {
-        if exp.at > abs_slot * MIN_PER_HALFHOUR {
+        if exp.at > abs_slot * MIN_PER_TICK {
             continue;
         }
         let ent_name = match state.entities.get(&exp.id) {
@@ -522,7 +522,7 @@ fn fire_slot(
 
 /// Event bindings are EMPTY ({}), and
 /// `now` is the crossed boundary in absolute minutes
-/// (abs_slot * MIN_PER_HALFHOUR).
+/// (abs_slot * MIN_PER_TICK).
 fn make_event_ctx<'a>(
     state: &'a mut State,
     dict: &'a Dictionary,
@@ -536,7 +536,7 @@ fn make_event_ctx<'a>(
         dict,
         content,
         bindings: RoleBindings::new(),
-        now: abs_slot * MIN_PER_HALFHOUR,
+        now: abs_slot * MIN_PER_TICK,
         record_id,
         id_gen,
         extra_advance_min: 0,

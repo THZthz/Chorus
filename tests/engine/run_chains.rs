@@ -502,7 +502,7 @@ fn the_followup_window_lands_identical_with_multi_role_refs() {
     assert_eq!(begin_child.objects.len(), 1, "object rides");
     assert_eq!(begin_child.instruments.len(), 1, "with rides");
     assert!(begin_child.at.is_some(), "at rides");
-    assert_eq!(begin_child.t_game, "0:2", "beginning at the completion clock");
+    assert_eq!(begin_child.t_game, "0:6", "beginning at the completion clock");
     // the child is STILL OPEN at turn's end (1h duration) — compare the
     // open windows STRUCTURALLY: play-inserted vs fold-replayed
     assert_eq!(r.state.windows.len(), 1);
@@ -517,7 +517,7 @@ fn the_followup_window_lands_identical_with_multi_role_refs() {
     assert_eq!(snap(&replayed), snap(&r.state));
     // …and the follow-up's own completion re-resolves every role: the child
     // narrates from its bound object
-    let r2 = advance(&c, &dict, r.state, "0:4", 100);
+    let r2 = advance(&c, &dict, r.state, "0:12", 100);
     assert_eq!(r2.rejected, None);
     let ops: Vec<&str> = r2.records[0].outcomes.iter().map(|o| o.op.as_str()).collect();
     assert_eq!(ops, ["NARRATE"]);
@@ -1006,12 +1006,12 @@ fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {
     assert_eq!(r1.rejected, None);
     assert_eq!(begin_recipes(&r1), [vec!["a".to_string()], vec!["b".to_string()]]);
     assert_eq!(r1.records[2].start_min, Some(60), "b begins at a's completion clock");
-    assert_eq!(r1.records[2].t_game, "0:2");
+    assert_eq!(r1.records[2].t_game, "0:6");
     assert_eq!(r1.state.now, 60);
     assert_eq!(r1.state.windows.len(), 1, "b is still processing");
     assert_eq!(executed_entries(&r1.state), vec![("a".to_string(), 1), ("b".to_string(), 1)]);
     // stage 2: b completes at 120 and opens c
-    let r2 = advance(&c, &dict, r1.state, "0:4", 100);
+    let r2 = advance(&c, &dict, r1.state, "0:12", 100);
     assert_eq!(r2.rejected, None);
     assert_eq!(kind_spine(&r2), ["complete", "action", "wait"]);
     assert_eq!(begin_recipes(&r2), [vec!["c".to_string()]]);
@@ -1021,7 +1021,7 @@ fn the_deep_chain_resolves_across_passes_and_counts_every_begin() {
         vec![("a".to_string(), 1), ("b".to_string(), 1), ("c".to_string(), 1)]
     );
     // stage 3: c completes plainly — the chain ends
-    let r3 = advance(&c, &dict, r2.state, "0:6", 200);
+    let r3 = advance(&c, &dict, r2.state, "0:18", 200);
     assert_eq!(r3.rejected, None);
     assert_eq!(kind_spine(&r3), ["complete", "wait"]);
     assert_eq!(r3.state.windows.len(), 0);

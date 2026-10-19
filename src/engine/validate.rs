@@ -223,7 +223,7 @@ pub(super) fn busy_reason(
             let end = clock_from_abs_min(w.end);
             return Ok(Some(format!(
                 "{verb} is already processing — its station frees at {}:{}",
-                end.day, end.halfhour
+                end.day, end.tick
             )));
         }
     }
@@ -239,7 +239,7 @@ pub(super) fn busy_reason(
                     let name = e.name.replace('_', " ");
                     return Ok(Some(format!(
                         "{name} is busy with {} — it frees at {}:{}",
-                        w.verb, end.day, end.halfhour
+                        w.verb, end.day, end.tick
                     )));
                 }
             }

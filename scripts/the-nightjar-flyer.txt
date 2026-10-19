@@ -24,8 +24,8 @@
 # only lands at the border at midnight, and Vienna scatters everyone at 6:00
 # — the inquest takes ninety minutes, so the tally-board must be convened
 # by half past four, and the goal line says so.
-# The clock ticks in halfhours — 0:42 is 21:00 — and the triggers below show
-# every authored form: `once` and recurring, `at halfhour N` and the `at
+# The clock ticks in 10-minute ticks — 0:126 is 21:00 — and the triggers below show
+# every authored form: `once` and recurring, `at tick N` and the `at
 # hour N` alias (§10), and the expiry form `on expire of NAME` (§6.6)
 # beside the built-in destroy.
 #
@@ -50,7 +50,7 @@
 script: Murder on the Nightjar Flyer
 player: MARCH
 goal: unmask Lord Vane's killer — gather proofs aboard and put them to the inquest before Vienna, where the Flyer arrives at six
-start: 0:42
+start: 0:126
 seed: 1899
 
 # ── the train ────────────────────────────────────────────────────────────
@@ -134,20 +134,20 @@ prototypes:
 # body_found hands the late lord a `expires` clock: one day, then the
 # authored `on expire` trigger replaces him (REPLACE, §4.4) instead of the
 # built-in destroy. The tonic glass takes the built-in path: SET with a
-# quoted duration (§4.2 — the quoted path accepts every §5.1 unit, the
-# halfhour included) and no authored trigger. vienna_arrival is the
+# quoted duration (§4.2 — the quoted path accepts every §5.1 unit) and no
+# authored trigger. vienna_arrival is the
 # deadline: reach Vienna with no name on the tally-board and the story
 # quietly ends (ENDING in a trigger, the default flavour, §4.4).
 triggers:
-  body_found once at halfhour 44 -> DESTROY THE_PATENTEE, SPAWN THE_LATE_LORD INTO FIRST_CABIN, SPAWN THE_AETHER_SEAL INTO FIRST_CABIN, SET(FIRST_CABIN, unsealed, 1), SET(THE_AETHER_SEAL, state.sealed, true), SET(THE_LATE_LORD, expires, 1d), SPAWN THE_VANE_LEDGER INTO FIRST_CABIN, NARRATE "A cry from the first cabin. Lord Vane lies behind his own aether-seal, unrobbed, unwounded, and entirely dead."
-  night_porter once at halfhour 46 -> night_watchman()
-  conductor_rounds at halfhour 45 -> DRAW RUMOURS INTO GUARD_VAN, patrol_check(0)
-  border_stop once at halfhour 0 -> SPAWN THE_TELEGRAM INTO GUARD_VAN, NARRATE "The Flyer hisses down at the border. A telegraph boy sprints the platform and puts a French telegram into the guard's white glove."
+  body_found once at tick 132 -> DESTROY THE_PATENTEE, SPAWN THE_LATE_LORD INTO FIRST_CABIN, SPAWN THE_AETHER_SEAL INTO FIRST_CABIN, SET(FIRST_CABIN, unsealed, 1), SET(THE_AETHER_SEAL, state.sealed, true), SET(THE_LATE_LORD, expires, 1d), SPAWN THE_VANE_LEDGER INTO FIRST_CABIN, NARRATE "A cry from the first cabin. Lord Vane lies behind his own aether-seal, unrobbed, unwounded, and entirely dead."
+  night_porter once at tick 138 -> night_watchman()
+  conductor_rounds at tick 135 -> DRAW RUMOURS INTO GUARD_VAN, patrol_check(0)
+  border_stop once at tick 0 -> SPAWN THE_TELEGRAM INTO GUARD_VAN, NARRATE "The Flyer hisses down at the border. A telegraph boy sprints the platform and puts a French telegram into the guard's white glove."
   the_long_tunnel once at hour 1 -> UNRELATE(FIREBOX, GUARD_VAN, south), NARRATE "The train enters the Vendahl tunnel. For three hours the lamps burn blue, every mirror fogs over — and the crew door to the firebox closes like a held breath."
-  the_furnace_takes_it once at halfhour 4 -> IF exists(THE_VANE_LEDGER) -> (DESTROY THE_VANE_LEDGER, NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox, and a ledger cover stamped VANE is curling in the flames.") ELSE -> (NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox papers tonight — whatever they were, nobody will read them now.")
+  the_furnace_takes_it once at tick 12 -> IF exists(THE_VANE_LEDGER) -> (DESTROY THE_VANE_LEDGER, NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox, and a ledger cover stamped VANE is curling in the flames.") ELSE -> (NARRATE "A thin smell of ash reaches the corridor: someone is feeding the firebox papers tonight — whatever they were, nobody will read them now.")
   dawn_watch at hour 4 -> RELATE(FIREBOX, GUARD_VAN, south), NARRATE "The small hours turn. The Vendahl tunnel lets go of the train, and the crew door to the firebox breathes again."
   lord_tended on expire of THE_LATE_LORD -> REPLACE THE_LATE_LORD WITH THE_TENDED_LORD, NARRATE "The company's people come for the late lord at last, and carry him, tended and tagged, forward through the cars."
-  vienna_arrival once at halfhour 12 -> NARRATE "Vienna lights slide along the glass, and the Flyer glides in with her mystery intact — the passengers scatter, and the case scatters with them.", ENDING QUIET_NIGHT
+  vienna_arrival once at tick 36 -> NARRATE "Vienna lights slide along the glass, and the Flyer glides in with her mystery intact — the passengers scatter, and the case scatters with them.", ENDING QUIET_NIGHT
 
 # ── the company's book on the inspector ──────────────────────────────────
 # sus spawns one SUSPICION onto the named card and tells the corridor about
@@ -190,8 +190,8 @@ verbs:
       read.manifest when object.aspect.manifest >= 1 -> NARRATE "The passenger manifest, first class: the lord Vane, his wife Verity, a secretary named Quill, a spiritualist trading as Seraphine. Crew of two on the sheet — a guard and a stoker. Six strangers and a dead man, once the cry goes up."
       read.french_gate hidden when object.aspect.language.french >= 1 AND NOT any(actors, aspect:language.french >= 1) -> REFUSE("The words are French to you, and your French died at school.")
       read.cylinder when object.aspect.tome.cylinder >= 1 -> PROGRESS(20m, "You wind the cylinder onto the phonomotor; the stylus trembles and finds its groove."), PROGRESS(50m, "A voice assembles out of the hiss — the lord's own, speaking the words that open his seal."), SPAWN THE_STOLEN_VOICE, SET(THE_AETHER_SEAL, state.sealed, false), DESTROY OBJECT, NARRATE "{actors} play the cylinder to its end. Someone owns the lord's voice, and the seal answers it."
-      read.telegram when object.aspect.tome.telegram >= 1 -> PROGRESS(1halfhour, "The spiritualist's lips move; the French unbraids itself line by line."), SPAWN THE_VIENNA_WARNING, DESTROY OBJECT, NARRATE "\"Tell Q he signs nothing after Vienna — not the patents, not the funeral arrangements.\" The partner knew. Did Q?"
-      read.ledger when object.aspect.tome.ledger >= 1 -> PROGRESS(1halfhour, "Two hands wrote this ledger, and in the margins they argue."), SPAWN THE_EMBEZZLEMENT, HUNCH, DESTROY OBJECT, NARRATE "Quill's neat corrections hide a steady drain on the aether royalties. The lord had found it. Quill knew he had — and the shape of it stays with you."
+      read.telegram when object.aspect.tome.telegram >= 1 -> PROGRESS(30m, "The spiritualist's lips move; the French unbraids itself line by line."), SPAWN THE_VIENNA_WARNING, DESTROY OBJECT, NARRATE "\"Tell Q he signs nothing after Vienna — not the patents, not the funeral arrangements.\" The partner knew. Did Q?"
+      read.ledger when object.aspect.tome.ledger >= 1 -> PROGRESS(30m, "Two hands wrote this ledger, and in the margins they argue."), SPAWN THE_EMBEZZLEMENT, HUNCH, DESTROY OBJECT, NARRATE "Quill's neat corrections hide a steady drain on the aether royalties. The lord had found it. Quill knew he had — and the shape of it stays with you."
       read.letter when object.aspect.tome.letter >= 1 -> SPAWN THE_DISINHERITANCE, DESTROY OBJECT, NARRATE "The solicitor begs the lord to come home at once and rewrite his will before the Vienna signing. Whoever marries grief gets nothing; whoever holds the pen gets everything."
       read.companions when count(actors) = 2 AND rel(neighbor, actors) -> NARRATE "{actors} read over each other's shoulders, and the book warms between them."
       default -> NARRATE "{actors} read {object}."
@@ -200,7 +200,7 @@ verbs:
     actors: 1 kind:character
     to: 1 kind:character
     about: 0..1 kind:idea
-    duration: 1halfhour
+    duration: 30m
     recipes:
       talk.meet_guard when to.aspect.unmet >= 1 AND to.aspect.duty >= 1 -> DESTROY THE_GUARD, SPAWN BRACK INTO GUARD_VAN, RELATE(MARCH, BRACK, neighbor, 2), NARRATE "\"Brack. Railway security,\" he says, and the white gloves settle. \"They wired ahead about an inspector. The company seal is in my van — and somebody's hands have been on it.\""
       talk.meet_widow when to.aspect.unmet >= 1 AND to.aspect.grief >= 1 -> DESTROY THE_WIDOW, SPAWN VERITY INTO DINING_CAR, NARRATE "\"Verity Vane,\" she says, mourning jet buttoned to the throat. \"You knew the name before I said it. Everyone on this train knows everything by now.\""
@@ -226,11 +226,11 @@ verbs:
     object: 1 kind:place
     duration: 1h
     recipes:
-      explore.cabin when object.aspect.site.first >= 1 AND object.attr.unsealed >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "The seal parts for your warrant with a sound like a struck match."), SPAWN THE_SOLICITOR_LETTER INTO OBJECT, SET(OBJECT, searched, 1), patrol_check(1), NARRATE "The cabin is orderly the way a stage set is orderly. Behind the writing case: a solicitor's letter — and the Vane household ledger, far from its shelf."
-      explore.firebox when object.aspect.site.firebox >= 1 AND NOT object.attr.searched >= 1 -> ROLL(total(actors, aspect:nerve), 6), IF roll >= 5 -> (PROGRESS(1halfhour, "You sift warm ash while Cole watches the shovel a shade too carefully."), SPAWN THE_WAX_CYLINDER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "{roll} minutes of sifting, well spent: a wax phonomotor cylinder, half-melted but intact, the lord's monogram on the brass case.") ELSE IF roll <= 3 -> (SET(OBJECT, searched, 1), sus(MARCH), NARRATE "You rummage loudly enough that Cole forgets the shovel. {roll} minutes, nothing to show.") ELSE -> (SET(OBJECT, searched, 1), NARRATE "Ash, clinker, and {roll} minutes of your night gone. The firebox keeps what it keeps.")
-      explore.dining when object.aspect.site.dining >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "Under the Mahrajah's table, among the broken biscuits."), SPAWN THE_TONIC_GLASS INTO OBJECT, SET(THE_TONIC_GLASS, expires, "2halfhour"), SET(OBJECT, searched, 1), NARRATE "The lord's table still stands. His tonic glass smells wrong — aether where the laudanum should be, and not long for this world."
-      explore.luggage when object.aspect.site.luggage >= 1 AND NOT object.attr.searched >= 1 -> ROLL(total(actors, aspect:nerve), 6), IF roll > 8 -> (PROGRESS(1halfhour, "Trunk after trunk, manifest after manifest."), SPAWN THE_STOPPED_WATCH INTO OBJECT, REVEAL THE_STOPPED_WATCH, SET(OBJECT, searched, 1), NARRATE "{roll} minutes of careful work, and there it is between the trunks: a gentleman's pocket watch, stopped at 11:50, still warm.") ELSE IF roll >= 6 -> (SET(OBJECT, searched, 1), NARRATE "{roll} minutes among other people's luggage, and nothing opens quietly for you tonight.") ELSE -> (SET(OBJECT, searched, 1), sus(MARCH), NARRATE "You pry a trunk that is not yours — {roll} minutes of noise, and the luggage van remembers.")
-      explore.guard when object.aspect.site.guard >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(1halfhour, "Brake-dust, ledger-oil, and Brack's spine straightening by the inch."), SET(OBJECT, searched, 1), NARRATE "Brack's tally-board is spotless. Nothing on a night train is spotless."
+      explore.cabin when object.aspect.site.first >= 1 AND object.attr.unsealed >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "The seal parts for your warrant with a sound like a struck match."), SPAWN THE_SOLICITOR_LETTER INTO OBJECT, SET(OBJECT, searched, 1), patrol_check(1), NARRATE "The cabin is orderly the way a stage set is orderly. Behind the writing case: a solicitor's letter — and the Vane household ledger, far from its shelf."
+      explore.firebox when object.aspect.site.firebox >= 1 AND NOT object.attr.searched >= 1 -> ROLL(total(actors, aspect:nerve), 6), IF roll >= 5 -> (PROGRESS(30m, "You sift warm ash while Cole watches the shovel a shade too carefully."), SPAWN THE_WAX_CYLINDER INTO OBJECT, SET(OBJECT, searched, 1), NARRATE "{roll} minutes of sifting, well spent: a wax phonomotor cylinder, half-melted but intact, the lord's monogram on the brass case.") ELSE IF roll <= 3 -> (SET(OBJECT, searched, 1), sus(MARCH), NARRATE "You rummage loudly enough that Cole forgets the shovel. {roll} minutes, nothing to show.") ELSE -> (SET(OBJECT, searched, 1), NARRATE "Ash, clinker, and {roll} minutes of your night gone. The firebox keeps what it keeps.")
+      explore.dining when object.aspect.site.dining >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "Under the Mahrajah's table, among the broken biscuits."), SPAWN THE_TONIC_GLASS INTO OBJECT, SET(THE_TONIC_GLASS, expires, "1h"), SET(OBJECT, searched, 1), NARRATE "The lord's table still stands. His tonic glass smells wrong — aether where the laudanum should be, and not long for this world."
+      explore.luggage when object.aspect.site.luggage >= 1 AND NOT object.attr.searched >= 1 -> ROLL(total(actors, aspect:nerve), 6), IF roll > 8 -> (PROGRESS(30m, "Trunk after trunk, manifest after manifest."), SPAWN THE_STOPPED_WATCH INTO OBJECT, REVEAL THE_STOPPED_WATCH, SET(OBJECT, searched, 1), NARRATE "{roll} minutes of careful work, and there it is between the trunks: a gentleman's pocket watch, stopped at 11:50, still warm.") ELSE IF roll >= 6 -> (SET(OBJECT, searched, 1), NARRATE "{roll} minutes among other people's luggage, and nothing opens quietly for you tonight.") ELSE -> (SET(OBJECT, searched, 1), sus(MARCH), NARRATE "You pry a trunk that is not yours — {roll} minutes of noise, and the luggage van remembers.")
+      explore.guard when object.aspect.site.guard >= 1 AND NOT object.attr.searched >= 1 -> PROGRESS(30m, "Brake-dust, ledger-oil, and Brack's spine straightening by the inch."), SET(OBJECT, searched, 1), NARRATE "Brack's tally-board is spotless. Nothing on a night train is spotless."
       explore.searched when object.attr.searched >= 1 AND exists(kind:character aspect:duty>=1 -name:MARCH) -> sus(MARCH), watch(3), NARRATE "{actors} turn the place over again and find nothing new — only an audience."
       explore.cabin_sealed when object.aspect.site.first >= 1 -> REFUSE("The aether-seal breathes cold against your warrant. The door does not open for a piece of paper.")
       default -> NARRATE "There is nothing here to search."
@@ -242,13 +242,13 @@ verbs:
     duration: 1h30m
     recipes:
       inquest.short shown hint "The tally-board wants three proofs laid together — pooled, not promised." when count(with) >= 1 AND total(with, aspect:proof) < object.aspect.demand -> REFUSE("The van hears you out and finds the case wobbles. Nobody is held on a hunch.")
-      inquest.win when total(with, aspect:proof) >= 3 AND every(with, aspect:proof >= 1) -> PROGRESS(1halfhour, "The guard convenes the van; the company seal goes on the door and the words go on the record."), PROGRESS(1h, "Motive, means, opportunity: {with} — every card on the tally-board points the same way down the corridor."), NARRATE "Embezzled royalties, a stolen voice for the seal, a telegram that never reached its addressee — the cuffs unpin Quill where the constable cannot. He confesses before Vienna.", SPAWN CONFESSION_OF_QUILL, REPLACE OBJECT WITH THE_CLOSED_TALLY, ENDING CASE_CLOSED
+      inquest.win when total(with, aspect:proof) >= 3 AND every(with, aspect:proof >= 1) -> PROGRESS(30m, "The guard convenes the van; the company seal goes on the door and the words go on the record."), PROGRESS(1h, "Motive, means, opportunity: {with} — every card on the tally-board points the same way down the corridor."), NARRATE "Embezzled royalties, a stolen voice for the seal, a telegram that never reached its addressee — the cuffs unpin Quill where the constable cannot. He confesses before Vienna.", SPAWN CONFESSION_OF_QUILL, REPLACE OBJECT WITH THE_CLOSED_TALLY, ENDING CASE_CLOSED
       default -> REFUSE("You would convene an inquest with empty hands. Brack pretends not to hear.")
 
   TRAVEL_TO:
     actors: 1 kind:character
     object: 1 kind:place
-    duration: 1halfhour
+    duration: 30m
     recipes:
       travel.no_link hidden when NOT (rel(north, actors.container, object) OR rel(south, actors.container, object) OR rel(east, actors.container, object) OR rel(west, actors.container, object)) -> REFUSE("The Nightjar is one corridor, and it does not bend — that car is not next door.")
       default -> MOVE ACTORS INTO OBJECT, NARRATE "{actors} walk the swaying corridor to {object}."
@@ -293,13 +293,13 @@ verbs:
     # aspect as bonus (§4.4) and nests an IF inside an IF (§6.8)
     actors: 2 kind:character
     object: 1 kind:place
-    duration: 1halfhour
+    duration: 30m
     recipes:
       mansus.firebox when object.aspect.site.firebox >= 1 -> ROLL(1, 6, object.aspect.site.firebox), IF roll >= 4 -> (IF roll = 6 -> (SET(ACTORS, aspect:nerve, +1), NARRATE "The fire-door breathes like a held note, and {actors} breathe back. The glare takes a measure of doubt and pays it in nerve.") ELSE -> (NARRATE "The fire stares, and for a moment the fire is a doorway. {actors} look away first.")) ELSE -> (NARRATE "The fire is only fire tonight. Some doors do not answer.")
       default -> NARRATE "{actors} look long at the place, and the place looks back."
 
   LOCATE_AT:
-    # the utility verb — a sub-halfhour duration leaves dead air behind
+    # the utility verb — its 20m duration is 2 ticks on the tick grid
     # (§6.6); it walks the same corridor TRAVEL_TO does, so the tunnel's
     # closed crew door stops it the same way
     actors: 1 kind:character

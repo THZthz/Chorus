@@ -156,7 +156,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// The pre-verbal clock prefix `day:halfhour @` (§5.1), or `None`.
+    /// The pre-verbal clock prefix `day:tick @` (§5.1), or `None`.
     ///
     /// (clippy's `manual_range_contains` lint is silenced — the explicit
     /// bound check is deliberate)
@@ -170,16 +170,16 @@ impl<'a> Parser<'a> {
             return Err(ChorusError::new("bad clock"));
         };
         self.expect_punct(":")?;
-        let halfhour_tok = self.next()?;
-        // the 47 bound written HALFHOURS_PER_DAY - 1 (same value,
+        let tick_tok = self.next()?;
+        // the 143 bound written TICKS_PER_DAY - 1 (same value,
         // self-documenting)
-        let Tok::Int { v: halfhour } = halfhour_tok else {
-            return Err(ChorusError::new("bad halfhour (0..47)"));
+        let Tok::Int { v: tick } = tick_tok else {
+            return Err(ChorusError::new("bad tick (0..143)"));
         };
-        if halfhour < 0 || halfhour > crate::core::clock::HALFHOURS_PER_DAY - 1 {
-            return Err(ChorusError::new("bad halfhour (0..47)"));
+        if tick < 0 || tick > crate::core::clock::TICKS_PER_DAY - 1 {
+            return Err(ChorusError::new("bad tick (0..143)"));
         }
-        let clock = Some(Clock { day, halfhour });
+        let clock = Some(Clock { day, tick });
         self.expect_punct("@")?;
         Ok(clock)
     }

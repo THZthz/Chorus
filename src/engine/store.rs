@@ -169,7 +169,7 @@ mod tests {
             seed(),
             Step {
                 start_min: None,
-                clock: Some(Clock { day: 0, halfhour: 0 }),
+                clock: Some(Clock { day: 0, tick: 0 }),
                 clauses: parse_sentence("0:0 @ ANA PACE", &dict).unwrap().clauses,
                 t_real: None,
             },
@@ -183,7 +183,7 @@ mod tests {
             r.state,
             Step {
                 start_min: None,
-                clock: Some(Clock { day: 0, halfhour: 1 }),
+                clock: Some(Clock { day: 0, tick: 1 }),
                 clauses: vec![],
                 t_real: None,
             },

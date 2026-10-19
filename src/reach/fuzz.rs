@@ -25,7 +25,9 @@ use crate::content::{
     DeclaredEntity, ExpireTriggerDef, PrototypeDef, PrototypeDerive, RecipeDef, SlotDef,
     SlotTriggerDef, TriggerDef, VerbContent,
 };
-use crate::core::clock::{abs_min, clock_from_abs_min, format_clock, next_step_clock};
+use crate::core::clock::{
+    abs_min, clock_from_abs_min, format_clock, next_step_clock, MIN_PER_TICK,
+};
 use crate::core::dict::{core_dictionary, Dictionary, CORE_VERBS};
 use crate::core::parse::parse_sentence;
 use crate::core::query::match_query;
@@ -255,7 +257,7 @@ impl Gen<'_> {
             }
             let key = pick_of(self.r, &keys);
             let val = if key == "expires" {
-                pick_str(self.r, &["30m", "1halfhour"])
+                pick_str(self.r, &["30m", "1h"])
             } else if self.r.next_f64() < 0.6 {
                 format!("+{}", 1 + int(self.r, 2) as i64)
             } else {
@@ -602,7 +604,7 @@ pub fn gen_scenario(seed: u32) -> Scenario {
                     out,
                 }));
             } else {
-                let slot = int(ctx.r, 48) as i64;
+                let slot = int(ctx.r, 144) as i64;
                 let once = ctx.r.next_f64() < 0.4;
                 triggers.push(TriggerDef::Slot(SlotTriggerDef { id, slot, once: Some(once), out }));
             }
@@ -756,9 +758,12 @@ pub fn candidates(content: &CompiledContent, dict: &Dictionary, s: &State) -> Ve
     let clock = next_step_clock(s.now);
     // waits — advance the clock so slot triggers, expiries and completions
     // strike
-    for ahead in [0usize, 1, 2, 12, 24, 48] {
-        let begin =
-            if ahead == 0 { clock } else { clock_from_abs_min(abs_min(clock) + ahead as i64 * 30) };
+    for ahead in [0usize, 1, 3, 6, 12, 36, 72, 144] {
+        let begin = if ahead == 0 {
+            clock
+        } else {
+            clock_from_abs_min(abs_min(clock) + ahead as i64 * MIN_PER_TICK)
+        };
         let parsed = parse_sentence(&format!("{} @ ANA WAIT", format_clock(begin)), dict)
             .unwrap_or_else(|e| panic!("the WAIT probe parses: {e}"));
         out.push(Step {

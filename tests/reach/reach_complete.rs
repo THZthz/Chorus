@@ -280,7 +280,7 @@ fn a_complete_trigger_on_a_produced_home_proves_after_the_home_is_proven() {
         triggers: Some(vec![
             TriggerDef::Slot(chorus::content::SlotTriggerDef {
                 id: "seed".to_string(),
-                slot: 2,
+                slot: 6,
                 once: None,
                 out: vec!["SPAWN HOME_CARD".to_string()],
             }),
@@ -574,7 +574,7 @@ fn a_once_trigger_funds_source_keeps_the_gated_completion_a_candidate() {
         vec![
             TriggerDef::Slot(SlotTriggerDef {
                 id: "allowance".to_string(),
-                slot: 2,
+                slot: 6,
                 once: Some(true),
                 out: vec!["SPAWN PURSE".to_string()],
             }),
@@ -729,7 +729,7 @@ fn a_threshold_inside_the_capped_weight_region_demotes_to_candidate() {
         vec![
             TriggerDef::Slot(SlotTriggerDef {
                 id: "allowance".to_string(),
-                slot: 2,
+                slot: 6,
                 once: Some(true),
                 out: vec!["SPAWN PURSE".to_string()],
             }),

@@ -4,7 +4,7 @@
 script: The Keeper's First Light
 player: WICK
 goal: light the lamp — the keeper's logbook says how
-start: 0:8
+start: 0:24
 
 entities:
   LAMP_ROOM is place

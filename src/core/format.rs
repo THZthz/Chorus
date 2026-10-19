@@ -296,19 +296,19 @@ mod tests {
     #[test]
     fn wait_and_event_rows_print_their_rows() {
         let d = dict();
-        // 90 minutes has no exact hour fit — canonical is 3halfhour — and the
-        // rendering re-parses to the same span
-        let s = parse_sentence("0:42 @ WAIT 1h30m", &d).unwrap();
+        // 90 minutes has no exact hour fit — canonical is the compound
+        // 1h30m — and the rendering re-parses to the same span
+        let s = parse_sentence("0:126 @ WAIT 1h30m", &d).unwrap();
         let out = format_sentence(&s, &d).unwrap();
-        assert_eq!(out, "0:42 @ WAIT 3halfhour");
+        assert_eq!(out, "0:126 @ WAIT 1h30m");
         let s2 = parse_sentence(&out, &d).unwrap();
         assert_eq!(s2.span_min, s.span_min);
         // an unsafe trigger segment is authored quoted and re-quotes per
         // colon-joined segment
-        let s = parse_sentence("1:2 @ EVENT expire:\"THE DOOR\" -> NARRATE \"x\"", &d).unwrap();
+        let s = parse_sentence("1:6 @ EVENT expire:\"THE DOOR\" -> NARRATE \"x\"", &d).unwrap();
         assert_eq!(
             format_sentence(&s, &d).unwrap(),
-            "1:2 @ EVENT expire:\"THE DOOR\" -> NARRATE \"x\""
+            "1:6 @ EVENT expire:\"THE DOOR\" -> NARRATE \"x\""
         );
     }
 

@@ -543,7 +543,7 @@ mod parameter_substitution {
         assert_eq!(r.state.ended, None);
         let mut state = r.state;
         add_suspicion(&mut state, 1); // now 3 >= 3: the same compiled content arrests
-        let r2 = settle_line(&c, &dict, state, "0:1 @ ANA STEW", 10).unwrap();
+        let r2 = settle_line(&c, &dict, state, "0:3 @ ANA STEW", 10).unwrap();
         let ended = r2.state.ended.as_ref().unwrap();
         assert_eq!(ended.id, "ARRESTED");
         assert_eq!(ended.title, "Taken by the constabulary");
@@ -917,7 +917,7 @@ verbs:
                     verbs: rig_verb(&["tick()"]),
                     triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
                         id: "tock".to_string(),
-                        slot: 2,
+                        slot: 6,
                         once: Some(true),
                         out: vec!["tick()".to_string()],
                     })]),
@@ -977,7 +977,7 @@ verbs:
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
                     triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
                         id: "doom_t".to_string(),
-                        slot: 2,
+                        slot: 6,
                         once: Some(true),
                         out: vec!["doom()".to_string()],
                     })]),
@@ -1004,7 +1004,7 @@ verbs:
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
                     triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
                         id: "sneak".to_string(),
-                        slot: 2,
+                        slot: 6,
                         once: Some(true),
                         out: vec!["sneak()".to_string()],
                     })]),
@@ -1031,7 +1031,7 @@ verbs:
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
                     triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
                         id: "linted".to_string(),
-                        slot: 2,
+                        slot: 6,
                         once: Some(true),
                         out: vec!["watch(3)".to_string()],
                     })]),
@@ -1055,7 +1055,7 @@ verbs:
                     verbs: rig_verb(&["NARRATE \"idle.\""]),
                     triggers: Some(vec![TriggerDef::Slot(chorus::content::SlotTriggerDef {
                         id: "roled".to_string(),
-                        slot: 2,
+                        slot: 6,
                         once: Some(true),
                         out: vec!["watch(3)".to_string()],
                     })]),

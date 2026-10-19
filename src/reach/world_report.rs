@@ -346,7 +346,7 @@ mod tests {
     use crate::core::dict::core_dictionary;
 
     /// A fixture exercising every section: a same-slot mint pair freezes the
-    /// world at halfhour 8 (240 min), a once trigger draws a finite deck, a
+    /// world at tick 24 (240 min), a once trigger draws a finite deck, a
     /// recipe draw stays unbounded, a REFUSE arm refuses one site, a DESTROY
     /// feeds destroyed-by, two SETs feed the pump map (one shadowed), and a
     /// verb with an unfillable slot dies.
@@ -371,11 +371,11 @@ prototypes:
   TALISMAN is resource stackable
 
 triggers:
-  t_kill once at halfhour 2 -> DESTROY THE_RELIC
-  t_draw once at halfhour 3 -> DRAW RELIC_DRAW
-  t_pump at halfhour 6 -> SET(HALL, aspect:gleam, 1), SET(MARCH, expires, 1h)
-  t_freeze_a at halfhour 8 -> SPAWN THE_CHARM
-  t_freeze_b at halfhour 8 -> SPAWN THE_CHARM
+  t_kill once at tick 6 -> DESTROY THE_RELIC
+  t_draw once at tick 9 -> DRAW RELIC_DRAW
+  t_pump at tick 18 -> SET(HALL, aspect:gleam, 1), SET(MARCH, expires, 1h)
+  t_freeze_a at tick 24 -> SPAWN THE_CHARM
+  t_freeze_b at tick 24 -> SPAWN THE_CHARM
   t_expire on expire of MARCH -> NARRATE \"the inspector sleeps\"
 
 decks:
